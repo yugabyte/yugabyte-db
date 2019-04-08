@@ -28,6 +28,7 @@ struct ResultTraits {
   typedef const TValue* ConstPointer;
   typedef TValue* Pointer;
   typedef const TValue& ConstReference;
+  typedef TValue&& RValueReference;
 
   static const TValue& ToStored(const TValue& value) { return value; }
   static void Destroy(Stored* value) { value->~TValue(); }
@@ -41,14 +42,21 @@ struct ResultTraits<TValue&> {
   typedef const TValue* ConstPointer;
   typedef TValue* Pointer;
   typedef const TValue& ConstReference;
+  typedef Pointer&& RValueReference;
 
   static TValue* ToStored(TValue& value) { return &value; } // NOLINT
   static void Destroy(Stored* value) {}
   static TValue* GetPtr(const Stored* value) { return *value; }
 };
 
+#ifdef __clang__
+#define NODISCARD_CLASS [[nodiscard]]
+#else
+#define NODISCARD_CLASS
+#endif
+
 template<class TValue>
-class Result {
+class NODISCARD_CLASS Result {
  public:
   typedef ResultTraits<TValue> Traits;
 
@@ -86,13 +94,16 @@ class Result {
     CHECK(!status_.ok());
   }
 
-  Result(TValue& value) : success_(true), value_(Traits::ToStored(value)) {} // NOLINT
+  Result(const TValue& value) : success_(true), value_(Traits::ToStored(value)) {} // NOLINT
 
   template <class UValue,
             typename = typename std::enable_if<
                 std::is_convertible<const UValue&, const TValue&>::value>::type>
   Result(const UValue& value) // NOLINT
       : success_(true), value_(Traits::ToStored(value)) {}
+
+  Result(typename Traits::RValueReference value) // NOLINT
+      : success_(true), value_(std::move(value)) {}
 
   template <class UValue,
             typename = typename std::enable_if<
@@ -343,6 +354,11 @@ class ResultToStatusAdaptor {
 template <class Functor>
 ResultToStatusAdaptor<Functor> ResultToStatus(const Functor& functor) {
   return ResultToStatusAdaptor<Functor>(functor);
+}
+
+template<class TValue>
+CHECKED_STATUS ResultToStatus(const Result<TValue>& result) {
+  return result.ok() ? Status::OK() : result.status();
 }
 
 // Checks that result is ok, extracts result value is case of success.

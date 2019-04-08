@@ -17,10 +17,12 @@
 #include <thread>
 
 #include <boost/optional/optional.hpp>
+#include <boost/optional/optional_io.hpp>
 
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -50,6 +52,8 @@ DECLARE_int64(db_write_buffer_size);
 DECLARE_string(time_source);
 DECLARE_int32(TEST_delay_execute_async_ms);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
+DECLARE_int32(retryable_request_timeout_secs);
+DECLARE_bool(enable_lease_revocation);
 
 namespace yb {
 namespace client {
@@ -58,8 +62,10 @@ using ql::RowsResult;
 
 namespace {
 
-const std::string kKey = "key"s;
-const std::string kValue = "int_val"s;
+const std::string kKeyColumn = "key"s;
+const std::string kRangeKey1Column = "range_key1"s;
+const std::string kRangeKey2Column = "range_key2"s;
+const std::string kValueColumn = "int_val"s;
 const YBTableName kTable1Name("my_keyspace", "ql_client_test_table1");
 const YBTableName kTable2Name("my_keyspace", "ql_client_test_table2");
 
@@ -92,7 +98,7 @@ class QLTabletTest : public QLDmlTestBase {
     const auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
-    table->AddInt32ColumnValue(req, kValue, value);
+    table->AddInt32ColumnValue(req, kValueColumn, value);
     ASSERT_OK(session->ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
   }
@@ -114,20 +120,20 @@ class QLTabletTest : public QLDmlTestBase {
     auto op = table->NewReadOp();
     auto req = op->mutable_request();
     QLAddInt32HashValue(req, key);
-    auto value_column_id = table->ColumnId(kValue);
+    auto value_column_id = table->ColumnId(kValueColumn);
     req->add_selected_exprs()->set_column_id(value_column_id);
     req->mutable_column_refs()->add_ids(value_column_id);
 
     QLRSColDescPB *rscol_desc = req->mutable_rsrow_desc()->add_rscol_descs();
-    rscol_desc->set_name(kValue);
-    table->ColumnType(kValue)->ToQLTypePB(rscol_desc->mutable_ql_type());
+    rscol_desc->set_name(kValueColumn);
+    table->ColumnType(kValueColumn)->ToQLTypePB(rscol_desc->mutable_ql_type());
     return op;
   }
 
   void CreateTable(const YBTableName& table_name, TableHandle* table, int num_tablets = 0) {
     YBSchemaBuilder builder;
-    builder.AddColumn(kKey)->Type(INT32)->HashPrimaryKey()->NotNull();
-    builder.AddColumn(kValue)->Type(INT32);
+    builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
+    builder.AddColumn(kValueColumn)->Type(INT32);
 
     if (num_tablets == 0) {
       num_tablets = CalcNumTablets(3);
@@ -322,6 +328,8 @@ class QLTabletTest : public QLDmlTestBase {
     return tablets;
   }
 
+  void TestDeletePartialKey(int num_range_keys_in_delete);
+
   TableHandle table1_;
   TableHandle table2_;
 };
@@ -385,19 +393,6 @@ TEST_F(QLTabletTest, OverlappedImport) {
   ASSERT_NOK(Import());
 }
 
-void StepDownAllTablets(MiniCluster* cluster) {
-  for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> peers;
-    cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
-    for (const auto& peer : peers) {
-      consensus::LeaderStepDownRequestPB req;
-      req.set_tablet_id(peer->tablet_id());
-      consensus::LeaderStepDownResponsePB resp;
-      ASSERT_OK(peer->consensus()->StepDown(&req, &resp));
-    }
-  }
-}
-
 void DoStepDowns(MiniCluster* cluster) {
   for (int j = 0; j != 5; ++j) {
     StepDownAllTablets(cluster);
@@ -420,25 +415,35 @@ void VerifyLogIndicies(MiniCluster* cluster) {
   }
 }
 
+namespace {
+
+constexpr auto kRetryableRequestTimeoutSecs = 4;
+
+} // namespace
+
 TEST_F(QLTabletTest, GCLogWithoutWrites) {
+  SetAtomicFlag(kRetryableRequestTimeoutSecs, &FLAGS_retryable_request_timeout_secs);
+
   TableHandle table;
   CreateTable(kTable1Name, &table);
 
   FillTable(0, kTotalKeys, &table);
 
-  std::this_thread::sleep_for(5s);
+  std::this_thread::sleep_for(1s * (kRetryableRequestTimeoutSecs + 1));
   ASSERT_OK(cluster_->FlushTablets());
   DoStepDowns(cluster_.get());
   VerifyLogIndicies(cluster_.get());
 }
 
 TEST_F(QLTabletTest, GCLogWithRestartWithoutWrites) {
+  SetAtomicFlag(kRetryableRequestTimeoutSecs, &FLAGS_retryable_request_timeout_secs);
+
   TableHandle table;
   CreateTable(kTable1Name, &table);
 
   FillTable(0, kTotalKeys, &table);
 
-  std::this_thread::sleep_for(5s);
+  std::this_thread::sleep_for(1s * (kRetryableRequestTimeoutSecs + 1));
   ASSERT_OK(cluster_->FlushTablets());
 
   ASSERT_OK(cluster_->RestartSync());
@@ -448,7 +453,7 @@ TEST_F(QLTabletTest, GCLogWithRestartWithoutWrites) {
 }
 
 TEST_F(QLTabletTest, LeaderLease) {
-  google::FlagSaver saver;
+  FLAGS_enable_lease_revocation = false;
 
   TableHandle table;
   CreateTable(kTable1Name, &table);
@@ -469,7 +474,7 @@ TEST_F(QLTabletTest, LeaderLease) {
   const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, 1);
-  table.AddInt32ColumnValue(req, kValue, 1);
+  table.AddInt32ColumnValue(req, kValueColumn, 1);
   auto status = session->ApplyAndFlush(op);
   ASSERT_TRUE(status.IsIOError()) << "Status: " << status;
 }
@@ -511,7 +516,7 @@ TEST_F(QLTabletTest, WaitFlush) {
   bool leader_found = false;
   while (!leader_found) {
     for (size_t i = 0; i != peers.size(); ++i) {
-      if (peers[i]->LeaderStatus() == consensus::Consensus::LeaderStatus::LEADER_AND_READY) {
+      if (peers[i]->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
         peers[(i + 1) % peers.size()]->log()->TEST_SetSleepDuration(500ms);
         leader_found = true;
         break;
@@ -638,13 +643,13 @@ TEST_F(QLTabletTest, SkewedClocks) {
     auto op = table.NewReadOp();
     auto req = op->mutable_request();
     QLAddInt32HashValue(req, i);
-    auto value_column_id = table.ColumnId(kValue);
+    auto value_column_id = table.ColumnId(kValueColumn);
     req->add_selected_exprs()->set_column_id(value_column_id);
     req->mutable_column_refs()->add_ids(value_column_id);
 
     QLRSColDescPB *rscol_desc = req->mutable_rsrow_desc()->add_rscol_descs();
-    rscol_desc->set_name(kValue);
-    table.ColumnType(kValue)->ToQLTypePB(rscol_desc->mutable_ql_type());
+    rscol_desc->set_name(kValueColumn);
+    table.ColumnType(kValueColumn)->ToQLTypePB(rscol_desc->mutable_ql_type());
     op->set_yb_consistency_level(YBConsistencyLevel::CONSISTENT_PREFIX);
     ASSERT_OK(session->ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
@@ -676,7 +681,7 @@ TEST_F(QLTabletTest, LeaderChange) {
     auto server = cluster_->mini_tablet_server(i)->server();
     auto peers = server->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
-      if (peer->LeaderStatus() != consensus::Consensus::LeaderStatus::NOT_LEADER) {
+      if (peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
         leader_id = server->permanent_uuid();
         break;
       }
@@ -691,12 +696,12 @@ TEST_F(QLTabletTest, LeaderChange) {
   const auto write_op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = write_op->mutable_request();
   QLAddInt32HashValue(req, kKey);
-  table.AddInt32ColumnValue(req, kValue, kValue2);
+  table.AddInt32ColumnValue(req, kValueColumn, kValue2);
 
-  table.SetColumn(req->add_column_values(), kValue);
+  table.SetColumn(req->add_column_values(), kValueColumn);
   table.SetInt32Condition(
-    req->mutable_if_expr()->mutable_condition(), kValue, QL_OP_EQUAL, kValue1);
-  req->mutable_column_refs()->add_ids(table.ColumnId(kValue));
+    req->mutable_if_expr()->mutable_condition(), kValueColumn, QL_OP_EQUAL, kValue1);
+  req->mutable_column_refs()->add_ids(table.ColumnId(kValueColumn));
   ASSERT_OK(session->Apply(write_op));
   FLAGS_retryable_rpc_single_call_timeout_ms = 60000;
 
@@ -724,7 +729,7 @@ TEST_F(QLTabletTest, LeaderChange) {
     auto peers = server->tablet_manager()->GetTabletPeers();
     bool found = false;
     for (const auto& peer : peers) {
-      if (peer->LeaderStatus() != consensus::Consensus::LeaderStatus::NOT_LEADER) {
+      if (peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER) {
         LOG(INFO) << "Request step down: " << server->permanent_uuid() << " => " << leader_id;
         consensus::LeaderStepDownRequestPB req;
         req.set_tablet_id(peer->tablet_id());
@@ -744,6 +749,74 @@ TEST_F(QLTabletTest, LeaderChange) {
   ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, write_op->response().status());
 
   ASSERT_EQ(GetValue(session, kKey, &table), kValue3);
+}
+
+void QLTabletTest::TestDeletePartialKey(int num_range_keys_in_delete) {
+  YBSchemaBuilder builder;
+  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kRangeKey1Column)->Type(INT32)->PrimaryKey()->NotNull();
+  builder.AddColumn(kRangeKey2Column)->Type(INT32)->PrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(INT32);
+
+  TableHandle table;
+  ASSERT_OK(table.Create(kTable1Name, 1 /* num_tablets */, client_.get(), &builder));
+
+  const auto kValue1 = 2;
+  const auto kValue2 = 3;
+  const auto kTotalKeys = 200;
+
+  auto session1 = CreateSession();
+  auto session2 = CreateSession();
+  for (int key = 1; key != kTotalKeys; ++key) {
+    {
+      const auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+      auto* const req = op->mutable_request();
+      QLAddInt32HashValue(req, key);
+      QLAddInt32RangeValue(req, key);
+      QLAddInt32RangeValue(req, key);
+      table.AddInt32ColumnValue(req, kValueColumn, kValue1);
+      ASSERT_OK(session1->ApplyAndFlush(op));
+      ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
+    }
+
+    const auto op_del = table.NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    {
+      auto* const req = op_del->mutable_request();
+      QLAddInt32HashValue(req, key);
+      for (int i = 0; i != num_range_keys_in_delete; ++i) {
+        QLAddInt32RangeValue(req, key);
+      }
+      ASSERT_OK(session1->Apply(op_del));
+    }
+
+    const auto op_update = table.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+    {
+      auto* const req = op_update->mutable_request();
+      QLAddInt32HashValue(req, key);
+      QLAddInt32RangeValue(req, key);
+      QLAddInt32RangeValue(req, key);
+      table.AddInt32ColumnValue(req, kValueColumn, kValue2);
+      req->mutable_if_expr()->mutable_condition()->set_op(QL_OP_EXISTS);
+      ASSERT_OK(session2->Apply(op_update));
+    }
+    auto future_del = session1->FlushFuture();
+    auto future_update = session2->FlushFuture();
+    ASSERT_OK(future_del.get());
+    ASSERT_OK(future_update.get());
+    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op_del->response().status());
+    ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op_update->response().status());
+
+    auto stored_value = GetValue(session1, key, &table);
+    ASSERT_TRUE(!stored_value) << "Key: " << key << ", value: " << *stored_value;
+  }
+}
+
+TEST_F(QLTabletTest, DeleteByHashKey) {
+  TestDeletePartialKey(0);
+}
+
+TEST_F(QLTabletTest, DeleteByHashAndPartialRangeKey) {
+  TestDeletePartialKey(1);
 }
 
 } // namespace client

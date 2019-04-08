@@ -36,10 +36,9 @@
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/fs/block_id.h"
-#include "yb/fs/block_manager.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
@@ -102,12 +101,18 @@ DEFINE_int32(remote_bootstrap_max_chunk_size, 1_MB,
 DEFINE_test_flag(int32, simulate_long_remote_bootstrap_sec, 0,
                  "The remote bootstrap client will take at least this number of seconds to finish. "
                  "We use this for testing a scenario where a remote bootstrap takes longer than "
-                 "follower_unavailable_considered_failed_sec seconds");
+                 "follower_unavailable_considered_failed_sec seconds.");
 
-DEFINE_int64(remote_boostrap_rate_limit_bytes_per_sec, 100_MB,
+// Deprecated because it's misspelled.  But if set, this flag takes precedence over
+// remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
+DEFINE_int64(remote_boostrap_rate_limit_bytes_per_sec, 0,
+             "DEPRECATED. Replaced by flag remote_bootstrap_rate_limit_bytes_per_sec.");
+TAG_FLAG(remote_boostrap_rate_limit_bytes_per_sec, hidden);
+
+DEFINE_int64(remote_bootstrap_rate_limit_bytes_per_sec, 256_MB,
              "Maximum transmission rate during a remote bootstrap. This is across all the remote "
              "bootstrap sessions for which this process is acting as a sender or receiver. So "
-             "the total limit will be 2 * remote_boostrap_rate_limit_bytes_per_sec because a "
+             "the total limit will be 2 * remote_bootstrap_rate_limit_bytes_per_sec because a "
              "tserver or master can act both as a sender and receiver at the same time.");
 
 DEFINE_int32(bytes_remote_bootstrap_durable_write_mb, 8,
@@ -127,7 +132,6 @@ using consensus::OpId;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
 using env_util::CopyFile;
-using fs::WritableBlock;
 using rpc::Messenger;
 using std::shared_ptr;
 using std::string;
@@ -720,26 +724,6 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
   return Status::OK();
 }
 
-Status RemoteBootstrapClient::DownloadBlock(const BlockId& old_block_id,
-                                            BlockId* new_block_id) {
-  VLOG_WITH_PREFIX(1) << "Downloading block with block_id " << old_block_id.ToString();
-
-  gscoped_ptr<WritableBlock> block;
-  RETURN_NOT_OK_PREPEND(fs_manager_->CreateNewBlock(&block),
-                        "Unable to create new block");
-
-  DataIdPB data_id;
-  data_id.set_type(DataIdPB::BLOCK);
-  old_block_id.CopyToPB(data_id.mutable_block_id());
-  RETURN_NOT_OK_PREPEND(DownloadFile(data_id, block.get()),
-                        Substitute("Unable to download block $0",
-                                   old_block_id.ToString()));
-
-  *new_block_id = block->id();
-  RETURN_NOT_OK_PREPEND(block->Close(), "Unable to close block");
-  return Status::OK();
-}
-
 template<class Appendable>
 Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
                                            Appendable* appendable) {
@@ -751,13 +735,13 @@ Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
 
   std::unique_ptr<RateLimiter> rate_limiter;
 
-  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0) {
+  if (FLAGS_remote_bootstrap_rate_limit_bytes_per_sec > 0) {
     static auto rate_updater = []() {
       if (n_started_.load(std::memory_order_acquire) < 1) {
         YB_LOG_EVERY_N(ERROR, 100) << "Invalid number of remote bootstrap sessions: " << n_started_;
-        return static_cast<uint64_t>(FLAGS_remote_boostrap_rate_limit_bytes_per_sec);
+        return static_cast<uint64_t>(FLAGS_remote_bootstrap_rate_limit_bytes_per_sec);
       }
-      return static_cast<uint64_t>(FLAGS_remote_boostrap_rate_limit_bytes_per_sec / n_started_);
+      return static_cast<uint64_t>(FLAGS_remote_bootstrap_rate_limit_bytes_per_sec / n_started_);
     };
 
     rate_limiter = std::make_unique<RateLimiter>(rate_updater);

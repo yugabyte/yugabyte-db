@@ -4,7 +4,7 @@
  *	  Routines to support inter-object dependencies.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -27,11 +27,8 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_cast.h"
 #include "catalog/pg_collation.h"
-#include "catalog/pg_collation_fn.h"
 #include "catalog/pg_constraint.h"
-#include "catalog/pg_constraint_fn.h"
 #include "catalog/pg_conversion.h"
-#include "catalog/pg_conversion_fn.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_default_acl.h"
 #include "catalog/pg_depend.h"
@@ -84,6 +81,8 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "commands/ybccmds.h"
+#include "pg_yb_utils.h"
 
 /*
  * Deletion processing requires additional state for each ObjectAddress that
@@ -582,6 +581,7 @@ findDependentObjects(const ObjectAddress *object,
 				/* FALL THRU */
 
 			case DEPENDENCY_INTERNAL:
+			case DEPENDENCY_INTERNAL_AUTO:
 
 				/*
 				 * This object is part of the internal implementation of
@@ -633,6 +633,14 @@ findDependentObjects(const ObjectAddress *object,
 				 * transform this deletion request into a delete of this
 				 * owning object.
 				 *
+				 * For INTERNAL_AUTO dependencies, we don't enforce this; in
+				 * other words, we don't follow the links back to the owning
+				 * object.
+				 */
+				if (foundDep->deptype == DEPENDENCY_INTERNAL_AUTO)
+					break;
+
+				/*
 				 * First, release caller's lock on this object and get
 				 * deletion lock on the owning object.  (We must release
 				 * caller's lock to avoid deadlock against a concurrent
@@ -646,8 +654,10 @@ findDependentObjects(const ObjectAddress *object,
 				 * to lock it; if so, neither it nor the current object are
 				 * interesting anymore.  We test this by checking the
 				 * pg_depend entry (see notes below).
+				 * If YugaByte is enabled, systable_recheck_tuple doesn't work
+				 * since the function uses the buffer to determine the tuple's visibility.
 				 */
-				if (!systable_recheck_tuple(scan, tup))
+				if (!IsYugaByteEnabled() && !systable_recheck_tuple(scan, tup))
 				{
 					systable_endscan(scan);
 					ReleaseDeletionLock(&otherObject);
@@ -675,6 +685,7 @@ findDependentObjects(const ObjectAddress *object,
 				/* And we're done here. */
 				systable_endscan(scan);
 				return;
+
 			case DEPENDENCY_PIN:
 
 				/*
@@ -743,8 +754,10 @@ findDependentObjects(const ObjectAddress *object,
 		 * test this cheaply and independently of the object's type by seeing
 		 * if the pg_depend tuple we are looking at is still live. (If the
 		 * object got deleted, the tuple would have been deleted too.)
+		 * If YugaByte is enabled, systable_recheck_tuple doesn't work
+		 * since the function uses the buffer to determine the tuple's visibility.
 		 */
-		if (!systable_recheck_tuple(scan, tup))
+		if (!IsYugaByteEnabled() && !systable_recheck_tuple(scan, tup))
 		{
 			/* release the now-useless lock */
 			ReleaseDeletionLock(&otherObject);
@@ -762,6 +775,7 @@ findDependentObjects(const ObjectAddress *object,
 			case DEPENDENCY_AUTO_EXTENSION:
 				subflags = DEPFLAG_AUTO;
 				break;
+			case DEPENDENCY_INTERNAL_AUTO:
 			case DEPENDENCY_INTERNAL:
 				subflags = DEPFLAG_INTERNAL;
 				break;
@@ -1064,7 +1078,7 @@ deleteOneObject(const ObjectAddress *object, Relation *depRel, int flags)
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
-		CatalogTupleDelete(*depRel, &tup->t_self);
+		CatalogTupleDelete(*depRel, tup);
 	}
 
 	systable_endscan(scan);
@@ -1109,11 +1123,22 @@ doDeletion(const ObjectAddress *object, int flags)
 			{
 				char		relKind = get_rel_relkind(object->objectId);
 
-				if (relKind == RELKIND_INDEX)
+				if (relKind == RELKIND_INDEX ||
+					relKind == RELKIND_PARTITIONED_INDEX)
 				{
 					bool		concurrent = ((flags & PERFORM_DELETION_CONCURRENTLY) != 0);
 
 					Assert(object->objectSubId == 0);
+
+					if (IsYBRelationById(object->objectId))
+					{
+						Relation index = RelationIdGetRelation(object->objectId);
+
+						if (!index->rd_index->indisprimary)
+							YBCDropIndex(object->objectId);
+
+						RelationClose(index);
+					}
 					index_drop(object->objectId, concurrent);
 				}
 				else
@@ -1122,7 +1147,11 @@ doDeletion(const ObjectAddress *object, int flags)
 						RemoveAttributeById(object->objectId,
 											object->objectSubId);
 					else
+					{
+						if (IsYBRelationById(object->objectId))
+							YBCDropTable(object->objectId);
 						heap_drop_with_catalog(object->objectId);
+					}
 				}
 
 				/*
@@ -1716,7 +1745,7 @@ find_expr_references_walker(Node *node,
 	else if (IsA(node, FieldSelect))
 	{
 		FieldSelect *fselect = (FieldSelect *) node;
-		Oid			argtype = exprType((Node *) fselect->arg);
+		Oid			argtype = getBaseType(exprType((Node *) fselect->arg));
 		Oid			reltype = get_typ_typrelid(argtype);
 
 		/*
@@ -1788,11 +1817,14 @@ find_expr_references_walker(Node *node,
 	{
 		ArrayCoerceExpr *acoerce = (ArrayCoerceExpr *) node;
 
-		if (OidIsValid(acoerce->elemfuncid))
-			add_object_address(OCLASS_PROC, acoerce->elemfuncid, 0,
-							   context->addrs);
+		/* as above, depend on type */
 		add_object_address(OCLASS_TYPE, acoerce->resulttype, 0,
 						   context->addrs);
+		/* the collation might not be referenced anywhere else, either */
+		if (OidIsValid(acoerce->resultcollid) &&
+			acoerce->resultcollid != DEFAULT_COLLATION_OID)
+			add_object_address(OCLASS_COLLATION, acoerce->resultcollid, 0,
+							   context->addrs);
 		/* fall through to examine arguments */
 	}
 	else if (IsA(node, ConvertRowtypeExpr))
@@ -1867,6 +1899,22 @@ find_expr_references_walker(Node *node,
 			add_object_address(OCLASS_OPERATOR, sgc->sortop, 0,
 							   context->addrs);
 		return false;
+	}
+	else if (IsA(node, WindowClause))
+	{
+		WindowClause *wc = (WindowClause *) node;
+
+		if (OidIsValid(wc->startInRangeFunc))
+			add_object_address(OCLASS_PROC, wc->startInRangeFunc, 0,
+							   context->addrs);
+		if (OidIsValid(wc->endInRangeFunc))
+			add_object_address(OCLASS_PROC, wc->endInRangeFunc, 0,
+							   context->addrs);
+		if (OidIsValid(wc->inRangeColl) &&
+			wc->inRangeColl != DEFAULT_COLLATION_OID)
+			add_object_address(OCLASS_COLLATION, wc->inRangeColl, 0,
+							   context->addrs);
+		/* fall through to examine substructure */
 	}
 	else if (IsA(node, Query))
 	{
@@ -2546,7 +2594,7 @@ DeleteInitPrivs(const ObjectAddress *object)
 							  NULL, 3, key);
 
 	while (HeapTupleIsValid(oldtuple = systable_getnext(scan)))
-		CatalogTupleDelete(relation, &oldtuple->t_self);
+		CatalogTupleDelete(relation, oldtuple);
 
 	systable_endscan(scan);
 

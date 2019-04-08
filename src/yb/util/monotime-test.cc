@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include <condition_variable>
+#include <thread>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
@@ -217,6 +218,19 @@ TEST(TestMonoTimePerf, TestMonoTimePerfFine) {
   alarm(0);
 }
 
+TEST(TestMonoTime, ToCoarse) {
+  for (int i = 0; i != 1000; ++i) {
+    auto before = CoarseMonoClock::Now();
+    auto converted = ToCoarse(MonoTime::Now());
+    auto after = CoarseMonoClock::Now();
+
+    // Coarse mono clock has 1ms precision, so we add it to bounds.
+    const auto kPrecision = 2ms;
+    ASSERT_GE(converted, before);
+    ASSERT_LE(converted, after + kPrecision);
+  }
+}
+
 TEST(TestMonoTime, TestOverFlow) {
   EXPECT_EXIT(MonoDelta::FromMilliseconds(std::numeric_limits<int64_t>::max()),
                                           ::testing::KilledBySignal(SIGABRT), "Check failed.*");
@@ -231,7 +245,11 @@ TEST(TestMonoTime, TestCondition) {
   std::condition_variable cond;
   std::unique_lock<std::mutex> lock(mutex);
   auto kWaitTime = 500ms;
+#ifndef __APPLE__
   auto kAllowedError = 50ms;
+#else
+  auto kAllowedError = 200ms;
+#endif
   for (;;) {
     auto start = CoarseMonoClock::Now();
     if (cond.wait_until(lock, CoarseMonoClock::Now() + kWaitTime) != std::cv_status::timeout) {

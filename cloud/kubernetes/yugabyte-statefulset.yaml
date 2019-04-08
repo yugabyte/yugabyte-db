@@ -12,6 +12,16 @@
 #    - List the pods     : kubectl get pods
 #    - Run cqlsh         : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/cqlsh
 #    - Run Redis cli     : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/redis-cli
+#    - Run psql          :
+#      - Init Postgres DB: kubectl exec -it yb-tserver-0 bash -- -c "YB_ENABLED_IN_POSTGRES=1
+#                             FLAGS_pggate_master_addresses=
+#                             yb-master-0.yb-masters.default.svc.cluster.local:7100,
+#                             yb-master-1.yb-masters.default.svc.cluster.local:7100,
+#                             yb-master-2.yb-masters.default.svc.cluster.local:7100
+#                             /home/yugabyte/postgres/bin/initdb
+#                             -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres"
+#      - Run psql        : kubectl exec -it yb-tserver-0 /home/yugabyte/postgres/bin/psql --
+#                             -U postgres -d postgres -h yb-tserver-0 -p 5433
 #    - Connect to the ui : kubectl port-forward yb-master-0 7000
 #                          You can now view the UI at http://localhost:7000
 #    - Destroy cluster   : kubectl delete -f yugabyte-statefulset.yaml
@@ -163,6 +173,8 @@ spec:
     port: 9042
   - name: redis
     port: 6379
+  - name: postgres
+    port: 5433
   selector:
     app: yb-tserver
 ---
@@ -217,6 +229,9 @@ spec:
           - "--fs_data_dirs=/mnt/data0"
           - "--rpc_bind_addresses=$(POD_IP):9100"
           - "--server_broadcast_addresses=$(POD_NAME).yb-tservers:9100"
+          # To disable YugaByte SQL API functionality, comment the below two pgsql_xx flags.
+          - "--start_pgsql_proxy"
+          - "--pgsql_proxy_bind_address=$(POD_IP):5433"
           - "--use_private_ip=never"
           - "--tserver_master_addrs=yb-masters.default.svc.cluster.local:7100"
           - "--tserver_master_replication_factor=3"
@@ -230,6 +245,8 @@ spec:
           name: cassandra
         - containerPort: 6379
           name: redis
+        - containerPort: 5433
+          name: postgres
         # These volume mounts are persistent. They are like inline claims,
         # but not exactly because the names need to match exactly one of
         # the stateful pod volumes.

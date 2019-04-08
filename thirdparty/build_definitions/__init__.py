@@ -71,11 +71,19 @@ def colored_log(color, message):
     sys.stderr.write(color + message + NO_COLOR + "\n")
 
 
-def log_output(prefix, args):
+def print_line_with_colored_prefix(prefix, line):
+    log("{}[{}] {}{}".format(CYAN_COLOR, prefix, NO_COLOR, line.rstrip()))
+
+
+def log_output(prefix, args, log_cmd=True):
     try:
+        print_line_with_colored_prefix(
+            prefix, "Running command: {} (current directory: {})".format(
+                args, os.getcwd()))
         process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in iter(process.stdout.readline, ''):
-            log("{}{} {}{}".format(CYAN_COLOR, prefix, NO_COLOR, line.rstrip()))
+            print_line_with_colored_prefix(prefix, line)
+
         process.stdout.close()
         exit_code = process.wait()
         if exit_code:

@@ -3,7 +3,7 @@
  * constraint.c
  *	  PostgreSQL CONSTRAINT support code.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -164,7 +164,7 @@ unique_key_recheck(PG_FUNCTION_ARGS)
 		 * correct even if t_self is now dead, because that is the TID the
 		 * index will know about.
 		 */
-		index_insert(indexRel, values, isnull, &(new_row->t_self),
+		index_insert(indexRel, values, isnull, &(new_row->t_self), new_row,
 					 trigdata->tg_relation, UNIQUE_CHECK_EXISTING,
 					 indexInfo);
 	}

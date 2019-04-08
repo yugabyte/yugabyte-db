@@ -4,7 +4,7 @@
  *	  Definitions for extensible nodes and custom scans
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/extensible.h
@@ -96,6 +96,9 @@ typedef struct CustomPathMethods
 									List *tlist,
 									List *clauses,
 									List *custom_plans);
+	struct List *(*ReparameterizeCustomPathByChild) (PlannerInfo *root,
+													 List *custom_private,
+													 RelOptInfo *child_rel);
 }			CustomPathMethods;
 
 /*

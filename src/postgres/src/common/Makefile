@@ -24,12 +24,9 @@ subdir = src/common
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-override CPPFLAGS := -DFRONTEND $(CPPFLAGS)
-LIBS += $(PTHREAD_LIBS)
-
 # don't include subdirectory-path-dependent -I and -L switches
 STD_CPPFLAGS := $(filter-out -I$(top_srcdir)/src/include -I$(top_builddir)/src/include,$(CPPFLAGS))
-STD_LDFLAGS := $(filter-out -L$(top_builddir)/src/port,$(LDFLAGS))
+STD_LDFLAGS := $(filter-out -L$(top_builddir)/src/common -L$(top_builddir)/src/port,$(LDFLAGS))
 override CPPFLAGS += -DVAL_CONFIGURE="\"$(configure_args)\""
 override CPPFLAGS += -DVAL_CC="\"$(CC)\""
 override CPPFLAGS += -DVAL_CPPFLAGS="\"$(STD_CPPFLAGS)\""
@@ -40,10 +37,13 @@ override CPPFLAGS += -DVAL_LDFLAGS_EX="\"$(LDFLAGS_EX)\""
 override CPPFLAGS += -DVAL_LDFLAGS_SL="\"$(LDFLAGS_SL)\""
 override CPPFLAGS += -DVAL_LIBS="\"$(LIBS)\""
 
-OBJS_COMMON = base64.o config_info.o controldata_utils.o exec.o ip.o \
-	keywords.o md5.o pg_lzcompress.o pgfnames.o psprintf.o relpath.o \
+override CPPFLAGS := -DFRONTEND $(CPPFLAGS)
+LIBS += $(PTHREAD_LIBS)
+
+OBJS_COMMON = base64.o config_info.o controldata_utils.o exec.o file_perm.o \
+	ip.o keywords.o md5.o pg_lzcompress.o pgfnames.o psprintf.o relpath.o \
 	rmtree.o saslprep.o scram-common.o string.o unicode_norm.o \
-	username.o wait_error.o
+	username.o wait_error.o pg_yb_common.o
 
 ifeq ($(with_openssl),yes)
 OBJS_COMMON += sha2_openssl.o
@@ -87,13 +87,6 @@ libpgcommon_srv.a: $(OBJS_SRV)
 # corresponding *.o, but it works for now.
 %_srv.o: %.c %.o
 	$(CC) $(CFLAGS) $(subst -DFRONTEND ,, $(CPPFLAGS)) -c $< -o $@
-
-$(OBJS_SRV): | submake-errcodes
-
-.PHONY: submake-errcodes
-
-submake-errcodes:
-	$(MAKE) -C ../backend submake-errcodes
 
 # Dependencies of keywords.o need to be managed explicitly to make sure
 # that you don't get broken parsing code, even in a non-enable-depend build.

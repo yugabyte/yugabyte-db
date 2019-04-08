@@ -51,6 +51,17 @@ Status MasterTabletServer::GetTabletPeer(const string& tablet_id,
   return STATUS_FORMAT(NotFound, "tablet $0 not found", tablet_id);
 }
 
+Status MasterTabletServer::GetTabletStatus(const tserver::GetTabletStatusRequestPB* req,
+                                           tserver::GetTabletStatusResponsePB* resp) const {
+  std::shared_ptr<tablet::TabletPeer> tablet_peer;
+  // Tablets for YCQL virtual tables have no peer and we will return the NotFound status. That is
+  // ok because GetTabletStatus is called for the cases when a tablet is moved or otherwise down
+  // and being boostrapped, which should not happen to those tables.
+  RETURN_NOT_OK(GetTabletPeer(req->tablet_id(), &tablet_peer));
+  tablet_peer->GetTabletStatusPB(resp->mutable_tablet_status());
+  return Status::OK();
+}
+
 const NodeInstancePB& MasterTabletServer::NodeInstance() const {
   return master_->catalog_manager()->NodeInstance();
 }
@@ -60,7 +71,11 @@ Status MasterTabletServer::GetRegistration(ServerRegistrationPB* reg) const {
 }
 
 Status MasterTabletServer::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
-  return STATUS(NotSupported, "Remote boostrap not supported by master tserver");
+  return STATUS(NotSupported, "Remote bootstrap not supported by master tserver");
+}
+
+uint64_t MasterTabletServer::ysql_catalog_version() const {
+  return master_->catalog_manager()->GetYsqlCatalogVersion();
 }
 
 } // namespace master

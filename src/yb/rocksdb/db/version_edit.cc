@@ -23,14 +23,22 @@
 
 #include "yb/rocksdb/db/version_edit.h"
 
+#include "yb/rocksdb/db/version_edit.pb.h"
 #include "yb/rocksdb/db/version_set.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/event_logger.h"
 #include "yb/rocksdb/util/sync_point.h"
+#include "yb/util/logging.h"
 #include "yb/util/slice.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/flag_tags.h"
 
-#include "yb/rocksdb/db/version_edit.pb.h"
-#include "yb/rocksdb/metadata.h"
+DEFINE_bool(use_per_file_metadata_for_flushed_frontier, false,
+            "Allows taking per-file metadata in version edits into account when computing the "
+            "flushed frontier.");
+TAG_FLAG(use_per_file_metadata_for_flushed_frontier, hidden);
+TAG_FLAG(use_per_file_metadata_for_flushed_frontier, advanced);
 
 namespace rocksdb {
 
@@ -62,6 +70,20 @@ void FileMetaData::UpdateBoundaries(InternalKey key, const FileBoundaryValuesBas
   UpdateBoundariesExceptKey(source, UpdateBoundariesType::kAll);
 }
 
+bool FileMetaData::Unref(TableCache* table_cache) {
+  refs--;
+  if (refs <= 0) {
+    if (table_reader_handle) {
+      DCHECK_ONLY_NOTNULL(table_cache);
+      table_cache->ReleaseHandle(table_reader_handle);
+      table_reader_handle = nullptr;
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
+
 void FileMetaData::UpdateBoundariesExceptKey(const FileBoundaryValuesBase& source,
                                              UpdateBoundariesType type) {
   if (type != UpdateBoundariesType::kLargest) {
@@ -84,6 +106,13 @@ void FileMetaData::UpdateBoundariesExceptKey(const FileBoundaryValuesBase& sourc
   }
 }
 
+
+std::string FileMetaData::ToString() const {
+  return yb::Format("{ number: $0 total_size: $1 base_size: $2 refs: $3 "
+                    "being_compacted: $4 smallest: $5 largest: $6 }",
+                    fd.GetNumber(), fd.GetTotalFileSize(), fd.GetBaseFileSize(), refs,
+                    being_compacted, smallest, largest);
+}
 
 void VersionEdit::Clear() {
   comparator_.reset();
@@ -226,6 +255,8 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
     return STATUS(Corruption, "VersionEdit");
   }
 
+  VLOG(1) << "Parsed version edit: " << pb.ShortDebugString();
+
   if (pb.has_comparator()) {
     comparator_ = std::move(*pb.mutable_comparator());
   }
@@ -259,6 +290,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
 
   const size_t new_files_size = static_cast<size_t>(pb.new_files_size());
   new_files_.resize(new_files_size);
+
   for (size_t i = 0; i < new_files_size; ++i) {
     auto& source = pb.new_files(static_cast<int>(i));
     int level = source.level();
@@ -283,6 +315,32 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
     meta.marked_for_compaction = source.marked_for_compaction();
     max_level_ = std::max(max_level_, level);
     meta.imported = source.imported();
+
+    // Use the relevant fields in the "largest" frontier to update the "flushed" frontier for this
+    // version edit. In practice this will only look at OpId and will discard hybrid time and
+    // history cutoff (which probably won't be there anyway) coming from the boundary values.
+    //
+    // This is enabled only if --use_per_file_metadata_for_flushed_frontier is specified, until we
+    // know that we don't have any clusters with wrong per-file flushed frontier metadata in version
+    // edits, such as that restored from old backups from unrelated clusters.
+    if (FLAGS_use_per_file_metadata_for_flushed_frontier && meta.largest.user_frontier) {
+      if (!flushed_frontier_) {
+        LOG(DFATAL) << "Flushed frontier not present but a file's largest user frontier present: "
+                    << meta.largest.user_frontier->ToString()
+                    << ", version edit protobuf:\n" << pb.DebugString();
+      } else if (!flushed_frontier_->Dominates(*meta.largest.user_frontier,
+                                               UpdateUserValueType::kLargest)) {
+        // The flushed frontier of this VersionEdit must already include the information provided
+        // by flushed frontiers of individual files.
+        LOG(DFATAL) << "Flushed frontier is present but has to be updated with data from "
+                    << "file boundary: flushed_frontier=" << flushed_frontier_->ToString()
+                    << ", a file's larget user frontier: "
+                    << meta.largest.user_frontier->ToString()
+                    << ", version edit protobuf:\n" << pb.DebugString();
+      }
+      UpdateUserFrontier(
+          &flushed_frontier_, meta.largest.user_frontier, UpdateUserValueType::kLargest);
+    }
   }
 
   column_family_ = pb.column_family();
@@ -307,6 +365,19 @@ void VersionEdit::InitNewDB() {
   next_file_number_ = VersionSet::kInitialNextFileNumber;
   last_sequence_ = 0;
   flushed_frontier_.reset();
+}
+
+void VersionEdit::UpdateFlushedFrontier(UserFrontierPtr value) {
+  ModifyFlushedFrontier(std::move(value), FrontierModificationMode::kUpdate);
+}
+
+void VersionEdit::ModifyFlushedFrontier(UserFrontierPtr value, FrontierModificationMode mode) {
+  if (mode == FrontierModificationMode::kForce) {
+    flushed_frontier_ = std::move(value);
+    force_flushed_frontier_ = true;
+  } else {
+    UpdateUserFrontier(&flushed_frontier_, std::move(value), UpdateUserValueType::kLargest);
+  }
 }
 
 }  // namespace rocksdb

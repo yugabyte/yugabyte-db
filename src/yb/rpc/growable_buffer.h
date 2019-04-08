@@ -20,6 +20,8 @@
 
 #include <boost/circular_buffer.hpp>
 
+#include "yb/rpc/stream.h"
+
 #include "yb/util/mem_tracker.h"
 #include "yb/util/status.h"
 
@@ -68,26 +70,28 @@ class GrowableBufferDeleter {
   bool was_forced_;
 };
 
-// Convenience circular buffer for receiving bytes.
+// Convenience buffer for receiving bytes. Consists of chunks of allocated data.
 // Major features:
 //   Limit allocated bytes.
 //   Resize depending on used size.
 //   Consume read data.
-class GrowableBuffer {
+class GrowableBuffer : public StreamReadBuffer {
  public:
   explicit GrowableBuffer(GrowableBufferAllocator* allocator, size_t limit);
 
-  inline bool empty() const { return size_ == 0; }
+  inline bool ReadyToRead() override { return !Empty(); }
+  inline bool Empty() override { return size_ == 0; }
   inline size_t size() const { return size_; }
   inline size_t capacity_left() const { return buffers_.size() * block_size_ - size_ - pos_; }
   inline size_t limit() const { return limit_; }
 
-  bool full() const { return pos_ + size_ >= limit_; }
+  bool Full() override { return pos_ + size_ >= limit_; }
 
   void Swap(GrowableBuffer* rhs);
+
   // Reset buffer size to zero. Like with std::vector Clean does not deallocate any memory.
   void Clear() { pos_ = 0; size_ = 0; }
-  void DumpTo(std::ostream& out) const;
+  std::string ToString() const override;
 
   // Removes first `count` bytes from buffer, moves remaining bytes to the beginning of the buffer.
   // This function should be used with care, because it has linear complexity in terms of the
@@ -97,17 +101,20 @@ class GrowableBuffer {
   // This function is used after we parse all complete packets to move incomplete packet to the
   // beginning of the buffer. Usually, there is just a small amount of incomplete data.
   // Since even a big packet is received by parts, we will move only the first received block.
-  void Consume(size_t count);
+  void Consume(size_t count, const Slice& prepend) override;
 
-  // Ensures there is some space to read into. Depending on currently used size.
-  // Returns iov's that could be used for receiving data into to this buffer.
-  Result<IoVecs> PrepareAppend();
+  Result<IoVecs> PrepareAppend() override;
 
-  // Returns currently appended data.
-  IoVecs AppendedVecs();
+  IoVecs AppendedVecs() override;
 
   // Mark next `len` bytes as used.
-  void DataAppended(size_t len);
+  void DataAppended(size_t len) override;
+
+  // Releases all memory allocated by this buffer. And makes this buffer unusable.
+  // valid() will return false after call to Reset.
+  void Reset() override;
+
+  bool valid() const;
 
  private:
   IoVecs IoVecsForRange(size_t begin, size_t end);

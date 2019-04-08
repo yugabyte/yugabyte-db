@@ -27,9 +27,6 @@ namespace ql {
 
 // Operations that apply to each treenode of this list.
 template<typename ContextType, typename NodeType = TreeNode>
-using TreeNodeOperator = std::function<Status(NodeType&, ContextType*)>;
-
-template<typename ContextType, typename NodeType = TreeNode>
 using TreeNodePtrOperator = std::function<Status(NodeType*, ContextType*)>;
 
 // TreeNode base class.
@@ -105,10 +102,10 @@ class TreeListNode : public TreeNode {
   // Apply an operator on each node in the list.
   template<typename ContextType, typename DerivedType = NodeType>
   CHECKED_STATUS Apply(ContextType *context,
-                       TreeNodeOperator<ContextType, DerivedType> node_op,
+                       TreeNodePtrOperator<ContextType, DerivedType> node_op,
                        int max_nested_level = 0,
                        int max_nested_count = 0,
-                       TreeNodeOperator<ContextType, DerivedType> nested_node_op = nullptr) {
+                       TreeNodePtrOperator<ContextType, DerivedType> nested_node_op = nullptr) {
 
     int nested_level = 0;
     int nested_count = 0;
@@ -118,8 +115,7 @@ class TreeListNode : public TreeNode {
         // Cast the node from (TreeNode*) to the given template type.
         DerivedType *node = static_cast<DerivedType*>(tnode.get());
         // Call the given node operation on the node.
-        RETURN_NOT_OK(node_op(*node, context));
-
+        RETURN_NOT_OK(node_op(node, context));
       } else {
         if (++nested_count > max_nested_count) {
           return context->Error(this, "Number of nested lists exceeds allowable limit",

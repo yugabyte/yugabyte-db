@@ -89,7 +89,7 @@ static Datum
 build_pgstattuple_type(pgstattuple_type *stat, FunctionCallInfo fcinfo)
 {
 #define NCOLUMNS	9
-#define NCHARS		32
+#define NCHARS		314
 
 	HeapTuple	tuple;
 	char	   *values[NCOLUMNS];
@@ -296,6 +296,9 @@ pgstat_relation(Relation rel, FunctionCallInfo fcinfo)
 		case RELKIND_PARTITIONED_TABLE:
 			err = "partitioned table";
 			break;
+		case RELKIND_PARTITIONED_INDEX:
+			err = "partitioned index";
+			break;
 		default:
 			err = "unknown";
 			break;
@@ -416,7 +419,7 @@ pgstat_btree_page(pgstattuple_type *stat, Relation rel, BlockNumber blkno,
 		BTPageOpaque opaque;
 
 		opaque = (BTPageOpaque) PageGetSpecialPointer(page);
-		if (opaque->btpo_flags & (BTP_DELETED | BTP_HALF_DEAD))
+		if (P_IGNORE(opaque))
 		{
 			/* recyclable page */
 			stat->free_space += BLCKSZ;

@@ -35,7 +35,7 @@
  * stack is empty.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -68,6 +68,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 /*
  * GUC parameters
@@ -1087,8 +1088,8 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 		 * it's too late to abort the transaction, and (2) leaving a leaked
 		 * file around has little real consequence anyway.
 		 *
-		 * We also also need to remove the snapshots from RegisteredSnapshots
-		 * to prevent a warning below.
+		 * We also need to remove the snapshots from RegisteredSnapshots to
+		 * prevent a warning below.
 		 *
 		 * As with the FirstXactSnapshot, we don't need to free resources of
 		 * the snapshot iself as it will go away with the memory context.
@@ -1171,7 +1172,7 @@ ExportSnapshot(Snapshot snapshot)
 	char		pathtmp[MAXPGPATH];
 
 	/*
-	 * It's tempting to call RequireTransactionChain here, since it's not very
+	 * It's tempting to call RequireTransactionBlock here, since it's not very
 	 * useful to export a snapshot that will disappear immediately afterwards.
 	 * However, we haven't got enough information to do that, since we don't
 	 * know if we're at top level or not.  For example, we could be inside a
@@ -1619,27 +1620,25 @@ DeleteAllExportedSnapshotFiles(void)
 	DIR		   *s_dir;
 	struct dirent *s_de;
 
-	if (!(s_dir = AllocateDir(SNAPSHOT_EXPORT_DIR)))
-	{
-		/*
-		 * We really should have that directory in a sane cluster setup. But
-		 * then again if we don't, it's not fatal enough to make it FATAL.
-		 * Since we're running in the postmaster, LOG is our best bet.
-		 */
-		elog(LOG, "could not open directory \"%s\": %m", SNAPSHOT_EXPORT_DIR);
-		return;
-	}
+	/*
+	 * Problems in reading the directory, or unlinking files, are reported at
+	 * LOG level.  Since we're running in the startup process, ERROR level
+	 * would prevent database start, and it's not important enough for that.
+	 */
+	s_dir = AllocateDir(SNAPSHOT_EXPORT_DIR);
 
-	while ((s_de = ReadDir(s_dir, SNAPSHOT_EXPORT_DIR)) != NULL)
+	while ((s_de = ReadDirExtended(s_dir, SNAPSHOT_EXPORT_DIR, LOG)) != NULL)
 	{
 		if (strcmp(s_de->d_name, ".") == 0 ||
 			strcmp(s_de->d_name, "..") == 0)
 			continue;
 
 		snprintf(buf, sizeof(buf), SNAPSHOT_EXPORT_DIR "/%s", s_de->d_name);
-		/* Again, unlink failure is not worthy of FATAL */
-		if (unlink(buf))
-			elog(LOG, "could not unlink file \"%s\": %m", buf);
+
+		if (unlink(buf) != 0)
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not remove file \"%s\": %m", buf)));
 	}
 
 	FreeDir(s_dir);

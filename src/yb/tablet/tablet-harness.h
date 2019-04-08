@@ -134,6 +134,7 @@ class TabletHarness {
                                   metrics_registry_.get(),
                                   new log::LogAnchorRegistry(),
                                   tablet_options,
+                                  std::string() /* log_pefix_suffix */,
                                   nullptr /* transaction_participant_context */,
                                   client::LocalTabletFilter(),
                                   nullptr /* transaction_coordinator_context */));
@@ -143,7 +144,7 @@ class TabletHarness {
   CHECKED_STATUS Open() {
     RETURN_NOT_OK(tablet_->Open());
     tablet_->MarkFinishedBootstrapping();
-    return Status::OK();
+    return tablet_->EnableCompactions();
   }
 
   server::Clock* clock() const {

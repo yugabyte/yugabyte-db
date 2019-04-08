@@ -18,6 +18,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <algorithm>
+
 #include <boost/algorithm/string.hpp>
 
 #include "yb/gutil/strings/join.h"
@@ -47,6 +49,7 @@ DECLARE_uint64(redis_max_queued_bytes);
 DECLARE_int64(redis_rpc_block_size);
 DECLARE_bool(redis_safe_batch);
 DECLARE_bool(emulate_redis_responses);
+DECLARE_bool(test_tserver_timeout);
 DECLARE_bool(enable_backpressure_mode_for_testing);
 DECLARE_bool(yedis_enable_flush);
 DECLARE_int32(redis_service_yb_client_timeout_millis);
@@ -184,19 +187,23 @@ class TestRedisService : public RedisTableTestBase {
     );
   }
 
+  void DoRedisTestIntRange(
+      int line,
+      const std::vector<std::string>& command,
+      int64_t expected_min, int64_t expected_max) {
+    DoRedisTest(line, command, RedisReplyType::kInteger,
+        [line, expected_min, expected_max](const RedisReply& reply) {
+          ASSERT_LE(expected_min, reply.as_integer()) << "Originator: " << __FILE__ << ":" << line;
+          ASSERT_GE(expected_max, reply.as_integer()) << "Originator: " << __FILE__ << ":" << line;
+        }
+    );
+  }
+
   void DoRedisTestApproxInt(int line,
                             const std::vector<std::string>& command,
                             int64_t expected,
                             int64_t err_bound) {
-    DoRedisTest(line, command, RedisReplyType::kInteger,
-        [line, expected, err_bound](const RedisReply& reply) {
-          // TODO: this does not check for wraparounds.
-          ASSERT_LE(expected - err_bound, reply.as_integer()) <<
-            "Originator: " << __FILE__ << ":" << line;
-          ASSERT_GE(expected + err_bound, reply.as_integer()) <<
-            "Originator: " << __FILE__ << ":" << line;
-        }
-    );
+    DoRedisTestIntRange(line, command, expected - err_bound, expected + err_bound);
   }
 
   void DoRedisTestResultsArray(
@@ -209,8 +216,14 @@ class TestRedisService : public RedisTableTestBase {
               << "Expected: " << yb::ToString(expected) << std::endl
               << " Replies: " << reply.ToString();
           for (size_t i = 0; i < expected.size(); i++) {
-            ASSERT_EQ(expected[i], replies[i]) << "Originator: " << __FILE__ << ":" << line
-                                               << ", i: " << i;
+            DVLOG(3) << "Checking " << replies[i].ToString();
+            if (expected[i].get_type() == RedisReplyType::kString &&
+                expected[i].as_string() == "IGNORED") {
+              continue;
+            }
+            ASSERT_EQ(expected[i], replies[i])
+                << "Originator: " << __FILE__ << ":" << line << ", i: " << i << " expected[i] "
+                << yb::ToString(expected[i]) << " replies[i] " << yb::ToString(replies[i]);
           }
         }
     );
@@ -221,11 +234,7 @@ class TestRedisService : public RedisTableTestBase {
       int line, const std::vector<std::string>& command, const std::vector<std::string>& expected) {
     std::vector<RedisReply> redis_replies;
     for (size_t i = 0; i < expected.size(); i++) {
-      if (expected[i] == "") {
-        redis_replies.push_back(RedisReply());
-      } else {
-        redis_replies.push_back(RedisReply(RedisReplyType::kString, expected[i]));
-      }
+      redis_replies.push_back(RedisReply(RedisReplyType::kString, expected[i]));
     }
     DoRedisTestResultsArray(line, command, redis_replies);
   }
@@ -301,6 +310,10 @@ class TestRedisService : public RedisTableTestBase {
     constexpr uint64_t kInitialValue = 0UL;
     auto counter = server_->metric_entity()->FindOrCreateGauge(&proto, kInitialValue);
     return counter->value();
+  }
+
+  virtual Endpoint RedisProxyEndpoint() {
+    return Endpoint(IpAddress(), server_port());
   }
 
   void TestTSTtl(const std::string& expire_command, int64_t ttl_sec, int64_t expire_val,
@@ -424,7 +437,7 @@ class TestRedisService : public RedisTableTestBase {
     return *test_client_;
   }
 
-  void UseClient(shared_ptr<RedisClient> client) {
+  void UseClient(std::shared_ptr<RedisClient> client) {
     VLOG(1) << "Using " << client.get() << " replacing " << test_client_.get();
     test_client_ = client;
   }
@@ -758,11 +771,15 @@ void TestRedisService::StopServer() {
 }
 
 void TestRedisService::StartClient() {
-  Endpoint remote(IpAddress(), server_port());
+  Endpoint remote = RedisProxyEndpoint();
   CHECK_OK(client_sock_.Init(0));
   CHECK_OK(client_sock_.SetNoDelay(false));
   LOG(INFO) << "Connecting to " << remote;
   CHECK_OK(client_sock_.Connect(remote));
+  Endpoint local;
+  CHECK_OK(client_sock_.GetSocketAddress(&local));
+  CHECK_OK(client_sock_.GetPeerAddress(&remote));
+  LOG(INFO) << "Connected: " << local << " => " << remote;
 }
 
 void TestRedisService::StopClient() { EXPECT_OK(client_sock_.Close()); }
@@ -1512,7 +1529,7 @@ TEST_F(TestRedisService, TestEmptyValue) {
 void ConnectWithPassword(
     TestRedisService* test, const char* password, bool auth_should_succeed,
     bool get_should_succeed) {
-  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", test->server_port());
+  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", test->server_port());
   test->UseClient(rc1);
 
   if (auth_should_succeed) {
@@ -1534,9 +1551,9 @@ void ConnectWithPassword(
 }
 
 TEST_F(TestRedisService, TestSelect) {
-  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> rc3 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc3 = std::make_shared<RedisClient>("127.0.0.1", server_port());
 
   const string default_db("0");
   const string second_db("2");
@@ -1759,10 +1776,10 @@ TEST_F(TestRedisService, TestDeleteDB) {
 TEST_F(TestRedisService, TestMonitor) {
   constexpr uint32 kDelayMs = NonTsanVsTsan(100, 1000);
   expected_no_sessions_ = true;
-  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> mc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> mc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto mc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto mc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
 
   UseClient(rc1);
   DoRedisTestBulkString(__LINE__, {"PING", "cmd1"}, "cmd1");  // Excluded from both mc1 and mc2.
@@ -1804,23 +1821,13 @@ TEST_F(TestRedisService, TestMonitor) {
   // Responses are of the format
   // <TS> {<db-id> <client-ip>:<port>} "CMD" "ARG1" ....
   // We will check for the responses to end in "CMD" "ARG1"
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc1-ck1"}, "\"PING\" \"cmd2\"");
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__,
-                                             {"PING", "mc1-ck2"}, response_ending);
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc1-ck3"}, "\"PING\" \"mc1-ck1\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {}, "\"PING\" \"cmd2\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {}, response_ending);
   SyncClient();
 
   UseClient(mc2);
   // Check the responses for monitor on mc2.
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__,
-                                             {"PING", "mc2-ck1"}, response_ending);
-
-  // Since the redis client here forced us to send "PING" above to check for responses for mc1, we
-  // should see those as well.
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck2"}, "\"PING\" \"mc1-ck1\"");
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck3"}, "\"PING\" \"mc1-ck2\"");
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck4"}, "\"PING\" \"mc1-ck3\"");
-  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {"PING", "mc2-ck5"}, "\"PING\" \"mc2-ck1\"");
+  DoRedisTestExpectSimpleStringEndingWith(__LINE__, {}, response_ending);
   SyncClient();
 
   // Check number of monitoring clients.
@@ -1859,75 +1866,926 @@ TEST_F(TestRedisService, TestMonitor) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestSubscribe) {
-  expected_no_sessions_ = true;
-  shared_ptr<RedisClient> sc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> sc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> sc3 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> pc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> pc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-
+void TestSubscribe(
+    TestRedisService* tester,
+    std::shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    std::shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    std::shared_ptr<RedisClient> sc2,
+    std::shared_ptr<RedisClient> sc3,
+    std::shared_ptr<RedisClient> pc1,  // Used for Publish
+    std::shared_ptr<RedisClient> pc2) {
   const string topic1 = "topic1", topic2 = "topic2";
   const string msg1 = "msg1", msg2 = "msg2";
 
-  // TODO: Fix the expected number of channels subscribed to. (1, 2, 1, 2)
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic1});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(1),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic2},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic2), RedisReply(1)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic1, topic2});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(1),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(1)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic2},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic1, topic2});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(2),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  // Now send msg1 to topic 1.
+  tester->UseClient(pc1);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg1}, 2);
+  tester->SyncClient();
+
+  // Now send msg2 to topic 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg2}, 2);
+  tester->SyncClient();
+
+  // Verify the received messages.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic1, msg1});
+  tester->SyncClient();
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic1, msg1});
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  tester->UseClient(nullptr);
+  tester->VerifyCallbacks();
+}
+
+void TestUnsubscribe(
+    TestRedisService* tester,
+    std::shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    std::shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    std::shared_ptr<RedisClient> sc2,
+    std::shared_ptr<RedisClient> sc3,
+    std::shared_ptr<RedisClient> pc1,  // Used for Publish
+    std::shared_ptr<RedisClient> pc2) {
+  const string topic1 = "topic1", topic2 = "topic2";
+  const string msg1 = "msg1", msg2 = "msg2", msg3 = "msg3", msg4 = "msg4";
+
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1, topic2},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "subscribe"),
+                     RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+  tester->SyncClient();
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1, topic2},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "subscribe"),
+                     RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+  tester->SyncClient();
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1, topic2},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "subscribe"),
+                     RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic1, topic2});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(3),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(3)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  // sc1 will unsubscribe from topic1. Will still be subscribed to topic2.
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"UNSUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "unsubscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->SyncClient();
+
+  // sc2 will unsubscribe from all topics. Will still be subscribed to none.
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"UNSUBSCRIBE", topic1, topic2},
+      {RedisReply(RedisReplyType::kString, "unsubscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "unsubscribe"),
+                     RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic1, topic2});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(1),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(2)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  // Now send msg1 to topic 1.
+  tester->UseClient(pc1);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg1}, 1);
+  tester->SyncClient();
+
+  // Now send msg2 to topic 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg2}, 2);
+  tester->SyncClient();
+
+  // Verify the received messages.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic1, msg1});
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  // sc3 will unsubscribe from all topics. sc1 will still be subscribed to topic2.
+  tester->UseClient(sc3);
+  // Redis does not specify a particular order. So, the following two messages
+  // could be in received in either order.
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"UNSUBSCRIBE"}, {RedisReply(RedisReplyType::kString, "unsubscribe"),
+                                  RedisReply(RedisReplyType::kString, "IGNORED"), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "unsubscribe"),
+                     RedisReply(RedisReplyType::kString, "IGNORED"), RedisReply(0)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {topic2});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(1)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  // Now send msg3 to topic 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg3}, 1);
+  tester->SyncClient();
+
+  // No one should receive the message except sc1.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"message", topic2, msg3});
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+  tester->UseClient(sc2);
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+  tester->UseClient(sc3);
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  // sc1 will unsubscribe from topic2. No one left subscribed to any topic.
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"UNSUBSCRIBE"}, {RedisReply(RedisReplyType::kString, "unsubscribe"),
+                                  RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  // Now send msg4 to topic 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg4}, 0);
+  tester->SyncClient();
+
+  // No one should receive the message.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+  tester->UseClient(sc2);
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+  tester->UseClient(sc3);
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  tester->UseClient(nullptr);
+  tester->VerifyCallbacks();
+}
+
+void TestPSubscribe(
+    TestRedisService* tester,
+    std::shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    std::shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    std::shared_ptr<RedisClient> sc2,
+    std::shared_ptr<RedisClient> sc3,
+    std::shared_ptr<RedisClient> pc1,  // Used for Publish
+    std::shared_ptr<RedisClient> pc2) {
+  const string pattern1 = "t*1", pattern2 = "t*2", common_pattern = "t*";
+  const string topic1 = "topic1", topic2 = "topic2";
+  const string msg1 = "msg1", msg2 = "msg2";
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"PSUBSCRIBE", pattern1},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 1);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"psubscribe", pattern2},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, pattern2), RedisReply(1)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 2);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"psubscribe", common_pattern},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, common_pattern), RedisReply(1)});
+  tester->SyncClient();
+
+  // Now send msg1 to pattern 1.
+  tester->UseClient(pc1);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg1}, 2);
+  tester->SyncClient();
+
+  // Now send msg2 to pattern 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg2}, 2);
+  tester->SyncClient();
+
+  // Verify the received messages.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern1, topic1, msg1});
+  tester->SyncClient();
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", common_pattern, topic1, msg1});
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", common_pattern, topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  tester->UseClient(nullptr);
+  tester->VerifyCallbacks();
+}
+
+void TestPUnsubscribe(
+    TestRedisService* tester,
+    std::shared_ptr<RedisClient> ps0,  // Used for PubSub command
+    std::shared_ptr<RedisClient> sc1,  // Used for Subscribe
+    std::shared_ptr<RedisClient> sc2,
+    std::shared_ptr<RedisClient> sc3,
+    std::shared_ptr<RedisClient> pc1,  // Used for Publish
+    std::shared_ptr<RedisClient> pc2) {
+  const string pattern1 = "to*1", pattern2 = "to*2";
+  const string topic1 = "topic1", topic2 = "topic2";
+  const string msg1 = "msg1", msg2 = "msg2", msg3 = "msg3";
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"psubscribe", pattern1, pattern2},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "psubscribe"),
+                     RedisReply(RedisReplyType::kString, pattern2), RedisReply(2)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 2);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"psubscribe", pattern1, pattern2},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "psubscribe"),
+                     RedisReply(RedisReplyType::kString, pattern2), RedisReply(2)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 2);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"psubscribe", pattern1, pattern2},
+      {RedisReply(RedisReplyType::kString, "psubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "psubscribe"),
+                     RedisReply(RedisReplyType::kString, pattern2), RedisReply(2)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 2);
+    tester->SyncClient();
+  }
+
+  // sc1 will punsubscribe from pattern2. Will still be psubscribed to pattern1.
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"punsubscribe", pattern1},
+      {RedisReply(RedisReplyType::kString, "punsubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->SyncClient();
+
+  // sc2 will punsubscribe from all patterns. Will still be psubscribed to none.
+  tester->UseClient(sc2);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"punsubscribe", pattern1, pattern2},
+      {RedisReply(RedisReplyType::kString, "punsubscribe"),
+       RedisReply(RedisReplyType::kString, pattern1), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "punsubscribe"),
+                     RedisReply(RedisReplyType::kString, pattern2), RedisReply(0)});
+  tester->SyncClient();
+
+  // Now send msg1 to pattern 1.
+  tester->UseClient(pc1);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg1}, 1);
+  tester->SyncClient();
+
+  // Now send msg2 to pattern 2.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg2}, 2);
+  tester->SyncClient();
+
+  // Verify the received pmessages.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg2});
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  tester->UseClient(sc2);
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  tester->UseClient(sc3);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern1, topic1, msg1});
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg2});
+  // No more messages to receive.
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 2);
+    tester->SyncClient();
+  }
+
+  // sc3 will punsubscribe from all patterns.
+  tester->UseClient(sc3);
+  // Redis does not specify a particular order. So, the following two messages
+  // could be in received in either order.
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"punsubscribe"}, {RedisReply(RedisReplyType::kString, "punsubscribe"),
+                                   RedisReply(RedisReplyType::kString, "IGNORED"), RedisReply(1)});
+  tester->DoRedisTestResultsArray(
+      __LINE__, {}, {RedisReply(RedisReplyType::kString, "punsubscribe"),
+                     RedisReply(RedisReplyType::kString, "IGNORED"), RedisReply(0)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 1);
+    tester->SyncClient();
+  }
+
+  // Now send msg3 to pattern 2. only sc1 receives it.
+  tester->UseClient(pc2);
+  tester->DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg3}, 1);
+  tester->SyncClient();
+
+  // No one should receive the message.
+  tester->UseClient(sc1);
+  tester->DoRedisTestArray(__LINE__, {}, {"pmessage", pattern2, topic2, msg3});
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+  tester->UseClient(sc2);
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+  tester->UseClient(sc3);
+  tester->DoRedisTestArray(__LINE__, {"PING"}, {"pong", ""});
+  tester->SyncClient();
+
+  // Get sc1 to also punsubscribe from pattern 2. No one is subscribed to any patterns anymore.
+  tester->UseClient(sc1);
+  tester->DoRedisTestResultsArray(
+      __LINE__, {"punsubscribe"}, {RedisReply(RedisReplyType::kString, "punsubscribe"),
+                                   RedisReply(RedisReplyType::kString, pattern2), RedisReply(0)});
+  tester->SyncClient();
+
+  if (ps0) {
+    tester->UseClient(ps0);
+    tester->DoRedisTestArray(__LINE__, {"pubsub", "channels"}, {});
+    tester->DoRedisTestResultsArray(
+        __LINE__, {"pubsub", "numsub", topic1, topic2},
+        {RedisReply(RedisReplyType::kString, topic1), RedisReply(0),
+         RedisReply(RedisReplyType::kString, topic2), RedisReply(0)});
+    tester->DoRedisTestInt(__LINE__, {"pubsub", "numpat"}, 0);
+    tester->SyncClient();
+  }
+
+  tester->UseClient(nullptr);
+  tester->VerifyCallbacks();
+}
+
+// Utility for testing various combination(s).
+YB_DEFINE_ENUM(SubOrUnsub, (kSubscribe)(kUnsubscribe));
+YB_DEFINE_ENUM(PatternOrChannel, (kChannel)(kPattern));
+YB_DEFINE_ENUM(LocalOrCluster, (kLocal)(kCluster));
+
+class TestRedisServiceExternal : public TestRedisService {
+ protected:
+  void TestPubSub(LocalOrCluster ltype, SubOrUnsub stype, PatternOrChannel ptype);
+
+  void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
+    opts->extra_tserver_flags.push_back(
+        "--redis_connection_soft_limit_grace_period_sec=" +
+        yb::ToString(kSoftLimitGracePeriod.ToSeconds()));
+  }
+
+  static const MonoDelta kSoftLimitGracePeriod;
+
+ private:
+  Endpoint RedisProxyEndpoint() override {
+    auto ts0 = external_mini_cluster()->tablet_server(0);
+    return Endpoint(IpAddress::from_string(ts0->bind_host()), ts0->redis_rpc_port());
+  }
+
+  bool use_external_mini_cluster() override { return true; }
+};
+
+const MonoDelta TestRedisServiceExternal::kSoftLimitGracePeriod = yb::NonTsanVsTsan(1s, 10s);
+
+void TestRedisServiceExternal::TestPubSub(
+    LocalOrCluster ltype, SubOrUnsub stype, PatternOrChannel ptype) {
+  std::shared_ptr<RedisClient> ps0, sc1, sc2, sc3, pc1, pc2;
+
+  if (ltype == LocalOrCluster::kLocal) {
+    auto ts0 = external_mini_cluster()->tablet_server(0);
+    auto host0 = ts0->bind_host();
+    auto port0 = ts0->redis_rpc_port();
+
+    sc1 = std::make_shared<RedisClient>(host0, port0);
+    sc2 = std::make_shared<RedisClient>(host0, port0);
+    sc3 = std::make_shared<RedisClient>(host0, port0);
+    pc1 = std::make_shared<RedisClient>(host0, port0);
+    pc2 = std::make_shared<RedisClient>(host0, port0);
+    ps0 = std::make_shared<RedisClient>(host0, port0);
+  } else {
+    auto ts0 = external_mini_cluster()->tablet_server(0);
+    auto host0 = ts0->bind_host();
+    auto port0 = ts0->redis_rpc_port();
+    auto ts1 = external_mini_cluster()->tablet_server(1);
+    auto host1 = ts1->bind_host();
+    auto port1 = ts1->redis_rpc_port();
+
+    sc1 = std::make_shared<RedisClient>(host0, port0);
+    sc2 = std::make_shared<RedisClient>(host1, port1);
+    sc3 = std::make_shared<RedisClient>(host0, port0);
+    pc1 = std::make_shared<RedisClient>(host0, port0);
+    pc2 = std::make_shared<RedisClient>(host1, port1);
+    ps0 = nullptr;  // Diabled. PubSub monitoring only queries the local proxy.
+  }
+
+  if (stype == SubOrUnsub::kSubscribe) {
+    if (ptype == PatternOrChannel::kChannel) {
+      TestSubscribe(this, ps0, sc1, sc2, sc3, pc1, pc2);
+    } else {
+      TestPSubscribe(this, ps0, sc1, sc2, sc3, pc1, pc2);
+    }
+  } else {
+    if (ptype == PatternOrChannel::kChannel) {
+      TestUnsubscribe(this, ps0, sc1, sc2, sc3, pc1, pc2);
+    } else {
+      TestPUnsubscribe(this, ps0, sc1, sc2, sc3, pc1, pc2);
+    }
+  }
+}
+
+TEST_F(TestRedisServiceExternal, TestSubscribe) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kSubscribe, PatternOrChannel::kChannel);
+}
+
+TEST_F(TestRedisServiceExternal, TestSubscribeCluster) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kSubscribe, PatternOrChannel::kChannel);
+}
+
+TEST_F(TestRedisServiceExternal, TestUnsubscribe) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kUnsubscribe, PatternOrChannel::kChannel);
+}
+
+TEST_F(TestRedisServiceExternal, TestUnsubscribeCluster) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kUnsubscribe, PatternOrChannel::kChannel);
+}
+
+TEST_F(TestRedisServiceExternal, TestPSubscribe) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kSubscribe, PatternOrChannel::kPattern);
+}
+
+TEST_F(TestRedisServiceExternal, TestPSubscribeCluster) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kSubscribe, PatternOrChannel::kPattern);
+}
+
+TEST_F(TestRedisServiceExternal, TestPUnsubscribe) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kLocal, SubOrUnsub::kUnsubscribe, PatternOrChannel::kPattern);
+}
+
+TEST_F(TestRedisServiceExternal, TestPUnsubscribeCluster) {
+  expected_no_sessions_ = true;
+  TestPubSub(LocalOrCluster::kCluster, SubOrUnsub::kUnsubscribe, PatternOrChannel::kPattern);
+}
+
+TEST_F(TestRedisServiceExternal, TestSlowSubscribersCatchingUp) {
+  expected_no_sessions_ = true;
+
+  auto ts0 = external_mini_cluster()->tablet_server(0);
+  auto host0 = ts0->bind_host();
+  auto port0 = ts0->redis_rpc_port();
+
+  auto sc1 = std::make_shared<RedisClient>(host0, port0);
+  auto pc1 = std::make_shared<RedisClient>(host0, port0);
+
+  const string topic1 = "topic1";
+  const string padding(1_MB, 'x');
+
   UseClient(sc1);
-  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic1},
-                              {RedisReply(RedisReplyType::kString, "subscribe"),
-                               RedisReply(RedisReplyType::kString, topic1),
-                               RedisReply(0)});
+  DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
   SyncClient();
 
-  UseClient(sc2);
-  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic2},
-                              {RedisReply(RedisReplyType::kString, "subscribe"),
-                               RedisReply(RedisReplyType::kString, topic2),
-                               RedisReply(0)});
-  SyncClient();
+  constexpr int kNumLoops = 3;
+  constexpr int kNumMsgs = 20;
+  const auto kSoftLimitGracePeriodMinusDelta =
+      MonoDelta::FromSeconds(kSoftLimitGracePeriod.ToSeconds() * 0.8);
+  const auto kSoftLimitGracePeriodPlusDelta =
+      MonoDelta::FromSeconds(kSoftLimitGracePeriod.ToSeconds() * 1.2);
+  for (int loops = 0; loops < kNumLoops; loops++) {
+    // Write approx 20MB of data. More than the soft limit. But less than the hard limit.
+    UseClient(pc1);
+    for (int i = 0; i < kNumMsgs; i++) {
+      // Now send msg1 to topic 1.
+      auto msg = Substitute("trial-$0 : $1", i, padding);
+      VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+      DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
+      ASSERT_NO_FATALS(SyncClient());
+    }
 
-  UseClient(sc3);
-  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic1},
-                              {RedisReply(RedisReplyType::kString, "subscribe"),
-                               RedisReply(RedisReplyType::kString, topic1),
-                               RedisReply(0)});
-  DoRedisTestResultsArray(__LINE__, {"SUBSCRIBE", topic2},
-                              {RedisReply(RedisReplyType::kString, "subscribe"),
-                               RedisReply(RedisReplyType::kString, topic2),
-                               RedisReply(0)});
+    // Wait for less than what the server to enforce the soft limit.
+    SleepFor(kSoftLimitGracePeriodMinusDelta);
+
+    for (int i = 0; i < kNumMsgs; i++) {
+      // Verify the received messages.
+      VLOG(2) << "Trial " << i << ". Receiving subscribed message";
+      UseClient(sc1);
+      auto msg = Substitute("trial-$0 : $1", i, padding);
+      DoRedisTestArray(__LINE__, {}, {"message", topic1, msg});
+      ASSERT_NO_FATALS(SyncClient());
+    }
+
+    SleepFor(kSoftLimitGracePeriodPlusDelta);
+  }
+
+  const string big_padding(20_MB, 'x');
+  for (int loops = 0; loops < kNumLoops; loops++) {
+    // Write > soft limit sized data in one shot.
+    UseClient(pc1);
+    auto msg = Substitute("Big-$0", big_padding);
+    VLOG(2) << loops << ". Publishing a big message of size " << msg.length();
+    DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
+    ASSERT_NO_FATALS(SyncClient());
+
+    // Wait for less than what the server to enforce the soft limit.
+    SleepFor(kSoftLimitGracePeriodMinusDelta);
+
+    UseClient(sc1);
+    DoRedisTestArray(__LINE__, {}, {"message", topic1, msg});
+    ASSERT_NO_FATALS(SyncClient());
+
+    SleepFor(kSoftLimitGracePeriodPlusDelta);
+  }
+}
+
+TEST_F(TestRedisServiceExternal, TestSlowSubscribersSoftLimit) {
+  expected_no_sessions_ = true;
+
+  auto ts0 = external_mini_cluster()->tablet_server(0);
+  auto host0 = ts0->bind_host();
+  auto port0 = ts0->redis_rpc_port();
+
+  auto sc1 = std::make_shared<RedisClient>(host0, port0);
+  auto pc1 = std::make_shared<RedisClient>(host0, port0);
+
+  const string topic1 = "topic1";
+  const string padding(1_MB, 'x');
+
+  UseClient(sc1);
+  DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
   SyncClient();
 
   UseClient(pc1);
-  DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg1}, 2);
-  SyncClient();
+  // Write approx 15MB of data. Something more than the soft limit.
+  for (int i = 0; i < 15; i++) {
+    // Now send msg1 to topic 1.
+    auto msg = Substitute("trial-$0 : $1", i, padding);
+    VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+    DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
+    ASSERT_NO_FATALS(SyncClient());
+  }
 
-  UseClient(pc2);
-  DoRedisTestInt(__LINE__, {"PUBLISH", topic2, msg2}, 2);
-  SyncClient();
+  // Wait for the server to enforce the soft limit.
+  SleepFor(kSoftLimitGracePeriod);
 
-  // Verify the received messages.
+  DoRedisTestApproxInt(__LINE__, {"PUBLISH", topic1, "whatever"}, 1, 1);
+  ASSERT_NO_FATALS(SyncClient());
+  for (int i = 15; i < 30; i++) {
+    // Now send msg1 to topic 1.
+    auto msg = Substitute("trial-$0 : $1", i, padding);
+    VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+    DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 0);
+    ASSERT_NO_FATALS(SyncClient());
+  }
+
+  // sc1 should have already been disconnected.
   UseClient(sc1);
-  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic1, msg1});
+  DoRedisTestExpectError(__LINE__, {});
+}
+
+TEST_F(TestRedisServiceExternal, TestSlowSubscribersHardLimit) {
+  expected_no_sessions_ = true;
+
+  auto ts0 = external_mini_cluster()->tablet_server(0);
+  auto host0 = ts0->bind_host();
+  auto port0 = ts0->redis_rpc_port();
+
+  auto sc1 = std::make_shared<RedisClient>(host0, port0);
+  auto pc1 = std::make_shared<RedisClient>(host0, port0);
+
+  const string topic1 = "topic1";
+  const string padding(1_MB, 'x');
+
+  UseClient(sc1);
+  DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
   SyncClient();
 
-  UseClient(sc2);
-  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic2, msg2});
+  UseClient(pc1);
+  // Write approx 32MB of data.
+  for (int i = 0; i < 32; i++) {
+    // Now send msg1 to topic 1.
+    auto msg = Substitute("trial-$0 : $1", i, padding);
+    VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+    DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 1);
+    ASSERT_NO_FATALS(SyncClient());
+  }
+
+  // Let's allow for some msgs to be either sent to the subscriber or unsent, to account for
+  // buffering in the lower layers.
+  for (int i = 32; i < 40; i++) {
+    auto msg = Substitute("trial-$0 : $1", i, padding);
+    VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+    DoRedisTestApproxInt(__LINE__, {"PUBLISH", topic1, msg}, 1, 1);
+    ASSERT_NO_FATALS(SyncClient());
+  }
+
+  // The slow subscriber should have been disconnected. Expect the msg to be sent to no one.
+  for (int i = 40; i < 50; i++) {
+    // Now send msg1 to topic 1.
+    auto msg = Substitute("trial-$0 : $1", i, padding);
+    VLOG(2) << "Trial " << i << ". Publishing message of size " << msg.length() << " bytes";
+    DoRedisTestInt(__LINE__, {"PUBLISH", topic1, msg}, 0);
+    ASSERT_NO_FATALS(SyncClient());
+  }
+
+  UseClient(sc1);
+  // sc1 should have already been disconnected.
+  DoRedisTestExpectError(__LINE__, {});
+}
+
+TEST_F(TestRedisServiceExternal, SubscribedClientMode) {
+  expected_no_sessions_ = true;
+  const string topic1 = "topic1";
+  const string value = "value";
+
+  DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
+  DoRedisTestBulkString(__LINE__, {"PING", "cmd2"}, "cmd2");
   SyncClient();
 
-  UseClient(sc3);
-  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic1, msg1});
-  DoRedisTestArray(__LINE__, {"PING"}, {"message", topic2, msg2});
+  DoRedisTestResultsArray(
+      __LINE__, {"SUBSCRIBE", topic1},
+      {RedisReply(RedisReplyType::kString, "subscribe"),
+       RedisReply(RedisReplyType::kString, topic1), RedisReply(1)});
   SyncClient();
 
-  UseClient(nullptr);
-  VerifyCallbacks();
+  DoRedisTestExpectError(__LINE__, {"SET", "foo", value});
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"PING", "cmd2"}, {"pong", "cmd2"});
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"QUIT"});
+  SyncClient();
 }
 
 TEST_F(TestRedisService, TestAuth) {
   FLAGS_redis_password_caching_duration_ms = 0;
   const char* kRedisAuthPassword = "redis-password";
   // Expect new connections to require authentication
-  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
-  shared_ptr<RedisClient> rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto rc2 = std::make_shared<RedisClient>("127.0.0.1", server_port());
   UseClient(rc1);
   DoRedisTestSimpleString(__LINE__, {"PING"}, "PONG");
   SyncClient();
@@ -1994,7 +2852,8 @@ TEST_F(TestRedisService, TestPasswordChangeWithDelay) {
   constexpr uint32 kCachingDurationMs = 1000;
   FLAGS_redis_password_caching_duration_ms = kCachingDurationMs;
   const char* kRedisAuthPassword = "redis-password";
-  shared_ptr<RedisClient> rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
+  auto start = std::chrono::steady_clock::now();
+  auto rc1 = std::make_shared<RedisClient>("127.0.0.1", server_port());
 
   UseClient(rc1);
   DoRedisTestOk(__LINE__, {"CONFIG", "SET", "REQUIREPASS", kRedisAuthPassword});
@@ -2002,8 +2861,13 @@ TEST_F(TestRedisService, TestPasswordChangeWithDelay) {
   UseClient(nullptr);
 
   // Proxy may not realize the password change immediately.
-  ConnectWithPassword(this, nullptr, true, true);
-  ConnectWithPassword(this, kRedisAuthPassword, false, true);
+  // Expect the old password to work only if we haven't taken too long to get here.
+  const std::chrono::milliseconds kNotTooLong(kCachingDurationMs / 2);
+  auto now = std::chrono::steady_clock::now();
+  if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start) < kNotTooLong) {
+    ConnectWithPassword(this, nullptr, true, true);
+    ConnectWithPassword(this, kRedisAuthPassword, false, true);
+  }
 
   // Wait for the cached redis credentials in the redis proxy to expire.
   constexpr uint32 kDelayMs = 100;
@@ -2014,6 +2878,180 @@ TEST_F(TestRedisService, TestPasswordChangeWithDelay) {
   ConnectWithPassword(this, kRedisAuthPassword, true, true);
 
   VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestRename) {
+  DoRedisTestOk(__LINE__, {"SET", "k1", "5"});
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIRE", "k1", "100"}, 1);
+  SyncClient();
+
+  DoRedisTestBulkString(__LINE__, {"GET", "k1"}, "5");
+  DoRedisTestNull(__LINE__, {"GET", "k2"});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k1"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k2"}, -2);
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"RENAME", "k1", "k2"});
+  SyncClient();
+
+  DoRedisTestNull(__LINE__, {"GET", "k1"});
+  DoRedisTestBulkString(__LINE__, {"GET", "k2"}, "5");
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k2"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k1"}, -2);
+  SyncClient();
+
+  // Degenerate case src == dest.
+  DoRedisTestOk(__LINE__, {"RENAME", "k2", "k2"});
+  SyncClient();
+  DoRedisTestBulkString(__LINE__, {"GET", "k2"}, "5");
+  SyncClient();
+
+  // Failure cases.
+  DoRedisTestExpectError(__LINE__, {"RENAME", "non-existent", "k2"});
+  SyncClient();
+  DoRedisTestBulkString(__LINE__, {"GET", "k2"}, "5");
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameSameTablet) {
+  // Rename to a key in the same tablet
+  // specify prefix to ensure that the keys are on the same tablet.
+  DoRedisTestOk(__LINE__, {"SET", "{k}0", "5"});
+  DoRedisTestOk(__LINE__, {"RENAME", "{k}0", "{k}xxxxxx"});
+  SyncClient();
+  DoRedisTestNull(__LINE__, {"GET", "{k}0"});
+  DoRedisTestBulkString(__LINE__, {"GET", "{k}xxxxxx"}, "5");
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameSameTabletRandomized) {
+  // Rename to a key in the same tablet
+  // randomized 1/24 odds of being in the same tablet as k0.
+  for (int i = 1; i < 100; i++) {
+    const string dest = strings::Substitute("k$0", i);
+    VLOG(1) << "Renaming from k0 to " << dest;
+    DoRedisTestOk(__LINE__, {"SET", "k0", "5"});
+    SyncClient();
+    DoRedisTestOk(__LINE__, {"RENAME", "k0", dest});
+    SyncClient();
+    DoRedisTestNull(__LINE__, {"GET", "k0"});
+    DoRedisTestBulkString(__LINE__, {"GET", dest}, "5");
+    SyncClient();
+  }
+}
+
+TEST_F(TestRedisService, TestRenamePipeline) {
+  // Pipeline case.
+  DoRedisTestOk(__LINE__, {"SET", "ka", "4"});
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"SET", "ka", "5"});
+  DoRedisTestOk(__LINE__, {"RENAME", "ka", "kb"});
+  DoRedisTestBulkString(__LINE__, {"GET", "kb"}, "5");
+  DoRedisTestNull(__LINE__, {"GET", "ka"});
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameHash) {
+  DoRedisTestInt(__LINE__, {"HSET", "k1", "s1", "5"}, 1);
+  DoRedisTestInt(__LINE__, {"HSET", "k1", "s2", "6"}, 1);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIRE", "k1", "100"}, 1);
+
+  SyncClient();
+  DoRedisTestOk(__LINE__, {"SET", "k2", "x"});
+  SyncClient();
+
+  DoRedisTestBulkString(__LINE__, {"HGET", "k1", "s1"}, "5");
+  DoRedisTestBulkString(__LINE__, {"HGET", "k1", "s2"}, "6");
+  DoRedisTestBulkString(__LINE__, {"GET", "k2"}, "x");
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k1"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k2"}, -1);
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"RENAME", "k1", "k2"});
+  SyncClient();
+
+  DoRedisTestBulkString(__LINE__, {"HGET", "k2", "s1"}, "5");
+  DoRedisTestBulkString(__LINE__, {"HGET", "k2", "s2"}, "6");
+  DoRedisTestNull(__LINE__, {"GET", "k1"});
+  DoRedisTestNull(__LINE__, {"HGET", "k1", "s1"});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k2"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k1"}, -2);
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameSet) {
+  DoRedisTestInt(__LINE__, {"SADD", "k1", "s1", "s2"}, 2);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIRE", "k1", "100"}, 1);
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"SMEMBERS", "k1"}, {"s1", "s2"});
+  DoRedisTestNull(__LINE__, {"GET", "k2"});
+  DoRedisTestArray(__LINE__, {"SMEMBERS", "k2"}, {});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k1"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k2"}, -2);
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"RENAME", "k1", "k2"});
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"SMEMBERS", "k2"}, {"s1", "s2"});
+  DoRedisTestNull(__LINE__, {"GET", "k1"});
+  DoRedisTestArray(__LINE__, {"SMEMBERS", "k1"}, {});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k2"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k1"}, -2);
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameSortedSet) {
+  DoRedisTestInt(__LINE__, {"ZADD", "k1", "-2", "sk1", "2", "sk2"}, 2);
+  SyncClient();
+  DoRedisTestInt(__LINE__, {"EXPIRE", "k1", "100"}, 1);
+  SyncClient();
+
+  DoRedisTestScoreValueArray(
+      __LINE__, {"ZRANGEBYSCORE", "k1", "-inf", "+inf", "WITHSCORES"}, {-2, 2}, {"sk1", "sk2"});
+  DoRedisTestNull(__LINE__, {"GET", "k2"});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k1"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k2"}, -2);
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"RENAME", "k1", "k2"});
+  SyncClient();
+
+  DoRedisTestScoreValueArray(
+      __LINE__, {"ZRANGEBYSCORE", "k2", "-inf", "+inf", "WITHSCORES"}, {-2, 2}, {"sk1", "sk2"});
+  DoRedisTestNull(__LINE__, {"GET", "k1"});
+  SyncClient();
+  DoRedisTestApproxInt(__LINE__, {"TTL", "k2"}, 100, 5);
+  DoRedisTestInt(__LINE__, {"TTL", "k1"}, -2);
+  SyncClient();
+}
+
+TEST_F(TestRedisService, TestRenameTSType) {
+  DoRedisTestOk(__LINE__, {"TSADD", "k1", "2", "sk1", "-2", "sk2"});
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME", "k1", "-inf", "+inf"}, {"-2", "sk2", "2", "sk1"});
+  DoRedisTestNull(__LINE__, {"GET", "k2"});
+  SyncClient();
+
+  DoRedisTestOk(__LINE__, {"RENAME", "k1", "k2"});
+  SyncClient();
+
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME", "k2", "-inf", "+inf"}, {"-2", "sk2", "2", "sk1"});
+  DoRedisTestNull(__LINE__, {"GET", "k1"});
+  SyncClient();
 }
 
 TEST_F(TestRedisService, TestIncr) {
@@ -2070,6 +3108,15 @@ TEST_F(TestRedisService, TestIncr) {
 
   SyncClient();
   LOG(INFO) << "Done with the test";
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, TestKeysPipeline) {
+  DoRedisTestOk(__LINE__, {"SET", "xa", "5"});
+  DoRedisTestArray(__LINE__, {"KEYS", "*"}, {"xa"});
+  DoRedisTestNull(__LINE__, {"GET", "xb"});
+  DoRedisTestBulkString(__LINE__, {"GET", "xa"}, "5");
+  SyncClient();
   VerifyCallbacks();
 }
 
@@ -2162,6 +3209,10 @@ TEST_F(TestRedisService, TestDummyLocal) {
   DoRedisTestBulkString(__LINE__, {"INFO"}, kInfoResponse);
   DoRedisTestBulkString(__LINE__, {"INFO", "Replication"}, kInfoResponse);
   DoRedisTestBulkString(__LINE__, {"INFO", "foo", "bar", "whatever", "whatever"}, kInfoResponse);
+  DoRedisTest(__LINE__, {"INFO"}, RedisReplyType::kString, [] (const RedisReply& reply) {
+      ASSERT_NE(reply.as_string().find("redis_version"), string::npos);
+    }
+  );
 
   DoRedisTestOk(__LINE__, {"COMMAND"});
   DoRedisTestExpectError(__LINE__, {"EVAL"});
@@ -3257,8 +4308,10 @@ TEST_F(TestRedisService, TestAdditionalCommands) {
 
   DoRedisTestBulkString(__LINE__, {"HGET", "map_key", "subkey1"}, "41");
 
-  DoRedisTestArray(__LINE__, {"HMGET", "map_key", "subkey1", "subkey3", "subkey2"},
-      {"41", "", "12"});
+  DoRedisTestResultsArray(
+      __LINE__, {"HMGET", "map_key", "subkey1", "subkey3", "subkey2"},
+      {RedisReply(RedisReplyType::kString, "41"), RedisReply(),
+       RedisReply(RedisReplyType::kString, "12")});
 
   DoRedisTestArray(__LINE__, {"HGETALL", "map_key"}, {"subkey1", "41", "subkey2", "12"});
 
@@ -3539,16 +4592,17 @@ TEST_F(TestRedisService, TestHMGetTiming) {
   for (int i = 0; i < num_hmgets; i++) {
     string si = std::to_string(i % num_keys);
     vector<string> command = {"HMGET", "parent_" + si};
-    vector<string> expected;
+    vector<RedisReply> expected;
     for (int j = 0; j < num_subkeys; j++) {
       int idx = is_random ?
           RandomUniformInt(0, max_query_subkey) :
           (j * max_query_subkey) / num_subkeys;
       string sj = std::to_string(idx);
       command.push_back("subkey_" + sj);
-      expected.push_back(idx >= size_hset ? "" : "value_" + sj);
+      expected.push_back(
+          idx >= size_hset ? RedisReply() : RedisReply(RedisReplyType::kString, "value_" + sj));
     }
-    DoRedisTestArray(__LINE__, command, expected);
+    DoRedisTestResultsArray(__LINE__, command, expected);
     if (is_serial) {
       SyncClient();
     }
@@ -3634,7 +4688,7 @@ TEST_F(TestRedisService, TestTtlModifyNoOverwrite) {
   // TODO: when we support RENAME, it should also be added here.
   std::string k1 = "key";
   std::string k2 = "keyy";
-  int64_t millisecond_error = 500;
+  const int64_t millisecond_error = 500;
   // Test integer modify
   DoRedisTestOk(__LINE__, {"SET", k1, "3"});
   SyncClient();
@@ -3728,32 +4782,57 @@ TEST_F(TestRedisService, TestTtlPrimitive) {
   DoRedisTestInt(__LINE__, {"TTL", k1}, -1);
   DoRedisTestInt(__LINE__, {"PTTL", k1}, -1);
   SyncClient();
-  // Setting a ttl and checking expected return values.
-  DoRedisTestInt(__LINE__, {"EXPIRE", k1, "3"}, 1);
+  // Setting a TTL and checking expected return values.
+  DoRedisTestInt(__LINE__, {"EXPIRE", k1, "4"}, 1);
   SyncClient();
-  DoRedisTestInt(__LINE__, {"TTL", k1}, 3);
-  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 3000, millisecond_error);
-  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
-  SyncClient();
-  std::this_thread::sleep_for(2s);
-  DoRedisTestInt(__LINE__, {"TTL", k1}, 1);
-  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 1000, millisecond_error);
-  DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
-  SyncClient();
-  // Checking expected return values after expiration.
-  std::this_thread::sleep_for(2s);
-  CheckExpiredPrimitive(&k1);
+  {
+    int attempt = 1;
+    while (true) {
+      const auto ttl_set_at = std::chrono::system_clock::now();
+      DoRedisTestInt(__LINE__, {"TTL", k1}, 4);
+      DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 4000, millisecond_error);
+      DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+      SyncClient();
+      auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now() - ttl_set_at).count();
+      std::this_thread::sleep_for(std::max(
+          static_cast<int64_t>(0), static_cast<int64_t>(2500 - elapsed_ms)) * 1ms);
+      // By this point there should be about 1.4 seconds left until the key's expiration.
+      auto total_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now() - ttl_set_at).count();
+      if (total_elapsed_ms > 2550) {
+        if (attempt < 10) {
+          LOG(INFO) << "TTL test took too long, re-trying (attempt: "
+                    << attempt << ")";
+          attempt++;
+          DoRedisTestOk(__LINE__, {"SET", k1, value});
+          DoRedisTestInt(__LINE__, {"EXPIRE", k1, "4"}, 1);
+          continue;
+        } else {
+          LOG(WARNING) << "TTL test took too long, not re-trying: attempt=" << attempt;
+        }
+      }
+      DoRedisTestInt(__LINE__, {"TTL", k1}, 1);
+      DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 1000, millisecond_error);
+      DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
+      SyncClient();
+      // Checking expected return values after expiration.
+      std::this_thread::sleep_for(2s);
+      CheckExpiredPrimitive(&k1);
+      break;  // Success.
+    }
+  }
   // Testing functionality with SETEX.
   DoRedisTestOk(__LINE__, {"SETEX", k1, "5", value});
   SyncClient();
-  DoRedisTestInt(__LINE__, {"TTL", k1}, 5);
-  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 5000, millisecond_error);
+  DoRedisTestIntRange(__LINE__, {"TTL", k1}, 4, 5);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 4500, millisecond_error);
   DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
   SyncClient();
   // Set a new, earlier expiration.
   DoRedisTestInt(__LINE__, {"EXPIRE", k1, "2"}, 1);
   DoRedisTestInt(__LINE__, {"TTL", k1}, 2);
-  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 2000, millisecond_error);
+  DoRedisTestApproxInt(__LINE__, {"PTTL", k1}, 1500, millisecond_error);
   DoRedisTestBulkString(__LINE__, {"GET", k1}, value);
   SyncClient();
   // Check that the value expires as expected.
@@ -4053,6 +5132,57 @@ TEST_F(TestRedisService, KeysZeroChar) {
   DoRedisTestArray(__LINE__, {"KEYS", "foo"}, {});
   DoRedisTestArray(__LINE__, {"KEYS", s}, {s});
   DoRedisTestArray(__LINE__, {"KEYS", s1}, {});
+  SyncClient();
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, RangeScanTimeout) {
+  // Test SortedSets.
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "1.0", "v1"}, 1);
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf"}, {"v1"});
+  SyncClient();
+
+  FLAGS_test_tserver_timeout = true;
+  DoRedisTestExpectError(__LINE__, {"ZRANGEBYSCORE", "z_key", "-inf", "+inf"},
+                         "Deadline for query passed.");
+  SyncClient();
+  FLAGS_test_tserver_timeout = false;
+
+  // Test TimeSeries.
+  DoRedisTestOk(__LINE__, {"TSADD", "ts_key", "1", "v1"});
+  SyncClient();
+  DoRedisTestArray(__LINE__, {"TSRANGEBYTIME", "ts_key", "-inf", "+inf"}, {"1", "v1"});
+  SyncClient();
+
+  FLAGS_test_tserver_timeout = true;
+  DoRedisTestExpectError(__LINE__, {"TSRANGEBYTIME", "ts_key", "-inf", "+inf"},
+                         "Deadline for query passed.");
+  SyncClient();
+  FLAGS_test_tserver_timeout = false;
+
+  // Test a point read doesn't time out.
+  DoRedisTestOk(__LINE__, {"SET", "k", "v"});
+  SyncClient();
+  DoRedisTestBulkString(__LINE__, {"GET", "k"}, "v");
+  SyncClient();
+
+  FLAGS_test_tserver_timeout = true;
+  DoRedisTestBulkString(__LINE__, {"GET", "k"}, "v");
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
+TEST_F(TestRedisService, KeysTimeout) {
+  DoRedisTestInt(__LINE__, {"ZADD", "z_key", "1.0", "v1"}, 1);
+  SyncClient();
+  FLAGS_test_tserver_timeout = true;
+  DoRedisTestExpectError(__LINE__, {"KEYS", "*"},
+                         "Errors occured while reaching out to the tablet servers");
+  SyncClient();
+  FLAGS_test_tserver_timeout = false;
+  DoRedisTestArray(__LINE__, {"KEYS", "*"}, {"z_key"});
   SyncClient();
   VerifyCallbacks();
 }

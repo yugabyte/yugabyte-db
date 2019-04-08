@@ -133,6 +133,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
     return Status::OK();
   }
 
+  CHECKED_STATUS GetTabletStatus(const GetTabletStatusRequestPB* req,
+                                 GetTabletStatusResponsePB* resp) const override;
+
   const std::string& permanent_uuid() const { return fs_manager_->uuid(); }
 
   // Returns the proxy to call this tablet server locally.
@@ -147,6 +150,29 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   TabletServiceImpl* tablet_server_service();
 
   scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceIf::RpcMetricIndexes metric);
+
+  void SetPublisher(rpc::Publisher service) {
+    publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
+  }
+
+  rpc::Publisher* GetPublisher() override {
+    return publish_service_ptr_.get();
+  }
+
+  void set_ysql_catalog_version(uint64_t new_version) {
+    std::lock_guard<simple_spinlock> l(lock_);
+    if (new_version > ysql_catalog_version_) {
+      ysql_catalog_version_ = new_version;
+    } else if (new_version < ysql_catalog_version_) {
+      LOG(WARNING) << "Ignoring ysql catalog version update: new version too old. "
+                      "New: " << new_version << ", Old: " << ysql_catalog_version_;
+    }
+  }
+
+  uint64_t ysql_catalog_version() const override {
+    std::lock_guard<simple_spinlock> l(lock_);
+    return ysql_catalog_version_;
+  }
 
  protected:
   virtual CHECKED_STATUS RegisterServices();
@@ -173,6 +199,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // Manager for tablets which are available on this server.
   gscoped_ptr<TSTabletManager> tablet_manager_;
 
+  // Used to forward redis pub/sub messages to the redis pub/sub handler
+  yb::AtomicUniquePtr<rpc::Publisher> publish_service_ptr_;
+
   // Thread responsible for heartbeating to the master.
   gscoped_ptr<Heartbeater> heartbeater_;
 
@@ -196,6 +225,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   // Cluster uuid. This is sent by the master leader during the first hearbeat.
   std::string cluster_uuid_;
+
+  // Latest known version from the YSQL catalog (as reported by last heartbeat response).
+  uint64_t ysql_catalog_version_ = 0;
 
   // An instance to tablet server service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.

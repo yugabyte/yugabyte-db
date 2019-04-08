@@ -174,5 +174,18 @@ TEST_F(ResultTest, Reference) {
   ASSERT_OK(result);
 }
 
+Result<std::unique_ptr<int>> ReturnVariable() {
+  std::unique_ptr<int> result;
+  result = std::make_unique<int>(42);
+  return result;
+}
+
+// Test that we could return non-copyable variable of type T from function with return type
+// Result<T>.
+TEST_F(ResultTest, ReturnVariable) {
+  auto ptr = ASSERT_RESULT(ReturnVariable());
+  ASSERT_EQ(42, *ptr);
+}
+
 } // namespace test
 } // namespace yb

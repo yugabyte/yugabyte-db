@@ -22,6 +22,7 @@
 #include "yb/common/redis_protocol.pb.h"
 
 #include "yb/rpc/connection_context.h"
+#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_with_queue.h"
 
 namespace yb {
@@ -31,6 +32,8 @@ class MemTracker;
 namespace redisserver {
 
 class RedisParser;
+
+YB_DEFINE_ENUM(RedisClientMode, (kNormal)(kSubscribed)(kMonitoring));
 
 class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
  public:
@@ -55,6 +58,17 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
 
   static std::string Name() { return "Redis"; }
 
+  RedisClientMode ClientMode() { return mode_.load(std::memory_order_acquire); }
+
+  void SetClientMode(RedisClientMode mode) { mode_.store(mode, std::memory_order_release); }
+
+  void SetCleanupHook(std::function<void()> hook) { cleanup_hook_ = std::move(hook); }
+
+  // Shutdown this context. Clean up the subscriptions if any.
+  void Shutdown(const Status& status) override;
+
+  CHECKED_STATUS ReportPendingWriteBytes(size_t bytes_in_queue) override;
+
  private:
   void Connected(const rpc::ConnectionPtr& connection) override {}
 
@@ -62,21 +76,28 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
     return rpc::RpcConnectionPB::OPEN;
   }
 
-  Result<size_t> ProcessCalls(const rpc::ConnectionPtr& connection,
-                              const IoVecs& bytes_to_process,
-                              rpc::ReadBufferFull read_buffer_full) override;
-  size_t BufferLimit() override;
+  Result<rpc::ProcessDataResult> ProcessCalls(const rpc::ConnectionPtr& connection,
+                                              const IoVecs& bytes_to_process,
+                                              rpc::ReadBufferFull read_buffer_full) override;
+
+  rpc::StreamReadBuffer& ReadBuffer() override {
+    return read_buffer_;
+  }
 
   // Takes ownership of data content.
   CHECKED_STATUS HandleInboundCall(const rpc::ConnectionPtr& connection,
                                    size_t commands_in_batch,
-                                   std::vector<char>* data);
+                                   rpc::CallData* data);
 
   std::unique_ptr<RedisParser> parser_;
+  rpc::GrowableBuffer read_buffer_;
   size_t commands_in_batch_ = 0;
   size_t end_of_batch_ = 0;
   std::atomic<bool> authenticated_{false};
   std::string redis_db_name_ = "0";
+  std::atomic<RedisClientMode> mode_{RedisClientMode::kNormal};
+  CoarseTimePoint soft_limit_exceeded_since_{CoarseTimePoint::max()};
+  std::function<void()> cleanup_hook_;
 
   MemTrackerPtr call_mem_tracker_;
 };
@@ -90,18 +111,17 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
 
   ~RedisInboundCall();
   // Takes ownership of data content.
-  CHECKED_STATUS ParseFrom(
-      const MemTrackerPtr& mem_tracker, size_t commands, std::vector<char>* data);
+  CHECKED_STATUS ParseFrom(const MemTrackerPtr& mem_tracker, size_t commands, rpc::CallData* data);
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
-
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;
   void LogTrace() const override;
   std::string ToString() const override;
   bool DumpPB(const rpc::DumpRunningRpcsRequestPB& req, rpc::RpcCallInProgressPB* resp) override;
 
-  MonoTime GetClientDeadline() const override;
+  CoarseTimePoint GetClientDeadline() const override;
 
   RedisClientBatch& client_batch() { return client_batch_; }
   RedisConnectionContext& connection_context() const;

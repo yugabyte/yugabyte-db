@@ -196,6 +196,13 @@ drop table clstr_temp;
 
 RESET SESSION AUTHORIZATION;
 
+-- Check that partitioned tables cannot be clustered
+CREATE TABLE clstrpart (a int) PARTITION BY RANGE (a);
+CREATE INDEX clstrpart_idx ON clstrpart (a);
+ALTER TABLE clstrpart CLUSTER ON clstrpart_idx;
+CLUSTER clstrpart USING clstrpart_idx;
+DROP TABLE clstrpart;
+
 -- Test CLUSTER with external tuplesorting
 
 create table clstr_4 as select * from tenk1;
@@ -203,19 +210,8 @@ create index cluster_sort on clstr_4 (hundred, thousand, tenthous);
 -- ensure we don't use the index in CLUSTER nor the checking SELECTs
 set enable_indexscan = off;
 
--- Use external sort that only ever uses quicksort to sort runs:
+-- Use external sort:
 set maintenance_work_mem = '1MB';
-set replacement_sort_tuples = 0;
-cluster clstr_4 using cluster_sort;
-select * from
-(select hundred, lag(hundred) over () as lhundred,
-        thousand, lag(thousand) over () as lthousand,
-        tenthous, lag(tenthous) over () as ltenthous from clstr_4) ss
-where row(hundred, thousand, tenthous) <= row(lhundred, lthousand, ltenthous);
-
--- Replacement selection will now be forced.  It should only produce a single
--- run, due to the fact that input is found to be presorted:
-set replacement_sort_tuples = 150000;
 cluster clstr_4 using cluster_sort;
 select * from
 (select hundred, lag(hundred) over () as lhundred,
@@ -225,7 +221,6 @@ where row(hundred, thousand, tenthous) <= row(lhundred, lthousand, ltenthous);
 
 reset enable_indexscan;
 reset maintenance_work_mem;
-reset replacement_sort_tuples;
 
 -- clean up
 DROP TABLE clustertest;

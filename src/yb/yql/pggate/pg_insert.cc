@@ -40,18 +40,32 @@ static MonoDelta kSessionTimeout = 60s;
 //--------------------------------------------------------------------------------------------------
 
 PgInsert::PgInsert(PgSession::ScopedRefPtr pg_session,
-                   const char *database_name,
-                   const char *schema_name,
-                   const char *table_name)
-    : PgDmlWrite(pg_session, database_name, schema_name, table_name, StmtOp::STMT_INSERT) {
+                   const PgObjectId& table_id,
+                   bool is_single_row_txn)
+    : PgDmlWrite(pg_session, table_id, is_single_row_txn) {
 }
 
 PgInsert::~PgInsert() {
 }
 
+Status PgInsert::Prepare() {
+  RETURN_NOT_OK(PgDmlWrite::Prepare());
+
+  // If the table contains ybrowid, bind generate_rowid() to auto-fill the rowid.
+  const auto rowid_attr_num = static_cast<int>(PgSystemAttrNum::kYBRowId);
+  if (table_desc_->FindColumn(rowid_attr_num)) {
+    generate_rowid_ = std::make_unique<PgGenerateRowId>();
+    RETURN_NOT_OK(BindColumn(rowid_attr_num, generate_rowid_.get()));
+  }
+
+  return Status::OK();
+}
+
 void PgInsert::AllocWriteRequest() {
   // Allocate WRITE operation.
-  auto doc_op = make_shared<PgDocWriteOp>(pg_session_, table_desc_->NewPgsqlInsert());
+  client::YBPgsqlWriteOp *insert_op = table_desc_->NewPgsqlInsert();
+  insert_op->set_is_single_row_txn(is_single_row_txn_);
+  auto doc_op = make_shared<PgDocWriteOp>(pg_session_, insert_op);
   write_req_ = doc_op->write_op()->mutable_request();
 
   // Preparation complete.

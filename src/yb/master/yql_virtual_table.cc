@@ -12,6 +12,7 @@
 //
 
 #include "yb/master/yql_virtual_table.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_vtable_iterator.h"
 
@@ -31,11 +32,16 @@ CHECKED_STATUS YQLVirtualTable::GetIterator(
     const Schema& projection,
     const Schema& schema,
     const TransactionOperationContextOpt& txn_op_context,
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const common::QLScanSpec& spec,
     std::unique_ptr<common::YQLRowwiseIteratorIf>* iter)
     const {
+  // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
+  // not change.
+  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  RETURN_NOT_OK(l.first_failed_status());
+
   std::unique_ptr<QLRowBlock> vtable;
   RETURN_NOT_OK(RetrieveData(request, &vtable));
 

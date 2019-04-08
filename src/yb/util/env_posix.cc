@@ -529,7 +529,7 @@ class PosixWritableFile : public WritableFile {
 };
 
 #if defined(__linux__)
-class PosixDirectIOWritableFile : public PosixWritableFile {
+class PosixDirectIOWritableFile final : public PosixWritableFile {
  public:
   PosixDirectIOWritableFile(const std::string &fname, int fd, uint64_t file_size,
                             bool sync_on_close)
@@ -762,7 +762,7 @@ class PosixDirectIOWritableFile : public PosixWritableFile {
 };
 #endif
 
-class PosixRWFile : public RWFile {
+class PosixRWFile final : public RWFile {
 // is not employed.
  public:
   PosixRWFile(string fname, int fd, bool sync_on_close)
@@ -773,6 +773,7 @@ class PosixRWFile : public RWFile {
 
   ~PosixRWFile() {
     if (fd_ >= 0) {
+      // Virtual method call in destructor.
       WARN_NOT_OK(Close(), "Failed to close " + filename_);
     }
   }
@@ -887,6 +888,7 @@ class PosixRWFile : public RWFile {
     Status s;
 
     if (sync_on_close_) {
+      // Virtual function call in destructor.
       s = Sync();
       if (!s.ok()) {
         LOG(ERROR) << "Unable to Sync " << filename_ << ": " << s.ToString();
@@ -1201,6 +1203,15 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  Result<std::string> ReadLink(const std::string& link) override {
+    char buf[PATH_MAX];
+    const auto len = readlink(link.c_str(), buf, sizeof(buf));
+    if (len > -1) {
+      return std::string(buf, buf + len);
+    }
+    return STATUS_IO_ERROR(link, errno);
+  }
+
   Status RenameFile(const std::string& src, const std::string& target) override {
     TRACE_EVENT2("io", "PosixEnv::RenameFile", "src", src, "dst", target);
     ThreadRestrictions::AssertIOAllowed();
@@ -1328,6 +1339,22 @@ class PosixEnv : public Env {
       *is_dir = S_ISDIR(sbuf.st_mode);
     }
     return s;
+  }
+
+  Result<bool> IsExecutableFile(const std::string& path) override {
+    TRACE_EVENT1("io", "PosixEnv::IsExecutableFile", "path", path);
+    ThreadRestrictions::AssertIOAllowed();
+    Status s;
+    struct stat sbuf;
+    if (stat(path.c_str(), &sbuf) != 0) {
+      if (errno == ENOENT) {
+        // If the file does not exist, we just return false.
+        return false;
+      }
+      return STATUS_IO_ERROR(path, errno);
+    }
+
+    return !S_ISDIR(sbuf.st_mode) && (sbuf.st_mode & S_IXUSR);
   }
 
   Status Walk(const string& root, DirectoryOrder order, const WalkCallback& cb) override {

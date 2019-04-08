@@ -51,6 +51,8 @@
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/enums.h"
 
+using namespace std::literals;
+
 DEFINE_int32(inject_delay_commit_pre_voter_to_voter_secs, 0,
              "Amount of time to delay commit of a PRE_VOTER to VOTER transition. To be used for "
              "unit testing purposes only.");
@@ -94,14 +96,30 @@ RaftPeerPB::Role UnpackRole(ReplicaState::PackedRoleAndTerm role_and_term) {
 ReplicaState::ReplicaState(ConsensusOptions options, string peer_uuid,
                            std::unique_ptr<ConsensusMetadata> cmeta,
                            ReplicaOperationFactory* operation_factory,
-                           SafeOpIdWaiter* safe_op_id_waiter)
+                           SafeOpIdWaiter* safe_op_id_waiter,
+                           RetryableRequests* retryable_requests)
     : options_(std::move(options)),
       peer_uuid_(std::move(peer_uuid)),
       cmeta_(std::move(cmeta)),
       operation_factory_(operation_factory),
       safe_op_id_waiter_(safe_op_id_waiter) {
   CHECK(cmeta_) << "ConsensusMeta passed as NULL";
+  if (retryable_requests) {
+    retryable_requests_ = std::move(*retryable_requests);
+  }
+
+  CHECK(leader_state_cache_.is_lock_free());
+
   StoreRoleAndTerm(cmeta_->active_role(), cmeta_->current_term());
+
+  // Actually we don't need this lock, but GetActiveRoleUnlocked checks that we are holding the
+  // lock.
+  auto lock = LockForRead();
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
+}
+
+ReplicaState::~ReplicaState() {
 }
 
 Status ReplicaState::StartUnlocked(const OpId& last_id_in_wal) {
@@ -132,11 +150,8 @@ Status ReplicaState::LockForStart(UniqueLock* lock) const {
 }
 
 bool ReplicaState::IsLocked() const {
-  if (update_lock_.try_lock()) {
-    update_lock_.unlock();
-    return false;
-  }
-  return true;
+  std::unique_lock<std::mutex> lock(update_lock_, std::try_to_lock);
+  return !lock.owns_lock();
 }
 
 ReplicaState::UniqueLock ReplicaState::LockForRead() const {
@@ -185,25 +200,43 @@ Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) cons
   return Status::OK();
 }
 
-LeaderState ReplicaState::GetLeaderState(LeaderLeaseCheckMode lease_check_mode) const {
-  auto lock = LockForRead();
-  return GetLeaderStateUnlocked(lease_check_mode);
+LeaderState ReplicaState::GetLeaderState() const {
+  auto cache = leader_state_cache_.load(std::memory_order_acquire);
+
+  CoarseTimePoint now = CoarseMonoClock::Now();
+  if (now >= cache.expire_at) {
+    auto lock = LockForRead();
+    return RefreshLeaderStateCacheUnlocked(&now);
+  }
+
+  LeaderState result = {cache.status()};
+  if (result.status == LeaderStatus::LEADER_AND_READY) {
+    result.term = cache.extra_value();
+  } else {
+    if (result.status == LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE) {
+      result.remaining_old_leader_lease = MonoDelta::FromMicroseconds(cache.extra_value());
+    }
+    result.MakeNotReadyLeader(result.status);
+  }
+
+  return result;
 }
 
-LeaderState ReplicaState::GetLeaderStateUnlocked(LeaderLeaseCheckMode lease_check_mode) const {
+LeaderState ReplicaState::GetLeaderStateUnlocked(
+    LeaderLeaseCheckMode lease_check_mode, CoarseTimePoint* now) const {
   LeaderState result;
 
   if (GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
-    return result.MakeNotReadyLeader(Consensus::LeaderStatus::NOT_LEADER);
+    return result.MakeNotReadyLeader(LeaderStatus::NOT_LEADER);
   }
 
   if (!leader_no_op_committed_) {
     // This will cause the client to retry on the same server (won't try to find the new leader).
-    return result.MakeNotReadyLeader(Consensus::LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED);
+    return result.MakeNotReadyLeader(LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED);
   }
 
   const auto lease_status = lease_check_mode != LeaderLeaseCheckMode::DONT_NEED_LEASE
-      ? GetLeaderLeaseStatusUnlocked(&result.remaining_old_leader_lease)
+      ? GetLeaderLeaseStatusUnlocked(&result.remaining_old_leader_lease, now)
       : LeaderLeaseStatus::HAS_LEASE;
   switch (lease_status) {
     case LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE:
@@ -211,15 +244,15 @@ LeaderState ReplicaState::GetLeaderStateUnlocked(LeaderLeaseCheckMode lease_chec
       VLOG(1) << "Old leader lease might still be active for "
               << result.remaining_old_leader_lease.ToString();
       return result.MakeNotReadyLeader(
-          Consensus::LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE);
+          LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE);
 
     case LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE:
       // Will retry to look up the leader, because it might have changed.
       return result.MakeNotReadyLeader(
-          Consensus::LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE);
+          LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE);
 
     case LeaderLeaseStatus::HAS_LEASE:
-      result.status = Consensus::LeaderStatus::LEADER_AND_READY;
+      result.status = LeaderStatus::LEADER_AND_READY;
       result.term = GetCurrentTermUnlocked();
       return result;
   }
@@ -229,7 +262,7 @@ LeaderState ReplicaState::GetLeaderStateUnlocked(LeaderLeaseCheckMode lease_chec
 
 Status ReplicaState::CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_mode) const {
   auto state = GetLeaderStateUnlocked(lease_check_mode);
-  if (state.status == Consensus::LeaderStatus::NOT_LEADER) {
+  if (state.status == LeaderStatus::NOT_LEADER) {
     ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
     return STATUS_FORMAT(IllegalState,
                          "Replica $0 is not leader of this config. Role: $1. Consensus state: $2",
@@ -317,6 +350,8 @@ Status ReplicaState::SetPendingConfigUnlocked(const RaftConfigPB& new_config) {
       << "Existing pending config: " << cmeta_->pending_config().ShortDebugString() << "; "
       << "Attempted new pending config: " << new_config.ShortDebugString();
   cmeta_->set_pending_config(new_config);
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
   return Status::OK();
 }
 
@@ -328,6 +363,8 @@ Status ReplicaState::ClearPendingConfigUnlocked() {
     return STATUS(IllegalState, "Attempt to clear a non-existent pending config.");
   }
   cmeta_->clear_pending_config();
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
   return Status::OK();
 }
 
@@ -358,6 +395,8 @@ Status ReplicaState::SetCommittedConfigUnlocked(const RaftConfigPB& committed_co
 
   cmeta_->set_committed_config(committed_config);
   cmeta_->clear_pending_config();
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
   CHECK_OK(cmeta_->Flush());
   return Status::OK();
 }
@@ -439,6 +478,8 @@ void ReplicaState::SetLeaderUuidUnlocked(const std::string& uuid) {
   DCHECK(IsLocked());
   cmeta_->set_leader_uuid(uuid);
   StoreRoleAndTerm(cmeta_->active_role(), cmeta_->current_term());
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
 }
 
 const string& ReplicaState::GetLeaderUuidUnlocked() const {
@@ -506,7 +547,7 @@ Status ReplicaState::CancelPendingOperations() {
       // We cancel only operations whose applies have not yet been triggered.
       LOG_WITH_PREFIX(INFO) << "Aborting operation as it isn't in flight: "
                             << operation.second->replicate_msg()->ShortDebugString();
-      round->NotifyReplicationFinished(abort_status, yb::OpId::kUnknownTerm);
+      NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm);
     }
   }
   return Status::OK();
@@ -544,7 +585,7 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
     const scoped_refptr<ConsensusRound>& round = it->second;
     LOG_WITH_PREFIX(INFO) << "Aborting uncommitted operation due to leader change: "
                           << round->replicate_msg()->id();
-    round->NotifyReplicationFinished(abort_status, yb::OpId::kUnknownTerm);
+    NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm);
   }
   // Clear entries from pendings.
   pending_operations_.erase(iter, pending_operations_.end());
@@ -620,6 +661,10 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
             << "Old config: { " << old_config.ShortDebugString() << " }. "
             << "New config: { " << new_config.ShortDebugString() << " }";
       }
+    }
+  } else if (op_type == WRITE_OP) {
+    if (!retryable_requests_.Register(round)) {
+      return STATUS(AlreadyPresent, "Duplicate request");
     }
   }
 
@@ -792,7 +837,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator it
 
   // Stop at the operation after the last one we must commit. This iterator by definition points to
   // the first entry greater than the committed index, so the entry preceding that must have the
-  // OpId equal to commited_index.
+  // OpId equal to committed_index.
   IndexToRoundMap::iterator end_iter;
   auto status = CheckOperationExist(committed_index, &end_iter);
   if (!status.ok()) {
@@ -834,7 +879,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(IndexToRoundMap::iterator it
     }
 
     prev_id.CopyFrom(round->id());
-    round->NotifyReplicationFinished(Status::OK(), leader_term);
+    NotifyReplicationFinishedUnlocked(round, Status::OK(), leader_term);
   }
 
   SetLastCommittedIndexUnlocked(committed_index);
@@ -888,6 +933,15 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
 const OpId& ReplicaState::GetCommittedOpIdUnlocked() const {
   DCHECK(IsLocked());
   return last_committed_index_;
+}
+
+RestartSafeCoarseMonoClock& ReplicaState::Clock() {
+  return retryable_requests_.Clock();
+}
+
+RetryableRequestsCounts ReplicaState::TEST_CountRetryableRequests() {
+  auto lock = LockForRead();
+  return retryable_requests_.TEST_Counts();
 }
 
 bool ReplicaState::AreCommittedAndCurrentTermsSameUnlocked() const {
@@ -1011,18 +1065,15 @@ Status ReplicaState::CheckOpInSequence(const OpId& previous, const OpId& current
   return Status::OK();
 }
 
-void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(
-    MonoDelta lease_duration,
-    MicrosTime ht_lease_expiration) {
-  // Update both leader leases, i.e. regular and hybrid time.
-  UpdateOldLeaderLeaseExpirationUnlocked(MonoTime::Now() + lease_duration, ht_lease_expiration);
-}
+void ReplicaState::UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
+    const CoarseTimeLease& lease, const PhysicalComponentLease& ht_lease) {
+  old_leader_lease_.TryUpdate(lease);
+  old_leader_ht_lease_.TryUpdate(ht_lease);
 
-void ReplicaState::UpdateOldLeaderLeaseExpirationUnlocked(
-    MonoTime lease_expiration,
-    MicrosTime ht_lease_expiration) {
-  old_leader_lease_expiration_.MakeAtLeast(lease_expiration);
-  old_leader_ht_lease_expiration_ = std::max(ht_lease_expiration, old_leader_ht_lease_expiration_);
+  // Reset our lease, since we are non leader now. I.e. follower or candidate.
+  majority_replicated_lease_expiration_ = CoarseTimeLease::NoneValue();
+  majority_replicated_ht_lease_expiration_.store(PhysicalComponentLease::NoneValue(),
+                                                 std::memory_order_release);
 }
 
 template <class Policy>
@@ -1050,22 +1101,25 @@ LeaderLeaseStatus ReplicaState::GetLeaseStatusUnlocked(Policy policy) const {
   return LeaderLeaseStatus::HAS_LEASE;
 }
 
+// Policy that is used during leader lease calculation.
 struct GetLeaderLeaseStatusPolicy {
   const ReplicaState* replica_state;
   MonoDelta* remaining_old_leader_lease;
-  MonoTime now;
+  CoarseTimePoint* now;
 
-  explicit GetLeaderLeaseStatusPolicy(
-      const ReplicaState* replica_state_, MonoDelta* remaining_old_leader_lease_)
-      : replica_state(replica_state_), remaining_old_leader_lease(remaining_old_leader_lease_) {
+  GetLeaderLeaseStatusPolicy(
+      const ReplicaState* replica_state_, MonoDelta* remaining_old_leader_lease_,
+      CoarseTimePoint* now_)
+      : replica_state(replica_state_), remaining_old_leader_lease(remaining_old_leader_lease_),
+        now(now_) {
     if (remaining_old_leader_lease) {
-      *remaining_old_leader_lease = MonoDelta();
+      *remaining_old_leader_lease = 0s;
     }
   }
 
   bool OldLeaderLeaseExpired() {
     const auto remaining_old_leader_lease_duration =
-        replica_state->RemainingOldLeaderLeaseDuration(&now);
+        replica_state->RemainingOldLeaderLeaseDuration(now);
     if (remaining_old_leader_lease_duration) {
       if (remaining_old_leader_lease) {
         *remaining_old_leader_lease = remaining_old_leader_lease_duration;
@@ -1076,7 +1130,7 @@ struct GetLeaderLeaseStatusPolicy {
   }
 
   bool MajorityReplicatedLeaseExpired() {
-    return replica_state->MajorityReplicatedLeaderLeaseExpired(&now);
+    return replica_state->MajorityReplicatedLeaderLeaseExpired(now);
   }
 
   bool Enabled() {
@@ -1084,21 +1138,26 @@ struct GetLeaderLeaseStatusPolicy {
   }
 };
 
-bool ReplicaState::MajorityReplicatedLeaderLeaseExpired(MonoTime* now) const {
-  if (!majority_replicated_lease_expiration_) {
+bool ReplicaState::MajorityReplicatedLeaderLeaseExpired(CoarseTimePoint* now) const {
+  if (majority_replicated_lease_expiration_ == CoarseTimePoint()) {
     return true;
   }
 
-  if (!*now) {
-    *now = MonoTime::Now();
+  if (*now == CoarseTimePoint()) {
+    *now = CoarseMonoClock::Now();
   }
 
   return *now >= majority_replicated_lease_expiration_;
 }
 
 LeaderLeaseStatus ReplicaState::GetLeaderLeaseStatusUnlocked(
-    MonoDelta* remaining_old_leader_lease) const {
-  return GetLeaseStatusUnlocked(GetLeaderLeaseStatusPolicy(this, remaining_old_leader_lease));
+    MonoDelta* remaining_old_leader_lease, CoarseTimePoint* now) const {
+  if (now == nullptr) {
+    CoarseTimePoint local_now;
+    return GetLeaseStatusUnlocked(GetLeaderLeaseStatusPolicy(
+        this, remaining_old_leader_lease, &local_now));
+  }
+  return GetLeaseStatusUnlocked(GetLeaderLeaseStatusPolicy(this, remaining_old_leader_lease, now));
 }
 
 bool ReplicaState::MajorityReplicatedHybridTimeLeaseExpiredAt(MicrosTime hybrid_time) const {
@@ -1113,7 +1172,7 @@ struct GetHybridTimeLeaseStatusAtPolicy {
       : replica_state(rs), micros_time(ht) {}
 
   bool OldLeaderLeaseExpired() {
-    return micros_time > replica_state->old_leader_ht_lease_expiration();
+    return micros_time > replica_state->old_leader_ht_lease().expiration;
   }
 
   bool MajorityReplicatedLeaseExpired() {
@@ -1130,20 +1189,20 @@ LeaderLeaseStatus ReplicaState::GetHybridTimeLeaseStatusAtUnlocked(
   return GetLeaseStatusUnlocked(GetHybridTimeLeaseStatusAtPolicy(this, micros_time));
 }
 
-MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(MonoTime* now) const {
+MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(CoarseTimePoint* now) const {
   MonoDelta result;
-  if (old_leader_lease_expiration_) {
-    MonoTime now_local;
+  if (old_leader_lease_) {
+    CoarseTimePoint now_local;
     if (!now) {
       now = &now_local;
     }
-    *now = MonoTime::Now();
+    *now = CoarseMonoClock::Now();
 
-    if (*now > old_leader_lease_expiration_) {
+    if (*now > old_leader_lease_.expiration) {
       // Reset the old leader lease expiration time so that we don't have to check it anymore.
-      old_leader_lease_expiration_ = MonoTime::kMin;
+      old_leader_lease_.Reset();
     } else {
-      result = old_leader_lease_expiration_.GetDeltaSince(*now);
+      result = old_leader_lease_.expiration - *now;
     }
   }
 
@@ -1151,7 +1210,7 @@ MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(MonoTime* now) const {
 }
 
 MicrosTime ReplicaState::MajorityReplicatedHtLeaseExpiration(
-    MicrosTime min_allowed, MonoTime deadline) const {
+    MicrosTime min_allowed, CoarseTimePoint deadline) const {
   if (FLAGS_ht_lease_duration_ms == 0) {
     return kMaxHybridTimePhysicalMicros;
   }
@@ -1167,24 +1226,75 @@ MicrosTime ReplicaState::MajorityReplicatedHtLeaseExpiration(
     result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
     return result >= min_allowed;
   };
-  if (deadline.IsMax()) {
+  if (deadline == CoarseTimePoint::max()) {
     cond_.wait(l, predicate);
-  } else if (!cond_.wait_until(l, deadline.ToSteadyTimePoint(), predicate)) {
+  } else if (!cond_.wait_until(l, deadline, predicate)) {
     return 0;
   }
   return result;
 }
 
 void ReplicaState::SetMajorityReplicatedLeaseExpirationUnlocked(
-    const MajorityReplicatedData& majority_replicated_data) {
+    const MajorityReplicatedData& majority_replicated_data,
+    EnumBitSet<SetMajorityReplicatedLeaseExpirationFlag> flags) {
   majority_replicated_lease_expiration_ = majority_replicated_data.leader_lease_expiration;
   majority_replicated_ht_lease_expiration_.store(majority_replicated_data.ht_lease_expiration,
                                                  std::memory_order_release);
+
+  if (flags.Test(SetMajorityReplicatedLeaseExpirationFlag::kResetOldLeaderLease)) {
+    old_leader_lease_.Reset();
+  }
+
+  if (flags.Test(SetMajorityReplicatedLeaseExpirationFlag::kResetOldLeaderHtLease)) {
+    old_leader_ht_lease_.Reset();
+  }
+
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
   cond_.notify_all();
 }
 
 uint64_t ReplicaState::OnDiskSize() const {
   return cmeta_->on_disk_size();
+}
+
+yb::OpId ReplicaState::MinRetryableRequestOpId() {
+  UniqueLock lock;
+  auto status = LockForUpdate(&lock);
+  if (!status.ok()) {
+    return yb::OpId(); // return minimal op id, that prevents log from cleaning
+  }
+  return retryable_requests_.CleanExpiredReplicatedAndGetMinOpId();
+}
+
+void ReplicaState::NotifyReplicationFinishedUnlocked(
+    const ConsensusRoundPtr& round, const Status& status, int64_t leader_term) {
+  round->NotifyReplicationFinished(status, leader_term);
+
+  retryable_requests_.ReplicationFinished(*round->replicate_msg(), status, leader_term);
+}
+
+consensus::LeaderState ReplicaState::RefreshLeaderStateCacheUnlocked(CoarseTimePoint* now) const {
+  auto result = GetLeaderStateUnlocked(LeaderLeaseCheckMode::NEED_LEASE, now);
+  LeaderStateCache cache;
+  if (result.status == LeaderStatus::LEADER_AND_READY) {
+    cache.Set(result.status, result.term, majority_replicated_lease_expiration_);
+  } else if (result.status == LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE) {
+    cache.Set(result.status, result.remaining_old_leader_lease.ToMicroseconds(),
+              *now + result.remaining_old_leader_lease);
+  } else {
+    cache.Set(result.status, 0 /* extra_value */, CoarseTimePoint::max());
+  }
+
+  leader_state_cache_.store(cache, std::memory_order_release);
+
+  return result;
+}
+
+void ReplicaState::SetLeaderNoOpCommittedUnlocked(bool value) {
+  leader_no_op_committed_ = value;
+  CoarseTimePoint now;
+  RefreshLeaderStateCacheUnlocked(&now);
 }
 
 }  // namespace consensus

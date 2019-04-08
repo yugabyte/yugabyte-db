@@ -2,7 +2,7 @@
 #
 # Makefile for src/test/ssl
 #
-# Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/test/ssl/Makefile
@@ -13,6 +13,8 @@ subdir = src/test/ssl
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+export with_openssl
+
 CERTIFICATES := server_ca server-cn-and-alt-names \
 	server-cn-only server-single-alt-name server-multiple-alt-names \
 	server-no-names server-revoked server-ss \
@@ -20,6 +22,7 @@ CERTIFICATES := server_ca server-cn-and-alt-names \
 	root_ca
 
 SSLFILES := $(CERTIFICATES:%=ssl/%.key) $(CERTIFICATES:%=ssl/%.crt) \
+	ssl/server-password.key \
 	ssl/client.crl ssl/server.crl ssl/root.crl \
 	ssl/both-cas-1.crt ssl/both-cas-2.crt \
 	ssl/root+server_ca.crt ssl/root+server.crl \
@@ -29,14 +32,14 @@ SSLFILES := $(CERTIFICATES:%=ssl/%.key) $(CERTIFICATES:%=ssl/%.crt) \
 # This target generates all the key and certificate files.
 sslfiles: $(SSLFILES)
 
-# Openssl requires a directory to put all generated certificates in. We don't
+# OpenSSL requires a directory to put all generated certificates in. We don't
 # use this for anything, but we need a location.
 ssl/new_certs_dir:
 	mkdir ssl/new_certs_dir
 
 # Rule for creating private/public key pairs.
 ssl/%.key:
-	openssl genrsa -out $@ 1024
+	openssl genrsa -out $@ 2048
 	chmod 0600 $@
 
 # Root CA certificate
@@ -68,6 +71,10 @@ ssl/server-ss.crt: ssl/server-cn-only.key ssl/server-cn-only.crt server-cn-only.
 	openssl req -new -key ssl/server-cn-only.key -out ssl/server-ss.csr -config server-cn-only.config
 	openssl x509 -req -days 10000 -in ssl/server-ss.csr -signkey ssl/server-cn-only.key -out ssl/server-ss.crt  -extensions v3_req -extfile server-cn-only.config
 	rm ssl/server-ss.csr
+
+# Password-protected version of server-cn-only.key
+ssl/server-password.key: ssl/server-cn-only.key
+	openssl rsa -des -in $< -out $@ -passout 'pass:secret1'
 
 # Client certificate, signed by the client CA:
 ssl/client.crt: ssl/client.key ssl/client_ca.crt
@@ -132,3 +139,6 @@ clean distclean maintainer-clean:
 
 check:
 	$(prove_check)
+
+installcheck:
+	$(prove_installcheck)

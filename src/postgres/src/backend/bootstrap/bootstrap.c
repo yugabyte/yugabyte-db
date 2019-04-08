@@ -4,7 +4,7 @@
  *	  routines to support running postgres in 'bootstrap' mode
  *	bootstrap mode is used to create the initial template database
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -19,6 +19,7 @@
 
 #include "access/htup_details.h"
 #include "access/xact.h"
+#include "access/xlog_internal.h"
 #include "bootstrap/bootstrap.h"
 #include "catalog/index.h"
 #include "catalog/pg_collation.h"
@@ -45,6 +46,12 @@
 #include "utils/rel.h"
 #include "utils/relmapper.h"
 #include "utils/tqual.h"
+
+#include "bootstrap/ybcbootstrap.h"
+#include "catalog/pg_database.h"
+#include "commands/ybccmds.h"
+#include "executor/ybcModifyTable.h"
+#include "pg_yb_utils.h"
 
 uint32		bootstrap_data_checksum_version = 0;	/* No checksum */
 
@@ -222,7 +229,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	/* If no -x argument, we are a CheckerProcess */
 	MyAuxProcType = CheckerProcess;
 
-	while ((flag = getopt(argc, argv, "B:c:d:D:Fkr:x:-:")) != -1)
+	while ((flag = getopt(argc, argv, "B:c:d:D:Fkr:x:X:-:")) != -1)
 	{
 		switch (flag)
 		{
@@ -256,6 +263,18 @@ AuxiliaryProcessMain(int argc, char *argv[])
 				break;
 			case 'x':
 				MyAuxProcType = atoi(optarg);
+				break;
+			case 'X':
+				{
+					int			WalSegSz = strtoul(optarg, NULL, 0);
+
+					if (!IsValidWalSegSize(WalSegSz))
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("-X requires a power of two value between 1 MB and 1 GB")));
+					SetConfigOption("wal_segment_size", optarg, PGC_INTERNAL,
+									PGC_S_OVERRIDE);
+				}
 				break;
 			case 'c':
 			case '-':
@@ -308,19 +327,19 @@ AuxiliaryProcessMain(int argc, char *argv[])
 		switch (MyAuxProcType)
 		{
 			case StartupProcess:
-				statmsg = "startup process";
+				statmsg = pgstat_get_backend_desc(B_STARTUP);
 				break;
 			case BgWriterProcess:
-				statmsg = "writer process";
+				statmsg = pgstat_get_backend_desc(B_BG_WRITER);
 				break;
 			case CheckpointerProcess:
-				statmsg = "checkpointer process";
+				statmsg = pgstat_get_backend_desc(B_CHECKPOINTER);
 				break;
 			case WalWriterProcess:
-				statmsg = "wal writer process";
+				statmsg = pgstat_get_backend_desc(B_WAL_WRITER);
 				break;
 			case WalReceiverProcess:
-				statmsg = "wal receiver process";
+				statmsg = pgstat_get_backend_desc(B_WAL_RECEIVER);
 				break;
 			default:
 				statmsg = "??? process";
@@ -336,13 +355,15 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			proc_exit(1);
 	}
 
-	/* Validate we have been given a reasonable-looking DataDir */
-	Assert(DataDir);
-	ValidatePgVersion(DataDir);
-
-	/* Change into DataDir (if under postmaster, should be done already) */
+	/*
+	 * Validate we have been given a reasonable-looking DataDir and change
+	 * into it (if under postmaster, should be done already).
+	 */
 	if (!IsUnderPostmaster)
+	{
+		checkDataDir();
 		ChangeToDataDir();
+	}
 
 	/* If standalone, create lockfile for data directory */
 	if (!IsUnderPostmaster)
@@ -485,13 +506,26 @@ BootstrapModeMain(void)
 	 */
 	InitProcess();
 
-	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, NULL);
+	InitPostgres(NULL, InvalidOid, NULL, InvalidOid, NULL, false);
 
 	/* Initialize stuff for bootstrap-file processing */
 	for (i = 0; i < MAXATTR; i++)
 	{
 		attrtypes[i] = NULL;
 		Nulls[i] = false;
+	}
+
+
+	/*
+	 * In YugaByte we only need to create the template1 database
+	 * (corresponding to creating the "base/1" subdir as its oid is hardcoded).
+	 */
+	if (IsYugaByteEnabled())
+	{
+		YBCCreateDatabase(TemplateDbOid,
+		                  "template1",
+		                  InvalidOid,
+		                  FirstBootstrapObjectId);
 	}
 
 	/*
@@ -501,11 +535,15 @@ BootstrapModeMain(void)
 	boot_yyparse();
 	CommitTransactionCommand();
 
-	/*
-	 * We should now know about all mapped relations, so it's okay to write
-	 * out the initial relation mapping files.
-	 */
-	RelationMapFinishBootstrap();
+	/* We do not use a relation map file in YugaByte mode yet */
+	if (!IsYugaByteEnabled())
+	{
+		/*
+		 * We should now know about all mapped relations, so it's okay to write
+		 * out the initial relation mapping files.
+		 */
+		RelationMapFinishBootstrap();
+	}
 
 	/* Clean up and exit */
 	cleanup();
@@ -603,13 +641,13 @@ boot_openrel(char *relname)
 		 relname, (int) ATTRIBUTE_FIXED_PART_SIZE);
 
 	boot_reldesc = heap_openrv(makeRangeVar(NULL, relname, -1), NoLock);
-	numattr = boot_reldesc->rd_rel->relnatts;
+	numattr = RelationGetNumberOfAttributes(boot_reldesc);
 	for (i = 0; i < numattr; i++)
 	{
 		if (attrtypes[i] == NULL)
 			attrtypes[i] = AllocateAttribute();
 		memmove((char *) attrtypes[i],
-				(char *) boot_reldesc->rd_att->attrs[i],
+				(char *) TupleDescAttr(boot_reldesc->rd_att, i),
 				ATTRIBUTE_FIXED_PART_SIZE);
 
 		{
@@ -783,9 +821,14 @@ InsertOneTuple(Oid objectid)
 	tuple = heap_form_tuple(tupDesc, values, Nulls);
 	if (objectid != (Oid) 0)
 		HeapTupleSetOid(tuple, objectid);
+
+	if (IsYugaByteEnabled())
+		YBCExecuteInsert(boot_reldesc, tupDesc, tuple);
+	else
+		simple_heap_insert(boot_reldesc, tuple);
+
 	pfree(tupDesc);				/* just free's tupDesc, not the attrtypes */
 
-	simple_heap_insert(boot_reldesc, tuple);
 	heap_freetuple(tuple);
 	elog(DEBUG4, "row inserted");
 
@@ -816,7 +859,7 @@ InsertOneValue(char *value, int i)
 
 	elog(DEBUG4, "inserting column %d value \"%s\"", i, value);
 
-	typoid = boot_reldesc->rd_att->attrs[i]->atttypid;
+	typoid = TupleDescAttr(boot_reldesc->rd_att, i)->atttypid;
 
 	boot_get_type_io_data(typoid,
 						  &typlen, &typbyval, &typalign,
@@ -843,10 +886,10 @@ InsertOneNull(int i)
 {
 	elog(DEBUG4, "inserting column %d NULL", i);
 	Assert(i >= 0 && i < MAXATTR);
-	if (boot_reldesc->rd_att->attrs[i]->attnotnull)
+	if (TupleDescAttr(boot_reldesc->rd_att, i)->attnotnull)
 		elog(ERROR,
 			 "NULL value specified for not-null column \"%s\" of relation \"%s\"",
-			 NameStr(boot_reldesc->rd_att->attrs[i]->attname),
+			 NameStr(TupleDescAttr(boot_reldesc->rd_att, i)->attname),
 			 RelationGetRelationName(boot_reldesc));
 	values[i] = PointerGetDatum(NULL);
 	Nulls[i] = true;
@@ -1022,36 +1065,6 @@ AllocateAttribute(void)
 }
 
 /*
- *		MapArrayTypeName
- *
- * Given a type name, produce the corresponding array type name by prepending
- * '_' and truncating as needed to fit in NAMEDATALEN-1 bytes.  This is only
- * used in bootstrap mode, so we can get away with assuming that the input is
- * ASCII and we don't need multibyte-aware truncation.
- *
- * The given string normally ends with '[]' or '[digits]'; we discard that.
- *
- * The result is a palloc'd string.
- */
-char *
-MapArrayTypeName(const char *s)
-{
-	int			i,
-				j;
-	char		newStr[NAMEDATALEN];
-
-	newStr[0] = '_';
-	j = 1;
-	for (i = 0; i < NAMEDATALEN - 2 && s[i] != '['; i++, j++)
-		newStr[j] = s[i];
-
-	newStr[j] = '\0';
-
-	return pstrdup(newStr);
-}
-
-
-/*
  *	index_register() -- record an index that has been set up for building
  *						later.
  *
@@ -1124,7 +1137,7 @@ build_indices(void)
 		heap = heap_open(ILHead->il_heap, NoLock);
 		ind = index_open(ILHead->il_ind, NoLock);
 
-		index_build(heap, ind, ILHead->il_info, false, false);
+		index_build(heap, ind, ILHead->il_info, false, false, false);
 
 		index_close(ind, NoLock);
 		heap_close(heap, NoLock);

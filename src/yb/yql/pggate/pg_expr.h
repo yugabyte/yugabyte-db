@@ -45,6 +45,8 @@ class PgExpr {
     PG_EXPR_COUNT,
     PG_EXPR_MAX,
     PG_EXPR_MIN,
+
+    PG_EXPR_GENERATE_ROWID,
   };
 
   // Public types.
@@ -55,12 +57,13 @@ class PgExpr {
   typedef std::unique_ptr<const PgExpr> UniPtrConst;
 
   // Constructor.
-  explicit PgExpr(Opcode opcode, InternalType internal_type = InternalType::VALUE_NOT_SET);
-  explicit PgExpr(const char *opname, InternalType internal_type = InternalType::VALUE_NOT_SET);
+  explicit PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity);
+  explicit PgExpr(Opcode opcode, const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs);
+  explicit PgExpr(const char *opname, const YBCPgTypeEntity *type_entity);
   virtual ~PgExpr();
 
   // Prepare expression when constructing a statement.
-  virtual CHECKED_STATUS Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+  virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
   // Convert this expression structure to PB format.
   virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
@@ -69,30 +72,59 @@ class PgExpr {
   Opcode opcode() const {
     return opcode_;
   }
+  bool is_constant() {
+    return opcode_ == Opcode::PG_EXPR_CONSTANT;
+  }
 
   // Read the result from input buffer (yb_cursor) that was computed by and sent from DocDB.
   // Write the result to output buffer (pg_cursor) in Postgres format.
   CHECKED_STATUS ResultToPg(Slice *yb_cursor, Slice *pg_cursor);
 
-  // Translate data to DocDB to Postgres format.
-  std::function<void(Slice *, const PgWireDataHeader&, PgTuple *, int)> TranslateData;
+  // Function translate_data_() reads the received data from DocDB and writes it to Postgres buffer
+  // using to_datum().
+  // - DocDB supports a number of datatypes, and we would need to provide one translate function for
+  //   each datatype to read them correctly. The translate_data() function pointer must be setup
+  //   correctly during the compilation of a statement.
+  // - For each postgres data type, to_datum() function pointer must be setup properly during
+  //   the compilation of a statement.
+  void TranslateData(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                     PgTuple *pg_tuple) const {
+    CHECK(translate_data_) << "Data format translation is not provided";
+    translate_data_(yb_cursor, header, index, type_entity_, &type_attrs_, pg_tuple);
+  }
 
+  // Implementation for "translate_data()" for each supported datatype.
+  // Translates DocDB-numeric datatypes.
   template<typename data_type>
-  static void TranslateNumber(Slice *yb_cursor, const PgWireDataHeader& header,
-                              PgTuple *pg_tuple, int index) {
+  static void TranslateNumber(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                              const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                              PgTuple *pg_tuple) {
     if (header.is_null()) {
       return pg_tuple->WriteNull(index, header);
     }
+    DCHECK(type_entity) << "Type entity not provided";
+    DCHECK(type_entity->yb_to_datum) << "Type entity converter not provided";
+
     data_type result = 0;
     size_t read_size = PgDocData::ReadNumber(yb_cursor, &result);
     yb_cursor->remove_prefix(read_size);
-    pg_tuple->Write(index, header, result);
+    pg_tuple->WriteDatum(index, type_entity->yb_to_datum(&result, read_size, type_attrs));
   }
 
-  static void TranslateText(Slice *yb_cursor, const PgWireDataHeader& header,
-                            PgTuple *pg_tuple, int index);
-  static void TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header,
-                              PgTuple *pg_tuple, int index);
+  // Translates DocDB-char-based datatypes.
+  static void TranslateText(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                            PgTuple *pg_tuple);
+
+  // Translates DocDB-binary-based datatypes.
+  static void TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                              const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                              PgTuple *pg_tuple);
+
+  // Translate DocDB-decimal datatype.
+  static void TranslateDecimal(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                               const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                               PgTuple *pg_tuple);
 
   // Translate system column.
   template<typename data_type>
@@ -108,30 +140,39 @@ class PgExpr {
 
   static void TranslateSysCol(Slice *yb_cursor, const PgWireDataHeader& header,
                               PgTuple *pg_tuple, uint8_t **value);
-  static void TranslateCtid(Slice *yb_cursor, const PgWireDataHeader& header,
-                            PgTuple *pg_tuple, int index);
-  static void TranslateOid(Slice *yb_cursor, const PgWireDataHeader& header,
-                           PgTuple *pg_tuple, int index);
-  static void TranslateXmin(Slice *yb_cursor, const PgWireDataHeader& header,
-                            PgTuple *pg_tuple, int index);
-  static void TranslateCmin(Slice *yb_cursor, const PgWireDataHeader& header,
-                            PgTuple *pg_tuple, int index);
-  static void TranslateXmax(Slice *yb_cursor, const PgWireDataHeader& header,
-                            PgTuple *pg_tuple, int index);
-  static void TranslateCmax(Slice *yb_cursor, const PgWireDataHeader& header,
-                            PgTuple *pg_tuple, int index);
-  static void TranslateTableoid(Slice *yb_cursor, const PgWireDataHeader& header,
-                                PgTuple *pg_tuple, int index);
-  static void TranslateYBCtid(Slice *yb_cursor, const PgWireDataHeader& header,
-                              PgTuple *pg_tuple, int index);
+  static void TranslateCtid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                            PgTuple *pg_tuple);
+  static void TranslateOid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                           const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                           PgTuple *pg_tuple);
+  static void TranslateXmin(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                            PgTuple *pg_tuple);
+  static void TranslateCmin(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                            PgTuple *pg_tuple);
+  static void TranslateXmax(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                            PgTuple *pg_tuple);
+  static void TranslateCmax(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                            PgTuple *pg_tuple);
+  static void TranslateTableoid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                                const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                                PgTuple *pg_tuple);
+  static void TranslateYBCtid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                              const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                              PgTuple *pg_tuple);
+  static void TranslateYBBasectid(Slice *yb_cursor, const PgWireDataHeader& header, int index,
+                                  const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
+                                  PgTuple *pg_tuple);
 
   // Read hash_value.
   static CHECKED_STATUS ReadHashValue(const char *doc_key, int key_size, uint16_t *hash_value);
 
   // Get expression type.
-  InternalType internal_type() const {
-    return internal_type_;
-  }
+  InternalType internal_type() const;
 
   // Find opcode.
   static CHECKED_STATUS CheckOperatorName(const char *name);
@@ -140,7 +181,10 @@ class PgExpr {
  protected:
   // Data members.
   Opcode opcode_;
-  InternalType internal_type_;
+  const PgTypeEntity *type_entity_;
+  const PgTypeAttrs type_attrs_;
+  std::function<void(Slice *, const PgWireDataHeader&, int, const YBCPgTypeEntity *,
+                     const PgTypeAttrs *, PgTuple *)> translate_data_;
 };
 
 class PgConstant : public PgExpr {
@@ -152,22 +196,14 @@ class PgConstant : public PgExpr {
   typedef std::unique_ptr<PgConstant> UniPtr;
   typedef std::unique_ptr<const PgConstant> UniPtrConst;
 
-  // Numeric constant.
-  explicit PgConstant(bool value, bool is_null);
-  explicit PgConstant(int16_t value, bool is_null);
-  explicit PgConstant(int32_t value, bool is_null);
-  explicit PgConstant(int64_t value, bool is_null);
-  explicit PgConstant(float value, bool is_null);
-  explicit PgConstant(double value, bool is_null);
-
-  // Character string constant.
-  PgConstant(const char *value, bool is_null);
-  PgConstant(const void *value, size_t bytes, bool is_null);
+  // Constructor.
+  explicit PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null);
 
   // Destructor.
   virtual ~PgConstant();
 
   // Update numeric.
+  void UpdateConstant(int8_t value, bool is_null);
   void UpdateConstant(int16_t value, bool is_null);
   void UpdateConstant(int32_t value, bool is_null);
   void UpdateConstant(int64_t value, bool is_null);
@@ -180,6 +216,11 @@ class PgConstant : public PgExpr {
 
   // Expression to PB.
   virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+
+  // Read binary value.
+  const string &binary_value() {
+    return ql_value_.binary_value();
+  }
 
  private:
   QLValuePB ql_value_;
@@ -194,11 +235,13 @@ class PgColumnRef : public PgExpr {
   typedef std::unique_ptr<PgColumnRef> UniPtr;
   typedef std::unique_ptr<const PgColumnRef> UniPtrConst;
 
-  explicit PgColumnRef(int attr_num);
+  explicit PgColumnRef(int attr_num,
+                       const PgTypeEntity *type_entity,
+                       const PgTypeAttrs *type_attrs);
   virtual ~PgColumnRef();
 
   // Setup ColumnRef expression when constructing statement.
-  virtual CHECKED_STATUS Prepare(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+  virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
   int attr_num() const {
     return attr_num_;
@@ -218,7 +261,7 @@ class PgOperator : public PgExpr {
   typedef std::unique_ptr<const PgOperator> UniPtrConst;
 
   // Constructor.
-  explicit PgOperator(const char *name);
+  explicit PgOperator(const char *name, const YBCPgTypeEntity *type_entity);
   virtual ~PgOperator();
 
   // Append arguments.
@@ -227,6 +270,25 @@ class PgOperator : public PgExpr {
  private:
   const string opname_;
   std::vector<PgExpr*> args_;
+};
+
+class PgGenerateRowId : public PgExpr {
+ public:
+  // Public types.
+  typedef std::shared_ptr<PgGenerateRowId> SharedPtr;
+  typedef std::shared_ptr<const PgGenerateRowId> SharedPtrConst;
+
+  typedef std::unique_ptr<PgGenerateRowId> UniPtr;
+  typedef std::unique_ptr<const PgGenerateRowId> UniPtrConst;
+
+  // Constructor.
+  PgGenerateRowId();
+  virtual ~PgGenerateRowId();
+
+  // Convert this expression structure to PB format.
+  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
+
+ private:
 };
 
 }  // namespace pggate

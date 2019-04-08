@@ -87,7 +87,7 @@ class ScanKeyword {
   }
 
   GramProcessor::token_type token() const {
-    return GramProcessor::token_type(value_);
+    return static_cast<GramProcessor::token_type>(value_);
   }
 
   const char* name() const {
@@ -163,6 +163,14 @@ class LexProcessor : public yyFlexLexer {
   // Access function for current token location.
   const location &token_loc() const {
     return token_loc_;
+  }
+
+  GramProcessor::symbol_type make_symbol(int16_t token, location l) {
+    return GramProcessor::symbol_type(static_cast<GramProcessor::token_type>(token), std::move(l));
+  }
+
+  GramProcessor::symbol_type make_symbol(const ScanKeyword &keyword, location l) {
+    return GramProcessor::symbol_type(keyword.token(), keyword.name(), std::move(l));
   }
 
  private:

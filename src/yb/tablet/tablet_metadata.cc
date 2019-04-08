@@ -146,14 +146,13 @@ Status TableInfo::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) {
   return Status::OK();
 }
 
-Status TableInfo::ToSuperBlock(TabletSuperBlockPB* superblock) {
+void TableInfo::ToSuperBlock(TabletSuperBlockPB* superblock) {
   superblock->set_primary_table_id(table_id);
   superblock->set_deprecated_table_name(table_name);
   superblock->set_deprecated_table_type(table_type);
 
   DCHECK(schema.has_column_ids());
-  RETURN_NOT_OK_PREPEND(SchemaToPB(schema, superblock->mutable_deprecated_schema()),
-                        "Couldn't serialize schema into superblock");
+  SchemaToPB(schema, superblock->mutable_deprecated_schema());
   if (index_info) {
     index_info->ToPB(superblock->mutable_deprecated_index_info());
   }
@@ -165,8 +164,6 @@ Status TableInfo::ToSuperBlock(TabletSuperBlockPB* superblock) {
   for (const DeletedColumn& deleted_col : deleted_cols) {
     deleted_col.CopyToPB(superblock->mutable_deprecated_deleted_cols()->Add());
   }
-
-  return Status::OK();
 }
 
 Status TableInfo::LoadFromPB(const TableInfoPB& pb) {
@@ -192,14 +189,13 @@ Status TableInfo::LoadFromPB(const TableInfoPB& pb) {
   return Status::OK();
 }
 
-Status TableInfo::ToPB(TableInfoPB* pb) {
+void TableInfo::ToPB(TableInfoPB* pb) const {
   pb->set_table_id(table_id);
   pb->set_table_name(table_name);
   pb->set_table_type(table_type);
 
   DCHECK(schema.has_column_ids());
-  RETURN_NOT_OK_PREPEND(SchemaToPB(schema, pb->mutable_schema()),
-                        "Couldn't serialize schema into protocol buffer");
+  SchemaToPB(schema, pb->mutable_schema());
   if (index_info) {
     index_info->ToPB(pb->mutable_index_info());
   }
@@ -211,8 +207,6 @@ Status TableInfo::ToPB(TableInfoPB* pb) {
   for (const DeletedColumn& deleted_col : deleted_cols) {
     deleted_col.CopyToPB(pb->mutable_deleted_cols()->Add());
   }
-
-  return Status::OK();
 }
 
 // ============================================================================
@@ -319,11 +313,21 @@ Status TabletMetadata::LoadOrCreate(FsManager* fs_manager,
   }
 }
 
+template <class TablesMap>
+CHECKED_STATUS MakeTableNotFound(const std::string& table_id, const std::string& tablet_id,
+                                 const TablesMap& tables) {
+  std::string suffix;
+#ifndef NDEBUG
+  suffix = Format(". Tables: $0.", tables);
+#endif
+  return STATUS_FORMAT(NotFound, "Table $0 not found in tablet $1$2", table_id, tablet_id, suffix);
+}
+
 Result<const TableInfo*> TabletMetadata::GetTableInfo(const std::string& table_id) const {
   std::lock_guard<LockType> l(data_lock_);
   const auto iter = tables_.find(!table_id.empty() ? table_id : primary_table_id_);
   if (iter == tables_.end()) {
-    return STATUS_FORMAT(NotFound, "table $0 not found in tablet $1", table_id, tablet_id_);
+    return MakeTableNotFound(table_id, tablet_id_, tables_);
   }
   return iter->second.get();
 }
@@ -332,7 +336,7 @@ Result<TableInfo*> TabletMetadata::GetTableInfo(const std::string& table_id) {
   std::lock_guard<LockType> l(data_lock_);
   const auto iter = tables_.find(!table_id.empty() ? table_id : primary_table_id_);
   if (iter == tables_.end()) {
-    return STATUS_FORMAT(NotFound, "table $0 not found in tablet $1", table_id, tablet_id_);
+    return MakeTableNotFound(table_id, tablet_id_, tables_);
   }
   return iter->second.get();
 }
@@ -360,8 +364,9 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
 
   rocksdb::Options rocksdb_options;
   TabletOptions tablet_options;
+  std::string log_prefix = Format("T $0 P $1: ", tablet_id_, fs_manager_->uuid());
   docdb::InitRocksDBOptions(
-      &rocksdb_options, tablet_id_, nullptr /* statistics */, tablet_options);
+      &rocksdb_options, log_prefix, nullptr /* statistics */, tablet_options);
 
   LOG(INFO) << "Destroying regular db at: " << rocksdb_dir_;
   rocksdb::Status status = rocksdb::DestroyDB(rocksdb_dir_, rocksdb_options);
@@ -397,11 +402,6 @@ Status TabletMetadata::DeleteTabletData(TabletDataState delete_type,
 
 Status TabletMetadata::DeleteSuperBlock() {
   std::lock_guard<LockType> l(data_lock_);
-  if (!orphaned_blocks_.empty()) {
-    return STATUS(InvalidArgument, "The metadata for tablet " + tablet_id_ +
-                                   " still references orphaned blocks. "
-                                   "Call DeleteTabletData() first");
-  }
   if (tablet_data_state_ != TABLET_DATA_DELETED) {
     return STATUS(IllegalState,
         Substitute("Tablet $0 is not in TABLET_DATA_DELETED state. "
@@ -478,8 +478,6 @@ Status TabletMetadata::LoadFromDisk() {
 }
 
 Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) {
-  vector<BlockId> orphaned_blocks;
-
   VLOG(2) << "Loading TabletMetadata from SuperBlockPB:" << std::endl
           << superblock.DebugString();
 
@@ -510,11 +508,6 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
     wal_dir_ = superblock.wal_dir();
     tablet_data_state_ = superblock.tablet_data_state();
 
-    for (const BlockIdPB& block_pb : superblock.orphaned_blocks()) {
-      orphaned_blocks.push_back(BlockId::FromPB(block_pb));
-    }
-    AddOrphanedBlocksUnlocked(orphaned_blocks);
-
     if (superblock.has_tombstone_last_logged_opid()) {
       tombstone_last_logged_opid_ = yb::OpId::FromPB(superblock.tombstone_last_logged_opid());
     } else {
@@ -534,71 +527,6 @@ Status TabletMetadata::LoadFromSuperBlock(const TabletSuperBlockPB& superblock) 
     RETURN_NOT_OK(Flush());
   }
 
-  // Now is a good time to clean up any orphaned blocks that may have been
-  // left behind from a crash just after replacing the superblock.
-  if (!fs_manager()->read_only()) {
-    DeleteOrphanedBlocks(orphaned_blocks);
-  }
-
-  return Status::OK();
-}
-
-void TabletMetadata::AddOrphanedBlocks(const vector<BlockId>& blocks) {
-  std::lock_guard<LockType> l(data_lock_);
-  AddOrphanedBlocksUnlocked(blocks);
-}
-
-void TabletMetadata::AddOrphanedBlocksUnlocked(const vector<BlockId>& blocks) {
-  DCHECK(data_lock_.is_locked());
-  orphaned_blocks_.insert(blocks.begin(), blocks.end());
-}
-
-void TabletMetadata::DeleteOrphanedBlocks(const vector<BlockId>& blocks) {
-  if (PREDICT_FALSE(!FLAGS_enable_tablet_orphaned_block_deletion)) {
-    LOG_WITH_PREFIX(WARNING) << "Not deleting " << blocks.size()
-        << " block(s) from disk. Block deletion disabled via "
-        << "--enable_tablet_orphaned_block_deletion=false";
-    return;
-  }
-
-  vector<BlockId> deleted;
-  for (const BlockId& b : blocks) {
-    Status s = fs_manager()->DeleteBlock(b);
-    // If we get NotFound, then the block was actually successfully
-    // deleted before. So, we can remove it from our orphaned block list
-    // as if it was a success.
-    if (!s.ok() && !s.IsNotFound()) {
-      WARN_NOT_OK(s, Substitute("Could not delete block $0", b.ToString()));
-      continue;
-    }
-
-    deleted.push_back(b);
-  }
-
-  // Remove the successfully-deleted blocks from the set.
-  {
-    std::lock_guard<LockType> l(data_lock_);
-    for (const BlockId& b : deleted) {
-      orphaned_blocks_.erase(b);
-    }
-  }
-}
-
-void TabletMetadata::PinFlush() {
-  std::lock_guard<LockType> l(data_lock_);
-  CHECK_GE(num_flush_pins_, 0);
-  num_flush_pins_++;
-  VLOG(1) << "Number of flush pins: " << num_flush_pins_;
-}
-
-Status TabletMetadata::UnPinFlush() {
-  std::unique_lock<LockType> l(data_lock_);
-  CHECK_GT(num_flush_pins_, 0);
-  num_flush_pins_--;
-  if (needs_flush_) {
-    l.unlock();
-    RETURN_NOT_OK(Flush());
-  }
   return Status::OK();
 }
 
@@ -607,37 +535,13 @@ Status TabletMetadata::Flush() {
                "tablet_id", tablet_id_);
 
   MutexLock l_flush(flush_lock_);
-  vector<BlockId> orphaned;
   TabletSuperBlockPB pb;
   {
     std::lock_guard<LockType> l(data_lock_);
-    CHECK_GE(num_flush_pins_, 0);
-    if (num_flush_pins_ > 0) {
-      needs_flush_ = true;
-      LOG(INFO) << "Not flushing: waiting for " << num_flush_pins_ << " pins to be released.";
-      return Status::OK();
-    }
-    needs_flush_ = false;
-
-    RETURN_NOT_OK(ToSuperBlockUnlocked(&pb));
-
-    // Make a copy of the orphaned blocks list which corresponds to the superblock
-    // that we're writing. It's important to take this local copy to avoid a race
-    // in which another thread may add new orphaned blocks to the 'orphaned_blocks_'
-    // set while we're in the process of writing the new superblock to disk. We don't
-    // want to accidentally delete those blocks before that next metadata update
-    // is persisted. See KUDU-701 for details.
-    orphaned.assign(orphaned_blocks_.begin(), orphaned_blocks_.end());
+    ToSuperBlockUnlocked(&pb);
   }
   RETURN_NOT_OK(ReplaceSuperBlockUnlocked(pb));
   TRACE("Metadata flushed");
-  l_flush.Unlock();
-
-  // Now that the superblock is written, try to delete the orphaned blocks.
-  //
-  // If we crash just before the deletion, we'll retry when reloading from
-  // disk; the orphaned blocks were persisted as part of the superblock.
-  DeleteOrphanedBlocks(orphaned);
 
   return Status::OK();
 }
@@ -678,13 +582,13 @@ Status TabletMetadata::ReadSuperBlockFromDisk(TabletSuperBlockPB* superblock) co
   return Status::OK();
 }
 
-Status TabletMetadata::ToSuperBlock(TabletSuperBlockPB* superblock) const {
+void TabletMetadata::ToSuperBlock(TabletSuperBlockPB* superblock) const {
   // acquire the lock so that rowsets_ doesn't get changed until we're finished.
   std::lock_guard<LockType> l(data_lock_);
-  return ToSuperBlockUnlocked(superblock);
+  ToSuperBlockUnlocked(superblock);
 }
 
-Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) const {
+void TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) const {
   DCHECK(data_lock_.is_locked());
   // Convert to protobuf
   TabletSuperBlockPB pb;
@@ -692,7 +596,7 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) cons
   partition_.ToPB(pb.mutable_partition());
 
   for (const auto& iter : tables_) {
-    RETURN_NOT_OK(iter.second->ToPB(pb.add_tables()));
+    iter.second->ToPB(pb.add_tables());
   }
 
   pb.set_last_durable_mrs_id(last_durable_mrs_id_);
@@ -703,14 +607,9 @@ Status TabletMetadata::ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) cons
     tombstone_last_logged_opid_.ToPB(pb.mutable_tombstone_last_logged_opid());
   }
 
-  for (const BlockId& block_id : orphaned_blocks_) {
-    block_id.CopyToPB(pb.mutable_orphaned_blocks()->Add());
-  }
-
-  RETURN_NOT_OK(tables_.at(primary_table_id_)->ToSuperBlock(&pb));
+  tables_.find(primary_table_id_)->second->ToSuperBlock(&pb);
 
   superblock->Swap(&pb);
-  return Status::OK();
 }
 
 void TabletMetadata::SetSchema(const Schema& schema,
@@ -738,7 +637,7 @@ void TabletMetadata::SetPartitionSchema(const PartitionSchema& partition_schema)
 
 void TabletMetadata::SetTableName(const string& table_name) {
   std::lock_guard<LockType> l(data_lock_);
-  tables_.at(primary_table_id_)->table_name = table_name;
+  tables_[primary_table_id_]->table_name = table_name;
 }
 
 void TabletMetadata::AddTable(const std::string& table_id,
@@ -747,7 +646,6 @@ void TabletMetadata::AddTable(const std::string& table_id,
                               const Schema& schema,
                               const IndexMap& index_map,
                               const PartitionSchema& partition_schema,
-                              const Partition& partition,
                               const boost::optional<IndexInfo>& index_info,
                               const uint32_t schema_version) {
   DCHECK(schema.has_column_ids());

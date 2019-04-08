@@ -3,7 +3,7 @@
  * geo_ops.c
  *	  2D geometric operations
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -41,7 +41,6 @@ enum path_delim
 static int	point_inside(Point *p, int npts, Point *plist);
 static int	lseg_crossing(double x, double y, double px, double py);
 static BOX *box_construct(double x1, double x2, double y1, double y2);
-static BOX *box_copy(BOX *box);
 static BOX *box_fill(BOX *result, double x1, double x2, double y1, double y2);
 static bool box_ov(BOX *box1, BOX *box2);
 static double box_ht(BOX *box);
@@ -482,7 +481,7 @@ box_fill(BOX *result, double x1, double x2, double y1, double y2)
 
 /*		box_copy		-		copy a box
  */
-static BOX *
+BOX *
 box_copy(BOX *box)
 {
 	BOX		   *result = (BOX *) palloc(sizeof(BOX));
@@ -1433,7 +1432,7 @@ path_send(PG_FUNCTION_ARGS)
 
 	pq_begintypsend(&buf);
 	pq_sendbyte(&buf, path->closed ? 1 : 0);
-	pq_sendint(&buf, path->npts, sizeof(int32));
+	pq_sendint32(&buf, path->npts);
 	for (i = 0; i < path->npts; i++)
 	{
 		pq_sendfloat8(&buf, path->p[i].x);
@@ -1530,7 +1529,7 @@ path_close(PG_FUNCTION_ARGS)
 {
 	PATH	   *path = PG_GETARG_PATH_P_COPY(0);
 
-	path->closed = TRUE;
+	path->closed = true;
 
 	PG_RETURN_PATH_P(path);
 }
@@ -1540,7 +1539,7 @@ path_open(PG_FUNCTION_ARGS)
 {
 	PATH	   *path = PG_GETARG_PATH_P_COPY(0);
 
-	path->closed = FALSE;
+	path->closed = false;
 
 	PG_RETURN_PATH_P(path);
 }
@@ -3514,7 +3513,7 @@ poly_send(PG_FUNCTION_ARGS)
 	int32		i;
 
 	pq_begintypsend(&buf);
-	pq_sendint(&buf, poly->npts, sizeof(int32));
+	pq_sendint32(&buf, poly->npts);
 	for (i = 0; i < poly->npts; i++)
 	{
 		pq_sendfloat8(&buf, poly->p[i].x);
@@ -4499,7 +4498,7 @@ poly_path(PG_FUNCTION_ARGS)
 
 	SET_VARSIZE(path, size);
 	path->npts = poly->npts;
-	path->closed = TRUE;
+	path->closed = true;
 	/* prevent instability in unused pad bytes */
 	path->dummy = 0;
 
@@ -5401,7 +5400,7 @@ plist_same(int npts, Point *p1, Point *p2)
 			printf("plist_same- ii = %d/%d after forward match\n", ii, npts);
 #endif
 			if (ii == npts)
-				return TRUE;
+				return true;
 
 			/* match not found forwards? then look backwards */
 			for (ii = 1, j = i - 1; ii < npts; ii++, j--)
@@ -5421,11 +5420,11 @@ plist_same(int npts, Point *p1, Point *p2)
 			printf("plist_same- ii = %d/%d after reverse match\n", ii, npts);
 #endif
 			if (ii == npts)
-				return TRUE;
+				return true;
 		}
 	}
 
-	return FALSE;
+	return false;
 }
 
 

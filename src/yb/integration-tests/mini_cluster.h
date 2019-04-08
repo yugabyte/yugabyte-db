@@ -62,6 +62,10 @@ namespace server {
 class SkewedClockDeltaChanger;
 }
 
+namespace tablet {
+class TabletPeer;
+}
+
 namespace tserver {
 class MiniTabletServer;
 }
@@ -112,6 +116,7 @@ class MiniCluster : public MiniClusterBase {
   CHECKED_STATUS FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAll);
+  CHECKED_STATUS CompactTablets();
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
 
@@ -164,6 +169,8 @@ class MiniCluster : public MiniClusterBase {
 
   std::string GetTabletServerFsRoot(int idx);
 
+  std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(int idx);
+
   // Wait for the given tablet to have 'expected_count' replicas
   // reported on the master. Returns the locations in '*locations'.
   // Requires that the master has started;
@@ -210,8 +217,6 @@ class MiniCluster : public MiniClusterBase {
   // mean we pick the maximum number of masters/tservers that we already know we'll need.
   void EnsurePortsAllocated(int new_num_masters = 0, int num_tservers = 0);
 
-  std::atomic<bool> running_ { false };
-
   Env* const env_ = nullptr;
   const std::string fs_root_;
   const int num_masters_initial_;
@@ -231,6 +236,28 @@ class MiniCluster : public MiniClusterBase {
 
 MUST_USE_RESULT std::vector<server::SkewedClockDeltaChanger> SkewClocks(
     MiniCluster* cluster, std::chrono::milliseconds clock_skew);
+
+void StepDownAllTablets(MiniCluster* cluster);
+void StepDownRandomTablet(MiniCluster* cluster);
+
+YB_DEFINE_ENUM(ListPeersFilter, (kAll)(kLeaders)(kNonLeaders));
+
+std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
+    MiniCluster* cluster, ListPeersFilter filter);
+
+std::vector<std::shared_ptr<tablet::TabletPeer>> ListTabletPeers(
+    MiniCluster* cluster,
+    const std::function<bool(const std::shared_ptr<tablet::TabletPeer>&)>& filter);
+
+CHECKED_STATUS WaitForLeaderOfSingleTablet(
+    MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
+    const std::string& description);
+
+YB_STRONGLY_TYPED_BOOL(ForceStepDown);
+
+CHECKED_STATUS StepDown(
+    tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
+    ForceStepDown force_step_down);
 
 }  // namespace yb
 

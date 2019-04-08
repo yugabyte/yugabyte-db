@@ -62,7 +62,7 @@ class SysCatalogWriter;
 
 static const char* const kSysCatalogTabletId = "00000000000000000000000000000000";
 static const char* const kSysCatalogTableId = "sys.catalog.uuid";
-static const char* const kSysCatalogTableName = "catalog";
+static const char* const kSysCatalogTableName = "sys.catalog";
 static const char* const kSysCatalogTableColType = "entry_type";
 static const char* const kSysCatalogTableColId = "entry_id";
 static const char* const kSysCatalogTableColMetadata = "metadata";
@@ -85,8 +85,7 @@ class SysCatalogTable {
   // the consensus configuration's progress, any long running tasks (e.g., scanning
   // tablets) should be performed asynchronously (by, e.g., submitting
   // them to a to a separate threadpool).
-  SysCatalogTable(Master* master, MetricRegistry* metrics,
-                  ElectedLeaderCallback leader_cb);
+  SysCatalogTable(Master* master, MetricRegistry* metrics, ElectedLeaderCallback leader_cb);
 
   ~SysCatalogTable();
 
@@ -104,7 +103,6 @@ class SysCatalogTable {
   // ==================================================================
   template <class Item>
   CHECKED_STATUS AddItem(Item* item, int64_t leader_term);
-
   template <class Item>
   CHECKED_STATUS AddItems(const vector<Item*>& items, int64_t leader_term);
 
@@ -114,10 +112,9 @@ class SysCatalogTable {
   CHECKED_STATUS UpdateItems(const vector<Item*>& items, int64_t leader_term);
 
   template <class Item>
-  CHECKED_STATUS AddAndUpdateItems(
-      const vector<Item*>& added_items,
-      const vector<Item*>& updated_items,
-      int64_t leader_term);
+  CHECKED_STATUS AddAndUpdateItems(const vector<Item*>& added_items,
+                                   const vector<Item*>& updated_items,
+                                   int64_t leader_term);
 
   template <class Item>
   CHECKED_STATUS DeleteItem(Item* item, int64_t leader_term);
@@ -125,8 +122,9 @@ class SysCatalogTable {
   CHECKED_STATUS DeleteItems(const vector<Item*>& items, int64_t leader_term);
 
   template <class Item>
-  CHECKED_STATUS MutateItems(
-      const vector<Item*>& items, const QLWriteRequestPB::QLStmtType& op_type, int64_t leader_term);
+  CHECKED_STATUS MutateItems(const vector<Item*>& items,
+                             const QLWriteRequestPB::QLStmtType& op_type,
+                             int64_t leader_term);
 
   // ==================================================================
   // Static schema related methods.
@@ -160,12 +158,18 @@ class SysCatalogTable {
 
   CHECKED_STATUS Visit(VisitorBase* visitor);
 
+  // Copy the content of a co-located table in sys catalog.
+  CHECKED_STATUS CopyPgsqlTable(const TableId& source_table_id,
+                                const TableId& target_table_id,
+                                const TableId& target_indexed_table_id,
+                                int64_t leader_term);
+
  private:
   friend class CatalogManager;
 
   inline std::unique_ptr<SysCatalogWriter> NewWriter(int64_t leader_term);
 
-  const char *table_name() const { return "sys.catalog"; }
+  const char *table_name() const { return kSysCatalogTableName; }
 
   // Return the schema of the table.
   // NOTE: This is the "server-side" schema, so it must have the column IDs.

@@ -23,6 +23,74 @@
 #ifndef YBCMODIFYTABLE_H
 #define YBCMODIFYTABLE_H
 
-extern Oid YBCExecuteInsert(Relation rel, TupleDesc tupleDesc, HeapTuple tuple);
+#include "nodes/execnodes.h"
+#include "executor/tuptable.h"
+
+//------------------------------------------------------------------------------
+// YugaByte modify table API.
+
+/*
+ * Insert a tuple into a YugaByte table. Will execute within a distributed
+ * transaction if the table is transactional (YSQL default).
+ */
+extern Oid YBCExecuteInsert(Relation rel,
+                            TupleDesc tupleDesc,
+                            HeapTuple tuple);
+
+/*
+ * Execute (the only) insert from a single row transaction into a
+ * YugaByte table. Will execute as a single-row transaction.
+ * Assumes the caller checked that it is safe to do so.
+ */
+extern Oid YBCExecuteSingleRowTxnInsert(Relation rel,
+                                        TupleDesc tupleDesc,
+                                        HeapTuple tuple);
+
+/*
+ * Insert a tuple into the an index's backing YugaByte index table.
+ */
+extern void YBCExecuteInsertIndex(Relation rel,
+                                  Datum *values,
+                                  bool *isnull,
+                                  Datum ybctid);
+
+/*
+ * Delete a tuple (identified by ybctid) from a YugaByte table.
+ */
+extern void YBCExecuteDelete(Relation rel, TupleTableSlot *slot);
+/*
+ * Delete a tuple (identified by index columns and base table ybctid) from an
+ * index's backing YugaByte index table.
+ */
+extern void YBCExecuteDeleteIndex(Relation index,
+                                  Datum *values,
+                                  bool *isnull,
+                                  Datum ybctid);
+
+/*
+ * Update a row (identified by ybctid) in a YugaByte table.
+ */
+extern void YBCExecuteUpdate(Relation rel, TupleTableSlot *slot, HeapTuple tuple);
+
+//------------------------------------------------------------------------------
+// System tables modify-table API.
+// For system tables we identify rows to update/delete directly by primary key
+// and execute them directly (rather than needing to read ybctid first).
+// TODO This should be used for regular tables whenever possible.
+
+extern void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple);
+
+extern void YBCUpdateSysCatalogTuple(Relation rel,
+									 HeapTuple oldtuple,
+									 HeapTuple tuple);
+
+// Buffer write operations.
+extern void YBCStartBufferingWriteOperations();
+extern void YBCFlushBufferedWriteOperations();
+
+//------------------------------------------------------------------------------
+// Utility methods.
+
+extern Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot);
 
 #endif							/* YBCMODIFYTABLE_H */

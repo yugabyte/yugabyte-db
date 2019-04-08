@@ -4,7 +4,7 @@
  *
  *	  Routines for aggregate-manipulation commands
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -39,6 +39,9 @@
 #include "utils/syscache.h"
 
 
+static char extractModify(DefElem *defel);
+
+
 /*
  *	DefineAggregate
  *
@@ -67,6 +70,8 @@ DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle, List 
 	List	   *mfinalfuncName = NIL;
 	bool		finalfuncExtraArgs = false;
 	bool		mfinalfuncExtraArgs = false;
+	char		finalfuncModify = 0;
+	char		mfinalfuncModify = 0;
 	List	   *sortoperatorName = NIL;
 	TypeName   *baseType = NULL;
 	TypeName   *transType = NULL;
@@ -97,7 +102,7 @@ DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle, List 
 	/* Check we have creation rights in target namespace */
 	aclresult = pg_namespace_aclcheck(aggNamespace, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+		aclcheck_error(aclresult, OBJECT_SCHEMA,
 					   get_namespace_name(aggNamespace));
 
 	/* Deconstruct the output of the aggr_args grammar production */
@@ -121,33 +126,37 @@ DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle, List 
 		 * sfunc1, stype1, and initcond1 are accepted as obsolete spellings
 		 * for sfunc, stype, initcond.
 		 */
-		if (pg_strcasecmp(defel->defname, "sfunc") == 0)
+		if (strcmp(defel->defname, "sfunc") == 0)
 			transfuncName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "sfunc1") == 0)
+		else if (strcmp(defel->defname, "sfunc1") == 0)
 			transfuncName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "finalfunc") == 0)
+		else if (strcmp(defel->defname, "finalfunc") == 0)
 			finalfuncName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "combinefunc") == 0)
+		else if (strcmp(defel->defname, "combinefunc") == 0)
 			combinefuncName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "serialfunc") == 0)
+		else if (strcmp(defel->defname, "serialfunc") == 0)
 			serialfuncName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "deserialfunc") == 0)
+		else if (strcmp(defel->defname, "deserialfunc") == 0)
 			deserialfuncName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "msfunc") == 0)
+		else if (strcmp(defel->defname, "msfunc") == 0)
 			mtransfuncName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "minvfunc") == 0)
+		else if (strcmp(defel->defname, "minvfunc") == 0)
 			minvtransfuncName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "mfinalfunc") == 0)
+		else if (strcmp(defel->defname, "mfinalfunc") == 0)
 			mfinalfuncName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "finalfunc_extra") == 0)
+		else if (strcmp(defel->defname, "finalfunc_extra") == 0)
 			finalfuncExtraArgs = defGetBoolean(defel);
-		else if (pg_strcasecmp(defel->defname, "mfinalfunc_extra") == 0)
+		else if (strcmp(defel->defname, "mfinalfunc_extra") == 0)
 			mfinalfuncExtraArgs = defGetBoolean(defel);
-		else if (pg_strcasecmp(defel->defname, "sortop") == 0)
+		else if (strcmp(defel->defname, "finalfunc_modify") == 0)
+			finalfuncModify = extractModify(defel);
+		else if (strcmp(defel->defname, "mfinalfunc_modify") == 0)
+			mfinalfuncModify = extractModify(defel);
+		else if (strcmp(defel->defname, "sortop") == 0)
 			sortoperatorName = defGetQualifiedName(defel);
-		else if (pg_strcasecmp(defel->defname, "basetype") == 0)
+		else if (strcmp(defel->defname, "basetype") == 0)
 			baseType = defGetTypeName(defel);
-		else if (pg_strcasecmp(defel->defname, "hypothetical") == 0)
+		else if (strcmp(defel->defname, "hypothetical") == 0)
 		{
 			if (defGetBoolean(defel))
 			{
@@ -158,23 +167,23 @@ DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle, List 
 				aggKind = AGGKIND_HYPOTHETICAL;
 			}
 		}
-		else if (pg_strcasecmp(defel->defname, "stype") == 0)
+		else if (strcmp(defel->defname, "stype") == 0)
 			transType = defGetTypeName(defel);
-		else if (pg_strcasecmp(defel->defname, "stype1") == 0)
+		else if (strcmp(defel->defname, "stype1") == 0)
 			transType = defGetTypeName(defel);
-		else if (pg_strcasecmp(defel->defname, "sspace") == 0)
+		else if (strcmp(defel->defname, "sspace") == 0)
 			transSpace = defGetInt32(defel);
-		else if (pg_strcasecmp(defel->defname, "mstype") == 0)
+		else if (strcmp(defel->defname, "mstype") == 0)
 			mtransType = defGetTypeName(defel);
-		else if (pg_strcasecmp(defel->defname, "msspace") == 0)
+		else if (strcmp(defel->defname, "msspace") == 0)
 			mtransSpace = defGetInt32(defel);
-		else if (pg_strcasecmp(defel->defname, "initcond") == 0)
+		else if (strcmp(defel->defname, "initcond") == 0)
 			initval = defGetString(defel);
-		else if (pg_strcasecmp(defel->defname, "initcond1") == 0)
+		else if (strcmp(defel->defname, "initcond1") == 0)
 			initval = defGetString(defel);
-		else if (pg_strcasecmp(defel->defname, "minitcond") == 0)
+		else if (strcmp(defel->defname, "minitcond") == 0)
 			minitval = defGetString(defel);
-		else if (pg_strcasecmp(defel->defname, "parallel") == 0)
+		else if (strcmp(defel->defname, "parallel") == 0)
 			parallel = defGetString(defel);
 		else
 			ereport(WARNING,
@@ -236,6 +245,15 @@ DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle, List 
 	}
 
 	/*
+	 * Default values for modify flags can only be determined once we know the
+	 * aggKind.
+	 */
+	if (finalfuncModify == 0)
+		finalfuncModify = (aggKind == AGGKIND_NORMAL) ? AGGMODIFY_READ_ONLY : AGGMODIFY_READ_WRITE;
+	if (mfinalfuncModify == 0)
+		mfinalfuncModify = (aggKind == AGGKIND_NORMAL) ? AGGMODIFY_READ_ONLY : AGGMODIFY_READ_WRITE;
+
+	/*
 	 * look up the aggregate's input datatype(s).
 	 */
 	if (oldstyle)
@@ -288,7 +306,7 @@ DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle, List 
 		interpret_function_parameter_list(pstate,
 										  args,
 										  InvalidOid,
-										  true, /* is an aggregate */
+										  OBJECT_AGGREGATE,
 										  &parameterTypes,
 										  &allParameterTypes,
 										  &parameterModes,
@@ -401,11 +419,11 @@ DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle, List 
 
 	if (parallel)
 	{
-		if (pg_strcasecmp(parallel, "safe") == 0)
+		if (strcmp(parallel, "safe") == 0)
 			proparallel = PROPARALLEL_SAFE;
-		else if (pg_strcasecmp(parallel, "restricted") == 0)
+		else if (strcmp(parallel, "restricted") == 0)
 			proparallel = PROPARALLEL_RESTRICTED;
-		else if (pg_strcasecmp(parallel, "unsafe") == 0)
+		else if (strcmp(parallel, "unsafe") == 0)
 			proparallel = PROPARALLEL_UNSAFE;
 		else
 			ereport(ERROR,
@@ -437,6 +455,8 @@ DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle, List 
 						   mfinalfuncName,	/* final function name */
 						   finalfuncExtraArgs,
 						   mfinalfuncExtraArgs,
+						   finalfuncModify,
+						   mfinalfuncModify,
 						   sortoperatorName,	/* sort operator name */
 						   transTypeId, /* transition data type */
 						   transSpace,	/* transition space */
@@ -445,4 +465,25 @@ DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle, List 
 						   initval, /* initial condition */
 						   minitval,	/* initial condition */
 						   proparallel);	/* parallel safe? */
+}
+
+/*
+ * Convert the string form of [m]finalfunc_modify to the catalog representation
+ */
+static char
+extractModify(DefElem *defel)
+{
+	char	   *val = defGetString(defel);
+
+	if (strcmp(val, "read_only") == 0)
+		return AGGMODIFY_READ_ONLY;
+	if (strcmp(val, "shareable") == 0)
+		return AGGMODIFY_SHAREABLE;
+	if (strcmp(val, "read_write") == 0)
+		return AGGMODIFY_READ_WRITE;
+	ereport(ERROR,
+			(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("parameter \"%s\" must be READ_ONLY, SHAREABLE, or READ_WRITE",
+					defel->defname)));
+	return 0;					/* keep compiler quiet */
 }

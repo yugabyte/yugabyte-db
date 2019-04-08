@@ -2,7 +2,7 @@
  *
  * aclchk_internal.h
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/aclchk_internal.h
@@ -26,12 +26,12 @@
  * Note: 'all_privs' and 'privileges' represent object-level privileges only.
  * There might also be column-level privilege specifications, which are
  * represented in col_privs (this is a list of untransformed AccessPriv nodes).
- * Column privileges are only valid for objtype ACL_OBJECT_RELATION.
+ * Column privileges are only valid for objtype OBJECT_TABLE.
  */
 typedef struct
 {
 	bool		is_grant;
-	GrantObjectType objtype;
+	ObjectType	objtype;
 	List	   *objects;
 	bool		all_privs;
 	AclMode		privileges;

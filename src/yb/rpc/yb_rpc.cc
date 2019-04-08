@@ -32,6 +32,7 @@
 
 using google::protobuf::io::CodedInputStream;
 using yb::operator"" _MB;
+using namespace std::literals;
 
 DECLARE_bool(rpc_dump_all_traces);
 // Maximum size of RPC should be larger than size of consensus batch
@@ -69,26 +70,21 @@ using google::protobuf::MessageLite;
 using google::protobuf::io::CodedOutputStream;
 
 YBConnectionContext::YBConnectionContext(
-    GrowableBufferAllocator* allocator,
+    size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
     const MemTrackerPtr& call_tracker)
-    : ConnectionContextWithCallId(allocator),
-      parser_(kMsgLengthPrefixLength, 0 /* size_offset */, FLAGS_rpc_max_message_size,
-              IncludeHeader::kFalse, this),
+    : parser_(buffer_tracker, kMsgLengthPrefixLength, 0 /* size_offset */,
+              FLAGS_rpc_max_message_size, IncludeHeader::kFalse, this),
+      read_buffer_(receive_buffer_size, buffer_tracker),
       call_tracker_(call_tracker) {}
 
 YBConnectionContext::~YBConnectionContext() {}
 
-size_t YBConnectionContext::BufferLimit() {
-  return FLAGS_rpc_max_message_size;
-}
-
-Result<size_t> YBInboundConnectionContext::ProcessCalls(const ConnectionPtr& connection,
-                                                        const IoVecs& data,
-                                                        ReadBufferFull read_buffer_full) {
+Result<ProcessDataResult> YBInboundConnectionContext::ProcessCalls(
+    const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
   if (state_ == RpcConnectionPB::NEGOTIATING) {
     // We assume that header is fully contained in the first block.
     if (data[0].iov_len < kConnectionHeaderSize) {
-      return 0;
+      return ProcessDataResult{ 0, Slice() };
     }
 
     Slice slice(static_cast<const char*>(data[0].iov_base), data[0].iov_len);
@@ -101,14 +97,16 @@ Result<size_t> YBInboundConnectionContext::ProcessCalls(const ConnectionPtr& con
     IoVecs data_copy(data);
     data_copy[0].iov_len -= kConnectionHeaderSize;
     data_copy[0].iov_base = const_cast<uint8_t*>(slice.data() + kConnectionHeaderSize);
-    return VERIFY_RESULT(parser().Parse(connection, data_copy)) + kConnectionHeaderSize;
+    auto result = VERIFY_RESULT(parser().Parse(connection, data_copy, ReadBufferFull::kFalse));
+    result.consumed += kConnectionHeaderSize;
+    return result;
   }
 
-  return parser().Parse(connection, data);
+  return parser().Parse(connection, data, read_buffer_full);
 }
 
 Status YBInboundConnectionContext::HandleCall(
-    const ConnectionPtr& connection, std::vector<char>* call_data) {
+    const ConnectionPtr& connection, CallData* call_data) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
@@ -140,33 +138,31 @@ void YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
 }
 
 YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener)
-    : InboundCall(std::move(conn), std::move(call_processed_listener)) {}
+    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, std::move(call_processed_listener)) {}
 
-YBInboundCall::YBInboundCall(const RemoteMethod& remote_method)
-    : YBInboundCall(nullptr /* conn */, nullptr /* call_processed_listener */) {
+YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method)
+    : InboundCall(nullptr /* conn */, rpc_metrics, nullptr /* call_processed_listener */) {
   remote_method_ = remote_method;
 }
 
 YBInboundCall::~YBInboundCall() {}
 
-MonoTime YBInboundCall::GetClientDeadline() const {
+CoarseTimePoint YBInboundCall::GetClientDeadline() const {
   if (!header_.has_timeout_millis() || header_.timeout_millis() == 0) {
-    return MonoTime::Max();
+    return CoarseTimePoint::max();
   }
-  MonoTime deadline = timing_.time_received;
-  deadline.AddDelta(MonoDelta::FromMilliseconds(header_.timeout_millis()));
-  return deadline;
+  return ToCoarse(timing_.time_received) + header_.timeout_millis() * 1ms;
 }
 
-Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, std::vector<char>* call_data) {
+Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call_data) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "YBInboundCall", this);
   TRACE_EVENT0("rpc", "YBInboundCall::ParseFrom");
 
-  consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
-
-  request_data_.swap(*call_data);
-  Slice source(request_data_.data(), request_data_.size());
+  Slice source(call_data->data(), call_data->size());
   RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &serialized_request_));
+
+  consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
+  request_data_ = std::move(*call_data);
 
   // Adopt the service/method info from the header as soon as it's available.
   if (PREDICT_FALSE(!header_.has_remote_method())) {
@@ -196,7 +192,20 @@ Status YBInboundCall::AddRpcSidecar(RefCntBuffer car, int* idx) {
   return Status::OK();
 }
 
+int YBInboundCall::RpcSidecarsSize() const {
+  return sidecars_.size();
+}
+
+const RefCntBuffer& YBInboundCall::RpcSidecar(int idx) {
+  return sidecars_[idx];
+}
+
 void YBInboundCall::ResetRpcSidecars() {
+  if (consumption_) {
+    for (const auto& sidecar : sidecars_) {
+      consumption_.Add(-sidecar.size());
+    }
+  }
   sidecars_.clear();
 }
 
@@ -290,13 +299,14 @@ void YBInboundCall::LogTrace() const {
   }
 }
 
-void YBInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
+void YBInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   TRACE_EVENT0("rpc", "YBInboundCall::Serialize");
   CHECK_GT(response_buf_.size(), 0);
-  output->push_back(response_buf_);
+  output->push_back(std::move(response_buf_));
   for (auto& car : sidecars_) {
-    output->push_back(car);
+    output->push_back(std::move(car));
   }
+  sidecars_.clear();
 }
 
 Status YBInboundCall::ParseParam(google::protobuf::Message *message) {
@@ -374,7 +384,7 @@ void YBInboundCall::Respond(const MessageLite& response, bool is_success) {
 }
 
 Status YBOutboundConnectionContext::HandleCall(
-    const ConnectionPtr& connection, std::vector<char>* call_data) {
+    const ConnectionPtr& connection, CallData* call_data) {
   return connection->HandleCallResponse(call_data);
 }
 
@@ -386,10 +396,9 @@ void YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connecti
   connection->QueueOutboundData(ConnectionHeaderInstance());
 }
 
-Result<size_t> YBOutboundConnectionContext::ProcessCalls(const ConnectionPtr& connection,
-                                                         const IoVecs& data,
-                                                         ReadBufferFull read_buffer_full) {
-  return parser().Parse(connection, data);
+Result<ProcessDataResult> YBOutboundConnectionContext::ProcessCalls(
+    const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
+  return parser().Parse(connection, data, read_buffer_full);
 }
 
 } // namespace rpc

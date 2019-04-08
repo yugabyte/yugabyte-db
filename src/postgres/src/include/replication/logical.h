@@ -2,7 +2,7 @@
  * logical.h
  *	   PostgreSQL logical decoding coordination
  *
- * Copyright (c) 2012-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2018, PostgreSQL Global Development Group
  *
  *-------------------------------------------------------------------------
  */
@@ -44,6 +44,13 @@ typedef struct LogicalDecodingContext
 	XLogReaderState *reader;
 	struct ReorderBuffer *reorder;
 	struct SnapBuild *snapshot_builder;
+
+	/*
+	 * Marks the logical decoding context as fast forward decoding one. Such a
+	 * context does not have plugin loaded so most of the the following
+	 * properties are unused.
+	 */
+	bool		fast_forward;
 
 	OutputPluginCallbacks callbacks;
 	OutputPluginOptions options;
@@ -97,6 +104,7 @@ extern LogicalDecodingContext *CreateInitDecodingContext(char *plugin,
 extern LogicalDecodingContext *CreateDecodingContext(
 					  XLogRecPtr start_lsn,
 					  List *output_plugin_options,
+					  bool fast_forward,
 					  XLogPageReadCB read_page,
 					  LogicalOutputPluginWriterPrepareWrite prepare_write,
 					  LogicalOutputPluginWriterWrite do_write,

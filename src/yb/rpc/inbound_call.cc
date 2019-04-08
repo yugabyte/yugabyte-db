@@ -39,6 +39,7 @@
 #include "yb/rpc/connection.h"
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/service_pool.h"
 
@@ -79,17 +80,22 @@ TAG_FLAG(rpc_slow_query_threshold_ms, runtime);
 namespace yb {
 namespace rpc {
 
-InboundCall::InboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener)
+InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
+                         CallProcessedListener call_processed_listener)
     : trace_(new Trace),
       conn_(std::move(conn)),
+      rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
       call_processed_listener_(std::move(call_processed_listener)) {
   TRACE_TO(trace_, "Created InboundCall");
+  IncrementCounter(rpc_metrics_->inbound_calls_created);
+  IncrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
 InboundCall::~InboundCall() {
   TRACE_TO(trace_, "Destroying InboundCall");
   YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
       << "Tracing op: \n " << trace_->DumpToString(true);
+  DecrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
 void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
@@ -160,12 +166,11 @@ void InboundCall::RecordHandlingCompleted(scoped_refptr<Histogram> handler_run_t
 
 bool InboundCall::ClientTimedOut() const {
   auto deadline = GetClientDeadline();
-  if (deadline.Equals(MonoTime::Max())) {
+  if (deadline == CoarseTimePoint::max()) {
     return false;
   }
 
-  MonoTime now = MonoTime::Now();
-  return deadline.ComesBefore(now);
+  return deadline < CoarseMonoClock::now();
 }
 
 void InboundCall::QueueResponse(bool is_success) {

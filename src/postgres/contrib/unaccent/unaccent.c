@@ -3,7 +3,7 @@
  * unaccent.c
  *	  Text search unaccent dictionary
  *
- * Copyright (c) 2009-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2009-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/unaccent/unaccent.c
@@ -20,7 +20,9 @@
 #include "tsearch/ts_locale.h"
 #include "tsearch/ts_public.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/regproc.h"
+#include "utils/syscache.h"
 
 PG_MODULE_MAGIC;
 
@@ -90,7 +92,7 @@ placeChar(TrieChar *node, const unsigned char *str, int lenstr,
  * Function converts UTF8-encoded file into current encoding.
  */
 static TrieChar *
-initTrie(char *filename)
+initTrie(const char *filename)
 {
 	TrieChar   *volatile rootTrie = NULL;
 	MemoryContext ccxt = CurrentMemoryContext;
@@ -276,7 +278,7 @@ unaccent_init(PG_FUNCTION_ARGS)
 	{
 		DefElem    *defel = (DefElem *) lfirst(l);
 
-		if (pg_strcasecmp("Rules", defel->defname) == 0)
+		if (strcmp(defel->defname, "rules") == 0)
 		{
 			if (fileloaded)
 				ereport(ERROR,
@@ -376,7 +378,21 @@ unaccent_dict(PG_FUNCTION_ARGS)
 
 	if (PG_NARGS() == 1)
 	{
-		dictOid = get_ts_dict_oid(stringToQualifiedNameList("unaccent"), false);
+		/*
+		 * Use the "unaccent" dictionary that is in the same schema that this
+		 * function is in.
+		 */
+		Oid			procnspid = get_func_namespace(fcinfo->flinfo->fn_oid);
+		const char *dictname = "unaccent";
+
+		dictOid = GetSysCacheOid2(TSDICTNAMENSP,
+								  PointerGetDatum(dictname),
+								  ObjectIdGetDatum(procnspid));
+		if (!OidIsValid(dictOid))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("text search dictionary \"%s.%s\" does not exist",
+							get_namespace_name(procnspid), dictname)));
 		strArg = 0;
 	}
 	else

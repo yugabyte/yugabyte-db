@@ -18,168 +18,12 @@ option java_package = "org.yb";
 
 import "yb/common/common.proto";
 
-//--------------------------------------------------------------------------------------------------
-// YQL support.
-// The following section is common for all query language.
-// This section should be moved to a different file.
-//--------------------------------------------------------------------------------------------------
-
-// A QL value
-message QLValuePB {
-  // Note: an absent value means NULL
-  oneof value {
-    int32 int8_value = 1;  // Note: min int size in protobuf is int32
-    int32 int16_value = 2;
-    int32 int32_value = 3;
-    int64 int64_value = 4;
-    float float_value = 5;
-    double double_value = 6;
-    string string_value = 7;
-    bool bool_value = 8;
-    int64 timestamp_value = 9;
-    bytes binary_value = 10;
-    // raw bytes for inet address in network byte order.
-    bytes inetaddress_value = 11;
-    QLMapValuePB map_value = 12;
-    QLSeqValuePB set_value = 13;
-    QLSeqValuePB list_value = 14;
-    bytes decimal_value = 15;
-    bytes varint_value = 16;
-    QLSeqValuePB frozen_value = 17;
-    // raw bytes for uuid value.
-    bytes uuid_value = 18;
-    // raw bytes for timeuuid value.
-    bytes timeuuid_value = 19;
-    bytes jsonb_value = 20;
-    uint32 date_value = 21;
-    int64 time_value = 22;
-  }
-}
-
-//--------------------------------------------------------------------------------------------------
-// CQL support.
-// This is an internal protocol for communicating QL operations from a YB client to a tserver.
-//
-// Reference:
-// Cassandra SQL doc - https://docs.datastax.com/en/cql/3.3/cql/cql_reference/cqlCommandsTOC.html
-// Usage notes - https://docs.google.com/document/d/1q9i7a9X5rDdTC0q8hNAqo9i9NyDh0n_Fhm5vdzmtBEw
-//--------------------------------------------------------------------------------------------------
-
-// Sequence of values used to represent Lists and Sets (and later Tuples)
-message QLSeqValuePB {
-  repeated QLValuePB elems = 1;
-}
-
-message QLMapValuePB {
-  repeated QLValuePB keys = 1;
-  repeated QLValuePB values = 2;
-}
-
 // A column value, optionally with subscripts, e.g. m['x'] or l[2]['x']
 message QLColumnValuePB {
   optional int32 column_id = 1;
   repeated QLExpressionPB subscript_args = 3;
   repeated QLJsonOperationPB json_args = 4;
   optional QLExpressionPB expr = 2;
-}
-
-// Reference to a subcolumn, e.g. m['x'] or l[2]['x']
-message QLSubscriptedColPB {
-  optional int32 column_id = 1;
-  repeated QLExpressionPB subscript_args = 2;
-}
-
-// Represents operations applied to a json column.
-message QLJsonColumnOperationsPB {
-  optional int32 column_id = 1;
-  repeated QLJsonOperationPB json_operations = 2;
-}
-
-enum JsonOperatorPB {
-    JSON_OBJECT = 0; // The -> operator applied to a column.
-    JSON_TEXT = 1; // The ->> operator applied to a column.
-}
-
-message QLJsonOperationPB {
-    required JsonOperatorPB json_operator = 1;
-    required QLExpressionPB operand = 2;
-}
-
-// An expression in a WHERE condition
-message QLExpressionPB {
-  oneof expr {
-    QLValuePB value = 1;
-    int32 column_id = 2;
-    QLSubscriptedColPB subscripted_col = 3;
-    int32 bind_id = 4;                      // Bind variable index.
-    QLConditionPB condition = 5;            // This should be replaced with builtin operator.
-    QLBCallPB bfcall = 6;                   // Regular builtin calls.
-    QLBCallPB tscall = 7;                   // Tablet server builtin calls.
-    QLBCallPB bocall = 8;                   // Builtin operator calls.
-    QLJsonColumnOperationsPB json_column = 9; // Json column operators.
-  }
-}
-
-// Expression operators.
-enum QLOperator {
-  QL_OP_NOOP = 0;
-
-  // Logic operators that take one operand.
-  QL_OP_NOT = 1;
-  QL_OP_IS_TRUE = 2;
-  QL_OP_IS_FALSE = 3;
-
-  // Logic operators that take two or more operands.
-  QL_OP_AND = 4;
-  QL_OP_OR = 5;
-
-  // Relation operators that take one operand.
-  QL_OP_IS_NULL = 6;
-  QL_OP_IS_NOT_NULL = 7;
-
-  // Relation operators that take two operands.
-  QL_OP_EQUAL = 8;
-  QL_OP_LESS_THAN = 9;
-  QL_OP_LESS_THAN_EQUAL = 10;
-  QL_OP_GREATER_THAN = 11;
-  QL_OP_GREATER_THAN_EQUAL = 12;
-  QL_OP_NOT_EQUAL = 13;
-
-  QL_OP_LIKE = 14;
-  QL_OP_NOT_LIKE = 15;
-  QL_OP_IN = 16;
-  QL_OP_NOT_IN = 17;
-
-  // Relation operators that take three operands.
-  QL_OP_BETWEEN = 18;
-  QL_OP_NOT_BETWEEN = 19;
-
-  // Operators that take no operand. For use in "if" clause only currently.
-  QL_OP_EXISTS = 20;     // IF EXISTS
-  QL_OP_NOT_EXISTS = 21; // IF NOT EXISTS
-}
-
-// A logical condition that evaluates to true/false. Used in the WHERE clause.
-message QLConditionPB {
-  optional QLOperator op = 1;
-  repeated QLExpressionPB operands = 2;
-}
-
-// Builtin call expression. There are 3 different calls.
-// - Builtin operators such as '>', '<', '=', ...
-//   These operators can be executed anywhere.
-// - Builtin functions such as Now().
-//   These functions can be executed anywhere.
-// - Server builtin functions.
-//   Only tablet servers can execute these functions.
-//
-// TODO(neil) Regular builtin operators. This message can be executed anywhere.
-// - This is more efficient than builtin call as it avoids most overheads of calling builtin lib.
-// - Merge the current condition operator execution with this.
-// - To optimize certain operation (such as +), replace it builtin function with builtin op.
-message QLBCallPB {
-  optional int32 opcode = 1;
-  repeated QLExpressionPB operands = 2;
 }
 
 // Paging state for continuing a read request.
@@ -397,7 +241,7 @@ message QLResponsePB {
     YQL_STATUS_RUNTIME_ERROR = 2;
     YQL_STATUS_USAGE_ERROR = 3;
     YQL_STATUS_RESTART_REQUIRED_ERROR = 4;
-    YQL_STATUS_SQL_ERROR = 5;
+    YQL_STATUS_QUERY_ERROR = 5;
   }
 
   // Status and error message

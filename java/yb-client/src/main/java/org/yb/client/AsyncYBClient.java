@@ -54,6 +54,7 @@ import com.stumbleupon.async.Deferred;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.Common;
+import org.yb.Common.YQLDatabase;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
@@ -322,6 +323,28 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Check if the tserver is ready to serve requests.
+   * @param hp host port of the tablet server.
+   * @return a deferred object for the response from tablet server.
+   */
+  public Deferred<IsTabletServerReadyResponse> isTServerReady(final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    IsTabletServerReadyRequest rpc = new IsTabletServerReadyRequest();
+    // TODO: Allow these two to be paramters in all such user API's.
+    rpc.maxAttempts = 1;
+    rpc.setTimeoutMillis(5000);
+
+    Deferred<IsTabletServerReadyResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
    * Create a table on the cluster with the specified name and schema. Default table
    * configurations are used, mainly the table will have one tablet.
    * @param keyspace CQL keyspace to which this table belongs
@@ -371,6 +394,20 @@ public class AsyncYBClient implements AutoCloseable {
       throws Exception {
     checkIsClosed();
     CreateKeyspaceRequest request = new CreateKeyspaceRequest(this.masterTable, keyspace);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /*
+   * Create a keyspace (namespace) for the specified database type.
+   * @param name of the keyspace.
+   */
+  public Deferred<CreateKeyspaceResponse> createKeyspace(String keyspace, YQLDatabase databaseType)
+      throws Exception {
+    checkIsClosed();
+    CreateKeyspaceRequest request = new CreateKeyspaceRequest(this.masterTable,
+                                                              keyspace,
+                                                              databaseType);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(request);
   }
@@ -1125,13 +1162,13 @@ public class AsyncYBClient implements AutoCloseable {
   /**
    * Checks whether or not an RPC can be retried once more.
    * @param rpc The RPC we're going to attempt to execute.
-   * @return {@code true} if this RPC already had too many attempts,
+   * @return {@code true} if this RPC already had too many attempts or ran out of time,
    * {@code false} otherwise (in which case it's OK to retry once more).
    * @throws NonRecoverableException if the request has had too many attempts
    * already.
    */
   static boolean cannotRetryRequest(final YRpc<?> rpc) {
-    return rpc.deadlineTracker.timedOut() || rpc.attempt > 100;  // TODO Don't hardcode.
+    return rpc.deadlineTracker.timedOut() || rpc.attempt >= rpc.maxAttempts;
   }
 
   /**

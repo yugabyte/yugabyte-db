@@ -30,7 +30,7 @@ class QueueableInboundCall : public InboundCall {
  public:
   QueueableInboundCall(ConnectionPtr conn, size_t weight_in_bytes,
                        CallProcessedListener call_processed_listener)
-      : InboundCall(std::move(conn), std::move(call_processed_listener)),
+      : InboundCall(std::move(conn), nullptr /* rpc_metrics */, std::move(call_processed_listener)),
         weight_in_bytes_(weight_in_bytes) {}
 
   void SetHasReply() {
@@ -62,7 +62,6 @@ class QueueableInboundCall : public InboundCall {
 class ConnectionContextWithQueue : public ConnectionContextBase {
  protected:
   explicit ConnectionContextWithQueue(
-      rpc::GrowableBufferAllocator* allocator,
       size_t max_concurrent_calls,
       size_t max_queued_bytes);
 
@@ -82,13 +81,14 @@ class ConnectionContextWithQueue : public ConnectionContextBase {
     return processed_call_count_.load(std::memory_order_acquire);
   }
 
+  void Shutdown(const Status& status) override;
+
  private:
   void AssignConnection(const ConnectionPtr& conn) override;
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
   bool Idle(std::string* reason_not_idle = nullptr) override;
   void QueueResponse(const ConnectionPtr& conn, InboundCallPtr call) override;
   void ListenIdle(IdleListener listener) override { idle_listener_ = std::move(listener); }
-  void Shutdown(const Status& status) override;
 
   void CallProcessed(InboundCall* call);
   void FlushOutboundQueue(Connection* conn);

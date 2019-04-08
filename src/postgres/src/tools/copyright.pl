@@ -2,7 +2,7 @@
 #################################################################
 # copyright.pl -- update copyright notices throughout the source tree, idempotently.
 #
-# Copyright (c) 2011-2017, PostgreSQL Global Development Group
+# Copyright (c) 2011-2018, PostgreSQL Global Development Group
 #
 # src/tools/copyright.pl
 #
@@ -62,6 +62,7 @@ sub wanted
 		$line =~ s/$cc (\d{4}), $pgdg/$ccliteral $1-$year, $pgdg/i;
 	}
 	untie @lines;
+	return;
 }
 
 print "Manually update:\n";

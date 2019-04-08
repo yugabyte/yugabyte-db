@@ -14,11 +14,13 @@
 #ifndef YB_CLIENT_ASYNC_RPC_H_
 #define YB_CLIENT_ASYNC_RPC_H_
 
+#include "yb/client/tablet_rpc.h"
+
+#include "yb/common/read_hybrid_time.h"
+
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/client/tablet_rpc.h"
 
 namespace yb {
 namespace client {
@@ -46,6 +48,23 @@ struct AsyncRpcMetrics {
 
 typedef std::shared_ptr<AsyncRpcMetrics> AsyncRpcMetricsPtr;
 
+struct AsyncRpcData {
+  scoped_refptr<Batcher> batcher;
+  RemoteTablet* tablet = nullptr;
+  bool allow_local_calls_in_curr_thread = false;
+  bool need_consistent_read = false;
+  InFlightOps ops;
+};
+
+struct FlushExtraResult {
+  // Latest hybrid time that was present on tserver during processing of this request.
+  HybridTime propagated_hybrid_time;
+
+  // When read time was not specified by client it will contain read time that servers used
+  // to process this request.
+  ReadHybridTime used_read_time;
+};
+
 // An Async RPC which is in-flight to a tablet. Initially, the RPC is sent
 // to the leader replica, but it may be retried with another replica if the
 // leader fails.
@@ -55,10 +74,7 @@ typedef std::shared_ptr<AsyncRpcMetrics> AsyncRpcMetricsPtr;
 // This class deletes itself after Rpc returns and is processed.
 class AsyncRpc : public rpc::Rpc, public TabletRpc {
  public:
-  AsyncRpc(
-      const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
-      bool allow_local_calls_in_curr_thread, InFlightOps ops,
-      YBConsistencyLevel yb_consistency_level);
+  explicit AsyncRpc(AsyncRpcData* data, YBConsistencyLevel consistency_level);
 
   virtual ~AsyncRpc();
 
@@ -80,8 +96,8 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
   // stored in batcher. If there's a callback from the user, it is done in this step.
   virtual void ProcessResponseFromTserver(const Status& status) = 0;
 
-  // Return latest hybrid time that was present on tserver during processing of this request.
-  virtual HybridTime PropagatedHybridTime() = 0;
+  // See FlushExtraResult for details.
+  virtual FlushExtraResult MakeFlushExtraResult() = 0;
 
   void Failed(const Status& status) override;
 
@@ -109,9 +125,7 @@ class AsyncRpc : public rpc::Rpc, public TabletRpc {
 template <class Req, class Resp>
 class AsyncRpcBase : public AsyncRpc {
  public:
-  AsyncRpcBase(
-      const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
-      bool allow_local_calls_in_curr_thread, InFlightOps ops, YBConsistencyLevel consistency_level);
+  explicit AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel consistency_level);
 
   const Resp& resp() const { return resp_; }
   Resp& resp() { return resp_; }
@@ -119,14 +133,17 @@ class AsyncRpcBase : public AsyncRpc {
  protected:
   // Returns `true` if caller should continue processing response, `false` otherwise.
   bool CommonResponseCheck(const Status& status);
+  void SendRpcToTserver() override;
 
  protected: // TODO replace with private
   const tserver::TabletServerErrorPB* response_error() const override {
     return resp_.has_error() ? &resp_.error() : nullptr;
   }
 
-  HybridTime PropagatedHybridTime() override {
-    return GetPropagatedHybridTime(resp_);
+  FlushExtraResult MakeFlushExtraResult() override {
+    return {GetPropagatedHybridTime(resp_),
+            resp_.has_used_read_time() ? ReadHybridTime::FromPB(resp_.used_read_time())
+                                       : ReadHybridTime()};
   }
 
   Req req_;
@@ -135,9 +152,7 @@ class AsyncRpcBase : public AsyncRpc {
 
 class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResponsePB> {
  public:
-  WriteRpc(
-      const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
-      bool allow_local_calls_in_curr_thread, InFlightOps ops);
+  explicit WriteRpc(AsyncRpcData* data);
 
   virtual ~WriteRpc();
 
@@ -150,14 +165,13 @@ class WriteRpc : public AsyncRpcBase<tserver::WriteRequestPB, tserver::WriteResp
 
 class ReadRpc : public AsyncRpcBase<tserver::ReadRequestPB, tserver::ReadResponsePB> {
  public:
-  ReadRpc(
-      const scoped_refptr<Batcher>& batcher, RemoteTablet* const tablet,
-      bool allow_local_calls_in_curr_thread, InFlightOps ops,
-      YBConsistencyLevel yb_consistency_level = YBConsistencyLevel::STRONG);
+  explicit ReadRpc(
+      AsyncRpcData* data, YBConsistencyLevel yb_consistency_level = YBConsistencyLevel::STRONG);
 
   virtual ~ReadRpc();
 
  private:
+  void Finished(const Status& status) override;
   void SwapRequestsAndResponses(bool skip_responses);
   void CallRemoteMethod() override;
   void ProcessResponseFromTserver(const Status& status) override;

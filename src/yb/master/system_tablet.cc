@@ -41,8 +41,8 @@ const TabletId& SystemTablet::tablet_id() const {
   return tablet_id_;
 }
 
-void SystemTablet::RegisterReaderTimestamp(HybridTime read_point) {
-  // NOOP.
+Status SystemTablet::RegisterReaderTimestamp(HybridTime read_point) {
+  return Status::OK();
 }
 
 void SystemTablet::UnregisterReader(HybridTime read_point) {
@@ -50,12 +50,12 @@ void SystemTablet::UnregisterReader(HybridTime read_point) {
 }
 
 HybridTime SystemTablet::DoGetSafeTime(
-    tablet::RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const {
+    tablet::RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const {
   // HybridTime doesn't matter for SystemTablets.
   return HybridTime::kMax;
 }
 
-Status SystemTablet::HandleQLReadRequest(MonoTime deadline,
+Status SystemTablet::HandleQLReadRequest(CoarseTimePoint deadline,
                                          const ReadHybridTime& read_time,
                                          const QLReadRequestPB& ql_read_request,
                                          const TransactionMetadataPB& transaction_metadata,

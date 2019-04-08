@@ -39,45 +39,61 @@ class PgDml : public PgStatement {
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
-  CHECKED_STATUS PrepareColumnForRead(int attr_num, PgsqlExpressionPB *proto, const PgColumn **col);
+  CHECKED_STATUS PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb,
+                                      const PgColumn **col);
+  CHECKED_STATUS PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_pb);
 
   // Bind a column with an expression.
   CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
+
+  // Assign an expression to a column.
+  CHECKED_STATUS AssignColumn(int attnum, PgExpr *attr_value);
 
   // This function is not yet working and might not be needed.
   virtual CHECKED_STATUS ClearBinds();
 
   // Fetch a row and advance cursor to the next row.
-  CHECKED_STATUS Fetch(uint64_t *values, bool *isnulls, PgSysColumns *syscols, bool *has_data);
+  CHECKED_STATUS Fetch(int32_t natts,
+                       uint64_t *values,
+                       bool *isnulls,
+                       PgSysColumns *syscols,
+                       bool *has_data);
   CHECKED_STATUS WritePgTuple(PgTuple *pg_tuple);
+
+  virtual void SetCatalogCacheVersion(uint64_t catalog_cache_version) = 0;
 
  protected:
   // Method members.
   // Constructor.
-  PgDml(PgSession::ScopedRefPtr pg_session,
-        const char *database_name,
-        const char *schema_name,
-        const char *table_name,
-        StmtOp stmt_op);
+  PgDml(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
 
   // Load table.
-  CHECKED_STATUS LoadTable(bool for_write);
+  CHECKED_STATUS LoadTable();
 
-  // Allocate column protobuf.
+  // Allocate protobuf for a SELECTed expression.
+  virtual PgsqlExpressionPB *AllocTargetPB() = 0;
+
+  // Allocate protobuf for expression whose value is bounded to a column.
   virtual PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) = 0;
 
-  // Allocate column protobuf.
-  virtual PgsqlExpressionPB *AllocTargetPB() = 0;
+  // Allocate protobuf for expression whose value is assigned to a column (SET clause).
+  virtual PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) = 0;
 
   // Update bind values.
   CHECKED_STATUS UpdateBindPBs();
+
+  // Update set values.
+  CHECKED_STATUS UpdateAssignPBs();
+
+  // Indicate in the protobuf what columns must be read before the statement is processed.
+  static void SetColumnRefIds(PgTableDesc::ScopedRefPtr table_desc, PgsqlColumnRefsPB *column_refs);
 
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.
   //
   // TODO(neil) All related information to table descriptor should be cached in the global API
   // object or some global data structures.
-  client::YBTableName table_name_;
+  const PgObjectId table_id_;
   PgTableDesc::ScopedRefPtr table_desc_;
 
   // Postgres targets of statements. These are either selected or returned expressions.
@@ -89,15 +105,17 @@ class PgDml : public PgStatement {
   // - Where clause processing data is not supported yet.
   // - Some protobuf structure are also set up in PgColumn class.
 
-  // Column references.
-  PgsqlColumnRefsPB *column_refs_ = nullptr;
-
   // Column associated values (expressions) to be used by DML statements.
   // - When expression are constructed, we bind them with their associated protobuf.
   // - These expressions might not yet have values for place_holders or literals.
   // - During execution, the place_holder values are updated, and the statement protobuf need to
   //   be updated accordingly.
+  //
+  // * Bind values are used to identify the selected rows to be operated on.
+  // * Set values are used to hold columns' new values in the selected rows.
+  string ybctid_bind_;
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
+  std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_assigns_;
 
   // DML Operator.
   PgDocOp::SharedPtr doc_op_;

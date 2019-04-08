@@ -39,23 +39,35 @@ namespace docdb {
 
 namespace {
 
+// Checks whether slice starts with primitive value.
+// Valid cases are end of group or primitive value starting with value type.
+Result<bool> HasPrimitiveValue(Slice* slice) {
+  if (PREDICT_FALSE(slice->empty())) {
+    return STATUS(Corruption, "Unexpected end of key when decoding document key");
+  }
+  ValueType current_value_type = static_cast<ValueType>(*slice->data());
+  if (current_value_type == ValueType::kGroupEnd) {
+    slice->consume_byte();
+    return false;
+  }
+  if (PREDICT_FALSE(!IsPrimitiveValueType(current_value_type))) {
+    return STATUS_FORMAT(Corruption,
+        "Expected a primitive value type, got $0",
+        current_value_type);
+  }
+  return true;
+}
+
+// Consumes all primitive values from key until group end is found.
+// Callback is called for each value and responsible for consuming this single value from slice.
 template<class Callback>
-Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice, Callback callback) {
+Status ConsumePrimitiveValuesFromKey(Slice* slice, Callback callback) {
   const auto initial_slice(*slice);  // For error reporting.
   while (true) {
-    if (PREDICT_FALSE(slice->empty())) {
-      return STATUS(Corruption, "Unexpected end of key when decoding document key");
-    }
-    ValueType current_value_type = static_cast<ValueType>(*slice->data());
-    if (current_value_type == ValueType::kGroupEnd) {
-      slice->consume_byte();
+    if (!VERIFY_RESULT(HasPrimitiveValue(slice))) {
       return Status::OK();
     }
-    if (PREDICT_FALSE(!IsPrimitiveValueType(current_value_type))) {
-      return STATUS_FORMAT(Corruption,
-          "Expected a primitive value type, got $0",
-          current_value_type);
-    }
+
     RETURN_NOT_OK_PREPEND(callback(),
         Substitute("while consuming primitive values from $0",
                    initial_slice.ToDebugHexString()));
@@ -83,6 +95,16 @@ void AppendDocKeyItems(const vector<PrimitiveValue>& doc_key_items, KeyBytes* re
 
 } // namespace
 
+// Consumes single primitive value from start of slice.
+// Returns true when value was consumed, false when group end is found.
+Result<bool> ConsumePrimitiveValueFromKey(Slice* slice) {
+  if (!VERIFY_RESULT(HasPrimitiveValue(slice))) {
+    return false;
+  }
+  RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, nullptr /* out */));
+  return true;
+}
+
 Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice,
                                      std::vector<PrimitiveValue>* result) {
   return ConsumePrimitiveValuesFromKey(slice, [slice, result] {
@@ -98,20 +120,20 @@ Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice,
 DocKey::DocKey() : cotable_id_(boost::uuids::nil_uuid()), hash_present_(false) {
 }
 
-DocKey::DocKey(const vector<PrimitiveValue>& range_components)
+DocKey::DocKey(std::vector<PrimitiveValue> range_components)
     : cotable_id_(boost::uuids::nil_uuid()),
       hash_present_(false),
-      range_group_(range_components) {
+      range_group_(std::move(range_components)) {
 }
 
 DocKey::DocKey(DocKeyHash hash,
-               const vector<PrimitiveValue>& hashed_components,
-               const vector<PrimitiveValue>& range_components)
+               std::vector<PrimitiveValue> hashed_components,
+               std::vector<PrimitiveValue> range_components)
     : cotable_id_(boost::uuids::nil_uuid()),
       hash_present_(true),
       hash_(hash),
-      hashed_group_(hashed_components),
-      range_group_(range_components) {
+      hashed_group_(std::move(hashed_components)),
+      range_group_(std::move(range_components)) {
 }
 
 DocKey::DocKey(const Schema& schema)
@@ -119,26 +141,50 @@ DocKey::DocKey(const Schema& schema)
       hash_present_(false) {
 }
 
-DocKey::DocKey(const Schema& schema, const vector<PrimitiveValue>& range_components)
+DocKey::DocKey(const Schema& schema, DocKeyHash hash)
+    : cotable_id_(schema.cotable_id()),
+      hash_present_(true),
+      hash_(hash) {
+}
+
+DocKey::DocKey(const Schema& schema, std::vector<PrimitiveValue> range_components)
     : cotable_id_(schema.cotable_id()),
       hash_present_(false),
-      range_group_(range_components) {
+      range_group_(std::move(range_components)) {
 }
 
 DocKey::DocKey(const Schema& schema, DocKeyHash hash,
-               const vector<PrimitiveValue>& hashed_components,
-               const vector<PrimitiveValue>& range_components)
+               std::vector<PrimitiveValue> hashed_components,
+               std::vector<PrimitiveValue> range_components)
     : cotable_id_(schema.cotable_id()),
       hash_present_(true),
       hash_(hash),
-      hashed_group_(hashed_components),
-      range_group_(range_components) {
+      hashed_group_(std::move(hashed_components)),
+      range_group_(std::move(range_components)) {
 }
 
 KeyBytes DocKey::Encode() const {
   KeyBytes result;
   AppendTo(&result);
   return result;
+}
+
+namespace {
+
+// Used as cache of allocated memory by EncodeAsRefCntPrefix.
+thread_local boost::optional<KeyBytes> thread_local_encode_buffer;
+
+}
+
+RefCntPrefix DocKey::EncodeAsRefCntPrefix() const {
+  KeyBytes* encode_buffer = thread_local_encode_buffer.get_ptr();
+  if (!encode_buffer) {
+    thread_local_encode_buffer.emplace();
+    encode_buffer = thread_local_encode_buffer.get_ptr();
+  }
+  encode_buffer->Clear();
+  AppendTo(encode_buffer);
+  return RefCntPrefix(encode_buffer->AsStringRef());
 }
 
 void DocKey::AppendTo(KeyBytes* out) const {
@@ -558,6 +604,32 @@ Status SubDocKey::FullyDecodeFrom(const rocksdb::Slice& slice,
         mutable_slice.size(), ToShortDebugStr(mutable_slice));
   }
   return status;
+}
+
+Status SubDocKey::DecodePrefixLengths(
+    Slice slice, boost::container::small_vector_base<size_t>* out) {
+  auto begin = slice.data();
+  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(
+      slice, DocKeyPart::HASHED_PART_ONLY));
+  if (hashed_part_size != 0) {
+    slice.remove_prefix(hashed_part_size);
+    out->push_back(hashed_part_size);
+  }
+  while (VERIFY_RESULT(ConsumePrimitiveValueFromKey(&slice))) {
+    out->push_back(slice.data() - begin);
+  }
+  if (!out->empty()) {
+    if (begin[out->back()] != ValueTypeAsChar::kGroupEnd) {
+      return STATUS_FORMAT(Corruption, "Range keys group end expected at $0 in $1",
+                           out->back(), Slice(begin, slice.end()).ToDebugHexString());
+    }
+    ++out->back(); // Add range key group end to last prefix
+  }
+  while (VERIFY_RESULT(SubDocKey::DecodeSubkey(&slice))) {
+    out->push_back(slice.data() - begin);
+  }
+
+  return Status::OK();
 }
 
 std::string SubDocKey::DebugSliceToString(Slice slice) {

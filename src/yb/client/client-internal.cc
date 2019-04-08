@@ -158,16 +158,21 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     int* num_attempts, const char* func_name,
     const std::function<Status(MasterServiceProxy*, const ReqClass&, RespClass*, RpcController*)>&
         func) {
-  DCHECK(deadline.Initialized());
+  DSCHECK(deadline.Initialized(), InvalidArgument, "Deadline is not set");
+  MonoTime start_time;
 
   while (true) {
     RpcController rpc;
 
     // Have we already exceeded our deadline?
     MonoTime now = MonoTime::Now();
+    if (!start_time) {
+      start_time = now;
+    }
     if (deadline.ComesBefore(now)) {
-      return STATUS(TimedOut, Substitute("$0 timed out after deadline expired",
-                                         func_name));
+      return STATUS_FORMAT(TimedOut,
+          "$0 timed out after deadline expired. Time elapsed: $1, allowed: $2",
+          func_name, now - start_time, deadline - start_time);
     }
 
     // The RPC's deadline is intentionally earlier than the overall
@@ -197,7 +202,8 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     }
 
     if (s.IsTimedOut()) {
-      if (MonoTime::Now().ComesBefore(deadline)) {
+      now = MonoTime::Now();
+      if (now.ComesBefore(deadline)) {
         YB_LOG_EVERY_N_SECS(WARNING, 1)
             << "Unable to send the request (" << req.ShortDebugString()
             << ") to leader Master (" << leader_master_hostport().ToString()
@@ -210,8 +216,9 @@ Status YBClient::Data::SyncLeaderMasterRpc(
         continue;
       } else {
         // Operation deadline expired during this latest RPC.
-        s = s.CloneAndPrepend(Substitute("$0 timed out after deadline expired",
-                                         func_name));
+        s = s.CloneAndPrepend(Format(
+            "$0 timed out after deadline expired. Time elapsed: $1, allowed: $2",
+            func_name, now - start_time, deadline - start_time));
       }
     }
 
@@ -254,6 +261,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListMasters);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteNamespace);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
+YB_CLIENT_SPECIALIZE_SIMPLE(ReservePgsqlOids);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetYsqlCatalogConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE(CreateUDType);
 YB_CLIENT_SPECIALIZE_SIMPLE(DeleteUDType);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
@@ -281,7 +290,8 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
-      latest_observed_hybrid_time_(YBClient::kNoHybridTime) {}
+      latest_observed_hybrid_time_(YBClient::kNoHybridTime),
+      id_(ClientId::GenerateRandom()) {}
 
 YBClient::Data::~Data() {
   // Workaround for KUDU-956: the user may close a YBClient while a flush
@@ -320,7 +330,7 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
     }
     case CLOSEST_REPLICA:
     case FIRST_REPLICA: {
-      rt->GetRemoteTabletServers(candidates, UpdateLocalTsState::kTrue);
+      rt->GetRemoteTabletServers(candidates);
       // Filter out all the blacklisted candidates.
       vector<RemoteTabletServer*> filtered;
       for (RemoteTabletServer* rts : *candidates) {
@@ -342,18 +352,19 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
             ret = rts;
             // If the tserver is local, we are done here.
             break;
-          } else if (cloud_info_pb_.has_placement_zone() && rts->cloud_info().has_placement_zone()
-              && cloud_info_pb_.placement_zone() == rts->cloud_info().placement_zone()) {
-            // Note down that we have found a zone local tserver and continue looking for node
-            // local tserver.
-            ret = rts;
-            local_zone_ts = true;
           } else if (cloud_info_pb_.has_placement_region() &&
-              rts->cloud_info().has_placement_region() &&
-              cloud_info_pb_.placement_region() == rts->cloud_info().placement_region() &&
-              !local_zone_ts) {
-            // Look for a region local tserver only if we haven't found a zone local tserver yet.
-            ret = rts;
+                     rts->cloud_info().has_placement_region() &&
+                     cloud_info_pb_.placement_region() == rts->cloud_info().placement_region()) {
+            if (cloud_info_pb_.has_placement_zone() && rts->cloud_info().has_placement_zone() &&
+                cloud_info_pb_.placement_zone() == rts->cloud_info().placement_zone()) {
+              // Note down that we have found a zone local tserver and continue looking for node
+              // local tserver.
+              ret = rts;
+              local_zone_ts = true;
+            } else if (!local_zone_ts) {
+              // Look for a region local tserver only if we haven't found a zone local tserver yet.
+              ret = rts;
+            }
           }
         }
 
@@ -392,11 +403,11 @@ RemoteTabletServer* YBClient::Data::SelectTServer(RemoteTablet* rt,
 }
 
 Status YBClient::Data::GetTabletServer(YBClient* client,
-                                         const scoped_refptr<RemoteTablet>& rt,
-                                         ReplicaSelection selection,
-                                         const set<string>& blacklist,
-                                         vector<RemoteTabletServer*>* candidates,
-                                         RemoteTabletServer** ts) {
+                                       const scoped_refptr<RemoteTablet>& rt,
+                                       ReplicaSelection selection,
+                                       const set<string>& blacklist,
+                                       vector<RemoteTabletServer*>* candidates,
+                                       RemoteTabletServer** ts) {
   // TODO: write a proper async version of this for async client.
   RemoteTabletServer* ret = SelectTServer(rt.get(), selection, blacklist, candidates);
   if (PREDICT_FALSE(ret == nullptr)) {
@@ -417,19 +428,22 @@ Status YBClient::Data::GetTabletServer(YBClient* client,
   return Status::OK();
 }
 
-Status YBClient::Data::CreateTable(
-    YBClient* client,
-    const CreateTableRequestPB& req,
-    const YBSchema& schema,
-    const MonoTime& deadline) {
+Status YBClient::Data::CreateTable(YBClient* client,
+                                   const CreateTableRequestPB& req,
+                                   const YBSchema& schema,
+                                   const MonoTime& deadline,
+                                   string* table_id) {
   CreateTableResponsePB resp;
 
   int attempts = 0;
   Status s = SyncLeaderMasterRpc<CreateTableRequestPB, CreateTableResponsePB>(
       deadline, client, req, &resp, &attempts, "CreateTable", &MasterServiceProxy::CreateTable);
+  // Set the table id even if there was an error. This is useful when the error is IsAlreadyPresent
+  // so that we can wait for the existing table to be available to receive requests.
+  *table_id = resp.table_id();
   RETURN_NOT_OK(s);
   if (resp.has_error()) {
-    if (resp.error().code() == MasterErrorPB::TABLE_ALREADY_PRESENT && attempts > 1) {
+    if (resp.error().code() == MasterErrorPB::OBJECT_ALREADY_PRESENT && attempts > 1) {
       // If the table already exists and the number of attempts is >
       // 1, then it means we may have succeeded in creating the
       // table, but client didn't receive the successful
@@ -447,7 +461,7 @@ Status YBClient::Data::CreateTable(
       // created, we can sometimes see an empty schema. Wait until the table is fully created
       // before we compare the schema.
       RETURN_NOT_OK_PREPEND(
-          WaitForCreateTableToFinish(client, table_name, deadline),
+          WaitForCreateTableToFinish(client, table_name, resp.table_id(), deadline),
           Substitute("Failed waiting for table $0 to finish being created", table_name.ToString()));
 
       RETURN_NOT_OK_PREPEND(
@@ -488,12 +502,18 @@ Status YBClient::Data::CreateTable(
 
 Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
                                                const YBTableName& table_name,
+                                               const string& table_id,
                                                const MonoTime& deadline,
                                                bool* create_in_progress) {
   DCHECK_ONLY_NOTNULL(create_in_progress);
   IsCreateTableDoneRequestPB req;
   IsCreateTableDoneResponsePB resp;
-  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  if (table_name.has_table()) {
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  }
+  if (!table_id.empty()) {
+    req.mutable_table()->set_table_id(table_id);
+  }
 
   const Status s =
       SyncLeaderMasterRpc<IsCreateTableDoneRequestPB, IsCreateTableDoneResponsePB>(
@@ -518,14 +538,17 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
 
 Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
                                                   const YBTableName& table_name,
+                                                  const string& table_id,
                                                   const MonoTime& deadline) {
   return RetryFunc(
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
-      std::bind(&YBClient::Data::IsCreateTableInProgress, this, client, table_name, _1, _2));
+      std::bind(&YBClient::Data::IsCreateTableInProgress, this, client,
+                table_name, table_id, _1, _2));
 }
 
 Status YBClient::Data::DeleteTable(YBClient* client,
                                    const YBTableName& table_name,
+                                   const string& table_id,
                                    const bool is_index_table,
                                    const MonoTime& deadline,
                                    YBTableName* indexed_table_name,
@@ -534,7 +557,12 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   DeleteTableResponsePB resp;
   int attempts = 0;
 
-  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  if (table_name.has_table()) {
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  }
+  if (!table_id.empty()) {
+    req.mutable_table()->set_table_id(table_id);
+  }
   req.set_is_index_table(is_index_table);
   const Status s = SyncLeaderMasterRpc<DeleteTableRequestPB, DeleteTableResponsePB>(
       deadline, client, req, &resp,
@@ -542,7 +570,7 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   RETURN_NOT_OK(s);
 
   if (resp.has_error()) {
-    if (resp.error().code() == MasterErrorPB::TABLE_NOT_FOUND && attempts > 1) {
+    if (resp.error().code() == MasterErrorPB::OBJECT_NOT_FOUND && attempts > 1) {
       // A prior attempt to delete the table has succeeded, but
       // appeared as a failure to the client due to, e.g., an I/O or
       // network issue.
@@ -557,8 +585,8 @@ Status YBClient::Data::DeleteTable(YBClient* client,
     RETURN_NOT_OK(WaitForDeleteTableToFinish(client, resp.table_id(), deadline));
   }
 
-  if (resp.has_indexed_table()) {
-    DCHECK(indexed_table_name != nullptr);
+  // Return indexed table name if requested.
+  if (resp.has_indexed_table() && indexed_table_name != nullptr) {
     indexed_table_name->GetFromTableIdentifierPB(resp.indexed_table());
   }
 
@@ -567,13 +595,13 @@ Status YBClient::Data::DeleteTable(YBClient* client,
 }
 
 Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
-                                               const std::string& deleted_table_id,
+                                               const std::string& table_id,
                                                const MonoTime& deadline,
                                                bool* delete_in_progress) {
   DCHECK_ONLY_NOTNULL(delete_in_progress);
   IsDeleteTableDoneRequestPB req;
   IsDeleteTableDoneResponsePB resp;
-  req.set_table_id(deleted_table_id);
+  req.set_table_id(table_id);
 
   const Status s =
       SyncLeaderMasterRpc<IsDeleteTableDoneRequestPB, IsDeleteTableDoneResponsePB>(
@@ -589,6 +617,10 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
   // compiler complains.
   RETURN_NOT_OK(s);
   if (resp.has_error()) {
+    if (resp.error().code() == MasterErrorPB::OBJECT_NOT_FOUND) {
+      *delete_in_progress = false;
+      return Status::OK();
+    }
     return StatusFromPB(resp.error().status());
   }
 
@@ -597,11 +629,11 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
 }
 
 Status YBClient::Data::WaitForDeleteTableToFinish(YBClient* client,
-                                                  const std::string& deleted_table_id,
+                                                  const std::string& table_id,
                                                   const MonoTime& deadline) {
   return RetryFunc(
       deadline, "Waiting on Delete Table to be completed", "Timed out waiting for Table Deletion",
-      std::bind(&YBClient::Data::IsDeleteTableInProgress, this, client, deleted_table_id, _1, _2));
+      std::bind(&YBClient::Data::IsDeleteTableInProgress, this, client, table_id, _1, _2));
 }
 
 Status YBClient::Data::TruncateTables(YBClient* client,
@@ -688,12 +720,20 @@ Status YBClient::Data::AlterTable(YBClient* client,
 
 Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
                                               const YBTableName& table_name,
+                                              string table_id,
                                               const MonoTime& deadline,
                                               bool *alter_in_progress) {
   IsAlterTableDoneRequestPB req;
   IsAlterTableDoneResponsePB resp;
 
-  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  if (table_name.has_table()) {
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  }
+
+  if (!table_id.empty()) {
+    (req.mutable_table())->set_table_id(table_id);
+  }
+
   Status s =
       SyncLeaderMasterRpc<IsAlterTableDoneRequestPB, IsAlterTableDoneResponsePB>(
           deadline,
@@ -714,10 +754,12 @@ Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
 
 Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
                                                  const YBTableName& alter_name,
+                                                 const string table_id,
                                                  const MonoTime& deadline) {
   return RetryFunc(
       deadline, "Waiting on Alter Table to be completed", "Timed out waiting for AlterTable",
-      std::bind(&YBClient::Data::IsAlterTableInProgress, this, client, alter_name, _1, _2));
+      std::bind(&YBClient::Data::IsAlterTableInProgress, this, client,
+              alter_name, table_id, _1, _2));
 }
 
 Status YBClient::Data::InitLocalHostNames() {

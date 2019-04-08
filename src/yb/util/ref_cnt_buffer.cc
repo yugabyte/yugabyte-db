@@ -81,4 +81,8 @@ void RefCntBuffer::DoReset(char* data) {
   data_ = data;
 }
 
+std::string RefCntPrefix::ShortDebugString() const {
+  return Slice(data(), size()).ToDebugHexString();
+}
+
 } // namespace yb

@@ -21,6 +21,7 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/common/clock.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/util/result.h"
 #endif  // YBC_CXX_DECLARATION_MODE
 
 #ifdef YBC_CXX_DECLARATION_MODE
@@ -37,15 +38,18 @@ YBC_VIRTUAL_DESTRUCTOR
 YBC_STATUS_METHOD_NO_ARGS(BeginTransaction)
 YBC_STATUS_METHOD_NO_ARGS(CommitTransaction)
 YBC_STATUS_METHOD_NO_ARGS(AbortTransaction)
+YBC_STATUS_METHOD(SetIsolationLevel, ((int, isolation)));
 
 #ifdef YBC_CXX_DECLARATION_MODE
   PgTxnManager(client::AsyncClientInitialiser* async_client_init,
                scoped_refptr<ClockBase> clock);
 
-  // Returns the transactional session, or nullptr otherwise.
-  client::YBSession* GetTransactionalSession();
+  // Returns the transactional session, starting a new transaction if necessary.
+  yb::Result<client::YBSession*> GetTransactionalSession();
 
-  Status BeginWriteTransactionIfNecessary();
+  Status BeginWriteTransactionIfNecessary(bool read_only_op);
+  Status RestartTransaction();
+  bool HasAppliedOperations();
 
  private:
 
@@ -62,6 +66,7 @@ YBC_STATUS_METHOD_NO_ARGS(AbortTransaction)
   std::atomic<client::TransactionManager*> transaction_manager_{nullptr};
   std::mutex transaction_manager_mutex_;
   std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
+  int isolation_level_ = 1;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 #endif  // YBC_CXX_DECLARATION_MODE

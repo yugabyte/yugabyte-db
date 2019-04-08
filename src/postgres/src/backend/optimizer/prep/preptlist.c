@@ -29,7 +29,7 @@
  * that because it's faster in typical non-inherited cases.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -52,6 +52,7 @@
 #include "rewrite/rewriteHandler.h"
 #include "utils/rel.h"
 
+#include "pg_yb_utils.h"
 
 static List *expand_targetlist(List *tlist, int command_type,
 				  Index result_relation, Relation rel);
@@ -113,8 +114,14 @@ preprocess_targetlist(PlannerInfo *root)
 	 * of the attributes. We also need to fill in any missing attributes. -ay
 	 * 10/94
 	 */
+	/*
+	 * For YugaByte relation, if a CMD_DELETE has returning clause, we select
+	 * all columns from the table to evaluate the returning expression list.
+	 * TODO(neil) The optimizer should reduce the list to referenced columns.
+	 */
 	tlist = parse->targetList;
-	if (command_type == CMD_INSERT || command_type == CMD_UPDATE)
+	if (command_type == CMD_INSERT || command_type == CMD_UPDATE ||
+			(IsYugaByteEnabled() && command_type == CMD_DELETE && parse->returningList != NULL))
 		tlist = expand_targetlist(tlist, command_type,
 								  result_relation, target_relation);
 
@@ -273,7 +280,7 @@ expand_targetlist(List *tlist, int command_type,
 
 	for (attrno = 1; attrno <= numattrs; attrno++)
 	{
-		Form_pg_attribute att_tup = rel->rd_att->attrs[attrno - 1];
+		Form_pg_attribute att_tup = TupleDescAttr(rel->rd_att, attrno - 1);
 		TargetEntry *new_tle = NULL;
 
 		if (tlist_item != NULL)
@@ -331,9 +338,9 @@ expand_targetlist(List *tlist, int command_type,
 						new_expr = coerce_to_domain(new_expr,
 													InvalidOid, -1,
 													atttype,
+													COERCION_IMPLICIT,
 													COERCE_IMPLICIT_CAST,
 													-1,
-													false,
 													false);
 					}
 					else
@@ -370,6 +377,20 @@ expand_targetlist(List *tlist, int command_type,
 													  true /* byval */ );
 					}
 					break;
+				case CMD_DELETE:
+					// This case is added only for DELETE from YugaByte table with RETURNING clause.
+					if (IsYugaByteEnabled())
+					{
+						// Query all attribute in the YugaByte relation.
+						new_expr = (Node *) makeVar(result_relation,
+													attrno,
+													atttype,
+													atttypmod,
+													attcollation,
+													0);
+						break;
+					}
+					/* FALLTHROUGH */
 				default:
 					elog(ERROR, "unrecognized command_type: %d",
 						 (int) command_type);

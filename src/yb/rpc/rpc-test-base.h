@@ -61,13 +61,49 @@ namespace yb { namespace rpc {
 std::unique_ptr<ServiceIf> CreateCalculatorService(
   const scoped_refptr<MetricEntity>& metric_entity, std::string name = std::string());
 
+class CalculatorServiceMethods {
+ public:
+  static const constexpr auto kAddMethodName = "Add";
+  static const constexpr auto kDisconnectMethodName = "Disconnect";
+  static const constexpr auto kEchoMethodName = "Echo";
+  static const constexpr auto kSendStringsMethodName = "SendStrings";
+  static const constexpr auto kSleepMethodName = "Sleep";
+
+  static RemoteMethod* AddMethod() {
+    static RemoteMethod method(
+        rpc_test::CalculatorServiceIf::static_service_name(), kAddMethodName);
+    return &method;
+  }
+
+  static RemoteMethod* DisconnectMethod() {
+    static RemoteMethod method(
+        rpc_test::CalculatorServiceIf::static_service_name(), kDisconnectMethodName);
+    return &method;
+  }
+
+  static RemoteMethod* EchoMethod() {
+    static RemoteMethod method(
+        rpc_test::CalculatorServiceIf::static_service_name(), kEchoMethodName);
+    return &method;
+  }
+
+  static RemoteMethod* SendStringsMethod() {
+    static RemoteMethod method(
+        rpc_test::CalculatorServiceIf::static_service_name(), kSendStringsMethodName);
+    return &method;
+  }
+
+  static RemoteMethod* SleepMethod() {
+    static RemoteMethod method(
+        rpc_test::CalculatorServiceIf::static_service_name(), kSleepMethodName);
+    return &method;
+  }
+};
+
 // Implementation of CalculatorService which just implements the generic
 // RPC handler (no generated code).
 class GenericCalculatorService : public ServiceIf {
  public:
-  static const char* kFirstString;
-  static const char* kSecondString;
-
   GenericCalculatorService() {
   }
 
@@ -77,44 +113,22 @@ class GenericCalculatorService : public ServiceIf {
   }
 
   void Handle(InboundCallPtr incoming) override;
-  std::string service_name() const override { return kFullServiceName; }
-  static std::string static_service_name() { return kFullServiceName; }
 
-  static RemoteMethod* SendStringsMethod() {
-    static RemoteMethod method(kFullServiceName, kSendStringsMethodName);
-    return &method;
-  }
-
-  static RemoteMethod* SleepMethod() {
-    static RemoteMethod method(kFullServiceName, kSleepMethodName);
-    return &method;
-  }
-
-  static RemoteMethod* AddMethod() {
-    static RemoteMethod method(kFullServiceName, kAddMethodName);
-    return &method;
-  }
-
-  static RemoteMethod* DisconnectMethod() {
-    static RemoteMethod method(kFullServiceName, kDisconnectMethodName);
-    return &method;
+  std::string service_name() const override {
+    return rpc_test::CalculatorServiceIf::static_service_name();
   }
 
  private:
-  static const char *kFullServiceName;
-  static const char *kAddMethodName;
-  static const char *kSleepMethodName;
-  static const char *kSendStringsMethodName;
-  static const char *kDisconnectMethodName;
-
   void DoAdd(InboundCall *incoming);
   void DoSendStrings(InboundCall* incoming);
   void DoSleep(InboundCall *incoming);
+  void DoEcho(InboundCall *incoming);
 };
 
 struct MessengerOptions {
   size_t n_reactors;
   std::chrono::milliseconds keep_alive_timeout;
+  int num_connections_to_server = -1;
 };
 
 extern const MessengerOptions kDefaultClientMessengerOptions;

@@ -28,6 +28,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/docdb/docdb.h"
+#include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
@@ -291,7 +292,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   RETURN_NOT_OK(op.Init(&req, &resp));
   RETURN_NOT_OK(op.Apply({
       doc_write_batch,
-      MonoTime::Max() /* deadline */,
+      CoarseTimePoint::max() /* deadline */,
       ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugaByteMicrosecondEpoch))}));
   return Status::OK();
 }

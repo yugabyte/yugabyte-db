@@ -39,15 +39,31 @@
 # May be relative or absolute.
 
 # Portions Copyright (c) YugaByte, Inc.
-
 set -euo pipefail
+readonly YB_COMPLETED_TEST_FLAG_DIR=/tmp/yb_completed_tests
+
+declare -i process_tree_supervisor_pid=0
+process_supervisor_log_path=""
 
 cleanup() {
   local exit_code=$?
+
+  # In the most commen case, we will call the stop_process_tree_supervisor function earlier, before
+  # the test logs have been deleted and while we still have a chance to patch up the JUnit-style XML
+  # file. However, we also call it once again here just in case.
+  stop_process_tree_supervisor
+
+  # Yet another approach to garbage-collecting stuck processes, based on the command line pattern.
   kill_stuck_processes
+  if [[ -n ${YB_TEST_INVOCATION_ID:-} ]]; then
+    mkdir -p /tmp/yb_completed_tests
+    touch "$YB_COMPLETED_TEST_FLAG_DIR/$YB_TEST_INVOCATION_ID"
+  fi
   if [[ $exit_code -eq 0 ]] && "$killed_stuck_processes"; then
     exit_code=1
   fi
+  rm -rf "$TEST_TMPDIR"
+
   exit "$exit_code"
 }
 
@@ -56,8 +72,13 @@ if [[ ${YB_DEBUG_RUN_TEST:-} == "1" ]]; then
   set -x
 fi
 
+is_run_test_script=true
+
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 . "${BASH_SOURCE%/*}/common-test-env.sh"
+yb_readonly_virtualenv=true
+
+activate_virtualenv
 
 detect_edition
 
@@ -70,15 +91,44 @@ fi
 # Create group-writable files by default. Useful in an NFS environment.
 umask 0002
 
+echo "Test is running on host $HOSTNAME, arguments: $*"
+
+set_java_home
 set_test_invocation_id
+
+create_test_tmpdir
+
 trap cleanup EXIT
+
+readonly process_supervisor_log_path=\
+${TEST_TMPDIR:-/tmp}/yb_process_supervisor_for_pid_$$__$RANDOM.log
+
+"$YB_SRC_ROOT/python/yb/process_tree_supervisor.py" \
+  --pid $$ \
+  --terminate-subtree \
+  --timeout-sec "$PROCESS_TREE_SUPERVISOR_TEST_TIMEOUT_SEC" \
+  --log-to-file "$process_supervisor_log_path" &
+process_tree_supervisor_pid=$!
 
 if [[ -z ${BUILD_ROOT:-} ]]; then
   handle_build_root_from_current_dir
 fi
 
-set_build_root
+if [[ -z ${BUILD_ROOT:-} ]]; then
+  set_build_root
+else
+  preset_build_root=$BUILD_ROOT
+  set_build_root --no-readonly
+  if [[ $preset_build_root != $BUILD_ROOT ]]; then
+    fatal "Build root was already set to $preset_build_root, but we determined it must be set" \
+          "to $BUILD_ROOT"
+  fi
+  readonly BUILD_ROOT
+  unset preset_build_root
+fi
+
 set_common_test_paths
+add_brew_bin_to_path
 if [[ $# -eq 1 && $1 == *\#* ]]; then
   # We are trying to run a specific test method or even a parameterized test.
   resolve_and_run_java_test "$1"
@@ -222,8 +272,8 @@ for test_descriptor in "${tests[@]}"; do
     else
       test_attempt_index=""
     fi
-    prepare_for_running_test
-    run_test_and_process_results
+    prepare_for_running_cxx_test
+    run_cxx_test_and_process_results
   done
 done
 

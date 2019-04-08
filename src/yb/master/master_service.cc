@@ -116,14 +116,12 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   resp->mutable_master_instance()->CopyFrom(server_->instance_pb());
   resp->set_leader_master(true);
 
-  shared_ptr<TSDescriptor> ts_desc;
   // If the TS is registering, register in the TS manager.
   if (req->has_registration()) {
     Status s = server_->ts_manager()->RegisterTS(req->common().ts_instance(),
                                                  req->registration(),
                                                  server_->MakeCloudInfoPB(),
-                                                 &server_->proxy_cache(),
-                                                 &ts_desc);
+                                                 &server_->proxy_cache());
     if (!s.ok()) {
       LOG(WARNING) << "Unable to register tablet server (" << rpc.requestor_string() << "): "
                    << s.ToString();
@@ -145,6 +143,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
 
   // Look up the TS -- if it just registered above, it will be found here.
   // This allows the TS to register and tablet-report in the same RPC.
+  TSDescriptorPtr ts_desc;
   s = server_->ts_manager()->LookupTS(req->common().ts_instance(), &ts_desc);
   if (s.IsNotFound()) {
     LOG(INFO) << "Got heartbeat from unknown tablet server { "
@@ -186,11 +185,15 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   }
 
   // Retrieve all the nodes known by the master.
-  std::vector<std::shared_ptr<TSDescriptor> > descs;
+  std::vector<std::shared_ptr<TSDescriptor>> descs;
   server_->ts_manager()->GetAllLiveDescriptors(&descs);
   for (const auto& desc : descs) {
-    desc->GetTSInformationPB(resp->add_tservers());
+    *resp->add_tservers() = desc->GetTSInformationPB();
   }
+
+  // Retrieve the ysql catalog schema version.
+  uint64_t version = server_->catalog_manager()->GetYsqlCatalogVersion();
+  resp->set_ysql_catalog_version(version);
 
   rpc.RespondSuccess();
 }
@@ -330,6 +333,18 @@ void MasterServiceImpl::ListNamespaces(const ListNamespacesRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::ListNamespaces);
 }
 
+void MasterServiceImpl::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
+                                         ReservePgsqlOidsResponsePB* resp,
+                                         rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::ReservePgsqlOids);
+}
+
+void MasterServiceImpl::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
+                                             GetYsqlCatalogConfigResponsePB* resp,
+                                             rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::GetYsqlCatalogConfig);
+}
+
 void MasterServiceImpl::CreateRole(const CreateRoleRequestPB* req,
                                    CreateRoleResponsePB* resp,
                                    rpc::RpcContext rpc) {
@@ -419,8 +434,9 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
 
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
     ListTabletServersResponsePB::Entry* entry = resp->add_servers();
-    desc->GetNodeInstancePB(entry->mutable_instance_id());
-    desc->GetRegistration(entry->mutable_registration());
+    auto ts_info = desc->GetTSInformationPB();
+    *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
+    *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
     entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());
   }
   rpc.RespondSuccess();

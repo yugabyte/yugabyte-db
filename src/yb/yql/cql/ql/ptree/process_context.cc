@@ -181,6 +181,17 @@ Status ProcessContextBase::Error(const YBLocation& loc,
   return STATUS(QLError, msg.c_str(), Slice(), static_cast<int64_t>(error_code_));
 }
 
+Status ProcessContextBase::Error(const YBLocation& loc,
+                                 const std::string& msg,
+                                 ErrorCode error_code,
+                                 const char* token) {
+  return Error(loc, msg.c_str(), error_code, token);
+}
+
+Status ProcessContextBase::Error(const YBLocation& loc, const std::string& msg, const char* token) {
+  return Error(loc, msg, ErrorCode::SQL_STATEMENT_INVALID, token);
+}
+
 Status ProcessContextBase::Error(const YBLocation& loc, const char *msg, const char* token) {
   return Error(loc, msg, ErrorCode::SQL_STATEMENT_INVALID, token);
 }
@@ -189,6 +200,12 @@ Status ProcessContextBase::Error(const YBLocation& loc,
                                  ErrorCode error_code,
                                  const char* token) {
   return Error(loc, "", error_code, token);
+}
+
+Status ProcessContextBase::Error(const TreeNode *tnode,
+                                 const std::string& msg,
+                                 ErrorCode error_code) {
+  return Error(tnode->loc(), msg.c_str(), error_code);
 }
 
 Status ProcessContextBase::Error(const TreeNode *tnode,
@@ -211,6 +228,12 @@ Status ProcessContextBase::Error(const TreeNode *tnode,
 Status ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
                                  ErrorCode error_code) {
   return Error(tnode->loc(), error_code);
+}
+
+Status ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,
+                                 const std::string& msg,
+                                 ErrorCode error_code) {
+  return Error(tnode->loc(), msg.c_str(), error_code);
 }
 
 Status ProcessContextBase::Error(const TreeNode::SharedPtr& tnode,

@@ -5,7 +5,7 @@
  * NOTE! The caller must ensure that only one method is instantiated in
  *		 any given program, and that it's only instantiated once!
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/walmethods.c
@@ -22,6 +22,7 @@
 #endif
 
 #include "pgtar.h"
+#include "common/file_perm.h"
 #include "common/file_utils.h"
 
 #include "receivelog.h"
@@ -89,7 +90,7 @@ dir_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 	 * does not do any system calls to fsync() to make changes permanent on
 	 * disk.
 	 */
-	fd = open(tmppath, O_WRONLY | O_CREAT | PG_BINARY, S_IRUSR | S_IWUSR);
+	fd = open(tmppath, O_WRONLY | O_CREAT | PG_BINARY, pg_file_create_mode);
 	if (fd < 0)
 		return NULL;
 
@@ -115,23 +116,26 @@ dir_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 	/* Do pre-padding on non-compressed files */
 	if (pad_to_size && dir_data->compression == 0)
 	{
-		char	   *zerobuf;
+		PGAlignedXLogBlock zerobuf;
 		int			bytes;
 
-		zerobuf = pg_malloc0(XLOG_BLCKSZ);
+		memset(zerobuf.data, 0, XLOG_BLCKSZ);
 		for (bytes = 0; bytes < pad_to_size; bytes += XLOG_BLCKSZ)
 		{
-			if (write(fd, zerobuf, XLOG_BLCKSZ) != XLOG_BLCKSZ)
+			errno = 0;
+			if (write(fd, zerobuf.data, XLOG_BLCKSZ) != XLOG_BLCKSZ)
 			{
 				int			save_errno = errno;
 
-				pg_free(zerobuf);
 				close(fd);
-				errno = save_errno;
+
+				/*
+				 * If write didn't set errno, assume problem is no disk space.
+				 */
+				errno = save_errno ? save_errno : ENOSPC;
 				return NULL;
 			}
 		}
-		pg_free(zerobuf);
 
 		if (lseek(fd, 0, SEEK_SET) != 0)
 		{
@@ -440,8 +444,16 @@ tar_write_compressed_data(void *buf, size_t count, bool flush)
 		{
 			size_t		len = ZLIB_OUT_SIZE - tar_data->zp->avail_out;
 
+			errno = 0;
 			if (write(tar_data->fd, tar_data->zlibOut, len) != len)
+			{
+				/*
+				 * If write didn't set errno, assume problem is no disk space.
+				 */
+				if (errno == 0)
+					errno = ENOSPC;
 				return false;
+			}
 
 			tar_data->zp->next_out = tar_data->zlibOut;
 			tar_data->zp->avail_out = ZLIB_OUT_SIZE;
@@ -499,24 +511,20 @@ tar_write(Walfile f, const void *buf, size_t count)
 static bool
 tar_write_padding_data(TarMethodFile *f, size_t bytes)
 {
-	char	   *zerobuf = pg_malloc0(XLOG_BLCKSZ);
+	PGAlignedXLogBlock zerobuf;
 	size_t		bytesleft = bytes;
 
+	memset(zerobuf.data, 0, XLOG_BLCKSZ);
 	while (bytesleft)
 	{
-		size_t		bytestowrite = bytesleft > XLOG_BLCKSZ ? XLOG_BLCKSZ : bytesleft;
-
-		ssize_t		r = tar_write(f, zerobuf, bytestowrite);
+		size_t		bytestowrite = Min(bytesleft, XLOG_BLCKSZ);
+		ssize_t		r = tar_write(f, zerobuf.data, bytestowrite);
 
 		if (r < 0)
-		{
-			pg_free(zerobuf);
 			return false;
-		}
 		bytesleft -= r;
 	}
 
-	pg_free(zerobuf);
 	return true;
 }
 
@@ -534,7 +542,8 @@ tar_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 		 * We open the tar file only when we first try to write to it.
 		 */
 		tar_data->fd = open(tar_data->tarfilename,
-							O_WRONLY | O_CREAT | PG_BINARY, S_IRUSR | S_IWUSR);
+							O_WRONLY | O_CREAT | PG_BINARY,
+							pg_file_create_mode);
 		if (tar_data->fd < 0)
 			return NULL;
 
@@ -616,12 +625,14 @@ tar_open_for_write(const char *pathname, const char *temp_suffix, size_t pad_to_
 
 	if (!tar_data->compression)
 	{
+		errno = 0;
 		if (write(tar_data->fd, tar_data->currentfile->header, 512) != 512)
 		{
 			save_errno = errno;
 			pg_free(tar_data->currentfile);
 			tar_data->currentfile = NULL;
-			errno = save_errno;
+			/* if write didn't set errno, assume problem is no disk space */
+			errno = save_errno ? save_errno : ENOSPC;
 			return NULL;
 		}
 	}
@@ -815,8 +826,14 @@ tar_close(Walfile f, WalCloseMethod method)
 		return -1;
 	if (!tar_data->compression)
 	{
+		errno = 0;
 		if (write(tar_data->fd, tf->header, 512) != 512)
+		{
+			/* if write didn't set errno, assume problem is no disk space */
+			if (errno == 0)
+				errno = ENOSPC;
 			return -1;
+		}
 	}
 #ifdef HAVE_LIBZ
 	else
@@ -846,7 +863,8 @@ tar_close(Walfile f, WalCloseMethod method)
 		return -1;
 
 	/* Always fsync on close, so the padding gets fsynced */
-	tar_sync(f);
+	if (tar_sync(f) < 0)
+		return -1;
 
 	/* Clean up and done */
 	pg_free(tf->pathname);
@@ -877,12 +895,18 @@ tar_finish(void)
 			return false;
 	}
 
-	/* A tarfile always ends with two empty  blocks */
+	/* A tarfile always ends with two empty blocks */
 	MemSet(zerobuf, 0, sizeof(zerobuf));
 	if (!tar_data->compression)
 	{
+		errno = 0;
 		if (write(tar_data->fd, zerobuf, sizeof(zerobuf)) != sizeof(zerobuf))
+		{
+			/* if write didn't set errno, assume problem is no disk space */
+			if (errno == 0)
+				errno = ENOSPC;
 			return false;
+		}
 	}
 #ifdef HAVE_LIBZ
 	else
@@ -908,8 +932,17 @@ tar_finish(void)
 			{
 				size_t		len = ZLIB_OUT_SIZE - tar_data->zp->avail_out;
 
+				errno = 0;
 				if (write(tar_data->fd, tar_data->zlibOut, len) != len)
+				{
+					/*
+					 * If write didn't set errno, assume problem is no disk
+					 * space.
+					 */
+					if (errno == 0)
+						errno = ENOSPC;
 					return false;
+				}
 			}
 			if (r == Z_STREAM_END)
 				break;
@@ -925,7 +958,10 @@ tar_finish(void)
 
 	/* sync the empty blocks as well, since they're after the last file */
 	if (tar_data->sync)
-		fsync(tar_data->fd);
+	{
+		if (fsync(tar_data->fd) != 0)
+			return false;
+	}
 
 	if (close(tar_data->fd) != 0)
 		return false;

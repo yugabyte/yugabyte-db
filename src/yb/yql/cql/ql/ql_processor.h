@@ -63,7 +63,7 @@ class QLProcessor : public Rescheduler {
               std::shared_ptr<client::YBMetaDataCache> cache,
               QLMetrics* ql_metrics,
               const server::ClockPtr& clock,
-              TransactionManagerProvider transaction_manager_provider);
+              TransactionPoolProvider transaction_pool_provider);
   virtual ~QLProcessor();
 
   // Prepare a SQL statement (parse and analyze). A reference to the statement string is saved in
@@ -112,6 +112,7 @@ class QLProcessor : public Rescheduler {
 
  private:
   friend class QLTestBase;
+  friend class TestQLProcessor;
 
   // Parse a SQL statement and generate a parse tree.
   CHECKED_STATUS Parse(const std::string& stmt, ParseTree::UniPtr* parse_tree,

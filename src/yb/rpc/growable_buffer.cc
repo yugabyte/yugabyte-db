@@ -151,13 +151,16 @@ GrowableBuffer::GrowableBuffer(GrowableBufferAllocator* allocator, size_t limit)
       BufferPtr(allocator_.Allocate(true), GrowableBufferDeleter(&allocator_, true)));
 }
 
-void GrowableBuffer::DumpTo(std::ostream& out) const {
-  out << "size: " << size_ << ", limit: " << limit_;
+std::string GrowableBuffer::ToString() const {
+  return Format("{ size: $0 limit: $1 }", size_, limit_);
 }
 
-void GrowableBuffer::Consume(size_t count) {
+void GrowableBuffer::Consume(size_t count, const Slice& prepend) {
   if (count > size_) {
     LOG(DFATAL) << "Consume more bytes than contained: " << size_ << " vs " << count;
+  }
+  if (!prepend.empty()) {
+    LOG(DFATAL) << "GrowableBuffer does not support prepending";
   }
   if (count) {
     pos_ += count;
@@ -171,6 +174,9 @@ void GrowableBuffer::Consume(size_t count) {
       }
     }
     size_ -= count;
+    if (size_ == 0) { // Buffer was fully read, so we could reset start position also.
+      pos_ = 0;
+    }
   }
 }
 
@@ -211,6 +217,10 @@ IoVecs GrowableBuffer::AppendedVecs() {
 }
 
 Result<IoVecs> GrowableBuffer::PrepareAppend() {
+  if (!valid()) {
+    return STATUS(IllegalState, "Read buffer was reset");
+  }
+
   DCHECK_LT(pos_, block_size_);
 
   // Check if we have too small capacity left.
@@ -245,10 +255,18 @@ void GrowableBuffer::DataAppended(size_t len) {
   size_ += len;
 }
 
+void GrowableBuffer::Reset() {
+  Clear();
+  buffers_.clear();
+  buffers_.set_capacity(0);
+}
+
+bool GrowableBuffer::valid() const {
+  return !buffers_.empty();
+}
 
 std::ostream& operator<<(std::ostream& out, const GrowableBuffer& receiver) {
-  receiver.DumpTo(out);
-  return out;
+  return out << receiver.ToString();
 }
 
 } // namespace rpc

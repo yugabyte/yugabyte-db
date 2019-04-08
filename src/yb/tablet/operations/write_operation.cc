@@ -38,6 +38,9 @@
 #include <boost/optional.hpp>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
+#include "yb/docdb/cql_operation.h"
+#include "yb/docdb/pgsql_operation.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/walltime.h"
@@ -75,10 +78,13 @@ using tserver::WriteResponsePB;
 using strings::Substitute;
 
 WriteOperation::WriteOperation(
-    std::unique_ptr<WriteOperationState> state, int64_t term, MonoTime deadline,
+    std::unique_ptr<WriteOperationState> state, int64_t term, CoarseTimePoint deadline,
     WriteOperationContext* context)
     : Operation(std::move(state), OperationType::kWrite),
-      context_(*context), term_(term), deadline_(deadline), start_time_(MonoTime::Now()) {
+      context_(*context), term_(term), deadline_(deadline), start_time_(MonoTime::Now()),
+      // If term is unknown, it means that we are creating operation at replica.
+      // So it was already submitted at leader.
+      submitted_(term == yb::OpId::kUnknownTerm) {
 }
 
 consensus::ReplicateMsgPtr WriteOperation::NewReplicateMsg() {
@@ -120,13 +126,6 @@ Status WriteOperation::Apply(int64_t leader_term) {
   return Status::OK();
 }
 
-void WriteOperation::PreCommit() {
-  TRACE_EVENT0("txn", "WriteOperation::PreCommit");
-  TRACE("PRECOMMIT: Releasing row and schema locks");
-  // Perform early lock release after we've applied all changes
-  state()->ReleaseDocDbLocks(tablet());
-}
-
 void WriteOperation::Finish(OperationResult result) {
   TRACE_EVENT0("txn", "WriteOperation::Finish");
   if (PREDICT_FALSE(result == Operation::ABORTED)) {
@@ -158,6 +157,14 @@ string WriteOperation::ToString() const {
                     abs_time_formatted, state()->ToString());
 }
 
+WriteOperation::~WriteOperation() {
+  // If operation was submitted, then it's lifetime is controlled by operation tracker and we
+  // don't have to do it here.
+  if (!submitted_) {
+    context_.Aborted(this);
+  }
+}
+
 void WriteOperation::DoStartSynchronization(const Status& status) {
   std::unique_ptr<WriteOperation> self(this);
   // If a restart read is required, then we return this fact to caller and don't perform the write
@@ -177,17 +184,20 @@ void WriteOperation::DoStartSynchronization(const Status& status) {
     return;
   }
 
+  self->submitted_ = true;
   context_.Submit(std::move(self), term_);
 }
 
 WriteOperationState::WriteOperationState(Tablet* tablet,
                                          const tserver::WriteRequestPB *request,
-                                         tserver::WriteResponsePB *response)
+                                         tserver::WriteResponsePB *response,
+                                         docdb::OperationKind kind)
     : OperationState(tablet),
       // We need to copy over the request from the RPC layer, as we're modifying it in the tablet
       // layer.
       request_(request ? new WriteRequestPB(*request) : nullptr),
-      response_(response) {
+      response_(response),
+      kind_(kind) {
 }
 
 void WriteOperationState::Abort() {
@@ -195,22 +205,27 @@ void WriteOperationState::Abort() {
     tablet()->mvcc_manager()->Aborted(hybrid_time_);
   }
 
-  ReleaseDocDbLocks(tablet());
+  ReleaseDocDbLocks();
 
   // After aborting, we may respond to the RPC and delete the
   // original request, so null them out here.
   ResetRpcFields();
 }
 
+void WriteOperationState::UpdateRequestFromConsensusRound() {
+  request_ = consensus_round()->replicate_msg()->mutable_write_request();
+}
+
 void WriteOperationState::Commit() {
   tablet()->mvcc_manager()->Replicated(hybrid_time_);
+  ReleaseDocDbLocks();
 
   // After committing, we may respond to the RPC and delete the
   // original request, so null them out here.
   ResetRpcFields();
 }
 
-void WriteOperationState::ReleaseDocDbLocks(Tablet* tablet) {
+void WriteOperationState::ReleaseDocDbLocks() {
   // Free DocDB multi-level locks.
   docdb_locks_.Reset();
 }

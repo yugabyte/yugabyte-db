@@ -26,6 +26,9 @@ import java.util.List;
 
 public final class CoreFileUtil {
 
+  public static final boolean IS_MAC =
+      System.getProperty("os.name").toLowerCase().startsWith("mac os x");
+
   private CoreFileUtil() {
   }
 
@@ -63,7 +66,11 @@ public final class CoreFileUtil {
     List<String> coreFileBasenames = new ArrayList<>();
 
     if (coreFileDir == null) {
-      coreFileDir = new File(System.getProperty("user.dir"));
+      if (IS_MAC) {
+        coreFileDir = new File("/cores");
+      } else {
+        coreFileDir = new File(System.getProperty("user.dir"));
+      }
     }
 
     if (matchMode == CoreFileMatchMode.ANY_CORE_FILE) {

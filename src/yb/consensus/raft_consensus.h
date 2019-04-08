@@ -41,6 +41,7 @@
 #include <vector>
 
 #include <boost/optional/optional_fwd.hpp>
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_peers.h"
@@ -82,6 +83,9 @@ struct ElectionResult;
 constexpr int32_t kDefaultLeaderLeaseDurationMs = 2000;
 
 YB_STRONGLY_TYPED_BOOL(WriteEmpty);
+YB_STRONGLY_TYPED_BOOL(PreElected);
+
+YB_DEFINE_ENUM(RejectMode, (kNone)(kAll)(kNonEmpty));
 
 class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                       public Consensus,
@@ -103,9 +107,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
-    ThreadPool* raft_pool);
+    ThreadPool* raft_pool,
+    RetryableRequests* retryable_requests);
 
-  RaftConsensus(const ConsensusOptions& options,
+  RaftConsensus(
+    const ConsensusOptions& options,
     std::unique_ptr<ConsensusMetadata> cmeta,
     gscoped_ptr<PeerProxyFactory> peer_proxy_factory,
     gscoped_ptr<PeerMessageQueue> queue,
@@ -118,7 +124,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const scoped_refptr<log::Log>& log,
     std::shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    TableType table_type);
+    TableType table_type,
+    RetryableRequests* retryable_requests);
 
   virtual ~RaftConsensus();
 
@@ -140,11 +147,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                           LeaderStepDownResponsePB* resp) override;
 
   CHECKED_STATUS TEST_Replicate(const ConsensusRoundPtr& round) override;
-  CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) override;
+  CHECKED_STATUS ReplicateBatch(ConsensusRounds* rounds) override;
 
   CHECKED_STATUS Update(
       ConsensusRequestPB* request,
-      ConsensusResponsePB* response) override;
+      ConsensusResponsePB* response,
+      CoarseTimePoint deadline) override;
 
   CHECKED_STATUS RequestVote(const VoteRequestPB* request,
                              VoteResponsePB* response) override;
@@ -195,7 +203,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   void UpdateMajorityReplicatedInTests(const OpId &majority_replicated,
                                        OpId *committed_index) {
     UpdateMajorityReplicated({ majority_replicated,
-                               MonoTime::kMin,
+                               CoarseTimePoint::min(),
                                HybridTime::kMin.GetPhysicalValueMicros() },
                              committed_index);
   }
@@ -209,7 +217,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) override;
 
   MicrosTime MajorityReplicatedHtLeaseExpiration(
-      MicrosTime min_allowed, MonoTime deadline) const override;
+      MicrosTime min_allowed, CoarseTimePoint deadline) const override;
 
   // The on-disk size of the consensus metadata.
   uint64_t OnDiskSize() const;
@@ -218,6 +226,22 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   void SetPropagatedSafeTimeProvider(std::function<HybridTime()> provider);
 
   void SetMajorityReplicatedListener(std::function<void()> updater);
+
+  yb::OpId MinRetryableRequestOpId();
+
+  CHECKED_STATUS StartElection(const LeaderElectionData& data) override {
+    return DoStartElection(data, PreElected::kFalse);
+  }
+
+  RetryableRequestsCounts TEST_CountRetryableRequests();
+
+  void TEST_RejectMode(RejectMode value) {
+    reject_mode_.store(value, std::memory_order_release);
+  }
+
+  void TEST_DelayUpdate(MonoDelta duration) {
+    TEST_delay_update_.store(duration, std::memory_order_release);
+  }
 
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
@@ -255,12 +279,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   }
 
  private:
-  CHECKED_STATUS DoStartElection(
-      ElectionMode mode,
-      const bool pending_commit,
-      const OpId& must_be_committed_opid,
-      const std::string& originator_uuid,
-      TEST_SuppressVoteRequest suppress_vote_request) override;
+  CHECKED_STATUS DoStartElection(const LeaderElectionData& data, PreElected preelected);
+
+  Result<LeaderElectionPtr> CreateElectionUnlocked(
+      const LeaderElectionData& data,
+      MonoDelta timeout,
+      PreElection preelection);
 
   friend class ReplicaState;
   friend class RaftConsensusQuorumTest;
@@ -369,7 +393,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                                HybridTime propagated_safe_time);
 
   // Return header string for RequestVote log messages. The ReplicaState lock must be held.
-  std::string GetRequestVoteLogPrefix() const;
+  std::string GetRequestVoteLogPrefix(const VoteRequestPB& request) const;
 
   // Fills the response with the current status, if an update was successful.
   void FillConsensusResponseOKUnlocked(ConsensusResponsePB* response);
@@ -382,7 +406,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Fill VoteResponsePB with the following information:
   // - Update responder_term to current local term.
   // - Set vote_granted to true.
-  void FillVoteResponseVoteGranted(VoteResponsePB* response);
+  void FillVoteResponseVoteGranted(const VoteRequestPB& request, VoteResponsePB* response);
 
   // Fill VoteResponsePB with the following information:
   // - Update responder_term to current local term.
@@ -423,8 +447,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // Callback for leader election driver. ElectionCallback is run on the
   // reactor thread, so it simply defers its work to DoElectionCallback.
-  void ElectionCallback(const std::string& originator_uuid, const ElectionResult& result);
-  void DoElectionCallback(const std::string& originator_uuid, const ElectionResult& result);
+  void ElectionCallback(const LeaderElectionData& data, const ElectionResult& result);
+  void DoElectionCallback(const LeaderElectionData& data, const ElectionResult& result);
   void NotifyOriginatorAboutLostElection(const std::string& originator_uuid);
 
   // Helper struct that tracks the RunLeaderElection as part of leadership transferral.
@@ -586,7 +610,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   // This is the time (in the MonoTime's uint64 representation) for which election should not start
   // on this peer.
-  std::atomic<uint64_t> withhold_election_start_until_;
+  std::atomic<MonoTime> withhold_election_start_until_{MonoTime::Min()};
 
   // We record the moment at which we discover that an election has been lost by our "protege"
   // during leader stepdown. Then, when the master asks us to step down again in favor of the same
@@ -595,12 +619,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk_;
 
-  // TODO hack to serialize updates due to repeated/out-of-order messages
-  // should probably be refactored out.
-  //
   // Lock ordering note: If both this lock and the ReplicaState lock are to be
   // taken, this lock must be taken first.
-  mutable std::mutex update_lock_;
+  mutable std::timed_mutex update_mutex_;
 
   AtomicBool shutdown_;
 
@@ -625,6 +646,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // Used only when follower_reject_update_consensus_requests_seconds is greater than 0.
   // Any requests to update the replica will be rejected until this time. For testing only.
   MonoTime withold_replica_updates_until_ = MonoTime::kUninitialized;
+
+  std::atomic<RejectMode> reject_mode_{RejectMode::kNone};
+
+  CoarseTimePoint disable_pre_elections_until_ = CoarseTimePoint::min();
+
+  std::atomic<MonoDelta> TEST_delay_update_{MonoDelta::kZero};
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

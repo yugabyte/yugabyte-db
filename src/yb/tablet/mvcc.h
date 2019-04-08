@@ -114,20 +114,21 @@ class MvccManager {
   // Returns invalid hybrid time in case it cannot satisfy provided requirements, for instance
   // because of timeout.
   HybridTime SafeTime(
-      HybridTime min_allowed, MonoTime deadline, HybridTime ht_lease) const;
+      HybridTime min_allowed, CoarseTimePoint deadline, HybridTime ht_lease) const;
 
   HybridTime SafeTime(HybridTime ht_lease) const {
-    return SafeTime(HybridTime::kMin /* min_allowed */, MonoTime::kMax /* deadline */, ht_lease);
+    return SafeTime(HybridTime::kMin /* min_allowed */, CoarseTimePoint::max() /* deadline */,
+                    ht_lease);
   }
 
-  HybridTime SafeTimeForFollower(HybridTime min_allowed, MonoTime deadline) const;
+  HybridTime SafeTimeForFollower(HybridTime min_allowed, CoarseTimePoint deadline) const;
 
   // Returns time of last replicated operation.
   HybridTime LastReplicatedHybridTime() const;
 
  private:
   HybridTime DoGetSafeTime(HybridTime min_allowed,
-                           MonoTime deadline,
+                           CoarseTimePoint deadline,
                            HybridTime ht_lease,
                            std::unique_lock<std::mutex>* lock) const;
 

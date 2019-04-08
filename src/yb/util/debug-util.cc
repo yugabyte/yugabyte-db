@@ -39,9 +39,12 @@
 
 #ifdef __linux__
 #include <link.h>
-#include <backtrace.h>
 #include <cxxabi.h>
-#endif  // __linux__
+#endif // __linux__
+
+#ifdef __linux__
+#include <backtrace.h>
+#endif // __linux__
 
 #include <string>
 #include <iostream>
@@ -68,6 +71,15 @@
 #include "yb/util/string_trim.h"
 
 using namespace std::literals;
+
+#if defined(__linux__) && !defined(NDEBUG)
+constexpr bool kDefaultUseLibbacktrace = true;
+#else
+constexpr bool kDefaultUseLibbacktrace = false;
+#endif
+
+DEFINE_bool(use_libbacktrace, kDefaultUseLibbacktrace,
+            "Whether to use the libbacktrace library for symbolizing stack traces");
 
 #if defined(__APPLE__)
 typedef sig_t sighandler_t;
@@ -226,8 +238,8 @@ bool InitSignalHandlerUnlocked(int signum) {
   return state == INITIALIZED;
 }
 
-const char kStackTraceEntryFormat[] = "    @ %*p  %s";
 const char kUnknownSymbol[] = "(unknown)";
+const char kStackTraceEntryFormat[] = "    @ %*p  %s";
 
 #ifdef __linux__
 
@@ -298,7 +310,7 @@ class GlobalBacktraceState {
   GlobalBacktraceState() {
     bt_state_ = backtrace_create_state(
         /* filename */ nullptr,
-        /* threaded = */ 1,
+        /* threaded = */ 0,
         BacktraceErrorCallback,
         /* data */ nullptr);
 
@@ -309,6 +321,9 @@ class GlobalBacktraceState {
   }
 
   backtrace_state* GetState() { return bt_state_; }
+
+  std::mutex* mutex() { return &mutex_; }
+
  private:
   static int DummyCallback(void *const data, const uintptr_t pc,
                     const char* const filename, const int lineno,
@@ -317,6 +332,7 @@ class GlobalBacktraceState {
   }
 
   struct backtrace_state* bt_state_;
+  std::mutex mutex_;
 };
 
 int BacktraceFullCallback(void *const data, const uintptr_t pc,
@@ -426,7 +442,6 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
   free(demangled_function_name);
   return 0;
 }
-
 #endif  // __linux__
 
 }  // anonymous namespace
@@ -434,19 +449,22 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
 Status SetStackTraceSignal(int signum) {
   base::SpinLockHolder h(&g_dumper_thread_lock);
   if (!InitSignalHandlerUnlocked(signum)) {
-    return STATUS(InvalidArgument, "unable to install signal handler");
+    return STATUS(InvalidArgument, "Unable to install signal handler");
   }
   return Status::OK();
 }
 
-std::string DumpThreadStack(int64_t tid) {
+Result<StackTrace> ThreadStack(int64_t tid) {
+  StackTrace result;
 #if defined(__linux__)
   base::SpinLockHolder h(&g_dumper_thread_lock);
 
   // Ensure that our signal handler is installed. We don't need any fancy GoogleOnce here
   // because of the mutex above.
   if (!InitSignalHandlerUnlocked(g_stack_trace_signum)) {
-    return "<unable to take thread stack: signal handler unavailable>";
+    static const Status status = STATUS(
+        RuntimeError, "Unable to take thread stack: signal handler unavailable");
+    return status;
   }
 
   // Set the target TID in our communication structure, so if we end up with any
@@ -465,7 +483,9 @@ std::string DumpThreadStack(int64_t tid) {
       SignalCommunication::Lock l;
       g_comm.target_tid = 0;
     }
-    return "(unable to deliver signal: process may have exited)";
+    static const Status status = STATUS(
+        RuntimeError, "Unable to deliver signal: process may have exited");
+    return status;
   }
 
   // We give the thread ~1s to respond. In testing, threads typically respond within
@@ -474,7 +494,6 @@ std::string DumpThreadStack(int64_t tid) {
   // The main reason that a thread would not respond is that it has blocked signals. For
   // example, glibc's timer_thread doesn't respond to our signal, so we always time out
   // on that one.
-  string buf;
   int i = 0;
   while (!base::subtle::Acquire_Load(&g_comm.result_ready) &&
          i++ < 100) {
@@ -485,16 +504,29 @@ std::string DumpThreadStack(int64_t tid) {
     SignalCommunication::Lock l;
     CHECK_EQ(tid, g_comm.target_tid);
 
-    if (!g_comm.result_ready) {
-      buf = "(thread did not respond: maybe it is blocking signals)";
-    } else {
-      buf = g_comm.stack.Symbolize();
+    if (g_comm.result_ready) {
+      result = g_comm.stack;
     }
 
     g_comm.target_tid = 0;
     g_comm.result_ready = 0;
+
+    if (!result) {
+      static const Status status = STATUS(
+          RuntimeError, "Thread did not respond: maybe it is blocking signals");
+    }
   }
-  return buf;
+#endif
+  return result;
+}
+
+std::string DumpThreadStack(int64_t tid) {
+#if defined(__linux__)
+  auto stack_trace = ThreadStack(tid);
+  if (!stack_trace.ok()) {
+    return stack_trace.status().message().ToBuffer();
+  }
+  return stack_trace->Symbolize();
 #else // defined(__linux__)
   return "(unsupported platform)";
 #endif
@@ -526,21 +558,30 @@ std::string GetStackTrace(StackTraceLineFormat stack_trace_line_format,
                           int num_top_frames_to_skip) {
   std::string buf;
 #ifdef __linux__
-  SymbolizationContext context;
-  context.buf = &buf;
-  context.stack_trace_line_format = stack_trace_line_format;
-  // Use libbacktrace on Linux because that gives us file names and line numbers.
-  struct backtrace_state* const backtrace_state =
-      Singleton<GlobalBacktraceState>::get()->GetState();
-  const int backtrace_full_rv = backtrace_full(
-      backtrace_state, /* skip = */ num_top_frames_to_skip + 1, BacktraceFullCallback,
-      BacktraceErrorCallback, &context);
-  if (backtrace_full_rv != 0) {
-    StringAppendF(&buf, "Error: backtrace_full return value is %d", backtrace_full_rv);
+  if (FLAGS_use_libbacktrace) {
+    SymbolizationContext context;
+    context.buf = &buf;
+    context.stack_trace_line_format = stack_trace_line_format;
+
+    // Use libbacktrace on Linux because that gives us file names and line numbers.
+    auto* global_backtrace_state = Singleton<GlobalBacktraceState>::get();
+    struct backtrace_state* const backtrace_state = global_backtrace_state->GetState();
+
+    // Avoid multi-threaded access to libbacktrace which causes high memory consumption.
+    std::lock_guard<std::mutex> l(*global_backtrace_state->mutex());
+
+    // TODO: https://yugabyte.atlassian.net/browse/ENG-4729
+
+    const int backtrace_full_rv = backtrace_full(
+        backtrace_state, /* skip = */ num_top_frames_to_skip + 1, BacktraceFullCallback,
+        BacktraceErrorCallback, &context);
+    if (backtrace_full_rv != 0) {
+      StringAppendF(&buf, "Error: backtrace_full return value is %d", backtrace_full_rv);
+    }
+    return buf;
   }
-#else
-  google::glog_internal_namespace_::DumpStackTraceToString(&buf);
 #endif
+  google::glog_internal_namespace_::DumpStackTraceToString(&buf);
   return buf;
 }
 
@@ -601,7 +642,7 @@ void SymbolizeAddress(
     void* pc,
     string* buf
 #ifdef __linux__
-    , struct backtrace_state* backtrace_state = nullptr
+    , GlobalBacktraceState* global_backtrace_state = nullptr
 #endif
     ) {
   // The return address 'pc' on the stack is the address of the instruction
@@ -631,15 +672,23 @@ void SymbolizeAddress(
   // on logged stacks.
   pc = reinterpret_cast<void*>(reinterpret_cast<size_t>(pc) - 1);
 #ifdef __linux__
-  if (!backtrace_state) {
-    backtrace_state = Singleton<GlobalBacktraceState>::get()->GetState();
+  if (FLAGS_use_libbacktrace) {
+    if (!global_backtrace_state) {
+      global_backtrace_state = Singleton<GlobalBacktraceState>::get();
+    }
+    struct backtrace_state* const backtrace_state = global_backtrace_state->GetState();
+
+    // Avoid multi-threaded access to libbacktrace which causes high memory consumption.
+    std::lock_guard<std::mutex> l(*global_backtrace_state->mutex());
+
+    SymbolizationContext context;
+    context.stack_trace_line_format = stack_trace_line_format;
+    context.buf = buf;
+    backtrace_pcinfo(backtrace_state, reinterpret_cast<uintptr_t>(pc),
+                    BacktraceFullCallback, BacktraceErrorCallback, &context);
+    return;
   }
-  SymbolizationContext context;
-  context.stack_trace_line_format = stack_trace_line_format;
-  context.buf = buf;
-  backtrace_pcinfo(backtrace_state, reinterpret_cast<uintptr_t>(pc),
-                   BacktraceFullCallback, BacktraceErrorCallback, &context);
-#else
+#endif
   char tmp[1024];
   const char* symbol = kUnknownSymbol;
 
@@ -650,7 +699,7 @@ void SymbolizeAddress(
   // We are appending the end-of-line character separately because we want to reuse the same
   // format string for libbacktrace callback and glog-based symbolization, and we have an extra
   // file name / line number component before the end-of-line in the libbacktrace case.
-#endif  // Non-linux implementation
+  buf->push_back('\n');
 }
 
 // Symbolization function borrowed from glog and modified to use libbacktrace on Linux.
@@ -658,8 +707,8 @@ string StackTrace::Symbolize(const StackTraceLineFormat stack_trace_line_format)
   string buf;
 #ifdef __linux__
   // Use libbacktrace for symbolization.
-  struct backtrace_state* const backtrace_state =
-      Singleton<GlobalBacktraceState>::get()->GetState();
+  auto* global_backtrace_state =
+      FLAGS_use_libbacktrace ? Singleton<GlobalBacktraceState>::get() : nullptr;
 #endif
 
   for (int i = 0; i < num_frames_; i++) {
@@ -667,7 +716,7 @@ string StackTrace::Symbolize(const StackTraceLineFormat stack_trace_line_format)
 
     SymbolizeAddress(stack_trace_line_format, pc, &buf
 #ifdef __linux__
-        , backtrace_state
+        , global_backtrace_state
 #endif
         );
   }

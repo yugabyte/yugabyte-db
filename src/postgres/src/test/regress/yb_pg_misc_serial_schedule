@@ -1,0 +1,14 @@
+# src/test/regress/yb_misc_serial_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# This includes miscellaneous tests that are not yet characterized to a proper testsuite.
+####################################################################################################
+test: yb_insert
+test: yb_schema
+test: yb_prepare
+test: yb_create_table
+test: yb_create_index
+test: yb_copy
+test: yb_select
+

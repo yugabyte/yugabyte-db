@@ -17,6 +17,8 @@
 
 #include "yb/client/client.h"
 
+#include "yb/util/decimal.h"
+
 namespace yb {
 namespace pggate {
 
@@ -62,6 +64,9 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kBoolValue:
       WriteBool(col_value.bool_value(), buffer);
       break;
+    case InternalType::kInt8Value:
+      WriteInt8(col_value.int8_value(), buffer);
+      break;
     case InternalType::kInt16Value:
       WriteInt16(col_value.int16_value(), buffer);
       break;
@@ -83,11 +88,13 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kBinaryValue:
       WriteBinary(col_value.binary_value(), buffer);
       break;
-
-    case InternalType::kTimestampValue:
-    case InternalType::kDateValue:
-    case InternalType::kTimeValue:
     case InternalType::kDecimalValue:
+      // Passing a serialized form of YB Decimal, decoding will be done in pg_expr.cc
+      WriteText(col_value.decimal_value(), buffer);
+      break;
+    case InternalType::kTimestampValue:
+    case InternalType::kDateValue: // Not used for PG storage
+    case InternalType::kTimeValue: // Not used for PG storage
     case InternalType::kVarintValue:
     case InternalType::kInetaddressValue:
     case InternalType::kJsonbValue:
@@ -97,7 +104,6 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
       return STATUS_FORMAT(NotSupported,
           "Unexpected data was read from database: col_value.type()=$0", col_value.type());
 
-    case InternalType::kInt8Value:
     case InternalType::kListValue:
     case InternalType::kMapValue:
     case InternalType::kSetValue:
@@ -114,7 +120,7 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
 // Read Tuple Routine in DocDB Format (wire_protocol).
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PgDocData::LoadCache(const string& cache, int64_t *total_row_count, Slice *cursor) {
+Status PgDocData::LoadCache(const string& cache, int64_t *total_row_count, Slice *cursor) {
   // Setup the buffer to read the next set of tuples.
   CHECK(cursor->empty()) << "Existing cache is not yet fully read";
   *cursor = cache;

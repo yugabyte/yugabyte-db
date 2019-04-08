@@ -38,3 +38,41 @@ SELECT * FROM yb_char_in_key WHERE ck = 'a';
 SELECT * FROM yb_char_in_key WHERE ck = chr(1042);
 
 DROP TABLE yb_char_in_key;
+
+--
+-- Now test longer arrays of char
+--
+
+CREATE TABLE yb_charn_in_value(f1 char(4));
+
+INSERT INTO yb_charn_in_value(f1) VALUES ('a');
+INSERT INTO yb_charn_in_value(f1) VALUES ('ab');
+INSERT INTO yb_charn_in_value(f1) VALUES ('abc');
+INSERT INTO yb_charn_in_value(f1) VALUES ('abc ');
+INSERT INTO yb_charn_in_value(f1) VALUES (' abc');
+INSERT INTO yb_charn_in_value(f1) VALUES ('abcd');
+INSERT INTO yb_charn_in_value(f1) VALUES ('abcde');
+INSERT INTO yb_charn_in_value(f1) VALUES ('abcd    ');
+
+SELECT * FROM yb_charn_in_value ORDER BY f1;
+SELECT * FROM yb_charn_in_value WHERE f1 = 'ab';
+SELECT * FROM yb_charn_in_value WHERE f1 = 'abcd';
+
+DROP TABLE yb_charn_in_value;
+
+CREATE TABLE yb_charn_in_key(f1 char(4) PRIMARY KEY);
+
+INSERT INTO yb_charn_in_key(f1) VALUES ('a');
+INSERT INTO yb_charn_in_key(f1) VALUES ('ab');
+INSERT INTO yb_charn_in_key(f1) VALUES ('abc');
+INSERT INTO yb_charn_in_key(f1) VALUES ('abc ');
+INSERT INTO yb_charn_in_key(f1) VALUES (' abc');
+INSERT INTO yb_charn_in_key(f1) VALUES ('abcd');
+INSERT INTO yb_charn_in_key(f1) VALUES ('abcde');
+INSERT INTO yb_charn_in_key(f1) VALUES ('abcd    ');
+
+SELECT * FROM yb_charn_in_key ORDER BY f1;
+SELECT * FROM yb_charn_in_key WHERE f1 = 'ab';
+SELECT * FROM yb_charn_in_key WHERE f1 = 'abcd';
+
+DROP TABLE yb_charn_in_key;

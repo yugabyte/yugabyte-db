@@ -29,6 +29,7 @@ spark-submit --driver-cores 8 \
   --write_report \
   --save_report_to_build_dir
 
+Also adding --spark-master-url=local helps with local debugging.
 """
 
 import argparse
@@ -42,19 +43,84 @@ import pwd
 import random
 import re
 import socket
+import subprocess
 import sys
 import time
 import traceback
-import subprocess
+import tempfile
+import errno
+import signal
 from collections import defaultdict
 
 BUILD_SUPPORT_DIR = os.path.dirname(os.path.realpath(__file__))
 YB_PYTHONPATH_ENTRY = os.path.realpath(os.path.join(BUILD_SUPPORT_DIR, '..', 'python'))
-sys.path.append(YB_PYTHONPATH_ENTRY)
+YB_ENT_PYTHONPATH_ENTRY = os.path.realpath(os.path.join(BUILD_SUPPORT_DIR, '..', 'ent', 'python'))
+is_yb_internal_env = os.path.isdir(YB_ENT_PYTHONPATH_ENTRY)
+
+# An upper bound on a single test's running time. In practice there are multiple other timeouts
+# that should be triggered earlier.
+TEST_TIMEOUT_UPPER_BOUND_SEC = 35 * 60
+
+# We wait for a special "flag file" to appear indicating that the test has started running, which is
+# created by the about_to_start_running_test in common-test-env.sh. If this does not happen within
+# this amount of time, we terminate the run-test.sh script. This should prevent tests getting stuck
+# for a long time in macOS builds.
+TIME_SEC_TO_START_RUNNING_TEST = 30
+
+# Additional Python module path elements that we've successfully added (that were not already in
+# sys.path).
+pythonpath_adjustments = []
+
+
+def add_pythonpath_entry(entry):
+    if entry not in sys.path:
+        sys.path.append(entry)
+        pythonpath_adjustments.append(entry)
+
+
+def adjust_pythonpath():
+    add_pythonpath_entry(YB_PYTHONPATH_ENTRY)
+    if is_yb_internal_env:
+        add_pythonpath_entry(YB_ENT_PYTHONPATH_ENTRY)
+
+
+def wait_for_path_to_exist(target_path):
+    if os.path.exists(target_path):
+        return
+    waited_for_sec = 0
+    start_time_sec = time.time()
+    printed_msg_at_sec = 0
+    MSG_PRINT_INTERVAL_SEC = 5.0
+    TIMEOUT_SEC = 120
+    while not os.path.exists(target_path):
+        current_time_sec = time.time()
+        if current_time_sec - printed_msg_at_sec >= MSG_PRINT_INTERVAL_SEC:
+            sys.stderr.write("Path '%s' does not exist, waiting\n" % target_path)
+            printed_msg_at_sec = current_time_sec
+        if current_time_sec - start_time_sec >= TIMEOUT_SEC:
+            raise IOError(
+                "Timed out after %.1f seconds waiting for path to exist: %s" % (
+                    current_time_sec - start_time_sec, target_path
+                ))
+        time.sleep(0.1)
+    elapsed_time = time.time() - start_time_sec
+    sys.stderr.write("Waited for %.1f seconds for the path '%s' to appear\n" % (
+        elapsed_time, target_path
+    ))
+
+
+adjust_pythonpath()
+
+# Wait for our module path, which may be on NFS, to be mounted.
+wait_for_path_to_exist(YB_PYTHONPATH_ENTRY)
 
 from yb import yb_dist_tests  # noqa
 from yb import command_util  # noqa
-from yb.common_util import set_to_comma_sep_str, get_bool_env_var  # noqa
+from yb.common_util import set_to_comma_sep_str, get_bool_env_var, is_macos  # noqa
+
+
+if is_yb_internal_env:
+    from yb_ent import yb_dist_tests_internal
 
 
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
@@ -81,6 +147,12 @@ JENKINS_ENV_VARS = [
 # In addition, all variables with names starting with the following prefix are propagated.
 PROPAGATED_ENV_VAR_PREFIX = 'YB_'
 
+# However, these variables are not propagated.
+NON_PROPAGATED_YB_ENV_VARS = set([
+    'YB_MVN_LOCAL_REPO',
+    'YB_MVN_SETTINGS_PATH'
+    ])
+
 # This directory inside $BUILD_ROOT contains files listing all C++ tests (one file per test
 # program).
 #
@@ -91,8 +163,11 @@ LIST_OF_TESTS_DIR_NAME = 'list_of_tests'
 propagated_env_vars = {}
 global_conf_dict = None
 
-DEFAULT_SPARK_MASTER_URL = 'spark://buildmaster.c.yugabyte.internal:7077'
-DEFAULT_SPARK_MASTER_URL_ASAN_TSAN = 'spark://buildmaster.c.yugabyte.internal:7078'
+SPARK_URLS = yb_dist_tests_internal.SPARK_URLS if is_yb_internal_env else {
+    'linux_default': 'spark://spark-for-yugabyte-linux-default.example.com:7077',
+    'macos': 'spark://spark-for-yugabyte-macos.example.com:7077',
+    'linux_asan_tsan': 'spark://spark-for-yugabyte-linux-asan-tsan.example.com:7078'
+}
 
 # This has to match what we output in run-test.sh if YB_LIST_CTEST_TESTS_ONLY is set.
 CTEST_TEST_PROGRAM_RE = re.compile(r'^.* ctest test: \"(.*)\"$')
@@ -119,6 +194,38 @@ SPARK_TASK_MAX_FAILURES = 100
 
 verbose = False
 
+g_spark_master_url_override = None
+
+
+def get_sys_path_info_str():
+    return 'Host: %s, is_yb_internal_env=%s, pythonpath_adjustments=%s, sys.path entries: %s' % (
+        socket.gethostname(),
+        is_yb_internal_env,
+        repr(pythonpath_adjustments),
+        ', '.join([
+            '"%s" (%s)' % (path_entry, "exists" if os.path.exists(path_entry) else "does NOT exist")
+            for path_entry in sys.path
+        ])
+    )
+
+
+def is_pid_running(pid):
+    import psutil
+    try:
+        process = psutil.Process(pid)
+        return process.status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        # Not running.
+        return False
+
+
+def delete_if_exists_log_errors(file_path):
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except OSError, os_error:
+            logging.error("Error deleting file %s: %s", file_path, os_error)
+
 
 # Initializes the spark context. The details list will be incorporated in the Spark application
 # name visible in the Spark web UI.
@@ -134,14 +241,21 @@ def init_spark_context(details=[]):
     # NOTE: we never retry failed tests to avoid hiding bugs. This failure tolerance mechanism
     #       is just for the resilience of the test framework itself.
     SparkContext.setSystemProperty('spark.task.maxFailures', str(SPARK_TASK_MAX_FAILURES))
-    if yb_dist_tests.global_conf.build_type in ['asan', 'tsan']:
-        logging.info("Using a separate default Spark cluster for ASAN and TSAN tests")
-        default_spark_master_url = DEFAULT_SPARK_MASTER_URL_ASAN_TSAN
-    else:
-        logging.info("Using the regular default Spark cluster for non-ASAN/TSAN tests")
-        default_spark_master_url = DEFAULT_SPARK_MASTER_URL
 
-    spark_master_url = os.environ.get('YB_SPARK_MASTER_URL', default_spark_master_url)
+    spark_master_url = g_spark_master_url_override
+    if spark_master_url is None:
+        if is_macos():
+            logging.info("This is macOS, using the macOS Spark cluster")
+            spark_master_url = SPARK_URLS['macos']
+        elif yb_dist_tests.global_conf.build_type in ['asan', 'tsan']:
+            logging.info("Using a separate Spark cluster for ASAN and TSAN tests")
+            spark_master_url = SPARK_URLS['linux_asan_tsan']
+        else:
+            logging.info("Using the regular Spark cluster for non-ASAN/TSAN tests")
+            spark_master_url = SPARK_URLS['linux_default']
+
+    logging.info("Spark master URL: %s", spark_master_url)
+    spark_master_url = os.environ.get('YB_SPARK_MASTER_URL', spark_master_url)
     details += [
         'user: {}'.format(getpass.getuser()),
         'build type: {}'.format(build_type)
@@ -154,14 +268,15 @@ def init_spark_context(details=[]):
     spark_context.addPyFile(yb_dist_tests.__file__)
 
 
-def adjust_pythonpath():
-    if YB_PYTHONPATH_ENTRY not in sys.path:
-        sys.path.append(YB_PYTHONPATH_ENTRY)
-
-
 def set_global_conf_for_spark_jobs():
     global global_conf_dict
     global_conf_dict = vars(yb_dist_tests.global_conf)
+
+
+def get_bash_path():
+    if sys.platform == 'darwin':
+        return '/usr/local/bin/bash'
+    return '/bin/bash'
 
 
 def parallel_run_test(test_descriptor_str):
@@ -169,14 +284,34 @@ def parallel_run_test(test_descriptor_str):
     This is invoked in parallel to actually run tests.
     """
     adjust_pythonpath()
-    from yb import yb_dist_tests, command_util
+    wait_for_path_to_exist(YB_PYTHONPATH_ENTRY)
+    try:
+        from yb import yb_dist_tests, command_util
+    except ImportError as ex:
+        raise ImportError("%s. %s" % (ex.message, get_sys_path_info_str()))
 
     global_conf = yb_dist_tests.set_global_conf_from_dict(global_conf_dict)
     global_conf.set_env(propagated_env_vars)
+    wait_for_path_to_exist(global_conf.build_root)
     yb_dist_tests.global_conf = global_conf
     test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
+
+    # This is saved in the test result file by process_test_result.py.
+    os.environ['YB_TEST_DESCRIPTOR_STR'] = test_descriptor_str
+
     os.environ['YB_TEST_ATTEMPT_INDEX'] = str(test_descriptor.attempt_index)
     os.environ['build_type'] = global_conf.build_type
+    os.environ['YB_RUNNING_TEST_ON_SPARK'] = '1'
+    os.environ['BUILD_ROOT'] = global_conf.build_root
+
+    test_started_running_flag_file = os.path.join(
+            tempfile.gettempdir(),
+            'yb_test_started_running_flag_file_%d_%s' % (
+                    os.getpid(),
+                    ''.join('%09d' % random.randrange(0, 1000000000) for i in xrange(4))))
+
+    os.environ['YB_TEST_STARTED_RUNNING_FLAG_FILE'] = test_started_running_flag_file
+    os.environ['YB_TEST_EXTRA_ERROR_LOG_PATH'] = test_descriptor.error_output_path
 
     yb_dist_tests.wait_for_clock_sync()
 
@@ -184,41 +319,92 @@ def parallel_run_test(test_descriptor_str):
     # ideal for a large amount of test log output. The "tee" part also makes the output visible in
     # the standard error of the Spark task as well, which is sometimes helpful for debugging.
     def run_test():
-        start_time = time.time()
-        exit_code = os.system(
-            "bash -c 'set -o pipefail; \"{}\" {} 2>&1 | tee \"{}\"; {}'".format(
-                    global_conf.get_run_test_script_path(),
-                    test_descriptor.args_for_run_test,
-                    test_descriptor.error_output_path,
-                    'exit ${PIPESTATUS[0]}')) >> 8
-        # The ">> 8" is to get the exit code returned by os.system() in the high 8 bits of the
-        # result.
-        elapsed_time_sec = time.time() - start_time
-        logging.info("Test {} ran on {}, rc={}".format(
+        start_time_sec = time.time()
+        runner_oneline = 'set -o pipefail; "%s" %s 2>&1 | tee "%s"; exit ${PIPESTATUS[0]}' % (
+            global_conf.get_run_test_script_path(),
+            test_descriptor.args_for_run_test,
+            test_descriptor.error_output_path
+        )
+        process = subprocess.Popen(
+            [get_bash_path(), '-c', runner_oneline]
+        )
+
+        found_flag_file = False
+        while is_pid_running(process.pid):
+            elapsed_time_sec = time.time() - start_time_sec
+            termination_reason = None
+            if elapsed_time_sec > TEST_TIMEOUT_UPPER_BOUND_SEC:
+                termination_reason = 'ran longer than %d seconds' % TEST_TIMEOUT_UPPER_BOUND_SEC
+
+            failed_to_launch = False
+            if not found_flag_file:
+                if os.path.exists(test_started_running_flag_file):
+                    found_flag_file = True
+                elif elapsed_time_sec > TIME_SEC_TO_START_RUNNING_TEST:
+                    termination_reason = (
+                        'could not start running the test in %d seconds (file %s not created). '
+                        'Ran command: {{ %s }}.'
+                    ) % (
+                        TIME_SEC_TO_START_RUNNING_TEST,
+                        test_started_running_flag_file,
+                        runner_oneline
+                    )
+                    failed_to_launch = True
+
+            if termination_reason:
+                error_msg = "Test %s is being terminated (ran for %.1f seconds), reason: %s" % (
+                    test_descriptor, elapsed_time_sec, termination_reason
+                )
+                logging.info(error_msg)
+                try:
+                    os.kill(process.pid, signal.SIGKILL)
+                except OSError, os_error:
+                    if os_error.errno == errno.ESRCH:
+                        logging.info(
+                            "Process with pid %d disappeared suddenly, that's OK",
+                            process.pid)
+                        pass
+                    raise os_error
+
+                if failed_to_launch:
+                    # This exception should bubble up to Spark and cause it to hopefully re-run the
+                    # test one some other node.
+                    raise RuntimeError(error_msg)
+                break
+
+            time.sleep(0.5)
+
+        exit_code = process.wait()
+
+        elapsed_time_sec = time.time() - start_time_sec
+        logging.info("Test {} ran on {} in %.1f seconds, rc={}".format(
             test_descriptor, socket.gethostname(), exit_code))
         return exit_code, elapsed_time_sec
 
-    exit_code, elapsed_time_sec = run_test()
-    error_output_path = test_descriptor.error_output_path
+    try:
+        exit_code, elapsed_time_sec = run_test()
+        error_output_path = test_descriptor.error_output_path
 
-    failed_without_output = False
-    if os.path.isfile(error_output_path) and os.path.getsize(error_output_path) == 0:
-        if exit_code == 0:
-            # Test succeeded, no error output.
-            os.remove(error_output_path)
-        else:
-            # Test failed without any output! Re-run with "set -x" to diagnose.
-            os.environ['YB_DEBUG_RUN_TEST'] = '1'
-            exit_code, elapsed_time_sec = run_test()
-            del os.environ['YB_DEBUG_RUN_TEST']
-            # Also mark this in test results.
-            failed_without_output = True
+        failed_without_output = False
+        if os.path.isfile(error_output_path) and os.path.getsize(error_output_path) == 0:
+            if exit_code == 0:
+                # Test succeeded, no error output.
+                os.remove(error_output_path)
+            else:
+                # Test failed without any output! Re-run with "set -x" to diagnose.
+                os.environ['YB_DEBUG_RUN_TEST'] = '1'
+                exit_code, elapsed_time_sec = run_test()
+                del os.environ['YB_DEBUG_RUN_TEST']
+                # Also mark this in test results.
+                failed_without_output = True
 
-    return yb_dist_tests.TestResult(
-            exit_code=exit_code,
-            test_descriptor=test_descriptor,
-            elapsed_time_sec=elapsed_time_sec,
-            failed_without_output=failed_without_output)
+        return yb_dist_tests.TestResult(
+                exit_code=exit_code,
+                test_descriptor=test_descriptor,
+                elapsed_time_sec=elapsed_time_sec,
+                failed_without_output=failed_without_output)
+    finally:
+        delete_if_exists_log_errors(test_started_running_flag_file)
 
 
 def parallel_list_test_descriptors(rel_test_path):
@@ -228,11 +414,22 @@ def parallel_list_test_descriptors(rel_test_path):
     minutes in debug.
     """
     adjust_pythonpath()
-    from yb import yb_dist_tests, command_util
+    wait_for_path_to_exist(YB_PYTHONPATH_ENTRY)
+    try:
+        from yb import yb_dist_tests, command_util
+    except ImportError as ex:
+        raise ImportError("%s. %s" % (ex.message, get_sys_path_info_str()))
     global_conf = yb_dist_tests.set_global_conf_from_dict(global_conf_dict)
     global_conf.set_env(propagated_env_vars)
-    prog_result = command_util.run_program(
-            [os.path.join(global_conf.build_root, rel_test_path), '--gtest_list_tests'])
+    wait_for_path_to_exist(global_conf.build_root)
+    list_tests_cmd_line = [
+            os.path.join(global_conf.build_root, rel_test_path), '--gtest_list_tests']
+
+    try:
+        prog_result = command_util.run_program(list_tests_cmd_line)
+    except OSError, ex:
+        logging.error("Failed running the command: %s", list_tests_cmd_line)
+        raise
 
     # --gtest_list_tests gives us the following output format:
     #  TestSplitArgs.
@@ -343,6 +540,7 @@ def save_json_to_paths(short_description, json_data, output_paths, should_gzip=F
 
 def save_report(report_base_dir, results, total_elapsed_time_sec, spark_succeeded,
                 save_to_build_dir=False):
+    historical_report_path = None
     global_conf = yb_dist_tests.global_conf
 
     if report_base_dir:
@@ -397,11 +595,13 @@ def save_report(report_base_dir, results, total_elapsed_time_sec, spark_succeede
         tests=test_reports_by_descriptor
         )
 
-    full_report_paths = [historical_report_path]
-    if save_to_build_dir:
-        full_report_paths.append(os.path.join(global_conf.build_root, 'full_build_report.json'))
+    if historical_report_path:
+        full_report_paths = [historical_report_path]
+        if save_to_build_dir:
+            full_report_paths.append(os.path.join(global_conf.build_root, 'full_build_report.json'))
 
-    save_json_to_paths('full build report', report, full_report_paths, should_gzip=True)
+        save_json_to_paths('full build report', report, full_report_paths, should_gzip=True)
+
     if save_to_build_dir:
         del report['tests']
         short_report_path = os.path.join(global_conf.build_root, 'short_build_report.json')
@@ -429,17 +629,27 @@ def collect_cpp_tests(max_tests, cpp_test_program_filter, cpp_test_program_re_st
     global_conf = yb_dist_tests.global_conf
     logging.info("Collecting the list of C++ test programs")
     start_time_sec = time.time()
+    build_root_realpath = os.path.realpath(global_conf.build_root)
     ctest_cmd_result = command_util.run_program(
             ['/bin/bash',
              '-c',
              'cd "{}" && YB_LIST_CTEST_TESTS_ONLY=1 ctest -j8 --verbose'.format(
-                global_conf.build_root)])
+                 build_root_realpath)])
     test_programs = []
 
     for line in ctest_cmd_result.stdout.split("\n"):
         re_match = CTEST_TEST_PROGRAM_RE.match(line)
         if re_match:
-            rel_ctest_prog_path = os.path.relpath(re_match.group(1), global_conf.build_root)
+            ctest_test_program = re_match.group(1)
+            if ctest_test_program.startswith('/'):
+                ctest_test_program = os.path.realpath(ctest_test_program)
+            rel_ctest_prog_path = os.path.relpath(
+                    os.path.realpath(ctest_test_program),
+                    build_root_realpath)
+            if rel_ctest_prog_path.startswith('../'):
+                raise ValueError(
+                    "Relative path to a ctest test binary ended up starting with '../', something "
+                    "must be wrong: %s" % rel_ctest_prog_path)
             test_programs.append(rel_ctest_prog_path)
 
     test_programs = sorted(set(test_programs))
@@ -606,13 +816,20 @@ def load_test_list(test_list_path):
 
 
 def propagate_env_vars():
+    num_propagated = 0
     for env_var_name in JENKINS_ENV_VARS:
         if env_var_name in os.environ:
             propagated_env_vars[env_var_name] = os.environ[env_var_name]
+            num_propagated += 1
 
     for env_var_name, env_var_value in os.environ.iteritems():
-        if env_var_name.startswith(PROPAGATED_ENV_VAR_PREFIX):
+        if (env_var_name.startswith(PROPAGATED_ENV_VAR_PREFIX) and
+                env_var_name not in NON_PROPAGATED_YB_ENV_VARS):
             propagated_env_vars[env_var_name] = env_var_value
+            logging.info("Propagating env var %s (value: %s) to Spark workers",
+                         env_var_name, env_var_value)
+            num_propagated += 1
+    logging.info("Number of propagated environment variables: %s", num_propagated)
 
 
 def run_spark_action(action):
@@ -673,8 +890,12 @@ def main():
     parser.add_argument('--allow_no_tests', action='store_true',
                         help='Allow running with filters that yield no tests to run. Useful when '
                              'debugging.')
+    parser.add_argument('--spark-master-url',
+                        help='Override Spark master URL to use. Useful for debugging.')
 
     args = parser.parse_args()
+    global g_spark_master_url_override
+    g_spark_master_url_override = args.spark_master_url
 
     # ---------------------------------------------------------------------------------------------
     # Argument validation.
@@ -777,6 +998,9 @@ def main():
         assert total_num_tests == len(test_descriptors), \
             "total_num_tests={}, len(test_descriptors)={}".format(
                     total_num_tests, len(test_descriptors))
+
+        # Randomize test order to avoid any kind of skew.
+        random.shuffle(test_descriptors)
 
         test_names_rdd = spark_context.parallelize(
                 [test_descriptor.descriptor_str for test_descriptor in test_descriptors],

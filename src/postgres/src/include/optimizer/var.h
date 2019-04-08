@@ -4,7 +4,7 @@
  *	  prototypes for optimizer/util/var.c.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/var.h
@@ -30,6 +30,8 @@
 extern Relids pull_varnos(Node *node);
 extern Relids pull_varnos_of_level(Node *node, int levelsup);
 extern void pull_varattnos(Node *node, Index varno, Bitmapset **varattnos);
+extern void pull_varattnos_min_attr(Node *node, Index varno, Bitmapset **varattnos,
+																		AttrNumber min_attr);
 extern List *pull_vars_of_level(Node *node, int levelsup);
 extern bool contain_var_clause(Node *node);
 extern bool contain_vars_of_level(Node *node, int levelsup);

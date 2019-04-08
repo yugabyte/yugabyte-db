@@ -2,7 +2,7 @@
 #
 # win32tzlist.pl -- compare Windows timezone information
 #
-# Copyright (c) 2008-2017, PostgreSQL Global Development Group
+# Copyright (c) 2008-2018, PostgreSQL Global Development Group
 #
 # src/tools/win32tzlist.pl
 #################################################################
@@ -47,9 +47,11 @@ foreach my $keyname (@subkeys)
 	die "Incomplete timezone data for $keyname!\n"
 	  unless ($vals{Std} && $vals{Dlt} && $vals{Display});
 	push @system_zones,
-	  { 'std'     => $vals{Std}->[2],
+	  {
+		'std'     => $vals{Std}->[2],
 		'dlt'     => $vals{Dlt}->[2],
-		'display' => clean_displayname($vals{Display}->[2]), };
+		'display' => clean_displayname($vals{Display}->[2]),
+	  };
 }
 
 $basekey->Close();
@@ -75,10 +77,12 @@ while ($pgtz =~
 	m/{\s+"([^"]+)",\s+"([^"]+)",\s+"([^"]+)",?\s+},\s+\/\*(.+?)\*\//gs)
 {
 	push @file_zones,
-	  { 'std'     => $1,
+	  {
+		'std'     => $1,
 		'dlt'     => $2,
 		'match'   => $3,
-		'display' => clean_displayname($4), };
+		'display' => clean_displayname($4),
+	  };
 }
 
 #
@@ -102,7 +106,7 @@ for my $sys (@system_zones)
 			if ($sys->{display} ne $file->{display})
 			{
 				print
-"Timezone $sys->{std} changed displayname ('$sys->{display}' from '$file->{display}')!\n";
+				  "Timezone $sys->{std} changed displayname ('$sys->{display}' from '$file->{display}')!\n";
 			}
 			last;
 		}
@@ -119,7 +123,7 @@ if (@add)
 	for my $z (@add)
 	{
 		print
-"\t{\n\t\t\"$z->{std}\", \"$z->{dlt}\",\n\t\t\"FIXME\"\n\t},\t\t\t\t\t\t\t/* $z->{display} */\n";
+		  "\t{\n\t\t\"$z->{std}\", \"$z->{dlt}\",\n\t\t\"FIXME\"\n\t},\t\t\t\t\t\t\t/* $z->{display} */\n";
 	}
 }
 

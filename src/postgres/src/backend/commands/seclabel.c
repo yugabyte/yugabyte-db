@@ -3,7 +3,7 @@
  * seclabel.c
  *	  routines to support security label feature.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * -------------------------------------------------------------------------
@@ -122,7 +122,7 @@ ExecSecLabelStmt(SecLabelStmt *stmt)
 	}
 
 	/* Provider gets control here, may throw ERROR to veto new label. */
-	(*provider->hook) (&address, stmt->label);
+	provider->hook(&address, stmt->label);
 
 	/* Apply new label. */
 	SetSecurityLabel(&address, provider->provider_name, stmt->label);
@@ -293,7 +293,7 @@ SetSharedSecurityLabel(const ObjectAddress *object,
 	if (HeapTupleIsValid(oldtup))
 	{
 		if (label == NULL)
-			CatalogTupleDelete(pg_shseclabel, &oldtup->t_self);
+			CatalogTupleDelete(pg_shseclabel, oldtup);
 		else
 		{
 			replaces[Anum_pg_shseclabel_label - 1] = true;
@@ -380,7 +380,7 @@ SetSecurityLabel(const ObjectAddress *object,
 	if (HeapTupleIsValid(oldtup))
 	{
 		if (label == NULL)
-			CatalogTupleDelete(pg_seclabel, &oldtup->t_self);
+			CatalogTupleDelete(pg_seclabel, oldtup);
 		else
 		{
 			replaces[Anum_pg_seclabel_label - 1] = true;
@@ -432,7 +432,7 @@ DeleteSharedSecurityLabel(Oid objectId, Oid classId)
 	scan = systable_beginscan(pg_shseclabel, SharedSecLabelObjectIndexId, true,
 							  NULL, 2, skey);
 	while (HeapTupleIsValid(oldtup = systable_getnext(scan)))
-		CatalogTupleDelete(pg_shseclabel, &oldtup->t_self);
+		CatalogTupleDelete(pg_shseclabel, oldtup);
 	systable_endscan(scan);
 
 	heap_close(pg_shseclabel, RowExclusiveLock);
@@ -483,7 +483,7 @@ DeleteSecurityLabel(const ObjectAddress *object)
 	scan = systable_beginscan(pg_seclabel, SecLabelObjectIndexId, true,
 							  NULL, nkeys, skey);
 	while (HeapTupleIsValid(oldtup = systable_getnext(scan)))
-		CatalogTupleDelete(pg_seclabel, &oldtup->t_self);
+		CatalogTupleDelete(pg_seclabel, oldtup);
 	systable_endscan(scan);
 
 	heap_close(pg_seclabel, RowExclusiveLock);

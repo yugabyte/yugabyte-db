@@ -1025,7 +1025,7 @@ public class TestSelect extends BaseCQLTest {
   @Test
   public void testClusteringInSeeks() throws Exception {
     String createTable = "CREATE TABLE in_range_test(h int, r1 int, r2 text, v int," +
-        " PRIMARY KEY((h), r1, r2)) WITH CLUSTERING ORDER BY (r1 DESC, r2 ASC)";
+            " PRIMARY KEY((h), r1, r2)) WITH CLUSTERING ORDER BY (r1 DESC, r2 ASC)";
     session.execute(createTable);
 
     String insertTemplate = "INSERT INTO in_range_test(h, r1, r2, v) VALUES (%d, %d, '%d', %d)";
@@ -1043,15 +1043,15 @@ public class TestSelect extends BaseCQLTest {
 
     // Test basic IN results and ordering.
     {
-      String query =
-          "SELECT * FROM in_range_test WHERE h = 1 AND r1 IN (60, 80, 10) AND r2 IN ('70', '30')";
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND r1 IN (60, 80, 10) AND " +
+              "r2 IN ('70', '30')";
 
       String[] rows = {"Row[1, 80, 30, 183]",
-                       "Row[1, 80, 70, 187]",
-                       "Row[1, 60, 30, 163]",
-                       "Row[1, 60, 70, 167]",
-                       "Row[1, 10, 30, 113]",
-                       "Row[1, 10, 70, 117]"};
+              "Row[1, 80, 70, 187]",
+              "Row[1, 60, 30, 163]",
+              "Row[1, 60, 70, 167]",
+              "Row[1, 10, 30, 113]",
+              "Row[1, 10, 70, 117]"};
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
       // 3 * 2 = 6 options.
@@ -1061,12 +1061,12 @@ public class TestSelect extends BaseCQLTest {
     // Test IN results and ordering with non-existing keys.
     {
       String query = "SELECT * FROM in_range_test WHERE h = 1 AND r1 IN (70, -10, 20) AND " +
-          "r2 IN ('40', '10', '-10')";
+              "r2 IN ('40', '10', '-10')";
 
       String[] rows = {"Row[1, 70, 10, 171]",
-                       "Row[1, 70, 40, 174]",
-                       "Row[1, 20, 10, 121]",
-                       "Row[1, 20, 40, 124]"};
+              "Row[1, 70, 40, 174]",
+              "Row[1, 20, 10, 121]",
+              "Row[1, 20, 40, 124]"};
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
       // 9 options, but the first seek should jump over 3 options (with r1 = -10).
@@ -1076,11 +1076,11 @@ public class TestSelect extends BaseCQLTest {
     // Test combining IN and equality conditions.
     {
       String query =
-          "SELECT * FROM in_range_test WHERE h = 1 AND r1 IN (80, -10, 0, 30) AND r2 = '50'";
+              "SELECT * FROM in_range_test WHERE h = 1 AND r1 IN (80, -10, 0, 30) AND r2 = '50'";
 
       String[] rows = {"Row[1, 80, 50, 185]",
-                       "Row[1, 30, 50, 135]",
-                       "Row[1, 0, 50, 105]"};
+              "Row[1, 30, 50, 135]",
+              "Row[1, 0, 50, 105]"};
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
       // 1 * 4 = 4 options.
@@ -1090,12 +1090,12 @@ public class TestSelect extends BaseCQLTest {
     // Test ORDER BY clause with IN (reverse scan).
     {
       String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
-          "r1 IN (70, 20) AND r2 IN ('40', '10') ORDER BY r1 ASC, r2 DESC";
+              "r1 IN (70, 20) AND r2 IN ('40', '10') ORDER BY r1 ASC, r2 DESC";
 
       String[] rows = {"Row[1, 20, 40, 124]",
-                       "Row[1, 20, 10, 121]",
-                       "Row[1, 70, 40, 174]",
-                       "Row[1, 70, 10, 171]"};
+              "Row[1, 20, 10, 121]",
+              "Row[1, 70, 40, 174]",
+              "Row[1, 70, 10, 171]"};
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
       // 4 options, but reverse scans do 2 seeks for each option since PrevDocKey calls Seek twice
@@ -1120,9 +1120,9 @@ public class TestSelect extends BaseCQLTest {
               "r2 IN ('18', '19', '20', '23', '27', '31', '36', '40', '42', '43')";
 
       String[] rows = {"Row[1, 80, 20, 182]",
-                       "Row[1, 80, 40, 184]",
-                       "Row[1, 60, 20, 162]",
-                       "Row[1, 60, 40, 164]"};
+              "Row[1, 80, 40, 184]",
+              "Row[1, 60, 20, 162]",
+              "Row[1, 60, 40, 164]"};
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
       // There are 12 * 10 = 120 total target keys, but we should skip most of them as one seek in
@@ -1150,6 +1150,272 @@ public class TestSelect extends BaseCQLTest {
   }
 
   @Test
+  public void testSeekWithRangeFilter() throws Exception {
+    String createTable = "CREATE TABLE in_range_test(h int, r1 int, r2 text, v int," +
+        " PRIMARY KEY((h), r1, r2)) WITH CLUSTERING ORDER BY (r1 DESC, r2 ASC)";
+    session.execute(createTable);
+
+    String insertTemplate = "INSERT INTO in_range_test(h, r1, r2, v) VALUES (%d, %d, '%d', %d)";
+
+    for (int h = 0; h < 10; h++) {
+      for (int r1 = 0; r1 < 10; r1++) {
+        for (int r2 = 0; r2 < 10; r2++) {
+          int v = h * 100 + r1 * 10 + r2;
+          // Multiplying range keys by 10 so we can test sparser data with dense keys later.
+          // (i.e. several key options given by IN condition, in between two actual rows).
+          session.execute(String.format(insertTemplate, h, r1 * 10, r2 * 10, v));
+        }
+      }
+    }
+
+    // Test basic seek optimisation with fwd scans.
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND r1 > 50 AND r1 < 90 AND " +
+              "r2  > '20' AND r2 < '50'";
+
+      String[] rows = {
+              "Row[1, 80, 30, 183]",
+              "Row[1, 80, 40, 184]",
+              "Row[1, 70, 30, 173]",
+              "Row[1, 70, 40, 174]",
+              "Row[1, 60, 30, 163]",
+              "Row[1, 60, 40, 164]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // There are n = 5 values of r1 to look at (90, 80, 70, 60, 50).
+      // For each r1 we have m = 4 values to look for in the range (20, 30, 40, 50). But, we only
+      // seek to the very first one. Then do Next(s) until we get out of range for r2.
+      // If there are more r1's to look at, we'd seek to r2=Max.
+      // We will be performing (n - 1) seeks to the Max value for finding the next r1
+      // Thus, this scan will have to Seek to n * 1 + (n - 1) = 5 * 1 + (5 - 1) = 9 locations.
+      // For example,
+      //   Seeking to DocKey(0x0a73, [1], [90, "20"])
+      //   Seeking to DocKey(0x0a73, [1], [90, +Inf])
+      //   Seeking to DocKey(0x0a73, [1], [80, "20"])
+      //   Seeking to DocKey(0x0a73, [1], [80, +Inf])
+      //   Seeking to DocKey(0x0a73, [1], [70, "20"])
+      //   Seeking to DocKey(0x0a73, [1], [70, +Inf])
+      //   Seeking to DocKey(0x0a73, [1], [60, "20"])
+      //   Seeking to DocKey(0x0a73, [1], [60, +Inf])
+      //   Seeking to DocKey(0x0a73, [1], [50, "20"])
+      assertEquals(9, metrics.seekCount);
+    }
+
+    // Test basic seek optimisation with fwd scans.
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND r1 >= 60 AND r1 <= 80 AND " +
+              "r2  >= '30' AND r2 <= '40'";
+
+      String[] rows = {
+              "Row[1, 80, 30, 183]",
+              "Row[1, 80, 40, 184]",
+              "Row[1, 70, 30, 173]",
+              "Row[1, 70, 40, 174]",
+              "Row[1, 60, 30, 163]",
+              "Row[1, 60, 40, 164]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // There are n = 3 values of r1 to look at (80, 70, 60).
+      // For each r1 we have m = 2 values to look for in the range (30, 40). But, we only
+      // seek to the very first one. Then do Next(s) until we get out of range for r2.
+      // If there are more r1's to look at, we'd seek to r2=Max.
+      // We will be performing (n - 1) seeks to the Max value for finding the next r1
+      // Thus, this scan will have to Seek to n * 1 + (n - 1) = 3 * 1 + (3 - 1) = 5 locations.
+      assertEquals(5, metrics.seekCount);
+    }
+
+    // Test basic seek optimisation with fwd scans. No hash componenet specified.
+    {
+      String query = "SELECT * FROM in_range_test WHERE r1 = 80 AND r2 = '90'";
+
+      String[] rows = {
+              "Row[0, 80, 90, 89]",
+              "Row[1, 80, 90, 189]",
+              "Row[2, 80, 90, 289]",
+              "Row[3, 80, 90, 389]",
+              "Row[4, 80, 90, 489]",
+              "Row[5, 80, 90, 589]",
+              "Row[6, 80, 90, 689]",
+              "Row[7, 80, 90, 789]",
+              "Row[8, 80, 90, 889]",
+              "Row[9, 80, 90, 989]"
+      };
+
+      // use unordered because the hash keys could go in random order.
+      RocksDBMetrics metrics = assertUnorderedPartialRangeSpec("in_range_test", query, rows);
+      // For each Hash key in 0 .. 9 we'll have 2 of these seeks.
+      // Seeking to DocKey(0x0a73, [h], [80, "90"])
+      // Seeking to DocKey(0x0a73, [h], [+Inf])
+      // Additionally, one
+      //   Seeking to DocKey([], []) per tablet.
+      // Overall, 2 * 10 + 9
+      assertEquals(29, metrics.seekCount);
+    }
+
+    {
+      String query =
+              "SELECT * FROM in_range_test WHERE r1 > 50 AND r1 < 90 AND r2  > '20' AND r2 < '50'";
+
+      String[] rows = {
+              "Row[0, 80, 30, 83]",
+              "Row[0, 80, 40, 84]",
+              "Row[0, 70, 30, 73]",
+              "Row[0, 70, 40, 74]",
+              "Row[0, 60, 30, 63]",
+              "Row[0, 60, 40, 64]",
+              "Row[1, 80, 30, 183]",
+              "Row[1, 80, 40, 184]",
+              "Row[1, 70, 30, 173]",
+              "Row[1, 70, 40, 174]",
+              "Row[1, 60, 30, 163]",
+              "Row[1, 60, 40, 164]",
+              "Row[2, 80, 30, 283]",
+              "Row[2, 80, 40, 284]",
+              "Row[2, 70, 30, 273]",
+              "Row[2, 70, 40, 274]",
+              "Row[2, 60, 30, 263]",
+              "Row[2, 60, 40, 264]",
+              "Row[3, 80, 30, 383]",
+              "Row[3, 80, 40, 384]",
+              "Row[3, 70, 30, 373]",
+              "Row[3, 70, 40, 374]",
+              "Row[3, 60, 30, 363]",
+              "Row[3, 60, 40, 364]",
+              "Row[4, 80, 30, 483]",
+              "Row[4, 80, 40, 484]",
+              "Row[4, 70, 30, 473]",
+              "Row[4, 70, 40, 474]",
+              "Row[4, 60, 30, 463]",
+              "Row[4, 60, 40, 464]",
+              "Row[5, 80, 30, 583]",
+              "Row[5, 80, 40, 584]",
+              "Row[5, 70, 30, 573]",
+              "Row[5, 70, 40, 574]",
+              "Row[5, 60, 30, 563]",
+              "Row[5, 60, 40, 564]",
+              "Row[6, 80, 30, 683]",
+              "Row[6, 80, 40, 684]",
+              "Row[6, 70, 30, 673]",
+              "Row[6, 70, 40, 674]",
+              "Row[6, 60, 30, 663]",
+              "Row[6, 60, 40, 664]",
+              "Row[7, 80, 30, 783]",
+              "Row[7, 80, 40, 784]",
+              "Row[7, 70, 30, 773]",
+              "Row[7, 70, 40, 774]",
+              "Row[7, 60, 30, 763]",
+              "Row[7, 60, 40, 764]",
+              "Row[8, 80, 30, 883]",
+              "Row[8, 80, 40, 884]",
+              "Row[8, 70, 30, 873]",
+              "Row[8, 70, 40, 874]",
+              "Row[8, 60, 30, 863]",
+              "Row[8, 60, 40, 864]",
+              "Row[9, 80, 30, 983]",
+              "Row[9, 80, 40, 984]",
+              "Row[9, 70, 30, 973]",
+              "Row[9, 70, 40, 974]",
+              "Row[9, 60, 30, 963]",
+              "Row[9, 60, 40, 964]"
+      };
+
+      // use unordered because the hash keys could go in random order.
+      RocksDBMetrics metrics = assertUnorderedPartialRangeSpec("in_range_test", query, rows);
+      // For each Hash key in 0 .. 9 we'll have 11 of these seeks.
+      // Seeking to DocKey(0x0a73, [h], [90, "20"])
+      // Seeking to DocKey(0x0a73, [h], [90, +Inf])
+      // Seeking to DocKey(0x0a73, [h], [80, "20"])
+      // Seeking to DocKey(0x0a73, [h], [80, +Inf])
+      // Seeking to DocKey(0x0a73, [h], [70, "20"])
+      // Seeking to DocKey(0x0a73, [h], [70, +Inf])
+      // Seeking to DocKey(0x0a73, [h], [60, "20"])
+      // Seeking to DocKey(0x0a73, [h], [60, +Inf])
+      // Seeking to DocKey(0x0a73, [h], [50, "20"])
+      // Seeking to DocKey(0x0a73, [h], [50, +Inf])
+      // Seeking to DocKey(0x0a73, [h], [+Inf])
+      // Additionally, one
+      //   Seeking to DocKey([], []) per tablet.
+      // Overall, 11 * 10 + 9
+      assertEquals(119, metrics.seekCount);
+    }
+
+    // Test ORDER BY clause (reverse scan).
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
+              "r1 >= 20 AND r1 <= 30 AND r2  >= '30' AND r2 <= '40' ORDER BY r1 ASC, r2 DESC";
+
+      String[] rows = {
+              "Row[1, 20, 40, 124]",
+              "Row[1, 20, 30, 123]",
+              "Row[1, 30, 40, 134]",
+              "Row[1, 30, 30, 133]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // There are n = 2 values of r1 to look at. For each r1 we have m = 2 values to look for
+      // in the range. During the scan, for each r1 we look at m + 1 = 3 values before deciding
+      // to seek out of r1 by going to r2=Max. We will be performing (n - 1) seeks to the Max
+      // value for finding the next r1.
+      // Thus, this scan will have to Seek to n * (m + 1) + (n - 1) = 7 locations.
+      // But reverse scans do 2 seeks for each option since PrevDocKey calls Seek twice internally.
+      // So the total number of seeks will be 7 * 2 = 14
+      //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "40"]), []))
+      //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "30"]), []))
+      //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "20"]), []))
+      // Trying to seek out of r1 = 20. [1, 20, _]
+      //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "90"]), []))
+      // Try to get into the range for r2.
+      //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "40"]), []))
+      //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "30"]), []))
+      //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "20"]), []))
+      assertEquals(14, metrics.seekCount);
+    }
+
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
+              "r1 >= 20 AND r1 < 40 AND r2  > '20' AND r2 < '50' ORDER BY r1 ASC, r2 DESC";
+
+      String[] rows = {
+              "Row[1, 20, 40, 124]",
+              "Row[1, 20, 30, 123]",
+              "Row[1, 30, 40, 134]",
+              "Row[1, 30, 30, 133]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // Similar to above. But would stop at 2 extra values of r2 for each r1. (due to </> instead
+      // of <=/>=) so n = 3, m = 4
+      // There are n = 3 values of r1 to look at. For each r1 we have m = 4 values to look for in
+      // the range. During the scan, for each r1 we look at m + 1 = 5 values before deciding to
+      // seek out of r1 by going to r2=Max
+      // We will be performing (n - 1) seeks to the Max value for finding the next r1
+      // Thus, this scan will have to Seek to n * (m + 1) + (n - 1) = 3 * 5 + 2 = 17 locations.
+      // But reverse scans do 2 seeks for each option since PrevDocKey calls Seek twice internally.
+      // So, the expected number of seeks = 17 * 2 = 34
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "50"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "20"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "10"]), []))
+      // Trying to seek out of r1 = 20. [1, 20, _]
+      // Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "90"]), []))
+      // Try to get into the range for r2.
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "50"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "20"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "10"]), []))
+      // Trying to seek out of r1 = 30. [1, 30, _]
+      //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "90"]), []))
+      // Try to get into the range for r2.
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "50"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "20"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "10"]), []))
+      assertEquals(34, metrics.seekCount);
+    }
+  }
+
+  @Test
   public void testStatementList() throws Exception {
     // Verify handling of empty statements.
     assertEquals(0, session.execute("").all().size());
@@ -1161,12 +1427,32 @@ public class TestSelect extends BaseCQLTest {
     runInvalidStmt("SELECT * FROM test_select; SELECT * FROM test_select;");
   }
 
-  // Execute query, assert results and return RocksDB metrics.
-  private RocksDBMetrics assertPartialRangeSpec(String tableName, String query, String... rows)
+  private RocksDBMetrics assertUnorderedPartialRangeSpec(String tableName,
+                                                         String query,
+                                                         String... rows)
+      throws Exception {
+    return assertPartialRangeSpecOrderedOrUnorderd(/* ordered */ false,
+                                                   tableName, query, rows);
+  }
+
+  private RocksDBMetrics assertPartialRangeSpec(String tableName, String query,
+                                                String... rows)
+      throws Exception {
+    return assertPartialRangeSpecOrderedOrUnorderd(/* ordered */ true,
+                                                   tableName, query, rows);
+  }
+
+  private RocksDBMetrics
+  assertPartialRangeSpecOrderedOrUnorderd(boolean ordered, String tableName,
+                                          String query, String... rows)
       throws Exception {
     RocksDBMetrics beforeMetrics = getRocksDBMetric(tableName);
     LOG.info(tableName + " metric before: " + beforeMetrics);
-    assertQueryRowsOrdered(query, rows);
+    if (ordered) {
+      assertQueryRowsOrdered(query, rows);
+    } else {
+      assertQueryRowsUnordered(query, rows);
+    }
     RocksDBMetrics afterMetrics = getRocksDBMetric(tableName);
     LOG.info(tableName + " metric after: " + afterMetrics);
     return afterMetrics.subtract(beforeMetrics);

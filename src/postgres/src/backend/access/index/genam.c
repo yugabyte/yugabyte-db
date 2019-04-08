@@ -3,7 +3,7 @@
  * genam.c
  *	  general index access method routines
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -17,6 +17,7 @@
  *-------------------------------------------------------------------------
  */
 
+#include <pg_yb_utils.h>
 #include "postgres.h"
 
 #include "access/relscan.h"
@@ -158,7 +159,8 @@ IndexScanEnd(IndexScanDesc scan)
  *
  * Construct a string describing the contents of an index entry, in the
  * form "(key_name, ...)=(key_value, ...)".  This is currently used
- * for building unique-constraint and exclusion-constraint error messages.
+ * for building unique-constraint and exclusion-constraint error messages,
+ * so only key columns of the index are checked and printed.
  *
  * Note that if the user does not have permissions to view all of the
  * columns involved then a NULL is returned.  Returning a partial key seems
@@ -180,12 +182,14 @@ BuildIndexValueDescription(Relation indexRelation,
 	StringInfoData buf;
 	Form_pg_index idxrec;
 	HeapTuple	ht_idx;
-	int			natts = indexRelation->rd_rel->relnatts;
+	int			indnkeyatts;
 	int			i;
 	int			keyno;
 	Oid			indexrelid = RelationGetRelid(indexRelation);
 	Oid			indrelid;
 	AclResult	aclresult;
+
+	indnkeyatts = IndexRelationGetNumberOfKeyAttributes(indexRelation);
 
 	/*
 	 * Check permissions- if the user does not have access to view all of the
@@ -224,7 +228,7 @@ BuildIndexValueDescription(Relation indexRelation,
 		 * No table-level access, so step through the columns in the index and
 		 * make sure the user has SELECT rights on all of them.
 		 */
-		for (keyno = 0; keyno < idxrec->indnatts; keyno++)
+		for (keyno = 0; keyno < idxrec->indnkeyatts; keyno++)
 		{
 			AttrNumber	attnum = idxrec->indkey.values[keyno];
 
@@ -250,7 +254,7 @@ BuildIndexValueDescription(Relation indexRelation,
 	appendStringInfo(&buf, "(%s)=(",
 					 pg_get_indexdef_columns(indexrelid, true));
 
-	for (i = 0; i < natts; i++)
+	for (i = 0; i < indnkeyatts; i++)
 	{
 		char	   *val;
 
@@ -334,6 +338,16 @@ systable_beginscan(Relation heapRelation,
 	SysScanDesc sysscan;
 	Relation	irel;
 
+	if (IsYugaByteEnabled())
+	{
+		return ybc_systable_beginscan(heapRelation,
+		                              indexId,
+		                              indexOK,
+		                              snapshot,
+		                              nkeys,
+		                              key);
+	}
+
 	if (indexOK &&
 		!IgnoreSystemIndexes &&
 		!ReindexIsProcessingIndex(indexId))
@@ -368,7 +382,7 @@ systable_beginscan(Relation heapRelation,
 		{
 			int			j;
 
-			for (j = 0; j < irel->rd_index->indnatts; j++)
+			for (j = 0; j < IndexRelationGetNumberOfAttributes(irel); j++)
 			{
 				if (key[i].sk_attno == irel->rd_index->indkey.values[j])
 				{
@@ -376,7 +390,7 @@ systable_beginscan(Relation heapRelation,
 					break;
 				}
 			}
-			if (j == irel->rd_index->indnatts)
+			if (j == IndexRelationGetNumberOfAttributes(irel))
 				elog(ERROR, "column is not in index");
 		}
 
@@ -416,6 +430,11 @@ HeapTuple
 systable_getnext(SysScanDesc sysscan)
 {
 	HeapTuple	htup;
+
+	if (IsYugaByteEnabled())
+	{
+		return ybc_systable_getnext(sysscan);
+	}
 
 	if (sysscan->irel)
 	{
@@ -498,6 +517,11 @@ systable_recheck_tuple(SysScanDesc sysscan, HeapTuple tup)
 void
 systable_endscan(SysScanDesc sysscan)
 {
+	if (IsYugaByteEnabled())
+	{
+		return ybc_systable_endscan(sysscan);
+	}
+
 	if (sysscan->irel)
 	{
 		index_endscan(sysscan->iscan);
@@ -570,7 +594,7 @@ systable_beginscan_ordered(Relation heapRelation,
 	{
 		int			j;
 
-		for (j = 0; j < indexRelation->rd_index->indnatts; j++)
+		for (j = 0; j < IndexRelationGetNumberOfAttributes(indexRelation); j++)
 		{
 			if (key[i].sk_attno == indexRelation->rd_index->indkey.values[j])
 			{
@@ -578,7 +602,7 @@ systable_beginscan_ordered(Relation heapRelation,
 				break;
 			}
 		}
-		if (j == indexRelation->rd_index->indnatts)
+		if (j == IndexRelationGetNumberOfAttributes(indexRelation))
 			elog(ERROR, "column is not in index");
 	}
 

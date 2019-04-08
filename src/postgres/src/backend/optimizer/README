@@ -320,7 +320,7 @@ set up for recursive handling of subqueries
    split up the qual into restrictions (a=1) and joins (b=c)
    find qual clauses that enable merge and hash joins
 ----make_one_rel()
-     set_base_rel_pathlist()
+     set_base_rel_pathlists()
       find seqscan and all index paths for each base relation
       find selectivity of columns used in joins
      make_rel_from_joinlist()
@@ -565,10 +565,12 @@ of scanning the relation and the resulting ordering of the tuples.
 Sequential scan Paths have NIL pathkeys, indicating no known ordering.
 Index scans have Path.pathkeys that represent the chosen index's ordering,
 if any.  A single-key index would create a single-PathKey list, while a
-multi-column index generates a list with one element per index column.
-(Actually, since an index can be scanned either forward or backward, there
-are two possible sort orders and two possible PathKey lists it can
-generate.)
+multi-column index generates a list with one element per key index column.
+Non-key columns specified in the INCLUDE clause of covering indexes don't
+have corresponding PathKeys in the list, because the have no influence on
+index ordering.  (Actually, since an index can be scanned either forward or
+backward, there are two possible sort orders and two possible PathKey lists
+it can generate.)
 
 Note that a bitmap scan has NIL pathkeys since we can say nothing about
 the overall order of its result.  Also, an indexscan on an unordered type
@@ -998,6 +1000,7 @@ considered useful for each step.  Currently, we may create these types of
 additional RelOptInfos during upper-level planning:
 
 UPPERREL_SETOP		result of UNION/INTERSECT/EXCEPT, if any
+UPPERREL_PARTIAL_GROUP_AGG	result of partial grouping/aggregation, if any
 UPPERREL_GROUP_AGG	result of grouping/aggregation, if any
 UPPERREL_WINDOW		result of window functions, if any
 UPPERREL_DISTINCT	result of "SELECT DISTINCT", if any
@@ -1075,3 +1078,43 @@ be desirable to postpone the Gather stage until as near to the top of the
 plan as possible.  Expanding the range of cases in which more work can be
 pushed below the Gather (and costing them accurately) is likely to keep us
 busy for a long time to come.
+
+Partitionwise joins
+-------------------
+
+A join between two similarly partitioned tables can be broken down into joins
+between their matching partitions if there exists an equi-join condition
+between the partition keys of the joining tables. The equi-join between
+partition keys implies that all join partners for a given row in one
+partitioned table must be in the corresponding partition of the other
+partitioned table. Because of this the join between partitioned tables to be
+broken into joins between the matching partitions. The resultant join is
+partitioned in the same way as the joining relations, thus allowing an N-way
+join between similarly partitioned tables having equi-join condition between
+their partition keys to be broken down into N-way joins between their matching
+partitions. This technique of breaking down a join between partitioned tables
+into joins between their partitions is called partitionwise join. We will use
+term "partitioned relation" for either a partitioned table or a join between
+compatibly partitioned tables.
+
+The partitioning properties of a partitioned relation are stored in its
+RelOptInfo.  The information about data types of partition keys are stored in
+PartitionSchemeData structure. The planner maintains a list of canonical
+partition schemes (distinct PartitionSchemeData objects) so that RelOptInfo of
+any two partitioned relations with same partitioning scheme point to the same
+PartitionSchemeData object.  This reduces memory consumed by
+PartitionSchemeData objects and makes it easy to compare the partition schemes
+of joining relations.
+
+Partitionwise aggregates/grouping
+---------------------------------
+
+If the GROUP BY clause contains all of the partition keys, all the rows
+that belong to a given group must come from a single partition; therefore,
+aggregation can be done completely separately for each partition. Otherwise,
+partial aggregates can be computed for each partition, and then finalized
+after appending the results from the individual partitions.  This technique of
+breaking down aggregation or grouping over a partitioned relation into
+aggregation or grouping over its partitions is called partitionwise
+aggregation.  Especially when the partition keys match the GROUP BY clause,
+this can be significantly faster than the regular method.

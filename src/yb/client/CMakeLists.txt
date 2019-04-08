@@ -37,6 +37,7 @@ set(CLIENT_SRCS
   client.cc
   client_builder-internal.cc
   client-internal.cc
+  client_utils.cc
   error_collector.cc
   error-internal.cc
   in_flight_op.cc
@@ -52,6 +53,7 @@ set(CLIENT_SRCS
   tablet_rpc.cc
   transaction.cc
   transaction_manager.cc
+  transaction_pool.cc
   transaction_rpc.cc
   value.cc
   yb_op.cc
@@ -99,7 +101,7 @@ target_link_libraries(yb_client_test_util
                       gmock
                       yb_client)
 
-add_library(ql-dml-test-base ql-dml-test-base.cc)
+add_library(ql-dml-test-base ql-dml-test-base.cc txn-test-base.cc)
 target_link_libraries(ql-dml-test-base integration-tests)
 
 # Tests
@@ -112,3 +114,7 @@ ADD_YB_TEST(ql-dml-ttl-test)
 ADD_YB_TEST(ql-list-test)
 ADD_YB_TEST(ql-tablet-test)
 ADD_YB_TEST(ql-transaction-test)
+ADD_YB_TEST(ql-stress-test)
+ADD_YB_TEST(snapshot-txn-test)
+ADD_YB_TEST(serializable-txn-test)
+ADD_YB_TEST(tablet_rpc-test)

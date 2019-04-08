@@ -106,7 +106,7 @@ enum OperationType {
   UNKNOWN_OP = 0;
   NO_OP = 1;
   WRITE_OP = 3;
-  ALTER_SCHEMA_OP = 4;
+  CHANGE_METADATA_OP = 4;
   CHANGE_CONFIG_OP = 5;
   UPDATE_TRANSACTION_OP = 6;
   SNAPSHOT_OP = 7;
@@ -201,7 +201,7 @@ message ReplicateMsg {
 
   required OperationType op_type = 4;
   optional tserver.WriteRequestPB write_request = 5;
-  optional tserver.AlterSchemaRequestPB alter_schema_request = 6;
+  optional tserver.ChangeMetadataRequestPB change_metadata_request = 6;
   optional tserver.TransactionStatePB transaction_state = 10;
   optional tserver.TabletSnapshotOpRequestPB snapshot_request = 11;
   optional tserver.TruncateRequestPB truncate_request = 12;
@@ -296,6 +296,9 @@ message VoteRequestPB {
   // for example to force a faster leader hand-off rather than waiting for
   // the election timer to expire.
   optional bool ignore_live_leader = 5 [ default = false ];
+
+  // true if it is pre-election request and state of voter should not be changed.
+  optional bool preelection = 7;
 }
 
 // A response from a replica to a leader election request.
@@ -314,10 +317,19 @@ message VoteResponsePB {
   // before it can start serving read and write requests.
   optional int32 remaining_leader_lease_duration_ms = 4;
 
+  // UUID of node that has lease.
+  optional bytes leader_lease_uuid = 7;
+
   // An upper bound on the deadline of the old hybrid time leader's lease that the new leader has
   // to wait out before it can start serving read and write requests.
   // Contains only physical part of hybrid time.
   optional fixed64 leader_ht_lease_expiration = 5;
+
+  // UUID of node that has ht lease.
+  optional bytes leader_ht_lease_uuid = 8;
+
+  // true if it is response to pre-election request.
+  optional bool preelection = 6;
 
   // TODO: Migrate ConsensusService to the AppStatusPB RPC style and merge these errors.
   // Error message from the consensus implementation.
@@ -476,6 +488,9 @@ message LeaderStepDownRequestPB {
 
   // UUID of the server that should run the election to become the new leader.
   optional bytes new_leader_uuid = 3;
+
+  // Used in tests to ignore check for new leader conditions.
+  optional bool force_step_down = 4;
 }
 
 message LeaderStepDownResponsePB {

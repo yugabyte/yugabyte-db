@@ -116,7 +116,7 @@ class TabletBootstrap {
   CHECKED_STATUS PlayUpdateTransactionRequest(
       consensus::ReplicateMsg* replicate_msg, AlreadyApplied already_applied);
 
-  CHECKED_STATUS PlayAlterSchemaRequest(consensus::ReplicateMsg* replicate_msg);
+  CHECKED_STATUS PlayChangeMetadataRequest(consensus::ReplicateMsg* replicate_msg);
 
   CHECKED_STATUS PlayChangeConfigRequest(consensus::ReplicateMsg* replicate_msg);
 
@@ -127,10 +127,14 @@ class TabletBootstrap {
   void DumpReplayStateToLog(const ReplayState& state);
 
   // Handlers for each type of message seen in the log during replay.
-  CHECKED_STATUS HandleEntry(ReplayState* state, std::unique_ptr<log::LogEntryPB>* entry);
+  CHECKED_STATUS HandleEntry(
+      RestartSafeCoarseTimePoint entry_time, ReplayState* state,
+      std::unique_ptr<log::LogEntryPB>* entry);
   CHECKED_STATUS HandleReplicateMessage(
-      ReplayState* state, std::unique_ptr<log::LogEntryPB>* replicate_entry);
-  CHECKED_STATUS HandleEntryPair(ReplayState* state, log::LogEntryPB* replicate_entry);
+      RestartSafeCoarseTimePoint entry_time, ReplayState* state,
+      std::unique_ptr<log::LogEntryPB>* replicate_entry);
+  CHECKED_STATUS HandleEntryPair(
+      ReplayState* state, log::LogEntryPB* replicate_entry, RestartSafeCoarseTimePoint entry_time);
   virtual CHECKED_STATUS HandleOperation(consensus::OperationType op_type,
                                          consensus::ReplicateMsg* replicate);
 

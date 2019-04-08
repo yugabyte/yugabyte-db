@@ -32,20 +32,22 @@
 
 #include "yb/util/flag_tags.h"
 
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/singleton.h"
-
 #include <map>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/singleton.h"
+
 using std::multimap;
 using std::pair;
 using std::string;
 using std::unordered_set;
 using std::vector;
+
+DEFINE_test_flag(bool, running_test, false, "Flag that is set to true when we running a test");
 
 namespace yb {
 namespace flag_tags_internal {

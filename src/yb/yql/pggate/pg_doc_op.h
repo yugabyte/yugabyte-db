@@ -25,6 +25,8 @@
 namespace yb {
 namespace pggate {
 
+YB_STRONGLY_TYPED_BOOL(RequestSent);
+
 class PgDocOp {
  public:
   // Public types.
@@ -40,18 +42,22 @@ class PgDocOp {
   static const int64_t kPrefetchLimit = INT32_MAX;
 
   // Constructors & Destructors.
-  explicit PgDocOp(PgSession::ScopedRefPtr pg_session);
+  // read_time points to place where read_time for whole postgres statement is stored.
+  // It is available while statement is executed.
+  explicit PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time);
   virtual ~PgDocOp();
 
-  // Postgres Ops.
-  virtual CHECKED_STATUS Execute();
+  // Execute the op. Return true if the request has been sent and is awaiting the result.
+  virtual Result<RequestSent> Execute();
+
+  // Get the result of the op.
   virtual CHECKED_STATUS GetResult(string *result_set);
 
   // Access functions.
   Status exec_status() {
     return exec_status_;
   }
-  bool EndOfResult() const;
+  Result<bool> EndOfResult() const;
 
  protected:
   virtual void InitUnlocked(std::unique_lock<std::mutex>* lock);
@@ -65,8 +71,14 @@ class PgDocOp {
   // all data in the cache.
   CHECKED_STATUS SendRequestIfNeededUnlocked();
 
+  // Checks whether op causes restart. Could set exec_status_.
+  // Returns true is restart was initiated;
+  bool CheckRestartUnlocked(client::YBPgsqlOp* op);
+
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
+
+  uint64_t* const read_time_;
 
   // This mutex protects the fields below.
   mutable std::mutex mtx_;
@@ -91,6 +103,9 @@ class PgDocOp {
 
   // Caching state variables.
   std::list<string> result_cache_;
+
+  // Whether we can restart this operation.
+  const bool can_restart_;
 };
 
 class PgDocReadOp : public PgDocOp {
@@ -105,7 +120,8 @@ class PgDocReadOp : public PgDocOp {
   typedef scoped_refptr<PgDocReadOp> ScopedRefPtr;
 
   // Constructors & Destructors.
-  PgDocReadOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlReadOp *read_op);
+  PgDocReadOp(
+      PgSession::ScopedRefPtr pg_session, uint64_t* read_time, client::YBPgsqlReadOp *read_op);
   virtual ~PgDocReadOp();
 
   // Access function.
@@ -115,8 +131,8 @@ class PgDocReadOp : public PgDocOp {
 
  private:
   // Process response from DocDB.
-  virtual void InitUnlocked(std::unique_lock<std::mutex>* lock) override;
-  virtual CHECKED_STATUS SendRequestUnlocked() override;
+  void InitUnlocked(std::unique_lock<std::mutex>* lock) override;
+  CHECKED_STATUS SendRequestUnlocked() override;
   virtual void ReceiveResponse(Status exec_status);
 
   // Operator.
@@ -145,7 +161,7 @@ class PgDocWriteOp : public PgDocOp {
 
  private:
   // Process response from DocDB.
-  virtual CHECKED_STATUS SendRequestUnlocked() override;
+  CHECKED_STATUS SendRequestUnlocked() override;
   virtual void ReceiveResponse(Status exec_status);
 
   // Operator.
@@ -171,8 +187,8 @@ class PgDocCompoundOp : public PgDocOp {
   explicit PgDocCompoundOp(PgSession::ScopedRefPtr pg_session);
   virtual ~PgDocCompoundOp();
 
-  virtual CHECKED_STATUS Execute() {
-    return Status::OK();
+  virtual Result<RequestSent> Execute() {
+    return RequestSent::kTrue;
   }
   virtual CHECKED_STATUS GetResult(string *result_set) {
     return Status::OK();

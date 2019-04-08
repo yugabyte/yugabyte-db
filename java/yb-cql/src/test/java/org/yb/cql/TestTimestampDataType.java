@@ -44,14 +44,22 @@ public class TestTimestampDataType extends BaseCQLTest {
     ts_values.put("631238445000", cal.getTime());
 
     // Generate String inputs as combinations of valid components (date/time/frac_seconds/timezone).
-    int nr_entries = 3;
-    String[] dates = {"'1992-06-04", "'1992-6-4", "'1992-06-4"};
-    String[] times_no_sec = {"12:30", "15:30", "9:00"};
-    String[] times = {"12:30:45", "15:30:45", "9:00:45"};
-    String[] times_frac = {"12:30:45.1", "15:30:45.10", "9:00:45.100"};
+    int nr_entries = 7;
+    String[] dates = {"'1992-06-04", "'1992-6-4", "'1992-06-4", "'1992-06-4",
+                      "'1992-06-4", "'1992-06-4"};
+    String[] times_no_sec = {"12:30", "15:30", "9:00", "4:30", "12:30", "21:00", "5:30"};
+    String[] times = {"12:30:45", "15:30:45", "9:00:45", "4:30:45", "12:30:45",
+                      "21:00:45", "5:30:45"};
+    String[] times_frac = {"12:30:45.1", "15:30:45.10", "9:00:45.100", "4:30:45.100",
+                           "12:30:45.100", "21:00:45.100", "5:30:45.100"};
     // Timezones correspond one-to-one with times
     //   -- so that the UTC-normalized time is the same
-    String[] timezones = {" UTC'", "+03:00'", " UTC-03:30'"};
+    // Subset of supported TZ formats https://docs.oracle.com/cd/E51711_01/DR/ICU_Time_Zones.html
+    // Full database can be found at https://www.iana.org/time-zones
+    // We support everything that Cassandra supports, like z/Z, +/-0800, +/-08:30 GMT+/-[0]7:00,
+    // and we also support UTC+/-[0]9:30 which Cassandra does not support
+    String[] timezones = {" UTC'", "+03:00'", " UTC-03:30'",
+                          " PST'", "Z'", "+0830'", " GMT-7:00'"};
     for (String date : dates) {
       cal.setTimeZone(TimeZone.getTimeZone("GMT")); // resetting
       cal.setTimeInMillis(0); // resetting
@@ -105,6 +113,21 @@ public class TestTimestampDataType extends BaseCQLTest {
     }
   }
 
+  @Test
+  public void testInsertVariableTimezone() throws Exception {
+    String tableName = "test";
+    String newTimestamp = "\'2019-01-26T00:03:16.059 America/New_York\'";
+    session.execute(String.format("CREATE TABLE %s(x int primary key, b timestamp);", tableName));
+    String ins_stmt = String.format(
+            "INSERT INTO %s(x, b) VALUES(%d, %s);",
+            tableName, 1, newTimestamp);
+    session.execute(ins_stmt);
+    String sel_stmt = String.format("SELECT * FROM %s", tableName);
+    String gmtTime = runSelect(sel_stmt).next().getTimestamp(1).toGMTString();
+    assertTrue(gmtTime.equals("26 Jan 2019 05:03:16 GMT") ||
+               gmtTime.equals("26 Jan 2019 04:03:16 GMT"));
+  }
+
   private void runInvalidInsert(String tableName, String ts) {
     String insert_stmt = String.format(
         "INSERT INTO %s(h1, h2, r1, r2, v1, v2) VALUES(%d, %d, %d, %d, %d, '%s');",
@@ -126,6 +149,11 @@ public class TestTimestampDataType extends BaseCQLTest {
     runInvalidInsert(tableName, "2017-12-21 00:00:01.000+123:30");
     runInvalidInsert(tableName, "2017-12-21 00:00:01.0000");
     runInvalidInsert(tableName, "2017-12-21 00:00:01.000000+0000");
+    runInvalidInsert(tableName, "2017-12-21 00:00:01.000Y");
+    runInvalidInsert(tableName, "2017-12-21 00:00:01.000 IIST");
+    runInvalidInsert(tableName, "2017-12-21 00:00:01.000-700");
+    runInvalidInsert(tableName, "2017-12-21 00:00:01.000 Mars/Olympus");
+    runInvalidInsert(tableName, "2017-12-21 00:00:01.000 AMERICA/NEW_YORK");
   }
 
   @Test
@@ -154,6 +182,25 @@ public class TestTimestampDataType extends BaseCQLTest {
       assertEquals(date_value, row.getTimestamp(3));
       assertEquals(date_value, row.getTimestamp(5));
     }
+  }
+
+  @Test
+  public void testUpdateVariableTimezone() throws Exception {
+    String tableName = "test";
+    String Timestamp = "\'2019-01-26T00:03:16.059 America/New_York\'";
+    String newTimestamp = "\'2019-01-26T00:03:16.059 America/Los_Angeles\'";
+    session.execute(String.format("CREATE TABLE %s(x int primary key, b timestamp);", tableName));
+    String ins_stmt = String.format(
+            "INSERT INTO %s(x, b) VALUES(%d, %s);",
+            tableName, 1, newTimestamp);
+    session.execute(ins_stmt);
+    String upd_stmt = String.format(
+            "UPDATE %s SET b = %s WHERE x = 1;", tableName, newTimestamp);
+    session.execute(upd_stmt);
+    String sel_stmt = String.format("SELECT * FROM %s", tableName);
+    String gmtTime = runSelect(sel_stmt).next().getTimestamp(1).toGMTString();
+    assertTrue(gmtTime.equals("26 Jan 2019 08:03:16 GMT") ||
+               gmtTime.equals("26 Jan 2019 07:03:16 GMT"));
   }
 
   private void runInvalidUpdate(String tableName, String ts) {
@@ -311,6 +358,42 @@ public class TestTimestampDataType extends BaseCQLTest {
     runInvalidSelectWithTimestamp(tableName, "1992-13-12");
     runInvalidSelectWithTimestamp(tableName, "1992-12-12 14:23:30:31");
     runInvalidSelectWithTimestamp(tableName, "1992-12-12 14:23:30.12.32");
+  }
+
+  @Test
+  public void testTimestampLogicGFlag() throws Exception {
+//     Testing ICU timezones flag enabled (default).
+    String tableName = "test";
+    String newTimestamp = "\'2019-01-26T00:03:16.059 America/New_York\'";
+    session.execute(String.format("CREATE TABLE %s(x int primary key, b timestamp);", tableName));
+    String ins_stmt = String.format(
+            "INSERT INTO %s(x, b) VALUES(%d, %s);",
+            tableName, 1, newTimestamp);
+    session.execute(ins_stmt);
+    String sel_stmt = String.format("SELECT * FROM %s", tableName);
+    Iterator<Row> rows = runSelect(sel_stmt);
+    assertTrue(rows.hasNext());
+    destroyMiniCluster();
+//    Testing ICU timezones flag disabled.
+    tserverArgs.add("--use_icu_timezones=false");
+    createMiniCluster();
+    setUpCqlClient();
+    session.execute(String.format("CREATE TABLE %s(x int primary key, b timestamp);", tableName));
+    runInvalidStmt(ins_stmt);
+    String[] oldTimestamps = new String[]{"\'2019-01-26T03:33:16.059 UTC\'",
+                                          "\'2019-01-26T00:03:16.059 UTC-03:30\'",
+                                          "\'2019-01-26T00:03:16.059-03:30\'"};
+    for (int i = 1; i <= 3; i++) {
+      ins_stmt = String.format(
+              "INSERT INTO %s(x, b) VALUES(%d, %s);",
+              tableName, i, oldTimestamps[i-1]);
+      session.execute(ins_stmt);
+    }
+    for(Row row: session.execute(sel_stmt)){
+      assertEquals("26 Jan 2019 03:33:16 GMT",row.getTimestamp(1).toGMTString());
+    }
+    destroyMiniCluster();
+    tserverArgs.remove("--use_icu_timezones=false");
   }
 
 }

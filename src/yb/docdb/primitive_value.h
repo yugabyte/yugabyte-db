@@ -245,7 +245,6 @@ class PrimitiveValue {
   static PrimitiveValue UInt32(uint32_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue TransactionId(Uuid transaction_id);
   static PrimitiveValue TableId(Uuid table_id);
-  static PrimitiveValue IntentTypeValue(IntentType intent_type);
   static PrimitiveValue Jsonb(const std::string& json);
 
   KeyBytes ToKeyBytes() const;
@@ -264,6 +263,10 @@ class PrimitiveValue {
 
   bool IsTombstoneOrPrimitive() const {
     return IsPrimitiveValueType(type_) || type_ == ValueType::kTombstone;
+  }
+
+  bool IsInfinity() const {
+    return type_ == ValueType::kHighest || type_ == ValueType::kLowest;
   }
 
   int CompareTo(const PrimitiveValue& other) const;
@@ -309,7 +312,10 @@ class PrimitiveValue {
   }
 
   uint16_t GetUInt16() const {
-    DCHECK(ValueType::kUInt16Hash == type_ || ValueType::kIntentType == type_);
+    DCHECK(ValueType::kUInt16Hash == type_ ||
+           ValueType::kObsoleteIntentTypeSet == type_ ||
+           ValueType::kObsoleteIntentType == type_ ||
+           ValueType::kIntentTypeSet == type_);
     return uint16_val_;
   }
 

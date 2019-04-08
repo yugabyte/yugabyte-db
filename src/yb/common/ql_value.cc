@@ -32,9 +32,6 @@
 
 using yb::operator"" _MB;
 
-DEFINE_bool(neil_crash_it, false, "Crashing flag");
-DEFINE_bool(neil_test_pgsql, false, "PGSQL test flag");
-
 // Maximumum value size is 64MB
 DEFINE_int32(yql_max_value_size, 64_MB,
              "Maximum size of a value in the Yugabyte Query Layer");
@@ -355,12 +352,7 @@ void QLValue::Serialize(
       return;
     }
     case VARINT: {
-      bool is_out_of_range = false;
-      CQLEncodeBytes(varint_value().EncodeToTwosComplement(&is_out_of_range), buffer);
-      // This should never happen
-      if(is_out_of_range) {
-        LOG(ERROR) << "Varint encoding returned out of range for " << varint_value().ToString();
-      }
+      CQLEncodeBytes(varint_value().EncodeToTwosComplement(), buffer);
       return;
     }
     case STRING:

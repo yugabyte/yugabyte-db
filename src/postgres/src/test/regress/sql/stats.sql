@@ -79,9 +79,9 @@ $$ language plpgsql;
 
 -- test effects of TRUNCATE on n_live_tup/n_dead_tup counters
 CREATE TABLE trunc_stats_test(id serial);
-CREATE TABLE trunc_stats_test1(id serial);
+CREATE TABLE trunc_stats_test1(id serial, stuff text);
 CREATE TABLE trunc_stats_test2(id serial);
-CREATE TABLE trunc_stats_test3(id serial);
+CREATE TABLE trunc_stats_test3(id serial, stuff text);
 CREATE TABLE trunc_stats_test4(id serial);
 
 -- check that n_live_tup is reset to 0 after truncate
@@ -138,7 +138,10 @@ ROLLBACK;
 -- do a seqscan
 SELECT count(*) FROM tenk2;
 -- do an indexscan
+-- make sure it is not a bitmap scan, which might skip fetching heap tuples
+SET enable_bitmapscan TO off;
 SELECT count(*) FROM tenk2 WHERE unique1 = 1;
+RESET enable_bitmapscan;
 
 -- We can't just call wait_for_stats() at this point, because we only
 -- transmit stats when the session goes idle, and we probably didn't

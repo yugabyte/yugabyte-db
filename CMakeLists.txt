@@ -268,7 +268,11 @@ ADD_CXX_FLAGS("-Werror")
 ADD_CXX_FLAGS("-fno-strict-aliasing -msse4.2 -Wall -Wno-sign-compare -Wno-deprecated")
 ADD_CXX_FLAGS("-Winvalid-pch")
 ADD_CXX_FLAGS("-pthread -DBOOST_BIND_NO_PLACEHOLDERS")
-ADD_CXX_FLAGS("-DROCKSDB_PLATFORM_POSIX")
+if (NOT APPLE)
+  ADD_CXX_FLAGS("-DBOOST_UUID_RANDOM_PROVIDER_FORCE_POSIX")
+endif()
+ADD_CXX_FLAGS("-DROCKSDB_PLATFORM_POSIX -DROCKSDB_USING_THREAD_STATUS=0")
+ADD_CXX_FLAGS("-DBOOST_ERROR_CODE_HEADER_ONLY")
 
 # This duplicates part of the logic from common-build-env.sh so that we can run from CLion where
 # cmake is invoked directly.
@@ -415,6 +419,24 @@ macro(YB_SETUP_SANITIZER SANITIZER)
     message(FATAL_ERROR "Cannot use ${SANITIZER} with static linking")
   endif()
 endmacro()
+
+function(SHOW_FOUND_BOOST_DETAILS BOOST_LIBRARY_TYPE)
+  message("Results of finding Boost ${BOOST_LIBRARY_TYPE} libraries:")
+  message("    Boost_FOUND: ${Boost_FOUND}")
+  message("    Boost_INCLUDE_DIRS: ${Boost_INCLUDE_DIRS}")
+  message("    Boost_LIBRARY_DIRS: ${Boost_LIBRARY_DIRS}")
+  message("    Boost_LIBRARIES: ${Boost_LIBRARIES}")
+  message("    Boost_SYSTEM_FOUND: ${Boost_SYSTEM_FOUND}")
+  message("    Boost_SYSTEM_LIBRARY: ${Boost_SYSTEM_LIBRARY}")
+  message("    Boost_THREAD_FOUND: ${Boost_THREAD_FOUND}")
+  message("    Boost_THREAD_LIBRARY: ${Boost_THREAD_LIBRARY}")
+  message("    Boost_VERSION: ${Boost_VERSION}")
+  message("    Boost_LIB_VERSION: ${Boost_LIB_VERSION}")
+  message("    Boost_MAJOR_VERSION: ${Boost_MAJOR_VERSION}")
+  message("    Boost_MINOR_VERSION: ${Boost_MINOR_VERSION}")
+  message("    Boost_SUBMINOR_VERSION: ${Boost_SUBMINOR_VERSION}")
+  message("    Boost_LIB_DIAGNOSTIC_DEFINITIONS: ${Boost_LIB_DIAGNOSTIC_DEFINITIONS}")
+endfunction()
 
 # ------------------------------------------------------------------------------------------------
 # Main build
@@ -630,6 +652,26 @@ if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=string-plus-int")
   ADD_CXX_FLAGS("-Werror=return-stack-address")
   ADD_CXX_FLAGS("-Werror=implicit-fallthrough")
+  # Remove this check when all Clang builds will use libc++.
+  if("${USING_SANITIZERS}" OR APPLE)
+    ADD_CXX_FLAGS("-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS")
+    ADD_CXX_FLAGS("-Wthread-safety-analysis")
+  endif()
+  if("$ENV{YB_ENABLE_STATIC_ANALYZER}" STREQUAL "1")
+    if(APPLE)
+      message("YB_ENABLE_STATIC_ANALYZER is set to 1, but we are not running the static analyzer"
+              " on macOS yet")
+    else()
+      message("YB_ENABLE_STATIC_ANALYZER is set to 1, enabling Clang static analyzer")
+      include(yb_clang_analyzer)
+      message("clang_analyzer_flags=${clang_analyzer_flags}")
+      ADD_CXX_FLAGS("${clang_analyzer_flags}")
+    endif()
+  else()
+    message("YB_ENABLE_STATIC_ANALYZER is not set to 1, not enabling Clang static analyzer")
+  endif()
+
+  # The actual static analysis is turned on using the --analyze flag.
 endif()
 
 DETECT_BREW()
@@ -1352,7 +1394,7 @@ if (USING_CUSTOM_HOMEBREW)
             "${OPENSSL_SSL_LIBRARY}")
   endif()
   set(OPENSSL_LIBRARIES "${OPENSSL_CRYPTO_LIBRARY}" "${OPENSSL_SSL_LIBRARY}")
-  # Unset OpenSSL version because it might not be correct after we manually modified library 
+  # Unset OpenSSL version because it might not be correct after we manually modified library
   # paths. However, we are not using this variable anywhere.
   unset(OPENSSL_VERSION)
 endif()
@@ -1502,25 +1544,6 @@ else()
   message("Not using tcmalloc, because of '${YB_TCMALLOC_AVAILABLE}'")
 endif()
 
-# libvmem
-if (NOT APPLE)
-  find_package(Vmem REQUIRED)
-  include_directories(SYSTEM ${VMEM_INCLUDE_DIR})
-  ADD_THIRDPARTY_LIB(vmem
-    STATIC_LIB "${VMEM_STATIC_LIB}"
-    SHARED_LIB "${VMEM_SHARED_LIB}")
-endif()
-
-## tacopie
-find_package(Tacopie REQUIRED)
-include_directories(SYSTEM ${TACOPIE_INCLUDE_DIRS})
-ADD_THIRDPARTY_LIB(tacopie STATIC_LIB "${TACOPIE_STATIC_LIB}")
-
-## cpp_redis
-find_package(CppRedis REQUIRED)
-include_directories(SYSTEM ${CPP_REDIS_INCLUDE_DIRS})
-ADD_THIRDPARTY_LIB(cpp_redis STATIC_LIB "${CPP_REDIS_STATIC_LIB}")
-
 ## curl
 find_package(CURL REQUIRED)
 include_directories(SYSTEM ${CURL_INCLUDE_DIRS})
@@ -1550,21 +1573,19 @@ if (NOT APPLE)
 endif()
 
 ## Boost
-# It's important that Boost come last in the list of packages, because it's the only
-# dependency that we don't currently bundle in thirdparty/. If we put this earlier
-# in list, then we might end up with /usr/local/include taking precedence over
-# thirdparty/installed/include and pulling in the wrong version of other dependencies
-# that might be installed in the system.
 
 # BOOST_ROOT is used by find_package(Boost ...) below.
 set(BOOST_ROOT "${YB_THIRDPARTY_INSTALLED_DEPS_DIR}")
 
 ### Workaround for http://stackoverflow.com/questions/9948375/cmake-find-package-succeeds-but-returns-wrong-path
 set(Boost_NO_BOOST_CMAKE ON)
+set(Boost_NO_SYSTEM_PATHS ON)
 
 # Find Boost static libraries.
 set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost COMPONENTS system thread REQUIRED)
+show_found_boost_details("static")
+
 set(BOOST_STATIC_LIBS ${Boost_LIBRARIES})
 list(LENGTH BOOST_STATIC_LIBS BOOST_STATIC_LIBS_LEN)
 list(SORT BOOST_STATIC_LIBS)
@@ -1572,6 +1593,7 @@ list(SORT BOOST_STATIC_LIBS)
 # Find Boost shared libraries.
 set(Boost_USE_STATIC_LIBS OFF)
 find_package(Boost COMPONENTS system thread REQUIRED)
+show_found_boost_details("shared")
 set(BOOST_SHARED_LIBS ${Boost_LIBRARIES})
 list(LENGTH BOOST_SHARED_LIBS BOOST_SHARED_LIBS_LEN)
 list(SORT BOOST_SHARED_LIBS)

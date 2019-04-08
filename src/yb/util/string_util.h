@@ -30,25 +30,94 @@
 #include "yb/util/tostring.h"
 
 namespace yb {
+namespace details {
+
+template<class Container>
+struct Unpacker {
+  using container_type = Container;
+  Container container;
+};
+
+template<class T, class... Args>
+size_t ItemCount(const T&, const Args&...);
+
+template<class T, class... Args>
+void AppendItem(vector<string>* dest, const T& t, const Args&... args);
+
+inline size_t ItemCount() { return 0; }
+inline void AppendItem(vector<string>* dest) {}
+
+template<class T>
+struct ToStringVectorHelper {
+  template<class... Args>
+  static size_t Count(const T& t, const Args&... args) {
+    return 1 + ItemCount(args...);
+  }
+
+  template<class... Args>
+  static void Append(vector<string>* dest, const T& t, const Args&... args) {
+    dest->push_back(ToString(t));
+    AppendItem(dest, args...);
+  }
+};
+
+template<class T>
+struct ToStringVectorHelper<Unpacker<T> > {
+  template<class... Args>
+  static size_t Count(const Unpacker<T>& unpacker, const Args&... args) {
+    return std::distance(std::begin(unpacker.container), std::end(unpacker.container)) +
+        ItemCount(args...);
+  }
+
+  template<class... Args>
+  static void Append(vector<string>* dest, const Unpacker<T>& unpacker, const Args&... args) {
+    for(auto&& i : unpacker.container) {
+      dest->push_back(ToString(i));
+    }
+    AppendItem(dest, args...);
+  }
+};
+
+template<class T, class... Args>
+size_t ItemCount(const T& t, const Args&...args) {
+  return ToStringVectorHelper<T>::Count(t, args...);
+}
+
+template<class T, class... Args>
+void AppendItem(vector<string>* dest, const T& t, const Args&... args) {
+  return ToStringVectorHelper<T>::Append(dest, t, args...);
+}
+
+} // namespace details
+
+// Whether the string contains (arbitrary long) integer value
+bool IsBigInteger(const std::string& s);
+
+// Whether the string contains (arbitrary long) decimal or integer value
+bool IsDecimal(const std::string& s);
+
+// Whether the string is "true"/"false" (case-insensitive)
+bool IsBoolean(const std::string& s);
 
 using StringVector = std::vector<std::string>;
 StringVector StringSplit(const std::string& arg, char delim);
 
+template<typename Iterator>
+inline std::string RangeToString(Iterator begin, Iterator end) {
+  return ToString(boost::make_iterator_range(begin, end));
+}
+
 template <typename T>
 inline std::string VectorToString(const std::vector<T>& vec) {
-  std::stringstream os;
-  os << "[";
-  bool need_separator = false;
-  for (auto item : vec) {
-    if (need_separator) {
-      os << ", ";
-    }
-    need_separator = true;
-    os << item;
-  }
-  os << "]";
-  return os.str();
+  return ToString(vec);
 }
+
+// Whether or not content of two strings is equal ignoring case
+// Examples:
+// - abcd == ABCD
+// - AbCd == aBCD
+bool EqualsIgnoreCase(const std::string &string1,
+                      const std::string &string2);
 
 std::string RightPadToWidth(const std::string& s, int w);
 
@@ -75,6 +144,19 @@ void AppendWithSeparator(const std::string& to_append,
 void AppendWithSeparator(const char* to_append,
                          std::string* dest,
                          const char* separator = kDefaultSeparatorStr);
+
+template<class Container>
+auto unpack(Container&& container) {
+  return details::Unpacker<Container>{std::forward<Container>(container)};
+}
+
+template<class... Args>
+vector<string> ToStringVector(Args&&... args) {
+  vector<string> result;
+  result.reserve(details::ItemCount(args...));
+  details::AppendItem(&result, args...);
+  return result;
+}
 
 }  // namespace yb
 

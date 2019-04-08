@@ -38,7 +38,7 @@ Status TableHandle::Create(const YBTableName& table_name,
                            int num_tablets,
                            const YBSchema& schema,
                            YBClient* client) {
-  std::unique_ptr <YBTableCreator> table_creator(client->NewTableCreator());
+  std::unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   RETURN_NOT_OK(table_creator->table_name(table_name)
       .schema(&schema)
       .num_tablets(num_tablets)
@@ -293,7 +293,7 @@ void TableIterator::HandleError(const Status& status) {
                  << ", status: " << error->status();
     }
 
-    LOG(FATAL) << "Failure: " << status;
+    LOG(FATAL) << "Failed: " << status;
   }
 }
 

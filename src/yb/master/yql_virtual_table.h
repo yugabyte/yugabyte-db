@@ -49,7 +49,7 @@ class YQLVirtualTable : public common::YQLStorageIf {
                              const Schema& projection,
                              const Schema& schema,
                              const TransactionOperationContextOpt& txn_op_context,
-                             MonoTime deadline,
+                             CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
                              const common::QLScanSpec& spec,
                              std::unique_ptr<common::YQLRowwiseIteratorIf>* iter) const override;
@@ -71,20 +71,10 @@ class YQLVirtualTable : public common::YQLStorageIf {
                              const Schema& projection,
                              const Schema& schema,
                              const TransactionOperationContextOpt& txn_op_context,
-                             MonoTime deadline,
+                             CoarseTimePoint deadline,
                              const ReadHybridTime& read_time,
-                             const common::PgsqlScanSpec& spec,
                              common::YQLRowwiseIteratorIf::UniPtr* iter) const override {
-    LOG(FATAL) << "Postgresql system tables are not yet implemented";
-    return Status::OK();
-  }
-
-  CHECKED_STATUS BuildYQLScanSpec(const PgsqlReadRequestPB& request,
-                                  const ReadHybridTime& read_time,
-                                  const Schema& schema,
-                                  std::unique_ptr<common::PgsqlScanSpec>* spec,
-                                  ReadHybridTime* req_read_time) const override {
-    LOG(FATAL) << "Postgresql system tables are not yet implemented";
+    LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 

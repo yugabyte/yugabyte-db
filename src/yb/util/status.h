@@ -124,42 +124,44 @@
 namespace yb {
 
 #define YB_STATUS_CODES \
-    ((Ok, 0, "OK")) \
-    ((NotFound, 1, "Not found")) \
-    ((Corruption, 2, "Corruption")) \
-    ((NotSupported, 3, "Not implemented")) \
-    ((InvalidArgument, 4, "Invalid argument")) \
-    ((IOError, 5, "IO error")) \
-    ((AlreadyPresent, 6, "Already present")) \
-    ((RuntimeError, 7, "Runtime error")) \
-    ((NetworkError, 8, "Network error")) \
-    ((IllegalState, 9, "Illegal state")) \
-    ((NotAuthorized, 10, "Not authorized")) \
-    ((Aborted, 11, "Aborted")) \
-    ((RemoteError, 12, "Remote error")) \
-    ((ServiceUnavailable, 13, "Service unavailable")) \
-    ((TimedOut, 14, "Timed out")) \
-    ((Uninitialized, 15, "Uninitialized")) \
-    ((ConfigurationError, 16, "Configuration error")) \
-    ((Incomplete, 17, "Incomplete")) \
-    ((EndOfFile, 18, "End of file")) \
-    ((InvalidCommand, 19, "Invalid command")) \
-    ((QLError, 20, "SQL error")) \
-    ((InternalError, 21, "Internal error")) \
-    ((ShutdownInProgress, 22, "Shutdown in progress")) \
-    ((MergeInProgress, 23, "Merge in progress")) \
-    ((Busy, 24, "Resource busy")) \
-    ((Expired, 25, "Operation expired")) \
-    ((TryAgain, 26, "Operation failed. Try again.")) \
-    ((LeaderNotReadyToServe, 27, "Leader not ready to serve requests.")) \
-    ((LeaderHasNoLease, 28, "Leader does not have a valid lease.")) \
-    ((Combined, 29, "Combined status representing multiple status failures.")) \
+    ((Ok, OK, 0, "OK")) \
+    ((NotFound, NOT_FOUND, 1, "Not found")) \
+    ((Corruption, CORRUPTION, 2, "Corruption")) \
+    ((NotSupported, NOT_SUPPORTED, 3, "Not implemented")) \
+    ((InvalidArgument, INVALID_ARGUMENT, 4, "Invalid argument")) \
+    ((IOError, IO_ERROR, 5, "IO error")) \
+    ((AlreadyPresent, ALREADY_PRESENT, 6, "Already present")) \
+    ((RuntimeError, RUNTIME_ERROR, 7, "Runtime error")) \
+    ((NetworkError, NETWORK_ERROR, 8, "Network error")) \
+    ((IllegalState, ILLEGAL_STATE, 9, "Illegal state")) \
+    ((NotAuthorized, NOT_AUTHORIZED, 10, "Not authorized")) \
+    ((Aborted, ABORTED, 11, "Aborted")) \
+    ((RemoteError, REMOTE_ERROR, 12, "Remote error")) \
+    ((ServiceUnavailable, SERVICE_UNAVAILABLE, 13, "Service unavailable")) \
+    ((TimedOut, TIMED_OUT, 14, "Timed out")) \
+    ((Uninitialized, UNINITIALIZED, 15, "Uninitialized")) \
+    ((ConfigurationError, CONFIGURATION_ERROR, 16, "Configuration error")) \
+    ((Incomplete, INCOMPLETE, 17, "Incomplete")) \
+    ((EndOfFile, END_OF_FILE, 18, "End of file")) \
+    ((InvalidCommand, INVALID_COMMAND, 19, "Invalid command")) \
+    ((QLError, QL_ERROR, 20, "Query error")) \
+    ((InternalError, INTERNAL_ERROR, 21, "Internal error")) \
+    ((Expired, EXPIRED, 22, "Operation expired")) \
+    ((LeaderNotReadyToServe, LEADER_NOT_READY_TO_SERVE, 23, \
+        "Leader not ready to serve requests.")) \
+    ((LeaderHasNoLease, LEADER_HAS_NO_LEASE, 24, "Leader does not have a valid lease.")) \
+    ((TryAgain, TRY_AGAIN_CODE, 25, "Operation failed. Try again.")) \
+    ((Busy, BUSY, 26, "Resource busy")) \
+    ((ShutdownInProgress, SHUTDOWN_IN_PROGRESS, 27, "Shutdown in progress")) \
+    ((MergeInProgress, MERGE_IN_PROGRESS, 28, "Merge in progress")) \
+    ((Combined, COMBINED_ERROR, 29, "Combined status representing multiple status failures.")) \
+    ((SnapshotTooOld, SNAPSHOT_TOO_OLD, 30, "Snapshot too old")) \
     /**/
 
-#define YB_STATUS_CODE_DECLARE(name, value, message) \
+#define YB_STATUS_CODE_DECLARE(name, pb_name, value, message) \
     BOOST_PP_CAT(k, name) = value,
 
-#define YB_STATUS_CODE_IS_FUNC(name, value, message) \
+#define YB_STATUS_CODE_IS_FUNC(name, pb_name, value, message) \
     bool BOOST_PP_CAT(Is, name)() const { \
       return code() == BOOST_PP_CAT(k, name); \
     } \
@@ -191,11 +193,11 @@ class Status {
 
   // Returns a text message of this status to be reported to users.
   // Returns empty string for success.
-  std::string ToUserMessage(bool include_file_and_line = false) const;
+  std::string ToUserMessage(bool include_code = false) const;
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
-  std::string ToString(bool include_file_and_line = true) const;
+  std::string ToString(bool include_file_and_line = true, bool include_code = true) const;
 
   // Return a string representation of the status code, without the message
   // text or posix code information.
@@ -345,6 +347,28 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
       SCHECK_GE(var1, lbound, type, msg); \
       SCHECK_LE(var1, rbound, type, msg); \
     } while(false)
+
+#ifndef NDEBUG
+
+#define DSCHECK(expr, type, msg) SCHECK(expr, type, msg)
+#define DSCHECK_EQ(var1, var2, type, msg) SCHECK_EQ(var1, var2, type, msg)
+#define DSCHECK_NE(var1, var2, type, msg) SCHECK_NE(var1, var2, type, msg)
+#define DSCHECK_GT(var1, var2, type, msg) SCHECK_GT(var1, var2, type, msg)
+#define DSCHECK_GE(var1, var2, type, msg) SCHECK_GE(var1, var2, type, msg)
+#define DSCHECK_LT(var1, var2, type, msg) SCHECK_LT(var1, var2, type, msg)
+#define DSCHECK_LE(var1, var2, type, msg) SCHECK_LE(var1, var2, type, msg)
+
+#else
+
+#define DSCHECK(expr, type, msg) DCHECK(expr) << msg
+#define DSCHECK_EQ(var1, var2, type, msg) DCHECK_EQ(var1, var2) << msg
+#define DSCHECK_NE(var1, var2, type, msg) DCHECK_NE(var1, var2) << msg
+#define DSCHECK_GT(var1, var2, type, msg) DCHECK_GT(var1, var2) << msg
+#define DSCHECK_GE(var1, var2, type, msg) DCHECK_GE(var1, var2) << msg
+#define DSCHECK_LT(var1, var2, type, msg) DCHECK_LT(var1, var2) << msg
+#define DSCHECK_LE(var1, var2, type, msg) DCHECK_LE(var1, var2) << msg
+
+#endif
 
 #ifdef YB_HEADERS_NO_STUBS
 #define CHECKED_STATUS MUST_USE_RESULT ::yb::Status

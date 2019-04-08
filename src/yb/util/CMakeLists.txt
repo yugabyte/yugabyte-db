@@ -128,13 +128,12 @@ set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
   atomic.cc
-  backoff_waiter.cc
   bitmap.cc
   bitmap.cc
   bloom_filter.cc
   bytes_formatter.cc
-  cache.cc
   cache_metrics.cc
+  capabilities.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
@@ -232,12 +231,6 @@ set(UTIL_SRCS
   ${UTIL_SRCS_EXTENSIONS}
   )
 
-if(NOT APPLE)
-  set(UTIL_SRCS
-    ${UTIL_SRCS}
-    nvm_cache.cc)
-endif()
-
 set(UTIL_LIBS
   boost_system
   boost_thread
@@ -252,7 +245,8 @@ set(UTIL_LIBS
   pb_util_proto
   protobuf
   version_info_proto
-  zlib)
+  zlib
+  ${OPENSSL_CRYPTO_LIBRARY})
 
 if (NOT APPLE AND NOT USING_LINUXBREW)
   set(UTIL_LIBS ${UTIL_LIBS} atomic)
@@ -262,7 +256,6 @@ if(NOT APPLE)
   set(UTIL_LIBS
     ${UTIL_LIBS}
     rt
-    vmem
     libbacktrace)
 endif()
 
@@ -292,11 +285,6 @@ target_link_libraries(yb_test_util
   gmock
   yb_util)
 
-if(NOT APPLE)
-target_link_libraries(yb_test_util
-  vmem)
-endif()
-
 #######################################
 # yb_test_main
 #######################################
@@ -325,7 +313,6 @@ ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
 ADD_YB_TEST(blocking_queue-test)
 ADD_YB_TEST(bloom_filter-test)
-ADD_YB_TEST(cache-test)
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark

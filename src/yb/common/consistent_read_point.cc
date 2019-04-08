@@ -14,6 +14,8 @@
 #include "yb/common/consistent_read_point.h"
 #include "yb/client/transaction.h"
 
+#include "yb/util/debug-util.h"
+
 namespace yb {
 
 ConsistentReadPoint::ConsistentReadPoint(const scoped_refptr<ClockBase>& clock)
@@ -90,7 +92,8 @@ void ConsistentReadPoint::PrepareChildTransactionData(ChildTransactionDataPB* da
   }
 }
 
-void ConsistentReadPoint::FinishChildTransactionResult(ChildTransactionResultPB* result) const {
+void ConsistentReadPoint::FinishChildTransactionResult(
+    HadReadTime had_read_time, ChildTransactionResultPB* result) const {
   if (IsRestartRequired()) {
     result->set_restart_read_ht(restart_read_ht_.ToUint64());
     auto& restarts = *result->mutable_read_restarts();
@@ -101,9 +104,22 @@ void ConsistentReadPoint::FinishChildTransactionResult(ChildTransactionResultPB*
   } else {
     result->set_restart_read_ht(HybridTime::kInvalid.ToUint64());
   }
+
+  if (!had_read_time && read_time_) {
+    read_time_.ToPB(result->mutable_used_read_time());
+  }
 }
 
 void ConsistentReadPoint::ApplyChildTransactionResult(const ChildTransactionResultPB& result) {
+  if (result.has_used_read_time()) {
+    LOG_IF(DFATAL, read_time_)
+        << "Read time already picked (" << read_time_
+        << ", but child result contains used read time: "
+        << result.used_read_time().ShortDebugString();
+    read_time_ = ReadHybridTime::FromPB(result.used_read_time());
+    restart_read_ht_ = read_time_.read;
+  }
+
   HybridTime restart_read_ht(result.restart_read_ht());
   if (restart_read_ht.is_valid()) {
     ReadHybridTime read_time;
@@ -113,6 +129,10 @@ void ConsistentReadPoint::ApplyChildTransactionResult(const ChildTransactionResu
       RestartRequired(restart.first, read_time);
     }
   }
+}
+
+void ConsistentReadPoint::SetInTxnLimit(HybridTime value) {
+  read_time_.in_txn_limit = value;
 }
 
 ConsistentReadPoint& ConsistentReadPoint::operator=(ConsistentReadPoint&& other) {

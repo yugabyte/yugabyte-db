@@ -151,8 +151,8 @@ Status CQLMessage::QueryParameters::ValidateConsistency() {
       break;
     }
     default:
-      LOG(WARNING) << "Consistency level " << static_cast<uint16_t>(consistency)
-                   << " is not supported, defaulting to strong consistency";
+      YB_LOG_EVERY_N_SECS(WARNING, 10) << "Consistency level " << static_cast<uint16_t>(consistency)
+                                       << " is not supported, defaulting to strong consistency";
       set_yb_consistency_level(YBConsistencyLevel::STRONG);
   }
   return Status::OK();
@@ -1758,7 +1758,7 @@ void CQLServerEventList::Transferred(const Status& status, rpc::Connection*) {
 }
 
 void CQLServerEventList::Serialize(
-    boost::container::small_vector_base<RefCntBuffer>* output) const {
+    boost::container::small_vector_base<RefCntBuffer>* output) {
   for (const auto& cql_server_event : cql_server_events_) {
     cql_server_event->Serialize(output);
   }

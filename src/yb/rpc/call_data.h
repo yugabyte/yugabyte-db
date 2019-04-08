@@ -1,0 +1,74 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#ifndef YB_RPC_CALL_DATA_H
+#define YB_RPC_CALL_DATA_H
+
+namespace yb {
+namespace rpc {
+
+struct CallData {
+ public:
+  CallData() : data_(nullptr), size_(0) {}
+
+  explicit CallData(size_t size)
+      : data_(size ? static_cast<char*>(malloc(size)) : nullptr), size_(size) {}
+
+  CallData(const CallData&) = delete;
+  void operator=(const CallData&) = delete;
+
+  CallData(CallData&& rhs) : data_(rhs.data_), size_(rhs.size_) {
+    rhs.data_ = nullptr;
+    rhs.size_ = 0;
+  }
+
+  CallData& operator=(CallData&& rhs) {
+    Reset();
+    std::swap(data_, rhs.data_);
+    std::swap(size_, rhs.size_);
+    return *this;
+  }
+
+  ~CallData() {
+    Reset();
+  }
+
+  void Reset() {
+    if (data_) {
+      free(data_);
+    }
+    size_ = 0;
+    data_ = nullptr;
+  }
+
+  bool empty() const {
+    return size_ == 0;
+  }
+
+  char* data() const {
+    return data_;
+  }
+
+  size_t size() const {
+    return size_;
+  }
+
+ private:
+  char* data_;
+  size_t size_;
+};
+
+} // namespace rpc
+} // namespace yb
+
+#endif // YB_RPC_CALL_DATA_H

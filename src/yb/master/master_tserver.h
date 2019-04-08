@@ -34,9 +34,13 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   server::Clock* Clock() override;
   const scoped_refptr<MetricEntity>& MetricEnt() const override;
+  rpc::Publisher* GetPublisher() override { return nullptr; }
 
   CHECKED_STATUS GetTabletPeer(const std::string& tablet_id,
                                std::shared_ptr<tablet::TabletPeer>* tablet_peer) const override;
+
+  CHECKED_STATUS GetTabletStatus(const tserver::GetTabletStatusRequestPB* req,
+                                 tserver::GetTabletStatusResponsePB* resp) const override;
 
   const NodeInstancePB& NodeInstance() const override;
 
@@ -44,9 +48,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   CHECKED_STATUS StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
 
+  uint64_t ysql_catalog_version() const override;
+
  private:
   Master* master_ = nullptr;
-  std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
 };
 

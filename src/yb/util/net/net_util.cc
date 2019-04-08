@@ -44,6 +44,8 @@
 #include <utility>
 #include <vector>
 
+#include <boost/algorithm/string.hpp>
+#include <boost/optional/optional.hpp>
 #include <boost/scope_exit.hpp>
 
 #include "yb/gutil/gscoped_ptr.h"
@@ -61,6 +63,7 @@
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/net/inetaddress.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/random.h"
@@ -199,12 +202,28 @@ Result<std::unique_ptr<addrinfo, AddrinfoDeleter>> HostToInetAddrInfo(const std:
 
 template <typename F>
 CHECKED_STATUS ResolveInetAddresses(const std::string& host, F func) {
+  auto fast_resolve = TryFastResolve(host);
+  if (fast_resolve) {
+    func(*fast_resolve);
+    return Status::OK();
+  }
+
   auto addrinfo_holder = VERIFY_RESULT(HostToInetAddrInfo(host));
   struct addrinfo* addrinfo = addrinfo_holder.get();
   for (; addrinfo != nullptr; addrinfo = addrinfo->ai_next) {
-    CHECK_EQ(addrinfo->ai_family, AF_INET);
-    struct sockaddr_in* addr = reinterpret_cast<struct sockaddr_in*>(addrinfo->ai_addr);
-    func(addr);
+    if (addrinfo->ai_family == AF_INET) {
+      auto* addr = reinterpret_cast<struct sockaddr_in*>(addrinfo->ai_addr);
+      Endpoint endpoint;
+      memcpy(endpoint.data(), addr, sizeof(*addr));
+      func(endpoint.address());
+    } else if (addrinfo->ai_family == AF_INET6) {
+      auto* addr = reinterpret_cast<struct sockaddr_in6*>(addrinfo->ai_addr);
+      Endpoint endpoint;
+      memcpy(endpoint.data(), addr, sizeof(*addr));
+      func(endpoint.address());
+    } else {
+      return STATUS_FORMAT(NetworkError, "Unexpected address family: $0", addrinfo->ai_family);
+    }
   }
   return Status::OK();
 }
@@ -214,14 +233,12 @@ CHECKED_STATUS ResolveInetAddresses(const std::string& host, F func) {
 Status HostPort::ResolveAddresses(std::vector<Endpoint>* addresses) const {
   TRACE_EVENT1("net", "HostPort::ResolveAddresses",
                "host", host_);
-  return ResolveInetAddresses(host_, [this, addresses](struct sockaddr_in* addr) {
-    addr->sin_port = htons(port_);
-    Endpoint sockaddr;
-    memcpy(sockaddr.data(), addr, sizeof(*addr));
+  return ResolveInetAddresses(host_, [this, addresses](const IpAddress& address) {
+    Endpoint endpoint(address, port_);
     if (addresses) {
-      addresses->push_back(sockaddr);
+      addresses->push_back(endpoint);
     }
-    VLOG(2) << "Resolved address " << sockaddr << " for host/port " << ToString();
+    VLOG(2) << "Resolved address " << endpoint << " for host/port " << ToString();
   });
 }
 
@@ -293,6 +310,12 @@ Status GetHostname(string* hostname) {
   }
   *hostname = name;
   return Status::OK();
+}
+
+Result<string> GetHostname() {
+  std::string result;
+  RETURN_NOT_OK(GetHostname(&result));
+  return result;
 }
 
 Status GetLocalAddresses(std::vector<IpAddress>* result, AddressFilter filter) {
@@ -516,11 +539,9 @@ std::string HostPortToString(const std::string& host, int port) {
 
 Status HostToAddresses(
     const std::string& host,
-    boost::container::small_vector<IpAddress, 1>* addresses) {
-  return ResolveInetAddresses(host, [&addresses](struct sockaddr_in* addr) {
-    Endpoint endpoint;
-    memcpy(endpoint.data(), addr, sizeof(*addr));
-    addresses->push_back(endpoint.address());
+    boost::container::small_vector_base<IpAddress>* addresses) {
+  return ResolveInetAddresses(host, [&addresses](const IpAddress& address) {
+    addresses->push_back(address);
   });
 }
 
@@ -538,5 +559,25 @@ Result<IpAddress> HostToAddress(const std::string& host) {
   return addr;
 }
 
+boost::optional<IpAddress> TryFastResolve(const std::string& host) {
+  boost::system::error_code ec;
+  auto addr = IpAddress::from_string(host, ec);
+  if (!ec) {
+    return addr;
+  }
+
+  // For testing purpose we resolve A.B.C.D.ip.yugabyte to A.B.C.D.
+  static const std::string kYbIpSuffix = ".ip.yugabyte";
+  if (boost::ends_with(host, kYbIpSuffix)) {
+    boost::system::error_code ec;
+    auto address = IpAddress::from_string(
+        host.substr(0, host.length() - kYbIpSuffix.length()), ec);
+    if (!ec) {
+      return address;
+    }
+  }
+
+  return boost::none;
+}
 
 } // namespace yb

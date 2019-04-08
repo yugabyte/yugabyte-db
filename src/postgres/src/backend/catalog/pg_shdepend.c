@@ -3,7 +3,7 @@
  * pg_shdepend.c
  *	  routines to support manipulation of the pg_shdepend relation
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -67,6 +67,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 typedef enum
 {
@@ -129,6 +130,16 @@ recordSharedDependencyOn(ObjectAddress *depender,
 	 * initdb will fill in appropriate pg_shdepend entries after bootstrap.
 	 */
 	if (IsBootstrapProcessingMode())
+		return;
+
+	/*
+	 * Disable dependency check here for now to avoid many full-table
+	 * scans caused by isObjectPinned below. YugaByte master catalog maps
+	 * should catch broken dependencies for now anyway.
+	 * TODO as we enable more postgres-exclusive features this needs to be
+	 * handled (re-enabled) to ensure correctness.
+	 */
+	if (IsYugaByteEnabled())
 		return;
 
 	sdepRel = heap_open(SharedDependRelationId, RowExclusiveLock);
@@ -250,7 +261,7 @@ shdepChangeDep(Relation sdepRel,
 	{
 		/* No new entry needed, so just delete existing entry if any */
 		if (oldtup)
-			CatalogTupleDelete(sdepRel, &oldtup->t_self);
+			CatalogTupleDelete(sdepRel, oldtup);
 	}
 	else if (oldtup)
 	{
@@ -796,7 +807,7 @@ dropDatabaseDependencies(Oid databaseId)
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
-		CatalogTupleDelete(sdepRel, &tup->t_self);
+		CatalogTupleDelete(sdepRel, tup);
 	}
 
 	systable_endscan(scan);
@@ -949,7 +960,7 @@ shdepDropDependency(Relation sdepRel,
 			continue;
 
 		/* OK, delete it */
-		CatalogTupleDelete(sdepRel, &tup->t_self);
+		CatalogTupleDelete(sdepRel, tup);
 	}
 
 	systable_endscan(scan);

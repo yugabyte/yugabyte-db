@@ -89,14 +89,14 @@ TEST_F(TestTabletMetadata, TestLoadFromSuperBlock) {
 
   // Dump the superblock to a PB. Save the PB to the side.
   TabletSuperBlockPB superblock_pb_1;
-  ASSERT_OK(meta->ToSuperBlock(&superblock_pb_1));
+  meta->ToSuperBlock(&superblock_pb_1);
 
   // Load the superblock PB back into the TabletMetadata.
   ASSERT_OK(meta->ReplaceSuperBlock(superblock_pb_1));
 
   // Dump the tablet metadata to a superblock PB again, and save it.
   TabletSuperBlockPB superblock_pb_2;
-  ASSERT_OK(meta->ToSuperBlock(&superblock_pb_2));
+  meta->ToSuperBlock(&superblock_pb_2);
 
   // Compare the 2 dumped superblock PBs.
   ASSERT_EQ(superblock_pb_1.SerializeAsString(),

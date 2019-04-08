@@ -55,7 +55,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/flags.h"
+#include "yb/common/common_flags.h"
 #include "yb/common/partition.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/wire_protocol.h"
@@ -104,6 +104,10 @@ using yb::master::DeleteNamespaceRequestPB;
 using yb::master::DeleteNamespaceResponsePB;
 using yb::master::ListNamespacesRequestPB;
 using yb::master::ListNamespacesResponsePB;
+using yb::master::ReservePgsqlOidsRequestPB;
+using yb::master::ReservePgsqlOidsResponsePB;
+using yb::master::GetYsqlCatalogConfigRequestPB;
+using yb::master::GetYsqlCatalogConfigResponsePB;
 using yb::master::CreateUDTypeRequestPB;
 using yb::master::CreateUDTypeResponsePB;
 using yb::master::AlterRoleRequestPB;
@@ -150,6 +154,13 @@ DECLARE_int32(yb_num_shards_per_tserver);
 
 DEFINE_int32(update_permissions_cache_msecs, 2000,
              "How often the roles' permissions cache should be updated. 0 means never update it");
+
+DEFINE_bool(client_suppress_created_logs, false,
+            "Suppress 'Created table ...' messages");
+TAG_FLAG(client_suppress_created_logs, advanced);
+TAG_FLAG(client_suppress_created_logs, hidden);
+
+DECLARE_bool(running_test);
 
 namespace yb {
 namespace client {
@@ -388,6 +399,10 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
     builder.set_metric_entity(data_->metric_entity_);
     builder.UseDefaultConnectionContextFactory(data_->parent_mem_tracker_);
     c->data_->messenger_ = VERIFY_RESULT(builder.Build());
+
+    if (FLAGS_running_test) {
+      c->data_->messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));
+    }
   }
   c->data_->proxy_cache_ = std::make_unique<rpc::ProxyCache>(c->data_->messenger_);
   c->data_->metric_entity_ = data_->metric_entity_;
@@ -425,7 +440,7 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   return Status::OK();
 }
 
-YBClient::YBClient() : data_(new YBClient::Data()), client_id_(ObjectIdGenerator().Next()) {
+YBClient::YBClient() : data_(new YBClient::Data()) {
   yb::InitCommonFlags();
 }
 
@@ -436,7 +451,6 @@ YBClient::~YBClient() {
   if (data_->cb_threadpool_) {
     data_->cb_threadpool_->Shutdown();
   }
-  delete data_;
 }
 
 YBTableCreator* YBClient::NewTableCreator() {
@@ -447,7 +461,8 @@ Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
                                          bool *create_in_progress) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
-  return data_->IsCreateTableInProgress(this, table_name, deadline, create_in_progress);
+  return data_->IsCreateTableInProgress(this, table_name, "" /* table_id */, deadline,
+                                        create_in_progress);
 }
 
 Status YBClient::TruncateTable(const string& table_id, bool wait) {
@@ -464,6 +479,19 @@ Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->DeleteTable(this,
                             table_name,
+                            "" /* table_id */,
+                            false /* is_index_table */,
+                            deadline,
+                            nullptr /* indexed_table_name */,
+                            wait);
+}
+
+Status YBClient::DeleteTable(const string& table_id, bool wait) {
+  MonoTime deadline = MonoTime::Now();
+  deadline.AddDelta(default_admin_operation_timeout());
+  return data_->DeleteTable(this,
+                            YBTableName(),
+                            table_id,
                             false /* is_index_table */,
                             deadline,
                             nullptr /* indexed_table_name */,
@@ -477,6 +505,21 @@ Status YBClient::DeleteIndexTable(const YBTableName& table_name,
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->DeleteTable(this,
                             table_name,
+                            "" /* table_id */,
+                            true /* is_index_table */,
+                            deadline,
+                            indexed_table_name,
+                            wait);
+}
+
+Status YBClient::DeleteIndexTable(const string& table_id,
+                                  YBTableName* indexed_table_name,
+                                  bool wait) {
+  MonoTime deadline = MonoTime::Now();
+  deadline.AddDelta(default_admin_operation_timeout());
+  return data_->DeleteTable(this,
+                            YBTableName(),
+                            table_id,
                             true /* is_index_table */,
                             deadline,
                             indexed_table_name,
@@ -487,11 +530,16 @@ YBTableAlterer* YBClient::NewTableAlterer(const YBTableName& name) {
   return new YBTableAlterer(this, name);
 }
 
+YBTableAlterer* YBClient::NewTableAlterer(const string id) {
+  return new YBTableAlterer(this, id);
+}
+
 Status YBClient::IsAlterTableInProgress(const YBTableName& table_name,
+                                        const string& table_id,
                                         bool *alter_in_progress) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(default_admin_operation_timeout());
-  return data_->IsAlterTableInProgress(this, table_name, deadline, alter_in_progress);
+  return data_->IsAlterTableInProgress(this, table_name, table_id, deadline, alter_in_progress);
 }
 
 Status YBClient::GetTableSchema(const YBTableName& table_name,
@@ -513,57 +561,101 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
 }
 
 Status YBClient::CreateNamespace(const std::string& namespace_name,
-                                 const YQLDatabase database_type,
+                                 const boost::optional<YQLDatabase>& database_type,
                                  const std::string& creator_role_name,
-                                 const boost::optional<PgOid> pg_database_oid) {
+                                 const std::string& namespace_id,
+                                 const std::string& source_namespace_id,
+                                 const boost::optional<uint32_t>& next_pg_oid) {
   CreateNamespaceRequestPB req;
   CreateNamespaceResponsePB resp;
   req.set_name(namespace_name);
   if (!creator_role_name.empty()) {
     req.set_creator_role_name(creator_role_name);
   }
-  if (database_type != YQL_DATABASE_UNDEFINED) {
-    req.set_database_type(database_type);
+  if (database_type) {
+    req.set_database_type(*database_type);
   }
-  if (pg_database_oid) {
-    req.set_pg_database_oid(*pg_database_oid);
+  if (!namespace_id.empty()) {
+    req.set_namespace_id(namespace_id);
+  }
+  if (!source_namespace_id.empty()) {
+    req.set_source_namespace_id(source_namespace_id);
+  }
+  if (next_pg_oid) {
+    req.set_next_pg_oid(*next_pg_oid);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateNamespace);
   return Status::OK();
 }
 
 Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                            YQLDatabase database_type) {
-  Result<bool> namespace_exists = NamespaceExists(namespace_name);
-  RETURN_NOT_OK(namespace_exists);
-  return namespace_exists.get() ? Status::OK()
-                                : CreateNamespace(namespace_name, database_type);
+                                            const boost::optional<YQLDatabase>& database_type,
+                                            const std::string& creator_role_name,
+                                            const std::string& namespace_id,
+                                            const std::string& source_namespace_id,
+                                            const boost::optional<uint32_t>& next_pg_oid) {
+  Result<bool> namespace_exists = (!namespace_id.empty() ? NamespaceIdExists(namespace_id)
+                                                         : NamespaceExists(namespace_name));
+  if (VERIFY_RESULT(namespace_exists)) {
+    return Status::OK();
+  }
+
+  return CreateNamespace(namespace_name, database_type, creator_role_name, namespace_id,
+                         source_namespace_id, next_pg_oid);
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name,
-                                 YQLDatabase database_type) {
+                                 const boost::optional<YQLDatabase>& database_type) {
   DeleteNamespaceRequestPB req;
   DeleteNamespaceResponsePB resp;
   req.mutable_namespace_()->set_name(namespace_name);
-  if (database_type != YQL_DATABASE_UNDEFINED) {
-    req.set_database_type(database_type);
+  if (database_type) {
+    req.set_database_type(*database_type);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteNamespace);
   return Status::OK();
 }
 
-Status YBClient::ListNamespaces(YQLDatabase database_type, std::vector<std::string>* namespaces) {
+Status YBClient::ListNamespaces(const boost::optional<YQLDatabase>& database_type,
+                                std::vector<std::string>* namespace_names,
+                                std::vector<std::string>* namespace_ids) {
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
-  if (database_type != YQL_DATABASE_UNDEFINED) {
-    req.set_database_type(database_type);
+  if (database_type) {
+    req.set_database_type(*database_type);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListNamespaces);
 
-  CHECK_NOTNULL(namespaces);
   for (auto ns : resp.namespaces()) {
-    namespaces->push_back(ns.name());
+    if (namespace_names != nullptr) {
+      namespace_names->push_back(ns.name());
+    }
+    if (namespace_ids != nullptr) {
+      namespace_ids->push_back(ns.id());
+    }
   }
+  return Status::OK();
+}
+
+Status YBClient::ReservePgsqlOids(const std::string& namespace_id,
+                                  const uint32_t next_oid, const uint32_t count,
+                                  uint32_t* begin_oid, uint32_t* end_oid) {
+  ReservePgsqlOidsRequestPB req;
+  ReservePgsqlOidsResponsePB resp;
+  req.set_namespace_id(namespace_id);
+  req.set_next_oid(next_oid);
+  req.set_count(count);
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, ReservePgsqlOids);
+  *begin_oid = resp.begin_oid();
+  *end_oid = resp.end_oid();
+  return Status::OK();
+}
+
+Status YBClient::GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version) {
+  GetYsqlCatalogConfigRequestPB req;
+  GetYsqlCatalogConfigResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetYsqlCatalogConfig);
+  *ysql_catalog_version = resp.version();
   return Status::OK();
 }
 
@@ -595,12 +687,25 @@ Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
 }
 
 Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
-                                       YQLDatabase database_type) {
-  std::vector<std::string> namespaces;
-  RETURN_NOT_OK(ListNamespaces(database_type, &namespaces));
+                                       const boost::optional<YQLDatabase>& database_type) {
+  std::vector<std::string> namespace_names;
+  RETURN_NOT_OK(ListNamespaces(database_type, &namespace_names));
 
-  for (const string& name : namespaces) {
+  for (const string& name : namespace_names) {
     if (name == namespace_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
+                                         const boost::optional<YQLDatabase>& database_type) {
+  std::vector<std::string> namespace_ids;
+  RETURN_NOT_OK(ListNamespaces(database_type, nullptr /* namespace_names */, &namespace_ids));
+
+  for (const string& id : namespace_ids) {
+    if (namespace_id == id) {
       return true;
     }
   }
@@ -848,9 +953,10 @@ Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tabl
   return Status::OK();
 }
 
-void YBClient::AddTabletServerProxy(const string& ts_uuid,
-                                    const shared_ptr<tserver::TabletServerServiceProxy>& proxy) {
-  data_->meta_cache_->AddTabletServerProxy(ts_uuid, proxy);
+void YBClient::AddTabletServer(const string& ts_uuid,
+                               const shared_ptr<tserver::TabletServerServiceProxy>& proxy,
+                               const tserver::LocalTabletServer* local_tserver) {
+  data_->meta_cache_->AddTabletServer(ts_uuid, proxy, local_tserver);
 }
 
 Status YBClient::GetTablets(const YBTableName& table_name,
@@ -936,6 +1042,31 @@ const std::string& YBClient::proxy_uuid() const {
   return data_->uuid_;
 }
 
+const ClientId& YBClient::id() const {
+  return data_->id_;
+}
+
+std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId(
+    const TabletId& tablet_id) {
+  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
+  auto& tablet = data_->tablet_requests_[tablet_id];
+  auto id = tablet.request_id_seq++;
+  tablet.running_requests.insert(id);
+  return std::make_pair(id, *tablet.running_requests.begin());
+}
+
+void YBClient::RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id) {
+  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
+  auto& tablet = data_->tablet_requests_[tablet_id];
+  auto it = tablet.running_requests.find(request_id);
+  if (it != tablet.running_requests.end()) {
+    tablet.running_requests.erase(it);
+  } else {
+    LOG(DFATAL) << "RequestFinished called for an unknown request: "
+                << tablet_id << ", " << request_id;
+  }
+}
+
 void YBClient::LookupTabletByKey(const YBTable* table,
                                  const std::string& partition_key,
                                  const MonoTime& deadline,
@@ -1017,6 +1148,20 @@ Status YBClient::SetReplicationInfo(const ReplicationInfoPB& replication_info) {
 
 Status YBClient::ListTables(vector<YBTableName>* tables,
                             const string& filter) {
+  std::vector<std::pair<std::string, YBTableName>> tables_with_ids;
+  RETURN_NOT_OK(ListTablesWithIds(&tables_with_ids, filter));
+  tables->clear();
+  tables->reserve(tables_with_ids.size());
+  for (const auto& table_with_id : tables_with_ids) {
+    tables->emplace_back(table_with_id.second);
+  }
+  return Status::OK();
+}
+
+Status YBClient::ListTablesWithIds(
+    std::vector<std::pair<std::string, YBTableName>>* tables_with_ids,
+    const std::string& filter) {
+  tables_with_ids->clear();
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
 
@@ -1028,7 +1173,9 @@ Status YBClient::ListTables(vector<YBTableName>* tables,
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
     DCHECK(table_info.has_namespace_());
     DCHECK(table_info.namespace_().has_name());
-    tables->push_back(YBTableName(table_info.namespace_().name(), table_info.name()));
+    tables_with_ids->emplace_back(
+        table_info.id(),
+        YBTableName(table_info.namespace_().name(), table_info.name()));
   }
   return Status::OK();
 }
@@ -1306,18 +1453,18 @@ YBTableCreator& YBTableCreator::creator_role_name(const RoleName& creator_role_n
   return *this;
 }
 
-YBTableCreator& YBTableCreator::pg_schema_oid(const PgOid schema_oid) {
-  data_->pg_schema_oid_ = schema_oid;
-  return *this;
-}
-
-YBTableCreator& YBTableCreator::pg_table_oid(const PgOid table_oid) {
-  data_->pg_table_oid_ = table_oid;
+YBTableCreator& YBTableCreator::table_id(const std::string& table_id) {
+  data_->table_id_ = table_id;
   return *this;
 }
 
 YBTableCreator& YBTableCreator::is_pg_catalog_table() {
   data_->is_pg_catalog_table_ = true;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::is_pg_shared_table() {
+  data_->is_pg_shared_table_ = true;
   return *this;
 }
 
@@ -1437,21 +1584,21 @@ Status YBTableCreator::Create() {
   // Build request.
   CreateTableRequestPB req;
   req.set_name(data_->table_name_.table_name());
-  req.mutable_namespace_()->set_name(data_->table_name_.resolved_namespace_name());
+  data_->table_name_.SetIntoNamespaceIdentifierPB(req.mutable_namespace_());
   req.set_table_type(data_->table_type_);
 
   if (!data_->creator_role_name_.empty()) {
     req.set_creator_role_name(data_->creator_role_name_);
   }
 
-  if (data_->pg_schema_oid_) {
-    req.set_pg_schema_oid(*data_->pg_schema_oid_);
-  }
-  if (data_->pg_table_oid_) {
-    req.set_pg_table_oid(*data_->pg_table_oid_);
+  if (!data_->table_id_.empty()) {
+    req.set_table_id(data_->table_id_);
   }
   if (data_->is_pg_catalog_table_) {
     req.set_is_pg_catalog_table(*data_->is_pg_catalog_table_);
+  }
+  if (data_->is_pg_shared_table_) {
+    req.set_is_pg_shared_table(*data_->is_pg_shared_table_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or
@@ -1462,8 +1609,7 @@ Status YBTableCreator::Create() {
     req.mutable_replication_info()->CopyFrom(data_->replication_info_);
   }
 
-  RETURN_NOT_OK_PREPEND(SchemaToPB(internal::GetSchema(*data_->schema_), req.mutable_schema()),
-                        "Invalid schema");
+  SchemaToPB(internal::GetSchema(*data_->schema_), req.mutable_schema());
 
   // Check if partition schema is to multi column hash value.
   if (!data_->split_rows_.empty()) {
@@ -1509,24 +1655,37 @@ Status YBTableCreator::Create() {
     deadline.AddDelta(data_->client_->default_admin_operation_timeout());
   }
 
-  RETURN_NOT_OK_PREPEND(data_->client_->data_->CreateTable(data_->client_,
-                                                           req,
-                                                           *data_->schema_,
-                                                           deadline),
-                        strings::Substitute("Error creating $0 $1 on the master",
-                                            object_type, data_->table_name_.ToString()));
+  auto s = data_->client_->data_->CreateTable(data_->client_,
+                                              req,
+                                              *data_->schema_,
+                                              deadline,
+                                              &data_->table_id_);
+
+  if (!s.ok() && !s.IsAlreadyPresent()) {
+      RETURN_NOT_OK_PREPEND(s, strings::Substitute("Error creating $0 $1 on the master",
+                                                   object_type, data_->table_name_.ToString()));
+  }
+
+  // We are here because the create request succeeded or we received an IsAlreadyPresent error.
+  // Although the table is already in the catalog manager, it doesn't mean that the table is
+  // ready to receive requests. So we will call WaitForCreateTableToFinish to ensure that once
+  // this request returns, the client can send operations without receiving a "Table Not Found"
+  // error.
 
   // Spin until the table is fully created, if requested.
   if (data_->wait_) {
     RETURN_NOT_OK(data_->client_->data_->WaitForCreateTableToFinish(data_->client_,
-                                                                    data_->table_name_,
+                                                                    YBTableName(),
+                                                                    data_->table_id_,
                                                                     deadline));
   }
 
-  LOG(INFO) << "Created " << object_type << " " << data_->table_name_.ToString()
-            << " of type " << TableType_Name(data_->table_type_);
+  if (s.ok() && !FLAGS_client_suppress_created_logs) {
+    LOG(INFO) << "Created " << object_type << " " << data_->table_name_.ToString()
+              << " of type " << TableType_Name(data_->table_type_);
+  }
 
-  return Status::OK();
+  return s;
 }
 
 ////////////////////////////////////////////////////////////
@@ -1688,6 +1847,10 @@ void YBSession::SetReadPoint(const Restart restart) {
   data_->SetReadPoint(restart);
 }
 
+bool YBSession::IsRestartRequired() const {
+  return data_->IsRestartRequired();
+}
+
 void YBSession::SetTransaction(YBTransactionPtr transaction) {
   data_->SetTransaction(std::move(transaction));
 }
@@ -1777,11 +1940,23 @@ bool YBSession::allow_local_calls_in_curr_thread() const {
   return data_->allow_local_calls_in_curr_thread();
 }
 
+void YBSession::SetInTxnLimit(HybridTime value) {
+  data_->SetInTxnLimit(value);
+}
+
+void YBSession::SetForceConsistentRead(ForceConsistentRead value) {
+  data_->SetForceConsistentRead(value);
+}
+
 ////////////////////////////////////////////////////////////
 // YBTableAlterer
 ////////////////////////////////////////////////////////////
 YBTableAlterer::YBTableAlterer(YBClient* client, const YBTableName& name)
   : data_(new Data(client, name)) {
+}
+
+YBTableAlterer::YBTableAlterer(YBClient* client, const string id)
+  : data_(new Data(client, id)) {
 }
 
 YBTableAlterer::~YBTableAlterer() {
@@ -1842,7 +2017,7 @@ Status YBTableAlterer::Alter() {
   if (data_->wait_) {
     YBTableName alter_name = data_->rename_to_.get_value_or(data_->table_name_);
     RETURN_NOT_OK(data_->client_->data_->WaitForAlterTableToFinish(
-        data_->client_, alter_name, deadline));
+        data_->client_, alter_name, data_->table_id_, deadline));
   }
 
   return Status::OK();

@@ -6,7 +6,7 @@
  *	  message integrity and endpoint authentication.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -128,6 +128,14 @@ struct sigpipe_info
 /*			 Procedures common to all secure sessions			*/
 /* ------------------------------------------------------------ */
 
+
+int
+PQsslInUse(PGconn *conn)
+{
+	if (!conn)
+		return 0;
+	return conn->ssl_in_use;
+}
 
 /*
  *	Exported function to allow application to tell us it's already
@@ -352,9 +360,10 @@ retry_masked:
 			case EPIPE:
 				/* Set flag for EPIPE */
 				REMEMBER_EPIPE(spinfo, true);
-				/* FALL THRU */
 
 #ifdef ECONNRESET
+				/* FALL THRU */
+
 			case ECONNRESET:
 #endif
 				printfPQExpBuffer(&conn->errorMessage,
@@ -383,12 +392,6 @@ retry_masked:
 
 /* Dummy versions of SSL info functions, when built without SSL support */
 #ifndef USE_SSL
-
-int
-PQsslInUse(PGconn *conn)
-{
-	return 0;
-}
 
 void *
 PQgetssl(PGconn *conn)
@@ -465,10 +468,10 @@ pq_block_sigpipe(sigset_t *osigset, bool *sigpipe_pending)
  * As long as it doesn't queue multiple events, we're OK because the caller
  * can't tell the difference.
  *
- * The caller should say got_epipe = FALSE if it is certain that it
+ * The caller should say got_epipe = false if it is certain that it
  * didn't get an EPIPE error; in that case we'll skip the clear operation
  * and things are definitely OK, queuing or no.  If it got one or might have
- * gotten one, pass got_epipe = TRUE.
+ * gotten one, pass got_epipe = true.
  *
  * We do not want this to change errno, since if it did that could lose
  * the error code from a preceding send().  We essentially assume that if

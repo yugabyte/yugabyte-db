@@ -117,7 +117,7 @@ Status SemContext::LookupTable(const YBTableName& name,
   if (*table == nullptr || ((*table)->IsIndex() && !FLAGS_allow_index_table_read_write) ||
       // Only looking for CQL tables.
       (*table)->table_type() != client::YBTableType::YQL_TABLE_TYPE) {
-    return Error(loc, ErrorCode::TABLE_NOT_FOUND);
+    return Error(loc, ErrorCode::OBJECT_NOT_FOUND);
   }
 
   return LoadSchema(*table, col_descs, column_definitions);
@@ -133,7 +133,7 @@ Status SemContext::LookupIndex(const TableId& index_id,
   if (*index_table == nullptr || !(*index_table)->IsIndex() ||
       // Only looking for CQL Indexes.
       (*index_table)->table_type() != client::YBTableType::YQL_TABLE_TYPE) {
-    return Error(loc, ErrorCode::TABLE_NOT_FOUND);
+    return Error(loc, ErrorCode::OBJECT_NOT_FOUND);
   }
 
   return LoadSchema(*index_table, col_descs, column_definitions);
@@ -157,7 +157,7 @@ Status SemContext::MapSymbol(const MCString& name, PTAlterColumnDefinition *entr
 
 Status SemContext::MapSymbol(const MCString& name, PTCreateTable *entry) {
   if (symtab_[name].create_table_ != nullptr) {
-    return Error(entry, ErrorCode::DUPLICATE_TABLE);
+    return Error(entry, ErrorCode::DUPLICATE_OBJECT);
   }
   symtab_[name].create_table_ = entry;
   return Status::OK();
@@ -223,8 +223,8 @@ std::shared_ptr<QLType> SemContext::GetUDType(const string &keyspace_name,
   return type;
 }
 
-SymbolEntry *SemContext::SeekSymbol(const MCString& name) {
-  MCMap<MCString, SymbolEntry>::iterator iter = symtab_.find(name);
+const SymbolEntry *SemContext::SeekSymbol(const MCString& name) const {
+  MCMap<MCString, SymbolEntry>::const_iterator iter = symtab_.find(name);
   if (iter != symtab_.end()) {
     return &iter->second;
   }
@@ -239,8 +239,8 @@ PTColumnDefinition *SemContext::GetColumnDefinition(const MCString& col_name) {
   return entry->column_;
 }
 
-const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) {
-  SymbolEntry * entry = SeekSymbol(col_name);
+const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
+  const SymbolEntry * entry = SeekSymbol(col_name);
   if (entry == nullptr) {
     return nullptr;
   }

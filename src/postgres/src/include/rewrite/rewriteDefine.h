@@ -4,7 +4,7 @@
  *
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/rewrite/rewriteDefine.h
@@ -25,7 +25,7 @@
 
 extern ObjectAddress DefineRule(RuleStmt *stmt, const char *queryString);
 
-extern ObjectAddress DefineQueryRewrite(char *rulename,
+extern ObjectAddress DefineQueryRewrite(const char *rulename,
 				   Oid event_relid,
 				   Node *event_qual,
 				   CmdType event_type,

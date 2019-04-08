@@ -121,8 +121,9 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
   opts->webserver_opts.port = web_port;
   opts->fs_opts.wal_paths = { fs_root_ };
   opts->fs_opts.data_paths = { fs_root_ };
-  opts->broadcast_addresses.push_back(VERIFY_RESULT(HostPort::FromString(server::TEST_RpcAddress(
-      index_, server::Private::kFalse), rpc_port)));
+  // A.B.C.D.xip.io resolves to A.B.C.D so it is very useful for testing.
+  opts->broadcast_addresses = {
+      HostPort(server::TEST_RpcAddress(index_, server::Private::kFalse), rpc_port) };
 
   if (!opts->has_placement_cloud()) {
     opts->SetPlacement(Format("cloud$0", (index_ + 1) / 2), Format("rack$0", index_), "zone");
@@ -130,11 +131,12 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
 
   gscoped_ptr<Master> server(new YB_EDITION_NS_PREFIX Master(*opts));
   RETURN_NOT_OK(server->Init());
+
+  server::TEST_SetupConnectivity(server->messenger().get(), index_);
+
   RETURN_NOT_OK(server->StartAsync());
 
   master_.swap(server);
-
-  server::TEST_BreakConnectivity(master_->messenger().get(), index_);
 
   tunnel_ = std::make_unique<Tunnel>(&master_->messenger()->io_service());
   std::vector<Endpoint> local;

@@ -15,6 +15,8 @@ package org.yb.ybcli.commands;
 
 import java.util.List;
 
+import com.google.common.net.HostAndPort;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.shell.core.CommandMarker;
@@ -31,6 +33,7 @@ import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.IsLoadBalancedResponse;
+import org.yb.client.IsTabletServerReadyResponse;
 import org.yb.client.LeaderStepDownResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTablesResponse;
@@ -66,7 +69,7 @@ public class YBCliCommands implements CommandMarker {
   @CliAvailabilityIndicator({"list tablet-servers", "list tablets", "list tables", "list masters",
                              "change_config", "change_blacklist", "leader_step_down",
                              "get_universe_config", "get_load_move_completion",
-                             "is_load_balanced"})
+                             "is_load_balanced", "is_tserver_ready"})
   public boolean isDatabaseOperationAvailable() {
     // We can perform operations on the database once we are connected to one.
     if (connectedToDatabase) {
@@ -396,6 +399,30 @@ public class YBCliCommands implements CommandMarker {
     } catch (Exception e) {
       LOG.error("Caught exception ", e);
       return "Failed: " + e.toString() + "\n";
+    }
+  }
+
+  @CliCommand(value = "is_tserver_ready",
+              help = "Check if tserver is ready to serve IO requests.")
+  public String getIsTserverReady(
+      @CliOption(key = {"host", "h"},
+                 mandatory = true,
+                 help = "Hostname or IP of the tserver. ") final String host,
+      @CliOption(key = {"port", "p"},
+                 mandatory = true,
+                 help = "RPC port number of the tserver.") final int port) {
+    try {
+      HostAndPort hp = HostAndPort.fromParts(host, port);
+      IsTabletServerReadyResponse resp = ybClient.isTServerReady(hp);
+
+      if (resp.hasError()) {
+        return "Failed: tserver response error : " + resp.errorMessage();
+      }
+
+      return "Tserver is ready.";
+    } catch (Exception e) {
+      LOG.error("Caught exception ", e);
+      return "Failed: " + e.toString();
     }
   }
 

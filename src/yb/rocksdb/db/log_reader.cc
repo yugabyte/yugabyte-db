@@ -107,8 +107,9 @@ bool Reader::ReadRecord(Slice* record, std::string* scratch,
   Slice fragment;
   while (true) {
     uint64_t physical_record_offset = end_of_buffer_offset_ - buffer_.size();
-    size_t drop_size;
+    size_t drop_size = 0;
     const unsigned int record_type = ReadPhysicalRecord(&fragment, &drop_size);
+
     switch (record_type) {
       case kFullType:
       case kRecyclableFullType:
@@ -338,7 +339,7 @@ unsigned int Reader::ReadPhysicalRecord(Slice* result, size_t* drop_size) {
   while (true) {
     // We need at least the minimum header size
     if (buffer_.size() < (size_t)kHeaderSize) {
-      int r;
+      int r = 0;
       if (!ReadMore(drop_size, &r)) {
         return r;
       }

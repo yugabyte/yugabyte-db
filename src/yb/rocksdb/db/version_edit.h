@@ -39,6 +39,7 @@
 
 namespace rocksdb {
 
+class TableCache;
 class VersionSet;
 class VersionEditPB;
 
@@ -132,6 +133,10 @@ struct FileMetaData {
 
   // Update all boundaries except key.
   void UpdateBoundariesExceptKey(const FileBoundaryValuesBase& source, UpdateBoundariesType type);
+
+  bool Unref(TableCache* table_cache);
+
+  std::string ToString() const;
 };
 
 class VersionEdit {
@@ -156,9 +161,8 @@ class VersionEdit {
   void SetLastSequence(SequenceNumber seq) {
     last_sequence_ = seq;
   }
-  void SetFlushedFrontier(UserFrontierPtr value) {
-    flushed_frontier_ = std::move(value);
-  }
+  void UpdateFlushedFrontier(UserFrontierPtr value);
+  void ModifyFlushedFrontier(UserFrontierPtr value, FrontierModificationMode mode);
   void SetMaxColumnFamily(uint32_t max_column_family) {
     max_column_family_ = max_column_family;
   }
@@ -188,13 +192,17 @@ class VersionEdit {
     new_files_.emplace_back(level, f);
   }
 
-  void AddCleanedFile(int level, const FileMetaData& f) {
+  void AddCleanedFile(int level, const FileMetaData& f, bool suppress_frontiers = false) {
     DCHECK_LE(f.smallest.seqno, f.largest.seqno);
     FileMetaData nf;
     nf.fd = f.fd;
     nf.fd.table_reader = nullptr;
     nf.smallest = f.smallest;
     nf.largest = f.largest;
+    if (suppress_frontiers) {
+      nf.smallest.user_frontier.reset();
+      nf.largest.user_frontier.reset();
+    }
     nf.marked_for_compaction = f.marked_for_compaction;
     nf.imported = f.imported;
     new_files_.emplace_back(level, std::move(nf));
@@ -249,6 +257,10 @@ class VersionEdit {
 
   std::string DebugString(bool hex_key = false) const;
 
+  std::string ToString() const {
+    return DebugString();
+  }
+
  private:
   friend class VersionSet;
   friend class Version;
@@ -263,6 +275,10 @@ class VersionEdit {
   boost::optional<uint32_t> max_column_family_;
   boost::optional<SequenceNumber> last_sequence_;
   UserFrontierPtr flushed_frontier_;
+
+  // Used when we're resetting the flushed frontier to a potentially lower value. This is needed
+  // when restoring from a backup into a new Raft group with an unrelated sequence of OpIds.
+  bool force_flushed_frontier_ = false;
 
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;

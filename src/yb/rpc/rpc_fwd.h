@@ -48,7 +48,6 @@ class Acceptor;
 class AcceptorPool;
 class ConnectionContext;
 class GrowableBufferAllocator;
-class Messenger;
 class MessengerBuilder;
 class Proxy;
 class ProxyCache;
@@ -63,9 +62,14 @@ class Protocol;
 class Scheduler;
 class ServicePoolImpl;
 class Stream;
+class StreamReadBuffer;
 class ThreadPool;
+class ThreadPoolTask;
 
+struct CallData;
+struct ProcessDataResult;
 struct RpcMethodMetrics;
+struct RpcMetrics;
 
 class RpcCommand;
 typedef std::shared_ptr<RpcCommand> RpcCommandPtr;
@@ -77,6 +81,9 @@ typedef std::weak_ptr<Connection> ConnectionWeakPtr;
 
 class InboundCall;
 typedef std::shared_ptr<InboundCall> InboundCallPtr;
+
+class Messenger;
+typedef std::shared_ptr<Messenger> MessengerPtr;
 
 class OutboundCall;
 typedef std::shared_ptr<OutboundCall> OutboundCallPtr;
@@ -93,6 +100,8 @@ typedef std::shared_ptr<ServiceIf> ServiceIfPtr;
 class ErrorStatusPB;
 
 typedef boost::asio::io_service IoService;
+
+typedef std::function<int(const std::string&, const std::string&)> Publisher;
 
 // SteadyTimePoint is something like MonoTime, but 3rd party libraries know it and don't know about
 // our private MonoTime.

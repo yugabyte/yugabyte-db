@@ -42,6 +42,7 @@
 #include "yb/rocksdb/memory_monitor.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/schema.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log.pb.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
@@ -119,10 +120,12 @@ struct BootstrapTabletData {
   TabletStatusListener* listener;
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;
   TabletOptions tablet_options;
+  std::string log_prefix_suffix;
   TransactionParticipantContext* transaction_participant_context;
   client::LocalTabletFilter local_tablet_filter;
   TransactionCoordinatorContext* transaction_coordinator_context;
   ThreadPool* append_pool;
+  consensus::RetryableRequests* retryable_requests;
 };
 
 // Bootstraps a tablet, initializing it with the provided metadata. If the tablet

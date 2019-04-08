@@ -14,6 +14,7 @@ package org.yb.pgsql;
 
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.postgresql.core.TransactionState;
 import org.postgresql.jdbc.PgConnection;
@@ -22,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.LogPrinter;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.util.*;
 
@@ -29,13 +31,14 @@ import java.io.File;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.yb.AssertionWrappers.*;
-import static org.yb.client.TestUtils.*;
+import static org.yb.client.TestUtils.getBaseTmpDir;
 import static org.yb.util.ProcessUtil.pidStrOfProcess;
+import static org.yb.util.SanitizerUtil.isTSAN;
+import static org.yb.util.SanitizerUtil.nonTsanVsTsan;
 
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
@@ -48,51 +51,66 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   // Postgres flags.
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
   private static final String PG_DATA_FLAG = "PGDATA";
-  private static final String YB_ENABLED_FLAG = "YB_ENABLED_IN_POSTGRES";
+  private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
 
-  protected Connection connection;
-  private Process postgresProc;
-  int postgresPid = -1;
-  private LogPrinter logPrinter;
+  // CQL and Redis settings.
+  protected static boolean startCqlProxy = false;
+  protected static boolean startRedisProxy = false;
 
-  private File pgDataDir;
+  protected static Connection connection;
+
+  private static File initdbDataDir;
 
   protected File pgBinDir;
-  private String postgresExecutable;
 
-  private List<Connection> connectionsToClose = new ArrayList<>();
-  private String pgHost = "127.0.0.1";
-  private File pgData;
-  private int pgPort;
-  private File pgNoRestartAllChildrenOnCrashFlagPath;
+  private static List<Connection> connectionsToClose = new ArrayList<>();
 
   protected static final int DEFAULT_STATEMENT_TIMEOUT_MS = 30000;
 
-  protected ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap = new ConcurrentSkipListSet<>();
+  protected static ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap =
+      new ConcurrentSkipListSet<>();
+
+  private static boolean pgInitialized = false;
+
+  public void runPgRegressTest(String schedule) throws Exception {
+    final int tserverIndex = 0;
+    PgRegressRunner pgRegress = new PgRegressRunner(schedule,
+        getPgHost(tserverIndex), getPgPort(tserverIndex), DEFAULT_PG_USER);
+    pgRegress.setEnvVars(getInitDbEnvVars());
+    pgRegress.start();
+    pgRegress.stop();
+  }
 
   /**
-   * PIDs of special-purpose PostgreSQL processes such as checkpointer, autovacuum launcher,
-   * stats collector. We do not try to cause these processes to core dump because they contain
-   * very little or no YugaByte code.
+   * @return flags shared between tablet server and initdb
    */
-  private Set<Integer> specialPgProcessPids = new HashSet<>();
+  private Map<String, String> getTServerAndInitDbFlags() {
+    Map<String, String> flagMap = new TreeMap<>();
 
-  /**
-   * This is used during shutdown to prevent trying to kill the same backend multiple times, so not
-   * using a concurrent data structure.
-   */
-  protected Set<Integer> killedStuckBackendPids = new HashSet<>();
+    int callTimeoutMs;
+    if (TestUtils.isReleaseBuild()) {
+      callTimeoutMs = 10000;
+    } else if (TestUtils.IS_LINUX) {
+      if (SanitizerUtil.isASAN()) {
+        callTimeoutMs = 20000;
+      } else if (SanitizerUtil.isTSAN()) {
+        callTimeoutMs = 45000;
+      } else {
+        // Linux debug builds.
+        callTimeoutMs = 15000;
+      }
+    } else {
+      // We get a lot of timeouts in macOS debug builds.
+      callTimeoutMs = 45000;
+    }
+    flagMap.put("retryable_rpc_single_call_timeout_ms", String.valueOf(callTimeoutMs));
+    if (isTSAN()) {
+      flagMap.put("yb_client_admin_operation_timeout_sec", "120");
+    }
+    flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
+    flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
 
-  /**
-   * This allows us to run the same test against the vanilla PostgreSQL code (still compiled as
-   * part of the YB codebase).
-   */
-  private final boolean useVanillaPostgres =
-      EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_USE_VANILLA_POSTGRES_IN_TEST");
-
-  @Override
-  protected boolean miniClusterEnabled() {
-    return !useVanillaPostgres;
+    return flagMap;
   }
 
   @Override
@@ -100,22 +118,32 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return 1;
   }
 
-  protected void customizePostgresEnvVars(Map<String, String> envVars) { }
+  @Override
+  protected int getReplicationFactor() {
+    return 3;
+  }
 
-  //------------------------------------------------------------------------------------------------
-  // Postgres process integration.
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    for (Map.Entry<String, String> entry : getTServerAndInitDbFlags().entrySet()) {
+      builder.addCommonTServerArgs("--" + entry.getKey() + "=" + entry.getValue());
+    }
+    builder.enablePostgres(true);
+  }
 
-  // TODO Postgres may eventually be integrated into the tserver as a child process.
-  // For now doing this here so we can already write tests.
   @Before
   public void initPostgresBefore() throws Exception {
-    pgPort = findFreePort(pgHost);
-    LOG.info("initPostgresBefore: will start PostgreSQL server on host " + pgHost +
-        ", port " + pgPort);
-    startPgWrapper(pgHost, pgPort);
+    if (pgInitialized)
+      return;
 
-    // Register PostgreSQL JDBC driver.
+    LOG.info("Loading PostgreSQL JDBC driver");
     Class.forName("org.postgresql.Driver");
+
+    // Postgres bin directory.
+    pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
+
+    runInitDb();
 
     if (connection != null) {
       LOG.info("Closing previous connection");
@@ -123,6 +151,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       connection = null;
     }
     connection = createConnection();
+    pgInitialized = true;
   }
 
   protected void configureConnection(Connection connection) throws Exception {
@@ -141,15 +170,30 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return conn;
   }
 
+  public String getPgHost(int tserverIndex) {
+    return miniCluster.getPostgresContactPoints().get(tserverIndex).getHostName();
+  }
+
+  public int getPgPort(int tserverIndex) {
+    return miniCluster.getPostgresContactPoints().get(tserverIndex).getPort();
+  }
+
   protected Connection createConnection() throws Exception {
+    return createConnection(0);
+  }
+
+  protected Connection createConnection(int tserverIndex) throws Exception {
+    final String pgHost = getPgHost(tserverIndex);
+    final int pgPort = getPgPort(tserverIndex);
     String url = String.format("jdbc:postgresql://%s:%d/%s", pgHost, pgPort, DEFAULT_PG_DATABASE);
     if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
       url += "?loggerLevel=TRACE";
     }
 
-    int delayMs = 1000;
+    final int MAX_ATTEMPTS = 10;
+    int delayMs = 500;
     Connection connection = null;
-    for (int attemptsLeft = 10; attemptsLeft >= 1; --attemptsLeft) {
+    for (int attempt = 1; attempt <= MAX_ATTEMPTS; ++attempt) {
       try {
         connection = DriverManager.getConnection(url, DEFAULT_PG_USER, DEFAULT_PG_PASSWORD);
         connectionsToClose.add(connection);
@@ -172,144 +216,75 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           }
         }
 
-        if (attemptsLeft > 1 &&
+        if (attempt < MAX_ATTEMPTS &&
             sqlEx.getMessage().contains("FATAL: the database system is starting up") ||
             sqlEx.getMessage().contains("refused. Check that the hostname and port are correct " +
                 "and that the postmaster is accepting")) {
           LOG.info("Postgres is still starting up, waiting for " + delayMs + " ms. " +
               "Got message: " + sqlEx.getMessage());
           Thread.sleep(delayMs);
-          delayMs += 1000;
+          delayMs = Math.min(delayMs + 500, 10000);
           continue;
         }
-        LOG.error("Exception while trying to create connection: " + sqlEx.getMessage());
+        LOG.error("Exception while trying to create connection (after " + attempt +
+            " attempts): " + sqlEx.getMessage());
         throw sqlEx;
       }
     }
     throw new IllegalStateException("Should not be able to reach here");
   }
 
-  protected Map<String, String> getExtraPostgresEnvVars() {
-    Map<String, String> postgresEnvVars = new HashMap<>();
-    assertNotNull(pgDataDir);
-    postgresEnvVars.put(PG_DATA_FLAG, pgDataDir.toString());
-    postgresEnvVars.put(MASTERS_FLAG, masterAddresses);
-    if (useVanillaPostgres) {
-      LOG.info("NOT using YugaByte-enabled PostgreSQL");
-    } else {
-      postgresEnvVars.put(YB_ENABLED_FLAG, "1");
+  protected Map<String, String> getInitDbEnvVars() {
+    Map<String, String> initdbEnvVars = new TreeMap<>();
+    assertNotNull(initdbDataDir);
+    initdbEnvVars.put(PG_DATA_FLAG, initdbDataDir.toString());
+    initdbEnvVars.put(MASTERS_FLAG, masterAddresses);
+    initdbEnvVars.put(YB_ENABLED_IN_PG_ENV_VAR_NAME, "1");
+
+    for (Map.Entry<String, String> entry : getTServerAndInitDbFlags().entrySet()) {
+      initdbEnvVars.put("FLAGS_" + entry.getKey(), entry.getValue());
     }
-    postgresEnvVars.put("FLAGS_yb_num_shards_per_tserver",
-        String.valueOf(overridableNumShardsPerTServer()));
 
     // Disable reporting signal-unsafe behavior for PostgreSQL because it does a lot of work in
     // signal handlers on shutdown.
-    SanitizerUtil.addToSanitizerOptions(postgresEnvVars, "report_signal_unsafe=0");
+    SanitizerUtil.addToSanitizerOptions(initdbEnvVars, "report_signal_unsafe=0");
 
     for (Map.Entry<String, String> entry : System.getenv().entrySet()) {
       String envVarName = entry.getKey();
       if (envVarName.startsWith("postgres_FLAGS_")) {
         String downstreamEnvVarName = envVarName.substring(9);
         LOG.info("Found env var " + envVarName + ", setting " + downstreamEnvVarName + " for " +
-            "PostgreSQL to " + entry.getValue());
-        postgresEnvVars.put(downstreamEnvVarName, entry.getValue());
+            "initdb to " + entry.getValue());
+        initdbEnvVars.put(downstreamEnvVarName, entry.getValue());
       }
     }
 
     // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
-    postgresEnvVars.put("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
+    initdbEnvVars.put("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
 
-    return postgresEnvVars;
+    return initdbEnvVars;
   }
 
-  private void startPgWrapper(String host, int port) throws Exception {
-    pgDataDir = new File(getBaseTmpDir() + "/ybpgdata-" + System.currentTimeMillis());
-    if (!pgDataDir.mkdir()) {
-      throw new Exception("Failed to create postgres data dir " + pgDataDir);
+  private void runInitDb() throws Exception {
+    initdbDataDir = new File(getBaseTmpDir() + "/ybpgdata-" + System.currentTimeMillis());
+    if (!initdbDataDir.mkdir()) {
+      throw new Exception("Failed to create data dir for initdb: " + initdbDataDir);
     }
 
-    Map<String, String> postgresEnvVars = getExtraPostgresEnvVars();
-    pgNoRestartAllChildrenOnCrashFlagPath = new File(
-        TestUtils.getBaseTmpDir() + "/yb_pg_no_restart_all_children_on_crash.flag-" +
-            System.currentTimeMillis());
-    postgresEnvVars.put(
-        "YB_PG_NO_RESTART_ALL_CHILDREN_ON_CRASH_FLAG_PATH",
-        pgNoRestartAllChildrenOnCrashFlagPath.getPath());
+    final Map<String, String> postgresEnvVars = getInitDbEnvVars();
 
-    // Allow test subclasses to add/remove env vars to test specific features.
-    customizePostgresEnvVars(postgresEnvVars);
+    // Dump environment variables we'll be using for the initdb command.
+    LOG.info("Setting the following environment variables for the initdb command:\n" +
+             StringUtil.getEnvVarMapDumpStr(postgresEnvVars, ": ", 4));
 
-    {
-      List<String> postgresEnvVarsDump = new ArrayList<>();
-      for (Map.Entry<String, String> entry : postgresEnvVars.entrySet()) {
-        postgresEnvVarsDump.add(entry.getKey() + ": " + entry.getValue());
-      }
-      Collections.sort(postgresEnvVarsDump);
-      LOG.info(
-          "Setting the following environment variables for the PostgreSQL process:\n    " +
-              String.join("\n    ", postgresEnvVarsDump));
-    }
-
-    String portStr = String.valueOf(port);
-
-    // Postgres bin directory.
-    pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
-
-    // Run initdb to initialize the postgres data folder.
-
-    runInitDb(postgresEnvVars, pgBinDir.toString());
-
-    // Start the postgres server process.
-    startPostgresProcess(host, port, postgresEnvVars, portStr, pgBinDir.toString());
-  }
-
-  private void startPostgresProcess(String host, int port, Map<String, String> envVars,
-                                    String portStr, String pgBinDir) throws Exception {
-    LOG.info("Postgres: Starting postgres process on port " + portStr);
-    postgresExecutable = String.format("%s/%s", pgBinDir, "postgres");
-
-    {
-      ProcessBuilder procBuilder =
-          new ProcessBuilder(postgresExecutable, "-p", portStr, "-h", host);
-      procBuilder.environment().putAll(envVars);
-      procBuilder.directory(pgDataDir);
-      procBuilder.redirectErrorStream(true);
-      postgresProc = procBuilder.start();
-      postgresPid = ProcessUtil.pidOfProcess(postgresProc);
-    }
-
-    // Set up PostgreSQL logging.
-    String logPrefix = MiniYBDaemon.makeLogPrefix(
-        "pg",
-        MiniYBDaemon.NO_DAEMON_INDEX,
-        pidStrOfProcess(postgresProc),
-        port,
-        MiniYBDaemon.NO_WEB_UI_URL);
-    this.logPrinter = new LogPrinter(postgresProc.getInputStream(), logPrefix);
-
-    // Check that the process didn't die immediately.
-    Thread.sleep(1500);
-    try {
-      int ev = postgresProc.exitValue();
-      processPgCoreFile(postgresPid);
-      throw new Exception("We tried starting a postgres process but it exited with " +
-                          "value=" + ev);
-    } catch (IllegalThreadStateException ex) {
-      // This means the process is still alive, which is what we expect.
-    }
-
-    LOG.info("Started postgres as pid " + ProcessUtil.pidOfProcess(postgresProc));
-  }
-
-  private void runInitDb(Map<String, String> envVars, String pgBinDir) throws Exception {
-    LOG.info("Postgres: Running initdb");
+    LOG.info("Running initdb");
     String initCmd = String.format("%s/%s", pgBinDir, "initdb");
     ProcessBuilder procBuilder =
         new ProcessBuilder(
             initCmd, "-U", DEFAULT_PG_USER, "--encoding=UTF8").redirectErrorStream(true);
-    procBuilder.environment().putAll(envVars);
-    // Make the current directory different from the data directory so that we can collect a core
-    // file.
+    procBuilder.environment().putAll(postgresEnvVars);
+    // Change the directory to something different from the data directory so that we can collect
+    // a core file there if necessary. The data directory may be deleted automatically.
     File initDbWorkDir = new File(TestUtils.getBaseTmpDir() + "/initdb_cwd");
     initDbWorkDir.mkdirs();
     procBuilder.directory(initDbWorkDir);
@@ -324,99 +299,44 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     initProc.waitFor();
     initDbLogPrinter.stop();
     CoreFileUtil.processCoreFile(ProcessUtil.pidOfProcess(initProc),
-        initCmd, "initdb", initDbWorkDir, CoreFileUtil.CoreFileMatchMode.NO_PID_OR_EXACT_PID);
+        initCmd, "initdb", initDbWorkDir, CoreFileUtil.CoreFileMatchMode.ANY_CORE_FILE);
   }
 
   @After
-  public void tearDownAfter() throws Exception {
-    LOG.info(getClass().getSimpleName() + ".tearDownAfter is running");
+  public void cleanUpAfter() throws Exception {
+    if (connection == null) {
+      LOG.warn("No connection created, skipping dropping tables");
+      return;
+    }
+    try (Statement statement = connection.createStatement())  {
+      DatabaseMetaData dbmd = connection.getMetaData();
+      String[] views = {"VIEW"};
+      ResultSet rs = dbmd.getTables(null, null, "%", views);
+      while (rs.next()) {
+        statement.execute("DROP VIEW " + rs.getString("TABLE_NAME"));
+      }
+      String[] tables = {"TABLE"};
+      rs = dbmd.getTables(null, null, "%", tables);
+      while (rs.next()) {
+        statement.execute("DROP TABLE " + rs.getString("TABLE_NAME"));
+      }
+    }
+  }
+
+  @AfterClass
+  public static void tearDownAfter() throws Exception {
     try {
       tearDownPostgreSQL();
     } finally {
-      if (miniClusterEnabled()) {
-        LOG.info("Destroying mini-cluster");
-        // We are destroying and re-creating the miniCluster between every test.
-        // TODO Should just drop all tables/schemas/databases like for CQL.
-        if (miniCluster != null) {
-          destroyMiniCluster();
-          miniCluster = null;
-        }
+      LOG.info("Destroying mini-cluster");
+      if (miniCluster != null) {
+        destroyMiniCluster();
+        miniCluster = null;
       }
     }
   }
 
-  private void processPgCoreFile(int pid) throws Exception {
-    if (postgresExecutable != null) {
-      LOG.info("Looking for a core file in directory " + pgDataDir + " for pid " + pid);
-      CoreFileUtil.processCoreFile(pid, postgresExecutable, "postgres", pgDataDir,
-          CoreFileUtil.CoreFileMatchMode.NO_PID_OR_EXACT_PID);
-    } else {
-      LOG.error("PostgreSQL executable path not known, cannot look for core files from pid " + pid);
-    }
-  }
-
-  private void killAndCoreDumpBackends(Collection<Integer> stuckBackendPids) throws Exception {
-    // Let's try to prevent postmaster from killing all child processes if one of them crashes.
-    // We want to cause them to core-dump one by one and get the stack traces.
-    if (!pgNoRestartAllChildrenOnCrashFlagPath.createNewFile() &&
-        !pgNoRestartAllChildrenOnCrashFlagPath.exists()) {
-      throw new AssertionError(
-          "Could not create file " + pgNoRestartAllChildrenOnCrashFlagPath +
-              ", even though it did not exist");
-    }
-
-    if (stuckBackendPids.isEmpty())
-      return;
-    stuckBackendPids.addAll(stuckBackendPidsConcMap);
-
-    LOG.warn(String.format(
-        "Found %d 'stuck' backends: %s", stuckBackendPids.size(), stuckBackendPids));
-    for (int stuckBackendPid : stuckBackendPids) {
-      if (killedStuckBackendPids.contains(stuckBackendPid) ||
-          specialPgProcessPids.contains(stuckBackendPid)) {
-        continue;
-      }
-
-      LOG.warn("Killing stuck backend with PID " + stuckBackendPid +
-          " with a SIGSEGV");
-      Runtime.getRuntime().exec("kill -SIGSEGV " + stuckBackendPid);
-      killedStuckBackendPids.add(stuckBackendPid);
-      LOG.warn("waiting a bit for the core dump to finish");
-      Thread.sleep(5000);
-      processPgCoreFile(stuckBackendPid);
-    }
-
-  }
-
-  private void tearDownPostgreSQL() throws Exception {
-    Set<Integer> allBackendPids = new TreeSet<>();
-    LOG.info("Examining child processes of postgres process with PID " + postgresPid);
-    CommandResult psResult = CommandUtil.runShellCommand(
-        String.format("ps -o pid= -o ppid= -o command= -U " + System.getProperty("user.name"))
-    );
-    for (String line : psResult.getStdoutLines()) {
-      String[] items = line.trim().split("\\s+", 3);
-      int ppid = Integer.valueOf(items[1]);
-      if (ppid == postgresPid) {
-        int pid = Integer.valueOf(items[0]);
-        String command = items[2];
-        LOG.info("Found postgres child process: pid=" + pid + ", command=" + command);
-        if (command.contains("postgres: checkpointer") ||
-            command.contains("postgres: autovacuum") ||
-            command.contains("postgres: stats collector") ||
-            command.contains("postgres: bgworker")) {
-          LOG.info("Special-purpose postgres backend: pid=" + pid);
-          specialPgProcessPids.add(pid);
-        } else {
-          LOG.info("Regular postgres backend: pid=" + pid);
-          allBackendPids.add(pid);
-        }
-      }
-    }
-
-    killAndCoreDumpBackends(new TreeSet<>(stuckBackendPidsConcMap));
-    boolean pgFailedToTerminate = false;
-
+  private static void tearDownPostgreSQL() throws Exception {
     if (connection != null) {
       try (Statement statement = connection.createStatement()) {
         try (ResultSet resultSet = statement.executeQuery(
@@ -429,10 +349,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                 "state=" + resultSet.getString(3) + ", " +
                 "query=" + resultSet.getString(4) + ", " +
                 "backend_pid=" + backendPid);
-            if (backendPid > 0 &&
-                !specialPgProcessPids.contains(backendPid)) {
-              allBackendPids.add(backendPid);
-            }
           }
         }
       }
@@ -454,45 +370,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
     LOG.info("Finished closing connection.");
 
-    LOG.info("All regular postgres backend pids: " + allBackendPids);
-
-    // Stop postgres server.
-    LOG.info("Stopping postgres server.");
-    if (postgresProc != null) {
-      CoreFileUtil.processCoreFile(CoreFileUtil.NO_PID, postgresExecutable, "postgres", pgDataDir,
-          CoreFileUtil.CoreFileMatchMode.ANY_CORE_FILE);
-
-      // See https://www.postgresql.org/docs/current/static/server-shutdown.html for different
-      // server shutdown modes of PostgreSQL.
-      // SIGTERM = "Smart Shutdown"
-      // SIGINT = "Fast Shutdown"
-      // SIGQUIT = "Immediate Shutdown"
-      Runtime.getRuntime().exec("kill -SIGTERM " + postgresPid);
-      if (!postgresProc.waitFor(
-          Integer.valueOf(EnvAndSysPropertyUtil.getEnvVarOrSystemProperty(
-              "YB_PG_SHUTDOWN_TIMEOUT_SEC_IN_TEST", "30")), TimeUnit.SECONDS)) {
-        LOG.info("Timed out while waiting for the PostgreSQL process to finish. " +
-                 "Killing and core dumping all backends (pids: " + allBackendPids + ").");
-        killAndCoreDumpBackends(allBackendPids);
-        LOG.info("Killing the main PostgreSQL process (pid " + postgresPid +") with SIGKILL");
-        Runtime.getRuntime().exec("kill -SIGKILL" + postgresPid);
-        pgFailedToTerminate = true;
-      }
-      processPgCoreFile(postgresPid);
-    }
-
-    if (logPrinter != null) {
-      logPrinter.stop();
-    }
-
     LOG.info("Finished stopping postgres server.");
 
-    LOG.info("Deleting PostgreSQL data directory at " + pgDataDir.getPath());
-    FileUtils.deleteDirectory(pgDataDir);
-
-    if (pgFailedToTerminate) {
-      throw new AssertionError("PostgreSQL process failed to terminate normally");
-    }
+    LOG.info("Deleting PostgreSQL data directory at " + initdbDataDir.getPath());
+    FileUtils.deleteDirectory(initdbDataDir);
   }
 
   /**
@@ -561,14 +442,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   //------------------------------------------------------------------------------------------------
   // Test Utilities
 
-  protected class Row {
-    List<Object> elems = new ArrayList<>();
+  protected class Row implements Comparable<Row> {
+    ArrayList<Comparable> elems = new ArrayList<>();
 
-    Row(Object... args) {
+    Row(Comparable... args) {
       Collections.addAll(elems, args);
     }
 
-    Object get(int index) {
+    Comparable get(int index) {
       return elems.get(index);
     }
 
@@ -597,12 +478,32 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         return false;
       }
       Row other = (Row)obj;
-      return elems.equals(other.elems);
+      return compareTo(other) == 0;
+    }
+
+    @Override
+    public int compareTo(Row other) {
+      // In our test, if selected Row has different number of columns from expected row, something
+      // must be very wrong. Stop the test here.
+      assertEquals(elems.size(), other.elems.size());
+      for (int i = 0; i < elems.size(); i++) {
+        if (elems.get(i) == null || other.elems.get(i) == null) {
+          if (elems.get(i) != other.elems.get(i)) {
+            return elems.get(i) == null ? -1 : 1;
+          }
+        } else {
+          int compare_result = elems.get(i).compareTo(other.elems.get(i));
+          if (compare_result != 0) {
+            return compare_result;
+          }
+        }
+      }
+      return 0;
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(elems);
+      return elems.hashCode();
     }
 
     @Override
@@ -614,6 +515,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         if (elems.get(i) == null) {
           sb.append("null");
         } else {
+          sb.append(elems.get(i).getClass().getName() + "::");
           sb.append(elems.get(i).toString());
         }
       }
@@ -625,12 +527,31 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected Set<Row> getRowSet(ResultSet rs) throws SQLException {
     Set<Row> rows = new HashSet<>();
     while (rs.next()) {
-      Object[] elems = new Object[rs.getMetaData().getColumnCount()];
+      Comparable[] elems = new Comparable[rs.getMetaData().getColumnCount()];
       for (int i = 0; i < elems.length; i++) {
-        elems[i] = rs.getObject(i + 1); // Column index starts from 1.
+        elems[i] = (Comparable)rs.getObject(i + 1); // Column index starts from 1.
       }
       rows.add(new Row(elems));
     }
+    return rows;
+  }
+
+  protected List<Row> getRowList(ResultSet rs) throws SQLException {
+    List<Row> rows = new ArrayList<>();
+    while (rs.next()) {
+      Comparable[] elems = new Comparable[rs.getMetaData().getColumnCount()];
+      for (int i = 0; i < elems.length; i++) {
+        elems[i] = (Comparable)rs.getObject(i + 1); // Column index starts from 1.
+      }
+      rows.add(new Row(elems));
+    }
+    return rows;
+  }
+
+  protected List<Row> getSortedRowList(ResultSet rs) throws SQLException {
+    // Sort all rows and return.
+    List<Row> rows = getRowList(rs);
+    Collections.sort(rows);
     return rows;
   }
 
@@ -646,6 +567,31 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       try (ResultSet rs = statement.executeQuery(stmt)) {
         assertNextRow(rs, values);
         assertFalse(rs.next());
+      }
+    }
+  }
+
+  protected void assertRowSet(String stmt, Set<Row> expectedRows) throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery(stmt)) {
+        assertEquals(expectedRows, getRowSet(rs));
+      }
+    }
+  }
+
+  /*
+   * Returns whether or not this select statement uses index.
+   */
+  protected boolean useIndex(String stmt, String index) throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery("EXPLAIN " + stmt)) {
+        assert(rs.getMetaData().getColumnCount() == 1); // Expecting one string column.
+        while (rs.next()) {
+          if (rs.getString(1).contains("Index Scan using " + index)) {
+            return true;
+          }
+        }
+        return false;
       }
     }
   }
@@ -668,6 +614,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected void createSimpleTableWithSingleColumnKey(String tableName) throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+      String sql =
+          "CREATE TABLE " + tableName + "(h bigint PRIMARY KEY, r float, vi int, vs text)";
+      LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
+      statement.execute(sql);
+      LOG.info("Table creation finished: " + tableName);
+    }
+  }
+
   protected void createSimpleTable(String tableName) throws SQLException {
     try (Statement statement = connection.createStatement()) {
       String sql =
@@ -678,12 +634,37 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected void runInvalidQuery(Statement statement, String stmt) {
+  /**
+   * Deprecated. Use the version below which requires an expected error message substring.
+   * TODO Consider replacing all occurences of this version and then removing it.
+   */
+  @Deprecated
+  protected void runInvalidQuery(Statement statement, String query) {
     try {
-      statement.execute(stmt);
-      fail(String.format("Statement did not fail: %s", stmt));
+      statement.execute(query);
+      fail(String.format("Statement did not fail: %s", query));
     } catch (SQLException e) {
       LOG.info("Expected exception", e);
+    }
+  }
+
+  /**
+   *
+   * @param statement The statement used to execute the query.
+   * @param query The query string.
+   * @param errorSubstring A substring of the expected error message.
+   */
+  protected void runInvalidQuery(Statement statement, String query, String errorSubstring) {
+    try {
+      statement.execute(query);
+      fail(String.format("Statement did not fail: %s", query));
+    } catch (SQLException e) {
+      if (e.getMessage().contains(errorSubstring)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+                           e.getMessage(), errorSubstring));
+      }
     }
   }
 
@@ -700,11 +681,32 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     LOG.info("Table creation finished: " + tableName);
   }
 
-  protected String getPgHost() {
-    return pgHost;
+  protected List<Row> setupSimpleTable(String tableName) throws SQLException {
+    List<Row> allRows = new ArrayList<>();
+    try (Statement statement = connection.createStatement()) {
+      createSimpleTable(tableName);
+      String insertTemplate = "INSERT INTO %s(h, r, vi, vs) VALUES (%d, %f, %d, '%s')";
+
+      for (int h = 0; h < 10; h++) {
+        for (int r = 0; r < 10; r++) {
+          statement.execute(String.format(insertTemplate, tableName,
+                                          h, r + 0.5, h * 10 + r, "v" + h + r));
+          allRows.add(new Row((long) h,
+                              r + 0.5,
+                              h * 10 + r,
+                              "v" + h + r));
+        }
+      }
+    }
+
+    // Sort inserted rows and return.
+    Collections.sort(allRows);
+    return allRows;
   }
 
-  protected int getPgPort() {
-    return pgPort;
+  @Override
+  public int getTestMethodTimeoutSec() {
+    // initdb takes a really long time on macOS in debug mode.
+    return 1200;
   }
 }

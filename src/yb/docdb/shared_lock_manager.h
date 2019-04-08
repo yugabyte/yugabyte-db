@@ -36,67 +36,34 @@ namespace docdb {
 // - Multiple kWeakSnapshotWrite, kWeakSerializableRead, and kWeakSerializableWrite
 class SharedLockManager {
  public:
+  SharedLockManager();
+  ~SharedLockManager();
 
   // Attempt to lock a batch of keys. The call may be blocked waiting for other locks to be
   // released. If the entries don't exist, they are created. The lock batch gets associated with
   // this lock manager, which makes it auto-unlock on destruction.
-  void Lock(const KeyToIntentTypeMap& key_to_intent_type);
+  //
+  // Returns false if was not able to acquire lock until deadline.
+  MUST_USE_RESULT bool Lock(LockBatchEntries* key_to_intent_type, CoarseTimePoint deadline);
 
   // Release the batch of locks. Requires that the locks are held.
-  void Unlock(const KeyToIntentTypeMap& key_to_intent_type);
-
-  void LockInTest(const std::string& key, IntentType intent_type);
-  void UnlockInTest(const std::string& key, IntentType intent_type);
-
-  // Combine two intents and return the strongest lock type that covers both.
-  static IntentType CombineIntents(IntentType i1, IntentType i2);
+  void Unlock(const LockBatchEntries& key_to_intent_type);
 
   // Whether or not the state is possible
-  static bool VerifyState(const LockState& state);
   static std::string ToString(const LockState& state);
 
  private:
-
-  struct LockEntry {
-    // Taken only for short duration, with no blocking wait.
-    std::mutex mutex;
-
-    std::condition_variable cond_var;
-
-    // Refcounting for garbage collection. Can only be used while the global lock is held.
-    size_t num_using = 0;
-
-    // Number of holders for each type
-    std::array<size_t, kIntentTypeMapSize> num_holding;
-    LockState state;
-
-    void Lock(IntentType lock_type);
-
-    void Unlock(IntentType lock_type);
-
-    LockEntry() {
-      num_holding.fill(0);
-    }
-  };
-
-  typedef std::unordered_map<std::string, std::unique_ptr<LockEntry>> LockEntryMap;
-
-  // Make sure the entries exist in the locks_ map and return pointers so we can access
-  // them without holding the global lock. Returns a vector with pointers in the same order
-  // as the keys in the batch.
-  std::vector<LockEntry*> Reserve(const KeyToIntentTypeMap& batch);
-
-  // Update refcounts and maybe collect garbage.
-  void Cleanup(const KeyToIntentTypeMap& key_to_intent_type);
-
-  // The global mutex should be taken only for very short duration, with no blocking wait.
-  std::mutex global_mutex_;
-
-  // Can only be modified if the global mutex is held.
-  LockEntryMap locks_;
+  class Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
-extern const std::array<LockState, kIntentTypeMapSize> kIntentConflicts;
+// Masks of intent type sets.
+// I.e. bits that related to any of intents from this set is filled with 1, others are 0.
+extern const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetMask;
+// Conflicts of intent types. I.e. combination of masks of intent type sets that conflict with it.
+extern const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetConflicts;
+
+bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs);
 
 }  // namespace docdb
 }  // namespace yb

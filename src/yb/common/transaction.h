@@ -63,6 +63,12 @@ struct TransactionStatusResult {
   // COMMITTED - status_time is a commit time.
   // ABORTED - not used.
   HybridTime status_time;
+
+  TransactionStatusResult(TransactionStatus status_, HybridTime status_time_);
+
+  static TransactionStatusResult Aborted() {
+    return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
+  }
 };
 
 inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult& result) {
@@ -197,7 +203,8 @@ struct TransactionMetadata {
   uint64_t priority;
 
   // Used for snapshot isolation (as read time and for conflict resolution).
-  HybridTime start_time;
+  // start_time is used only for backward compability during rolling update.
+  HybridTime DEPRECATED_start_time;
 
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 

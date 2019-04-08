@@ -3,7 +3,7 @@
  * geqo_eval.c
  *	  Routines to evaluate query trees
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/optimizer/geqo/geqo_eval.c
@@ -40,7 +40,7 @@ typedef struct
 } Clump;
 
 static List *merge_clump(PlannerInfo *root, List *clumps, Clump *new_clump,
-			bool force);
+			int num_gene, bool force);
 static bool desirable_join(PlannerInfo *root,
 			   RelOptInfo *outer_rel, RelOptInfo *inner_rel);
 
@@ -196,7 +196,7 @@ gimme_tree(PlannerInfo *root, Gene *tour, int num_gene)
 		cur_clump->size = 1;
 
 		/* Merge it into the clumps list, using only desirable joins */
-		clumps = merge_clump(root, clumps, cur_clump, false);
+		clumps = merge_clump(root, clumps, cur_clump, num_gene, false);
 	}
 
 	if (list_length(clumps) > 1)
@@ -210,7 +210,7 @@ gimme_tree(PlannerInfo *root, Gene *tour, int num_gene)
 		{
 			Clump	   *clump = (Clump *) lfirst(lc);
 
-			fclumps = merge_clump(root, fclumps, clump, true);
+			fclumps = merge_clump(root, fclumps, clump, num_gene, true);
 		}
 		clumps = fclumps;
 	}
@@ -235,7 +235,8 @@ gimme_tree(PlannerInfo *root, Gene *tour, int num_gene)
  * "desirable" joins.
  */
 static List *
-merge_clump(PlannerInfo *root, List *clumps, Clump *new_clump, bool force)
+merge_clump(PlannerInfo *root, List *clumps, Clump *new_clump, int num_gene,
+			bool force)
 {
 	ListCell   *prev;
 	ListCell   *lc;
@@ -264,8 +265,17 @@ merge_clump(PlannerInfo *root, List *clumps, Clump *new_clump, bool force)
 			/* Keep searching if join order is not valid */
 			if (joinrel)
 			{
-				/* Create GatherPaths for any useful partial paths for rel */
-				generate_gather_paths(root, joinrel);
+				/* Create paths for partitionwise joins. */
+				generate_partitionwise_join_paths(root, joinrel);
+
+				/*
+				 * Except for the topmost scan/join rel, consider gathering
+				 * partial paths.  We'll do the same for the topmost scan/join
+				 * rel once we know the final targetlist (see
+				 * grouping_planner).
+				 */
+				if (old_clump->size + new_clump->size < num_gene)
+					generate_gather_paths(root, joinrel, false);
 
 				/* Find and save the cheapest paths for this joinrel */
 				set_cheapest(joinrel);
@@ -283,7 +293,7 @@ merge_clump(PlannerInfo *root, List *clumps, Clump *new_clump, bool force)
 				 * others.  When no further merge is possible, we'll reinsert
 				 * it into the list.
 				 */
-				return merge_clump(root, clumps, old_clump, force);
+				return merge_clump(root, clumps, old_clump, num_gene, force);
 			}
 		}
 		prev = lc;

@@ -41,9 +41,11 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/coding.h"
 #include "yb/util/env_util.h"
 #include "yb/util/hexdump.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
@@ -118,6 +120,7 @@ LogReader::LogReader(FsManager* fs_manager,
     : fs_manager_(fs_manager),
       log_index_(index),
       tablet_id_(std::move(tablet_id)),
+      log_prefix_(Format("T $0 P $1: ", tablet_id_, fs_manager->uuid())),
       state_(kLogReaderInitialized) {
   if (metric_entity) {
     bytes_read_ = METRIC_log_reader_bytes_read.Instantiate(metric_entity);
@@ -134,7 +137,7 @@ Status LogReader::Init(const string& tablet_wal_path) {
     std::lock_guard<simple_spinlock> lock(lock_);
     CHECK_EQ(state_, kLogReaderInitialized) << "bad state for Init(): " << state_;
   }
-  VLOG(1) << "Reading wal from path:" << tablet_wal_path;
+  VLOG_WITH_PREFIX(1) << "Reading wal from path:" << tablet_wal_path;
 
   Env* env = fs_manager_->env();
 
@@ -142,7 +145,7 @@ Status LogReader::Init(const string& tablet_wal_path) {
     return STATUS(IllegalState, "Cannot find wal location at", tablet_wal_path);
   }
 
-  VLOG(1) << "Parsing segments from path: " << tablet_wal_path;
+  VLOG_WITH_PREFIX(1) << "Parsing segments from path: " << tablet_wal_path;
   // list existing segment files
   vector<string> log_files;
 
@@ -162,8 +165,9 @@ Status LogReader::Init(const string& tablet_wal_path) {
       CHECK(segment->IsInitialized()) << "Uninitialized segment at: " << segment->path();
 
       if (!segment->HasFooter()) {
-        LOG(WARNING) << "Log segment " << fqp << " was likely left in-progress "
-            "after a previous crash. Will try to rebuild footer by scanning data.";
+        LOG_WITH_PREFIX(WARNING)
+            << "Log segment " << fqp << " was likely left in-progress "
+               "after a previous crash. Will try to rebuild footer by scanning data.";
         RETURN_NOT_OK(segment->RebuildFooterByScanning());
       }
 
@@ -180,7 +184,7 @@ Status LogReader::Init(const string& tablet_wal_path) {
     string previous_seg_path;
     int64_t previous_seg_seqno = -1;
     for (const SegmentSequence::value_type& entry : read_segments) {
-      VLOG(1) << " Log Reader Indexed: " << entry->footer().ShortDebugString();
+      VLOG_WITH_PREFIX(1) << " Log Reader Indexed: " << entry->footer().ShortDebugString();
       // Check that the log segments are in sequence.
       if (previous_seg_seqno != -1 && entry->header().sequence_number() != previous_seg_seqno + 1) {
         return STATUS(Corruption, Substitute("Segment sequence numbers are not consecutive. "
@@ -264,7 +268,8 @@ void LogReader::GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx, int32_t segmen
 
     if (max_close_time_us < segment->footer().close_timestamp_micros()) {
       int64_t age_seconds = segment->footer().close_timestamp_micros() / 1000000;
-      VLOG(2) << "Segment " << segment->path() << " is only " << age_seconds << "s old: "
+      VLOG_WITH_PREFIX(2)
+          << "Segment " << segment->path() << " is only " << age_seconds << "s old: "
           << "won't be counted towards log retention";
       break;
     }
@@ -427,8 +432,7 @@ Status LogReader::TrimSegmentsUpToAndIncluding(int64_t segment_sequence_number) 
     }
     break;
   }
-  LOG(INFO) << "T " << tablet_id_ << ": removed " << num_deleted_segments
-            << " log segments from log reader";
+  LOG_WITH_PREFIX(INFO) << "Removed " << num_deleted_segments << " log segments from log reader";
   return Status::OK();
 }
 

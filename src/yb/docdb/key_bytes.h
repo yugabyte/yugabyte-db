@@ -38,6 +38,11 @@ class KeyBytes {
   explicit KeyBytes(const std::string& data) : data_(data) {}
   explicit KeyBytes(const rocksdb::Slice& slice) : data_(slice.ToBuffer()) {}
 
+  KeyBytes(const KeyBytes& rhs) = default;
+  KeyBytes& operator=(const KeyBytes& rhs) = default;
+  KeyBytes(KeyBytes&& rhs) = default;
+  KeyBytes& operator=(KeyBytes&& rhs) = default;
+
   KeyBytes(const Slice& slice, char suffix) {
     data_.reserve(slice.size() + 1);
     data_.append(slice.cdata(), slice.size());
@@ -142,8 +147,8 @@ class KeyBytes {
     AppendUInt32ToKey(~x, &data_);
   }
 
-  void AppendIntentType(IntentType intent_type) {
-    data_.push_back(static_cast<char>(intent_type));
+  void AppendIntentTypeSet(IntentTypeSet intent_type_set) {
+    data_.push_back(static_cast<char>(intent_type_set.ToUIntPtr()));
   }
 
   void AppendDescendingInt64(int64_t x) {
@@ -279,7 +284,6 @@ class KeyBytes {
   std::string data_;
 };
 
-void AppendIntentType(IntentType intent_type, KeyBytes* key);
 void AppendDocHybridTime(const DocHybridTime& time, KeyBytes* key);
 
 }  // namespace docdb

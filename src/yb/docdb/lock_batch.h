@@ -18,14 +18,34 @@
 
 #include <glog/logging.h>
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/value_type.h"
 
 namespace yb {
+
+class RefCntPrefix;
+
 namespace docdb {
 
 class SharedLockManager;
 
-typedef std::map<std::string, IntentType> KeyToIntentTypeMap;
+// We don't care about actual content of this struct here, since it is an implementation detail
+// of SharedLockManager.
+struct LockedBatchEntry;
+
+struct LockBatchEntry {
+  RefCntPrefix key;
+  IntentTypeSet intent_types;
+
+  // Memory is owned by SharedLockManager.
+  LockedBatchEntry* locked = nullptr;
+
+  std::string ToString() const {
+    return Format("{ key: $0 intent_types: $1 }", key.as_slice().ToDebugHexString(), intent_types);
+  }
+};
+
+typedef std::vector<LockBatchEntry> LockBatchEntries;
 
 // A LockBatch encapsulates a mapping from lock keys to lock types (intent types) to be acquired
 // for each key. It also keeps track of a lock manager when locked, and auto-releases the locks
@@ -33,7 +53,8 @@ typedef std::map<std::string, IntentType> KeyToIntentTypeMap;
 class LockBatch {
  public:
   LockBatch() {}
-  LockBatch(SharedLockManager* lock_manager, KeyToIntentTypeMap&& key_to_intent_type);
+  LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_intent_type,
+            CoarseTimePoint deadline);
   LockBatch(LockBatch&& other) { MoveFrom(&other); }
   LockBatch& operator=(LockBatch&& other) { MoveFrom(&other); return *this; }
   ~LockBatch();
@@ -43,10 +64,12 @@ class LockBatch {
   LockBatch& operator=(const LockBatch&) = delete;
 
   // @return the number of keys in this batch
-  size_t size() const { return key_to_type_.size(); }
+  size_t size() const { return data_.key_to_type.size(); }
 
   // @return whether the batch is empty. This is also used for checking if the batch is locked.
-  bool empty() const { return key_to_type_.empty(); }
+  bool empty() const { return data_.key_to_type.empty(); }
+
+  const Status& status() const { return data_.status; }
 
   // Unlocks this batch if it is non-empty.
   void Reset();
@@ -54,11 +77,25 @@ class LockBatch {
  private:
   void MoveFrom(LockBatch* other);
 
-  KeyToIntentTypeMap key_to_type_;
+  struct Data {
+    Data() = default;
+    Data(LockBatchEntries&& key_to_type_, SharedLockManager* shared_lock_manager_) :
+      key_to_type(std::move(key_to_type_)), shared_lock_manager(shared_lock_manager_) {}
 
-  // A LockBatch is associated with a SharedLockManager instance the moment it is locked, and this
-  // field is set back to nullptr when the batch is unlocked.
-  SharedLockManager* shared_lock_manager_ = nullptr;
+    Data(Data&&) = default;
+    Data& operator=(Data&& other) = default;
+
+    Data(const Data&) = delete;
+    Data& operator=(const Data&) = delete;
+
+    LockBatchEntries key_to_type;
+
+    SharedLockManager* shared_lock_manager = nullptr;
+
+    Status status;
+  };
+
+  Data data_;
 };
 
 }  // namespace docdb

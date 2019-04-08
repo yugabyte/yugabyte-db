@@ -19,9 +19,11 @@
 namespace yb {
 
 // A utility class that owns a cloneable pointer.
-// This class uniquely owns a single object, so this object is destroyed with clone_ptr.
-// During copying of clone_ptr it clones owned object, which should provide Clone function.
-// Usable to implement value types that are accessible via abstract interface.
+//
+// This class uniquely owns a single object, so this object is destroyed with the clone_ptr
+// instance.  During copying of a clone_ptr it clones the owned object, which should provide a Clone
+// function.  This can be used to implement value types that are accessible via an abstract
+// interface.
 template <class T>
 class clone_ptr {
  public:

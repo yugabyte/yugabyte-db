@@ -56,6 +56,7 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/gutil/strings/split.h"
+#include "yb/gutil/sysinfo.h"
 
 using std::make_shared;
 using std::shared_ptr;
@@ -112,8 +113,10 @@ DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 DEFINE_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
 DEFINE_int32(pgsql_proxy_webserver_port, 0, "Webserver port for PostgreSQL proxy");
 
-DEFINE_int64(inbound_rpc_block_size, 1_MB, "Inbound RPC block size");
 DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
+
+DEFINE_bool(start_pgsql_proxy, false,
+            "Whether to run a PostgreSQL server as a child process of the tablet server");
 
 namespace yb {
 namespace tserver {
@@ -129,7 +132,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       master_config_index_(0),
       tablet_server_service_(nullptr) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
-      FLAGS_inbound_rpc_block_size, FLAGS_inbound_rpc_memory_limit, mem_tracker()));
+      FLAGS_inbound_rpc_memory_limit, mem_tracker()));
 }
 
 TabletServer::~TabletServer() {
@@ -143,17 +146,11 @@ std::string TabletServer::ToString() const {
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
-  for (const auto& list : *opts_.GetMasterAddresses()) {
-    for (const auto& master_addr : list) {
-      RETURN_NOT_OK_PREPEND(master_addr.ResolveAddresses(nullptr),
-                            Format("Couldn't resolve master service address '$0'", master_addr));
-    }
-  }
-  return Status::OK();
+  return server::ResolveMasterAddresses(opts_.GetMasterAddresses(), nullptr);
 }
 
-  Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
-                                             bool is_master_leader) {
+Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
+                                           bool is_master_leader) {
   shared_ptr<server::MasterAddresses> new_master_addresses;
   if (is_master_leader) {
     SetCurrentMasterIndex(new_config.opid_index());
@@ -239,7 +236,7 @@ Status TabletServer::WaitInited() {
 }
 
 void TabletServer::AutoInitServiceFlags() {
-  const int32 num_cores = std::thread::hardware_concurrency();
+  const int32 num_cores = base::NumCPUs();
 
   if (FLAGS_tablet_server_svc_num_threads == -1) {
     // Auto select number of threads for the TS service based on number of cores.
@@ -289,12 +286,14 @@ Status TabletServer::Start() {
   CHECK(initted_.load(std::memory_order_acquire));
 
   AutoInitServiceFlags();
+
+  RETURN_NOT_OK(tablet_manager_->Start());
   RETURN_NOT_OK(RegisterServices());
   RETURN_NOT_OK(RpcAndWebServerBase::Start());
 
   // If enabled, creates a proxy to call this tablet server locally.
   if (FLAGS_enable_direct_local_tablet_server_call) {
-    proxy_.reset(new TabletServerServiceProxy(proxy_cache_.get(), HostPort()));
+    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
   }
 
   RETURN_NOT_OK(heartbeater_->Start());
@@ -335,6 +334,17 @@ Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& h
   return Status::OK();
 }
 
+Status TabletServer::GetTabletStatus(const GetTabletStatusRequestPB* req,
+                                     GetTabletStatusResponsePB* resp) const {
+  VLOG(3) << "GetTabletStatus called for tablet " << req->tablet_id();
+  tablet::TabletPeerPtr peer;
+  if (!tablet_manager_->LookupTablet(req->tablet_id(), &peer)) {
+    return STATUS(NotFound, "Tablet not found", req->tablet_id());
+  }
+  peer->GetTabletStatusPB(resp->mutable_tablet_status());
+  return Status::OK();
+}
+
 void TabletServer::set_cluster_uuid(const std::string& cluster_uuid) {
   std::lock_guard<simple_spinlock> l(lock_);
   cluster_uuid_ = cluster_uuid;
@@ -372,9 +382,11 @@ void TabletServer::DisplayRpcIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-tasks", "Redis RPCs", redis_url);
 
   // PGSQL RPCs in Progress.
-  string sql_url = GetDynamicUrlTile("/rpcz", FLAGS_pgsql_proxy_bind_address,
-                                     FLAGS_pgsql_proxy_webserver_port);
-  DisplayIconTile(output, "fa-tasks", "SQL RPCs", sql_url);
+
+  // Commenting this out until we have an http port for YSQL set up. (See ENG-4891)
+  // string sql_url = GetDynamicUrlTile("/rpcz", FLAGS_pgsql_proxy_bind_address,
+  //                                    FLAGS_pgsql_proxy_webserver_port);
+  // DisplayIconTile(output, "fa-tasks", "SQL RPCs", sql_url);
 
 }
 

@@ -3,7 +3,7 @@
  * amapi.h
  *	  API for Postgres index access methods.
  *
- * Copyright (c) 2015-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2018, PostgreSQL Global Development Group
  *
  * src/include/access/amapi.h
  *
@@ -50,7 +50,8 @@ typedef enum IndexAMProperty
 	AMPROP_CAN_ORDER,			/* AM properties */
 	AMPROP_CAN_UNIQUE,
 	AMPROP_CAN_MULTI_COL,
-	AMPROP_CAN_EXCLUDE
+	AMPROP_CAN_EXCLUDE,
+	AMPROP_CAN_INCLUDE
 } IndexAMProperty;
 
 
@@ -74,6 +75,23 @@ typedef bool (*aminsert_function) (Relation indexRelation,
 								   Relation heapRelation,
 								   IndexUniqueCheck checkUnique,
 								   struct IndexInfo *indexInfo);
+
+/* alternate insert callback for YugaByte-based index that passs ybctid instead of ctid */
+typedef bool (*yb_aminsert_function) (Relation indexRelation,
+									  Datum *values,
+									  bool *isnull,
+									  Datum ybctid,
+									  Relation heapRelation,
+									  IndexUniqueCheck checkUnique,
+									  struct IndexInfo *indexInfo);
+
+/* delete this tuple for YugaByte-based index */
+typedef void (*yb_amdelete_function) (Relation indexRelation,
+									  Datum *values,
+									  bool *isnull,
+									  Datum ybctid,
+									  Relation heapRelation,
+									  struct IndexInfo *indexInfo);
 
 /* bulk delete */
 typedef IndexBulkDeleteResult *(*ambulkdelete_function) (IndexVacuumInfo *info,
@@ -191,8 +209,16 @@ typedef struct IndexAmRoutine
 	bool		ampredlocks;
 	/* does AM support parallel scan? */
 	bool		amcanparallel;
+	/* does AM support columns included with clause INCLUDE? */
+	bool		amcaninclude;
 	/* type of data stored in index, or InvalidOid if variable */
 	Oid			amkeytype;
+
+	/*
+	 * If you add new properties to either the above or the below lists, then
+	 * they should also (usually) be exposed via the property API (see
+	 * IndexAMProperty at the top of the file, and utils/adt/amutils.c).
+	 */
 
 	/* interface functions */
 	ambuild_function ambuild;
@@ -217,6 +243,10 @@ typedef struct IndexAmRoutine
 	amestimateparallelscan_function amestimateparallelscan; /* can be NULL */
 	aminitparallelscan_function aminitparallelscan; /* can be NULL */
 	amparallelrescan_function amparallelrescan; /* can be NULL */
+
+	yb_aminsert_function yb_aminsert;
+	yb_amdelete_function yb_amdelete;
+
 } IndexAmRoutine;
 
 

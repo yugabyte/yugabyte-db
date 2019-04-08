@@ -80,7 +80,11 @@ Status Executor::EvalCount(const shared_ptr<QLRowBlock>& row_block,
                            QLValue *ql_value) {
   int64_t total_count = 0;
   for (auto row : row_block->rows()) {
-    total_count += row.column(column_index).int64_value();
+    if (!row.column(column_index).IsNull()) {
+      // Summing up the sub-counts from individual partitions.
+      // For details see DocExprExecutor::EvalTSCall() and DocExprExecutor::EvalCount().
+      total_count += row.column(column_index).int64_value();
+    }
   }
   ql_value->set_int64_value(total_count);
   return Status::OK();
@@ -188,7 +192,6 @@ Status Executor::EvalSum(const shared_ptr<QLRowBlock>& row_block,
         break;
       case DataType::DECIMAL: {
         Decimal sum;
-        RETURN_NOT_OK(sum.FromDouble(0.0));
         ql_value->set_decimal_value(sum.EncodeToComparable());
         break;
       }
@@ -262,12 +265,10 @@ Status Executor::EvalAvg(const shared_ptr<QLRowBlock>& row_block,
         util::VarInt varint(0);
         ql_value->set_varint_value(varint);
       } else {
-        int64_t tsum, tcount, average;
-        RETURN_NOT_OK(sum.varint_value().ToInt64(&tsum));
-        RETURN_NOT_OK(count.varint_value().ToInt64(&tcount));
-        average = tsum / tcount;
-        util::VarInt varint(average);
-        ql_value->set_varint_value(varint);
+        int64_t tsum = VERIFY_RESULT(sum.varint_value().ToInt64());
+        int64_t tcount = VERIFY_RESULT(count.varint_value().ToInt64());
+        util::VarInt average(tsum / tcount);
+        ql_value->set_varint_value(average);
       }
       break;
     case DataType::FLOAT:

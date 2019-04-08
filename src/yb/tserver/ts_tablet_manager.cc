@@ -45,12 +45,14 @@
 #include "yb/client/client.h"
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/retryable_requests.h"
 
 #include "yb/fs/fs_manager.h"
 
@@ -88,6 +90,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
+#include "yb/gutil/sysinfo.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -395,7 +398,7 @@ Status TSTabletManager::Init() {
   // FsManager isn't initialized until this point.
   int max_bootstrap_threads = FLAGS_num_tablets_to_open_simultaneously;
   if (max_bootstrap_threads == 0) {
-    size_t num_cpus = std::thread::hardware_concurrency();
+    size_t num_cpus = base::NumCPUs();
     if (num_cpus <= 2) {
       max_bootstrap_threads = 2;
     } else {
@@ -458,6 +461,12 @@ Status TSTabletManager::Init() {
   if (background_task_) {
     RETURN_NOT_OK(background_task_->Init());
   }
+
+  return Status::OK();
+}
+
+Status TSTabletManager::Start() {
+  async_client_init_->Start();
 
   return Status::OK();
 }
@@ -725,7 +734,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   TOMBSTONE_NOT_OK(rb_client->Finish(),
                    meta,
                    fs_manager_->uuid(),
-                   "Remote bootstrap: Failure calling Finish()",
+                   "Remote bootstrap: Failed calling Finish()",
                    this);
 
   LOG(INFO) << kLogPrefix << "Remote bootstrap: Opening tablet";
@@ -762,13 +771,9 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 // Create and register a new TabletPeer, given tablet metadata.
 Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
     const scoped_refptr<TabletMetadata>& meta, RegisterTabletPeerMode mode) {
-  TabletPeerPtr tablet_peer(
-      new TabletPeerClass(meta,
-                          local_peer_pb_,
-                          fs_manager_->uuid(),
-                          Bind(&TSTabletManager::ApplyChange,
-                               Unretained(this),
-                               meta->tablet_id())));
+  TabletPeerPtr tablet_peer(new TabletPeerClass(
+      meta, local_peer_pb_, scoped_refptr<server::Clock>(server_->clock()), fs_manager_->uuid(),
+      Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->tablet_id())));
   RETURN_NOT_OK(RegisterTablet(meta->tablet_id(), tablet_peer, mode));
   return tablet_peer;
 }
@@ -931,6 +936,7 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
 
   consensus::ConsensusBootstrapInfo bootstrap_info;
   Status s;
+  consensus::RetryableRequests retryable_requests(kLogPrefix);
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
     // partially created tablet here?
@@ -949,10 +955,12 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
         tablet_peer->status_listener(),
         tablet_peer->log_anchor_registry(),
         tablet_options_,
+        " P " + tablet_peer->permanent_uuid(),
         tablet_peer.get(),
         std::bind(&TSTabletManager::PreserveLocalLeadersOnly, this, _1),
         tablet_peer.get(),
-        append_pool()};
+        append_pool(),
+        &retryable_requests};
     s = BootstrapTablet(data, &tablet, &log, &bootstrap_info);
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to bootstrap: "
@@ -967,13 +975,13 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
     TRACE("Initializing tablet peer");
     s = tablet_peer->InitTabletPeer(tablet,
                                     async_client_init_->get_client_future(),
-                                    scoped_refptr<server::Clock>(server_->clock()),
                                     server_->messenger(),
                                     &server_->proxy_cache(),
                                     log,
                                     tablet->GetMetricEntity(),
                                     raft_pool(),
-                                    tablet_prepare_pool());
+                                    tablet_prepare_pool(),
+                                    &retryable_requests);
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
@@ -1169,7 +1177,7 @@ void TSTabletManager::PreserveLocalLeadersOnly(std::vector<const std::string*>* 
       return true;
     }
     auto leader_status = it->second->LeaderStatus();
-    return leader_status != consensus::Consensus::LeaderStatus::LEADER_AND_READY;
+    return leader_status != consensus::LeaderStatus::LEADER_AND_READY;
   };
   tablet_ids->erase(std::remove_if(tablet_ids->begin(), tablet_ids->end(), filter),
                     tablet_ids->end());
@@ -1200,6 +1208,25 @@ int TSTabletManager::GetNumDirtyTabletsForTests() const {
   return dirty_tablets_.size();
 }
 
+int TSTabletManager::GetNumTabletsNotRunning() const {
+  if (state() != MANAGER_RUNNING) {
+    return INT_MAX;
+  }
+
+  boost::shared_lock<RWMutex> shared_lock(lock_);
+  int num_not_running = 0;
+  for (const auto& entry : tablet_map_) {
+    tablet::TabletStatePB state = entry.second->state();
+    if (state != tablet::RUNNING) {
+      num_not_running++;
+    }
+  }
+
+  LOG(INFO) << num_not_running << " tablets not running out of " << tablet_map_.size();
+
+  return num_not_running;
+}
+
 int TSTabletManager::GetNumLiveTablets() const {
   int count = 0;
   boost::shared_lock<RWMutex> lock(lock_);
@@ -1217,8 +1244,8 @@ int TSTabletManager::GetLeaderCount() const {
   int count = 0;
   boost::shared_lock<RWMutex> lock(lock_);
   for (const auto& entry : tablet_map_) {
-    consensus::Consensus::LeaderStatus leader_status = entry.second->LeaderStatus();
-    if (leader_status != consensus::Consensus::LeaderStatus::NOT_LEADER) {
+    consensus::LeaderStatus leader_status = entry.second->LeaderStatus();
+    if (leader_status != consensus::LeaderStatus::NOT_LEADER) {
       count++;
     }
   }

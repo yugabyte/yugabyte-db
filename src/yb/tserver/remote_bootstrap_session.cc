@@ -34,9 +34,9 @@
 #include <algorithm>
 #include <boost/optional.hpp>
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
-#include "yb/fs/block_manager.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/type_traits.h"
@@ -48,7 +48,7 @@
 #include "yb/util/trace.h"
 
 DECLARE_int32(rpc_max_message_size);
-DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
+DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
 namespace yb {
 namespace tserver {
@@ -60,7 +60,6 @@ using std::string;
 using consensus::MinimumOpId;
 using consensus::OpId;
 using consensus::RaftPeerPB;
-using fs::ReadableBlock;
 using log::LogAnchorRegistry;
 using log::ReadableLogSegment;
 using strings::Substitute;
@@ -75,8 +74,6 @@ RemoteBootstrapSession::RemoteBootstrapSession(
       session_id_(std::move(session_id)),
       requestor_uuid_(std::move(requestor_uuid)),
       fs_manager_(fs_manager),
-      blocks_deleter_(&blocks_),
-      logs_deleter_(&logs_),
       succeeded_(false),
       nsessions_(nsessions) {}
 
@@ -214,9 +211,6 @@ Status RemoteBootstrapSession::Init() {
   boost::lock_guard<simple_spinlock> l(session_lock_);
   RETURN_NOT_OK(UnregisterAnchorIfNeededUnlocked());
 
-  STLDeleteValues(&blocks_);
-  STLDeleteValues(&logs_);
-  blocks_.clear();
   logs_.clear();
 
   const string& tablet_id = tablet_peer_->tablet_id();
@@ -249,7 +243,7 @@ Status RemoteBootstrapSession::Init() {
   auto session_checkpoint_dir = std::to_string(last_logged_opid.index) + "_" + now.ToString();
   checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
 
-  // Clear any previous rocksdb files in the superblock. Each session should create a new list
+  // Clear any previous RocksDB files in the superblock. Each session should create a new list
   // based the checkpoint directory files.
   tablet_superblock_.clear_rocksdb_files();
   auto status = tablet->CreateCheckpoint(checkpoint_dir_);
@@ -388,25 +382,6 @@ static Status ReadFileChunkToBuf(const Info* info,
   return Status::OK();
 }
 
-Status RemoteBootstrapSession::GetBlockPiece(const BlockId& block_id,
-                                             uint64_t offset, int64_t client_maxlen,
-                                             string* data, int64_t* block_file_size,
-                                             RemoteBootstrapErrorPB::Code* error_code) {
-  ImmutableReadableBlockInfo* block_info;
-  RETURN_NOT_OK(FindBlock(block_id, &block_info, error_code));
-
-  RETURN_NOT_OK(ReadFileChunkToBuf(block_info, offset, client_maxlen,
-                                   Substitute("block $0", block_id.ToString()),
-                                   data, block_file_size, error_code));
-
-  // Note: We do not eagerly close the block, as doing so may delete the
-  // underlying data if this was its last reader and it had been previously
-  // marked for deletion. This would be a problem for parallel readers in
-  // the same session; they would not be able to find the block.
-
-  return Status::OK();
-}
-
 Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno,
                                                   uint64_t offset, int64_t client_maxlen,
                                                   std::string* data, int64_t* block_file_size,
@@ -464,11 +439,6 @@ Status RemoteBootstrapSession::GetFilePiece(const std::string path,
   return Status::OK();
 }
 
-bool RemoteBootstrapSession::IsBlockOpenForTests(const BlockId& block_id) const {
-  boost::lock_guard<simple_spinlock> l(session_lock_);
-  return ContainsKey(blocks_, block_id);
-}
-
 // Add a file to the cache and populate the given ImmutableRandomAcccessFileInfo
 // object with the file ref and size.
 template <class Collection, class Key, class Readable>
@@ -483,46 +453,10 @@ static Status AddImmutableFileToMap(Collection* const cache,
 
   // Looks good, add it to the cache.
   typedef typename Collection::mapped_type InfoPtr;
-  typedef typename base::remove_pointer<InfoPtr>::type Info;
-  InsertOrDie(cache, key, new Info(readable, size));
+  typedef typename InfoPtr::element_type Info;
+  CHECK(cache->emplace(key, std::make_unique<Info>(readable, size)).second);
 
   return Status::OK();
-}
-
-Status RemoteBootstrapSession::OpenBlockUnlocked(const BlockId& block_id) {
-  DCHECK(session_lock_.is_locked());
-
-  gscoped_ptr<ReadableBlock> block;
-  Status s = fs_manager_->OpenBlock(block_id, &block);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG(WARNING) << "Unable to open requested (existing) block file: "
-                 << block_id.ToString() << ": " << s.ToString();
-    return s.CloneAndPrepend(Substitute("Unable to open block file for block $0",
-                                        block_id.ToString()));
-  }
-
-  uint64_t size = VERIFY_RESULT_PREPEND(block->Size(), "Unable to get size of block");
-
-  s = AddImmutableFileToMap(&blocks_, block_id, block.get(), size);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend(Substitute("Error accessing data for block $0", block_id.ToString()));
-    LOG(DFATAL) << "Data block disappeared: " << s.ToString();
-  } else {
-    ignore_result(block.release());
-  }
-  return s;
-}
-
-Status RemoteBootstrapSession::FindBlock(const BlockId& block_id,
-                                         ImmutableReadableBlockInfo** block_info,
-                                         RemoteBootstrapErrorPB::Code* error_code) {
-  Status s;
-  boost::lock_guard<simple_spinlock> l(session_lock_);
-  if (!FindCopy(blocks_, block_id, block_info)) {
-    *error_code = RemoteBootstrapErrorPB::BLOCK_NOT_FOUND;
-    s = STATUS(NotFound, "Block not found", block_id.ToString());
-  }
-  return s;
 }
 
 Status RemoteBootstrapSession::OpenLogSegmentUnlocked(uint64_t segment_seqno) {
@@ -555,11 +489,13 @@ Status RemoteBootstrapSession::FindLogSegment(uint64_t segment_seqno,
                                               ImmutableRandomAccessFileInfo** file_info,
                                               RemoteBootstrapErrorPB::Code* error_code) {
   boost::lock_guard<simple_spinlock> l(session_lock_);
-  if (!FindCopy(logs_, segment_seqno, file_info)) {
+  auto it = logs_.find(segment_seqno);
+  if (it == logs_.end()) {
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
     return STATUS(NotFound, Substitute("Segment with sequence number $0 not found",
                                        segment_seqno));
   }
+  *file_info = it->second.get();
   return Status::OK();
 }
 
@@ -584,25 +520,25 @@ void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {
 
 
 void RemoteBootstrapSession::InitRateLimiter() {
-  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0 && nsessions_) {
+  if (FLAGS_remote_bootstrap_rate_limit_bytes_per_sec > 0 && nsessions_) {
     // Calling SetTargetRateUpdater will activate the rate limiter.
     rate_limiter_.SetTargetRateUpdater([this]() -> uint64_t {
-      DCHECK_GT(FLAGS_remote_boostrap_rate_limit_bytes_per_sec, 0);
-      if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec <= 0) {
+      DCHECK_GT(FLAGS_remote_bootstrap_rate_limit_bytes_per_sec, 0);
+      if (FLAGS_remote_bootstrap_rate_limit_bytes_per_sec <= 0) {
         YB_LOG_EVERY_N(ERROR, 1000)
-          << "Invalid value for remote_boostrap_rate_limit_bytes_per_sec: "
-          << FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
+          << "Invalid value for remote_bootstrap_rate_limit_bytes_per_sec: "
+          << FLAGS_remote_bootstrap_rate_limit_bytes_per_sec;
         // Since the rate limiter is initialized, it's expected that the value of
-        // FLAGS_remote_boostrap_rate_limit_bytes_per_sec is greater than 0. Since this is not the
+        // FLAGS_remote_bootstrap_rate_limit_bytes_per_sec is greater than 0. Since this is not the
         // case, we'll log an error, and set the rate to 50 MB/s.
         return 50_MB;
       }
       auto nsessions = nsessions_->load(std::memory_order_acquire);
       if (nsessions > 0) {
-        return FLAGS_remote_boostrap_rate_limit_bytes_per_sec / nsessions;
+        return FLAGS_remote_bootstrap_rate_limit_bytes_per_sec / nsessions;
       } else {
         LOG(DFATAL) << "Invalid number of sessions: " << nsessions;
-        return FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
+        return FLAGS_remote_bootstrap_rate_limit_bytes_per_sec;
       }
     });
   }

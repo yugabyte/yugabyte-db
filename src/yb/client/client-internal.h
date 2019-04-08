@@ -48,6 +48,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {
@@ -87,31 +88,35 @@ class YBClient::Data {
   CHECKED_STATUS CreateTable(YBClient* client,
                              const master::CreateTableRequestPB& req,
                              const YBSchema& schema,
-                             const MonoTime& deadline);
+                             const MonoTime& deadline,
+                             std::string* table_id);
 
   CHECKED_STATUS IsCreateTableInProgress(YBClient* client,
                                          const YBTableName& table_name,
+                                         const std::string& table_id,
                                          const MonoTime& deadline,
                                          bool *create_in_progress);
 
   CHECKED_STATUS WaitForCreateTableToFinish(YBClient* client,
                                             const YBTableName& table_name,
+                                            const std::string& table_id,
                                             const MonoTime& deadline);
 
   CHECKED_STATUS DeleteTable(YBClient* client,
                              const YBTableName& table_name,
+                             const std::string& table_id,
                              bool is_index_table,
                              const MonoTime& deadline,
                              YBTableName* indexed_table_name,
                              bool wait = true);
 
   CHECKED_STATUS IsDeleteTableInProgress(YBClient* client,
-                                         const std::string& deleted_table_id,
+                                         const std::string& table_id,
                                          const MonoTime& deadline,
                                          bool *delete_in_progress);
 
   CHECKED_STATUS WaitForDeleteTableToFinish(YBClient* client,
-                                            const std::string& deleted_table_id,
+                                            const std::string& table_id,
                                             const MonoTime& deadline);
 
   CHECKED_STATUS TruncateTables(YBClient* client,
@@ -134,11 +139,13 @@ class YBClient::Data {
 
   CHECKED_STATUS IsAlterTableInProgress(YBClient* client,
                                         const YBTableName& table_name,
+                                        string table_id,
                                         const MonoTime& deadline,
                                         bool *alter_in_progress);
 
   CHECKED_STATUS WaitForAlterTableToFinish(YBClient* client,
                                            const YBTableName& alter_name,
+                                           string table_id,
                                            const MonoTime& deadline);
 
   CHECKED_STATUS GetTableSchema(YBClient* client,
@@ -300,6 +307,18 @@ class YBClient::Data {
   TabletServerId uuid_;
 
   std::unique_ptr<ThreadPool> cb_threadpool_;
+
+  const ClientId id_;
+
+  // Used to track requests that were sent to a particular tablet, so it could track different
+  // RPCs related to the same write operation and reject duplicates.
+  struct TabletRequests {
+    RetryableRequestId request_id_seq = 0;
+    std::set<RetryableRequestId> running_requests;
+  };
+
+  simple_spinlock tablet_requests_mutex_;
+  std::unordered_map<TabletId, TabletRequests> tablet_requests_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Data);

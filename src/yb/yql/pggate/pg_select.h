@@ -34,34 +34,59 @@ class PgSelect : public PgDml {
   typedef scoped_refptr<PgSelect> ScopedRefPtr;
 
   // Constructors.
-  PgSelect(PgSession::ScopedRefPtr pg_session,
-           const char *database_name,
-           const char *schema_name,
-           const char *table_name);
+  PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgSelect();
 
+  StmtOp stmt_op() const override { return StmtOp::STMT_SELECT; }
+
+  void UseIndex(const PgObjectId& index_id);
+
   // Prepare SELECT before execution.
-  CHECKED_STATUS Prepare();
+  // read_time points to place where read_time for whole postgres statement is stored.
+  // It is available while statement is executed.
+  CHECKED_STATUS Prepare(uint64_t* read_time);
 
   // Setup internal structures for binding values during prepare.
   void PrepareColumns();
 
+  // Find the index column associated with the given "attr_num".
+  CHECKED_STATUS FindIndexColumn(int attr_num, PgColumn **col);
+
+  // Bind an index column with an expression.
+  CHECKED_STATUS BindIndexColumn(int attnum, PgExpr *attr_value);
+
   // Execute.
   CHECKED_STATUS Exec();
 
+  void SetCatalogCacheVersion(const uint64_t catalog_cache_version) override {
+    read_req_->set_ysql_catalog_version(catalog_cache_version);
+  }
+
  private:
   // Allocate column protobuf.
-  virtual PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  PgsqlExpressionPB *AllocIndexColumnBindPB(PgColumn *col);
 
   // Allocate protobuf for target.
   PgsqlExpressionPB *AllocTargetPB() override;
+  PgsqlExpressionPB *AllocIndexTargetPB();
+
+  // Allocate column expression.
+  PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
 
   // Delete allocated target for columns that have no bind-values.
   CHECKED_STATUS DeleteEmptyPrimaryBinds();
 
+  // Load index.
+  CHECKED_STATUS LoadIndex();
+
+  PgObjectId index_id_;
+  PgTableDesc::ScopedRefPtr index_desc_;
+
   // Protobuf instruction.
   std::shared_ptr<client::YBPgsqlReadOp> read_op_;
   PgsqlReadRequestPB *read_req_ = nullptr;
+  PgsqlReadRequestPB *index_req_ = nullptr;
 };
 
 }  // namespace pggate

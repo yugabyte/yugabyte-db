@@ -47,7 +47,6 @@
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/ref_counted_replicate.h"
 
 #include "yb/server/clock.h"
 
@@ -103,6 +102,8 @@ class PeerMessageQueue {
 
     std::string ToString() const;
 
+    void ResetLeaderLeases();
+
     // UUID of the peer.
     const std::string uuid;
 
@@ -132,12 +133,12 @@ class PeerMessageQueue {
     // timestamp. This is not actually sent to the follower: what we're sending is the lease
     // duration, not an expiration timestamp, because the timestamp is specific to the leader's
     // monotonic clock.
-    MonoTime last_leader_lease_expiration_sent_to_follower;
+    CoarseTimePoint last_leader_lease_expiration_sent_to_follower;
 
     // The last leader lease expiration timestamp received by the follower described by this
     // TrackedPeer. We set this to the value of what we sent to that follower
     // (last_leader_lease_expiration_sent_to_follower) when we receive the follower's response.
-    MonoTime last_leader_lease_expiration_received_by_follower;
+    CoarseTimePoint last_leader_lease_expiration_received_by_follower;
 
     MicrosTime last_ht_lease_expiration_sent_to_follower =
         HybridTime::kMin.GetPhysicalValueMicros();
@@ -217,6 +218,7 @@ class PeerMessageQueue {
   // we update committed op id.
   virtual CHECKED_STATUS AppendOperations(
       const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+      RestartSafeCoarseTimePoint batch_mono_time,
       const StatusCallback& log_append_callback);
 
   // Assembles a request for a peer, adding entries past 'op_id' up to
@@ -237,7 +239,7 @@ class PeerMessageQueue {
   virtual CHECKED_STATUS RequestForPeer(
       const std::string& uuid,
       ConsensusRequestPB* request,
-      ReplicateMsgs* msg_refs,
+      ReplicateMsgsHolder* msgs_holder,
       bool* needs_remote_bootstrap,
       RaftPeerPB::MemberType* member_type = nullptr,
       bool* last_exchange_successful = nullptr);
@@ -271,6 +273,9 @@ class PeerMessageQueue {
 
   // Returns the current majority replicated OpId, for tests.
   OpId GetMajorityReplicatedOpIdForTests() const;
+
+  // Returns true if specified peer accepted our lease request.
+  bool PeerAcceptedOurLease(const std::string& uuid) const;
 
   // Returns a copy of the TrackedPeer with 'uuid' or crashes if the peer is not being tracked.
   TrackedPeer GetTrackedPeerForTests(std::string uuid);
@@ -427,7 +432,7 @@ class PeerMessageQueue {
   template <class Policy>
   typename Policy::result_type GetWatermark();
 
-  MonoTime LeaderLeaseExpirationWatermark();
+  CoarseTimePoint LeaderLeaseExpirationWatermark();
   MicrosTime HybridTimeLeaseExpirationWatermark();
   OpId OpIdWatermark();
 
@@ -475,7 +480,7 @@ inline std::ostream& operator <<(std::ostream& out, PeerMessageQueue::State stat
 
 struct MajorityReplicatedData {
   OpId op_id;
-  MonoTime leader_lease_expiration;
+  CoarseTimePoint leader_lease_expiration;
   MicrosTime ht_lease_expiration;
 };
 

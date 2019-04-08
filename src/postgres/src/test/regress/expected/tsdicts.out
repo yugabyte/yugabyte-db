@@ -263,6 +263,12 @@ SELECT ts_lexize('hunspell_long', 'unbook');
  {book}
 (1 row)
 
+SELECT ts_lexize('hunspell_long', 'booked');
+ ts_lexize 
+-----------
+ {book}
+(1 row)
+
 SELECT ts_lexize('hunspell_long', 'footklubber');
    ts_lexize    
 ----------------
@@ -281,10 +287,22 @@ SELECT ts_lexize('hunspell_long', 'ballyklubber');
  {ball,klubber}
 (1 row)
 
+SELECT ts_lexize('hunspell_long', 'ballsklubber');
+   ts_lexize    
+----------------
+ {ball,klubber}
+(1 row)
+
 SELECT ts_lexize('hunspell_long', 'footballyklubber');
       ts_lexize      
 ---------------------
  {foot,ball,klubber}
+(1 row)
+
+SELECT ts_lexize('hunspell_long', 'ex-machina');
+   ts_lexize   
+---------------
+ {ex-,machina}
 (1 row)
 
 -- Test ISpell dictionary with hunspell affix file with FLAG num parameter
@@ -294,6 +312,12 @@ CREATE TEXT SEARCH DICTIONARY hunspell_num (
                         AffFile=hunspell_sample_num
 );
 SELECT ts_lexize('hunspell_num', 'skies');
+ ts_lexize 
+-----------
+ {sky}
+(1 row)
+
+SELECT ts_lexize('hunspell_num', 'sk');
  ts_lexize 
 -----------
  {sky}
@@ -354,6 +378,12 @@ SELECT ts_lexize('hunspell_num', 'unbooking');
 (1 row)
 
 SELECT ts_lexize('hunspell_num', 'unbook');
+ ts_lexize 
+-----------
+ {book}
+(1 row)
+
+SELECT ts_lexize('hunspell_num', 'booked');
  ts_lexize 
 -----------
  {book}
@@ -580,3 +610,11 @@ SELECT to_tsvector('thesaurus_tst', 'Booking tickets is looking like a booking a
  'card':3,10 'invit':2,9 'like':6 'look':5 'order':1,8
 (1 row)
 
+-- invalid: non-lowercase quoted identifiers
+CREATE TEXT SEARCH DICTIONARY tsdict_case
+(
+	Template = ispell,
+	"DictFile" = ispell_sample,
+	"AffFile" = ispell_sample
+);
+ERROR:  unrecognized Ispell parameter: "DictFile"

@@ -11,7 +11,11 @@
 // under the License.
 //
 
-#include "yb/docdb/doc_operation.h"
+#include "yb/common/ql_resultset.h"
+
+#include "yb/docdb/cql_operation.h"
+#include "yb/docdb/pgsql_operation.h"
+
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/util/trace.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
@@ -19,19 +23,18 @@
 namespace yb {
 namespace tablet {
 
-CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
-    MonoTime deadline,
-    const ReadHybridTime& read_time,
-    const QLReadRequestPB& ql_read_request,
-    const TransactionOperationContextOpt& txn_op_context,
-    QLReadRequestResult* result) {
+Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
+                                           const ReadHybridTime& read_time,
+                                           const QLReadRequestPB& ql_read_request,
+                                           const TransactionOperationContextOpt& txn_op_context,
+                                           QLReadRequestResult* result) {
 
   // TODO(Robert): verify that all key column values are provided
   docdb::QLReadOperation doc_op(ql_read_request, txn_op_context);
 
   // Form a schema of columns that are referenced by this query.
   const Schema &schema = SchemaRef();
-  Schema query_schema;
+  Schema projection;
   const QLReferencedColumnsPB& column_pbs = ql_read_request.column_refs();
   vector<ColumnId> column_refs;
   for (int32_t id : column_pbs.static_ids()) {
@@ -40,13 +43,13 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
   for (int32_t id : column_pbs.ids()) {
     column_refs.emplace_back(id);
   }
-  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_refs, &query_schema));
+  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_refs, &projection));
 
   const QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
   QLResultSet resultset(&rsrow_desc, &result->rows_data);
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
-      QLStorage(), deadline, read_time, schema, query_schema, &resultset, &result->restart_read_ht);
+      QLStorage(), deadline, read_time, schema, projection, &resultset, &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {
     if (s.IsQLError()) {
@@ -66,28 +69,23 @@ CHECKED_STATUS AbstractTablet::HandleQLReadRequest(
   return Status::OK();
 }
 
-CHECKED_STATUS AbstractTablet::HandlePgsqlReadRequest(
-    MonoTime deadline,
-    const ReadHybridTime& read_time,
-    const PgsqlReadRequestPB& pgsql_read_request,
-    const TransactionOperationContextOpt& txn_op_context,
-    PgsqlReadRequestResult* result) {
+Status AbstractTablet::HandlePgsqlReadRequest(CoarseTimePoint deadline,
+                                              const ReadHybridTime& read_time,
+                                              const PgsqlReadRequestPB& pgsql_read_request,
+                                              const TransactionOperationContextOpt& txn_op_context,
+                                              PgsqlReadRequestResult* result) {
 
   docdb::PgsqlReadOperation doc_op(pgsql_read_request, txn_op_context);
 
   // Form a schema of columns that are referenced by this query.
   const Schema &schema = SchemaRef(pgsql_read_request.table_id());
-  Schema query_schema;
-  const PgsqlColumnRefsPB& column_pbs = pgsql_read_request.column_refs();
-  vector<ColumnId> column_refs;
-  for (int32_t id : column_pbs.ids()) {
-    column_refs.emplace_back(id);
-  }
-  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_refs, &query_schema));
+  const Schema *index_schema = pgsql_read_request.has_index_request()
+                               ? &SchemaRef(pgsql_read_request.index_request().table_id())
+                               : nullptr;
 
   PgsqlResultSet resultset;
   TRACE("Start Execute");
-  const Status s = doc_op.Execute(QLStorage(), deadline, read_time, schema, query_schema,
+  const Status s = doc_op.Execute(QLStorage(), deadline, read_time, schema, index_schema,
                                   &resultset, &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {

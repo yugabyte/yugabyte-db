@@ -22,6 +22,8 @@
 #include <atomic>
 #include <string>
 
+#include "yb/util/slice.h"
+
 namespace yb {
 
 class faststring;
@@ -98,6 +100,10 @@ class RefCntBuffer {
     return std::string(begin(), end());
   }
 
+  Slice as_slice() const {
+    return Slice(data(), size());
+  }
+
  private:
   void DoReset(char* data);
 
@@ -113,6 +119,82 @@ class RefCntBuffer {
   }
 
   char *data_;
+};
+
+struct RefCntBufferHash {
+  size_t operator()(const RefCntBuffer& inp) const {
+    return inp.as_slice().hash();
+  }
+};
+
+class RefCntPrefix {
+ public:
+  RefCntPrefix() : size_(0) {}
+
+  explicit RefCntPrefix(const std::string& string)
+      : bytes_(RefCntBuffer(string)), size_(bytes_.size()) {}
+
+  RefCntPrefix(RefCntBuffer bytes) // NOLINT
+      : bytes_(std::move(bytes)), size_(bytes_.size()) {}
+
+  RefCntPrefix(RefCntBuffer bytes, size_t size)
+      : bytes_(std::move(bytes)), size_(size) {}
+
+  RefCntPrefix(const RefCntPrefix& doc_key, size_t size)
+      : bytes_(doc_key.bytes_), size_(size) {}
+
+  explicit operator bool() const {
+    return static_cast<bool>(bytes_);
+  }
+
+  void Resize(size_t value) {
+    DCHECK_LE(value, bytes_.size());
+    size_ = value;
+  }
+
+  Slice as_slice() const {
+    return Slice(bytes_.data(), size_);
+  }
+
+  const char* data() const {
+    return bytes_.data();
+  }
+
+  size_t size() const {
+    return size_;
+  }
+
+  int Compare(const RefCntPrefix& rhs) const {
+    auto my_size = size_;
+    auto rhs_size = rhs.size_;
+    const size_t min_len = std::min(my_size, rhs_size);
+    int r = strings::fastmemcmp_inlined(bytes_.data(), rhs.bytes_.data(), min_len);
+    if (r == 0) {
+      if (my_size < rhs_size) { return -1; }
+      if (my_size > rhs_size) { return 1; }
+    }
+    return r;
+  }
+
+  std::string ShortDebugString() const;
+
+ private:
+  RefCntBuffer bytes_;
+  size_t size_;
+
+  friend inline bool operator<(const RefCntPrefix& lhs, const RefCntPrefix& rhs) {
+    return lhs.Compare(rhs) < 0;
+  }
+
+  friend inline bool operator==(const RefCntPrefix& lhs, const RefCntPrefix& rhs) {
+    return lhs.size_ == rhs.size_ && strings::memeq(lhs.data(), rhs.data(), lhs.size_);
+  }
+};
+
+struct RefCntPrefixHash {
+  size_t operator()(const RefCntPrefix& inp) const {
+    return inp.as_slice().hash();
+  }
 };
 
 } // namespace yb

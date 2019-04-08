@@ -37,17 +37,17 @@ class SystemTablet : public tablet::AbstractTablet {
 
   const TabletId& tablet_id() const override;
 
-  void RegisterReaderTimestamp(HybridTime read_point) override;
+  CHECKED_STATUS RegisterReaderTimestamp(HybridTime read_point) override;
   void UnregisterReader(HybridTime read_point) override;
 
-  CHECKED_STATUS HandleRedisReadRequest(MonoTime deadline,
+  CHECKED_STATUS HandleRedisReadRequest(CoarseTimePoint deadline,
                                         const ReadHybridTime& read_time,
                                         const RedisReadRequestPB& redis_read_request,
                                         RedisResponsePB* response) override {
     return STATUS(NotSupported, "RedisReadRequest is not supported for system tablets!");
   }
 
-  CHECKED_STATUS HandleQLReadRequest(MonoTime deadline,
+  CHECKED_STATUS HandleQLReadRequest(CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      const QLReadRequestPB& ql_read_request,
                                      const TransactionMetadataPB& transaction_metadata,
@@ -57,7 +57,7 @@ class SystemTablet : public tablet::AbstractTablet {
                                           const size_t row_count,
                                           QLResponsePB* response) const override;
 
-  CHECKED_STATUS HandlePgsqlReadRequest(MonoTime deadline,
+  CHECKED_STATUS HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                         const ReadHybridTime& read_time,
                                         const PgsqlReadRequestPB& pgsql_read_request,
                                         const TransactionMetadataPB& transaction_metadata,
@@ -75,7 +75,8 @@ class SystemTablet : public tablet::AbstractTablet {
 
  private:
   HybridTime DoGetSafeTime(
-      tablet::RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const override;
+      tablet::RequireLease require_lease, HybridTime min_allowed,
+      CoarseTimePoint deadline) const override;
 
   Schema schema_;
   std::unique_ptr<YQLVirtualTable> yql_virtual_table_;

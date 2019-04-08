@@ -33,11 +33,13 @@ using {0} : :
 class BoostDependency(Dependency):
     def __init__(self):
         super(BoostDependency, self).__init__(
-            'boost', '1.66.0',
+            'boost', '1.69.0',
             'https://dl.bintray.com/boostorg/release/{0}/source/boost_{1}.tar.bz2',
             BUILD_GROUP_INSTRUMENTED)
         self.dir = '{}_{}'.format(self.name, self.underscored_version)
         self.copy_sources = True
+        self.patches = ['boost-1-69-remove-pending-integer_log2-include.patch']
+        self.patch_strip = 1
 
     def build(self, builder):
         libs = ['system', 'thread']
@@ -63,7 +65,7 @@ class BoostDependency(Dependency):
                     ' '.join(['<compileflags>' + flag for flag in cxx_flags]),
                     ' '.join(['<linkflags>' + flag for flag in cxx_flags + builder.ld_flags]),
                     ' '.join(['--with-{}'.format(lib) for lib in libs])))
-        log_output(log_prefix, ['./b2', 'install'])
+        log_output(log_prefix, ['./b2', 'install', 'cxxstd=14'])
 
         if is_mac():
             for lib in libs:

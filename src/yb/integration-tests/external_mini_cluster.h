@@ -114,9 +114,13 @@ struct ExternalMiniClusterOptions {
   // '127.0.0.1/8'.
   //
   // This option is disabled by default on OS X.
-  //
-  // NOTE: this does not currently affect the HTTP server.
+  // Enabling of this option on OS X means usage of default IPs: 127.0.0.x.
   bool bind_to_unique_loopback_addresses = true;
+
+  // If true, second and other TSes will use the same ports as the first TS uses.
+  // Else every TS will allocate unique ports for itself.
+  // The option is applicable ONLY with bind_to_unique_loopback_addresses == true.
+  bool use_same_ts_ports = false;
 
   // The path where the yb daemons should be run from.
   // Default: "../bin", which points to the path where non-test executables are located.
@@ -138,7 +142,19 @@ struct ExternalMiniClusterOptions {
 
   // Default timeout for operations involving RPC's, when none provided in the API.
   // Default : 10sec
-  MonoDelta timeout_ = MonoDelta::FromSeconds(10);
+  MonoDelta timeout = MonoDelta::FromSeconds(10);
+
+  static constexpr bool kDefaultStartPgsqlProxy = false;
+  static constexpr bool kDefaultStartCqlProxy = true;
+
+  bool start_pgsql_proxy = kDefaultStartPgsqlProxy;
+
+  // If true logs will be writen in both stderr and file
+  bool log_to_file = false;
+
+  // Use even IPs for cluster, like we have for MiniCluster.
+  // So it could be used with test certificates.
+  bool use_even_ips = false;
 
   CHECKED_STATUS RemovePort(const uint16_t port);
   CHECKED_STATUS AddPort(const uint16_t port);
@@ -163,7 +179,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   ~ExternalMiniCluster();
 
   // Start the cluster.
-  CHECKED_STATUS Start();
+  CHECKED_STATUS Start(const rpc::MessengerPtr& messenger = nullptr);
 
   // Restarts the cluster. Requires that it has been Shutdown() first.
   CHECKED_STATUS Restart();
@@ -175,7 +191,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Add a new TS to the cluster. The new TS is started.  Requires that the master is already
   // running.
-  CHECKED_STATUS AddTabletServer();
+  CHECKED_STATUS AddTabletServer(
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy);
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.
@@ -209,7 +227,10 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Send a ping request to the rpc port of the master. Return OK() only if it is reachable.
   CHECKED_STATUS PingMaster(ExternalMaster* master) const;
 
-    // Starts a new master and returns the handle of the new master object on success.  Not thread
+  // Add a Tablet Server to the blacklist
+  CHECKED_STATUS AddTServerToBlacklist(ExternalMaster* master, ExternalTabletServer* ts);
+
+  // Starts a new master and returns the handle of the new master object on success.  Not thread
   // safe for now. We could move this to a static function outside External Mini Cluster, but
   // keeping it here for now as it is currently used only in conjunction with EMC.  If there are any
   // errors and if a new master could not be spawned, it will crash internally.
@@ -349,11 +370,13 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Timeout to be used for rpc operations.
   MonoDelta timeout() {
-    return opts_.timeout_;
+    return opts_.timeout;
   }
 
   // Start a leader election on this master.
   CHECKED_STATUS StartElection(ExternalMaster* master);
+
+  bool running() const { return running_; }
 
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
@@ -404,6 +427,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Step down the master leader and wait for a new leader to be elected.
   CHECKED_STATUS StepDownMasterLeaderAndWaitForNewLeader();
 
+  // Return master address for specified port.
+  std::string MasterAddressForPort(uint16_t port) const;
+
   ExternalMiniClusterOptions opts_;
 
   // The root for binaries.
@@ -422,6 +448,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
   std::vector<std::unique_ptr<FileLock>> free_port_file_locks_;
+  std::atomic<bool> running_{false};
 
  private:
   DISALLOW_COPY_AND_ASSIGN(ExternalMiniCluster);
@@ -471,6 +498,8 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   const std::string& data_dir() const { return full_data_dir_; }
 
+  const std::string& exe() const { return exe_; }
+
   // Return a pointer to the flags used for this server on restart.  Modifying these flags will only
   // take effect on the next restart.
   std::vector<std::string>* mutable_flags() { return &extra_flags_; }
@@ -483,16 +512,26 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // 'entity_id' may be NULL, in which case the first entity of the same type as 'entity_proto' will
   // be matched.
   CHECKED_STATUS GetInt64Metric(const MetricEntityPrototype* entity_proto,
-                        const char* entity_id,
-                        const MetricPrototype* metric_proto,
-                        const char* value_field,
-                        int64_t* value) const;
+                                const char* entity_id,
+                                const MetricPrototype* metric_proto,
+                                const char* value_field,
+                                int64_t* value) const {
+    return GetInt64MetricFromHost(
+        bound_http_hostport(), entity_proto, entity_id, metric_proto, value_field, value);
+  }
 
   std::string LogPrefix();
 
   void SetLogListener(StringListener* listener);
 
   void RemoveLogListener(StringListener* listener);
+
+  static CHECKED_STATUS GetInt64MetricFromHost(const HostPort& hostport,
+                                               const MetricEntityPrototype* entity_proto,
+                                               const char* entity_id,
+                                               const MetricPrototype* metric_proto,
+                                               const char* value_field,
+                                               int64_t* value);
 
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;
@@ -616,22 +655,57 @@ class ExternalTabletServer : public ExternalDaemon {
       const std::vector<HostPort>& master_addrs,
       const std::vector<std::string>& extra_flags);
 
-  CHECKED_STATUS Start(bool start_cql_proxy = true);
+  CHECKED_STATUS Start(
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy);
 
   // Restarts the daemon. Requires that it has previously been shutdown.
-  CHECKED_STATUS Restart(bool start_cql_proxy = true);
+  CHECKED_STATUS Restart(
+      bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+      bool start_pgsql_proxy = ExternalMiniClusterOptions::kDefaultStartPgsqlProxy);
 
-  // Postgres addresses.
+  // IP addresses to bind to.
   const std::string& bind_host() const {
     return bind_host_;
   }
+
+  // Assigned ports.
+  uint16_t rpc_port() const {
+    return rpc_port_;
+  }
+  uint16_t http_port() const {
+    return http_port_;
+  }
+
   uint16_t pgsql_rpc_port() const {
     return pgsql_rpc_port_;
   }
+  uint16_t pgsql_http_port() const {
+    return pgsql_http_port_;
+  }
 
-  // CQL addresses.
+  uint16_t redis_rpc_port() const {
+    return redis_rpc_port_;
+  }
+  uint16_t redis_http_port() const {
+    return redis_http_port_;
+  }
+
   uint16_t cql_rpc_port() const {
     return cql_rpc_port_;
+  }
+  uint16_t cql_http_port() const {
+    return cql_http_port_;
+  }
+
+  CHECKED_STATUS GetInt64CQLMetric(const MetricEntityPrototype* entity_proto,
+                                   const char* entity_id,
+                                   const MetricPrototype* metric_proto,
+                                   const char* value_field,
+                                   int64_t* value) const {
+    return GetInt64MetricFromHost(
+        HostPort(bind_host(), cql_http_port()),
+        entity_proto, entity_id, metric_proto, value_field, value);
   }
 
  protected:
@@ -654,6 +728,7 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t cql_rpc_port_;
   const uint16_t cql_http_port_;
   bool start_cql_proxy_ = true;
+  bool start_pgsql_proxy_ = false;
   std::unique_ptr<server::ServerStatusPB> cqlserver_status_;
 
   friend class RefCountedThreadSafe<ExternalTabletServer>;

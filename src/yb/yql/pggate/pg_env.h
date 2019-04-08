@@ -21,14 +21,63 @@
 #ifndef YB_YQL_PGGATE_PG_ENV_H_
 #define YB_YQL_PGGATE_PG_ENV_H_
 
+#include <boost/functional/hash/hash.hpp>
+
+#include "yb/common/entity_ids.h"
 #include "yb/client/client.h"
 
 namespace yb {
 namespace pggate {
 
+// Postgres object identifier (OID).
+typedef uint32_t PgOid;
+static constexpr PgOid kPgInvalidOid = 0;
+
+// A struct to identify a Postgres object by oid and the database oid it belongs to.
+struct PgObjectId {
+  PgOid database_oid;
+  PgOid object_oid;
+
+  PgObjectId(const PgOid database_oid, const PgOid object_oid)
+      : database_oid(database_oid), object_oid(object_oid) {}
+  PgObjectId()
+      : database_oid(kPgInvalidOid), object_oid(kPgInvalidOid) {}
+
+  bool IsValid() const {
+    return database_oid != kPgInvalidOid && object_oid != kPgInvalidOid;
+  }
+
+  TableId GetYBTableId() const {
+    return GetPgsqlTableId(database_oid, object_oid);
+  }
+
+  std::string ToString() const {
+    return Format("{$0, $1}", database_oid, object_oid);
+  }
+
+  bool operator== (const PgObjectId& other) const {
+    return database_oid == other.database_oid && object_oid == other.object_oid;
+  }
+
+  friend std::size_t hash_value(const PgObjectId& id) {
+    std::size_t value = 0;
+    boost::hash_combine(value, id.database_oid);
+    boost::hash_combine(value, id.object_oid);
+    return value;
+  }
+
+};
+
+typedef boost::hash<PgObjectId> PgObjectIdHash;
+
+inline std::ostream& operator<<(std::ostream& out, const PgObjectId& id) {
+  return out << id.ToString();
+}
+
+//------------------------------------------------------------------------------------------------
+
 class PgEnv {
  public:
-  //------------------------------------------------------------------------------------------------
   // Public types and constants.
   typedef std::unique_ptr<PgEnv> UniPtr;
   typedef std::unique_ptr<const PgEnv> UniPtrConst;

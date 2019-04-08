@@ -52,7 +52,7 @@
 /***************************** COPYRIGHT NOTICES ***********************
 
 Most of this code is directly from the Text::DoubleMetaphone perl module
-version 0.05 available from http://www.cpan.org.
+version 0.05 available from https://www.cpan.org/.
 It bears this copyright notice:
 
 
@@ -233,7 +233,7 @@ metastring;
  */
 
 static metastring *
-NewMetaString(char *init_str)
+NewMetaString(const char *init_str)
 {
 	metastring *s;
 	char		empty_string[] = "";
@@ -376,7 +376,7 @@ StringAt(metastring *s, int start, int length,...)
 
 
 static void
-MetaphAdd(metastring *s, char *new_str)
+MetaphAdd(metastring *s, const char *new_str)
 {
 	int			add_length;
 

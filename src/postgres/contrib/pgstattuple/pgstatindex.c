@@ -568,7 +568,7 @@ pgstatginindex_internal(Oid relid, FunctionCallInfo fcinfo)
 	tuple = heap_form_tuple(tupleDesc, values, nulls);
 	result = HeapTupleGetDatum(tuple);
 
-	return (result);
+	return result;
 }
 
 /* ------------------------------------------------------
@@ -601,9 +601,8 @@ pgstathashindex(PG_FUNCTION_ARGS)
 	if (!IS_HASH(rel))
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("relation \"%s\" is not a HASH index",
+				 errmsg("relation \"%s\" is not a hash index",
 						RelationGetRelationName(rel))));
-
 
 	/*
 	 * Reject attempts to read non-local temporary relations; we would be

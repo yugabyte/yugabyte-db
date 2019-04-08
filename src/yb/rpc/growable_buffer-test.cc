@@ -94,7 +94,7 @@ TEST_F(GrowableBufferTest, TestConsume) {
     buffer.DataAppended(appended);
     ASSERT_EQ(consumed + buffer.size(), counter);
     size_t consume_size = 1 + rand_r(&seed) % buffer.size();
-    buffer.Consume(consume_size);
+    buffer.Consume(consume_size, Slice());
     consumed += consume_size;
     ASSERT_EQ(consumed + buffer.size(), counter);
     auto iovs = buffer.AppendedVecs();

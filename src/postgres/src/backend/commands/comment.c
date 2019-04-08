@@ -4,7 +4,7 @@
  *
  * PostgreSQL object comments utility code.
  *
- * Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/commands/comment.c
@@ -139,7 +139,7 @@ CommentObject(CommentStmt *stmt)
  * existing comment for the specified key.
  */
 void
-CreateComments(Oid oid, Oid classoid, int32 subid, char *comment)
+CreateComments(Oid oid, Oid classoid, int32 subid, const char *comment)
 {
 	Relation	description;
 	ScanKeyData skey[3];
@@ -194,7 +194,7 @@ CreateComments(Oid oid, Oid classoid, int32 subid, char *comment)
 		/* Found the old tuple, so delete or update it */
 
 		if (comment == NULL)
-			CatalogTupleDelete(description, &oldtuple->t_self);
+			CatalogTupleDelete(description, oldtuple);
 		else
 		{
 			newtuple = heap_modify_tuple(oldtuple, RelationGetDescr(description), values,
@@ -234,7 +234,7 @@ CreateComments(Oid oid, Oid classoid, int32 subid, char *comment)
  * existing comment for the specified key.
  */
 void
-CreateSharedComments(Oid oid, Oid classoid, char *comment)
+CreateSharedComments(Oid oid, Oid classoid, const char *comment)
 {
 	Relation	shdescription;
 	ScanKeyData skey[2];
@@ -284,7 +284,7 @@ CreateSharedComments(Oid oid, Oid classoid, char *comment)
 		/* Found the old tuple, so delete or update it */
 
 		if (comment == NULL)
-			CatalogTupleDelete(shdescription, &oldtuple->t_self);
+			CatalogTupleDelete(shdescription, oldtuple);
 		else
 		{
 			newtuple = heap_modify_tuple(oldtuple, RelationGetDescr(shdescription),
@@ -358,7 +358,7 @@ DeleteComments(Oid oid, Oid classoid, int32 subid)
 							NULL, nkeys, skey);
 
 	while ((oldtuple = systable_getnext(sd)) != NULL)
-		CatalogTupleDelete(description, &oldtuple->t_self);
+		CatalogTupleDelete(description, oldtuple);
 
 	/* Done */
 
@@ -394,7 +394,7 @@ DeleteSharedComments(Oid oid, Oid classoid)
 							NULL, 2, skey);
 
 	while ((oldtuple = systable_getnext(sd)) != NULL)
-		CatalogTupleDelete(shdescription, &oldtuple->t_self);
+		CatalogTupleDelete(shdescription, oldtuple);
 
 	/* Done */
 

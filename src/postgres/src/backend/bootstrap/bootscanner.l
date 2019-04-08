@@ -4,7 +4,7 @@
  * bootscanner.l
  *	  a lexical scanner for the bootstrap parser
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -38,6 +38,7 @@
 /* Not needed now that this file is compiled as part of bootparse. */
 /* #include "bootparse.h" */
 
+/* LCOV_EXCL_START */
 
 /* Avoid exit() on fatal scanner errors (a bit ugly -- see yy_fatal_error) */
 #undef fprintf
@@ -64,75 +65,82 @@ static int	yyline = 1;			/* line number for error reporting */
 %option prefix="boot_yy"
 
 
-D		[0-9]
-oct		\\{D}{D}{D}
-id		([A-Za-z0-9_]|{oct}|\-)+
+id		[-A-Za-z0-9_]+
 sid		\"([^\"])*\"
-arrayid [A-Za-z0-9_]+\[{D}*\]
+
+/*
+ * Keyword tokens return the keyword text (as a constant string) in yylval.kw,
+ * just in case that's needed because we want to treat the keyword as an
+ * unreserved identifier.  Note that _null_ is not treated as a keyword
+ * for this purpose; it's the one "reserved word" in the bootstrap syntax.
+ *
+ * Notice that all the keywords are case-sensitive, and for historical
+ * reasons some must be upper case.
+ *
+ * String tokens return a palloc'd string in yylval.str.
+ */
 
 %%
 
-open			{ return(OPEN); }
+open			{ yylval.kw = "open"; return OPEN; }
 
-close			{ return(XCLOSE); }
+close			{ yylval.kw = "close"; return XCLOSE; }
 
-create			{ return(XCREATE); }
+create			{ yylval.kw = "create"; return XCREATE; }
 
-OID				{ return(OBJ_ID); }
-bootstrap		{ return(XBOOTSTRAP); }
-"shared_relation"	{ return(XSHARED_RELATION); }
-"without_oids"	{ return(XWITHOUT_OIDS); }
-"rowtype_oid"	{ return(XROWTYPE_OID); }
-_null_			{ return(NULLVAL); }
+OID				{ yylval.kw = "OID"; return OBJ_ID; }
+bootstrap		{ yylval.kw = "bootstrap"; return XBOOTSTRAP; }
+shared_relation	{ yylval.kw = "shared_relation"; return XSHARED_RELATION; }
+without_oids	{ yylval.kw = "without_oids"; return XWITHOUT_OIDS; }
+rowtype_oid		{ yylval.kw = "rowtype_oid"; return XROWTYPE_OID; }
 
-insert			{ return(INSERT_TUPLE); }
+insert			{ yylval.kw = "insert"; return INSERT_TUPLE; }
 
-","				{ return(COMMA); }
-"="				{ return(EQUALS); }
-"("				{ return(LPAREN); }
-")"				{ return(RPAREN); }
+_null_			{ return NULLVAL; }
+
+","				{ return COMMA; }
+"="				{ return EQUALS; }
+"("				{ return LPAREN; }
+")"				{ return RPAREN; }
 
 [\n]			{ yyline++; }
-[\t]			;
-" "				;
+[\r\t ]			;
 
-^\#[^\n]* ; /* drop everything after "#" for comments */
+^\#[^\n]* 		;		/* drop everything after "#" for comments */
 
+declare			{ yylval.kw = "declare"; return XDECLARE; }
+yb_declare		{ yylval.kw = "yb_declare"; return YBDECLARE; } /* For YugaByte pkeys */
+build			{ yylval.kw = "build"; return XBUILD; }
+indices			{ yylval.kw = "indices"; return INDICES; }
+unique			{ yylval.kw = "unique"; return UNIQUE; }
+primary			{ yylval.kw = "primary"; return PRIMARY; } /* For YugaByte pkeys */
+index			{ yylval.kw = "index"; return INDEX; }
+on				{ yylval.kw = "on"; return ON; }
+using			{ yylval.kw = "using"; return USING; }
+toast			{ yylval.kw = "toast"; return XTOAST; }
+FORCE			{ yylval.kw = "FORCE"; return XFORCE; }
+NOT				{ yylval.kw = "NOT"; return XNOT; }
+NULL			{ yylval.kw = "NULL"; return XNULL; }
 
-"declare"		{ return(XDECLARE); }
-"build"			{ return(XBUILD); }
-"indices"		{ return(INDICES); }
-"unique"		{ return(UNIQUE); }
-"index"			{ return(INDEX); }
-"on"			{ return(ON); }
-"using"			{ return(USING); }
-"toast"			{ return(XTOAST); }
-"FORCE"			{ return(XFORCE); }
-"NOT"			{ return(XNOT); }
-"NULL"			{ return(XNULL); }
-
-{arrayid}		{
-					yylval.str = MapArrayTypeName(yytext);
-					return(ID);
-				}
 {id}			{
 					yylval.str = scanstr(yytext);
-					return(ID);
+					return ID;
 				}
 {sid}			{
-					yytext[strlen(yytext)-1] = '\0'; /* strip off quotes */
+					/* leading and trailing quotes are not passed to scanstr */
+					yytext[strlen(yytext) - 1] = '\0';
 					yylval.str = scanstr(yytext+1);
-					yytext[strlen(yytext)] = '"'; /* restore quotes */
-					return(ID);
+					yytext[strlen(yytext)] = '"';	/* restore yytext */
+					return ID;
 				}
 
 .				{
 					elog(ERROR, "syntax error at line %d: unexpected character \"%s\"", yyline, yytext);
 				}
 
-
-
 %%
+
+/* LCOV_EXCL_STOP */
 
 void
 yyerror(const char *message)

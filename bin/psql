@@ -18,4 +18,4 @@
 
 . "${BASH_SOURCE%/*}"/../build-support/common-build-env.sh
 
-exec "$YB_THIRDPARTY_DIR/installed/common/bin/psql" "$@"
+exec "$YB_BUILD_PARENT_DIR/latest/postgres/bin/psql" "$@"

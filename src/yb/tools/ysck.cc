@@ -284,6 +284,11 @@ Status Ysck::ChecksumData(const vector<string>& tables,
       // Skip the system namespace with virtual tables, since they are not assigned to tservers.
       continue;
     }
+
+    // TODO: remove once we have is_system() implemented correctly for PostgreSQL tables.
+    if (table->table_type() == PGSQL_TABLE_TYPE)
+      continue;
+
     there_are_non_system_tables = true;
     VLOG(1) << "Table: " << table->name().ToString();
     if (!tables_filter.empty() && !ContainsKey(tables_filter, table->name().table_name())) continue;
@@ -479,7 +484,7 @@ bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, int table_num_repl
     }
   }
   if (leaders_count == 0) {
-    LOG(WARNING) << Substitute("Tablet $0 doesn't have a leader", tablet->id());
+    LOG(WARNING) << Format("Tablet $0 doesn't have a leader, replicas: $1", tablet->id(), replicas);
     good_tablet = false;
   }
   VLOG(1) << Substitute("Tablet $0 has $1 leader and $2 followers",

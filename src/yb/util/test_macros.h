@@ -34,6 +34,8 @@
 
 #include <string>
 
+#include <boost/preprocessor/cat.hpp>
+
 #include "yb/util/string_trim.h"
 #include "yb/util/debug-util.h"
 
@@ -198,5 +200,18 @@
 
 #define CURRENT_TEST_CASE_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->test_case_name()
+
+#ifdef __APPLE__
+#define YB_DISABLE_TEST_ON_MACOS(test_name) BOOST_PP_CAT(DISABLED_, test_name)
+#else
+#define YB_DISABLE_TEST_ON_MACOS(test_name) test_name
+#endif
+
+#ifdef THREAD_SANITIZER
+#define YB_DISABLE_TEST_IN_TSAN(test_name) BOOST_PP_CAT(DISABLED_, test_name)
+#else
+#define YB_DISABLE_TEST_IN_TSAN(test_name) test_name
+#endif
+
 
 #endif  // YB_UTIL_TEST_MACROS_H

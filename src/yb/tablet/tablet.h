@@ -44,8 +44,6 @@
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/write_batch.h"
 
-#include "yb/tserver/tserver.pb.h"
-
 #include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 
@@ -81,6 +79,8 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
 
+#include "yb/gutil/thread_annotations.h"
+
 namespace rocksdb {
 class DB;
 }
@@ -109,7 +109,7 @@ class MaintenanceOpStats;
 
 namespace tablet {
 
-class AlterSchemaOperationState;
+class ChangeMetadataOperationState;
 class ScopedReadOperation;
 struct TabletMetrics;
 struct TransactionApplyData;
@@ -120,6 +120,8 @@ class TruncateOperationState;
 class WriteOperationState;
 
 using docdb::LockBatch;
+
+YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 
 class TabletFlushStats : public rocksdb::EventListener {
  public:
@@ -181,7 +183,11 @@ class WriteOperation;
 struct DocDbOpIds {
   OpId regular;
   OpId intents;
+
+  std::string ToString() const;
 };
+
+typedef std::function<Status(const TableInfo&)> AddTableListener;
 
 class Tablet : public AbstractTablet, public TransactionIntentApplier {
  public:
@@ -193,7 +199,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // until a hybrid time leader lease with at least the given microsecond component is acquired
   // (first argument), or a timeout occurs (second argument). HybridTime::kInvalid is returned
   // in case of a timeout.
-  using HybridTimeLeaseProvider = std::function<HybridTime(MicrosTime, MonoTime)>;
+  using HybridTimeLeaseProvider = std::function<HybridTime(MicrosTime, CoarseTimePoint)>;
   using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 
   // Create a new tablet.
@@ -208,6 +214,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       MetricRegistry* metric_registry,
       const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
       const TabletOptions& tablet_options,
+      std::string log_prefix_suffix,
       TransactionParticipantContext* transaction_participant_context,
       client::LocalTabletFilter local_tablet_filter,
       TransactionCoordinatorContext* transaction_coordinator_context);
@@ -217,6 +224,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Open the tablet.
   // Upon completion, the tablet enters the kBootstrapping state.
   CHECKED_STATUS Open();
+
+  CHECKED_STATUS EnableCompactions();
 
   // Mark that the tablet has finished bootstrapping.
   // This transitions from kBootstrapping to kOpen state.
@@ -239,7 +248,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS RemoveIntents(const TransactionIdSet& transactions) override;
 
-  HybridTime ApplierSafeTime(HybridTime min_allowed, MonoTime deadline) override;
+  HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
 
   // Finish the Prepare phase of a write transaction.
   //
@@ -297,7 +306,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS KeyValueBatchFromRedisWriteBatch(WriteOperation* operation);
 
   CHECKED_STATUS HandleRedisReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) override;
@@ -305,7 +314,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //------------------------------------------------------------------------------------------------
   // CQL Request Processing.
   CHECKED_STATUS HandleQLReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -321,7 +330,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //------------------------------------------------------------------------------------------------
   // Postgres Request Processing.
   CHECKED_STATUS HandlePgsqlReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const PgsqlReadRequestPB& pgsql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -342,8 +351,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // state of this tablet.
   // The returned iterator is not initialized.
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
-      const Schema &projection,
-      const boost::optional<TransactionId>& transaction_id) const;
+      const Schema &projection, const boost::optional<TransactionId>& transaction_id,
+      const TableId& table_id = "") const;
+  Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
+      const TableId& table_id) const;
 
   //------------------------------------------------------------------------------------------------
   // Makes RocksDB Flush.
@@ -352,14 +363,21 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS WaitForFlush();
 
+  // Synchronously perform a full compaction on both regular and intents RocksDBs.
+  CHECKED_STATUS CompactSync();
+
   // Prepares the transaction context for the alter schema operation.
   // An error will be returned if the specified schema is invalid (e.g.
   // key mismatch, or missing IDs)
-  CHECKED_STATUS CreatePreparedAlterSchema(AlterSchemaOperationState *operation_state,
+  CHECKED_STATUS CreatePreparedChangeMetadata(
+      ChangeMetadataOperationState *operation_state,
       const Schema* schema);
 
-  // Apply the Schema of the specified transaction.
-  CHECKED_STATUS AlterSchema(AlterSchemaOperationState* operation_state);
+  // Apply the Schema of the specified operation.
+  CHECKED_STATUS AlterSchema(ChangeMetadataOperationState* operation_state);
+
+  // Apply replicated add table operation.
+  CHECKED_STATUS AddTable(const TableInfoPB& table_info);
 
   // Truncate this tablet by resetting the content of RocksDB.
   CHECKED_STATUS Truncate(TruncateOperationState* state);
@@ -421,12 +439,14 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // request in state. Due to acquiring locks it can block the thread.
   void AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation> operation);
 
-  static const char* kDMSMemTrackerId;
-
-  // Returns the timestamp corresponding to the oldest active reader. If none exists returns
-  // the latest timestamp that is safe to read.
-  // This is used to figure out what can be garbage collected during a compaction.
-  HybridTime OldestReadPoint() const;
+  // Given a propopsed "history cutoff" timestamp, returns either that value, if possible, or a
+  // smaller value corresponding to the oldest active reader, whichever is smaller. This ensures
+  // that data needed by active read operations is not compacted away.
+  //
+  // Also updates the "earliest allowed read time" of the tablet to be equal to the returned value,
+  // (if it is still lower than the value about to be returned), so that new readers with timestamps
+  // earlier than that will be rejected.
+  HybridTime UpdateHistoryCutoff(HybridTime proposed_cutoff);
 
   // The HybridTime of the oldest write that is still not scheduled to be flushed in RocksDB.
   TabletFlushStats* flush_stats() const { return flush_stats_.get(); }
@@ -458,7 +478,15 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void ForceRocksDBCompactInTest();
 
-  std::string DocDBDumpStrInTest();
+  std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
+
+  size_t TEST_CountRocksDBRecords();
+
+  CHECKED_STATUS CreateReadIntents(
+      const TransactionMetadataPB& transaction_metadata,
+      const google::protobuf::RepeatedPtrField<QLReadRequestPB>& ql_batch,
+      const google::protobuf::RepeatedPtrField<PgsqlReadRequestPB>& pgsql_batch,
+      docdb::KeyValueWriteBatchPB* out);
 
   // Returns last committed write index.
   // The main purpose of this method is to make correct log cleanup when tablet does not have
@@ -478,11 +506,29 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     mem_table_flush_filter_factory_ = std::move(factory);
   }
 
+  // When a compaction starts with a particular "history cutoff" timestamp, it calls this function
+  // to disallow reads at a time lower than that history cutoff timestamp, to avoid reading
+  // invalid/incomplete data.
+  //
+  // Returns true if the new history cutoff timestamp was successfully registered, or false if
+  // it can't be used because there are pending reads at lower timestamps.
+  HybridTime Get(HybridTime lower_bound);
+
   rocksdb::DB* TEST_db() const {
     return regular_db_.get();
   }
 
+  rocksdb::DB* TEST_intents_db() {
+    return intents_db_.get();
+  }
+
   CHECKED_STATUS TEST_SwitchMemtable();
+
+  // Initialize RocksDB's max persistent op id and hybrid time to that of the operation state.
+  // Necessary for cases like truncate or restore snapshot when RocksDB is reset.
+  CHECKED_STATUS ModifyFlushedFrontier(
+      const docdb::ConsensusFrontier& value,
+      rocksdb::FrontierModificationMode mode);
 
  protected:
   friend class Iterator;
@@ -499,7 +545,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Register/Unregister a read operation, with an associated timestamp, for the purpose of
   // tracking the oldest read point.
-  void RegisterReaderTimestamp(HybridTime read_point) override;
+  CHECKED_STATUS RegisterReaderTimestamp(HybridTime read_point) override;
   void UnregisterReader(HybridTime read_point) override;
 
   void PrepareTransactionWriteBatch(
@@ -515,10 +561,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Pause any new read/write operations and wait for all pending read/write operations to finish.
   util::ScopedPendingOperationPause PauseReadWriteOperations();
-
-  // Initialize RocksDB's max persistent op id and hybrid time to that of the operation state.
-  // Necessary for cases like truncate or restore snapshot when RocksDB is reset.
-  CHECKED_STATUS SetFlushedFrontier(const docdb::ConsensusFrontier& value);
 
   std::string LogPrefix() const;
 
@@ -563,13 +605,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
   std::shared_ptr<MemTracker> mem_tracker_;
-  std::shared_ptr<MemTracker> dms_mem_tracker_;
 
   MetricEntityPtr metric_entity_;
   gscoped_ptr<TabletMetrics> metrics_;
   FunctionGaugeDetacher metric_detacher_;
-
-  int64_t next_mrs_id_ = 0;
 
   // A pointer to the server's clock.
   scoped_refptr<server::Clock> clock_;
@@ -578,18 +617,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Maps a timestamp to the number active readers with that timestamp.
   // TODO(ENG-961): Check if this is a point of contention. If so, shard it as suggested in D1219.
-  std::map<HybridTime, int64_t> active_readers_cnt_;
+  std::map<HybridTime, int64_t> active_readers_cnt_ GUARDED_BY(active_readers_mutex_);
+  HybridTime earliest_read_time_allowed_ GUARDED_BY(active_readers_mutex_) {HybridTime::kMin};
   mutable std::mutex active_readers_mutex_;
-
-  // Lock protecting the selection of rowsets for compaction.
-  // Only one thread may run the compaction selection algorithm at a time
-  // so that they don't both try to select the same rowset.
-  mutable std::mutex compact_select_lock_;
-
-  // We take this lock when flushing the tablet's rowsets in Tablet::Flush.  We
-  // don't want to have two flushes in progress at once, in case the one which
-  // started earlier completes after the one started later.
-  mutable Semaphore rowsets_flush_sem_{1};
 
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
@@ -667,7 +697,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
  private:
   HybridTime DoGetSafeTime(
-      RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const override;
+      RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
   void UpdateQLIndexes(std::unique_ptr<WriteOperation> operation);
   void CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, const Status& status);
@@ -677,6 +707,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 
   client::LocalTabletFilter local_tablet_filter_;
+
+  std::string log_prefix_suffix_;
 
   DISALLOW_COPY_AND_ASSIGN(Tablet);
 };
@@ -691,8 +723,10 @@ class ScopedReadOperation {
     rhs.tablet_ = nullptr;
   }
 
-  explicit ScopedReadOperation(
-      AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time);
+  static Result<ScopedReadOperation> Create(
+      AbstractTablet* tablet,
+      RequireLease require_lease,
+      ReadHybridTime read_time);
 
   ScopedReadOperation(const ScopedReadOperation&) = delete;
   void operator=(const ScopedReadOperation&) = delete;
@@ -701,9 +735,15 @@ class ScopedReadOperation {
 
   const ReadHybridTime& read_time() const { return read_time_; }
 
+  Status status() const { return status_; }
+
  private:
+  explicit ScopedReadOperation(
+      AbstractTablet* tablet, RequireLease require_lease, const ReadHybridTime& read_time);
+
   AbstractTablet* tablet_;
   ReadHybridTime read_time_;
+  Status status_;
 };
 
 }  // namespace tablet

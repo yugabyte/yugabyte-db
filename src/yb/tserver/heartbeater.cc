@@ -51,12 +51,16 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/util/capabilities.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/util/mem_tracker.h"
+
+using namespace std::literals;
+
 DEFINE_int32(heartbeat_rpc_timeout_ms, 15000,
              "Timeout used for the TS->Master heartbeat RPCs.");
 TAG_FLAG(heartbeat_rpc_timeout_ms, advanced);
@@ -106,7 +110,7 @@ class Heartbeater::Thread {
   void set_master_addresses(server::MasterAddressesPtr master_addresses) {
     std::lock_guard<std::mutex> l(master_addresses_mtx_);
     master_addresses_ = std::move(master_addresses);
-    VLOG(1) << "Setting master addresses to " << yb::ToString(master_addresses_);
+    VLOG_WITH_PREFIX(1) << "Setting master addresses to " << yb::ToString(master_addresses_);
   }
 
  private:
@@ -122,6 +126,10 @@ class Heartbeater::Thread {
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
   uint64_t CalculateUptime();
+
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
 
   server::MasterAddressesPtr get_master_addresses() {
     std::lock_guard<std::mutex> l(master_addresses_mtx_);
@@ -141,7 +149,7 @@ class Heartbeater::Thread {
 
   // Index of the master we last succesfully obtained the master
   // consensus configuration information from.
-  int last_locate_master_idx_;
+  int last_locate_master_idx_ = 0;
 
   // The server for which we are heartbeating.
   TabletServer* const server_;
@@ -159,11 +167,11 @@ class Heartbeater::Thread {
   master::TSHeartbeatResponsePB last_hb_response_;
 
   // True once at least one heartbeat has been sent.
-  bool has_heartbeated_;
+  bool has_heartbeated_ = false;
 
   // The number of heartbeats which have failed in a row.
   // This is tracked so as to back-off heartbeating.
-  int consecutive_failed_heartbeats_;
+  int consecutive_failed_heartbeats_ = 0;
 
   // Mutex/condition pair to trigger the heartbeater thread
   // to either heartbeat early or exit.
@@ -171,19 +179,23 @@ class Heartbeater::Thread {
   ConditionVariable cond_;
 
   // Protected by mutex_.
-  bool should_run_;
-  bool heartbeat_asap_;
+  bool should_run_ = false;
+  bool heartbeat_asap_ = false;
 
   // The interval for sending tserver metrics in the heartbeat.
-  const int tserver_metrics_interval_sec_;
+  const MonoDelta tserver_metrics_interval_ = 5s;
   // stores the granularity for updating file sizes and current read/write
   MonoTime prev_tserver_metrics_submission_;
 
   // Stores the total read and writes ops for computing iops
-  uint64_t prev_reads_;
-  uint64_t prev_writes_;
+  uint64_t prev_reads_ = 0;
+  uint64_t prev_writes_ = 0;
 
   MonoTime start_time_;
+
+  rpc::Rpcs rpcs_;
+
+  const std::string log_prefix_;
 
   DISALLOW_COPY_AND_ASSIGN(Thread);
 };
@@ -213,21 +225,14 @@ void Heartbeater::set_master_addresses(server::MasterAddressesPtr master_address
 
 Heartbeater::Thread::Thread(const TabletServerOptions& opts, TabletServer* server)
   : master_addresses_(opts.GetMasterAddresses()),
-    last_locate_master_idx_(0),
     server_(server),
-    has_heartbeated_(false),
-    consecutive_failed_heartbeats_(0),
     cond_(&mutex_),
-    should_run_(false),
-    heartbeat_asap_(false),
-    tserver_metrics_interval_sec_(5),
     prev_tserver_metrics_submission_(MonoTime::Now()),
-    prev_reads_(0),
-    prev_writes_(0),
-    start_time_(MonoTime::Now()) {
+    start_time_(MonoTime::Now()),
+    log_prefix_(Format("P $0: ", server_->permanent_uuid())) {
   CHECK_NOTNULL(master_addresses_.get());
   CHECK(!master_addresses_->empty());
-  VLOG(1) << "Initializing heartbeater thread with master addresses: "
+  VLOG_WITH_PREFIX(1) << "Initializing heartbeater thread with master addresses: "
           << yb::ToString(master_addresses_);
 }
 
@@ -258,7 +263,6 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
   if (master_sock_addrs.empty()) {
     return STATUS(NotFound, "unable to resolve any of the master addresses!");
   }
-  rpc::Rpcs rpcs;
   Synchronizer sync;
   auto rpc = rpc::StartRpc<GetLeaderMasterRpc>(
       Bind(&LeaderMasterCallback, leader_hostport, &sync),
@@ -266,9 +270,11 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
       deadline,
       server_->messenger(),
       &server_->proxy_cache(),
-      &rpcs,
+      &rpcs_,
       true /* should_timeout_to_follower_ */);
-  return sync.Wait();
+  auto result = sync.Wait();
+  rpcs_.RequestAbortAll();
+  return result;
 }
 
 Status Heartbeater::Thread::ConnectToMaster() {
@@ -277,8 +283,8 @@ Status Heartbeater::Thread::ConnectToMaster() {
   // TODO send heartbeats without tablet reports to non-leader masters.
   Status s = FindLeaderMaster(deadline, &leader_master_hostport_);
   if (!s.ok()) {
-    LOG(INFO) << "Find leader master "  <<  leader_master_hostport_.ToString()
-              << " hit error " << s.ToString();
+    LOG_WITH_PREFIX(INFO) << "Find leader master " <<  leader_master_hostport_.ToString()
+                          << " hit error " << s;
     return s;
   }
 
@@ -293,7 +299,7 @@ Status Heartbeater::Thread::ConnectToMaster() {
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
   RETURN_NOT_OK_PREPEND(new_proxy->Ping(req, &resp, &rpc),
                         Format("Failed to ping master at $0", leader_master_hostport_));
-  LOG(INFO) << "Connected to a leader master server at " << leader_master_hostport_.ToString();
+  LOG_WITH_PREFIX(INFO) << "Connected to a leader master server at " << leader_master_hostport_;
 
   // Save state in the instance.
   proxy_.reset(new MasterServiceProxy(&server_->proxy_cache(), leader_master_hostport_));
@@ -315,8 +321,8 @@ int Heartbeater::Thread::GetMinimumHeartbeatMillis() const {
   // If we've failed a few heartbeats in a row, back off to the normal
   // interval, rather than retrying in a loop.
   if (consecutive_failed_heartbeats_ == FLAGS_heartbeat_max_failures_before_backoff) {
-    LOG(WARNING) << "Failed " << consecutive_failed_heartbeats_  <<" heartbeats "
-                 << "in a row: no longer allowing fast heartbeat attempts.";
+    LOG_WITH_PREFIX(WARNING) << "Failed " << consecutive_failed_heartbeats_  <<" heartbeats "
+                             << "in a row: no longer allowing fast heartbeat attempts.";
   }
 
   return consecutive_failed_heartbeats_ > FLAGS_heartbeat_max_failures_before_backoff ?
@@ -351,25 +357,27 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   SetupCommonField(req.mutable_common());
   if (last_hb_response_.needs_reregister()) {
-    LOG(INFO) << "Registering TS with master...";
+    LOG_WITH_PREFIX(INFO) << "Registering TS with master...";
     RETURN_NOT_OK_PREPEND(SetupRegistration(req.mutable_registration()),
                           "Unable to set up registration");
+    auto capabilities = Capabilities();
+    *req.mutable_registration()->mutable_capabilities() =
+        google::protobuf::RepeatedField<CapabilityId>(capabilities.begin(), capabilities.end());
   }
 
   if (last_hb_response_.needs_full_tablet_report()) {
-    LOG(INFO) << "Sending a full tablet report to master...";
+    LOG_WITH_PREFIX(INFO) << "Sending a full tablet report to master...";
     server_->tablet_manager()->GenerateFullTabletReport(
       req.mutable_tablet_report());
   } else {
-    VLOG(2) << "Sending an incremental tablet report to master...";
+    VLOG_WITH_PREFIX(2) << "Sending an incremental tablet report to master...";
     server_->tablet_manager()->GenerateIncrementalTabletReport(
       req.mutable_tablet_report());
   }
   req.set_num_live_tablets(server_->tablet_manager()->GetNumLiveTablets());
   req.set_leader_count(server_->tablet_manager()->GetLeaderCount());
 
-  if (prev_tserver_metrics_submission_ +
-      MonoDelta::FromSeconds(tserver_metrics_interval_sec_) < MonoTime::Now()) {
+  if (prev_tserver_metrics_submission_ + tserver_metrics_interval_ < MonoTime::Now()) {
 
 #ifdef TCMALLOC_ENABLED
     // Get the total memory used.
@@ -377,9 +385,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
     if (MallocExtension::instance()->GetNumericProperty(
         "generic.current_allocated_bytes", &mem_usage)) {
       req.mutable_metrics()->set_total_ram_usage(static_cast<int64_t> (mem_usage));
-      VLOG(4) << "Total Memory Usage: " << mem_usage;
+      VLOG_WITH_PREFIX(4) << "Total Memory Usage: " << mem_usage;
     } else {
-      YB_LOG_EVERY_N(ERROR, 10) << "Getting memory usage from TCMalloc failed!";
+      YB_LOG_WITH_PREFIX_EVERY_N(ERROR, 10) << "Getting memory usage from TCMalloc failed!";
     }
 #endif
 
@@ -428,10 +436,10 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
     prev_tserver_metrics_submission_ = MonoTime::Now();
 
-    VLOG(4) << "Read Ops per second: " << rops_per_sec;
-    VLOG(4) << "Write Ops per second: " << wops_per_sec;
-    VLOG(4) << "Total SST File Sizes: "<< total_file_sizes;
-    VLOG(4) << "Uptime seconds: "<< uptime_seconds;
+    VLOG_WITH_PREFIX(4) << "Read Ops per second: " << rops_per_sec;
+    VLOG_WITH_PREFIX(4) << "Write Ops per second: " << wops_per_sec;
+    VLOG_WITH_PREFIX(4) << "Total SST File Sizes: "<< total_file_sizes;
+    VLOG_WITH_PREFIX(4) << "Uptime seconds: "<< uptime_seconds;
   }
 
   RpcController rpc;
@@ -439,51 +447,64 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   req.set_config_index(server_->GetCurrentMasterIndex());
 
-  VLOG(2) << "Sending heartbeat:\n" << req.DebugString();
-  master::TSHeartbeatResponsePB resp;
-  RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
-                        "Failed to send heartbeat");
-  if (resp.has_error()) {
-    if (resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
-      return StatusFromPB(resp.error().status());
-    } else {
-      DCHECK(!resp.leader_master());
-      // Treat a not-the-leader error code as leader_master=false.
-      if (resp.leader_master()) {
-        LOG(WARNING) << "Setting leader master to false for " << resp.error().code() << " code.";
-        resp.set_leader_master(false);
+  {
+    VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
+    master::TSHeartbeatResponsePB resp;
+    RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
+        "Failed to send heartbeat");
+    if (resp.has_error()) {
+      if (resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
+        return StatusFromPB(resp.error().status());
+      } else {
+        DCHECK(!resp.leader_master());
+        // Treat a not-the-leader error code as leader_master=false.
+        if (resp.leader_master()) {
+          LOG_WITH_PREFIX(WARNING) << "Setting leader master to false for "
+                                   << resp.error().code() << " code.";
+          resp.set_leader_master(false);
+        }
       }
     }
+
+    VLOG_WITH_PREFIX(2) << "Received heartbeat response:\n" << resp.DebugString();
+    if (resp.has_master_config()) {
+      LOG_WITH_PREFIX(INFO) << "Received heartbeat response with config " << resp.DebugString();
+
+      RETURN_NOT_OK(server_->UpdateMasterAddresses(resp.master_config(), resp.leader_master()));
+    }
+
+    if (!resp.leader_master()) {
+      // If the master is no longer a leader, reset proxy so that we can
+      // determine the master and attempt to heartbeat during in the
+      // next heartbeat interval.
+      proxy_.reset();
+      return STATUS(ServiceUnavailable, "master is no longer the leader");
+    }
+
+    // At this point we know resp is a successful heartbeat response from the master so set it as
+    // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
+    // below (hence using the nested scope for resp until here).
+    last_hb_response_.Swap(&resp);
   }
 
-  VLOG(2) << "Received heartbeat response:\n" << resp.DebugString();
-  if (resp.has_master_config()) {
-    LOG(INFO) << "Received heartbeat response with config " << resp.DebugString();
-
-    RETURN_NOT_OK(server_->UpdateMasterAddresses(resp.master_config(), resp.leader_master()));
-  }
-
-  if (!resp.leader_master()) {
-    // If the master is no longer a leader, reset proxy so that we can
-    // determine the master and attempt to heartbeat during in the
-    // next heartbeat interval.
-    proxy_.reset();
-    return STATUS(ServiceUnavailable, "master is no longer the leader");
-  }
-  last_hb_response_.Swap(&resp);
   if (last_hb_response_.needs_full_tablet_report()) {
     return STATUS(TryAgain, "");
   }
 
-  if (resp.has_cluster_uuid() && !resp.cluster_uuid().empty()) {
-    server_->set_cluster_uuid(resp.cluster_uuid());
+  if (last_hb_response_.has_cluster_uuid() && !last_hb_response_.cluster_uuid().empty()) {
+    server_->set_cluster_uuid(last_hb_response_.cluster_uuid());
   }
 
   // TODO: Handle TSHeartbeatResponsePB (e.g. deleted tablets and schema changes)
   server_->tablet_manager()->MarkTabletReportAcknowledged(req.tablet_report());
 
+  // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
+  if (last_hb_response_.has_ysql_catalog_version()) {
+    server_->set_ysql_catalog_version(last_hb_response_.ysql_catalog_version());
+  }
+
   // Update the live tserver list.
-  return server_->PopulateLiveTServers(resp);
+  return server_->PopulateLiveTServers(last_hb_response_);
 }
 
 Status Heartbeater::Thread::DoHeartbeat() {
@@ -492,14 +513,14 @@ Status Heartbeater::Thread::DoHeartbeat() {
   }
 
   if (PREDICT_FALSE(FLAGS_tserver_disable_heartbeat_test_only)) {
-    LOG(INFO) << "Heartbeat disabled for testing.";
+    LOG_WITH_PREFIX(INFO) << "Heartbeat disabled for testing.";
     return Status::OK();
   }
 
   CHECK(IsCurrentThread());
 
   if (!proxy_) {
-    VLOG(1) << "No valid master proxy. Connecting...";
+    VLOG_WITH_PREFIX(1) << "No valid master proxy. Connecting...";
     RETURN_NOT_OK(ConnectToMaster());
     DCHECK(proxy_);
   }
@@ -517,7 +538,7 @@ Status Heartbeater::Thread::DoHeartbeat() {
 
 void Heartbeater::Thread::RunThread() {
   CHECK(IsCurrentThread());
-  VLOG(1) << "Heartbeat thread starting";
+  VLOG_WITH_PREFIX(1) << "Heartbeat thread starting";
 
   // Set up a fake "last heartbeat response" which indicates that we
   // need to register -- since we've never registered before, we know
@@ -547,7 +568,7 @@ void Heartbeater::Thread::RunThread() {
       heartbeat_asap_ = false;
 
       if (!should_run_) {
-        VLOG(1) << "Heartbeat thread finished";
+        VLOG_WITH_PREFIX(1) << "Heartbeat thread finished";
         return;
       }
     }
@@ -555,11 +576,12 @@ void Heartbeater::Thread::RunThread() {
     Status s = DoHeartbeat();
     if (!s.ok()) {
       const auto master_addresses = get_master_addresses();
-      LOG(WARNING) << "Failed to heartbeat to " << leader_master_hostport_.ToString()
-                   << ": " << s.ToString() << " tries=" << consecutive_failed_heartbeats_
-                   << ", num=" << master_addresses->size()
-                   << ", masters=" << yb::ToString(master_addresses)
-                   << ", code=" << s.CodeAsString();
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to heartbeat to " << leader_master_hostport_.ToString()
+          << ": " << s << " tries=" << consecutive_failed_heartbeats_
+          << ", num=" << master_addresses->size()
+          << ", masters=" << yb::ToString(master_addresses)
+          << ", code=" << s.CodeAsString();
       consecutive_failed_heartbeats_++;
       if (master_addresses->size() > 1 || (*master_addresses)[0].size() > 1) {
         // If we encountered a network error (e.g., connection

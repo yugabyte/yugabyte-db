@@ -1,57 +1,56 @@
-#!/bin/sh
+#!/usr/bin/perl
+#----------------------------------------------------------------------
 #
 # unused_oids
+#    Finds blocks of manually-assignable OIDs that have not already been
+#    claimed by previous hackers.  The main use is for finding available
+#    OIDs for new internal functions.  The numbers printed are inclusive
+#    ranges of unused OIDs.
+#
+#    Before using a large empty block, make sure you aren't about
+#    to take over what was intended as expansion space for something
+#    else.
+#
+# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
+# Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/unused_oids
 #
-#	finds blocks of manually-assignable oids that have not already been
-#	claimed by post_hackers.  primarily useful for finding available
-#	oids for new internal functions.  the numbers printed are inclusive
-#	ranges of unused oids.
-#
-#	before using a large empty block, make sure you aren't about
-#	to take over what was intended as expansion space for something
-#	else.
-#
-#	run this script in src/include/catalog.
-#
+#----------------------------------------------------------------------
 
+use strict;
+use warnings;
 
-AWK="awk"
+# Must run in src/include/catalog
+use FindBin;
+chdir $FindBin::RealBin or die "could not cd to $FindBin::RealBin: $!\n";
 
-# Get FirstBootstrapObjectId from access/transam.h
-FIRSTOBJECTID=`grep '#define[ 	]*FirstBootstrapObjectId' ../access/transam.h | $AWK '{ print $3 }'`
-export FIRSTOBJECTID
+use lib "$FindBin::RealBin/../../backend/catalog/";
+use Catalog;
 
-# this part (down to the uniq step) should match the duplicate_oids script
-# note: we exclude BKI_BOOTSTRAP relations since they are expected to have
-# matching DATA lines in pg_class.h and pg_type.h
+my @input_files = (glob("pg_*.h"), qw(indexing.h toasting.h));
 
-cat pg_*.h toasting.h indexing.h | \
-egrep -v -e '^CATALOG\(.*BKI_BOOTSTRAP' | \
-sed -n	-e 's/^DATA(insert *OID *= *\([0-9][0-9]*\).*$/\1/p' \
-	-e 's/^CATALOG([^,]*, *\([0-9][0-9]*\).*BKI_ROWTYPE_OID(\([0-9][0-9]*\)).*$/\1,\2/p' \
-	-e 's/^CATALOG([^,]*, *\([0-9][0-9]*\).*$/\1/p' \
-	-e 's/^DECLARE_INDEX([^,]*, *\([0-9][0-9]*\).*$/\1/p' \
-	-e 's/^DECLARE_UNIQUE_INDEX([^,]*, *\([0-9][0-9]*\).*$/\1/p' \
-	-e 's/^DECLARE_TOAST([^,]*, *\([0-9][0-9]*\), *\([0-9][0-9]*\).*$/\1,\2/p' | \
-tr ',' '\n' | \
-sort -n | \
-uniq | \
-$AWK '
-BEGIN {
-	last = 0;
-}
-/^[0-9]/ {
-	if ($1 > last + 1) {
-		if ($1 > last + 2) {
-			print last + 1, "-", $1 - 1;
-		} else {
-			print last + 1;
+my $oids = Catalog::FindAllOidsFromHeaders(@input_files);
+
+# Also push FirstBootstrapObjectId to serve as a terminator for the last gap.
+my $FirstBootstrapObjectId =
+  Catalog::FindDefinedSymbol('access/transam.h', '..',
+	'FirstBootstrapObjectId');
+push @{$oids}, $FirstBootstrapObjectId;
+
+my $prev_oid = 0;
+foreach my $oid (sort { $a <=> $b } @{$oids})
+{
+	if ($oid > $prev_oid + 1)
+	{
+		if ($oid > $prev_oid + 2)
+		{
+			printf "%d - %d\n", $prev_oid + 1, $oid - 1;
+		}
+		else
+		{
+			printf "%d\n", $prev_oid + 1;
 		}
 	}
-	last = $1;
+	$prev_oid = $oid;
 }
-END {
-	print last + 1, "-", ENVIRON["FIRSTOBJECTID"]-1;
-}'

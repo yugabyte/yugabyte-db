@@ -112,7 +112,7 @@ TEST_F(MultiThreadedRpcTest, TestShutdownDuringService) {
   for (int i = 0; i < kNumThreads; i++) {
     ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
       &MultiThreadedRpcTest::HammerServer, this, server_addr,
-      GenericCalculatorService::AddMethod(), &statuses[i], &threads[i]));
+      CalculatorServiceMethods::AddMethod(), &statuses[i], &threads[i]));
   }
 
   SleepFor(MonoDelta::FromMilliseconds(50));
@@ -138,7 +138,7 @@ TEST_F(MultiThreadedRpcTest, TestShutdownClientWhileCallsPending) {
   Status status;
   ASSERT_OK(yb::Thread::Create("test", "test",
       &MultiThreadedRpcTest::HammerServerWithMessenger, this, server_addr,
-      GenericCalculatorService::AddMethod(), &status, client_messenger, &thread));
+      CalculatorServiceMethods::AddMethod(), &status, client_messenger, &thread));
 
   // Shut down the messenger after a very brief sleep. This often will race so that the
   // call gets submitted to the messenger before shutdown, but the negotiation won't have
@@ -203,7 +203,7 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   for (int i = 0; i < 3; i++) {
     ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
       &MultiThreadedRpcTest::SingleCall, this, HostPort::FromBoundEndpoint(server_addr),
-      GenericCalculatorService::AddMethod(), &status[i], &latch, &threads[i]));
+      CalculatorServiceMethods::AddMethod(), &status[i], &latch, &threads[i]));
   }
 
   // One should immediately fail due to backpressure. The latch is only initialized
@@ -282,6 +282,54 @@ TEST_F(MultiThreadedRpcTest, TestShutdownWithIncomingConnections) {
 
   for (scoped_refptr<yb::Thread>& t : threads) {
     ASSERT_OK(ThreadJoiner(t.get()).warn_every(500ms).Join());
+  }
+}
+
+TEST_F(MultiThreadedRpcTest, MemoryLimit) {
+  constexpr size_t kMemoryLimit = 1;
+  auto read_buffer_tracker = MemTracker::FindOrCreateTracker(kMemoryLimit, "Read Buffer");
+
+  // Set up server.
+  HostPort server_addr;
+  StartTestServer(&server_addr);
+
+  LOG(INFO) << "Server " << server_addr;
+
+  std::atomic<bool> stop(false);
+  MessengerOptions options;
+  options.n_reactors = 1;
+  options.num_connections_to_server = 1;
+  Proxy proxy_for_big(CreateMessenger("Client for big", options), server_addr);
+  Proxy proxy_for_small(CreateMessenger("Client for small", options), server_addr);
+
+  std::vector<std::thread> threads;
+  while (threads.size() != 10) {
+    bool big_call = threads.size() == 0;
+    auto proxy = big_call ? &proxy_for_big : &proxy_for_small;
+    threads.emplace_back([proxy, server_addr, &stop, big_call] {
+      rpc_test::EchoRequestPB req;
+      req.set_data(std::string(big_call ? 5_MB : 5_KB, 'X'));
+      while (!stop.load(std::memory_order_acquire)) {
+        rpc_test::EchoResponsePB resp;
+        RpcController controller;
+        controller.set_timeout(500ms);
+        auto status = proxy->SyncRequest(
+            CalculatorServiceMethods::EchoMethod(), req, &resp, &controller);
+        if (big_call) {
+          ASSERT_NOK(status);
+        } else {
+          ASSERT_OK(status);
+        }
+      }
+    });
+  }
+
+  std::this_thread::sleep_for(10s);
+
+  stop.store(true, std::memory_order_release);
+
+  for (auto& thread : threads) {
+    thread.join();
   }
 }
 

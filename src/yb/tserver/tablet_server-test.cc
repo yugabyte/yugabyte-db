@@ -551,7 +551,7 @@ TEST_F(TabletServerTest, TestCreateTablet_TabletExists) {
   req.mutable_config()->CopyFrom(mini_server_->CreateLocalConfig());
 
   Schema schema = SchemaBuilder(schema_).Build();
-  ASSERT_OK(SchemaToPB(schema, req.mutable_schema()));
+  SchemaToPB(schema, req.mutable_schema());
 
   // Send the call
   {
@@ -760,7 +760,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   ASSERT_OK(server3.Init(*messenger));
 
   reg.Clear();
-  tbo.fs_opts.data_paths = { "/tmp" };
+  tbo.fs_opts.data_paths = { GetTestPath("fake-ts") };
   tbo.rpc_opts = opts3;
   YB_EDITION_NS_PREFIX TabletServer server(tbo);
 

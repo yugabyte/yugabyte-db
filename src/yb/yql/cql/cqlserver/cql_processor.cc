@@ -59,6 +59,16 @@ METRIC_DEFINE_histogram(
     "RPC requests",
     60000000LU, 2);
 
+METRIC_DEFINE_gauge_int64(server, cql_processors_alive,
+                          "Number of alive CQL Processors.",
+                          yb::MetricUnit::kUnits,
+                          "Number of alive CQL Processors.");
+
+METRIC_DEFINE_counter(server, cql_processors_created,
+                      "Number of created CQL Processors.",
+                      yb::MetricUnit::kUnits,
+                      "Number of created CQL Processors.");
+
 DECLARE_bool(use_cassandra_authentication);
 
 namespace yb {
@@ -115,6 +125,8 @@ CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)
       METRIC_handler_latency_yb_cqlserver_CQLServerService_Any.Instantiate(metric_entity);
   num_errors_parsing_cql_ =
       METRIC_yb_cqlserver_CQLServerService_ParsingErrors.Instantiate(metric_entity);
+  cql_processors_alive_ = METRIC_cql_processors_alive.Instantiate(metric_entity, 0);
+  cql_processors_created_ = METRIC_cql_processors_created.Instantiate(metric_entity);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -122,14 +134,17 @@ CQLProcessor::CQLProcessor(CQLServiceImpl* service_impl, const CQLProcessorListP
     : QLProcessor(service_impl->client(), service_impl->metadata_cache(),
                   service_impl->cql_metrics().get(),
                   service_impl->clock(),
-                  std::bind(&CQLServiceImpl::GetTransactionManager, service_impl)),
+                  std::bind(&CQLServiceImpl::GetTransactionPool, service_impl)),
       service_impl_(service_impl),
       cql_metrics_(service_impl->cql_metrics()),
       pos_(pos),
       statement_executed_cb_(Bind(&CQLProcessor::StatementExecuted, Unretained(this))) {
+  IncrementCounter(cql_metrics_->cql_processors_created_);
+  IncrementGauge(cql_metrics_->cql_processors_alive_);
 }
 
 CQLProcessor::~CQLProcessor() {
+  DecrementGauge(cql_metrics_->cql_processors_alive_);
 }
 
 void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
@@ -237,9 +252,7 @@ CQLResponse* CQLProcessor::ProcessRequest(const StartupRequest& req) {
     const auto it = kSupportedOptions.find(name);
     if (it == kSupportedOptions.end() ||
         std::find(it->second.begin(), it->second.end(), value) == it->second.end()) {
-      return new ErrorResponse(
-          req, ErrorResponse::Code::PROTOCOL_ERROR,
-          Substitute("Unsupported option $0 = $1", name, value));
+      YB_LOG_EVERY_N_SECS(WARNING, 60) << Format("Unsupported driver option $0 = $1", name, value);
     }
     if (name == CQLMessage::kCompressionOption) {
       auto& context = static_cast<CQLConnectionContext&>(call_->connection()->context());

@@ -92,7 +92,7 @@ MonoDelta MonoDelta::FromNanoseconds(int64_t ns) {
   return MonoDelta(ns);
 }
 
-MonoDelta::MonoDelta() : nano_delta_(kUninitialized) {
+MonoDelta::MonoDelta() noexcept : nano_delta_(kUninitialized) {
 }
 
 bool MonoDelta::Initialized() const {
@@ -123,7 +123,7 @@ bool MonoDelta::IsNegative() const {
 }
 
 std::string MonoDelta::ToString() const {
-  return StringPrintf("%.3fs", ToSeconds());
+  return Initialized() ? StringPrintf("%.3fs", ToSeconds()) : "<uninitialized>";
 }
 
 MonoDelta::MonoDelta(int64_t delta)
@@ -336,6 +336,14 @@ CoarseMonoClock::time_point CoarseMonoClock::now() {
   int64_t nanos = static_cast<int64_t>(ts.tv_sec) * MonoTime::kNanosecondsPerSecond + ts.tv_nsec;
 #endif // defined(__APPLE__)
   return time_point(duration(nanos));
+}
+
+std::string ToString(CoarseMonoClock::TimePoint time_point) {
+  return MonoDelta(time_point.time_since_epoch()).ToString();
+}
+
+CoarseTimePoint ToCoarse(MonoTime monotime) {
+  return CoarseTimePoint(monotime.ToSteadyTimePoint().time_since_epoch());
 }
 
 } // namespace yb

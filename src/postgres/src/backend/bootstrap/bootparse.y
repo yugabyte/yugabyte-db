@@ -4,7 +4,7 @@
  * bootparse.y
  *	  yacc grammar for the "bootstrap" mode (BKI file format)
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -31,6 +31,8 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/toasting.h"
 #include "commands/defrem.h"
@@ -51,6 +53,9 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
+#include "pg_yb_utils.h"
+#include "executor/ybcModifyTable.h"
+#include "bootstrap/ybcbootstrap.h"
 
 /*
  * Bison doesn't allocate anything that needs to live across parser calls,
@@ -104,28 +109,31 @@ static int num_columns_read = 0;
 {
 	List		*list;
 	IndexElem	*ielem;
+	IndexStmt	*istmt;  /* Used for YugaByte index/pkey clauses */
 	char		*str;
+	const char	*kw;
 	int			ival;
 	Oid			oidval;
 }
 
 %type <list>  boot_index_params
 %type <ielem> boot_index_param
+%type <istmt> Boot_YBIndex
 %type <str>   boot_ident
 %type <ival>  optbootstrap optsharedrelation optwithoutoids boot_column_nullness
 %type <oidval> oidspec optoideq optrowtypeoid
 
 %token <str> ID
-%token OPEN XCLOSE XCREATE INSERT_TUPLE
-%token XDECLARE INDEX ON USING XBUILD INDICES UNIQUE XTOAST
 %token COMMA EQUALS LPAREN RPAREN
-%token OBJ_ID XBOOTSTRAP XSHARED_RELATION XWITHOUT_OIDS XROWTYPE_OID NULLVAL
-%token XFORCE XNOT XNULL
+/* NULLVAL is a reserved keyword */
+%token NULLVAL
+/* All the rest are unreserved, and should be handled in boot_ident! */
+%token <kw> OPEN XCLOSE XCREATE INSERT_TUPLE
+%token <kw> XDECLARE YBDECLARE INDEX ON USING XBUILD INDICES PRIMARY UNIQUE XTOAST
+%token <kw> OBJ_ID XBOOTSTRAP XSHARED_RELATION XWITHOUT_OIDS XROWTYPE_OID
+%token <kw> XFORCE XNOT XNULL
 
 %start TopLevel
-
-%nonassoc low
-%nonassoc high
 
 %%
 
@@ -146,6 +154,7 @@ Boot_Query :
 		| Boot_InsertStmt
 		| Boot_DeclareIndexStmt
 		| Boot_DeclareUniqueIndexStmt
+		| Boot_DeclarePrimaryIndexStmt
 		| Boot_DeclareToastStmt
 		| Boot_BuildIndsStmt
 		;
@@ -155,22 +164,60 @@ Boot_OpenStmt:
 				{
 					do_start();
 					boot_openrel($2);
+                    if (IsYugaByteEnabled())
+					{
+						/* Buffer the inserts into the table */
+						YBCStartBufferingWriteOperations();
+					}
 					do_end();
 				}
 		;
 
 Boot_CloseStmt:
-		  XCLOSE boot_ident %prec low
+		  XCLOSE boot_ident
 				{
 					do_start();
 					closerel($2);
+                    if (IsYugaByteEnabled())
+					{
+						/* End the buffering of inserts and flush them */
+						YBCFlushBufferedWriteOperations();
+					}
 					do_end();
 				}
-		| XCLOSE %prec high
+		;
+Boot_YBIndex:
+          /* EMPTY */ { $$ = NULL; }
+          | YBDECLARE PRIMARY INDEX boot_ident oidspec ON boot_ident USING boot_ident
+            LPAREN boot_index_params RPAREN
 				{
+					IndexStmt *stmt = makeNode(IndexStmt);
+
 					do_start();
-					closerel(NULL);
+
+					stmt->idxname = $4;
+					stmt->relation = makeRangeVar(NULL, $7, -1);
+					stmt->accessMethod = $9;
+					stmt->tableSpace = NULL;
+					stmt->indexParams = $11;
+					stmt->options = NIL;
+					stmt->whereClause = NULL;
+					stmt->excludeOpNames = NIL;
+					stmt->idxcomment = NULL;
+					stmt->indexOid = $5;
+					stmt->oldNode = InvalidOid;
+					stmt->unique = true;
+					stmt->primary = true;
+					stmt->isconstraint = false;
+					stmt->deferrable = false;
+					stmt->initdeferred = false;
+					stmt->transformed = false;
+					stmt->concurrent = false;
+					stmt->if_not_exists = false;
+
 					do_end();
+
+					$$ = stmt;
 				}
 		;
 
@@ -189,7 +236,7 @@ Boot_CreateStmt:
 				{
 					do_end();
 				}
-		  RPAREN
+		  RPAREN Boot_YBIndex
 				{
 					TupleDesc tupdesc;
 					bool	shared_relation;
@@ -257,10 +304,30 @@ Boot_CreateStmt:
 													  false,
 													  true,
 													  false,
+													  InvalidOid,
 													  NULL);
 						elog(DEBUG4, "relation created with OID %u", id);
 					}
-					do_end();
+
+					if (IsYugaByteEnabled())
+					{
+						YBCCreateSysCatalogTable($2, $3, tupdesc, shared_relation, $13);
+
+						/*
+						 * Start buffering for pg_proc, pg_type, pg_attribute and pg_class
+						 * explicitly. They are not opened explicitly in the generated
+						 * postgres.bki so we need to start buffering here.
+						 */
+						if ($3 == ProcedureRelationId ||
+							$3 == TypeRelationId      ||
+							$3 == AttributeRelationId ||
+							$3 == RelationRelationId)
+						{
+							YBCStartBufferingWriteOperations();
+						}
+					}
+
+                    do_end();
 				}
 		;
 
@@ -292,6 +359,8 @@ Boot_DeclareIndexStmt:
 					IndexStmt *stmt = makeNode(IndexStmt);
 					Oid		relationId;
 
+					elog(DEBUG4, "creating index \"%s\"", $3);
+
 					do_start();
 
 					stmt->idxname = $3;
@@ -299,6 +368,7 @@ Boot_DeclareIndexStmt:
 					stmt->accessMethod = $8;
 					stmt->tableSpace = NULL;
 					stmt->indexParams = $10;
+					stmt->indexIncludingParams = NIL;
 					stmt->options = NIL;
 					stmt->whereClause = NULL;
 					stmt->excludeOpNames = NIL;
@@ -321,6 +391,8 @@ Boot_DeclareIndexStmt:
 					DefineIndex(relationId,
 								stmt,
 								$4,
+								InvalidOid,
+								InvalidOid,
 								false,
 								false,
 								false,
@@ -336,6 +408,8 @@ Boot_DeclareUniqueIndexStmt:
 					IndexStmt *stmt = makeNode(IndexStmt);
 					Oid		relationId;
 
+					elog(DEBUG4, "creating unique index \"%s\"", $4);
+
 					do_start();
 
 					stmt->idxname = $4;
@@ -343,6 +417,7 @@ Boot_DeclareUniqueIndexStmt:
 					stmt->accessMethod = $9;
 					stmt->tableSpace = NULL;
 					stmt->indexParams = $11;
+					stmt->indexIncludingParams = NIL;
 					stmt->options = NIL;
 					stmt->whereClause = NULL;
 					stmt->excludeOpNames = NIL;
@@ -365,6 +440,54 @@ Boot_DeclareUniqueIndexStmt:
 					DefineIndex(relationId,
 								stmt,
 								$5,
+								InvalidOid,
+								InvalidOid,
+								false,
+								false,
+								false,
+								true, /* skip_build */
+								false);
+					do_end();
+				}
+		;
+
+Boot_DeclarePrimaryIndexStmt:
+		  XDECLARE PRIMARY INDEX boot_ident oidspec ON boot_ident USING boot_ident LPAREN boot_index_params RPAREN
+				{
+					IndexStmt *stmt = makeNode(IndexStmt);
+					Oid		relationId;
+
+					do_start();
+
+					stmt->idxname = $4;
+					stmt->relation = makeRangeVar(NULL, $7, -1);
+					stmt->accessMethod = $9;
+					stmt->tableSpace = NULL;
+					stmt->indexParams = $11;
+					stmt->options = NIL;
+					stmt->whereClause = NULL;
+					stmt->excludeOpNames = NIL;
+					stmt->idxcomment = NULL;
+					stmt->indexOid = InvalidOid;
+					stmt->oldNode = InvalidOid;
+					stmt->unique = true;
+					stmt->primary = true;
+					stmt->isconstraint = false;
+					stmt->deferrable = false;
+					stmt->initdeferred = false;
+					stmt->transformed = false;
+					stmt->concurrent = false;
+					stmt->if_not_exists = false;
+
+					/* locks and races need not concern us in bootstrap mode */
+					relationId = RangeVarGetRelid(stmt->relation, NoLock,
+												  false);
+
+					DefineIndex(relationId,
+								stmt,
+								$5,
+								InvalidOid,
+								InvalidOid,
 								false,
 								false,
 								false,
@@ -377,6 +500,8 @@ Boot_DeclareUniqueIndexStmt:
 Boot_DeclareToastStmt:
 		  XDECLARE XTOAST oidspec oidspec ON boot_ident
 				{
+					elog(DEBUG4, "creating toast table for table \"%s\"", $6);
+
 					do_start();
 
 					BootstrapToastTable($6, $3, $4);
@@ -476,8 +601,29 @@ boot_column_val:
 			{ InsertOneNull(num_columns_read++); }
 		;
 
-boot_ident :
-		  ID	{ $$ = yylval.str; }
+boot_ident:
+		  ID			{ $$ = $1; }
+		| OPEN			{ $$ = pstrdup($1); }
+		| XCLOSE		{ $$ = pstrdup($1); }
+		| XCREATE		{ $$ = pstrdup($1); }
+		| INSERT_TUPLE	{ $$ = pstrdup($1); }
+		| XDECLARE		{ $$ = pstrdup($1); }
+		| YBDECLARE		{ $$ = pstrdup($1); }
+		| INDEX			{ $$ = pstrdup($1); }
+		| ON			{ $$ = pstrdup($1); }
+		| USING			{ $$ = pstrdup($1); }
+		| XBUILD		{ $$ = pstrdup($1); }
+		| INDICES		{ $$ = pstrdup($1); }
+		| UNIQUE		{ $$ = pstrdup($1); }
+		| XTOAST		{ $$ = pstrdup($1); }
+		| OBJ_ID		{ $$ = pstrdup($1); }
+		| XBOOTSTRAP	{ $$ = pstrdup($1); }
+		| XSHARED_RELATION	{ $$ = pstrdup($1); }
+		| XWITHOUT_OIDS	{ $$ = pstrdup($1); }
+		| XROWTYPE_OID	{ $$ = pstrdup($1); }
+		| XFORCE		{ $$ = pstrdup($1); }
+		| XNOT			{ $$ = pstrdup($1); }
+		| XNULL			{ $$ = pstrdup($1); }
 		;
 %%
 

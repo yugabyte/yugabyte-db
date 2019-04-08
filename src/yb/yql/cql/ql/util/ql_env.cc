@@ -18,6 +18,7 @@
 #include "yb/client/client.h"
 #include "yb/client/permissions.h"
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_pool.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
@@ -46,11 +47,11 @@ using client::YBTableName;
 QLEnv::QLEnv(shared_ptr<YBClient> client,
              shared_ptr<YBMetaDataCache> cache,
              const server::ClockPtr& clock,
-             TransactionManagerProvider transaction_manager_provider)
+             TransactionPoolProvider transaction_pool_provider)
     : client_(std::move(client)),
       metadata_cache_(std::move(cache)),
       clock_(std::move(clock)),
-      transaction_manager_provider_(std::move(transaction_manager_provider)) {
+      transaction_pool_provider_(std::move(transaction_pool_provider)) {
 }
 
 QLEnv::~QLEnv() {}
@@ -83,10 +84,14 @@ Result<YBTransactionPtr> QLEnv::NewTransaction(const YBTransactionPtr& transacti
     DCHECK(transaction->IsRestartRequired());
     return transaction->CreateRestartedTransaction();
   }
-  if (transaction_manager_ == nullptr) {
-    transaction_manager_ = transaction_manager_provider_();
+  if (transaction_pool_ == nullptr) {
+    if (transaction_pool_provider_) {
+      transaction_pool_ = transaction_pool_provider_();
+    } else {
+      return STATUS(InternalError, "No transaction pool provider");
+    }
   }
-  auto result = std::make_shared<YBTransaction>(transaction_manager_);
+  auto result = transaction_pool_->Take();
   RETURN_NOT_OK(result->Init(isolation_level));
   return result;
 }
@@ -165,8 +170,7 @@ Status QLEnv::GrantRevokePermission(GrantRevokeStatementType statement_type,
 
 //------------------------------------------------------------------------------------------------
 Status QLEnv::CreateKeyspace(const std::string& keyspace_name) {
-  return client_->CreateNamespace(keyspace_name, YQLDatabase::YQL_DATABASE_UNDEFINED,
-      CurrentRoleName());
+  return client_->CreateNamespace(keyspace_name, YQLDatabase::YQL_DATABASE_CQL, CurrentRoleName());
 }
 
 Status QLEnv::DeleteKeyspace(const string& keyspace_name) {

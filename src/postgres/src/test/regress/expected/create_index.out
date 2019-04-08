@@ -372,6 +372,12 @@ SELECT count(*) FROM radix_text_tbl WHERE t ~>~  'Worth                         
     48
 (1 row)
 
+SELECT count(*) FROM radix_text_tbl WHERE t ^@  'Worth';
+ count 
+-------
+     2
+(1 row)
+
 SELECT * FROM gpolygon_tbl ORDER BY f1 <-> '(0,0)'::point LIMIT 10;
                        f1                        
 -------------------------------------------------
@@ -1183,6 +1189,21 @@ SELECT count(*) FROM radix_text_tbl WHERE t ~>~  'Worth                         
 (1 row)
 
 EXPLAIN (COSTS OFF)
+SELECT count(*) FROM radix_text_tbl WHERE t ^@	 'Worth';
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Aggregate
+   ->  Index Only Scan using sp_radix_ind on radix_text_tbl
+         Index Cond: (t ^@ 'Worth'::text)
+(3 rows)
+
+SELECT count(*) FROM radix_text_tbl WHERE t ^@	 'Worth';
+ count 
+-------
+     2
+(1 row)
+
+EXPLAIN (COSTS OFF)
 SELECT * FROM gpolygon_tbl ORDER BY f1 <-> '(0,0)'::point LIMIT 10;
                      QUERY PLAN                      
 -----------------------------------------------------
@@ -1763,6 +1784,23 @@ SELECT count(*) FROM radix_text_tbl WHERE t ~>~  'Worth                         
     48
 (1 row)
 
+EXPLAIN (COSTS OFF)
+SELECT count(*) FROM radix_text_tbl WHERE t ^@	 'Worth';
+                   QUERY PLAN                   
+------------------------------------------------
+ Aggregate
+   ->  Bitmap Heap Scan on radix_text_tbl
+         Recheck Cond: (t ^@ 'Worth'::text)
+         ->  Bitmap Index Scan on sp_radix_ind
+               Index Cond: (t ^@ 'Worth'::text)
+(5 rows)
+
+SELECT count(*) FROM radix_text_tbl WHERE t ^@	 'Worth';
+ count 
+-------
+     2
+(1 row)
+
 RESET enable_seqscan;
 RESET enable_indexscan;
 RESET enable_bitmapscan;
@@ -2324,10 +2362,10 @@ DROP TABLE array_gin_test;
 CREATE INDEX gin_relopts_test ON array_index_op_test USING gin (i)
   WITH (FASTUPDATE=on, GIN_PENDING_LIST_LIMIT=128);
 \d+ gin_relopts_test
-     Index "public.gin_relopts_test"
- Column |  Type   | Definition | Storage 
---------+---------+------------+---------
- i      | integer | i          | plain
+                Index "public.gin_relopts_test"
+ Column |  Type   | Key? | Definition | Storage | Stats target 
+--------+---------+------+------------+---------+--------------
+ i      | integer | yes  | i          | plain   | 
 gin, for table "public.array_index_op_test"
 Options: fastupdate=on, gin_pending_list_limit=128
 
@@ -2337,7 +2375,7 @@ Options: fastupdate=on, gin_pending_list_limit=128
 CREATE INDEX hash_i4_index ON hash_i4_heap USING hash (random int4_ops);
 CREATE INDEX hash_name_index ON hash_name_heap USING hash (random name_ops);
 CREATE INDEX hash_txt_index ON hash_txt_heap USING hash (random text_ops);
-CREATE INDEX hash_f8_index ON hash_f8_heap USING hash (random float8_ops);
+CREATE INDEX hash_f8_index ON hash_f8_heap USING hash (random float8_ops) WITH (fillfactor=60);
 CREATE UNLOGGED TABLE unlogged_hash_table (id int4);
 CREATE INDEX unlogged_hash_index ON unlogged_hash_table USING hash (id int4_ops);
 DROP TABLE unlogged_hash_table;
@@ -2394,6 +2432,25 @@ ERROR:  duplicate key value violates unique constraint "func_index_index"
 DETAIL:  Key ((f1 || f2))=(ABCDEF) already exists.
 -- but this shouldn't:
 INSERT INTO func_index_heap VALUES('QWERTY');
+--
+-- Test unique index with included columns
+--
+CREATE TABLE covering_index_heap (f1 int, f2 int, f3 text);
+CREATE UNIQUE INDEX covering_index_index on covering_index_heap (f1,f2) INCLUDE(f3);
+INSERT INTO covering_index_heap VALUES(1,1,'AAA');
+INSERT INTO covering_index_heap VALUES(1,2,'AAA');
+-- this should fail because of unique index on f1,f2:
+INSERT INTO covering_index_heap VALUES(1,2,'BBB');
+ERROR:  duplicate key value violates unique constraint "covering_index_index"
+DETAIL:  Key (f1, f2)=(1, 2) already exists.
+-- and this shouldn't:
+INSERT INTO covering_index_heap VALUES(1,4,'AAA');
+-- Try to build index on table that already contains data
+CREATE UNIQUE INDEX covering_pkey on covering_index_heap (f1,f2) INCLUDE(f3);
+-- Try to use existing covering index as primary key
+ALTER TABLE covering_index_heap ADD CONSTRAINT covering_pkey PRIMARY KEY USING INDEX
+covering_pkey;
+DROP TABLE covering_index_heap;
 --
 -- Also try building functional, expressional, and partial indexes on
 -- tables that already contain data.
@@ -2525,11 +2582,11 @@ Indexes:
     "cwi_uniq_idx" PRIMARY KEY, btree (a, b)
 
 \d cwi_uniq_idx
-         Index "public.cwi_uniq_idx"
- Column |         Type          | Definition 
---------+-----------------------+------------
- a      | integer               | a
- b      | character varying(10) | b
+            Index "public.cwi_uniq_idx"
+ Column |         Type          | Key? | Definition 
+--------+-----------------------+------+------------
+ a      | integer               | yes  | a
+ b      | character varying(10) | yes  | b
 primary key, btree, for table "public.cwi_test"
 
 CREATE UNIQUE INDEX cwi_uniq2_idx ON cwi_test(b , a);
@@ -2548,16 +2605,22 @@ Indexes:
     "cwi_replaced_pkey" PRIMARY KEY, btree (b, a)
 
 \d cwi_replaced_pkey
-      Index "public.cwi_replaced_pkey"
- Column |         Type          | Definition 
---------+-----------------------+------------
- b      | character varying(10) | b
- a      | integer               | a
+          Index "public.cwi_replaced_pkey"
+ Column |         Type          | Key? | Definition 
+--------+-----------------------+------+------------
+ b      | character varying(10) | yes  | b
+ a      | integer               | yes  | a
 primary key, btree, for table "public.cwi_test"
 
 DROP INDEX cwi_replaced_pkey;	-- Should fail; a constraint depends on it
 ERROR:  cannot drop index cwi_replaced_pkey because constraint cwi_replaced_pkey on table cwi_test requires it
 HINT:  You can drop constraint cwi_replaced_pkey on table cwi_test instead.
+DROP TABLE cwi_test;
+-- ADD CONSTRAINT USING INDEX is forbidden on partitioned tables
+CREATE TABLE cwi_test(a int) PARTITION BY hash (a);
+create unique index on cwi_test (a);
+alter table cwi_test add primary key using index cwi_test_a_idx ;
+ERROR:  ALTER TABLE / ADD CONSTRAINT USING INDEX is not supported on partitioned tables
 DROP TABLE cwi_test;
 --
 -- Check handling of indexes on system columns
@@ -2989,6 +3052,16 @@ explain (costs off)
          Filter: (NOT b)
 (4 rows)
 
+--
+-- Test for multilevel page deletion
+--
+CREATE TABLE delete_test_table (a bigint, b bigint, c bigint, d bigint);
+INSERT INTO delete_test_table SELECT i, 1, 2, 3 FROM generate_series(1,80000) i;
+ALTER TABLE delete_test_table ADD PRIMARY KEY (a,b,c,d);
+DELETE FROM delete_test_table WHERE a > 40000;
+VACUUM delete_test_table;
+DELETE FROM delete_test_table WHERE a > 10;
+VACUUM delete_test_table;
 --
 -- REINDEX (VERBOSE)
 --

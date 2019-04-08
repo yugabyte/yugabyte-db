@@ -30,7 +30,7 @@ class PgDmlWrite : public PgDml {
   virtual ~PgDmlWrite();
 
   // Prepare write operations.
-  CHECKED_STATUS Prepare();
+  virtual CHECKED_STATUS Prepare();
 
   // Setup internal structures for binding values during prepare.
   void PrepareColumns();
@@ -38,13 +38,19 @@ class PgDmlWrite : public PgDml {
   // Execute.
   CHECKED_STATUS Exec();
 
+  void SetIsSystemCatalogChange() {
+    write_req_->set_is_ysql_catalog_change(true);
+  }
+
+  void SetCatalogCacheVersion(const uint64_t catalog_cache_version) override {
+    write_req_->set_ysql_catalog_version(catalog_cache_version);
+  }
+
  protected:
   // Constructor.
   PgDmlWrite(PgSession::ScopedRefPtr pg_session,
-             const char *database_name,
-             const char *schema_name,
-             const char *table_name,
-             StmtOp stmt_op);
+             const PgObjectId& table_id,
+             bool is_single_row_txn = false);
 
   // Allocate write request.
   virtual void AllocWriteRequest() = 0;
@@ -55,11 +61,16 @@ class PgDmlWrite : public PgDml {
   // Allocate target for selected or returned expressions.
   PgsqlExpressionPB *AllocTargetPB() override;
 
+  // Allocate column expression.
+  PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
+
   // Delete allocated target for columns that have no bind-values.
   CHECKED_STATUS DeleteEmptyPrimaryBinds();
 
   // Protobuf code.
   PgsqlWriteRequestPB *write_req_ = nullptr;
+
+  bool is_single_row_txn_ = false; // default.
 };
 
 }  // namespace pggate

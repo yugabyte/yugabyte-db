@@ -34,6 +34,7 @@ sys.path = [os.path.join(os.path.dirname(__file__), '..', 'python')] + sys.path
 
 from yb.linuxbrew import get_linuxbrew_dir
 
+CHECKSUM_FILE_NAME = 'thirdparty_src_checksums.txt'
 CLOUDFRONT_URL = 'http://d3dr9sfxru4sde.cloudfront.net/{}'
 
 
@@ -42,6 +43,39 @@ def hashsum_file(hash, filename, block_size=65536):
         for block in iter(lambda: f.read(block_size), b""):
             hash.update(block)
     return hash.hexdigest()
+
+
+def indent_lines(s, num_spaces=4):
+    if s is None:
+        return s
+    return "\n".join([
+        ' ' * num_spaces + line for line in s.split("\n")
+    ])
+
+
+def get_make_parallelism():
+    return int(os.environ.get('YB_MAKE_PARALLELISM', multiprocessing.cpu_count()))
+
+
+# This is the equivalent of shutil.which in Python 3.
+def where_is_program(program_name):
+    path = os.getenv('PATH')
+    for path_dir in path.split(os.path.pathsep):
+        full_path = os.path.join(path_dir, program_name)
+        if os.path.exists(full_path) and os.access(full_path, os.X_OK):
+            return full_path
+
+
+g_is_ninja_available = None
+def is_ninja_available():
+    global g_is_ninja_available
+    if g_is_ninja_available is None:
+        g_is_ninja_available = bool(where_is_program('ninja'))
+    return g_is_ninja_available
+
+
+def compute_file_sha256(path):
+    return hashsum_file(hashlib.sha256(), path)
 
 
 class Builder:
@@ -68,17 +102,9 @@ class Builder:
             build_definitions.rapidjson.RapidJsonDependency(),
             build_definitions.squeasel.SqueaselDependency(),
             build_definitions.curl.CurlDependency(),
-            build_definitions.hiredis.HiRedisDependency()]
-
-        if is_linux():
-            self.dependencies += [
-                build_definitions.nvml.NVMLDependency()
-            ]
-
-        self.dependencies += [
+            build_definitions.hiredis.HiRedisDependency(),
             build_definitions.cqlsh.CQLShDependency(),
             build_definitions.redis_cli.RedisCliDependency(),
-            build_definitions.psql.PSQLDependency()
         ]
 
         if is_linux():
@@ -87,14 +113,13 @@ class Builder:
                 build_definitions.libcxx.LibCXXDependency(),
 
                 build_definitions.libunwind.LibUnwindDependency(),
-                build_definitions.libbacktrace.LibBacktraceDependency()
+                build_definitions.libbacktrace.LibBacktraceDependency(),
+                build_definitions.include_what_you_use.IncludeWhatYouUseDependency()
             ]
 
         self.dependencies += [
             build_definitions.protobuf.ProtobufDependency(),
             build_definitions.crypt_blowfish.CryptBlowfishDependency(),
-            build_definitions.tacopie.TacopieDependency(),
-            build_definitions.cpp_redis.CppRedisDependency(),
             build_definitions.boost.BoostDependency(),
 
             build_definitions.gflags.GFlagsDependency(),
@@ -143,7 +168,16 @@ class Builder:
                             const=True,
                             default=False,
                             help='Clean.')
-        parser.add_argument('dependencies', nargs=argparse.REMAINDER, help='Dependencies to build.')
+        parser.add_argument('--add_checksum',
+                            help='Compute and add unknown checksums to %s' % CHECKSUM_FILE_NAME,
+                            action='store_true')
+        parser.add_argument('dependencies',
+            nargs=argparse.REMAINDER, help='Dependencies to build.')
+        parser.add_argument('-j', '--make-parallelism',
+                            help='How many cores should the build use. This is passed to '
+                                 'Make/Ninja child processes. This can also be specified using the '
+                                 'YB_MAKE_PARALLELISM environment variable.',
+                            type=int)
         self.args = parser.parse_args()
 
         if self.args.dependencies:
@@ -157,6 +191,8 @@ class Builder:
         else:
             self.selected_dependencies = self.dependencies
 
+        if self.args.make_parallelism:
+            os.environ['YB_MAKE_PARALLELISM'] = str(self.args.make_parallelism)
 
     def run(self):
         self.set_compiler('gcc')
@@ -171,7 +207,6 @@ class Builder:
         if is_linux():
             self.build(BUILD_TYPE_ASAN)
             self.build(BUILD_TYPE_TSAN)
-
 
     def find_compiler_by_type(self, compiler_type):
         compilers = None
@@ -264,6 +299,9 @@ class Builder:
         download_url = dep.download_url
         if download_url is None:
             download_url = CLOUDFRONT_URL.format(dep.archive_name)
+            log("Using legacy download URL: {} (we should consider moving this to GitHub)".format(
+                download_url))
+
         archive_path = self.archive_path(dep)
 
         remove_path(src_path)
@@ -295,6 +333,7 @@ class Builder:
         if hasattr(dep, 'patches'):
             with PushDir(src_path):
                 for patch in dep.patches:
+                    log("Applying patch: {}".format(patch))
                     process = subprocess.Popen(['patch', '-p{}'.format(dep.patch_strip)],
                                                stdin=subprocess.PIPE)
                     with open(os.path.join(self.tp_dir, 'patches', patch), 'rt') as inp:
@@ -320,8 +359,11 @@ class Builder:
     def source_path(self, dep):
         return os.path.join(self.tp_src_dir, dep.dir)
 
+    def get_checksum_file(self):
+        return os.path.join(self.tp_dir, CHECKSUM_FILE_NAME)
+
     def load_expected_checksums(self):
-        checksum_file = os.path.join(self.tp_dir, 'thirdparty_src_checksums.txt')
+        checksum_file = self.get_checksum_file()
         if not os.path.exists(checksum_file):
             fatal("Expected checksum file not found at {}".format(checksum_file))
 
@@ -329,7 +371,7 @@ class Builder:
         with open(checksum_file, 'rt') as inp:
             for line in inp:
                 line = line.strip()
-                if not line:
+                if not line or line.startswith('#'):
                     continue
                 sum, fname = line.split(None, 1)
                 if not re.match('^[0-9a-f]{64}$', sum):
@@ -338,8 +380,22 @@ class Builder:
                                   .format(sum, fname, checksum_file))
                 self.filename2checksum[fname] = sum
 
-    def get_expected_checksum(self, filename):
+    def get_expected_checksum(self, filename, downloaded_path):
         if filename not in self.filename2checksum:
+            if self.args.add_checksum:
+                checksum_file = self.get_checksum_file()
+                with open(checksum_file, 'rt') as inp:
+                    lines = inp.readlines()
+                lines = [line.rstrip() for line in lines]
+                checksum = compute_file_sha256(downloaded_path)
+                lines.append("%s  %s" % (checksum, filename))
+                with open(checksum_file, 'wt') as out:
+                    for line in lines:
+                        out.write(line + "\n")
+                self.filename2checksum[filename] = checksum
+                log("Added checksum for {} to {}: {}".format(filename, checksum_file, checksum))
+                return checksum
+
             fatal("No expected checksum provided for {}".format(filename))
         return self.filename2checksum[filename]
 
@@ -352,7 +408,7 @@ class Builder:
             # We check the filename against our checksum map only if the file exists. This is done
             # so that we would still download the file even if we don't know the checksum, making it
             # easier to add new third-party dependencies.
-            expected_checksum = self.get_expected_checksum(filename)
+            expected_checksum = self.get_expected_checksum(filename, downloaded_path=path)
             if self.verify_checksum(path, expected_checksum):
                 log("No need to re-download {}: checksum already correct".format(filename))
                 return
@@ -367,13 +423,11 @@ class Builder:
             subprocess.check_call([self.curl_path, '-o', path, '--location', url])
         if not os.path.exists(path):
             fatal("Downloaded '{}' but but unable to find '{}'".format(url, path))
-        if filename not in self.filename2checksum:
-            fatal("No expected checksum provided for {}".format(filename))
-        expected_checksum = self.get_expected_checksum(filename)
+        expected_checksum = self.get_expected_checksum(filename, downloaded_path=path)
         if not self.verify_checksum(path, expected_checksum):
             fatal("File '{}' has wrong checksum after downloading from '{}'. "
                           "Has {}, but expected: {}"
-                          .format(path, url, hashsum_file(hashlib.sha256(), path),
+                          .format(path, url, compute_file_sha256(path),
                                   expected_checksum))
 
     def verify_checksum(self, filename, expected_checksum):
@@ -388,7 +442,7 @@ class Builder:
             if filename.endswith(ext):
                 with PushDir(out_dir):
                     cmd = ARCHIVE_TYPES[ext].format(filename)
-                    log("Extracting: {}".format(cmd))
+                    log("Extracting: {} (directory: {})".format(cmd, out_dir))
                     subprocess.check_call(cmd, shell=True)
                     return
         fatal("Unknown archive type for: {}".format(filename))
@@ -444,6 +498,8 @@ class Builder:
             self.libs += ["-lc++", "-lc++abi"]
         else:
             fatal("Unsupported platform: {}".format(platform.system()))
+        # The C++ standard must match CMAKE_CXX_STANDARD our top-level CMakeLists.txt.
+        self.cxx_flags.append('-std=c++14')
 
     def add_linuxbrew_flags(self):
         if self.using_linuxbrew:
@@ -474,14 +530,18 @@ class Builder:
         if extra_args is not None:
             args += extra_args
         log_output(log_prefix, args)
-        jobs = kwargs['jobs'] if 'jobs' in kwargs else multiprocessing.cpu_count()
+        jobs = kwargs['jobs'] if 'jobs' in kwargs else get_make_parallelism()
         log_output(log_prefix, ['make', '-j{}'.format(jobs)])
         if 'install' not in kwargs or kwargs['install']:
             log_output(log_prefix, ['make', 'install'])
 
-    def build_with_cmake(self, dep, extra_args=None, **kwargs):
-        log("Building dependency {} using CMake with arguments: {}".format(
-            dep, extra_args))
+    def build_with_cmake(self, dep, extra_args=None, use_ninja=False, **kwargs):
+        if use_ninja == 'auto':
+            use_ninja = is_ninja_available()
+            log('Ninja is {}'.format('available' if use_ninja else 'unavailable'))
+
+        log("Building dependency {} using CMake with arguments: {}, use_ninja={}".format(
+            dep, extra_args, use_ninja))
         log_prefix = self.log_prefix(dep)
         os.environ["YB_REMOTE_COMPILATION"] = "0"
 
@@ -492,12 +552,20 @@ class Builder:
         if 'src_dir' in kwargs:
             src_dir = os.path.join(src_dir, kwargs['src_dir'])
         args = ['cmake', src_dir]
+        if use_ninja:
+            args += ['-G', 'Ninja']
         if extra_args is not None:
             args += extra_args
+
         log_output(log_prefix, args)
-        log_output(log_prefix, ['make', '-j{}'.format(multiprocessing.cpu_count())])
+
+        build_tool = 'ninja' if use_ninja else 'make'
+        build_tool_cmd = [build_tool, '-j{}'.format(get_make_parallelism())]
+
+        log_output(log_prefix, build_tool_cmd)
+
         if 'install' not in kwargs or kwargs['install']:
-            log_output(log_prefix, ['make', 'install'])
+            log_output(log_prefix, [build_tool, 'install'])
 
     def build(self, type):
         if type != BUILD_TYPE_COMMON and self.args.build_type is not None:
@@ -556,7 +624,8 @@ class Builder:
             self.compiler_flags.append('--gcc-toolchain={}'.format(self.linuxbrew_dir))
 
     def build_dependency(self, dep):
-        if self.args.build_type == BUILD_TYPE_UNINSTRUMENTED and dep.name in ['llvm', 'libcxx']:
+        if self.args.build_type == BUILD_TYPE_UNINSTRUMENTED and \
+           dep.name in ['llvm', 'libcxx', 'include-what-you-use']:
             return
         if not self.should_rebuild_dependency(dep):
             return
@@ -592,14 +661,22 @@ class Builder:
 
         new_build_stamp = self.get_build_stamp_for_dependency(dep)
 
+        if dep.dir is not None:
+            src_dir = self.source_path(dep)
+            if not os.path.exists(src_dir):
+                log("Have to rebuild {} ({}): source dir {} does not exist".format(
+                    dep.name, self.build_type, src_dir
+                ))
+                return True
+
         if old_build_stamp == new_build_stamp:
             log("Not rebuilding {} ({}) -- nothing changed.".format(dep.name, self.build_type))
             return False
         else:
             log("Have to rebuild {} ({}):".format(dep.name, self.build_type))
-            log("Old build stamp for {}: {} (from {})".format(
-                    dep.name, old_build_stamp, stamp_path))
-            log("New build stamp for {}: {}".format(dep.name, new_build_stamp))
+            log("Old build stamp for {} (from {}):\n{}".format(
+                    dep.name, stamp_path, indent_lines(old_build_stamp)))
+            log("New build stamp for {}:\n{}".format(dep.name, indent_lines(new_build_stamp)))
             return True
 
     def get_build_stamp_path_for_dependency(self, dep):
@@ -623,16 +700,21 @@ class Builder:
         with PushDir(self.tp_dir):
             git_commit_sha1 = subprocess.check_output(
                     ['git', 'log', '--pretty=%H', '-n', '1'] + input_files_for_stamp).strip()
-            git_diff = subprocess.check_output(['git', 'diff'] + input_files_for_stamp)
-            git_diff_sha256 = hashlib.sha256(git_diff).hexdigest()
-            return 'git_commit_sha1={}\ngit_diff_sha256={}\n'.format(git_commit_sha1,
-                                                                     git_diff_sha256)
+            build_stamp = 'git_commit_sha1={}\n'.format(git_commit_sha1)
+            for git_extra_args in ([], ['--cached']):
+                git_diff = subprocess.check_output(
+                    ['git', 'diff'] + git_extra_args + input_files_for_stamp)
+                git_diff_sha256 = hashlib.sha256(git_diff).hexdigest()
+                build_stamp += 'git_diff_sha256{}={}\n'.format(
+                    '_'.join(git_extra_args).replace('--', '_'),
+                    git_diff_sha256)
+            return build_stamp
 
     def save_build_stamp_for_dependency(self, dep):
         stamp = self.get_build_stamp_for_dependency(dep)
         stamp_path = self.get_build_stamp_path_for_dependency(dep)
 
-        log("Saving new build stamp to '{}': {}".format(stamp_path, stamp))
+        log("Saving new build stamp to '{}':\n{}".format(stamp_path, indent_lines(stamp)))
         with open(stamp_path, "wt") as out:
             out.write(stamp)
 

@@ -71,6 +71,7 @@ class VersionEdit;
 class VersionSet;
 class Arena;
 class WriteCallback;
+class FileNumbersProvider;
 struct JobContext;
 struct ExternalSstFileInfo;
 
@@ -215,7 +216,9 @@ class DBImpl : public DB {
 
   UserFrontierPtr GetFlushedFrontier() override;
 
-  CHECKED_STATUS SetFlushedFrontier(UserFrontierPtr frontier) override;
+  CHECKED_STATUS ModifyFlushedFrontier(
+      UserFrontierPtr frontier,
+      FrontierModificationMode mode) override;
 
   bool HasSomethingToFlush() override;
 
@@ -341,6 +344,12 @@ class DBImpl : public DB {
   uint64_t TEST_GetLevel0TotalSize();
 
   int TEST_NumRunningLargeCompactions();
+
+  int TEST_NumTotalRunningCompactions();
+
+  int TEST_NumRunningFlushes();
+
+  int TEST_NumBackgroundCompactionsScheduled();
 
   void TEST_GetFilesMetaData(ColumnFamilyHandle* column_family,
                              std::vector<std::vector<FileMetaData>>* metadata);
@@ -533,31 +542,11 @@ class DBImpl : public DB {
   // Delete any unneeded files and stale in-memory entries.
   void DeleteObsoleteFiles();
 
-  // Background process needs to call
-  //     auto x = CaptureCurrentFileNumberInPendingOutputs()
-  //     auto file_num = versions_->NewFileNumber();
-  //     <do something>
-  //     ReleaseFileNumberFromPendingOutputs(x)
-  // This will protect any file with number `file_num` or greater from being
-  // deleted while <do something> is running.
-  // -----------
-  // This function will capture current file number and append it to
-  // pending_outputs_. This will prevent any background process to delete any
-  // file created after this point.
-  std::list<uint64_t>::iterator CaptureCurrentFileNumberInPendingOutputs();
-  // This function should be called with the result of
-  // CaptureCurrentFileNumberInPendingOutputs(). It then marks that any file
-  // created between the calls CaptureCurrentFileNumberInPendingOutputs() and
-  // ReleaseFileNumberFromPendingOutputs() can now be deleted (if it's not live
-  // and blocked by any other pending_outputs_ calls)
-  void ReleaseFileNumberFromPendingOutputs(std::list<uint64_t>::iterator v);
-
   // Flush the in-memory write buffer to storage.  Switches to a new
   // log-file/memtable and writes a new descriptor iff successful.
-  Status FlushMemTableToOutputFile(ColumnFamilyData* cfd,
-                                   const MutableCFOptions& mutable_cf_options,
-                                   bool* madeProgress, JobContext* job_context,
-                                   LogBuffer* log_buffer);
+  Result<FileNumbersHolder> FlushMemTableToOutputFile(
+      ColumnFamilyData* cfd, const MutableCFOptions& mutable_cf_options,
+      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer);
 
   // REQUIRES: log_numbers are sorted in ascending order
   Status RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
@@ -604,12 +593,13 @@ class DBImpl : public DB {
   static void BGWorkCompaction(void* arg);
   static void BGWorkFlush(void* db);
   static void UnscheduleCallback(void* arg);
+  void WaitAfterBackgroundError(const Status& s, const char* job_name, LogBuffer* log_buffer);
   void BackgroundCallCompaction(void* arg);
   void BackgroundCallFlush();
-  Status BackgroundCompaction(bool* madeProgress, JobContext* job_context,
-                              LogBuffer* log_buffer, void* m = 0);
-  Status BackgroundFlush(bool* madeProgress, JobContext* job_context,
-                         LogBuffer* log_buffer);
+  Result<FileNumbersHolder> BackgroundCompaction(
+      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, void* m = 0);
+  Result<FileNumbersHolder> BackgroundFlush(
+      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer);
 
   // Yugabyte: This updates the stats object to show
   // total SST file size ticker.
@@ -794,16 +784,24 @@ class DBImpl : public DB {
 
   SnapshotList snapshots_;
 
-  // For each background job, pending_outputs_ keeps the current file number at
-  // the time that background job started.
-  // FindObsoleteFiles()/PurgeObsoleteFiles() never deletes any file that has
-  // number bigger than any of the file number in pending_outputs_. Since file
-  // numbers grow monotonically, this also means that pending_outputs_ is always
-  // sorted. After a background job is done executing, its file number is
+  // For each background job, pending_outputs_ keeps the file number being written by that job.
+  // FindObsoleteFiles()/PurgeObsoleteFiles() never deletes any file that is present in
+  // pending_outputs_. After a background job is done executing, its file number is
   // deleted from pending_outputs_, which allows PurgeObsoleteFiles() to clean
   // it up.
-  // State is protected with db mutex.
-  std::list<uint64_t> pending_outputs_;
+  //
+  // Background job needs to call
+  //   {
+  //     auto file_num_holder = pending_outputs_->NewFileNumber();
+  //     auto file_num = *file_num_holder;
+  //     <do something>
+  //   }
+  // This will protect file with number `file_num` from being deleted while <do something> is
+  // running. NewFileNumber() will allocate new file number and append it to pending_outputs_.
+  // This will prevent any background process to delete this file. File number will be
+  // automatically removed from pending_outputs_ when file_num_holder is released on exit outside
+  // of the scope.
+  std::unique_ptr<FileNumbersProvider> pending_outputs_;
 
   // flush_queue_ and compaction_queue_ hold column families that we need to
   // flush and compact, respectively.

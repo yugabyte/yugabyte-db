@@ -19,6 +19,13 @@ script_name=${script_name%.*}
 
 . "${BASH_SOURCE%/*}"/build-support/common-test-env.sh
 
+ensure_option_has_arg() {
+  if [[ $# -lt 2 ]]; then
+    echo "Command line option $1 expects an argument" >&2
+    exit 1
+  fi
+}
+
 show_help() {
   cat >&2 <<-EOT
 yb_build.sh (or "ybd") is the main build tool for YugaByte Database.
@@ -98,8 +105,6 @@ Options:
     about the build root, compiler used, etc.
   --force, -f, -y
     Run a clean build without asking for confirmation even if a clean build was recently done.
-  --with-assembly
-    Build the java code with assembly (basically builds the yb-sample-apps.jar as well)
   -j <parallelism>, -j<parallelism>
     Build using the given number of concurrent jobs (defaults to the number of CPUs).
   --remote
@@ -170,11 +175,12 @@ Options:
   --sanitizers-enable-coredump
     When running tests with LLVM sanitizers (ASAN/TSAN/etc.), enable core dump.
   --extra-daemon-flags <extra_daemon_flags>
-    Extra flags to pass to mini-cluster daemons (master/tserver). Currently only used in Java
-    tests. Note that bash-style quoting won't work here right now -- they are naively split on
-    spaces.
+    Extra flags to pass to mini-cluster daemons (master/tserver). Note that bash-style quoting won't
+    work here -- they are naively split on spaces.
   --no-latest-symlink
     Disable the creation/overwriting of the "latest" symlink in the build directory.
+  --static-analyzer
+    Enable Clang static analyzer
   --
     Pass all arguments after -- to repeat_unit_test.
 
@@ -368,6 +374,9 @@ run_cxx_build() {
     log_empty_line
   fi
 
+  fix_gtest_cxx_test_name
+  set_vars_for_cxx_test
+
   log "Running $make_program in $PWD"
   capture_sec_timestamp "make_start"
   set +u +e  # "set -u" may cause failures on empty lists
@@ -514,10 +523,20 @@ run_cxx_test() {
   fi
 }
 
+register_file_to_rebuild() {
+  expect_num_args 1 "$@"
+  local file_name=${1%.o}
+  object_files_to_delete+=(
+    "$file_name.o"
+    "$file_name.c.o"
+    "$file_name.cc.o"
+  )
+}
+
 cleanup() {
   local YB_BUILD_EXIT_CODE=$?
   print_report
-  return "$YB_BUILD_EXIT_CODE"
+  exit "$YB_BUILD_EXIT_CODE"
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -550,7 +569,6 @@ export YB_GTEST_FILTER=""
 repeat_unit_test_inherited_args=()
 forward_args_to_repeat_unit_test=false
 original_args=( "$@" )
-java_with_assembly=false
 user_mvn_opts=""
 java_only=false
 cmake_only=false
@@ -629,9 +647,6 @@ while [[ $# -gt 0 ]]; do
     --run-java-tests|--java-tests)
       run_java_tests=true
     ;;
-    --with-assembly)
-      java_with_assembly=true
-    ;;
     --static)
       YB_LINK=static
     ;;
@@ -681,18 +696,26 @@ while [[ $# -gt 0 ]]; do
     --skip-test-existence-check|--no-test-existence-check|--ntec) test_existence_check=false ;;
     --skip-check-test-existence|--no-check-test-existence|--ncte) test_existence_check=false ;;
     --gtest-filter)
+      ensure_option_has_arg "$@"
       export YB_GTEST_FILTER=$2
       shift
     ;;
+    # Support the way of argument passing that is used for gtest test programs themselves.
+    --gtest-filter=*)
+      export YB_GTEST_FILTER=${2#--gtest-filter=}
+    ;;
     --rebuild-file)
-      object_files_to_delete+=( "$2.o" "$2.cc.o" )
+      ensure_option_has_arg "$@"
+      register_file_to_rebuild "$2"
       shift
     ;;
     --test-args)
+      ensure_option_has_arg "$@"
       export YB_EXTRA_GTEST_FLAGS+=" $2"
       shift
     ;;
     --rebuild-target)
+      ensure_option_has_arg "$@"
       object_files_to_delete+=( "$2.o" "$2.cc.o" )
       make_targets=( "$2" )
       shift
@@ -708,6 +731,7 @@ while [[ $# -gt 0 ]]; do
       java_only=true
     ;;
     --num-repetitions|--num-reps|-n)
+      ensure_option_has_arg "$@"
       num_test_repetitions=$2
       shift
       if [[ ! $num_test_repetitions =~ ^[0-9]+$ ]]; then
@@ -715,15 +739,18 @@ while [[ $# -gt 0 ]]; do
       fi
     ;;
     --write-build-descriptor)
+      ensure_option_has_arg "$@"
       build_descriptor_path=$2
       shift
     ;;
     --thirdparty-dir)
+      ensure_option_has_arg "$@"
       export YB_THIRDPARTY_DIR=$2
       shift
       validate_thirdparty_dir
     ;;
     -j)
+      ensure_option_has_arg "$@"
       export YB_MAKE_PARALLELISM=$2
       shift
     ;;
@@ -741,7 +768,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     --)
       if [[ $num_test_repetitions -lt 2 ]]; then
-        fatal "Forward to arguments to repeat_unit_test.sh without multiple repetitions"
+        fatal "Trying to forward arguments to repeat_unit_test.sh, but -n not specified, so" \
+              "we won't be repeating a test multiple times."
       fi
       forward_args_to_repeat_unit_test=true
     ;;
@@ -779,11 +807,13 @@ while [[ $# -gt 0 ]]; do
       export YB_EDITION=enterprise
     ;;
     --edition)
+      ensure_option_has_arg "$@"
       export YB_EDITION=$2
       validate_edition
       shift
     ;;
     --mvn-opts)
+      ensure_option_has_arg "$@"
       user_mvn_opts+=" $2"
       shift
     ;;
@@ -794,6 +824,7 @@ while [[ $# -gt 0 ]]; do
       export YB_USE_NINJA=0
     ;;
     --build-root)
+      ensure_option_has_arg "$@"
       predefined_build_root=$2
       shift
     ;;
@@ -805,6 +836,7 @@ while [[ $# -gt 0 ]]; do
       force_run_cmake=true
     ;;
     --cmake-args)
+      ensure_option_has_arg "$@"
       if [[ -n $cmake_extra_args ]]; then
         cmake_extra_args+=" "
       fi
@@ -812,6 +844,7 @@ while [[ $# -gt 0 ]]; do
       shift
     ;;
     --make-ninja-extra-args)
+      ensure_option_has_arg "$@"
       if [[ -n $make_ninja_extra_args ]]; then
         make_ninja_extra_args+=" "
       fi
@@ -819,10 +852,12 @@ while [[ $# -gt 0 ]]; do
       shift
     ;;
     --host-for-tests)
+      ensure_option_has_arg "$@"
       export YB_HOST_FOR_RUNNING_TESTS=$2
       shift
     ;;
     --test-timeout-sec)
+      ensure_option_has_arg "$@"
       export YB_TEST_TIMEOUT=$2
       if [[ ! $YB_TEST_TIMEOUT =~ ^[0-9]+$ ]]; then
         fatal "Invalid value for test timeout: '$YB_TEST_TIMEOUT'"
@@ -830,10 +865,12 @@ while [[ $# -gt 0 ]]; do
       shift
     ;;
     --sanitizer-extra-options|--extra-sanitizer-options)
+      ensure_option_has_arg "$@"
       export YB_SANITIZER_EXTRA_OPTIONS=$2
       shift
     ;;
     --sanitizer-verbosity)
+      ensure_option_has_arg "$@"
       YB_SANITIZER_EXTRA_OPTIONS=${YB_SANITIZER_EXTRA_OPTIONS:-}
       export YB_SANITIZER_EXTRA_OPTIONS+=" verbosity=$2"
       shift
@@ -842,6 +879,7 @@ while [[ $# -gt 0 ]]; do
       show_report=false
     ;;
     --tp|--test-parallelism)
+      ensure_option_has_arg "$@"
       test_parallelism=$2
       validate_numeric_arg_range "test-parallelism" "$test_parallelism" \
         "$MIN_REPEATED_TEST_PARALLELISM" "$MAX_REPEATED_TEST_PARALLELISM"
@@ -857,6 +895,7 @@ while [[ $# -gt 0 ]]; do
       export YB_STACK_TRACE_ON_ERROR_STATUS=1
     ;;
     --stack-trace-error-status-re|--stesr)
+      ensure_option_has_arg "$@"
       export YB_STACK_TRACE_ON_ERROR_STATUS_RE=$2
       shift
     ;;
@@ -880,6 +919,7 @@ while [[ $# -gt 0 ]]; do
       export YB_SANITIZERS_ENABLE_COREDUMP=1
     ;;
     --extra-daemon-flags)
+      ensure_option_has_arg "$@"
       export YB_EXTRA_DAEMON_FLAGS=$2
       shift
     ;;
@@ -888,6 +928,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-latest-symlink)
       export YB_DISABLE_LATEST_SYMLINK=1
+    ;;
+    --static-analyzer)
+      export YB_ENABLE_STATIC_ANALYZER=1
     ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
@@ -908,6 +951,13 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+update_submodules
+
+if [[ -n $YB_GTEST_FILTER && -z $cxx_test_name ]]; then
+  test_name=${YB_GTEST_FILTER%%.*}
+  set_cxx_test_name "GTEST_${test_name,,}"
+fi
 
 set_use_ninja
 handle_predefined_build_root
@@ -1056,7 +1106,6 @@ if "$verbose"; then
 fi
 
 set_build_root
-set_vars_for_cxx_test
 
 validate_cmake_build_type "$cmake_build_type"
 
@@ -1121,6 +1170,8 @@ activate_virtualenv
 check_python_interpreter_versions
 check_python_script_syntax
 
+set_java_home
+
 if "$clean_thirdparty"; then
   log "Removing and re-building third-party dependencies (--clean-thirdparty specified)"
   (
@@ -1161,9 +1212,6 @@ if "$build_java"; then
   set_mvn_parameters
 
   java_build_opts=( install )
-  if ! "$java_with_assembly"; then
-    java_build_opts+=( -DskipAssembly )
-  fi
   java_build_opts+=( -DbinDir="$BUILD_ROOT/bin" )
 
   if ! "$run_java_tests" || should_run_java_test_methods_separately; then

@@ -4,7 +4,7 @@
  *	  Virtual file descriptor definitions.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/fd.h
@@ -22,7 +22,7 @@
  * Use them for all file activity...
  *
  *	File fd;
- *	fd = PathNameOpenFile("foo", O_RDONLY, 0600);
+ *	fd = PathNameOpenFile("foo", O_RDONLY);
  *
  *	AllocateFile();
  *	FreeFile();
@@ -46,13 +46,12 @@
  * FileSeek uses the standard UNIX lseek(2) flags.
  */
 
-typedef char *FileName;
-
 typedef int File;
 
 
 /* GUC parameter */
 extern PGDLLIMPORT int max_files_per_process;
+extern PGDLLIMPORT bool data_sync_retry;
 
 /*
  * This is private to fd.c, but exported for save/restore_backend_variables()
@@ -65,7 +64,8 @@ extern int	max_safe_fds;
  */
 
 /* Operations on virtual Files --- equivalent to Unix kernel file ops */
-extern File PathNameOpenFile(FileName fileName, int fileFlags, int fileMode);
+extern File PathNameOpenFile(const char *fileName, int fileFlags);
+extern File PathNameOpenFilePerm(const char *fileName, int fileFlags, mode_t fileMode);
 extern File OpenTemporaryFile(bool interXact);
 extern void FileClose(File file);
 extern int	FilePrefetch(File file, off_t offset, int amount, uint32 wait_event_info);
@@ -78,7 +78,15 @@ extern void FileWriteback(File file, off_t offset, off_t nbytes, uint32 wait_eve
 extern char *FilePathName(File file);
 extern int	FileGetRawDesc(File file);
 extern int	FileGetRawFlags(File file);
-extern int	FileGetRawMode(File file);
+extern mode_t FileGetRawMode(File file);
+
+/* Operations used for sharing named temporary files */
+extern File PathNameCreateTemporaryFile(const char *name, bool error_on_failure);
+extern File PathNameOpenTemporaryFile(const char *name);
+extern bool PathNameDeleteTemporaryFile(const char *name, bool error_on_failure);
+extern void PathNameCreateTemporaryDir(const char *base, const char *name);
+extern void PathNameDeleteTemporaryDir(const char *name);
+extern void TempTablespacePath(char *path, Oid tablespace);
 
 /* Operations that allow use of regular stdio --- USE WITH CAUTION */
 extern FILE *AllocateFile(const char *name, const char *mode);
@@ -96,11 +104,16 @@ extern struct dirent *ReadDirExtended(DIR *dir, const char *dirname,
 extern int	FreeDir(DIR *dir);
 
 /* Operations to allow use of a plain kernel FD, with automatic cleanup */
-extern int	OpenTransientFile(FileName fileName, int fileFlags, int fileMode);
+extern int	OpenTransientFile(const char *fileName, int fileFlags);
+extern int	OpenTransientFilePerm(const char *fileName, int fileFlags, mode_t fileMode);
 extern int	CloseTransientFile(int fd);
 
 /* If you've really really gotta have a plain kernel FD, use this */
-extern int	BasicOpenFile(FileName fileName, int fileFlags, int fileMode);
+extern int	BasicOpenFile(const char *fileName, int fileFlags);
+extern int	BasicOpenFilePerm(const char *fileName, int fileFlags, mode_t fileMode);
+
+ /* Make a directory with default permissions */
+extern int	MakePGDirectory(const char *directoryName);
 
 /* Miscellaneous support routines */
 extern void InitFileAccess(void);
@@ -108,11 +121,13 @@ extern void set_max_safe_fds(void);
 extern void closeAllVfds(void);
 extern void SetTempTablespaces(Oid *tableSpaces, int numSpaces);
 extern bool TempTablespacesAreSet(void);
+extern int	GetTempTablespaces(Oid *tableSpaces, int numSpaces);
 extern Oid	GetNextTempTableSpace(void);
-extern void AtEOXact_Files(void);
+extern void AtEOXact_Files(bool isCommit);
 extern void AtEOSubXact_Files(bool isCommit, SubTransactionId mySubid,
 				  SubTransactionId parentSubid);
 extern void RemovePgTempFiles(void);
+extern bool looks_like_temp_rel_name(const char *name);
 
 extern int	pg_fsync(int fd);
 extern int	pg_fsync_no_writethrough(int fd);
@@ -124,8 +139,9 @@ extern int	durable_rename(const char *oldfile, const char *newfile, int loglevel
 extern int	durable_unlink(const char *fname, int loglevel);
 extern int	durable_link_or_rename(const char *oldfile, const char *newfile, int loglevel);
 extern void SyncDataDirectory(void);
+extern int data_sync_elevel(int elevel);
 
-/* Filename components for OpenTemporaryFile */
+/* Filename components */
 #define PG_TEMP_FILES_DIR "pgsql_tmp"
 #define PG_TEMP_FILE_PREFIX "pgsql_tmp"
 

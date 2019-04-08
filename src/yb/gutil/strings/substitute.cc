@@ -80,6 +80,7 @@ int SubstitutedSize(GStringPiece format,
 char* SubstituteToBuffer(GStringPiece format,
                          const SubstituteArg* const* args_array,
                          char* target) {
+  CHECK_NOTNULL(target);
   for (int i = 0; i < format.size(); i++) {
     if (format[i] == '$') {
       if (ascii_isdigit(format[i+1])) {

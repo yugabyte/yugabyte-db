@@ -19,6 +19,9 @@
 
 using namespace std::literals;
 
+DEFINE_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
+             "Timeout used by transaction related RPCs in milliseconds.");
+
 namespace yb {
 
 const std::string kTransactionsTableName = "transactions";
@@ -42,6 +45,12 @@ Result<TransactionId> DoDecodeTransactionId(const Slice &slice, const bool check
 
 } // namespace
 
+TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)
+    : status(status_), status_time(status_time_) {
+  DCHECK(status == TransactionStatus::ABORTED || status_time.is_valid())
+      << "Status: " << status << ", status_time: " << status_time;
+}
+
 Result<TransactionId> FullyDecodeTransactionId(const Slice& slice) {
   return DoDecodeTransactionId(slice, true);
 }
@@ -62,7 +71,7 @@ Result<TransactionMetadata> TransactionMetadata::FromPB(const TransactionMetadat
     result.isolation = source.isolation();
     result.status_tablet = source.status_tablet();
     result.priority = source.priority();
-    result.start_time = HybridTime(source.start_hybrid_time());
+    result.DEPRECATED_start_time = HybridTime(source.deprecated_start_hybrid_time());
   }
   return result;
 }
@@ -73,7 +82,7 @@ void TransactionMetadata::ToPB(TransactionMetadataPB* dest) const {
     dest->set_isolation(isolation);
     dest->set_status_tablet(status_tablet);
     dest->set_priority(priority);
-    dest->set_start_hybrid_time(start_time.ToUint64());
+    dest->set_deprecated_start_hybrid_time(DEPRECATED_start_time.ToUint64());
   }
 }
 
@@ -82,18 +91,15 @@ bool operator==(const TransactionMetadata& lhs, const TransactionMetadata& rhs) 
          lhs.isolation == rhs.isolation &&
          lhs.status_tablet == rhs.status_tablet &&
          lhs.priority == rhs.priority &&
-         lhs.start_time == rhs.start_time;
+         lhs.DEPRECATED_start_time == rhs.DEPRECATED_start_time;
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata) {
-  return out << Format("{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 "
-                           "start_time: $4",
-                       metadata.transaction_id, IsolationLevel_Name(metadata.isolation),
-                       metadata.status_tablet, metadata.priority, metadata.start_time);
+  return out << metadata.ToString();
 }
 
 MonoDelta TransactionRpcTimeout() {
-  return 5s * kTimeMultiplier;
+  return FLAGS_transaction_rpc_timeout_ms * 1ms;
 }
 
 // TODO(dtxn) correct deadline should be calculated and propagated.

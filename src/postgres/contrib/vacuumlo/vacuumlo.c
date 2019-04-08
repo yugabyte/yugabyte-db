@@ -3,7 +3,7 @@
  * vacuumlo.c
  *	  This removes orphaned large objects from a database.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -21,7 +21,7 @@
 #include <termios.h>
 #endif
 
-#include "catalog/pg_class.h"
+#include "catalog/pg_class_d.h"
 
 #include "fe_utils/connect.h"
 #include "libpq-fe.h"

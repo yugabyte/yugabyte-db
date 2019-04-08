@@ -40,7 +40,7 @@ import "yb/consensus/metadata.proto";
 import "yb/tablet/metadata.proto";
 import "yb/tserver/tserver.proto";
 
-message AlterSchemaRequestPB {
+message ChangeMetadataRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 5;
 
@@ -48,17 +48,19 @@ message AlterSchemaRequestPB {
 
   // TODO: Replace with the table descriptor
   // (Schema, Column IDs, Column Attributes)
-  required SchemaPB schema = 2;
+  optional SchemaPB schema = 2;
 
   repeated IndexInfoPB indexes = 7;
 
-  required uint32 schema_version = 3;
+  optional uint32 schema_version = 3;
   optional string new_table_name = 4;
 
   optional fixed64 propagated_hybrid_time = 6;
+
+  optional tablet.TableInfoPB add_table = 8;
 }
 
-message AlterSchemaResponsePB {
+message ChangeMetadataResponsePB {
   optional TabletServerErrorPB error = 1;
 
   optional fixed64 propagated_hybrid_time = 2;
@@ -157,6 +159,7 @@ enum TSTabletManagerStatePB {
   MANAGER_SHUTDOWN = 3;
 }
 
+// TODO: rename this to FlushOrCompactTabletsRequestPB
 message FlushTabletsRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
@@ -165,6 +168,9 @@ message FlushTabletsRequestPB {
   repeated bytes tablet_ids = 2;
 
   optional fixed64 propagated_hybrid_time = 3;
+
+  // Whether we want to compact the tablets instead of flushing them.
+  optional bool is_compaction = 4;
 }
 
 message FlushTabletsResponsePB {
@@ -184,7 +190,7 @@ service TabletServerAdminService {
   rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
 
   // Alter a tablet's schema.
-  rpc AlterSchema(AlterSchemaRequestPB) returns (AlterSchemaResponsePB);
+  rpc AlterSchema(ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
 
   // Create a co-partitioned table in an existing tablet
   rpc CopartitionTable(CopartitionTableRequestPB) returns (CopartitionTableResponsePB);

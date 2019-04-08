@@ -42,9 +42,12 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
+
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/leader_lease.h"
+#include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -63,10 +66,7 @@ namespace consensus {
 class PeerProxyFactory;
 
 // The vote a peer has given.
-enum ElectionVote {
-  VOTE_DENIED = 0,
-  VOTE_GRANTED = 1,
-};
+YB_DEFINE_ENUM(ElectionVote, (kDenied)(kGranted)(kUnknown));
 
 // Simple class to count votes (in-memory, not persisted to disk).
 // This class is not thread safe and requires external synchronization.
@@ -85,12 +85,8 @@ class VoteCounter {
   // If an OK status is not returned, the value in 'is_duplicate' is undefined.
   CHECKED_STATUS RegisterVote(const std::string& voter_uuid, ElectionVote vote, bool* is_duplicate);
 
-  // Return whether the vote is decided yet.
-  bool IsDecided() const;
-
-  // Return decision iff IsDecided() returns true.
-  // If vote is not yet decided, returns Status::IllegalState().
-  CHECKED_STATUS GetDecision(ElectionVote* decision) const;
+  // If vote is not yet decided, returns ElectionVote::kUnknown.
+  ElectionVote GetDecision() const;
 
   // Return the total of "Yes" and "No" votes.
   int GetTotalVotesCounted() const;
@@ -117,37 +113,35 @@ class VoteCounter {
 
 // The result of a leader election.
 struct ElectionResult {
- public:
-  ElectionResult(ConsensusTerm election_term,
-                 ElectionVote decision,
-                 MonoTime old_leader_lease_expiration,
-                 MicrosTime old_leader_ht_lease_expiration);
+  explicit ElectionResult(PreElection preelection_, ConsensusTerm election_term_)
+      : preelection(preelection_), election_term(election_term_) {}
 
-  ElectionResult(ConsensusTerm election_term,
-                 ElectionVote decision,
-                 ConsensusTerm higher_term,
-                 const std::string& message);
+  bool decided() const {
+    return decision != ElectionVote::kUnknown;
+  }
+
+  // Whether this result is related to preelection.
+  const PreElection preelection;
+
+  // UUID of node that does not support preelections.
+  std::string preelections_not_supported_by_uuid;
 
   // Term the election was run for.
   const ConsensusTerm election_term;
 
   // The overall election GRANTED/DENIED decision of the configuration.
-  const ElectionVote decision;
+  ElectionVote decision = ElectionVote::kUnknown;
 
   // At least one voter had a higher term than the candidate.
-  const bool has_higher_term;
-  const ConsensusTerm higher_term;
+  boost::optional<ConsensusTerm> higher_term;
 
   // Human-readable explanation of the vote result, if any.
-  const std::string message;
+  std::string message;
 
-  const MonoTime old_leader_lease_expiration;
+  CoarseTimeLease old_leader_lease;
 
-  const MicrosTime old_leader_ht_lease_expiration;
+  PhysicalComponentLease old_leader_ht_lease;
 };
-
-class LeaderElection;
-typedef scoped_refptr<LeaderElection> LeaderElectionPtr;
 
 // Driver class to run a leader election.
 //
@@ -185,6 +179,7 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
                  const VoteRequestPB& request,
                  std::unique_ptr<VoteCounter> vote_counter,
                  MonoDelta timeout,
+                 PreElection preelection,
                  TEST_SuppressVoteRequest suppress_vote_request,
                  ElectionDecisionCallback decision_callback);
 
@@ -239,14 +234,14 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
   // All non-const fields are protected by 'lock_'.
   Lock lock_;
 
-  // The result returned by the ElectionDecisionCallback.
-  boost::optional<ElectionResult> result_;
-
   // Whether we have responded via the callback yet.
   bool has_responded_ = false;
 
   // Election request to send to voters.
   const VoteRequestPB request_;
+
+  // The result returned by the ElectionDecisionCallback.
+  ElectionResult result_;
 
   // Object to count the votes.
   const std::unique_ptr<VoteCounter> vote_counter_;
@@ -265,10 +260,6 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
 
   // Map of UUID -> VoterState.
   VoterStateMap voter_state_;
-
-  MonoTime old_leader_lease_expiration_;
-
-  MicrosTime old_leader_ht_lease_expiration_ = HybridTime::kMin.GetPhysicalValueMicros();
 };
 
 } // namespace consensus

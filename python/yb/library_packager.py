@@ -38,7 +38,7 @@ import subprocess
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from yb.command_util import run_program, mkdir_p  # nopep8
+from yb.command_util import run_program, mkdir_p, copy_deep  # nopep8
 from yb.linuxbrew import get_linuxbrew_dir  # nopep8
 from yb.common_util import get_thirdparty_dir, YB_SRC_ROOT, sorted_grouped_by, \
                            safe_path_join  # nopep8
@@ -223,6 +223,26 @@ class LibraryPackager:
         self.installed_dyn_linked_binaries.append(installed_binary_path)
         return installed_binary_path
 
+    def copy_file_or_tree(self, src_dir, src_rel_path, dest_dir):
+        """
+        Does recursive copy of <src_dir>/<src_rel_path> to <dest_dir>/<src_rel_path>. Expects
+        <dest_dir> to be already existing directory. If <src_dir>/<src_rel_path> is a symlink
+        it will be copied as a symlink with the same target.
+        """
+        if not os.path.isdir(dest_dir):
+            raise RuntimeError("Not a directory: '{}'".format(dest_dir))
+        src_path = os.path.join(src_dir, src_rel_path)
+        dst_path = os.path.join(dest_dir, src_rel_path)
+        src_is_link = os.path.islink(src_path)
+        if os.path.isdir(src_path) and not src_is_link:
+            shutil.copytree(src_path, dst_path)
+        else:
+            mkdir_p(os.path.dirname(dst_path))
+            if src_is_link:
+                os.symlink(os.readlink(src_path), dst_path)
+            else:
+                shutil.copy(src_path, dst_path)
+
     def find_elf_dependencies(self, elf_file_path):
         """
         Run ldd on the given ELF file and find libraries that it depends on. Also run patchelf and
@@ -339,6 +359,9 @@ class LibraryPackager:
                         dep_name, deps
                     ))
 
+        linuxbrew_dest_dir = os.path.join(self.dest_dir, 'linuxbrew')
+        linuxbrew_lib_dest_dir = os.path.join(linuxbrew_dest_dir, 'lib')
+
         for category, deps_in_category in sorted_grouped_by(all_deps,
                                                             lambda dep: dep.get_category()):
             logging.info("Found {} dependencies in category '{}':".format(
@@ -349,7 +372,10 @@ class LibraryPackager:
                 logging.info("    {} -> {}".format(
                     dep.name + ' ' * (max_name_len - len(dep.name)), dep.target))
 
-            category_dest_dir = os.path.join(dest_lib_dir, category)
+            if category == 'linuxbrew':
+                category_dest_dir = linuxbrew_lib_dest_dir
+            else:
+                category_dest_dir = os.path.join(dest_lib_dir, category)
             mkdir_p(category_dest_dir)
 
             for dep in deps_in_category:
@@ -357,8 +383,6 @@ class LibraryPackager:
                 if os.path.basename(dep.target) != dep.name:
                     symlink(os.path.basename(dep.target),
                             os.path.join(category_dest_dir, dep.name))
-
-        linuxbrew_lib_dest_dir = os.path.join(dest_lib_dir, 'linuxbrew')
 
         # Add libresolv and libnss_* libraries explicitly because they are loaded by glibc at
         # runtime and will not be discovered automatically using ldd.
@@ -384,19 +408,41 @@ class LibraryPackager:
             # Remove rpath (we will set it appropriately in post_install.sh).
             run_patchelf('--remove-rpath', installed_binary)
 
+        # Add other files used by glibc at runtime.
+        linuxbrew_glibc_real_path = os.path.normpath(
+            os.path.join(os.path.realpath(LINUXBREW_LDD_PATH), '..', '..'))
+        linuxbrew_glibc_rel_path = os.path.relpath(
+            linuxbrew_glibc_real_path, os.path.realpath(LINUXBREW_HOME))
+        for glibc_rel_path in [
+            'etc/ld.so.cache',
+            'etc/localtime',
+            'lib/locale/locale-archive',
+            'lib/gconv',
+            'libexec/getconf',
+            'share/locale',
+            'share/zoneinfo',
+        ]:
+            rel_path = os.path.join(linuxbrew_glibc_rel_path, glibc_rel_path)
+            src = os.path.join(LINUXBREW_HOME, rel_path)
+            dst = os.path.join(linuxbrew_dest_dir, rel_path)
+            copy_deep(src, dst, create_dst_dir=True)
+
         post_install_path = os.path.join(self.main_dest_bin_dir, 'post_install.sh')
         with open(post_install_path) as post_install_script_input:
             post_install_script = post_install_script_input.read()
 
         new_post_install_script = post_install_script
+        replacements = [("original_linuxbrew_path_to_patch", LINUXBREW_HOME)]
         for macro_var_name, list_of_binary_names in [
             ("main_elf_names_to_patch", main_elf_names_to_patch),
-            ("postgres_elf_names_to_patch", postgres_elf_names_to_patch)
+            ("postgres_elf_names_to_patch", postgres_elf_names_to_patch),
         ]:
+            replacements.append(
+                (macro_var_name, self.join_binary_names_for_bash(list_of_binary_names)))
+
+        for macro_var_name, value in replacements:
             new_post_install_script = new_post_install_script.replace(
-                '${%s}' % macro_var_name,
-                self.join_binary_names_for_bash(list_of_binary_names)
-            )
+                '${%s}' % macro_var_name, value)
 
         with open(post_install_path, 'w') as post_install_script_output:
             post_install_script_output.write(new_post_install_script)

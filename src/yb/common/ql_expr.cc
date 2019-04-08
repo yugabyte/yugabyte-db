@@ -175,7 +175,7 @@ CHECKED_STATUS QLExprExecutor::EvalCondition(const QLConditionPB& condition,
       if (!temp.Comparable(lower) || !temp.Comparable(upper)) {                                    \
         return STATUS(RuntimeError, "values not comparable");                                      \
       }                                                                                            \
-      result->set_bool_value(temp.value() >= lower.value() rel_op temp.value() <= upper.value());  \
+      result->set_bool_value(temp.value() op1 lower.value() rel_op temp.value() op2 upper.value());\
       return Status::OK();                                                                         \
   } while (false)
 
@@ -358,6 +358,9 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
     case PgsqlExpressionPB::ExprCase::kTscall:
       return EvalTSCall(ql_expr.tscall(), table_row, result);
 
+    case PgsqlExpressionPB::ExprCase::kCondition:
+      return EvalCondition(ql_expr.condition(), table_row, result);
+
     case PgsqlExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
     case PgsqlExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
     case PgsqlExpressionPB::ExprCase::kAliasId: FALLTHROUGH_INTENDED;
@@ -429,6 +432,196 @@ CHECKED_STATUS QLExprExecutor::ReadTSCallValue(const PgsqlBCallPB& ql_expr,
                                                QLValue *result) {
   result->SetNull();
   return STATUS(RuntimeError, "Only tablet server can execute this operator");
+}
+
+//--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
+                                             const QLTableRow::SharedPtrConst& table_row,
+                                             bool* result) {
+  QLValue result_pb;
+  RETURN_NOT_OK(EvalCondition(condition, table_row, &result_pb));
+  *result = result_pb.bool_value();
+  return Status::OK();
+}
+
+CHECKED_STATUS QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
+                                             const QLTableRow::SharedPtrConst& table_row,
+                                             QLValue *result) {
+#define QL_EVALUATE_RELATIONAL_OP(op)                                                              \
+  do {                                                                                             \
+    CHECK_EQ(operands.size(), 2);                                                                  \
+    QLValue left, right;                                                                           \
+    RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &left));                                    \
+    RETURN_NOT_OK(EvalExpr(operands.Get(1), table_row, &right));                                   \
+    if (!left.Comparable(right))                                                                   \
+      return STATUS(RuntimeError, "values not comparable");                                        \
+    result->set_bool_value(left.value() op right.value());                                         \
+    return Status::OK();                                                                           \
+  } while (false)
+
+#define QL_EVALUATE_BETWEEN(op1, op2, rel_op)                                                      \
+  do {                                                                                             \
+      CHECK_EQ(operands.size(), 3);                                                                \
+      QLValue lower, upper;                                                                        \
+      RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));                                  \
+      RETURN_NOT_OK(EvalExpr(operands.Get(1), table_row, &lower));                                 \
+      RETURN_NOT_OK(EvalExpr(operands.Get(2), table_row, &upper));                                 \
+      if (!temp.Comparable(lower) || !temp.Comparable(upper)) {                                    \
+        return STATUS(RuntimeError, "values not comparable");                                      \
+      }                                                                                            \
+      result->set_bool_value(temp.value() op1 lower.value() rel_op temp.value() op2 upper.value());\
+      return Status::OK();                                                                         \
+  } while (false)
+
+  QLValue temp;
+  const auto& operands = condition.operands();
+  switch (condition.op()) {
+    case QL_OP_NOT:
+      CHECK_EQ(operands.size(), 1);
+      CHECK_EQ(operands.Get(0).expr_case(), PgsqlExpressionPB::ExprCase::kCondition);
+      RETURN_NOT_OK(EvalCondition(operands.Get(0).condition(), table_row, &temp));
+      result->set_bool_value(!temp.bool_value());
+      return Status::OK();
+
+    case QL_OP_IS_NULL:
+      CHECK_EQ(operands.size(), 1);
+      RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
+      result->set_bool_value(temp.IsNull());
+      return Status::OK();
+
+    case QL_OP_IS_NOT_NULL:
+      CHECK_EQ(operands.size(), 1);
+      RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
+      result->set_bool_value(!temp.IsNull());
+      return Status::OK();
+
+    case QL_OP_IS_TRUE:
+      CHECK_EQ(operands.size(), 1);
+      RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
+      if (temp.type() != QLValue::InternalType::kBoolValue)
+        return STATUS(RuntimeError, "not a bool value");
+      result->set_bool_value(!temp.IsNull() && temp.bool_value());
+      return Status::OK();
+
+    case QL_OP_IS_FALSE: {
+      CHECK_EQ(operands.size(), 1);
+      RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &temp));
+      if (temp.type() != QLValue::InternalType::kBoolValue)
+        return STATUS(RuntimeError, "not a bool value");
+      result->set_bool_value(!temp.IsNull() && !temp.bool_value());
+      return Status::OK();
+    }
+
+    case QL_OP_EQUAL:
+      QL_EVALUATE_RELATIONAL_OP(==);
+
+    case QL_OP_LESS_THAN:
+      QL_EVALUATE_RELATIONAL_OP(<);                                                      // NOLINT
+
+    case QL_OP_LESS_THAN_EQUAL:
+      QL_EVALUATE_RELATIONAL_OP(<=);
+
+    case QL_OP_GREATER_THAN:
+      QL_EVALUATE_RELATIONAL_OP(>);                                                      // NOLINT
+
+    case QL_OP_GREATER_THAN_EQUAL:
+      QL_EVALUATE_RELATIONAL_OP(>=);
+
+    case QL_OP_NOT_EQUAL:
+      QL_EVALUATE_RELATIONAL_OP(!=);
+
+    case QL_OP_AND:
+      CHECK_GT(operands.size(), 0);
+      for (const auto &operand : operands) {
+        CHECK_EQ(operand.expr_case(), PgsqlExpressionPB::ExprCase::kCondition);
+        RETURN_NOT_OK(EvalCondition(operand.condition(), table_row, result));
+        if (!result->bool_value()) {
+          break;
+        }
+      }
+      return Status::OK();
+
+    case QL_OP_OR:
+      CHECK_GT(operands.size(), 0);
+      for (const auto &operand : operands) {
+        CHECK_EQ(operand.expr_case(), PgsqlExpressionPB::ExprCase::kCondition);
+        RETURN_NOT_OK(EvalCondition(operand.condition(), table_row, result));
+        if (result->bool_value()) {
+          break;
+        }
+      }
+      return Status::OK();
+
+    case QL_OP_BETWEEN:
+      QL_EVALUATE_BETWEEN(>=, <=, &&);
+
+    case QL_OP_NOT_BETWEEN:
+      QL_EVALUATE_BETWEEN(<, >, ||);
+
+      // When a row exists, the primary key columns are always populated in the row (value-map) by
+      // DocRowwiseIterator and only when it exists. Therefore, the row exists if and only if
+      // the row (value-map) is not empty.
+    case QL_OP_EXISTS:
+      result->set_bool_value(!table_row->IsEmpty());
+      return Status::OK();
+
+    case QL_OP_NOT_EXISTS:
+      result->set_bool_value(table_row->IsEmpty());
+      return Status::OK();
+
+    case QL_OP_IN: {
+      CHECK_EQ(operands.size(), 2);
+      QLValue left, right;
+      RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &left));
+      RETURN_NOT_OK(EvalExpr(operands.Get(1), table_row, &right));
+
+      result->set_bool_value(false);
+      for (const QLValuePB& elem : right.list_value().elems()) {
+        if (!Comparable(elem, left)) {
+          return STATUS(RuntimeError, "values not comparable");
+        }
+        if (elem == left) {
+          result->set_bool_value(true);
+          break;
+        }
+      }
+      return Status::OK();
+    }
+
+    case QL_OP_NOT_IN: {
+      CHECK_EQ(operands.size(), 2);
+      QLValue left, right;
+      RETURN_NOT_OK(EvalExpr(operands.Get(0), table_row, &left));
+      RETURN_NOT_OK(EvalExpr(operands.Get(1), table_row, &right));
+
+      result->set_bool_value(true);
+      for (const QLValuePB& elem : right.list_value().elems()) {
+        if (!Comparable(elem, left)) {
+          return STATUS(RuntimeError, "values not comparable");
+        }
+        if (elem == left) {
+          result->set_bool_value(false);
+          break;
+        }
+      }
+      return Status::OK();
+    }
+
+    case QL_OP_LIKE: FALLTHROUGH_INTENDED;
+    case QL_OP_NOT_LIKE:
+      LOG(ERROR) << "Internal error: illegal or unknown operator " << condition.op();
+      break;
+
+    case QL_OP_NOOP:
+      break;
+  }
+
+  result->SetNull();
+  return STATUS(RuntimeError, "Internal error: illegal or unknown operator");
+
+#undef QL_EVALUATE_RELATIONAL_OP
+#undef QL_EVALUATE_BETWEEN
 }
 
 //--------------------------------------------------------------------------------------------------

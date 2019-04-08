@@ -3,7 +3,7 @@
 #include "fmgr.h"
 #include "plpython.h"
 #include "plpy_typeio.h"
-#include "hstore.h"
+#include "hstore/hstore.h"
 
 PG_MODULE_MAGIC;
 
@@ -85,7 +85,7 @@ PG_FUNCTION_INFO_V1(hstore_to_plpython);
 Datum
 hstore_to_plpython(PG_FUNCTION_ARGS)
 {
-	HStore	   *in = PG_GETARG_HS(0);
+	HStore	   *in = PG_GETARG_HSTORE_P(0);
 	int			i;
 	int			count = HS_COUNT(in);
 	char	   *base = STRPTR(in);
@@ -93,6 +93,10 @@ hstore_to_plpython(PG_FUNCTION_ARGS)
 	PyObject   *dict;
 
 	dict = PyDict_New();
+	if (!dict)
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
 
 	for (i = 0; i < count; i++)
 	{

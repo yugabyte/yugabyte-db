@@ -119,6 +119,9 @@ class QLRowBlock {
   // Append rows data. Caller should ensure the column schemas are the same.
   static CHECKED_STATUS AppendRowsData(QLClient client, const std::string& src, std::string* dst);
 
+  // Return rows data of 0 (empty) rows.
+  static std::string ZeroRowsData(QLClient client);
+
  private:
   // Schema of the selected columns. (Note: this schema has no key column definitions)
   std::shared_ptr<Schema> schema_;

@@ -29,22 +29,30 @@
 
 #include "postgres.h"
 #include "miscadmin.h"
+#include "access/sysattr.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "catalog/pg_database.h"
 #include "utils/builtins.h"
 #include "catalog/pg_type.h"
+#include "catalog/catalog.h"
+#include "commands/dbcommands.h"
 
 #include "pg_yb_utils.h"
+#include "catalog/ybctype.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "common/pg_yb_common.h"
+
+#include "utils/resowner_private.h"
 
 YBCPgSession ybc_pg_session = NULL;
+
+uint64 yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 /** These values are lazily initialized based on corresponding environment variables. */
 int ybc_pg_double_write = -1;
 int ybc_disable_pg_locking = -1;
-int ybc_transactions_enabled = -1;
 
 YBCStatus ybc_commit_status = NULL;
 
@@ -52,32 +60,81 @@ bool
 IsYugaByteEnabled()
 {
 	/* We do not support Init/Bootstrap processing modes yet. */
-	return ybc_pg_session != NULL && IsNormalProcessingMode();
+	return ybc_pg_session != NULL;
+}
+
+void
+CheckIsYBSupportedRelation(Relation relation)
+{
+	const char relkind = relation->rd_rel->relkind;
+	CheckIsYBSupportedRelationByKind(relkind);
+}
+
+void
+CheckIsYBSupportedRelationByKind(char relkind)
+{
+	if (!(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
+		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("This feature is not supported in YugaByte.")));
 }
 
 bool
-IsYBSupportedTable(Oid relid)
+IsYBRelation(Relation relation)
 {
-	/* Support all tables except the template database and
-	 * all system tables (i.e. from system schemas) */
-	Relation relation = RelationIdGetRelation(relid);
-	char *schema = get_namespace_name(relation->rd_rel->relnamespace);
-	bool is_supported = MyDatabaseId != TemplateDbOid &&
-						strcmp(schema, "pg_catalog") != 0 &&
-						strcmp(schema, "information_schema") != 0 &&
-						strncmp(schema, "pg_toast", 8) != 0;
+	if (!IsYugaByteEnabled()) return false;
+
+	const char relkind = relation->rd_rel->relkind;
+
+	CheckIsYBSupportedRelationByKind(relkind);
+
+	/* Currently only support regular tables and indexes.
+	 * Temp tables and views are supported, but they are not YB relations. */
+	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX)
+				 && relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP;
+}
+
+bool
+IsYBRelationById(Oid relid)
+{
+	Relation relation     = RelationIdGetRelation(relid);
+	bool     is_supported = IsYBRelation(relation);
 	RelationClose(relation);
 	return is_supported;
 }
 
 bool
+YBNeedRetryAfterCacheRefresh(ErrorData *edata)
+{
+	// TODO Inspect error code to distinguish retryable errors.
+	return true;
+}
+
+AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation)
+{
+	return IsYBRelation(relation)
+	       ? YBFirstLowInvalidAttributeNumber
+	       : FirstLowInvalidHeapAttributeNumber;
+}
+
+AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
+{
+	Relation   relation = RelationIdGetRelation(relid);
+	AttrNumber attr_num = YBGetFirstLowInvalidAttributeNumber(relation);
+	RelationClose(relation);
+	return attr_num;
+}
+
+bool
 YBTransactionsEnabled()
 {
-	if (ybc_transactions_enabled == -1)
+	static int cached_value = -1;
+	if (cached_value == -1)
 	{
-		ybc_transactions_enabled = YBCIsEnvVarTrue("YB_PG_TRANSACTIONS_ENABLED");
+		cached_value = YBCIsEnvVarTrueWithDefault("YB_PG_TRANSACTIONS_ENABLED", true);
 	}
-	return IsYugaByteEnabled() && ybc_transactions_enabled;
+	return IsYugaByteEnabled() && cached_value;
 }
 
 void
@@ -88,11 +145,27 @@ YBReportFeatureUnsupported(const char *msg)
 			 errmsg("%s", msg)));
 }
 
+
+static bool
+YBShouldReportErrorStatus()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue("YB_PG_REPORT_ERROR_STATUS");
+	}
+
+	return cached_value;
+}
+
 void
 HandleYBStatus(YBCStatus status)
 {
 	if (!status)
 		return;
+	if (YBShouldReportErrorStatus()) {
+		YBC_LOG_ERROR("HandleYBStatus: %s", status->msg);
+	}
 	/* Copy the message to the current memory context and free the YBCStatus. */
 	size_t status_len = strlen(status->msg);
 	char* msg_buf = palloc(status_len + 1);
@@ -118,6 +191,25 @@ HandleYBStmtStatus(YBCStatus status, YBCPgStatement ybc_stmt)
 }
 
 void
+HandleYBStmtStatusWithOwner(YBCStatus status,
+                            YBCPgStatement ybc_stmt,
+                            ResourceOwner owner)
+{
+	if (!status)
+		return;
+
+	if (ybc_stmt)
+	{
+		HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+		if (owner != NULL)
+		{
+			ResourceOwnerForgetYugaByteStmt(owner, ybc_stmt);
+		}
+	}
+	HandleYBStatus(status);
+}
+
+void
 HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 {
 	if (!status)
@@ -132,9 +224,9 @@ HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table)
 
 void
 YBInitPostgresBackend(
-					  const char *program_name,
-					  const char *db_name,
-					  const char *user_name)
+	const char *program_name,
+	const char *db_name,
+	const char *user_name)
 {
 	HandleYBStatus(YBCInit(program_name, palloc, cstring_to_text_with_len));
 
@@ -147,7 +239,10 @@ YBInitPostgresBackend(
 	 */
 	if (YBIsEnabledInPostgresEnvVar())
 	{
-		YBCInitPgGate();
+		const YBCPgTypeEntity *type_table;
+		int count;
+		YBCGetTypeTable(&type_table, &count);
+		YBCInitPgGate(type_table, count);
 
 		if (ybc_pg_session != NULL) {
 			YBC_LOG_FATAL("Double initialization of ybc_pg_session");
@@ -214,13 +309,6 @@ YBCCommitTransaction()
 	}
 
 	return true;
-}
-
-bool
-YBCIsEnvVarTrue(const char* env_var_name)
-{
-	const char* env_var_value = getenv(env_var_name);
-	return env_var_value != NULL && strcmp(env_var_value, "1") == 0;
 }
 
 void
@@ -350,7 +438,7 @@ YBPgTypeOidToStr(Oid type_id) {
 		case INDEX_AM_HANDLEROID: return "INDEX_AM_HANDLER";
 		case TSM_HANDLEROID: return "TSM_HANDLER";
 		case ANYRANGEOID: return "ANYRANGE";
-		default: return "unknown type";
+		default: return "user_defined_type";
 	}
 }
 
@@ -358,20 +446,14 @@ void
 YBReportIfYugaByteEnabled()
 {
 	if (YBIsEnabledInPostgresEnvVar()) {
-		ereport(LOG, (errmsg("YugaByte is ENABLED")));
+		ereport(LOG, (errmsg(
+			"YugaByte is ENABLED in PostgreSQL. Transactions are %s.",
+			YBCIsEnvVarTrue("YB_PG_TRANSACTIONS_ENABLED") ?
+			"enabled" : "disabled")));
 	} else {
 		ereport(LOG, (errmsg("YugaByte is NOT ENABLED -- "
 							"this is a vanilla PostgreSQL server!")));
 	}
-}
-
-bool
-YBIsEnabledInPostgresEnvVar() {
-	static int cached_value = -1;
-	if (cached_value == -1) {
-		cached_value = YBCIsEnvVarTrue("YB_ENABLED_IN_POSTGRES");
-	}
-	return cached_value;
 }
 
 bool
@@ -418,4 +500,45 @@ YBPgErrorLevelToString(int elevel) {
 		case PANIC: return "PANIC";
 		default: return "UNKNOWN";
 	}
+}
+
+const char*
+YBCGetDatabaseName(Oid relid)
+{
+	/*
+	 * Hardcode the names for system db since the cache might not
+	 * be initialized during initdb (bootstrap mode).
+	 * For shared rels (e.g. pg_database) we may not have a database id yet,
+	 * so assuming template1 in that case since that's where shared tables are
+	 * stored in YB.
+	 * TODO Eventually YB should switch to using oid's everywhere so
+	 * that dbname and schemaname should not be needed at all.
+	 */
+	if (MyDatabaseId == TemplateDbOid || IsSharedRelation(relid))
+		return "template1";
+	else
+		return get_database_name(MyDatabaseId);
+}
+
+const char*
+YBCGetSchemaName(Oid schemaoid)
+{
+	/*
+	 * Hardcode the names for system namespaces since the cache might not
+	 * be initialized during initdb (bootstrap mode).
+	 * TODO Eventually YB should switch to using oid's everywhere so
+	 * that dbname and schemaname should not be needed at all.
+	 */
+	if (IsSystemNamespace(schemaoid))
+		return "pg_catalog";
+	else if (IsToastNamespace(schemaoid))
+		return "pg_toast";
+	else
+		return get_namespace_name(schemaoid);
+}
+
+Oid
+YBCGetDatabaseOid(Relation rel)
+{
+	return rel->rd_rel->relisshared ? TemplateDbOid : MyDatabaseId;
 }

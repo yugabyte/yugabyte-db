@@ -47,6 +47,7 @@
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_metrics.h"
 
 #include "yb/util/trace.h"
 #include "yb/util/string_util.h"
@@ -73,18 +74,24 @@ namespace rpc {
 Connection::Connection(Reactor* reactor,
                        std::unique_ptr<Stream> stream,
                        Direction direction,
+                       RpcMetrics* rpc_metrics,
                        std::unique_ptr<ConnectionContext> context)
     : reactor_(reactor),
       stream_(std::move(stream)),
       direction_(direction),
       last_activity_time_(CoarseMonoClock::Now()),
+      rpc_metrics_(rpc_metrics),
       context_(std::move(context)) {
   const auto metric_entity = reactor->messenger()->metric_entity();
   handler_latency_outbound_transfer_ = metric_entity ?
       METRIC_handler_latency_outbound_transfer.Instantiate(metric_entity) : nullptr;
+  IncrementCounter(rpc_metrics_->connections_created);
+  IncrementGauge(rpc_metrics_->connections_alive);
 }
 
-Connection::~Connection() {}
+Connection::~Connection() {
+  DecrementGauge(rpc_metrics_->connections_alive);
+}
 
 void UpdateIdleReason(const char* message, bool* result, std::string* reason) {
   *result = false;
@@ -169,7 +176,7 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
 
   auto now = CoarseMonoClock::Now();
 
-  CoarseMonoClock::TimePoint deadline = CoarseMonoClock::TimePoint::max();
+  CoarseTimePoint deadline = CoarseTimePoint::max();
   if (!stream_->IsConnected()) {
     const MonoDelta timeout = FLAGS_rpc_connection_timeout_ms * 1ms;
     deadline = last_activity_time_ + timeout;
@@ -182,11 +189,16 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
     }
   }
 
-  while (!expiration_queue_.empty() && expiration_queue_.top().first <= now) {
-    auto call = expiration_queue_.top().second.lock();
+  while (!expiration_queue_.empty() && expiration_queue_.top().time <= now) {
+    auto& top = expiration_queue_.top();
+    auto call = top.call.lock();
+    auto handle = top.handle;
     expiration_queue_.pop();
     if (call && !call->IsFinished()) {
       call->SetTimedOut();
+      if (handle != std::numeric_limits<size_t>::max()) {
+        stream_->Cancelled(handle);
+      }
       auto i = awaiting_response_.find(call->call_id());
       if (i != awaiting_response_.end()) {
         i->second.reset();
@@ -195,10 +207,10 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   }
 
   if (!expiration_queue_.empty()) {
-    deadline = std::min(deadline, expiration_queue_.top().first);
+    deadline = std::min(deadline, expiration_queue_.top().time);
   }
 
-  if (deadline != CoarseMonoClock::TimePoint::max()) {
+  if (deadline != CoarseTimePoint::max()) {
     StartTimer(deadline - now, &timer_);
   }
 }
@@ -207,14 +219,14 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   DCHECK(call);
   DCHECK_EQ(direction_, Direction::CLIENT);
 
-  DoQueueOutboundData(call, true);
+  auto handle = DoQueueOutboundData(call, true);
 
   // Set up the timeout timer.
   const MonoDelta& timeout = call->controller()->timeout();
   if (timeout.Initialized()) {
     auto expires_at = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
-    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().first > expires_at;
-    expiration_queue_.emplace(expires_at, call);
+    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().time > expires_at;
+    expiration_queue_.push({expires_at, call, handle});
     if (reschedule && (stream_->IsConnected() ||
                        expires_at < last_activity_time_ + FLAGS_rpc_connection_timeout_ms * 1ms)) {
       StartTimer(timeout.ToSteadyDuration(), &timer_);
@@ -224,44 +236,62 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   call->SetQueued();
 }
 
-void Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) {
+size_t Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) {
   DCHECK(reactor_->IsCurrentThread());
 
   if (!shutdown_status_.ok()) {
     outbound_data->Transferred(shutdown_status_, this);
-    return;
+    return std::numeric_limits<size_t>::max();
   }
 
   // If the connection is torn down, then the QueueOutbound() call that
   // eventually runs in the reactor thread will take care of calling
   // ResponseTransferCallbacks::NotifyTransferAborted.
 
-  stream_->Send(std::move(outbound_data));
+  // Check before and after calling Send. Before to reset state, if we
+  // were over the limit; but are now back in good standing. After, to
+  // check if we are now over the limit.
+  Status s = context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
+  if (!s.ok()) {
+    Shutdown(s);
+    return std::numeric_limits<size_t>::max();
+  }
+  auto result = stream_->Send(std::move(outbound_data));
+  s = context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
+  if (!s.ok()) {
+    Shutdown(s);
+    return std::numeric_limits<size_t>::max();
+  }
 
   if (!batch) {
     OutboundQueued();
   }
+
+  return result;
 }
 
 void Connection::ParseReceived() {
   stream_->ParseReceived();
 }
 
-Result<size_t> Connection::ProcessReceived(const IoVecs& data, ReadBufferFull read_buffer_full) {
-  auto consumed = context_->ProcessCalls(shared_from_this(), data, read_buffer_full);
-  if (PREDICT_FALSE(!consumed.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Command sequence failure: " << consumed;
-    return consumed.status();
+Result<ProcessDataResult> Connection::ProcessReceived(
+    const IoVecs& data, ReadBufferFull read_buffer_full) {
+  auto result = context_->ProcessCalls(shared_from_this(), data, read_buffer_full);
+  if (PREDICT_FALSE(!result.ok())) {
+    LOG_WITH_PREFIX(WARNING) << "Command sequence failure: " << result.status();
+    return result;
   }
 
-  if (!*consumed && read_buffer_full && context_->Idle()) {
-    return STATUS(InvalidArgument, "Command is greater than read buffer");
+  if (!result->consumed && read_buffer_full && context_->Idle()) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Command is greater than read buffer, exist data: $0",
+        IoVecsFullSize(data));
   }
 
-  return *consumed;
+  return result;
 }
 
-Status Connection::HandleCallResponse(std::vector<char>* call_data) {
+Status Connection::HandleCallResponse(CallData* call_data) {
   DCHECK(reactor_->IsCurrentThread());
   CallResponse resp;
   RETURN_NOT_OK(resp.ParseFrom(call_data));
@@ -420,6 +450,10 @@ Status Connection::Start(ev::loop_ref* loop) {
 
 void Connection::Connected() {
   context_->Connected(shared_from_this());
+}
+
+StreamReadBuffer& Connection::ReadBuffer() {
+  return context_->ReadBuffer();
 }
 
 const Endpoint& Connection::remote() const {

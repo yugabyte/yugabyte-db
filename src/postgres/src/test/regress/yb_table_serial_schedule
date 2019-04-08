@@ -1,0 +1,9 @@
+# src/test/regress/yb_table_serial_schedule
+#
+####################################################################################################
+# TABLE Testsuite: All DDL Statments on Tables
+# - CREATE and CREATE AS
+# - ALTER
+# - DROP
+####################################################################################################
+test: yb_table_create

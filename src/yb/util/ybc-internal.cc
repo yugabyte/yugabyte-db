@@ -19,7 +19,7 @@ namespace yb {
 namespace {
 YBCPAllocFn g_palloc_fn = nullptr;
 YBCCStringToTextWithLenFn g_cstring_to_text_with_len_fn = nullptr;
-}
+}  // anonymous namespace
 
 void YBCSetPAllocFn(YBCPAllocFn palloc_fn) {
   CHECK_NOTNULL(palloc_fn);
@@ -41,12 +41,11 @@ void* YBCCStringToTextWithLen(const char* c, int size) {
   return g_cstring_to_text_with_len_fn(c, size);
 }
 
-
 YBCStatus ToYBCStatus(const Status& status) {
   if (status.ok()) {
     return nullptr;
   }
-  std::string status_str = status.ToUserMessage();
+  std::string status_str = status.ToUserMessage(/* include_code */ true);
   size_t status_msg_buf_size = status_str.size() + 1;
   YBCStatus ybc_status = reinterpret_cast<YBCStatus>(
       malloc(sizeof(YBCStatusStruct) + status_msg_buf_size));

@@ -26,13 +26,40 @@
 #define PG_YB_UTILS_H
 
 #include "postgres.h"
+#include "utils/relcache.h"
 
+#include "common/pg_yb_common.h"
 #include "yb/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "access/reloptions.h"
+
+#include "utils/resowner.h"
 
 extern YBCPgSession ybc_pg_session;
 
-/**
+/*
+ * Version of the catalog entries in the relcache and catcache.
+ * We (only) rely on a following invariant: If the catalog cache version here is
+ * actually the latest (master) version, then the catalog data is indeed up to
+ * date. In any other case, we will end up doing a cache refresh anyway.
+ * (I.e. cache data is only valid if the version below matches with master's
+ * version, otherwise all bets are off and we need to refresh.)
+ *
+ * So we should handle cases like:
+ * 1. yb_catalog_cache_version being behind the actual data in the caches.
+ * 2. Data in the caches spanning multiple version (because catalog was updated
+ *    during a cache refresh).
+ * As long as the invariant above is not violated we should (at most) end up
+ * doing a redundant cache refresh.
+ *
+ * TODO: Improve cache versioning and refresh logic to be more fine-grained to
+ * reduce frequency and/or duration of cache refreshes.
+ */
+extern uint64 yb_catalog_cache_version;
+
+#define YB_CATCACHE_VERSION_UNINITIALIZED (0)
+
+/*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.
  * This relies on ybc_pg_session being non-NULL, so probably should not be used
  * in postmaster (which does not need to talk to YB backend) or early
@@ -42,16 +69,31 @@ extern YBCPgSession ybc_pg_session;
 extern bool IsYugaByteEnabled();
 
 /*
- * Given a relation (table) id, returns whether this table is handled by
- * YugaByte: i.e. it is not a system table or in the template1 database.
+ * Given a relation, checks whether the relation is supported in YugaByte mode.
  */
-extern bool IsYBSupportedTable(Oid relid);
+extern void CheckIsYBSupportedRelation(Relation relation);
+
+extern void CheckIsYBSupportedRelationByKind(char relkind);
+
+/*
+ * Given a relation (table) id, returns whether this table is handled by
+ * YugaByte: i.e. it is not a temporary or foreign table.
+ */
+extern bool IsYBRelationById(Oid relid);
+
+extern bool IsYBRelation(Relation relation);
+
+extern bool YBNeedRetryAfterCacheRefresh(ErrorData *error);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
-/**
+extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
+
+extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
+
+/*
  * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed
- * transactions. This will be enabled by default soon after 10/12/2018.
+ * transactions.
  */
 extern bool YBTransactionsEnabled();
 
@@ -68,6 +110,14 @@ extern void	HandleYBStatus(YBCStatus status);
 extern void	HandleYBStmtStatus(YBCStatus status, YBCPgStatement ybc_stmt);
 
 /*
+ * Same as HandleYBStmtStatus but also ask the given resource owner to forget
+ * the given YugaByte statement.
+ */
+extern void HandleYBStmtStatusWithOwner(YBCStatus status,
+                                        YBCPgStatement ybc_stmt,
+                                        ResourceOwner owner);
+
+/*
  * Same as HandleYBStatus but delete the table description first if the
  * status is not ok.
  */
@@ -76,10 +126,9 @@ extern void HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table);
  * YB initialization that needs to happen when a PostgreSQL backend process
  * is started. Reports errors using ereport.
  */
-extern void YBInitPostgresBackend(
-					  const char *program_name,
-					  const char *db_name,
-					  const char *user_name);
+extern void YBInitPostgresBackend(const char *program_name,
+								  const char *db_name,
+								  const char *user_name);
 
 /*
  * This should be called on all exit paths from the PostgreSQL backend process.
@@ -87,14 +136,14 @@ extern void YBInitPostgresBackend(
  */
 extern void	YBOnPostgresBackendShutdown();
 
-/**
+/*
  * Commits the current YugaByte-level transaction. Returns true in case of
  * successful commit and false in case of failure. If there is no transaction in
  * progress, also returns true.
  */
 extern bool YBCCommitTransaction();
 
-/**
+/*
  * Handle a commit error if it happened during a previous call to
  * YBCCommitTransaction. We allow deferring this handling in order to be able
  * to make PostgreSQL transaction block state transitions before calling
@@ -102,37 +151,27 @@ extern bool YBCCommitTransaction();
  */
 extern void YBCHandleCommitError();
 
-/**
- * Checks if the given environment variable is set to "1".
- */
-extern bool YBCIsEnvVarTrue(const char* env_var_name);
-
-/**
+/*
  * Return true if we want to allow PostgreSQL's own locking. This is needed
  * while system tables are still managed by PostgreSQL.
  */
 extern bool YBIsPgLockingEnabled();
 
-/**
+/*
  * Return a string representation of the given type id, or say it is unknown.
  * What is returned is always a static C string constant.
  */
 extern const char* YBPgTypeOidToStr(Oid type_id);
 
-/**
+/*
  * Report an error saying the given type as not supported by YugaByte.
  */
 extern void YBReportTypeNotSupported(Oid type_id);
 
-/**
+/*
  * Log whether or not YugaByte is enabled.
  */
 extern void YBReportIfYugaByteEnabled();
-
-/**
- * Checks if the YB_ENABLED_IN_POSTGRES is set.
- */
-bool YBIsEnabledInPostgresEnvVar();
 
 #define YB_REPORT_TYPE_NOT_SUPPORTED(type_id) do { \
 		Oid computed_type_id = type_id; \
@@ -142,7 +181,7 @@ bool YBIsEnabledInPostgresEnvVar();
 						computed_type_id, YBPgTypeOidToStr(computed_type_id)))); \
 	} while (0)
 
-/**
+/*
  * Determines if PostgreSQL should restart all child processes if one of them
  * crashes. This behavior usually shows up in the log like so:
  *
@@ -160,7 +199,7 @@ bool YBIsEnabledInPostgresEnvVar();
  */
 bool YBShouldRestartAllChildrenIfOneCrashes();
 
-/**
+/*
  * Define additional inline wrappers around _Status functions that return the
  * real return value and ereport the error status.
  */
@@ -174,15 +213,32 @@ bool YBShouldRestartAllChildrenIfOneCrashes();
 void YBSetPreparingTemplates();
 bool YBIsPreparingTemplates();
 
-/**
+/*
  * Whether every ereport of the ERROR level and higher should log a stack trace.
  */
 bool YBShouldLogStackTraceOnError();
 
-/**
+/*
  * Converts the PostgreSQL error level as listed in elog.h to a string. Always
  * returns a static const char string.
  */
 const char* YBPgErrorLevelToString(int elevel);
+
+/*
+ * Get the database name for a relation id (accounts for system databases and
+ * shared relations)
+ */
+const char* YBCGetDatabaseName(Oid relid);
+
+/*
+ * Get the schema name for a schema oid (accounts for system namespaces)
+ */
+const char* YBCGetSchemaName(Oid schemaoid);
+
+/*
+ * Get the real database id of a relation. For shared relations, it will be
+ * template1.
+ */
+Oid YBCGetDatabaseOid(Relation rel);
 
 #endif /* PG_YB_UTILS_H */

@@ -49,7 +49,8 @@ class FlushManager {
   void SendFlushTabletsRequest(const TabletServerId& ts_uuid,
                                const scoped_refptr<TableInfo>& table,
                                const std::vector<TabletId>& tablet_ids,
-                               const FlushRequestId& flush_id);
+                               const FlushRequestId& flush_id,
+                               bool is_compaction);
 
   void DeleteCompleteFlushRequests();
 

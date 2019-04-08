@@ -11,6 +11,8 @@ use strict;
 use warnings;
 use base qw(Project);
 
+no warnings qw(redefine);    ## no critic
+
 sub _new
 {
 	my $classname = shift;
@@ -35,23 +37,28 @@ EOF
 
 	$self->WriteConfiguration(
 		$f, 'Debug',
-		{   defs     => "_DEBUG;DEBUG=1",
+		{
+			defs     => "_DEBUG;DEBUG=1",
 			wholeopt => 0,
 			opt      => 0,
 			strpool  => 'false',
-			runtime  => 3 });
+			runtime  => 3
+		});
 	$self->WriteConfiguration(
 		$f,
 		'Release',
-		{   defs     => "",
+		{
+			defs     => "",
 			wholeopt => 0,
 			opt      => 3,
 			strpool  => 'true',
-			runtime  => 2 });
+			runtime  => 2
+		});
 	print $f <<EOF;
  </Configurations>
 EOF
 	$self->WriteReferences($f);
+	return;
 }
 
 sub WriteFiles
@@ -130,7 +137,7 @@ EOF
 			my $obj = $dir;
 			$obj =~ s!/!_!g;
 			print $f
-"><FileConfiguration Name=\"Debug|$self->{platform}\"><Tool Name=\"VCCLCompilerTool\" ObjectFile=\".\\debug\\$self->{name}\\$obj"
+			  "><FileConfiguration Name=\"Debug|$self->{platform}\"><Tool Name=\"VCCLCompilerTool\" ObjectFile=\".\\debug\\$self->{name}\\$obj"
 			  . "_$file.obj\" /></FileConfiguration><FileConfiguration Name=\"Release|$self->{platform}\"><Tool Name=\"VCCLCompilerTool\" ObjectFile=\".\\release\\$self->{name}\\$obj"
 			  . "_$file.obj\" /></FileConfiguration></File>\n";
 		}
@@ -148,6 +155,7 @@ EOF
 	print $f <<EOF;
  </Files>
 EOF
+	return;
 }
 
 sub Footer
@@ -158,6 +166,7 @@ sub Footer
  <Globals/>
 </VisualStudioProject>
 EOF
+	return;
 }
 
 sub WriteConfiguration
@@ -195,7 +204,7 @@ EOF
 	if ($self->{disablelinkerwarnings})
 	{
 		print $f
-"\t\tAdditionalOptions=\"/ignore:$self->{disablelinkerwarnings}\"\n";
+		  "\t\tAdditionalOptions=\"/ignore:$self->{disablelinkerwarnings}\"\n";
 	}
 	if ($self->{implib})
 	{
@@ -212,17 +221,18 @@ EOF
 
 	print $f "\t/>\n";
 	print $f
-"\t<Tool Name=\"VCLibrarianTool\" OutputFile=\".\\$cfgname\\$self->{name}\\$self->{name}.lib\" IgnoreDefaultLibraryNames=\"libc\" />\n";
+	  "\t<Tool Name=\"VCLibrarianTool\" OutputFile=\".\\$cfgname\\$self->{name}\\$self->{name}.lib\" IgnoreDefaultLibraryNames=\"libc\" />\n";
 	print $f
-"\t<Tool Name=\"VCResourceCompilerTool\" AdditionalIncludeDirectories=\"src\\include\" />\n";
+	  "\t<Tool Name=\"VCResourceCompilerTool\" AdditionalIncludeDirectories=\"src\\include\" />\n";
 	if ($self->{builddef})
 	{
 		print $f
-"\t<Tool Name=\"VCPreLinkEventTool\" Description=\"Generate DEF file\" CommandLine=\"perl src\\tools\\msvc\\gendef.pl $cfgname\\$self->{name} $self->{platform}\" />\n";
+		  "\t<Tool Name=\"VCPreLinkEventTool\" Description=\"Generate DEF file\" CommandLine=\"perl src\\tools\\msvc\\gendef.pl $cfgname\\$self->{name} $self->{platform}\" />\n";
 	}
 	print $f <<EOF;
   </Configuration>
 EOF
+	return;
 }
 
 sub WriteReferences
@@ -232,9 +242,10 @@ sub WriteReferences
 	foreach my $ref (@{ $self->{references} })
 	{
 		print $f
-"  <ProjectReference ReferencedProjectIdentifier=\"$ref->{guid}\" Name=\"$ref->{name}\" />\n";
+		  "  <ProjectReference ReferencedProjectIdentifier=\"$ref->{guid}\" Name=\"$ref->{name}\" />\n";
 	}
 	print $f " </References>\n";
+	return;
 }
 
 sub GenerateCustomTool
@@ -246,7 +257,7 @@ sub GenerateCustomTool
 		  . $self->GenerateCustomTool($desc, $tool, $output, 'Release');
 	}
 	return
-"<FileConfiguration Name=\"$cfg|$self->{platform}\"><Tool Name=\"VCCustomBuildTool\" Description=\"$desc\" CommandLine=\"$tool\" AdditionalDependencies=\"\" Outputs=\"$output\" /></FileConfiguration>";
+	  "<FileConfiguration Name=\"$cfg|$self->{platform}\"><Tool Name=\"VCCustomBuildTool\" Description=\"$desc\" CommandLine=\"$tool\" AdditionalDependencies=\"\" Outputs=\"$output\" /></FileConfiguration>";
 }
 
 package VC2005Project;
@@ -258,6 +269,8 @@ package VC2005Project;
 use strict;
 use warnings;
 use base qw(VCBuildProject);
+
+no warnings qw(redefine);    ## no critic
 
 sub new
 {
@@ -279,6 +292,8 @@ package VC2008Project;
 use strict;
 use warnings;
 use base qw(VCBuildProject);
+
+no warnings qw(redefine);    ## no critic
 
 sub new
 {

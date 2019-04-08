@@ -4,7 +4,7 @@
  *
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/nodeForeignscan.h
@@ -28,7 +28,7 @@ extern void ExecForeignScanInitializeDSM(ForeignScanState *node,
 extern void ExecForeignScanReInitializeDSM(ForeignScanState *node,
 							   ParallelContext *pcxt);
 extern void ExecForeignScanInitializeWorker(ForeignScanState *node,
-								shm_toc *toc);
+								ParallelWorkerContext *pwcxt);
 extern void ExecShutdownForeignScan(ForeignScanState *node);
 
 #endif							/* NODEFOREIGNSCAN_H */

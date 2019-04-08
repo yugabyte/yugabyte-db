@@ -191,7 +191,8 @@ class RaftConsensusQuorumTest : public YBTest {
                             logs_[i],
                             parent_mem_trackers_[i],
                             Bind(&DoNothing),
-                            DEFAULT_TABLE_TYPE));
+                            DEFAULT_TABLE_TYPE,
+                            nullptr /* retryable_requests */));
 
       operation_factory->SetConsensus(peer.get());
       operation_factories_.emplace_back(operation_factory);
@@ -403,7 +404,11 @@ class RaftConsensusQuorumTest : public YBTest {
     EXPECT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
     for (const log::SegmentSequence::value_type& entry : segments) {
-      EXPECT_OK(entry->ReadEntries(&ret));
+      auto result = entry->ReadEntries();
+      EXPECT_OK(result.status);
+      for (auto& e : result.entries) {
+        ret.push_back(std::move(e));
+      }
     }
 
     return ret;
@@ -807,7 +812,7 @@ TEST_F(RaftConsensusQuorumTest, TestLeaderElectionWithQuiescedQuorum) {
     // This will force an election in which we expect to make the last
     // non-shutdown peer in the list become leader.
     LOG(INFO) << "Running election for future leader with index " << (current_config_size - 1);
-    ASSERT_OK(new_leader->StartElection(Consensus::ELECT_EVEN_IF_LEADER_IS_ALIVE));
+    ASSERT_OK(new_leader->StartElection({ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE}));
     ASSERT_OK(new_leader->WaitUntilLeaderForTests(MonoDelta::FromSeconds(15)));
     LOG(INFO) << "Election won";
 
@@ -870,7 +875,7 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
 
   // Appending this message to peer0 should work and update
   // its 'last_received' to 'id'.
-  ASSERT_OK(follower->Update(&req, &resp));
+  ASSERT_OK(follower->Update(&req, &resp, CoarseBigDeadline()));
   ASSERT_TRUE(OpIdEquals(resp.status().last_received(), *id));
 
   // Now skip one message in the same term. The replica should
@@ -879,7 +884,7 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   id->set_index(id->index() + 2);
   // Appending this message to peer0 should return a Status::OK
   // but should contain an error referring to the log matching property.
-  ASSERT_OK(follower->Update(&req, &resp));
+  ASSERT_OK(follower->Update(&req, &resp, CoarseBigDeadline()));
   ASSERT_TRUE(resp.has_status());
   ASSERT_TRUE(resp.status().has_error());
   ASSERT_EQ(resp.status().error().code(), ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);
@@ -996,7 +1001,7 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   req.set_caller_uuid("peer-0");
   req.mutable_committed_index()->CopyFrom(last_op_id);
   ConsensusResponsePB res;
-  Status s = peer->Update(&req, &res);
+  Status s = peer->Update(&req, &res, CoarseBigDeadline());
   ASSERT_EQ(last_op_id.term() + 3, res.responder_term());
   ASSERT_TRUE(res.status().has_error());
   ASSERT_EQ(ConsensusErrorPB::INVALID_TERM, res.status().error().code());

@@ -100,6 +100,11 @@ class RpcServerBase {
   const ServerBaseOptions& options() const {
     return options_;
   }
+  // Return the hostname of this server
+  const std::string get_hostname() const;
+
+  // Return the current user logged in to this server
+  const std::string get_current_user() const;
 
  protected:
   RpcServerBase(std::string name,
@@ -119,7 +124,6 @@ class RpcServerBase {
   virtual CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder);
 
   const std::string name_;
-
   std::shared_ptr<MemTracker> mem_tracker_;
   gscoped_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
@@ -196,6 +200,7 @@ class RpcAndWebServerBase : public RpcServerBase {
 
  private:
   void GenerateInstanceID();
+  std::string GetEasterEggMessage() const;
   std::string FooterHtml() const;
 
   DISALLOW_COPY_AND_ASSIGN(RpcAndWebServerBase);
@@ -209,8 +214,11 @@ YB_STRONGLY_TYPED_BOOL(Private);
 std::string TEST_RpcAddress(int index, Private priv);
 // Returns bind endpoint for test server with specified index and specified port.
 std::string TEST_RpcBindEndpoint(int index, uint16_t port);
-// Breaks connectivity in test for specified messenger of server with index.
-void TEST_BreakConnectivity(rpc::Messenger* messenger, int index);
+
+// Sets up connectivity in test for specified messenger of server with index.
+void TEST_SetupConnectivity(rpc::Messenger* messenger, int index);
+// Isolates specific messenger, i.e. breaks connectivity with all other servers.
+void TEST_Isolate(rpc::Messenger* messenger);
 
 } // namespace server
 } // namespace yb

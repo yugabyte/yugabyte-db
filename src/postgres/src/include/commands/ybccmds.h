@@ -26,6 +26,7 @@
 #include "access/htup.h"
 #include "catalog/dependency.h"
 #include "catalog/objectaddress.h"
+#include "nodes/execnodes.h"
 #include "nodes/parsenodes.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"
@@ -34,14 +35,34 @@
 
 /*  Database Functions -------------------------------------------------------------------------- */
 
-extern void YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid);
+extern void YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid);
 
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
+extern void YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_oid);
+
 /*  Table Functions ----------------------------------------------------------------------------- */
 
-extern void YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId);
+extern void YBCCreateTable(CreateStmt *stmt,
+						   char relkind,
+						   TupleDesc desc,
+						   Oid relationId,
+						   Oid namespaceId);
 
-extern void YBCDropTable(Oid relationId, const char *relname, const char *schemaname);
+extern void YBCDropTable(Oid relationId);
+
+extern void YBCTruncateTable(Relation rel);
+
+extern void YBCCreateIndex(const char *indexName,
+						   IndexInfo *indexInfo,
+						   TupleDesc indexTupleDesc,
+						   Oid indexId,
+						   Relation rel);
+
+extern void YBCDropIndex(Oid relationId);
+
+extern void YBCAlterTable(AlterTableStmt* stmt, Relation rel, Oid relationId);
+
+extern void YBCRename(RenameStmt* stmt, Oid relationId);
 
 #endif

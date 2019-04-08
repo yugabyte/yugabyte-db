@@ -26,22 +26,36 @@ using std::make_shared;
 // PgSelect
 //--------------------------------------------------------------------------------------------------
 
-PgSelect::PgSelect(PgSession::ScopedRefPtr pg_session,
-                   const char *database_name,
-                   const char *schema_name,
-                   const char *table_name)
-    : PgDml(std::move(pg_session), database_name, schema_name, table_name, StmtOp::STMT_SELECT) {
+PgSelect::PgSelect(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id)
+    : PgDml(std::move(pg_session), table_id) {
 }
 
 PgSelect::~PgSelect() {
 }
 
-Status PgSelect::Prepare() {
-  RETURN_NOT_OK(LoadTable(false /* for_write */));
+void PgSelect::UseIndex(const PgObjectId& index_id) {
+  index_id_ = index_id;
+}
+
+Status PgSelect::LoadIndex() {
+  index_desc_ = VERIFY_RESULT(pg_session_->LoadTable(index_id_));
+  return Status::OK();
+}
+
+Status PgSelect::Prepare(uint64_t* read_time) {
+  RETURN_NOT_OK(LoadTable());
+  if (index_id_.IsValid()) {
+    RETURN_NOT_OK(LoadIndex());
+  }
 
   // Allocate READ/SELECT operation.
-  auto doc_op = make_shared<PgDocReadOp>(pg_session_, table_desc_->NewPgsqlSelect());
+  auto doc_op = make_shared<PgDocReadOp>(pg_session_, read_time, table_desc_->NewPgsqlSelect());
   read_req_ = doc_op->read_op()->mutable_request();
+  if (index_id_.IsValid()) {
+    index_req_ = read_req_->mutable_index_request();
+    index_req_->set_table_id(index_id_.GetYBTableId());
+  }
+
   PrepareColumns();
 
   // Preparation complete.
@@ -50,14 +64,24 @@ Status PgSelect::Prepare() {
 }
 
 void PgSelect::PrepareColumns() {
-  // Setting protobuf.
-  column_refs_ = read_req_->mutable_column_refs();
-
   // When reading, only values of partition columns are special-cased in protobuf.
   // Because Kudu API requires that partition columns must be listed in their created-order, the
   // slots for partition column bind expressions are allocated here in correct order.
-  for (PgColumn &col : table_desc_->columns()) {
-    col.AllocPrimaryBindPB(read_req_);
+  if (index_id_.IsValid()) {
+    for (PgColumn &col : index_desc_->columns()) {
+      col.AllocPrimaryBindPB(index_req_);
+    }
+
+    // Select ybbasectid column from the index to fetch the rows from the base table.
+    PgColumn *col;
+    CHECK_OK(FindIndexColumn(static_cast<int>(PgSystemAttrNum::kYBBaseTupleId), &col));
+    AllocIndexTargetPB()->set_column_id(col->id());
+    col->set_read_requested(true);
+
+  } else {
+    for (PgColumn &col : table_desc_->columns()) {
+      col.AllocPrimaryBindPB(read_req_);
+    }
   }
 }
 
@@ -69,8 +93,22 @@ PgsqlExpressionPB *PgSelect::AllocColumnBindPB(PgColumn *col) {
   return col->AllocBindPB(read_req_);
 }
 
+PgsqlExpressionPB *PgSelect::AllocIndexColumnBindPB(PgColumn *col) {
+  return col->AllocBindPB(index_req_);
+}
+
+PgsqlExpressionPB *PgSelect::AllocColumnAssignPB(PgColumn *col) {
+  // SELECT statement should not have an assign expression (SET clause).
+  LOG(FATAL) << "Pure virtual function is being call";
+  return nullptr;
+}
+
 PgsqlExpressionPB *PgSelect::AllocTargetPB() {
   return read_req_->add_targets();
+}
+
+PgsqlExpressionPB *PgSelect::AllocIndexTargetPB() {
+  return index_req_->add_targets();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -79,44 +117,106 @@ PgsqlExpressionPB *PgSelect::AllocTargetPB() {
 //   SELECT column_l, column_m, column_n FROM ...
 
 Status PgSelect::DeleteEmptyPrimaryBinds() {
-  bool miss_range_columns = false;
-  bool has_range_columns = false;
+  // Either ybctid or hash/primary key must be present.
+  if (ybctid_bind_.empty()) {
+    PgTableDesc::ScopedRefPtr table_desc = index_desc_ ? index_desc_ : table_desc_;
+    PgsqlReadRequestPB *read_req = index_desc_ ? index_req_ : read_req_;
 
-  bool miss_partition_columns = false;
-  bool has_partition_columns = false;
+    bool miss_partition_columns = false;
+    bool has_partition_columns = false;
 
-  for (PgColumn &col : table_desc_->columns()) {
-    if (col.desc()->is_partition()) {
+    for (size_t i = 0; i < table_desc->num_hash_key_columns(); i++) {
+      PgColumn &col = table_desc->columns()[i];
       if (expr_binds_.find(col.bind_pb()) == expr_binds_.end()) {
         miss_partition_columns = true;
       } else {
         has_partition_columns = true;
       }
-    } else if (col.desc()->is_primary()) {
+    }
+
+    if (miss_partition_columns) {
+      VLOG(1) << "Full scan is needed";
+      DCHECK(table_desc.get() != index_desc_.get())
+          << "Full scan should be applied to base table only";
+      read_req->clear_partition_column_values();
+      read_req->clear_range_column_values();
+    }
+
+    if (has_partition_columns && miss_partition_columns) {
+      return STATUS(InvalidArgument, "Partition key must be fully specified");
+    }
+
+    bool miss_range_columns = false;
+    size_t num_bound_range_columns = 0;
+
+    for (size_t i = table_desc->num_hash_key_columns(); i < table_desc->num_key_columns(); i++) {
+      PgColumn &col = table_desc->columns()[i];
       if (expr_binds_.find(col.bind_pb()) == expr_binds_.end()) {
         miss_range_columns = true;
+      } else if (miss_range_columns) {
+        return STATUS(InvalidArgument,
+                      "Unspecified range key column must be at the end of the range key");
       } else {
-        has_range_columns = true;
+        num_bound_range_columns++;
       }
+    }
+
+    auto *range_column_values = read_req->mutable_range_column_values();
+    range_column_values->DeleteSubrange(num_bound_range_columns,
+                                        range_column_values->size() - num_bound_range_columns);
+  } else {
+    uint16_t hash_value;
+    RETURN_NOT_OK(PgExpr::ReadHashValue(ybctid_bind_.data(), ybctid_bind_.size(), &hash_value));
+    read_req_->set_hash_code(hash_value);
+    read_req_->clear_partition_column_values();
+    read_req_->clear_range_column_values();
+  }
+
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status PgSelect::FindIndexColumn(int attr_num, PgColumn **col) {
+  *col = VERIFY_RESULT(index_desc_->FindColumn(attr_num));
+  return Status::OK();
+}
+
+Status PgSelect::BindIndexColumn(int attr_num, PgExpr *attr_value) {
+  // Find column.
+  PgColumn *col = nullptr;
+  RETURN_NOT_OK(FindIndexColumn(attr_num, &col));
+
+  // Check datatype.
+  // TODO(neil) Current code combine TEXT and BINARY datatypes into ONE representation.  Once that
+  // is fixed, we can remove the special if() check for BINARY type.
+  if (col->internal_type() != InternalType::kBinaryValue) {
+    SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
+              "Attribute value type does not match column type");
+  }
+
+  // Alloc the protobuf.
+  PgsqlExpressionPB *bind_pb = col->bind_pb();
+  if (bind_pb == nullptr) {
+    bind_pb = AllocIndexColumnBindPB(col);
+  } else {
+    if (expr_binds_.find(bind_pb) != expr_binds_.end()) {
+      return STATUS_SUBSTITUTE(InvalidArgument,
+                               "Index column $0 is already bound to another value", attr_num);
     }
   }
 
-  if (miss_partition_columns) {
-    VLOG(1) << "Full scan is needed";
-    read_req_->clear_partition_column_values();
-    read_req_->clear_range_column_values();
-  } else if (miss_range_columns) {
-    VLOG(1) << "Single tablet scan is needed";
-    read_req_->clear_range_column_values();
-  }
+  // Link the expression and protobuf. During execution, expr will write result to the pb.
+  RETURN_NOT_OK(attr_value->PrepareForRead(this, bind_pb));
 
-  // Set the primary key indicator in protobuf.
-  if (has_partition_columns && miss_partition_columns) {
-    return STATUS(InvalidArgument, "Partition key must be fully specified");
-  }
-  if (has_range_columns && miss_range_columns) {
-    return STATUS(InvalidArgument, "Range key must be fully specified");
-  }
+  // Link the given expression "attr_value" with the allocated protobuf. Note that except for
+  // constants and place_holders, all other expressions can be setup just one time during prepare.
+  // Examples:
+  // - Bind values for primary columns in where clause.
+  //     WHERE hash = ?
+  // - Bind values for a column in INSERT statement.
+  //     INSERT INTO a_table(hash, key, col) VALUES(?, ?, ?)
+  expr_binds_[bind_pb] = attr_value;
   return Status::OK();
 }
 
@@ -127,8 +227,17 @@ Status PgSelect::Exec() {
   // Update bind values for constants and placeholders.
   RETURN_NOT_OK(UpdateBindPBs());
 
+  // Set column references in protobuf.
+  SetColumnRefIds(table_desc_, read_req_->mutable_column_refs());
+  if (index_id_.IsValid()) {
+    SetColumnRefIds(index_desc_, index_req_->mutable_column_refs());
+  }
+
   // Execute select statement asynchronously.
-  return doc_op_->Execute();
+  SCHECK_EQ(VERIFY_RESULT(doc_op_->Execute()), RequestSent::kTrue, IllegalState,
+            "YSQL read operation was not sent");
+
+  return Status::OK();
 }
 
 }  // namespace pggate

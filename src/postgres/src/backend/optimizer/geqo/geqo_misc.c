@@ -3,7 +3,7 @@
  * geqo_misc.c
  *	   misc. printout and debug stuff
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/backend/optimizer/geqo/geqo_misc.c
@@ -92,7 +92,7 @@ print_gen(FILE *fp, Pool *pool, int generation)
 {
 	int			lowest;
 
-	/* Get index to lowest ranking gene in poplulation. */
+	/* Get index to lowest ranking gene in population. */
 	/* Use 2nd to last since last is buffer. */
 	lowest = pool->size > 1 ? pool->size - 2 : 0;
 

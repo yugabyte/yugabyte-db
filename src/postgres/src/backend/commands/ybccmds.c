@@ -18,44 +18,52 @@
  * IDENTIFICATION
  *        src/backend/commands/ybccmds.c
  *
- *--------------------------------------------------------------------------------------------------
+ *------------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 
 #include "miscadmin.h"
+#include "catalog/pg_attribute.h"
+#include "access/sysattr.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
+#include "catalog/pg_database.h"
 #include "commands/ybccmds.h"
-#include "commands/ybctype.h"
+#include "catalog/ybctype.h"
+
+#include "catalog/catalog.h"
+#include "access/htup_details.h"
+#include "utils/lsyscache.h"
+#include "utils/relcache.h"
+#include "utils/rel.h"
+#include "utils/syscache.h"
+#include "executor/tuptable.h"
+#include "executor/ybcExpr.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
-/* ---------------------------------------------------------------------------------------------- */
+#include "parser/parser.h"
+#include "parser/parse_type.h"
+
+/* -------------------------------------------------------------------------- */
 /*  Database Functions. */
 
 void
-YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid)
+YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid)
 {
 	YBCPgStatement handle;
 
-	char	   *src_dbname = get_database_name(src_dboid);
-
-	YBC_LOG_WARNING("Ignoring source database '%s' when creating database '%s'", src_dbname,
-		dbname);
-	PG_TRY();
-	{
-		HandleYBStatus(YBCPgNewCreateDatabase(ybc_pg_session, dbname, dboid, &handle));
-		HandleYBStatus(YBCPgExecCreateDatabase(handle));
-	}
-	PG_CATCH();
-	{
-		HandleYBStatus(YBCPgDeleteStatement(handle));
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
+	HandleYBStatus(YBCPgNewCreateDatabase(ybc_pg_session,
+										  dbname,
+										  dboid,
+										  src_dboid,
+										  next_oid,
+										  &handle));
+	HandleYBStmtStatus(YBCPgExecCreateDatabase(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
 
@@ -64,97 +72,113 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 {
 	YBCPgStatement handle;
 
-	PG_TRY();
-	{
-		HandleYBStatus(YBCPgNewDropDatabase(ybc_pg_session,
-											  dbname,
-											  false,	/* if_exists */
-											  &handle));
-		HandleYBStatus(YBCPgExecDropDatabase(handle));
-	}
-	PG_CATCH();
-	{
-		HandleYBStatus(YBCPgDeleteStatement(handle));
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
+	HandleYBStatus(YBCPgNewDropDatabase(ybc_pg_session,
+	                                    dbname,
+	                                    false,    /* if_exists */
+	                                    &handle));
+	HandleYBStmtStatus(YBCPgExecDropDatabase(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
 
-/* -------------------------------------------------------------------- */
+void
+YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_oid)
+{
+	HandleYBStatus(YBCPgReserveOids(ybc_pg_session,
+	                                dboid,
+	                                next_oid,
+	                                count,
+	                                begin_oid,
+	                                end_oid));
+}
+
+/* ---------------------------------------------------------------------------------------------- */
 /*  Table Functions. */
 
 /* Utility function to add columns to the YB create statement */
 static void CreateTableAddColumns(YBCPgStatement handle,
-								  CreateStmt *stmt,
-								  Oid namespaceId,
+								  TupleDesc desc,
 								  Constraint *primary_key,
 								  bool include_hash,
 								  bool include_primary)
 {
-	ListCell *lc;
-	int      attnum = 1;
-	foreach(lc, stmt->tableElts)
+	int      i;
+
+	for (i = 0; i < desc->natts; i++)
 	{
-		bool          is_primary = false;
-		bool          is_first   = true;
-		ColumnDef     *colDef    = lfirst(lc);
-		YBCPgDataType col_type   = YBCDataTypeFromName(colDef->typeName);
+		Form_pg_attribute att = TupleDescAttr(desc, i);
+		char              *attname = NameStr(att->attname);
+		AttrNumber        attnum = att->attnum;			
+		bool              is_primary = false;
+		bool              is_first   = true;
 
-		ListCell *cell;
-
-		foreach(cell, primary_key->keys)
+		if (primary_key != NULL)
 		{
-			char *attname = strVal(lfirst(cell));
+			ListCell *cell;
 
-			if (strcmp(colDef->colname, attname) == 0)
+			foreach(cell, primary_key->keys)
 			{
-				is_primary = true;
-				break;
-			}
-			if (is_first)
-			{
-				is_first = false;
+				char *kattname = strVal(lfirst(cell));
+
+				if (strcmp(attname, kattname) == 0)
+				{
+					is_primary = true;
+					break;
+				}
+				if (is_first)
+				{
+					is_first = false;
+				}
 			}
 		}
 
-		/* TODO For now, assume the first primary key column is the hash, except for pg_catalog
-		 * tables which are not hash-partitioned.
-		 */
-		bool is_hash = is_primary && is_first && (namespaceId != PG_CATALOG_NAMESPACE);
+		/* TODO For now, assume the first primary key column is the hash. */
+		bool is_hash = is_primary && is_first;
 		if (include_hash == is_hash && include_primary == is_primary)
 		{
+			if (is_primary && !YBCDataTypeIsValidForKey(att->atttypid)) {
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("PRIMARY KEY containing column of type '%s' not yet supported",
+								YBPgTypeOidToStr(att->atttypid))));
+			}
+			const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum, att->atttypid);
 			HandleYBStmtStatus(YBCPgCreateTableAddColumn(handle,
-			                                             colDef->colname,
+			                                             attname,
 			                                             attnum,
 			                                             col_type,
 			                                             is_hash,
 			                                             is_primary), handle);
 		}
-		attnum++;
 	}
 }
 
 void
-YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId)
+YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, Oid namespaceId)
 {
 	if (relkind != RELKIND_RELATION)
 	{
 		return;
 	}
 
+	if (stmt->relation->relpersistence == RELPERSISTENCE_TEMP)
+	{
+		return; /* Nothing to do. */
+	}
+
 	YBCPgStatement handle = NULL;
 	ListCell       *listptr;
 
-	/*
-	 * TODO The attnum from pg_attribute has not been created yet, we are
-	 * making some assumptions below about how it will be assigned.
-	 */
 	char *db_name = get_database_name(MyDatabaseId);
-	YBC_LOG_INFO("Creating Table %s, %s, %s",
-				 db_name,
-				 stmt->relation->schemaname,
-				 stmt->relation->relname);
+	char *schema_name = stmt->relation->schemaname;
+	if (schema_name == NULL)
+	{
+		schema_name = get_namespace_name(namespaceId);
+	}
+	if (!IsBootstrapProcessingMode())
+		YBC_LOG_INFO("Creating Table %s.%s.%s",
+					 db_name,
+					 schema_name,
+					 stmt->relation->relname);
 
 	Constraint *primary_key = NULL;
 
@@ -166,51 +190,40 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId)
 		{
 			primary_key = constraint;
 		}
-		else
-		{
-			ereport(ERROR,
-			        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-					        "Only PRIMARY KEY constraints are currently supported.")));
-		}
-	}
-
-	if (primary_key == NULL)
-	{
-		ereport(ERROR,
-		        (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
-				        "Tables without a PRIMARY KEY are not yet supported.")));
 	}
 
 	HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
 	                                   db_name,
-	                                   stmt->relation->schemaname,
+	                                   schema_name,
 	                                   stmt->relation->relname,
-	                                   namespaceId,
+	                                   MyDatabaseId,
 	                                   relationId,
+	                                   false, /* is_shared_table */
 	                                   false, /* if_not_exists */
+	                                   primary_key == NULL /* add_primary_key */,
 	                                   &handle));
 
 	/*
 	 * Process the table columns. They need to be sent in order, first hash
-	 * columns, then rest of primary key columns, then regular columns
+	 * columns, then rest of primary key columns, then regular columns. If
+	 * no primary key is specified, an internal primary key is added above.
 	 */
-    CreateTableAddColumns(handle,
-                          stmt,
-                          namespaceId,
-                          primary_key,
-                          true /* is_hash */,
-                          true /* is_primary */);
+	if (primary_key != NULL) {
+		CreateTableAddColumns(handle,
+							  desc,
+							  primary_key,
+							  true /* is_hash */,
+							  true /* is_primary */);
+
+		CreateTableAddColumns(handle,
+							  desc,
+							  primary_key,
+							  false /* is_hash */,
+							  true /* is_primary */);
+	}
 
     CreateTableAddColumns(handle,
-                          stmt,
-                          namespaceId,
-                          primary_key,
-                          false /* is_hash */,
-                          true /* is_primary */);
-
-    CreateTableAddColumns(handle,
-                          stmt,
-                          namespaceId,
+                          desc,
                           primary_key,
                           false /* is_hash */,
                           false /* is_primary */);
@@ -222,20 +235,201 @@ YBCCreateTable(CreateStmt *stmt, char relkind, Oid namespaceId, Oid relationId)
 }
 
 void
-YBCDropTable(Oid relationId,
-			 const char *relname,
-			 const char *schemaname)
+YBCDropTable(Oid relationId)
 {
 	YBCPgStatement handle;
 
-	char *db_name = get_database_name(MyDatabaseId);
-
 	HandleYBStatus(YBCPgNewDropTable(ybc_pg_session,
-	                                 db_name,
-	                                 schemaname,
-	                                 relname,
+									 MyDatabaseId,
+									 relationId,
 	                                 false,    /* if_exists */
 	                                 &handle));
 	HandleYBStmtStatus(YBCPgExecDropTable(handle), handle);
+	HandleYBStatus(YBCPgDeleteStatement(handle));
+}
+
+void
+YBCTruncateTable(Relation rel) {
+	YBCPgStatement handle;
+	Oid relationId = RelationGetRelid(rel);
+
+	HandleYBStatus(YBCPgNewTruncateTable(ybc_pg_session, MyDatabaseId, relationId, &handle));
+	HandleYBStmtStatus(YBCPgExecTruncateTable(handle), handle);
+	HandleYBStatus(YBCPgDeleteStatement(handle));
+}
+
+void
+YBCCreateIndex(const char *indexName,
+			   IndexInfo *indexInfo,			   
+			   TupleDesc indexTupleDesc,
+			   Oid indexId,
+			   Relation rel)
+{
+	char *db_name	  = get_database_name(MyDatabaseId);
+	char *schema_name = get_namespace_name(RelationGetNamespace(rel));
+
+	if (!IsBootstrapProcessingMode())
+		YBC_LOG_INFO("Creating index %s.%s.%s",
+					 db_name,
+					 schema_name,
+					 indexName);
+
+	YBCPgStatement handle = NULL;
+
+	HandleYBStatus(YBCPgNewCreateIndex(ybc_pg_session,
+									   db_name,
+									   schema_name,
+									   indexName,
+									   MyDatabaseId,
+									   indexId,
+									   RelationGetRelid(rel),
+									   rel->rd_rel->relisshared,
+									   indexInfo->ii_Unique,
+									   false, /* if_not_exists */
+									   &handle));
+
+	int	 i;
+	bool is_hash = true;
+
+	for (i = 0; i < indexTupleDesc->natts; i++)
+	{
+		Form_pg_attribute att	   = TupleDescAttr(indexTupleDesc, i);
+		char			  *attname = NameStr(att->attname);
+		AttrNumber		  attnum   = att->attnum;			
+		const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum, att->atttypid);
+
+		if (!YBCDataTypeIsValidForKey(att->atttypid)) {
+			ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("INDEX on column of type '%s' not yet supported",
+											YBPgTypeOidToStr(att->atttypid))));
+		}
+		HandleYBStmtStatus(YBCPgCreateIndexAddColumn(handle,
+													 attname,
+													 attnum,
+													 col_type,
+													 is_hash,
+													 true /* is_range */), handle);
+
+		is_hash = false;
+	}
+
+	/* Create the index. */
+	HandleYBStmtStatus(YBCPgExecCreateIndex(handle), handle);
+
+	HandleYBStatus(YBCPgDeleteStatement(handle));
+}
+
+void
+YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
+{
+	YBCPgStatement handle = NULL;
+	HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
+									  MyDatabaseId,
+									  relationId,
+									  &handle));
+
+	ListCell *lcmd;
+	int col = 1;
+	bool needsYBAlter = false;
+
+	foreach(lcmd, stmt->cmds){
+		AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+		switch (cmd->subtype) {
+			case AT_AddColumn: {
+
+				ColumnDef* colDef = (ColumnDef *) cmd->def;
+				Oid			typeOid;
+				int32		typmod;
+				HeapTuple	typeTuple;
+				int order;
+
+				typeTuple = typenameType(NULL, colDef->typeName, &typmod);
+				typeOid = HeapTupleGetOid(typeTuple);
+				order = RelationGetNumberOfAttributes(rel) + col;
+				const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(order, typeOid);
+
+				HandleYBStmtStatus(YBCPgAlterTableAddColumn(handle, colDef->colname,
+															order, col_type,
+															colDef->is_not_null), handle);
+
+				++col;
+				ReleaseSysCache(typeTuple);
+				needsYBAlter = true;
+
+				break;
+			}
+			case AT_DropColumn: {
+
+				HandleYBStmtStatus(YBCPgAlterTableDropColumn(handle, cmd->name), handle);
+				needsYBAlter = true;
+
+				break;
+
+			}
+			case AT_AddConstraint:
+			case AT_DropConstraint:
+				/* For these cases a YugaByte alter isn't required, so we do nothing. */
+				break;
+
+			default:
+				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("This ALTER TABLE command is not yet supported.")));
+				break;
+		}
+	}
+
+	if (needsYBAlter) {
+		HandleYBStmtStatus(YBCPgExecAlterTable(handle), handle);
+		HandleYBStatus(YBCPgDeleteStatement(handle));
+	}
+}
+
+void
+YBCRename(RenameStmt *stmt, Oid relationId)
+{
+	YBCPgStatement handle = NULL;
+	char *db_name	  = get_database_name(MyDatabaseId);
+
+	switch (stmt->renameType)
+	{
+		case OBJECT_TABLE:
+			HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
+											  MyDatabaseId,
+											  relationId,
+											  &handle));
+			HandleYBStmtStatus(YBCPgAlterTableRenameTable(handle, db_name, stmt->newname), handle);
+			break;
+
+		case OBJECT_COLUMN:
+		case OBJECT_ATTRIBUTE:
+
+			HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
+											  MyDatabaseId,
+											  relationId,
+											  &handle));
+
+			HandleYBStmtStatus(YBCPgAlterTableRenameColumn(handle,
+							   stmt->subname, stmt->newname), handle);
+			break;
+
+		default:
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("Renaming this object is not yet supported.")));
+
+	}
+}
+
+void
+YBCDropIndex(Oid relationId)
+{
+	YBCPgStatement handle;
+
+	HandleYBStatus(YBCPgNewDropIndex(ybc_pg_session,
+									 MyDatabaseId,
+									 relationId,
+									 false,	   /* if_exists */
+									 &handle));
+	HandleYBStmtStatus(YBCPgExecDropIndex(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }

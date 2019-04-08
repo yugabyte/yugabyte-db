@@ -73,6 +73,7 @@ class DocDBRocksDBUtil {
   const rocksdb::Options& options() const { return rocksdb_options_; }
 
   CHECKED_STATUS OpenRocksDB();
+
   CHECKED_STATUS ReopenRocksDB();
   CHECKED_STATUS DestroyRocksDB();
   void ResetMonotonicCounter();
@@ -199,8 +200,8 @@ class DocDBRocksDBUtil {
   rocksdb::OpId op_id_;
 
   std::shared_ptr<rocksdb::Cache> block_cache_;
-  std::shared_ptr<FixedHybridTimeRetentionPolicy> retention_policy_ {
-      std::make_shared<FixedHybridTimeRetentionPolicy>(HybridTime::kMin, MonoDelta::kMax) };
+  std::shared_ptr<ManualHistoryRetentionPolicy> retention_policy_ {
+      std::make_shared<ManualHistoryRetentionPolicy>() };
 
   rocksdb::WriteOptions write_options_;
   Schema schema_;

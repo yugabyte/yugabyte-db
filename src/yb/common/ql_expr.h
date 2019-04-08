@@ -17,16 +17,21 @@ namespace yb {
 // Virtual columns are just expression that is evaluated by DocDB in "doc_expr.cc".
 enum class PgSystemAttrNum : int {
   // Postgres system columns.
-  kSelfItemPointerAttributeNumber = -1, // ctid.
-  kObjectIdAttributeNumber = -2, // oid.
-  kMinTransactionIdAttributeNumber = -3, // xmin
-  kMinCommandIdAttributeNumber = -4, // cmin
-  kMaxTransactionIdAttributeNumber = -5, // xmax
-  kMaxCommandIdAttributeNumber = -6, // cmax
-  kTableOidAttributeNumber = -7, // tableoid
+  kSelfItemPointer  = -1, // ctid.
+  kObjectId         = -2, // oid.
+  kMinTransactionId = -3, // xmin
+  kMinCommandId     = -4, // cmin
+  kMaxTransactionId = -5, // xmax
+  kMaxCommandId     = -6, // cmax
+  kTableOid         = -7, // tableoid
 
   // YugaByte system columns.
-  kYBTupleId = -8, // yb_ctid.
+  kYBTupleId        = -8, // ybctid.
+
+  // The following attribute numbers are stored persistently in the table schema. For this reason,
+  // they are chosen to avoid potential conflict with Postgres' own sys attributes now and future.
+  kYBRowId          = -100, // ybrowid
+  kYBBaseTupleId    = -101, // ybbasectid
 };
 
 // TODO(neil)
@@ -238,6 +243,14 @@ class QLExprExecutor {
   virtual CHECKED_STATUS ReadTSCallValue(const PgsqlBCallPB& ql_expr,
                                          const QLTableRow::SharedPtrConst& table_row,
                                          QLValue *result);
+
+  // Evaluate a boolean condition for the given row.
+  virtual CHECKED_STATUS EvalCondition(const PgsqlConditionPB& condition,
+                                       const QLTableRow::SharedPtrConst& table_row,
+                                       bool* result);
+  virtual CHECKED_STATUS EvalCondition(const PgsqlConditionPB& condition,
+                                       const QLTableRow::SharedPtrConst& table_row,
+                                       QLValue *result);
 };
 
 } // namespace yb

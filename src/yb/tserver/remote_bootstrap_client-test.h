@@ -35,6 +35,7 @@
 
 #include "yb/tserver/remote_bootstrap-test-base.h"
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/rpc/messenger.h"

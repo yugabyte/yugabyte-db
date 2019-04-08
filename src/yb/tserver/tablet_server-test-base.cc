@@ -17,6 +17,7 @@
 
 #include "yb/common/wire_protocol-test-util.h"
 
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -34,6 +35,8 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/test_graph.h"
+
+using namespace std::literals;
 
 DEFINE_int32(rpc_timeout, 1000, "Timeout for RPC calls, in seconds");
 DEFINE_int32(num_updater_threads, 1, "Number of updating threads to launch");
@@ -116,28 +119,22 @@ void TabletServerTestBase::StartTabletServer() {
 }
 
 Status TabletServerTestBase::WaitForTabletRunning(const char *tablet_id) {
+  auto* tablet_manager = mini_server_->server()->tablet_manager();
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  RETURN_NOT_OK(mini_server_->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
+  RETURN_NOT_OK(tablet_manager->GetTabletPeer(tablet_id, &tablet_peer));
 
   // Sometimes the disk can be really slow and hence we need a high timeout to wait for consensus.
   RETURN_NOT_OK(tablet_peer->WaitUntilConsensusRunning(MonoDelta::FromSeconds(60)));
 
   RETURN_NOT_OK(tablet_peer->consensus()->EmulateElection());
 
-  // Wait to ensure there are no pending transitions for the tablet.
-  const MonoDelta timeout(MonoDelta::FromSeconds(10));
-  const MonoTime start(MonoTime::Now());
-  while (mini_server_->server()->tablet_manager()->IsTabletInTransition(tablet_id)) {
-    MonoTime now(MonoTime::Now());
-    MonoDelta elapsed(now.GetDeltaSince(start));
-    if (elapsed.MoreThan(timeout)) {
-      return STATUS(TimedOut, strings::Substitute(
-          "State transitions are still pending after waiting for $0 for tablet $1",
-          elapsed.ToString(), tablet_id));
-    }
-    SleepFor(MonoDelta::FromMilliseconds(100));
-  }
-  return Status::OK();
+  return WaitFor([tablet_manager, tablet_peer, tablet_id]() {
+        if (tablet_manager->IsTabletInTransition(tablet_id)) {
+          return false;
+        }
+        return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+      },
+      10s, Format("Complete state transitions for tablet $0", tablet_id));
 }
 
 void TabletServerTestBase::UpdateTestRowRemote(int tid,

@@ -1,7 +1,7 @@
 /*
  * PostgreSQL System Views
  *
- * Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
  * src/backend/catalog/system_views.sql
  *
@@ -332,9 +332,11 @@ WHERE
 UNION ALL
 SELECT
 	l.objoid, l.classoid, l.objsubid,
-	CASE WHEN pro.proisagg = true THEN 'aggregate'::text
-	     WHEN pro.proisagg = false THEN 'function'::text
-	END AS objtype,
+	CASE pro.prokind
+            WHEN 'a' THEN 'aggregate'::text
+            WHEN 'f' THEN 'function'::text
+            WHEN 'p' THEN 'procedure'::text
+            WHEN 'w' THEN 'window'::text END AS objtype,
 	pro.pronamespace AS objnamespace,
 	CASE WHEN pg_function_is_visible(pro.oid)
 	     THEN quote_ident(pro.proname)
@@ -750,6 +752,8 @@ CREATE VIEW pg_stat_wal_receiver AS
             s.latest_end_lsn,
             s.latest_end_time,
             s.slot_name,
+            s.sender_host,
+            s.sender_port,
             s.conninfo
     FROM pg_stat_get_wal_receiver() s
     WHERE s.pid IS NOT NULL;
@@ -934,214 +938,6 @@ REVOKE ALL ON pg_subscription FROM public;
 GRANT SELECT (subdbid, subname, subowner, subenabled, subslotname, subpublications)
     ON pg_subscription TO public;
 
-
---
--- We have a few function definitions in here, too.
--- At some point there might be enough to justify breaking them out into
--- a separate "system_functions.sql" file.
---
-
--- Tsearch debug function.  Defined here because it'd be pretty unwieldy
--- to put it into pg_proc.h
-
-CREATE FUNCTION ts_debug(IN config regconfig, IN document text,
-    OUT alias text,
-    OUT description text,
-    OUT token text,
-    OUT dictionaries regdictionary[],
-    OUT dictionary regdictionary,
-    OUT lexemes text[])
-RETURNS SETOF record AS
-$$
-SELECT
-    tt.alias AS alias,
-    tt.description AS description,
-    parse.token AS token,
-    ARRAY ( SELECT m.mapdict::pg_catalog.regdictionary
-            FROM pg_catalog.pg_ts_config_map AS m
-            WHERE m.mapcfg = $1 AND m.maptokentype = parse.tokid
-            ORDER BY m.mapseqno )
-    AS dictionaries,
-    ( SELECT mapdict::pg_catalog.regdictionary
-      FROM pg_catalog.pg_ts_config_map AS m
-      WHERE m.mapcfg = $1 AND m.maptokentype = parse.tokid
-      ORDER BY pg_catalog.ts_lexize(mapdict, parse.token) IS NULL, m.mapseqno
-      LIMIT 1
-    ) AS dictionary,
-    ( SELECT pg_catalog.ts_lexize(mapdict, parse.token)
-      FROM pg_catalog.pg_ts_config_map AS m
-      WHERE m.mapcfg = $1 AND m.maptokentype = parse.tokid
-      ORDER BY pg_catalog.ts_lexize(mapdict, parse.token) IS NULL, m.mapseqno
-      LIMIT 1
-    ) AS lexemes
-FROM pg_catalog.ts_parse(
-        (SELECT cfgparser FROM pg_catalog.pg_ts_config WHERE oid = $1 ), $2
-    ) AS parse,
-     pg_catalog.ts_token_type(
-        (SELECT cfgparser FROM pg_catalog.pg_ts_config WHERE oid = $1 )
-    ) AS tt
-WHERE tt.tokid = parse.tokid
-$$
-LANGUAGE SQL STRICT STABLE PARALLEL SAFE;
-
-COMMENT ON FUNCTION ts_debug(regconfig,text) IS
-    'debug function for text search configuration';
-
-CREATE FUNCTION ts_debug(IN document text,
-    OUT alias text,
-    OUT description text,
-    OUT token text,
-    OUT dictionaries regdictionary[],
-    OUT dictionary regdictionary,
-    OUT lexemes text[])
-RETURNS SETOF record AS
-$$
-    SELECT * FROM pg_catalog.ts_debug( pg_catalog.get_current_ts_config(), $1);
-$$
-LANGUAGE SQL STRICT STABLE PARALLEL SAFE;
-
-COMMENT ON FUNCTION ts_debug(text) IS
-    'debug function for current text search configuration';
-
---
--- Redeclare built-in functions that need default values attached to their
--- arguments.  It's impractical to set those up directly in pg_proc.h because
--- of the complexity and platform-dependency of the expression tree
--- representation.  (Note that internal functions still have to have entries
--- in pg_proc.h; we are merely causing their proargnames and proargdefaults
--- to get filled in.)
---
-
-CREATE OR REPLACE FUNCTION
-  pg_start_backup(label text, fast boolean DEFAULT false, exclusive boolean DEFAULT true)
-  RETURNS pg_lsn STRICT VOLATILE LANGUAGE internal AS 'pg_start_backup'
-  PARALLEL RESTRICTED;
-
-CREATE OR REPLACE FUNCTION pg_stop_backup (
-        exclusive boolean, wait_for_archive boolean DEFAULT true,
-        OUT lsn pg_lsn, OUT labelfile text, OUT spcmapfile text)
-  RETURNS SETOF record STRICT VOLATILE LANGUAGE internal as 'pg_stop_backup_v2'
-  PARALLEL RESTRICTED;
-
--- legacy definition for compatibility with 9.3
-CREATE OR REPLACE FUNCTION
-  json_populate_record(base anyelement, from_json json, use_json_as_text boolean DEFAULT false)
-  RETURNS anyelement LANGUAGE internal STABLE AS 'json_populate_record' PARALLEL SAFE;
-
--- legacy definition for compatibility with 9.3
-CREATE OR REPLACE FUNCTION
-  json_populate_recordset(base anyelement, from_json json, use_json_as_text boolean DEFAULT false)
-  RETURNS SETOF anyelement LANGUAGE internal STABLE ROWS 100  AS 'json_populate_recordset' PARALLEL SAFE;
-
-CREATE OR REPLACE FUNCTION pg_logical_slot_get_changes(
-    IN slot_name name, IN upto_lsn pg_lsn, IN upto_nchanges int, VARIADIC options text[] DEFAULT '{}',
-    OUT lsn pg_lsn, OUT xid xid, OUT data text)
-RETURNS SETOF RECORD
-LANGUAGE INTERNAL
-VOLATILE ROWS 1000 COST 1000
-AS 'pg_logical_slot_get_changes';
-
-CREATE OR REPLACE FUNCTION pg_logical_slot_peek_changes(
-    IN slot_name name, IN upto_lsn pg_lsn, IN upto_nchanges int, VARIADIC options text[] DEFAULT '{}',
-    OUT lsn pg_lsn, OUT xid xid, OUT data text)
-RETURNS SETOF RECORD
-LANGUAGE INTERNAL
-VOLATILE ROWS 1000 COST 1000
-AS 'pg_logical_slot_peek_changes';
-
-CREATE OR REPLACE FUNCTION pg_logical_slot_get_binary_changes(
-    IN slot_name name, IN upto_lsn pg_lsn, IN upto_nchanges int, VARIADIC options text[] DEFAULT '{}',
-    OUT lsn pg_lsn, OUT xid xid, OUT data bytea)
-RETURNS SETOF RECORD
-LANGUAGE INTERNAL
-VOLATILE ROWS 1000 COST 1000
-AS 'pg_logical_slot_get_binary_changes';
-
-CREATE OR REPLACE FUNCTION pg_logical_slot_peek_binary_changes(
-    IN slot_name name, IN upto_lsn pg_lsn, IN upto_nchanges int, VARIADIC options text[] DEFAULT '{}',
-    OUT lsn pg_lsn, OUT xid xid, OUT data bytea)
-RETURNS SETOF RECORD
-LANGUAGE INTERNAL
-VOLATILE ROWS 1000 COST 1000
-AS 'pg_logical_slot_peek_binary_changes';
-
-CREATE OR REPLACE FUNCTION pg_create_physical_replication_slot(
-    IN slot_name name, IN immediately_reserve boolean DEFAULT false,
-    IN temporary boolean DEFAULT false,
-    OUT slot_name name, OUT lsn pg_lsn)
-RETURNS RECORD
-LANGUAGE INTERNAL
-STRICT VOLATILE
-AS 'pg_create_physical_replication_slot';
-
-CREATE OR REPLACE FUNCTION pg_create_logical_replication_slot(
-    IN slot_name name, IN plugin name,
-    IN temporary boolean DEFAULT false,
-    OUT slot_name text, OUT lsn pg_lsn)
-RETURNS RECORD
-LANGUAGE INTERNAL
-STRICT VOLATILE
-AS 'pg_create_logical_replication_slot';
-
-CREATE OR REPLACE FUNCTION
-  make_interval(years int4 DEFAULT 0, months int4 DEFAULT 0, weeks int4 DEFAULT 0,
-                days int4 DEFAULT 0, hours int4 DEFAULT 0, mins int4 DEFAULT 0,
-                secs double precision DEFAULT 0.0)
-RETURNS interval
-LANGUAGE INTERNAL
-STRICT IMMUTABLE PARALLEL SAFE
-AS 'make_interval';
-
-CREATE OR REPLACE FUNCTION
-  jsonb_set(jsonb_in jsonb, path text[] , replacement jsonb,
-            create_if_missing boolean DEFAULT true)
-RETURNS jsonb
-LANGUAGE INTERNAL
-STRICT IMMUTABLE PARALLEL SAFE
-AS 'jsonb_set';
-
-CREATE OR REPLACE FUNCTION
-  parse_ident(str text, strict boolean DEFAULT true)
-RETURNS text[]
-LANGUAGE INTERNAL
-STRICT IMMUTABLE PARALLEL SAFE
-AS 'parse_ident';
-
-CREATE OR REPLACE FUNCTION
-  jsonb_insert(jsonb_in jsonb, path text[] , replacement jsonb,
-            insert_after boolean DEFAULT false)
-RETURNS jsonb
-LANGUAGE INTERNAL
-STRICT IMMUTABLE PARALLEL SAFE
-AS 'jsonb_insert';
-
--- The default permissions for functions mean that anyone can execute them.
--- A number of functions shouldn't be executable by just anyone, but rather
--- than use explicit 'superuser()' checks in those functions, we use the GRANT
--- system to REVOKE access to those functions at initdb time.  Administrators
--- can later change who can access these functions, or leave them as only
--- available to superuser / cluster owner, if they choose.
-REVOKE EXECUTE ON FUNCTION pg_start_backup(text, boolean, boolean) FROM public;
-REVOKE EXECUTE ON FUNCTION pg_stop_backup() FROM public;
-REVOKE EXECUTE ON FUNCTION pg_stop_backup(boolean, boolean) FROM public;
-REVOKE EXECUTE ON FUNCTION pg_create_restore_point(text) FROM public;
-REVOKE EXECUTE ON FUNCTION pg_switch_wal() FROM public;
-REVOKE EXECUTE ON FUNCTION pg_wal_replay_pause() FROM public;
-REVOKE EXECUTE ON FUNCTION pg_wal_replay_resume() FROM public;
-REVOKE EXECUTE ON FUNCTION pg_rotate_logfile() FROM public;
-REVOKE EXECUTE ON FUNCTION pg_reload_conf() FROM public;
-REVOKE EXECUTE ON FUNCTION pg_current_logfile() FROM public;
-REVOKE EXECUTE ON FUNCTION pg_current_logfile(text) FROM public;
-
-REVOKE EXECUTE ON FUNCTION pg_stat_reset() FROM public;
-REVOKE EXECUTE ON FUNCTION pg_stat_reset_shared(text) FROM public;
-REVOKE EXECUTE ON FUNCTION pg_stat_reset_single_table_counters(oid) FROM public;
-REVOKE EXECUTE ON FUNCTION pg_stat_reset_single_function_counters(oid) FROM public;
-
-REVOKE EXECUTE ON FUNCTION pg_ls_logdir() FROM public;
-REVOKE EXECUTE ON FUNCTION pg_ls_waldir() FROM public;
-GRANT EXECUTE ON FUNCTION pg_ls_logdir() TO pg_monitor;
-GRANT EXECUTE ON FUNCTION pg_ls_waldir() TO pg_monitor;
 
 GRANT pg_read_all_settings TO pg_monitor;
 GRANT pg_read_all_stats TO pg_monitor;

@@ -25,8 +25,6 @@ DECLARE_string(test_leave_files);
 namespace yb {
 namespace pggate {
 
-using client::PgOid;
-
 PggateTest::PggateTest() {
 }
 
@@ -95,7 +93,11 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
 
   // Init PgGate API.
   CHECK_YBC_STATUS(YBCInit(test_name, PggateTestAlloc, PggateTestCStringToTextWithLen));
-  YBCInitPgGate();
+
+  const YBCPgTypeEntity *type_table = nullptr;
+  int count = 0;
+  YBCTestGetTypeTable(&type_table, &count);
+  YBCInitPgGate(type_table, count);
 
   // Setup session.
   CHECK_YBC_STATUS(YBCPgCreateSession(nullptr, "", &pg_session_));
@@ -105,7 +107,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   return Status::OK();
 }
 
-CHECKED_STATUS PggateTest::CreateCluster(int num_tablet_servers) {
+Status PggateTest::CreateCluster(int num_tablet_servers) {
   // Start mini-cluster with given number of tservers (default: 3).
   ExternalMiniClusterOptions opts;
   opts.num_tablet_servers = num_tablet_servers;
@@ -123,20 +125,25 @@ CHECKED_STATUS PggateTest::CreateCluster(int num_tablet_servers) {
 
 //--------------------------------------------------------------------------------------------------
 
-void PggateTest::SetupDB(const string& db_name, const PgOid db_oid) {
+void PggateTest::SetupDB(const string& db_name, const YBCPgOid db_oid) {
   CreateDB(db_name, db_oid);
   ConnectDB(db_name);
 }
 
-void PggateTest::CreateDB(const string& db_name, const PgOid db_oid) {
+void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
   YBCPgStatement pg_stmt;
-  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, db_name.c_str(), db_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewCreateDatabase(pg_session_, db_name.c_str(), db_oid,
+                                          0 /* source_database_oid */, 0 /* next_oid */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
   CHECK_YBC_STATUS(YBCPgDeleteStatement(pg_stmt));
 }
 
 void PggateTest::ConnectDB(const string& db_name) {
   CHECK_YBC_STATUS(YBCPgConnectDatabase(pg_session_, db_name.c_str()));
+}
+
+void PggateTest::CommitTransaction() {
+  CHECK_YBC_STATUS(YBCPgTxnManager_CommitTransaction_Status(YBCGetPgTxnManager()));
 }
 
 // ------------------------------------------------------------------------------------------------

@@ -42,6 +42,7 @@
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/event_helpers.h"
 #include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/log_reader.h"
 #include "yb/rocksdb/db/log_writer.h"
 #include "yb/rocksdb/db/memtable.h"
@@ -232,6 +233,7 @@ CompactionJob::CompactionJob(
     InstrumentedMutex* db_mutex, Status* db_bg_error,
     std::vector<SequenceNumber> existing_snapshots,
     SequenceNumber earliest_write_conflict_snapshot,
+    FileNumbersProvider* file_numbers_provider,
     std::shared_ptr<Cache> table_cache, EventLogger* event_logger,
     bool paranoid_file_checks, bool measure_io_stats, const std::string& dbname,
     CompactionJobStats* compaction_job_stats)
@@ -253,6 +255,7 @@ CompactionJob::CompactionJob(
       db_bg_error_(db_bg_error),
       existing_snapshots_(std::move(existing_snapshots)),
       earliest_write_conflict_snapshot_(earliest_write_conflict_snapshot),
+      file_numbers_provider_(file_numbers_provider),
       table_cache_(std::move(table_cache)),
       event_logger_(event_logger),
       paranoid_file_checks_(paranoid_file_checks),
@@ -475,7 +478,7 @@ void CompactionJob::GenSubcompactionBoundaries() {
   }
 }
 
-Status CompactionJob::Run() {
+Result<FileNumbersHolder> CompactionJob::Run() {
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_COMPACTION_RUN);
   TEST_SYNC_POINT("CompactionJob::Run():Start");
@@ -489,14 +492,16 @@ Status CompactionJob::Run() {
   // Launch a thread for each of subcompactions 1...num_threads-1
   std::vector<std::thread> thread_pool;
   thread_pool.reserve(num_threads - 1);
+  FileNumbersHolder file_numbers_holder(file_numbers_provider_->CreateHolder());
+  file_numbers_holder.Reserve(num_threads);
   for (size_t i = 1; i < compact_->sub_compact_states.size(); i++) {
-    thread_pool.emplace_back(&CompactionJob::ProcessKeyValueCompaction, this,
+    thread_pool.emplace_back(&CompactionJob::ProcessKeyValueCompaction, this, &file_numbers_holder,
                              &compact_->sub_compact_states[i]);
   }
 
   // Always schedule the first subcompaction (whether or not there are also
   // others) in the current thread to be efficient with resources
-  ProcessKeyValueCompaction(&compact_->sub_compact_states[0]);
+  ProcessKeyValueCompaction(&file_numbers_holder, &compact_->sub_compact_states[0]);
 
   // Wait for all other threads (if there are any) to finish execution
   for (auto& thread : thread_pool) {
@@ -537,7 +542,7 @@ Status CompactionJob::Run() {
   TEST_SYNC_POINT("CompactionJob::Run():End");
 
   compact_->status = status;
-  return status;
+  return std::move(file_numbers_holder);
 }
 
 Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
@@ -614,7 +619,8 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
   return status;
 }
 
-void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
+void CompactionJob::ProcessKeyValueCompaction(
+    FileNumbersHolder* holder, SubcompactionState* sub_compact) {
   assert(sub_compact != nullptr);
   std::unique_ptr<InternalIterator> input(
       versions_->MakeInputIterator(sub_compact->compaction));
@@ -646,6 +652,13 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
         sub_compact->compaction->CreateCompactionFilter();
     compaction_filter = compaction_filter_from_factory.get();
   }
+
+  if (compaction_filter) {
+    // This is used to persist the history cutoff hybrid time chosen for the DocDB compaction
+    // filter.
+    largest_user_frontier_ = compaction_filter->GetLargestUserFrontier();
+  }
+
   MergeHelper merge(
       env_, cfd->user_comparator(), cfd->ioptions()->merge_operator,
       compaction_filter, db_options_.info_log.get(),
@@ -705,7 +718,7 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
     // Open output file if necessary
     if (sub_compact->builder == nullptr) {
-      status = OpenCompactionOutputFile(sub_compact);
+      status = OpenCompactionOutputFile(holder, sub_compact);
       if (!status.ok()) {
         break;
       }
@@ -953,12 +966,15 @@ Status CompactionJob::InstallCompactionResults(
   }
 
   // Add compaction outputs
-  compaction->AddInputDeletions(compact_->compaction->edit());
+  compaction->AddInputDeletions(compaction->edit());
 
   for (const auto& sub_compact : compact_->sub_compact_states) {
     for (const auto& out : sub_compact.outputs) {
       compaction->edit()->AddFile(compaction->output_level(), out.meta);
     }
+  }
+  if (largest_user_frontier_) {
+    compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),
                                 mutable_cf_options, compaction->edit(),
@@ -991,11 +1007,10 @@ Status CompactionJob::OpenFile(const std::string table_name, uint64_t file_numbe
 }
 
 Status CompactionJob::OpenCompactionOutputFile(
-    SubcompactionState* sub_compact) {
+    FileNumbersHolder* holder, SubcompactionState* sub_compact) {
   assert(sub_compact != nullptr);
   assert(sub_compact->builder == nullptr);
-  // no need to lock because VersionSet::next_file_number_ is atomic
-  uint64_t file_number = versions_->NewFileNumber();
+  FileNumber file_number = file_numbers_provider_->NewFileNumber(holder);
 
   // Make the output file
   unique_ptr<WritableFile> base_writable_file;
@@ -1004,14 +1019,8 @@ Status CompactionJob::OpenCompactionOutputFile(
                                     sub_compact->compaction->output_path_id());
   const std::string data_fname = TableBaseToDataFileName(base_fname);
   const std::string table_name = sub_compact->compaction->column_family_data()->GetName();
-  Status s = OpenFile(table_name, file_number, "base", base_fname, &base_writable_file);
-  if (!s.ok()) {
-    return s;
-  }
-  s = OpenFile(table_name, file_number, "data", data_fname, &data_writable_file);
-  if (!s.ok()) {
-    return s;
-  }
+  RETURN_NOT_OK(OpenFile(table_name, file_number, "base", base_fname, &base_writable_file));
+  RETURN_NOT_OK(OpenFile(table_name, file_number, "data", data_fname, &data_writable_file));
 
   SubcompactionState::Output out;
   out.meta.fd =
@@ -1063,7 +1072,7 @@ Status CompactionJob::OpenCompactionOutputFile(
       sub_compact->compaction->output_compression(), cfd->ioptions()->compression_opts,
       skip_filters));
   LogFlush(db_options_.info_log);
-  return s;
+  return Status::OK();
 }
 
 void CompactionJob::CleanupCompaction() {

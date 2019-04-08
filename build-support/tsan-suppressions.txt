@@ -97,13 +97,12 @@ race:backtrace_vector_grow
 race:read_line_header
 race:read_abbrevs
 race:backtrace_alloc
+race:dwarf_lookup_pc
+race:read_function_entry
 
-# False positives of TSAN, because we use atomic to check wether all responses are filled.
+# False positives of TSAN, because we use atomic to check whether all responses are filled.
 race:yb::redisserver::RedisInboundCall::Serialize
 race:yb::redisserver::(anonymous namespace)::BatchContext::LookupDone
-
-# Bug in tacopie
-race:tacopie::utils::thread_pool
 
 # Usages of URCU
 race:yb::internal::ConcurrentValue
@@ -124,3 +123,8 @@ signal:src/postgres/src/backend/postmaster/postmaster.c
 # The implementation is correct but TSAN has false positive data races during SharedPtr
 # destruction.
 race:cass::RefCounted<cass::*>::dec_ref
+# Races in libuv.so
+race:uv__io_feed
+race:uv__update_time
+race:uv_timer_start
+

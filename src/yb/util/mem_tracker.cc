@@ -175,6 +175,7 @@ std::string CreateMetricName(const MemTracker& mem_tracker) {
   }
   std::string id = mem_tracker.id();
   std::replace(id.begin(), id.end(), ' ', '_');
+  std::replace(id.begin(), id.end(), '.', '_');
   if (mem_tracker.parent()) {
     return CreateMetricName(*mem_tracker.parent()) + "_" + id;
   } else {
@@ -463,7 +464,7 @@ void MemTracker::Consume(int64_t bytes) {
   }
 }
 
-bool MemTracker::TryConsume(int64_t bytes) {
+bool MemTracker::TryConsume(int64_t bytes, MemTracker** blocking_mem_tracker) {
   UpdateConsumption();
   if (bytes <= 0) {
     return true;
@@ -511,6 +512,10 @@ bool MemTracker::TryConsume(int64_t bytes) {
   for (int j = all_trackers_.size() - 1; j > i; --j) {
     IncrementBy(-bytes, &all_trackers_[j]->consumption_, all_trackers_[j]->metrics_);
   }
+  if (blocking_mem_tracker) {
+    *blocking_mem_tracker = all_trackers_[i];
+  }
+
   return false;
 }
 

@@ -81,6 +81,13 @@ class ProxyContext {
 
   virtual IoService& io_service() = 0;
 
+  virtual RpcMetrics& rpc_metrics() = 0;
+
+  virtual const std::shared_ptr<MemTracker>& parent_mem_tracker() = 0;
+
+  // Number of connections to create per destination address.
+  virtual int num_connections_to_server() const = 0;
+
   virtual ~ProxyContext() {}
 };
 
@@ -175,6 +182,11 @@ class Proxy {
   ConcurrentPod<Endpoint> resolved_ep_;
 
   scoped_refptr<Histogram> latency_hist_;
+
+  // Number of outbound connections to create per each destination server address.
+  int num_connections_to_server_;
+
+  MemTrackerPtr mem_tracker_;
 };
 
 class ProxyCache {

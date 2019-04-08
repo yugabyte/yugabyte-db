@@ -3,7 +3,7 @@
  * indexam.c
  *	  general index access method routines
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -73,7 +73,6 @@
 #include "access/relscan.h"
 #include "access/transam.h"
 #include "access/xlog.h"
-#include "catalog/catalog.h"
 #include "catalog/index.h"
 #include "pgstat.h"
 #include "storage/bufmgr.h"
@@ -82,6 +81,8 @@
 #include "utils/snapmgr.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
+#include "access/ybcin.h"
 
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
@@ -114,6 +115,14 @@ do { \
 	if (indexRelation->rd_amroutine->pname == NULL) \
 		elog(ERROR, "function %s is not defined for index %s", \
 			 CppAsString(pname), RelationGetRelationName(indexRelation)); \
+} while(0)
+
+#define CHECK_REL_PROCEDURE2(pname1, pname2) \
+do { \
+	if (indexRelation->rd_amroutine->pname1 == NULL && \
+	    indexRelation->rd_amroutine->pname2 == NULL) \
+		elog(ERROR, "functions %s/%s are not defined for index %s", \
+			 CppAsString(pname1), CppAsString(pname2), RelationGetRelationName(indexRelation)); \
 } while(0)
 
 #define CHECK_SCAN_PROCEDURE(pname) \
@@ -154,7 +163,8 @@ index_open(Oid relationId, LOCKMODE lockmode)
 
 	r = relation_open(relationId, lockmode);
 
-	if (r->rd_rel->relkind != RELKIND_INDEX)
+	if (r->rd_rel->relkind != RELKIND_INDEX &&
+		r->rd_rel->relkind != RELKIND_PARTITIONED_INDEX)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" is not an index",
@@ -195,21 +205,62 @@ index_insert(Relation indexRelation,
 			 Datum *values,
 			 bool *isnull,
 			 ItemPointer heap_t_ctid,
+			 HeapTuple heapTuple,
 			 Relation heapRelation,
 			 IndexUniqueCheck checkUnique,
 			 IndexInfo *indexInfo)
 {
 	RELATION_CHECKS;
-	CHECK_REL_PROCEDURE(aminsert);
 
 	if (!(indexRelation->rd_amroutine->ampredlocks))
 		CheckForSerializableConflictIn(indexRelation,
 									   (HeapTuple) NULL,
 									   InvalidBuffer);
 
-	return indexRelation->rd_amroutine->aminsert(indexRelation, values, isnull,
-												 heap_t_ctid, heapRelation,
-												 checkUnique, indexInfo);
+	/*
+	 * For YugaByte-based index, call the variant of aminsert that takes the full tuple instead of
+	 * the tuple id.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		CHECK_REL_PROCEDURE(yb_aminsert);
+		return indexRelation->rd_amroutine->yb_aminsert(indexRelation, values, isnull,
+														heapTuple->t_ybctid, heapRelation,
+														checkUnique, indexInfo);
+	}
+	else
+	{
+		CHECK_REL_PROCEDURE(aminsert);
+		return indexRelation->rd_amroutine->aminsert(indexRelation, values, isnull,
+													 heap_t_ctid, heapRelation,
+													 checkUnique, indexInfo);
+	}
+}
+
+/* ----------------
+ *		index_delete - delete an index tuple from a relation.
+ *      This is used only for indexes backed by YugaByte DB. For Postgres, when a tuple is updated,
+ *      the ctid of the original tuple will be invalid (except for heap-only tuple (HOT)). Because
+ *      of this, index entries of the original tuple do not need to be deleted in UPDATE. For
+ *      YugaByte-based tables, the ybctid is the primary key of the tuple and will remain valid
+ *      after UPDATE. So when a tuple is updated, we need to delete all index entries associated
+ *      explicitly.
+ * ----------------
+ */
+void
+index_delete(Relation indexRelation,
+			 Datum *values,
+			 bool *isnull,
+			 Datum ybctid,
+			 Relation heapRelation,
+			 IndexInfo *indexInfo)
+{
+	RELATION_CHECKS;
+	CHECK_REL_PROCEDURE(yb_amdelete);
+
+	indexRelation->rd_amroutine->yb_amdelete(indexRelation, values, isnull,
+											 ybctid, heapRelation,
+											 indexInfo);
 }
 
 /*
@@ -582,6 +633,22 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 HeapTuple
 index_fetch_heap(IndexScanDesc scan)
 {
+	/*
+	 * For YugaByte secondary indexes, we need to select from the base table using
+	 * ybctid. For primary keys, the row is already prepared in "xs_hitup" that can
+	 * be returned directly.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		if (scan->indexRelation->rd_index->indisprimary)
+		{
+			Assert(scan->xs_hitup != 0);
+			return scan->xs_hitup;
+		}
+
+		return YBCFetchTuple(scan->heapRelation, scan->xs_ctup.t_ybctid);
+	}
+
 	ItemPointer tid = &scan->xs_ctup.t_self;
 	bool		all_dead = false;
 	bool		got_heap_tuple;
@@ -784,7 +851,7 @@ index_can_return(Relation indexRelation, int attno)
 {
 	RELATION_CHECKS;
 
-	/* amcanreturn is optional; assume FALSE if not provided by AM */
+	/* amcanreturn is optional; assume false if not provided by AM */
 	if (indexRelation->rd_amroutine->amcanreturn == NULL)
 		return false;
 

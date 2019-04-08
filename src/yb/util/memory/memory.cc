@@ -227,6 +227,8 @@ bool ClearingBufferAllocator::ReallocateInternal(size_t requested,
   size_t offset = (buffer != nullptr ? buffer->size() : 0);
   bool success = DelegateReallocate(delegate_, requested, minimal, buffer,
                                     originator);
+  // We expect buffer to be non-null in case of success.
+  assert(!success || buffer != nullptr);
   if (success && buffer->size() > offset) {
     memset(static_cast<char*>(buffer->data()) + offset, 0,
            buffer->size() - offset);

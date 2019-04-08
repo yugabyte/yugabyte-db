@@ -137,7 +137,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     AddExtraFlags(FLAGS_ts_flags, &opts.extra_tserver_flags);
     AddExtraFlags(FLAGS_master_flags, &opts.extra_master_flags);
 
-    cluster_.reset(new ExternalMiniClusterClass(opts));
+    cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
     inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
     CreateTSProxies();
@@ -462,8 +462,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   }
 
  protected:
-  typedef YB_EDITION_NS_PREFIX ExternalMiniCluster ExternalMiniClusterClass;
-  gscoped_ptr<ExternalMiniClusterClass> cluster_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
   gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
 
   // Maps server uuid to TServerDetails

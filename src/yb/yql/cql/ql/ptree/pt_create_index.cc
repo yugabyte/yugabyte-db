@@ -9,6 +9,7 @@
 #include "yb/client/client.h"
 
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/gutil/strings/ascii_ctype.h"
 
 namespace yb {
 namespace ql {
@@ -42,6 +43,33 @@ PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
 PTCreateIndex::~PTCreateIndex() {
 }
 
+namespace {
+
+CHECKED_STATUS SetupCoveringColumn(TreeNode *node, SemContext *sem_context) {
+  switch (node->opcode()) {
+  case TreeNodeOpcode::kPTName: {
+      PTName* const name_node = static_cast<PTName*>(node);
+      RETURN_NOT_OK(name_node->Analyze(sem_context));
+      RETURN_NOT_OK(name_node->SetupCoveringIndexColumn(sem_context));
+    }
+    break;
+
+  case TreeNodeOpcode::kPTJsonOp: {
+      PTJsonColumnWithOperators* const json_node = static_cast<PTJsonColumnWithOperators*>(node);
+      RETURN_NOT_OK(json_node->Analyze(sem_context));
+      RETURN_NOT_OK(json_node->SetupCoveringIndexColumn(sem_context));
+    }
+    break;
+
+  default:
+    return sem_context->Error(node, "Unexpected covering column type", ErrorCode::FAILURE);
+  }
+
+  return Status::OK();
+}
+
+} // namespace
+
 CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // Look up indexed table.
   bool is_system_ignored;
@@ -50,7 +78,7 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.
   RETURN_NOT_OK(sem_context->LookupTable(relation_->ToTableName(), relation_->loc(),
                                          true /* write_table */,
-                                         PermissionType::CREATE_PERMISSION,
+                                         PermissionType::ALTER_PERMISSION,
                                          &table_, &is_system_ignored,
                                          &column_descs_, &column_definitions_));
 
@@ -59,8 +87,33 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   sem_context->set_current_create_table_stmt(this);
 
   // Analyze index table like a regular table for the primary key definitions.
-  // If flag use_cassandra_authentication is enabled, this will also enforce the permissions.
+  // If flag use_cassandra_authentication is enabled, we will not check for the create permission
+  // on the table because creating an index requires the alter permission on the table.
   RETURN_NOT_OK(PTCreateTable::Analyze(sem_context));
+
+  if (!name_) {
+    string auto_name = relation_->last_name().c_str();
+
+    for (const auto& column : hash_columns_) {
+      auto_name += string("_") + column->yb_name();
+    }
+
+    for (const auto& column : primary_columns_) {
+      auto_name += string("_") + column->yb_name();
+    }
+
+    auto_name += "_idx";
+    string final_name;
+
+    for (char& c : auto_name) {
+      if (ascii_isalnum(c) || c == '_') { // Accepted a-z, A-Z, 0-9, _.
+        final_name += c;
+      }
+    }
+
+    LOG(INFO) << "Set automatic name for the new index: " << final_name;
+    name_ = MCMakeShared<MCString>(sem_context->PTreeMem(), final_name.c_str());
+  }
 
   // Add remaining primary key columns from the indexed table. For non-unique index, add the columns
   // to the primary key of the index table to make the non-unique values unique. For unique index,
@@ -80,8 +133,7 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
 
   // Add covering columns.
   if (covering_ != nullptr) {
-    RETURN_NOT_OK((covering_->Apply<SemContext, PTName>(sem_context,
-                                                        &PTName::SetupCoveringIndexColumn)));
+    RETURN_NOT_OK((covering_->Apply<SemContext, TreeNode>(sem_context, &SetupCoveringColumn)));
   }
 
   // Check whether the index is local, i.e. whether the hash keys match (including being in the
@@ -149,6 +201,18 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
 
 void PTCreateIndex::PrintSemanticAnalysisResult(SemContext *sem_context) {
   PTCreateTable::PrintSemanticAnalysisResult(sem_context);
+}
+
+Status PTCreateIndex::CheckPrimaryType(SemContext *sem_context,
+                                       const PTBaseType::SharedPtr& datatype) const {
+  DCHECK_NOTNULL(datatype.get());
+  DCHECK_NOTNULL(datatype->ql_type().get());
+
+  if (datatype->ql_type()->main() == DataType::JSONB) {
+    return CheckType(sem_context, datatype);
+  }
+
+  return PTCreateTable::CheckPrimaryType(sem_context, datatype);
 }
 
 Status PTCreateIndex::ToTableProperties(TableProperties *table_properties) const {

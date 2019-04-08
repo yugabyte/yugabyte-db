@@ -13,7 +13,7 @@
  * we must return a tuples-processed count in the completionTag.  (We no
  * longer do that for CTAS ... WITH NO DATA, however.)
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -49,6 +49,9 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 
+/*  YB includes. */
+#include "executor/ybcModifyTable.h"
+#include "pg_yb_utils.h"
 
 typedef struct
 {
@@ -114,23 +117,28 @@ create_ctas_internal(List *attrList, IntoClause *into)
 	 */
 	intoRelationAddr = DefineRelation(create, relkind, InvalidOid, NULL, NULL);
 
-	/*
-	 * If necessary, create a TOAST table for the target table.  Note that
-	 * NewRelationCreateToastTable ends with CommandCounterIncrement(), so
-	 * that the TOAST table will be visible for insertion.
-	 */
-	CommandCounterIncrement();
+	/* TOAST tables are not needed in YugaByte database */
+	if (!IsYugaByteEnabled())
+	{
+		/*
+		 * If necessary, create a TOAST table for the target table.  Note that
+		 * NewRelationCreateToastTable ends with CommandCounterIncrement(), so
+		 * that the TOAST table will be visible for insertion.
+		 */
+		CommandCounterIncrement();
 
-	/* parse and validate reloptions for the toast table */
-	toast_options = transformRelOptions((Datum) 0,
-										create->options,
-										"toast",
-										validnsps,
-										true, false);
+		/* parse and validate reloptions for the toast table */
+		toast_options = transformRelOptions((Datum) 0,
+		                                    create->options,
+		                                    "toast",
+		                                    validnsps,
+		                                    true,
+		                                    false);
 
-	(void) heap_reloptions(RELKIND_TOASTVALUE, toast_options, true);
+		(void) heap_reloptions(RELKIND_TOASTVALUE, toast_options, true);
 
-	NewRelationCreateToastTable(intoRelationAddr.objectId, toast_options);
+		NewRelationCreateToastTable(intoRelationAddr.objectId, toast_options);
+	}
 
 	/* Create the "view" part of a materialized view. */
 	if (is_matview)
@@ -326,8 +334,8 @@ ExecCreateTableAs(CreateTableAsStmt *stmt, const char *queryString,
 		query = linitial_node(Query, rewritten);
 		Assert(query->commandType == CMD_SELECT);
 
-		/* plan the query --- note we disallow parallelism */
-		plan = pg_plan_query(query, 0, params);
+		/* plan the query */
+		plan = pg_plan_query(query, CURSOR_OPT_PARALLEL_OK, params);
 
 		/*
 		 * Use a snapshot with an updated command ID to ensure this query sees
@@ -468,7 +476,7 @@ intorel_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	lc = list_head(into->colNames);
 	for (attnum = 0; attnum < typeinfo->natts; attnum++)
 	{
-		Form_pg_attribute attribute = typeinfo->attrs[attnum];
+		Form_pg_attribute attribute = TupleDescAttr(typeinfo, attnum);
 		ColumnDef  *col;
 		char	   *colname;
 
@@ -596,11 +604,26 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	if (myState->rel->rd_rel->relhasoids)
 		HeapTupleSetOid(tuple, InvalidOid);
 
-	heap_insert(myState->rel,
-				tuple,
-				myState->output_cid,
-				myState->hi_options,
-				myState->bistate);
+	/*
+	 * if we are creating and inserting into a temporary table,
+	 * we must use PG transaction codepaths as well
+	 */
+	if (myState->rel->rd_rel->relpersistence == RELPERSISTENCE_TEMP
+			&& IsYugaByteEnabled())
+		SetTxnWithPGRel();
+
+	if (IsYBRelation(myState->rel))
+	{
+		YBCExecuteInsert(myState->rel, RelationGetDescr(myState->rel), tuple);
+	}
+	else
+	{
+		heap_insert(myState->rel,
+								tuple,
+								myState->output_cid,
+								myState->hi_options,
+								myState->bistate);
+	}
 
 	/* We know this is a newly created relation, so there are no indexes */
 

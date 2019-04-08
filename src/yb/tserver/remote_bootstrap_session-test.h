@@ -42,11 +42,11 @@
 #include "yb/common/partial_row.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/fs/block_id.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/fastmem.h"
@@ -73,7 +73,6 @@ using consensus::ConsensusMetadata;
 using consensus::OpId;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
-using fs::ReadableBlock;
 using log::Log;
 using log::LogOptions;
 using log::LogAnchorRegistry;
@@ -135,6 +134,7 @@ class RemoteBootstrapTest : public YBTabletTest {
     tablet_peer_.reset(
         new TabletPeerClass(tablet()->metadata(),
                             config_peer,
+                            clock(),
                             fs_manager()->uuid(),
                             Bind(&RemoteBootstrapTest::TabletPeerStateChangedCallback,
                                  Unretained(this),
@@ -158,13 +158,13 @@ class RemoteBootstrapTest : public YBTabletTest {
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                           std::shared_future<client::YBClientPtr>(),
-                                          clock(),
                                           messenger,
                                           proxy_cache_.get(),
                                           log,
                                           metric_entity,
                                           raft_pool_.get(),
-                                          tablet_prepare_pool_.get()));
+                                          tablet_prepare_pool_.get(),
+                                          nullptr /* retryable_requests */));
     consensus::ConsensusBootstrapInfo boot_info;
     ASSERT_OK(tablet_peer_->Start(boot_info));
 
@@ -191,7 +191,8 @@ class RemoteBootstrapTest : public YBTabletTest {
       auto state = std::make_unique<WriteOperationState>(tablet_peer_->tablet(), &req, &resp);
       typedef tablet::LatchOperationCompletionCallback<WriteResponsePB> LatchWriteCallback;
       state->set_completion_callback(std::make_unique<LatchWriteCallback>(&latch, &resp));
-      tablet_peer_->WriteAsync(std::move(state), kLeaderTerm, MonoTime::Max() /* deadline */);
+      tablet_peer_->WriteAsync(
+          std::move(state), kLeaderTerm, CoarseTimePoint::max() /* deadline */);
       latch.Wait();
       ASSERT_FALSE(resp.has_error()) << "Request failed: " << resp.error().ShortDebugString();
       ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, resp.ql_response_batch(0).status()) <<
@@ -204,31 +205,6 @@ class RemoteBootstrapTest : public YBTabletTest {
     session_.reset(new YB_EDITION_NS_PREFIX RemoteBootstrapSession(
         tablet_peer_, "TestSession", "FakeUUID", fs_manager(), nullptr /* nsessions */));
     ASSERT_OK(session_->Init());
-  }
-
-  // Read the specified BlockId, via the RemoteBootstrapSession, into a file.
-  // 'path' will be populated with the name of the file used.
-  // 'file' will be set to point to the SequentialFile containing the data.
-  void FetchBlockToFile(const BlockId& block_id,
-                        string* path,
-                        gscoped_ptr<SequentialFile>* file) {
-    string data;
-    int64_t block_file_size = 0;
-    RemoteBootstrapErrorPB::Code error_code;
-    ASSERT_OK(session_->GetBlockPiece(block_id, 0, 0, &data, &block_file_size, &error_code));
-    if (block_file_size > 0) {
-      CHECK_GT(data.size(), 0);
-    }
-
-    // Write the file to a temporary location.
-    WritableFileOptions opts;
-    string path_template = GetTestPath(Substitute("test_block_$0.tmp.XXXXXX", block_id.ToString()));
-    gscoped_ptr<WritableFile> writable_file;
-    ASSERT_OK(Env::Default()->NewTempWritableFile(opts, path_template, path, &writable_file));
-    ASSERT_OK(writable_file->Append(Slice(data.data(), data.size())));
-    ASSERT_OK(writable_file->Close());
-
-    ASSERT_OK(Env::Default()->NewSequentialFile(*path, file));
   }
 
   MetricRegistry metric_registry_;

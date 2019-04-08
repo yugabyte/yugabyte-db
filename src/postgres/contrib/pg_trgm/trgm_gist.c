@@ -106,7 +106,7 @@ gtrgm_compress(PG_FUNCTION_ARGS)
 		retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
 		gistentryinit(*retval, PointerGetDatum(res),
 					  entry->rel, entry->page,
-					  entry->offset, FALSE);
+					  entry->offset, false);
 	}
 	else if (ISSIGNKEY(DatumGetPointer(entry->key)) &&
 			 !ISALLTRUE(DatumGetPointer(entry->key)))
@@ -130,7 +130,7 @@ gtrgm_compress(PG_FUNCTION_ARGS)
 		retval = (GISTENTRY *) palloc(sizeof(GISTENTRY));
 		gistentryinit(*retval, PointerGetDatum(res),
 					  entry->rel, entry->page,
-					  entry->offset, FALSE);
+					  entry->offset, false);
 	}
 	PG_RETURN_POINTER(retval);
 }
@@ -221,6 +221,7 @@ gtrgm_consistent(PG_FUNCTION_ARGS)
 		{
 			case SimilarityStrategyNumber:
 			case WordSimilarityStrategyNumber:
+			case StrictWordSimilarityStrategyNumber:
 				qtrg = generate_trgm(VARDATA(query),
 									 querysize - VARHDRSZ);
 				break;
@@ -290,10 +291,15 @@ gtrgm_consistent(PG_FUNCTION_ARGS)
 	{
 		case SimilarityStrategyNumber:
 		case WordSimilarityStrategyNumber:
-			/* Similarity search is exact. Word similarity search is inexact */
-			*recheck = (strategy == WordSimilarityStrategyNumber);
-			nlimit = (strategy == SimilarityStrategyNumber) ?
-				similarity_threshold : word_similarity_threshold;
+		case StrictWordSimilarityStrategyNumber:
+
+			/*
+			 * Similarity search is exact. (Strict) word similarity search is
+			 * inexact
+			 */
+			*recheck = (strategy != SimilarityStrategyNumber);
+
+			nlimit = index_strategy_get_limit(strategy);
 
 			if (GIST_LEAF(entry))
 			{					/* all leafs contains orig trgm */
@@ -468,7 +474,9 @@ gtrgm_distance(PG_FUNCTION_ARGS)
 	{
 		case DistanceStrategyNumber:
 		case WordDistanceStrategyNumber:
-			*recheck = strategy == WordDistanceStrategyNumber;
+		case StrictWordDistanceStrategyNumber:
+			/* Only plain trigram distance is exact */
+			*recheck = (strategy != DistanceStrategyNumber);
 			if (GIST_LEAF(entry))
 			{					/* all leafs contains orig trgm */
 

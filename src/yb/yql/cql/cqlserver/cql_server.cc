@@ -31,7 +31,6 @@ DEFINE_int32(cql_nodelist_refresh_interval_secs, 60,
              "Interval after which a node list refresh event should be sent to all CQL clients.");
 TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
 
-DEFINE_int64(cql_rpc_block_size, 1_MB, "CQL RPC block size");
 DEFINE_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");
 
 using namespace std::placeholders;
@@ -61,7 +60,7 @@ CQLServer::CQLServer(const CQLServerOptions& opts,
       tserver_(tserver),
       local_tablet_filter_(std::move(local_tablet_filter)) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<CQLConnectionContext>(
-      FLAGS_cql_rpc_block_size, FLAGS_cql_rpc_memory_limit, mem_tracker()->parent()));
+      FLAGS_cql_rpc_memory_limit, mem_tracker()->parent()));
 }
 
 Status CQLServer::Start() {

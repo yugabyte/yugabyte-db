@@ -1533,7 +1533,7 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   TestQLProcessor* processor = GetQLProcessor();
   ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-  ASSERT_EQ(num_tservers, row_block->row_count());
+  ASSERT_EQ(num_tservers - 1, row_block->row_count()) << row_block->ToString();
 
   auto ts_manager = cluster_->leader_mini_master()->master()->ts_manager();
   NodeInstancePB instance;
@@ -1547,13 +1547,12 @@ TEST_F(TestQLQuery, TestInvalidPeerTableEntries) {
   hostport_pb->set_host(invalid_host);
   hostport_pb->set_port(123);
 
-  std::shared_ptr<master::TSDescriptor> desc;
-  ASSERT_OK(ts_manager->RegisterTS(instance, registration, CloudInfoPB(), nullptr, &desc));
+  ASSERT_OK(ts_manager->RegisterTS(instance, registration, CloudInfoPB(), nullptr));
 
   // Verify the peers table and ensure the invalid host is not present.
   ASSERT_OK(processor->Run("SELECT * FROM system.peers"));
   row_block = processor->row_block();
-  ASSERT_EQ(num_tservers, row_block->row_count());
+  ASSERT_EQ(num_tservers - 1, row_block->row_count()) << row_block->ToString();
   for (const auto& row : row_block->rows()) {
     ASSERT_NE(invalid_host, row.column(0).inetaddress_value().ToString());
   }
@@ -1905,6 +1904,30 @@ TEST_F(TestQLQuery, TestJson) {
   ASSERT_NOK(processor->Run("CREATE TABLE test_json1 (k1 jsonb PRIMARY KEY, data jsonb)"));
   ASSERT_NOK(processor->Run("CREATE TABLE test_json2 (h1 int, r1 jsonb, c1 int, PRIMARY KEY ((h1)"
                                 ", r1))"));
+}
+
+TEST_F(TestQLQuery, TestJsonUpdate) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  ASSERT_OK(processor->Run("CREATE TABLE test_json (k1 int PRIMARY KEY, data jsonb)"));
+  ASSERT_OK(processor->Run(
+      "INSERT INTO test_json (k1, data) values (1, '{ \"a\" : 1, \"b\" : 2 }')"));
+  ASSERT_OK(processor->Run("SELECT * FROM test_json"));
+  verifyJson(processor->row_block());
+
+  ASSERT_OK(processor->Run("UPDATE test_json SET data->'a' = '100' WHERE k1 = 1"));
+  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'new-field' = '100' WHERE k1 = 1"));
+
+  ASSERT_OK(processor->Run("UPDATE test_json SET data =  '{ \"a\": 2, \"b\": 4 }' WHERE k1 = 2"));
+  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'a' = '3' WHERE k1 = 3"));
+
+  // Setting primitive value in JSON column should work
+  ASSERT_OK(processor->Run("UPDATE test_json SET data='true' WHERE k1 = 1"));
+  // Trying to update primitive value in JSON column using field name should error out
+  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'a' WHERE k1 = 1"));
 }
 
 } // namespace ql

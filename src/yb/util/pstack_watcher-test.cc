@@ -32,12 +32,14 @@
 
 #include "yb/util/pstack_watcher.h"
 
-#include <gtest/gtest.h>
-#include <memory>
 #include <poll.h>
 #include <stdio.h>
 #include <unistd.h>
+
+#include <memory>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/bitmap.h"
@@ -61,7 +63,10 @@ TEST(TestPstackWatcher, TestWait) {
   watcher.Wait();
 }
 
-TEST(TestPstackWatcher, TestDumpStacks) {
+// Disable TestDumpStacks and TestPstackWatcherRunning on macOS because neither gdb or lldb ways
+// of obtaining stack traces there appear to work. gdb requires codesigning, which is a manual
+// procedure we have to go through on every build host, and it is not high priority as of 12/2018.
+TEST(TestPstackWatcher, YB_DISABLE_TEST_ON_MACOS(TestDumpStacks)) {
   ASSERT_OK(PstackWatcher::DumpStacks());
 }
 
@@ -74,7 +79,7 @@ static shared_ptr<FILE> RedirectStdout(string *temp_path) {
       freopen(temp_path->c_str(), "w", stdout), fclose);
 }
 
-TEST(TestPstackWatcher, TestPstackWatcherRunning) {
+TEST(TestPstackWatcher, YB_DISABLE_TEST_ON_MACOS(TestPstackWatcherRunning)) {
   string stdout_file;
   int old_stdout;
   CHECK_ERR(old_stdout = dup(STDOUT_FILENO));

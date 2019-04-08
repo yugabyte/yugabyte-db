@@ -41,7 +41,6 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-//
 
 #if (defined(_WIN32) || defined(__MINGW32__)) && !defined(__CYGWIN__) && !defined(__CYGWIN32)
 # define PLATFORM_WINDOWS 1
@@ -68,11 +67,20 @@
 #include <shlwapi.h>          // for SHGetValueA()
 #include <tlhelp32.h>         // for Module32First()
 #endif
+
+#include <mutex>
+#include <thread>
+#include <gflags/gflags.h>
+
+#include <glog/logging.h>
+
 #include "yb/gutil/dynamic_annotations.h"   // for RunningOnValgrind
 #include "yb/gutil/macros.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
+
+DEFINE_int32(num_cpus, 0, "Number of CPU cores used in calculations");
 
 // This isn't in the 'base' namespace in tcmallc. But, tcmalloc
 // exports these functions, so we need to namespace them to avoid
@@ -96,8 +104,8 @@ void SleepForNanoseconds(int64_t nanoseconds) {
   struct timespec sleep_time;
   sleep_time.tv_sec = nanoseconds / 1000 / 1000 / 1000;
   sleep_time.tv_nsec = (nanoseconds % (1000 * 1000 * 1000));
-  while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR)
-    ;  // Ignore signals and wait for the full interval to elapse.
+  // Ignore signals and wait for the full interval to elapse.
+  while (nanosleep(&sleep_time, &sleep_time) != 0 && errno == EINTR) {}
 }
 
 void SleepForMilliseconds(int64_t milliseconds) {
@@ -107,14 +115,14 @@ void SleepForMilliseconds(int64_t milliseconds) {
 // Helper function estimates cycles/sec by observing cycles elapsed during
 // sleep(). Using small sleep time decreases accuracy significantly.
 static int64 EstimateCyclesPerSecond(const int estimate_time_ms) {
-  CHECK(estimate_time_ms > 0);
+  CHECK_GT(estimate_time_ms, 0);
   if (estimate_time_ms <= 0)
     return 1;
-  double multiplier = 1000.0 / (double)estimate_time_ms;  // scale by this much
+  double multiplier = 1000.0 / estimate_time_ms;  // scale by this much
 
   const int64 start_ticks = CycleClock::Now();
   SleepForMilliseconds(estimate_time_ms);
-  const int64 guess = int64(multiplier * (CycleClock::Now() - start_ticks));
+  const int64 guess = static_cast<int64>(multiplier * (CycleClock::Now() - start_ticks));
   return guess;
 }
 
@@ -189,10 +197,6 @@ static int ReadMaxCPUIndex() {
 // memory.
 
 static void InitializeSystemInfo() {
-  static bool already_called = false;   // safe if we run before threads
-  if (already_called)  return;
-  already_called = true;
-
   bool saw_mhz = false;
 
   if (RunningOnValgrind()) {
@@ -257,7 +261,7 @@ static void InitializeSystemInfo() {
     if (newline == NULL) {
       const int linelen = strlen(line);
       const int bytes_to_read = sizeof(line)-1 - linelen;
-      CHECK(bytes_to_read > 0);  // because the memmove recovered >=1 bytes
+      CHECK_GT(bytes_to_read, 0);  // because the memmove recovered >=1 bytes
       chars_read = read(fd, line + linelen, bytes_to_read);
       line[linelen + chars_read] = '\0';
       newline = strchr(line, '\n');
@@ -362,10 +366,11 @@ static void InitializeSystemInfo() {
       os.dwPlatformId == VER_PLATFORM_WIN32_NT &&
       SUCCEEDED(SHGetValueA(HKEY_LOCAL_MACHINE,
                          "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
-                           "~MHz", NULL, &data, &data_size)))
-    cpuinfo_cycles_per_second = (int64)data * (int64)(1000 * 1000); // was mhz
-  else
+                           "~MHz", NULL, &data, &data_size))) {
+    cpuinfo_cycles_per_second = static_cast<int64>(data) * (1000 * 1000); // was mhz
+  } else {
     cpuinfo_cycles_per_second = EstimateCyclesPerSecond(500); // TODO <500?
+  }
 
   // Get the number of processors.
   SYSTEM_INFO info;
@@ -400,7 +405,10 @@ static void InitializeSystemInfo() {
   // Generic cycles per second counter
   cpuinfo_cycles_per_second = EstimateCyclesPerSecond(1000);
 #endif
-
+  int std_num_cpus = std::thread::hardware_concurrency();
+  if (std_num_cpus > 0) {
+    cpuinfo_num_cpus = std_num_cpus;
+  }
   // On platforms where we can't determine the max CPU index, just use the
   // number of CPUs. This might break if CPUs are taken offline, but
   // better than a wild guess.
@@ -409,18 +417,30 @@ static void InitializeSystemInfo() {
   }
 }
 
+std::once_flag init_sys_info_flag;
+
 double CyclesPerSecond(void) {
-  InitializeSystemInfo();
+  std::call_once(init_sys_info_flag, &InitializeSystemInfo);
   return cpuinfo_cycles_per_second;
 }
 
 int NumCPUs(void) {
-  InitializeSystemInfo();
+  std::call_once(init_sys_info_flag, &InitializeSystemInfo);
+
+  if (FLAGS_num_cpus != 0) {
+    return FLAGS_num_cpus;
+  } else {
+    return cpuinfo_num_cpus;
+  }
+}
+
+int RawNumCPUs(void) {
+  std::call_once(init_sys_info_flag, &InitializeSystemInfo);
   return cpuinfo_num_cpus;
 }
 
 int MaxCPUIndex(void) {
-  InitializeSystemInfo();
+  std::call_once(init_sys_info_flag, &InitializeSystemInfo);
   return cpuinfo_max_cpu_index;
 }
 

@@ -16,6 +16,8 @@
 #include <mutex>
 #include <thread>
 
+#include "yb/client/transaction_pool.h"
+
 #include "yb/gutil/strings/join.h"
 
 #include "yb/yql/cql/cqlserver/cql_processor.h"
@@ -82,6 +84,11 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
       "",
       Substitute("SELECT $0, $1 FROM system_auth.roles WHERE role = ?",
                  kRoleColumnNameSaltedHash, kRoleColumnNameCanLogin));
+
+  async_client_init_.Start();
+}
+
+CQLServiceImpl::~CQLServiceImpl() {
 }
 
 const std::shared_ptr<client::YBClient>& CQLServiceImpl::client() const {
@@ -89,10 +96,11 @@ const std::shared_ptr<client::YBClient>& CQLServiceImpl::client() const {
   if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> l(metadata_init_mutex_);
     if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
-      // Add proxy to call local tserver if available.
+      // Add local tserver if available.
       if (server_->tserver() != nullptr && server_->tserver()->proxy() != nullptr) {
-        client->AddTabletServerProxy(
-            server_->tserver()->permanent_uuid(), server_->tserver()->proxy());
+        client->AddTabletServer(server_->tserver()->permanent_uuid(),
+                                server_->tserver()->proxy(),
+                                server_->tserver());
       }
       // Create and save the metadata cache object.
       metadata_cache_ = std::make_shared<YBMetaDataCache>(client,
@@ -262,19 +270,21 @@ void CQLServiceImpl::CollectGarbage(size_t required) {
           << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
 }
 
-client::TransactionManager* CQLServiceImpl::GetTransactionManager() {
-  auto result = transaction_manager_.load(std::memory_order_acquire);
+client::TransactionPool* CQLServiceImpl::GetTransactionPool() {
+  auto result = transaction_pool_.load(std::memory_order_acquire);
   if (result) {
     return result;
   }
-  std::lock_guard<decltype(transaction_manager_mutex_)> lock(transaction_manager_mutex_);
-  if (transaction_manager_holder_) {
-    return transaction_manager_holder_.get();
+  std::lock_guard<decltype(transaction_pool_mutex_)> lock(transaction_pool_mutex_);
+  if (transaction_pool_holder_) {
+    return transaction_pool_holder_.get();
   }
   transaction_manager_holder_ = std::make_unique<client::TransactionManager>(
       client(), server_->clock(), local_tablet_filter_);
-  transaction_manager_.store(transaction_manager_holder_.get(), std::memory_order_release);
-  return transaction_manager_holder_.get();
+  transaction_pool_holder_ = std::make_unique<client::TransactionPool>(
+      transaction_manager_holder_.get(), server_->metric_entity().get());
+  transaction_pool_.store(transaction_pool_holder_.get(), std::memory_order_release);
+  return transaction_pool_holder_.get();
 }
 
 server::Clock* CQLServiceImpl::clock() {

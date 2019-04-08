@@ -23,9 +23,12 @@ import com.datastax.driver.core.ColumnDefinitions.Definition;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSetFuture;
 import com.datastax.driver.core.Row;
+import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
+
+import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.RocksDBMetrics;
 
@@ -45,7 +48,7 @@ public class TestIndex extends BaseCQLTest {
 
   @BeforeClass
   public static void SetUpBeforeClass() throws Exception {
-    BaseCQLTest.tserverArgs = Arrays.asList("--allow_index_table_read_write");
+    BaseMiniClusterTest.tserverArgs.add("--allow_index_table_read_write");
     BaseCQLTest.setUpBeforeClass();
   }
 
@@ -512,7 +515,7 @@ public class TestIndex extends BaseCQLTest {
                     "primary key ((h1, h2), r1, r2)) " +
                     "with transactions = {'enabled' : true};");
     session.execute("create index i1 on test_prepare (h1);");
-    session.execute("create index i2 on test_prepare ((r1, r2));");
+    session.execute("create index i2 on test_prepare ((r1, r2)) include (c2);");
     session.execute("create index i3 on test_prepare (r2, r1);");
     session.execute("create index i4 on test_prepare (c1);");
     session.execute("create index i5 on test_prepare (c2) include (c1);");
@@ -539,12 +542,13 @@ public class TestIndex extends BaseCQLTest {
                            new Object[] {"a"},
                            "Row[1, a, 2, b]");
 
-    // Select using index i2 because (r1, r2) is more selective than i1 alone.
-    assertRoutingVariables("select h1, h2, r1, r2 from test_prepare " +
+    // Select using index i2 because (r1, r2) is more selective than i1 alone. i3 is equally
+    // selective by i2 covers c2 also.
+    assertRoutingVariables("select h1, h2, r1, r2, c2 from test_prepare " +
                            "where h1 = ? and r1 = ? and r2 = ?;",
                            Arrays.asList("i2.r1", "i2.r2"),
                            new Object[] {Integer.valueOf(1), Integer.valueOf(2), "b"},
-                           "Row[1, a, 2, b]");
+                           "Row[1, a, 2, b, c]");
 
     // Select using index i3.
     assertRoutingVariables("select h1, h2, r1, r2 from test_prepare where h2 = ? and r2 = ?;",
@@ -651,7 +655,7 @@ public class TestIndex extends BaseCQLTest {
       int currentRestarts = getRestartsCount("test_restart");
       int currentRetries = getRetriesCount();
       LOG.info("Current restarts = {}, retries = {}", currentRestarts, currentRetries);
-      if (currentRestarts > initialRestarts && currentRetries > initialRetries)
+      if (currentRetries > initialRetries)
         break;
     }
 
@@ -665,8 +669,8 @@ public class TestIndex extends BaseCQLTest {
       fail("InvalidQueryException not thrown for " + query);
     } catch (InvalidQueryException e) {
       assertTrue(e.getMessage().startsWith(
-          String.format("SQL error: Execution Error. Duplicate value disallowed by unique index %s",
-                        indexName)));
+          String.format("Execution Error. Duplicate value disallowed by unique " +
+                        "index %s", indexName)));
     }
   }
 
@@ -737,6 +741,7 @@ public class TestIndex extends BaseCQLTest {
 
     // Restart the cluster
     miniCluster.restart();
+    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
     setUpCqlClient();
 
     // Test inserting duplicate h2 and r values again.
@@ -873,6 +878,9 @@ public class TestIndex extends BaseCQLTest {
     // Verify that both the index and the primary table are read.
     assertTrue(indexMetrics.nextCount > 0);
     assertTrue(tableMetrics.nextCount > 0);
+
+    // Verify uncovered index query of non-existent indexed value.
+    assertQuery("select * from test_uncovered where v1 = 'nothing';", "");
   }
 
   @Test
@@ -930,5 +938,43 @@ public class TestIndex extends BaseCQLTest {
                 new HashSet<String>(Arrays.asList("Row[2, 1, 3, c]",
                                                   "Row[2, 2, 4, d]",
                                                   "Row[3, 1, 5, e]")));
+  }
+
+  @Test
+  public void testDropDuringWrite() throws Exception {
+    for (int i = 0; i != 5; ++i) {
+      String table_name = "index_test_" + i;
+      String index_name = "index_" + i;
+      session.execute(String.format(
+          "create table %s (h int, c int, primary key ((h))) " +
+          "with transactions = { 'enabled' : true };", table_name));
+      session.execute(String.format("create index %s on %s (c);", index_name, table_name));
+      final PreparedStatement statement = session.prepare(String.format(
+          "insert into %s (h, c) values (?, ?);", table_name));
+
+      List<Thread> threads = new ArrayList<Thread>();
+      while (threads.size() != 10) {
+        Thread thread = new Thread(() -> {
+          int key = 0;
+          while (!Thread.interrupted()) {
+            session.execute(statement.bind(Integer.valueOf(key), Integer.valueOf(-key)));
+            ++key;
+          }
+        });
+        thread.start();
+        threads.add(thread);
+      }
+      try {
+        Thread.sleep(5000);
+        session.execute(String.format("drop table %s;", table_name));
+      } finally {
+        for (Thread thread : threads) {
+          thread.interrupt();
+        }
+        for (Thread thread : threads) {
+          thread.join();
+        }
+      }
+    }
   }
 }

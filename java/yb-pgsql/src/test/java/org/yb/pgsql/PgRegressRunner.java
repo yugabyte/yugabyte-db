@@ -39,6 +39,7 @@ public class PgRegressRunner {
   private File pgRegressExecutable;
   private Process pgRegressProc;
   private LogPrinter stdoutLogPrinter, stderrLogPrinter;
+  private String pgSchedule;
   private String pgHost;
   private int pgPort;
   private String pgUser;
@@ -50,10 +51,11 @@ public class PgRegressRunner {
 
   private Set<String> failedTests = new ConcurrentSkipListSet<>();
 
-  public PgRegressRunner(String pgHost, int pgPort, String pgUser) {
+  public PgRegressRunner(String schedule, String pgHost, int pgPort, String pgUser) {
     pgRegressDir = new File(TestUtils.getBuildRootDir(), "postgres_build/src/test/regress");
     pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
     pgRegressExecutable = new File(pgRegressDir, "pg_regress");
+    this.pgSchedule = schedule;
     this.pgHost = pgHost;
     this.pgPort = pgPort;
     this.pgUser = pgUser;
@@ -94,7 +96,9 @@ public class PgRegressRunner {
             "--port=" + pgPort,
             "--host=" + pgHost,
             "--user=" + pgUser,
-            "--schedule=yb_serial_schedule");
+            "--dbname=postgres",
+            "--use-existing",
+            "--schedule=" + pgSchedule);
     procBuilder.directory(pgRegressDir);
     procBuilder.environment().putAll(extraEnvVars);
 

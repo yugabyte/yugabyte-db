@@ -8,7 +8,7 @@
  * stepping on each others' toes.  Formerly we used table-level locks
  * on pg_database, but that's too coarse-grained.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -445,7 +445,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		aclresult = pg_tablespace_aclcheck(dst_deftablespace, GetUserId(),
 										   ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, ACL_KIND_TABLESPACE,
+			aclcheck_error(aclresult, OBJECT_TABLESPACE,
 						   tablespacename);
 
 		/* pg_global must never be the default tablespace */
@@ -606,68 +606,77 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	fparms.src_dboid = src_dboid;
 	fparms.dest_dboid = dboid;
 	PG_ENSURE_ERROR_CLEANUP(createdb_failure_callback,
-							PointerGetDatum(&fparms));
+	                        PointerGetDatum(&fparms));
 	{
-		/*
-		 * Iterate through all tablespaces of the template database, and copy
-		 * each one to the new database.
-		 */
-		rel = heap_open(TableSpaceRelationId, AccessShareLock);
-		scan = heap_beginscan_catalog(rel, 0, NULL);
-		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+
+		if (IsYugaByteEnabled())
 		{
-			Oid			srctablespace = HeapTupleGetOid(tuple);
-			Oid			dsttablespace;
-			char	   *srcpath;
-			char	   *dstpath;
-			struct stat st;
-
-			/* No need to copy global tablespace */
-			if (srctablespace == GLOBALTABLESPACE_OID)
-				continue;
-
-			srcpath = GetDatabasePath(src_dboid, srctablespace);
-
-			if (stat(srcpath, &st) < 0 || !S_ISDIR(st.st_mode) ||
-				directory_is_empty(srcpath))
-			{
-				/* Assume we can ignore it */
-				pfree(srcpath);
-				continue;
-			}
-
-			if (srctablespace == src_deftablespace)
-				dsttablespace = dst_deftablespace;
-			else
-				dsttablespace = srctablespace;
-
-			dstpath = GetDatabasePath(dboid, dsttablespace);
-
-			/*
-			 * Copy this subdirectory to the new location
-			 *
-			 * We don't need to copy subdirectories
-			 */
-			copydir(srcpath, dstpath, false);
-
-			/* Record the filesystem change in XLOG */
-			{
-				xl_dbase_create_rec xlrec;
-
-				xlrec.db_id = dboid;
-				xlrec.tablespace_id = dsttablespace;
-				xlrec.src_db_id = src_dboid;
-				xlrec.src_tablespace_id = srctablespace;
-
-				XLogBeginInsert();
-				XLogRegisterData((char *) &xlrec, sizeof(xl_dbase_create_rec));
-
-				(void) XLogInsert(RM_DBASE_ID,
-								  XLOG_DBASE_CREATE | XLR_SPECIAL_REL_UPDATE);
-			}
+			YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid);
 		}
-		heap_endscan(scan);
-		heap_close(rel, AccessShareLock);
+		else
+		{
+			/*
+			 * Iterate through all tablespaces of the template database, and copy
+			 * each one to the new database.
+			 */
+			rel = heap_open(TableSpaceRelationId, AccessShareLock);
+			scan = heap_beginscan_catalog(rel, 0, NULL);
+			while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+			{
+
+				Oid			srctablespace = HeapTupleGetOid(tuple);
+				Oid			dsttablespace;
+				char	   *srcpath;
+				char	   *dstpath;
+				struct stat st;
+
+				/* No need to copy global tablespace */
+				if (srctablespace == GLOBALTABLESPACE_OID)
+					continue;
+
+				srcpath = GetDatabasePath(src_dboid, srctablespace);
+
+				if (stat(srcpath, &st) < 0 || !S_ISDIR(st.st_mode) ||
+				    directory_is_empty(srcpath))
+				{
+					/* Assume we can ignore it */
+					pfree(srcpath);
+					continue;
+				}
+
+				if (srctablespace == src_deftablespace)
+					dsttablespace = dst_deftablespace;
+				else
+					dsttablespace = srctablespace;
+
+				dstpath = GetDatabasePath(dboid, dsttablespace);
+
+				/*
+				 * Copy this subdirectory to the new location
+				 *
+				 * We don't need to copy subdirectories
+				 */
+				copydir(srcpath, dstpath, false);
+
+				/* Record the filesystem change in XLOG */
+				{
+					xl_dbase_create_rec xlrec;
+
+					xlrec.db_id = dboid;
+					xlrec.tablespace_id = dsttablespace;
+					xlrec.src_db_id = src_dboid;
+					xlrec.src_tablespace_id = srctablespace;
+
+					XLogBeginInsert();
+					XLogRegisterData((char *) &xlrec, sizeof(xl_dbase_create_rec));
+
+					(void) XLogInsert(RM_DBASE_ID,
+					                  XLOG_DBASE_CREATE | XLR_SPECIAL_REL_UPDATE);
+				}
+			}
+			heap_endscan(scan);
+			heap_close(rel, AccessShareLock);
+		}
 
 		/*
 		 * We force a checkpoint before committing.  This effectively means
@@ -714,14 +723,8 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		ForceSyncCommit();
 	}
 
-	if (IsYugaByteEnabled())
-	{
-		YBCCreateDatabase(dboid, dbname, src_dboid);
-	}
-
 	PG_END_ENSURE_ERROR_CLEANUP(createdb_failure_callback,
-								PointerGetDatum(&fparms));
-
+	                            PointerGetDatum(&fparms));
 	return dboid;
 }
 
@@ -851,7 +854,7 @@ dropdb(const char *dbname, bool missing_ok)
 	 * Permission checks
 	 */
 	if (!pg_database_ownercheck(db_id, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
 					   dbname);
 
 	/* DROP hook for the database being removed */
@@ -886,8 +889,8 @@ dropdb(const char *dbname, bool missing_ok)
 				(errcode(ERRCODE_OBJECT_IN_USE),
 				 errmsg("database \"%s\" is used by an active logical replication slot",
 						dbname),
-				 errdetail_plural("There is %d active slot",
-								  "There are %d active slots",
+				 errdetail_plural("There is %d active slot.",
+								  "There are %d active slots.",
 								  nslots_active, nslots_active)));
 	}
 
@@ -926,7 +929,7 @@ dropdb(const char *dbname, bool missing_ok)
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for database %u", db_id);
 
-	CatalogTupleDelete(pgdbrel, &tup->t_self);
+	CatalogTupleDelete(pgdbrel, tup);
 
 	ReleaseSysCache(tup);
 
@@ -1031,7 +1034,7 @@ RenameDatabase(const char *oldname, const char *newname)
 
 	/* must be owner */
 	if (!pg_database_ownercheck(db_id, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
 					   oldname);
 
 	/* must have createdb rights */
@@ -1146,7 +1149,7 @@ movedb(const char *dbname, const char *tblspcname)
 	 * Permission checks
 	 */
 	if (!pg_database_ownercheck(db_id, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
 					   dbname);
 
 	/*
@@ -1168,7 +1171,7 @@ movedb(const char *dbname, const char *tblspcname)
 	aclresult = pg_tablespace_aclcheck(dst_tblspcoid, GetUserId(),
 									   ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_TABLESPACE,
+		aclcheck_error(aclresult, OBJECT_TABLESPACE,
 					   tblspcname);
 
 	/*
@@ -1510,7 +1513,7 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 							dtablespace->defname),
 					 parser_errposition(pstate, dtablespace->location)));
 		/* this case isn't allowed within a transaction block */
-		PreventTransactionChain(isTopLevel, "ALTER DATABASE SET TABLESPACE");
+		PreventInTransactionBlock(isTopLevel, "ALTER DATABASE SET TABLESPACE");
 		movedb(stmt->dbname, defGetString(dtablespace));
 		return InvalidOid;
 	}
@@ -1549,7 +1552,7 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 	dboid = HeapTupleGetOid(tuple);
 
 	if (!pg_database_ownercheck(HeapTupleGetOid(tuple), GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
 					   stmt->dbname);
 
 	/*
@@ -1617,7 +1620,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	shdepLockAndCheckObject(DatabaseRelationId, datid);
 
 	if (!pg_database_ownercheck(datid, GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
 					   stmt->dbname);
 
 	AlterSetting(datid, InvalidOid, stmt->setstmt);
@@ -1680,7 +1683,7 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 
 		/* Otherwise, must be owner of the existing object */
 		if (!pg_database_ownercheck(HeapTupleGetOid(tuple), GetUserId()))
-			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
+			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
 						   dbname);
 
 		/* Must be able to become new owner */
@@ -1752,8 +1755,8 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId)
 /*
  * Look up info about the database named "name".  If the database exists,
  * obtain the specified lock type on it, fill in any of the remaining
- * parameters that aren't NULL, and return TRUE.  If no such database,
- * return FALSE.
+ * parameters that aren't NULL, and return true.  If no such database,
+ * return false.
  */
 static bool
 get_db_info(const char *name, LOCKMODE lockmode,
@@ -1957,7 +1960,7 @@ remove_dbtablespaces(Oid db_id)
 
 /*
  * Check for existing files that conflict with a proposed new DB OID;
- * return TRUE if there are any
+ * return true if there are any
  *
  * If there were a subdirectory in any tablespace matching the proposed new
  * OID, we'd get a create failure due to the duplicate name ... and then we'd

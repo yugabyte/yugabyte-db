@@ -41,7 +41,7 @@ class YQLStorageIf {
                                      const Schema& projection,
                                      const Schema& schema,
                                      const TransactionOperationContextOpt& txn_op_context,
-                                     MonoTime deadline,
+                                     CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
                                      const QLScanSpec& spec,
                                      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
@@ -61,17 +61,9 @@ class YQLStorageIf {
                                      const Schema& projection,
                                      const Schema& schema,
                                      const TransactionOperationContextOpt& txn_op_context,
-                                     MonoTime deadline,
+                                     CoarseTimePoint deadline,
                                      const ReadHybridTime& read_time,
-                                     const PgsqlScanSpec& spec,
                                      YQLRowwiseIteratorIf::UniPtr* iter) const = 0;
-
-  // PostgreSQL allow expression as scan-value, so we must pass an executor to the expressions.
-  virtual CHECKED_STATUS BuildYQLScanSpec(const PgsqlReadRequestPB& request,
-                                          const ReadHybridTime& read_time,
-                                          const Schema& schema,
-                                          std::unique_ptr<PgsqlScanSpec>* spec,
-                                          ReadHybridTime* req_read_time) const = 0;
 };
 
 }  // namespace common

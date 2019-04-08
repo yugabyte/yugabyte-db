@@ -29,11 +29,12 @@
 
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
-#include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/expiration.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/lock_batch.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/value.h"
@@ -81,6 +82,9 @@ class Histogram;
 
 namespace docdb {
 
+class DeadlineInfo;
+class DocOperation;
+
 // This function prepares the transaction by taking locks. The set of keys locked are returned to
 // the caller via the keys_locked argument (because they need to be saved and unlocked when the
 // transaction commits). A flag is also returned to indicate if any of the write operations
@@ -99,13 +103,21 @@ namespace docdb {
 //
 // Input: doc_write_ops
 // Context: lock_manager
-// Outputs: write_batch, need_read_snapshot
-void PrepareDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-                              const scoped_refptr<Histogram>& write_lock_latency,
-                              IsolationLevel isolation_level,
-                              SharedLockManager *lock_manager,
-                              LockBatch *keys_locked,
-                              bool *need_read_snapshot);
+
+struct PrepareDocWriteOperationResult {
+  LockBatch lock_batch;
+  bool need_read_snapshot = false;
+};
+
+Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
+    const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
+    const google::protobuf::RepeatedPtrField<KeyValuePairPB>& read_pairs,
+    const scoped_refptr<Histogram>& write_lock_latency,
+    IsolationLevel isolation_level,
+    OperationKind operation_kind,
+    bool transactional_table,
+    CoarseTimePoint deadline,
+    SharedLockManager *lock_manager);
 
 // This constructs a DocWriteBatch using the given list of DocOperations, reading the previous
 // state of data from RocksDB when necessary.
@@ -117,7 +129,7 @@ void PrepareDocWriteOperation(const std::vector<std::unique_ptr<DocOperation>>& 
 // operation that happens after Raft replication.
 CHECKED_STATUS ExecuteDocWriteOperation(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     const DocDB& doc_db,
     KeyValueWriteBatchPB* write_batch,
@@ -144,9 +156,15 @@ void PrepareNonTransactionWriteBatch(
 // from it triggers heap allocation."
 // So, we use boost::function which doesn't have such issue:
 // http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
+typedef boost::function<Status(IntentStrength, Slice, KeyBytes*)> EnumerateIntentsCallback;
+
 CHECKED_STATUS EnumerateIntents(
-    const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB> &kv_pairs,
-    boost::function<Status(IntentKind, Slice, KeyBytes*)> functor);
+    const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
+    const EnumerateIntentsCallback& functor);
+
+CHECKED_STATUS EnumerateIntents(
+    Slice key, const Slice& value, const EnumerateIntentsCallback& functor,
+    KeyBytes* encoded_key_buffer);
 
 void PrepareTransactionWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,
@@ -331,6 +349,8 @@ struct GetSubDocumentData {
   SubDocument* result;
   bool* doc_found;
 
+  DeadlineInfo* deadline_info = nullptr;
+
   // The TTL and hybrid time are return values external to the SubDocument
   // which occasionally need to be accessed for TTL calculation.
   mutable Expiration exp;
@@ -353,6 +373,7 @@ struct GetSubDocumentData {
   GetSubDocumentData Adjusted(
       const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
     GetSubDocumentData result(subdoc_key, result_, doc_found_);
+    result.deadline_info = deadline_info;
     result.exp = exp;
     result.return_type_only = return_type_only;
     result.low_subkey = low_subkey;
@@ -430,7 +451,7 @@ yb::Status GetSubDocument(
     const GetSubDocumentData& data,
     const rocksdb::QueryId query_id,
     const TransactionOperationContextOpt& txn_op_context,
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     const ReadHybridTime& read_time = ReadHybridTime::Max());
 
 // This retrieves the TTL for a key.

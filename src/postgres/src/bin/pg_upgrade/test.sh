@@ -6,7 +6,7 @@
 # runs the regression tests (to put in some data), runs pg_dumpall,
 # runs pg_upgrade, runs pg_dumpall again, compares the dumps.
 #
-# Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 
 set -e
@@ -20,7 +20,9 @@ unset MAKELEVEL
 # Run a given "initdb" binary and overlay the regression testing
 # authentication configuration.
 standard_initdb() {
-	"$1" -N
+	# To increase coverage of non-standard segment size and group access
+	# without increasing test runtime, run these tests with a custom setting.
+	"$1" -N --wal-segsize 1 -g
 	if [ -n "$TEMP_CONFIG" -a -r "$TEMP_CONFIG" ]
 	then
 		cat "$TEMP_CONFIG" >> "$PGDATA/postgresql.conf"
@@ -42,20 +44,18 @@ case $testhost in
 		# script; the outcome mimics pg_regress.c:make_temp_sockdir().
 		PGHOST=$PG_REGRESS_SOCK_DIR
 		if [ "x$PGHOST" = x ]; then
-			{
-				dir=`(umask 077 &&
-					  mktemp -d /tmp/pg_upgrade_check-XXXXXX) 2>/dev/null` &&
-				[ -d "$dir" ]
-			} ||
-			{
+			set +e
+			dir=`(umask 077 &&
+				  mktemp -d /tmp/pg_upgrade_check-XXXXXX) 2>/dev/null`
+			if [ ! -d "$dir" ]; then
 				dir=/tmp/pg_upgrade_check-$$-$RANDOM
 				(umask 077 && mkdir "$dir")
-			} ||
-			{
-				echo "could not create socket temporary directory in \"/tmp\""
-				exit 1
-			}
-
+				if [ ! -d "$dir" ]; then
+					echo "could not create socket temporary directory in \"/tmp\""
+					exit 1
+				fi
+			fi
+			set -e
 			PGHOST=$dir
 			trap 'rm -rf "$PGHOST"' 0
 			trap 'exit 3' 1 2 13 15
@@ -63,7 +63,7 @@ case $testhost in
 		;;
 esac
 
-POSTMASTER_OPTS="-F -c listen_addresses=$LISTEN_ADDRESSES -k \"$PGHOST\""
+POSTMASTER_OPTS="-F -c listen_addresses=\"$LISTEN_ADDRESSES\" -k \"$PGHOST\""
 export PGHOST
 
 # don't rely on $PWD here, as old shells don't set it
@@ -105,8 +105,8 @@ newsrc=`cd ../../.. && pwd`
 PATH=$bindir:$PATH
 export PATH
 
-BASE_PGDATA=$temp_root/data
-PGDATA="$BASE_PGDATA.old"
+BASE_PGDATA="$temp_root/data"
+PGDATA="${BASE_PGDATA}.old"
 export PGDATA
 rm -rf "$BASE_PGDATA" "$PGDATA"
 
@@ -222,11 +222,29 @@ if [ -n "$pg_dumpall1_status" ]; then
 	exit 1
 fi
 
-PGDATA=$BASE_PGDATA
+PGDATA="$BASE_PGDATA"
 
 standard_initdb 'initdb'
 
-pg_upgrade $PG_UPGRADE_OPTS -d "${PGDATA}.old" -D "${PGDATA}" -b "$oldbindir" -B "$bindir" -p "$PGPORT" -P "$PGPORT"
+pg_upgrade $PG_UPGRADE_OPTS -d "${PGDATA}.old" -D "$PGDATA" -b "$oldbindir" -B "$bindir" -p "$PGPORT" -P "$PGPORT"
+
+# make sure all directories and files have group permissions, on Unix hosts
+# Windows hosts don't support Unix-y permissions.
+case $testhost in
+	MINGW*) ;;
+	*)	if [ `find "$PGDATA" -type f ! -perm 640 | wc -l` -ne 0 ]; then
+			echo "files in PGDATA with permission != 640";
+			exit 1;
+		fi ;;
+esac
+
+case $testhost in
+	MINGW*) ;;
+	*)	if [ `find "$PGDATA" -type d ! -perm 750 | wc -l` -ne 0 ]; then
+			echo "directories in PGDATA with permission != 750";
+			exit 1;
+		fi ;;
+esac
 
 pg_ctl start -l "$logdir/postmaster2.log" -o "$POSTMASTER_OPTS" -w
 

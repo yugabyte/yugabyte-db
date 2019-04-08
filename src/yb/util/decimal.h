@@ -15,6 +15,7 @@
 #define YB_UTIL_DECIMAL_H
 
 #include <vector>
+#include <limits>
 
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
@@ -79,7 +80,8 @@ namespace util {
 
 class Decimal {
  public:
-  static constexpr int kDefaultMaxLength = 10;
+  static constexpr int kDefaultMaxLength = 20; // Enough for MIN_BIGINT=-9223372036854775808.
+  static constexpr int kUnlimitedMaxLength = std::numeric_limits<int>::max();
 
   Decimal() {}
   Decimal(const std::vector<uint8_t>& digits,
@@ -103,14 +105,12 @@ class Decimal {
   // In future, it may be better to write a direct conversion function.
   Result<long double> ToDouble() const;
 
-  // Note: The length of the varint is limited by kDefaultMaxLength by default to make sure we don't
-  // get stuck with large exponents. May be overriden.
-  CHECKED_STATUS ToVarInt(VarInt* varint_value, int max_length = kDefaultMaxLength) const;
+  Result<VarInt> ToVarInt() const;
 
   // The FromX() functions always create a canonical Decimal,
   // but the (digits, varint, sign) constructor doesn't.
 
-  // The input is expected to be of the form [+-]?[0-9]*('.'[0-9]*)?([eE][+-]?[0-9+])?,
+  // The input is expected to be of the form [+-]?[0-9]*('.'[0-9]*)?([eE][+-]?[0-9]+)?,
   // whitespace is not allowed. Use this after removing whitespace.
   CHECKED_STATUS FromString(const Slice &slice);
 
@@ -150,7 +150,7 @@ class Decimal {
   // Encode the decimal by using to Cassandra serialization format, as described above.
   std::string EncodeToSerializedBigDecimal(bool* is_out_of_range) const;
 
-  CHECKED_STATUS DecodeFromSerializedBigDecimal(const Slice &slice);
+  CHECKED_STATUS DecodeFromSerializedBigDecimal(Slice slice);
 
   const Decimal& Negate() { is_positive_ = !is_positive_; return *this; }
 

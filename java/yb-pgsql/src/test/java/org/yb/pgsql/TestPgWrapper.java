@@ -13,12 +13,14 @@
 
 package org.yb.pgsql;
 
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.YBTestRunner;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -28,7 +30,7 @@ import java.util.Random;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgWrapper extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgWrapper.class);
 
@@ -44,10 +46,8 @@ public class TestPgWrapper extends BasePgSQLTest {
       // Database already exists.
       runInvalidQuery(statement, "CREATE DATABASE dbtest");
 
-      statement.execute("DROP DATABASE dbtest");
-
-      // Database does not exist.
-      runInvalidQuery(statement, "DROP DATABASE dbtest");
+      // TODO Drop database not yet supported.
+      runInvalidQuery(statement,"DROP DATABASE dbtest");
 
       // -------------------------------------------------------------------------------------------
       // Test Table
@@ -60,12 +60,12 @@ public class TestPgWrapper extends BasePgSQLTest {
       // Table already exists.
       runInvalidQuery(statement, getSimpleTableCreationStatement("test", "v"));
 
-      // Test drop table.
+      // TODO Drop table not yet supported.
       statement.execute("DROP TABLE test");
       statement.execute("DROP TABLE test2");
 
       // Table does not exist.
-      runInvalidQuery(statement, "DROP TABLE test");
+      runInvalidQuery(statement, "DROP TABLE test3");
     }
   }
 
@@ -77,7 +77,7 @@ public class TestPgWrapper extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
 
       StringBuilder sb = new StringBuilder();
-      sb.append("CREATE TABLE test(");
+      sb.append("CREATE TABLE test_types(");
       // Checking every type is allowed for a column.
       for (int i = 0; i < supported_types.length; i++) {
         sb.append("c").append(i).append(" ");
@@ -103,12 +103,12 @@ public class TestPgWrapper extends BasePgSQLTest {
   @Test
   public void testSimpleDML() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE test(h bigint, r float, v text, PRIMARY KEY (h, r))");
+      statement.execute("CREATE TABLE test_dml(h bigint, r float, v text, PRIMARY KEY (h, r))");
 
-      statement.execute("INSERT INTO test(h, r, v) VALUES (1, 2.5, 'abc')");
-      statement.execute("INSERT INTO test(h, r, v) VALUES (1, 3.5, 'def')");
+      statement.execute("INSERT INTO test_dml(h, r, v) VALUES (1, 2.5, 'abc')");
+      statement.execute("INSERT INTO test_dml(h, r, v) VALUES (1, 3.5, 'def')");
 
-      try (ResultSet rs = statement.executeQuery("SELECT h, r, v FROM test WHERE h = 1")) {
+      try (ResultSet rs = statement.executeQuery("SELECT h, r, v FROM test_dml WHERE h = 1")) {
 
         assertTrue(rs.next());
         assertEquals(1, rs.getLong("h"));
@@ -162,9 +162,116 @@ public class TestPgWrapper extends BasePgSQLTest {
         // Check varying key lengths, starting from zero (that's why we're appending here).
         kBuilder.append("012345789_i=" + i + "_");
       }
-
-      statement.execute("DROP TABLE textkeytable");
     }
   }
 
+  @Test
+  public void testDefaultValues() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE testdefaultvaluetable " +
+          "(k int primary key, v1 text default 'abc', v2 int default 1, v3 int)");
+      for (int i = 0; i < 100; i++) {
+        statement.execute(
+            String.format("INSERT INTO testdefaultvaluetable(k, v3) VALUES(%d, %d)", i, i));
+      }
+      ResultSet rs = statement.executeQuery("SELECT * FROM testdefaultvaluetable ORDER BY k ASC");
+      for (int i = 0; i < 100; i++) {
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("k"));
+        assertEquals("abc", rs.getString("v1"));
+        assertEquals(1, rs.getInt("v2"));
+        assertEquals(i, rs.getInt("v3"));
+      }
+    }
+    Connection connection2 = createConnection();
+    try (Statement statement = connection2.createStatement()) {
+      statement.execute("INSERT INTO testdefaultvaluetable(k, v3) VALUES(1000, 3)");
+      ResultSet rs = statement.executeQuery("SELECT * FROM testdefaultvaluetable WHERE k = 1000");
+      assertTrue(rs.next());
+      assertEquals(1000, rs.getInt("k"));
+      assertEquals(3, rs.getInt("v3"));
+      assertEquals("abc", rs.getString("v1"));
+      assertEquals(1, rs.getInt("v2"));
+    }
+  }
+
+  @Test
+  public void testPsqlCommands() throws Exception {
+    // Check that the internal queries for basic psql commands succeed.
+    // Do not check the actual output as it might vary depending on the database state.
+    try (Statement statement = connection.createStatement()) {
+
+      // List Databases: '\l'
+      statement.executeQuery(
+          "SELECT d.datname as \"Name\",\n" +
+              "       pg_catalog.pg_get_userbyid(d.datdba) as \"Owner\",\n" +
+              "       pg_catalog.pg_encoding_to_char(d.encoding) as \"Encoding\",\n" +
+              "       d.datcollate as \"Collate\",\n" +
+              "       d.datctype as \"Ctype\",\n" +
+              "       pg_catalog.array_to_string(d.datacl, E'\\n') AS \"Access privileges\"\n" +
+              "FROM pg_catalog.pg_database d\n" +
+              "ORDER BY 1;"
+      );
+
+      // List Databases: '\dt'
+      statement.executeQuery(
+          "SELECT n.nspname as \"Schema\",\n" +
+              "  c.relname as \"Name\",\n" +
+              "  CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN " +
+              "      'materialized view' WHEN 'i' THEN 'index' WHEN 'S' THEN 'sequence' WHEN 's'" +
+              "      THEN 'special' WHEN 'f' THEN 'foreign table' END as \"Type\",\n" +
+              "  pg_catalog.pg_get_userbyid(c.relowner) as \"Owner\"\n" +
+              "FROM pg_catalog.pg_class c\n" +
+              "     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n" +
+              "WHERE c.relkind IN ('r','')\n" +
+              "      AND n.nspname <> 'pg_catalog'\n" +
+              "      AND n.nspname <> 'information_schema'\n" +
+              "      AND n.nspname !~ '^pg_toast'\n" +
+              "  AND pg_catalog.pg_table_is_visible(c.oid)\n" +
+              "ORDER BY 1,2;"
+      );
+
+      // Describe table: '\d table_name' (example with pg_class, oid 1259).
+      statement.executeQuery(
+          "SELECT a.attname,\n" +
+              "  pg_catalog.format_type(a.atttypid, a.atttypmod),\n" +
+              "  (SELECT substring(pg_catalog.pg_get_expr(d.adbin, d.adrelid) for 128)\n" +
+              "   FROM pg_catalog.pg_attrdef d\n" +
+              "   WHERE d.adrelid = a.attrelid AND d.adnum = a.attnum AND a.atthasdef),\n" +
+              "  a.attnotnull, a.attnum,\n" +
+              "  (SELECT c.collname FROM pg_catalog.pg_collation c, pg_catalog.pg_type t\n" +
+              "   WHERE c.oid = a.attcollation AND t.oid = a.atttypid AND " +
+              "         a.attcollation <> t.typcollation) AS attcollation,\n" +
+              "  NULL AS indexdef,\n" +
+              "  NULL AS attfdwoptions\n" +
+              "FROM pg_catalog.pg_attribute a\n" +
+              "WHERE a.attrelid = '1259' AND a.attnum > 0 AND NOT a.attisdropped\n" +
+              "ORDER BY a.attnum;"
+      );
+    }
+  }
+
+  @Test
+  public void testNotNullConstraint() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TABLE testnotnullconstraint (k int primary key, v1 text not null)");
+      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expectMessage("null value in column \"v1\" violates not-null constraint");
+      statement.execute("INSERT INTO testnotnullconstraint(k, v1) VALUES (1, null)");
+    }
+  }
+
+  @Test
+  public void testCheckConstraint() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TABLE testcheckconstraint (k int primary key, v1 int CHECK (v1 > 9));");
+
+      thrown.expect(org.postgresql.util.PSQLException.class);
+      thrown.expectMessage("new row for relation \"testcheckconstraint\" violates check " +
+          "constraint \"testcheckconstraint_v1_check\"");
+      statement.execute("INSERT INTO testcheckconstraint(k, v1) VALUES (1, -1)");
+    }
+  }
 }

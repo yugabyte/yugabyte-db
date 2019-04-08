@@ -5,15 +5,15 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Documentation Status](https://readthedocs.org/projects/ansicolortags/badge/?version=latest)](https://docs.yugabyte.com/)
 [![Ask in forum](https://img.shields.io/badge/ask%20us-forum-orange.svg)](https://forum.yugabyte.com/)
-[![Gitter chat](https://badges.gitter.im/gitlabhq/gitlabhq.svg)](https://gitter.im/YugaByte/Lobby)
+[![Slack chat](https://img.shields.io/badge/chat-Slack-brightgreen.svg)](https://www.yugabyte.com/slack)
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
 
-YugaByte Database is a transactional, high-performance database for planet-scale cloud applications.  This repository contains the Community Edition of the YugaByte Database.
+YugaByte Database is the high-performance SQL database for building internet-scale, globally-distributed applications.  This repository contains the Community Edition of the YugaByte Database.
 
 ## Table of Contents
 
-- [About YugaByte DB](#about-yugabyte)
-- [Supported APIs](#supported-apis)
+- [About YugaByte DB](#about-yugabyte-db)
+- [Architecture](#architecture)
 - [Getting Started](#getting-started)
 - [Developing Apps](#developing-apps)
 - [Building YugaByte code](#building-yugabyte-code)
@@ -31,54 +31,54 @@ YugaByte Database is a transactional, high-performance database for planet-scale
 
 ## About YugaByte DB
 
-YugaByte DB offers **both** NoSQL and SQL in a single, unified database. It is meant to be a system-of-record/authoritative database that applications can rely on for correctness and availability. It allows applications to easily scale up and scale down in the cloud, on-premises or across hybrid environments without creating operational complexity or increasing the risk of outages.
+Built using a unique combination of high-performance document store, auto sharding, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), YugaByte DB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures and global data distribution. As a cloud native database, it can be deployed across public and private clouds as well as in Kubernetes environments with ease.
 
-* See how YugaByte DB [compares with other databases](https://docs.yugabyte.com/comparisons/).
-* Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/introduction/overview/).
+* See how YugaByte DB [compares with other databases](https://docs.yugabyte.com/latest/comparisons/).
+* Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/latest/introduction/).
 
-## Supported APIs
+## Architecture
 
-In terms of data model and APIs, YugaByte DB supports the following on top of a common core data platform: 
-* [Cassandra Query Language (CQL)](https://docs.yugabyte.com/api/cassandra/) - with strong consistency, distributed ACID transactions, low latency secondary indexes and a native JSONB data type 
-* [Redis](https://docs.yugabyte.com/api/redis/) - as a full database with automatic sharding, clustering, elasticity
-* PostgreSQL (in progress) - with linear scalability, high availability and fault tolerance
+YugaByte DB architecture has 2 layers. At the core is DocDB, YugaByte DB's distributed document store. DocDB is the common database engine for the YugaByte Query Layer (YQL). Applications interact with YQL using the APIs listed below.
 
-**Note**: You can run your Apache Spark applications on YugaByte DB
+### YugaByte DB APIs
 
-YugaByte DB is driver compatible with Apache Cassandra CQL and Redis - you can run existing
-applications written using existing open-source client drivers.
+YugaByte DB supports two flavors of distributed SQL APIs.
 
-The distributed transactions feature is supported in the core data platform. The work to expose this
-as strongly consistent secondary indexes, multi-table/row ACID operations and SQL support is
-actively in progress. You can follow the progress of these features in our [community
-forum](https://forum.yugabyte.com/).
+* [YugaByte Structured Query Language (YSQL)](https://docs.yugabyte.com/latest/api/ysql/) - A PostgreSQL-compatible fully relational SQL API (currently in beta) with horizontal write scalability and extreme fault tolerance against infrastructure failures. This API is best fit for RDBMS workloads that need scale-out, auto failover and global data distribution while also using relational data modeling features such as JOINs, referential integrity, and multi-shard transactions.
+
+* [YugaByte Cloud Query Language (YCQL)](https://docs.yugabyte.com/latest/api/ycql/) - A SQL-based flexible-schema API with strong consistency, multi-shard transactions, globally-consistent secondary indexes and a native JSONB column type. This API has its roots in the Cassandra Query Language and is best fit for internet-scale OLTP apps that need a semi-relational SQL highly optimized for write-intensive applications as well as blazing-fast query needs. 
+
+### DocDB, YugaByte DB's Distributed Document Store
+
+[DocDB](https://docs.yugabyte.com/latest/architecture/docdb/) builds on top of the popular [RocksDB](https://rocksdb.org/) project by transforming RocksDB from a key-value store (with only primitive data types) to a document store (with complex data types). Every key is stored as a separate document in DocDB, irrespective of the API responsible for managing the key. DocDB’s sharding, replication/fault-tolerance and distributed ACID transactions architecture are all based on the the [Google Spanner](https://ai.google/research/pubs/pub39966) design first published in 2012.
 
 ## Getting Started
 
 Here are a few resources for getting started with YugaByte DB:
 
-* [Quick start guide](http://docs.yugabyte.com/quick-start/) - install, create a local cluster and read/write from YugaByte DB.
-* [Explore core features](https://docs.yugabyte.com/explore/) - automatic sharding & rebalancing, linear scalability, fault tolerance, tunable reads etc.
-* [Real world apps](https://docs.yugabyte.com/develop/realworld-apps/) - how real-world, end-to-end applications can be built using YugaByte DB.
-* [Architecture docs](https://docs.yugabyte.com/architecture/) - to understand how YugaByte was designed and how it works
+* [Quick start guide](http://docs.yugabyte.com/latest/quick-start/) - install, create a local cluster and read/write from YugaByte DB.
+* [Explore core features](https://docs.yugabyte.com/latest/explore/) - automatic sharding & re-balancing, linear scalability, fault tolerance, tunable reads and more.
+* [Ecosystem integrations](https://docs.yugabyte.com/latest/develop/ecosystem-integrations/) - integrations with Apache Kafka/KSQL, Apache Spark, JanusGraph, KairosDB, Presto and more.
+* [Real world apps](https://docs.yugabyte.com/latest/develop/realworld-apps/) - sample real-world, end-to-end applications built using YugaByte DB.
+* [Architecture docs](https://docs.yugabyte.com/latest/architecture/) - to understand how YugaByte DB is designed and how it works
 
-Cannot find what you are looking for? Have a question? We love to hear from you - please post your questions or comments to our [community forum](https://forum.yugabyte.com).
+Cannot find what you are looking for? Have a question? We love to hear from you - please [file a GitHub issue](https://github.com/YugaByte/yugabyte-db/issues).
 
 ## Developing Apps
 
-Here is a tutorial on implementing a simple Hello World application for YugaByte DB's Cassandra-compatible YCQL and Redis-compatible YEDIS APIs in different languages:
-* [Java](https://docs.yugabyte.com/develop/client-drivers/java/) using Maven
-* [NodeJS](https://docs.yugabyte.com/develop/client-drivers/nodejs/)
-* [Python](https://docs.yugabyte.com/develop/client-drivers/python/)
+Here is a tutorial on implementing a simple Hello World application on YugaByte DB in different languages:
+* [Java](https://docs.yugabyte.com/latest/develop/client-drivers/java/) using Maven
+* [NodeJS](https://docs.yugabyte.com/latest/develop/client-drivers/nodejs/)
+* [Python](https://docs.yugabyte.com/latest/develop/client-drivers/python/)
+* [Go](https://docs.yugabyte.com/latest/develop/client-drivers/go/)
+* [C#](https://docs.yugabyte.com/latest/develop/client-drivers/csharp/)
+* [C/C++](https://docs.yugabyte.com/latest/develop/client-drivers/cpp/)
 
-We are constantly adding documentation on how to build apps using the client drivers in various
-languages, as well as the ecosystem integrations we support. Please see [our app-development
-docs](https://docs.yugabyte.com/develop/) for the latest information.
+We are constantly adding documentation on how to build apps using the client drivers in various languages, as well as the ecosystem integrations we support. Please see [our app-development docs](https://docs.yugabyte.com/latest/develop/) for the latest information.
 
-Once again, please post your questions or comments to our [community
-forum](https://forum.yugabyte.com) if you need something.
+Once again, please post your questions or comments as a [GitHub issue](https://github.com/YugaByte/yugabyte-db/issues) if you need something.
 
-## Building YugaByte code
+## Building YugaByte DB code
 
 ### Prerequisites for CentOS 7
 
@@ -104,18 +104,22 @@ sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 You could also symlink them into another directory that is on your PATH.
 
 We also use [Linuxbrew](https://github.com/linuxbrew/brew) to provide some of the third-party
-dependencies on CentOS. We install Linuxbrew in a separate directory, `~/.linuxbrew-yb-build`,
-so that it does not conflict with any other Linuxbrew installation on your workstation, and does
-not contain any unnecessary packages that would interfere with the build.
+dependencies on CentOS. During the build we install Linuxbrew in a separate directory,
+`~/.linuxbrew-yb-build/linuxbrew-<version>`, so that it does not conflict with any other Linuxbrew
+installation on your workstation, and does not contain any unnecessary packages that would
+interfere with the build.
 
-```
-git clone https://github.com/Linuxbrew/brew.git ~/.linuxbrew-yb-build
-~/.linuxbrew-yb-build/bin/brew install autoconf automake flex gcc libtool maven readline openssl \
-libuuid bzip2
-```
+We don't need to add `~/.linuxbrew-yb-build/linuxbrew-<version>/bin` to PATH. The build scripts
+will automatically discover this Linuxbrew installation.
 
-We don't need to add `~/.linuxbrew-yb-build/bin` to PATH. The build scripts will automatically
-discover this Linuxbrew installation.
+### Prerequisites for Ubuntu 18.04
+
+In addition to (corresponding) steps required for CentOS 7, the following steps are required for additional packages that need to be installed:
+
+```bash
+sudo apt-get update
+sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven
+```
 
 ### Prerequisites for Mac OS X
 
@@ -129,7 +133,7 @@ Install [Homebrew](https://brew.sh/):
 Install the following packages using Homebrew:
 ```
 brew install autoconf automake bash bison ccache cmake coreutils flex gnu-tar icu4c libtool maven \
-             ninja pkg-config pstree wget zlib
+             ninja pkg-config pstree wget zlib python@2
 ```
 
 Also YugaByte DB build scripts rely on Bash 4. Make sure that `which bash` outputs
@@ -182,6 +186,9 @@ The above command will build the release configuration, put the C++ binaries in
 `build/release-gcc-dynamic-community`, and will also create the `build/latest` symlink to that
 directory. Then it will build the Java code as well. The `--with-assembly` flag tells the build
 script to build the `yb-sample-apps.jar` file containing sample Java apps.
+
+For Linux it will first make sure our custom Linuxbrew distribution is installed into
+`~/.linuxbrew-yb-build/linuxbrew-<version>`.
 
 ### Running the C++ tests
 
@@ -252,7 +259,8 @@ Note that the YB logs are contained in the output file now.
 ## Reporting Issues
 
 Please use [GitHub issues](https://github.com/YugaByte/yugabyte-db/issues) to report issues.
-Also feel free to post on the [YugaByte Community Forum](http://forum.yugabyte.com).
+
+To live chat with our engineers, use our [Slack channel](https://www.yugabyte.com/slack).
 
 ## Contributing
 

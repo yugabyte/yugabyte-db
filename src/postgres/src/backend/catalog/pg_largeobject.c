@@ -3,7 +3,7 @@
  * pg_largeobject.c
  *	  routines to support manipulation of the pg_largeobject relation
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -110,7 +110,7 @@ LargeObjectDrop(Oid loid)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("large object %u does not exist", loid)));
 
-	CatalogTupleDelete(pg_lo_meta, &tuple->t_self);
+	CatalogTupleDelete(pg_lo_meta, tuple);
 
 	systable_endscan(scan);
 
@@ -127,7 +127,7 @@ LargeObjectDrop(Oid loid)
 							  NULL, 1, skey);
 	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
-		CatalogTupleDelete(pg_largeobject, &tuple->t_self);
+		CatalogTupleDelete(pg_largeobject, tuple);
 	}
 
 	systable_endscan(scan);

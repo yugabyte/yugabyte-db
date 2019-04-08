@@ -161,8 +161,8 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
           << "      <th>Server</th>\n"
           << "      <th>Time since </br>heartbeat</th>\n"
           << "      <th>Status & Uptime</th>\n"
-          << "      <th>Load (Num Tablets)</th>\n"
-          << "      <th>Leader Count</br>(Num Tablets)</th>\n"
+          << "      <th>User Tablets</br>(Total)</th>\n"
+          << "      <th>User Tablets</br>(Leaders)</th>\n"
           << "      <th>RAM Used</th>\n"
           << "      <th>SST Files Size</th>\n"
           << "      <th>Uncompressed SST </br>Files Size</th>\n"
@@ -171,7 +171,8 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
           << "      <th>Cloud</th>\n"
           << "      <th>Region</th>\n"
           << "      <th>Zone</th>\n"
-          << "      <th>UUID</th>\n"
+          << "      <th>System Tablets</br>(Total)</th>\n"
+          << "      <th>System Tablets</br>(Leaders)</th>\n"
           << "    </tr>\n";
 }
 
@@ -204,18 +205,19 @@ string UptimeString(uint64_t seconds) {
 
 void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
                                         std::vector<std::shared_ptr<TSDescriptor>>* descs,
+                                        TabletCountMap* tablet_map,
                                         std::stringstream* output) {
   for (auto desc : *descs) {
     if (desc->placement_uuid() == current_uuid) {
       const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
-      TSRegistrationPB reg;
-      desc->GetRegistration(&reg);
+      TSRegistrationPB reg = desc->GetRegistration();
       string host_port = Substitute("$0:$1",
                                     reg.common().http_addresses(0).host(),
                                     reg.common().http_addresses(0).port());
       *output << "  <tr>\n";
-      *output << "    <td>" << RegistrationToHtml(reg.common(), host_port) << "</td>";
-      *output << "    <td>" << time_since_hb << "</td>";
+      *output << "  <td>" << RegistrationToHtml(reg.common(), host_port) << "</br>";
+      *output << "  " << desc->permanent_uuid() << "</td>";
+      *output << "<td>" << time_since_hb << "</td>";
       bool is_dead = false;
       if (master_->ts_manager()->IsTSLive(desc)) {
         *output << "    <td style=\"color:Green\">" << kTserverAlive << ":" <<
@@ -225,20 +227,23 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
         *output << "    <td style=\"color:Red\">" << kTserverDead << "</td>";
       }
 
-      *output << "    <td>" << (is_dead ? 0 : desc->num_live_replicas()) << "</td>";
-      *output << "    <td>" << (is_dead ? 0 : desc->leader_count()) << "</td>";
-      *output << "    <td>" << BytesToHumanReadable
-                               (desc->total_memory_usage()) << "</td>";
-      *output << "    <td>" << BytesToHumanReadable
-                               (desc->total_sst_file_size()) << "</td>";
-      *output << "    <td>" << BytesToHumanReadable
-                             (desc->uncompressed_sst_file_size()) << "</td>";
+      auto tserver = tablet_map->find(desc->permanent_uuid());
+      bool no_tablets = tserver == tablet_map->end() || is_dead;
+      *output << "    <td>" << (no_tablets ? 0
+        : tserver->second.user_tablet_leaders + tserver->second.user_tablet_followers) << "</td>";
+      *output << "    <td>" << (no_tablets ? 0 : tserver->second.user_tablet_leaders) << "</td>";
+      *output << "    <td>" << BytesToHumanReadable(desc->total_memory_usage()) << "</td>";
+      *output << "    <td>" << BytesToHumanReadable(desc->total_sst_file_size()) << "</td>";
+      *output << "    <td>" << BytesToHumanReadable(desc->uncompressed_sst_file_size()) << "</td>";
       *output << "    <td>" << desc->read_ops_per_sec() << "</td>";
       *output << "    <td>" << desc->write_ops_per_sec() << "</td>";
       *output << "    <td>" << reg.common().cloud_info().placement_cloud() << "</td>";
       *output << "    <td>" << reg.common().cloud_info().placement_region() << "</td>";
       *output << "    <td>" << reg.common().cloud_info().placement_zone() << "</td>";
-      *output << "    <td>" << desc->permanent_uuid() << "</td>";
+      *output << "    <td>" << (no_tablets ? 0
+        : tserver->second.system_tablet_leaders + tserver->second.system_tablet_followers)
+        << "</td>";
+      *output << "    <td>" << (no_tablets ? 0 : tserver->second.system_tablet_leaders) << "</td>";
       *output << "  </tr>\n";
     }
   }
@@ -262,6 +267,38 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   const auto& ts_manager = master_->ts_manager();
   ts_manager->GetAllDescriptors(&descs);
 
+  // Get user and system tablet leader and follower counts for each TabletServer
+  TabletCountMap tablet_map;
+
+  vector<scoped_refptr<TableInfo>> tables;
+  master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+  for (const auto& table : tables) {
+    TabletInfos tablets;
+    table->GetAllTablets(&tablets);
+    bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
+
+    for (const auto& tablet : tablets) {
+      TabletInfo::ReplicaMap replication_locations;
+      tablet->GetReplicaLocations(&replication_locations);
+
+      for (const auto& replica : replication_locations) {
+        if (is_user_table) {
+          if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
+            tablet_map[replica.first].user_tablet_leaders++;
+          } else {
+            tablet_map[replica.first].user_tablet_followers++;
+          }
+        } else {
+          if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
+            tablet_map[replica.first].system_tablet_leaders++;
+          } else {
+            tablet_map[replica.first].system_tablet_followers++;
+          }
+        }
+      }
+    }
+  }
+
   unordered_set<string> read_replica_uuids;
   for (auto desc : descs) {
     if (!read_replica_uuids.count(desc->placement_uuid()) && desc->placement_uuid() != live_id) {
@@ -272,18 +309,19 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
   *output << std::setprecision(output_precision_);
   *output << "<h2>Tablet Servers</h2>\n";
 
-
-  *output << "<h3 style=\"color:" << kYBDarkBlue << "\">Primary Cluster UUID: "
-          << (live_id.empty() ? kNoPlacementUUID : live_id) << "</h3>\n";
+  if (!live_id.empty()) {
+    *output << "<h3 style=\"color:" << kYBDarkBlue << "\">Primary Cluster UUID: "
+            << live_id << "</h3>\n";
+  }
 
   TServerTable(output);
-  TServerDisplay(live_id, &descs, output);
+  TServerDisplay(live_id, &descs, &tablet_map, output);
 
   for (const auto& read_replica_uuid : read_replica_uuids) {
     *output << "<h3 style=\"color:" << kYBDarkBlue << "\">Read Replica UUID: "
             << (read_replica_uuid.empty() ? kNoPlacementUUID : read_replica_uuid) << "</h3>\n";
     TServerTable(output);
-    TServerDisplay(read_replica_uuid, &descs, output);
+    TServerDisplay(read_replica_uuid, &descs, &tablet_map, output);
   }
 }
 
@@ -312,14 +350,14 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
 
     table_cat = kUserTable;
     // Determine the table category.
-    if (IsSystemTable(*table)) {
+    if (master_->catalog_manager()->IsUserIndex(*table)) {
+      table_cat = kIndexTable;
+    } else if (!master_->catalog_manager()->IsUserTable(*table)) {
       // Skip system tables if we should.
       if (skip_system_tables) {
         continue;
       }
       table_cat = kSystemTable;
-    } else if (!table->indexed_table_id().empty()) {
-      table_cat = kIndexTable;
     }
 
     const TableName long_table_name = TableLongName(
@@ -328,7 +366,7 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
     (*ordered_tables[table_cat])[long_table_name] = Substitute(
-        "<tr><td>$0</td><td><a href=\"/table?keyspace_name=$0&table_name=$1\">$1</a>"
+        "<tr><td>$0</td><td><a href=\"/table?id=$4\">$1</a>"
             "</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
         EscapeForHtmlToString(keyspace),
         EscapeForHtmlToString(l->data().name()),
@@ -480,10 +518,6 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   HtmlOutputTasks(table->GetTasks(), output);
 }
 
-bool MasterPathHandlers::IsSystemTable(const TableInfo& table) {
-  return master_->catalog_manager()->IsSystemTable(table) || table.IsRedisTable();
-}
-
 void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
                                      stringstream* output) {
 
@@ -553,7 +587,7 @@ void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
   // Get the list of user tables.
   vector<scoped_refptr<TableInfo> > user_tables;
   for (scoped_refptr<TableInfo> table : tables) {
-    if (!IsSystemTable(*table)) {
+    if (master_->catalog_manager()->IsUserTable(*table)) {
       user_tables.push_back(table);
     }
   }
@@ -963,8 +997,7 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
 
 string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
                                               const std::string& tablet_id) const {
-  TSRegistrationPB reg;
-  desc.GetRegistration(&reg);
+  TSRegistrationPB reg = desc.GetRegistration();
 
   if (reg.common().http_addresses().size() > 0) {
     return Substitute(

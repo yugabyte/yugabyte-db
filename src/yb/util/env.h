@@ -191,6 +191,9 @@ class Env {
   virtual CHECKED_STATUS LinkFile(const std::string& src,
                                   const std::string& target) = 0;
 
+  // Read link's actual target
+  virtual Result<std::string> ReadLink(const std::string& link) = 0;
+
   // Store the physical size of fname in *file_size.
   //
   // This differs from GetFileSize() in that it returns the actual amount
@@ -239,6 +242,12 @@ class Env {
   // same directory.
   virtual CHECKED_STATUS GetTestDirectory(std::string* path) = 0;
 
+  Result<std::string> GetTestDirectory() {
+    std::string test_dir;
+    RETURN_NOT_OK(GetTestDirectory(&test_dir));
+    return test_dir;
+  }
+
   // Returns the number of micro-seconds since some fixed point in time. Only
   // useful for computing deltas of time.
   virtual uint64_t NowMicros() = 0;
@@ -261,6 +270,10 @@ class Env {
     RETURN_NOT_OK(IsDirectory(path, &result));
     return result;
   }
+
+  // Checks if the given path is an executable file. If the file does not exist
+  // we simply return false rather than consider that an error.
+  virtual Result<bool> IsExecutableFile(const std::string& path) = 0;
 
   // The kind of file found during a walk. Note that symbolic links are
   // reported as FILE_TYPE.
@@ -620,6 +633,9 @@ class EnvWrapper : public Env {
   CHECKED_STATUS LinkFile(const std::string& s, const std::string& t) override {
     return target_->LinkFile(s, t);
   }
+  Result<std::string> ReadLink(const std::string& s) override {
+    return target_->ReadLink(s);
+  }
   CHECKED_STATUS RenameFile(const std::string& s, const std::string& t) override {
     return target_->RenameFile(s, t);
   }
@@ -644,6 +660,9 @@ class EnvWrapper : public Env {
   }
   CHECKED_STATUS IsDirectory(const std::string& path, bool* is_dir) override {
     return target_->IsDirectory(path, is_dir);
+  }
+  Result<bool> IsExecutableFile(const std::string& path) override {
+    return target_->IsExecutableFile(path);
   }
   CHECKED_STATUS Walk(const std::string& root,
               DirectoryOrder order,

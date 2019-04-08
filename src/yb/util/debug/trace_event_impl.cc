@@ -460,7 +460,7 @@ class TraceLog::OptionalAutoLock {
       lock_->Unlock();
   }
 
-  void EnsureAcquired() {
+  void EnsureAcquired() EXCLUSIVE_LOCK_FUNCTION() {
     if (!locked_) {
       lock_->Lock();
       locked_ = true;
@@ -605,8 +605,10 @@ void TraceEvent::Initialize(
   bool arg_is_copy[kTraceMaxNumArgs];
   for (i = 0; i < num_args; ++i) {
     // No copying of convertible types, we retain ownership.
-    if (arg_types_[i] == TRACE_VALUE_TYPE_CONVERTABLE)
+    if (arg_types_[i] == TRACE_VALUE_TYPE_CONVERTABLE) {
+      arg_is_copy[i] = false;  // Without this, clang analyzer complaisn below.
       continue;
+    }
 
     // We only take a copy of arg_vals if they are of type COPY_STRING.
     arg_is_copy[i] = (arg_types_[i] == TRACE_VALUE_TYPE_COPY_STRING);
@@ -628,8 +630,12 @@ void TraceEvent::Initialize(
     for (i = 0; i < num_args; ++i) {
       if (arg_types_[i] == TRACE_VALUE_TYPE_CONVERTABLE)
         continue;
-      if (arg_is_copy[i])
+      // Without the assignment to arg_is_copy[i] before a continue statement above, clang
+      // analyzer says this here:
+      // warning: Branch condition evaluates to a garbage value
+      if (arg_is_copy[i]) {
         CopyTraceEventParameter(&ptr, &arg_values_[i].as_string, end);
+      }
     }
     DCHECK_EQ(end, ptr) << "Overrun by " << ptr - end;
   }
@@ -980,6 +986,7 @@ void TraceSamplingThread::DefaultSamplingCallback(
   const char* category_group;
   const char* name;
   ExtractCategoryAndName(combined, &category_group, &name);
+
   TRACE_EVENT_API_ADD_TRACE_EVENT(TRACE_EVENT_PHASE_SAMPLE,
       TraceLog::GetCategoryGroupEnabled(category_group),
       name, 0, 0, nullptr, nullptr, nullptr, nullptr, 0);
@@ -1389,7 +1396,7 @@ void TraceLog::SetDisabled() {
   SetDisabledWhileLocked();
 }
 
-void TraceLog::SetDisabledWhileLocked() {
+void NO_THREAD_SAFETY_ANALYSIS TraceLog::SetDisabledWhileLocked() {
   DCHECK(lock_.IsHeld());
 
   if (!IsEnabled())
@@ -2125,8 +2132,8 @@ TraceEvent* TraceLog::GetEventByHandle(TraceEventHandle handle) {
   return GetEventByHandleInternal(handle, nullptr);
 }
 
-TraceEvent* TraceLog::GetEventByHandleInternal(TraceEventHandle handle,
-                                               OptionalAutoLock* lock) {
+TraceEvent* NO_THREAD_SAFETY_ANALYSIS TraceLog::GetEventByHandleInternal(
+    TraceEventHandle handle, OptionalAutoLock* lock) {
   TraceLog::PerThreadInfo* thr_info = TraceLog::thread_local_info_;
 
   if (!handle.chunk_seq)

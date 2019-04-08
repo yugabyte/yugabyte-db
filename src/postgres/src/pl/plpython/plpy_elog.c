@@ -44,7 +44,7 @@ static bool set_string_attr(PyObject *obj, char *attrname, char *str);
  * in the context.
  */
 void
-PLy_elog(int elevel, const char *fmt,...)
+PLy_elog_impl(int elevel, const char *fmt,...)
 {
 	char	   *xmsg;
 	char	   *tbmsg;
@@ -242,7 +242,7 @@ PLy_traceback(PyObject *e, PyObject *v, PyObject *tb,
 
 	*tb_depth = 0;
 	initStringInfo(&tbstr);
-	/* Mimick Python traceback reporting as close as possible. */
+	/* Mimic Python traceback reporting as close as possible. */
 	appendStringInfoString(&tbstr, "Traceback (most recent call last):");
 	while (tb != NULL && tb != Py_None)
 	{

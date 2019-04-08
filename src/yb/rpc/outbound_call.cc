@@ -47,6 +47,7 @@
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
 
 #include "yb/util/concurrent_value.h"
@@ -55,6 +56,7 @@
 #include "yb/util/memory/memory.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 METRIC_DEFINE_histogram(
     server, handler_latency_outbound_call_queue_time, "Time taken to queue the request ",
@@ -73,7 +75,7 @@ METRIC_DEFINE_histogram(
 // enough that involuntary context switches don't trigger it, but low enough
 // that any serious blocking behavior on the reactor would.
 DEFINE_int64(
-    rpc_callback_max_cycles, 100 * 1000 * 1000,
+    rpc_callback_max_cycles, 100 * 1000 * 1000 * yb::kTimeMultiplier,
     "The maximum number of cycles for which an RPC callback "
     "should be allowed to run without emitting a warning."
     " (Advanced debugging option)");
@@ -156,6 +158,8 @@ class RemoteMethodsCache {
   ConcurrentValue<PtrCache> concurrent_cache_;
 };
 
+const std::string kEmptyString;
+
 } // namespace
 
 ///
@@ -166,8 +170,10 @@ OutboundCall::OutboundCall(
     const RemoteMethod* remote_method,
     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
+    RpcMetrics* rpc_metrics,
     ResponseCallback callback)
-    : start_(MonoTime::Now()),
+    : hostname_(&kEmptyString),
+      start_(MonoTime::Now()),
       controller_(DCHECK_NOTNULL(controller)),
       response_(DCHECK_NOTNULL(response_storage)),
       call_id_(NextCallId()),
@@ -175,7 +181,8 @@ OutboundCall::OutboundCall(
       callback_(std::move(callback)),
       trace_(new Trace),
       outbound_call_metrics_(outbound_call_metrics),
-      remote_method_pool_(RemoteMethodsCache::Instance().Find(*remote_method_)) {
+      remote_method_pool_(RemoteMethodsCache::Instance().Find(*remote_method_)),
+      rpc_metrics_(rpc_metrics) {
   // Avoid expensive conn_id.ToString() in production.
   TRACE_TO_WITH_TIME(trace_, start_, "Outbound Call initiated.");
 
@@ -186,6 +193,9 @@ OutboundCall::OutboundCall(
   DVLOG(4) << "OutboundCall " << this << " constructed with state_: " << StateName(state_)
            << " and RPC timeout: "
            << (controller_->timeout().Initialized() ? controller_->timeout().ToString() : "none");
+
+  IncrementCounter(rpc_metrics_->outbound_calls_created);
+  IncrementGauge(rpc_metrics_->outbound_calls_alive);
 }
 
 OutboundCall::~OutboundCall() {
@@ -198,6 +208,8 @@ OutboundCall::~OutboundCall() {
               << "us. Trace:";
     trace_->Dump(&LOG(INFO), true);
   }
+
+  DecrementGauge(rpc_metrics_->outbound_calls_alive);
 }
 
 void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
@@ -219,11 +231,13 @@ void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
   }
 }
 
-void OutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
-  output->push_back(buffer_);
+void OutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+  output->push_back(std::move(buffer_));
+  buffer_consumption_ = ScopedTrackedConsumption();
 }
 
-Status OutboundCall::SetRequestParam(const Message& message) {
+Status OutboundCall::SetRequestParam(
+    const Message& message, const MemTrackerPtr& mem_tracker) {
   using serialization::SerializeHeader;
   using serialization::SerializeMessage;
 
@@ -246,6 +260,11 @@ Status OutboundCall::SetRequestParam(const Message& message) {
   if (!status.ok()) {
     return status;
   }
+
+  if (mem_tracker) {
+    buffer_consumption_ = ScopedTrackedConsumption(mem_tracker, buffer_.size());
+  }
+
   return SerializeMessage(message,
                           &buffer_,
                           /* additional_size */ 0,
@@ -265,23 +284,7 @@ const ErrorStatusPB* OutboundCall::error_pb() const {
 
 
 string OutboundCall::StateName(State state) {
-  switch (state) {
-    case READY:
-      return "READY";
-    case ON_OUTBOUND_QUEUE:
-      return "ON_OUTBOUND_QUEUE";
-    case SENT:
-      return "SENT";
-    case TIMED_OUT:
-      return "TIMED_OUT";
-    case FINISHED_ERROR:
-      return "FINISHED_ERROR";
-    case FINISHED_SUCCESS:
-      return "FINISHED_SUCCESS";
-    default:
-      LOG(DFATAL) << "Unknown state in OutboundCall: " << state;
-      return StringPrintf("UNKNOWN(%d)", state);
-  }
+  return RpcCallState_Name(state);
 }
 
 OutboundCall::State OutboundCall::state() const {
@@ -365,14 +368,14 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
     TRACE_TO(trace_, "Callback called.");
   } else {
     // Error
-    gscoped_ptr<ErrorStatusPB> err(new ErrorStatusPB());
+    auto err = std::make_unique<ErrorStatusPB>();
     if (!pb_util::ParseFromArray(err.get(), r.data(), r.size()).IsOk()) {
       SetFailed(STATUS(IOError, "Was an RPC error but could not parse error response",
                                 err->InitializationErrorString()));
       return;
     }
-    ErrorStatusPB* err_raw = err.release();
-    SetFailed(STATUS(RemoteError, err_raw->message()), err_raw);
+    auto status = STATUS(RemoteError, err->message());
+    SetFailed(status, std::move(err));
   }
 }
 
@@ -388,7 +391,6 @@ void OutboundCall::SetQueued() {
 
 void OutboundCall::SetSent() {
   auto end_time = MonoTime::Now();
-  buffer_ = RefCntBuffer();
   // Track time taken to be sent
   if (outbound_call_metrics_) {
     outbound_call_metrics_->send_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
@@ -408,15 +410,14 @@ void OutboundCall::SetFinished() {
   TRACE_TO(trace_, "Callback called.");
 }
 
-void OutboundCall::SetFailed(const Status &status,
-                             ErrorStatusPB* err_pb) {
+void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB> err_pb) {
   TRACE_TO(trace_, "Call Failed.");
   {
     std::lock_guard<simple_spinlock> l(lock_);
     status_ = status;
     if (status_.IsRemoteError()) {
       CHECK(err_pb);
-      error_pb_.reset(err_pb);
+      error_pb_ = std::move(err_pb);
     } else {
       CHECK(!err_pb);
     }
@@ -473,6 +474,7 @@ bool OutboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   std::lock_guard<simple_spinlock> l(lock_);
   InitHeader(resp->mutable_header());
   resp->set_micros_elapsed(MonoTime::Now().GetDeltaSince(start_).ToMicroseconds());
+  resp->set_state(state());
   if (req.include_traces() && trace_) {
     resp->set_trace_buffer(trace_->DumpToString(true));
   }
@@ -486,9 +488,11 @@ std::string OutboundCall::LogPrefix() const {
 void OutboundCall::InitHeader(RequestHeader* header) {
   header->set_call_id(call_id_);
 
-  const MonoDelta &timeout = controller_->timeout();
-  if (timeout.Initialized()) {
-    header->set_timeout_millis(timeout.ToMilliseconds());
+  if (!IsFinished()) {
+    MonoDelta timeout = controller_->timeout();
+    if (timeout.Initialized()) {
+      header->set_timeout_millis(timeout.ToMilliseconds());
+    }
   }
   header->set_allocated_remote_method(remote_method_pool_->Take());
 }
@@ -550,11 +554,11 @@ Status CallResponse::GetSidecar(int idx, Slice* sidecar) const {
   return Status::OK();
 }
 
-Status CallResponse::ParseFrom(std::vector<char>* call_data) {
+Status CallResponse::ParseFrom(CallData* call_data) {
   CHECK(!parsed_);
   Slice entire_message;
 
-  response_data_.swap(*call_data);
+  response_data_ = std::move(*call_data);
   Slice source(response_data_.data(), response_data_.size());
   RETURN_NOT_OK(serialization::ParseYBMessage(source, &header_, &entire_message));
 

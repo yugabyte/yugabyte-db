@@ -39,6 +39,8 @@
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+DECLARE_int32(memstore_arena_size_kb);
+
 using std::atomic;
 
 namespace rocksdb {
@@ -1926,14 +1928,15 @@ TEST_F(ColumnFamilyTest, SanitizeOptions) {
               }
             }
 
-            // Make sure Sanitize options sets arena_block_size to 1/8 of
+            // Make sure Sanitize options sets arena_block_size default of 1MB or to 1/8 of
             // the write_buffer_size, rounded up to a multiple of 4k.
-            size_t expected_arena_block_size =
-                l * 4 * 1024 * 1024 / 8 + i * 1024 * 1024 / 8;
+            size_t expected_arena_block_size = l * 4 * 1024 * 1024 / 8 + i * 1024 * 1024 / 8;
             if (j + k != 0) {
               // not a multiple of 4k, round up 4k
               expected_arena_block_size += 4 * 1024;
             }
+            expected_arena_block_size = std::min(
+                static_cast<size_t>(FLAGS_memstore_arena_size_kb << 10), expected_arena_block_size);
             ASSERT_EQ(expected_arena_block_size, result.arena_block_size);
           }
         }

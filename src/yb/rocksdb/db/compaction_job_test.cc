@@ -27,6 +27,7 @@
 
 #include "yb/rocksdb/db/compaction_job.h"
 #include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/cache.h"
@@ -34,10 +35,10 @@
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table/mock_table.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 
@@ -172,7 +173,7 @@ class CompactionJobTest : public testing::Test {
   void SetLastSequence(const SequenceNumber sequence_number) {
     versions_->SetLastSequence(sequence_number + 1);
     test::TestUserFrontier frontier(sequence_number + 1);
-    versions_->SetFlushedFrontier(frontier.Clone());
+    versions_->UpdateFlushedFrontier(frontier.Clone());
   }
 
   // returns expected result after compaction
@@ -278,19 +279,18 @@ class CompactionJobTest : public testing::Test {
     LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
     mutex_.Lock();
     EventLogger event_logger(db_options_.info_log.get());
+    FileNumbersProvider file_numbers_provider(versions_.get());
     CompactionJob compaction_job(
         0, &compaction, db_options_, env_options_, versions_.get(),
         &shutting_down_, &log_buffer, nullptr, nullptr, nullptr, &mutex_,
-        &bg_error_, snapshots, earliest_write_conflict_snapshot, table_cache_,
-        &event_logger, false, false, dbname_, &compaction_job_stats_);
+        &bg_error_, snapshots, earliest_write_conflict_snapshot, &file_numbers_provider,
+        table_cache_, &event_logger, false, false, dbname_, &compaction_job_stats_);
 
     VerifyInitializationOfCompactionJobStats(compaction_job_stats_);
 
     compaction_job.Prepare();
     mutex_.Unlock();
-    Status s;
-    s = compaction_job.Run();
-    ASSERT_OK(s);
+    ASSERT_OK(compaction_job.Run());
     mutex_.Lock();
     ASSERT_OK(compaction_job.Install(*cfd->GetLatestMutableCFOptions()));
     mutex_.Unlock();

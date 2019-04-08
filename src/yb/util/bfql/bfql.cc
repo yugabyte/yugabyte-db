@@ -197,6 +197,7 @@ static Status FindMatch(
                       Substitute("Found too many matches for builtin function '$0'", ql_name));
       }
       compatible_operator = bf_operator;
+      VLOG(3) << "Matched function with opcode " << static_cast<int>(max_opcode);
     }
 
     // Break the loop if we have processed all operators in the overloading chain.

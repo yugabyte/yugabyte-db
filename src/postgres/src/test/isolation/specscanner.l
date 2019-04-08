@@ -4,7 +4,7 @@
  * specscanner.l
  *	  a lexical scanner for an isolation test specification
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *-------------------------------------------------------------------------
@@ -18,6 +18,8 @@ static size_t litbufsize = 0;
 static size_t litbufpos = 0;
 
 static void addlitchar(char c);
+
+/* LCOV_EXCL_START */
 
 %}
 
@@ -46,11 +48,11 @@ comment			("#"{non_newline}*)
 	litbufsize = LITBUF_INIT;
 %}
 
-permutation		{ return(PERMUTATION); }
-session			{ return(SESSION); }
-setup			{ return(SETUP); }
-step			{ return(STEP); }
-teardown		{ return(TEARDOWN); }
+permutation		{ return PERMUTATION; }
+session			{ return SESSION; }
+setup			{ return SETUP; }
+step			{ return STEP; }
+teardown		{ return TEARDOWN; }
 
 [\n]			{ yyline++; }
 {comment}		{ /* ignore */ }
@@ -99,6 +101,8 @@ teardown		{ return(TEARDOWN); }
 					exit(1);
 				}
 %%
+
+/* LCOV_EXCL_STOP */
 
 static void
 addlitchar(char c)

@@ -331,7 +331,7 @@ class AsyncAlterTable : public RetryingTSRpcTask {
 
   uint32_t schema_version_;
   scoped_refptr<TabletInfo> tablet_;
-  tserver::AlterSchemaResponsePB resp_;
+  tserver::ChangeMetadataResponsePB resp_;
 };
 
 class AsyncCopartitionTable : public RetryingTSRpcTask {

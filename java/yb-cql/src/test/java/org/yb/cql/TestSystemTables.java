@@ -31,6 +31,7 @@ import org.junit.Test;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import org.yb.client.YBClient;
+import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.master.Master;
@@ -110,8 +111,10 @@ public class TestSystemTables extends BaseCQLTest {
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseCQLTest.tserverArgs = Arrays.asList(String.format("--placement_region=%s",
-      PLACEMENT_REGION), String.format("--placement_zone=%s", PLACEMENT_ZONE));
+    BaseMiniClusterTest.tserverArgs.add(
+        String.format("--placement_region=%s", PLACEMENT_REGION));
+    BaseMiniClusterTest.tserverArgs.add(
+        String.format("--placement_zone=%s", PLACEMENT_ZONE));
   }
 
   @Test

@@ -195,10 +195,25 @@ class TransactionState {
 
     auto status = DoProcessReplicated(data);
 
-    if (data.leader_term != OpId::kUnknownTerm) {
-      ProcessQueue();
+    if (data.leader_term == OpId::kUnknownTerm) {
+      ClearRequests(STATUS(IllegalState, "Leader changed"));
     } else {
-      ClearRequests(STATUS(Aborted, "Leader changed"));
+      switch(status_) {
+        case TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS:
+          ClearRequests(STATUS(AlreadyPresent, "Transaction committed"));
+          break;
+        case TransactionStatus::ABORTED:
+          ClearRequests(STATUS(Aborted, "Transaction aborted"));
+          break;
+        case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
+        case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
+        case TransactionStatus::COMMITTED: FALLTHROUGH_INTENDED;
+        case TransactionStatus::APPLYING: FALLTHROUGH_INTENDED;
+        case TransactionStatus::APPLIED_IN_ONE_OF_INVOLVED_TABLETS: FALLTHROUGH_INTENDED;
+        case TransactionStatus::CLEANUP:
+          ProcessQueue();
+          break;
+      }
     }
 
     return status;
@@ -232,7 +247,8 @@ class TransactionState {
   }
 
   CHECKED_STATUS GetStatus(tserver::GetTransactionStatusResponsePB* response) const {
-    if (status_ == TransactionStatus::COMMITTED) {
+    if (status_ == TransactionStatus::COMMITTED ||
+        status_ == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
       response->set_status(TransactionStatus::COMMITTED);
       response->set_status_hybrid_time(commit_time_.ToUint64());
     } else if (status_ == TransactionStatus::ABORTED) {
@@ -257,16 +273,17 @@ class TransactionState {
     return Status::OK();
   }
 
-  TransactionStatus Abort(TransactionAbortCallback* callback) {
+  TransactionStatusResult Abort(TransactionAbortCallback* callback) {
     if (ShouldBeCommitted()) {
-      return TransactionStatus::COMMITTED;
+      return TransactionStatusResult(TransactionStatus::COMMITTED, HybridTime::kMax);
     } else if (status_ == TransactionStatus::ABORTED) {
-      return TransactionStatus::ABORTED;
+      return TransactionStatusResult::Aborted();
     } else {
+      VLOG_WITH_PREFIX(1) << "External abort request";
       CHECK_EQ(TransactionStatus::PENDING, status_);
       abort_waiters_.emplace_back(std::move(*callback));
       Abort();
-      return TransactionStatus::PENDING;
+      return TransactionStatusResult(TransactionStatus::PENDING, HybridTime::kMax);
     }
   }
 
@@ -416,8 +433,10 @@ class TransactionState {
   CHECKED_STATUS HandleCommit() {
     auto hybrid_time = context_.coordinator_context().clock().Now();
     if (ExpiredAt(hybrid_time)) {
+      auto status = STATUS(Expired, "Commit of expired transaction");
+      VLOG_WITH_PREFIX(4) << status;
       Abort();
-      return STATUS(Expired, "Commit of expired transaction");;
+      return status;
     }
     if (status_ != TransactionStatus::PENDING) {
       return STATUS_FORMAT(IllegalState,
@@ -466,7 +485,7 @@ class TransactionState {
 
     status_ = TransactionStatus::ABORTED;
     first_entry_raft_index_ = data.op_id.index();
-    NotifyAbortWaiters(TransactionStatusResult{status_});
+    NotifyAbortWaiters(TransactionStatusResult::Aborted());
     return Status::OK();
   }
 
@@ -490,7 +509,7 @@ class TransactionState {
     for (const auto& tablet : unnotified_tablets_) {
       context_.NotifyApplying({tablet, id_, commit_time_});
     }
-    NotifyAbortWaiters(TransactionStatusResult{TransactionStatus::COMMITTED});
+    NotifyAbortWaiters(TransactionStatusResult(TransactionStatus::COMMITTED, commit_time_));
     first_entry_raft_index_ = data.op_id.index();
     return Status::OK();
   }
@@ -514,6 +533,7 @@ class TransactionState {
   // the same meaning.
   CHECKED_STATUS PendingReplicationFinished(const TransactionCoordinator::ReplicatedData& data) {
     if (context_.leader() && ExpiredAt(data.hybrid_time)) {
+      VLOG_WITH_PREFIX(4) << "Expired during replication of PENDING or CREATED operations.";
       Abort();
       return Status::OK();
     }
@@ -665,13 +685,13 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
         lock.unlock();
-        callback(TransactionStatusResult{TransactionStatus::ABORTED});
+        callback(TransactionStatusResult::Aborted());
         return;
       }
       postponed_leader_actions_.leader_term = term;
       auto status = Modify(it).Abort(&callback);
       if (callback) {
-        callback(TransactionStatusResult{status});
+        callback(status);
         return;
       }
       actions.Swap(&postponed_leader_actions_);
@@ -956,6 +976,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           it = index.erase(it);
         } else {
           bool modified = index.modify(it, [](TransactionState& state) {
+            VLOG(4) << state.LogPrefix() << "Cleanup expired transaction";
             state.Abort();
           });
           DCHECK(modified);

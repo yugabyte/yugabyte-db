@@ -1,14 +1,40 @@
 /*
  * Utilities for working with hash values.
  *
- * Portions Copyright (c) 2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2017-2018, PostgreSQL Global Development Group
  */
 
 #ifndef HASHUTILS_H
 #define HASHUTILS_H
 
 /*
- * Simple inline murmur hash implementation hashing a 32 bit ingeger, for
+ * Combine two 32-bit hash values, resulting in another hash value, with
+ * decent bit mixing.
+ *
+ * Similar to boost's hash_combine().
+ */
+static inline uint32
+hash_combine(uint32 a, uint32 b)
+{
+	a ^= b + 0x9e3779b9 + (a << 6) + (a >> 2);
+	return a;
+}
+
+/*
+ * Combine two 64-bit hash values, resulting in another hash value, using the
+ * same kind of technique as hash_combine().  Testing shows that this also
+ * produces good bit mixing.
+ */
+static inline uint64
+hash_combine64(uint64 a, uint64 b)
+{
+	/* 0x49a0f4dd15e5a8e3 is 64bit random data */
+	a ^= b + UINT64CONST(0x49a0f4dd15e5a8e3) + (a << 54) + (a >> 7);
+	return a;
+}
+
+/*
+ * Simple inline murmur hash implementation hashing a 32 bit integer, for
  * performance.
  */
 static inline uint32

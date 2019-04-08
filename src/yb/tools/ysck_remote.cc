@@ -122,12 +122,8 @@ class ChecksumStepper {
   }
 
   void Start() {
-    Status s = SchemaToColumnPBs(schema_, &cols_, SCHEMA_PB_WITHOUT_IDS);
-    if (!s.ok()) {
-      reporter_callback_.Run(s, 0);
-    } else {
-      SendRequest();
-    }
+    SchemaToColumnPBs(schema_, &cols_, SCHEMA_PB_WITHOUT_IDS);
+    SendRequest();
   }
 
   void HandleResponse() {
@@ -199,6 +195,7 @@ Status RemoteYsckMaster::Build(const HostPort& address, shared_ptr<YsckMaster>* 
   MessengerBuilder builder(kMessengerName);
   auto messenger = builder.Build();
   RETURN_NOT_OK(messenger);
+  (**messenger).TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));;
   master->reset(new RemoteYsckMaster(address, *messenger));
   return Status::OK();
 }
@@ -238,7 +235,12 @@ Status RemoteYsckMaster::RetrieveTablesList(vector<shared_ptr<YsckTable> >* tabl
     DCHECK(info.namespace_().has_name());
     YBTableName name(info.namespace_().name(), info.name());
     RETURN_NOT_OK(GetTableInfo(name, &schema, &num_replicas));
-    LOG(INFO) << __func__ << ": name=" << name.ToString() << ", num_replicas=" << num_replicas;
+    if (name.table_name().find("pg_") == 0 ||
+        name.namespace_name() == "template0" ||
+        name.namespace_name() == "template1") {
+      // This looks like a PostgreSQL system table, skip it.
+      continue;
+    }
     shared_ptr<YsckTable> table(new YsckTable(name, schema, num_replicas, info.table_type()));
     tables_temp.push_back(table);
   }

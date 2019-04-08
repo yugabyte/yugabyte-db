@@ -24,6 +24,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
+import org.yb.minicluster.BaseMiniClusterTest;
 
 import java.sql.Time;
 import java.util.ArrayList;
@@ -68,8 +69,9 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
   @BeforeClass
   public static void SetUpBeforeClass() throws Exception {
-    BaseCQLTest.tserverArgs = Arrays.asList("--use_cassandra_authentication=true",
-        "--update_permissions_cache_msecs=" + PERMISSIONS_CACHE_TIME_MSECS);
+    BaseMiniClusterTest.tserverArgs.add("--use_cassandra_authentication=true");
+    BaseMiniClusterTest.tserverArgs.add("--update_permissions_cache_msecs=" +
+                                        PERMISSIONS_CACHE_TIME_MSECS);
     BaseCQLTest.setUpBeforeClass();
   }
 
@@ -168,6 +170,20 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
   private void grantPermissionOnAllRoles(String permission, String role) throws Exception {
     grantPermission(permission, ALL_ROLES, "", role);
+  }
+
+  private void verifySomePermissionsGranted(String role, String resource) {
+    ResultSet rs = s.execute(String.format(
+        "SELECT * FROM system_auth.role_permissions WHERE role = '%s' AND resource = '%s'",
+        role, resource));
+    assert(!rs.all().isEmpty());
+  }
+
+  private void verifyPermissionsDeleted(String role, String resource) {
+    ResultSet rs = s.execute(String.format(
+        "SELECT * FROM system_auth.role_permissions WHERE role = '%s' AND resource = '%s'",
+        role, resource));
+    assert(rs.all().isEmpty());
   }
 
   private void verifyKeyspaceExists(String keyspaceName) throws Exception {
@@ -408,7 +424,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testDeleteTableWithWrongPermissions() throws Exception {
     createTableAndVerify(s, keyspace, table);
 
-    grantAllPermissionsExcept(Arrays.asList(DROP, DESCRIBE, AUTHORIZE), TABLE,
+    grantAllPermissionsExcept(Arrays.asList(CREATE, DROP, DESCRIBE, AUTHORIZE), TABLE,
         keyspace + "." + table, username);
 
     thrown.expect(UnauthorizedException.class);
@@ -498,7 +514,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testSelectStatementWithWrongPermissionsOnTable() throws Exception {
     createTableAndInsertRecord(s, keyspace, table);
 
-    grantAllPermissionsExcept(Arrays.asList(SELECT, DESCRIBE), TABLE, table, username);
+    grantAllPermissionsExcept(Arrays.asList(SELECT, CREATE, DESCRIBE), TABLE, table, username);
 
     thrown.expect(UnauthorizedException.class);
     s2.execute(String.format("SELECT * from %s.%s", keyspace, table));
@@ -615,7 +631,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testInsertStatementWithWrongPermissionsOnTable() throws Exception {
     createTableAndVerify(s, keyspace, table);
 
-    grantAllPermissionsExcept(Arrays.asList(MODIFY, DESCRIBE), TABLE, table, username);
+    grantAllPermissionsExcept(Arrays.asList(MODIFY, CREATE, DESCRIBE), TABLE, table, username);
     thrown.expect(UnauthorizedException.class);
     s2.execute(String.format("INSERT INTO %s.%s (h) VALUES (%d)", keyspace, table, VALUE));
   }
@@ -732,7 +748,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testUpdateStatementWithWrongPermissionsOnTable() throws Exception {
     createTableAndInsertRecord(s, keyspace, table);
 
-    grantAllPermissionsExcept(Arrays.asList(DESCRIBE, MODIFY), TABLE, table, username);
+    grantAllPermissionsExcept(Arrays.asList(MODIFY, CREATE, DESCRIBE), TABLE, table, username);
     thrown.expect(UnauthorizedException.class);
     s2.execute(String.format("UPDATE %s.%s SET h = %d WHERE h = %d",
         keyspace, table, VALUE + 1, VALUE));
@@ -853,7 +869,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   public void testTruncateStatementWithWrongPermissionsOnTable() throws Exception {
     createTableAndInsertRecord(s, keyspace, table);
 
-    grantAllPermissionsExcept(Arrays.asList(DESCRIBE, MODIFY), TABLE, table, username);
+    grantAllPermissionsExcept(Arrays.asList(MODIFY, CREATE, DESCRIBE), TABLE, table, username);
 
     thrown.expect(UnauthorizedException.class);
     s2.execute(String.format("TRUNCATE %s.%s", keyspace, table));
@@ -1003,8 +1019,10 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     testCreateRoleHelperWithSession(recipient_role, password, false, false, false, s);
     testCreateRoleHelperWithSession(granted_role, password, false, false, false, s);
 
-    grantAllPermissionsExcept(Arrays.asList(AUTHORIZE), ROLE, granted_role, username);
-    grantAllPermissionsExcept(Arrays.asList(AUTHORIZE), ROLE, recipient_role, username);
+    grantAllPermissionsExcept(Arrays.asList(AUTHORIZE, CREATE, DESCRIBE, MODIFY, SELECT),
+        ROLE, granted_role, username);
+    grantAllPermissionsExcept(Arrays.asList(AUTHORIZE, CREATE, DESCRIBE, MODIFY, SELECT),
+        ROLE, recipient_role, username);
 
     thrown.expect(UnauthorizedException.class);
     if (stmtType.equals(GRANT)) {
@@ -1020,7 +1038,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     testCreateRoleHelperWithSession(recipient_role, password, false, false, false, s);
     testCreateRoleHelperWithSession(granted_role, password, false, false, false, s);
 
-    grantAllPermissionsExcept(Arrays.asList(AUTHORIZE), ALL_ROLES, "", username);
+    grantAllPermissionsExcept(Arrays.asList(AUTHORIZE, MODIFY, SELECT), ALL_ROLES, "", username);
 
     thrown.expect(UnauthorizedException.class);
     if (stmtType.equals(GRANT)) {
@@ -1231,11 +1249,11 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   }
 
   private String getGrantOnTableStmt() {
-    return String.format("GRANT CREATE ON TABLE %s.%s TO %s", keyspace, table, anotherUsername);
+    return String.format("GRANT SELECT ON TABLE %s.%s TO %s", keyspace, table, anotherUsername);
   }
 
   private String getRevokeFromTableStmt() {
-    return String.format("REVOKE CREATE ON TABLE %s.%s FROM %s", keyspace, table,
+    return String.format("REVOKE SELECT ON TABLE %s.%s FROM %s", keyspace, table,
         anotherUsername);
   }
 
@@ -1263,7 +1281,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
   private void testGrantRevokePermissionOnTableWithWrongPermissionsOnTable(String stmtType)
       throws Exception {
     createTableAndVerify(s, keyspace, table);
-    grantAllPermissionsExcept(Arrays.asList(AUTHORIZE, DESCRIBE), TABLE, table, username);
+    grantAllPermissionsExcept(Arrays.asList(AUTHORIZE, CREATE, DESCRIBE), TABLE, table, username);
     if (stmtType.equals(GRANT)) {
       testGrantPermissionOnTableFails();
     } else {
@@ -1933,11 +1951,9 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     String keyspace2 = keyspace + "_2";
     s2.execute(String.format("CREATE KEYSPACE %s", keyspace2));
 
-    List<String> expectedPermissions =
-        Arrays.asList("ALTER", "AUTHORIZE", "CREATE", "DROP", "MODIFY", "SELECT");
     String resource = String.format("data/%s", keyspace2);
 
-    assertPermissionsGranted(s, username, resource, expectedPermissions);
+    assertPermissionsGranted(s, username, resource, ALL_PERMISSIONS_FOR_KEYSPACE);
   }
 
   @Test
@@ -1967,20 +1983,6 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     String resource = String.format("roles/%s", anotherUsername);
 
     assertPermissionsGranted(s, username, resource, expectedPermissions);
-  }
-
-  private void verifySomePermissionsGranted(String role, String resource) {
-    ResultSet rs = s.execute(String.format(
-        "SELECT * FROM system_auth.role_permissions WHERE role = '%s' AND resource = '%s'",
-        role, resource));
-    assert(!rs.all().isEmpty());
-  }
-
-  private void verifyPermissionsDeleted(String role, String resource) {
-    ResultSet rs = s.execute(String.format(
-        "SELECT * FROM system_auth.role_permissions WHERE role = '%s' AND resource = '%s'",
-        role, resource));
-    assert(rs.all().isEmpty());
   }
 
   @Test
@@ -2157,5 +2159,144 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     assert(list.get(0).getBool("can_login"));
     assert(list.get(0).getBool("is_superuser"));
     checkConnectivity(true, anotherUsername, newPassword, false);
+  }
+
+  @Test
+  public void testNotEmptyResourcesInSytemAuthRolePermissionsTable() throws Exception {
+    testCreateRoleHelperWithSession(anotherUsername, "", false, false, false, s);
+
+    String canonicalResource = String.format("roles/%s", anotherUsername);
+    List<String> expectedPermissions = Arrays.asList(ALTER, AUTHORIZE, DROP);
+    // Test that we can see the permissions when we query system_auth.role_permissions.
+    assertPermissionsGranted(s, "cassandra", canonicalResource, expectedPermissions);
+
+    for (String permission : expectedPermissions) {
+      revokePermissionNoSleep(permission, ROLE, anotherUsername, "cassandra");
+    }
+
+    // Verify the resource doesn't appear anymore.
+    String stmt = String.format("SELECT permissions FROM system_auth.role_permissions " +
+        "WHERE role = 'cassandra' and resource = '%s';", canonicalResource);
+    List<Row> rows = s.execute(stmt).all();
+    assert(rows.isEmpty());
+  }
+
+  public void testGrantAllGrantsCorrectPermissions() throws Exception {
+    createTableAndVerify(s, keyspace, table);
+    testCreateRoleHelperWithSession(anotherUsername, "a", false, false, false, s);
+
+    grantAllPermission(KEYSPACE, keyspace, username);
+    assertPermissionsGranted(s, username, "data/" + keyspace,
+        Arrays.asList(ALTER, AUTHORIZE, CREATE, DROP, MODIFY, SELECT));
+
+    grantAllPermission(TABLE, String.format("%s.%s", keyspace, table), username);
+    assertPermissionsGranted(s, username, String.format("data/%s/%s", keyspace, table),
+        Arrays.asList(ALTER, AUTHORIZE, DROP, MODIFY, SELECT));
+
+    grantAllPermission(ROLE, anotherUsername, username);
+    assertPermissionsGranted(s, username, "roles/" + anotherUsername,
+        Arrays.asList(ALTER, AUTHORIZE, DROP));
+
+    grantPermissionOnAllKeyspaces(ALL, username);
+    assertPermissionsGranted(s, username, "data",
+        Arrays.asList(ALTER, AUTHORIZE, CREATE, DROP, MODIFY, SELECT));
+
+    grantPermissionOnAllRoles(ALL, username);
+    grantAllPermission(ROLE, anotherUsername, username);
+    assertPermissionsGranted(s, username, "roles",
+        Arrays.asList(ALTER, AUTHORIZE, CREATE, DESCRIBE, DROP));
+  }
+
+  private void testPermissionOnResourceFails(String permission, String resourceType,
+      String resourceName, String receivingRole) throws Exception {
+    thrown.expect(com.datastax.driver.core.exceptions.SyntaxError.class);
+    thrown.expectMessage(
+        "Resource type DataResource does not support any of the requested permissions");
+    grantPermission(permission, resourceType, resourceName, receivingRole);
+  }
+
+  @Test
+  public void testGrantDescribeOnKeyspaceFails() throws Exception {
+    testPermissionOnResourceFails(DESCRIBE, KEYSPACE, keyspace, username);
+  }
+
+  @Test
+  public void testGrantDescribeOnAllKeyspacesFails() throws Exception {
+    testPermissionOnResourceFails(DESCRIBE, ALL_KEYSPACES, "", username);
+  }
+
+  @Test
+  public void testGrantDescribeOnTableFails() throws Exception {
+    createTableAndVerify(s, keyspace, table);
+    testPermissionOnResourceFails(DESCRIBE, TABLE, String.format("%s.%s", keyspace, table),
+        username);
+  }
+
+  @Test
+  public void testGrantDescribeOnRoleFails() throws Exception {
+    testCreateRoleHelperWithSession(anotherUsername, "a", false, false, false, s);
+    testPermissionOnResourceFails(DESCRIBE, ROLE, anotherUsername, username);
+  }
+
+  @Test
+  public void testGrantCreateOnTableFails() throws Exception {
+    createTableAndVerify(s, keyspace, table);
+    testPermissionOnResourceFails(CREATE, TABLE, String.format("%s.%s", keyspace, table), username);
+  }
+
+  @Test
+  public void testGrantCreateOnRoleFails() throws Exception {
+    testCreateRoleHelperWithSession(anotherUsername, "a", false, false, false, s);
+    testPermissionOnResourceFails(CREATE, ROLE, username, anotherUsername);
+  }
+
+  @Test
+  public void testGrantModifyOnRoleFails() throws Exception {
+    testCreateRoleHelperWithSession(anotherUsername, "a", false, false, false, s);
+    testPermissionOnResourceFails(MODIFY, ROLE, username, anotherUsername);
+  }
+
+  @Test
+  public void testGrantSelectOnRoleFails() throws Exception {
+    testCreateRoleHelperWithSession(anotherUsername, "a", false, false, false, s);
+    testPermissionOnResourceFails(SELECT, ROLE, username, anotherUsername);
+  }
+
+  @Test
+  public void testGrantModifyOnAllRoleFails() throws Exception {
+    testPermissionOnResourceFails(MODIFY, ALL_ROLES, "", username);
+  }
+
+  @Test
+  public void testGrantSelectOnAllRoleFails() throws Exception {
+    testPermissionOnResourceFails(SELECT, ALL_ROLES, "", username);
+  }
+
+  @Test
+  public void testCreateIndexWithCreateTablePermission() throws Exception {
+    s.execute(String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h)) " +
+        "WITH transactions = { 'enabled' : true }", keyspace, table));
+    s.execute("USE " + keyspace);
+
+    grantPermission(CREATE, KEYSPACE, keyspace, username);
+
+    String create_index_stmt = String.format("CREATE INDEX order_by_v on %s.%s (v)",
+        keyspace, table);
+
+    thrown.expect(UnauthorizedException.class);
+    s2.execute(create_index_stmt);
+  }
+
+  @Test
+  public void testCreateIndexWithAlterTablePermission() throws Exception {
+    s.execute(String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h)) " +
+        "WITH transactions = { 'enabled' : true }", keyspace, table));
+    s.execute("USE " + keyspace);
+    grantPermission(ALTER, TABLE, table, username);
+
+    String create_index_stmt = String.format("CREATE INDEX order_by_v on %s.%s (v)",
+        keyspace, table);
+
+    s2.execute(create_index_stmt);
   }
 }

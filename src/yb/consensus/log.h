@@ -42,14 +42,15 @@
 #include <boost/thread/shared_mutex.hpp>
 
 #include "yb/common/schema.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/ref_counted_replicate.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/util/async_util.h"
 #include "yb/util/blocking_queue.h"
 #include "yb/util/locks.h"
+#include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/promise.h"
 #include "yb/util/status.h"
@@ -128,11 +129,12 @@ class Log : public RefCountedThreadSafe<Log> {
   // Synchronously append a new entry to the log.  Log does not take ownership of the passed
   // 'entry'.
   // TODO get rid of this method, transition to the asynchronous API.
-  CHECKED_STATUS Append(LogEntryPB* entry);
+  CHECKED_STATUS Append(LogEntryPB* entry, RestartSafeCoarseTimePoint batch_mono_time);
 
   // Append the given set of replicate messages, asynchronously.  This requires that the replicates
   // have already been assigned OpIds.
   CHECKED_STATUS AsyncAppendReplicates(const ReplicateMsgs& replicates, const OpId& committed_op_id,
+                                       RestartSafeCoarseTimePoint batch_mono_time,
                                        const StatusCallback& callback);
 
   // Blocks the current thread until all the entries in the log queue are flushed and fsynced (if
@@ -244,6 +246,10 @@ class Log : public RefCountedThreadSafe<Log> {
   }
 
   CHECKED_STATUS TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
+
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
 
  private:
   friend class LogTest;
@@ -370,13 +376,17 @@ class Log : public RefCountedThreadSafe<Log> {
   // Index which translates between operation indexes and the position of the operation in the log.
   scoped_refptr<LogIndex> log_index_;
 
-  // Lock for notification of last_entry_op_id_ changes.
-  mutable std::mutex last_entry_op_id_mutex_;
-  mutable std::condition_variable last_entry_op_id_cond_;
+  // Lock for notification of last_synced_entry_op_id_ changes.
+  mutable std::mutex last_synced_entry_op_id_mutex_;
+  mutable std::condition_variable last_synced_entry_op_id_cond_;
 
-  // The last known OpId for a REPLICATE message appended to this log (any segment).
-  // NOTE: this op is not necessarily durable.
-  std::atomic<yb::OpId> last_entry_op_id_{yb::OpId()};
+  // The last known OpId for a REPLICATE message appended and synced to this log (any segment).
+  // NOTE: this op is not necessarily durable unless gflag durable_wal_write is true.
+  std::atomic<yb::OpId> last_synced_entry_op_id_{yb::OpId()};
+
+  // The last know OpId for a REPLICATE message appended to this log (any segment).
+  // This variable is not accessed concurrently.
+  yb::OpId last_appended_entry_op_id_;
 
   // A footer being prepared for the current segment.  When the segment is closed, it will be
   // written.
@@ -439,6 +449,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Used in tests to declare all operations as safe.
   bool all_op_ids_safe_ = false;
+
+  const std::string log_prefix_;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

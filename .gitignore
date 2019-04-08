@@ -55,8 +55,6 @@ core*
 
 # C# Object files
 *.userprefs
-java/yb-loadtester/src/main/csharp/*/obj/
-java/yb-loadtester/src/main/csharp/*/packages/
 
 # These files might appear when applying patches.
 *.orig
@@ -78,3 +76,10 @@ build/python_virtual_env
 hs_err_pid*.log
 
 compile_commands.json
+
+# This might be added by some editors' Java plugins
+ent/java/yb-cqlent/bin/
+
+test_results.json
+test_failures.json
+*_test_report.json

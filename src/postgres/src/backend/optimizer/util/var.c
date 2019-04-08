@@ -9,7 +9,7 @@
  * contains variables.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -66,10 +66,12 @@ typedef struct
 	bool		inserted_sublink;	/* have we inserted a SubLink? */
 } flatten_join_alias_vars_context;
 
-static bool pull_varnos_walker(Node *node,
-				   pull_varnos_context *context);
+static bool pull_varnos_walker(Node *node, pull_varnos_context *context);
 static bool pull_varattnos_walker(Node *node, pull_varattnos_context *context);
+static bool pull_varattnos_walker_min_attr(Node *node, pull_varattnos_context *context,
+																					 AttrNumber min_attr);
 static bool pull_vars_walker(Node *node, pull_vars_context *context);
+
 static bool contain_var_clause_walker(Node *node, void *context);
 static bool contain_vars_of_level_walker(Node *node, int *sublevels_up);
 static bool locate_var_of_level_walker(Node *node,
@@ -249,6 +251,49 @@ pull_varattnos_walker(Node *node, pull_varattnos_context *context)
 
 	return expression_tree_walker(node, pull_varattnos_walker,
 								  (void *) context);
+}
+
+/*
+ * The same as pull_varattnos() but attribute numbers are offset by
+ * (rel->min_attr + 1) instead of FirstLowInvalidHeapAttributeNumber.
+ */
+void
+pull_varattnos_min_attr(Node *node, Index varno, Bitmapset **varattnos, AttrNumber min_attr)
+{
+	pull_varattnos_context context;
+
+	context.varattnos = *varattnos;
+	context.varno = varno;
+
+	(void) pull_varattnos_walker_min_attr(node, &context, min_attr);
+
+	*varattnos = context.varattnos;
+}
+
+/*
+ * The same as pull_varattnos_walker() but attribute numbers are offset by
+ * (rel->min_attr + 1) instead of FirstLowInvalidHeapAttributeNumber.
+ */
+static bool
+pull_varattnos_walker_min_attr(Node *node, pull_varattnos_context *context, AttrNumber min_attr)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, Var))
+	{
+		Var		   *var = (Var *) node;
+
+		if (var->varno == context->varno && var->varlevelsup == 0)
+			context->varattnos = bms_add_member(context->varattnos, var->varattno - min_attr + 1);
+		return false;
+	}
+
+	/* Should not find an unplanned subquery */
+	Assert(!IsA(node, Query));
+
+	return expression_tree_walker_min_attr(node,
+																				 (pull_varattnos_walker_ptr)pull_varattnos_walker_min_attr,
+																				 (void *) context, min_attr);
 }
 
 
@@ -657,9 +702,9 @@ pull_var_clause_walker(Node *node, pull_var_clause_context *context)
  * entries might now be arbitrary expressions, not just Vars.  This affects
  * this function in one important way: we might find ourselves inserting
  * SubLink expressions into subqueries, and we must make sure that their
- * Query.hasSubLinks fields get set to TRUE if so.  If there are any
+ * Query.hasSubLinks fields get set to true if so.  If there are any
  * SubLinks in the join alias lists, the outer Query should already have
- * hasSubLinks = TRUE, so this is only relevant to un-flattened subqueries.
+ * hasSubLinks = true, so this is only relevant to un-flattened subqueries.
  *
  * NOTE: this is used on not-yet-planned expressions.  We do not expect it
  * to be applied directly to the whole Query, so if we see a Query to start

@@ -19,22 +19,33 @@ namespace yb {
 const std::unordered_map<string, vector<PermissionType>> all_permissions_by_resource = {
     {"KEYSPACE", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, CREATE_PERMISSION, DROP_PERMISSION,
                   MODIFY_PERMISSION, SELECT_PERMISSION}},
+    {"ALL_KEYSPACES", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, CREATE_PERMISSION, DROP_PERMISSION,
+                       MODIFY_PERMISSION, SELECT_PERMISSION}},
     {"TABLE", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, DROP_PERMISSION, MODIFY_PERMISSION,
                SELECT_PERMISSION}},
-    {"ROLE", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, DROP_PERMISSION}}
+    {"ROLE", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, DROP_PERMISSION}},
+    {"ALL_ROLES", {ALTER_PERMISSION, AUTHORIZE_PERMISSION, CREATE_PERMISSION, DESCRIBE_PERMISSION,
+                   DROP_PERMISSION}}
 };
 
 const std::vector<PermissionType> empty_permissions;
 
 const vector<PermissionType>& all_permissions_for_resource(ResourceType resource_type) {
-  DCHECK(resource_type == ResourceType::KEYSPACE ||
-         resource_type == ResourceType::TABLE ||
-         resource_type == ResourceType::ROLE);
   const auto iter = all_permissions_by_resource.find(ResourceType_Name(resource_type));
   if (iter == all_permissions_by_resource.end()) {
     return empty_permissions;
   }
   return iter->second;
+}
+
+bool valid_permission_for_resource(PermissionType permission, ResourceType resource_type) {
+  const vector<PermissionType>& all_permissions = all_permissions_for_resource(resource_type);
+  for (const auto& p : all_permissions) {
+    if (p == permission) {
+      return true;
+    }
+  }
+  return false;
 }
 
 std::string get_canonical_keyspace(const std::string &keyspace) {
@@ -49,7 +60,7 @@ std::string get_canonical_role(const std::string &role) {
   return strings::Substitute("$0/$1", kRolesRoleResource, role);
 }
 
-std::string PermissionName(PermissionType permission) {
+std::string PermissionName(const PermissionType permission) {
   switch(permission) {
     case PermissionType::ALTER_PERMISSION: return "ALTER";
     case PermissionType::CREATE_PERMISSION: return "CREATE";

@@ -75,6 +75,12 @@ class ThreadPool;
 template<class T>
 class AtomicGauge;
 
+namespace tablet {
+
+struct TableInfo;
+
+}
+
 namespace master {
 
 class CatalogManagerBgTasks;
@@ -88,6 +94,7 @@ struct DeferredAssignmentActions;
 
 static const char* const kDefaultSysEntryUnusedId = "";
 static const char* const kSecurityConfigType = "security-configuration";
+static const char* const kYsqlCatalogConfigType = "ysql-catalog-configuration";
 
 using PlacementId = std::string;
 
@@ -400,6 +407,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void AddTask(std::shared_ptr<MonitoredTask> task);
   void RemoveTask(const std::shared_ptr<MonitoredTask>& task);
   void AbortTasks();
+  void AbortTasksAndClose();
   void WaitTasksCompletion();
 
   // Allow for showing outstanding tasks in the master UI.
@@ -410,6 +418,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   ~TableInfo();
 
   void AddTabletUnlocked(TabletInfo* tablet);
+  void AbortTasksAndCloseIfRequested(bool close);
 
   const TableId table_id_;
 
@@ -420,6 +429,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Protects tablet_map_ and pending_tasks_.
   mutable simple_spinlock lock_;
+
+  // If closing, requests to AddTask will be promptly aborted.
+  bool closing_ = false;
 
   // List of pending tasks (e.g. create/alter tablet requests).
   std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;
@@ -469,7 +481,7 @@ struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEn
   }
 
   YQLDatabase database_type() const {
-    return pb.has_database_type() ? pb.database_type() : YQL_DATABASE_UNDEFINED;
+    return pb.database_type();
   }
 };
 
@@ -624,7 +636,8 @@ class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
   DISALLOW_COPY_AND_ASSIGN(RoleInfo);
 };
 
-struct PersistentSysConfigInfo : public Persistent<SysConfigEntryPB, SysRowEntry::SYS_CONFIG> {};
+struct PersistentSysConfigInfo
+    : public Persistent<SysConfigEntryPB, SysRowEntry::SYS_CONFIG> {};
 
 class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
                       public MetadataCowWrapper<PersistentSysConfigInfo> {
@@ -741,7 +754,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     // If not initialized, writes the corresponding error to 'resp',
     // responds to 'rpc', and returns false.
     template<typename RespClass>
-      bool CheckIsInitializedOrRespond(RespClass* resp, rpc::RpcContext* rpc);
+    bool CheckIsInitializedOrRespond(RespClass* resp, rpc::RpcContext* rpc);
 
     // Check that the catalog manager is initialized and that it is the leader
     // of its Raft configuration. Initialization status takes precedence over
@@ -750,7 +763,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     // If not initialized or if not the leader, writes the corresponding error
     // to 'resp', responds to 'rpc', and returns false.
     template<typename RespClass>
-      bool CheckIsInitializedAndIsLeaderOrRespond(RespClass* resp, rpc::RpcContext* rpc);
+    bool CheckIsInitializedAndIsLeaderOrRespond(RespClass* resp, rpc::RpcContext* rpc);
 
     // TServer API variant of above class to set appropriate error codes.
     template<typename RespClass>
@@ -775,9 +788,25 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS CheckOnline() const;
 
   // Create Postgres sys catalog table.
-  CHECKED_STATUS CreateTablePgsqlSysTable(const CreateTableRequestPB* req,
-                                          CreateTableResponsePB* resp,
-                                          rpc::RpcContext* rpc);
+  CHECKED_STATUS CreatePgsqlSysTable(const CreateTableRequestPB* req,
+                                     CreateTableResponsePB* resp,
+                                     rpc::RpcContext* rpc);
+
+  // Reserve Postgres oids for a Postgres database.
+  CHECKED_STATUS ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
+                                  ReservePgsqlOidsResponsePB* resp,
+                                  rpc::RpcContext* rpc);
+
+  // Get the info (current only version) for the ysql system catalog.
+  CHECKED_STATUS GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB* req,
+                                      GetYsqlCatalogConfigResponsePB* resp,
+                                      rpc::RpcContext* rpc);
+
+  // Copy Postgres sys catalog tables into a new namespace.
+  CHECKED_STATUS CopyPgsqlSysTables(const NamespaceId& namespace_id,
+                                    const std::vector<scoped_refptr<TableInfo>>& tables,
+                                    CreateNamespaceResponsePB* resp,
+                                    rpc::RpcContext* rpc);
 
   // Create a new Table with the specified attributes.
   //
@@ -971,6 +1000,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                GetUDTypeInfoResponsePB* resp,
                                rpc::RpcContext* rpc);
 
+  Result<uint64_t> IncrementYsqlCatalogVersion();
+
+  uint64_t GetYsqlCatalogVersion();
+
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
 
   // Dump all of the current state about tables and tablets to the
@@ -999,7 +1032,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Return all the available (user-defined) types.
   void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo> >* types);
 
+  NamespaceName GetNamespaceNameUnlocked(const NamespaceId& id) const;
   NamespaceName GetNamespaceName(const NamespaceId& id) const;
+
+  NamespaceName GetNamespaceNameUnlocked(const scoped_refptr<TableInfo>& table) const;
+  NamespaceName GetNamespaceName(const scoped_refptr<TableInfo>& table) const;
 
   void GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles);
 
@@ -1020,6 +1057,19 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
+
+  // Is the table a user created table?
+  bool IsUserTable(const TableInfo& table) const;
+
+  // Is the table a user created index?
+  bool IsUserIndex(const TableInfo& table) const;
+
+  // Is the table a special sequences system table?
+  bool IsSequencesSystemTable(const TableInfo& table) const;
+
+  // Is the table created by user?
+  // Note that table can be regular table or index in this case.
+  bool IsUserCreatedTable(const TableInfo& table) const;
 
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
@@ -1111,6 +1161,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     // TODO ENG-282 We currently don't support per-namespace replication factor.
     return GetReplicationFactor(num_replicas);
   }
+  CHECKED_STATUS GetReplicationFactorForTablet(const scoped_refptr<TabletInfo>& tablet,
+      int* num_replicas);
 
   // Get the percentage of tablets that have been moved off of the black-listed tablet servers.
   CHECKED_STATUS GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp);
@@ -1137,6 +1189,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const;
 
+  // Returns whether the namespace is a YCQL namespace.
+  static bool IsYcqlNamespace(const NamespaceInfo& ns);
+
   // Returns whether the table is a YCQL table.
   static bool IsYcqlTable(const TableInfo& table);
 
@@ -1155,7 +1210,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
     leader_lock_.AssertAcquiredForReading();
   }
 
-  std::string GenerateId() { return oid_generator_.Next(); }
+  std::string GenerateId(boost::optional<const SysRowEntry::Type> entity_type = boost::none);
 
   ThreadPool* WorkerPool() { return worker_pool_.get(); }
 
@@ -1558,6 +1613,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   typedef rw_spinlock LockType;
   mutable LockType lock_;
 
+  // Note: Namespaces and tables for YSQL databases are identified by their ids only and therefore
+  // are not saved in the name maps below.
   TableInfoMap table_ids_map_;         // Table map: table-id -> TableInfo
   TableInfoByNameMap table_names_map_; // Table map: [namespace-id, table-name] -> TableInfo
 
@@ -1608,6 +1665,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Config information.
   scoped_refptr<ClusterConfigInfo> cluster_config_ = nullptr;
+
+  // YSQL Catalog information.
+  scoped_refptr<SysConfigInfo> ysql_catalog_config_ = nullptr;
 
   Master *master_;
   Atomic32 closing_;

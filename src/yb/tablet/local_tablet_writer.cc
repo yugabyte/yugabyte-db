@@ -52,7 +52,7 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
 
   auto state = std::make_unique<WriteOperationState>(tablet_, &req_, &resp_);
   auto operation = std::make_unique<WriteOperation>(
-      std::move(state), OpId::kUnknownTerm, MonoTime::Max() /* deadline */, this);
+      std::move(state), OpId::kUnknownTerm, CoarseTimePoint::max() /* deadline */, this);
   write_promise_ = std::promise<Status>();
   tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
 
@@ -70,7 +70,7 @@ void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t ter
   tablet_->ApplyRowOperations(state);
 
   state->Commit();
-  state->ReleaseDocDbLocks(tablet_);
+  state->ReleaseDocDbLocks();
 
   // Return the status of first failed op.
   int op_idx = 0;

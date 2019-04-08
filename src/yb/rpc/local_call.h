@@ -30,14 +30,15 @@ class LocalOutboundCall : public OutboundCall {
   LocalOutboundCall(const RemoteMethod* remote_method,
                     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                     google::protobuf::Message* response_storage,
-                    RpcController* controller, ResponseCallback callback);
+                    RpcController* controller, RpcMetrics* rpc_metrics, ResponseCallback callback);
 
-  CHECKED_STATUS SetRequestParam(const google::protobuf::Message& req) override;
+  CHECKED_STATUS SetRequestParam(
+      const google::protobuf::Message& req, const MemTrackerPtr& mem_tracker) override;
 
   const std::shared_ptr<LocalYBInboundCall>& CreateLocalInboundCall();
 
  protected:
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
   CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const override;
 
@@ -52,15 +53,15 @@ class LocalOutboundCall : public OutboundCall {
 // A short-circuited YB inbound call.
 class LocalYBInboundCall : public YBInboundCall {
  public:
-  LocalYBInboundCall(const RemoteMethod& remote_method,
+  LocalYBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method,
                      std::weak_ptr<LocalOutboundCall> outbound_call,
-                     const MonoTime& deadline);
+                     CoarseTimePoint deadline);
 
   bool IsLocalCall() const override { return true; }
 
   const Endpoint& remote_address() const override;
   const Endpoint& local_address() const override;
-  MonoTime GetClientDeadline() const override { return deadline_; }
+  CoarseTimePoint GetClientDeadline() const override { return deadline_; }
 
   CHECKED_STATUS ParseParam(google::protobuf::Message* message) override;
 
@@ -80,7 +81,7 @@ class LocalYBInboundCall : public YBInboundCall {
   // Weak pointer back to the outbound call owning this inbound call to avoid circular reference.
   std::weak_ptr<LocalOutboundCall> outbound_call_;
 
-  const MonoTime deadline_;
+  const CoarseTimePoint deadline_;
 };
 
 } // namespace rpc

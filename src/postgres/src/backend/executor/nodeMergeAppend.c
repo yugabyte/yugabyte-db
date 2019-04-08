@@ -3,7 +3,7 @@
  * nodeMergeAppend.c
  *	  routines to handle MergeAppend nodes.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -109,7 +109,7 @@ ExecInitMergeAppend(MergeAppend *node, EState *estate, int eflags)
 	 * MergeAppend nodes do have Result slots, which hold pointers to tuples,
 	 * so we have to initialize them.
 	 */
-	ExecInitResultTupleSlot(estate, &mergestate->ps);
+	ExecInitResultTupleSlotTL(estate, &mergestate->ps);
 
 	/*
 	 * call ExecInitNode on each of the plans to be executed and save the
@@ -124,10 +124,6 @@ ExecInitMergeAppend(MergeAppend *node, EState *estate, int eflags)
 		i++;
 	}
 
-	/*
-	 * initialize output tuple type
-	 */
-	ExecAssignResultTypeFromTL(&mergestate->ps);
 	mergestate->ps.ps_ProjInfo = NULL;
 
 	/*
@@ -261,7 +257,10 @@ heap_compare_slots(Datum a, Datum b, void *arg)
 									  datum2, isNull2,
 									  sortKey);
 		if (compare != 0)
-			return -compare;
+		{
+			INVERT_COMPARE_RESULT(compare);
+			return compare;
+		}
 	}
 	return 0;
 }

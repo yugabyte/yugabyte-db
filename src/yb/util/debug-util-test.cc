@@ -80,12 +80,12 @@ TEST_F(DebugUtilTest, TestGetStackTrace) {
   const std::regex kExpectedLineFormatNoFileLineRe(kExpectedLineFormatNoFileLineReStr + "$");
   const std::regex kExpectedLineFormatWithFileLineRe(
       kExpectedLineFormatNoFileLineReStr + kFileLineReStr + "$");
+  const std::regex kNilUnknownRe(R"#(^\s*@\s+\(nil\)\s+\(unknown\)$)#");
 
   // Expected line format:
   // @ 0x41255d yb::DebugUtilTest_TestGetStackTrace_Test::TestBody() (yb/util/debug-util-test.cc:73)
   SCOPED_TRACE(Format("Stack trace to be checked:\n:$0", stack_trace));
   std::stringstream ss(stack_trace);
-  string line;
   std::smatch match;
 
   int with_file_line = 0;
@@ -93,13 +93,19 @@ TEST_F(DebugUtilTest, TestGetStackTrace) {
   int unmatched = 0;
   int num_lines = 0;
   std::ostringstream debug_info;
-  while (std::getline(ss, line)) {
+  std::string next_line;
+  std::getline(ss, next_line);
+  while (ss) {
+    const auto line = next_line;
+    std::getline(ss, next_line);
     if (std::regex_match(line, match, kExpectedLineFormatWithFileLineRe)) {
       ++with_file_line;
       debug_info << "Line matched regex with file/line number: " << line << std::endl;
     } else if (std::regex_match(line, match, kExpectedLineFormatNoFileLineRe)) {
       ++without_file_line;
       debug_info << "Line matched regex without file/line number: " << line << std::endl;
+    } else if (!ss && std::regex_match(line, match, kNilUnknownRe)) {
+      debug_info << "Last line matched '(nil) (unknown)' pattern: " << line << std::endl;
     } else {
       ++unmatched;
       debug_info << "Line did not match either regex: " << line << std::endl;
@@ -109,7 +115,7 @@ TEST_F(DebugUtilTest, TestGetStackTrace) {
   SCOPED_TRACE(debug_info.str());
   ASSERT_EQ(unmatched, 0);
   ASSERT_GE(num_lines, 0);
-#ifdef __linux__
+#if defined(__linux__) && !defined(NDEBUG)
   ASSERT_GE(with_file_line, 0);
 #else
   ASSERT_GE(without_file_line, 0);
@@ -143,7 +149,7 @@ bool IsSignalHandlerRegistered(int signum) {
 
 TEST_F(DebugUtilTest, TestStackTraceInvalidTid) {
   string s = DumpThreadStack(1);
-  ASSERT_STR_CONTAINS(s, "unable to deliver signal");
+  ASSERT_STR_CONTAINS(s, "Unable to deliver signal");
 }
 
 TEST_F(DebugUtilTest, TestStackTraceSelf) {
@@ -193,11 +199,11 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
   // we get a bad Status if we try to use it.
   signal(SIGUSR1, &fake_signal_handler);
   ASSERT_STR_CONTAINS(SetStackTraceSignal(SIGUSR1).ToString(),
-                      "unable to install signal handler");
+                      "Unable to install signal handler");
   signal(SIGUSR1, SIG_IGN);
 
   // Stack traces should be disabled
-  ASSERT_STR_CONTAINS(DumpThreadStack(t->tid()), "unable to take thread stack");
+  ASSERT_STR_CONTAINS(DumpThreadStack(t->tid()), "Unable to take thread stack");
 
   // Re-enable so that other tests pass.
   ASSERT_OK(SetStackTraceSignal(SIGUSR2));

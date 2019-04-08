@@ -415,7 +415,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     auto encoded_sub_doc_key = sub_doc_key.EncodeWithoutHt();
     GetSubDocumentData data = { encoded_sub_doc_key, &doc_from_rocksdb, &doc_found_in_rocksdb };
     ASSERT_OK(GetSubDocument(doc_db(), data, rocksdb::kDefaultQueryId,
-                             txn_op_context, MonoTime::Max() /* deadline */));
+                             txn_op_context, CoarseTimePoint::max() /* deadline */));
     if (is_deletion && (
             doc_path.num_subkeys() == 0 ||  // Deleted the entire sub-document,
             !doc_already_exists_in_mem)) {  // or the document did not exist in the first place.

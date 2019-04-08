@@ -19,29 +19,33 @@ import org.postgresql.core.TransactionState;
 import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.YBTestRunner;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.SanitizerUtil;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunner.class)
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgTransactions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
 
-  protected void customizePostgresEnvVars(Map<String, String> envVars) {
-    // Temporary: YugaByte transactions are only enabled in the PostgreSQL API under a flag.
-    envVars.put("YB_PG_TRANSACTIONS_ENABLED", "1");
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    builder.enablePgTransactions(true);
   }
 
   @Test
   public void testBasicTransaction() throws Exception {
-    Connection connection1 = createConnectionNoAutoCommit();
     createSimpleTable("test", "v");
+    Connection connection1 = createConnectionNoAutoCommit();
     Statement statement = connection1.createStatement();
 
     // For the second connection we still enable auto-commit, so that every new SELECT will see
@@ -94,8 +98,8 @@ public class TestPgTransactions extends BasePgSQLTest {
    */
   @Test
   public void testTransactionConflicts() throws Exception {
-    Connection connection1 = createConnectionNoAutoCommit();
     createSimpleTable("test", "v");
+    Connection connection1 = createConnectionNoAutoCommit();
     Statement statement1 = connection1.createStatement();
     Connection connection2 = createConnectionNoAutoCommit();
     Statement statement2 = connection2.createStatement();
@@ -193,5 +197,63 @@ public class TestPgTransactions extends BasePgSQLTest {
     final double SKEW_THRESHOLD = 0.3;
     assertTrue("Expecting the skew to be below the threshold " + SKEW_THRESHOLD + ", got " + skew,
         skew < SKEW_THRESHOLD);
+  }
+
+  @Test
+  public void testFailedTransactions() throws Exception {
+    createSimpleTable("test", "v");
+    try (
+         Connection connection1 = createConnectionWithAutoCommit();
+         Statement statement1 = connection1.createStatement();
+         Connection connection2 = createConnectionNoAutoCommit();
+         Statement statement2 = connection2.createStatement()) {
+      Set<Row> expectedRows = new HashSet<>();
+      String scanQuery = "SELECT * FROM test";
+
+      // Check second-op failure with auto-commit (first op should get committed).
+      statement1.execute("INSERT INTO test(h, r, v) VALUES (1, 1, 1)");
+      expectedRows.add(new Row(1, 1, 1));
+      runInvalidQuery(statement1,
+                      "INSERT INTO test(h, r, v) VALUES (1, 1, 2)",
+                      "Duplicate key");
+      assertRowSet(scanQuery, expectedRows);
+
+      // Check second op failure with no-auto-commit (both ops should get aborted).
+      statement2.execute("INSERT INTO test(h, r, v) VALUES (1, 2, 1)");
+      runInvalidQuery(statement2,
+                      "INSERT INTO test(h, r, v) VALUES (1, 1, 2)",
+                      "Duplicate key");
+      connection2.commit(); // Overkill, transaction should already be aborted, this will be noop.
+      assertRowSet(scanQuery, expectedRows);
+
+      // Check failure for one value set -- primary key (1,1) already exists.
+      runInvalidQuery(statement1,
+                      "INSERT INTO test(h, r, v) VALUES (1, 2, 1), (1, 1, 2)",
+                      "Duplicate key");
+      // Entire query should get aborted.
+      assertRowSet(scanQuery, expectedRows);
+
+      // Check failure for query with WITH clause side-effect -- primary key (1,1) already exists.
+      String query = "WITH ret AS (INSERT INTO test(h, r, v) VALUES (2, 2, 2) RETURNING h, r, v) " +
+          "INSERT INTO test(h,r,v) SELECT h - 1, r - 1, v FROM ret";
+      runInvalidQuery(statement1, query, "Duplicate key");
+      // Entire query should get aborted (including the WITH clause INSERT).
+      assertRowSet(scanQuery, expectedRows);
+
+      // Check failure within function with side-effect -- primary key (1,1) already exists.
+      // TODO enable this test once functions are enabled in YSQL.
+      if (false) {
+        statement1.execute("CREATE FUNCTION bar(in int) RETURNS int AS $$ " +
+                              "INSERT INTO test(h,r,v) VALUES($1,$1,$1) RETURNING h - 1;$$" +
+                              "LANGUAGE SQL;");
+        runInvalidQuery(statement1,
+                        "INSERT INTO test(h, r, v) VALUES (bar(2), 1, 1)",
+                        "Duplicate key");
+        // Entire query should get aborted (including the function's side-effect).
+        assertRowSet(scanQuery, expectedRows);
+      }
+
+    }
+
   }
 }

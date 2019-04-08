@@ -50,15 +50,15 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
     return columns_;
   }
 
-  const int32_t num_hash_key_columns() const {
+  const size_t num_hash_key_columns() const {
     return table_->schema().num_hash_key_columns();
   }
 
-  const int32_t num_key_columns() const {
+  const size_t num_key_columns() const {
     return table_->schema().num_key_columns();
   }
 
-  const int32_t num_columns() const {
+  const size_t num_columns() const {
     return table_->schema().num_columns();
   }
 
@@ -83,14 +83,16 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   CHECKED_STATUS GetColumnInfo(int16_t attr_number, bool *is_primary, bool *is_hash) const;
 
+  bool IsTransactional() const;
+
  private:
   std::shared_ptr<client::YBTable> table_;
 
-  // TODO(neil) Considering the posibility of indexing columns_ by attr_num instead of ID.
   std::vector<PgColumn> columns_;
+  std::unordered_map<int, size_t> attr_num_map_; // Attr number to column index map.
 
   // Hidden columns.
-  PgColumn column_yb_ctid_;
+  PgColumn column_ybctid_;
 };
 
 }  // namespace pggate

@@ -32,6 +32,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import org.apache.commons.io.FileUtils;
+import org.yb.AssertionWrappers;
 import org.yb.client.BaseYBClientTest;
 import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
@@ -52,6 +53,7 @@ import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static org.yb.AssertionWrappers.assertTrue;
 
 /**
  * Utility class to start and manipulate YB clusters. Relies on being IN the source code with
@@ -68,8 +70,10 @@ public class MiniYBCluster implements AutoCloseable {
 
   private static final int REDIS_PORT = 6379;
 
-  private static final int[] TSERVER_CLIENT_API_PORTS = new int[] {
-      CQL_PORT, REDIS_PORT };
+  // When picking an IP address for a tablet server to use, we check that we can bind to these
+  // ports.
+  private static final int[] TSERVER_CLIENT_FIXED_API_PORTS = new int[] { CQL_PORT,
+      REDIS_PORT};
 
   // How often to push node list refresh events to CQL clients (in seconds)
   public static int CQL_NODE_LIST_REFRESH_SECS = 5;
@@ -79,10 +83,6 @@ public class MiniYBCluster implements AutoCloseable {
   public static final int TSERVER_HEARTBEAT_INTERVAL_MS = 500;
 
   public static final int CATALOG_MANAGER_BG_TASK_WAIT_MS = 500;
-
-  // We expect that 127.0.0.1 - 127.0.0.254 are present on macOS as loopback IPs.
-  private static final int MIN_LOCALHOST_IP_ON_MACOS = 2;
-  private static final int MAX_LOCALHOST_IP_ON_MACOS = 254;
 
   private static final String TSERVER_MASTER_ADDRESSES_FLAG = "--tserver_master_addrs";
 
@@ -107,6 +107,7 @@ public class MiniYBCluster implements AutoCloseable {
   private final List<HostAndPort> masterHostPorts = new ArrayList<>();
   private final List<InetSocketAddress> cqlContactPoints = new ArrayList<>();
   private final List<InetSocketAddress> redisContactPoints = new ArrayList<>();
+  private final List<InetSocketAddress> pgsqlContactPoints = new ArrayList<>();
 
   // Client we can use for common operations.
   private YBClient syncClient;
@@ -150,6 +151,9 @@ public class MiniYBCluster implements AutoCloseable {
 
   private int replicationFactor = -1;
 
+  private boolean startPgSqlProxy = false;
+  private boolean pgTransactionsEnabled = false;
+
   /**
    * Not to be invoked directly, but through a {@link MiniYBClusterBuilder}.
    */
@@ -158,17 +162,26 @@ public class MiniYBCluster implements AutoCloseable {
                 int defaultTimeoutMs,
                 List<String> masterArgs,
                 List<List<String>> tserverArgs,
+                List<String> commonTServerArgs,
                 int numShardsPerTserver,
                 String testClassName,
                 boolean useIpWithCertificate,
-                int replicationFactor) throws Exception {
+                int replicationFactor,
+                boolean startPgSqlProxy,
+                boolean pgTransactionsEnabled) throws Exception {
     this.defaultTimeoutMs = defaultTimeoutMs;
     this.testClassName = testClassName;
     this.numShardsPerTserver = numShardsPerTserver;
     this.useIpWithCertificate = useIpWithCertificate;
     this.replicationFactor = replicationFactor;
+    this.startPgSqlProxy = startPgSqlProxy;
+    this.pgTransactionsEnabled = pgTransactionsEnabled;
+    if (pgTransactionsEnabled && !startPgSqlProxy) {
+      throw new AssertionError(
+          "Attempting to enable PostgreSQL transactions without enabling PostgreSQL API");
+    }
 
-    startCluster(numMasters, numTservers, masterArgs, tserverArgs);
+    startCluster(numMasters, numTservers, masterArgs, tserverArgs, commonTServerArgs);
     startSyncClient();
   }
 
@@ -190,8 +203,8 @@ public class MiniYBCluster implements AutoCloseable {
         "--webserver_doc_root=" + TestUtils.getWebserverDocRoot());
     final String extraFlagsFromEnv = System.getenv("YB_EXTRA_DAEMON_FLAGS");
     if (extraFlagsFromEnv != null) {
-      // This has an issue with handling quoted arguments with embedded spaces.
-      for (String flag : extraFlagsFromEnv.split(" ")) {
+      // TODO: this has an issue with handling quoted arguments with embedded spaces.
+      for (String flag : extraFlagsFromEnv.split("\\s+")) {
         commonFlags.add(flag);
       }
     }
@@ -268,7 +281,7 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     final InetAddress bindIp = InetAddress.getByName(bindIP);
-    for (int clientApiPort : TSERVER_CLIENT_API_PORTS) {
+    for (int clientApiPort : TSERVER_CLIENT_FIXED_API_PORTS) {
       if (!TestUtils.isPortFree(bindIp, clientApiPort, logException)) {
         // One of the ports we need to be free is not free, reject this IP address.
         return false;
@@ -284,7 +297,7 @@ public class MiniYBCluster implements AutoCloseable {
       return pickFreeRandomBindIpOnLinux(daemonType);
     }
 
-    return pickFreeBindIpOnlyVaryingLastByte(daemonType);
+    return pickFreeBindIpOnMacOrWithCertificate(daemonType);
   }
 
   private String getMasterBindAddress() throws IOException {
@@ -307,35 +320,73 @@ public class MiniYBCluster implements AutoCloseable {
         daemonType.humanReadableName() + " in " + MAX_NUM_ATTEMPTS + " attempts");
   }
 
-  private String getLoopbackIpWithLastByte(int lastByte) {
-    return "127.0.0." + lastByte;
+  private String getLoopbackIpWithLastTwoBytes(int nextToLastByte, int lastByte) {
+    return "127.0." + nextToLastByte + "." + lastByte;
   }
 
-  private String pickFreeBindIpOnlyVaryingLastByte(MiniYBDaemonType daemonType) throws IOException {
-    List<Integer> lastIpBytes = new ArrayList<>();
-    // We only use even last bytes of the loopback IP in case we are testing TLS encryption.
-    final int lastIpByteStep = useIpWithCertificate ? 2 : 1;
-    for (int lastIpByte = 2; lastIpByte <= 254; lastIpByte += lastIpByteStep) {
-      if (!usedBindIPs.contains(getLoopbackIpWithLastByte(lastIpByte))) {
-        lastIpBytes.add(lastIpByte);
+  private final int MIN_LAST_IP_BYTE = 2;
+  private final int MAX_LAST_IP_BYTE = 254;
+
+  private String pickFreeBindIpOnMacOrWithCertificate(
+      MiniYBDaemonType daemonType) throws IOException {
+    List<String> bindIps = new ArrayList<>();
+
+    final int nextToLastByteMin = 0;
+    // If we need an IP with a certificate, use 127.0.0.*, otherwise use 127.0.x.y with a small
+    // range of x.
+    final int nextToLastByteMax = useIpWithCertificate ? 0 : 3;
+
+    if (TestUtils.IS_LINUX) {
+      // We only use even last bytes of the loopback IP in case we are testing TLS encryption.
+      final int lastIpByteStep = useIpWithCertificate ? 2 : 1;
+      for (int nextToLastByte = nextToLastByteMin;
+           nextToLastByte <= nextToLastByteMax;
+           ++nextToLastByte) {
+        for (int lastIpByte = MIN_LAST_IP_BYTE;
+             lastIpByte <= MAX_LAST_IP_BYTE;
+             lastIpByte += lastIpByteStep) {
+          String bindIp = getLoopbackIpWithLastTwoBytes(nextToLastByte, lastIpByte);
+          if (!usedBindIPs.contains(bindIp)) {
+            bindIps.add(bindIp);
+          }
+        }
+      }
+    } else {
+      List<String> loopbackIps  = BindIpUtil.getLoopbackIPs();
+      if (useIpWithCertificate) {
+        // macOS, but we need a 127.0.0.x, where x is even.
+        for (String loopbackIp : loopbackIps) {
+          if (loopbackIp.startsWith("127.0.0.")) {
+            String[] components = loopbackIp.split("[.]");
+            int lastIpByte = Integer.valueOf(components[components.length - 1]);
+            if (lastIpByte >= MIN_LAST_IP_BYTE &&
+                lastIpByte <= MAX_LAST_IP_BYTE &&
+                lastIpByte % 2 == 0) {
+              bindIps.add(loopbackIp);
+            }
+          }
+        }
+      } else {
+        // macOS, no requirement that there is a certificate.
+        bindIps = loopbackIps;
       }
     }
 
-    Collections.shuffle(lastIpBytes);
+    Collections.shuffle(bindIps, RandomNumberUtil.getRandomGenerator());
 
-    for (int i = lastIpBytes.size() - 1; i >= 0; --i) {
-      String bindAddress = getLoopbackIpWithLastByte(lastIpBytes.get(i));
+    for (int i = bindIps.size() - 1; i >= 0; --i) {
+      String bindAddress = bindIps.get(i);
       if (canUseBindIP(bindAddress, i == 0)) {
         return bindAddress;
       }
     }
 
-    Collections.sort(lastIpBytes);
+    Collections.sort(bindIps);
     throw new IOException(String.format(
-        "Cannot find a loopback IP of the form 127.0.0.x to launch a %s on. " +
+        "Cannot find a loopback IP of the form 127.0.x.y to launch a %s on. " +
             "Considered options: %s.",
         daemonType.humanReadableName(),
-        lastIpBytes));
+        bindIps));
   }
 
   /**
@@ -343,14 +394,21 @@ public class MiniYBCluster implements AutoCloseable {
    *
    * @param numMasters how many masters to start
    * @param numTservers how many tablet servers to start
-   * @throws Exception
+   * @param masterArgs extra master arguments
+   * @param perTServerArgs per-tablet server arguments
    */
   private void startCluster(int numMasters,
                             int numTservers,
                             List<String> masterArgs,
-                            List<List<String>> tserverArgs) throws Exception {
+                            List<List<String>> perTServerArgs,
+                            List<String> commonTServerArgs) throws Exception {
     Preconditions.checkArgument(numMasters > 0, "Need at least one master");
     Preconditions.checkArgument(numTservers > 0, "Need at least one tablet server");
+    Preconditions.checkNotNull(perTServerArgs);
+    if (perTServerArgs.size() != numTservers) {
+      throw new AssertionError("numTservers=" + numTservers + " but (perTServerArgs has " +
+          perTServerArgs.size() + " elements");
+    }
     // The following props are set via yb-client's pom.
     String baseDirPath = TestUtils.getBaseTmpDir();
 
@@ -365,13 +423,24 @@ public class MiniYBCluster implements AutoCloseable {
     startMasters(numMasters, baseDirPath, masterArgs);
 
     LOG.info("Starting {} tablet servers...", numTservers);
-    startTabletServers(numTservers, tserverArgs);
+    startTabletServers(numTservers, perTServerArgs, commonTServerArgs);
   }
 
   private void startTabletServers(
-      int numTservers, List<List<String>> tserverArgs) throws Exception {
+      int numTservers,
+      List<List<String>> tserverArgs,
+      List<String> commonTServerArgs) throws Exception {
+    LOG.info("startTabletServers: numTServers=" + numTservers +
+        ", tserverArgs=" + tserverArgs +
+        ", commonTServerArgs=" + commonTServerArgs);
+
     for (int i = 0; i < numTservers; i++) {
-      startTServer(tserverArgs.get(i));
+      List<String> concatenatedArgs = new ArrayList<>();
+      if (tserverArgs.get(i) != null) {
+        concatenatedArgs.addAll(tserverArgs.get(i));
+      }
+      concatenatedArgs.addAll(commonTServerArgs);
+      startTServer(concatenatedArgs);
     }
 
     long tserverStartupDeadlineMs = System.currentTimeMillis() + 60000;
@@ -406,6 +475,10 @@ public class MiniYBCluster implements AutoCloseable {
 
   public void startTServer(List<String> tserverArgs, String tserverBindAddress,
                            Integer tserverRpcPort) throws Exception {
+    LOG.info("Starting a tablet server: " +
+        "tserverArgs=" + tserverArgs +
+        ", tserverBindAddress=" + tserverBindAddress +
+        ", tserverRpcPort=" + tserverRpcPort);
     String baseDirPath = TestUtils.getBaseTmpDir();
     long now = System.currentTimeMillis();
     if (tserverBindAddress == null) {
@@ -417,6 +490,9 @@ public class MiniYBCluster implements AutoCloseable {
     final int webPort = TestUtils.findFreePort(tserverBindAddress);
     final int redisWebPort = TestUtils.findFreePort(tserverBindAddress);
     final int cqlWebPort = TestUtils.findFreePort(tserverBindAddress);
+    final int postgresPort = TestUtils.findFreePort(tserverBindAddress);
+    // TODO: use a random port here as well.
+    final int redisPort = REDIS_PORT;
 
     String dataDirPath = baseDirPath + "/ts-" + tserverBindAddress + "-" + rpcPort + "-" + now;
     String flagsPath = TestUtils.getFlagsPath();
@@ -429,7 +505,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--local_ip_for_outbound_sockets=" + tserverBindAddress,
         "--rpc_bind_addresses=" + tserverBindAddress + ":" + rpcPort,
         "--webserver_port=" + webPort,
-        "--redis_proxy_bind_address=" + tserverBindAddress + ":" + REDIS_PORT,
+        "--redis_proxy_bind_address=" + tserverBindAddress + ":" + redisPort,
         "--redis_proxy_webserver_port=" + redisWebPort,
         "--cql_proxy_bind_address=" + tserverBindAddress + ":" + CQL_PORT,
         "--cql_nodelist_refresh_interval_secs=" + CQL_NODE_LIST_REFRESH_SECS,
@@ -438,6 +514,17 @@ public class MiniYBCluster implements AutoCloseable {
         "--cql_proxy_webserver_port=" + cqlWebPort,
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
         "--callhome_enabled=false");
+
+    if (startPgSqlProxy) {
+      tsCmdLine.addAll(Lists.newArrayList(
+          "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + postgresPort,
+          "--start_pgsql_proxy"
+      ));
+      if (pgTransactionsEnabled) {
+        tsCmdLine.add("--pg_transactions_enabled");
+      }
+    }
+
     if (tserverArgs != null) {
       for (String arg : tserverArgs) {
         tsCmdLine.add(arg);
@@ -450,7 +537,8 @@ public class MiniYBCluster implements AutoCloseable {
         cqlWebPort, redisWebPort, dataDirPath);
     tserverProcesses.put(HostAndPort.fromParts(tserverBindAddress, rpcPort), daemon);
     cqlContactPoints.add(new InetSocketAddress(tserverBindAddress, CQL_PORT));
-    redisContactPoints.add(new InetSocketAddress(tserverBindAddress, REDIS_PORT));
+    redisContactPoints.add(new InetSocketAddress(tserverBindAddress, redisPort));
+    pgsqlContactPoints.add(new InetSocketAddress(tserverBindAddress, postgresPort));
 
     if (flagsPath.startsWith(baseDirPath)) {
       // We made a temporary copy of the flags; delete them later.
@@ -735,7 +823,12 @@ public class MiniYBCluster implements AutoCloseable {
       return;
     }
     assert(cqlContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), CQL_PORT)));
-    assert(redisContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), REDIS_PORT)));
+    AssertionWrappers.assertTrue(
+        redisContactPoints.removeIf((InetSocketAddress addr) ->
+            addr.getHostName().equals(hostPort.getHostText())));
+    AssertionWrappers.assertTrue(
+        pgsqlContactPoints.removeIf((InetSocketAddress addr) ->
+            addr.getHostName().equals(hostPort.getHostText())));
     destroyDaemonAndWait(ts);
     usedBindIPs.remove(hostPort.getHostText());
   }
@@ -889,6 +982,14 @@ public class MiniYBCluster implements AutoCloseable {
    */
   public List<InetSocketAddress> getRedisContactPoints() {
     return redisContactPoints;
+  }
+
+  /**
+   * Returns a list of PostgreSQL contact points.
+   * @return PostgreSQL contact points
+   */
+  public List<InetSocketAddress> getPostgresContactPoints() {
+    return pgsqlContactPoints;
   }
 
   /**

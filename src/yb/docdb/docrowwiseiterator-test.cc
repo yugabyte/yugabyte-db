@@ -132,7 +132,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2000));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init());
 
     ASSERT_TRUE(iter.HasNext());
@@ -172,7 +172,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(5000));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init());
 
     ASSERT_TRUE(iter.HasNext());
@@ -245,7 +245,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2500));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2500));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -302,7 +302,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -360,7 +360,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -410,7 +410,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -494,7 +494,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, read_time);
+        CoarseTimePoint::max() /* deadline */, read_time);
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -555,7 +555,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -609,7 +609,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
   {
     DocRowwiseIterator iter(
         projection, schema, kNonTransactionalOperationContext, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2800));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -704,34 +704,52 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2500 }]) -> 
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2000 }]) -> 20000
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 4000 }]) -> "row2_e_prime"
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> "row2_e"
-SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303031) none
-SubDocKey(DocKey([], ["row1", 11111]), []) kStrongSnapshotWrite HT{ physical: 4000 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303032) WriteId(5) DEL
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(0) "row1_c_t1"
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) 40000
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
-    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(2) "row1_e_t1"
-SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 4000 w: 1 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
-SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
+SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1", 11111]), []) [kStrongRead, kStrongWrite] HT{ physical: 4000 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) WriteId(5) DEL
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(0) "row1_c_t1"
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) 40000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) WriteId(2) "row1_e_t1"
+SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) WriteId(3) 42000
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 4000 } \
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 4000 } \
     -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(6) "row2_e_t2"
-SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
+SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) WriteId(4) "row2_e_t1"
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
-    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 500 }
+    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
-    SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 }
+    SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
 TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 } -> \
-    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) kStrongSnapshotWrite HT{ physical: 4000 }
+    SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 4000 }
 TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 1 } -> \
-    SubDocKey(DocKey([], ["row2", 22222]), []) kWeakSnapshotWrite HT{ physical: 4000 w: 1 }
+    SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 }
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -742,7 +760,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 1 } -> \
   {
     DocRowwiseIterator iter(
         projection, schema, txn_context, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(2000));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -786,7 +804,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 1 } -> \
   {
     DocRowwiseIterator iter(
         projection, schema, txn_context, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(5000));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init());
     QLTableRow row;
     QLValue value;
@@ -828,7 +846,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 1 } -> \
   {
     DocRowwiseIterator iter(
         projection, schema, txn_context, doc_db(),
-        MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(6000));
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(6000));
     ASSERT_OK(iter.Init());
 
     QLTableRow row;
@@ -889,20 +907,26 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> 
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(30); HT{ physical: 1000 }]) -> "row2_c"
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 1000 }]) -> 20000
-SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
+SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) WriteId(0) "row1_c_txn"
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
-    SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 }
+    SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
-    SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 }
+    SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
       )#");
 
   // Create a new IntentAwareIterator and seek to an empty DocKey. Verify that it returns the
   // first non-intent key.
   IntentAwareIterator iter(
-      doc_db(), rocksdb::ReadOptions(), MonoTime::Max() /* deadline */,
+      doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
       ReadHybridTime::FromMicros(1000), boost::none);
   iter.Seek(DocKey());
   ASSERT_TRUE(iter.valid());
@@ -930,18 +954,24 @@ TEST_F(DocRowwiseIteratorTest, SeekTwiceWithinTheSameTxn) {
 
   // Verify the content of RocksDB.
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
-SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 } -> \
+SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) WriteId(0) "row1_c_t1"
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
-    SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) kStrongSnapshotWrite HT{ physical: 500 }
+    SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 500 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
-    SubDocKey(DocKey([], ["row1", 11111]), []) kWeakSnapshotWrite HT{ physical: 500 w: 1 }
+    SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
       )#");
 
   IntentAwareIterator iter(
-      doc_db(), rocksdb::ReadOptions(), MonoTime::Max() /* deadline */,
+      doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
       ReadHybridTime::FromMicros(1000), TransactionOperationContext(*txn, &txn_status_manager));
   for (int i = 1; i <= 2; ++i) {
     iter.Seek(DocKey());
@@ -972,7 +1002,7 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
 
   DocRowwiseIterator iter(
       projection, kSchemaForIteratorTests, txn_context, doc_db(),
-      MonoTime::Max() /* deadline */, ReadHybridTime::FromMicros(1000));
+      CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1000));
   ASSERT_OK(iter.Init());
 
   QLTableRow row;

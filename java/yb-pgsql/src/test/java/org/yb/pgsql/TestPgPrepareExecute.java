@@ -14,25 +14,22 @@
 package org.yb.pgsql;
 
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
-import org.junit.runner.RunWith;
-
-import org.yb.YBTestRunner;
-
-@RunWith(value=YBTestRunner.class)
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgPrepareExecute extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgPrepareExecute.class);
 
@@ -60,7 +57,8 @@ public class TestPgPrepareExecute extends BasePgSQLTest {
   public void testJdbcPrepareExecute() throws Exception {
     createSimpleTable("test");
 
-    // Insert values.
+    //----------------------------------------------------------------------------------------------
+    // Test prepared insert.
     try (PreparedStatement ins = connection.prepareStatement("INSERT INTO test(h, r, vi, vs)" +
                                                                " VALUES (?, ?, ?, ?)")) {
 
@@ -96,6 +94,36 @@ public class TestPgPrepareExecute extends BasePgSQLTest {
         assertNextRow(rs, 2L, 3.0D, 4, "b");
         assertFalse(rs.next());
       }
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // Test prepared select.
+    try (PreparedStatement sel = connection.prepareStatement("SELECT * FROM test WHERE h = ?")) {
+      sel.setLong(1,2);
+      ResultSet rs = sel.executeQuery();
+      assertNextRow(rs, 2L, 3.0D, 4, "b");
+      assertFalse(rs.next());
+    }
+
+    // Test bind variable pushdown:
+    // Equality on hash key -- expect index is used with index condition.
+    String query = "EXPLAIN SELECT * FROM test WHERE h = ?";
+    try (PreparedStatement sel = connection.prepareStatement(query)) {
+      sel.setLong(1, 2);
+      ResultSet rs = sel.executeQuery();
+      List<Row> rows = getRowList(rs);
+      assertTrue(rows.toString().contains("Index Cond: "));
+    }
+
+    // Test bind variable pushdown:
+    // Inequality on hash key -- expect index is used also with index condition. We do not support
+    // hash inequality in DocDB yet and the filtering is done inside the YB's index access method.
+    query = "EXPLAIN SELECT * FROM test WHERE h > ?";
+    try (PreparedStatement sel = connection.prepareStatement(query)) {
+      sel.setLong(1, 2);
+      ResultSet rs = sel.executeQuery();
+      List<Row> rows = getRowList(rs);
+      assertTrue(rows.toString().contains("Index Cond: "));
     }
   }
 

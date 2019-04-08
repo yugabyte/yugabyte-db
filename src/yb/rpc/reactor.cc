@@ -73,6 +73,7 @@ using namespace std::literals;
 
 DECLARE_string(local_ip_for_outbound_sockets);
 DECLARE_int32(num_connections_to_server);
+DECLARE_int32(socket_receive_buffer_size);
 
 namespace yb {
 namespace rpc {
@@ -125,7 +126,8 @@ Reactor::Reactor(const std::shared_ptr<Messenger>& messenger,
       cur_time_(CoarseMonoClock::Now()),
       last_unused_tcp_scan_(cur_time_),
       connection_keepalive_time_(bld.connection_keepalive_time()),
-      coarse_timer_granularity_(bld.coarse_timer_granularity()) {
+      coarse_timer_granularity_(bld.coarse_timer_granularity()),
+      num_connections_to_server_(bld.num_connections_to_server()) {
   static std::once_flag libev_once;
   std::call_once(libev_once, DoInitLibEv);
 
@@ -381,7 +383,7 @@ ConnectionPtr Reactor::AssignOutboundCall(const OutboundCallPtr& call) {
     deadline.AddDelta(timeout);
   }
 
-  Status s = FindOrStartConnection(call->conn_id(), deadline, &conn);
+  Status s = FindOrStartConnection(call->conn_id(), call->hostname(), deadline, &conn);
   if (PREDICT_FALSE(!s.ok())) {
     call->SetFailed(s);
     return ConnectionPtr();
@@ -504,17 +506,18 @@ Result<Socket> CreateClientSocket(const Endpoint& remote) {
 
 template <class... Args>
 Result<std::unique_ptr<Stream>> CreateStream(
-    const StreamFactories& factories, const Protocol* protocol, Args&&... args) {
+    const StreamFactories& factories, const Protocol* protocol, const StreamCreateData& data) {
   auto it = factories.find(protocol);
   if (it == factories.end()) {
     return STATUS_FORMAT(NotFound, "Unknown protocol: $0", protocol);
   }
-  return it->second->Create(std::forward<Args>(args)...);
+  return it->second->Create(data);
 }
 
 } // namespace
 
 Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
+                                      const std::string& hostname,
                                       const MonoTime &deadline,
                                       ConnectionPtr* conn) {
   DCHECK(IsCurrentThread());
@@ -532,31 +535,46 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   VLOG(2) << name() << " FindOrStartConnection: creating new connection for " << conn_id.ToString();
 
   // Create a new socket and start connecting to the remote.
-  auto sock = CreateClientSocket(conn_id.remote());
-  RETURN_NOT_OK(sock);
-  if (FLAGS_local_ip_for_outbound_sockets.empty()) {
+  auto sock = VERIFY_RESULT(CreateClientSocket(conn_id.remote()));
+  if (!messenger_->test_outbound_ip_base_.is_unspecified()) {
+    auto address_bytes(messenger_->test_outbound_ip_base_.to_v4().to_bytes());
+    // Use different addresses for public/private endpoints.
+    // Private addresses are even, and public are odd.
+    // So if base address is "private" and destination address is "public" we will modify
+    // originating address to be "public" also.
+    address_bytes[3] |= conn_id.remote().address().to_v4().to_bytes()[3] & 1;
+    boost::asio::ip::address_v4 outbound_address(address_bytes);
+    auto status = sock.Bind(Endpoint(outbound_address, 0));
+    LOG_IF(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: " << status;
+  } else if (FLAGS_local_ip_for_outbound_sockets.empty()) {
     auto outbound_address = conn_id.remote().address().is_v6()
         ? messenger_->outbound_address_v6()
         : messenger_->outbound_address_v4();
     if (!outbound_address.is_unspecified()) {
-      auto status = sock->Bind(Endpoint(outbound_address, 0), /* explain_addr_in_use */ false);
-      if (!status.ok()) {
-        LOG(WARNING) << "Bind " << outbound_address << " failed: " << status.ToString();
-      }
+      auto status = sock.Bind(Endpoint(outbound_address, 0));
+      LOG_IF(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: " << status;
     }
   }
 
-  auto context = messenger_->connection_context_factory_->Create();
-  auto& allocator = context->Allocator();
+  if (FLAGS_socket_receive_buffer_size) {
+    WARN_NOT_OK(sock.SetReceiveBufferSize(FLAGS_socket_receive_buffer_size),
+                "Set receive buffer size failed: ");
+  }
+
+  auto receive_buffer_size = VERIFY_RESULT(sock.GetReceiveBufferSize());
+
+  auto context = messenger_->connection_context_factory_->Create(receive_buffer_size);
   auto stream = VERIFY_RESULT(CreateStream(
-      messenger_->stream_factories_, conn_id.protocol(), conn_id.remote(), std::move(*sock),
-      &allocator, context->BufferLimit() + allocator.block_size()));
+      messenger_->stream_factories_, conn_id.protocol(),
+      {conn_id.remote(), hostname, &sock,
+       messenger_->connection_context_factory_->buffer_tracker()}));
 
   // Register the new connection in our map.
   auto connection = std::make_shared<Connection>(
       this,
       std::move(stream),
       ConnectionDirection::CLIENT,
+      &messenger()->rpc_metrics(),
       std::move(context));
 
   RETURN_NOT_OK(connection->Start(&loop_));
@@ -584,12 +602,21 @@ void ShutdownIfRemoteAddressIs(const ConnectionPtr& conn, const IpAddress& addre
 } // namespace
 
 void Reactor::DropWithRemoteAddress(const IpAddress& address) {
+  DropIncomingWithRemoteAddress(address);
+  DropOutgoingWithRemoteAddress(address);
+}
+void Reactor::DropIncomingWithRemoteAddress(const IpAddress& address) {
   DCHECK(IsCurrentThread());
 
+  VLOG(1) << "Dropping Incoming connections from " << address;
   for (auto& conn : server_conns_) {
     ShutdownIfRemoteAddressIs(conn, address);
   }
+}
 
+void Reactor::DropOutgoingWithRemoteAddress(const IpAddress& address) {
+  DCHECK(IsCurrentThread());
+  VLOG(1) << "Dropping Outgoing connections to " << address;
   for (auto& pair : client_conns_) {
     ShutdownIfRemoteAddressIs(pair.second, address);
   }
@@ -606,7 +633,7 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
   // Unlink connection from lists.
   if (conn->direction() == ConnectionDirection::CLIENT) {
     bool erased = false;
-    for (int idx = 0; idx < FLAGS_num_connections_to_server; idx++) {
+    for (int idx = 0; idx < num_connections_to_server_; idx++) {
       auto it = client_conns_.find(ConnectionId(conn->remote(), idx, conn->protocol()));
       if (it != client_conns_.end() && it->second.get() == conn) {
         client_conns_.erase(it);
@@ -832,14 +859,14 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 // More Reactor class members
 // ------------------------------------------------------------------------------------------------
 
-void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote,
-                                    std::unique_ptr<ConnectionContext> connection_context) {
+void Reactor::RegisterInboundSocket(
+    Socket *socket, const Endpoint& remote, std::unique_ptr<ConnectionContext> connection_context,
+    const MemTrackerPtr& mem_tracker) {
   VLOG(3) << name_ << ": new inbound connection to " << remote;
 
   auto stream = CreateStream(
       messenger_->stream_factories_, messenger_->listen_protocol_,
-      remote, std::move(*socket), &connection_context->Allocator(),
-      connection_context->BufferLimit());
+      {remote, std::string(), socket, mem_tracker});
   if (!stream.ok()) {
     LOG(DFATAL) << "Failed to create stream for " << remote << ": " << stream.status();
     return;
@@ -847,6 +874,7 @@ void Reactor::RegisterInboundSocket(Socket *socket, const Endpoint& remote,
   auto conn = std::make_shared<Connection>(this,
                                            std::move(*stream),
                                            ConnectionDirection::SERVER,
+                                           &messenger()->rpc_metrics(),
                                            std::move(connection_context));
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {
     reactor->RegisterConnection(conn);

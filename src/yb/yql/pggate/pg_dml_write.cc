@@ -40,18 +40,16 @@ static MonoDelta kSessionTimeout = 60s;
 //--------------------------------------------------------------------------------------------------
 
 PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
-                       const char *database_name,
-                       const char *schema_name,
-                       const char *table_name,
-                       StmtOp stmt_op)
-  : PgDml(std::move(pg_session), database_name, schema_name, table_name, stmt_op) {
+                       const PgObjectId& table_id,
+                       const bool is_single_row_txn)
+    : PgDml(std::move(pg_session), table_id), is_single_row_txn_(is_single_row_txn) {
 }
 
 PgDmlWrite::~PgDmlWrite() {
 }
 
 Status PgDmlWrite::Prepare() {
-  RETURN_NOT_OK(LoadTable(true /* for_write */));
+  RETURN_NOT_OK(LoadTable());
 
   // Allocate either INSERT, UPDATE, or DELETE request.
   AllocWriteRequest();
@@ -60,9 +58,6 @@ Status PgDmlWrite::Prepare() {
 }
 
 void PgDmlWrite::PrepareColumns() {
-  // Setting protobuf.
-  column_refs_ = write_req_->mutable_column_refs();
-
   // Because Kudu API requires that primary columns must be listed in their created-order, the slots
   // for primary column bind expressions are allocated here in correct order.
   for (PgColumn &col : table_desc_->columns()) {
@@ -74,33 +69,41 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
   // Iterate primary-key columns and remove the binds without values.
   bool missing_primary_key = false;
 
-  // Remove empty binds from partition list.
-  auto partition_iter = write_req_->mutable_partition_column_values()->begin();
-  while (partition_iter != write_req_->mutable_partition_column_values()->end()) {
-    if (expr_binds_.find(&*partition_iter) == expr_binds_.end()) {
-      missing_primary_key = true;
-      partition_iter = write_req_->mutable_partition_column_values()->erase(partition_iter);
-    } else {
-      partition_iter++;
+  // Either ybctid or primary key must be present.
+  if (ybctid_bind_.empty()) {
+    // Remove empty binds from partition list.
+    auto partition_iter = write_req_->mutable_partition_column_values()->begin();
+    while (partition_iter != write_req_->mutable_partition_column_values()->end()) {
+      if (expr_binds_.find(&*partition_iter) == expr_binds_.end()) {
+        missing_primary_key = true;
+        partition_iter = write_req_->mutable_partition_column_values()->erase(partition_iter);
+      } else {
+        partition_iter++;
+      }
     }
+
+    // Remove empty binds from range list.
+    auto range_iter = write_req_->mutable_range_column_values()->begin();
+    while (range_iter != write_req_->mutable_range_column_values()->end()) {
+      if (expr_binds_.find(&*range_iter) == expr_binds_.end()) {
+        missing_primary_key = true;
+        range_iter = write_req_->mutable_range_column_values()->erase(range_iter);
+      } else {
+        range_iter++;
+      }
+    }
+  } else {
+    uint16_t hash_value;
+    RETURN_NOT_OK(PgExpr::ReadHashValue(ybctid_bind_.data(), ybctid_bind_.size(), &hash_value));
+    write_req_->set_hash_code(hash_value);
+    write_req_->clear_partition_column_values();
+    write_req_->clear_range_column_values();
   }
 
-  // Remove empty binds from range list.
-  auto range_iter = write_req_->mutable_range_column_values()->begin();
-  while (range_iter != write_req_->mutable_range_column_values()->end()) {
-    if (expr_binds_.find(&*range_iter) == expr_binds_.end()) {
-      missing_primary_key = true;
-      range_iter = write_req_->mutable_range_column_values()->erase(range_iter);
-    } else {
-      range_iter++;
-    }
-  }
-
-  // Set the primary key indicator in protobuf.
   if (missing_primary_key) {
     return STATUS(InvalidArgument, "Primary key must be fully specified for modifying table");
   }
-  write_req_->set_missing_primary_key(missing_primary_key);
+
   return Status::OK();
 }
 
@@ -113,16 +116,37 @@ Status PgDmlWrite::Exec() {
 
   // First update protobuf with new bind values.
   RETURN_NOT_OK(UpdateBindPBs());
+  RETURN_NOT_OK(UpdateAssignPBs());
 
-  // Execute the statement.
-  RETURN_NOT_OK(doc_op_->Execute());
+  if (write_req_->has_ybctid_column_value()) {
+    PgsqlExpressionPB *exprpb = write_req_->mutable_ybctid_column_value();
+    CHECK(exprpb->has_value() && exprpb->value().has_binary_value())
+      << "YBCTID must be of BINARY datatype";
+  }
 
-  // Execute the statement.
-  return doc_op_->GetResult(&row_batch_);
+  // Set column references in protobuf.
+  SetColumnRefIds(table_desc_, write_req_->mutable_column_refs());
+
+  // Execute the statement. If the request has been sent, get the result and handle any rows
+  // returned.
+  if (VERIFY_RESULT(doc_op_->Execute()) == RequestSent::kTrue) {
+     RETURN_NOT_OK(doc_op_->GetResult(&row_batch_));
+     if (!row_batch_.empty()) {
+       int64_t row_count = 0;
+       RETURN_NOT_OK(PgDocData::LoadCache(row_batch_, &row_count, &cursor_));
+       accumulated_row_count_ += row_count;
+     }
+  }
+
+  return Status::OK();
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocColumnBindPB(PgColumn *col) {
   return col->AllocBindPB(write_req_);
+}
+
+PgsqlExpressionPB *PgDmlWrite::AllocColumnAssignPB(PgColumn *col) {
+  return col->AllocAssignPB(write_req_);
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocTargetPB() {

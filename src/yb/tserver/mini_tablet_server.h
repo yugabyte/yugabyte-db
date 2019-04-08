@@ -83,6 +83,7 @@ class MiniTabletServer {
   CHECKED_STATUS FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
       tablet::FlushFlags flags = tablet::FlushFlags::kAll);
+  CHECKED_STATUS CompactTablets();
   CHECKED_STATUS SwitchMemtables();
   CHECKED_STATUS CleanTabletLogs();
 
@@ -120,6 +121,8 @@ class MiniTabletServer {
   bool is_started() const { return started_; }
 
   void FailHeartbeats();
+
+  void SetIsolated(bool isolated);
 
  private:
   bool started_;

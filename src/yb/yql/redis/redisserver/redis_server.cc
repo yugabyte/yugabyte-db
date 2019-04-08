@@ -33,7 +33,26 @@ DEFINE_int64(redis_rpc_memory_limit, 0, "Redis RPC memory limit");
 namespace yb {
 namespace redisserver {
 
-RedisServer::RedisServer(const RedisServerOptions& opts, const tserver::TabletServer* tserver)
+class RedisConnnectionContextFactory : public rpc::ConnectionContextFactory {
+ public:
+  explicit RedisConnnectionContextFactory(
+      const std::shared_ptr<MemTracker>& parent_mem_tracker)
+      : rpc::ConnectionContextFactory(
+          FLAGS_redis_rpc_memory_limit, RedisConnectionContext::Name(), parent_mem_tracker),
+        allocator_(FLAGS_redis_rpc_block_size, buffer_tracker_) {
+  }
+
+  virtual ~RedisConnnectionContextFactory() = default;
+
+  std::unique_ptr<rpc::ConnectionContext> Create(size_t) override {
+    return std::make_unique<RedisConnectionContext>(&allocator_, call_tracker_);
+  }
+
+ private:
+  rpc::GrowableBufferAllocator allocator_;
+};
+
+RedisServer::RedisServer(const RedisServerOptions& opts, tserver::TabletServer* tserver)
     : RpcAndWebServerBase(
           "RedisServer", opts, "yb.redisserver",
           MemTracker::CreateTracker(
@@ -41,8 +60,8 @@ RedisServer::RedisServer(const RedisServerOptions& opts, const tserver::TabletSe
               AddToParent::kTrue, CreateMetrics::kFalse)),
       opts_(opts),
       tserver_(tserver) {
-  SetConnectionContextFactory(rpc::CreateConnectionContextFactory<RedisConnectionContext>(
-      FLAGS_redis_rpc_block_size, FLAGS_redis_rpc_memory_limit, mem_tracker()->parent()));
+  SetConnectionContextFactory(std::make_shared<RedisConnnectionContextFactory>(
+      mem_tracker()->parent()));
 }
 
 Status RedisServer::Start() {

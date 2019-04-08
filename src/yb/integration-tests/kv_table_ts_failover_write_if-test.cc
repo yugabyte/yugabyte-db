@@ -25,6 +25,8 @@
 #include "yb/util/test_util.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+DECLARE_bool(combine_batcher_errors);
+
 namespace yb {
 
 using client::YBSessionPtr;
@@ -47,12 +49,6 @@ const auto kValueColumnName = "v";
 
 std::string TsNameForIndex(int idx) {
   return Format("ts-$0", idx + 1);
-}
-
-void AssertLoggedWaitFor(std::function<Result<bool>()> condition, MonoDelta timeout,
-    const string& description, MonoDelta initial_delay) {
-  LOG(INFO) << description;
-  ASSERT_OK(WaitFor(condition, timeout, description, initial_delay));
 }
 
 } // namespace
@@ -94,9 +90,12 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
     LOG(INFO) << "Sending write: " << op_str;
     ASSERT_OK(session->Apply(insert));
     session->FlushAsync([insert, op_str](const Status& s){
-      ASSERT_TRUE(s.ok()) << "Failed to flush write " << op_str << ". Error: " << s;
-      ASSERT_EQ(insert->response().status(), QLResponsePB::YQL_STATUS_OK)
-          << "Failed to write " << op_str;
+      ASSERT_TRUE(s.ok() || s.IsAlreadyPresent())
+          << "Failed to flush write " << op_str << ". Error: " << s;
+      if (s.ok()) {
+        ASSERT_EQ(insert->response().status(), QLResponsePB::YQL_STATUS_OK)
+            << "Failed to write " << op_str;
+      }
       LOG(INFO) << "Written: " << op_str;
     });
   }
@@ -213,6 +212,8 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
 
 // Test for ENG-3471 - shouldn't run write-if when leader hasn't yet committed all pendings ops.
 TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
+  FLAGS_combine_batcher_errors = true;
+
   const int32_t key = 0;
   const int32_t initial_value = 10000;
   const auto small_delay = 100ms;

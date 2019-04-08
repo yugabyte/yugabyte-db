@@ -4,7 +4,7 @@
  *	  routines for fast build of inverted index
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -27,7 +27,7 @@
 
 /* Combiner function for rbtree.c */
 static void
-ginCombineData(RBNode *existing, const RBNode *newdata, void *arg)
+ginCombineData(RBTNode *existing, const RBTNode *newdata, void *arg)
 {
 	GinEntryAccumulator *eo = (GinEntryAccumulator *) existing;
 	const GinEntryAccumulator *en = (const GinEntryAccumulator *) newdata;
@@ -52,7 +52,7 @@ ginCombineData(RBNode *existing, const RBNode *newdata, void *arg)
 	}
 
 	/* If item pointers are not ordered, they will need to be sorted later */
-	if (eo->shouldSort == FALSE)
+	if (eo->shouldSort == false)
 	{
 		int			res;
 
@@ -60,7 +60,7 @@ ginCombineData(RBNode *existing, const RBNode *newdata, void *arg)
 		Assert(res != 0);
 
 		if (res > 0)
-			eo->shouldSort = TRUE;
+			eo->shouldSort = true;
 	}
 
 	eo->list[eo->count] = en->list[0];
@@ -69,7 +69,7 @@ ginCombineData(RBNode *existing, const RBNode *newdata, void *arg)
 
 /* Comparator function for rbtree.c */
 static int
-cmpEntryAccumulator(const RBNode *a, const RBNode *b, void *arg)
+cmpEntryAccumulator(const RBTNode *a, const RBTNode *b, void *arg)
 {
 	const GinEntryAccumulator *ea = (const GinEntryAccumulator *) a;
 	const GinEntryAccumulator *eb = (const GinEntryAccumulator *) b;
@@ -81,7 +81,7 @@ cmpEntryAccumulator(const RBNode *a, const RBNode *b, void *arg)
 }
 
 /* Allocator function for rbtree.c */
-static RBNode *
+static RBTNode *
 ginAllocEntryAccumulator(void *arg)
 {
 	BuildAccumulator *accum = (BuildAccumulator *) arg;
@@ -89,7 +89,7 @@ ginAllocEntryAccumulator(void *arg)
 
 	/*
 	 * Allocate memory by rather big chunks to decrease overhead.  We have no
-	 * need to reclaim RBNodes individually, so this costs nothing.
+	 * need to reclaim RBTNodes individually, so this costs nothing.
 	 */
 	if (accum->entryallocator == NULL || accum->eas_used >= DEF_NENTRY)
 	{
@@ -98,11 +98,11 @@ ginAllocEntryAccumulator(void *arg)
 		accum->eas_used = 0;
 	}
 
-	/* Allocate new RBNode from current chunk */
+	/* Allocate new RBTNode from current chunk */
 	ea = accum->entryallocator + accum->eas_used;
 	accum->eas_used++;
 
-	return (RBNode *) ea;
+	return (RBTNode *) ea;
 }
 
 void
@@ -112,12 +112,12 @@ ginInitBA(BuildAccumulator *accum)
 	accum->allocatedMemory = 0;
 	accum->entryallocator = NULL;
 	accum->eas_used = 0;
-	accum->tree = rb_create(sizeof(GinEntryAccumulator),
-							cmpEntryAccumulator,
-							ginCombineData,
-							ginAllocEntryAccumulator,
-							NULL,	/* no freefunc needed */
-							(void *) accum);
+	accum->tree = rbt_create(sizeof(GinEntryAccumulator),
+							 cmpEntryAccumulator,
+							 ginCombineData,
+							 ginAllocEntryAccumulator,
+							 NULL,	/* no freefunc needed */
+							 (void *) accum);
 }
 
 /*
@@ -127,9 +127,10 @@ ginInitBA(BuildAccumulator *accum)
 static Datum
 getDatumCopy(BuildAccumulator *accum, OffsetNumber attnum, Datum value)
 {
-	Form_pg_attribute att = accum->ginstate->origTupdesc->attrs[attnum - 1];
+	Form_pg_attribute att;
 	Datum		res;
 
+	att = TupleDescAttr(accum->ginstate->origTupdesc, attnum - 1);
 	if (att->attbyval)
 		res = value;
 	else
@@ -162,8 +163,8 @@ ginInsertBAEntry(BuildAccumulator *accum,
 	/* temporarily set up single-entry itempointer list */
 	eatmp.list = heapptr;
 
-	ea = (GinEntryAccumulator *) rb_insert(accum->tree, (RBNode *) &eatmp,
-										   &isNew);
+	ea = (GinEntryAccumulator *) rbt_insert(accum->tree, (RBTNode *) &eatmp,
+											&isNew);
 
 	if (isNew)
 	{
@@ -175,7 +176,7 @@ ginInsertBAEntry(BuildAccumulator *accum,
 			ea->key = getDatumCopy(accum, attnum, key);
 		ea->maxcount = DEF_NPTR;
 		ea->count = 1;
-		ea->shouldSort = FALSE;
+		ea->shouldSort = false;
 		ea->list =
 			(ItemPointerData *) palloc(sizeof(ItemPointerData) * DEF_NPTR);
 		ea->list[0] = *heapptr;
@@ -255,7 +256,7 @@ qsortCompareItemPointers(const void *a, const void *b)
 void
 ginBeginBAScan(BuildAccumulator *accum)
 {
-	rb_begin_iterate(accum->tree, LeftRightWalk, &accum->tree_walk);
+	rbt_begin_iterate(accum->tree, LeftRightWalk, &accum->tree_walk);
 }
 
 /*
@@ -271,7 +272,7 @@ ginGetBAEntry(BuildAccumulator *accum,
 	GinEntryAccumulator *entry;
 	ItemPointerData *list;
 
-	entry = (GinEntryAccumulator *) rb_iterate(&accum->tree_walk);
+	entry = (GinEntryAccumulator *) rbt_iterate(&accum->tree_walk);
 
 	if (entry == NULL)
 		return NULL;			/* no more entries */

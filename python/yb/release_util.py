@@ -15,7 +15,7 @@ import re
 
 from subprocess import call, check_output
 from xml.dom import minidom
-from yb.command_util import run_program
+from yb.command_util import run_program, mkdir_p, copy_deep
 from yb.common_util import get_thirdparty_dir
 
 RELEASE_MANIFEST_NAME = "yb_release_manifest.json"
@@ -46,6 +46,10 @@ class ReleaseUtil(object):
         assert self.release_manifest is not None, \
             'Unable to read {0} file'.format(RELEASE_MANIFEST_NAME)
         self.build_root = build_root
+        pom_file = os.path.join(self.repo, 'java', 'pom.xml')
+        self.java_project_version = minidom.parse(pom_file).getElementsByTagName(
+            'version')[0].firstChild.nodeValue
+        logging.info("Java project version from pom.xml: {}".format(self.java_project_version))
         self._rewrite_manifest()
 
     def get_release_manifest(self):
@@ -55,82 +59,69 @@ class ReleaseUtil(object):
         return self.release_manifest['bin'] + [
             os.path.join(self.build_root, 'postgres', 'bin', '*')]
 
-    def _rewrite_manifest(self):
+    def expand_value(self, old_value):
         """
-        Rewrite the release manifest with the following changes:
+        Expand old_value with the following changes:
         - Replace ${project.version} with the Java version from pom.xml.
         - Replace the leading "thirdparty/" with the respective YB_THIRDPARTY_DIR from the build.
         - Replace $BUILD_ROOT with the actual build_root.
         """
-        pom_file = os.path.join(self.repo, 'java', 'pom.xml')
-        java_project_version = minidom.parse(pom_file).getElementsByTagName(
-            'version')[0].firstChild.nodeValue
-        logging.info("Java project version from pom.xml: {}".format(java_project_version))
+        # Substitution for Java.
+        new_value = old_value.replace('${project.version}', self.java_project_version)
+        # Substitution for thirdparty.
+        thirdparty_prefix_match = THIRDPARTY_PREFIX_RE.match(new_value)
+        if thirdparty_prefix_match:
+            new_value = os.path.join(get_thirdparty_dir(), thirdparty_prefix_match.group(1))
+        # Substitution for BUILD_ROOT.
+        new_value = new_value.replace("$BUILD_ROOT", self.build_root)
+        if new_value != old_value:
+            logging.info("Substituting '{}' -> '{}' in manifest".format(
+                old_value, new_value))
+        return new_value
 
-        for key, value_list in self.release_manifest.iteritems():
-            for i in xrange(len(value_list)):
-                old_value = value_list[i]
-                # Substitution for Java.
-                new_value = old_value.replace('${project.version}', java_project_version)
-                # Substitution for thirdparty.
-                thirdparty_prefix_match = THIRDPARTY_PREFIX_RE.match(new_value)
-                if thirdparty_prefix_match:
-                    new_value = os.path.join(get_thirdparty_dir(), thirdparty_prefix_match.group(1))
-                # Substitution for BUILD_ROOT.
-                new_value = new_value.replace("$BUILD_ROOT", self.build_root)
-                if new_value != value_list[i]:
-                    logging.info("Substituting '{}' -> '{}' in manifest".format(
-                        value_list[i], new_value))
-                    value_list[i] = new_value
+    def _rewrite_manifest(self):
+        """
+        Rewrite the release manifest expanding values using expand_value function.
+        """
+        for key, values in self.release_manifest.iteritems():
+            if isinstance(values, dict):
+                for k, v in values.iteritems():
+                    values[k] = self.expand_value(v)
+            else:
+                for i in xrange(len(values)):
+                    values[i] = self.expand_value(values[i])
 
-    def create_distribution(self, distribution_dir, prefix_dir=None):
+    def repo_expand_path(self, path):
+        """
+        If path is relative treat it as a path within repo and make it absolute.
+        """
+        if not path.startswith('/'):
+            path = os.path.join(self.repo, path)
+        return path
+
+    def create_distribution(self, distribution_dir):
         """This method would read the release_manifest and traverse through the
         build directory and copy necessary files/symlinks into the distribution_dir
         Args:
             distribution_dir (string): Directory to create the distribution
-            prefix_dir (string): Only add entries that have a manifest key prefixed with this
         """
-        if prefix_dir:
-            full_path_prefix_dir = os.path.join(distribution_dir, prefix_dir)
-            if os.path.exists(full_path_prefix_dir):
-                logging.info("Found data at {}, removing before adding to distribution.".format(
-                    full_path_prefix_dir))
-                # Ignore errors so that it recurses even if dir is not empty.
-                shutil.rmtree(full_path_prefix_dir, ignore_errors=True)
         for dir_from_manifest in self.release_manifest:
-            # If we're using a prefix_dir, skip all manifest keys not starting with this.
-            if prefix_dir is not None and not dir_from_manifest.startswith(prefix_dir):
+            if dir_from_manifest == '%symlinks%':
+                for dst, target in self.release_manifest[dir_from_manifest].iteritems():
+                    dst = os.path.join(distribution_dir, dst)
+                    logging.debug("Creating symlink {} -> {}".format(dst, target))
+                    mkdir_p(os.path.dirname(dst))
+                    os.symlink(target, dst)
                 continue
             current_dest_dir = os.path.join(distribution_dir, dir_from_manifest)
-            if not os.path.exists(current_dest_dir):
-                os.makedirs(current_dest_dir)
+            mkdir_p(current_dest_dir)
 
             for elem in self.release_manifest[dir_from_manifest]:
-                if not elem.startswith('/'):
-                    elem = os.path.join(self.repo, elem)
+                elem = self.repo_expand_path(elem)
                 files = glob.glob(elem)
                 for file_path in files:
-                    if os.path.islink(file_path):
-                        link_path = os.path.join(current_dest_dir, os.path.basename(file_path))
-                        link_target = os.readlink(file_path)
-                        logging.debug("Creating symlink {} -> {}".format(link_path, link_target))
-                        os.symlink(link_target, link_path)
-                    elif os.path.isdir(file_path):
-                        current_dest_subdir = os.path.join(
-                            current_dest_dir,
-                            os.path.basename(file_path))
-                        if os.path.exists(current_dest_subdir) and \
-                                platform.system().lower() == "darwin":
-                            logging.warning("Not copying directory {} to {} because destination"
-                                            "already exists".format(file_path, current_dest_subdir))
-                            continue
-                        logging.debug("Copying directory {} to {}".format(file_path,
-                                                                          current_dest_subdir))
-                        shutil.copytree(file_path, current_dest_subdir)
-                    else:
-                        logging.debug("Copying file {} to directory {}".format(file_path,
-                                                                               current_dest_dir))
-                        shutil.copy(file_path, current_dest_dir)
+                    copy_deep(file_path,
+                              os.path.join(current_dest_dir, os.path.basename(file_path)))
         logging.info("Created the distribution at '{}'".format(distribution_dir))
 
     def update_manifest(self, distribution_dir):
@@ -138,8 +129,14 @@ class ReleaseUtil(object):
             if release_subdir in self.release_manifest:
                 del self.release_manifest[release_subdir]
         for root, dirs, files in os.walk(distribution_dir):
+            paths = [os.path.join(root, f) for f in files]
+            # We also need to include dirs which are really links to directories.
+            for d in dirs:
+                path = os.path.join(root, d)
+                if os.path.islink(path):
+                    paths.append(path)
             self.release_manifest.setdefault(os.path.relpath(root, distribution_dir), []).extend(
-                [os.path.join(root, f) for f in files])
+                paths)
 
         logging.debug("Effective release manifest:\n" +
                       json.dumps(self.release_manifest, indent=2, sort_keys=True))

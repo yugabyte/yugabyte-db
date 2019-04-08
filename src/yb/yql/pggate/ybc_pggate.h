@@ -27,7 +27,7 @@ extern "C" {
 
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
-void YBCInitPgGate();
+void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count);
 void YBCDestroyPgGate();
 
 //--------------------------------------------------------------------------------------------------
@@ -43,6 +43,9 @@ YBCStatus YBCPgCreateSession(const YBCPgEnv pg_env,
                              YBCPgSession *pg_session);
 YBCStatus YBCPgDestroySession(YBCPgSession pg_session);
 
+// Invalidate the sessions table cache.
+YBCStatus YBCPgInvalidateCache(YBCPgSession pg_session);
+
 // Delete statement given its handle.
 YBCStatus YBCPgDeleteStatement(YBCPgStatement handle);
 
@@ -57,10 +60,35 @@ YBCStatus YBCPgClearBinds(YBCPgStatement handle);
 // Connect database. Switch the connected database to the given "database_name".
 YBCStatus YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_name);
 
+YBCStatus YBCInsertSequenceTuple(YBCPgSession pg_session,
+                                 int64_t db_oid,
+                                 int64_t seq_oid,
+                                 int64_t last_val,
+                                 bool is_called);
+
+YBCStatus YBCUpdateSequenceTuple(YBCPgSession pg_session,
+                                 int64_t db_oid,
+                                 int64_t seq_oid,
+                                 int64_t last_val,
+                                 bool is_called,
+                                 int64_t expected_last_val,
+                                 bool expected_is_called,
+                                 bool* skipped);
+
+YBCStatus YBCReadSequenceTuple(YBCPgSession pg_session,
+                               int64_t db_oid,
+                               int64_t seq_oid,
+                               int64_t *last_val,
+                               bool *is_called);
+
+YBCStatus YBCDeleteSequenceTuple(YBCPgSession pg_session, int64_t db_oid, int64_t seq_oid);
+
 // Create database.
 YBCStatus YBCPgNewCreateDatabase(YBCPgSession pg_session,
                                  const char *database_name,
                                  YBCPgOid database_oid,
+                                 YBCPgOid source_database_oid,
+                                 YBCPgOid next_oid,
                                  YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle);
 
@@ -71,7 +99,17 @@ YBCStatus YBCPgNewDropDatabase(YBCPgSession pg_session,
                                YBCPgStatement *handle);
 YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle);
 
-// SCHENA ------------------------------------------------------------------------------------------
+// Reserve oids.
+YBCStatus YBCPgReserveOids(YBCPgSession pg_session,
+                           YBCPgOid database_oid,
+                           YBCPgOid next_oid,
+                           uint32_t count,
+                           YBCPgOid *begin_oid,
+                           YBCPgOid *end_oid);
+
+YBCStatus YBCPgGetCatalogMasterVersion(YBCPgSession pg_session, uint64_t *version);
+
+// SCHEMA ------------------------------------------------------------------------------------------
 // Create schema "database_name.schema_name".
 // - When "database_name" is NULL, the connected database name is used.
 YBCStatus YBCPgNewCreateSchema(YBCPgSession pg_session,
@@ -97,28 +135,54 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
                               const char *database_name,
                               const char *schema_name,
                               const char *table_name,
-                              YBCPgOid schema_oid,
+                              YBCPgOid database_oid,
                               YBCPgOid table_oid,
+                              bool is_shared_table,
                               bool if_not_exist,
+                              bool add_primary_key,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
-                                    int attr_type, bool is_hash, bool is_range);
+                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range);
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
+YBCStatus YBCPgNewAlterTable(YBCPgSession pg_session,
+                             YBCPgOid database_oid,
+                             YBCPgOid table_oid,
+                             YBCPgStatement *handle);
+
+YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
+                                   const YBCPgTypeEntity *attr_type, bool is_not_null);
+
+YBCStatus YBCPgAlterTableRenameColumn(YBCPgStatement handle, const char *oldname,
+                                      const char *newname);
+
+YBCStatus YBCPgAlterTableDropColumn(YBCPgStatement handle, const char *name);
+
+YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
+                                     const char *newname);
+
+YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
+
 YBCStatus YBCPgNewDropTable(YBCPgSession pg_session,
-                            const char *database_name,
-                            const char *schema_name,
-                            const char *table_name,
+                            YBCPgOid database_oid,
+                            YBCPgOid table_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
+YBCStatus YBCPgNewTruncateTable(YBCPgSession pg_session,
+                                YBCPgOid database_oid,
+                                YBCPgOid table_oid,
+                                YBCPgStatement *handle);
+
+YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle);
+
 YBCStatus YBCPgGetTableDesc(YBCPgSession pg_session,
-                            const char *database_name,
-                            const char *table_name,
+                            YBCPgOid database_oid,
+                            YBCPgOid table_oid,
                             YBCPgTableDesc *handle);
 
 YBCStatus YBCPgDeleteTableDesc(YBCPgTableDesc handle);
@@ -127,6 +191,39 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              int16_t attr_number,
                              bool *is_primary,
                              bool *is_hash);
+
+YBCStatus YBCPgSetIfIsSysCatalogVersionChange(YBCPgStatement handle, bool *is_version_change);
+
+YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t catalog_cache_version);
+
+// INDEX -------------------------------------------------------------------------------------------
+// Create and drop index "database_name.schema_name.index_name()".
+// - When "schema_name" is NULL, the index "database_name.index_name" is created.
+// - When "database_name" is NULL, the index "connected_database_name.index_name" is created.
+YBCStatus YBCPgNewCreateIndex(YBCPgSession pg_session,
+                              const char *database_name,
+                              const char *schema_name,
+                              const char *index_name,
+                              YBCPgOid database_oid,
+                              YBCPgOid index_oid,
+                              YBCPgOid table_oid,
+                              bool is_shared_index,
+                              bool is_unique_index,
+                              bool if_not_exist,
+                              YBCPgStatement *handle);
+
+YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
+                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range);
+
+YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
+
+YBCStatus YBCPgNewDropIndex(YBCPgSession pg_session,
+                            YBCPgOid database_oid,
+                            YBCPgOid index_oid,
+                            bool if_exist,
+                            YBCPgStatement *handle);
+
+YBCStatus YBCPgExecDropIndex(YBCPgStatement handle);
 
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)
@@ -154,18 +251,25 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 //   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
 //     contain bind-variables (placeholders) and contants whose values can be updated for each
 //     execution of the same allocated statement.
-YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle,
-                             int attr_num,
-                             YBCPgExpr attr_value);
+YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+
+// API for SET clause.
+YBCStatus YBCPgDmlAssignColumn(YBCPgStatement handle,
+                               int attr_num,
+                               YBCPgExpr attr_value);
 
 // This function is to fetch the targets in YBCPgDmlAppendTarget() from the rows that were defined
 // by YBCPgDmlBindColumn().
-YBCStatus YBCPgDmlFetch(YBCPgStatement handle, uint64_t *values, bool *isnulls,
+YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, bool *isnulls,
                         YBCPgSysColumns *syscols, bool *has_data);
 
-// DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
+// Utility method that checks stmt type and calls either exec insert, update, or delete internally.
+YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle);
+
+// DB Operations: WHERE, ORDER_BY, GROUP_BY, etc.
 // + The following operations are run by DocDB.
-//   - API for "set_clause" (not yet implemented).
+//   - Not yet
 //
 // + The following operations are run by Postgres layer. An API might be added to move these
 //   operations to DocDB.
@@ -173,39 +277,45 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, uint64_t *values, bool *isnulls,
 //   - API for "order_by_expr"
 //   - API for "group_by_expr"
 
+
+// Buffer write operations.
+YBCStatus YBCPgStartBufferingWriteOperations(YBCPgSession pg_session);
+YBCStatus YBCPgFlushBufferedWriteOperations(YBCPgSession pg_session);
+
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         YBCPgOid database_oid,
+                         YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 
 // UPDATE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         YBCPgOid database_oid,
+                         YBCPgOid table_oid,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 
 // DELETE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
+                         YBCPgOid database_oid,
+                         YBCPgOid table_oid,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle);
 
 // SELECT ------------------------------------------------------------------------------------------
+// read_time points to place where read_time for whole postgres statement is stored.
+// It is available while statement is executed.
 YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
-                         const char *database_name,
-                         const char *schema_name,
-                         const char *table_name,
-                         YBCPgStatement *handle);
+                         YBCPgOid database_oid,
+                         YBCPgOid table_oid,
+                         YBCPgOid index_oid,
+                         YBCPgStatement *handle,
+                         uint64_t* read_time);
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle);
 
@@ -216,25 +326,12 @@ YBCPgTxnManager YBCGetPgTxnManager();
 // Expressions.
 
 // Column references.
-YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, const YBCPgTypeEntity *type_entity,
+                            const YBCPgTypeAttrs *type_attrs, YBCPgExpr *expr_handle);
 
 // Constant expressions.
-YBCStatus YBCPgNewConstantBool(YBCPgStatement stmt, bool value, bool is_null,
-                               YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
-                               YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_null,
-                               YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_null,
-                               YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,
-                                 YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantFloat8(YBCPgStatement stmt, double value, bool is_null,
-                                 YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantText(YBCPgStatement stmt, const char *value, bool is_null,
-                               YBCPgExpr *expr_handle);
-YBCStatus YBCPgNewConstantBinary(YBCPgStatement stmt, const void *value, int64_t bytes,
-                                 bool is_null, YBCPgExpr *expr_handle);
+YBCStatus YBCPgNewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                           uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
 
 // The following update functions only work for constants.
 // Overwriting the constant expression with new value.
@@ -247,8 +344,15 @@ YBCStatus YBCPgUpdateConstText(YBCPgExpr expr, const char *value, bool is_null);
 YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes, bool is_null);
 
 // Expressions with operators "=", "+", "between", "in", ...
-YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname, YBCPgExpr *op_handle);
+YBCStatus YBCPgNewOperator(YBCPgStatement stmt, const char *opname,
+                           const YBCPgTypeEntity *type_entity,
+                           YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
+
+bool YBCIsInitDbModeEnvVarSet();
+
+// This is called by initdb. Used to customize some behavior.
+void YBCSetInitDbMode();
 
 #ifdef __cplusplus
 }  // extern "C"

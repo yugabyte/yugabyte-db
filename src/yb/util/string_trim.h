@@ -61,6 +61,10 @@ std::string ApplyEagerLineContinuation(const std::string& s);
 // inside DocDB debug dump string constants.
 std::string TrimCppComments(const std::string& s);
 
+// Treating the given string as a multi-line piece of text, trims trailing whitespace from every
+// line of it and returns the resulting multi-line piece of text as a string.
+std::string TrimTrailingWhitespaceFromEveryLine(std::string s);
+
 }  // namespace util
 }  // namespace yb
 

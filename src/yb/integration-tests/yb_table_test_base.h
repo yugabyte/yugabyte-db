@@ -67,7 +67,8 @@ class YBTableTestBase : public YBTest {
   virtual client::YBTableName table_name();
   virtual bool need_redis_table();
 
-  void CreateRedisTable(shared_ptr<yb::client::YBClient> client, client::YBTableName table_name);
+  void CreateRedisTable(
+      std::shared_ptr<yb::client::YBClient> client, client::YBTableName table_name);
   virtual void CreateTable();
   void OpenTable();
   void DeleteTable();

@@ -3,7 +3,7 @@
  * pg_enum.c
  *	  routines to support manipulation of the pg_enum relation
  *
- * Copyright (c) 2006-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2006-2018, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -160,7 +160,7 @@ EnumValuesDelete(Oid enumTypeOid)
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
-		CatalogTupleDelete(pg_enum, &tup->t_self);
+		CatalogTupleDelete(pg_enum, tup);
 	}
 
 	systable_endscan(scan);

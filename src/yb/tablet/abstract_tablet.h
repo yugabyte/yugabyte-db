@@ -14,9 +14,11 @@
 #ifndef YB_TABLET_ABSTRACT_TABLET_H
 #define YB_TABLET_ABSTRACT_TABLET_H
 
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_storage_interface.h"
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/schema.h"
-#include "yb/common/ql_storage_interface.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -50,7 +52,7 @@ class AbstractTablet {
   //------------------------------------------------------------------------------------------------
   // Redis support.
   virtual CHECKED_STATUS HandleRedisReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const RedisReadRequestPB& redis_read_request,
       RedisResponsePB* response) = 0;
@@ -58,7 +60,7 @@ class AbstractTablet {
   //------------------------------------------------------------------------------------------------
   // CQL support.
   virtual CHECKED_STATUS HandleQLReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -68,7 +70,7 @@ class AbstractTablet {
                                                   const size_t row_count,
                                                   QLResponsePB* response) const = 0;
 
-  virtual void RegisterReaderTimestamp(HybridTime read_point) = 0;
+  virtual CHECKED_STATUS RegisterReaderTimestamp(HybridTime read_point) = 0;
   virtual void UnregisterReader(HybridTime read_point) = 0;
 
   // Returns safe timestamp to read.
@@ -81,13 +83,13 @@ class AbstractTablet {
   // a timeout.
   HybridTime SafeTime(RequireLease require_lease = RequireLease::kTrue,
                       HybridTime min_allowed = HybridTime::kMin,
-                      MonoTime deadline = MonoTime::kMax) const {
+                      CoarseTimePoint deadline = CoarseTimePoint::max()) const {
     return DoGetSafeTime(require_lease, min_allowed, deadline);
   }
 
  protected:
   CHECKED_STATUS HandleQLReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const QLReadRequestPB& ql_read_request,
       const TransactionOperationContextOpt& txn_op_context,
@@ -98,7 +100,7 @@ class AbstractTablet {
   // PGSQL support.
  public:
   virtual CHECKED_STATUS HandlePgsqlReadRequest(
-      MonoTime deadline,
+      CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const PgsqlReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
@@ -108,14 +110,14 @@ class AbstractTablet {
                                                   const size_t row_count,
                                                   PgsqlResponsePB* response) const = 0;
 
-  CHECKED_STATUS HandlePgsqlReadRequest(MonoTime deadline,
+  CHECKED_STATUS HandlePgsqlReadRequest(CoarseTimePoint deadline,
                                         const ReadHybridTime& read_time,
                                         const PgsqlReadRequestPB& pgsql_read_request,
                                         const TransactionOperationContextOpt& txn_op_context,
                                         PgsqlReadRequestResult* result);
  private:
   virtual HybridTime DoGetSafeTime(
-      RequireLease require_lease, HybridTime min_allowed, MonoTime deadline) const = 0;
+      RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const = 0;
 };
 
 }  // namespace tablet

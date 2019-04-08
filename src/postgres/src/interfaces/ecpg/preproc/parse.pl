@@ -3,7 +3,7 @@
 # parser generater for ecpg version 2
 # call with backend parser as stdin
 #
-# Copyright (c) 2007-2017, PostgreSQL Global Development Group
+# Copyright (c) 2007-2018, PostgreSQL Global Development Group
 #
 # Written by Mike Aubury <mike.aubury@aubit.com>
 #            Michael Meskes <meskes@postgresql.org>
@@ -101,7 +101,7 @@ my %replace_line = (
 	  'RETURNING target_list opt_ecpg_into',
 	'ExecuteStmtEXECUTEnameexecute_param_clause' =>
 	  'EXECUTE prepared_name execute_param_clause execute_rest',
-'ExecuteStmtCREATEOptTempTABLEcreate_as_targetASEXECUTEnameexecute_param_clause'
+	'ExecuteStmtCREATEOptTempTABLEcreate_as_targetASEXECUTEnameexecute_param_clause'
 	  => 'CREATE OptTemp TABLE create_as_target AS EXECUTE prepared_name execute_param_clause',
 	'PrepareStmtPREPAREnameprep_type_clauseASPreparableStmt' =>
 	  'PREPARE prepared_name prep_type_clause AS PreparableStmt',
@@ -134,20 +134,20 @@ sub main
 
 		chomp;
 
-  # comment out the line below to make the result file match (blank line wise)
-  # the prior version.
-  #next if ($_ eq '');
+		# comment out the line below to make the result file match (blank line wise)
+		# the prior version.
+		#next if ($_ eq '');
 
-   # Dump the action for a rule -
-   # stmt_mode indicates if we are processing the 'stmt:'
-   # rule (mode==0 means normal,  mode==1 means stmt:)
-   # flds are the fields to use. These may start with a '$' - in
-   # which case they are the result of a previous non-terminal
-   #
-   # if they dont start with a '$' then they are token name
-   #
-   # len is the number of fields in flds...
-   # leadin is the padding to apply at the beginning (just use for formatting)
+		# Dump the action for a rule -
+		# stmt_mode indicates if we are processing the 'stmt:'
+		# rule (mode==0 means normal,  mode==1 means stmt:)
+		# flds are the fields to use. These may start with a '$' - in
+		# which case they are the result of a previous non-terminal
+		#
+		# if they don't start with a '$' then they are token name
+		#
+		# len is the number of fields in flds...
+		# leadin is the padding to apply at the beginning (just use for formatting)
 
 		if (/^%%/)
 		{
@@ -223,7 +223,7 @@ sub main
 			next line;
 		}
 
-	   # Dont worry about anything if we're not in the right section of gram.y
+		# Don't worry about anything if we're not in the right section of gram.y
 		if ($yaccmode != 1)
 		{
 			next line;
@@ -415,6 +415,7 @@ sub main
 			}
 		}
 	}
+	return;
 }
 
 
@@ -431,6 +432,7 @@ sub include_file
 		add_to_buffer($buffer, $_);
 	}
 	close($fh);
+	return;
 }
 
 sub include_addon
@@ -472,6 +474,7 @@ sub include_addon
 sub add_to_buffer
 {
 	push(@{ $buff{ $_[0] } }, "$_[1]\n");
+	return;
 }
 
 sub dump_buffer
@@ -480,6 +483,7 @@ sub dump_buffer
 	print '/* ', $buffer, ' */', "\n";
 	my $ref = $buff{$buffer};
 	print @$ref;
+	return;
 }
 
 sub dump_fields
@@ -501,7 +505,7 @@ sub dump_fields
 			if ($flds->[0] ne 'create' || $flds->[2] ne 'table')
 			{
 				add_to_buffer('rules',
-'mmerror(PARSE_ERROR, ET_WARNING, "unsupported feature will be passed to server");'
+					'mmerror(PARSE_ERROR, ET_WARNING, "unsupported feature will be passed to server");'
 				);
 			}
 			$feature_not_supported = 0;
@@ -582,6 +586,7 @@ sub dump_fields
 			add_to_buffer('rules', ' { $$ = NULL; }');
 		}
 	}
+	return;
 }
 
 
@@ -632,8 +637,8 @@ sub preload_addons
 	my $filename = $path . "/ecpg.addons";
 	open(my $fh, '<', $filename) or die;
 
- # there may be multiple lines starting ECPG: and then multiple lines of code.
- # the code need to be add to all prior ECPG records.
+	# there may be multiple lines starting ECPG: and then multiple lines of code.
+	# the code need to be add to all prior ECPG records.
 	my (@needsRules, @code, $record);
 
 	# there may be comments before the first ECPG line, skip them
@@ -673,4 +678,5 @@ sub preload_addons
 			push(@{ $x->{lines} }, @code);
 		}
 	}
+	return;
 }

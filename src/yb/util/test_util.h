@@ -155,7 +155,7 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
   int num_differences_logged = 0;
   size_t num_differences_left = 0;
   size_t min_size = min(expected.size(), actual.size());
-  for (int i = 0; i < min_size; ++i) {
+  for (size_t i = 0; i < min_size; ++i) {
     if (expected[i] != actual[i]) {
       if (num_differences_logged < 16) {
         LOG(WARNING) << "expected[" << i << "]: " << expected[i];
@@ -202,16 +202,42 @@ CHECKED_STATUS WaitFor(
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
+void AssertLoggedWaitFor(
+    std::function<Result<bool>()> condition,
+    MonoDelta timeout,
+    const string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
+
 // Return the path of a yb-tool.
 std::string GetToolPath(const std::string& tool_name);
 
 int CalcNumTablets(int num_tablet_servers);
 
-template <class U, class T>
-void SetAtomicFlag(U value, T* flag) {
-  std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
-  atomic_flag.store(value);
-}
+class StopOnFailure {
+ public:
+  explicit StopOnFailure(std::atomic<bool>* stop) : stop_(*stop) {}
+
+  StopOnFailure(const StopOnFailure&) = delete;
+  void operator=(const StopOnFailure&) = delete;
+
+  ~StopOnFailure() {
+    if (!success_) {
+      stop_.store(true, std::memory_order_release);
+    }
+  }
+
+  void Success() {
+    success_ = true;
+  }
+ private:
+  bool success_ = false;
+  std::atomic<bool>& stop_;
+};
+
+// Waits specified duration or when stop switches to true.
+void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop);
 
 } // namespace yb
 

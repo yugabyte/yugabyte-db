@@ -49,6 +49,8 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/replicate_msgs_holder.h"
+
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -68,7 +70,8 @@
 #include "yb/util/enums.h"
 #include "yb/util/tostring.h"
 
-using yb::operator"" _MB;
+using namespace std::literals;
+using namespace yb::size_literals;
 
 DECLARE_int32(rpc_max_message_size);
 
@@ -122,6 +125,13 @@ std::string PeerMessageQueue::TrackedPeer::ToString() const {
                     last_known_committed_idx,
                     is_last_exchange_successful ? "SUCCESS" : "ERROR",
                     needs_remote_bootstrap);
+}
+
+void PeerMessageQueue::TrackedPeer::ResetLeaderLeases() {
+  last_leader_lease_expiration_sent_to_follower = CoarseTimePoint();
+  last_leader_lease_expiration_received_by_follower = CoarseTimePoint();
+  last_ht_lease_expiration_sent_to_follower = HybridTime::kMin.GetPhysicalValueMicros();
+  last_ht_lease_expiration_received_by_follower = HybridTime::kMin.GetPhysicalValueMicros();
 }
 
 #define INSTANTIATE_METRIC(x) \
@@ -183,6 +193,7 @@ void PeerMessageQueue::SetLeaderMode(const OpId& committed_index,
   // failure timeout.
   MonoTime now(MonoTime::Now());
   for (const PeersMap::value_type& entry : peers_map_) {
+    entry.second->ResetLeaderLeases();
     entry.second->last_successful_communication_time = now;
   }
 }
@@ -278,11 +289,13 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
 
 Status PeerMessageQueue::TEST_AppendOperation(const ReplicateMsgPtr& msg) {
   return AppendOperations(
-      { msg }, yb::OpId::FromPB(msg->committed_op_id()), Bind(DoNothingStatusCB));
+      { msg }, yb::OpId::FromPB(msg->committed_op_id()), RestartSafeCoarseMonoClock().Now(),
+      Bind(DoNothingStatusCB));
 }
 
 Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
                                           const yb::OpId& committed_op_id,
+                                          RestartSafeCoarseTimePoint batch_mono_time,
                                           const StatusCallback& log_append_callback) {
   DFAKE_SCOPED_LOCK(append_fake_lock_);
   OpId last_id;
@@ -306,7 +319,7 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
   // Since we are doing AppendOperations only in one thread, no concurrent AppendOperations could
   // be executed and queue_state_.last_appended will be updated correctly.
   RETURN_NOT_OK(log_cache_.AppendOperations(
-      msgs, committed_op_id,
+      msgs, committed_op_id, batch_mono_time,
       Bind(&PeerMessageQueue::LocalPeerAppendFinished, Unretained(this), last_id,
            log_append_callback)));
 
@@ -321,12 +334,15 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
 
 Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         ConsensusRequestPB* request,
-                                        ReplicateMsgs* msg_refs,
+                                        ReplicateMsgsHolder* msgs_holder,
                                         bool* needs_remote_bootstrap,
                                         RaftPeerPB::MemberType* member_type,
                                         bool* last_exchange_successful) {
+  DCHECK(request->ops().empty());
+
   OpId preceding_id;
   MonoDelta unreachable_time = MonoDelta::kMin;
+  bool is_voter = false;
   bool is_new;
   int64_t next_index;
   HybridTime propagated_safe_time;
@@ -341,23 +357,41 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     }
 
     const HybridTime now_ht = clock_->Now();
-    auto ht_lease_expiration_micros = now_ht.GetPhysicalValueMicros() +
-                                      FLAGS_ht_lease_duration_ms * 1000;
-    auto leader_lease_duration_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
-    request->set_leader_lease_duration_ms(leader_lease_duration_ms);
-    request->set_ht_lease_expiration(ht_lease_expiration_micros);
-    peer->last_leader_lease_expiration_sent_to_follower =
-        MonoTime::Now() + MonoDelta::FromMilliseconds(leader_lease_duration_ms);
-    peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
+
+    is_new = peer->is_new;
+    if (!is_new) {
+      auto ht_lease_expiration_micros = now_ht.GetPhysicalValueMicros() +
+                                        FLAGS_ht_lease_duration_ms * 1000;
+      auto leader_lease_duration_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
+      request->set_leader_lease_duration_ms(leader_lease_duration_ms);
+      request->set_ht_lease_expiration(ht_lease_expiration_micros);
+
+      // As noted here:
+      // https://red.ht/2sCSErb
+      //
+      // The _COARSE variants are faster to read and have a precision (also known as resolution) of
+      // one millisecond (ms).
+      //
+      // Coarse clock precision is 1 millisecond.
+      const auto kCoarseClockPrecision = 1ms;
+
+      // Because of coarse clocks we subtract 2ms, to be sure that our local version of lease
+      // does not expire after it expires at follower.
+      peer->last_leader_lease_expiration_sent_to_follower =
+          CoarseMonoClock::Now() + leader_lease_duration_ms * 1ms - kCoarseClockPrecision * 2;
+      peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
+    } else {
+      request->clear_leader_lease_duration_ms();
+      request->clear_ht_lease_expiration();
+      peer->last_leader_lease_expiration_received_by_follower = CoarseTimePoint();
+      peer->last_ht_lease_expiration_sent_to_follower = 0;
+    }
 
     if (propagated_safe_time_provider_ && FLAGS_propagate_safe_time) {
       propagated_safe_time = propagated_safe_time_provider_();
     }
 
     request->set_propagated_hybrid_time(now_ht.ToUint64());
-
-    // Clear the requests without deleting the entries, as they may be in use by other peers.
-    request->mutable_ops()->ExtractSubrange(0, request->ops_size(), /* elements */ nullptr);
 
     // This is initialized to the queue's last appended op but gets set to the id of the
     // log entry preceding the first one in 'messages' if messages are found for the peer.
@@ -369,14 +403,17 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     if (member_type) *member_type = peer->member_type;
     if (last_exchange_successful) *last_exchange_successful = peer->is_last_exchange_successful;
     *needs_remote_bootstrap = peer->needs_remote_bootstrap;
-    is_new = peer->is_new;
     next_index = peer->next_index;
+    if (peer->member_type == RaftPeerPB::VOTER) {
+      is_voter = true;
+    }
   }
 
   if (unreachable_time.ToSeconds() > FLAGS_follower_unavailable_considered_failed_sec) {
-    if (CountVoters(*queue_state_.active_config) > 2) {
-      // We never drop from 2 to 1 automatically, at least for now. We may want to revisit this
-      // later, we're just being cautious with this.
+    if (!is_voter || CountVoters(*queue_state_.active_config) > 2) {
+      // We never drop from 2 voters to 1 voter automatically, at least for now (12/4/18). We may
+      // want to revisit this later, we're just being cautious with this.
+      // We remove unconditionally any failed non-voter replica (PRE_VOTER, PRE_OBSERVER, OBSERVER).
       string msg = Substitute("Leader has been unable to successfully communicate "
                               "with Peer $0 for more than $1 seconds ($2)",
                               uuid,
@@ -441,13 +478,15 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     for (const auto& msg : messages) {
       request->mutable_ops()->AddAllocated(msg.get());
     }
+    *msgs_holder = ReplicateMsgsHolder(request->mutable_ops(), std::move(messages));
+
     if (propagated_safe_time && !have_more_messages) {
       // Get the current local safe time on the leader and propagate it to the follower.
       request->set_propagated_safe_time(propagated_safe_time.ToUint64());
     } else {
       request->clear_propagated_safe_time();
     }
-    msg_refs->swap(messages);
+
     DCHECK_LE(request->ByteSize(), FLAGS_consensus_max_batch_size_bytes);
   }
 
@@ -460,9 +499,11 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
           << ". Size: " << request->ops_size()
           << ". From: " << request->ops(0).id().ShortDebugString() << ". To: "
           << request->ops(request->ops_size() - 1).id().ShortDebugString();
+      VLOG_WITH_PREFIX_UNLOCKED(3) << "Operations: " << yb::ToString(request->ops());
     } else {
-      VLOG_WITH_PREFIX_UNLOCKED(2) << "Sending status only request to Peer: " << uuid
-          << ": " << request->DebugString();
+      VLOG_WITH_PREFIX_UNLOCKED(2)
+          << "Sending " << (is_new ? "new " : "") << "status only request to Peer: " << uuid
+          << ": " << request->ShortDebugString();
     }
   }
 
@@ -558,6 +599,10 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
       // value of the watermark.
       continue;
     }
+    if (!IsRaftConfigVoter(peer.uuid, *queue_state_.active_config)) {
+      // Only votes from VOTERs in the active config should be taken into consideration
+      continue;
+    }
     if (peer.is_last_exchange_successful) {
       watermarks.push_back(Policy::ExtractValue(peer));
     }
@@ -602,23 +647,23 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
   return *nth;
 }
 
-MonoTime PeerMessageQueue::LeaderLeaseExpirationWatermark() {
+CoarseTimePoint PeerMessageQueue::LeaderLeaseExpirationWatermark() {
   struct Policy {
-    typedef MonoTime result_type;
+    typedef CoarseTimePoint result_type;
     // Workaround for a gcc bug. That does not understand that Comparator is actually being used.
     __attribute__((unused)) typedef std::less<result_type> Comparator;
 
     static result_type Min() {
-      return result_type::kMin;
+      return result_type::min();
     }
 
     static result_type Max() {
-      return result_type::kMax;
+      return result_type::max();
     }
 
     static result_type ExtractValue(const TrackedPeer& peer) {
-      MonoTime lease_exp = peer.last_leader_lease_expiration_received_by_follower;
-      return lease_exp.Initialized() ? lease_exp : MonoTime::kMin;
+      auto lease_exp = peer.last_leader_lease_expiration_received_by_follower;
+      return lease_exp != CoarseTimePoint() ? lease_exp : CoarseTimePoint::min();
     }
 
     static const char* Name() {
@@ -1103,6 +1148,16 @@ void PeerMessageQueue::NotifyObserversOfFailedFollowerTask(const string& uuid,
   for (PeerMessageQueueObserver* observer : observers_copy) {
     observer->NotifyFailedFollower(uuid, term, reason);
   }
+}
+
+bool PeerMessageQueue::PeerAcceptedOurLease(const std::string& uuid) const {
+  std::lock_guard<simple_spinlock> lock(queue_lock_);
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
+  if (peer == nullptr) {
+    return false;
+  }
+
+  return peer->last_leader_lease_expiration_received_by_follower != CoarseTimePoint();
 }
 
 bool PeerMessageQueue::CanPeerBecomeLeader(const std::string& peer_uuid) const {

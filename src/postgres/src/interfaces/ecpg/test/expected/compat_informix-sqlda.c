@@ -142,7 +142,7 @@ dump_sqlda(sqlda_t *sqlda)
 			printf("name sqlda descriptor: '%s' value %d\n", sqlda->sqlvar[i].sqlname, *(int *)sqlda->sqlvar[i].sqldata);
 			break;
 		case SQLFLOAT:
-			printf("name sqlda descriptor: '%s' value %lf\n", sqlda->sqlvar[i].sqlname, *(double *)sqlda->sqlvar[i].sqldata);
+			printf("name sqlda descriptor: '%s' value %f\n", sqlda->sqlvar[i].sqlname, *(double *)sqlda->sqlvar[i].sqldata);
 			break;
 		case SQLDECIMAL:
 			{
@@ -526,5 +526,5 @@ if (sqlca.sqlcode < 0) exit (1);}
 #line 247 "sqlda.pgc"
 
 
-	return (0);
+	return 0;
 }

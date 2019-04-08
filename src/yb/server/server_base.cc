@@ -66,11 +66,14 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/user.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/rolling_log.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
+#include "yb/gutil/sysinfo.h"
 
 DEFINE_int32(num_reactor_threads, -1,
              "Number of libev reactor threads to start. If -1, the value is automatically set.");
@@ -160,6 +163,29 @@ Endpoint RpcServerBase::first_rpc_address() const {
   return addrs[0];
 }
 
+const std::string RpcServerBase::get_hostname() const {
+  auto hostname = GetHostname();
+  if (hostname.ok()) {
+    LOG(INFO) << "Running on host " << *hostname;
+    return *hostname;
+  } else {
+    LOG(WARNING) << "Failed to get current host name: " << hostname.status();
+    return "unknown_hostname";
+  }
+}
+
+const std::string RpcServerBase::get_current_user() const {
+  string user_name;
+  auto s = GetLoggedInUser(&user_name);
+  if (s.ok()) {
+    LOG(INFO) << "Logged In User  " << user_name;
+    return user_name;
+  } else {
+    LOG(WARNING) << "Failed to get current user: " << user_name;
+    return "unknown_user";
+  }
+}
+
 const NodeInstancePB& RpcServerBase::instance_pb() const {
   return *DCHECK_NOTNULL(instance_pb_.get());
 }
@@ -168,7 +194,7 @@ Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   if (FLAGS_num_reactor_threads == -1) {
     // Auto set the number of reactors based on the number of cores.
     FLAGS_num_reactor_threads =
-        std::min(16, static_cast<int>(std::thread::hardware_concurrency()));
+        std::min(16, static_cast<int>(base::NumCPUs()));
     LOG(INFO) << "Auto setting FLAGS_num_reactor_threads to " << FLAGS_num_reactor_threads;
   }
 
@@ -212,7 +238,7 @@ Status RpcServerBase::Init() {
   return Status::OK();
 }
 
-std::string RpcServerBase::ToString() const {
+string RpcServerBase::ToString() const {
   return strings::Substitute("$0 : rpc=$1", name_, yb::ToString(first_rpc_address()));
 }
 
@@ -343,7 +369,7 @@ void RpcServerBase::Shutdown() {
 }
 
 RpcAndWebServerBase::RpcAndWebServerBase(
-    std::string name, const ServerBaseOptions& options,
+    string name, const ServerBaseOptions& options,
     const std::string& metric_namespace,
     MemTrackerPtr mem_tracker)
     : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker)),
@@ -442,8 +468,18 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
   return Status::OK();
 }
 
-std::string RpcAndWebServerBase::FooterHtml() const {
-  return Substitute("<pre>$0\nserver uuid $1</pre>",
+string RpcAndWebServerBase::GetEasterEggMessage() const {
+  return "Congratulations on installing YugaByte DB Community Edition. "
+         "We'd like to welcome you to the community with a free t-shirt and pack of stickers! "
+         "Please claim your reward here: <a href='https://www.yugabyte.com/community-rewards/'>"
+         "https://www.yugabyte.com/community-rewards/</a>";
+
+}
+
+string RpcAndWebServerBase::FooterHtml() const {
+  return Substitute("<pre class='message'><i class=\"fa-lg fa fa-gift\" aria-hidden=\"true\"></i>"
+                    " $0</pre><pre>$1\nserver uuid $2</pre>",
+                    GetEasterEggMessage(),
                     VersionInfo::GetShortVersionString(),
                     instance_pb_->permanent_uuid());
 }
@@ -517,26 +553,43 @@ void RpcAndWebServerBase::Shutdown() {
 }
 
 std::string TEST_RpcAddress(int index, Private priv) {
-  return Format("127.0.0.$0", index * 2 + (priv ? 0 : 1));
+  return Format("127.0.0.$0$1", index * 2 + (priv ? 0 : 1), priv ? "" : ".ip.yugabyte");
 }
 
-std::string TEST_RpcBindEndpoint(int index, uint16_t port) {
+string TEST_RpcBindEndpoint(int index, uint16_t port) {
   return Format("$0:$1", TEST_RpcAddress(index, Private::kTrue), port);
 }
 
-void TEST_BreakConnectivity(rpc::Messenger* messenger, int index) {
+constexpr int kMaxServers = 20;
+
+void TEST_SetupConnectivity(rpc::Messenger* messenger, int index) {
   if (!FLAGS_TEST_check_broadcast_address) {
     return;
   }
-  const int kMaxServers = 20;
+
+  CHECK_GE(index, 1);
+  CHECK_LE(index, kMaxServers);
+
+  messenger->TEST_SetOutboundIpBase(
+      CHECK_RESULT(HostToAddress(TEST_RpcAddress(index, Private::kTrue))));
   for (int i = 1; i <= kMaxServers; ++i) {
     // We group servers by 2. When servers belongs to the same group, they should use
     // private ip for communication, otherwise public ip should be used.
     bool same_group = (i - 1) / 2 == (index - 1) / 2;
-    auto broken_address = boost::asio::ip::address::from_string(
-        TEST_RpcAddress(i, Private(!same_group)));
+    auto broken_address = CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private(!same_group))));
     LOG(INFO) << "Break " << index << " => " << broken_address;
     messenger->BreakConnectivityWith(broken_address);
+    auto working_address = CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private(same_group))));
+    messenger->RestoreConnectivityWith(working_address);
+  }
+}
+
+void TEST_Isolate(rpc::Messenger* messenger) {
+  for (int i = 1; i <= kMaxServers; ++i) {
+    messenger->BreakConnectivityWith(
+        CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private::kFalse))));
+    messenger->BreakConnectivityWith(
+        CHECK_RESULT(HostToAddress(TEST_RpcAddress(i, Private::kTrue))));
   }
 }
 

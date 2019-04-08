@@ -37,6 +37,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
@@ -130,6 +131,7 @@ class TabletPeerTest : public YBTabletTest,
     tablet_peer_.reset(
       new TabletPeerClass(make_scoped_refptr(tablet()->metadata()),
                           config_peer,
+                          clock(),
                           tablet()->metadata()->fs_manager()->uuid(),
                           Bind(&TabletPeerTest::TabletPeerStateChangedCallback,
                                Unretained(this),
@@ -164,13 +166,13 @@ class TabletPeerTest : public YBTabletTest,
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            std::shared_future<client::YBClientPtr>(),
-                                           clock(),
                                            messenger_,
                                            proxy_cache_.get(),
                                            log,
                                            metric_entity_,
                                            raft_pool_.get(),
-                                           tablet_prepare_pool_.get()));
+                                           tablet_prepare_pool_.get(),
+                                           nullptr /* retryable_requests */));
   }
 
   Status StartPeer(const ConsensusBootstrapInfo& info) {
@@ -217,7 +219,7 @@ class TabletPeerTest : public YBTabletTest,
     operation_state->set_completion_callback(
         std::make_unique<LatchWriteCallback>(&rpc_latch, resp.get()));
 
-    tablet_peer->WriteAsync(std::move(operation_state), 1, MonoTime::Max() /* deadline */);
+    tablet_peer->WriteAsync(std::move(operation_state), 1, CoarseTimePoint::max() /* deadline */);
     rpc_latch.Wait();
     CHECK(!resp->has_error())
         << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp->DebugString();
@@ -289,7 +291,8 @@ class DelayedApplyOperation : public WriteOperation {
   DelayedApplyOperation(CountDownLatch* apply_started,
                         CountDownLatch* apply_continue,
                         std::unique_ptr<WriteOperationState> state)
-      : WriteOperation(std::move(state), consensus::LEADER, MonoTime::Max(), nullptr),
+      : WriteOperation(std::move(state), consensus::LEADER, CoarseTimePoint::max() /* deadline */,
+                       nullptr /* context */),
         apply_started_(DCHECK_NOTNULL(apply_started)),
         apply_continue_(DCHECK_NOTNULL(apply_continue)) {
   }

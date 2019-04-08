@@ -9,6 +9,7 @@
 
 #include "yb/client/client.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
 
 namespace yb {
 namespace ql {
@@ -79,17 +80,24 @@ class PTCreateIndex : public PTCreateTable {
     return is_local_;
   }
 
+  virtual CHECKED_STATUS CheckPrimaryType(SemContext *sem_context,
+                                          const PTBaseType::SharedPtr& datatype) const override;
+
   virtual CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const override;
 
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
+  void AddColumnDefinition(const PTColumnDefinition::SharedPtr& column) {
+    column_definitions_.push_back(column);
+  }
+
  private:
   // Is it a unique index?
   const bool is_unique_ = false;
   // Index name.
-  const MCSharedPtr<MCString> name_;
+  MCSharedPtr<MCString> name_;
   // Additional covering columns.
   const PTListNode::SharedPtr covering_;
 

@@ -29,36 +29,21 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/util/async_util.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
 namespace client {
 
-using std::string;
-using std::vector;
-using std::shared_ptr;
-using std::unique_ptr;
-using namespace std::chrono_literals;
-
 extern const client::YBTableName kTableName;
 
-class QLDmlTestBase : public YBMiniClusterTestBase<MiniCluster> {
+class QLDmlTestBase : public MiniClusterTestWithClient<MiniCluster> {
  public:
   void SetUp() override;
   void DoTearDown() override;
 
-  // Create a new YB session
-  shared_ptr<client::YBSession> NewSession() {
-    const shared_ptr<client::YBSession> session(client_->NewSession());
-    session->SetTimeout(60s);
-    return session;
-  }
-
- protected:
-  virtual CHECKED_STATUS CreateClient();
-
-  shared_ptr<YBClient> client_;
+  virtual ~QLDmlTestBase() {}
 };
 
 YB_STRONGLY_TYPED_BOOL(Transactional);
@@ -66,37 +51,76 @@ YB_DEFINE_ENUM(WriteOpType, (INSERT)(UPDATE)(DELETE));
 YB_STRONGLY_TYPED_BOOL(Flush);
 
 class KeyValueTableTest : public QLDmlTestBase {
- protected:
-  void CreateTable(Transactional transactional);
+ public:
+  static void CreateTable(Transactional transactional, YBClient* client, TableHandle* table);
 
   // Insert/update a full, single row, equivalent to the statement below. Return a YB write op that
   // has been applied.
   // op_type == WriteOpType::INSERT: insert into t values (key, value);
   // op_type == WriteOpType::UPDATE: update t set v=value where k=key;
   // op_type == WriteOpType::DELETE: delete from t where k=key; (parameter "value" is unused).
-  Result<shared_ptr<YBqlWriteOp>> WriteRow(
-      const YBSessionPtr& session, int32_t key, int32_t value,
+  static Result<YBqlWriteOpPtr> WriteRow(
+      TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t value,
       const WriteOpType op_type = WriteOpType::INSERT,
       Flush flush = Flush::kTrue);
 
-  Result<shared_ptr<YBqlWriteOp>> DeleteRow(
-      const YBSessionPtr& session, int32_t key);
+  static Result<YBqlWriteOpPtr> DeleteRow(
+      TableHandle* table, const YBSessionPtr& session, int32_t key);
 
-  Result<shared_ptr<YBqlWriteOp>> UpdateRow(
-      const YBSessionPtr& session, int32_t key, int32_t value);
+  static Result<YBqlWriteOpPtr> UpdateRow(
+      TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t value);
+
+  // Select the specified columns of a row using a primary key, equivalent to the select statement
+  // below. Return a YB read op that has been applied.
+  //   select <columns...> from t where h1 = <h1> and h2 = <h2> and r1 = <r1> and r2 = <r2>;
+  static Result<int32_t> SelectRow(
+      TableHandle* table, const YBSessionPtr& session, int32_t key,
+      const std::string& column = kValueColumn);
+
+  // Selects all rows from test table, returning map key => value.
+  static Result<std::map<int32_t, int32_t>> SelectAllRows(
+      TableHandle* table, const YBSessionPtr& session);
+
+ protected:
+  void CreateTable(Transactional transactional);
+
+  Result<YBqlWriteOpPtr> WriteRow(
+      const YBSessionPtr& session, int32_t key, int32_t value,
+      const WriteOpType op_type = WriteOpType::INSERT,
+      Flush flush = Flush::kTrue) {
+    return WriteRow(&table_, session, key, value, op_type, flush);
+  }
+
+  Result<YBqlWriteOpPtr> DeleteRow(const YBSessionPtr& session, int32_t key) {
+    return DeleteRow(&table_, session, key);
+  }
+
+  Result<YBqlWriteOpPtr> UpdateRow(const YBSessionPtr& session, int32_t key, int32_t value) {
+    return UpdateRow(&table_, session, key, value);
+  }
 
   // Select the specified columns of a row using a primary key, equivalent to the select statement
   // below. Return a YB read op that has been applied.
   //   select <columns...> from t where h1 = <h1> and h2 = <h2> and r1 = <r1> and r2 = <r2>;
   Result<int32_t> SelectRow(const YBSessionPtr& session, int32_t key,
-                            const std::string& column = kValueColumn);
+                            const std::string& column = kValueColumn) {
+    return SelectRow(&table_, session, key, column);
+  }
 
-  YBSessionPtr CreateSession(const YBTransactionPtr& transaction = nullptr);
+  YBSessionPtr CreateSession(const YBTransactionPtr& transaction = nullptr,
+                             const server::ClockPtr& clock = nullptr);
+
+  // Selects all rows from test table, returning map key => value.
+  Result<std::map<int32_t, int32_t>> SelectAllRows(const YBSessionPtr& session) {
+    return SelectAllRows(&table_, session);
+  }
 
   static const std::string kKeyColumn;
   static const std::string kValueColumn;
   TableHandle table_;
 };
+
+CHECKED_STATUS CheckOp(YBqlOp* op);
 
 }  // namespace client
 }  // namespace yb

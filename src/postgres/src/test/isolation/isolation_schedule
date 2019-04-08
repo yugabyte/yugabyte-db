@@ -27,6 +27,7 @@ test: fk-deadlock2
 test: eval-plan-qual
 test: lock-update-delete
 test: lock-update-traversal
+test: inherit-temp
 test: insert-conflict-do-nothing
 test: insert-conflict-do-nothing-2
 test: insert-conflict-do-update
@@ -65,3 +66,12 @@ test: sequence-ddl
 test: async-notify
 test: vacuum-reltuples
 test: timeouts
+test: vacuum-concurrent-drop
+test: predicate-hash
+test: predicate-gist
+test: predicate-gin
+test: partition-key-update-1
+test: partition-key-update-2
+test: partition-key-update-3
+test: partition-key-update-4
+test: plpgsql-toast

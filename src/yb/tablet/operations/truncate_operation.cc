@@ -16,6 +16,7 @@
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
@@ -30,6 +31,10 @@ using consensus::ReplicateMsg;
 using consensus::TRUNCATE_OP;
 using consensus::DriverType;
 using strings::Substitute;
+
+void TruncateOperationState::UpdateRequestFromConsensusRound() {
+  request_ = consensus_round()->replicate_msg()->mutable_truncate_request();
+}
 
 string TruncateOperationState::ToString() const {
   return Format("TruncateOperationState [hybrid_time=$0]", hybrid_time_even_if_unset());

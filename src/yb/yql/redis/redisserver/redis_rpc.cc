@@ -52,6 +52,11 @@ DEFINE_uint64(redis_max_read_buffer_size, 128_MB,
 DEFINE_uint64(redis_max_queued_bytes, 128_MB,
               "Max number of bytes in queued redis commands.");
 
+DEFINE_int32(
+    redis_connection_soft_limit_grace_period_sec, 60,
+    "The duration for which the outbound data needs to exceeed the softlimit "
+    "before the connection gets closed down.");
+
 namespace yb {
 namespace redisserver {
 
@@ -59,16 +64,17 @@ RedisConnectionContext::RedisConnectionContext(
     rpc::GrowableBufferAllocator* allocator,
     const MemTrackerPtr& call_tracker)
     : ConnectionContextWithQueue(
-          allocator, FLAGS_redis_max_concurrent_commands, FLAGS_redis_max_queued_bytes),
+          FLAGS_redis_max_concurrent_commands, FLAGS_redis_max_queued_bytes),
+      read_buffer_(allocator, FLAGS_redis_max_read_buffer_size),
       call_mem_tracker_(call_tracker) {}
 
 RedisConnectionContext::~RedisConnectionContext() {}
 
-Result<size_t> RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
-                                                    const IoVecs& data,
-                                                    rpc::ReadBufferFull read_buffer_full) {
+Result<rpc::ProcessDataResult> RedisConnectionContext::ProcessCalls(
+    const rpc::ConnectionPtr& connection, const IoVecs& data,
+    rpc::ReadBufferFull read_buffer_full) {
   if (!can_enqueue()) {
-    return 0;
+    return rpc::ProcessDataResult{0, Slice()};
   }
 
   if (!parser_) {
@@ -86,8 +92,8 @@ Result<size_t> RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& co
     }
     end_of_batch_ = end_of_command;
     if (++commands_in_batch_ >= FLAGS_redis_max_batch) {
-      std::vector<char> call_data;
-      IoVecsToBuffer(data, begin_of_batch, end_of_batch_, &call_data);
+      rpc::CallData call_data(end_of_batch_ - begin_of_batch);
+      IoVecsToBuffer(data, begin_of_batch, end_of_batch_, call_data.data());
       RETURN_NOT_OK(HandleInboundCall(connection, commands_in_batch_, &call_data));
       begin_of_batch = end_of_batch_;
       commands_in_batch_ = 0;
@@ -97,20 +103,20 @@ Result<size_t> RedisConnectionContext::ProcessCalls(const rpc::ConnectionPtr& co
   // Do not form new call if we are in a middle of command.
   // It means that soon we should receive remaining data for this command and could wait.
   if (commands_in_batch_ > 0 && (end_of_batch_ == IoVecsFullSize(data) || read_buffer_full)) {
-    std::vector<char> call_data;
-    IoVecsToBuffer(data, begin_of_batch, end_of_batch_, &call_data);
+    rpc::CallData call_data(end_of_batch_ - begin_of_batch);
+    IoVecsToBuffer(data, begin_of_batch, end_of_batch_, call_data.data());
     RETURN_NOT_OK(HandleInboundCall(connection, commands_in_batch_, &call_data));
     begin_of_batch = end_of_batch_;
     commands_in_batch_ = 0;
   }
   parser.Consume(begin_of_batch);
   end_of_batch_ -= begin_of_batch;
-  return begin_of_batch;
+  return rpc::ProcessDataResult{begin_of_batch, Slice()};
 }
 
 Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection,
                                                  size_t commands_in_batch,
-                                                 std::vector<char>* data) {
+                                                 rpc::CallData* data) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
@@ -127,8 +133,57 @@ Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& conne
   return Status::OK();
 }
 
-size_t RedisConnectionContext::BufferLimit() {
-  return FLAGS_redis_max_read_buffer_size;
+Status RedisConnectionContext::ReportPendingWriteBytes(size_t pending_bytes) {
+  static constexpr size_t kHardLimit = 32_MB;
+  static constexpr size_t kSoftLimit = 8_MB;
+  auto mode = ClientMode();
+  DVLOG(3) << "Connection in mode " << ToString(mode) << " has " << pending_bytes
+           << " bytes in the queue.";
+  if (mode == RedisClientMode::kNormal) {
+    return Status::OK();
+  }
+
+  // We use the same buffering logic for subscribers and monitoring clients.
+  // Close a client if:
+  // 1) it exceeds the hard limit of 32MB. or
+  // 2) it has been over the soft limit of 8MB for longer than 1min.
+  if (pending_bytes > kHardLimit) {
+    LOG(INFO) << "Connection in mode " << ToString(mode) << " has reached the HardLimit. "
+              << pending_bytes << " bytes in the queue.";
+    return STATUS(NetworkError, "Slow Redis Client: HardLimit exceeded.");
+  } else if (pending_bytes > kSoftLimit) {
+    auto now = CoarseMonoClock::Now();
+    static const CoarseDuration kGracePeriod =
+        std::chrono::seconds(FLAGS_redis_connection_soft_limit_grace_period_sec);
+    if (soft_limit_exceeded_since_ == CoarseTimePoint::max()) {
+      DVLOG(1) << "Connection in mode " << ToString(mode) << " has reached the Softlimit now. "
+               << pending_bytes << " bytes in the queue.";
+      soft_limit_exceeded_since_ = now;
+    } else if (now > soft_limit_exceeded_since_ + kGracePeriod) {
+      LOG(INFO) << "Connection in mode " << ToString(mode) << " has reached the Softlimit > "
+                << yb::ToString(kGracePeriod) << " ago. " << pending_bytes
+                << " bytes in the queue.";
+      return STATUS(NetworkError, "Slow Redis Client: Softlimit exceeded.");
+    } else {
+      DVLOG(1) << "Connection in mode " << ToString(mode)
+               << " has reached the Softlimit less than  " << yb::ToString(kGracePeriod) << " ago. "
+               << pending_bytes;
+    }
+  } else {
+    if (soft_limit_exceeded_since_ != CoarseTimePoint::max()) {
+      DVLOG(1) << "Connection in mode " << ToString(mode) << " has dropped below the Softlimit. "
+               << pending_bytes << " bytes in the queue.";
+      soft_limit_exceeded_since_ = CoarseTimePoint::max();
+    }
+  }
+  return Status::OK();
+}
+
+void RedisConnectionContext::Shutdown(const Status& status) {
+  if (cleanup_hook_) {
+    cleanup_hook_();
+  }
+  rpc::ConnectionContextWithQueue::Shutdown(status);
 }
 
 RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
@@ -152,13 +207,13 @@ RedisInboundCall::~RedisInboundCall() {
 }
 
 Status RedisInboundCall::ParseFrom(
-    const MemTrackerPtr& mem_tracker, size_t commands, std::vector<char>* data) {
+    const MemTrackerPtr& mem_tracker, size_t commands, rpc::CallData* data) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "RedisInboundCall", this);
   TRACE_EVENT0("rpc", "RedisInboundCall::ParseFrom");
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, data->size());
 
-  request_data_.swap(*data);
+  request_data_ = std::move(*data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
   client_batch_.resize(commands);
@@ -200,8 +255,19 @@ const std::string& RedisInboundCall::method_name() const {
   return result;
 }
 
-MonoTime RedisInboundCall::GetClientDeadline() const {
-  return MonoTime::Max();  // No timeout specified in the protocol for Redis.
+CoarseTimePoint RedisInboundCall::GetClientDeadline() const {
+  return CoarseTimePoint::max();  // No timeout specified in the protocol for Redis.
+}
+
+void RedisInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const {
+    rpc::RedisCallDetailsPB* redis_details = call_in_progress_pb->mutable_redis_details();
+    for (const RedisClientCommand& command : client_batch_) {
+        string query;
+        for (const Slice& arg : command) {
+            query += " " + arg.ToDebugString(FLAGS_rpcz_max_redis_query_dump_size);
+        }
+        redis_details->add_call_details()->set_redis_string(query);
+    }
 }
 
 void RedisInboundCall::LogTrace() const {
@@ -209,8 +275,11 @@ void RedisInboundCall::LogTrace() const {
   auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
 
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
-    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
-    trace_->Dump(&LOG(INFO), /* include_time_deltas */ true);
+    LOG(WARNING) << ToString() << " took " << total_time << "ms. Details:";
+    rpc::RpcCallInProgressPB call_in_progress_pb;
+    GetCallDetails(&call_in_progress_pb);
+    LOG(WARNING) << call_in_progress_pb.DebugString() << "Trace: ";
+    trace_->Dump(&LOG(WARNING), /* include_time_deltas */ true);
   }
 }
 
@@ -230,15 +299,7 @@ bool RedisInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
     return true;
   }
 
-  rpc::RedisCallDetailsPB* redis_details = resp->mutable_redis_details();
-  for (RedisClientCommand command : client_batch_) {
-    string query = "";
-    for (Slice arg : command) {
-      query += " " + arg.ToDebugString(FLAGS_rpcz_max_redis_query_dump_size);
-    }
-    redis_details->add_call_details()->set_redis_string(query);
-  }
-
+  GetCallDetails(resp);
   return true;
 }
 
@@ -279,6 +340,8 @@ Out DoSerializeResponses(const Collection& responses, Out out) {
       } else {
         out = SerializeArray(redis_response.array_response().elements(), out);
       }
+    } else if (redis_response.has_encoded_response()) {
+      out = SerializeEncoded(redis_response.encoded_response(), out);
     } else {
       out = SerializeEncoded(kOkResponse, out);
     }
@@ -296,7 +359,7 @@ RefCntBuffer SerializeResponses(const Collection& responses) {
   return result;
 }
 
-void RedisInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
+void RedisInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   output->push_back(SerializeResponses(responses_));
 }
 

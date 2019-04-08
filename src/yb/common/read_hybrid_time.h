@@ -34,6 +34,9 @@ struct ReadHybridTime {
   // Read time limit, that is used for global entries, for instance transactions.
   HybridTime global_limit;
 
+  // Read time limit for intents from the same transaction.
+  HybridTime in_txn_limit;
+
   // Serial no of request that uses this read hybrid time.
   int64_t serial_no = 0;
 
@@ -42,7 +45,7 @@ struct ReadHybridTime {
   }
 
   static ReadHybridTime SingleTime(HybridTime value) {
-    return {value, value, value, 0};
+    return {value, value, value, HybridTime::kMax, 0};
   }
 
   static ReadHybridTime FromMicros(MicrosTime micros) {
@@ -54,7 +57,7 @@ struct ReadHybridTime {
   }
 
   static ReadHybridTime FromHybridTimeRange(const HybridTimeRange& range) {
-    return {range.first, range.second, range.second, 0};
+    return {range.first, range.second, range.second, HybridTime::kMax, 0};
   }
 
   template <class PB>
@@ -79,16 +82,25 @@ struct ReadHybridTime {
       HybridTime(read_time.read_ht()),
       HybridTime(read_time.local_limit_ht()),
       HybridTime(read_time.global_limit_ht()),
+      // Use max hybrid time for backward compatibility.
+      read_time.in_txn_limit_ht() ? HybridTime(read_time.in_txn_limit_ht()) : HybridTime::kMax,
+      0
     };
+  }
+
+  template <class PB>
+  void ToPB(PB* out) const {
+    out->set_read_ht(read.ToUint64());
+    out->set_local_limit_ht(local_limit.ToUint64());
+    out->set_global_limit_ht(global_limit.ToUint64());
+    out->set_in_txn_limit_ht(
+        in_txn_limit.is_valid() ? in_txn_limit.ToUint64() : HybridTime::kMax.ToUint64());
   }
 
   template <class PB>
   void AddToPB(PB* pb) const {
     if (read.is_valid()) {
-      auto* out = pb->mutable_read_time();
-      out->set_read_ht(read.ToUint64());
-      out->set_local_limit_ht(local_limit.ToUint64());
-      out->set_global_limit_ht(global_limit.ToUint64());
+      ToPB(pb->mutable_read_time());
     } else {
       pb->clear_read_time();
     }
@@ -103,8 +115,8 @@ struct ReadHybridTime {
   }
 
   std::string ToString() const {
-    return Format("{ read: $0 local_limit: $1 global_limit: $2 serial_no: $3}",
-                  read, local_limit, global_limit, serial_no);
+    return Format("{ read: $0 local_limit: $1 global_limit: $2 in_txn_limit: $3 serial_no: $4 }",
+                  read, local_limit, global_limit, in_txn_limit, serial_no);
   }
 };
 

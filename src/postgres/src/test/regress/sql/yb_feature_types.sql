@@ -1,0 +1,100 @@
+--
+-- YB_FEATURE Testsuite
+--   An introduction on whether or not a feature is supported in YugaByte.
+--   This test suite does not go in depth for each command.
+--
+-- Numeric Types
+CREATE TABLE feature_tab_smallint (feature_col SMALLINT);
+CREATE TABLE feature_tab_integer (feature_col INTEGER);
+CREATE TABLE feature_tab_bigint (feature_col BIGINT);
+CREATE TABLE feature_tab_real (feature_col REAL);
+CREATE TABLE feature_tab_double_precision (feature_col DOUBLE PRECISION);
+CREATE TABLE feature_tab_decimal (feature_col DECIMAL);
+CREATE TABLE feature_tab_numeric (feature_col NUMERIC);
+CREATE TABLE feature_tab_smallserial (feature_col SMALLSERIAL);
+CREATE TABLE feature_tab_serial (feature_col SERIAL);
+CREATE TABLE feature_tab_bigserial (feature_col BIGSERIAL);
+--
+-- Monetary Types
+CREATE TABLE feature_tab_money (feature_col MONEY);
+--
+-- Character Types
+CREATE TABLE feature_tab_character_varying (feature_col CHARACTER VARYING(10));
+CREATE TABLE feature_tab_varchar (feature_col VARCHAR(10));
+CREATE TABLE feature_tab_character (feature_col CHARACTER(10));
+CREATE TABLE feature_tab_char (feature_col CHAR(10));
+CREATE TABLE feature_tab_text (feature_col TEXT);
+--
+-- Binary Types
+CREATE TABLE feature_tab_bytea (feature_col BYTEA);
+--
+-- Date Time Types
+CREATE TABLE feature_tab_timestamp (feature_col TIMESTAMP(2));
+CREATE TABLE feature_tab_timestamp_with_time_zone (feature_col TIMESTAMP WITH TIME ZONE);
+CREATE TABLE feature_tab_date (feature_col DATE);
+CREATE TABLE feature_tab_time (feature_col TIME(2));
+CREATE TABLE feature_tab_time_with_time_zone (feature_col TIME(2) WITH TIME ZONE);
+CREATE TABLE feature_tab_interval_ym (feature_col INTERVAL YEAR TO MONTH);
+CREATE TABLE feature_tab_interval_ds (feature_col INTERVAL DAY TO SECOND(2));
+--
+-- Boolean Type
+CREATE TABLE feature_tab_bool (feature_col BOOLEAN);
+--
+-- Enumerated Types
+CREATE TYPE feature_enum AS ENUM('one', 'two', 'three');
+CREATE TABLE feature_tab_enum (feature_col feature_enum);
+--
+-- Geometric Types
+CREATE TABLE feature_tab_point (feature_col POINT);
+CREATE TABLE feature_tab_line (feature_col LINE);
+CREATE TABLE feature_tab_lseg (feature_col LSEG);
+CREATE TABLE feature_tab_box (feature_col BOX);
+CREATE TABLE feature_tab_path (feature_col PATH);
+CREATE TABLE feature_tab_polygon (feature_col POLYGON);
+CREATE TABLE feature_tab_circle (feature_col CIRCLE);
+--
+-- Network Address Types
+CREATE TABLE feature_tab_cidr (feature_col CIDR);
+CREATE TABLE feature_tab_inet (feature_col INET);
+CREATE TABLE feature_tab_macaddr (feature_col MACADDR);
+CREATE TABLE feature_tab_macaddr8 (feature_col MACADDR8);
+--
+-- Bit String Types
+CREATE TABLE feature_tab_bit (feature_col BIT);
+CREATE TABLE feature_tab_bit_varying (feature_col BIT VARYING(10));
+--
+-- Text Search Types
+CREATE TABLE feature_tab_tsvector (feature_col TSVECTOR);
+CREATE TABLE feature_tab_tsquery (feature_col TSQUERY);
+--
+-- UUID Type
+CREATE TABLE feature_tab_uuid (feature_col UUID);
+--
+-- XML Type
+CREATE TABLE feature_tab_xml (feature_col XML);
+--
+-- Arrays
+CREATE TABLE feature_tab_array_int (feature_col INTEGER[]);
+CREATE TABLE feature_tab_array_text (feature_col TEXT[]);
+--
+-- Composite Types
+CREATE TYPE feature_struct AS(id INTEGER, name TEXT)
+CREATE TABLE feature_tab_struct (feature_col feature_struct);
+--
+-- JSON Types
+-- Need Test
+--
+-- Range Types
+-- Need Test
+--
+-- Domain Types
+-- Need Test
+--
+-- Object Identifier Types
+-- Need Test
+--
+-- pg_lsn Type
+-- Need Test
+--
+-- Pseudo-Types
+-- Need Test

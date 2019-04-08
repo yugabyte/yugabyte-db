@@ -8,6 +8,7 @@ import itertools
 import logging
 import os
 import re
+import sys
 
 
 MODULE_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -152,3 +153,7 @@ def get_yb_src_root_from_build_root(build_dir, verbose=False, must_succeed=False
             raise RuntimeError(error_msg)
 
     return yb_src_root
+
+
+def is_macos():
+    return sys.platform == 'darwin'

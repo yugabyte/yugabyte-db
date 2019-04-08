@@ -2,7 +2,7 @@
 /*
  * Scanner for the configuration file
  *
- * Copyright (c) 2000-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2018, PostgreSQL Global Development Group
  *
  * src/backend/utils/misc/guc-file.l
  */
@@ -57,6 +57,8 @@ static void record_config_file_error(const char *errmsg,
 static int	GUC_flex_fatal(const char *msg);
 static char *GUC_scanstr(const char *s);
 
+/* LCOV_EXCL_START */
+
 %}
 
 %option 8bit
@@ -107,7 +109,7 @@ STRING			\'([^'\\\n]|\\.|\'\')*\'
 
 %%
 
-
+/* LCOV_EXCL_STOP */
 
 /*
  * Exported function to read and process the configuration file. The

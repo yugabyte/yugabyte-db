@@ -25,6 +25,12 @@ class address;
 template <typename InternetProtocol>
 class basic_endpoint;
 
+template <typename InternetProtocol>
+class basic_resolver;
+
+template <typename InternetProtocol>
+class basic_resolver_results;
+
 class tcp;
 
 } // namespace ip
@@ -37,6 +43,9 @@ typedef boost::asio::ip::address IpAddress;
 typedef boost::asio::ip::basic_endpoint<boost::asio::ip::tcp> Endpoint;
 class HostPort;
 class Tunnel;
+typedef boost::asio::ip::basic_resolver<boost::asio::ip::tcp> Resolver;
+typedef boost::asio::ip::basic_resolver_results<boost::asio::ip::tcp> ResolverResults;
+
 
 } // namespace yb
 

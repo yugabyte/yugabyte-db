@@ -42,6 +42,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
 import org.yb.Common.TableType;
+import org.yb.Common.YQLDatabase;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
@@ -80,9 +81,6 @@ public class YBClient implements AutoCloseable {
   // Redis key column name.
   public static final String REDIS_KEY_COLUMN_NAME = "key";
 
-  // 2 power 16
-  public static final int TWO_POWER_SIXTEEN = (int)Math.pow(2, 16);
-
   // Number of response errors to tolerate.
   private static final int MAX_ERRORS_TO_IGNORE = 2500;
 
@@ -119,7 +117,8 @@ public class YBClient implements AutoCloseable {
   }
 
   public void createRedisNamespace() throws Exception {
-    CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME);
+    CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME,
+                                                      YQLDatabase.YQL_DATABASE_REDIS);
     if (resp.hasError()) {
       throw new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME +
                                  ". Error :" + resp.errorMessage());
@@ -187,6 +186,16 @@ public class YBClient implements AutoCloseable {
   public CreateKeyspaceResponse createKeyspace(String keyspace)
       throws Exception {
     Deferred<CreateKeyspaceResponse> d = asyncClient.createKeyspace(keyspace);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /*
+   * Create a keyspace (namespace) for the specified database type.
+   * @param non-null name of the keyspace.
+   */
+  public CreateKeyspaceResponse createKeyspace(String keyspace, YQLDatabase databaseType)
+      throws Exception {
+    Deferred<CreateKeyspaceResponse> d = asyncClient.createKeyspace(keyspace, databaseType);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -674,6 +683,16 @@ public class YBClient implements AutoCloseable {
   public String getMasterAddresses(HostAndPort hp) throws Exception {
     Deferred<GetMasterAddressesResponse> d = asyncClient.getMasterAddresses(hp);
     return d.join(getDefaultAdminOperationTimeoutMs()).getMasterAddresses();
+  }
+
+  /**
+   * Check if the tserver is ready to serve requests.
+   * @param hp the host and port of the tablet server.
+   * @return tablet server readiness response.
+   */
+  public IsTabletServerReadyResponse isTServerReady(HostAndPort hp) throws Exception {
+    Deferred<IsTabletServerReadyResponse> d = asyncClient.isTServerReady(hp);
+    return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
   public interface Condition {

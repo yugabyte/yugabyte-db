@@ -4,7 +4,7 @@
  *
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/nodeBitmapHeapscan.h
@@ -27,6 +27,6 @@ extern void ExecBitmapHeapInitializeDSM(BitmapHeapScanState *node,
 extern void ExecBitmapHeapReInitializeDSM(BitmapHeapScanState *node,
 							  ParallelContext *pcxt);
 extern void ExecBitmapHeapInitializeWorker(BitmapHeapScanState *node,
-							   shm_toc *toc);
+							   ParallelWorkerContext *pwcxt);
 
 #endif							/* NODEBITMAPHEAPSCAN_H */

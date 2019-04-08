@@ -92,6 +92,11 @@
       <artifactId>postgresql</artifactId>
       <version>42.2.2</version>
     </dependency>
+    <dependency>
+      <groupId>com.yugabyte</groupId>
+      <artifactId>yb-sample-apps</artifactId>
+      <version>1.0.9</version>
+    </dependency>
   </dependencies>
 
   <build>
@@ -135,19 +140,6 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-assembly-plugin</artifactId>
-        <configuration>
-          <finalName>yb-sample-apps</finalName>
-          <appendAssemblyId>false</appendAssemblyId>
-          <archive>
-            <manifest>
-              <mainClass>com.yugabyte.sample.Main</mainClass>
-            </manifest>
-          </archive>
-        </configuration>
       </plugin>
     </plugins>
   </build>

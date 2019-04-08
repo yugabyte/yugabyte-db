@@ -112,6 +112,23 @@ YBColumnSpec* YBColumnSpec::Counter() {
   return this;
 }
 
+YBColumnSpec* YBColumnSpec::JsonOp(JsonOperatorPB op, const QLValuePB& value) {
+  data_->json_ops.push_back(ColumnSchema::QLJsonOperation(op, value));
+  return this;
+}
+
+YBColumnSpec* YBColumnSpec::JsonOp(JsonOperatorPB op, const std::string& str_value) {
+  QLValuePB v;
+  v.set_string_value(str_value);
+  return JsonOp(op, v);
+}
+
+YBColumnSpec* YBColumnSpec::JsonOp(JsonOperatorPB op, int32_t int_value) {
+  QLValuePB v;
+  v.set_int32_value(int_value);
+  return JsonOp(op, v);
+}
+
 YBColumnSpec* YBColumnSpec::RenameTo(const std::string& new_name) {
   data_->has_rename_to = true;
   data_->rename_to = new_name;
@@ -136,7 +153,7 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
 
   *col = YBColumnSchema(data_->name, data_->type, nullable, data_->hash_primary_key,
                         data_->static_column, data_->is_counter, data_->order,
-                        data_->sorting_type);
+                        data_->sorting_type, data_->json_ops);
 
   return Status::OK();
 }
@@ -320,9 +337,10 @@ YBColumnSchema::YBColumnSchema(const std::string &name,
                                bool is_static,
                                bool is_counter,
                                int32_t order,
-                               ColumnSchema::SortingType sorting_type) {
+                               ColumnSchema::SortingType sorting_type,
+                               const ColumnSchema::QLJsonOperations& json_ops) {
   col_ = new ColumnSchema(name, type, is_nullable, is_hash_key, is_static, is_counter, order,
-                          sorting_type);
+                          sorting_type, json_ops);
 }
 
 YBColumnSchema::YBColumnSchema(const YBColumnSchema& other)
@@ -387,6 +405,10 @@ bool YBColumnSchema::is_counter() const {
 
 int32_t YBColumnSchema::order() const {
   return DCHECK_NOTNULL(col_)->order();
+}
+
+const ColumnSchema::QLJsonOperations& YBColumnSchema::json_ops() const {
+  return DCHECK_NOTNULL(col_)->json_ops();
 }
 
 ////////////////////////////////////////////////////////////

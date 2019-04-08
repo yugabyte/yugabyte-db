@@ -17,6 +17,8 @@
 
 #include "yb/master/ts_descriptor.h"
 
+#include "yb/rpc/messenger.h"
+
 namespace yb {
 namespace master {
 
@@ -25,8 +27,23 @@ using std::shared_ptr;
 using std::unique_ptr;
 using std::map;
 
+namespace {
+
+const std::string kPeer = "peer";
+const std::string kDataCenter = "data_center";
+const std::string kHostId = "host_id";
+const std::string kPreferredIp = "preferred_ip";
+const std::string kRack = "rack";
+const std::string kReleaseVersion = "release_version";
+const std::string kRPCAddress = "rpc_address";
+const std::string kSchemaVersion = "schema_version";
+const std::string kTokens = "tokens";
+
+} // namespace
+
 PeersVTable::PeersVTable(const Master* const master)
-    : YQLVirtualTable(master::kSystemPeersTableName, master, CreateSchema()) {
+    : YQLVirtualTable(master::kSystemPeersTableName, master, CreateSchema()),
+      resolver_(new Resolver(master->messenger()->io_service())) {
 }
 
 Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
@@ -44,51 +61,87 @@ Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
   InetAddress remote_endpoint;
   RETURN_NOT_OK(remote_endpoint.FromString(request.remote_endpoint().host()));
 
+  const auto& proxy_uuid = request.proxy_uuid();
+
   // Populate the YQL rows.
   vtable->reset(new QLRowBlock(schema_));
 
-  size_t index = 0;
-  for (const shared_ptr<TSDescriptor>& desc : descs) {
-    size_t current_index = index++;
+  struct Entry {
+    size_t index;
     TSInformationPB ts_info;
-    // This is thread safe since all operations are reads.
-    desc->GetTSInformationPB(&ts_info);
+    util::PublicPrivateIPFutures ts_ips;
+  };
 
+  std::vector<Entry> entries;
+  entries.reserve(descs.size());
+
+  size_t index = 0;
+  for (const auto& desc : descs) {
+    size_t current_index = index++;
+
+    // This is thread safe since all operations are reads.
+    TSInformationPB ts_info = desc->GetTSInformationPB();
+
+    if (!proxy_uuid.empty()) {
+      if (desc->permanent_uuid() == proxy_uuid) {
+        continue;
+      }
+    } else {
+      // In case of old proxy, fallback to old endpoint based mechanism.
+      if (util::RemoteEndpointMatchesTServer(ts_info, remote_endpoint)) {
+        continue;
+      }
+    }
+
+    entries.push_back({current_index, std::move(ts_info)});
+    auto& entry = entries.back();
+    entry.ts_ips = util::GetPublicPrivateIPFutures(entry.ts_info, resolver_.get());
+  }
+
+  for (const auto& entry : entries) {
     // The system.peers table has one entry for each of its peers, whereas there is no entry for
     // the node that the CQL client connects to. In this case, this node is the 'remote_endpoint'
     // in QLReadRequestPB since that is address of the CQL proxy which sent this request. As a
     // result, skip 'remote_endpoint' in the results.
-    if (!util::RemoteEndpointMatchesTServer(ts_info, remote_endpoint)) {
-      auto ips = util::GetPublicPrivateIPs(ts_info);
-      // Need to use only 1 rpc address per node since system.peers has only 1 entry for each host,
-      // so pick the first one.
-      if (ips.ok()) {
-        QLRow &row = (*vtable)->Extend();
-        RETURN_NOT_OK(SetColumnValue(kPeer, ips->public_ip, &row));
-        RETURN_NOT_OK(SetColumnValue(kRPCAddress, ips->public_ip, &row));
-        RETURN_NOT_OK(SetColumnValue(kPreferredIp, ips->private_ip, &row));
-
-        // Datacenter and rack.
-        CloudInfoPB cloud_info = ts_info.registration().common().cloud_info();
-        RETURN_NOT_OK(SetColumnValue(kDataCenter, cloud_info.placement_region(), &row));
-        RETURN_NOT_OK(SetColumnValue(kRack, cloud_info.placement_zone(), &row));
-
-        // HostId.
-        Uuid host_id;
-        RETURN_NOT_OK(host_id.FromHexString(ts_info.tserver_instance().permanent_uuid()));
-        RETURN_NOT_OK(SetColumnValue(kHostId, host_id, &row));
-
-        // schema_version.
-        Uuid schema_version;
-        RETURN_NOT_OK(schema_version.FromString(master::kDefaultSchemaVersion));
-        RETURN_NOT_OK(SetColumnValue(kSchemaVersion, schema_version, &row));
-
-        // Tokens.
-        RETURN_NOT_OK(SetColumnValue(
-            kTokens, util::GetTokensValue(current_index, descs.size()), &row));
-      } else {
-      }
+    auto private_ip = entry.ts_ips.private_ip_future.get();
+    if (!private_ip.ok()) {
+      LOG(ERROR) << "Failed to get private ip from " << entry.ts_info.ShortDebugString()
+                 << ": " << private_ip.status();
+      continue;
     }
+
+    auto public_ip = entry.ts_ips.public_ip_future.get();
+    if (!public_ip.ok()) {
+      LOG(ERROR) << "Failed to get public ip from " << entry.ts_info.ShortDebugString()
+                 << ": " << public_ip.status();
+      continue;
+    }
+
+    // Need to use only 1 rpc address per node since system.peers has only 1 entry for each host,
+    // so pick the first one.
+    QLRow &row = (*vtable)->Extend();
+    RETURN_NOT_OK(SetColumnValue(kPeer, *public_ip, &row));
+    RETURN_NOT_OK(SetColumnValue(kRPCAddress, *public_ip, &row));
+    RETURN_NOT_OK(SetColumnValue(kPreferredIp, *private_ip, &row));
+
+    // Datacenter and rack.
+    CloudInfoPB cloud_info = entry.ts_info.registration().common().cloud_info();
+    RETURN_NOT_OK(SetColumnValue(kDataCenter, cloud_info.placement_region(), &row));
+    RETURN_NOT_OK(SetColumnValue(kRack, cloud_info.placement_zone(), &row));
+
+    // HostId.
+    Uuid host_id;
+    RETURN_NOT_OK(host_id.FromHexString(entry.ts_info.tserver_instance().permanent_uuid()));
+    RETURN_NOT_OK(SetColumnValue(kHostId, host_id, &row));
+
+    // schema_version.
+    Uuid schema_version;
+    RETURN_NOT_OK(schema_version.FromString(master::kDefaultSchemaVersion));
+    RETURN_NOT_OK(SetColumnValue(kSchemaVersion, schema_version, &row));
+
+    // Tokens.
+    RETURN_NOT_OK(SetColumnValue(
+        kTokens, util::GetTokensValue(entry.index, descs.size()), &row));
   }
 
   return Status::OK();

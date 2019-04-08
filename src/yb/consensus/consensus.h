@@ -41,9 +41,10 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/ref_counted_replicate.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -84,19 +85,11 @@ class TabletServerErrorPB;
 namespace consensus {
 
 class ConsensusCommitContinuation;
-class ConsensusRound;
 class ReplicaOperationFactory;
 
 typedef int64_t ConsensusTerm;
 
 typedef std::function<void(const Status& status, int64_t leader_term)> ConsensusReplicatedCallback;
-
-typedef scoped_refptr<ConsensusRound> ConsensusRoundPtr;
-typedef std::vector<ConsensusRoundPtr> ConsensusRounds;
-
-struct ConsensusOptions {
-  std::string tablet_id;
-};
 
 // After completing bootstrap, some of the results need to be plumbed through
 // into the consensus implementation.
@@ -120,19 +113,37 @@ struct ConsensusBootstrapInfo {
   DISALLOW_COPY_AND_ASSIGN(ConsensusBootstrapInfo);
 };
 
-// Used for a callback that sets a transaction's timestamp and starts the MVCC transaction for
-// YB tables. In YB tables, we assign timestamp at the time of appending an entry to the Raft
-// log, so that timestamps always keep increasing in the log, unless entries are being overwritten.
-class ConsensusAppendCallback {
- public:
-  virtual void HandleConsensusAppend() = 0;
-  virtual ~ConsensusAppendCallback() {}
- private:
-};
-
-YB_STRONGLY_TYPED_BOOL(TEST_SuppressVoteRequest);
-
 struct LeaderState;
+
+// Mode is orthogonal to pre-elections, so any combination could be used.
+YB_DEFINE_ENUM(ElectionMode,
+    // A normal leader election. Peers will not vote for this node
+    // if they believe that a leader is alive.
+    (NORMAL_ELECTION)
+    // In this mode, peers will vote for this candidate even if they
+    // think a leader is alive. This can be used for a faster hand-off
+    // between a leader and one of its replicas.
+    (ELECT_EVEN_IF_LEADER_IS_ALIVE));
+
+// Arguments for StartElection.
+struct LeaderElectionData {
+  ElectionMode mode;
+
+  // pending_commit - we should start election only after we have specified entry committed.
+  const bool pending_commit = false;
+
+  // must_be_committed_opid - only matters if pending_commit is true.
+  //    If this is specified, we would wait until this entry is committed. If not specified
+  //    (i.e. if this has the default OpId value) it is taken from the last call to StartElection
+  //    with pending_commit = true.
+  OpId must_be_committed_opid = OpId::default_instance();
+
+  // originator_uuid - if election is initiated by an old leader as part of a stepdown procedure,
+  //    this would contain the uuid of the old leader.
+  std::string originator_uuid = std::string();
+
+  TEST_SuppressVoteRequest suppress_vote_request = TEST_SuppressVoteRequest::kFalse;
+};
 
 // The external interface for a consensus peer.
 //
@@ -161,47 +172,7 @@ class Consensus {
   // Emulates a leader election by simply making this peer leader.
   virtual CHECKED_STATUS EmulateElection() = 0;
 
-  // Triggers a leader election. Start an election now or start a pending election. A pending
-  // election will be started pending upon the opid having been committed to this peer's log.
-  // If omitted, the previously queued opid is assumed.
-  enum ElectionMode {
-    // A normal leader election. Peers will not vote for this node
-    // if they believe that a leader is alive.
-    NORMAL_ELECTION,
-
-    // In this mode, peers will vote for this candidate even if they
-    // think a leader is alive. This can be used for a faster hand-off
-    // between a leader and one of its replicas.
-    ELECT_EVEN_IF_LEADER_IS_ALIVE
-  };
-
-  // The elected Leader (this peer) can be in not-ready state because it's not yet synced.
-  // The state reflects the real leader status: not-leader, leader-not-ready, leader-ready.
-  // Not-ready status means that the leader is not ready to serve up-to-date read requests.
-  enum class LeaderStatus {
-    NOT_LEADER,
-    LEADER_BUT_NO_OP_NOT_COMMITTED,
-    LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE,
-    LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE,
-    LEADER_AND_READY
-  };
-
-  // pending_commit - we should start election only after we have specified entry committed.
-  // must_be_committed_opid - only matters if pending_commit is true.
-  //    If this is specified, we would wait until this entry is committed. If not specified
-  //    (i.e. if this has the default OpId value) it is taken from the last call to StartElection
-  //    with pending_commit = true.
-  // originator_uuid - if election is initiated by an old leader as part of a stepdown procedure,
-  //    this would contain the uuid of the old leader.
-  CHECKED_STATUS StartElection(
-      ElectionMode mode,
-      const bool pending_commit = false,
-      const OpId& must_be_committed_opid = OpId::default_instance(),
-      const std::string& originator_uuid = std::string(),
-      TEST_SuppressVoteRequest suppress_vote_request = TEST_SuppressVoteRequest::kFalse) {
-    return DoStartElection(
-        mode, pending_commit, must_be_committed_opid, originator_uuid, suppress_vote_request);
-  }
+  virtual CHECKED_STATUS StartElection(const LeaderElectionData& data) = 0;
 
   // We tried to step down, so you protege become leader.
   // But it failed to win election, so we should reset our withhold time and try to reelect ourself.
@@ -260,7 +231,7 @@ class Consensus {
   virtual CHECKED_STATUS TEST_Replicate(const ConsensusRoundPtr& round) = 0;
 
   // A batch version of Replicate, which is what we try to use as much as possible for performance.
-  virtual CHECKED_STATUS ReplicateBatch(const ConsensusRounds& rounds) = 0;
+  virtual CHECKED_STATUS ReplicateBatch(ConsensusRounds* rounds) = 0;
 
   // Messages sent from LEADER to FOLLOWERS and LEARNERS to update their
   // state machines. This is equivalent to "AppendEntries()" in Raft
@@ -288,7 +259,8 @@ class Consensus {
   // stringified Status message.
   virtual CHECKED_STATUS Update(
       ConsensusRequestPB* request,
-      ConsensusResponsePB* response) = 0;
+      ConsensusResponsePB* response,
+      CoarseTimePoint deadline) = 0;
 
   // Messages sent from CANDIDATEs to voting peers to request their vote
   // in leader election.
@@ -348,6 +320,12 @@ class Consensus {
     return STATUS(NotFound, "Not implemented.");
   }
 
+  Result<OpId> GetLastReceivedOpId() {
+    OpId result;
+    RETURN_NOT_OK(GetLastOpId(OpIdType::RECEIVED_OPID, &result));
+    return result;
+  }
+
   // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's
   // lease has expired, and we have replicated a new lease that has not expired yet).
   virtual CHECKED_STATUS WaitForLeaderLeaseImprecise(MonoTime deadline) = 0;
@@ -364,7 +342,7 @@ class Consensus {
   //
   // Returns 0 if timeout happened.
   virtual MicrosTime MajorityReplicatedHtLeaseExpiration(
-      MicrosTime min_allowed, MonoTime deadline) const = 0;
+      MicrosTime min_allowed, CoarseTimePoint deadline) const = 0;
 
   // This includes heartbeats too.
   virtual MonoTime TimeSinceLastMessageFromLeader() = 0;
@@ -403,13 +381,6 @@ class Consensus {
   };
 
  private:
-  virtual CHECKED_STATUS DoStartElection(
-      ElectionMode mode,
-      const bool pending_commit,
-      const OpId& must_be_committed_opid,
-      const std::string& originator_uuid,
-      TEST_SuppressVoteRequest suppress_vote_request) = 0;
-
   DISALLOW_COPY_AND_ASSIGN(Consensus);
 };
 
@@ -495,28 +466,6 @@ struct StateChangeContext {
   // defaulting to true as they are majority. For ones that do not hold the lock, setting
   // it to false in their constructor suffices currently, so marking it const.
   const bool is_config_locked_ = true;
-};
-
-// Factory for replica transactions.
-// An implementation of this factory must be registered prior to consensus
-// start, and is used to create transactions when the consensus implementation receives
-// messages from the leader.
-//
-// Replica transactions execute the following way:
-//
-// - When a ReplicateMsg is first received from the leader, the Consensus
-//   instance creates the ConsensusRound and calls StartReplicaOperation().
-//   This will trigger the Prepare(). At the same time replica consensus
-//   instance immediately stores the ReplicateMsg in the Log. Once the replicate
-//   message is stored in stable storage an ACK is sent to the leader (i.e. the
-//   replica Consensus instance does not wait for Prepare() to finish).
-class ReplicaOperationFactory {
- public:
-  virtual CHECKED_STATUS StartReplicaOperation(
-      const ConsensusRoundPtr& context, HybridTime propagated_safe_time) = 0;
-  virtual void SetPropagatedSafeTime(HybridTime ht) = 0;
-
-  virtual ~ReplicaOperationFactory() {}
 };
 
 // Context for a consensus round on the LEADER side, typically created as an
@@ -642,14 +591,14 @@ class SafeOpIdWaiter {
 };
 
 struct LeaderState {
-  Consensus::LeaderStatus status;
+  LeaderStatus status;
   int64_t term;
   MonoDelta remaining_old_leader_lease;
 
-  LeaderState& MakeNotReadyLeader(Consensus::LeaderStatus status);
+  LeaderState& MakeNotReadyLeader(LeaderStatus status);
 
   bool ok() const {
-    return status == Consensus::LeaderStatus::LEADER_AND_READY;
+    return status == LeaderStatus::LEADER_AND_READY;
   }
 
   CHECKED_STATUS CreateStatus() const;

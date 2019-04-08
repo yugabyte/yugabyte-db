@@ -42,11 +42,11 @@
 
 #include <boost/function.hpp>
 #include <boost/functional/hash/hash.hpp>
-#include <boost/thread/shared_mutex.hpp>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/schema.h"
 #include "yb/common/common.pb.h"
+#include "yb/common/wire_protocol.h"
 
 #ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
@@ -93,6 +93,7 @@ class TabletLocationsPB;
 }
 
 namespace tserver {
+class LocalTabletServer;
 class TabletServerServiceProxy;
 }
 
@@ -107,9 +108,6 @@ class YBTableCreator;
 class YBTabletServer;
 class YBValue;
 class YBOperation;
-
-// Postgres object identifier (OID).
-typedef uint32_t PgOid;
 
 namespace internal {
 class Batcher;
@@ -290,18 +288,24 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   CHECKED_STATUS DeleteTable(const YBTableName& table_name, bool wait = true);
+  CHECKED_STATUS DeleteTable(const std::string& table_id, bool wait = true);
 
   // Delete the specified index table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   CHECKED_STATUS DeleteIndexTable(const YBTableName& table_name,
-                                  YBTableName* indexed_table_name,
+                                  YBTableName* indexed_table_name = nullptr,
+                                  bool wait = true);
+  CHECKED_STATUS DeleteIndexTable(const std::string& table_id,
+                                  YBTableName* indexed_table_name = nullptr,
                                   bool wait = true);
 
   // Creates a YBTableAlterer; it is the caller's responsibility to free it.
   YBTableAlterer* NewTableAlterer(const YBTableName& table_name);
+  YBTableAlterer* NewTableAlterer(const string id);
 
   // Set 'alter_in_progress' to true if an AlterTable operation is in-progress.
   CHECKED_STATUS IsAlterTableInProgress(const YBTableName& table_name,
+                                        const string& table_id,
                                         bool *alter_in_progress);
 
   CHECKED_STATUS GetTableSchema(const YBTableName& table_name,
@@ -314,20 +318,35 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   CHECKED_STATUS CreateNamespace(const std::string& namespace_name,
-                                 YQLDatabase database_type = YQL_DATABASE_UNDEFINED,
+                                 const boost::optional<YQLDatabase>& database_type = boost::none,
                                  const std::string& creator_role_name = "",
-                                 boost::optional<PgOid> pg_database_oid = boost::none);
+                                 const std::string& namespace_id = "",
+                                 const std::string& source_namespace_id = "",
+                                 const boost::optional<uint32_t>& next_pg_oid = boost::none);
 
   // It calls CreateNamespace(), but before it checks that the namespace has NOT been yet
   // created. So, it prevents error 'namespace already exists'.
   // TODO(neil) When database_type is undefined, backend will not check error on database type.
   // Except for testing we should use proper database_types for all creations.
   CHECKED_STATUS CreateNamespaceIfNotExists(const std::string& namespace_name,
-                                            YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
+                                            const boost::optional<YQLDatabase>& database_type =
+                                            boost::none,
+                                            const std::string& creator_role_name = "",
+                                            const std::string& namespace_id = "",
+                                            const std::string& source_namespace_id = "",
+                                            const boost::optional<uint32_t>& next_pg_oid =
+                                            boost::none);
 
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
-                                 YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
+                                 const boost::optional<YQLDatabase>& database_type = boost::none);
+
+  // For Postgres: reserve oids for a Postgres database.
+  CHECKED_STATUS ReservePgsqlOids(const std::string& namespace_id,
+                                  uint32_t next_oid, uint32_t count,
+                                  uint32_t* begin_oid, uint32_t* end_oid);
+
+  CHECKED_STATUS GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
 
   // Grant permission with given arguments.
   CHECKED_STATUS GrantRevokePermission(GrantRevokeStatementType statement_type,
@@ -337,17 +356,22 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                                        const char* resource_name,
                                        const char* namespace_name,
                                        const std::string& role_name);
-  // List all namespace names.
+  // List all namespace names and optionally namespace ids.
   // 'namespaces' is appended to only on success.
-  CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespaces) {
-    return ListNamespaces(YQL_DATABASE_UNDEFINED, namespaces);
+  CHECKED_STATUS ListNamespaces(std::vector<std::string>* namespace_names,
+                                std::vector<std::string>* namespace_ids = nullptr) {
+    return ListNamespaces(boost::none, namespace_names, namespace_ids);
   }
-  CHECKED_STATUS ListNamespaces(YQLDatabase database_type, std::vector<std::string>* namespaces);
+  CHECKED_STATUS ListNamespaces(const boost::optional<YQLDatabase>& database_type,
+                                std::vector<std::string>* namespace_names,
+                                std::vector<std::string>* namespace_ids = nullptr);
 
-  // Check if the namespace given by 'namespace_name' exists.
+  // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
   Result<bool> NamespaceExists(const std::string& namespace_name,
-                               YQLDatabase database_type = YQL_DATABASE_UNDEFINED);
+                               const boost::optional<YQLDatabase>& database_type = boost::none);
+  Result<bool> NamespaceIdExists(const std::string& namespace_id,
+                                 const boost::optional<YQLDatabase>& database_type = boost::none);
 
   // Authentication and Authorization
   // Create a new role.
@@ -406,14 +430,20 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 
-  void AddTabletServerProxy(const std::string& ts_uuid,
-                            const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy);
+  // Add a tserver's proxy, and optionally the tserver itself if it is local.
+  void AddTabletServer(const std::string& ts_uuid,
+                       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
+                       const tserver::LocalTabletServer* local_tserver = nullptr);
 
   // List only those tables whose names pass a substring match on 'filter'.
   //
   // 'tables' is appended to only on success.
   CHECKED_STATUS ListTables(std::vector<YBTableName>* tables,
                             const std::string& filter = "");
+
+  CHECKED_STATUS ListTablesWithIds(
+      std::vector<std::pair<std::string, YBTableName>>* tables,
+      const std::string& filter = "");
 
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.
@@ -506,8 +536,6 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
 
   CHECKED_STATUS SetReplicationInfo(const master::ReplicationInfoPB& replication_info);
 
-  const std::string& client_id() const { return client_id_; }
-
   void LookupTabletByKey(const YBTable* table,
                          const std::string& partition_key,
                          const MonoTime& deadline,
@@ -525,6 +553,13 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   rpc::ProxyCache& proxy_cache() const;
 
   const std::string& proxy_uuid() const;
+
+  // Id of this client instance.
+  const ClientId& id() const;
+
+  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId(
+      const TabletId& tablet_id);
+  void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
 
  private:
   class Data;
@@ -547,24 +582,20 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
-  FRIEND_TEST(ClientTest, TestReplicatedMultiTabletTableFailover);
   FRIEND_TEST(ClientTest, TestReplicatedTabletWritesWithLeaderElection);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
   FRIEND_TEST(ClientTest, TestScanTimeout);
   FRIEND_TEST(ClientTest, TestWriteWithDeadMaster);
   FRIEND_TEST(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued);
 
+  friend std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
+      const YBTable* table);
+
   YBClient();
 
   ThreadPool* callback_threadpool();
 
-  // Owned.
-  Data* data_;
-
-  // Unique identifier for this client. This will be constant for the lifetime of this client
-  // instance and is used in cases such as the load tester, for binding reads and writes from the
-  // same client to the same data.
-  const std::string client_id_;
+  std::unique_ptr<Data> data_;
 
   DISALLOW_COPY_AND_ASSIGN(YBClient);
 };
@@ -672,10 +703,10 @@ class YBTableCreator {
   // Sets the name of the role creating this table.
   YBTableCreator& creator_role_name(const RoleName& creator_role_name);
 
-  // For Postgres: sets the OIDs of the table and the Postgres schema it belongs to.
-  YBTableCreator& pg_schema_oid(PgOid schema_oid);
-  YBTableCreator& pg_table_oid(PgOid table_oid);
+  // For Postgres: sets table id to assign, and whether the table is a sys catalog / shared table.
+  YBTableCreator& table_id(const std::string& table_id);
   YBTableCreator& is_pg_catalog_table();
+  YBTableCreator& is_pg_shared_table();
 
   // Sets the partition hash schema.
   YBTableCreator& hash_schema(YBHashSchema hash_schema);
@@ -907,8 +938,9 @@ class YBTableAlterer {
   friend class YBClient;
 
   YBTableAlterer(YBClient* client, const YBTableName& name);
+  YBTableAlterer(YBClient* client, const string id);
 
-  // Owned.
+    // Owned.
   Data* data_;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableAlterer);
@@ -1008,6 +1040,9 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // the read point will be updated to restart read-time. Otherwise, the read point will be set to
   // the current time.
   void SetReadPoint(Restart restart);
+
+  // Returns true if our current read point requires restart.
+  bool IsRestartRequired() const;
 
   // Changed transaction used by this session.
   void SetTransaction(YBTransactionPtr transaction);
@@ -1120,7 +1155,15 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   void set_allow_local_calls_in_curr_thread(bool flag);
   bool allow_local_calls_in_curr_thread() const;
 
+  // Sets in transaction read limit for this session.
+  void SetInTxnLimit(HybridTime value);
+
   YBClient* client() const;
+
+  // Sets force consistent read mode, if true then consistent read point will be used even we have
+  // only one command to flush.
+  // It is useful when whole statement is executed using multiple flushes.
+  void SetForceConsistentRead(ForceConsistentRead value);
 
  private:
   friend class YBClient;

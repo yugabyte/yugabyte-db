@@ -20,6 +20,7 @@
 #include "yb/yql/cql/cqlserver/cql_message.h"
 
 #include "yb/rpc/binary_call_parser.h"
+#include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/server_event.h"
 
@@ -34,9 +35,9 @@ class CQLServiceImpl;
 class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
                              public rpc::BinaryCallParserListener {
  public:
-  CQLConnectionContext(
-      rpc::GrowableBufferAllocator* allocator,
-      const MemTrackerPtr& call_tracker);
+  CQLConnectionContext(size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
+                       const MemTrackerPtr& call_tracker);
+
   void DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
               rpc::RpcConnectionPB* resp) override;
 
@@ -58,14 +59,16 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
   }
 
   uint64_t ExtractCallId(rpc::InboundCall* call) override;
-  Result<size_t> ProcessCalls(const rpc::ConnectionPtr& connection,
-                              const IoVecs& bytes_to_process,
-                              rpc::ReadBufferFull read_buffer_full) override;
-  size_t BufferLimit() override;
-
+  Result<rpc::ProcessDataResult> ProcessCalls(const rpc::ConnectionPtr& connection,
+                                              const IoVecs& bytes_to_process,
+                                              rpc::ReadBufferFull read_buffer_full) override;
   // Takes ownership of call_data content.
   CHECKED_STATUS HandleCall(
-      const rpc::ConnectionPtr& connection, std::vector<char>* call_data) override;
+      const rpc::ConnectionPtr& connection, rpc::CallData* call_data) override;
+
+  rpc::StreamReadBuffer& ReadBuffer() override {
+    return read_buffer_;
+  }
 
   // SQL session of this CQL client connection.
   ql::QLSession::SharedPtr ql_session_;
@@ -74,6 +77,8 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
   CQLMessage::CompressionScheme compression_scheme_ = CQLMessage::CompressionScheme::NONE;
 
   rpc::BinaryCallParser parser_;
+
+  rpc::CircularReadBuffer read_buffer_;
 
   MemTrackerPtr call_tracker_;
 };
@@ -85,17 +90,17 @@ class CQLInboundCall : public rpc::InboundCall {
                           ql::QLSession::SharedPtr ql_session);
 
   // Takes ownership of call_data content.
-  CHECKED_STATUS ParseFrom(const MemTrackerPtr& call_tracker, std::vector<char>* call_data);
+  CHECKED_STATUS ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallData* call_data);
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
   void LogTrace() const override;
   std::string ToString() const override;
   bool DumpPB(const rpc::DumpRunningRpcsRequestPB& req, rpc::RpcCallInProgressPB* resp) override;
 
-  MonoTime GetClientDeadline() const override;
+  CoarseTimePoint GetClientDeadline() const override;
 
   // Return the response message buffer.
   RefCntBuffer& response_msg_buf() {
@@ -113,7 +118,7 @@ class CQLInboundCall : public rpc::InboundCall {
   const std::string& method_name() const override;
   void RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) override;
   void RespondSuccess(const RefCntBuffer& buffer, const yb::rpc::RpcMethodMetrics& metrics);
-  void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb);
+  void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;
   void SetRequest(std::shared_ptr<const CQLRequest> request, CQLServiceImpl* service_impl) {
     service_impl_ = service_impl;
 #ifdef THREAD_SANITIZER

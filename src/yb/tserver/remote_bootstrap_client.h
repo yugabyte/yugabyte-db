@@ -40,7 +40,7 @@
 
 #include <gtest/gtest_prod.h>
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -50,7 +50,6 @@
 
 namespace yb {
 
-class BlockId;
 class BlockIdPB;
 class FsManager;
 class HostPort;
@@ -162,16 +161,10 @@ class RemoteBootstrapClient {
   // downloaded as part of initiating the remote bootstrap session.
   CHECKED_STATUS WriteConsensusMetadata();
 
-  // Download a single block.
-  // Data block is opened with options so that it will fsync() on close.
-  //
-  // On success, 'new_block_id' is set to the new ID of the downloaded block.
-  CHECKED_STATUS DownloadBlock(const BlockId& old_block_id, BlockId* new_block_id);
-
   // Download a single remote file. The block and WAL implementations delegate
   // to this method when downloading files.
   //
-  // An Appendable is typically a WritableBlock (block) or WritableFile (WAL).
+  // An Appendable is typically a WritableFile (WAL).
   //
   // Only used in one compilation unit, otherwise the implementation would
   // need to be in the header.

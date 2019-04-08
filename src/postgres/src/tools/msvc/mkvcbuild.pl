@@ -7,6 +7,10 @@
 use strict;
 use warnings;
 
+use File::Basename;
+use File::Spec;
+BEGIN  { use lib File::Spec->rel2abs(dirname(__FILE__)); }
+
 use Mkvcbuild;
 
 chdir('..\..\..') if (-d '..\msvc' && -d '..\..\..\src');
@@ -19,7 +23,7 @@ print "Warning: no config.pl found, using default.\n"
   unless (-f 'src/tools/msvc/config.pl');
 
 our $config;
-do 'src/tools/msvc/config_default.pl';
-do 'src/tools/msvc/config.pl' if (-f 'src/tools/msvc/config.pl');
+do './src/tools/msvc/config_default.pl';
+do './src/tools/msvc/config.pl' if (-f 'src/tools/msvc/config.pl');
 
 Mkvcbuild::mkvcbuild($config);

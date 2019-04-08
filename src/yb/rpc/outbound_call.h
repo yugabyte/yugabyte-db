@@ -41,6 +41,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/call_data.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/response_callback.h"
@@ -49,6 +50,7 @@
 #include "yb/rpc/service_if.h"
 
 #include "yb/util/locks.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/object_pool.h"
@@ -140,7 +142,7 @@ class CallResponse {
 
   // Parse the response received from a call. This must be called before any
   // other methods on this object. Takes ownership of data content.
-  CHECKED_STATUS ParseFrom(std::vector<char>* data);
+  CHECKED_STATUS ParseFrom(CallData* data);
 
   // Return true if the call succeeded.
   bool is_success() const {
@@ -181,7 +183,7 @@ class CallResponse {
 
   // The incoming transfer data - retained because serialized_response_
   // and sidecar_slices_ refer into its data.
-  std::vector<char> response_data_;
+  CallData response_data_;
 
   DISALLOW_COPY_AND_ASSIGN(CallResponse);
 };
@@ -202,18 +204,19 @@ class OutboundCall : public RpcCall {
   OutboundCall(const RemoteMethod* remote_method,
                const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                google::protobuf::Message* response_storage,
-               RpcController* controller, ResponseCallback callback);
+               RpcController* controller, RpcMetrics* rpc_metrics, ResponseCallback callback);
   virtual ~OutboundCall();
 
   // Serialize the given request PB into this call's internal storage.
   //
   // Because the data is fully serialized by this call, 'req' may be
   // subsequently mutated with no ill effects.
-  virtual CHECKED_STATUS SetRequestParam(const google::protobuf::Message& req);
+  virtual CHECKED_STATUS SetRequestParam(
+      const google::protobuf::Message& req, const MemTrackerPtr& mem_tracker);
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
   // Callback after the call has been put on the outbound connection queue.
   void SetQueued();
@@ -226,10 +229,8 @@ class OutboundCall : public RpcCall {
 
   // Mark the call as failed. This also triggers the callback to notify
   // the caller. If the call failed due to a remote error, then err_pb
-  // should be set to the error returned by the remote server. Takes
-  // ownership of 'err_pb'.
-  void SetFailed(const Status& status,
-                 ErrorStatusPB* err_pb = NULL);
+  // should be set to the error returned by the remote server.
+  void SetFailed(const Status& status, std::unique_ptr<ErrorStatusPB> err_pb = nullptr);
 
   // Mark the call as timed out. This also triggers the callback to notify
   // the caller.
@@ -237,7 +238,7 @@ class OutboundCall : public RpcCall {
   bool IsTimedOut() const;
 
   // Is the call finished?
-  bool IsFinished() const override;
+  bool IsFinished() const override final;
 
   // Fill in the call response.
   void SetResponse(CallResponse&& resp);
@@ -248,8 +249,9 @@ class OutboundCall : public RpcCall {
 
   std::string LogPrefix() const override;
 
-  void SetConnectionId(const ConnectionId& value) {
+  void SetConnectionId(const ConnectionId& value, const std::string* hostname) {
     conn_id_ = value;
+    hostname_ = hostname;
   }
 
   ////////////////////////////////////////////////////////////
@@ -257,6 +259,7 @@ class OutboundCall : public RpcCall {
   ////////////////////////////////////////////////////////////
 
   const ConnectionId& conn_id() const { return conn_id_; }
+  const std::string& hostname() const { return *hostname_; }
   const RemoteMethod& remote_method() const { return *remote_method_; }
   const ResponseCallback &callback() const { return callback_; }
   RpcController* controller() { return controller_; }
@@ -271,12 +274,17 @@ class OutboundCall : public RpcCall {
     return trace_.get();
   }
 
+  RpcMetrics& rpc_metrics() {
+    return *rpc_metrics_;
+  }
+
  protected:
   friend class RpcController;
 
   virtual CHECKED_STATUS GetSidecar(int idx, Slice* sidecar) const;
 
   ConnectionId conn_id_;
+  const std::string* hostname_;
   MonoTime start_;
   RpcController* const controller_;
   // Pointer for the protobuf where the response should be written.
@@ -285,17 +293,7 @@ class OutboundCall : public RpcCall {
  private:
   friend class RpcController;
 
-  // Various states the call propagates through.
-  // NB: if adding another state, be sure to update OutboundCall::IsFinished()
-  // and OutboundCall::StateName(State state) as well.
-  enum State {
-    READY = 0,
-    ON_OUTBOUND_QUEUE = 1,
-    SENT = 2,
-    TIMED_OUT = 3,
-    FINISHED_ERROR = 4,
-    FINISHED_SUCCESS = 5
-  };
+  typedef RpcCallState State;
 
   static std::string StateName(State state);
 
@@ -323,7 +321,7 @@ class OutboundCall : public RpcCall {
   mutable simple_spinlock lock_;
   std::atomic<State> state_ = {READY};
   Status status_;
-  gscoped_ptr<ErrorStatusPB> error_pb_;
+  std::unique_ptr<ErrorStatusPB> error_pb_;
 
   // Call the user-provided callback.
   void CallCallback();
@@ -338,6 +336,9 @@ class OutboundCall : public RpcCall {
   // Buffers for storing segments of the wire-format request.
   RefCntBuffer buffer_;
 
+  // Consumption of buffer_.
+  ScopedTrackedConsumption buffer_consumption_;
+
   // Once a response has been received for this call, contains that response.
   CallResponse call_response_;
 
@@ -347,6 +348,8 @@ class OutboundCall : public RpcCall {
   std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
 
   RemoteMethodPool* remote_method_pool_;
+
+  RpcMetrics* rpc_metrics_;
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };

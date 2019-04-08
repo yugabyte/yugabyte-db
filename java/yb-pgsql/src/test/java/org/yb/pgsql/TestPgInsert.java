@@ -14,25 +14,21 @@
 package org.yb.pgsql;
 
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.HashSet;
-import java.util.Set;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertTrue;
 
-import org.junit.runner.RunWith;
-
-import org.yb.YBTestRunner;
-
-@RunWith(value=YBTestRunner.class)
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgInsert extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgInsert.class);
 
@@ -40,7 +36,7 @@ public class TestPgInsert extends BasePgSQLTest {
   public void testBasicInsert() throws SQLException {
     createSimpleTable("test");
     try (Statement statement = connection.createStatement()) {
-      Set<Row> expectedRows = new HashSet<>();
+      List<Row> expectedRows = new ArrayList<>();
 
       // Test simple insert.
       statement.execute("INSERT INTO test(h, r, vi, vs) VALUES (1, 1.5, 2, 'abc')");
@@ -80,9 +76,12 @@ public class TestPgInsert extends BasePgSQLTest {
       runInvalidQuery(statement, "INSERT INTO test(h, r, vi, vs) VALUES (1, 1.5, 9, 'xyz')");
       runInvalidQuery(statement, "INSERT INTO test(h, r) VALUES (1, 1.5)");
 
+      // Sort expected rows to compare with result set.
+      Collections.sort(expectedRows);
+
       // Check rows.
       try (ResultSet rs = statement.executeQuery("SELECT * FROM test")) {
-        assertEquals(expectedRows, getRowSet(rs));
+        assertEquals(expectedRows, getSortedRowList(rs));
       }
     }
   }
@@ -99,4 +98,27 @@ public class TestPgInsert extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testInsertReturn() throws SQLException {
+    String tableName = "test_insert_return";
+    createSimpleTable(tableName);
+
+    try (Statement statement = connection.createStatement()) {
+      String stmt_format = "INSERT INTO %s(h, r, vi, vs) VALUES(%d, %f, %d, '%s') RETURNING %s";
+      for (long h = 0; h < 2; h++) {
+        for (int r = 0; r < 2; r++) {
+          List<Row> expectedRows = new ArrayList<>();
+          String text_stmt = String.format(stmt_format, tableName,
+                                           h, r + 0.5, h * 10 + r, "v" + h + r,
+                                           "h + 100L, r + 100, vs");
+          expectedRows.add(new Row(h + 100, r + 0.5 + 100, "v" + h + r));
+          statement.execute(text_stmt);
+
+          // Verify RETURNING clause.
+          ResultSet returning = statement.getResultSet();
+          assertEquals(expectedRows, getSortedRowList(returning));
+        }
+      }
+    }
+  }
 }

@@ -77,9 +77,6 @@ class MasterFailoverTest : public YBTest {
     // leader master failures (specifically, failures as result of
     // long pauses) more rapid.
 
-    // Set max missed heartbeats periods to 1.0 (down from 3.0).
-    opts_.extra_master_flags.push_back("--leader_failure_max_missed_heartbeat_periods=1.0");
-
     // Set the TS->master heartbeat timeout to 1 second (down from 15 seconds).
     opts_.extra_tserver_flags.push_back("--heartbeat_rpc_timeout_ms=1000");
     // Allow one TS heartbeat failure before retrying with back-off (down from 3).
@@ -212,7 +209,8 @@ TEST_F(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued) {
 
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromSeconds(90));
-  ASSERT_OK(client_->data_->WaitForCreateTableToFinish(client_.get(), table_name, deadline));
+  ASSERT_OK(client_->data_->WaitForCreateTableToFinish(client_.get(), table_name, "" /* table_id */,
+                                                       deadline));
 
   ASSERT_OK(OpenTableAndScanner(table_name));
 }

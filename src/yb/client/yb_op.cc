@@ -41,6 +41,8 @@
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
+
+#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
 namespace yb {
@@ -68,6 +70,10 @@ void YBOperation::ResetTable(std::shared_ptr<YBTable> new_table) {
   table_ = new_table;
   // tablet_ can no longer be valid.
   tablet_.reset();
+}
+
+bool YBOperation::IsTransactional() const {
+  return table_->schema().table_properties().is_transactional();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -480,12 +486,23 @@ std::string YBPgsqlWriteOp::ToString() const {
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
+  if (write_request_->has_hash_code() && write_request_->partition_column_values_size() == 0) {
+    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(write_request_->hash_code());
+    return Status::OK();
+  }
+
+  // Computing the partition_key.
   return table_->partition_schema().EncodeKey(write_request_->partition_column_values(),
                                               partition_key);
 }
 
 void YBPgsqlWriteOp::SetHashCode(const uint16_t hash_code) {
   write_request_->set_hash_code(hash_code);
+}
+
+
+bool YBPgsqlWriteOp::IsTransactional() const {
+  return !is_single_row_txn_ && table_->schema().table_properties().is_transactional();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -540,10 +557,12 @@ Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
       if (*partition_key > upper_bound) *partition_key = std::move(upper_bound);
     }
 
-    // Set both bounds to equal partition key now, because this is a point get
-    uint16 hash_code = PartitionSchema::DecodeMultiColumnHashValue(*partition_key);
-    read_request_->set_hash_code(hash_code);
-    read_request_->set_max_hash_code(hash_code);
+    if (!partition_key->empty()) {
+      // Set both bounds to equal partition key now, because this is a point get
+      uint16 hash_code = PartitionSchema::DecodeMultiColumnHashValue(*partition_key);
+      read_request_->set_hash_code(hash_code);
+      read_request_->set_max_hash_code(hash_code);
+    } // else we are using no-hash scheme (e.g. for postgres syscatalog tables) -- nothing to do.
   } else {
     // Otherwise, set the partition key to the hash_code (lower bound of the token range).
     if (read_request_->has_hash_code()) {

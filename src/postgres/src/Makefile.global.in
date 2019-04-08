@@ -19,7 +19,7 @@
 #
 # Meta configuration
 
-standard_targets = all install installdirs uninstall distprep clean distclean maintainer-clean coverage check installcheck init-po update-po
+standard_targets = all install installdirs uninstall distprep clean distclean maintainer-clean coverage check checkprep installcheck init-po update-po
 # these targets should recurse even into subdirectories not being built:
 standard_always_targets = distprep clean distclean maintainer-clean
 
@@ -171,6 +171,7 @@ endif # PGXS
 includedir_server = $(pkgincludedir)/server
 includedir_internal = $(pkgincludedir)/internal
 pgxsdir = $(pkglibdir)/pgxs
+bitcodedir = $(pkglibdir)/bitcode
 
 
 ##########################################################################
@@ -186,8 +187,12 @@ with_tcl	= @with_tcl@
 with_openssl	= @with_openssl@
 with_selinux	= @with_selinux@
 with_systemd	= @with_systemd@
+with_gssapi	= @with_gssapi@
+with_krb_srvnam	= @with_krb_srvnam@
+with_ldap	= @with_ldap@
 with_libxml	= @with_libxml@
 with_libxslt	= @with_libxslt@
+with_llvm	= @with_llvm@
 with_system_tzdata = @with_system_tzdata@
 with_uuid	= @with_uuid@
 with_zlib	= @with_zlib@
@@ -222,6 +227,11 @@ TCL_SHLIB_LD_LIBS	= @TCL_SHLIB_LD_LIBS@
 PTHREAD_CFLAGS		= @PTHREAD_CFLAGS@
 PTHREAD_LIBS		= @PTHREAD_LIBS@
 
+LLVM_CONFIG = @LLVM_CONFIG@
+LLVM_BINPATH = @LLVM_BINPATH@
+CLANG = @CLANG@
+BITCODE_CFLAGS = @BITCODE_CFLAGS@
+BITCODE_CXXFLAGS = @BITCODE_CXXFLAGS@
 
 ##########################################################################
 #
@@ -231,6 +241,7 @@ PTHREAD_LIBS		= @PTHREAD_LIBS@
 
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
+PG_SYSROOT = @PG_SYSROOT@
 
 ifndef YB_SRC_ROOT
 $(error YB_SRC_ROOT is not set)
@@ -250,9 +261,16 @@ endif # not PGXS
 CC = @CC@
 GCC = @GCC@
 SUN_STUDIO_CC = @SUN_STUDIO_CC@
+CXX = @CXX@
 CFLAGS = @CFLAGS@
 CFLAGS_VECTOR = @CFLAGS_VECTOR@
 CFLAGS_SSE42 = @CFLAGS_SSE42@
+CFLAGS_ARMV8_CRC32C = @CFLAGS_ARMV8_CRC32C@
+CXXFLAGS = @CXXFLAGS@
+
+LLVM_CPPFLAGS = @LLVM_CPPFLAGS@
+LLVM_CFLAGS = @LLVM_CFLAGS@
+LLVM_CXXFLAGS = @LLVM_CXXFLAGS@
 
 # Kind-of compilers
 
@@ -274,20 +292,42 @@ LDAP_LIBS_FE = @LDAP_LIBS_FE@
 LDAP_LIBS_BE = @LDAP_LIBS_BE@
 UUID_LIBS = @UUID_LIBS@
 UUID_EXTRA_OBJS = @UUID_EXTRA_OBJS@
+LLVM_LIBS=@LLVM_LIBS@
 LD = @LD@
 with_gnu_ld = @with_gnu_ld@
 
-# We want -L for libpgport.a and libpgcommon.a to be first in LDFLAGS.  We
-# also need LDFLAGS to be a "recursively expanded" variable, else adjustments
-# to rpathdir don't work right.  So we must NOT do LDFLAGS := something,
-# meaning this has to be done first and elsewhere we must only do LDFLAGS +=
-# something.
+# It's critical that within LDFLAGS, all -L switches pointing to build-tree
+# directories come before any -L switches pointing to external directories.
+# Otherwise it's possible for, e.g., a platform-provided copy of libpq.so
+# to get linked in place of the one we've built.  Therefore we adopt the
+# convention that the first component of LDFLAGS is an extra variable
+# LDFLAGS_INTERNAL, and -L and -l switches for PG's own libraries must be
+# put into LDFLAGS_INTERNAL, so they will appear ahead of those for external
+# libraries.
+#
+# We need LDFLAGS and LDFLAGS_INTERNAL to be "recursively expanded" variables,
+# else adjustments to, e.g., rpathdir don't work right.  So we must NOT do
+# "LDFLAGS := something" anywhere, ditto for LDFLAGS_INTERNAL.
+# These initial assignments must be "=" type, and elsewhere we must only do
+# "LDFLAGS += something" or "LDFLAGS_INTERNAL += something".
 ifdef PGXS
-  LDFLAGS = -L$(libdir)
+  LDFLAGS_INTERNAL = -L$(libdir)
 else
-  LDFLAGS = -L$(top_builddir)/src/port -L$(top_builddir)/src/common
+  LDFLAGS_INTERNAL = -L$(top_builddir)/src/port -L$(top_builddir)/src/common
 endif
-LDFLAGS += @LDFLAGS@
+
+# YugaByte-specific change: we want rpath for postgres libs to go before rpath from external
+# LDFLAGS.
+
+# Set up rpath if enabled.  By default it will point to our libdir,
+# but individual Makefiles can force other rpath paths if needed.
+rpathdir = $(libdir)
+
+ifeq ($(enable_rpath), yes)
+LDFLAGS_INTERNAL += $(rpath)
+endif
+
+LDFLAGS = $(LDFLAGS_INTERNAL) @LDFLAGS@
 
 LDFLAGS_EX = @LDFLAGS_EX@
 # LDFLAGS_SL might have already been assigned by calling makefile
@@ -308,6 +348,7 @@ else
 endif
 perl_archlibexp		= @perl_archlibexp@
 perl_privlibexp		= @perl_privlibexp@
+perl_includespec	= @perl_includespec@
 perl_embed_ccflags	= @perl_embed_ccflags@
 perl_embed_ldflags	= @perl_embed_ldflags@
 
@@ -325,22 +366,56 @@ XGETTEXT = @XGETTEXT@
 GZIP	= gzip
 BZIP2	= bzip2
 
+
+# Tree-wide build support
+
+# Just about every code subdirectory wants to have the generated headers
+# available before building, but we don't want parallel makes all trying
+# to build the same headers.  These rules, together with the recursion rules
+# below, ensure that we update the generated headers once, if needed,
+# at the top level of any "make all/install/check/installcheck" request.
+# If a particular subdirectory knows this isn't needed in itself or its
+# children, it can set NO_GENERATED_HEADERS.
+
+all install check installcheck: submake-generated-headers
+
+.PHONY: submake-generated-headers
+
+submake-generated-headers:
+ifndef NO_GENERATED_HEADERS
+ifeq ($(MAKELEVEL),0)
+	$(MAKE) -C $(top_builddir)/src/backend generated-headers
+endif
+endif
+
+
 # Testing
+
+# In much the same way as above, these rules ensure that we build a temp
+# install tree just once in any recursive "make check".  The additional test
+# on abs_top_builddir prevents doing anything foolish to the root directory.
 
 check: temp-install
 
 .PHONY: temp-install
-temp-install:
+
+temp-install: | submake-generated-headers
 ifndef NO_TEMP_INSTALL
 ifneq ($(abs_top_builddir),)
 ifeq ($(MAKELEVEL),0)
 	rm -rf '$(abs_top_builddir)'/tmp_install
 	$(MKDIR_P) '$(abs_top_builddir)'/tmp_install/log
 	$(MAKE) -C '$(top_builddir)' DESTDIR='$(abs_top_builddir)'/tmp_install install >'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
+	$(MAKE) -j1 $(if $(CHECKPREP_TOP),-C $(CHECKPREP_TOP),) checkprep >>'$(abs_top_builddir)'/tmp_install/log/install.log 2>&1
 endif
-	$(if $(EXTRA_INSTALL),for extra in $(EXTRA_INSTALL); do $(MAKE) -C '$(top_builddir)'/$$extra DESTDIR='$(abs_top_builddir)'/tmp_install install >>'$(abs_top_builddir)'/tmp_install/log/install.log || exit; done)
 endif
 endif
+
+# Tasks to run serially at the end of temp-install.  Some EXTRA_INSTALL
+# entries appear more than once in the tree, and parallel installs of the same
+# file can fail with EEXIST.
+checkprep:
+	$(if $(EXTRA_INSTALL),for extra in $(EXTRA_INSTALL); do $(MAKE) -C '$(top_builddir)'/$$extra DESTDIR='$(abs_top_builddir)'/tmp_install install || exit; done)
 
 PROVE = @PROVE@
 # There are common routines in src/test/perl, and some test suites have
@@ -355,23 +430,28 @@ $(1)="$(if $($(1)),$(2):$$$(1),$(2))"
 endef
 
 # platform-specific environment variable to set shared library path
-define ld_library_path_var
-$(if $(filter $(PORTNAME),darwin),DYLD_LIBRARY_PATH,$(if $(filter $(PORTNAME),aix),LIBPATH,$(if $(filter $(PORTNAME),hpux),SHLIB_PATH,LD_LIBRARY_PATH)))
-endef
+# individual ports can override this later, this is the default name
+ld_library_path_var = LD_LIBRARY_PATH
 
-define with_temp_install
-PATH="$(abs_top_builddir)/tmp_install$(bindir):$$PATH" $(call add_to_path,$(ld_library_path_var),$(abs_top_builddir)/tmp_install$(libdir))
-endef
+# with_temp_install_extra is for individual ports to define if they
+# need something more here. If not defined then the expansion does
+# nothing.
+with_temp_install = \
+	PATH="$(abs_top_builddir)/tmp_install$(bindir):$$PATH" \
+	$(call add_to_path,$(strip $(ld_library_path_var)),$(abs_top_builddir)/tmp_install$(libdir)) \
+	$(with_temp_install_extra)
 
 ifeq ($(enable_tap_tests),yes)
 
 define prove_installcheck
-rm -rf $(CURDIR)/tmp_check/log
+rm -rf '$(CURDIR)'/tmp_check
+$(MKDIR_P) '$(CURDIR)'/tmp_check
 cd $(srcdir) && TESTDIR='$(CURDIR)' PATH="$(bindir):$$PATH" PGPORT='6$(DEF_PGPORT)' top_builddir='$(CURDIR)/$(top_builddir)' PG_REGRESS='$(CURDIR)/$(top_builddir)/src/test/regress/pg_regress' $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
 
 define prove_check
-rm -rf $(CURDIR)/tmp_check/log
+rm -rf '$(CURDIR)'/tmp_check
+$(MKDIR_P) '$(CURDIR)'/tmp_check
 cd $(srcdir) && TESTDIR='$(CURDIR)' $(with_temp_install) PGPORT='6$(DEF_PGPORT)' PG_REGRESS='$(CURDIR)/$(top_builddir)/src/test/regress/pg_regress' $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
 
@@ -408,8 +488,6 @@ STRIP_SHARED_LIB = @STRIP_SHARED_LIB@
 
 DBTOEPUB	= @DBTOEPUB@
 FOP				= @FOP@
-NSGMLS			= @NSGMLS@
-OSX				= @OSX@
 XMLLINT			= @XMLLINT@
 XSLTPROC		= @XSLTPROC@
 
@@ -460,13 +538,12 @@ have_win32_dbghelp = @have_win32_dbghelp@
 # Pull in platform-specific magic
 include $(top_builddir)/src/Makefile.port
 
-# Set up rpath if enabled.  By default it will point to our libdir,
-# but individual Makefiles can force other rpath paths if needed.
-rpathdir = $(libdir)
+# YugaByte-specific change: moved rpath setup to happen before @LDFLAGS@ appending.
 
-ifeq ($(enable_rpath), yes)
-LDFLAGS += $(rpath)
-endif
+# Show the DLSUFFIX to build scripts (e.g. buildfarm)
+.PHONY: show_dl_suffix
+show_dl_suffix:
+	@echo $(DLSUFFIX)
 
 
 ##########################################################################
@@ -509,22 +586,19 @@ endif
 #
 # Commonly used submake targets
 
-submake-libpq:
+submake-libpq: | submake-generated-headers
 	$(MAKE) -C $(libpq_builddir) all
 
-submake-libpgport:
+submake-libpgport: | submake-generated-headers
 	$(MAKE) -C $(top_builddir)/src/port all
 	$(MAKE) -C $(top_builddir)/src/common all
 
-submake-libpgfeutils:
+submake-libpgfeutils: | submake-generated-headers
 	$(MAKE) -C $(top_builddir)/src/port all
 	$(MAKE) -C $(top_builddir)/src/common all
 	$(MAKE) -C $(top_builddir)/src/fe_utils all
 
-submake-generated-headers:
-	$(MAKE) -C $(top_builddir)/src/backend generated-headers
-
-.PHONY: submake-libpq submake-libpgport submake-libpgfeutils submake-generated-headers
+.PHONY: submake-libpq submake-libpgport submake-libpgfeutils
 
 
 ##########################################################################
@@ -768,8 +842,10 @@ $(error GNU make 3.80 or newer is required.  You are using version $(MAKE_VERSIO
 endif
 
 # This function is only for internal use below.  It should be called
-# using $(eval).  It will set up a target so that it recurses into
-# a given subdirectory.  Note that to avoid a nasty bug in make 3.80,
+# using $(eval).  It will set up a target so that it recurses into a
+# given subdirectory.  For the tree-wide all/install/check/installcheck cases,
+# ensure we do our one-time tasks before recursing (see targets above).
+# Note that to avoid a nasty bug in make 3.80,
 # this function has to avoid using any complicated constructs (like
 # multiple targets on a line) and also not contain any lines that expand
 # to more than about 200 bytes.  This is why we make it apply to just one
@@ -780,7 +856,7 @@ endif
 define _create_recursive_target
 .PHONY: $(1)-$(2)-recurse
 $(1): $(1)-$(2)-recurse
-$(1)-$(2)-recurse: $(if $(filter check, $(3)), temp-install)
+$(1)-$(2)-recurse: $(if $(filter all install check installcheck, $(3)), submake-generated-headers) $(if $(filter check, $(3)), temp-install)
 	$$(MAKE) -C $(2) $(3)
 endef
 # Note that the use of $$ on the last line above is important; we want
@@ -824,6 +900,10 @@ ifndef COMPILE.c
 COMPILE.c = $(CC) $(CFLAGS) $(CPPFLAGS) -c
 endif
 
+ifndef COMPILE.cc
+COMPILE.cc = $(CXX) $(CXXFLAGS) $(CPPFLAGS) -c
+endif
+
 DEPDIR = .deps
 
 ifeq ($(GCC), yes)
@@ -832,6 +912,10 @@ ifeq ($(GCC), yes)
 %.o : %.c
 	@if test ! -d $(DEPDIR); then mkdir -p $(DEPDIR); fi
 	$(COMPILE.c) -o $@ $< -MMD -MP -MF $(DEPDIR)/$(*F).Po
+
+%.o : %.cpp
+	@if test ! -d $(DEPDIR); then mkdir -p $(DEPDIR); fi
+	$(COMPILE.cc) -o $@ $< -MMD -MP -MF $(DEPDIR)/$(*F).Po
 
 endif # GCC
 
@@ -881,30 +965,50 @@ endif # enable_nls
 #		gcov from foo.gcda (by "make coverage")
 #   foo.c.gcov.out  stdout captured when foo.c.gcov is created, mildly
 #		interesting
-#   lcov.info	lcov tracefile, built from gcda files in one directory,
+#   lcov_test.info
+#		lcov tracefile, built from gcda files in one directory,
 #		later collected by "make coverage-html"
+#   lcov_base.info
+#		tracefile for zero counters for every file, so that
+#		even files that are not touched by tests are counted
+#		for the overall coverage rate
 
 ifeq ($(enable_coverage), yes)
 
-# There is a strange interaction between lcov and existing .gcov
-# output files.  Hence the rm command and the ordering dependency.
+# make coverage -- text output
 
-gcda_files := $(wildcard *.gcda)
+local_gcda_files = $(wildcard *.gcda)
 
-lcov.info: $(gcda_files)
-	rm -f *.gcov .*.gcov
-	$(if $^,$(LCOV) -d . -c -o $@ $(LCOVFLAGS) --gcov-tool $(GCOV))
+coverage: $(local_gcda_files:.gcda=.c.gcov)
 
-%.c.gcov: %.gcda | lcov.info
+%.c.gcov: %.gcda
 	$(GCOV) -b -f -p -o . $(GCOVFLAGS) $*.c >$*.c.gcov.out
 
-coverage: $(gcda_files:.gcda=.c.gcov) lcov.info
+# make coverage-html -- HTML output via lcov
 
 .PHONY: coverage-html
-coverage-html: coverage
+coverage-html: coverage-html-stamp
+
+GENHTML_FLAGS = -q --legend
+GENHTML_TITLE = PostgreSQL $(VERSION)
+
+coverage-html-stamp: lcov_base.info lcov_test.info
 	rm -rf coverage
-	mkdir coverage
-	$(GENHTML) --show-details --legend --output-directory=coverage --title=PostgreSQL --num-spaces=4 --prefix=$(abs_top_srcdir) `find . -name lcov.info -print`
+	$(GENHTML) $(GENHTML_FLAGS) -o coverage --title='$(GENHTML_TITLE)' --num-spaces=4 $(if $(filter no,$(vpath_build)),--prefix='$(abs_top_srcdir)') $^
+	touch $@
+
+LCOV += --gcov-tool $(GCOV)
+LCOVFLAGS = -q --no-external
+
+all_gcno_files = $(shell find . -name '*.gcno' -print)
+
+lcov_base.info: $(all_gcno_files)
+	$(LCOV) $(LCOVFLAGS) -c -i -d . -d $(srcdir) -o $@
+
+all_gcda_files = $(shell find . -name '*.gcda' -print)
+
+lcov_test.info: $(all_gcda_files)
+	$(LCOV) $(LCOVFLAGS) -c -d . -d $(srcdir) -o $@
 
 
 # hook for clean-up
@@ -912,8 +1016,8 @@ clean distclean maintainer-clean: clean-coverage
 
 .PHONY: clean-coverage
 clean-coverage:
-	rm -rf coverage
-	rm -f *.gcda *.gcno lcov.info *.gcov .*.gcov *.gcov.out
+	rm -rf coverage coverage-html-stamp
+	rm -f *.gcda *.gcno lcov*.info *.gcov .*.gcov *.gcov.out
 
 
 # User-callable target to reset counts between test runs
@@ -921,3 +1025,56 @@ coverage-clean:
 	rm -f `find . -name '*.gcda' -print`
 
 endif # enable_coverage
+
+##########################################################################
+#
+# LLVM support
+#
+
+ifndef COMPILE.c.bc
+# -Wno-ignored-attributes added so gnu_printf doesn't trigger
+# warnings, when the main binary is compiled with C.
+COMPILE.c.bc = $(CLANG) -Wno-ignored-attributes $(BITCODE_CFLAGS) $(CPPFLAGS) -flto=thin -emit-llvm -c
+endif
+
+ifndef COMPILE.cxx.bc
+COMPILE.cxx.bc = $(CLANG) -xc++ -Wno-ignored-attributes $(BITCODE_CXXFLAGS) $(CPPFLAGS) -flto=thin -emit-llvm -c
+endif
+
+%.bc : %.c
+	$(COMPILE.c.bc) -o $@ $<
+
+%.bc : %.cpp
+	$(COMPILE.cxx.bc) -o $@ $<
+
+# Install LLVM bitcode module (for JITing).
+#
+# The arguments are:
+# $(1) name of the module (e.g. an extension's name or postgres for core code)
+# $(2) source objects, with .o suffix
+#
+# The many INSTALL_DATA invocations aren't particularly fast, it'd be
+# good if we could coalesce them, but I didn't find a good way.
+#
+# Note: blank line at end of macro is necessary to let it be used in foreach
+define install_llvm_module
+$(MKDIR_P) '$(DESTDIR)${bitcodedir}/$(1)'
+$(MKDIR_P) $(sort $(dir $(addprefix '$(DESTDIR)${bitcodedir}'/$(1)/, $(2))))
+$(foreach obj, ${2}, $(INSTALL_DATA) $(patsubst %.o,%.bc, $(obj)) '$(DESTDIR)${bitcodedir}'/$(1)/$(dir $(obj))
+)
+cd '$(DESTDIR)${bitcodedir}' && $(LLVM_BINPATH)/llvm-lto -thinlto -thinlto-action=thinlink -o $(1).index.bc $(addprefix $(1)/,$(patsubst %.o,%.bc, $(2)))
+
+endef
+
+# Uninstall LLVM bitcode module.
+#
+# The arguments are:
+# $(1) name of the module (e.g. an extension's name or postgres for core code)
+#
+# This intentionally doesn't use the explicit installed file list,
+# seems too likely to change regularly.
+define uninstall_llvm_module
+rm -rf '$(DESTDIR)${bitcodedir}/$(1)/'
+rm -f '$(DESTDIR)${bitcodedir}/$(1).index.bc'
+
+endef

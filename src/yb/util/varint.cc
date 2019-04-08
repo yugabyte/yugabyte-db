@@ -11,376 +11,185 @@
 // under the License.
 //
 
-#include <vector>
-#include <cstdlib>
-#include <limits>
-#include <glog/logging.h>
-
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/varint.h"
 
-using std::vector;
+#include <openssl/bn.h>
 
 namespace yb {
 namespace util {
 
-VarInt::VarInt(const std::string& string_val) {
-  if (!FromString(string_val).ok()) {
-    clear();
+void BigNumDeleter::operator()(BIGNUM* bn) const {
+  BN_free(bn);
+}
+
+ATTRIBUTE_NO_SANITIZE_UNDEFINED VarInt::VarInt(int64_t int64_val) : impl_(BN_new()) {
+  if (int64_val >= 0) {
+    BN_set_word(impl_.get(), int64_val);
+  } else {
+    BN_set_word(impl_.get(), -int64_val);
+    BN_set_negative(impl_.get(), 1);
   }
 }
 
-VarInt::VarInt(int64_t int64_val) {
-  FromInt64(int64_val);
+VarInt::VarInt() : impl_(BN_new()) {}
+
+VarInt::VarInt(const VarInt& var_int) : impl_(BN_dup(var_int.impl_.get())) {}
+
+VarInt& VarInt::operator=(const VarInt& rhs) {
+  impl_.reset(BN_dup(rhs.impl_.get()));
+  return *this;
 }
 
-VarInt::VarInt(uint64_t uint64_val) {
-  FromUInt64(uint64_val);
-}
-
-void VarInt::clear() {
-  digits_.clear();
-  radix_ = 2;
-  is_positive_ = true;
-}
-
-string VarInt::ToDebugString() const {
-  string output = "[ ";
-  output += is_positive_ ? "+" : "-";
-  output += " radix " + std::to_string(radix_) + " digits ";
-  for (int digit : digits_) {
-    output += std::to_string(digit) + " ";
-  }
-  output += "]";
-  return output;
-}
-
-string VarInt::ToString() const {
-  if (digits_.empty()) {
-    return "0";
-  }
-  const VarInt& converted = ConvertToBase(10);
-  string output;
-  if (!is_positive_) {
-    output.push_back('-');
-  }
-  for (auto itr = converted.digits_.rbegin(); itr != converted.digits_.rend(); ++itr) {
-    output.push_back('0' + *itr);
-  }
-  return output;
-}
-
-Status VarInt::ToInt64(int64_t* int64_value) const {
-  uint64_t output = 0;
-  const uint64_t overflow_bound = (numeric_limits<uint64_t>::max() / radix_) - 1;
-  for (auto itr = digits_.rbegin(); itr != digits_.rend(); ++itr) {
-    if (PREDICT_FALSE(output >= overflow_bound)) {
-      return STATUS(InvalidArgument, "VarInt cannot be converted to int64 due to overflow");
-    }
-    output *= static_cast<uint64_t> (radix_);
-    output += *itr;
-  }
-  if (!is_positive_) {
-    output = ~output + 1;
-  }
-  // Negative values should cast correctly because we did two's complement above.
-  *int64_value = static_cast<int64_t> (output);
-  if (PREDICT_FALSE(is_positive_ ? *int64_value < 0 : *int64_value >= 0)) {
-    return STATUS(InvalidArgument, "VarInt cannot be converted to int64 due to overflow");
-  }
-  return Status::OK();
-}
-
-Status VarInt::FromString(const Slice &slice) {
-  if (slice.empty()) {
-    return STATUS(InvalidArgument, "Cannot parse empty slice to VarInt");
-  }
-  radix_ = 10;
-  is_positive_ = true;
-  digits_.clear();
-  for (int i = 0; i < slice.size(); i++) {
-    if (i == 0 && slice[i] == '+') {
-      continue;
-    } else if (i == 0 && slice[i] == '-') {
-      is_positive_ = false;
-      continue;
-    }
-    if (slice[i] < '0' || slice[i] > '9') {
-      return STATUS_SUBSTITUTE(InvalidArgument, "All characters should be 0-9, found $0", slice[i]);
-    }
-    digits_.push_back(slice[i] - '0');
-  }
-  std::reverse(digits_.begin(), digits_.end());
-  trim();
-  return Status::OK();
-}
-
-std::array<uint8_t, 257> RadixShift() {
-  std::array<uint8_t, 257> result;
-  memset(result.data(), 0, result.size());
-  for (size_t i = 0; i <= 8; ++i) {
-    result[1 << i] = i;
-  }
+std::string VarInt::ToString() const {
+  char* temp = BN_bn2dec(impl_.get());
+  std::string result(temp);
+  OPENSSL_free(temp);
   return result;
 }
 
-void VarInt::ExtractDigits(uint64_t val, int radix) {
-  static auto radix_shift = RadixShift();
-  digits_.clear();
-  int shift = radix_shift[radix];
-  if (shift != 0) {
-    int mask = radix - 1;
-    while (val > 0) {
-      digits_.push_back(static_cast<uint8_t> (val & mask));
-      val >>= shift;
-    }
-  } else {
-    while (val > 0) {
-      digits_.push_back(static_cast<uint8_t> (val % radix));
-      val /= radix;
-    }
+Result<int64_t> VarInt::ToInt64() const {
+  BN_ULONG value = BN_get_word(impl_.get());
+  bool negative = BN_is_negative(impl_.get());
+  // Casting minimal signed value to unsigned type of the same size returns its absolute value.
+  int64_t bound = negative ? std::numeric_limits<int64_t>::min()
+                           : std::numeric_limits<int64_t>::max();
+
+  if (value > bound) {
+    return STATUS_FORMAT(
+        InvalidArgument, "VarInt $0 cannot be converted to int64 due to overflow", *this);
   }
+  return negative ? -value : value;
 }
 
-void VarInt::FromInt64(std::int64_t int64_val, int radix) {
-  DCHECK(radix > 0) << "Radix of VarInt found to be non-positive";
-  radix_ = radix;
-  is_positive_ = int64_val >= 0;
-  uint64_t val = 0;
-  if (PREDICT_FALSE(int64_val == std::numeric_limits<int64_t>::min())) {
-    val = static_cast<uint64_t> (std::numeric_limits<int64_t>::max()) + 1;
-  } else {
-    val = is_positive_ ? static_cast<uint64_t> (int64_val) : static_cast<uint64_t> (-int64_val);
+Status VarInt::FromString(const char* cstr) {
+  if (*cstr == '+') {
+    ++cstr;
   }
-  ExtractDigits(val, radix);
-}
-
-void VarInt::FromUInt64(std::uint64_t uint64_val, int radix) {
-  DCHECK(radix > 0) << "Radix of VarInt found to be non-positive";
-  radix_ = radix;
-  is_positive_ = true;
-  ExtractDigits(uint64_val, radix);
-}
-
-VarInt VarInt::add(const vector<VarInt> &inputs) {
-  int radix = inputs[0].radix_;
-  DCHECK(radix > 0) << "Radix of VarInt found to be non-positive";
-  vector<int> output_digits;
-  vector<VarInt> operands;
-  size_t max_size = 0;
-  for (const VarInt& v : inputs) {
-    operands.push_back(v.radix_ == radix ? v : v.ConvertToBase(radix));
-    if (operands.back().digits_.size() > max_size) {
-      max_size = operands.back().digits_.size();
-    }
+  BIGNUM* temp = nullptr;
+  int parsed = BN_dec2bn(&temp, cstr);
+  impl_.reset(temp);
+  if (parsed == 0 || parsed != strlen(cstr)) {
+    return STATUS_FORMAT(InvalidArgument, "Cannot parse varint: $0", cstr);
   }
-  int carry = 0;
-  bool is_positive = true;
-  for (size_t i = 0; i < max_size || carry != 0; i++) {
-    for (const VarInt &v : operands) {
-      carry += v.is_positive_ ? v.digit(i) : -v.digit(i);
-    }
-    is_positive = carry == 0 ? is_positive : carry > 0;
-    output_digits.push_back(carry % radix);
-    carry /= radix;
-  }
-  carry = 0;
-  for (auto itr = output_digits.begin(); itr != output_digits.end(); itr++) {
-    *itr = carry + (is_positive ? *itr : -*itr);
-    if (*itr < 0) {
-      carry = -1;
-      *itr += radix;
-    } else {
-      carry = 0;
-    }
-  }
-  vector<uint8_t> uint8digits(output_digits.begin(), output_digits.end());
-  VarInt output(uint8digits, radix, is_positive);
-  output.trim();
-  return output;
-}
-
-VarInt VarInt::ConvertToBase(int radix) const {
-  DCHECK(radix > 1) << "Cannot convert to radix <= 1";
-  DCHECK(radix_ > 1) << "Cannot convert from radix <= 1";
-  if (radix == radix_) {
-    return VarInt(*this);
-  }
-  VarInt output({}, radix);
-  if (digits_.empty()) {
-    return output;
-  }
-  static auto radix_shift = RadixShift();
-  size_t shift = radix_shift[radix_];
-  if (shift) {
-    size_t new_shift = radix_shift[radix];
-    if (new_shift) {
-      if (shift % new_shift == 0) {
-        output.is_positive_ = is_positive_;
-        size_t mul = shift / new_shift;
-        output.digits_.reserve(digits_.size() * mul);
-        uint8_t mask = static_cast<uint8_t>(radix - 1);
-        for (auto digit : digits_) {
-          auto d = digit;
-          for (size_t i = 0; i != mul; ++i) {
-            output.digits_.push_back(d & mask);
-            d >>= new_shift;
-          }
-        }
-        output.trim();
-        return output;
-      } else if (new_shift % shift == 0) {
-        output.is_positive_ = is_positive_;
-        size_t mul = new_shift / shift;
-        size_t new_size = (digits_.size() + mul - 1) / mul;
-        output.digits_.reserve(new_size);
-        --new_size;
-        for (size_t i = 0; i != new_size; ++i) {
-          uint8_t digit = 0;
-          size_t base = i * mul;
-          size_t digit_shift = 0;
-          for (size_t j = base; j != base + mul; ++j) {
-            digit |= digits_[j] << digit_shift;
-            digit_shift += shift;
-          }
-          output.digits_.push_back(digit);
-        }
-        uint8_t digit = 0;
-        size_t digit_shift = 0;
-        for (size_t j = new_size * mul; j != digits_.size(); ++j) {
-          digit |= digits_[j] << digit_shift;
-          digit_shift += shift;
-        }
-        output.digits_.push_back(digit);
-        output.trim();
-        return output;
-      }
-    }
-  }
-  for (auto itr = digits_.rbegin(); itr != digits_.rend(); ++itr) {
-    output = output.MultiplyAndAdd(radix_, *itr);
-  }
-  output.is_positive_ = is_positive_;
-  return output;
-}
-
-bool VarInt::IsIdenticalTo(const VarInt &other) const {
-  return digits_ == other.digits_ && radix_ == other.radix_ && is_positive_ == other.is_positive_;
-}
-
-int VarInt::CompareTo(const VarInt& other) const {
-  // If the number is zero, i.e. digits_ is empty, sign doesn't matter.
-  if (digits_.empty() && other.digits_.empty()) return 0;
-  // Otherwise sign gets priority.
-  int sign_comp = static_cast<int> (is_positive_) - static_cast<int> (other.is_positive_);
-  if (sign_comp != 0) return sign_comp;
-  // Need to get on the same base for comparison.
-  const VarInt& converted = other.radix() == radix_ ? other : other.ConvertToBase(radix_);
-  if (digits_.size() != converted.digits().size()) {
-    int comp = static_cast<int> (digits_.size()) - static_cast<int> (converted.digits().size());
-    return is_positive_ ? comp : -comp;
-  }
-  for (size_t i = digits_.size() - 1; i < digits_.size(); i--) {
-    int comp = static_cast<int> (digits_[i]) - static_cast<int> (converted.digits()[i]);
-    if (comp != 0) {
-      return is_positive_ ? comp : -comp;
-    }
-  }
-  return 0;
-}
-
-// Treats a byte sequence as a bit sequence, finds the i'th bit. xors the result with the input
-// 'complement'. Returns corruption if idx is larger than slice.
-static Status get_bit(size_t idx, const Slice& slice, bool complement, bool* val) {
-  if (PREDICT_FALSE(idx/8 >= slice.size())) {
-    return STATUS_SUBSTITUTE(Corruption,
-        "Slice has size $0, to decode, expecting at least $1", slice.size(), idx/8+1);
-  }
-  const uint8_t bit_pos = static_cast<uint8_t> (7 - idx%8);
-  *val = ((slice[idx/8] >> bit_pos) % 2 == 1) != complement;
   return Status::OK();
 }
 
-VarInt VarInt::EncodeToComparableBytes(bool is_signed, size_t num_reserved_bits) const {
-  DCHECK(radix_ > 0) << "Radix of VarInt found to be non-positive";
-  VarInt binary = ConvertToBase(2);
-  size_t num_bits = binary.digits_.size();
-  if (PREDICT_FALSE(num_bits == 0)) {
-    num_bits = 1;
-    binary.AppendDigits(1, 0);
-    binary.is_positive_ = true;
+int VarInt::CompareTo(const VarInt& other) const {
+  return BN_cmp(impl_.get(), other.impl_.get());
+}
+
+template <class T>
+void FlipBits(T* data, size_t count) {
+  for (auto end = data + count; data != end; ++data) {
+    *data = ~*data;
   }
-  size_t total_num_bits = num_bits + num_reserved_bits;
-  if (is_signed) {
-    total_num_bits += 1;
+}
+
+constexpr auto kWordSize = sizeof(uint8_t);
+constexpr auto kBitsPerWord = 8 * kWordSize;
+
+std::string VarInt::EncodeToComparable(size_t num_reserved_bits) const {
+  // Actually we use EncodeToComparable with num_reserved_bits equals to 0 or 2, so don't have
+  // to handle complex case when it wraps byte.
+  DCHECK_LT(num_reserved_bits, 8);
+
+  if (BN_is_zero(impl_.get())) {
+    // Zero is encoded as positive value of length 0.
+    return std::string(1, 0x80 >> num_reserved_bits);
   }
+
+  auto num_bits = BN_num_bits(impl_.get());
+  // The minimal number of bits that is required to encode this number:
+  // sign bit, bits in value representation and reserved bits.
+  size_t total_num_bits = num_bits + 1 + num_reserved_bits;
+
   // Number of groups of 7 becomes number of bytes, because of the unary size prefix.
   size_t num_bytes = (total_num_bits + 6) / 7;
   // If total_num_bits is not a multiple of seven, then the numerical part is prefixed with zeros.
   size_t rounding_padding = num_bytes * 7 - total_num_bits;
-  binary.AppendDigits(rounding_padding, 0);
-  // This is the delimeter between unary size prefix and the digits part.
-  binary.AppendDigits(1, 0);
-  // This is the unary size prefix
-  binary.AppendDigits(num_bytes - 1, 1);
-  // This is the sign bit
-  if (is_signed) {
-    // Everything will be complemented for negative numbers, including the sign bit.
-    // So we always set the sign bit = 1 here, regardless of the actual sign.
-    binary.AppendDigits(1, 1);
+  // Header consists of sign bit, then number of ones that equals to num_bytes and padding zeroes.
+  size_t header_length = 1 + num_bytes + rounding_padding;
+
+  // Number of words required to encode this, i.e. header and bits in value rounded up to word size.
+  auto words_count = (num_bits + header_length + kBitsPerWord - 1) / kBitsPerWord;
+  // Offset of the first byte that would contain number representation.
+  auto offset = words_count - (num_bits + kBitsPerWord - 1) / kBitsPerWord;
+  std::string result(words_count, 0);
+  if (offset > 0) {
+    // This value could be merged with ones, so should cleanup it.
+    result[offset - 1] = 0;
   }
-  const bool is_negative = is_signed && !binary.is_positive_;
-  // The reserved bits go to the very beginning of the digit array.
-  // Since they need to be zero after complement, they start being is_signed && !is_positive_
-  binary.AppendDigits(num_reserved_bits, static_cast<uint8_t>(is_negative));
-  // group everything by 8 before returning.
-  DCHECK_EQ(binary.digits_.size() % 8, 0);
-  VarInt base_256 = binary.ConvertToBase(256);
-  base_256.AppendDigits(num_bytes - base_256.digits_.size(), 0);
-  if (is_negative) {
-    // For negatives, complement everything
-    for (size_t i = 0; i < base_256.digits_.size(); i++) {
-      base_256.digits_[i] = ~base_256.digits_[i];
-    }
+  auto data = pointer_cast<unsigned char*>(const_cast<char*>(result.data()));
+  BN_bn2bin(impl_.get(), data + offset);
+  size_t idx = 0;
+  // Fill header with ones. We also fill reserved bits with ones for simplicity, then it will be
+  // reset to zero.
+  size_t num_ones = num_bytes + num_reserved_bits;
+  // Fill complete bytes with ones.
+  while (num_ones > 8) {
+    data[idx] = 0xff;
+    num_ones -= 8;
+    ++idx;
   }
-  std::reverse(base_256.digits_.begin(), base_256.digits_.end());
-  return base_256;
+  // Merge last byte of header with possible first byte of number body.
+  data[idx] |= 0xff ^ ((1 << (8 - num_ones)) - 1);
+  // Negative number is inverted.
+  if (BN_is_negative(impl_.get())) {
+    FlipBits(data, result.size());
+  }
+  // Set reserved bits to 0.
+  if (num_reserved_bits) {
+    data[0] &= (1 << (8 - num_reserved_bits)) - 1;
+  }
+
+  return result;
 }
 
-Status VarInt::DecodeFromComparable(
-    const Slice &slice, size_t *num_decoded_bytes, bool is_signed, size_t num_reserved_bits) {
-  digits_ = {};
-  radix_ = 2;
-  // i is the current index. We go from left to right parsing parts of the encoding,
-  // First thing to do is skip the reserved bits.
-  size_t i = num_reserved_bits;
-  size_t j = 0;
-  if (is_signed) {
-    // Parse the sign bit.
-    RETURN_NOT_OK(get_bit(num_reserved_bits, slice, false, &is_positive_));
-    // All future bits will be interpreted as complement if is_positive_ is false.
-    i++;
-  } else {
-    is_positive_ = true;
+Status VarInt::DecodeFromComparable(const Slice &slice, size_t *num_decoded_bytes,
+                                    size_t num_reserved_bits) {
+  DCHECK_LT(num_reserved_bits, 8);
+
+  size_t len = slice.size();
+  if (len == 0) {
+    return STATUS(Corruption, "Cannot decode varint from empty slice");
   }
-  // Find the end of the unary size prefix by searching for the first zero.
-  bool val = true;
-  for (j = i; val; j++) {
-    RETURN_NOT_OK(get_bit(j, slice, !is_positive_, &val));
+  bool negative = (slice[0] & (0x80 >> num_reserved_bits)) == 0;
+  std::vector<uint8_t> buffer(slice.data(), slice.end());
+  if (negative) {
+    FlipBits(buffer.data(), buffer.size());
   }
-  // Now we know the total size of what we are decoding.
-  *num_decoded_bytes = j - i;
-  i = j;
-  // Construct a binary number with the rest of the bits.
-  for (j = i; j < *num_decoded_bytes * 8; j++) {
-    bool v = true;
-    RETURN_NOT_OK(get_bit(j, slice, !is_positive_, &v));
-    digits_.push_back(v ? 1 : 0);
+  if (num_reserved_bits) {
+    buffer[0] |= ~((1 << (8 - num_reserved_bits)) - 1);
   }
-  // Go from big endian to little endian.
-  std::reverse(digits_.begin(), digits_.end());
-  // Remove any training zero digits.
-  trim();
+  size_t idx = 0;
+  size_t num_ones = 0;
+  while (buffer[idx] == 0xff) {
+    ++idx;
+    if (idx >= len) {
+      return STATUS_FORMAT(
+          Corruption, "Encoded varint failure, no prefix termination: $0",
+          slice.ToDebugHexString());
+    }
+    num_ones += 8;
+  }
+  uint8_t temp = 0x80;
+  while (buffer[idx] & temp) {
+    buffer[idx] ^= temp;
+    ++num_ones;
+    temp >>= 1;
+  }
+  num_ones -= num_reserved_bits;
+  if (num_ones > len) {
+    return STATUS_FORMAT(
+        Corruption, "Not enough data in encoded varint: $0, $1",
+        slice.ToDebugHexString(), num_ones);
+  }
+  *num_decoded_bytes = num_ones;
+  impl_.reset(BN_bin2bn(buffer.data() + idx, num_ones - idx, nullptr /* ret */));
+  if (negative) {
+    BN_set_negative(impl_.get(), 1);
+  }
+
   return Status::OK();
 }
 
@@ -393,149 +202,86 @@ Status VarInt::DecodeFromComparable(const string& str) {
   return DecodeFromComparable(Slice(str));
 }
 
-VarInt VarInt::EncodeToTwosComplementBytes(bool* is_out_of_range, size_t num_bytes) const {
-  VarInt base256 = ConvertToBase(256);
-  if (base256.digits_.empty()) {
-    base256.is_positive_ = true;
-    base256.digits_.push_back(0);
+std::string VarInt::EncodeToTwosComplement() const {
+  if (BN_is_zero(impl_.get())) {
+    return std::string(1, 0);
   }
-  if (base256.digits_.back() >= 128 && (num_bytes == 0 || num_bytes > base256.digits_.size())) {
-    base256.digits_.push_back(0);
+  size_t num_bits = BN_num_bits(impl_.get());
+  size_t offset = num_bits % kBitsPerWord == 0 ? 1 : 0;
+  size_t count = (num_bits + kBitsPerWord - 1) / kBitsPerWord + offset;
+  std::string result(count, 0);
+  auto data = pointer_cast<unsigned char*>(const_cast<char*>(result.data()));
+  if (offset) {
+    *data = 0;
   }
-  while (num_bytes > base256.digits_.size()) {
-    base256.digits_.push_back(0);
-  }
-
-  vector<uint8_t> ref(num_bytes > 0 ? num_bytes : base256.digits_.size(), 0);
-  ref.push_back(1);
-  VarInt two_power(ref, 256, true);
-
-  if (num_bytes > 0 && base256.digits_.size() != num_bytes) {
-    *is_out_of_range = true;
-    return base256;
-  } else {
-    *is_out_of_range = false;
-  }
-  if (!base256.is_positive_) {
-    base256 = two_power + base256;
-    if (base256.digits_.back() < 128) {
-      *is_out_of_range = true;
-      return base256;
+  BN_bn2bin(impl_.get(), data + offset);
+  if (BN_is_negative(impl_.get())) {
+    FlipBits(data, result.size());
+    unsigned char* back = data + result.size();
+    while (--back >= data && *back == 0xff) {
+      *back = 0;
     }
-  } else if(base256.digits_.back() >= 128) {
-    *is_out_of_range = true;
-    return base256;
+    ++*back;
+    // The case when number has form of 10000000 00000000 ...
+    // It is easier to detect it at this point, instead of doing preallocation check.
+    if (offset == 1 && back > data && (data[1] & 0x80)) {
+      result.erase(0, 1);
+    }
   }
-  std::reverse(base256.digits_.begin(), base256.digits_.end());
-  return base256;
+  return result;
 }
 
-Status VarInt::DecodeFromTwosComplement(const Slice& slice) {
-  digits_.clear();
-  radix_ = 256;
-  is_positive_ = true;
-  for (size_t i = 0; i < slice.size(); i++) {
-    digits_.push_back(static_cast<int> (slice[i]));
+Status VarInt::DecodeFromTwosComplement(const std::string& input) {
+  if (input.size() == 0) {
+    return STATUS(Corruption, "Cannot decode varint from empty slice");
   }
-  std::reverse(digits_.begin(), digits_.end());
-  if (digits_.back() >= 128) {
-    vector<uint8_t> ref(digits_.size(), 0);
-    ref.push_back(1);
-    digits_ = (VarInt(ref, 256, true) - *this).digits_;
-    is_positive_ = false;
+  bool negative = (input[0] & 0x80) != 0;
+  if (!negative) {
+    impl_.reset(BN_bin2bn(
+        pointer_cast<const unsigned char*>(input.data()), input.size(), nullptr /* ret */));
+    return Status::OK();
   }
-  trim();
+  std::string copy(input);
+  auto data = pointer_cast<unsigned char*>(const_cast<char*>(copy.data()));
+  unsigned char* back = data + copy.size();
+  while (--back >= data && *back == 0x00) {
+    *back = 0xff;
+  }
+  --*back;
+  FlipBits(data, copy.size());
+  impl_.reset(BN_bin2bn(data, input.size(), nullptr /* ret */));
+  BN_set_negative(impl_.get(), 1);
+
   return Status::OK();
 }
 
-VarInt VarInt::EncodeToDigitPairsBytes() const {
-  DCHECK_EQ(radix_, 10);
-  if (digits_.empty()) {
-    return VarInt({0}, 256, true);
-  }
-  VarInt base256({}, 256, true);
-  size_t len = (digits_.size()+1)/2;
-  for (size_t i = 0; i < len; i++) {
-    int d = digit(2*i) * 10 + digit(2*i+1);
-    d *= 2;
-    if (i != len-1) {
-      d += 1;
-    }
-    base256.digits_.push_back(d);
-  }
-  return base256;
+const VarInt& VarInt::Negate() {
+  BN_set_negative(impl_.get(), 1 - BN_is_negative(impl_.get()));
+  return *this;
 }
 
-Status VarInt::DecodeFromDigitPairs(const Slice& slice, size_t *num_decoded_bytes) {
-  digits_.clear();
-  radix_ = 10;
-  is_positive_ = true;
-  *num_decoded_bytes = 0;
-  for (size_t i = 0; i < slice.size(); i++) {
-    uint8_t byte = slice[i];
-    if (byte % 2 == 0) {
-      *num_decoded_bytes = i + 1;
-      i = slice.size();
-    }
-    byte /= 2;
-    digits_.push_back(byte / 10);
-    digits_.push_back(byte % 10);
+int VarInt::Sign() const {
+  if (BN_is_zero(impl_.get())) {
+    return 0;
   }
-  if (*num_decoded_bytes == 0) {
-    return STATUS(Corruption, "Decoded the whole slice but didn't find the ending");
-  }
-  trim();
-  return Status::OK();
-}
-
-void VarInt::trim() {
-  while (digits_.size() > 0 && digits_.back() == 0) {
-    digits_.pop_back();
-  }
-}
-
-VarInt VarInt::MultiplyAndAdd(int factor, int carry) {
-  int radix = radix_;
-  VarInt output = VarInt(vector<uint8_t>(), radix);
-  for (size_t i = 0;; i++) {
-    if (PREDICT_FALSE(carry == 0 && i >= digits_.size())) {
-      break;
-    }
-    carry += digit(i) * factor;
-    output.digits_.push_back(carry % radix);
-    carry /= radix;
-  }
-  return output;
-}
-
-void VarInt::AppendDigits(size_t n, uint8_t digit) {
-  size_t size = digits_.size();
-  digits_.resize(size + n);
-  memset(digits_.data() + size, digit, n);
-}
-
-string VarInt::ToStringFromBase256() const {
-  DCHECK_EQ(radix_, 256);
-  return std::string(digits_.begin(), digits_.end());
-}
-
-string VarInt::ToDebugStringFromBase256() const {
-  DCHECK_EQ(256, radix_) << "Binary DebugString is only supported for base 256 VarInts";
-  size_t num_bytes = digits_.size();
-  string output = "[ ";
-  for (size_t i = 0; i < num_bytes; i++) {
-    for (size_t j = 0; j < 8; j++) {
-      output += '0' + static_cast<char> (digit(i)>>(7-j) & 1);
-    }
-    output += ' ';
-  }
-  output += ']';
-  return output;
+  return BN_is_negative(impl_.get()) ? -1 : 1;
 }
 
 std::ostream& operator<<(ostream& os, const VarInt& v) {
   os << v.ToString();
   return os;
+}
+
+VarInt operator+(const VarInt& lhs, const VarInt& rhs) {
+  BigNumPtr temp(BN_new());
+  CHECK(BN_add(temp.get(), lhs.impl_.get(), rhs.impl_.get()));
+  return VarInt(std::move(temp));
+}
+
+VarInt operator-(const VarInt& lhs, const VarInt& rhs) {
+  BigNumPtr temp(BN_new());
+  CHECK(BN_sub(temp.get(), lhs.impl_.get(), rhs.impl_.get()));
+  return VarInt(std::move(temp));
 }
 
 } // namespace util

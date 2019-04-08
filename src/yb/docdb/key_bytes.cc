@@ -54,11 +54,6 @@ Status KeyBytes::OnlyLacksHybridTimeFrom(const rocksdb::Slice& other_slice, bool
   return Status::OK();
 }
 
-void AppendIntentType(IntentType intent_type, KeyBytes* key) {
-  key->AppendValueType(ValueType::kIntentType);
-  key->mutable_data()->push_back(static_cast<char>(intent_type));
-}
-
 void AppendDocHybridTime(const DocHybridTime& doc_ht, KeyBytes* key) {
   key->AppendValueType(ValueType::kHybridTime);
   doc_ht.AppendEncodedInDocDbFormat(key->mutable_data());

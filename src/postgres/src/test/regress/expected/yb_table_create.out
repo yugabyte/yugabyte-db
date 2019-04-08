@@ -1,0 +1,368 @@
+--
+-- YB_TABLE Testsuite: Testing DDL Statments for TABLE.
+--
+CREATE TABLE table_create_org(
+			 col_smallint			SMALLINT,
+			 col_integer			INTEGER,
+			 col_bigint				BIGINT,
+			 col_real					REAL,
+			 col_double				DOUBLE PRECISION,
+			 col_char					CHARACTER(7),
+			 col_varchar			VARCHAR(7),
+			 col_text					TEXT,
+			 col_bytea				BYTEA,
+			 col_timestamp		TIMESTAMP(2),
+			 col_timestamp_tz TIMESTAMP WITH TIME ZONE,
+			 col_bool					BOOLEAN,
+			 col_array_int		INTEGER[],
+			 col_array_text		TEXT[],
+			 PRIMARY KEY(col_smallint));
+--
+INSERT INTO table_create_org VALUES(
+			 1,
+			 1,
+			 1,
+			 1.1,
+			 1.1,
+			 'one',
+			 'one',
+			 'one',
+			 E'\\x11F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'January 1, 2019 01:01:01.1111',
+			 'January 1, 2019 01:01:01.1111 PST AD',
+			 TRUE,
+			 '{ 1, 1, 1 }',
+			 '{ "one", "one", "one" }');
+INSERT INTO table_create_org VALUES(
+			 11,
+			 1,
+			 1,
+			 1.1,
+			 1.1,
+			 'one',
+			 'one',
+			 'one',
+			 E'\\x11F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'January 1, 2019 01:01:01.1111',
+			 'January 1, 2019 01:01:01.1111 PST AD',
+			 TRUE,
+			 '{ 1, 1, 1 }',
+			 '{ "one", "one", "one" }');
+--
+INSERT INTO table_create_org VALUES(
+			 2,
+			 2,
+			 2,
+			 2.2,
+			 2.2,
+			 'two',
+			 'two',
+			 'two',
+			 E'\\x22F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'February 2, 2019 02:02:02.2222',
+			 'February 2, 2019 02:02:02.2222 PST AD',
+			 TRUE,
+			 '{ 2, 2, 2 }',
+			 '{ "two", "two", "two" }');
+INSERT INTO table_create_org VALUES(
+			 12,
+			 2,
+			 2,
+			 2.2,
+			 2.2,
+			 'two',
+			 'two',
+			 'two',
+			 E'\\x22F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'February 2, 2019 02:02:02.2222',
+			 'February 2, 2019 02:02:02.2222 PST AD',
+			 TRUE,
+			 '{ 2, 2, 2 }',
+			 '{ "two", "two", "two" }');
+--
+INSERT INTO table_create_org VALUES(
+			 3,
+			 3,
+			 3,
+			 3.3,
+			 3.3,
+			 'three',
+			 'three',
+			 'three',
+			 E'\\x33F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'March 3, 2019 03:03:03.3333',
+			 'March 3, 2019 03:03:03.3333 PST AD',
+			 TRUE,
+			 '{ 3, 3, 3 }',
+			 '{ "three", "three", "three" }');
+INSERT INTO table_create_org VALUES(
+			 13,
+			 3,
+			 3,
+			 3.3,
+			 3.3,
+			 'three',
+			 'three',
+			 'three',
+			 E'\\x33F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'March 3, 2019 03:03:03.3333',
+			 'March 3, 2019 03:03:03.3333 PST AD',
+			 TRUE,
+			 '{ 3, 3, 3 }',
+			 '{ "three", "three", "three" }');
+--
+INSERT INTO table_create_org VALUES(
+			 4,
+			 4,
+			 4,
+			 4.4,
+			 4.4,
+			 'four',
+			 'four',
+			 'four',
+			 E'\\x44F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'April 4, 2019 04:04:04.4444',
+			 'April 4, 2019 04:04:04.4444 PST AD',
+			 TRUE,
+			 '{ 4, 4, 4 }',
+			 '{ "four", "four", "four" }');
+INSERT INTO table_create_org VALUES(
+			 14,
+			 4,
+			 4,
+			 4.4,
+			 4.4,
+			 'four',
+			 'four',
+			 'four',
+			 E'\\x44F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'April 4, 2019 04:04:04.4444',
+			 'April 4, 2019 04:04:04.4444 PST AD',
+			 TRUE,
+			 '{ 4, 4, 4 }',
+			 '{ "four", "four", "four" }');
+--
+INSERT INTO table_create_org VALUES(
+			 5,
+			 5,
+			 5,
+			 5.5,
+			 5.5,
+			 'five',
+			 'five',
+			 'five',
+			 E'\\x55F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'May 5, 2019 05:05:05.5555',
+			 'May 5, 2019 05:05:05.5555 PST AD',
+			 TRUE,
+			 '{ 5, 5, 5 }',
+			 '{ "five", "five", "five" }');
+INSERT INTO table_create_org VALUES(
+			 15,
+			 5,
+			 5,
+			 5.5,
+			 5.5,
+			 'five',
+			 'five',
+			 'five',
+			 E'\\x55F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'May 5, 2019 05:05:05.5555',
+			 'May 5, 2019 05:05:05.5555 PST AD',
+			 TRUE,
+			 '{ 5, 5, 5 }',
+			 '{ "five", "five", "five" }');
+--
+INSERT INTO table_create_org VALUES(
+			 6,
+			 6,
+			 6,
+			 6.6,
+			 6.6,
+			 'six',
+			 'six',
+			 'six',
+			 E'\\x66F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'June 6, 2019 06:06:06.6666',
+			 'June 6, 2019 06:06:06.6666 PST AD',
+			 TRUE,
+			 '{ 6, 6, 6 }',
+			 '{ "six", "six", "six" }');
+INSERT INTO table_create_org VALUES(
+			 16,
+			 6,
+			 6,
+			 6.6,
+			 6.6,
+			 'six',
+			 'six',
+			 'six',
+			 E'\\x66F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'June 6, 2019 06:06:06.6666',
+			 'June 6, 2019 06:06:06.6666 PST AD',
+			 TRUE,
+			 '{ 6, 6, 6 }',
+			 '{ "six", "six", "six" }');
+--
+INSERT INTO table_create_org VALUES(
+			 7,
+			 7,
+			 7,
+			 7.7,
+			 7.7,
+			 'seven',
+			 'seven',
+			 'seven',
+			 E'\\x77F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'July 7, 2019 07:07:07.7777',
+			 'July 7, 2019 07:07:07.7777 PST AD',
+			 TRUE,
+			 '{ 7, 7, 7 }',
+			 '{ "seven", "seven", "seven" }');
+INSERT INTO table_create_org VALUES(
+			 17,
+			 7,
+			 7,
+			 7.7,
+			 7.7,
+			 'seven',
+			 'seven',
+			 'seven',
+			 E'\\x77F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'July 7, 2019 07:07:07.7777',
+			 'July 7, 2019 07:07:07.7777 PST AD',
+			 TRUE,
+			 '{ 7, 7, 7 }',
+			 '{ "seven", "seven", "seven" }');
+--
+INSERT INTO table_create_org VALUES(
+			 8,
+			 8,
+			 8,
+			 8.8,
+			 8.8,
+			 'eight',
+			 'eight',
+			 'eight',
+			 E'\\x88F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'August 8, 2019 08:08:08.8888',
+			 'August 8, 2019 08:08:08.8888 PST AD',
+			 TRUE,
+			 '{ 8, 8, 8 }',
+			 '{ "eight", "eight", "eight" }');
+INSERT INTO table_create_org VALUES(
+			 18,
+			 8,
+			 8,
+			 8.8,
+			 8.8,
+			 'eight',
+			 'eight',
+			 'eight',
+			 E'\\x88F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'August 8, 2019 08:08:08.8888',
+			 'August 8, 2019 08:08:08.8888 PST AD',
+			 TRUE,
+			 '{ 8, 8, 8 }',
+			 '{ "eight", "eight", "eight" }');
+--
+INSERT INTO table_create_org VALUES(
+			 9,
+			 9,
+			 9,
+			 9.9,
+			 9.9,
+			 'nine',
+			 'nine',
+			 'nine',
+			 E'\\x99F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'September 9, 2019 09:09:09.9999',
+			 'September 9, 2019 09:09:09.9999 PST AD',
+			 TRUE,
+			 '{ 9, 9, 9 }',
+			 '{ "nine", "nine", "nine" }');
+INSERT INTO table_create_org VALUES(
+			 19,
+			 9,
+			 9,
+			 9.9,
+			 9.9,
+			 'nine',
+			 'nine',
+			 'nine',
+			 E'\\x99F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 'September 9, 2019 09:09:09.9999',
+			 'September 9, 2019 09:09:09.9999 PST AD',
+			 TRUE,
+			 '{ 9, 9, 9 }',
+			 '{ "nine", "nine", "nine" }');
+--
+CREATE TABLE table_create_ctas_nodata AS SELECT * FROM table_create_org WITH NO DATA;
+--
+SELECT * FROM table_create_ctas_nodata;
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text | col_bytea | col_timestamp | col_timestamp_tz | col_bool | col_array_int | col_array_text
+--------------+-------------+------------+----------+------------+----------+-------------+----------+-----------+---------------+------------------+----------+---------------+----------------
+(0 rows)
+
+--
+CREATE TABLE table_create_ctas2_nodata
+			 AS SELECT col_smallint id,
+			 					 col_text "name",
+								 col_array_int AS private_data,
+								 col_array_text AS information
+			 		FROM table_create_org
+					WITH NO DATA;
+--
+SELECT * FROM table_create_ctas2_nodata;
+ id | name | private_data | information
+----+------+--------------+-------------
+(0 rows)
+
+--
+CREATE TABLE table_create_ctas AS SELECT * FROM table_create_org;
+--
+SELECT * FROM table_create_ctas ORDER BY col_smallint;
+ col_smallint | col_integer | col_bigint | col_real | col_double | col_char | col_varchar | col_text |              col_bytea               |        col_timestamp        |         col_timestamp_tz          | col_bool | col_array_int |   col_array_text
+--------------+-------------+------------+----------+------------+----------+-------------+----------+--------------------------------------+-----------------------------+-----------------------------------+----------+---------------+---------------------
+            1 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:01:01.11 2019 | Tue Jan 01 01:01:01.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
+            2 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
+            3 |           3 |          3 |      3.3 |        3.3 | three    | three       | three    | \x33f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Mar 03 03:03:03.33 2019 | Sun Mar 03 03:03:03.3333 2019 PST | t        | {3,3,3}       | {three,three,three}
+            4 |           4 |          4 |      4.4 |        4.4 | four     | four        | four     | \x44f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Apr 04 04:04:04.44 2019 | Thu Apr 04 05:04:04.4444 2019 PDT | t        | {4,4,4}       | {four,four,four}
+            5 |           5 |          5 |      5.5 |        5.5 | five     | five        | five     | \x55f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun May 05 05:05:05.56 2019 | Sun May 05 06:05:05.5555 2019 PDT | t        | {5,5,5}       | {five,five,five}
+            6 |           6 |          6 |      6.6 |        6.6 | six      | six         | six      | \x66f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Jun 06 06:06:06.67 2019 | Thu Jun 06 07:06:06.6666 2019 PDT | t        | {6,6,6}       | {six,six,six}
+            7 |           7 |          7 |      7.7 |        7.7 | seven    | seven       | seven    | \x77f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Jul 07 07:07:07.78 2019 | Sun Jul 07 08:07:07.7777 2019 PDT | t        | {7,7,7}       | {seven,seven,seven}
+            8 |           8 |          8 |      8.8 |        8.8 | eight    | eight       | eight    | \x88f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Aug 08 08:08:08.89 2019 | Thu Aug 08 09:08:08.8888 2019 PDT | t        | {8,8,8}       | {eight,eight,eight}
+            9 |           9 |          9 |      9.9 |        9.9 | nine     | nine        | nine     | \x99f1e2d3c4b5a6079889706a5b4c3d2e1f | Mon Sep 09 09:09:10 2019    | Mon Sep 09 10:09:09.9999 2019 PDT | t        | {9,9,9}       | {nine,nine,nine}
+           11 |           1 |          1 |      1.1 |        1.1 | one      | one         | one      | \x11f1e2d3c4b5a6079889706a5b4c3d2e1f | Tue Jan 01 01:01:01.11 2019 | Tue Jan 01 01:01:01.1111 2019 PST | t        | {1,1,1}       | {one,one,one}
+           12 |           2 |          2 |      2.2 |        2.2 | two      | two         | two      | \x22f1e2d3c4b5a6079889706a5b4c3d2e1f | Sat Feb 02 02:02:02.22 2019 | Sat Feb 02 02:02:02.2222 2019 PST | t        | {2,2,2}       | {two,two,two}
+           13 |           3 |          3 |      3.3 |        3.3 | three    | three       | three    | \x33f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Mar 03 03:03:03.33 2019 | Sun Mar 03 03:03:03.3333 2019 PST | t        | {3,3,3}       | {three,three,three}
+           14 |           4 |          4 |      4.4 |        4.4 | four     | four        | four     | \x44f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Apr 04 04:04:04.44 2019 | Thu Apr 04 05:04:04.4444 2019 PDT | t        | {4,4,4}       | {four,four,four}
+           15 |           5 |          5 |      5.5 |        5.5 | five     | five        | five     | \x55f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun May 05 05:05:05.56 2019 | Sun May 05 06:05:05.5555 2019 PDT | t        | {5,5,5}       | {five,five,five}
+           16 |           6 |          6 |      6.6 |        6.6 | six      | six         | six      | \x66f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Jun 06 06:06:06.67 2019 | Thu Jun 06 07:06:06.6666 2019 PDT | t        | {6,6,6}       | {six,six,six}
+           17 |           7 |          7 |      7.7 |        7.7 | seven    | seven       | seven    | \x77f1e2d3c4b5a6079889706a5b4c3d2e1f | Sun Jul 07 07:07:07.78 2019 | Sun Jul 07 08:07:07.7777 2019 PDT | t        | {7,7,7}       | {seven,seven,seven}
+           18 |           8 |          8 |      8.8 |        8.8 | eight    | eight       | eight    | \x88f1e2d3c4b5a6079889706a5b4c3d2e1f | Thu Aug 08 08:08:08.89 2019 | Thu Aug 08 09:08:08.8888 2019 PDT | t        | {8,8,8}       | {eight,eight,eight}
+           19 |           9 |          9 |      9.9 |        9.9 | nine     | nine        | nine     | \x99f1e2d3c4b5a6079889706a5b4c3d2e1f | Mon Sep 09 09:09:10 2019    | Mon Sep 09 10:09:09.9999 2019 PDT | t        | {9,9,9}       | {nine,nine,nine}
+(18 rows)
+
+--
+CREATE TABLE table_create_ctas2
+			 AS SELECT col_smallint id,
+			 					 col_text "name",
+								 col_array_int AS private_data,
+								 col_array_text AS information
+			 		FROM table_create_org
+					WHERE col_smallint < 11;
+--
+SELECT * FROM table_create_ctas2 ORDER BY id;
+ id | name  | private_data |     information
+----+-------+--------------+---------------------
+  1 | one   | {1,1,1}      | {one,one,one}
+  2 | two   | {2,2,2}      | {two,two,two}
+  3 | three | {3,3,3}      | {three,three,three}
+  4 | four  | {4,4,4}      | {four,four,four}
+  5 | five  | {5,5,5}      | {five,five,five}
+  6 | six   | {6,6,6}      | {six,six,six}
+  7 | seven | {7,7,7}      | {seven,seven,seven}
+  8 | eight | {8,8,8}      | {eight,eight,eight}
+  9 | nine  | {9,9,9}      | {nine,nine,nine}
+(9 rows)

@@ -47,6 +47,7 @@
 #include "yb/common/key_encoder.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
+#include "yb/common/common.pb.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
@@ -180,6 +181,9 @@ typedef std::shared_ptr<ColumnIds> ColumnIdsPtr;
 // In the future, it may hold information about annotations, etc.
 class ColumnSchema {
  public:
+  typedef std::pair<JsonOperatorPB, QLValuePB> QLJsonOperation;
+  typedef std::vector<QLJsonOperation> QLJsonOperations;
+
   enum SortingType : uint8_t {
     kNotSpecified = 0,
     kAscending,
@@ -205,7 +209,8 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified)
+               SortingType sorting_type = SortingType::kNotSpecified,
+               const QLJsonOperations& json_ops = QLJsonOperations())
       : name_(std::move(name)),
         type_(type),
         is_nullable_(is_nullable),
@@ -213,7 +218,8 @@ class ColumnSchema {
         is_static_(is_static),
         is_counter_(is_counter),
         order_(order),
-        sorting_type_(sorting_type) {
+        sorting_type_(sorting_type),
+        json_ops_(json_ops) {
   }
 
   // convenience constructor for creating columns with simple (non-parametric) data types
@@ -224,9 +230,10 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified)
+               SortingType sorting_type = SortingType::kNotSpecified,
+               const QLJsonOperations& json_ops = QLJsonOperations())
       : ColumnSchema(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                     order, sorting_type) {
+                     order, sorting_type, json_ops) {
   }
 
   const std::shared_ptr<QLType>& type() const {
@@ -283,6 +290,10 @@ class ColumnSchema {
 
   const string &name() const {
     return name_;
+  }
+
+  const QLJsonOperations& json_ops() const {
+    return json_ops_;
   }
 
   // Return a string identifying this column, including its
@@ -354,6 +365,7 @@ class ColumnSchema {
   bool is_counter_;
   int32_t order_;
   SortingType sorting_type_;
+  QLJsonOperations json_ops_;
 };
 
 class ContiguousRow;
@@ -579,7 +591,7 @@ class Schema {
   inline Result<const ColumnSchema&> column_by_id(ColumnId id) const {
     int idx = find_column_by_id(id);
     if (idx < 0) {
-      return STATUS_FORMAT(InvalidArgument, "Column id $0 not found", idx);
+      return STATUS_FORMAT(InvalidArgument, "Column id $0 not found", id.ToString());
     }
     return cols_[idx];
   }

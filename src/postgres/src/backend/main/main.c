@@ -9,7 +9,7 @@
  * proper FooMain() routine for the incarnation.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -43,6 +43,8 @@
 #include "utils/pg_locale.h"
 #include "utils/ps_status.h"
 
+#include "common/pg_yb_common.h"
+#include "pg_yb_utils.h"
 
 const char *progname;
 
@@ -187,6 +189,10 @@ PostgresServerProcessMain(int argc, char *argv[])
 			do_check_root = false;
 		else if (argc > 2 && strcmp(argv[1], "-C") == 0)
 			do_check_root = false;
+	}
+
+	if (YBShouldAllowRunningAsAnyUser()) {
+		do_check_root = false;
 	}
 
 	/*

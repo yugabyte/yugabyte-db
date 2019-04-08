@@ -57,11 +57,11 @@ message MasterErrorPB {
     // The schema provided for a request was not well-formed.
     INVALID_SCHEMA = 2;
 
-    // The requested table does not exist
-    TABLE_NOT_FOUND = 3;
+    // The requested table or index does not exist
+    OBJECT_NOT_FOUND = 3;
 
-    // The name requested for the table is already in use
-    TABLE_ALREADY_PRESENT = 4;
+    // The name requested for the table or index is already in use
+    OBJECT_ALREADY_PRESENT = 4;
 
     // The number of tablets requested for a new table is over the per TS limit.
     TOO_MANY_TABLETS = 5;
@@ -150,7 +150,7 @@ message NamespaceIdentifierPB {
   optional string name = 2;
 
   // Database type.
-  optional YQLDatabase database_type = 3 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 3 [ default = YQL_DATABASE_CQL ];
 }
 
 message TableIdentifierPB {
@@ -333,11 +333,14 @@ message SysTablesEntryPB {
 
   // For index table: [to be deprecated and replaced by "index_info"]
   optional bytes indexed_table_id = 13; // Indexed table id of this index.
-  optional bool is_local_index = 14 [ default = false ]; // Whether this is a local index.
+  optional bool is_local_index = 14 [ default = false ];  // Whether this is a local index.
   optional bool is_unique_index = 15 [ default = false ]; // Whether this is a unique index.
 
   // For index table: information about this index.
   optional IndexInfoPB index_info = 22;
+
+  // For Postgres:
+  optional bool is_pg_shared_table = 16 [ default = false ]; // Is this a shared table?
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -349,7 +352,10 @@ message SysNamespaceEntryPB {
   optional bytes name = 1;
 
   // Namespace/Database type.
-  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
+
+  // For Postgres:
+  optional uint32 next_pg_oid = 3; // Next oid to assign.
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
@@ -392,10 +398,18 @@ message SysSecurityConfigEntryPB {
   optional uint64 roles_version = 1;
 }
 
+// Metadata about the YSQL catalog (current only version).
+message SysYSQLCatalogConfigEntryPB {
+  // YSQL catalog version. Every time the catalog tables are changed (i.e. by DDL statements)
+  // this version gets incremented.
+  optional uint64 version = 1;
+}
+
 // Various cluster configuration.
 message SysConfigEntryPB {
   oneof config {
     SysSecurityConfigEntryPB security_config = 1;
+    SysYSQLCatalogConfigEntryPB ysql_catalog_config = 2;
   }
 }
 
@@ -417,7 +431,8 @@ message ResourcePermissionsPB {
 message TSRegistrationPB {
   optional ServerRegistrationPB common = 1;
 
-  // TODO: add stuff like software version, etc.
+  // Capabilities supported byt this TS.
+  repeated fixed32 capabilities = 2;
 }
 
 message ReportedTabletPB {
@@ -537,6 +552,10 @@ message TSHeartbeatResponsePB {
 
   // Cluster UUID. Sent by the master only after registration.
   optional string cluster_uuid = 9;
+
+  // Current YSQL catalog schema version.
+  // Used by tservers and postgres backends to decide if a cache refresh is needed.
+  optional uint64 ysql_catalog_version = 10;
 }
 
 message TSInformationPB {
@@ -591,6 +610,9 @@ message TSInfoPB {
   optional CloudInfoPB cloud_info = 3;
 
   optional bytes placement_uuid = 4;
+
+  // Capabilities of tablet server.
+  repeated fixed32 capabilities = 6;
 }
 
 message GetTabletLocationsRequestPB {
@@ -635,9 +657,9 @@ message CreateTableRequestPB {
   optional string creator_role_name = 12;
 
   // For Postgres:
-  optional uint32 pg_schema_oid = 13; // OID of schema this table belongs to.
-  optional uint32 pg_table_oid = 14;  // OID of this table.
-  optional bool is_pg_catalog_table = 15 [ default = false ]; // Is this a sys catalog table?
+  optional bytes table_id = 13; // id to assign to this table.
+  optional bool is_pg_catalog_table = 14 [ default = false ]; // Is this a sys catalog table?
+  optional bool is_pg_shared_table = 15 [ default = false ];  // Is this a shared table?
 }
 
 message CreateTableResponsePB {
@@ -707,6 +729,12 @@ message IsDeleteTableDoneResponsePB {
   optional bool done = 2;
 }
 
+enum RelationType {
+  SYSTEM_TABLE_RELATION = 1;
+  USER_TABLE_RELATION = 2;
+  INDEX_TABLE_RELATION = 3;
+}
+
 message ListTablesRequestPB {
   // When used, only returns tables that satisfy a substring match on name_filter.
   optional string name_filter = 1;
@@ -716,6 +744,9 @@ message ListTablesRequestPB {
 
   // Exclude system tables.
   optional bool exclude_system_tables = 3 [default = false];
+
+  // Can be used to filter tables based on RelationType
+  repeated RelationType relation_type_filter = 4;
 }
 
 message ListTablesResponsePB {
@@ -727,6 +758,7 @@ message ListTablesResponsePB {
     required string name = 2;
     optional TableType table_type = 3;
     optional NamespaceIdentifierPB namespace = 4;
+    optional RelationType relation_type = 5 [default = USER_TABLE_RELATION];
   }
 
   repeated TableInfo tables = 2;
@@ -1035,13 +1067,16 @@ message CreateNamespaceRequestPB {
   optional string name = 1;
 
   // Database type.
-  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
 
   // For RBAC.
   optional string creator_role_name = 3;
 
   // For Postgres:
-  optional uint32 pg_database_oid = 4; // OID of the database this namespace represents.
+  optional bytes namespace_id = 4; // id to assign to this namespace.
+  optional bytes source_namespace_id = 5; // namespace id of the source database to copy from.
+  optional uint32 next_pg_oid = 6; // Next oid to assign. Ingored when source_namespace_id is given
+                                   // and the next_pg_oid from source namespace will be used.
 }
 
 message CreateNamespaceResponsePB {
@@ -1057,7 +1092,7 @@ message DeleteNamespaceRequestPB {
   optional NamespaceIdentifierPB namespace = 1;
 
   // Database type.
-  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 2 [ default = YQL_DATABASE_CQL ];
 }
 // Fails if the namespace is NOT empty
 
@@ -1067,7 +1102,7 @@ message DeleteNamespaceResponsePB {
 }
 
 message ListNamespacesRequestPB {
-  optional YQLDatabase database_type = 1 [ default = YQL_DATABASE_UNDEFINED ];
+  optional YQLDatabase database_type = 1 [ default = YQL_DATABASE_CQL ];
 }
 
 message ListNamespacesResponsePB {
@@ -1262,8 +1297,13 @@ message UDTypeInfoPB {
   optional NamespaceIdentifierPB namespace = 5;
 }
 
+// TODO: rename to FlushOrCompact TablesRequestPB
+// https://github.com/YugaByte/yugabyte-db/issues/729
 message FlushTablesRequestPB {
   repeated TableIdentifierPB tables = 1;
+
+  // Whether we want to compact the tablets instead of flushing them.
+  optional bool is_compaction = 2;
 }
 
 message FlushTablesResponsePB {
@@ -1284,6 +1324,28 @@ message IsFlushTablesDoneResponsePB {
 
   // true if the flush tables operation is successfull.
   optional bool success = 3;
+}
+
+// Reserve Postgres oid
+message ReservePgsqlOidsRequestPB {
+  optional bytes namespace_id = 1; // The namespace id of the Postgres database.
+  optional uint32 next_oid = 2;    // The next oid to reserve.
+  optional uint32 count = 3;       // The number of oids to reserve.
+}
+
+message ReservePgsqlOidsResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  optional uint32 begin_oid = 2; // The beginning oid reserved. Can be higher than requested.
+  optional uint32 end_oid = 3;   // The end (exclusive) oid reserved.
+}
+
+message GetYsqlCatalogConfigRequestPB {
+}
+
+message GetYsqlCatalogConfigResponsePB {
+  optional MasterErrorPB error = 1;
+  optional uint64 version = 2;
 }
 
 service MasterService {
@@ -1312,6 +1374,10 @@ service MasterService {
   rpc CreateNamespace(CreateNamespaceRequestPB) returns (CreateNamespaceResponsePB);
   rpc DeleteNamespace(DeleteNamespaceRequestPB) returns (DeleteNamespaceResponsePB);
   rpc ListNamespaces(ListNamespacesRequestPB) returns (ListNamespacesResponsePB);
+
+  // For Postgres:
+  rpc ReservePgsqlOids(ReservePgsqlOidsRequestPB) returns (ReservePgsqlOidsResponsePB);
+  rpc GetYsqlCatalogConfig(GetYsqlCatalogConfigRequestPB) returns (GetYsqlCatalogConfigResponsePB);
 
   //  Authentication and Authorization.
   rpc CreateRole(CreateRoleRequestPB) returns (CreateRoleResponsePB);

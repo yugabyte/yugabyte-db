@@ -43,7 +43,6 @@
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/fs/block_id.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/dynamic_annotations.h"
@@ -80,9 +79,9 @@ struct TableInfo {
   PartitionSchema partition_schema;
 
   // A vector of column IDs that have been deleted, so that the compaction filter can free the
-  // associated memory. At present, deleted column IDs are persisted forever, even if all the
-  // associated data has been discarded. In the future, we can garbage collect such column IDs
-  // to make sure this vector doesn't grow too large.
+  // associated memory. As of 01/2019, deleted column IDs are persisted forever, even if all the
+  // associated data has been discarded. In the future, we can garbage collect such column IDs to
+  // make sure this vector doesn't grow too large.
   std::vector<DeletedColumn> deleted_cols;
 
   TableInfo() = default;
@@ -101,10 +100,16 @@ struct TableInfo {
             uint32_t schema_version);
 
   CHECKED_STATUS LoadFromSuperBlock(const TabletSuperBlockPB& superblock);
-  CHECKED_STATUS ToSuperBlock(TabletSuperBlockPB* superblock);
+  void ToSuperBlock(TabletSuperBlockPB* superblock);
 
   CHECKED_STATUS LoadFromPB(const TableInfoPB& pb);
-  CHECKED_STATUS ToPB(TableInfoPB* pb);
+  void ToPB(TableInfoPB* pb) const;
+
+  std::string ToString() const {
+    TableInfoPB pb;
+    ToPB(&pb);
+    return pb.ShortDebugString();
+  }
 };
 
 // Manages the "blocks tracking" for the specified tablet.
@@ -277,7 +282,6 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
                 const Schema& schema,
                 const IndexMap& index_map,
                 const PartitionSchema& partition_schema,
-                const Partition& partition,
                 const boost::optional<IndexInfo>& index_info,
                 const uint32_t schema_version);
 
@@ -285,27 +289,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;
 
-  // Increments flush pin count by one: if flush pin count > 0,
-  // metadata will _not_ be flushed to disk during Flush().
-  void PinFlush();
-
-  // Decrements flush pin count by one: if flush pin count is zero,
-  // metadata will be flushed to disk during the next call to Flush()
-  // or -- if Flush() had been called after a call to PinFlush() but
-  // before this method was called -- Flush() will be called inside
-  // this method.
-  CHECKED_STATUS UnPinFlush();
-
   CHECKED_STATUS Flush();
-
-  // Adds the blocks referenced by 'block_ids' to 'orphaned_blocks_'.
-  //
-  // This set will be written to the on-disk metadata in any subsequent
-  // flushes.
-  //
-  // Blocks are removed from this set after they are successfully deleted
-  // in a call to DeleteOrphanedBlocks().
-  void AddOrphanedBlocks(const std::vector<BlockId>& block_ids);
 
   // Mark the superblock to be in state 'delete_type', sync it to disk, and
   // then delete all of the rowsets in this tablet.
@@ -343,7 +327,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   CHECKED_STATUS ReadSuperBlockFromDisk(TabletSuperBlockPB* superblock) const;
 
   // Sets *superblock to the serialized form of the current metadata.
-  CHECKED_STATUS ToSuperBlock(TabletSuperBlockPB* superblock) const;
+  void ToSuperBlock(TabletSuperBlockPB* superblock) const;
 
   // Fully replace a superblock (used for bootstrap).
   CHECKED_STATUS ReplaceSuperBlock(const TabletSuperBlockPB &pb);
@@ -389,18 +373,7 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   CHECKED_STATUS ReplaceSuperBlockUnlocked(const TabletSuperBlockPB &pb);
 
   // Requires 'data_lock_'.
-  CHECKED_STATUS ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) const;
-
-  // Requires 'data_lock_'.
-  void AddOrphanedBlocksUnlocked(const std::vector<BlockId>& block_ids);
-
-  // Deletes the provided 'blocks' on disk.
-  //
-  // All blocks that are successfully deleted are removed from the
-  // 'orphaned_blocks_' set.
-  //
-  // Failures are logged, but are not fatal.
-  void DeleteOrphanedBlocks(const std::vector<BlockId>& blocks);
+  void ToSuperBlockUnlocked(TabletSuperBlockPB* superblock) const;
 
   // Return standard "T xxx P yyy" log prefix.
   std::string LogPrefix() const;
@@ -458,22 +431,12 @@ class TabletMetadata : public RefCountedThreadSafe<TabletMetadata> {
   // The directory where the write-ahead log for this tablet is stored.
   std::string wal_dir_;
 
-  // Protected by 'data_lock_'.
-  std::unordered_set<BlockId, BlockIdHash, BlockIdEqual> orphaned_blocks_;
-
   // The current state of remote bootstrap for the tablet.
   TabletDataState tablet_data_state_;
 
   // Record of the last opid logged by the tablet before it was last tombstoned. Has no meaning for
   // non-tombstoned tablets.
   yb::OpId tombstone_last_logged_opid_;
-
-  // If this counter is > 0 then Flush() will not write any data to disk.
-  int32_t num_flush_pins_ = 0;
-
-  // Set if Flush() is called when num_flush_pins_ is > 0; if true, then next UnPinFlush will call
-  // Flush() again to ensure the metadata is persisted.
-  bool needs_flush_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(TabletMetadata);
 };

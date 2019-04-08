@@ -27,26 +27,29 @@ LocalOutboundCall::LocalOutboundCall(
     const RemoteMethod* remote_method,
     const shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
     google::protobuf::Message* response_storage, RpcController* controller,
-    ResponseCallback callback)
-    : OutboundCall(remote_method, outbound_call_metrics, response_storage, controller,
+    RpcMetrics* rpc_metrics, ResponseCallback callback)
+    : OutboundCall(remote_method, outbound_call_metrics, response_storage, controller, rpc_metrics,
                    std::move(callback)) {
 }
 
-Status LocalOutboundCall::SetRequestParam(const google::protobuf::Message& req) {
+Status LocalOutboundCall::SetRequestParam(
+    const google::protobuf::Message& req, const MemTrackerPtr& mem_tracker) {
   req_ = &req;
   return Status::OK();
 }
 
-void LocalOutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
+void LocalOutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   LOG(FATAL) << "Local call should not require serialization";
 }
 
 const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInboundCall() {
   DCHECK(inbound_call_.get() == nullptr);
   const MonoDelta timeout = controller()->timeout();
-  const MonoTime deadline = timeout.Initialized() ? start_ + timeout : MonoTime::Max();
+  const CoarseTimePoint deadline =
+      timeout.Initialized() ? ToCoarse(start_) + timeout : CoarseTimePoint::max();
   auto outbound_call = std::static_pointer_cast<LocalOutboundCall>(shared_from(this));
-  inbound_call_ = InboundCall::Create<LocalYBInboundCall>(remote_method(), outbound_call, deadline);
+  inbound_call_ = InboundCall::Create<LocalYBInboundCall>(
+      &rpc_metrics(), remote_method(), outbound_call, deadline);
   return inbound_call_;
 }
 
@@ -61,9 +64,12 @@ Status LocalOutboundCall::GetSidecar(int idx, Slice* sidecar) const {
 }
 
 LocalYBInboundCall::LocalYBInboundCall(
-    const RemoteMethod& remote_method, std::weak_ptr<LocalOutboundCall> outbound_call,
-    const MonoTime& deadline)
-    : YBInboundCall(remote_method), outbound_call_(outbound_call), deadline_(deadline) {
+    RpcMetrics* rpc_metrics,
+    const RemoteMethod& remote_method,
+    std::weak_ptr<LocalOutboundCall> outbound_call,
+    CoarseTimePoint deadline)
+    : YBInboundCall(rpc_metrics, remote_method), outbound_call_(outbound_call),
+      deadline_(deadline) {
 }
 
 const Endpoint& LocalYBInboundCall::remote_address() const {
@@ -88,7 +94,7 @@ void LocalYBInboundCall::Respond(const google::protobuf::MessageLite& response, 
     call->SetFinished();
   } else {
     call->SetFailed(STATUS(RemoteError, "Local call error"),
-                    new ErrorStatusPB(yb::down_cast<const ErrorStatusPB&>(response)));
+                    std::make_unique<ErrorStatusPB>(yb::down_cast<const ErrorStatusPB&>(response)));
   }
 }
 

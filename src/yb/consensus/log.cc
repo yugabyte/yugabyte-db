@@ -124,6 +124,11 @@ TAG_FLAG(log_inject_latency_ms_stddev, unsafe);
 DEFINE_int32(log_inject_append_latency_ms_max, 0,
              "The maximum latency to inject before the log append operation.");
 
+DEFINE_test_flag(bool, log_consider_all_ops_safe, false,
+            "If true, we consider all operations to be safe and will not wait"
+            "for the opId to apply to the local log. i.e. WaitForSafeOpIdToApply "
+            "becomes a noop.");
+
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
   if (value >= 1) {
@@ -170,6 +175,10 @@ class Log::Appender {
   // 'OnFailure()' method.
   void Shutdown();
 
+  const std::string& LogPrefix() const {
+    return log_->LogPrefix();
+  }
+
  private:
   // Process the given log entry batch or does a sync if a null is passed.
   void ProcessBatch(LogEntryBatch* entry_batch);
@@ -196,7 +205,7 @@ Log::Appender::Appender(Log *log, ThreadPool* append_thread_pool)
 }
 
 Status Log::Appender::Init() {
-  VLOG(1) << "Starting log task stream for tablet " << log_->tablet_id();
+  VLOG_WITH_PREFIX(1) << "Starting log task stream";
   return Status::OK();
 }
 
@@ -220,8 +229,7 @@ void Log::Appender::ProcessBatch(LogEntryBatch* entry_batch) {
   Status s = log_->DoAppend(entry_batch);
 
   if (PREDICT_FALSE(!s.ok())) {
-    LOG(ERROR) << "Error appending to the log: " << s.ToString();
-    DLOG(FATAL) << "Aborting: " << s.ToString();
+    LOG_WITH_PREFIX(DFATAL) << "Error appending to the log: " << s;
     entry_batch->set_failed_to_append();
     // TODO If a single operation fails to append, should we abort all subsequent operations
     // in this batch or allow them to be appended? What about operations in future batches?
@@ -262,8 +270,7 @@ void Log::Appender::GroupWork() {
 
   Status s = log_->Sync();
   if (PREDICT_FALSE(!s.ok())) {
-    LOG(ERROR) << "Error syncing log" << s.ToString();
-    DLOG(FATAL) << "Aborting: " << s.ToString();
+    LOG_WITH_PREFIX(DFATAL) << "Error syncing log: " << s;
     for (std::unique_ptr<LogEntryBatch>& entry_batch : sync_batch_) {
       if (!entry_batch->callback().is_null()) {
         entry_batch->callback().Run(s);
@@ -271,7 +278,7 @@ void Log::Appender::GroupWork() {
     }
   } else {
     TRACE_EVENT0("log", "Callbacks");
-    VLOG(2) << "Synchronized " << sync_batch_.size() << " entry batches";
+    VLOG_WITH_PREFIX(2) << "Synchronized " << sync_batch_.size() << " entry batches";
     SCOPED_WATCH_STACK(FLAGS_consensus_log_scoped_watch_delay_callback_threshold_ms);
     for (std::unique_ptr<LogEntryBatch>& entry_batch : sync_batch_) {
       if (PREDICT_TRUE(!entry_batch->failed_to_append() && !entry_batch->callback().is_null())) {
@@ -283,15 +290,15 @@ void Log::Appender::GroupWork() {
     }
     sync_batch_.clear();
   }
-  VLOG(1) << "Exiting AppendTask for tablet " << log_->tablet_id();
+  VLOG_WITH_PREFIX(1) << "Exiting AppendTask for tablet " << log_->tablet_id();
 }
 
 void Log::Appender::Shutdown() {
   std::lock_guard<std::mutex> lock_guard(lock_);
   if (task_stream_) {
-    VLOG(1) << "Shutting down log task stream for tablet " << log_->tablet_id();
+    VLOG_WITH_PREFIX(1) << "Shutting down log task stream";
     task_stream_->Stop();
-    VLOG(1) << "Log append task stream for tablet " << log_->tablet_id() << " is shut down";
+    VLOG_WITH_PREFIX(1) << "Log append task stream is shut down";
     task_stream_.reset();
   }
 }
@@ -356,7 +363,8 @@ Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
       sync_disabled_(false),
       allocation_state_(kAllocationNotStarted),
       metric_entity_(metric_entity),
-      on_disk_size_(0) {
+      on_disk_size_(0),
+      log_prefix_(Format("T $0 P $1: ", tablet_id_, fs_manager->uuid())) {
   CHECK_OK(ThreadPoolBuilder("log-alloc").set_max_threads(1).Build(&allocation_pool_));
   if (metric_entity_) {
     metrics_.reset(new LogMetrics(metric_entity_));
@@ -379,8 +387,8 @@ Status Log::Init() {
   // The case where we are continuing an existing log.  We must pick up where the previous WAL left
   // off in terms of sequence numbers.
   if (reader_->num_segments() != 0) {
-    VLOG(1) << "Using existing " << reader_->num_segments()
-            << " segments from path: " << tablet_wal_path_;
+    VLOG_WITH_PREFIX(1) << "Using existing " << reader_->num_segments()
+                        << " segments from path: " << tablet_wal_path_;
 
     vector<scoped_refptr<ReadableLogSegment> > segments;
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
@@ -419,11 +427,11 @@ Status Log::AsyncAllocateSegment() {
 
 Status Log::CloseCurrentSegment() {
   if (!footer_builder_.has_min_replicate_index()) {
-    VLOG(1) << "Writing a segment without any REPLICATE message. "
-        "Segment: " << active_segment_->path();
+    VLOG_WITH_PREFIX(1) << "Writing a segment without any REPLICATE message. Segment: "
+                        << active_segment_->path();
   }
-  VLOG(2) << "Segment footer for " << active_segment_->path()
-          << ": " << footer_builder_.ShortDebugString();
+  VLOG_WITH_PREFIX(2) << "Segment footer for " << active_segment_->path()
+                      << ": " << footer_builder_.ShortDebugString();
 
   footer_builder_.set_close_timestamp_micros(GetCurrentTimeMicros());
   return active_segment_->WriteFooterAndClose(footer_builder_);
@@ -442,7 +450,7 @@ Status Log::RollOver() {
 
   RETURN_NOT_OK(SwitchToAllocatedSegment());
 
-  LOG(INFO) << "Rolled over to a new segment: " << active_segment_->path();
+  LOG_WITH_PREFIX(INFO) << "Rolled over to a new segment: " << active_segment_->path();
   return Status::OK();
 }
 
@@ -494,10 +502,15 @@ Status Log::AsyncAppend(LogEntryBatch* entry_batch, const StatusCallback& callba
 }
 
 Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+                                  RestartSafeCoarseTimePoint batch_mono_time,
                                   const StatusCallback& callback) {
   auto batch = CreateBatchFromAllocatedOperations(msgs);
   if (committed_op_id) {
     committed_op_id.ToPB(batch.mutable_committed_op_id());
+  }
+  // Set batch mono time if it was specified.
+  if (batch_mono_time != RestartSafeCoarseTimePoint()) {
+    batch.set_mono_time(batch_mono_time.ToUInt64());
   }
 
   LogEntryBatch* reserved_entry_batch;
@@ -526,8 +539,8 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
   // if the size of this entry overflows the current segment, get a new one
   if (allocation_state() == kAllocationNotStarted) {
     if ((active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_) {
-      LOG(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
-                << "Starting new segment allocation. ";
+      LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
+                            << "Starting new segment allocation. ";
       RETURN_NOT_OK(AsyncAllocateSegment());
       if (!options_.async_preallocate_segments) {
         LOG_SLOW_EXECUTION(WARNING, 50, "Log roll took a long time") {
@@ -540,7 +553,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
       RETURN_NOT_OK(RollOver());
     }
   } else {
-    VLOG(1) << "Segment allocation already in progress...";
+    VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
   }
 
   int64_t start_offset = active_segment_->written_offset();
@@ -557,10 +570,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
     // updates committed op id. So entry_batch_bytes will be non zero, but entry_batch->count()
     // will be zero.
     if (entry_batch->count()) {
-      auto new_op_id = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
-      std::lock_guard<std::mutex> write_lock(last_entry_op_id_mutex_);
-      last_entry_op_id_.store(new_op_id, std::memory_order_release);
-      last_entry_op_id_cond_.notify_all();
+      last_appended_entry_op_id_ = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
 
       // We don't update the last segment offset here anymore. This is done on the Sync() method to
       // guarantee that we only try to read what we have persisted in disk.
@@ -645,8 +655,7 @@ Status Log::Sync() {
       int sleep_ms = r.Normal(GetAtomicFlag(&FLAGS_log_inject_latency_ms_mean),
                               GetAtomicFlag(&FLAGS_log_inject_latency_ms_stddev));
       if (sleep_ms > 0) {
-        LOG(INFO) << "T " << tablet_id_ << ": Injecting "
-                  << sleep_ms << "ms of latency in Log::Sync()";
+        LOG_WITH_PREFIX(INFO) << "Injecting " << sleep_ms << "ms of latency in Log::Sync()";
         SleepFor(MonoDelta::FromMilliseconds(sleep_ms));
       }
     }
@@ -678,6 +687,12 @@ Status Log::Sync() {
   // Update the reader on how far it can read the active segment.
   reader_->UpdateLastSegmentOffset(active_segment_->written_offset());
 
+  {
+    std::lock_guard<std::mutex> write_lock(last_synced_entry_op_id_mutex_);
+    last_synced_entry_op_id_.store(last_appended_entry_op_id_, std::memory_order_release);
+    last_synced_entry_op_id_cond_.notify_all();
+  }
+
   return Status::OK();
 }
 
@@ -688,15 +703,15 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
 
   int max_to_delete = std::max(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
   if (segments_to_gc->size() > max_to_delete) {
-    VLOG(2) << "GCing " << segments_to_gc->size() << " in " << log_dir_
+    VLOG_WITH_PREFIX(2)
+        << "GCing " << segments_to_gc->size() << " in " << log_dir_
         << " would not leave enough remaining segments to satisfy minimum "
         << "retention requirement. Only considering "
         << max_to_delete << "/" << reader_->num_segments();
     segments_to_gc->resize(max_to_delete);
   } else if (segments_to_gc->size() < max_to_delete) {
     int extra_segments = max_to_delete - segments_to_gc->size();
-    VLOG(2) << tablet_id_ << " has too many log segments, need to GC "
-        << extra_segments << " more. ";
+    VLOG_WITH_PREFIX(2) << "Too many log segments, need to GC " << extra_segments << " more.";
   }
 
   // Don't GC segments that are newer than the configured time-based retention.
@@ -711,8 +726,9 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
 
     int64_t age_seconds = (now - segment->footer().close_timestamp_micros()) / 1000000;
     if (age_seconds < FLAGS_log_min_seconds_to_retain) {
-      VLOG(2) << "Segment " << segment->path() << " is only " << age_seconds << "s old: "
-              << "cannot GC it yet due to configured time-based retention policy.";
+      VLOG_WITH_PREFIX(2)
+          << "Segment " << segment->path() << " is only " << age_seconds << "s old: "
+          << "cannot GC it yet due to configured time-based retention policy.";
       // Truncate the list of segments to GC here -- if this one is too new, then all later ones are
       // also too new.
       segments_to_gc->resize(i);
@@ -723,8 +739,12 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   return Status::OK();
 }
 
-Status Log::Append(LogEntryPB* phys_entry) {
+Status Log::Append(LogEntryPB* phys_entry, RestartSafeCoarseTimePoint batch_mono_time) {
   LogEntryBatchPB entry_batch_pb;
+  if (batch_mono_time != RestartSafeCoarseTimePoint()) {
+    entry_batch_pb.set_mono_time(batch_mono_time.ToUInt64());
+  }
+
   entry_batch_pb.mutable_entry()->AddAllocated(phys_entry);
   LogEntryBatch entry_batch(phys_entry->type(), std::move(entry_batch_pb));
   // Mark this as reserved, as we're building it from preallocated data.
@@ -751,28 +771,28 @@ Status Log::WaitUntilAllFlushed() {
 }
 
 yb::OpId Log::GetLatestEntryOpId() const {
-  return last_entry_op_id_.load(std::memory_order_acquire);
+  return last_synced_entry_op_id_.load(std::memory_order_acquire);
 }
 
 yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed) {
-  if (all_op_ids_safe_) {
+  if (FLAGS_log_consider_all_ops_safe || all_op_ids_safe_) {
     return min_allowed;
   }
 
-  auto result = last_entry_op_id_.load(std::memory_order_acquire);
+  auto result = last_synced_entry_op_id_.load(std::memory_order_acquire);
 
   if (result.index < min_allowed.index || result.term < min_allowed.term) {
     auto start = CoarseMonoClock::Now();
-    std::unique_lock<std::mutex> lock(last_entry_op_id_mutex_);
+    std::unique_lock<std::mutex> lock(last_synced_entry_op_id_mutex_);
     for (;;) {
-      if (last_entry_op_id_cond_.wait_for(lock, 15s, [this, min_allowed, &result] {
-        result = last_entry_op_id_.load(std::memory_order_acquire);
+      if (last_synced_entry_op_id_cond_.wait_for(lock, 15s, [this, min_allowed, &result] {
+        result = last_synced_entry_op_id_.load(std::memory_order_acquire);
         return result.index >= min_allowed.index && result.term >= min_allowed.term;
       })) {
         break;
       }
-      LOG(DFATAL) << "Long wait for safe op id: " << min_allowed
-                  << ", passed: " << (CoarseMonoClock::Now() - start);
+      LOG_WITH_PREFIX(DFATAL) << "Long wait for safe op id: " << min_allowed
+                              << ", passed: " << (CoarseMonoClock::Now() - start);
     }
   }
 
@@ -784,8 +804,8 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed) {
 Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
   CHECK_GE(min_op_idx, 0);
 
-  LOG(INFO) << "Running Log GC on " << log_dir_ << ": retaining ops >= " << min_op_idx
-            << ", log segment size = " << options_.segment_size_bytes;
+  LOG_WITH_PREFIX(INFO) << "Running Log GC on " << log_dir_ << ": retaining ops >= " << min_op_idx
+                        << ", log segment size = " << options_.segment_size_bytes;
   VLOG_TIMING(1, "Log GC") {
     SegmentSequence segments_to_delete;
 
@@ -796,7 +816,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
       RETURN_NOT_OK(GetSegmentsToGCUnlocked(min_op_idx, &segments_to_delete));
 
       if (segments_to_delete.size() == 0) {
-        VLOG(1) << "No segments to delete.";
+        VLOG_WITH_PREFIX(1) << "No segments to delete.";
         *num_gced = 0;
         return Status::OK();
       }
@@ -809,8 +829,8 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
     // Now that they are no longer referenced by the Log, delete the files.
     *num_gced = 0;
     for (const scoped_refptr<ReadableLogSegment>& segment : segments_to_delete) {
-      LOG(INFO) << "Deleting log segment in path: " << segment->path()
-                << " (GCed ops < " << min_op_idx << ")";
+      LOG_WITH_PREFIX(INFO) << "Deleting log segment in path: " << segment->path()
+                            << " (GCed ops < " << min_op_idx << ")";
       RETURN_NOT_OK(fs_manager_->env()->DeleteFile(segment->path()));
       (*num_gced)++;
     }
@@ -910,7 +930,7 @@ Status Log::Close() {
       RETURN_NOT_OK(CloseCurrentSegment());
       RETURN_NOT_OK(ReplaceSegmentInReaderUnlocked());
       log_state_ = kLogClosed;
-      VLOG(1) << "Log closed";
+      VLOG_WITH_PREFIX(1) << "Log closed";
 
       // Release FDs held by these objects.
       log_index_.reset();
@@ -919,7 +939,7 @@ Status Log::Close() {
       return Status::OK();
 
     case kLogClosed:
-      VLOG(1) << "Log already closed";
+      VLOG_WITH_PREFIX(1) << "Log already closed";
       return Status::OK();
 
     default:
@@ -934,7 +954,8 @@ Status Log::DeleteOnDiskData(FsManager* fs_manager,
   if (!env->FileExists(tablet_wal_path)) {
     return Status::OK();
   }
-  LOG(INFO) << Substitute("Deleting WAL dir $0 for tablet $1", tablet_wal_path, tablet_id);
+  LOG(INFO) << "T " << tablet_id << "P " << fs_manager->uuid()
+            << ": Deleting WAL dir " << tablet_wal_path;
   RETURN_NOT_OK_PREPEND(env->DeleteRecursively(tablet_wal_path),
                         "Unable to recursively delete WAL dir for tablet " + tablet_id);
   return Status::OK();
@@ -1000,7 +1021,7 @@ Status Log::SwitchToAllocatedSegment() {
   // Set the new segment's schema.
   {
     boost::shared_lock<rw_spinlock> l(schema_lock_);
-    RETURN_NOT_OK(SchemaToPB(schema_, header.mutable_schema()));
+    SchemaToPB(schema_, header.mutable_schema());
     header.set_schema_version(schema_version_);
   }
 
@@ -1055,13 +1076,13 @@ Status Log::CreatePlaceholderSegment(const WritableFileOptions& opts,
                                      string* result_path,
                                      shared_ptr<WritableFile>* out) {
   string path_tmpl = JoinPathSegments(log_dir_, kSegmentPlaceholderFileTemplate);
-  VLOG(2) << "Creating temp. file for place holder segment, template: " << path_tmpl;
+  VLOG_WITH_PREFIX(2) << "Creating temp. file for place holder segment, template: " << path_tmpl;
   gscoped_ptr<WritableFile> segment_file;
   RETURN_NOT_OK(fs_manager_->env()->NewTempWritableFile(opts,
                                                         path_tmpl,
                                                         result_path,
                                                         &segment_file));
-  VLOG(1) << "Created next WAL segment, placeholder path: " << *result_path;
+  VLOG_WITH_PREFIX(1) << "Created next WAL segment, placeholder path: " << *result_path;
   out->reset(segment_file.release());
   return Status::OK();
 }
@@ -1081,6 +1102,9 @@ LogEntryBatch::LogEntryBatch(LogEntryTypePB type, LogEntryBatchPB&& entry_batch_
     : type_(type),
       entry_batch_pb_(std::move(entry_batch_pb)),
       count_(entry_batch_pb_.entry().size()) {
+  if (type_ != LogEntryTypePB::FLUSH_MARKER) {
+    DCHECK_NE(entry_batch_pb_.mono_time(), 0);
+  }
 }
 
 LogEntryBatch::~LogEntryBatch() {
@@ -1111,6 +1135,7 @@ Status LogEntryBatch::Serialize() {
     state_ = kEntrySerialized;
     return Status::OK();
   }
+  DCHECK_NE(entry_batch_pb_.mono_time(), 0);
   total_size_bytes_ = entry_batch_pb_.ByteSize();
   buffer_.reserve(total_size_bytes_);
 

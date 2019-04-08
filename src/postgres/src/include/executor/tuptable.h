@@ -4,7 +4,7 @@
  *	  tuple table support stuff
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/tuptable.h
@@ -68,7 +68,7 @@
  * A TupleTableSlot can also be "empty", holding no valid data.  This is
  * the only valid state for a freshly-created slot that has not yet had a
  * tuple descriptor assigned to it.  In this state, tts_isempty must be
- * TRUE, tts_shouldFree FALSE, tts_tuple NULL, tts_buffer InvalidBuffer,
+ * true, tts_shouldFree false, tts_tuple NULL, tts_buffer InvalidBuffer,
  * and tts_nvalid zero.
  *
  * The tupleDescriptor is simply referenced, not copied, by the TupleTableSlot
@@ -116,17 +116,28 @@ typedef struct TupleTableSlot
 	bool		tts_isempty;	/* true = slot is empty */
 	bool		tts_shouldFree; /* should pfree tts_tuple? */
 	bool		tts_shouldFreeMin;	/* should pfree tts_mintuple? */
+#define FIELDNO_TUPLETABLESLOT_SLOW 4
 	bool		tts_slow;		/* saved state for slot_deform_tuple */
+#define FIELDNO_TUPLETABLESLOT_TUPLE 5
 	HeapTuple	tts_tuple;		/* physical tuple, or NULL if virtual */
+#define FIELDNO_TUPLETABLESLOT_TUPLEDESCRIPTOR 6
 	TupleDesc	tts_tupleDescriptor;	/* slot's tuple descriptor */
 	MemoryContext tts_mcxt;		/* slot itself is in this context */
 	Buffer		tts_buffer;		/* tuple's buffer, or InvalidBuffer */
+#define FIELDNO_TUPLETABLESLOT_NVALID 9
 	int			tts_nvalid;		/* # of valid values in tts_values */
+#define FIELDNO_TUPLETABLESLOT_VALUES 10
 	Datum	   *tts_values;		/* current per-attribute values */
+#define FIELDNO_TUPLETABLESLOT_ISNULL 11
 	bool	   *tts_isnull;		/* current per-attribute isnull flags */
 	MinimalTuple tts_mintuple;	/* minimal tuple, or NULL if none */
 	HeapTupleData tts_minhdr;	/* workspace for minimal-tuple-only case */
-	long		tts_off;		/* saved state for slot_deform_tuple */
+#define FIELDNO_TUPLETABLESLOT_OFF 14
+	uint32		tts_off;		/* saved state for slot_deform_tuple */
+	bool		tts_fixedTupleDescriptor;	/* descriptor can't be changed */
+
+	/* YugaByte support */
+	Datum tts_ybctid; /* selected ybctid value */
 } TupleTableSlot;
 
 #define TTS_HAS_PHYSICAL_TUPLE(slot)  \
@@ -139,8 +150,8 @@ typedef struct TupleTableSlot
 	((slot) == NULL || (slot)->tts_isempty)
 
 /* in executor/execTuples.c */
-extern TupleTableSlot *MakeTupleTableSlot(void);
-extern TupleTableSlot *ExecAllocTableSlot(List **tupleTable);
+extern TupleTableSlot *MakeTupleTableSlot(TupleDesc desc);
+extern TupleTableSlot *ExecAllocTableSlot(List **tupleTable, TupleDesc desc);
 extern void ExecResetTupleTable(List *tupleTable, bool shouldFree);
 extern TupleTableSlot *MakeSingleTupleTableSlot(TupleDesc tupdesc);
 extern void ExecDropSingleTupleTableSlot(TupleTableSlot *slot);
@@ -171,5 +182,6 @@ extern void slot_getsomeattrs(TupleTableSlot *slot, int attnum);
 extern bool slot_attisnull(TupleTableSlot *slot, int attnum);
 extern bool slot_getsysattr(TupleTableSlot *slot, int attnum,
 				Datum *value, bool *isnull);
+extern void slot_getmissingattrs(TupleTableSlot *slot, int startAttNum, int lastAttNum);
 
 #endif							/* TUPTABLE_H */

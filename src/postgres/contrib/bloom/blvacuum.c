@@ -3,7 +3,7 @@
  * blvacuum.c
  *		Bloom VACUUM functions.
  *
- * Copyright (c) 2016-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/bloom/blvacuum.c
@@ -125,7 +125,7 @@ blbulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 			/* Is it empty page now? */
 			if (BloomPageGetMaxOffset(page) == 0)
 				BloomPageSetDeleted(page);
-			/* Adjust pg_lower */
+			/* Adjust pd_lower */
 			((PageHeader) page)->pd_lower = (Pointer) itupPtr - page;
 			/* Finish WAL-logging */
 			GenericXLogFinish(gxlogState);

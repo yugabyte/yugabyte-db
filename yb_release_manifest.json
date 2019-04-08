@@ -5,7 +5,7 @@
   "bin": ["bin/bulk_load_cleanup.sh",
           "bin/bulk_load_helper.sh",
           "bin/configure",
-          "bin/yb-ctl",
+          "submodules/yugabyte-installation/bin/yb-ctl",
           "bin/yb-prof.py",
           "$BUILD_ROOT/bin/log-dump",
           "$BUILD_ROOT/bin/sst_dump",
@@ -22,13 +22,10 @@
           "thirdparty/installed/common/cqlsh/bin/cqlsh",
           "thirdparty/installed/common/cqlsh/bin/cqlsh.py",
           "thirdparty/installed/common/bin/redis-cli",
-          "thirdparty/installed/common/bin/psql",
           "thirdparty/installed/uninstrumented/bin/pprof"],
   "lib"      : ["thirdparty/installed/common/cqlsh/lib/*"],
   "pylib"    : ["thirdparty/installed/common/cqlsh/pylib/*"],
-  "java"     : ["java/yb-cli/target/yb-cli-${project.version}.jar",
-                "java/yb-loadtester/target/yb-sample-apps.jar",
-                "java/yb-loadtester/target/yb-sample-apps-sources.jar"],
-  "java/lib" : ["java/yb-cli/target/lib/*.jar",
-                "java/yb-loadtester/target/lib/*.jar"]
+  "%symlinks%": {
+    "bin/psql": "../postgres/bin/psql"
+  }
 }

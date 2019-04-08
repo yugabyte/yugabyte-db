@@ -13,6 +13,7 @@
  */
 package org.yb.minicluster;
 
+import com.google.common.base.Preconditions;
 import com.google.common.net.HostAndPort;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -50,8 +52,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
    */
   protected static MiniYBCluster miniCluster;
 
-  protected static List<String> masterArgs = null;
-  protected static List<String> tserverArgs = null;
+  protected static List<String> masterArgs = new ArrayList<String>();
+  protected static List<String> tserverArgs = new ArrayList<String>();
   protected boolean useIpWithCertificate = MiniYBCluster.DEFAULT_USE_IP_WITH_CERTIFICATE;
 
   // Comma separate describing the master addresses and ports.
@@ -78,6 +80,10 @@ public class BaseMiniClusterTest extends BaseYBTest {
   /** This allows subclasses to optionally skip the usage of a mini-cluster in a test. */
   protected boolean miniClusterEnabled() {
     return true;
+  }
+
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    Preconditions.checkNotNull(builder);
   }
 
   /**
@@ -146,17 +152,19 @@ public class BaseMiniClusterTest extends BaseYBTest {
     }
     LOG.info("BaseMiniClusterTest.createMiniCluster is running");
     int numTservers = tserverArgs.size();
-    miniCluster = new MiniYBClusterBuilder()
+    MiniYBClusterBuilder clusterBuilder = new MiniYBClusterBuilder()
                       .numMasters(numMasters)
                       .numTservers(numTservers)
                       .defaultTimeoutMs(DEFAULT_SLEEP)
                       .testClassName(getClass().getName())
                       .masterArgs(masterArgs)
-                      .tserverArgs(tserverArgs)
+                      .perTServerArgs(tserverArgs)
                       .numShardsPerTServer(overridableNumShardsPerTServer())
                       .useIpWithCertificate(useIpWithCertificate)
-                      .replicationFactor(getReplicationFactor())
-                      .build();
+                      .replicationFactor(getReplicationFactor());
+
+    customizeMiniClusterBuilder(clusterBuilder);
+    miniCluster = clusterBuilder.build();
     masterAddresses = miniCluster.getMasterAddresses();
     masterHostPorts = miniCluster.getMasterHostPorts();
 
@@ -184,7 +192,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .defaultTimeoutMs(DEFAULT_SLEEP)
                       .testClassName(getClass().getName())
                       .masterArgs(masterArgs)
-                      .tserverArgs(tserverArgs)
+                      .perTServerArgs(tserverArgs)
                       .build();
     masterAddresses = miniCluster.getMasterAddresses();
     masterHostPorts = miniCluster.getMasterHostPorts();
@@ -218,4 +226,5 @@ public class BaseMiniClusterTest extends BaseYBTest {
     LOG.info("BaseMiniClusterTest.tearDownAfterClass is running");
     destroyMiniCluster();
   }
+
 }

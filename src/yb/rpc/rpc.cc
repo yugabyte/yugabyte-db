@@ -263,31 +263,36 @@ Rpcs::Rpcs(std::mutex* mutex) {
   }
 }
 
-void Rpcs::Shutdown() {
+MonoTime Rpcs::DoRequestAbortAll(RequestShutdown shutdown) {
   std::vector<Calls::value_type> calls;
   {
     std::lock_guard<std::mutex> lock(*mutex_);
     if (!shutdown_) {
-      shutdown_ = true;
+      shutdown_ = shutdown;
       calls.reserve(calls_.size());
       calls.assign(calls_.begin(), calls_.end());
     }
   }
-  auto deadline = std::chrono::steady_clock::now() +
-                  std::chrono::milliseconds(FLAGS_rpcs_shutdown_timeout_ms);
+  auto deadline = MonoTime::Now() + std::chrono::milliseconds(FLAGS_rpcs_shutdown_timeout_ms);
   // It takes some time to complete rpc command after its deadline has passed.
   // So we add extra time for it.
   auto single_call_extra_delay = std::chrono::milliseconds(FLAGS_rpcs_shutdown_extra_delay_ms);
   for (auto& call : calls) {
     CHECK(call);
     call->Abort();
-    deadline = std::max(deadline, call->deadline().ToSteadyTimePoint() + single_call_extra_delay);
+    deadline = std::max(deadline, call->deadline() + single_call_extra_delay);
   }
+
+  return deadline;
+}
+
+void Rpcs::Shutdown() {
+  auto deadline = DoRequestAbortAll(RequestShutdown::kTrue);
   {
     std::unique_lock<std::mutex> lock(*mutex_);
     while (!calls_.empty()) {
       LOG(INFO) << "Waiting calls: " << calls_.size();
-      if (cond_.wait_until(lock, deadline) == std::cv_status::timeout) {
+      if (cond_.wait_until(lock, deadline.ToSteadyTimePoint()) == std::cv_status::timeout) {
         break;
       }
     }
@@ -340,6 +345,10 @@ Rpcs::Handle Rpcs::Prepare() {
   }
   calls_.emplace_back();
   return --calls_.end();
+}
+
+void Rpcs::RequestAbortAll() {
+  DoRequestAbortAll(RequestShutdown::kFalse);
 }
 
 void Rpcs::Abort(std::initializer_list<Handle*> list) {

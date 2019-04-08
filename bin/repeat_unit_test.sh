@@ -252,22 +252,19 @@ if [[ $iteration -gt 0 ]]; then
   test_log_path=$test_log_path_prefix.log
   if "$is_java_test"; then
     export YB_SUREFIRE_REPORTS_DIR=$test_log_path_prefix.reports
-    raw_test_log_path=$test_log_path
-  else
-    raw_test_log_path=${test_log_path_prefix}__raw.log
   fi
+  export YB_FATAL_DETAILS_PATH_PREFIX=$test_log_path_prefix.fatal_failure_details
 
   set +e
   current_timestamp=$( get_timestamp_for_filenames )
-  export TEST_TMPDIR=/tmp/yb__${script_name_no_ext}_${build_type}_${current_timestamp}_\
-$RANDOM.$RANDOM.$RANDOM.$$
+  export TEST_TMPDIR=/tmp/yb_tests__${current_timestamp}__$RANDOM.$RANDOM.$RANDOM
   mkdir -p "$TEST_TMPDIR"
   set_expected_core_dir "$TEST_TMPDIR"
   if ! "$is_java_test"; then
     determine_test_timeout
   fi
 
-  # TODO: deduplicate the setup here against run_one_test() in common-test-env.sh.
+  # TODO: deduplicate the setup here against run_one_cxx_test() in common-test-env.sh.
   if "$is_java_test"; then
     test_wrapper_cmd_line=(
       "$YB_BUILD_SUPPORT_DIR"/run-test.sh "${positional_args[@]}"
@@ -284,10 +281,10 @@ $RANDOM.$RANDOM.$RANDOM.$$
   (
     cd "$TEST_TMPDIR"
     if "$verbose"; then
-      log "Iteration $iteration logging to $raw_test_log_path"
+      log "Iteration $iteration logging to $test_log_path"
     fi
     ulimit -c unlimited
-    ( set -x; "${test_wrapper_cmd_line[@]}" ) &>"$raw_test_log_path"
+    ( set -x; "${test_wrapper_cmd_line[@]}" ) &>"$test_log_path"
   )
   exit_code=$?
   declare -i end_time_sec=$( date +%s )
@@ -296,9 +293,8 @@ $RANDOM.$RANDOM.$RANDOM.$$
   comment=""
   keep_log=$keep_all_logs
   pass_or_fail="PASSED"
-  if ! did_test_succeed "$exit_code" "$raw_test_log_path"; then
+  if ! did_test_succeed "$exit_code" "$test_log_path"; then
     if ! "$is_java_test"; then
-      postprocess_test_log
       process_core_file
     fi
     if "$skip_address_already_in_use" && \
@@ -343,9 +339,6 @@ $RANDOM.$RANDOM.$RANDOM.$$
         set -e
         popd
       else
-        if [[ $pass_or_fail == "PASSED" ]]; then
-          mv "$raw_test_log_path" "$test_log_path"
-        fi
         # Compress C++ test log.
         if [[ -f $test_log_path ]]; then
           gzip "$test_log_path"

@@ -11,9 +11,12 @@
 // under the License.
 //
 
+#include "yb/util/net/inetaddress.h"
+
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/tcp.hpp>
-#include "yb/util/net/inetaddress.h"
+
+#include "yb/util/net/net_util.h"
 
 using boost::asio::ip::address;
 using boost::asio::ip::address_v4;
@@ -33,51 +36,19 @@ InetAddress::InetAddress(const InetAddress& other) {
   boost_addr_ = other.boost_addr_;
 }
 
-CHECKED_STATUS ResolveInternal(const std::string& host,
-                               tcp::resolver::iterator* iter) {
-  boost::system::error_code ec;
-  boost::asio::io_service io;
-  tcp::resolver resolver(io);
-  // Port 80 is just a placeholder since boost doesn't seem to support a DNS lookup API without
-  // the port.
-  tcp::resolver::query query(host, "80");
-  *iter = resolver.resolve(query, ec);
-  if (ec.value()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "$0 is an invalid host/ip address: $1", host,
-                             ec.message());
-  }
-  return Status::OK();
-}
-
 CHECKED_STATUS InetAddress::Resolve(const std::string& host, std::vector<InetAddress>* addresses) {
-  // Try to see if we already have an IP address.
-  boost::system::error_code ec;
-  boost::asio::ip::address addr = address::from_string(host, ec);
-  if (ec.value()) {
-    // Resolve the host if we don't have a valid IP addr notation string.
-    tcp::resolver::iterator iter;
-    RETURN_NOT_OK(ResolveInternal(host, &iter));
-    tcp::resolver::iterator end;
-    while (iter != end) {
-      addresses->emplace_back(iter->endpoint().address());
-      iter++;
-    }
-  } else {
-    addresses->emplace_back(addr);
+  boost::container::small_vector<IpAddress, 5> ip_addresses;
+  RETURN_NOT_OK(HostToAddresses(host, &ip_addresses));
+
+  for (const auto& address : ip_addresses) {
+    addresses->emplace_back(address);
   }
+
   return Status::OK();
 }
 
 CHECKED_STATUS InetAddress::FromString(const std::string& strval) {
-  // Try to see if we already have an IP address.
-  boost::system::error_code ec;
-  boost_addr_ = address::from_string(strval, ec);
-  if (ec.value()) {
-    tcp::resolver::iterator iter;
-    RETURN_NOT_OK(ResolveInternal(strval, &iter));
-    // Pick the first IP address in the list.
-    boost_addr_ = iter->endpoint().address();
-  }
+  boost_addr_ = VERIFY_RESULT(HostToAddress(strval));
   return Status::OK();
 }
 

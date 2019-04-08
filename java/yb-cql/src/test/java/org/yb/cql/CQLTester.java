@@ -54,9 +54,9 @@ import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableSet;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
 
 /**
 * Base class for CQL tests.

@@ -3,7 +3,7 @@
  * postinit.c
  *	  postgres initialization utilities
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -36,6 +36,7 @@
 
 #include "access/heapam.h"
 #include "access/htup_details.h"
+#include "access/session.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "access/xlog.h"
@@ -81,7 +82,7 @@
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
 static void PerformAuthentication(Port *port);
-static void CheckMyDatabase(const char *name, bool am_superuser);
+static void CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connections);
 static void InitCommunication(void);
 static void ShutdownPostgres(int code, Datum arg);
 static void StatementTimeoutHandler(void);
@@ -261,12 +262,15 @@ PerformAuthentication(Port *port)
 	{
 		if (am_walsender)
 		{
-#ifdef USE_OPENSSL
+#ifdef USE_SSL
 			if (port->ssl_in_use)
 				ereport(LOG,
-						(errmsg("replication connection authorized: user=%s SSL enabled (protocol=%s, cipher=%s, compression=%s)",
-								port->user_name, SSL_get_version(port->ssl), SSL_get_cipher(port->ssl),
-								SSL_get_current_compression(port->ssl) ? _("on") : _("off"))));
+						(errmsg("replication connection authorized: user=%s SSL enabled (protocol=%s, cipher=%s, bits=%d, compression=%s)",
+								port->user_name,
+								be_tls_get_version(port),
+								be_tls_get_cipher(port),
+								be_tls_get_cipher_bits(port),
+								be_tls_get_compression(port) ? _("on") : _("off"))));
 			else
 #endif
 				ereport(LOG,
@@ -275,12 +279,15 @@ PerformAuthentication(Port *port)
 		}
 		else
 		{
-#ifdef USE_OPENSSL
+#ifdef USE_SSL
 			if (port->ssl_in_use)
 				ereport(LOG,
-						(errmsg("connection authorized: user=%s database=%s SSL enabled (protocol=%s, cipher=%s, compression=%s)",
-								port->user_name, port->database_name, SSL_get_version(port->ssl), SSL_get_cipher(port->ssl),
-								SSL_get_current_compression(port->ssl) ? _("on") : _("off"))));
+						(errmsg("connection authorized: user=%s database=%s SSL enabled (protocol=%s, cipher=%s, bits=%d, compression=%s)",
+								port->user_name, port->database_name,
+								be_tls_get_version(port),
+								be_tls_get_cipher(port),
+								be_tls_get_cipher_bits(port),
+								be_tls_get_compression(port) ? _("on") : _("off"))));
 			else
 #endif
 				ereport(LOG,
@@ -299,7 +306,7 @@ PerformAuthentication(Port *port)
  * CheckMyDatabase -- fetch information from the pg_database entry for our DB
  */
 static void
-CheckMyDatabase(const char *name, bool am_superuser)
+CheckMyDatabase(const char *name, bool am_superuser, bool override_allow_connections)
 {
 	HeapTuple	tup;
 	Form_pg_database dbform;
@@ -335,7 +342,7 @@ CheckMyDatabase(const char *name, bool am_superuser)
 		/*
 		 * Check that the database is currently allowing connections.
 		 */
-		if (!dbform->datallowconn)
+		if (!dbform->datallowconn && !override_allow_connections)
 			ereport(FATAL,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					 errmsg("database \"%s\" is not currently accepting connections",
@@ -572,7 +579,7 @@ BaseInit(void)
  */
 void
 InitPostgres(const char *in_dbname, Oid dboid, const char *username,
-			 Oid useroid, char *out_dbname)
+			 Oid useroid, char *out_dbname, bool override_allow_connections)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
 	bool		am_superuser;
@@ -662,6 +669,12 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	/* Initialize stats collection --- must happen before first xact */
 	if (!bootstrap)
 		pgstat_initialize();
+
+	/* Connect to YugaByte cluster. */
+	if (bootstrap)
+		YBInitPostgresBackend("postgres", "", username);
+	else
+		YBInitPostgresBackend("postgres", in_dbname, username);
 
 	/*
 	 * Load relcache entries for the shared system catalogs.  This must create
@@ -787,7 +800,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	}
 
 	/*
-	 * The last few connections slots are reserved for superusers. Although
+	 * The last few connection slots are reserved for superusers.  Although
 	 * replication connections currently require superuser privileges, we
 	 * don't allow them to consume the reserved slots, which are intended for
 	 * interactive use.
@@ -902,16 +915,6 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		return;
 	}
 
-	/* Connect to YugaByte cluster. */
-	if (bootstrap)
-	{
-		YBInitPostgresBackend("postgres", "", username);
-	}
-	else
-	{
-		YBInitPostgresBackend("postgres", dbname, username);
-	}
-
 	/*
 	 * Now, take a writer's lock on the database we are trying to connect to.
 	 * If there is a concurrently running DROP DATABASE on that database, this
@@ -978,41 +981,54 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 					 errdetail("It seems to have just been dropped or renamed.")));
 	}
 
-	/*
-	 * Now we should be able to access the database directory safely. Verify
-	 * it's there and looks reasonable.
-	 */
-	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
-
-	if (!bootstrap)
+	/* No local physical path for the database in YugaByte mode */
+	if (!IsYugaByteEnabled())
 	{
-		if (access(fullpath, F_OK) == -1)
+		/*
+		 * Now we should be able to access the database directory safely. Verify
+		 * it's there and looks reasonable.
+		 */
+		fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
+
+		if (!bootstrap)
 		{
-			if (errno == ENOENT)
-				ereport(FATAL,
-						(errcode(ERRCODE_UNDEFINED_DATABASE),
-						 errmsg("database \"%s\" does not exist",
-								dbname),
-						 errdetail("The database subdirectory \"%s\" is missing.",
-								   fullpath)));
-			else
-				ereport(FATAL,
-						(errcode_for_file_access(),
-						 errmsg("could not access directory \"%s\": %m",
-								fullpath)));
+			if (access(fullpath, F_OK) == -1)
+			{
+				if (errno == ENOENT)
+					ereport(FATAL,
+					        (errcode(ERRCODE_UNDEFINED_DATABASE), errmsg(
+							        "database \"%s\" does not exist",
+							        dbname), errdetail(
+							        "The database subdirectory \"%s\" is missing.",
+							        fullpath)));
+				else
+					ereport(FATAL,
+					        (errcode_for_file_access(), errmsg(
+							        "could not access directory \"%s\": %m",
+							        fullpath)));
+			}
+
+			ValidatePgVersion(fullpath);
 		}
 
-		ValidatePgVersion(fullpath);
+		SetDatabasePath(fullpath);
 	}
 
-	SetDatabasePath(fullpath);
 
 	/*
 	 * It's now possible to do real access to the system catalogs.
 	 *
 	 * Load relcache entries for the system catalogs.  This must create at
 	 * least the minimum set of "nailed-in" cache entries.
+	 *
+	 * In YugaByte mode initialize the catalog cache version to the latest
+	 * version from the master (except during initdb).
 	 */
+	if (IsYugaByteEnabled() && !IsBootstrapProcessingMode())
+	{
+		YBCPgGetCatalogMasterVersion(ybc_pg_session,
+		                             (uint64_t *) &yb_catalog_cache_version);
+	}
 	RelationCacheInitializePhase3();
 
 	/* set up ACL framework (so CheckMyDatabase can check permissions) */
@@ -1025,7 +1041,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * user is a superuser, so the above stuff has to happen first.)
 	 */
 	if (!bootstrap)
-		CheckMyDatabase(dbname, am_superuser);
+		CheckMyDatabase(dbname, am_superuser, override_allow_connections);
 
 	/*
 	 * Now process any command-line switches and any additional GUC variable
@@ -1052,6 +1068,9 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 
 	/* initialize client encoding */
 	InitializeClientEncoding();
+
+	/* Initialize this backend's session state. */
+	InitializeSession();
 
 	/* report this backend in the PgBackendStatus array */
 	if (!bootstrap)

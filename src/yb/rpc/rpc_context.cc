@@ -171,6 +171,14 @@ Status RpcContext::AddRpcSidecar(RefCntBuffer car, int* idx) {
   return call_->AddRpcSidecar(car, idx);
 }
 
+int RpcContext::RpcSidecarsSize() const {
+  return call_->RpcSidecarsSize();
+}
+
+const RefCntBuffer& RpcContext::RpcSidecar(int idx) const {
+  return call_->RpcSidecar(idx);
+}
+
 void RpcContext::ResetRpcSidecars() {
   call_->ResetRpcSidecars();
 }
@@ -187,7 +195,7 @@ std::string RpcContext::requestor_string() const {
   return yb::ToString(call_->remote_address());
 }
 
-MonoTime RpcContext::GetClientDeadline() const {
+CoarseTimePoint RpcContext::GetClientDeadline() const {
   return call_->GetClientDeadline();
 }
 

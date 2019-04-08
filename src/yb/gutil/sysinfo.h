@@ -43,8 +43,10 @@
 // under the License.
 //
 
-#ifndef _SYSINFO_H_
-#define _SYSINFO_H_
+#include <stdint.h>
+
+#ifndef YB_GUTIL_SYSINFO_H
+#define YB_GUTIL_SYSINFO_H
 
 namespace base {
 
@@ -55,6 +57,10 @@ namespace base {
 // Note that, if not all CPUs are online, this may return a value lower than the maximum
 // value of sched_getcpu().
 extern int NumCPUs();
+
+// Use the default value for when gflags are not initialized yet (i.e. spinlock.cc)
+// or if we need the actual number of CPUs (i.e. object_pool.h)
+extern int RawNumCPUs();
 
 // Return the maximum CPU index that may be returned by sched_getcpu(). For example, on
 // an 8-core machine, this will return '7' even if some of the CPUs have been disabled.
@@ -67,4 +73,4 @@ void SleepForMilliseconds(int64_t milliseconds);
 extern double CyclesPerSecond(void);
 
 } // namespace base
-#endif   /* #ifndef _SYSINFO_H_ */
+#endif   /* YB_GUTIL_SYSINFO_H */

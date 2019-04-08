@@ -16,11 +16,13 @@
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include <boost/function.hpp>
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/service_if.h"
 #include "yb/util/result.h"
 
@@ -32,28 +34,43 @@ namespace yb {
 namespace redisserver {
 
 typedef boost::function<void(const Status&)> StatusFunctor;
+typedef boost::function<void(int i)> IntFunctor;
 
 class RedisConnectionContext;
+
+YB_STRONGLY_TYPED_BOOL(AsPattern);
 
 class RedisServiceData {
  public:
   // Used for Monitor.
-  virtual void AppendToMonitors(std::shared_ptr<rpc::Connection> conn) = 0;
+  virtual void AppendToMonitors(rpc::Connection* conn) = 0;
+  virtual void RemoveFromMonitors(rpc::Connection* conn) = 0;
   virtual void LogToMonitors(
-      const string& end, const string& db, const RedisClientCommand& cmd) = 0;
+      const std::string& end, const std::string& db, const RedisClientCommand& cmd) = 0;
 
   // Used for PubSub.
-  virtual void AppendToChannelSubscribers(
-      const string& channel, std::shared_ptr<rpc::Connection> conn) = 0;
-  virtual int PublishToChannel(const string& channel, const string& message) = 0;
+  virtual void AppendToSubscribers(
+      AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
+      std::vector<int>* subs) = 0;
+  virtual void RemoveFromSubscribers(
+      AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
+      std::vector<int>* subs) = 0;
+  virtual int NumSubscribers(AsPattern type, const std::string& channel) = 0;
+  virtual void CleanUpSubscriptions(rpc::Connection* conn) = 0;
+  virtual std::unordered_set<std::string> GetSubscriptions(
+      AsPattern type, rpc::Connection* conn) = 0;
+  virtual std::unordered_set<std::string> GetAllSubscriptions(AsPattern type) = 0;
+  virtual void ForwardToInterestedProxies(
+      const std::string& channel, const std::string& message, const IntFunctor& f) = 0;
 
   // Used for Auth.
-  virtual CHECKED_STATUS GetRedisPasswords(vector<string>* passwords) = 0;
+  virtual CHECKED_STATUS GetRedisPasswords(std::vector<std::string>* passwords) = 0;
 
   // Used for Select.
-  virtual yb::Result<std::shared_ptr<client::YBTable>> GetYBTableForDB(const string& db_name) = 0;
+  virtual yb::Result<std::shared_ptr<client::YBTable>> GetYBTableForDB(
+      const std::string& db_name) = 0;
 
-  static client::YBTableName GetYBTableNameForRedisDatabase(const string& db_name);
+  static client::YBTableName GetYBTableNameForRedisDatabase(const std::string& db_name);
 
   virtual ~RedisServiceData() {}
 };

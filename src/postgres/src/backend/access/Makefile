@@ -8,7 +8,8 @@ subdir = src/backend/access
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+# ybc folder contains utilites for YugaByte access method (used for sys catalog)
 SUBDIRS	    = brin common gin gist hash heap index nbtree rmgrdesc spgist \
-			  tablesample transam
+			  tablesample transam ybc
 
 include $(top_srcdir)/src/backend/common.mk

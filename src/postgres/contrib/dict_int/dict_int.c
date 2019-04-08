@@ -3,7 +3,7 @@
  * dict_int.c
  *	  Text search dictionary for integers
  *
- * Copyright (c) 2007-2017, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2018, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  contrib/dict_int/dict_int.c
@@ -42,11 +42,11 @@ dintdict_init(PG_FUNCTION_ARGS)
 	{
 		DefElem    *defel = (DefElem *) lfirst(l);
 
-		if (pg_strcasecmp(defel->defname, "MAXLEN") == 0)
+		if (strcmp(defel->defname, "maxlen") == 0)
 		{
 			d->maxlen = atoi(defGetString(defel));
 		}
-		else if (pg_strcasecmp(defel->defname, "REJECTLONG") == 0)
+		else if (strcmp(defel->defname, "rejectlong") == 0)
 		{
 			d->rejectlong = defGetBoolean(defel);
 		}

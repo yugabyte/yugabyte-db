@@ -75,11 +75,13 @@ typedef struct HbaLine
 	char	   *pamservice;
 	bool		pam_use_hostname;
 	bool		ldaptls;
+	char	   *ldapscheme;
 	char	   *ldapserver;
 	int			ldapport;
 	char	   *ldapbinddn;
 	char	   *ldapbindpasswd;
 	char	   *ldapsearchattribute;
+	char	   *ldapsearchfilter;
 	char	   *ldapbasedn;
 	int			ldapscope;
 	char	   *ldapprefix;

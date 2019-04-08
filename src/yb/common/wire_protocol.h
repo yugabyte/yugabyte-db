@@ -41,6 +41,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/status.h"
 #include "yb/util/net/net_fwd.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 
@@ -86,10 +87,10 @@ enum SchemaPBConversionFlags {
 
 // Convert the specified schema to protobuf.
 // 'flags' is a bitfield of SchemaPBConversionFlags values.
-Status SchemaToPB(const Schema& schema, SchemaPB* pb, int flags = 0);
+void SchemaToPB(const Schema& schema, SchemaPB* pb, int flags = 0);
 
 // Convert the specified schema to protobuf without column IDs.
-Status SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb);
+void SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb);
 
 // Returns the Schema created from the specified protobuf.
 // If the schema is invalid, return a non-OK status.
@@ -119,7 +120,7 @@ CHECKED_STATUS ColumnPBsToColumnTuple(
 //
 // The 'cols' list is replaced by this method.
 // 'flags' is a bitfield of SchemaPBConversionFlags values.
-Status SchemaToColumnPBs(
+void SchemaToColumnPBs(
   const Schema& schema,
   google::protobuf::RepeatedPtrField<ColumnSchemaPB>* cols,
   int flags = 0);
@@ -286,5 +287,9 @@ static inline uint8_t Load8(const void* p) {
 
 #undef RETURN_NOT_ENOUGH
 
+YB_STRONGLY_TYPED_UUID(ClientId);
+typedef int64_t RetryableRequestId;
+
 } // namespace yb
+
 #endif  // YB_COMMON_WIRE_PROTOCOL_H

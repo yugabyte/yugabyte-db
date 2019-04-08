@@ -47,8 +47,15 @@ struct TransactionData {
   void ProcessStatus(const TransactionStatusResult& result) {
     status = result.status;
     if (status == TransactionStatus::COMMITTED) {
+      LOG_IF(DFATAL, !result.status_time.is_valid())
+          << "Status time not specified for committed transaction: " << id;
       commit_time = result.status_time;
     }
+  }
+
+  std::string ToString() const {
+    return Format("{ id: $0 status: $1 commit_time: $2 metadata: $3 failure: $4 }",
+                  id, TransactionStatus_Name(status), commit_time, metadata, failure);
   }
 };
 
@@ -77,7 +84,7 @@ class ConflictResolverContext {
   virtual CHECKED_STATUS CheckConflictWithCommitted(
       const TransactionId& id, HybridTime commit_time) = 0;
 
-  virtual HybridTime GetHybridTime() = 0;
+  virtual HybridTime GetResolutionHt() = 0;
 
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
 
@@ -111,25 +118,42 @@ class ConflictResolver {
   }
 
   // Reads conflicts for specified intent from DB.
-  CHECKED_STATUS ReadIntentConflicts(IntentType type, KeyBytes* intent_key_prefix) {
+  CHECKED_STATUS ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix) {
     EnsureIntentIteratorCreated();
 
-    const auto& conflicting_intent_types = kIntentConflicts[static_cast<size_t>(type)];
+    const auto conflicting_intent_types = kIntentTypeSetConflicts[type.ToUIntPtr()];
 
     KeyBytes upperbound_key(*intent_key_prefix);
     upperbound_key.AppendValueType(ValueType::kMaxByte);
     intent_key_upperbound_ = upperbound_key.AsSlice();
 
-    intent_key_prefix->AppendValueType(ValueType::kIntentType);
-    BOOST_SCOPE_EXIT(intent_key_prefix, &intent_key_upperbound_) {
-      intent_key_prefix->RemoveValueTypeSuffix(ValueType::kIntentType);
+    size_t original_size = intent_key_prefix->size();
+    intent_key_prefix->AppendValueType(ValueType::kIntentTypeSet);
+    // Have only weak intents, so could skip other weak intents.
+    if (!HasStrong(type)) {
+      char value = 1 << kStrongIntentFlag;
+      intent_key_prefix->AppendRawBytes(&value, 1);
+    }
+    BOOST_SCOPE_EXIT(intent_key_prefix, original_size, &intent_key_upperbound_) {
+      intent_key_prefix->Truncate(original_size);
       intent_key_upperbound_.clear();
     } BOOST_SCOPE_EXIT_END;
-    intent_iter_->Seek(intent_key_prefix->data());
+    Slice prefix_slice(intent_key_prefix->AsSlice().data(), original_size);
+    intent_iter_->Seek(intent_key_prefix->AsSlice());
     while (intent_iter_->Valid()) {
       auto existing_key = intent_iter_->key();
       auto existing_value = intent_iter_->value();
-      if (!existing_key.starts_with(intent_key_prefix->data())) {
+      if (!existing_key.starts_with(prefix_slice)) {
+        break;
+      }
+      // Support for obsolete intent type.
+      // When looking for intent with specific prefix it should start with this prefix, followed
+      // by ValueType::kIntentTypeSet.
+      // Previously we were using intent type, so should support its value type also, now it is
+      // kObsoleteIntentType.
+      // Actual handling of obsolete intent type is done in ParseIntentKey.
+      if (existing_key.size() <= prefix_slice.size() ||
+          !IntentValueType(existing_key[prefix_slice.size()])) {
         break;
       }
       if (existing_value.empty() || existing_value[0] != ValueTypeAsChar::kTransactionId) {
@@ -139,10 +163,11 @@ class ConflictResolver {
             existing_value.ToDebugHexString());
       }
       existing_value.consume_byte();
-      auto existing_intent = docdb::ParseIntentKey(intent_iter_->key(), existing_value);
-      RETURN_NOT_OK(existing_intent);
+      auto existing_intent = VERIFY_RESULT(
+          docdb::ParseIntentKey(intent_iter_->key(), existing_value));
 
-      if (conflicting_intent_types.test(static_cast<size_t>(existing_intent->type))) {
+      const auto intent_mask = kIntentTypeSetMask[existing_intent.types.ToUIntPtr()];
+      if ((conflicting_intent_types & intent_mask) != 0) {
         auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
             Slice(existing_value.data(), TransactionId::static_size())));
 
@@ -233,6 +258,10 @@ class ConflictResolver {
         RETURN_NOT_OK(context_.CheckConflictWithCommitted(transaction.id, transaction.commit_time));
         continue;
       } else if (status == TransactionStatus::ABORTED) {
+        auto commit_time = status_manager().LocalCommitTime(transaction.id);
+        if (commit_time.is_valid()) {
+          RETURN_NOT_OK(context_.CheckConflictWithCommitted(transaction.id, commit_time));
+        }
         continue;
       } else {
         DCHECK(TransactionStatus::PENDING == status ||
@@ -254,8 +283,8 @@ class ConflictResolver {
       auto& transaction = i;
       StatusRequest request = {
         &transaction.id,
-        context_.GetHybridTime(),
-        context_.GetHybridTime(),
+        context_.GetResolutionHt(),
+        context_.GetResolutionHt(),
         0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
            // So we cannot accept status with time >= read_ht and < global_limit_ht.
         &kRequestReason,
@@ -266,6 +295,8 @@ class ConflictResolver {
           } else if (result.status().IsTryAgain()) {
             // It is safe to suppose that transaction in PENDING state in case of try again error.
             transaction.status = TransactionStatus::PENDING;
+          } else if (result.status().IsNotFound()) {
+            transaction.status = TransactionStatus::ABORTED;
           } else {
             transaction.failure = result.status();
           }
@@ -321,11 +352,15 @@ class ConflictResolver {
 // Utility class for ResolveTransactionConflicts implementation.
 class TransactionConflictResolverContext : public ConflictResolverContext {
  public:
-  TransactionConflictResolverContext(const KeyValueWriteBatchPB& write_batch,
-                                     HybridTime hybrid_time,
+  TransactionConflictResolverContext(const DocOperations& doc_ops,
+                                     const KeyValueWriteBatchPB& write_batch,
+                                     HybridTime resolution_ht,
+                                     HybridTime read_time,
                                      Counter* conflicts_metric)
-      : write_batch_(write_batch),
-        hybrid_time_(hybrid_time),
+      : doc_ops_(doc_ops),
+        write_batch_(write_batch),
+        resolution_ht_(resolution_ht),
+        read_time_(read_time),
         transaction_id_(FullyDecodeTransactionId(
             write_batch.transaction().transaction_id())),
         conflicts_metric_(conflicts_metric)
@@ -337,10 +372,10 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
   CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) override {
     RETURN_NOT_OK(transaction_id_);
 
+    VLOG(4) << "Resolve conflicts: " << transaction_id_;
+
     if (write_batch_.transaction().has_isolation()) {
-      auto converted_metadata = TransactionMetadata::FromPB(write_batch_.transaction());
-      RETURN_NOT_OK(converted_metadata);
-      metadata_ = std::move(*converted_metadata);
+      metadata_ = VERIFY_RESULT(TransactionMetadata::FromPB(write_batch_.transaction()));
     } else {
       // If write request does not contain metadata it means that metadata is stored in
       // local cache.
@@ -351,24 +386,59 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
       metadata_ = std::move(*stored_metadata);
     }
 
-    intent_types_ = GetWriteIntentsForIsolationLevel(metadata_.isolation);
+    boost::container::small_vector<RefCntPrefix, 8> paths;
+
+    KeyBytes encoded_key_buffer;
+    EnumerateIntentsCallback callback = std::bind(
+        &TransactionConflictResolverContext::ProcessIntent, this, resolver,
+        GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kWrite), _1, _3);
+    for (const auto& doc_op : doc_ops_) {
+      paths.clear();
+      IsolationLevel ignored_isolation_level;
+      RETURN_NOT_OK(doc_op->GetDocPaths(
+          GetDocPathsMode::kIntents, &paths, &ignored_isolation_level));
+
+      for (const auto& path : paths) {
+        RETURN_NOT_OK(EnumerateIntents(path.as_slice(), Slice(), callback, &encoded_key_buffer));
+      }
+    }
+
+    RETURN_NOT_OK(DoReadConflicts(
+        write_batch_.read_pairs(), docdb::OperationKind::kRead, resolver));
+
+    return Status::OK();
+  }
+
+  CHECKED_STATUS DoReadConflicts(
+      const google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB>& pairs,
+      docdb::OperationKind kind,
+      ConflictResolver* resolver) {
+    if (pairs.empty()) {
+      return Status::OK();
+    }
 
     return EnumerateIntents(
-        write_batch_.kv_pairs(),
-        std::bind(&TransactionConflictResolverContext::ProcessIntent, this, resolver, _1, _3));
+        pairs,
+        std::bind(&TransactionConflictResolverContext::ProcessIntent, this, resolver,
+                  GetStrongIntentTypeSet(metadata_.isolation, kind), _1, _3));
   }
 
   // Processes intent generated by EnumerateIntents.
   // I.e. fetches conflicting intents and fills list of conflicting transactions.
   CHECKED_STATUS ProcessIntent(ConflictResolver* resolver,
-                               IntentKind kind,
+                               IntentTypeSet strong_intent_types,
+                               IntentStrength strength,
                                KeyBytes* intent_key_prefix) {
-    auto intent_type = intent_types_[kind];
+    auto intent_type_set = strength == IntentStrength::kWeak
+        ? StrongToWeak(strong_intent_types) : strong_intent_types;
 
-    if (kind == IntentKind::kStrong &&
-        metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+    // read_time is HybridTime::kMax in case of serializable isolation or when read time not yet
+    // picked for snapshot isolation.
+    // I.e. if it the first operation in the transaction.
+    if (strength == IntentStrength::kStrong && read_time_ != HybridTime::kMax) {
       Slice key_slice(intent_key_prefix->data());
 
+      // TODO(dtxn) reuse iterator
       auto value_iter = CreateRocksDBIterator(
           resolver->doc_db().regular,
           BloomFilterMode::USE_BLOOM_FILTER,
@@ -380,15 +450,15 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
         auto existing_key = value_iter->key();
         DocHybridTime doc_ht;
         RETURN_NOT_OK(doc_ht.DecodeFromEnd(existing_key));
-        if (doc_ht.hybrid_time() >= metadata_.start_time) {
+        if (doc_ht.hybrid_time() >= read_time_) {
           conflicts_metric_->Increment();
           return STATUS_FORMAT(TryAgain, "Value write after transaction start: $0 >= $1",
-                               doc_ht.hybrid_time(), metadata_.start_time);
+                               doc_ht.hybrid_time(), read_time_);
         }
       }
     }
 
-    return resolver->ReadIntentConflicts(intent_type, intent_key_prefix);
+    return resolver->ReadIntentConflicts(intent_type_set, intent_key_prefix);
   }
 
   CHECKED_STATUS CheckPriority(ConflictResolver* resolver,
@@ -417,27 +487,50 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
 
   CHECKED_STATUS CheckConflictWithCommitted(
       const TransactionId& id, HybridTime commit_time) override {
-    if (metadata_.isolation == yb::IsolationLevel::SNAPSHOT_ISOLATION) {
-      if (commit_time >= metadata_.start_time) { // TODO(dtxn) clock skew?
-        return MakeConflictStatus(id, "committed", conflicts_metric_);
-      }
+    DSCHECK(commit_time.is_valid(), Corruption, "Invalid transaction commit time");
+
+    VLOG(4) << "Committed: " << id << ", " << commit_time;
+
+    // commit_time equals to HybridTime::kMax means that transaction is not actually committed,
+    // but is being committed. I.e. status tablet is trying to replicate COMMITTED state.
+    // So we should always conflict with such transaction, because we are not able to read its
+    // results.
+    //
+    // read_time equals to HybridTime::kMax in case of serializable isolation or when
+    // read time was not yet picked for snapshot isolation.
+    // So it should conflict only with transactions that are being committed.
+    //
+    // In all other cases we have concrete read time and should conflict with transactions
+    // that were committed after this point.
+    if (commit_time >= read_time_) {
+      return MakeConflictStatus(id, "committed", conflicts_metric_);
     }
+
     return Status::OK();
   }
 
-  HybridTime GetHybridTime() override {
-    return hybrid_time_;
+  HybridTime GetResolutionHt() override {
+    return resolution_ht_;
   }
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
     return other == *transaction_id_;
   }
 
+  const DocOperations& doc_ops_;
   const KeyValueWriteBatchPB& write_batch_;
-  HybridTime hybrid_time_;
+
+  // Hybrid time of conflict resolution, used to request transaction status from status tablet.
+  const HybridTime resolution_ht_;
+
+  // Read time of the transaction identified by transaction_id_, could be HybridTime::kMax in case
+  // of serializable isolation or when read time not yet picked for snapshot isolation.
+  const HybridTime read_time_;
+
+  // Id of transaction when is writing intents, for which we are resolving conflicts.
   Result<TransactionId> transaction_id_;
+
   TransactionMetadata metadata_;
-  IntentTypePair intent_types_;
   Status result_ = Status::OK();
   bool fetched_metadata_for_transactions_ = false;
   Counter* conflicts_metric_ = nullptr;
@@ -446,32 +539,38 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
 class OperationConflictResolverContext : public ConflictResolverContext {
  public:
   OperationConflictResolverContext(const DocOperations* doc_ops,
-                                   HybridTime hybrid_time)
-      : doc_ops_(*doc_ops), hybrid_time_(hybrid_time) {
+                                   HybridTime resolution_ht)
+      : doc_ops_(*doc_ops), resolution_ht_(resolution_ht) {
   }
 
   virtual ~OperationConflictResolverContext() {}
 
-  // Reads stored intents, that could conflict with our operations.
+  // Reads stored intents that could conflict with our operations.
   CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) override {
-    std::list<DocPath> doc_paths;
+    boost::container::small_vector<RefCntPrefix, 8> doc_paths;
+    boost::container::small_vector<size_t, 32> key_prefix_lengths;
     KeyBytes current_intent_prefix;
 
     for (const auto& doc_op : doc_ops_) {
       doc_paths.clear();
       IsolationLevel isolation;
-      doc_op->GetDocPathsToLock(&doc_paths, &isolation);
+      RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &isolation));
 
-      const IntentTypePair intent_types = GetWriteIntentsForIsolationLevel(isolation);
+      auto strong_intent_types = GetStrongIntentTypeSet(isolation, OperationKind::kWrite);
 
       for (const auto& doc_path : doc_paths) {
+        key_prefix_lengths.clear();
+        RETURN_NOT_OK(SubDocKey::DecodePrefixLengths(doc_path.as_slice(), &key_prefix_lengths));
         current_intent_prefix.Clear();
-        current_intent_prefix.AppendRawBytes(doc_path.encoded_doc_key().data());
-        for (int i = 0; i < doc_path.num_subkeys(); i++) {
-          RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_types.weak, &current_intent_prefix));
-          doc_path.subkey(i).AppendToKey(&current_intent_prefix);
+        for (auto it = key_prefix_lengths.begin(), end = key_prefix_lengths.end(); it != end;) {
+          current_intent_prefix.AppendRawBytes(
+              doc_path.data() + current_intent_prefix.size(),
+              *it - current_intent_prefix.size());
+          ++it;
+          RETURN_NOT_OK(resolver->ReadIntentConflicts(
+              it == end ? strong_intent_types : StrongToWeak(strong_intent_types),
+              &current_intent_prefix));
         }
-        RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_types.strong, &current_intent_prefix));
       }
     }
 
@@ -482,8 +581,8 @@ class OperationConflictResolverContext : public ConflictResolverContext {
     return Status::OK();
   }
 
-  HybridTime GetHybridTime() override {
-    return hybrid_time_;
+  HybridTime GetResolutionHt() override {
+    return resolution_ht_;
   }
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
@@ -492,36 +591,39 @@ class OperationConflictResolverContext : public ConflictResolverContext {
 
   CHECKED_STATUS CheckConflictWithCommitted(
       const TransactionId& id, HybridTime commit_time) override {
-    hybrid_time_.MakeAtLeast(commit_time);
+    resolution_ht_.MakeAtLeast(commit_time);
     return Status::OK();
   }
 
  private:
   const DocOperations& doc_ops_;
-  HybridTime hybrid_time_;
+  HybridTime resolution_ht_;
 };
 
 } // namespace
 
-Status ResolveTransactionConflicts(const KeyValueWriteBatchPB& write_batch,
+Status ResolveTransactionConflicts(const DocOperations& doc_ops,
+                                   const KeyValueWriteBatchPB& write_batch,
                                    HybridTime hybrid_time,
+                                   HybridTime read_time,
                                    const DocDB& doc_db,
                                    TransactionStatusManager* status_manager,
                                    Counter* conflicts_metric) {
   DCHECK(hybrid_time.is_valid());
-  TransactionConflictResolverContext context(write_batch, hybrid_time, conflicts_metric);
+  TransactionConflictResolverContext context(
+      doc_ops, write_batch, hybrid_time, read_time, conflicts_metric);
   ConflictResolver resolver(doc_db, status_manager, &context);
   return resolver.Resolve();
 }
 
 Result<HybridTime> ResolveOperationConflicts(const DocOperations& doc_ops,
-                                             HybridTime hybrid_time,
+                                             HybridTime resolution_ht,
                                              const DocDB& doc_db,
                                              TransactionStatusManager* status_manager) {
-  OperationConflictResolverContext context(&doc_ops, hybrid_time);
+  OperationConflictResolverContext context(&doc_ops, resolution_ht);
   ConflictResolver resolver(doc_db, status_manager, &context);
   RETURN_NOT_OK(resolver.Resolve());
-  return context.GetHybridTime();
+  return context.GetResolutionHt();
 }
 
 #define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \
@@ -544,9 +646,15 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
   INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
   result.doc_path.remove_suffix(doc_ht_size + 3);
   auto intent_type_and_doc_ht = result.doc_path.end();
-  INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, ValueTypeAsChar::kIntentType,
-                    "intent type value type expected");
-  result.type = static_cast<IntentType>(intent_type_and_doc_ht[1]);
+  if (intent_type_and_doc_ht[0] == ValueTypeAsChar::kObsoleteIntentType) {
+    result.types = ObsoleteIntentTypeToSet(intent_type_and_doc_ht[1]);
+  } else if (intent_type_and_doc_ht[0] == ValueTypeAsChar::kObsoleteIntentTypeSet) {
+    result.types = ObsoleteIntentTypeSetToNew(intent_type_and_doc_ht[1]);
+  } else {
+    INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, ValueTypeAsChar::kIntentTypeSet,
+        "intent type set type expected");
+    result.types = IntentTypeSet(intent_type_and_doc_ht[1]);
+  }
   INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, ValueTypeAsChar::kHybridTime,
                     "hybrid time value type expected");
   result.doc_ht = Slice(result.doc_path.end() + 2, doc_ht_size + 1);
@@ -568,7 +676,7 @@ std::string DebugIntentKeyToString(Slice intent_key) {
   return Format("$0 (key: $1 type: $2 doc_ht: $3 )",
                 intent_key.ToDebugHexString(),
                 SubDocKey::DebugSliceToString(parsed->doc_path),
-                ToString(parsed->type),
+                parsed->types,
                 doc_ht.ToString());
 }
 

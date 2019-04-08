@@ -128,7 +128,7 @@ Status::Status(Code code, const char* file_name, int line_number, TimeoutError e
 
 namespace {
 
-#define YB_STATUS_RETURN_MESSAGE(name, value, message) \
+#define YB_STATUS_RETURN_MESSAGE(name, pb_name, value, message) \
     case Status::BOOST_PP_CAT(k, name): \
       return message;
 
@@ -147,16 +147,22 @@ std::string Status::CodeAsString() const {
   return cstr != nullptr ? cstr : "Incorrect status code " + std::to_string(code);
 }
 
-std::string Status::ToUserMessage(bool include_file_and_line) const {
+std::string Status::ToUserMessage(bool include_code) const {
   if (error_code() == 0) {
     // Return empty string for success.
     return "";
   }
-  return ToString(include_file_and_line);
+  // Never include internal file name for the user.
+  return ToString(/* include_file_and_line */ false, include_code);
 }
 
-std::string Status::ToString(bool include_file_and_line) const {
-  std::string result(CodeAsString());
+std::string Status::ToString(bool include_file_and_line, bool include_code) const {
+  std::string result;
+
+  if (include_code) {
+    result += CodeAsString();
+  }
+
   if (state_ == nullptr) {
     return result;
   }
@@ -176,9 +182,19 @@ std::string Status::ToString(bool include_file_and_line) const {
     result.append(std::to_string(state_->line_number));
     result.append(")");
   }
-  result.append(": ");
+
+  if (!result.empty()) {
+    result.append(": ");
+  }
+
   Slice msg = message();
   result.append(reinterpret_cast<const char*>(msg.data()), msg.size());
+
+  // If no message (rare case) - show code (if it's not shown yet).
+  if (result.empty()) {
+    result += CodeAsString();
+  }
+
   int64_t error = error_code();
   if (error != -1) {
     char buf[64];

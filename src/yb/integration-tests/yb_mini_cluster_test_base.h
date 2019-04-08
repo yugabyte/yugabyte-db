@@ -18,6 +18,8 @@
 
 #include "yb/util/test_util.h"
 
+#include "yb/client/client.h"
+
 namespace yb {
 
 template <class T>
@@ -30,6 +32,7 @@ class YBMiniClusterTestBase: public YBTest {
   // override DoTearDown if they need to customize tear down behaviour.
   // Subclasses should never call TearDown of YBMiniClusterTestBase, they should call DoTearDown
   // instead.
+  //
   // Actually, subclasses should never know if TearDown method even exists, they should use/override
   // DoTearDown instead. For YBMiniClusterTestBase and its subclasses TearDown method is only
   // intended for calling from test framework and is a part of exclusively external interface.
@@ -44,6 +47,18 @@ class YBMiniClusterTestBase: public YBTest {
 
   virtual void DoTearDown();
   virtual void DoBeforeTearDown();
+};
+
+template <class T>
+class MiniClusterTestWithClient : public YBMiniClusterTestBase<T> {
+ public:
+  // Create a new YB session
+  client::YBSessionPtr NewSession();
+
+ protected:
+  virtual CHECKED_STATUS CreateClient();
+
+  client::YBClientPtr client_;
 };
 
 } // namespace yb

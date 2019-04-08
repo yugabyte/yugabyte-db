@@ -34,11 +34,12 @@ const size_t kMaxIov = 16;
 
 }
 
-TcpStream::TcpStream(
-    const Endpoint& remote, Socket socket, GrowableBufferAllocator* allocator, size_t limit)
-    : socket_(std::move(socket)),
-      remote_(remote),
-      read_buffer_(allocator, limit) {
+TcpStream::TcpStream(const StreamCreateData& data)
+    : socket_(std::move(*data.socket)),
+      remote_(data.remote) {
+  if (data.mem_tracker) {
+    mem_tracker_ = MemTracker::FindOrCreateTracker("Sending", data.mem_tracker);
+  }
 }
 
 TcpStream::~TcpStream() {
@@ -121,13 +122,16 @@ void TcpStream::Close() {
 void TcpStream::Shutdown(const Status& status) {
   ClearSending(status);
 
-  if (!read_buffer_.empty()) {
+  if (!ReadBuffer().Empty()) {
     LOG_WITH_PREFIX(WARNING) << "Shutting down with pending inbound data ("
-                             << read_buffer_ << ", status = " << status << ")";
+                             << ReadBuffer().ToString() << ", status = " << status << ")";
   }
 
   io_.stop();
   is_epoll_registered_ = false;
+
+  ReadBuffer().Reset();
+
   WARN_NOT_OK(socket_.Close(), "Error closing socket");
 }
 
@@ -144,6 +148,8 @@ int TcpStream::FillIov(iovec* out) {
   size_t offset = send_position_;
   for (auto& data : sending_) {
     if (data.skipped || (offset == 0 && data.data && data.data->IsFinished())) {
+      queued_bytes_to_send_ -= data.bytes_size();
+      data.ClearBytes();
       data.skipped = true;
       continue;
     }
@@ -179,6 +185,10 @@ Status TcpStream::DoWrite() {
 
     int32_t written = 0;
     auto status = iov_len != 0 ? socket_.Writev(iov, iov_len, &written) : Status::OK();
+    DVLOG_WITH_PREFIX(4) << "Queued writes " << queued_bytes_to_send_ << " bytes. written "
+                         << written << " . Status " << status << " sending_ .size() "
+                         << sending_.size();
+
     if (PREDICT_FALSE(!status.ok())) {
       if (!Socket::IsTemporarySocketError(status)) {
         YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 50) << "Send failed: " << status;
@@ -191,17 +201,17 @@ Status TcpStream::DoWrite() {
     send_position_ += written;
     while (!sending_.empty()) {
       auto& front = sending_.front();
+      size_t full_size = front.bytes_size();
       if (front.skipped) {
-        sending_.pop_front();
+        PopSending();
         continue;
       }
-      size_t full_size = front.bytes_size();
       if (send_position_ < full_size) {
         break;
       }
       auto data = front.data;
       send_position_ -= full_size;
-      sending_.pop_front();
+      PopSending();
       if (data) {
         context_->Transferred(data, Status::OK());
       }
@@ -209,6 +219,12 @@ Status TcpStream::DoWrite() {
   }
 
   return Status::OK();
+}
+
+void TcpStream::PopSending() {
+  queued_bytes_to_send_ -= sending_.front().bytes_size();
+  sending_.pop_front();
+  ++data_blocks_sent_;
 }
 
 void TcpStream::Handler(ev::io& watcher, int revents) {  // NOLINT
@@ -282,7 +298,7 @@ Status TcpStream::ReadHandler() {
 }
 
 Result<bool> TcpStream::Receive() {
-  auto iov = read_buffer_.PrepareAppend();
+  auto iov = ReadBuffer().PrepareAppend();
   if (!iov.ok()) {
     if (iov.status().IsBusy()) {
       read_buffer_full_ = true;
@@ -300,7 +316,7 @@ Result<bool> TcpStream::Receive() {
     return nread.status();
   }
 
-  read_buffer_.DataAppended(*nread);
+  ReadBuffer().DataAppended(*nread);
   return *nread != 0;
 }
 
@@ -317,14 +333,15 @@ void TcpStream::ParseReceived() {
 }
 
 Result<bool> TcpStream::TryProcessReceived() {
-  if (read_buffer_.empty()) {
+  auto& read_buffer = ReadBuffer();
+  if (!read_buffer.ReadyToRead()) {
     return false;
   }
 
-  auto consumed = VERIFY_RESULT(context_->ProcessReceived(
-      read_buffer_.AppendedVecs(), ReadBufferFull(read_buffer_.full())));
+  auto result = VERIFY_RESULT(context_->ProcessReceived(
+      read_buffer.AppendedVecs(), ReadBufferFull(read_buffer.Full())));
 
-  read_buffer_.Consume(consumed);
+  read_buffer.Consume(result.consumed, result.buffer);
   return true;
 }
 
@@ -339,21 +356,10 @@ Status TcpStream::WriteHandler(bool just_connected) {
   return DoWrite();
 }
 
-std::string TcpStream::ToString() const {
-  return Format("{ local: $0 remote: $1 }", local_, remote_);
-}
-
-const std::string& TcpStream::LogPrefix() const {
-  if (log_prefix_.empty()) {
-    log_prefix_ = ToString() + ": ";
-  }
-  return log_prefix_;
-}
-
 bool TcpStream::Idle(std::string* reason_not_idle) {
   bool result = true;
   // Check if we're in the middle of receiving something.
-  if (!read_buffer_.empty()) {
+  if (!ReadBuffer().Empty()) {
     if (reason_not_idle) {
       AppendWithSeparator("read buffer not empty", reason_not_idle);
     }
@@ -379,20 +385,55 @@ void TcpStream::ClearSending(const Status& status) {
     }
   }
   sending_.clear();
+  queued_bytes_to_send_ = 0;
 }
 
-void TcpStream::Send(OutboundDataPtr data) {
+size_t TcpStream::Send(OutboundDataPtr data) {
+  // In case of TcpStream handle is absolute index of data block, since stream start.
+  // So it could be cacluated as index in sending_ plus number of data blocks that were already
+  // transferred.
+  size_t result = data_blocks_sent_ + sending_.size();
+
   // Serialize the actual bytes to be put on the wire.
-  sending_.emplace_back(std::move(data));
+  sending_.emplace_back(std::move(data), mem_tracker_);
+  queued_bytes_to_send_ += sending_.back().bytes_size();
+  DVLOG_WITH_PREFIX(3) << "Added data queued_bytes_to_send_: " << queued_bytes_to_send_;
+
+  return result;
+}
+
+void TcpStream::Cancelled(size_t handle) {
+  if (handle < data_blocks_sent_) {
+    return;
+  }
+  handle -= data_blocks_sent_;
+  LOG_IF_WITH_PREFIX(DFATAL, !sending_[handle].data->IsFinished())
+      << "Cancelling not finished data: " << sending_[handle].data->ToString();
+  auto& entry = sending_[handle];
+  if (handle == 0 && send_position_ > 0) {
+    // Transfer already started, cannot drop it.
+    return;
+  }
+
+  queued_bytes_to_send_ -= entry.bytes_size();
+  entry.ClearBytes();
 }
 
 void TcpStream::DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) {
   auto call_in_flight = resp->add_calls_in_flight();
+  uint64_t sending_bytes = 0;
   for (auto& entry : sending_) {
-    if (entry.data && entry.data->DumpPB(req, call_in_flight)) {
+    auto entry_bytes_size = entry.bytes_size();;
+    sending_bytes += entry_bytes_size;
+    if (!entry.data) {
+      continue;
+    }
+    if (entry.data->DumpPB(req, call_in_flight)) {
+      call_in_flight->set_sending_bytes(entry_bytes_size);
       call_in_flight = resp->add_calls_in_flight();
     }
   }
+  resp->set_sending_bytes(sending_bytes);
   resp->mutable_calls_in_flight()->DeleteSubrange(resp->calls_in_flight_size() - 1, 1);
 }
 
@@ -404,18 +445,20 @@ const Protocol* TcpStream::StaticProtocol() {
 StreamFactoryPtr TcpStream::Factory() {
   class TcpStreamFactory : public StreamFactory {
    private:
-    std::unique_ptr<Stream> Create(
-        const Endpoint& remote, Socket socket, GrowableBufferAllocator* allocator, size_t limit)
-            override {
-      return std::make_unique<TcpStream>(remote, std::move(socket), allocator, limit);
+    std::unique_ptr<Stream> Create(const StreamCreateData& data) override {
+      return std::make_unique<TcpStream>(data);
     }
   };
 
   return std::make_shared<TcpStreamFactory>();
 }
 
-TcpStream::SendingData::SendingData(OutboundDataPtr data_) : data(std::move(data_)) {
+TcpStream::SendingData::SendingData(OutboundDataPtr data_, const MemTrackerPtr& mem_tracker)
+    : data(std::move(data_)) {
   data->Serialize(&bytes);
+  if (mem_tracker) {
+    consumption = ScopedTrackedConsumption(mem_tracker, bytes_size());
+  }
 }
 
 

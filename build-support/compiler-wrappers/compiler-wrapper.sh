@@ -30,6 +30,11 @@ readonly GENERATED_BUILD_DEBUG_SCRIPT_DIR=$HOME/.yb-build-debug-scripts
 readonly SCRIPT_NAME="compiler-wrapper.sh"
 declare -i -r MAX_INPUT_FILES_TO_SHOW=20
 
+compilation_step_name="COMPILATION"
+delete_stderr_file=true
+delete_output_file_on_failure=false
+stderr_path=""
+
 # Files such as numeric.c, int.c, int8.c, and float.c get compiled with UBSAN (Undefined Behavior
 # Sanitizer) turned off due to large number of overflow cases in them (by design).
 
@@ -59,7 +64,7 @@ fatal_error() {
 determine_compiler_cmdline() {
   local compiler_cmdline
   determine_compiler_cmdline_rv=""
-  if [[ -f ${stderr_path:-} ]]; then
+  if [[ -f $stderr_path ]]; then
     compiler_cmdline=$( head -1 "$stderr_path" | sed 's/^[+] //; s/\n$//' )
   else
     log "Failed to determine compiler command line: file '$stderr_path' does not exist."
@@ -67,6 +72,7 @@ determine_compiler_cmdline() {
   fi
   # Create a command line that can be copied and pasted.
   # As part of that, replace the ccache invocation with the actual compiler executable.
+  compiler_cmdline="YB_THIRDPARTY_DIR=$YB_THIRDPARTY_DIR $compiler_cmdline"
   if using_linuxbrew; then
     compiler_cmdline="PATH=$YB_LINUXBREW_DIR/bin:\$PATH $compiler_cmdline"
   fi
@@ -82,11 +88,8 @@ show_compiler_command_line() {
 
   # These command lines appear during compiler/linker and Boost version detection and we don't want
   # to do output any additional information in these cases.
-  if [[ $compiler_args_str == "-v" ||
-        $compiler_args_str == "-Wl,--version" ||
-        $compiler_args_str == "-fuse-ld=gold -Wl,--version" ||
-        $compiler_args_str == "-dumpversion" ]]; then
-    return
+  if is_configure_mode_invocation; then
+    return 0
   fi
 
   local determine_compiler_cmdline_rv
@@ -106,7 +109,6 @@ show_compiler_command_line() {
     $command_line_filter >&2
   set -e
 }
-
 
 # This can be used to generate scripts that make it easy to re-run failed build commands.
 generate_build_debug_script() {
@@ -159,17 +161,39 @@ should_skip_error_checking_by_input_file_pattern() {
 # -------------------------------------------------------------------------------------------------
 # Functions for remote build
 
-flush_stderr_file() {
-  if [[ -f ${stderr_path:-} ]]; then
-    cat "$stderr_path" >&2
+flush_stderr_file_helper() {
+  if ! cat "$stderr_path" >&2; then
+    fatal "Failed command on host $( hostname ): cat '$stderr_path'"
+  fi
+}
+
+remote_build_flush_stderr_file() {
+  if [[ -f $stderr_path ]]; then
+    flush_stderr_file_helper
+    # No need to check $delete_stderr_file here, because it is only used for local compiler
+    # invocations.
     rm -f "$stderr_path"
   fi
 }
 
 remote_build_exit_handler() {
   local exit_code=$?
-  flush_stderr_file
+  remote_build_flush_stderr_file
   exit "$exit_code"
+}
+
+is_configure_mode_invocation() {
+  # These command lines appear during compiler/linker and Boost version detection and we don't want
+  # to do output any additional information in these cases.
+  if [[ $compiler_args_str == "-v" ||
+        $compiler_args_str == "-Wl,--version" ||
+        $compiler_args_str == "-fuse-ld=gold -Wl,--version" ||
+        $compiler_args_str == "-dumpversion" ||
+        $compiler_args_str =~ .*\ -c\ test(C|CXX)Compiler[.](c|cc|cxx)$ ]]; then
+    return 0  # "true" return value in bash
+  fi
+
+  return 1  # "false" return value in bash
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -179,6 +203,7 @@ remote_build_exit_handler() {
 cc_or_cxx=${0##*/}
 
 stderr_path=/tmp/yb-$cc_or_cxx.$RANDOM-$RANDOM-$RANDOM.$$.stderr
+# stdout_path=""
 
 compiler_args=( "$@" )
 
@@ -212,14 +237,22 @@ rpath_found=false
 num_output_files_found=0
 has_yb_c_files=false
 
+compiler_args_no_output=()
+analyzer_checkers_specified=false
+
 while [[ $# -gt 0 ]]; do
+  is_output_arg=false
   case "$1" in
     -o)
       if [[ $# -gt 1 ]]; then
+        if [[ -n $output_file ]]; then
+          fatal "The -o option specified twice: '$output_file' and '${2:-}'"
+        fi
         output_file=${2:-}
         let num_output_files_found+=1
         shift
       fi
+      is_output_arg=true
     ;;
     -DYB_INSTRUMENT_FUNCTIONS_REL_PATH_RE=*)
       instrument_functions_rel_path_re=${1#*=}
@@ -242,7 +275,7 @@ while [[ $# -gt 0 ]]; do
           # We will use this later to add custom compilation flags to PostgreSQL source files that
           # we contributed, e.g. for stricter error checking.
           has_yb_c_files=true
-      fi
+        fi
       fi
     ;;
     -Wl,-rpath,*)
@@ -261,10 +294,13 @@ while [[ $# -gt 0 ]]; do
         export YB_COMPILER_TYPE=$compiler_type_from_cmd_line
       fi
     ;;
-
-    *)
+    -analyzer-checker=*)
+      analyzer_checkers_specified=true
     ;;
   esac
+  if ! "$is_output_arg"; then
+    compiler_args_no_output+=( "$1" )
+  fi
   shift
 done
 
@@ -295,20 +331,46 @@ if [[ $local_build_only == "false" &&
 
   trap remote_build_exit_handler EXIT
 
+  cached_build_workers_file=/tmp/cached_build_workers_$USER
+  declare -i num_missing_build_workers_file_retries=0
+
   current_dir=$PWD
   declare -i attempt=0
   declare -i no_worker_count=0
   sleep_deciseconds=1  # a decisecond is one-tenth of a second
   while [[ $attempt -lt 100 ]]; do
     let attempt+=1
+    effective_build_workers_file=$YB_BUILD_WORKERS_FILE
+    if [[ ! -f $YB_BUILD_WORKERS_FILE ]]; then
+      if [[ $num_missing_build_workers_file_retries -ge 5 && -f $cached_build_workers_file ]]; then
+        log "The build worker list file ('$YB_BUILD_WORKERS_FILE') has been missing for" \
+            "$num_missing_build_workers_file_retries attempts. Will use cached build worker list" \
+            "file."
+        effective_build_workers_file=$cached_build_workers_file
+      else
+        log "The build worker list file ('$YB_BUILD_WORKERS_FILE') does not exist. Will retry".
+        log "Current mounts on $( hostname ):"
+        mount
+        sleep 0.5
+        let num_missing_build_workers_file_retries+=1
+        continue
+      fi
+    fi
     set +e
-    build_worker_name=$( shuf -n 1 "$YB_BUILD_WORKERS_FILE" )
+    build_worker_name=$( shuf -n 1 "$effective_build_workers_file" )
     if [[ $? -ne 0 ]]; then
       set -e
-      log "shuf failed, trying again"
+      log "shuf failed, trying again in a moment"
+      sleep 0.5
       continue
     fi
     set -e
+    if [[ -f $YB_BUILD_WORKERS_FILE ]]; then
+      if ! cp "$YB_BUILD_WORKERS_FILE" "$cached_build_workers_file"; then
+        log "Failed copying $YB_BUILD_WORKERS_FILE even though it just existed!"
+      fi
+      num_missing_build_workers_file_retries=0
+    fi
     if [[ -z $build_worker_name ]]; then
       let no_worker_count+=1
       if [[ $no_worker_count -ge 100 ]]; then
@@ -325,21 +387,25 @@ if [[ $local_build_only == "false" &&
     set -e
     # Exit code 126: "/usr/bin/env: bash: Input/output error"
     # Exit code 127: "remote_cmd.sh: No such file or directory"
+    # Exit code 141: SIGPIPE
     # Exit code 254: "write: Connection reset by peer".
     # Exit code 255: ssh: connect to host ... port ...: Connection refused
     # $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY: we return this when we fail to find files or
     #   directories that are supposed to exist. We retry to work around NFS issues.
     if [[ $exit_code -eq 126 ||
           $exit_code -eq 127 ||
+          $exit_code -eq 141 ||
           $exit_code -eq 254 ||
           $exit_code -eq 255 ||
           $exit_code -eq $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY ]] ||
-       egrep "\
+        egrep "\
 ccache: error: Failed to open .*: No such file or directory|\
 Fatal error: can't create .*: Stale file handle|\
 /usr/bin/env: bash: Input/output error\
-" "$stderr_path" >&2; then
-      flush_stderr_file
+" "$stderr_path" &&
+        ! grep ": syntax error " "$stderr_path"
+    then
+      remote_build_flush_stderr_file
       # TODO: distinguish between problems that can be retried on the same host, and problems
       # indicating that the host is down.
       # TODO: maintain a blacklist of hosts that are down and don't retry on the same host from
@@ -352,7 +418,7 @@ Fatal error: can't create .*: Stale file handle|\
       fi
       continue
     fi
-    flush_stderr_file
+    remote_build_flush_stderr_file
     break
   done
   if [[ $exit_code -ne 0 ]]; then
@@ -379,7 +445,7 @@ Exit code:  $exit_code
     PS4=$old_ps4
   fi
   exit $exit_code
-elif [[ ${YB_DEBUG_REMOTE_COMPILATION:-undefined} == "1" ]] && ! $is_build_worker; then
+elif debugging_remote_compilation && ! $is_build_worker; then
   log "Not doing remote build: local_build_only=$local_build_only," \
     "YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined}," \
     "HOSTNAME=$HOSTNAME"
@@ -397,19 +463,22 @@ local_build_exit_handler() {
   elif is_thirdparty_build; then
     # Do not add any fancy output if we're running as part of the third-party build.
     if [[ -f ${stderr_path:-} ]]; then
-      cat "$stderr_path" >&2
+      flush_stderr_file_helper
     fi
   else
     # We output the compiler executable path because the actual command we're running will likely
     # contain ccache instead of the compiler executable.
     (
-      show_compiler_command_line "\n$RED_COLOR" "  # Compiler exit code: $compiler_exit_code.\n"
+      if ! show_compiler_command_line "\n$RED_COLOR" \
+               "  # Compiler exit code: $compiler_exit_code.\n"; then
+        echo >&2 "Failed to show compiler command line."
+      fi
       if [[ -f ${stderr_path:-} ]]; then
         if [[ -s ${stderr_path:-} ]]; then
           (
             red_color
             echo "/-------------------------------------------------------------------------------"
-            echo "| COMPILATION FAILED"
+            echo "| $compilation_step_name FAILED"
             echo "|-------------------------------------------------------------------------------"
             IFS='\n'
             (
@@ -450,7 +519,9 @@ local_build_exit_handler() {
       fi
     ) >&2
   fi
-  rm -f "${stderr_path:-}"
+  if [[ -n $stderr_path ]] && ( "$delete_stderr_file" || [[ -s $stderr_path ]] ); then
+    rm -f "${stderr_path:-}"
+  fi
   if [[ $exit_code -eq 0 && -n $output_file ]]; then
     # Successful compilation. Update the output file timestamp locally to work around any clock
     # skew issues between the node we're running this on and compilation worker nodes.
@@ -460,7 +531,17 @@ local_build_exit_handler() {
       log "Warning: was supposed to create an output file '$output_file', but it does not exist."
     fi
   fi
+  if [[ $exit_code -ne 0 && -f $output_file ]] && "$delete_output_file_on_failure"; then
+    rm -f "$output_file"
+  fi
   exit "$exit_code"
+}
+
+run_compiler_and_save_stderr() {
+  set +e
+  ( set -x; "$@" ) 2>"$stderr_path"
+  compiler_exit_code=$?
+  set -e
 }
 
 # -------------------------------------------------------------------------------------------------
@@ -513,14 +594,16 @@ if which ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; 
   # Ensure CCACHE puts temporary files on the local disk.
   export CCACHE_TEMPDIR=${CCACHE_TEMPDIR:-/tmp/ccache_tmp_$USER}
   jenkins_ccache_dir=/n/jenkins/ccache
-  if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs && is_running_on_gcp
-  then
+  if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs; then
     if ! is_jenkins; then
-      log "is_jenkins (based on BUILD_ID and JOB_NAME) is false for some reason, even though" \
+      log "is_jenkins (based on JOB_NAME) is false for some reason, even though" \
           "the user is 'jenkins'. Setting CCACHE_DIR to '$jenkins_ccache_dir' anyway." \
           "This is host $HOSTNAME, and current directory is $PWD."
     fi
     export CCACHE_DIR=$jenkins_ccache_dir
+    # Do not update the stats file, because that involves locking and might be problematic/slow
+    # on NFS.
+    export CCACHE_NOSTATS=1
   fi
   cmd=( ccache compiler )
 else
@@ -599,13 +682,41 @@ if [[ ${YB_DISABLE_RELATIVE_RPATH:-0} == "0" ]] &&
   fi
 fi
 
+if [[ $PWD == $BUILD_ROOT/postgres_build ||
+      $PWD == $BUILD_ROOT/postgres_build/* ]]; then
+  new_cmd=()
+  for arg in "${cmd[@]}"; do
+    if [[ $arg == -I* ]]; then
+      include_dir=${arg#-I}
+      if [[ -d $include_dir ]]; then
+        include_dir=$( cd "$include_dir" && pwd )
+        if [[ $include_dir == $BUILD_ROOT/postgres_build/* ]]; then
+          rel_include_dir=${include_dir#$BUILD_ROOT/postgres_build/}
+          updated_include_dir=$YB_SRC_ROOT/src/postgres/$rel_include_dir
+          if [[ -d $updated_include_dir ]]; then
+            new_cmd+=( -I"$updated_include_dir" )
+          fi
+        fi
+      fi
+      new_cmd+=( "$arg" )
+    elif [[ -f $arg && $arg != "conftest.c" ]]; then
+      file_path=$PWD/${arg#./}
+      rel_file_path=${file_path#$BUILD_ROOT/postgres_build/}
+      updated_file_path=$YB_SRC_ROOT/src/postgres/$rel_file_path
+      if [[ -f $updated_file_path ]] && cmp --quiet "$file_path" "$updated_file_path"; then
+        new_cmd+=( "$updated_file_path" )
+      else
+        new_cmd+=( "$arg" )
+      fi
+    else
+      new_cmd+=( "$arg" )
+    fi
+  done
+  cmd=( "${new_cmd[@]}" )
+fi
+
 compiler_exit_code=UNKNOWN
 trap local_build_exit_handler EXIT
-
-# Add a "tag" to the command line that will allow us to count the number of local compilation
-# commands we are running on the machine and decide whether to run compiler locally or remotely
-# based on that.
-cmd+=( -DYB_LOCAL_C_CXX_COMPILER_CMD )
 
 if [[ ${YB_GENERATE_COMPILATION_CMD_FILES:-0} == "1" &&
       -n $output_file &&
@@ -621,20 +732,24 @@ ${cmd[*]}
 fi
   unset IFS
 
-set +e
+if [[ $YB_COMPILER_TYPE == "clang" ]]; then
+  if [[ -n ${YB_DXR_CXX_CLANG_OBJECT_FOLDER:-} ]]; then
+    export DXR_CXX_CLANG_OBJECT_FOLDER=$YB_DXR_CXX_CLANG_OBJECT_FOLDER
+  fi
+  if [[ -n ${YB_DXR_CXX_CLANG_TEMP_FOLDER:-} ]]; then
+    export DXR_CXX_CLANG_TEMP_FOLDER=$YB_DXR_CXX_CLANG_TEMP_FOLDER
+  fi
+else
+  # DXR only works with clang.
+  YB_DXR_CLANG_FLAGS=""
+fi
 
-( set -x; "${cmd[@]}" ) 2>"$stderr_path"
-compiler_exit_code=$?
-
-set -e
+run_compiler_and_save_stderr "${cmd[@]}" ${YB_DXR_CLANG_FLAGS:-}
 
 # Skip printing some command lines commonly used by CMake for detecting compiler/linker version.
 # Extra output might break the version detection.
-if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} &&
-      $compiler_args_str != "-v" &&
-      $compiler_args_str != "-Wl,--version" &&
-      $compiler_args_str != "-fuse-ld=gold -Wl,--version" &&
-      $compiler_args_str != "-print-prog-name=ld" ]]; then
+if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} ]] &&
+   ! is_configure_mode_invocation; then
   show_compiler_command_line "$CYAN_COLOR"
 fi
 
@@ -646,32 +761,25 @@ fi
 
 # Deal with failures when trying to use precompiled headers. Our current approach is to delete the
 # precompiled header.
-if grep ".h.gch: created by a different GCC executable" "$stderr_path" >/dev/null || \
-   grep ".h.gch: not used because " "$stderr_path" >/dev/null || \
-   grep "fatal error: malformed or corrupted AST file:" "$stderr_path" >/dev/null || \
-   grep "new operators was enabled in PCH file but is currently disabled" "$stderr_path" \
-     >/dev/null || \
-   egrep "definition of macro '.*' differs between the precompiled header .* and the command line" \
-         "$stderr_path" >/dev/null || \
-   grep " has been modified since the precompiled header " "$stderr_path" >/dev/null || \
-   grep "PCH file built from a different branch " "$stderr_path" >/dev/null
+if grep -q ".h.gch: created by a different GCC executable" "$stderr_path" ||
+   grep -q ".h.gch: not used because " "$stderr_path" ||
+   grep -q "fatal error: malformed or corrupted AST file:" "$stderr_path" ||
+   grep -q "new operators was enabled in PCH file but is currently disabled" "$stderr_path" ||
+   egrep -q \
+       "definition of macro '.*' differs between the precompiled header .* and the command line" \
+       "$stderr_path" ||
+   grep -q " has been modified since the precompiled header " "$stderr_path" ||
+   grep -q "PCH file built from a different branch " "$stderr_path"
 then
   # Extract path to generated file from error message.
   # Example: "note: please rebuild precompiled header 'PCH_PATH'"
   PCH_PATH=$( grep rebuild "$stderr_path" | awk '{ print $NF }' ) || echo -n
-  if [[ -z $PCH_PATH ]]; then
-    echo -e "${RED_COLOR}Failed to obtain PCH_PATH from $stderr_path${NO_COLOR}"
-    # Fallback to a specific location of the precompiled header file (used in the RocksDB codebase).
-    # If we add more precompiled header files, we will need to change related error handling here.
-    PCH_NAME=rocksdb_precompiled/precompiled_header.h.gch
-    PCH_PATH=$PWD/$PCH_NAME
-  else
+  if [[ -n $PCH_PATH ]]; then
     # Strip quotes
     PCH_PATH=${PCH_PATH:1:-1}
+    # Dump stats for debugging
+    stat -x "$PCH_PATH"
   fi
-  # Dump stats for debugging
-  stat -x "$PCH_PATH"
-
   # Extract source for precompiled header.
   # Example: "fatal error: file 'SOURCE_FILE' has been modified since the precompiled header
   # 'PCH_PATH' was built"
@@ -688,9 +796,9 @@ then
 fi
 
 if [[ $compiler_exit_code -ne 0 ]]; then
-  if egrep 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
-       "$stderr_path" >/dev/null || \
-     egrep 'error: ld returned' "$stderr_path" >/dev/null; then
+  if egrep -q 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
+       "$stderr_path" || \
+     egrep -q 'error: ld returned' "$stderr_path"; then
     determine_compiler_cmdline
     generate_build_debug_script rerun_failed_link_step "$determine_compiler_cmdline_rv -v"
   fi
@@ -702,4 +810,42 @@ if [[ $compiler_exit_code -ne 0 ]]; then
   fi
 
   exit "$compiler_exit_code"
+fi
+
+if is_clang &&
+    [[ ${YB_ENABLE_STATIC_ANALYZER:-0} == "1" ]] &&
+    ! is_thirdparty_build &&
+    [[ ${YB_PG_BUILD_STEP:-} != "configure" ]] &&
+    ! is_configure_mode_invocation &&
+    [[ $output_file == *.o ]] &&
+    is_linux; then
+  if ! "$analyzer_checkers_specified"; then
+    log "No -analyzer-checker=... option found on compiler command line. It is possible that" \
+        "cmake was run without the YB_ENABLE_STATIC_ANALYZER environment variable set to 1. " \
+        "Command: $compiler_args_str"
+    echo "$compiler_args_str" >>/tmp/compiler_args.log
+  fi
+  compilation_step_name="STATIC ANALYSIS"
+  output_prefix=${output_file%.o}
+  stderr_path=$output_prefix.analyzer.err
+  html_output_dir="$output_prefix.html.d"
+  if [[ -e $html_output_dir ]]; then
+    rm -rf "$html_output_dir"
+  fi
+
+  # The error handler will delete the .o file on analyzer failure to keep the combined compilation
+  # and analysis process repeatable. Re-running the build should result in the same error if the
+  # analyzer fails.
+  delete_output_file_on_failure=true
+  delete_stderr_file=false
+
+  # TODO: the output redirection here does not quite work. clang might be doing something unusual
+  # with the tty. As of 01/2019 all stderr output might still go to the terminal/log.
+  set +e
+  "$compiler_executable" "${compiler_args_no_output[@]}" --analyze \
+    -Xanalyzer -analyzer-output=html -fno-color-diagnostics -o "$html_output_dir" \
+    2>"$stderr_path"
+
+  compiler_exit_code=$?
+  set -e
 fi

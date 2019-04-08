@@ -41,10 +41,10 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/common/entity_ids.h"
 #include "yb/tools/yb-admin_cli.h"
-
 #include "yb/consensus/consensus.pb.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
+#include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
 
@@ -54,10 +54,6 @@ class ConsensusServiceProxy;
 
 namespace client {
 class YBClient;
-}
-
-namespace rpc {
-class Messenger;
 }
 
 namespace tools {
@@ -70,13 +66,13 @@ class ClusterAdminClient {
   };
 
   // Creates an admin client for host/port combination e.g.,
-  // "localhost" or "127.0.0.1:7050".
-  ClusterAdminClient(std::string addrs, int64_t timeout_millis);
+  // "localhost" or "127.0.0.1:7050" with the given timeout.
+  // If certs_dir is non-empty, caller will init the yb_client_.
+  ClusterAdminClient(std::string addrs, int64_t timeout_millis, string certs_dir);
 
   virtual ~ClusterAdminClient() = default;
 
-  // Initialized the client and connects to the specified tablet
-  // server.
+  // Initialized the client and connects to the specified tablet server.
   virtual CHECKED_STATUS Init();
 
   // Parse the user-specified change type to consensus change type
@@ -84,7 +80,7 @@ class ClusterAdminClient {
       const std::string& change_type,
       consensus::ChangeConfigType* cc_type);
 
-    // Change the configuration of the specified tablet.
+  // Change the configuration of the specified tablet.
   CHECKED_STATUS ChangeConfig(
       const TabletId& tablet_id,
       const std::string& change_type,
@@ -104,7 +100,7 @@ class ClusterAdminClient {
   CHECKED_STATUS ListTables();
 
   // List all tablets of this table
-  CHECKED_STATUS ListTablets(const client::YBTableName& table_name, const int max_tablets);
+  CHECKED_STATUS ListTablets(const client::YBTableName& table_name, int max_tablets);
 
   // Per Tablet list of all tablet servers
   CHECKED_STATUS ListPerTabletTabletServers(const PeerId& tablet_id);
@@ -124,7 +120,7 @@ class ClusterAdminClient {
   // List all the tablets a certain tablet server is serving
   CHECKED_STATUS ListTabletsForTabletServer(const PeerId& ts_uuid);
 
-  CHECKED_STATUS SetLoadBalancerEnabled(const bool is_enabled);
+  CHECKED_STATUS SetLoadBalancerEnabled(bool is_enabled);
 
   CHECKED_STATUS GetLoadMoveCompletion();
 
@@ -137,6 +133,10 @@ class ClusterAdminClient {
   CHECKED_STATUS FlushTable(const client::YBTableName& table_name, int timeout_secs);
 
   CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos, int replication_factor);
+
+  CHECKED_STATUS GetUniverseConfig();
+
+  CHECKED_STATUS ChangeBlacklist(const std::vector<HostPort>& servers, bool add);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -177,13 +177,30 @@ class ClusterAdminClient {
   const std::string master_addr_list_;
   const MonoDelta timeout_;
   HostPort leader_addr_;
-  bool initted_ = false;
   std::shared_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::unique_ptr<master::MasterServiceProxy> master_proxy_;
+  // Skip yb_client_ and related fields' initialization.
+  bool client_init_ = true;
   std::shared_ptr<client::YBClient> yb_client_;
+  bool initted_ = false;
 
  private:
+  Result<master::GetMasterClusterConfigResponsePB> GetMasterClusterConfig();
+
+  // Perform RPC call without checking Response structure for error
+  template<class Response, class Request, class Object>
+  Result<Response> InvokeRpcNoResponseCheck(
+      Status (Object::*func)(const Request&, Response*, rpc::RpcController*),
+      Object* obj, const Request& req, const char* error_message = nullptr);
+
+  // Perform RPC call by calling InvokeRpcNoResponseCheck
+  // and check Response structure for error by using its has_error method (if any)
+  template<class Response, class Request, class Object>
+  Result<Response> InvokeRpc(
+      Status (Object::*func)(const Request&, Response*, rpc::RpcController*),
+      Object* obj, const Request& req, const char* error_message = nullptr);
+
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };
 

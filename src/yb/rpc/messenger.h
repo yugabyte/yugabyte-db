@@ -112,11 +112,13 @@ class MessengerBuilder {
 
   template <class ContextType>
   MessengerBuilder &CreateConnectionContextFactory(
-      size_t block_size, size_t memory_limit,
-      const std::shared_ptr<MemTracker>& parent_mem_tracker = nullptr) {
+      size_t memory_limit, const std::shared_ptr<MemTracker>& parent_mem_tracker = nullptr) {
+    if (parent_mem_tracker) {
+      last_used_parent_mem_tracker_ = parent_mem_tracker;
+    }
     connection_context_factory_ =
         std::make_shared<ConnectionContextFactoryImpl<ContextType>>(
-            block_size, memory_limit, parent_mem_tracker);
+            memory_limit, parent_mem_tracker);
     return *this;
   }
 
@@ -140,6 +142,19 @@ class MessengerBuilder {
     return *this;
   }
 
+  MessengerBuilder& set_num_connections_to_server(int value) {
+    num_connections_to_server_ = value;
+    return *this;
+  }
+
+  int num_connections_to_server() const {
+    return num_connections_to_server_;
+  }
+
+  const std::shared_ptr<MemTracker>& last_used_parent_mem_tracker() const {
+    return last_used_parent_mem_tracker_;
+  }
+
  private:
   const std::string name_;
   CoarseMonoClock::Duration connection_keepalive_time_;
@@ -151,6 +166,8 @@ class MessengerBuilder {
   const Protocol* listen_protocol_;
   size_t queue_limit_;
   size_t workers_limit_;
+  int num_connections_to_server_;
+  std::shared_ptr<MemTracker> last_used_parent_mem_tracker_;
 };
 
 // A Messenger is a container for the reactor threads which run event loops for the RPC services.
@@ -245,7 +262,11 @@ class Messenger : public ProxyContext {
   const IpAddress& outbound_address_v6() const { return outbound_address_v6_; }
 
   void BreakConnectivityWith(const IpAddress& address);
+  void BreakConnectivityTo(const IpAddress& address);
+  void BreakConnectivityFrom(const IpAddress& address);
   void RestoreConnectivityWith(const IpAddress& address);
+  void RestoreConnectivityTo(const IpAddress& address);
+  void RestoreConnectivityFrom(const IpAddress& address);
 
   Scheduler& scheduler() {
     return scheduler_;
@@ -256,6 +277,23 @@ class Messenger : public ProxyContext {
   }
 
   rpc::ThreadPool& ThreadPool(ServicePriority priority = ServicePriority::kNormal);
+
+  RpcMetrics& rpc_metrics() override {
+    return *rpc_metrics_;
+  }
+
+  const std::shared_ptr<MemTracker>& parent_mem_tracker() override;
+
+  int num_connections_to_server() const override {
+    return num_connections_to_server_;
+  }
+
+  // Use specified IP address as base address for outbound connections from messenger.
+  void TEST_SetOutboundIpBase(const IpAddress& value) {
+    test_outbound_ip_base_ = value;
+  }
+
+  bool TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote);
 
  private:
   FRIEND_TEST(TestRpc, TestConnectionKeepalive);
@@ -271,11 +309,14 @@ class Messenger : public ProxyContext {
   // 'retain_self_' for more info.
   void AllExternalReferencesDropped();
 
-  bool IsArtificiallyDisconnectedFrom(const IpAddress& remote);
+  void BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing);
+  void RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing);
 
   // Take ownership of the socket via Socket::Release
   void RegisterInboundSocket(
       const ConnectionContextFactoryPtr& factory, Socket *new_socket, const Endpoint& remote);
+
+  bool TEST_ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote);
 
   const std::string name_;
 
@@ -357,7 +398,8 @@ class Messenger : public ProxyContext {
   std::atomic<bool> has_broken_connectivity_ = {false};
 
   // Set of addresses with artificially broken connectivity.
-  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_;
+  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_from_;
+  std::unordered_set<IpAddress, IpAddressHash> broken_connectivity_to_;
 
   IoThreadPool io_thread_pool_;
   Scheduler scheduler_;
@@ -370,7 +412,15 @@ class Messenger : public ProxyContext {
   // This could be used for high-priority services such as Consensus.
   AtomicUniquePtr<rpc::ThreadPool> high_priority_thread_pool_;
 
-  #ifndef NDEBUG
+  std::unique_ptr<RpcMetrics> rpc_metrics_;
+
+  // Use this IP address as base address for outbound connections from messenger.
+  IpAddress test_outbound_ip_base_;
+
+  // Number of outbound connections to create per each destination server address.
+  int num_connections_to_server_;
+
+#ifndef NDEBUG
   // This is so we can log where exactly a Messenger was instantiated to better diagnose a CHECK
   // failure in the destructor (ENG-2838). This can be removed when that is fixed.
   StackTrace creation_stack_trace_;

@@ -3,7 +3,7 @@
  * publicationcmds.c
  *		publication manipulation
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -28,7 +28,7 @@
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
 #include "catalog/objectaddress.h"
-#include "catalog/pg_inherits_fn.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_publication.h"
 #include "catalog/pg_publication_rel.h"
@@ -62,7 +62,8 @@ parse_publication_options(List *options,
 						  bool *publish_given,
 						  bool *publish_insert,
 						  bool *publish_update,
-						  bool *publish_delete)
+						  bool *publish_delete,
+						  bool *publish_truncate)
 {
 	ListCell   *lc;
 
@@ -72,6 +73,7 @@ parse_publication_options(List *options,
 	*publish_insert = true;
 	*publish_update = true;
 	*publish_delete = true;
+	*publish_truncate = true;
 
 	/* Parse options */
 	foreach(lc, options)
@@ -96,6 +98,7 @@ parse_publication_options(List *options,
 			*publish_insert = false;
 			*publish_update = false;
 			*publish_delete = false;
+			*publish_truncate = false;
 
 			*publish_given = true;
 			publish = defGetString(defel);
@@ -116,6 +119,8 @@ parse_publication_options(List *options,
 					*publish_update = true;
 				else if (strcmp(publish_opt, "delete") == 0)
 					*publish_delete = true;
+				else if (strcmp(publish_opt, "truncate") == 0)
+					*publish_truncate = true;
 				else
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
@@ -145,12 +150,13 @@ CreatePublication(CreatePublicationStmt *stmt)
 	bool		publish_insert;
 	bool		publish_update;
 	bool		publish_delete;
+	bool		publish_truncate;
 	AclResult	aclresult;
 
 	/* must have CREATE privilege on database */
 	aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(), ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
-		aclcheck_error(aclresult, ACL_KIND_DATABASE,
+		aclcheck_error(aclresult, OBJECT_DATABASE,
 					   get_database_name(MyDatabaseId));
 
 	/* FOR ALL TABLES requires superuser */
@@ -181,7 +187,8 @@ CreatePublication(CreatePublicationStmt *stmt)
 
 	parse_publication_options(stmt->options,
 							  &publish_given, &publish_insert,
-							  &publish_update, &publish_delete);
+							  &publish_update, &publish_delete,
+							  &publish_truncate);
 
 	values[Anum_pg_publication_puballtables - 1] =
 		BoolGetDatum(stmt->for_all_tables);
@@ -191,6 +198,8 @@ CreatePublication(CreatePublicationStmt *stmt)
 		BoolGetDatum(publish_update);
 	values[Anum_pg_publication_pubdelete - 1] =
 		BoolGetDatum(publish_delete);
+	values[Anum_pg_publication_pubtruncate - 1] =
+		BoolGetDatum(publish_truncate);
 
 	tup = heap_form_tuple(RelationGetDescr(rel), values, nulls);
 
@@ -237,11 +246,13 @@ AlterPublicationOptions(AlterPublicationStmt *stmt, Relation rel,
 	bool		publish_insert;
 	bool		publish_update;
 	bool		publish_delete;
+	bool		publish_truncate;
 	ObjectAddress obj;
 
 	parse_publication_options(stmt->options,
 							  &publish_given, &publish_insert,
-							  &publish_update, &publish_delete);
+							  &publish_update, &publish_delete,
+							  &publish_truncate);
 
 	/* Everything ok, form a new tuple. */
 	memset(values, 0, sizeof(values));
@@ -258,6 +269,9 @@ AlterPublicationOptions(AlterPublicationStmt *stmt, Relation rel,
 
 		values[Anum_pg_publication_pubdelete - 1] = BoolGetDatum(publish_delete);
 		replaces[Anum_pg_publication_pubdelete - 1] = true;
+
+		values[Anum_pg_publication_pubtruncate - 1] = BoolGetDatum(publish_truncate);
+		replaces[Anum_pg_publication_pubtruncate - 1] = true;
 	}
 
 	tup = heap_modify_tuple(tup, RelationGetDescr(rel), values, nulls,
@@ -403,7 +417,7 @@ AlterPublication(AlterPublicationStmt *stmt)
 
 	/* must be owner */
 	if (!pg_publication_ownercheck(HeapTupleGetOid(tup), GetUserId()))
-		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PUBLICATION,
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_PUBLICATION,
 					   stmt->pubname);
 
 	if (stmt->options)
@@ -432,7 +446,7 @@ RemovePublicationById(Oid pubid)
 	if (!HeapTupleIsValid(tup))
 		elog(ERROR, "cache lookup failed for publication %u", pubid);
 
-	CatalogTupleDelete(rel, &tup->t_self);
+	CatalogTupleDelete(rel, tup);
 
 	ReleaseSysCache(tup);
 
@@ -462,7 +476,7 @@ RemovePublicationRelById(Oid proid)
 	/* Invalidate relcache so that publication info is rebuilt. */
 	CacheInvalidateRelcacheByRelid(pubrel->prrelid);
 
-	CatalogTupleDelete(rel, &tup->t_self);
+	CatalogTupleDelete(rel, tup);
 
 	ReleaseSysCache(tup);
 
@@ -470,7 +484,7 @@ RemovePublicationRelById(Oid proid)
 }
 
 /*
- * Open relations based on provided by RangeVar list.
+ * Open relations specified by a RangeVar list.
  * The returned tables are locked in ShareUpdateExclusiveLock mode.
  */
 static List *
@@ -485,11 +499,12 @@ OpenTableList(List *tables)
 	 */
 	foreach(lc, tables)
 	{
-		RangeVar   *rv = lfirst(lc);
-		Relation	rel;
+		RangeVar   *rv = castNode(RangeVar, lfirst(lc));
 		bool		recurse = rv->inh;
+		Relation	rel;
 		Oid			myrelid;
 
+		/* Allow query cancel in case this takes a long time */
 		CHECK_FOR_INTERRUPTS();
 
 		rel = heap_openrv(rv, ShareUpdateExclusiveLock);
@@ -507,13 +522,15 @@ OpenTableList(List *tables)
 			heap_close(rel, ShareUpdateExclusiveLock);
 			continue;
 		}
+
 		rels = lappend(rels, rel);
 		relids = lappend_oid(relids, myrelid);
 
+		/* Add children of this rel, if requested */
 		if (recurse)
 		{
-			ListCell   *child;
 			List	   *children;
+			ListCell   *child;
 
 			children = find_all_inheritors(myrelid, ShareUpdateExclusiveLock,
 										   NULL);
@@ -522,18 +539,15 @@ OpenTableList(List *tables)
 			{
 				Oid			childrelid = lfirst_oid(child);
 
-				if (list_member_oid(relids, childrelid))
-					continue;
+				/* Allow query cancel in case this takes a long time */
+				CHECK_FOR_INTERRUPTS();
 
 				/*
 				 * Skip duplicates if user specified both parent and child
 				 * tables.
 				 */
 				if (list_member_oid(relids, childrelid))
-				{
-					heap_close(rel, ShareUpdateExclusiveLock);
 					continue;
-				}
 
 				/* find_all_inheritors already got lock */
 				rel = heap_open(childrelid, NoLock);
@@ -582,7 +596,7 @@ PublicationAddTables(Oid pubid, List *rels, bool if_not_exists,
 
 		/* Must be owner of the table or superuser. */
 		if (!pg_class_ownercheck(RelationGetRelid(rel), GetUserId()))
-			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CLASS,
+			aclcheck_error(ACLCHECK_NOT_OWNER, get_relkind_objtype(rel->rd_rel->relkind),
 						   RelationGetRelationName(rel));
 
 		obj = publication_add_relation(pubid, rel, if_not_exists);
@@ -649,7 +663,7 @@ AlterPublicationOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 
 		/* Must be owner */
 		if (!pg_publication_ownercheck(HeapTupleGetOid(tup), GetUserId()))
-			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PUBLICATION,
+			aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_PUBLICATION,
 						   NameStr(form->pubname));
 
 		/* Must be able to become new owner */
@@ -658,7 +672,7 @@ AlterPublicationOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 		/* New owner must have CREATE privilege on database */
 		aclresult = pg_database_aclcheck(MyDatabaseId, newOwnerId, ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, ACL_KIND_DATABASE,
+			aclcheck_error(aclresult, OBJECT_DATABASE,
 						   get_database_name(MyDatabaseId));
 
 		if (form->puballtables && !superuser_arg(newOwnerId))

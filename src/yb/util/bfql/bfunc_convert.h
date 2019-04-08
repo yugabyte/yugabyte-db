@@ -34,13 +34,15 @@
 #include <string>
 
 #include "yb/common/ql_value.h"
+#include "yb/gutil/endian.h"
 #include "yb/util/date_time.h"
+#include "yb/util/decimal.h"
+#include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/status.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/uuid.h"
-#include "yb/gutil/endian.h"
 
 namespace yb {
 namespace bfql {
@@ -66,11 +68,14 @@ CHECKED_STATUS SetNumericResult(SetResult set_result, PTypePtr source, DataType 
   }
 
   switch(source->type()) {
-    case QLValue::InternalType::kInt32Value:
-      RETURN_NOT_OK(set_result(source->int32_value(), target));
+    case QLValue::InternalType::kInt8Value:
+      RETURN_NOT_OK(set_result(source->int8_value(), target));
       break;
     case QLValue::InternalType::kInt16Value:
       RETURN_NOT_OK(set_result(source->int16_value(), target));
+      break;
+    case QLValue::InternalType::kInt32Value:
+      RETURN_NOT_OK(set_result(source->int32_value(), target));
       break;
     case QLValue::InternalType::kInt64Value:
       RETURN_NOT_OK(set_result(source->int64_value(), target));
@@ -81,9 +86,27 @@ CHECKED_STATUS SetNumericResult(SetResult set_result, PTypePtr source, DataType 
     case QLValue::InternalType::kDoubleValue:
       RETURN_NOT_OK(set_result(source->double_value(), target));
       break;
+    case QLValue::InternalType::kDecimalValue: {
+        util::Decimal d;
+        RETURN_NOT_OK(d.DecodeFromComparable(source->decimal_value()));
+
+        if (target_datatype == DataType::FLOAT || target_datatype == DataType::DOUBLE) {
+          // Convert via DOUBLE:
+          RETURN_NOT_OK(set_result(VERIFY_RESULT(d.ToDouble()), target));
+        } else { // Expected an Integer type
+          DSCHECK(target_datatype == DataType::INT8 || target_datatype == DataType::INT16
+              || target_datatype == DataType::INT32 || target_datatype == DataType::INT64,
+              InvalidArgument, strings::Substitute("Unexpected target type: ",
+                                                   QLType::ToCQLString(target_datatype)));
+          // Convert via INT64:
+          RETURN_NOT_OK(set_result(VERIFY_RESULT(VERIFY_RESULT(d.ToVarInt()).ToInt64()), target));
+        }
+      }
+      break;
     default:
-      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0",
-                               QLType::ToCQLString(source_datatype));
+      return STATUS_SUBSTITUTE(QLError, "Cannot cast $0 to $1",
+                               QLType::ToCQLString(source_datatype),
+                               QLType::ToCQLString(target_datatype));
   }
   return Status::OK();
 }
@@ -98,11 +121,14 @@ CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
   }
 
   switch(source->type()) {
-    case QLValue::InternalType::kInt32Value:
-      target->set_string_value(std::to_string(source->int32_value()));
+    case QLValue::InternalType::kInt8Value:
+      target->set_string_value(std::to_string(source->int8_value()));
       break;
     case QLValue::InternalType::kInt16Value:
       target->set_string_value(std::to_string(source->int16_value()));
+      break;
+    case QLValue::InternalType::kInt32Value:
+      target->set_string_value(std::to_string(source->int32_value()));
       break;
     case QLValue::InternalType::kInt64Value:
       target->set_string_value(std::to_string(source->int64_value()));
@@ -128,9 +154,16 @@ CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
     case QLValue::InternalType::kTimeValue:
       target->set_string_value(VERIFY_RESULT(DateTime::TimeToString(source->time_value())));
       break;
+    case QLValue::InternalType::kDecimalValue: {
+        util::Decimal d;
+        RETURN_NOT_OK(d.DecodeFromComparable(source->decimal_value()));
+        target->set_string_value(d.ToString());
+      }
+      break;
     default:
-      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0",
-                               QLType::ToCQLString(source_datatype));
+      return STATUS_SUBSTITUTE(QLError, "Cannot cast $0 to $1",
+                               QLType::ToCQLString(source_datatype),
+                               QLType::ToCQLString(DataType::STRING));
   }
   return Status::OK();
 }
@@ -159,8 +192,9 @@ CHECKED_STATUS SetTimestampResult(PTypePtr source, RTypePtr target) {
       target->set_timestamp_value(DateTime::DateToTimestamp(source->date_value()));
       break;
     default:
-      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0",
-                               QLType::ToCQLString(source_datatype));
+      return STATUS_SUBSTITUTE(QLError, "Cannot cast $0 to $1",
+                               QLType::ToCQLString(source_datatype),
+                               QLType::ToCQLString(DataType::TIMESTAMP));
   }
   return Status::OK();
 }
@@ -186,8 +220,9 @@ CHECKED_STATUS SetDateResult(PTypePtr source, RTypePtr target) {
       break;
     }
     default:
-      return STATUS_SUBSTITUTE(QLError, "Invalid datatype for cast: $0",
-                               QLType::ToCQLString(source_datatype));
+      return STATUS_SUBSTITUTE(QLError, "Cannot cast $0 to $1",
+                               QLType::ToCQLString(source_datatype),
+                               QLType::ToCQLString(DataType::DATE));
   }
   return Status::OK();
 }
@@ -1110,8 +1145,7 @@ CHECKED_STATUS ConvertVarintToI8(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
   } else {
-    int64_t val;
-    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
     if (val < INT8_MIN || val > INT8_MAX) {
       return STATUS(QLError, "VarInt cannot be converted to int8 due to overflow");
     }
@@ -1125,8 +1159,7 @@ CHECKED_STATUS ConvertVarintToI16(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
   } else {
-    int64_t val;
-    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
     if (val < INT16_MIN || val > INT16_MAX) {
       return STATUS(QLError, "VarInt cannot be converted to int16 due to overflow");
     }
@@ -1140,8 +1173,7 @@ CHECKED_STATUS ConvertVarintToI32(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
   } else {
-    int64_t val;
-    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
     if (val < INT32_MIN || val > INT32_MAX) {
       return STATUS(QLError, "VarInt cannot be converted to int32 due to overflow");
     }
@@ -1155,8 +1187,7 @@ CHECKED_STATUS ConvertVarintToI64(PTypePtr source, RTypePtr target) {
   if (source->IsNull()) {
     target->SetNull();
   } else {
-    int64_t val;
-    RETURN_NOT_OK(source->varint_value().ToInt64(&val));
+    int64_t val = VERIFY_RESULT(source->varint_value().ToInt64());
     target->set_int64_value(val);
   }
   return Status::OK();
@@ -1168,11 +1199,8 @@ CHECKED_STATUS ConvertVarintToFloat(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     // This may lose precision, it should return the closest float value to the input number.
-    util::Decimal val;
-    RETURN_NOT_OK(val.FromVarInt(source->varint_value()));
-    auto dbl = val.ToDouble();
-    RETURN_NOT_OK(dbl);
-    target->set_float_value(static_cast<float>(*dbl));
+    target->set_float_value(static_cast<float>(VERIFY_RESULT(util::CheckedStold(
+        source->varint_value().ToString()))));
   }
   return Status::OK();
 }
@@ -1183,11 +1211,8 @@ CHECKED_STATUS ConvertVarintToDouble(PTypePtr source, RTypePtr target) {
     target->SetNull();
   } else {
     // This may lose precision, it should return the closest double value to the input number.
-    util::Decimal val;
-    RETURN_NOT_OK(val.FromVarInt(source->varint_value()));
-    auto dbl = val.ToDouble();
-    RETURN_NOT_OK(dbl);
-    target->set_double_value(*dbl);
+    target->set_double_value(VERIFY_RESULT(util::CheckedStold(
+        source->varint_value().ToString())));
   }
   return Status::OK();
 }
@@ -1304,6 +1329,103 @@ template<typename PTypePtr, typename RTypePtr>
 CHECKED_STATUS ConvertToFloat(PTypePtr source, RTypePtr target) {
   return ConvertToNumeric(source, target, DataType::FLOAT, util::CheckedStold,
                           ToFloat<RTypePtr>);
+}
+
+YB_DEFINE_ENUM(ConvertDecimalVia, (kUnknown)(kString)(kVarint)(kDecimal)(kInt64)(kDouble));
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS ConvertToDecimal(PTypePtr source, RTypePtr target) {
+  if (source->IsNull()) {
+    target->SetNull();
+    return Status::OK();
+  }
+
+  const DataType source_datatype = QLValue::FromInternalDataType(source->type());
+  if (!QLType::IsExplicitlyConvertible(DataType::DECIMAL, source_datatype)) {
+    return STATUS_SUBSTITUTE(QLError, "Cannot convert $0 to $1",
+                             QLType::ToCQLString(source_datatype),
+                             QLType::ToCQLString(DataType::DECIMAL));
+  }
+
+  int64_t int_num = 0;
+  double double_num = 0.;
+  ConvertDecimalVia convert = ConvertDecimalVia::kUnknown;
+
+  switch(source->type()) {
+    case QLValue::InternalType::kStringValue:
+      convert = ConvertDecimalVia::kString;
+      break;
+    case QLValue::InternalType::kVarintValue:
+      convert = ConvertDecimalVia::kVarint;
+      break;
+    case QLValue::InternalType::kDecimalValue:
+      convert = ConvertDecimalVia::kDecimal;
+      break;
+
+    case QLValue::InternalType::kInt8Value:
+      int_num = source->int8_value();
+      convert = ConvertDecimalVia::kInt64;
+      break;
+    case QLValue::InternalType::kInt16Value:
+      int_num = source->int16_value();
+      convert = ConvertDecimalVia::kInt64;
+      break;
+    case QLValue::InternalType::kInt32Value:
+      int_num = source->int32_value();
+      convert = ConvertDecimalVia::kInt64;
+      break;
+    case QLValue::InternalType::kInt64Value:
+      int_num = source->int64_value();
+      convert = ConvertDecimalVia::kInt64;
+      break;
+
+    case QLValue::InternalType::kFloatValue:
+      double_num = source->float_value();
+      convert = ConvertDecimalVia::kDouble;
+      break;
+    case QLValue::InternalType::kDoubleValue:
+      double_num = source->double_value();
+      convert = ConvertDecimalVia::kDouble;
+      break;
+
+    default: // Process all unexpected cases in the next switch.
+      convert = ConvertDecimalVia::kUnknown;
+  }
+
+  util::Decimal d;
+  switch(convert) {
+    case ConvertDecimalVia::kString:
+      DSCHECK_EQ(source->type(), QLValue::InternalType::kStringValue,
+          InvalidArgument, strings::Substitute("Invalid source type: ",
+                                               QLType::ToCQLString(source_datatype)));
+      RETURN_NOT_OK(d.FromString(source->string_value()));
+      break;
+    case ConvertDecimalVia::kVarint:
+      DSCHECK_EQ(source->type(), QLValue::InternalType::kVarintValue,
+          InvalidArgument, strings::Substitute("Invalid source type: ",
+                                               QLType::ToCQLString(source_datatype)));
+      RETURN_NOT_OK(d.FromVarInt(source->varint_value()));
+      break;
+    case ConvertDecimalVia::kDecimal:
+      DSCHECK_EQ(source->type(), QLValue::InternalType::kDecimalValue,
+          InvalidArgument, strings::Substitute("Invalid source type: ",
+                                               QLType::ToCQLString(source_datatype)));
+      RETURN_NOT_OK(d.DecodeFromComparable(source->decimal_value()));
+      break;
+    case ConvertDecimalVia::kInt64:
+      RETURN_NOT_OK(d.FromVarInt(util::VarInt(int_num)));
+      break;
+    case ConvertDecimalVia::kDouble:
+      RETURN_NOT_OK(d.FromDouble(double_num));
+      break;
+    case ConvertDecimalVia::kUnknown:
+      return STATUS_SUBSTITUTE(QLError, "Cannot cast $0 to $1",
+                               QLType::ToCQLString(source_datatype),
+                               QLType::ToCQLString(DataType::DECIMAL));
+  }
+
+  target->set_decimal_value(d.EncodeToComparable());
+  return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>

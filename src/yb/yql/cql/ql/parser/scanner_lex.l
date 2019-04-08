@@ -671,7 +671,7 @@ other                     .
   /* throw back all but the initial "$" */
   yyless(1);
   /* and treat it as {other} */
-  return GramProcessor::symbol_type(GramProcessor::token::yytokentype(yytext[0]), cursor_);
+  return make_symbol(yytext[0], cursor_);
 }
 
 <xdolq>{dolqdelim} {
@@ -855,7 +855,7 @@ other                     .
 
 {self} {
   SET_YYLLOC();
-  return GramProcessor::symbol_type(GramProcessor::token::yytokentype(yytext[0]), cursor_);
+  return make_symbol(yytext[0], cursor_);
 }
 
 {operator} {
@@ -916,7 +916,7 @@ other                     .
      * that the "self" rule would have.
      */
     if (nchars == 1 && strchr(",()[].;:+-*/%^<>=", yytext[0])) {
-      return GramProcessor::symbol_type(GramProcessor::token::yytokentype(yytext[0]), cursor_);
+      return make_symbol(yytext[0], cursor_);
     }
 
     /* If what we have left are two chars, see if
@@ -1017,7 +1017,7 @@ other                     .
   /* Check against the keyword list. */
   const ScanKeyword &keyword = ScanKeywordLookup(yytext);
   if (keyword.is_valid()) {
-    return GramProcessor::symbol_type(keyword.token(), keyword.name(), cursor_);
+    return make_symbol(keyword, cursor_);
   }
 
   /* Not a keyword.  Convert the identifier to lower case, and truncate if necessary. */
@@ -1027,7 +1027,7 @@ other                     .
 
 {other} {
   SET_YYLLOC();
-  return GramProcessor::symbol_type(GramProcessor::token::yytokentype(yytext[0]), cursor_);
+  return make_symbol(yytext[0], cursor_);
 }
 
 <<EOF>> {

@@ -22,6 +22,7 @@
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/common.pb.h"
+#include "yb/rpc/thread_pool.h"
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
@@ -44,6 +45,11 @@
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 namespace yb {
+
+namespace client {
+class YBColumnSpec;
+} // namespace client
+
 namespace ql {
 
 class QLMetrics;
@@ -323,6 +329,9 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS WhereSubColOpToPB(QLConditionPB *condition, const SubscriptedColumnOp& subcol_op);
   CHECKED_STATUS WhereJsonColOpToPB(QLConditionPB *condition, const JsonColumnOp& jsoncol_op);
   CHECKED_STATUS FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op);
+
+  //------------------------------------------------------------------------------------------------
+  CHECKED_STATUS ColumnOpsToSchema(const PTColumnDefinition *col, client::YBColumnSpec *col_spec);
 
   //------------------------------------------------------------------------------------------------
   // Add a read/write operation for the current statement and apply it. For write operation, check

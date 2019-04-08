@@ -14,7 +14,7 @@
  * contain optimizable statements, which we should transform.
  *
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/parser/analyze.c
@@ -25,7 +25,9 @@
 #include "postgres.h"
 
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "catalog/pg_type.h"
+#include "commands/dbcommands.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
@@ -36,6 +38,8 @@
 #include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
 #include "parser/parse_cte.h"
+#include "parser/parse_expr.h"
+#include "parser/parse_func.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_param.h"
 #include "parser/parse_relation.h"
@@ -44,6 +48,7 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/rel.h"
 
+#include "pg_yb_utils.h"
 
 /* Hook for plugins to get control at end of parse analysis */
 post_parse_analyze_hook_type post_parse_analyze_hook = NULL;
@@ -74,6 +79,8 @@ static Query *transformExplainStmt(ParseState *pstate,
 					 ExplainStmt *stmt);
 static Query *transformCreateTableAsStmt(ParseState *pstate,
 						   CreateTableAsStmt *stmt);
+static Query *transformCallStmt(ParseState *pstate,
+				  CallStmt *stmt);
 static void transformLockingClause(ParseState *pstate, Query *qry,
 					   LockingClause *lc, bool pushedDown);
 #ifdef RAW_EXPRESSION_COVERAGE_TEST
@@ -110,6 +117,13 @@ parse_analyze(RawStmt *parseTree, const char *sourceText,
 	pstate->p_queryEnv = queryEnv;
 
 	query = transformTopLevelStmt(pstate, parseTree);
+
+	if (pstate->p_target_relation &&
+		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
+		&& IsYugaByteEnabled())
+	{
+		SetTxnWithPGRel();
+	}
 
 	if (post_parse_analyze_hook)
 		(*post_parse_analyze_hook) (pstate, query);
@@ -318,6 +332,11 @@ transformStmt(ParseState *pstate, Node *parseTree)
 												(CreateTableAsStmt *) parseTree);
 			break;
 
+		case T_CallStmt:
+			result = transformCallStmt(pstate,
+									   (CallStmt *) parseTree);
+			break;
+
 		default:
 
 			/*
@@ -442,10 +461,12 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 	qry->hasWindowFuncs = pstate->p_hasWindowFuncs;
 	qry->hasTargetSRFs = pstate->p_hasTargetSRFs;
 	qry->hasAggs = pstate->p_hasAggs;
-	if (pstate->p_hasAggs)
-		parseCheckAggregates(pstate, qry);
 
 	assign_query_collations(pstate, qry);
+
+	/* this must be done after collations, for reliable comparison of exprs */
+	if (pstate->p_hasAggs)
+		parseCheckAggregates(pstate, qry);
 
 	return qry;
 }
@@ -847,16 +868,8 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 
 	/* Process ON CONFLICT, if any. */
 	if (stmt->onConflictClause)
-	{
-		/* Bail out if target relation is partitioned table */
-		if (pstate->p_target_rangetblentry->relkind == RELKIND_PARTITIONED_TABLE)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("ON CONFLICT clause is not supported with partitioned tables")));
-
 		qry->onConflict = transformOnConflictClause(pstate,
 													stmt->onConflictClause);
-	}
 
 	/*
 	 * If we have a RETURNING clause, we need to add the target relation to
@@ -1021,9 +1034,6 @@ transformOnConflictClause(ParseState *pstate,
 	if (onConflictClause->action == ONCONFLICT_UPDATE)
 	{
 		Relation	targetrel = pstate->p_target_relation;
-		Var		   *var;
-		TargetEntry *te;
-		int			attno;
 
 		/*
 		 * All INSERT expressions have been parsed, get ready for potentially
@@ -1032,75 +1042,36 @@ transformOnConflictClause(ParseState *pstate,
 		pstate->p_is_insert = false;
 
 		/*
-		 * Add range table entry for the EXCLUDED pseudo relation; relkind is
+		 * Add range table entry for the EXCLUDED pseudo relation.  relkind is
 		 * set to composite to signal that we're not dealing with an actual
-		 * relation.
+		 * relation, and no permission checks are required on it.  (We'll
+		 * check the actual target relation, instead.)
 		 */
 		exclRte = addRangeTableEntryForRelation(pstate,
 												targetrel,
 												makeAlias("excluded", NIL),
 												false, false);
 		exclRte->relkind = RELKIND_COMPOSITE_TYPE;
+		exclRte->requiredPerms = 0;
+		/* other permissions fields in exclRte are already empty */
+
 		exclRelIndex = list_length(pstate->p_rtable);
 
-		/*
-		 * Build a targetlist representing the columns of the EXCLUDED pseudo
-		 * relation.  Have to be careful to use resnos that correspond to
-		 * attnos of the underlying relation.
-		 */
-		for (attno = 0; attno < targetrel->rd_rel->relnatts; attno++)
-		{
-			Form_pg_attribute attr = targetrel->rd_att->attrs[attno];
-			char	   *name;
-
-			if (attr->attisdropped)
-			{
-				/*
-				 * can't use atttypid here, but it doesn't really matter what
-				 * type the Const claims to be.
-				 */
-				var = (Var *) makeNullConst(INT4OID, -1, InvalidOid);
-				name = "";
-			}
-			else
-			{
-				var = makeVar(exclRelIndex, attno + 1,
-							  attr->atttypid, attr->atttypmod,
-							  attr->attcollation,
-							  0);
-				name = pstrdup(NameStr(attr->attname));
-			}
-
-			te = makeTargetEntry((Expr *) var,
-								 attno + 1,
-								 name,
-								 false);
-
-			/* don't require select access yet */
-			exclRelTlist = lappend(exclRelTlist, te);
-		}
-
-		/*
-		 * Add a whole-row-Var entry to support references to "EXCLUDED.*".
-		 * Like the other entries in exclRelTlist, its resno must match the
-		 * Var's varattno, else the wrong things happen while resolving
-		 * references in setrefs.c.  This is against normal conventions for
-		 * targetlists, but it's okay since we don't use this as a real tlist.
-		 */
-		var = makeVar(exclRelIndex, InvalidAttrNumber,
-					  targetrel->rd_rel->reltype,
-					  -1, InvalidOid, 0);
-		te = makeTargetEntry((Expr *) var, InvalidAttrNumber, NULL, true);
-		exclRelTlist = lappend(exclRelTlist, te);
+		/* Create EXCLUDED rel's targetlist for use by EXPLAIN */
+		exclRelTlist = BuildOnConflictExcludedTargetlist(targetrel,
+														 exclRelIndex);
 
 		/*
 		 * Add EXCLUDED and the target RTE to the namespace, so that they can
-		 * be used in the UPDATE statement.
+		 * be used in the UPDATE subexpressions.
 		 */
 		addRTEtoQuery(pstate, exclRte, false, true, true);
 		addRTEtoQuery(pstate, pstate->p_target_rangetblentry,
 					  false, true, true);
 
+		/*
+		 * Now transform the UPDATE subexpressions.
+		 */
 		onConflictSet =
 			transformUpdateTargetList(pstate, onConflictClause->targetList);
 
@@ -1120,6 +1091,74 @@ transformOnConflictClause(ParseState *pstate,
 	result->onConflictWhere = onConflictWhere;
 	result->exclRelIndex = exclRelIndex;
 	result->exclRelTlist = exclRelTlist;
+
+	return result;
+}
+
+
+/*
+ * BuildOnConflictExcludedTargetlist
+ *		Create target list for the EXCLUDED pseudo-relation of ON CONFLICT,
+ *		representing the columns of targetrel with varno exclRelIndex.
+ *
+ * Note: Exported for use in the rewriter.
+ */
+List *
+BuildOnConflictExcludedTargetlist(Relation targetrel,
+								  Index exclRelIndex)
+{
+	List	   *result = NIL;
+	int			attno;
+	Var		   *var;
+	TargetEntry *te;
+
+	/*
+	 * Note that resnos of the tlist must correspond to attnos of the
+	 * underlying relation, hence we need entries for dropped columns too.
+	 */
+	for (attno = 0; attno < RelationGetNumberOfAttributes(targetrel); attno++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(targetrel->rd_att, attno);
+		char	   *name;
+
+		if (attr->attisdropped)
+		{
+			/*
+			 * can't use atttypid here, but it doesn't really matter what type
+			 * the Const claims to be.
+			 */
+			var = (Var *) makeNullConst(INT4OID, -1, InvalidOid);
+			name = "";
+		}
+		else
+		{
+			var = makeVar(exclRelIndex, attno + 1,
+						  attr->atttypid, attr->atttypmod,
+						  attr->attcollation,
+						  0);
+			name = pstrdup(NameStr(attr->attname));
+		}
+
+		te = makeTargetEntry((Expr *) var,
+							 attno + 1,
+							 name,
+							 false);
+
+		result = lappend(result, te);
+	}
+
+	/*
+	 * Add a whole-row-Var entry to support references to "EXCLUDED.*".  Like
+	 * the other entries in the EXCLUDED tlist, its resno must match the Var's
+	 * varattno, else the wrong things happen while resolving references in
+	 * setrefs.c.  This is against normal conventions for targetlists, but
+	 * it's okay since we don't use this as a real tlist.
+	 */
+	var = makeVar(exclRelIndex, InvalidAttrNumber,
+				  targetrel->rd_rel->reltype,
+				  -1, InvalidOid, 0);
+	te = makeTargetEntry((Expr *) var, InvalidAttrNumber, NULL, true);
+	result = lappend(result, te);
 
 	return result;
 }
@@ -1291,8 +1330,6 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->hasWindowFuncs = pstate->p_hasWindowFuncs;
 	qry->hasTargetSRFs = pstate->p_hasTargetSRFs;
 	qry->hasAggs = pstate->p_hasAggs;
-	if (pstate->p_hasAggs || qry->groupClause || qry->groupingSets || qry->havingQual)
-		parseCheckAggregates(pstate, qry);
 
 	foreach(l, stmt->lockingClause)
 	{
@@ -1301,6 +1338,10 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	}
 
 	assign_query_collations(pstate, qry);
+
+	/* this must be done after collations, for reliable comparison of exprs */
+	if (pstate->p_hasAggs || qry->groupClause || qry->groupingSets || qry->havingQual)
+		parseCheckAggregates(pstate, qry);
 
 	return qry;
 }
@@ -1763,8 +1804,6 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->hasWindowFuncs = pstate->p_hasWindowFuncs;
 	qry->hasTargetSRFs = pstate->p_hasTargetSRFs;
 	qry->hasAggs = pstate->p_hasAggs;
-	if (pstate->p_hasAggs || qry->groupClause || qry->groupingSets || qry->havingQual)
-		parseCheckAggregates(pstate, qry);
 
 	foreach(l, lockingClause)
 	{
@@ -1773,6 +1812,10 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	}
 
 	assign_query_collations(pstate, qry);
+
+	/* this must be done after collations, for reliable comparison of exprs */
+	if (pstate->p_hasAggs || qry->groupClause || qry->groupingSets || qry->havingQual)
+		parseCheckAggregates(pstate, qry);
 
 	return qry;
 }
@@ -2273,8 +2316,8 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 								EXPR_KIND_UPDATE_SOURCE);
 
 	/* Prepare to assign non-conflicting resnos to resjunk attributes */
-	if (pstate->p_next_resno <= pstate->p_target_relation->rd_rel->relnatts)
-		pstate->p_next_resno = pstate->p_target_relation->rd_rel->relnatts + 1;
+	if (pstate->p_next_resno <= RelationGetNumberOfAttributes(pstate->p_target_relation))
+		pstate->p_next_resno = RelationGetNumberOfAttributes(pstate->p_target_relation) + 1;
 
 	/* Prepare non-junk columns for assignment to target table */
 	target_rte = pstate->p_target_rangetblentry;
@@ -2311,6 +2354,34 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 							origTarget->name,
 							RelationGetRelationName(pstate->p_target_relation)),
 					 parser_errposition(pstate, origTarget->location)));
+
+		if (IsYBRelation(pstate->p_target_relation))
+		{
+
+			// Currently, YugaByte does not allow updating primary key columns that were specified
+			// when creating table.
+			YBCPgTableDesc ybc_tabledesc = NULL;
+			bool is_primary = false;
+			bool is_hash = false;
+			HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
+											 YBCGetDatabaseOid(pstate->p_target_relation),
+											 RelationGetRelid(pstate->p_target_relation),
+											 &ybc_tabledesc));
+			HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_tabledesc,
+													   attrno,
+													   &is_primary,
+													   &is_hash), ybc_tabledesc);
+			HandleYBStatus(YBCPgDeleteTableDesc(ybc_tabledesc));
+			ybc_tabledesc = NULL;
+
+			if (is_hash || is_primary)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("Update PRIMARY KEY columns are not yet supported"),
+						 errhint("Please contact YugaByte for its release schedule.")));
+			}
+		}
 
 		updateTargetListEntry(pstate, tle, origTarget->name,
 							  attrno,
@@ -2572,6 +2643,45 @@ transformCreateTableAsStmt(ParseState *pstate, CreateTableAsStmt *stmt)
 	return result;
 }
 
+/*
+ * transform a CallStmt
+ *
+ * We need to do parse analysis on the procedure call and its arguments.
+ */
+static Query *
+transformCallStmt(ParseState *pstate, CallStmt *stmt)
+{
+	List	   *targs;
+	ListCell   *lc;
+	Node	   *node;
+	Query	   *result;
+
+	targs = NIL;
+	foreach(lc, stmt->funccall->args)
+	{
+		targs = lappend(targs, transformExpr(pstate,
+											 (Node *) lfirst(lc),
+											 EXPR_KIND_CALL_ARGUMENT));
+	}
+
+	node = ParseFuncOrColumn(pstate,
+							 stmt->funccall->funcname,
+							 targs,
+							 pstate->p_last_srf,
+							 stmt->funccall,
+							 true,
+							 stmt->funccall->location);
+
+	assign_expr_collations(pstate, node);
+
+	stmt->funcexpr = castNode(FuncExpr, node);
+
+	result = makeNode(Query);
+	result->commandType = CMD_UTILITY;
+	result->utilityStmt = (Node *) stmt;
+
+	return result;
+}
 
 /*
  * Produce a string representation of a LockClauseStrength value.

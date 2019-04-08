@@ -43,6 +43,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/call_data.h"
 #include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/remote_method.h"
@@ -86,7 +87,8 @@ class InboundCall : public RpcCall {
  public:
   typedef std::function<void(InboundCall*)> CallProcessedListener;
 
-  InboundCall(ConnectionPtr conn, CallProcessedListener call_processed_listener);
+  InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
+              CallProcessedListener call_processed_listener);
   virtual ~InboundCall();
 
   // Return the serialized request parameter protobuf.
@@ -127,7 +129,7 @@ class InboundCall : public RpcCall {
   // Return an upper bound on the client timeout deadline. This does not
   // account for transmission delays between the client and the server.
   // If the client did not specify a deadline, returns MonoTime::Max().
-  virtual MonoTime GetClientDeadline() const = 0;
+  virtual CoarseTimePoint GetClientDeadline() const = 0;
 
   // Returns the time spent in the service queue -- from the time the call was received, until
   // it gets handled.
@@ -162,7 +164,7 @@ class InboundCall : public RpcCall {
   Slice serialized_request_;
 
   // Data source of this call.
-  std::vector<char> request_data_;
+  CallData request_data_;
 
   // The trace buffer.
   scoped_refptr<Trace> trace_;
@@ -175,6 +177,7 @@ class InboundCall : public RpcCall {
  private:
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
+  RpcMetrics* rpc_metrics_;
   const std::function<void(InboundCall*)> call_processed_listener_;
 
   DISALLOW_COPY_AND_ASSIGN(InboundCall);

@@ -41,8 +41,9 @@
 #include <string>
 #include <vector>
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus_types.h"
 #include "yb/consensus/log.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -100,6 +101,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   TabletPeer(const scoped_refptr<TabletMetadata>& meta,
              const consensus::RaftPeerPB& local_peer_pb,
+             const scoped_refptr<server::Clock> &clock,
              const std::string& permanent_uuid,
              Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk);
 
@@ -109,13 +111,13 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Consensus.
   CHECKED_STATUS InitTabletPeer(const std::shared_ptr<TabletClass> &tablet,
                                 const std::shared_future<client::YBClientPtr> &client_future,
-                                const scoped_refptr<server::Clock> &clock,
                                 const std::shared_ptr<rpc::Messenger> &messenger,
                                 rpc::ProxyCache* proxy_cache,
                                 const scoped_refptr<log::Log> &log,
                                 const scoped_refptr<MetricEntity> &metric_entity,
                                 ThreadPool* raft_pool,
-                                ThreadPool* tablet_prepare_pool);
+                                ThreadPool* tablet_prepare_pool,
+                                consensus::RetryableRequests* retryable_requests);
 
   // Starts the TabletPeer, making it available for Write()s. If this
   // TabletPeer is part of a consensus configuration this will connect it to other peers
@@ -146,9 +148,11 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // MvccManager.
   // The operation_state is deallocated after use by this function.
   void WriteAsync(
-      std::unique_ptr<WriteOperationState> operation_state, int64_t term, MonoTime deadline);
+      std::unique_ptr<WriteOperationState> operation_state, int64_t term, CoarseTimePoint deadline);
 
   void Submit(std::unique_ptr<Operation> operation, int64_t term) override;
+
+  void Aborted(Operation* operation) override;
 
   HybridTime Now() override;
 
@@ -267,16 +271,14 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
     return clock_;
   }
 
-  rpc::ThreadPool& thread_pool() override {
-    return *service_thread_pool_;
-  }
+  bool Enqueue(rpc::ThreadPoolTask* task) override;
 
   const std::shared_future<client::YBClientPtr>& client_future() const override {
     return client_future_;
   }
 
   int64_t LeaderTerm() const override;
-  consensus::Consensus::LeaderStatus LeaderStatus() const;
+  consensus::LeaderStatus LeaderStatus() const;
 
   HybridTime HtLeaseExpiration() const override;
 
@@ -290,7 +292,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   const std::string& tablet_id() const override { return tablet_id_; }
 
   // Convenience method to return the permanent_uuid of this peer.
-  const std::string& permanent_uuid() const {
+  const std::string& permanent_uuid() const override {
     return permanent_uuid_;
   }
 
@@ -404,7 +406,9 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Cache the permanent of the tablet UUID to retrieve it without a lock in the common case.
   const std::string permanent_uuid_;
 
-  rpc::ThreadPool* service_thread_pool_;
+  std::atomic<rpc::ThreadPool*> service_thread_pool_{nullptr};
+
+  std::atomic<size_t> preparing_operations_{0};
 
  private:
   HybridTime ReportReadRestart() override;
@@ -417,8 +421,6 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };
-
-typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
 }  // namespace tablet
 }  // namespace yb

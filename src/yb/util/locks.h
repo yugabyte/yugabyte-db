@@ -57,15 +57,15 @@ class simple_spinlock {
  public:
   simple_spinlock() {}
 
-  void lock() {
+  void lock() EXCLUSIVE_LOCK_FUNCTION() {
     l_.Lock();
   }
 
-  void unlock() {
+  void unlock() UNLOCK_FUNCTION() {
     l_.Unlock();
   }
 
-  bool try_lock() {
+  bool try_lock() EXCLUSIVE_TRYLOCK_FUNCTION(true) {
     return l_.TryLock();
   }
 

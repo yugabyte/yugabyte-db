@@ -31,6 +31,7 @@
 //
 package org.yb.client;
 
+import org.apache.commons.io.FileUtils;
 import org.junit.runner.Description;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +48,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class TestUtils {
   private static final Logger LOG = LoggerFactory.getLogger(TestUtils.class);
@@ -62,7 +64,9 @@ public class TestUtils {
 
   private static final String defaultTestTmpDir =
       "/tmp/ybtest-" + System.getProperty("user.name") + "-" + startTimeMillis + "-" +
-          new Random().nextInt();
+          new Random().nextInt(Integer.MAX_VALUE);
+
+  private static final AtomicBoolean defaultTestTmpDirCleanupHookRegistered = new AtomicBoolean();
 
   // The amount of time to wait for in addition to the ttl specified.
   private static final long WAIT_FOR_TTL_EXTENSION_MS = 100;
@@ -236,14 +240,32 @@ public class TestUtils {
     }
   }
 
+  public static boolean isReleaseBuild() {
+    return TestUtils.getBuildType().equals("release");
+  }
+
   /**
    * @return the base directory within which we will store server data
    */
   public static String getBaseTmpDir() {
     String testTmpDir = System.getenv("TEST_TMPDIR");
     if (testTmpDir == null) {
-      testTmpDir = defaultTestTmpDir;
+      // If we are generating the temporary directory name here, we are responsible for deleting it.
+      testTmpDir = new File(defaultTestTmpDir).getAbsolutePath();
+      if (defaultTestTmpDirCleanupHookRegistered.compareAndSet(false, true)) {
+        final File tmpDirToCleanUp = new File(testTmpDir);
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+          if (tmpDirToCleanUp.isDirectory()) {
+            try {
+              FileUtils.deleteDirectory(tmpDirToCleanUp);
+            } catch (IOException e) {
+              LOG.error("Failed to delete directory " + tmpDirToCleanUp + " recursively", e);
+            }
+          }
+        }));
+      }
     }
+
     File f = new File(testTmpDir);
     f.mkdirs();
     return f.getAbsolutePath();
@@ -479,6 +501,17 @@ public class TestUtils {
       return arr[arr.length - 1];
     }
     throw new IllegalArgumentException("No numbers given to firstPositiveNumber");
+  }
+
+  public static <T> List<T> joinLists(List<T> a, List<T> b) {
+    List<T> joinedList = new ArrayList();
+    if (a != null) {
+      joinedList.addAll(a);
+    }
+    if (b != null) {
+      joinedList.addAll(b);
+    }
+    return joinedList;
   }
 
 }

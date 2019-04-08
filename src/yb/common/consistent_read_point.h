@@ -23,6 +23,8 @@
 
 namespace yb {
 
+YB_STRONGLY_TYPED_BOOL(HadReadTime);
+
 // ConsistentReadPoint tracks a consistent read point to read across tablets. Note that this class
 // is not thread-safe except otherwise noted below.
 class ConsistentReadPoint {
@@ -62,10 +64,14 @@ class ConsistentReadPoint {
   void PrepareChildTransactionData(ChildTransactionDataPB* data) const;
 
   // Finish a child transaction and populate the restart read times in the result.
-  void FinishChildTransactionResult(ChildTransactionResultPB* result) const;
+  void FinishChildTransactionResult(
+      HadReadTime had_read_time, ChildTransactionResultPB* result) const;
 
   // Apply restart read times from a child transaction result. This method is thread-safe.
   void ApplyChildTransactionResult(const ChildTransactionResultPB& result);
+
+  // Sets in transaction limit.
+  void SetInTxnLimit(HybridTime value);
 
   ConsistentReadPoint& operator=(ConsistentReadPoint&& other);
 

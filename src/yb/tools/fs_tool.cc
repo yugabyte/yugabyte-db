@@ -59,7 +59,6 @@
 namespace yb {
 namespace tools {
 
-using fs::ReadableBlock;
 using log::LogReader;
 using log::ReadableLogSegment;
 using std::shared_ptr;
@@ -251,7 +250,7 @@ Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
             << schema.ToString() << std::endl;
 
   tablet::TabletSuperBlockPB pb;
-  RETURN_NOT_OK_PREPEND(meta->ToSuperBlock(&pb), "Could not get superblock");
+  meta->ToSuperBlock(&pb);
   std::cout << "Superblock:\n" << pb.DebugString() << std::endl;
 
   return Status::OK();
@@ -265,8 +264,9 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
 
   scoped_refptr<log::LogAnchorRegistry> reg(new log::LogAnchorRegistry());
   tablet::TabletOptions tablet_options;
-  Tablet t(meta, std::shared_future<client::YBClientPtr>(), scoped_refptr<server::Clock>(nullptr),
-           shared_ptr<MemTracker>(), nullptr, reg.get(), tablet_options, nullptr,
+  Tablet t(meta, std::shared_future<client::YBClientPtr>(), scoped_refptr<server::Clock>(),
+           shared_ptr<MemTracker>(), nullptr, reg.get(), tablet_options,
+           std::string() /* log_prefix_suffix */, nullptr,
            client::LocalTabletFilter(), nullptr);
   RETURN_NOT_OK_PREPEND(t.Open(), "Couldn't open tablet");
   vector<string> lines;

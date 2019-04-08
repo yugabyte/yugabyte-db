@@ -22,6 +22,10 @@ void PgWire::WriteBool(bool value, faststring *buffer) {
   buffer->append(&value, sizeof(bool));
 }
 
+void PgWire::WriteInt8(int8_t value, faststring *buffer) {
+  buffer->append(&value, sizeof(int8_t));
+}
+
 void PgWire::WriteUint8(uint8_t value, faststring *buffer) {
   buffer->append(&value, sizeof(uint8_t));
 }
@@ -61,9 +65,11 @@ void PgWire::WriteDouble(double value, faststring *buffer) {
 }
 
 void PgWire::WriteText(const string& value, faststring *buffer) {
-  const uint64 length = value.size();
+  // Postgres expected text string to be null-terminated, so we have to add '\0' here.
+  // Postgres will call strlen() without using the returning byte count.
+  const uint64 length = value.size() + 1;
   WriteInt(NetworkByteOrder::Store64, length, buffer);
-  buffer->append(value);
+  buffer->append(static_cast<const void *>(value.c_str()), length);
 }
 
 void PgWire::WriteBinary(const string& value, faststring *buffer) {
@@ -82,7 +88,12 @@ size_t PgWire::ReadNumber(Slice *cursor, bool *value) {
   return sizeof(bool);
 }
 
-size_t PgWire::ReadNumber(Slice *cursor, uint8 *value) {
+size_t PgWire::ReadNumber(Slice *cursor, int8_t *value) {
+  *value = *reinterpret_cast<const int8_t*>(cursor->data());
+  return sizeof(int8_t);
+}
+
+size_t PgWire::ReadNumber(Slice *cursor, uint8_t *value) {
   *value = *reinterpret_cast<const uint8*>(cursor->data());
   return sizeof(uint8_t);
 }

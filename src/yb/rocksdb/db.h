@@ -39,6 +39,7 @@
 #include "yb/rocksdb/thread_status.h"
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/types.h"
+#include "yb/util/result.h"
 
 #ifdef _WIN32
 // Windows API macro interference
@@ -121,6 +122,8 @@ class DB {
   static Status Open(const Options& options,
                      const std::string& name,
                      DB** dbptr);
+
+  static yb::Result<std::unique_ptr<DB>> Open(const Options& options, const std::string& name);
 
   // Open the database for read only. All DB interfaces
   // that modify data, like put/delete, will return error.
@@ -798,7 +801,9 @@ class DB {
 
   virtual UserFrontierPtr GetFlushedFrontier() { return nullptr; }
 
-  virtual CHECKED_STATUS SetFlushedFrontier(UserFrontierPtr values) {
+  virtual CHECKED_STATUS ModifyFlushedFrontier(
+      UserFrontierPtr values,
+      FrontierModificationMode mode) {
     return Status::OK();
   }
 

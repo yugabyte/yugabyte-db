@@ -39,8 +39,9 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
-#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/metadata.pb.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/master/master.pb.h"
 #include "yb/tablet/tablet_peer.h"

@@ -54,6 +54,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using namespace std::placeholders;
 
@@ -62,6 +63,10 @@ using yb::redisserver::RedisServerOptions;
 
 using yb::cqlserver::CQLServer;
 using yb::cqlserver::CQLServerOptions;
+
+using yb::pgwrapper::PgProcessConf;
+using yb::pgwrapper::PgWrapper;
+using yb::pgwrapper::PgSupervisor;
 
 using namespace yb::size_literals;  // NOLINT
 
@@ -86,6 +91,15 @@ DECLARE_int32(redis_proxy_webserver_port);
 
 DECLARE_string(cql_proxy_bind_address);
 DECLARE_int32(cql_proxy_webserver_port);
+
+DECLARE_string(pgsql_proxy_bind_address);
+DECLARE_bool(start_pgsql_proxy);
+
+DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+
+// Deprecated because it's misspelled.  But if set, this flag takes precedence over
+// remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
+DECLARE_int64(remote_boostrap_rate_limit_bytes_per_sec);
 
 namespace yb {
 namespace tserver {
@@ -116,6 +130,15 @@ static int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(TabletServerOptions::kServerType, argv[0]));
 
+  LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();
+
+  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0) {
+    LOG(WARNING) << "Flag remote_boostrap_rate_limit_bytes_per_sec has been deprecated. "
+                 << "Use remote_bootstrap_rate_limit_bytes_per_sec flag instead";
+    FLAGS_remote_bootstrap_rate_limit_bytes_per_sec =
+        FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
+  }
+
 #ifdef TCMALLOC_ENABLED
   LOG(INFO) << "Setting tcmalloc max thread cache bytes to: " <<
     FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes;
@@ -130,6 +153,27 @@ static int TabletServerMain(int argc, char** argv) {
   auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
   YB_EDITION_NS_PREFIX Factory factory;
+
+  boost::optional<PgProcessConf> pg_process_conf;
+  std::unique_ptr<PgSupervisor> pg_supervisor;
+  if (FLAGS_start_pgsql_proxy) {
+    auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
+        FLAGS_pgsql_proxy_bind_address,
+        tablet_server_options->fs_opts.data_paths.front() + "/pg_data");
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
+    pg_process_conf = std::move(*pg_process_conf_result);
+    pg_process_conf->master_addresses = tablet_server_options->master_addresses_flag;
+
+    LOG(INFO) << "Starting PostgreSQL server listening on "
+              << pg_process_conf->listen_addresses << ", port " << pg_process_conf->pg_port;
+
+    pg_supervisor = std::make_unique<PgSupervisor>(*pg_process_conf);
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
+  }
+
+  // ----------------------------------------------------------------------------------------------
+  // Starting to instantiate servers
+  // ----------------------------------------------------------------------------------------------
 
   auto server = factory.CreateTabletServer(*tablet_server_options);
   LOG(INFO) << "Initializing tablet server...";

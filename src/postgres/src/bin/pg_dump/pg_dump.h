@@ -3,7 +3,7 @@
  * pg_dump.h
  *	  Common header file for the pg_dump utility
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/pg_dump/pg_dump.h
@@ -56,6 +56,7 @@ typedef enum
 	DO_TABLE,
 	DO_ATTRDEF,
 	DO_INDEX,
+	DO_INDEX_ATTACH,
 	DO_STATSEXT,
 	DO_RULE,
 	DO_TRIGGER,
@@ -315,6 +316,7 @@ typedef struct _tableInfo
 	char	  **attoptions;		/* per-attribute options */
 	Oid		   *attcollation;	/* per-attribute collation selection */
 	char	  **attfdwoptions;	/* per-attribute fdw options */
+	char	  **attmissingval;	/* per attribute missing value */
 	bool	   *notnull;		/* NOT NULL constraints on attributes */
 	bool	   *inhNotNull;		/* true if NOT NULL is inherited */
 	struct _attrDefInfo **attrdefs; /* DEFAULT expressions */
@@ -328,6 +330,8 @@ typedef struct _tableInfo
 	 */
 	int			numParents;		/* number of (immediate) parent tables */
 	struct _tableInfo **parents;	/* TableInfos of immediate parents */
+	int			numIndexes;		/* number of indexes */
+	struct _indxInfo *indexes;	/* indexes */
 	struct _tableDataInfo *dataObj; /* TableDataInfo, if dumping its data */
 	int			numTriggers;	/* number of triggers for table */
 	struct _triggerInfo *triggers;	/* array of TriggerInfo structs */
@@ -339,7 +343,7 @@ typedef struct _attrDefInfo
 	TableInfo  *adtable;		/* link to table of attribute */
 	int			adnum;
 	char	   *adef_expr;		/* decompiled DEFAULT expression */
-	bool		separate;		/* TRUE if must dump as separate item */
+	bool		separate;		/* true if must dump as separate item */
 } AttrDefInfo;
 
 typedef struct _tableDataInfo
@@ -357,14 +361,26 @@ typedef struct _indxInfo
 	char	   *indexdef;
 	char	   *tablespace;		/* tablespace in which index is stored */
 	char	   *indreloptions;	/* options specified by WITH (...) */
-	int			indnkeys;
-	Oid		   *indkeys;
+	char	   *indstatcols;	/* column numbers with statistics */
+	char	   *indstatvals;	/* statistic values for columns */
+	int			indnkeyattrs;	/* number of index key attributes */
+	int			indnattrs;		/* total number of index attributes */
+	Oid		   *indkeys;		/* In spite of the name 'indkeys' this field
+								 * contains both key and nonkey attributes */
 	bool		indisclustered;
 	bool		indisreplident;
+	Oid			parentidx;		/* if partitioned, parent index OID */
 	/* if there is an associated constraint object, its dumpId: */
 	DumpId		indexconstraint;
 	int			relpages;		/* relpages of the underlying table */
 } IndxInfo;
+
+typedef struct _indexAttachInfo
+{
+	DumpableObject dobj;
+	IndxInfo   *parentIdx;		/* link to index on partitioned table */
+	IndxInfo   *partitionIdx;	/* link to index on partition */
+} IndexAttachInfo;
 
 typedef struct _statsExtInfo
 {
@@ -379,7 +395,7 @@ typedef struct _ruleInfo
 	char		ev_type;
 	bool		is_instead;
 	char		ev_enabled;
-	bool		separate;		/* TRUE if must dump as separate item */
+	bool		separate;		/* true if must dump as separate item */
 	/* separate is always true for non-ON SELECT rules */
 } RuleInfo;
 
@@ -429,10 +445,10 @@ typedef struct _constraintInfo
 	char	   *condef;			/* definition, if CHECK or FOREIGN KEY */
 	Oid			confrelid;		/* referenced table, if FOREIGN KEY */
 	DumpId		conindex;		/* identifies associated index if any */
-	bool		condeferrable;	/* TRUE if constraint is DEFERRABLE */
-	bool		condeferred;	/* TRUE if constraint is INITIALLY DEFERRED */
-	bool		conislocal;		/* TRUE if constraint has local definition */
-	bool		separate;		/* TRUE if must dump as separate item */
+	bool		condeferrable;	/* true if constraint is DEFERRABLE */
+	bool		condeferred;	/* true if constraint is INITIALLY DEFERRED */
+	bool		conislocal;		/* true if constraint has local definition */
+	bool		separate;		/* true if must dump as separate item */
 } ConstraintInfo;
 
 typedef struct _procLangInfo
@@ -584,6 +600,7 @@ typedef struct _PublicationInfo
 	bool		pubinsert;
 	bool		pubupdate;
 	bool		pubdelete;
+	bool		pubtruncate;
 } PublicationInfo;
 
 /*

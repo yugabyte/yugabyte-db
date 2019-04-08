@@ -68,7 +68,7 @@ class MonoDelta {
   static const MonoDelta kMax;
   static const MonoDelta kZero;
 
-  MonoDelta();
+  MonoDelta() noexcept;
 
   template<class Rep, class Period>
   MonoDelta(const std::chrono::duration<Rep, Period>& duration) // NOLINT
@@ -266,6 +266,9 @@ class CoarseMonoClock {
   static TimePoint Now() { return now(); }
 };
 
+typedef CoarseMonoClock::TimePoint CoarseTimePoint;
+typedef CoarseMonoClock::Duration CoarseDuration;
+
 template <class Rep, class Period>
 int64_t ToMilliseconds(const std::chrono::duration<Rep, Period>& duration) {
   return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
@@ -291,6 +294,10 @@ double ToSeconds(const std::chrono::duration<Rep, Period>& duration) {
 inline double ToSeconds(MonoDelta delta) {
   return delta.ToSeconds();
 }
+
+std::string ToString(CoarseMonoClock::TimePoint value);
+
+CoarseTimePoint ToCoarse(MonoTime monotime);
 
 } // namespace yb
 

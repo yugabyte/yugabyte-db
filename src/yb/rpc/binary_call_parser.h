@@ -14,10 +14,12 @@
 #ifndef YB_RPC_BINARY_CALL_PARSER_H
 #define YB_RPC_BINARY_CALL_PARSER_H
 
+#include "yb/util/mem_tracker.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/strongly_typed_bool.h"
 
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/call_data.h"
 
 namespace yb {
 namespace rpc {
@@ -27,8 +29,7 @@ YB_STRONGLY_TYPED_BOOL(IncludeHeader);
 // Listener of BinaryCallParser, invoked when call is parsed.
 class BinaryCallParserListener {
  public:
-  virtual CHECKED_STATUS HandleCall(
-      const ConnectionPtr& connection, std::vector<char>* call_data) = 0;
+  virtual CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) = 0;
  protected:
   ~BinaryCallParserListener() {}
 };
@@ -36,13 +37,19 @@ class BinaryCallParserListener {
 // Utility class to parse binary calls with fixed length header.
 class BinaryCallParser {
  public:
-  explicit BinaryCallParser(size_t header_size, size_t size_offset, size_t max_message_length,
+  explicit BinaryCallParser(const MemTrackerPtr& parent_tracker,
+                            size_t header_size, size_t size_offset, size_t max_message_length,
                             IncludeHeader include_header, BinaryCallParserListener* listener);
 
-  Result<size_t> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data);
+  Result<ProcessDataResult> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data,
+                                  ReadBufferFull read_buffer_full);
 
  private:
+  MemTrackerPtr mandatory_tracker_;
+  MemTrackerPtr buffer_tracker_;
   std::vector<char> buffer_;
+  ScopedTrackedConsumption call_data_consumption_;
+  CallData call_data_;
   const size_t size_offset_;
   const size_t max_message_length_;
   const IncludeHeader include_header_;

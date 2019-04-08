@@ -78,9 +78,13 @@ CHECKED_STATUS InitKeyColumnPrimitiveValues(
       return status;
     }
 
-    if (column_value.has_value() && !IsNull(column_value.value())) {
-      components->push_back(PrimitiveValue::FromQLValuePB(
-          column_value.value(), schema.column(column_idx).sorting_type()));
+    if (column_value.has_value()) {
+      if (IsNull(column_value.value())) {
+        components->push_back(PrimitiveValue(ValueType::kNull));
+      } else {
+        components->push_back(PrimitiveValue::FromQLValuePB(
+            column_value.value(), schema.column(column_idx).sorting_type()));
+      }
     } else {
       // TODO(neil) The current setup only works for CQL as it assumes primary key value must not
       // be dependent on any column values. This needs to be fixed as PostgreSQL expression might
@@ -246,7 +250,7 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptions() {
 
   tablet::TabletOptions tablet_options;
   tablet_options.block_cache = block_cache_;
-  docdb::InitRocksDBOptions(&rocksdb_options_, tablet_id(), rocksdb::CreateDBStatistics(),
+  docdb::InitRocksDBOptions(&rocksdb_options_, "" /* log_prefix */, rocksdb::CreateDBStatistics(),
                             tablet_options);
   InitRocksDBWriteOptions(&write_options_);
   rocksdb_options_.compaction_filter_factory =
@@ -303,7 +307,7 @@ Status DocDBRocksDBUtil::InsertSubDocument(
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
   RETURN_NOT_OK(dwb.InsertSubDocument(doc_path, value, read_ht,
-                                      MonoTime::kMax, rocksdb::kDefaultQueryId, ttl));
+                                      CoarseTimePoint::max(), rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -315,7 +319,7 @@ Status DocDBRocksDBUtil::ExtendSubDocument(
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
   RETURN_NOT_OK(dwb.ExtendSubDocument(doc_path, value, read_ht,
-                                      MonoTime::kMax, rocksdb::kDefaultQueryId, ttl));
+                                      CoarseTimePoint::max(), rocksdb::kDefaultQueryId, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -325,7 +329,7 @@ Status DocDBRocksDBUtil::ExtendList(
     HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
   auto dwb = MakeDocWriteBatch();
-  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, read_ht, MonoTime::kMax));
+  RETURN_NOT_OK(dwb.ExtendList(doc_path, value, read_ht, CoarseTimePoint::max()));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -341,7 +345,7 @@ Status DocDBRocksDBUtil::ReplaceInList(
     UserTimeMicros user_timestamp) {
   auto dwb = MakeDocWriteBatch();
   RETURN_NOT_OK(dwb.ReplaceCqlInList(
-      doc_path, indexes, values, read_ht, MonoTime::kMax, query_id, default_ttl, ttl));
+      doc_path, indexes, values, read_ht, CoarseTimePoint::max(), query_id, default_ttl, ttl));
   return WriteToRocksDB(dwb, hybrid_time);
 }
 
@@ -366,7 +370,7 @@ Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
 
 Status DocDBRocksDBUtil::ReinitDBOptions() {
   tablet::TabletOptions tablet_options;
-  docdb::InitRocksDBOptions(&rocksdb_options_, tablet_id(), rocksdb_options_.statistics,
+  docdb::InitRocksDBOptions(&rocksdb_options_, "" /* log_prefix */, rocksdb_options_.statistics,
                             tablet_options);
   return ReopenRocksDB();
 }

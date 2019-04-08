@@ -39,6 +39,10 @@ enum class StmtOp {
   STMT_DROP_SCHEMA,
   STMT_CREATE_TABLE,
   STMT_DROP_TABLE,
+  STMT_TRUNCATE_TABLE,
+  STMT_CREATE_INDEX,
+  STMT_DROP_INDEX,
+  STMT_ALTER_TABLE,
   STMT_INSERT,
   STMT_UPDATE,
   STMT_DELETE,
@@ -54,16 +58,19 @@ class PgStatement : public RefCountedThreadSafe<PgStatement> {
   // Constructors.
   // pg_session is the session that this statement belongs to. If PostgreSQL cancels the session
   // while statement is running, pg_session::sharedptr can still be accessed without crashing.
-  PgStatement(PgSession::ScopedRefPtr pg_session, StmtOp stmt_op);
+  explicit PgStatement(PgSession::ScopedRefPtr pg_session);
   virtual ~PgStatement();
+
+  const PgSession::ScopedRefPtr& pg_session() {
+    return pg_session_;
+  }
+
+  // Statement type.
+  virtual StmtOp stmt_op() const = 0;
 
   //------------------------------------------------------------------------------------------------
   static bool IsValidStmt(PgStatement* stmt, StmtOp op) {
-    return (stmt != nullptr && stmt->stmt_op_ == op);
-  }
-
-  static bool IsValidHandle(PgStatement *stmt, StmtOp op) {
-    return (stmt != nullptr && stmt->stmt_op_ == op);
+    return (stmt != nullptr && stmt->stmt_op() == op);
   }
 
   //------------------------------------------------------------------------------------------------
@@ -77,9 +84,6 @@ class PgStatement : public RefCountedThreadSafe<PgStatement> {
  protected:
   // YBSession that this statement belongs to.
   PgSession::ScopedRefPtr pg_session_;
-
-  // Statement type.
-  StmtOp stmt_op_;
 
   // Execution status.
   Status status_;

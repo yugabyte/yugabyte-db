@@ -89,7 +89,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
           ErrorCollector* error_collector,
           const std::shared_ptr<YBSessionData>& session,
           YBTransactionPtr transaction,
-          ConsistentReadPoint* read_point);
+          ConsistentReadPoint* read_point,
+          bool force_consistent_read);
 
   // Abort the current batch. Any writes that were buffered and not yet sent are
   // discarded. Those that were sent may still be delivered.  If there is a pending Flush
@@ -142,6 +143,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
     return read_point_;
   }
 
+  void SetForceConsistentRead(ForceConsistentRead value) {
+    force_consistent_read_ = value;
+  }
+
   YBTransactionPtr transaction() const;
 
   const TransactionMetadata& transaction_metadata() const {
@@ -158,6 +163,16 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   const std::string& proxy_uuid() const;
 
+  const ClientId& client_id() const;
+
+  std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId(
+      const TabletId& tablet_id);
+  void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
+
+  // This is a status error string used when there are multiple errors that need to be fetched
+  // from the error collector.
+  static const std::string kErrorReachingOutToTServersMsg;
+
  private:
   friend class RefCountedThreadSafe<Batcher>;
   friend class AsyncRpc;
@@ -170,27 +185,27 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   void AddInFlightOp(const InFlightOpPtr& op);
 
   void RemoveInFlightOpsAfterFlushing(
-      const InFlightOps& ops, const Status& status, HybridTime propagated_hybrid_time);
+      const InFlightOps& ops, const Status& status, FlushExtraResult flush_extra_result);
 
     // Return true if the batch has been aborted, and any in-flight ops should stop
   // processing wherever they are.
   bool IsAbortedUnlocked() const;
 
-  // Mark the fact that errors have occurred with this batch. This ensures that
-  // the flush callback will get a bad Status.
-  void MarkHadErrors();
+  // Combines new error to existing ones. I.e. updates combined error with new status.
+  void CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Status& status)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Remove an op from the in-flight op list, and delete the op itself.
   // The operation is reported to the ErrorReporter as having failed with the
   // given status.
-  void MarkInFlightOpFailed(const InFlightOpPtr& op, const Status& s);
-  void MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s);
+  void MarkInFlightOpFailedUnlocked(const InFlightOpPtr& in_flight_op, const Status& s)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void CheckForFinishedFlush();
   void FlushBuffersIfReady();
   void FlushBuffer(
       RemoteTablet* tablet, InFlightOps::const_iterator begin, InFlightOps::const_iterator end,
-      const bool allow_local_calls_in_curr_thread);
+      bool allow_local_calls_in_curr_thread, bool need_consistent_read);
 
   // Calls/Schedules flush_callback_ and resets it to free resources.
   void RunCallback(const Status& s);
@@ -216,7 +231,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   void TransactionReady(const Status& status, const BatcherPtr& self);
 
   // See note about lock ordering in batcher.cc
-  mutable simple_spinlock lock_;
+  mutable simple_spinlock mutex_;
 
   enum State {
     kGatheringOps,
@@ -233,8 +248,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   scoped_refptr<ErrorCollector> const error_collector_;
 
   // Set to true if there was at least one error from this Batcher.
-  // Protected by lock_
-  bool had_errors_;
+  std::atomic<bool> had_errors_{false};
+
+  Status combined_error_;
 
   // If state is kFlushing, this member will be set to the user-provided
   // callback. Once there are no more in-flight operations, the callback
@@ -250,8 +266,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // which preserves the user's intended order. Preserving order is critical when
   // a batch contains multiple operations against the same row key. This member
   // assigns the sequence numbers.
-  // Protected by lock_.
-  int next_op_sequence_number_;
+  int next_op_sequence_number_ GUARDED_BY(mutex_);
 
   // Amount of time to wait for a given op, from start to finish.
   //
@@ -284,6 +299,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // The consistent read point for this batch if it is specified.
   ConsistentReadPoint* read_point_ = nullptr;
+
+  // Force consistent read on transactional table, even we have only single shard commands.
+  ForceConsistentRead force_consistent_read_;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

@@ -3,7 +3,7 @@
  * syscache.c
  *	  System cache management routines
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -20,6 +20,8 @@
  */
 #include "postgres.h"
 
+#include "access/genam.h"
+#include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "catalog/indexing.h"
@@ -73,10 +75,13 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#include "utils/builtins.h"
 #include "utils/rel.h"
 #include "utils/catcache.h"
 #include "utils/syscache.h"
 
+#include "catalog/pg_attrdef.h"
+#include "pg_yb_utils.h"
 
 /*---------------------------------------------------------------------------
 
@@ -985,6 +990,292 @@ static int	SysCacheSupportingRelOidSize;
 
 static int	oid_compare(const void *a, const void *b);
 
+Bitmapset *
+YBSysTablePrimaryKey(Oid relid)
+{
+	Bitmapset *pkey = NULL;
+
+#define YBPkAddAttribute(attid) \
+	do { pkey = bms_add_member(pkey, attid - FirstLowInvalidHeapAttributeNumber); } while (false)
+
+	switch (relid)
+	{
+		case AccessMethodOperatorRelationId:
+		case AccessMethodProcedureRelationId:
+		case AccessMethodRelationId:
+		case AggregateRelationId:
+		case AttrDefaultRelationId:
+		case AuthIdRelationId:
+		case CastRelationId:
+		case CollationRelationId:
+		case ConstraintRelationId:
+		case ConversionRelationId:
+		case DatabaseRelationId:
+		case DefaultAclRelationId:
+		case EnumRelationId:
+		case EventTriggerRelationId:
+		case ForeignDataWrapperRelationId:
+		case ForeignServerRelationId:
+		case ForeignTableRelationId:
+		case LanguageRelationId:
+		case NamespaceRelationId:
+		case OperatorClassRelationId:
+		case OperatorFamilyRelationId:
+		case OperatorRelationId:
+		case ProcedureRelationId:
+		case PublicationRelRelationId:
+		case PublicationRelationId:
+		case RelationRelationId:
+		case RewriteRelationId:
+		case StatisticExtRelationId:				
+		case SubscriptionRelationId:
+		case TSConfigRelationId:
+		case TSDictionaryRelationId:
+		case TSParserRelationId:
+		case TSTemplateRelationId:
+		case TableSpaceRelationId:
+		case TransformRelationId:
+		case TypeRelationId:
+		case UserMappingRelationId:
+			YBPkAddAttribute(ObjectIdAttributeNumber);
+			break;
+		case AttributeRelationId:
+			YBPkAddAttribute(Anum_pg_attribute_attrelid);
+			YBPkAddAttribute(Anum_pg_attribute_attnum);
+			break;
+		case AuthMemRelationId:
+			YBPkAddAttribute(Anum_pg_auth_members_roleid);
+			YBPkAddAttribute(Anum_pg_auth_members_member);
+			break;
+		case IndexRelationId:
+			YBPkAddAttribute(Anum_pg_index_indexrelid);
+			break;
+		case PartitionedRelationId:
+			YBPkAddAttribute(Anum_pg_partitioned_table_partrelid);
+			break;
+		case RangeRelationId:
+			YBPkAddAttribute(Anum_pg_range_rngtypid);
+			break;
+		case ReplicationOriginRelationId:
+			YBPkAddAttribute(Anum_pg_replication_origin_roident);
+			break;
+		case SequenceRelationId:
+			YBPkAddAttribute(Anum_pg_sequence_seqrelid);
+			break;
+		case StatisticRelationId:
+			YBPkAddAttribute(Anum_pg_statistic_starelid);
+			break;
+		case SubscriptionRelRelationId:
+			YBPkAddAttribute(Anum_pg_subscription_rel_srrelid);
+			YBPkAddAttribute(Anum_pg_subscription_rel_srsubid);
+			break;
+		case TSConfigMapRelationId:
+			YBPkAddAttribute(Anum_pg_ts_config_map_mapcfg);
+			YBPkAddAttribute(Anum_pg_ts_config_map_maptokentype);
+			YBPkAddAttribute(Anum_pg_ts_config_map_mapseqno);
+			break;
+		default: break;
+	}
+
+#undef YBPkAddAttribute
+
+	return pkey;
+}
+
+/*
+ * Utility function for YugaByte mode. Is used to automatically add entries
+ * from common catalog tables to the cache immediately after they are inserted.
+ */
+void YBSetSysCacheTuple(Relation rel, HeapTuple tup)
+{
+	TupleDesc tupdesc = RelationGetDescr(rel);
+	switch (RelationGetRelid(rel))
+	{
+		case RelationRelationId:
+			SetCatCacheTuple(SysCache[RELOID], tup, tupdesc);
+			SetCatCacheTuple(SysCache[RELNAMENSP], tup, tupdesc);
+			break;
+		case TypeRelationId:
+			SetCatCacheTuple(SysCache[TYPEOID], tup, tupdesc);
+			SetCatCacheTuple(SysCache[TYPENAMENSP], tup, tupdesc);
+			break;
+		case ProcedureRelationId:
+			SetCatCacheTuple(SysCache[PROCOID], tup, tupdesc);
+			SetCatCacheTuple(SysCache[PROCNAMEARGSNSP], tup, tupdesc);
+			break;
+		case AttributeRelationId:
+			SetCatCacheTuple(SysCache[ATTNUM], tup, tupdesc);
+			SetCatCacheTuple(SysCache[ATTNAME], tup, tupdesc);
+			break;
+
+		default:
+			/* For non-critical tables/indexes nothing to do */
+			return;
+	}
+}
+
+/*
+ * In YugaByte mode load up the caches with data from some essential tables
+ * that are looked up often during regular usage.
+ */
+static void
+YBCInitCatalogCache(int cacheId)
+{
+	List     *fnlists   = NIL;
+	CatCache *cache     = SysCache[cacheId];
+	CatCache *idx_cache = NULL;
+
+	switch (cacheId)
+	{
+		case RELOID:
+			idx_cache = SysCache[RELNAMENSP];
+			break;
+		case TYPEOID:
+			idx_cache = SysCache[TYPENAMENSP];
+			break;
+		case ATTNAME:
+			idx_cache = SysCache[ATTNUM];
+			break;
+		case PROCOID:
+			idx_cache = SysCache[PROCNAMEARGSNSP];
+			break;
+		case OPEROID:
+			idx_cache = SysCache[OPERNAMENSP];
+			break;
+		case CASTSOURCETARGET:
+			/* No index cache */
+			break;
+		default:
+			/* non-essential table -- nothing to do */
+			return;
+	}
+	HeapTuple ntp;
+	Relation  relation  = heap_open(cache->cc_reloid, AccessShareLock);
+	TupleDesc tupdesc   = RelationGetDescr(relation);
+
+	SysScanDesc scandesc = systable_beginscan(relation,
+	                                          cache->cc_indexoid,
+	                                          false, /* index ok */
+	                                          NULL,
+	                                          0,
+	                                          NULL);
+
+	while (HeapTupleIsValid(ntp = systable_getnext(scandesc)))
+	{
+		SetCatCacheTuple(cache, ntp, RelationGetDescr(relation));
+		if (idx_cache)
+			SetCatCacheTuple(idx_cache, ntp, RelationGetDescr(relation));
+
+		/*
+		 * Special handling for the common case of looking up
+		 * functions (procedures) by name (i.e. partial key).
+		 * We set up the partial cache list for function by-name
+		 * lookup on initialization to avoid scanning the large
+		 * pg_proc table each time.
+		 */
+		if (cacheId == PROCOID)
+		{
+			ListCell *lc;
+			bool     found_match = false;
+			bool     is_null     = false;
+			ScanKeyData key      = idx_cache->cc_skey[0];
+
+			Datum ndt = heap_getattr(ntp, key.sk_attno, tupdesc, &is_null);
+
+			if (is_null)
+			{
+				YBC_LOG_WARNING("Ignoring unexpected null "
+				                "entry while initializing proc "
+				                "cache list");
+				continue;
+			}
+
+			char *fname          = NameStr(*DatumGetName(ndt));
+			char *internal_fname = TextDatumGetCString(heap_getattr(ntp,
+			                                                        Anum_pg_proc_prosrc,
+			                                                        tupdesc,
+			                                                        &is_null));
+
+			/*
+			 * The internal name must be unique so if this is the
+			 * same as the function name, then this must be the only
+			 * or at least first occurrence of this function name.
+			 * TODO this assumption holds for standard procs (i.e.
+			 * initdb) but we should clean this up when enabling
+			 * CREATE PROCEDURE.
+			 */
+			bool is_canonical = strcmp(fname, internal_fname) == 0;
+
+			if (!is_canonical)
+			{
+				/*
+				 * Look for an existing list for functions with
+				 * this name.
+				 */
+				foreach(lc, fnlists)
+				{
+					List      *fnlist = lfirst(lc);
+					HeapTuple otp     = (HeapTuple) linitial(fnlist);
+					Datum     odt     = heap_getattr(otp,
+					                                 key.sk_attno,
+					                                 tupdesc,
+					                                 &is_null);
+
+					Datum test = FunctionCall2Coll(&key.sk_func,
+					                               key.sk_collation,
+					                               ndt,
+					                               odt);
+					found_match = DatumGetBool(test);
+					if (found_match)
+					{
+						fnlist = lappend(fnlist, ntp);
+						lc->data.ptr_value = fnlist;
+						break;
+					}
+				}
+			}
+			if (!found_match)
+			{
+				List *new_list = lappend(NIL, ntp);
+				fnlists = lappend(fnlists, new_list);
+			}
+		}
+	}
+
+	systable_endscan(scandesc);
+
+	heap_close(relation, AccessShareLock);
+
+	if (cacheId == PROCOID)
+	{
+		/* Load up the lists computed above into the catalog cache. */
+		ListCell *lc;
+		foreach (lc, fnlists)
+		{
+			List *fnlist = (List *) lfirst(lc);
+			SetCatCacheList(idx_cache, 1, fnlist);
+		}
+		list_free_deep(fnlists);
+	}
+}
+
+/*
+ * Preload catalog caches with data from the master to avoid master lookups
+ * later.
+ */
+void
+YBPreloadCatalogCaches(void)
+{
+	int			cacheId;
+
+	Assert(CacheInitialized);
+
+	/* Ensure individual caches are initialized */
+	InitCatalogCachePhase2();
+
+	for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
+		YBCInitCatalogCache(cacheId);
+}
 
 /*
  * InitCatalogCache - initialize the caches
@@ -1078,7 +1369,6 @@ InitCatalogCachePhase2(void)
 		InitCatCachePhase2(SysCache[cacheId], true);
 }
 
-
 /*
  * SearchSysCache
  *
@@ -1102,11 +1392,54 @@ SearchSysCache(int cacheId,
 			   Datum key3,
 			   Datum key4)
 {
-	if (cacheId < 0 || cacheId >= SysCacheSize ||
-		!PointerIsValid(SysCache[cacheId]))
-		elog(ERROR, "invalid cache ID: %d", cacheId);
+	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
+		   PointerIsValid(SysCache[cacheId]));
 
 	return SearchCatCache(SysCache[cacheId], key1, key2, key3, key4);
+}
+
+HeapTuple
+SearchSysCache1(int cacheId,
+				Datum key1)
+{
+	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
+		   PointerIsValid(SysCache[cacheId]));
+	Assert(SysCache[cacheId]->cc_nkeys == 1);
+
+	return SearchCatCache1(SysCache[cacheId], key1);
+}
+
+HeapTuple
+SearchSysCache2(int cacheId,
+				Datum key1, Datum key2)
+{
+	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
+		   PointerIsValid(SysCache[cacheId]));
+	Assert(SysCache[cacheId]->cc_nkeys == 2);
+
+	return SearchCatCache2(SysCache[cacheId], key1, key2);
+}
+
+HeapTuple
+SearchSysCache3(int cacheId,
+				Datum key1, Datum key2, Datum key3)
+{
+	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
+		   PointerIsValid(SysCache[cacheId]));
+	Assert(SysCache[cacheId]->cc_nkeys == 3);
+
+	return SearchCatCache3(SysCache[cacheId], key1, key2, key3);
+}
+
+HeapTuple
+SearchSysCache4(int cacheId,
+				Datum key1, Datum key2, Datum key3, Datum key4)
+{
+	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
+		   PointerIsValid(SysCache[cacheId]));
+	Assert(SysCache[cacheId]->cc_nkeys == 4);
+
+	return SearchCatCache4(SysCache[cacheId], key1, key2, key3, key4);
 }
 
 /*
@@ -1257,6 +1590,52 @@ SearchSysCacheExistsAttName(Oid relid, const char *attname)
 
 
 /*
+ * SearchSysCacheAttNum
+ *
+ * This routine is equivalent to SearchSysCache on the ATTNUM cache,
+ * except that it will return NULL if the found attribute is marked
+ * attisdropped.  This is convenient for callers that want to act as
+ * though dropped attributes don't exist.
+ */
+HeapTuple
+SearchSysCacheAttNum(Oid relid, int16 attnum)
+{
+	HeapTuple	tuple;
+
+	tuple = SearchSysCache2(ATTNUM,
+							ObjectIdGetDatum(relid),
+							Int16GetDatum(attnum));
+	if (!HeapTupleIsValid(tuple))
+		return NULL;
+	if (((Form_pg_attribute) GETSTRUCT(tuple))->attisdropped)
+	{
+		ReleaseSysCache(tuple);
+		return NULL;
+	}
+	return tuple;
+}
+
+/*
+ * SearchSysCacheCopyAttNum
+ *
+ * As above, an attisdropped-aware version of SearchSysCacheCopy.
+ */
+HeapTuple
+SearchSysCacheCopyAttNum(Oid relid, int16 attnum)
+{
+	HeapTuple	tuple,
+				newtuple;
+
+	tuple = SearchSysCacheAttNum(relid, attnum);
+	if (!HeapTupleIsValid(tuple))
+		return NULL;
+	newtuple = heap_copytuple(tuple);
+	ReleaseSysCache(tuple);
+	return newtuple;
+}
+
+
+/*
  * SysCacheGetAttr
  *
  *		Given a tuple previously fetched by SearchSysCache(),
@@ -1329,14 +1708,14 @@ GetSysCacheHashValue(int cacheId,
  */
 struct catclist *
 SearchSysCacheList(int cacheId, int nkeys,
-				   Datum key1, Datum key2, Datum key3, Datum key4)
+				   Datum key1, Datum key2, Datum key3)
 {
 	if (cacheId < 0 || cacheId >= SysCacheSize ||
 		!PointerIsValid(SysCache[cacheId]))
 		elog(ERROR, "invalid cache ID: %d", cacheId);
 
 	return SearchCatCacheList(SysCache[cacheId], nkeys,
-							  key1, key2, key3, key4);
+							  key1, key2, key3);
 }
 
 /*

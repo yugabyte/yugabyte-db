@@ -67,6 +67,9 @@ MessengerBuilder CreateMessengerBuilder(const std::string& name,
                                         const MessengerOptions& options) {
   MessengerBuilder bld(name);
   bld.set_num_reactors(options.n_reactors);
+  if (options.num_connections_to_server >= 0) {
+    bld.set_num_connections_to_server(options.num_connections_to_server);
+  }
   static constexpr std::chrono::milliseconds kMinCoarseTimeGranularity(1);
   static constexpr std::chrono::milliseconds kMaxCoarseTimeGranularity(100);
   auto coarse_time_granularity = std::max(std::min(options.keep_alive_timeout,
@@ -79,7 +82,7 @@ MessengerBuilder CreateMessengerBuilder(const std::string& name,
   bld.set_coarse_timer_granularity(coarse_time_granularity);
   bld.set_metric_entity(metric_entity);
   bld.CreateConnectionContextFactory<YBOutboundConnectionContext>(
-      FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit,
+      FLAGS_outbound_rpc_memory_limit,
       MemTracker::FindOrCreateTracker(name));
   return bld;
 }
@@ -101,23 +104,14 @@ constexpr std::chrono::milliseconds kDefaultKeepAlive = 1s;
 const MessengerOptions kDefaultClientMessengerOptions = {1, kDefaultKeepAlive};
 const MessengerOptions kDefaultServerMessengerOptions = {3, kDefaultKeepAlive};
 
-const char* GenericCalculatorService::kFullServiceName = "yb.rpc.GenericCalculatorService";
-const char* GenericCalculatorService::kAddMethodName = "Add";
-const char* GenericCalculatorService::kSleepMethodName = "Sleep";
-const char* GenericCalculatorService::kSendStringsMethodName = "SendStrings";
-const char* GenericCalculatorService::kDisconnectMethodName = "Disconnect";
-
-const char* GenericCalculatorService::kFirstString =
-    "1111111111111111111111111111111111111111111111111111111111";
-const char* GenericCalculatorService::kSecondString =
-    "2222222222222222222222222222222222222222222222222222222222222222222222";
-
 void GenericCalculatorService::Handle(InboundCallPtr incoming) {
-  if (incoming->method_name() == kAddMethodName) {
+  if (incoming->method_name() == CalculatorServiceMethods::kAddMethodName) {
     DoAdd(incoming.get());
-  } else if (incoming->method_name() == kSleepMethodName) {
+  } else if (incoming->method_name() == CalculatorServiceMethods::kSleepMethodName) {
     DoSleep(incoming.get());
-  } else if (incoming->method_name() == kSendStringsMethodName) {
+  } else if (incoming->method_name() == CalculatorServiceMethods::kEchoMethodName) {
+    DoEcho(incoming.get());
+  } else if (incoming->method_name() == CalculatorServiceMethods::kSendStringsMethodName) {
     DoSendStrings(incoming.get());
   } else {
     incoming->RespondFailure(ErrorStatusPB::ERROR_NO_SUCH_METHOD,
@@ -177,6 +171,21 @@ void GenericCalculatorService::DoSleep(InboundCall* incoming) {
   down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
 }
 
+void GenericCalculatorService::DoEcho(InboundCall* incoming) {
+  Slice param(incoming->serialized_request());
+  EchoRequestPB req;
+  if (!req.ParseFromArray(param.data(), param.size())) {
+    incoming->RespondFailure(ErrorStatusPB::ERROR_INVALID_REQUEST,
+        STATUS(InvalidArgument, "Couldn't parse pb",
+            req.InitializationErrorString()));
+    return;
+  }
+
+  EchoResponsePB resp;
+  resp.set_data(std::move(*req.mutable_data()));
+  down_cast<YBInboundCall*>(incoming)->RespondSuccess(resp);
+}
+
 namespace {
 
 class CalculatorService: public CalculatorServiceIf {
@@ -207,8 +216,8 @@ class CalculatorService: public CalculatorServiceIf {
     // Respond w/ error if the RPC specifies that the client deadline is set,
     // but it isn't.
     if (req->client_timeout_defined()) {
-      MonoTime deadline = context.GetClientDeadline();
-      if (deadline.Equals(MonoTime::Max())) {
+      auto deadline = context.GetClientDeadline();
+      if (deadline == CoarseTimePoint::max()) {
         CalculatorError my_error;
         my_error.set_extra_error_data("Timeout not set");
         context.RespondApplicationError(CalculatorError::app_error_ext.number(),
@@ -269,7 +278,6 @@ class CalculatorService: public CalculatorServiceIf {
     }
     auto messenger = messenger_.lock();
     YB_ASSERT_TRUE(messenger);
-    boost::system::error_code ec;
     HostPort hostport(req->host(), req->port());
     ProxyCache cache(messenger);
     rpc_test::CalculatorServiceProxy proxy(&cache, hostport);
@@ -386,7 +394,7 @@ void RpcTestBase::DoTestSidecar(Proxy* proxy,
   RpcController controller;
   controller.set_timeout(MonoDelta::FromMilliseconds(10000));
   auto status = proxy->SyncRequest(
-      GenericCalculatorService::SendStringsMethod(), req, &resp, &controller);
+      CalculatorServiceMethods::SendStringsMethod(), req, &resp, &controller);
 
   ASSERT_EQ(expected_code, status.code()) << "Invalid status received: " << status.ToString();
 
@@ -414,7 +422,7 @@ void RpcTestBase::DoTestExpectTimeout(Proxy* proxy, const MonoDelta& timeout) {
   c.set_timeout(timeout);
   Stopwatch sw;
   sw.start();
-  Status s = proxy->SyncRequest(GenericCalculatorService::SleepMethod(), req, &resp, &c);
+  Status s = proxy->SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &c);
   ASSERT_FALSE(s.ok());
   sw.stop();
 

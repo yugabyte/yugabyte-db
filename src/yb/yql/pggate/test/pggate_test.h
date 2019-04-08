@@ -27,9 +27,17 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
+// This file comes from this directory:
+// postgres_build/src/include/catalog
+// We add a special include path to CMakeLists.txt.
+#include "pg_type_d.h"
+
 namespace yb {
 namespace pggate {
 
+//--------------------------------------------------------------------------------------------------
+// Test base class.
+//--------------------------------------------------------------------------------------------------
 #define CHECK_YBC_STATUS(s) CheckYBCStatus((s), __FILE__, __LINE__)
 
 class PggateTest : public YBTest {
@@ -37,8 +45,7 @@ class PggateTest : public YBTest {
   static constexpr int kNumOfTablets = 3;
   static constexpr const char* kDefaultDatabase = "pggate_test_database";
   static constexpr const char* kDefaultSchema = "pggate_test_schema";
-  static constexpr client::PgOid kDefaultDatabaseOid = 1;
-  static constexpr client::PgOid kDefaultSchemaOid = 2;
+  static constexpr YBCPgOid kDefaultDatabaseOid = 1;
 
   PggateTest();
   virtual ~PggateTest();
@@ -59,13 +66,13 @@ class PggateTest : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Setup the database for testing.
-  void SetupDB(const string& db_name = kDefaultDatabase,
-               client::PgOid db_oid = kDefaultDatabaseOid);
-  void CreateDB(const string& db_name = kDefaultDatabase,
-                client::PgOid db_oid = kDefaultDatabaseOid);
+  void SetupDB(const string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
+  void CreateDB(const string& db_name = kDefaultDatabase, YBCPgOid db_oid = kDefaultDatabaseOid);
   void ConnectDB(const string& db_name = kDefaultDatabase);
 
  protected:
+  void CommitTransaction();
+
   //------------------------------------------------------------------------------------------------
   // Simulated cluster.
   std::shared_ptr<ExternalMiniCluster> cluster_;
@@ -73,6 +80,45 @@ class PggateTest : public YBTest {
   // Session.
   YBCPgSession pg_session_;
 };
+
+//--------------------------------------------------------------------------------------------------
+// Test type table and other variables.
+//--------------------------------------------------------------------------------------------------
+void YBCTestGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
+
+//--------------------------------------------------------------------------------------------------
+// Test API
+//--------------------------------------------------------------------------------------------------
+typedef uint64_t Datum;
+
+// Allocation.
+void *PggateTestAlloc(size_t bytes);
+
+// Add column.
+YBCStatus YBCTestCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
+                                      DataType yb_type, bool is_hash, bool is_range);
+
+// Column ref expression.
+YBCStatus YBCTestNewColumnRef(YBCPgStatement stmt, int attr_num, DataType yb_type,
+                              YBCPgExpr *expr_handle);
+
+// Constant expressions.
+YBCStatus YBCTestNewConstantBool(YBCPgStatement stmt, bool value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantInt1(YBCPgStatement stmt, int8_t value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantInt2(YBCPgStatement stmt, int16_t value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_null,
+                                 YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,
+                                   YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantFloat8(YBCPgStatement stmt, double value, bool is_null,
+                                   YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantText(YBCPgStatement stmt, const char *value, bool is_null,
+                                 YBCPgExpr *expr_handle);
 
 }  // namespace pggate
 }  // namespace yb

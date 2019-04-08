@@ -340,7 +340,7 @@ Status MemTableList::InstallMemtableFlushResults(
     auto temp_range = mems[i]->Frontiers();
     if (temp_range) {
       if (frontiers) {
-        frontiers->Merge(*temp_range);
+        frontiers->MergeFrontiers(*temp_range);
       } else {
         frontiers = temp_range->Clone();
       }
@@ -349,7 +349,7 @@ Status MemTableList::InstallMemtableFlushResults(
   }
   if (frontiers) {
     DCHECK_NE(0, mems[0]->edit_.GetNewFiles().size());
-    mems[0]->edit_.SetFlushedFrontier(frontiers->Largest().Clone());
+    mems[0]->edit_.UpdateFlushedFrontier(frontiers->Largest().Clone());
   }
 
   // if some other thread is already committing, then return
@@ -361,8 +361,8 @@ Status MemTableList::InstallMemtableFlushResults(
   // Only a single thread can be executing this piece of code
   commit_in_progress_ = true;
 
-  // scan all memtables from the earliest, and commit those
-  // (in that order) that have finished flushing. Memetables
+  // Scan all memtables from the earliest, and commit those
+  // (in that order) that have finished flushing. Memtables
   // are always committed in the order that they were created.
   while (!current_->memlist_.empty() && s.ok()) {
     MemTable* m = current_->memlist_.back();  // get the last element

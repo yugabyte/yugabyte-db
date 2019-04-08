@@ -35,7 +35,7 @@
 
 #include <string>
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_types.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/walltime.h"
 #include "yb/tablet/operations/operation.h"
@@ -183,7 +183,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   void PrepareAndStartTask();
 
   // This should be called in case of a failure to submit the operation for replication.
-  void SetReplicationFailed(const Status& replication_status);
+  void ReplicationFailed(const Status& replication_status);
 
   // Handle a failure in any of the stages of the operation.
   // In some cases, this will end the operation and call its callback.

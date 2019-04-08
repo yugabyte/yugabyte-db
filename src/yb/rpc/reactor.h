@@ -315,9 +315,11 @@ class Reactor {
 
   Messenger *messenger() const { return messenger_.get(); }
 
-  CoarseMonoClock::TimePoint cur_time() const { return cur_time_; }
+  CoarseTimePoint cur_time() const { return cur_time_; }
 
   // Drop all connections with remote address. Used in tests with broken connectivity.
+  void DropIncomingWithRemoteAddress(const IpAddress& address);
+  void DropOutgoingWithRemoteAddress(const IpAddress& address);
   void DropWithRemoteAddress(const IpAddress& address);
 
   // Return true if this reactor thread is the thread currently
@@ -354,8 +356,9 @@ class Reactor {
   // Queue a new incoming connection. Takes ownership of the underlying fd from
   // 'socket', but not the Socket object itself.
   // If the reactor is already shut down, takes care of closing the socket.
-  void RegisterInboundSocket(Socket *socket, const Endpoint& remote,
-                             std::unique_ptr<ConnectionContext> connection_context);
+  void RegisterInboundSocket(
+      Socket *socket, const Endpoint& remote, std::unique_ptr<ConnectionContext> connection_context,
+      const MemTrackerPtr& mem_tracker);
 
   // Schedule the given task's Run() method to be called on the reactor thread. If the reactor shuts
   // down before it is run, the Abort method will be called.
@@ -385,6 +388,7 @@ class Reactor {
   // The resulting connection object is managed internally by the reactor thread.
   // Deadline specifies latest time allowed for initializing the connection.
   CHECKED_STATUS FindOrStartConnection(const ConnectionId &conn_id,
+                                       const std::string& hostname,
                                        const MonoTime &deadline,
                                        ConnectionPtr* conn);
 
@@ -455,10 +459,10 @@ class Reactor {
   ReactorTasks async_handler_tasks_;
 
   // The current monotonic time.  Updated every coarse_timer_granularity_.
-  CoarseMonoClock::TimePoint cur_time_;
+  CoarseTimePoint cur_time_;
 
   // last time we did TCP timeouts.
-  CoarseMonoClock::TimePoint last_unused_tcp_scan_;
+  CoarseTimePoint last_unused_tcp_scan_;
 
   // Map of sockaddrs to Connection objects for outbound (client) connections.
   ConnectionMap client_conns_;
@@ -482,7 +486,7 @@ class Reactor {
   // the reactor thread.
   bool stopping_ = false;
 
-  CoarseMonoClock::TimePoint stop_start_time_;
+  CoarseTimePoint stop_start_time_;
 
   std::vector<OutboundCallPtr> outbound_queue_;
 
@@ -492,6 +496,9 @@ class Reactor {
 
   std::vector<ConnectionPtr> processing_connections_;
   ReactorTaskPtr process_outbound_queue_task_;
+
+  // Number of outbound connections to create per each destination server address.
+  int num_connections_to_server_;
 };
 
 }  // namespace rpc

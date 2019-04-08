@@ -5,7 +5,7 @@
 --    use this new type.
 --
 --
--- Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+-- Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
 -- Portions Copyright (c) 1994, Regents of the University of California
 --
 -- src/tutorial/complex.source
@@ -174,7 +174,7 @@ CREATE OPERATOR < (
 CREATE OPERATOR <= (
    leftarg = complex, rightarg = complex, procedure = complex_abs_le,
    commutator = >= , negator = > ,
-   restrict = scalarltsel, join = scalarltjoinsel
+   restrict = scalarlesel, join = scalarlejoinsel
 );
 CREATE OPERATOR = (
    leftarg = complex, rightarg = complex, procedure = complex_abs_eq,
@@ -186,7 +186,7 @@ CREATE OPERATOR = (
 CREATE OPERATOR >= (
    leftarg = complex, rightarg = complex, procedure = complex_abs_ge,
    commutator = <= , negator = < ,
-   restrict = scalargtsel, join = scalargtjoinsel
+   restrict = scalargesel, join = scalargejoinsel
 );
 CREATE OPERATOR > (
    leftarg = complex, rightarg = complex, procedure = complex_abs_gt,

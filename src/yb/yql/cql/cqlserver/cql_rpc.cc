@@ -54,27 +54,23 @@ namespace yb {
 namespace cqlserver {
 
 CQLConnectionContext::CQLConnectionContext(
-    rpc::GrowableBufferAllocator* allocator,
+    size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,
     const MemTrackerPtr& call_tracker)
-    : ConnectionContextWithCallId(allocator),
-      ql_session_(new ql::QLSession()),
-      parser_(CQLMessage::kMessageHeaderLength, CQLMessage::kHeaderPosLength,
+    : ql_session_(new ql::QLSession()),
+      parser_(buffer_tracker, CQLMessage::kMessageHeaderLength, CQLMessage::kHeaderPosLength,
               FLAGS_max_message_length, rpc::IncludeHeader::kTrue, this),
+      read_buffer_(receive_buffer_size, buffer_tracker),
       call_tracker_(call_tracker) {
 }
 
-Result<size_t> CQLConnectionContext::ProcessCalls(const rpc::ConnectionPtr& connection,
-                                                  const IoVecs& data,
-                                                  rpc::ReadBufferFull read_buffer_full) {
-  return parser_.Parse(connection, data);
-}
-
-size_t CQLConnectionContext::BufferLimit() {
-  return FLAGS_max_message_length;
+Result<rpc::ProcessDataResult> CQLConnectionContext::ProcessCalls(
+    const rpc::ConnectionPtr& connection, const IoVecs& data,
+    rpc::ReadBufferFull read_buffer_full) {
+  return parser_.Parse(connection, data, read_buffer_full);
 }
 
 Status CQLConnectionContext::HandleCall(
-    const rpc::ConnectionPtr& connection, std::vector<char>* call_data) {
+    const rpc::ConnectionPtr& connection, rpc::CallData* call_data) {
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
@@ -113,18 +109,18 @@ void CQLConnectionContext::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
 CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
                                CallProcessedListener call_processed_listener,
                                ql::QLSession::SharedPtr ql_session)
-    : InboundCall(std::move(conn), std::move(call_processed_listener)),
+    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, std::move(call_processed_listener)),
       ql_session_(std::move(ql_session)) {
 }
 
-Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, std::vector<char>* call_data) {
+Status CQLInboundCall::ParseFrom(const MemTrackerPtr& call_tracker, rpc::CallData* call_data) {
   TRACE_EVENT_FLOW_BEGIN0("rpc", "CQLInboundCall", this);
   TRACE_EVENT0("rpc", "CQLInboundCall::ParseFrom");
 
   consumption_ = ScopedTrackedConsumption(call_tracker, call_data->size());
 
   // Parsing of CQL message is deferred to CQLServiceImpl::Handle. Just save the serialized data.
-  request_data_.swap(*call_data);
+  request_data_ = std::move(*call_data);
   serialized_request_ = Slice(request_data_.data(), request_data_.size());
 
   // Fill the service name method name to transfer the call to. The method name is for debug
@@ -144,11 +140,11 @@ const std::string& CQLInboundCall::method_name() const {
   return result;
 }
 
-void CQLInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
+void CQLInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   TRACE_EVENT0("rpc", "CQLInboundCall::Serialize");
   CHECK_GT(response_msg_buf_.size(), 0);
 
-  output->push_back(response_msg_buf_);
+  output->push_back(std::move(response_msg_buf_));
 }
 
 void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code,
@@ -192,7 +188,7 @@ void CQLInboundCall::RespondSuccess(const RefCntBuffer& buffer,
   QueueResponse(/* is_success */ true);
 }
 
-void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) {
+void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const {
   std::shared_ptr<const CQLRequest> request =
 #ifdef THREAD_SANITIZER
       request_;
@@ -267,10 +263,12 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
 void CQLInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
   int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
-
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
-    LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
-    trace_->Dump(&LOG(INFO), true);
+      LOG(WARNING) << ToString() << " took " << total_time << "ms. Details:";
+      rpc::RpcCallInProgressPB call_in_progress_pb;
+      GetCallDetails(&call_in_progress_pb);
+      LOG(WARNING) << call_in_progress_pb.DebugString() << "Trace: ";
+      trace_->Dump(&LOG(WARNING), /* include_time_deltas */ true);
   }
 }
 
@@ -291,9 +289,9 @@ bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
   return true;
 }
 
-MonoTime CQLInboundCall::GetClientDeadline() const {
+CoarseTimePoint CQLInboundCall::GetClientDeadline() const {
   // TODO(Robert) - fill in CQL timeout
-  return MonoTime::Max();
+  return CoarseTimePoint::max();
 }
 
 } // namespace cqlserver

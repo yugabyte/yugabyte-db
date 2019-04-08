@@ -16,7 +16,7 @@ my $INDENT_VERSION = "2.0";
 
 # Our standard indent settings
 my $indent_opts =
-"-bad -bap -bbb -bc -bl -cli1 -cp33 -cdb -nce -d0 -di12 -nfc1 -i4 -l79 -lp -lpl -nip -npro -sac -tpg -ts4";
+  "-bad -bap -bbb -bc -bl -cli1 -cp33 -cdb -nce -d0 -di12 -nfc1 -i4 -l79 -lp -lpl -nip -npro -sac -tpg -ts4";
 
 my $devnull = File::Spec->devnull;
 
@@ -50,6 +50,20 @@ $code_base ||= '.' unless @ARGV;
 $excludes ||= "$code_base/src/tools/pgindent/exclude_file_patterns"
   if $code_base && -f "$code_base/src/tools/pgindent/exclude_file_patterns";
 
+# The typedef list that's mechanically extracted by the buildfarm may omit
+# some names we want to treat like typedefs, e.g. "bool" (which is a macro
+# according to <stdbool.h>), and may include some names we don't want
+# treated as typedefs, although various headers that some builds include
+# might make them so.  For the moment we just hardwire a whitelist of names
+# to add and a blacklist of names to remove; eventually this may need to be
+# easier to configure.  Note that the typedefs need trailing newlines.
+my @whitelist = ("bool\n");
+
+my %blacklist = map { +"$_\n" => 1 } qw(
+  ANY FD_SET U abs allocfunc boolean date digit ilist interval iterator other
+  pointer printfunc reference string timestamp type wrap
+);
+
 # globals
 my @files;
 my $filtered_typedefs_fh;
@@ -68,7 +82,7 @@ sub check_indent
 	if (`$indent --version` !~ m/ $INDENT_VERSION$/)
 	{
 		print STDERR
-"You do not appear to have $indent version $INDENT_VERSION installed on your system.\n";
+		  "You do not appear to have $indent version $INDENT_VERSION installed on your system.\n";
 		exit 1;
 	}
 
@@ -79,6 +93,8 @@ sub check_indent
 		  "You appear to have GNU indent rather than BSD indent.\n";
 		exit 1;
 	}
+
+	return;
 }
 
 
@@ -118,9 +134,11 @@ sub load_typedefs
 		}
 	}
 
-	# remove certain entries
-	@typedefs =
-	  grep { !m/^(FD_SET|date|interval|timestamp|ANY)\n?$/ } @typedefs;
+	# add whitelisted entries
+	push(@typedefs, @whitelist);
+
+	# remove blacklisted entries
+	@typedefs = grep { !$blacklist{$_} } @typedefs;
 
 	# write filtered typedefs
 	my $filter_typedefs_fh = new File::Temp(TEMPLATE => "pgtypedefXXXXX");
@@ -146,6 +164,7 @@ sub process_exclude
 		}
 		close($eh);
 	}
+	return;
 }
 
 
@@ -173,6 +192,7 @@ sub write_source
 	  || die "cannot open file \"$source_filename\": $!\n";
 	print $src_fh $source;
 	close($src_fh);
+	return;
 }
 
 
@@ -195,11 +215,11 @@ sub pre_indent
 	my $extern_c_start = '/* Open extern "C" */';
 	my $extern_c_stop  = '/* Close extern "C" */';
 	$source =~
-s!(^#ifdef[ \t]+__cplusplus.*\nextern[ \t]+"C"[ \t]*\n)\{[ \t]*$!$1$extern_c_start!gm;
+	  s!(^#ifdef[ \t]+__cplusplus.*\nextern[ \t]+"C"[ \t]*\n)\{[ \t]*$!$1$extern_c_start!gm;
 	$source =~ s!(^#ifdef[ \t]+__cplusplus.*\n)\}[ \t]*$!$1$extern_c_stop!gm;
 
-	# Protect backslashes in DATA() and wrapping in CATALOG()
-	$source =~ s!^((DATA|CATALOG)\(.*)$!/*$1*/!gm;
+	# Protect wrapping in CATALOG()
+	$source =~ s!^(CATALOG\(.*)$!/*$1*/!gm;
 
 	return $source;
 }
@@ -210,8 +230,8 @@ sub post_indent
 	my $source          = shift;
 	my $source_filename = shift;
 
-	# Restore DATA/CATALOG lines
-	$source =~ s!^/\*((DATA|CATALOG)\(.*)\*/$!$1!gm;
+	# Restore CATALOG lines
+	$source =~ s!^/\*(CATALOG\(.*)\*/$!$1!gm;
 
 	# Put back braces for extern "C"
 	$source =~ s!^/\* Open extern "C" \*/$!{!gm;
@@ -300,6 +320,7 @@ sub diff
 		  . $pre_fh->filename . " "
 		  . $post_fh->filename
 		  . " >&2");
+	return;
 }
 
 
@@ -345,6 +366,7 @@ sub run_build
 	$ENV{PGINDENT} = abs_path('pg_bsd_indent');
 
 	chdir $save_dir;
+	return;
 }
 
 
@@ -366,6 +388,7 @@ sub build_clean
 
 	system("rm -rf src/tools/pgindent/pg_bsd_indent");
 	system("rm -f src/tools/pgindent/tmp_typedefs.list");
+	return;
 }
 
 
@@ -373,13 +396,14 @@ sub build_clean
 
 # get the list of files under code base, if it's set
 File::Find::find(
-	{   wanted => sub {
+	{
+		wanted => sub {
 			my ($dev, $ino, $mode, $nlink, $uid, $gid);
 			(($dev, $ino, $mode, $nlink, $uid, $gid) = lstat($_))
 			  && -f _
 			  && /^.*\.[ch]\z/s
 			  && push(@files, $File::Find::name);
-		  }
+		}
 	},
 	$code_base) if $code_base;
 

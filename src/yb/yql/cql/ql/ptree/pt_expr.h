@@ -100,15 +100,21 @@ class PTExpr : public TreeNode {
       yb::QLOperator ql_op = yb::QLOperator::QL_OP_NOOP,
       InternalType internal_type = InternalType::VALUE_NOT_SET,
       DataType ql_type_id = DataType::UNKNOWN_DATA)
+      : PTExpr(memctx, loc, op, ql_op, internal_type, QLType::Create(ql_type_id)) {}
+  explicit PTExpr(
+      MemoryContext *memctx,
+      YBLocation::SharedPtr loc,
+      ExprOperator op,
+      yb::QLOperator ql_op,
+      InternalType internal_type,
+      const QLType::SharedPtr& ql_type)
       : TreeNode(memctx, loc),
         op_(op),
         ql_op_(ql_op),
         internal_type_(internal_type),
-        ql_type_(QLType::Create(ql_type_id)),
-        expected_internal_type_(InternalType::VALUE_NOT_SET) {
-  }
-  virtual ~PTExpr() {
-  }
+        ql_type_(ql_type),
+        expected_internal_type_(InternalType::VALUE_NOT_SET) {}
+  virtual ~PTExpr() {}
 
   // Expression return type in DocDB format.
   virtual InternalType internal_type() const {
@@ -281,7 +287,7 @@ class PTExpr : public TreeNode {
   ExprOperator op_;
   yb::QLOperator ql_op_;
   InternalType internal_type_;
-  std::shared_ptr<QLType> ql_type_;
+  QLType::SharedPtr ql_type_;
   InternalType expected_internal_type_;
 };
 
@@ -300,12 +306,14 @@ class PTCollectionExpr : public PTExpr {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTCollectionExpr(MemoryContext *memctx, YBLocation::SharedPtr loc, DataType literal_type)
+  PTCollectionExpr(MemoryContext* memctx,
+                   YBLocation::SharedPtr loc,
+                   const QLType::SharedPtr& ql_type)
       : PTExpr(memctx, loc, ExprOperator::kCollection, yb::QLOperator::QL_OP_NOOP,
-      client::YBColumnSchema::ToInternalDataType(QLType::Create(literal_type))),
-        keys_(memctx), values_(memctx), udtype_field_values_(memctx) {
-    ql_type_ = QLType::Create(literal_type);
-  }
+               client::YBColumnSchema::ToInternalDataType(ql_type), ql_type),
+        keys_(memctx), values_(memctx), udtype_field_values_(memctx) {}
+  PTCollectionExpr(MemoryContext* memctx, YBLocation::SharedPtr loc, DataType literal_type)
+      : PTCollectionExpr(memctx, loc, QLType::Create(literal_type)) {}
   virtual ~PTCollectionExpr() { }
 
   void AddKeyValuePair(PTExpr::SharedPtr key, PTExpr::SharedPtr value) {
@@ -316,6 +324,10 @@ class PTCollectionExpr : public PTExpr {
   void AddElement(PTExpr::SharedPtr value) {
     values_.emplace_back(value);
   }
+
+  // Fill in udtype_field_values collection, copying values in accordance to UDT field order
+  CHECKED_STATUS InitializeUDTValues(const QLType::SharedPtr& expected_type,
+                                     ProcessContextBase* process_context);
 
   int size() const {
     return static_cast<int>(values_.size());
@@ -727,6 +739,8 @@ class PTLiteralString : public PTLiteral<MCSharedPtr<MCString>> {
   CHECKED_STATUS ToDecimal(std::string *value, bool negate) const;
   CHECKED_STATUS ToVarInt(std::string *value, bool negate) const;
 
+  std::string ToString() const;
+
   CHECKED_STATUS ToString(std::string *value) const;
   CHECKED_STATUS ToTimestamp(int64_t *value) const;
   CHECKED_STATUS ToDate(uint32_t *value) const;
@@ -923,11 +937,8 @@ class PTOperatorExpr : public PTExpr {
   virtual CHECKED_STATUS AnalyzeOperator(SemContext *sem_context, PTExpr::SharedPtr op1) override;
 
  protected:
-  // Get the column descriptor from the current DML statement.
+  // Get the column descriptor from the current statement.
   const ColumnDesc *GetColumnDesc(const SemContext *sem_context, const MCString& col_name) const;
-
-  // Is the current DML a select on an uncovered index?
-  bool IsUncoveredIndexSelect(const SemContext *sem_context) const;
 };
 
 using PTOperator0 = PTExpr0<InternalType::VALUE_NOT_SET, DataType::UNKNOWN_DATA, PTOperatorExpr>;
@@ -1045,6 +1056,10 @@ class PTJsonColumnWithOperators : public PTOperator0 {
 
   // Analyze LHS expression.
   virtual CHECKED_STATUS CheckLhsExpr(SemContext *sem_context) override;
+
+  CHECKED_STATUS SetupPrimaryKey(SemContext *sem_context) const;
+  CHECKED_STATUS SetupHashAndPrimaryKey(SemContext *sem_context) const;
+  CHECKED_STATUS SetupCoveringIndexColumn(SemContext *sem_context) const;
 
  private:
   PTQualifiedName::SharedPtr name_;

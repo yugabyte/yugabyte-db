@@ -48,8 +48,6 @@ set(INTEGRATION_TESTS_SRCS
 
 add_library(integration-tests ${INTEGRATION_TESTS_SRCS})
 target_link_libraries(integration-tests
-  cpp_redis
-  tacopie
   tserver
   tserver_test_util
   master
@@ -58,8 +56,11 @@ target_link_libraries(integration-tests
   yb_client
   yb_client_test_util
   yb_fs
+  yb-redisserver-test
   yb_test_util
-  yb-redis)
+  yb-redis
+  yb_pgwrapper)
+
 add_dependencies(integration-tests
   yb-tserver
   yb-master)
@@ -91,6 +92,7 @@ ADD_YB_TEST(flush-test)
 ADD_YB_TEST(ts_tablet_manager-itest)
 ADD_YB_TEST(ts_recovery-itest)
 ADD_YB_TEST(create-table-stress-test)
+ADD_YB_TEST(master-partitioned-test)
 ADD_YB_TEST(delete_table-test)
 ADD_YB_TEST(external_mini_cluster-test)
 ADD_YB_TEST(linked_list-test)
@@ -107,10 +109,16 @@ ADD_YB_TEST(stepdown_under_load-test)
 ADD_YB_TEST(full_stack-insert-scan-test)
 ADD_YB_TEST(redis_table-test)
 ADD_YB_TEST(update_scan_delta_compact-test)
+ADD_YB_TEST(log_version-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
+set(CASS_DRIVER_VERSION "2.9.0-yb-4")
+set(CASS_DRIVER_INTERNAL_INCLUDE "${YB_THIRDPARTY_DIR}/src/cassandra-cpp-driver-${CASS_DRIVER_VERSION}/src")
 ADD_YB_TEST(cassandra_cpp_driver-test)
+target_include_directories(cassandra_cpp_driver-test PUBLIC
+  ${CASS_DRIVER_INTERNAL_INCLUDE}
+  "${CASS_DRIVER_INTERNAL_INCLUDE}/third_party/sparsehash/src")
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})
 
 # Additional tests

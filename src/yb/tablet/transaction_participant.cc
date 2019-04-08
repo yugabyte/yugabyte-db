@@ -206,7 +206,7 @@ class CleanupAbortsTask : public rpc::ThreadPoolTask {
         status_manager_(*status_manager) {}
 
   void Prepare(std::shared_ptr<CleanupAbortsTask> cleanup_task) {
-    retain_self_ = cleanup_task;
+    retain_self_ = std::move(cleanup_task);
   }
 
   void Run() override {
@@ -225,7 +225,7 @@ class CleanupAbortsTask : public rpc::ThreadPoolTask {
     // The calls to RequestStatusAt would have updated the local clock of the participant.
     // Wait for the propagated time to reach the current hybrid time.
     const MonoDelta kMaxTotalSleep = 10s;
-    auto safetime = applier_->ApplierSafeTime(now, MonoTime::Now() + kMaxTotalSleep);
+    auto safetime = applier_->ApplierSafeTime(now, CoarseMonoClock::now() + kMaxTotalSleep);
     if (!safetime) {
       LOG(WARNING) << "Tablet application did not catch up in: " << kMaxTotalSleep;
       return;
@@ -515,7 +515,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
         last_known_status_ = response.status();
         if (response.status() == TransactionStatus::ABORTED) {
           if (!local_commit_time_ && remove_intents_task_.Prepare(shared_self)) {
-            context_.participant_context_.thread_pool().Enqueue(&remove_intents_task_);
+            context_.participant_context_.Enqueue(&remove_intents_task_);
             VLOG_WITH_PREFIX(1) << "Transaction should be aborted: " << id();
           }
           context_.RemoveUnlocked(id());
@@ -654,7 +654,8 @@ std::string TransactionApplyData::ToString() const {
 class TransactionParticipant::Impl : public RunningTransactionContext {
  public:
   explicit Impl(TransactionParticipantContext* context, TransactionIntentApplier* applier)
-      : RunningTransactionContext(context, applier), log_prefix_(context->tablet_id() + ": ") {
+      : RunningTransactionContext(context, applier),
+        log_prefix_(Format("T $0 P $1: ", context->tablet_id(), context->permanent_uuid())) {
     LOG_WITH_PREFIX(INFO) << "Start";
   }
 
@@ -697,6 +698,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     if (store) {
       docdb::KeyBytes key;
       AppendTransactionKeyPrefix(metadata->transaction_id, &key);
+      auto data_copy = data;
+      // We use hybrid time only for backward compatibility, actually wall time is required.
+      data_copy.set_metadata_write_time(GetCurrentTimeMicros());
       auto value = data.SerializeAsString();
       write_batch->Put(key.data(), value);
     }
@@ -874,9 +878,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   void Cleanup(TransactionIdSet&& set, TransactionStatusManager* status_manager) {
     auto cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
         &applier_, std::move(set), &participant_context_, status_manager);
-    if (participant_context_.thread_pool().Enqueue(cleanup_aborts_task.get())) {
-      cleanup_aborts_task->Prepare(cleanup_aborts_task);
-    }
+    cleanup_aborts_task->Prepare(cleanup_aborts_task);
+    participant_context_.Enqueue(cleanup_aborts_task.get());
   }
 
   CHECKED_STATUS ProcessApply(const TransactionApplyData& data) {
@@ -1080,18 +1083,17 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     key.Truncate(key.size() - 1);
     IntraTxnWriteId next_write_id = 0;
     while (iter->Valid() && iter->key().starts_with(key)) {
-      Slice intent_prefix;
-      docdb::IntentType intent_type;
-      DocHybridTime doc_ht;
-      auto status = docdb::DecodeIntentKey(iter->value(), &intent_prefix, &intent_type, &doc_ht);
-      LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to decode intent: " << status;
-      if (status.ok() && docdb::IsStrongIntent(intent_type)) {
+      auto decoded_key = docdb::DecodeIntentKey(iter->value());
+      LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())
+          << "Failed to decode intent " << iter->value().ToDebugHexString() << ": "
+          << decoded_key.status();
+      if (decoded_key.ok() && docdb::HasStrong(decoded_key->intent_types)) {
         iter->Seek(iter->value());
         if (iter->Valid()) {
           VLOG_WITH_PREFIX(1)
               << "Found latest record: " << docdb::SubDocKey::DebugSliceToString(iter->key())
               << " => " << iter->value().ToDebugHexString();
-          status = docdb::DecodeIntentValue(
+          auto status = docdb::DecodeIntentValue(
               iter->value(), Slice(id.data, id.size()), &next_write_id, nullptr /* body */);
           LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to decode intent value: " << status;
           ++next_write_id;

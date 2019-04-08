@@ -54,8 +54,11 @@ class HybridTime;
 
 namespace tserver {
 
+class ReadCompletionTask;
 class TabletPeerLookupIf;
 class TabletServer;
+
+struct ReadContext;
 
 class TabletServiceImpl : public TabletServerServiceIf {
  public:
@@ -68,6 +71,9 @@ class TabletServiceImpl : public TabletServerServiceIf {
   void Read(const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) override;
 
   void NoOp(const NoOpRequestPB* req, NoOpResponsePB* resp, rpc::RpcContext context) override;
+
+  void Publish(
+      const PublishRequestPB* req, PublishResponsePB* resp, rpc::RpcContext context) override;
 
   void ListTablets(const ListTabletsRequestPB* req,
                    ListTabletsResponsePB* resp,
@@ -114,9 +120,15 @@ class TabletServiceImpl : public TabletServerServiceIf {
                        GetTabletStatusResponsePB* resp,
                        rpc::RpcContext context) override;
 
+  void IsTabletServerReady(const IsTabletServerReadyRequestPB* req,
+                           IsTabletServerReadyResponsePB* resp,
+                           rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:
+  friend class ReadCompletionTask;
+
   // Check if the tablet peer is the leader and is in ready state for servicing IOs.
   CHECKED_STATUS CheckPeerIsLeaderAndReady(const tablet::TabletPeer& tablet_peer);
 
@@ -128,10 +140,11 @@ class TabletServiceImpl : public TabletServerServiceIf {
   bool DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::RpcContext* context,
                             std::shared_ptr<tablet::AbstractTablet>* tablet);
 
-  virtual bool GetTabletOrRespond(const ReadRequestPB* req,
-                                  ReadResponsePB* resp,
-                                  rpc::RpcContext* context,
-                                  std::shared_ptr<tablet::AbstractTablet>* tablet);
+  virtual WARN_UNUSED_RESULT bool GetTabletOrRespond(
+      const ReadRequestPB* req,
+      ReadResponsePB* resp,
+      rpc::RpcContext* context,
+      std::shared_ptr<tablet::AbstractTablet>* tablet);
 
   template<class Resp>
   bool CheckMemoryPressure(
@@ -139,14 +152,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
 
   // Read implementation. If restart is required returns restart time, in case of success
   // returns invalid ReadHybridTime. Otherwise returns error status.
-  Result<ReadHybridTime> DoRead(tablet::AbstractTablet* tablet,
-                                const ReadRequestPB* req,
-                                ReadHybridTime read_time,
-                                HybridTime safe_ht_to_read,
-                                tablet::RequireLease require_lease,
-                                HostPortPB* host_port_pb,
-                                ReadResponsePB* resp,
-                                rpc::RpcContext* context);
+  Result<ReadHybridTime> DoRead(ReadContext* read_context);
+  // Completes read, invokes DoRead in loop, adjusting read time due to read restart time.
+  // Sends response, etc.
+  void CompleteRead(ReadContext* read_context);
 
   TabletServerIf *const server_;
 };
@@ -156,25 +165,25 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   typedef std::vector<tablet::TabletPeerPtr> TabletPeers;
 
   explicit TabletServiceAdminImpl(TabletServer* server);
-  virtual void CreateTablet(const CreateTabletRequestPB* req,
-                            CreateTabletResponsePB* resp,
-                            rpc::RpcContext context) override;
+  void CreateTablet(const CreateTabletRequestPB* req,
+                    CreateTabletResponsePB* resp,
+                    rpc::RpcContext context) override;
 
-  virtual void DeleteTablet(const DeleteTabletRequestPB* req,
-                            DeleteTabletResponsePB* resp,
-                            rpc::RpcContext context) override;
+  void DeleteTablet(const DeleteTabletRequestPB* req,
+                    DeleteTabletResponsePB* resp,
+                    rpc::RpcContext context) override;
 
-  virtual void AlterSchema(const AlterSchemaRequestPB* req,
-                           AlterSchemaResponsePB* resp,
-                           rpc::RpcContext context) override;
+  void AlterSchema(const ChangeMetadataRequestPB* req,
+                   ChangeMetadataResponsePB* resp,
+                   rpc::RpcContext context) override;
 
-  virtual void CopartitionTable(const CopartitionTableRequestPB* req,
-                                CopartitionTableResponsePB* resp,
-                                rpc::RpcContext context) override;
+  void CopartitionTable(const CopartitionTableRequestPB* req,
+                        CopartitionTableResponsePB* resp,
+                        rpc::RpcContext context) override;
 
-  virtual void FlushTablets(const FlushTabletsRequestPB* req,
-                            FlushTabletsResponsePB* resp,
-                            rpc::RpcContext context) override;
+  void FlushTablets(const FlushTabletsRequestPB* req,
+                    FlushTabletsResponsePB* resp,
+                    rpc::RpcContext context) override;
 
  private:
   TabletServer* server_;

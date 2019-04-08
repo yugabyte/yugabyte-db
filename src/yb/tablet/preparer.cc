@@ -18,10 +18,9 @@
 #include <thread>
 #include <vector>
 
-#include <boost/lockfree/queue.hpp>
-
 #include <gflags/gflags.h>
 
+#include "yb/consensus/consensus.h"
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/util/logging.h"
@@ -188,12 +187,12 @@ void PreparerImpl::ProcessItem(OperationDriver* item) {
   CHECK_NOTNULL(item);
 
   if (item->is_leader_side()) {
-    // AlterSchemaOperation::Prepare calls Tablet::CreatePreparedAlterSchema, which acquires the
-    // schema lock. Because of this, we must not attempt to process two AlterSchemaOperations in
+    // ChangeMetadataOperation::Prepare calls Tablet::CreatePreparedChangeMetadata, which acquires
+    // the schema lock. Because of this, we must not attempt to process two AlterSchemaOperations in
     // one batch, otherwise we'll deadlock. Furthermore, for simplicity, we choose to process each
     // AlterSchemaOperation in a batch of its own.
     auto operation_type = item->operation_type();
-    const bool apply_separately = operation_type == OperationType::kAlterSchema ||
+    const bool apply_separately = operation_type == OperationType::kChangeMetadata ||
                                   operation_type == OperationType::kEmpty;
     const int64_t bound_term = apply_separately ? -1 : item->consensus_round()->bound_term();
 
@@ -279,7 +278,7 @@ void PreparerImpl::ReplicateSubBatch(
     rounds_to_replicate_.push_back((*batch_iter)->consensus_round());
   }
 
-  const Status s = consensus_->ReplicateBatch(rounds_to_replicate_);
+  const Status s = consensus_->ReplicateBatch(&rounds_to_replicate_);
   rounds_to_replicate_.clear();
 
   if (PREDICT_FALSE(!s.ok())) {
@@ -288,8 +287,7 @@ void PreparerImpl::ReplicateSubBatch(
             << "failed with that status";
     // Treat all the operations in the batch as failed.
     for (auto batch_iter = batch_begin; batch_iter != batch_end; ++batch_iter) {
-      (*batch_iter)->SetReplicationFailed(s);
-      (*batch_iter)->HandleFailure();
+      (*batch_iter)->ReplicationFailed(s);
     }
   }
 }

@@ -58,6 +58,7 @@
 #include "yb/rpc/constants.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/rpc_service.h"
 #include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
@@ -89,11 +90,12 @@ DEFINE_int32(rpc_default_keepalive_time_ms, 65000,
 TAG_FLAG(rpc_default_keepalive_time_ms, advanced);
 DEFINE_uint64(io_thread_pool_size, 4, "Size of allocated IO Thread Pool.");
 
-DEFINE_int64(outbound_rpc_block_size, 1_MB, "Outbound RPC block size");
 DEFINE_int64(outbound_rpc_memory_limit, 0, "Outbound RPC memory limit");
 
 DEFINE_int32(rpc_queue_limit, 10000, "Queue limit for rpc server");
 DEFINE_int32(rpc_workers_limit, 256, "Workers limit for rpc server");
+
+DEFINE_int32(socket_receive_buffer_size, 0, "Socket receive buffer size, 0 to use default");
 
 namespace yb {
 namespace rpc {
@@ -111,7 +113,8 @@ MessengerBuilder::MessengerBuilder(std::string name)
       coarse_timer_granularity_(100ms),
       listen_protocol_(TcpStream::StaticProtocol()),
       queue_limit_(FLAGS_rpc_queue_limit),
-      workers_limit_(FLAGS_rpc_workers_limit) {
+      workers_limit_(FLAGS_rpc_workers_limit),
+      num_connections_to_server_(GetAtomicFlag(&FLAGS_num_connections_to_server)) {
   AddStreamFactory(TcpStream::StaticProtocol(), TcpStream::Factory());
 }
 
@@ -159,8 +162,11 @@ MessengerBuilder &MessengerBuilder::AddStreamFactory(
 
 MessengerBuilder &MessengerBuilder::UseDefaultConnectionContextFactory(
     const std::shared_ptr<MemTracker>& parent_mem_tracker) {
+  if (parent_mem_tracker) {
+    last_used_parent_mem_tracker_ = parent_mem_tracker;
+  }
   connection_context_factory_ = rpc::CreateConnectionContextFactory<YBOutboundConnectionContext>(
-      FLAGS_outbound_rpc_block_size, FLAGS_outbound_rpc_memory_limit, parent_mem_tracker);
+      FLAGS_outbound_rpc_memory_limit, parent_mem_tracker);
   return *this;
 }
 
@@ -257,22 +263,48 @@ Status Messenger::StartAcceptor() {
 }
 
 void Messenger::BreakConnectivityWith(const IpAddress& address) {
-  LOG(INFO) << "TEST: Break connectivity with: " << address;
+  BreakConnectivity(address, /* incoming */ true, /* outgoing */ true);
+}
+void Messenger::BreakConnectivityTo(const IpAddress& address) {
+  BreakConnectivity(address, /* incoming */ false, /* outgoing */ true);
+}
 
-  std::unique_ptr<CountDownLatch> latch;
+void Messenger::BreakConnectivityFrom(const IpAddress& address) {
+  BreakConnectivity(address, /* incoming */ true, /* outgoing */ false);
+}
+
+void Messenger::BreakConnectivity(const IpAddress& address, bool incoming, bool outgoing) {
+  LOG(INFO) << "TEST: Break " << (incoming ? "incoming" : "") << "/" << (outgoing ? "outgoing" : "")
+            << " connectivity with: " << address;
+
+  boost::optional<CountDownLatch> latch;
   {
     std::lock_guard<percpu_rwlock> guard(lock_);
-    if (broken_connectivity_.empty()) {
+    if (broken_connectivity_from_.empty() || broken_connectivity_to_.empty()) {
       has_broken_connectivity_.store(true, std::memory_order_release);
     }
-    if (broken_connectivity_.insert(address).second) {
-      latch.reset(new CountDownLatch(reactors_.size()));
+    bool inserted_from = false;
+    if (incoming) {
+      inserted_from = broken_connectivity_from_.insert(address).second;
+    }
+    bool inserted_to = false;
+    if (outgoing) {
+      inserted_to = broken_connectivity_to_.insert(address).second;
+    }
+    if (inserted_from || inserted_to) {
+      latch.emplace(reactors_.size());
       for (auto* reactor : reactors_) {
         auto scheduled = reactor->ScheduleReactorTask(MakeFunctorReactorTask(
-            [&latch, address](Reactor* reactor) {
-              reactor->DropWithRemoteAddress(address);
+            [&latch, address, incoming, outgoing](Reactor* reactor) {
+              if (incoming) {
+                reactor->DropIncomingWithRemoteAddress(address);
+              }
+              if (outgoing) {
+                reactor->DropOutgoingWithRemoteAddress(address);
+              }
               latch->CountDown();
-            }, SOURCE_LOCATION()));
+            },
+            SOURCE_LOCATION()));
         if (!scheduled) {
           LOG(INFO) << "Failed to schedule drop connection with: " << address.to_string();
           latch->CountDown();
@@ -287,19 +319,44 @@ void Messenger::BreakConnectivityWith(const IpAddress& address) {
 }
 
 void Messenger::RestoreConnectivityWith(const IpAddress& address) {
-  LOG(INFO) << "TEST: Restore connectivity with: " << address;
+  RestoreConnectivity(address, /* incoming */ true, /* outgoing */ true);
+}
+void Messenger::RestoreConnectivityTo(const IpAddress& address) {
+  RestoreConnectivity(address, /* incoming */ false, /* outgoing */ true);
+}
+
+void Messenger::RestoreConnectivityFrom(const IpAddress& address) {
+  RestoreConnectivity(address, /* incoming */ true, /* outgoing */ false);
+}
+
+void Messenger::RestoreConnectivity(const IpAddress& address, bool incoming, bool outgoing) {
+  LOG(INFO) << "TEST: Restore " << (incoming ? "incoming" : "") << "/"
+            << (outgoing ? "outgoing" : "") << " connectivity with: " << address;
 
   std::lock_guard<percpu_rwlock> guard(lock_);
-  broken_connectivity_.erase(address);
-  if (broken_connectivity_.empty()) {
+  if (incoming) {
+    broken_connectivity_from_.erase(address);
+  }
+  if (outgoing) {
+    broken_connectivity_to_.erase(address);
+  }
+  if (broken_connectivity_from_.empty() && broken_connectivity_to_.empty()) {
     has_broken_connectivity_.store(false, std::memory_order_release);
   }
 }
 
-bool Messenger::IsArtificiallyDisconnectedFrom(const IpAddress& remote) {
+bool Messenger::TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote) {
   if (has_broken_connectivity_.load(std::memory_order_acquire)) {
     shared_lock<rw_spinlock> guard(lock_.get_lock());
-    return broken_connectivity_.count(remote) != 0;
+    return broken_connectivity_from_.count(remote) != 0;
+  }
+  return false;
+}
+
+bool Messenger::TEST_ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &remote) {
+  if (has_broken_connectivity_.load(std::memory_order_acquire)) {
+    shared_lock<rw_spinlock> guard(lock_.get_lock());
+    return broken_connectivity_to_.count(remote) != 0;
   }
   return false;
 }
@@ -404,10 +461,10 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
   const auto& remote = call->conn_id().remote();
   Reactor *reactor = RemoteToReactor(remote, call->conn_id().idx());
 
-  if (IsArtificiallyDisconnectedFrom(remote.address())) {
-    LOG(INFO) << "TEST: Rejected connection to " << remote;
+  if (TEST_ShouldArtificiallyRejectOutgoingCallsTo(remote.address())) {
+    VLOG(1) << "TEST: Rejected connection to " << remote;
     auto scheduled = reactor->ScheduleReactorTask(std::make_shared<NotifyDisconnectedReactorTask>(
-        std::move(call), SOURCE_LOCATION()));
+        call, SOURCE_LOCATION()));
     if (!scheduled) {
       call->Transferred(STATUS(Aborted, "Reactor is closing"), nullptr /* conn */);
     }
@@ -448,18 +505,34 @@ void Messenger::Handle(InboundCallPtr call) {
   service->Handle(std::move(call));
 }
 
+const std::shared_ptr<MemTracker>& Messenger::parent_mem_tracker() {
+  return connection_context_factory_->buffer_tracker();
+}
+
 void Messenger::RegisterInboundSocket(
     const ConnectionContextFactoryPtr& factory, Socket *new_socket, const Endpoint& remote) {
-  if (IsArtificiallyDisconnectedFrom(remote.address())) {
+  if (TEST_ShouldArtificiallyRejectIncomingCallsFrom(remote.address())) {
     auto status = new_socket->Close();
-    LOG(INFO) << "TEST: Rejected connection from " << remote
-              << ", close status: " << status.ToString();
+    VLOG(1) << "TEST: Rejected connection from " << remote
+            << ", close status: " << status.ToString();
     return;
   }
 
-  int idx = num_connections_accepted_.fetch_add(1) % FLAGS_num_connections_to_server;
+  if (FLAGS_socket_receive_buffer_size) {
+    WARN_NOT_OK(new_socket->SetReceiveBufferSize(FLAGS_socket_receive_buffer_size),
+                "Set receive buffer size failed: ");
+  }
+
+  auto receive_buffer_size = new_socket->GetReceiveBufferSize();
+  if (!receive_buffer_size.ok()) {
+    LOG(WARNING) << "Register inbound socket failed: " << receive_buffer_size.status();
+    return;
+  }
+
+  int idx = num_connections_accepted_.fetch_add(1) % num_connections_to_server_;
   Reactor *reactor = RemoteToReactor(remote, idx);
-  reactor->RegisterInboundSocket(new_socket, remote, factory->Create());
+  reactor->RegisterInboundSocket(
+      new_socket, remote, factory->Create(*receive_buffer_size), factory->buffer_tracker());
 }
 
 Messenger::Messenger(const MessengerBuilder &bld)
@@ -471,7 +544,9 @@ Messenger::Messenger(const MessengerBuilder &bld)
       retain_self_(this),
       io_thread_pool_(name_, FLAGS_io_thread_pool_size),
       scheduler_(&io_thread_pool_.io_service()),
-      normal_thread_pool_(new rpc::ThreadPool(name_, bld.queue_limit_, bld.workers_limit_)) {
+      normal_thread_pool_(new rpc::ThreadPool(name_, bld.queue_limit_, bld.workers_limit_)),
+      rpc_metrics_(new RpcMetrics(bld.metric_entity_)),
+      num_connections_to_server_(bld.num_connections_to_server_) {
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);
 #endif
@@ -496,7 +571,7 @@ Messenger::~Messenger() {
 }
 
 size_t Messenger::max_concurrent_requests() const {
-  return FLAGS_num_connections_to_server;
+  return num_connections_to_server_;
 }
 
 Reactor* Messenger::RemoteToReactor(const Endpoint& remote, uint32_t idx) {

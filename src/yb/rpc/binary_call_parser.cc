@@ -12,6 +12,7 @@
 //
 
 #include "yb/rpc/binary_call_parser.h"
+#include "yb/rpc/stream.h"
 
 #include "yb/gutil/endian.h"
 
@@ -19,17 +20,28 @@ namespace yb {
 namespace rpc {
 
 BinaryCallParser::BinaryCallParser(
+    const MemTrackerPtr& parent_tracker,
     size_t header_size, size_t size_offset, size_t max_message_length, IncludeHeader include_header,
     BinaryCallParserListener* listener)
-    : buffer_(header_size), size_offset_(size_offset), max_message_length_(max_message_length),
-      include_header_(include_header), listener_(listener) {
+    : buffer_(header_size), size_offset_(size_offset),
+      max_message_length_(max_message_length), include_header_(include_header),
+      listener_(listener) {
+  buffer_tracker_ = MemTracker::FindOrCreateTracker("Reading", parent_tracker);
 }
 
-Result<size_t> BinaryCallParser::Parse(const rpc::ConnectionPtr& connection, const IoVecs& data) {
+Result<ProcessDataResult> BinaryCallParser::Parse(
+    const rpc::ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
+  if (!call_data_.empty()) {
+    RETURN_NOT_OK(listener_->HandleCall(connection, &call_data_));
+    call_data_.Reset();
+    call_data_consumption_ = ScopedTrackedConsumption();
+  }
+
   auto full_size = IoVecsFullSize(data);
 
   size_t consumed = 0;
   const size_t header_size = buffer_.size();
+  const size_t body_offset = include_header_ ? 0 : header_size;
   while (full_size >= consumed + header_size) {
     IoVecsToBuffer(data, consumed, consumed + header_size, &buffer_);
 
@@ -42,18 +54,31 @@ Result<size_t> BinaryCallParser::Parse(const rpc::ConnectionPtr& connection, con
           total_length, max_message_length_);
     }
     if (consumed + total_length > full_size) {
+      size_t call_data_size = header_size - body_offset + data_length;
+      MemTracker* blocking_mem_tracker = nullptr;
+      if (buffer_tracker_->TryConsume(call_data_size, &blocking_mem_tracker)) {
+        call_data_consumption_ = ScopedTrackedConsumption(
+            buffer_tracker_, call_data_size, AlreadyConsumed::kTrue);
+        call_data_ = CallData(call_data_size);
+        IoVecsToBuffer(data, consumed + body_offset, full_size, call_data_.data());
+        size_t received_size = full_size - (consumed + body_offset);
+        Slice buffer(call_data_.data() + received_size, call_data_size - received_size);
+        return ProcessDataResult{ full_size, buffer };
+      } else if (read_buffer_full && consumed == 0) {
+        LOG(WARNING) << "Unable to allocate read buffer because of limit, required: "
+                     << call_data_size << ", blocked by: " << yb::ToString(blocking_mem_tracker);
+      }
       break;
     }
 
-    std::vector<char> call_data;
-    IoVecsToBuffer(
-        data, consumed + (include_header_ ? 0 : header_size), consumed + total_length, &call_data);
+    CallData call_data(total_length - body_offset);
+    IoVecsToBuffer(data, consumed + body_offset, consumed + total_length, call_data.data());
     RETURN_NOT_OK(listener_->HandleCall(connection, &call_data));
 
     consumed += total_length;
   }
 
-  return consumed;
+  return ProcessDataResult{ consumed, Slice() };
 }
 
 } // namespace rpc

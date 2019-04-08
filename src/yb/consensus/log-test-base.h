@@ -124,12 +124,13 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
 
   // Account for the entry batch header and wrapper PB.
   if (size) {
-    *size += log::kEntryHeaderSize + 5;
+    *size += log::kEntryHeaderSize + 7;
   }
 
   Synchronizer s;
   RETURN_NOT_OK(log->AsyncAppendReplicates(
-      replicates, yb::OpId() /* committed_op_id */, s.AsStatusCallback()));
+      replicates, yb::OpId() /* committed_op_id */, RestartSafeCoarseTimePoint::FromUInt64(1),
+      s.AsStatusCallback()));
   RETURN_NOT_OK(s.Wait());
   return Status::OK();
 }
@@ -200,15 +201,6 @@ class LogTestBase : public YBTest {
     ASSERT_EQ(expected, count);
   }
 
-  void EntriesToIdList(vector<uint32_t>* ids) {
-    for (const auto& entry : entries_) {
-      VLOG(2) << "Entry contents: " << entry->DebugString();
-      if (entry->type() == REPLICATE) {
-        ids->push_back(entry->replicate().id().index());
-      }
-    }
-  }
-
   static void CheckReplicateResult(const consensus::ReplicateMsgPtr& msg, const Status& s) {
     ASSERT_OK(s);
   }
@@ -245,13 +237,15 @@ class LogTestBase : public YBTest {
     if (sync) {
       Synchronizer s;
       ASSERT_OK(log_->AsyncAppendReplicates(
-          { replicate }, yb::OpId() /* committed_op_id */, s.AsStatusCallback()));
+          { replicate }, yb::OpId() /* committed_op_id */, restart_safe_coarse_mono_clock_.Now(),
+          s.AsStatusCallback()));
       ASSERT_OK(s.Wait());
     } else {
       // AsyncAppendReplicates does not free the ReplicateMsg on completion, so we
       // need to pass it through to our callback.
-      ASSERT_OK(log_->AsyncAppendReplicates({ replicate }, yb::OpId() /* committed_op_id */,
-                                            Bind(&LogTestBase::CheckReplicateResult, replicate)));
+      ASSERT_OK(log_->AsyncAppendReplicates(
+          { replicate }, yb::OpId() /* committed_op_id */, restart_safe_coarse_mono_clock_.Now(),
+          Bind(&LogTestBase::CheckReplicateResult, replicate)));
     }
   }
 
@@ -311,10 +305,10 @@ class LogTestBase : public YBTest {
   int32_t current_index_;
   LogOptions options_;
   // Reusable entries vector that deletes the entries on destruction.
-  LogEntries entries_;
   scoped_refptr<LogAnchorRegistry> log_anchor_registry_;
   scoped_refptr<Clock> clock_;
   string tablet_wal_path_;
+  RestartSafeCoarseMonoClock restart_safe_coarse_mono_clock_;
 };
 
 // Corrupts the last segment of the provided log by either truncating it

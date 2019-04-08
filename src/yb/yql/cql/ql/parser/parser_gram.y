@@ -40,9 +40,10 @@
 %expect 0
 
 // Debugging options. These should be deleted after coding is completed.
-%debug
+%define parse.trace
 %define parse.error verbose
-%define parse.assert
+// Because of a bug in BISON 3.2, we have to turn off assertion for now.
+// %define parse.assert
 
 // BISON options.
 %defines                                                                  // Generate header files.
@@ -89,6 +90,7 @@
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
+#include "yb/yql/cql/ql/ptree/pt_insert_values_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
@@ -116,7 +118,7 @@ typedef PTRoleOptionListNode::SharedPtr     PRoleOptionListNode;
 typedef PTConstInt::SharedPtr          PConstInt;
 typedef PTCollectionExpr::SharedPtr    PCollectionExpr;
 typedef PTCollection::SharedPtr        PCollection;
-typedef PTValues::SharedPtr            PValues;
+typedef PTInsertValuesClause::SharedPtr     PInsertValuesClause;
 typedef PTSelectStmt::SharedPtr        PSelectStmt;
 typedef PTTableRef::SharedPtr          PTableRef;
 typedef PTTableRefListNode::SharedPtr  PTableRefListNode;
@@ -205,7 +207,7 @@ using namespace yb::ql;
 
                           // Create table.
                           CreateStmt schema_stmt TableElement TableConstraint
-                          columnDef ColConstraint ColConstraintElem
+                          columnDef columnElem ColConstraint ColConstraintElem
                           ConstraintElem ConstraintAttr
 
                           // Create role.
@@ -267,7 +269,7 @@ using namespace yb::ql;
 
 %type <PSelectStmt>       simple_select
 
-%type <PValues>           values_clause
+%type <PInsertValuesClause>     values_clause
 
 %type <PExpr>             // Expression clause. These expressions are used in a specific context.
                           if_clause
@@ -359,7 +361,7 @@ using namespace yb::ql;
 %type <PTypeFieldListNode> TypeFieldList
 
 // Name nodes.
-%type <PName>             indirection_el columnElem
+%type <PName>             indirection_el
 
 %type <PQualifiedNameListNode>  insert_column_list any_name_list relation_expr_list
 
@@ -631,7 +633,7 @@ using namespace yb::ql;
 
                           QUOTE
 
-                          RANGE READ REAL REASSIGN RECHECK RECURSIVE REF REFERENCES REFRESH
+                          RANGE READ REAL REASSIGN RECHECK RECURSIVE REF REFRESH
                           REINDEX RELATIVE_P RELEASE RENAME REPEATABLE REPLACE REPLICA RESET
                           RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT ROLE ROLES ROLLBACK ROLLUP
                           ROW ROWS RULE
@@ -645,8 +647,8 @@ using namespace yb::ql;
 
                           TABLE TABLES TABLESAMPLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P
                           THEN TIME TIMESTAMP TIMEUUID TINYINT TO TOKEN TRAILING TRANSACTION
-                          TRANSFORM TREAT TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TTL TYPE_P TYPES_P
-                          PARTITION_HASH
+                          TRANSFORM TREAT TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TTL TUPLE
+                          TYPE_P TYPES_P PARTITION_HASH
 
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
                           UNLOGGED UNTIL UPDATE USE USER USING UUID
@@ -691,7 +693,9 @@ using namespace yb::ql;
 // same precedence as LIKE; otherwise they'd effectively have the same precedence as NOT, at least
 // with respect to their left-hand subexpression. NULLS_LA and WITH_LA are needed to make the
 // grammar LALR(1).
-%token                    NOT_LA NULLS_LA WITH_LA
+//
+// OFFSET_LA is added to support OFFSET clause in SELECT.
+%token                    NOT_LA NULLS_LA WITH_LA OFFSET_LA
 
 %token                    SCAN_ERROR "incomprehensible_character_pattern"
 %token END                0 "end_of_file"
@@ -1211,6 +1215,15 @@ columnDef:
   ColId Typename create_generic_options ColQualList {
     $$ = MAKE_NODE(@1, PTColumnDefinition, $1, $2, $4);
   }
+  | ColId Typename STATIC create_generic_options ColQualList {
+    PTStatic::SharedPtr static_option = MAKE_NODE(@3, PTStatic);
+    if ($5 == nullptr) {
+      $5 = MAKE_NODE(@5, PTListNode, static_option);
+    } else {
+      $5->Append(static_option);
+    }
+    $$ = MAKE_NODE(@1, PTColumnDefinition, $1, $2, $5);
+  }
 ;
 
 ColQualList:
@@ -1260,9 +1273,6 @@ ColConstraintElem:
   PRIMARY KEY opt_definition OptConsTableSpace {
     $$ = MAKE_NODE(@1, PTPrimaryKey);
   }
-  | STATIC {
-    $$ = MAKE_NODE(@1, PTStatic);
-  }
   | NOT NULL_P {
     PARSER_UNSUPPORTED(@1);
   }
@@ -1276,9 +1286,6 @@ ColConstraintElem:
     PARSER_UNSUPPORTED(@1);
   }
   | DEFAULT b_expr {
-    PARSER_UNSUPPORTED(@1);
-  }
-  | REFERENCES qualified_name opt_column_list key_match key_actions {
     PARSER_UNSUPPORTED(@1);
   }
 ;
@@ -1339,10 +1346,6 @@ ConstraintElem:
   opt_definition OptConsTableSpace ExclusionWhereClause ConstraintAttributeSpec {
     PARSER_UNSUPPORTED(@1);
   }
-  | FOREIGN KEY '(' columnList ')' REFERENCES qualified_name
-  opt_column_list key_match key_actions ConstraintAttributeSpec {
-    PARSER_UNSUPPORTED(@1);
-  }
 ;
 
 opt_no_inherit:
@@ -1386,6 +1389,10 @@ columnList:
 columnElem:
   ColId {
     $$ = MAKE_NODE(@1, PTName, $1);
+  }
+  | ColId json_ref {
+    PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $1);
+    $$ = MAKE_NODE(@1, PTJsonColumnWithOperators, name_node, $2);
   }
 ;
 
@@ -2126,7 +2133,7 @@ simple_select:
 
 values_clause:
   VALUES ctext_row {
-    $$ = MAKE_NODE(@1, PTValues, $2);
+    $$ = MAKE_NODE(@1, PTInsertValuesClause, $2);
   }
   | values_clause ',' ctext_row {
     PARSER_NOCODE(@2);
@@ -2339,7 +2346,7 @@ limit_clause:
 ;
 
 offset_clause:
-  OFFSET select_offset_value {
+  OFFSET_LA select_offset_value {
     $$ = $2;
   }
 ;
@@ -4452,6 +4459,7 @@ type_function_name:
   IDENT                         { $$ = $1; }
   | unreserved_keyword          { $$ = parser_->MakeString($1); }
   | type_func_name_keyword      { $$ = parser_->MakeString($1); }
+  | UUID                        { $$ = parser_->MakeString($1); }
 ;
 
 // Any not-fully-reserved word --- these names can be, eg, role names.
@@ -4513,6 +4521,9 @@ ParametricTypename:
   }
   | LIST '<' Typename '>' {
     $$ = MAKE_NODE(@1, PTList, $3);
+  }
+  | TUPLE '<' type_name_list '>' {
+    PARSER_UNSUPPORTED(@1);
   }
   | FROZEN '<' Typename '>' {
     $$ = MAKE_NODE(@1, PTFrozen, $3);
@@ -5104,6 +5115,7 @@ unreserved_keyword:
   | STANDALONE_P { $$ = $1; }
   | START { $$ = $1; }
   | STATEMENT { $$ = $1; }
+  | STATIC { $$ = $1; }
   | STATISTICS { $$ = $1; }
   | STATUS { $$ = $1; }
   | STDIN { $$ = $1; }
@@ -5199,6 +5211,7 @@ col_name_keyword:
   | NONE { $$ = $1; }
   | NULLIF { $$ = $1; }
   | NUMERIC { $$ = $1; }
+  | OFFSET { $$ = $1; }
   | OUT_P { $$ = $1; }
   | OVERLAY { $$ = $1; }
   | POSITION { $$ = $1; }
@@ -5215,6 +5228,7 @@ col_name_keyword:
   | TINYINT { $$ = $1; }
   | TREAT { $$ = $1; }
   | TRIM { $$ = $1; }
+  | TUPLE { $$ = $1; }
   | UUID { $$ = $1; }
   | VALUES { $$ = $1; }
   | VARCHAR { $$ = $1; }
@@ -5329,7 +5343,6 @@ reserved_keyword:
   | NAN { $$ = $1; }
   | NOT { $$ = $1; }
   | NULL_P { $$ = $1; }
-  | OFFSET { $$ = $1; }
   | ON { $$ = $1; }
   | ONLY { $$ = $1; }
   | OR { $$ = $1; }
@@ -5337,14 +5350,12 @@ reserved_keyword:
   | PARTITION_HASH { $$ = $1; }
   | PLACING { $$ = $1; }
   | PRIMARY { $$ = $1; }
-  | REFERENCES { $$ = $1; }
   | RETURNING { $$ = $1; }
   | RETURNS { $$ = $1; }
   | SCHEMA { $$ = $1; }
   | SELECT { $$ = $1; }
   | SESSION_USER { $$ = $1; }
   | SOME { $$ = $1; }
-  | STATIC { $$ = $1; }
   | SYMMETRIC { $$ = $1; }
   | TABLE { $$ = $1; }
   | THEN { $$ = $1; }
@@ -7688,7 +7699,7 @@ GrantStmt:
   GRANT permissions ON ALL KEYSPACES TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
-                   $2, ResourceType::ALL_KEYSPACES, /*keyspace_node*/ nullptr, role_node);
+                   $2, ResourceType::ALL_KEYSPACES, nullptr, role_node);
   }
   | GRANT permissions ON KEYSPACE ColId TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
@@ -7709,7 +7720,7 @@ GrantStmt:
   | GRANT permissions ON ALL ROLES TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
-                   $2, ResourceType::ALL_ROLES, /*on_role_node*/ nullptr , role_node);
+                   $2, ResourceType::ALL_ROLES, nullptr , role_node);
   }
   | GRANT permissions ON ROLE role_name TO role_name {
     PTQualifiedName::SharedPtr to_role_node = MAKE_NODE(@1, PTQualifiedName, $7);
@@ -7723,7 +7734,7 @@ RevokeStmt:
   REVOKE permissions ON ALL KEYSPACES FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
-                   $2, ResourceType::ALL_KEYSPACES, /*keyspace_node*/ nullptr, role_node);
+                   $2, ResourceType::ALL_KEYSPACES, nullptr, role_node);
   }
   | REVOKE permissions ON KEYSPACE ColId FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
@@ -7744,7 +7755,7 @@ RevokeStmt:
   | REVOKE permissions ON ALL ROLES FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
-                   $2, ResourceType::ALL_ROLES, /*on_role_node*/ nullptr , role_node);
+                   $2, ResourceType::ALL_ROLES, nullptr , role_node);
   }
   | REVOKE permissions ON ROLE role_name FROM role_name {
     PTQualifiedName::SharedPtr to_role_node = MAKE_NODE(@1, PTQualifiedName, $7);
@@ -7832,8 +7843,6 @@ privilege_list:
 
 privilege:
   SELECT opt_column_list {
-  }
-  | REFERENCES opt_column_list {
   }
   | CREATE opt_column_list {
   }
@@ -8034,7 +8043,7 @@ opt_concurrently:
 
 opt_index_name:
   index_name                        { $$ = $1; }
-  | /*EMPTY*/                       { PARSER_UNSUPPORTED(@0); }
+  | /*EMPTY*/                       { $$ = nullptr; }
 ;
 
 access_method_clause:

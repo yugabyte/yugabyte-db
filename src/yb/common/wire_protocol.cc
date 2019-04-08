@@ -46,6 +46,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/safe_math.h"
 #include "yb/util/slice.h"
+#include "yb/util/enums.h"
 
 using google::protobuf::RepeatedPtrField;
 using std::vector;
@@ -78,33 +79,15 @@ void SetAt(
 std::vector<AppStatusPB::ErrorCode> CreateStatusToErrorCode() {
   std::vector<AppStatusPB::ErrorCode> result;
   const auto default_value = AppStatusPB::UNKNOWN_ERROR;
-  SetAt(Status::kNotFound, AppStatusPB::NOT_FOUND, default_value, &result);
-  SetAt(Status::kCorruption, AppStatusPB::CORRUPTION, default_value, &result);
-  SetAt(Status::kNotSupported, AppStatusPB::NOT_SUPPORTED, default_value, &result);
-  SetAt(Status::kInvalidArgument, AppStatusPB::INVALID_ARGUMENT, default_value, &result);
-  SetAt(Status::kIOError, AppStatusPB::IO_ERROR, default_value, &result);
-  SetAt(Status::kAlreadyPresent, AppStatusPB::ALREADY_PRESENT, default_value, &result);
-  SetAt(Status::kRuntimeError, AppStatusPB::RUNTIME_ERROR, default_value, &result);
-  SetAt(Status::kNetworkError, AppStatusPB::NETWORK_ERROR, default_value, &result);
-  SetAt(Status::kIllegalState, AppStatusPB::ILLEGAL_STATE, default_value, &result);
-  SetAt(Status::kNotAuthorized, AppStatusPB::NOT_AUTHORIZED, default_value, &result);
-  SetAt(Status::kAborted, AppStatusPB::ABORTED, default_value, &result);
-  SetAt(Status::kRemoteError, AppStatusPB::REMOTE_ERROR, default_value, &result);
-  SetAt(Status::kServiceUnavailable, AppStatusPB::SERVICE_UNAVAILABLE, default_value, &result);
-  SetAt(Status::kTimedOut, AppStatusPB::TIMED_OUT, default_value, &result);
-  SetAt(Status::kUninitialized, AppStatusPB::UNINITIALIZED, default_value, &result);
-  SetAt(Status::kConfigurationError, AppStatusPB::CONFIGURATION_ERROR, default_value, &result);
-  SetAt(Status::kIncomplete, AppStatusPB::INCOMPLETE, default_value, &result);
-  SetAt(Status::kEndOfFile, AppStatusPB::END_OF_FILE, default_value, &result);
-  SetAt(Status::kInvalidCommand, AppStatusPB::INVALID_COMMAND, default_value, &result);
-  SetAt(Status::kQLError, AppStatusPB::SQL_ERROR, default_value, &result);
-  SetAt(Status::kInternalError, AppStatusPB::INTERNAL_ERROR, default_value, &result);
-  SetAt(Status::kExpired, AppStatusPB::EXPIRED, default_value, &result);
-  SetAt(Status::kLeaderHasNoLease, AppStatusPB::LEADER_HAS_NO_LEASE, default_value, &result);
-  SetAt(Status::kLeaderNotReadyToServe, AppStatusPB::LEADER_NOT_READY_TO_SERVE, default_value,
-        &result);
-  SetAt(Status::kTryAgain, AppStatusPB::TRY_AGAIN_CODE, default_value, &result);
-  SetAt(Status::kBusy, AppStatusPB::BUSY, default_value, &result);
+#define YB_SET_STATUS_TO_ERROR_CODE(name, pb_name, value, message) \
+    SetAt(Status::BOOST_PP_CAT(k, name), AppStatusPB::pb_name, default_value, &result); \
+    static_assert( \
+        to_underlying(AppStatusPB::pb_name) == to_underlying(Status::BOOST_PP_CAT(k, name)), \
+        "The numeric value of AppStatusPB::" BOOST_PP_STRINGIZE(pb_name) " defined in" \
+            " wire_protocol.proto does not match the value of Status::k" BOOST_PP_STRINGIZE(name) \
+            " defined in status.h.");
+  BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_SET_STATUS_TO_ERROR_CODE, YB_STATUS_CODES);
+#undef YB_SET_STATUS_TO_ERROR_CODe
   return result;
 }
 
@@ -183,7 +166,7 @@ Status StatusFromPB(const AppStatusPB& pb) {
   auto code = kErrorCodeToStatus[pb.code()];
   if (code == Status::kQLError) {
     if (!pb.has_ql_error_code()) {
-      return STATUS(InternalError, "SQL error code missing");
+      return STATUS(InternalError, "Query error code missing");
     }
     error_code = pb.ql_error_code();
   }
@@ -253,16 +236,15 @@ Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
   return Status::OK();
 }
 
-Status SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
+void SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
   pb->Clear();
-  RETURN_NOT_OK(SchemaToColumnPBs(schema, pb->mutable_columns(), flags));
+  SchemaToColumnPBs(schema, pb->mutable_columns(), flags);
   schema.table_properties().ToTablePropertiesPB(pb->mutable_table_properties());
-  return Status::OK();
 }
 
-Status SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb) {
+void SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb) {
   pb->Clear();
-  return SchemaToColumnPBs(schema, pb->mutable_columns(), SCHEMA_PB_WITHOUT_IDS);
+  SchemaToColumnPBs(schema, pb->mutable_columns(), SCHEMA_PB_WITHOUT_IDS);
 }
 
 Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
@@ -294,6 +276,22 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
     pb->set_is_key(true);
     pb->set_is_hash_key(true);
   }
+
+  // Set JSON attribute path (for c->'a'->>'b' case).
+  for (const auto& op : col_schema.json_ops()) {
+    QLJsonOperationPB* const json_op_pb = pb->add_json_operations();
+    json_op_pb->set_json_operator(op.first);
+    *(json_op_pb->mutable_operand()->mutable_value()) = op.second;
+  }
+}
+
+ColumnSchema::QLJsonOperations JsonOpsFromPB(
+    const RepeatedPtrField<QLJsonOperationPB>& json_ops) {
+  ColumnSchema::QLJsonOperations op_vec;
+  for (const QLJsonOperationPB& pb : json_ops) {
+    op_vec.push_back(ColumnSchema::QLJsonOperation(pb.json_operator(), pb.operand().value()));
+  }
+  return op_vec;
 }
 
 ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
@@ -301,7 +299,8 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   // processing SchemaPB.
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), pb.is_nullable(),
                       pb.is_hash_key(), pb.is_static(), pb.is_counter(), pb.order(),
-                      ColumnSchema::SortingType(pb.sorting_type()));
+                      ColumnSchema::SortingType(pb.sorting_type()),
+                      JsonOpsFromPB(pb.json_operations()));
 }
 
 CHECKED_STATUS ColumnPBsToColumnTuple(
@@ -343,9 +342,9 @@ Status ColumnPBsToSchema(const RepeatedPtrField<ColumnSchemaPB>& column_pbs,
   return schema->Reset(columns, column_ids, num_key_columns);
 }
 
-Status SchemaToColumnPBs(const Schema& schema,
-                         RepeatedPtrField<ColumnSchemaPB>* cols,
-                         int flags) {
+void SchemaToColumnPBs(const Schema& schema,
+                       RepeatedPtrField<ColumnSchemaPB>* cols,
+                       int flags) {
   cols->Clear();
   int idx = 0;
   for (const ColumnSchema& col : schema.columns()) {
@@ -359,7 +358,6 @@ Status SchemaToColumnPBs(const Schema& schema,
 
     idx++;
   }
-  return Status::OK();
 }
 
 Result<UsePrivateIpMode> GetPrivateIpMode() {

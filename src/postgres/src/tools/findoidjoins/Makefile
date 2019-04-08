@@ -2,7 +2,7 @@
 #
 # Makefile for src/tools/findoidjoins
 #
-# Copyright (c) 2003-2017, PostgreSQL Global Development Group
+# Copyright (c) 2003-2018, PostgreSQL Global Development Group
 #
 # src/tools/findoidjoins/Makefile
 #
@@ -13,7 +13,7 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
-override LDFLAGS := $(libpq_pgport) $(LDFLAGS)
+LDFLAGS_INTERNAL += $(libpq_pgport)
 
 OBJS= findoidjoins.o
 

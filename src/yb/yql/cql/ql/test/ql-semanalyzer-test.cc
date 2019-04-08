@@ -81,7 +81,8 @@ TEST_F(QLTestAnalyzer, TestCreateTablePropertyAnalyzer) {
   PTTableProperty::SharedPtr table_property = table_properties->element(0);
   EXPECT_EQ(std::string("default_time_to_live"), table_property->lhs()->c_str());
   PTConstVarInt::SharedPtr rhs = std::static_pointer_cast<PTConstVarInt>(table_property->rhs());
-  EXPECT_EQ(util::VarInt(1000), util::VarInt(rhs->Eval()->c_str()));
+  auto from_str = ASSERT_RESULT(util::VarInt::CreateFromString(rhs->Eval()->c_str()));
+  EXPECT_EQ(util::VarInt(1000), from_str);
 }
 
 TEST_F(QLTestAnalyzer, TestCreateTableAnalyze) {
@@ -329,6 +330,30 @@ TEST_F(QLTestAnalyzer, TestCreateIndex) {
 
   // Index on non-transactional table.
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t3 (c);", &parse_tree);
+
+  // JSON secondary index on attributes.
+  CHECK_OK(processor->Run("CREATE TABLE t4 (h1 int, h2 text, r1 int, r2 text, j jsonb, "
+                          "PRIMARY KEY ((h1, h2), r1, r2)) "
+                          "with transactions = {'enabled':true};"));
+
+  // Analyze the sql statement.
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 (j->>'a');", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 (j->'a'->>'b');", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 (j->'a'->'b'->>'c');", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 ((j->>'a'));", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 ((j->'a'->>'b'));", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 ((j->'a'->'b'->>'c'));", &parse_tree);
+  // Multiple JSON columns, as hash and range columns.
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 (j->>'a', j->>'x');", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 ((j->>'a'), j->>'x');", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 ((j->>'a', j->>'x'));", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 (j->'a'->>'b', j->'x'->>'y');", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 ((j->'a'->>'b'), j->'x'->>'y');", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 ((j->'a'->>'b', j->'x'->>'y'));", &parse_tree);
+  // Covering column.
+  // TODO: sem_context.h:215: Check failed: sem_state_ State variable is not set for the expression
+//  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 (j->>'a') INCLUDE (j->>'x');", &parse_tree);
+//  ANALYZE_VALID_STMT("CREATE INDEX i ON t4 (j->>'a') INCLUDE (j->>'x', j->>'k');", &parse_tree);
 }
 
 TEST_F(QLTestAnalyzer, TestCreateLocalIndex) {
@@ -417,6 +442,17 @@ TEST_F(QLTestAnalyzer, TestIndexSelection) {
   // Check that non-local beats local if it can perform the read.
   TestIndexSelection("SELECT * FROM t WHERE h1 = 1 AND h2 = 1 AND c1 = 1", true, true);
   TestIndexSelection("SELECT c2 FROM t WHERE h1 = 1 AND h2 = 1 AND r2 = 1 AND c1 = 1", true, true);
+}
+
+TEST_F(QLTestAnalyzer, TestIndexBasedOnJsonAttribute) {
+  CreateSimulatedCluster();
+  TestQLProcessor *processor = GetQLProcessor();
+  EXPECT_OK(processor->Run("CREATE TABLE t (h1 int, h2 int, r1 int, r2 int, j jsonb, "
+                           "PRIMARY KEY ((h1, h2), r1, r2)) "
+                           "with transactions = {'enabled':true};"));
+
+  EXPECT_OK(processor->Run("CREATE INDEX i1 ON t (j->>'a');"));
+  EXPECT_OK(processor->Run("CREATE INDEX i2 ON t (j->3);"));
 }
 
 TEST_F(QLTestAnalyzer, TestTruncate) {

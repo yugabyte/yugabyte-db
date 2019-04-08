@@ -4,7 +4,7 @@
  *	  This file contains routines to support indexes defined on system
  *	  catalogs.
  *
- * Portions Copyright (c) 1996-2017, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2018, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -19,8 +19,12 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "executor/executor.h"
+#include "utils/syscache.h"
 #include "utils/rel.h"
 
+#include "pg_yb_utils.h"
+#include "access/ybcam.h"
+#include "executor/ybcModifyTable.h"
 
 /*
  * CatalogOpenIndexes - open the indexes on a system catalog.
@@ -119,6 +123,7 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple)
 		Assert(indexInfo->ii_Predicate == NIL);
 		Assert(indexInfo->ii_ExclusionOps == NULL);
 		Assert(relationDescs[i]->rd_index->indimmediate);
+		Assert(indexInfo->ii_NumIndexKeyAttrs != 0);
 
 		/*
 		 * FormIndexDatum fills in its values and isnull parameters with the
@@ -137,9 +142,89 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple)
 					 values,	/* array of index Datums */
 					 isnull,	/* is-null flags */
 					 &(heapTuple->t_self),	/* tid of heap tuple */
+					 heapTuple,	/* heap tuple */
 					 heapRelation,
 					 relationDescs[i]->rd_index->indisunique ?
 					 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
+					 indexInfo);
+	}
+
+	ExecDropSingleTupleTableSlot(slot);
+}
+
+/*
+ * CatalogIndexDelete - delete index entries for one catalog tuple
+ *
+ * This should be called for each updated or deleted catalog tuple.
+ *
+ * This is effectively a cut-down version of ExecDeleteIndexTuples.
+ */
+static void
+CatalogIndexDelete(CatalogIndexState indstate, HeapTuple heapTuple)
+{
+	int			i;
+	int			numIndexes;
+	RelationPtr relationDescs;
+	Relation	heapRelation;
+	TupleTableSlot *slot;
+	IndexInfo **indexInfoArray;
+	Datum		values[INDEX_MAX_KEYS];
+	bool		isnull[INDEX_MAX_KEYS];
+
+	/*
+	 * Get information from the state structure.  Fall out if nothing to do.
+	 */
+	numIndexes = indstate->ri_NumIndices;
+	if (numIndexes == 0)
+		return;
+	relationDescs = indstate->ri_IndexRelationDescs;
+	indexInfoArray = indstate->ri_IndexRelationInfo;
+	heapRelation = indstate->ri_RelationDesc;
+
+	/* Need a slot to hold the tuple being examined */
+	slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRelation));
+	ExecStoreTuple(heapTuple, slot, InvalidBuffer, false);
+
+	/*
+	 * for each index, form and delete the index tuple
+	 */
+	for (i = 0; i < numIndexes; i++)
+	{
+		IndexInfo  *indexInfo;
+
+		indexInfo = indexInfoArray[i];
+
+		/* If the index is marked as read-only, ignore it */
+		if (!indexInfo->ii_ReadyForInserts)
+			continue;
+
+		/*
+		 * Expressional and partial indexes on system catalogs are not
+		 * supported, nor exclusion constraints, nor deferred uniqueness
+		 */
+		Assert(indexInfo->ii_Expressions == NIL);
+		Assert(indexInfo->ii_Predicate == NIL);
+		Assert(indexInfo->ii_ExclusionOps == NULL);
+		Assert(relationDescs[i]->rd_index->indimmediate);
+
+		/*
+		 * FormIndexDatum fills in its values and isnull parameters with the
+		 * appropriate values for the column(s) of the index.
+		 */
+		FormIndexDatum(indexInfo,
+					   slot,
+					   NULL,	/* no expression eval to do */
+					   values,
+					   isnull);
+
+		/*
+		 * The index AM does the rest.
+		 */
+		index_delete(relationDescs[i],	/* index relation */
+					 values,	/* array of index Datums */
+					 isnull,	/* is-null flags */
+					 heapTuple->t_ybctid,	/* heap tuple */
+					 heapRelation,
 					 indexInfo);
 	}
 
@@ -164,9 +249,18 @@ CatalogTupleInsert(Relation heapRel, HeapTuple tup)
 	CatalogIndexState indstate;
 	Oid			oid;
 
-	indstate = CatalogOpenIndexes(heapRel);
+	if (IsYugaByteEnabled())
+	{
+		oid = YBCExecuteInsert(heapRel, RelationGetDescr(heapRel), tup);
+		/* Update the local cache automatically */
+		YBSetSysCacheTuple(heapRel, tup);
+	}
+	else
+	{
+		oid = simple_heap_insert(heapRel, tup);
+	}
 
-	oid = simple_heap_insert(heapRel, tup);
+	indstate = CatalogOpenIndexes(heapRel);
 
 	CatalogIndexInsert(indstate, tup);
 	CatalogCloseIndexes(indstate);
@@ -188,7 +282,16 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 {
 	Oid			oid;
 
-	oid = simple_heap_insert(heapRel, tup);
+	if (IsYugaByteEnabled())
+	{
+		oid = YBCExecuteInsert(heapRel, RelationGetDescr(heapRel), tup);
+		/* Update the local cache automatically */
+		YBSetSysCacheTuple(heapRel, tup);
+	}
+	else
+	{
+		oid = simple_heap_insert(heapRel, tup);
+	}
 
 	CatalogIndexInsert(indstate, tup);
 
@@ -213,9 +316,36 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 
 	indstate = CatalogOpenIndexes(heapRel);
 
-	simple_heap_update(heapRel, otid, tup);
+	if (IsYugaByteEnabled())
+	{
+		HeapTuple oldtup = NULL;
 
-	CatalogIndexInsert(indstate, tup);
+		if (heapRel->rd_rel->relhasindex)
+		{
+			if (tup->t_ybctid)
+			{
+				oldtup = YBCFetchTuple(heapRel, tup->t_ybctid);
+				CatalogIndexDelete(indstate, oldtup);
+			}
+			else
+				YBC_LOG_WARNING("ybctid missing in %s's tuple",
+								RelationGetRelationName(heapRel));
+		}
+
+		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
+		/* Update the local cache automatically */
+		YBSetSysCacheTuple(heapRel, tup);
+
+		if (heapRel->rd_rel->relhasindex)
+			CatalogIndexInsert(indstate, tup);
+	}
+	else
+	{
+		simple_heap_update(heapRel, otid, tup);
+
+		CatalogIndexInsert(indstate, tup);
+	}
+
 	CatalogCloseIndexes(indstate);
 }
 
@@ -231,9 +361,35 @@ void
 CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 						   CatalogIndexState indstate)
 {
-	simple_heap_update(heapRel, otid, tup);
+	if (IsYugaByteEnabled())
+	{
+		HeapTuple oldtup = NULL;
 
-	CatalogIndexInsert(indstate, tup);
+		if (heapRel->rd_rel->relhasindex)
+		{
+			if (tup->t_ybctid)
+			{
+				oldtup = YBCFetchTuple(heapRel, tup->t_ybctid);
+				CatalogIndexDelete(indstate, oldtup);
+			}
+			else
+				YBC_LOG_WARNING("ybctid missing in %s's tuple",
+								RelationGetRelationName(heapRel));
+		}
+
+		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
+		/* Update the local cache automatically */
+		YBSetSysCacheTuple(heapRel, tup);
+
+		if (heapRel->rd_rel->relhasindex)
+			CatalogIndexInsert(indstate, tup);
+	}
+	else
+	{
+		simple_heap_update(heapRel, otid, tup);
+
+		CatalogIndexInsert(indstate, tup);
+	}
 }
 
 /*
@@ -252,7 +408,19 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
  * it might be better to do something about caching CatalogIndexState.
  */
 void
-CatalogTupleDelete(Relation heapRel, ItemPointer tid)
+CatalogTupleDelete(Relation heapRel, HeapTuple tup)
 {
-	simple_heap_delete(heapRel, tid);
+	if (IsYugaByteEnabled())
+	{
+		YBCDeleteSysCatalogTuple(heapRel, tup);
+
+		CatalogIndexState indstate = CatalogOpenIndexes(heapRel);
+
+		CatalogIndexDelete(indstate, tup);
+		CatalogCloseIndexes(indstate);
+	}
+	else
+	{
+		simple_heap_delete(heapRel, &tup->t_self);
+	}
 }

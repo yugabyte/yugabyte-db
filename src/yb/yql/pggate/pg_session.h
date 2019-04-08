@@ -21,15 +21,24 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/callback.h"
+#include "yb/util/oid_generator.h"
+#include "yb/util/result.h"
 
+#include "yb/server/hybrid_clock.h"
+
+#include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb {
 namespace pggate {
 
+YB_STRONGLY_TYPED_BOOL(OpBuffered);
+
 class PgTxnManager;
 
+// This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
+// process.
 class PgSession : public RefCountedThreadSafe<PgSession> {
  public:
   // Public types.
@@ -38,7 +47,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Constructors.
   PgSession(std::shared_ptr<client::YBClient> client,
             const string& database_name,
-            scoped_refptr<PgTxnManager> pg_txn_manager);
+            scoped_refptr<PgTxnManager> pg_txn_manager,
+            scoped_refptr<server::HybridClock> clock);
   virtual ~PgSession();
 
   //------------------------------------------------------------------------------------------------
@@ -54,8 +64,43 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   //------------------------------------------------------------------------------------------------
 
   // API for database operations.
-  CHECKED_STATUS CreateDatabase(const std::string& database_name, client::PgOid database_oid);
+  CHECKED_STATUS CreateDatabase(const std::string& database_name,
+                                PgOid database_oid,
+                                PgOid source_database_oid,
+                                PgOid nexte_oid);
   CHECKED_STATUS DropDatabase(const std::string& database_name, bool if_exist);
+
+  CHECKED_STATUS ReserveOids(PgOid database_oid,
+                             PgOid nexte_oid,
+                             uint32_t count,
+                             PgOid *begin_oid,
+                             PgOid *end_oid);
+
+  CHECKED_STATUS GetCatalogMasterVersion(uint64_t *version);
+
+  // API for sequences data operations.
+  CHECKED_STATUS CreateSequencesDataTable();
+
+  CHECKED_STATUS InsertSequenceTuple(int64_t db_oid,
+      int64_t seq_oid,
+      int64_t last_val,
+      bool is_called);
+
+
+  CHECKED_STATUS UpdateSequenceTuple(int64_t db_oid,
+                                     int64_t seq_oid,
+                                     int64_t last_val,
+                                     bool is_called,
+                                     int64_t expected_last_val,
+                                     bool expected_is_called,
+                                     bool* skipped);
+
+  CHECKED_STATUS ReadSequenceTuple(int64_t db_oid,
+                                   int64_t seq_oid,
+                                   int64_t *last_val,
+                                   bool *is_called);
+
+  CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
@@ -64,23 +109,33 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // API for table operations.
   client::YBTableCreator *NewTableCreator();
-  std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name);
-  CHECKED_STATUS DropTable(const client::YBTableName& name);
+  client::YBTableAlterer *NewTableAlterer(const client::YBTableName& table_name);
+  client::YBTableAlterer *NewTableAlterer(const string table_id);
+  CHECKED_STATUS DropTable(const PgObjectId& table_id);
+  CHECKED_STATUS DropIndex(const PgObjectId& index_id);
+  CHECKED_STATUS TruncateTable(const PgObjectId& table_id);
+  Result<PgTableDesc::ScopedRefPtr> LoadTable(const PgObjectId& table_id);
+  void InvalidateTableCache(const PgObjectId& table_id);
 
-  // API for read and write database content.
-  Result<PgTableDesc::ScopedRefPtr> LoadTable(const client::YBTableName& name, bool for_write);
+  // Buffer write operations.
+  CHECKED_STATUS StartBufferingWriteOperations();
+  CHECKED_STATUS FlushBufferedWriteOperations();
 
-  // Apply the given operation.
-  CHECKED_STATUS Apply(const std::shared_ptr<client::YBPgsqlOp>& op);
-  CHECKED_STATUS ApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op);
-  void FlushAsync(StatusFunctor callback);
+  // Apply the given operation to read and write database content. If the operation is a write
+  // op, return true if the operation is buffered and should not be flushed except in bulk
+  // by FlushBufferedWriteOperations(). False otherwise.
+  Result<OpBuffered> PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op,
+                                  uint64_t* read_time);
+
+  CHECKED_STATUS PgFlushAsync(StatusFunctor callback);
+  CHECKED_STATUS RestartTransaction();
+  bool HasAppliedOperations() const;
 
   // Return the number of errors which are pending.
   int CountPendingErrors() const;
 
   // Return the pending errors.
   std::vector<std::unique_ptr<client::YBError>> GetPendingErrors();
-
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -110,13 +165,30 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     connected_database_ = "";
   }
 
+  // Generate a new random and unique rowid. It is a v4 UUID.
+  string GenerateNewRowid() {
+    return rowid_generator_.Next(true /* binary_id */);
+  }
+
+  void InvalidateCache() {
+    table_cache_.clear();
+  }
+
  private:
-  // Returns the appopriate session to use, in most cases the one used by the current transaction.
+  // Returns the appropriate session to use, in most cases the one used by the current transaction.
   // read_only_op - whether this is being done in the context of a read-only operation. For
   //                non-read-only operations we make sure to start a YB transaction.
   // We are returning a raw pointer here because the returned session is owned either by the
   // PgTxnManager or by this object.
-  client::YBSession* GetSession(bool read_only_op);
+  Result<client::YBSession*> GetSession(bool transactional, bool read_only_op);
+
+  // Get the appropriate YBSession to apply the given operation to, based on whether or not this
+  // is an operation on a transactional table, as well as read-only vs. non-read-only operation.
+  Result<client::YBSession*> GetSessionForOp(const std::shared_ptr<client::YBPgsqlOp>& op);
+
+  // Given a set of errors from operations, this function attempts to combine them into one status
+  // that is later passed to PostgreSQL and further converted into a more specific error code.
+  Status CombineErrorsToStatus(client::CollectedErrors errors, Status status);
 
   // YBClient, an API that SQL engine uses to communicate with all servers.
   std::shared_ptr<client::YBClient> client_;
@@ -130,9 +202,23 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // A transaction manager allowing to begin/abort/commit transactions.
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 
+  const scoped_refptr<server::HybridClock> clock_;
+
   // Execution status.
   Status status_;
   string errmsg_;
+
+  // Rowid generator.
+  ObjectIdGenerator rowid_generator_;
+
+  std::unordered_map<TableId, std::shared_ptr<client::YBTable>> table_cache_;
+
+  // Should write operations be buffered?
+  bool buffer_write_ops_ = false;
+  std::vector<std::shared_ptr<client::YBPgsqlOp>> buffered_write_ops_;
+
+  bool has_txn_ops_ = false;
+  bool has_non_txn_ops_ = false;
 };
 
 }  // namespace pggate
