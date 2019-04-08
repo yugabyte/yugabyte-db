@@ -78,7 +78,7 @@ We are constantly adding documentation on how to build apps using the client dri
 
 Once again, please post your questions or comments as a [GitHub issue](https://github.com/YugaByte/yugabyte-db/issues) if you need something.
 
-## Building YugaByte code
+## Building YugaByte DB code
 
 ### Prerequisites for CentOS 7
 
@@ -114,7 +114,7 @@ will automatically discover this Linuxbrew installation.
 
 ### Prerequisites for Ubuntu 18.04
 
-In addition to (corresponding) steps required for Centos 7, following steps are required for additional packages that need to be installed
+In addition to (corresponding) steps required for CentOS 7, the following steps are required for additional packages that need to be installed:
 
 ```bash
 sudo apt-get update
