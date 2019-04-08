@@ -1,3 +1,4 @@
 /results/
 *.o
 *.so
+scan.c

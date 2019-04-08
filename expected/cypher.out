@@ -1,32 +1,35 @@
-CREATE EXTENSION agensgraph;
 LOAD 'agensgraph';
 SET search_path TO ag_catalog;
--- cypher() function takes only a string constant as an argument.
+-- cypher() function takes only a dollar-quoted string constant as an argument.
 -- All other cases throw an error.
-SELECT * FROM cypher($$RETURN 0$$) AS r(c text);
-    c     
-----------
- RETURN 0
+SELECT * FROM cypher($$RETURN 0$$) AS r(c int);
+ c 
+---
+ 0
 (1 row)
 
 WITH r(c) AS (
-  SELECT * FROM cypher($$RETURN 0$$) AS r(c text)
+  SELECT * FROM cypher($$RETURN 0$$) AS r(c int)
 )
 SELECT * FROM r;
-    c     
-----------
- RETURN 0
+ c 
+---
+ 0
 (1 row)
 
+SELECT * FROM cypher('RETURN 0') AS r(c text);
+ERROR:  a dollar-quoted string constant is expected
+LINE 1: SELECT * FROM cypher('RETURN 0') AS r(c text);
+                             ^
 SELECT * FROM cypher(NULL) AS r(c text);
-ERROR:  a string constant is expected
+ERROR:  a dollar-quoted string constant is expected
 LINE 1: SELECT * FROM cypher(NULL) AS r(c text);
                              ^
 WITH q(s) AS (
   VALUES (textout($$RETURN 0$$))
 )
 SELECT * FROM q, cypher(q.s) AS r(c text);
-ERROR:  a string constant is expected
+ERROR:  a dollar-quoted string constant is expected
 LINE 4: SELECT * FROM q, cypher(q.s) AS r(c text);
                                 ^
 -- The numbers of the attributes must match.
@@ -35,10 +38,10 @@ ERROR:  return row and column definition list do not match
 LINE 1: SELECT * FROM cypher($$RETURN 0$$) AS r(c text, x text);
                       ^
 -- cypher() function can be called in ROWS FROM only if it is there solely.
-SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c text));
-    c     
-----------
- RETURN 0
+SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c int));
+ c 
+---
+ 0
 (1 row)
 
 SELECT * FROM ROWS FROM (cypher($$RETURN 0$$) AS (c text),
@@ -58,9 +61,9 @@ ERROR:  cypher(...) in expressions is not supported
 LINE 1: SELECT cypher($$RETURN 0$$);
                ^
 HINT:  Use subquery instead if possible.
-SELECT (SELECT * FROM cypher($$RETURN 0$$) AS r(c text));
-    c     
-----------
- RETURN 0
+SELECT (SELECT * FROM cypher($$RETURN 0$$) AS r(c int));
+ c 
+---
+ 0
 (1 row)
 

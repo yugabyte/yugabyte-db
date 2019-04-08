@@ -5,6 +5,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "fmgr.h"
+#include "mb/pg_wchar.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
@@ -17,6 +18,12 @@
 #include "utils/syscache.h"
 
 #include "analyze.h"
+#include "scan.h"
+
+struct cypher_parse_error_callback_arg {
+    const char *source_str;
+    int query_loc;
+};
 
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook;
 
@@ -25,8 +32,13 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate);
 static bool is_rte_cypher(RangeTblEntry *rte);
 static bool is_func_cypher(FuncExpr *funcexpr);
 static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate);
+static const char *expr_get_const_cstring(Node *expr, const char *source_str);
+static int get_query_location(const int location, const char *source_str);
+static void cypher_parse_error_callback(void *arg);
 static Query *parse_and_analyze_cypher(const char *query_str);
-static Query *generate_values_query_with_str(const char *str);
+static List *parse_cypher(const char *query_str);
+static int cypher_errposition(const int location, const char *query_str);
+static Query *generate_values_query_with_values(List *values);
 static void check_result_type(Query *query, RangeTblFunction *rtfunc,
                               ParseState *pstate);
 
@@ -184,6 +196,8 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     FuncExpr *funcexpr = (FuncExpr *)rtfunc->funcexpr;
     Node *arg;
     const char *query_str;
+    struct cypher_parse_error_callback_arg ecb_arg;
+    ErrorContextCallback ecb;
     Query *query;
 
     // We cannot apply this feature directly to SELECT subquery because the
@@ -197,22 +211,41 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
                  parser_errposition(pstate, exprLocation((Node *)funcexpr))));
     }
 
-    // NOTE: Remove this once the prototype of cypher() function is fixed.
+    // NOTE: Remove asserts once the prototype of cypher() function is fixed.
     Assert(list_length(funcexpr->args) == 1);
     arg = linitial(funcexpr->args);
+    Assert(exprType(arg) == CSTRINGOID);
 
     // Since cypher() function is nothing but an interface to get a Cypher
     // query, it must take a string constant as an argument so that the query
     // can be parsed and analyzed at this point to create a Query tree of it.
-    if (!IsA(arg, Const) || ((Const *)arg)->constisnull) {
+    //
+    // Also, only dollar-quoted string constants are allowed because of the
+    // following reasons.
+    //
+    // * If other kinds of string constants are used, the actual values of them
+    //   may differ from what they are shown. This will confuse users.
+    // * In the case above, the error position may not be accurate.
+    query_str = expr_get_const_cstring(arg, pstate->p_sourcetext);
+    if (!query_str) {
         ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-                        errmsg("a string constant is expected"),
+                        errmsg("a dollar-quoted string constant is expected"),
                         parser_errposition(pstate, exprLocation(arg))));
     }
-    Assert(exprType(arg) == CSTRINGOID);
 
-    query_str = DatumGetCString(((Const *)arg)->constvalue);
+    // install error context callback to adjust the error position
+    ecb_arg.source_str = pstate->p_sourcetext;
+    ecb_arg.query_loc = get_query_location(((Const *)arg)->location,
+                                           pstate->p_sourcetext);
+    ecb.previous = error_context_stack;
+    ecb.callback = cypher_parse_error_callback;
+    ecb.arg = &ecb_arg;
+    error_context_stack = &ecb;
+
     query = parse_and_analyze_cypher(query_str);
+
+    // uninstall error context callback
+    error_context_stack = ecb.previous;
 
     check_result_type(query, rtfunc, pstate);
 
@@ -224,28 +257,158 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     rte->subquery = query;
 }
 
+static const char *expr_get_const_cstring(Node *expr, const char *source_str)
+{
+    Const *con;
+    const char *p;
+
+    if (!IsA(expr, Const))
+        return NULL;
+
+    con = (Const *)expr;
+    if (con->constisnull)
+        return NULL;
+
+    Assert(con->location > -1);
+    p = source_str + con->location;
+    if (*p != '$')
+        return NULL;
+
+    return DatumGetCString(con->constvalue);
+}
+
+static int get_query_location(const int location, const char *source_str)
+{
+    const char *p;
+
+    Assert(location > -1);
+
+    p = source_str + location;
+    Assert(*p == '$');
+
+    return strchr(p + 1, '$') - source_str + 1;
+}
+
+static void cypher_parse_error_callback(void *arg)
+{
+    struct cypher_parse_error_callback_arg *ecb_arg = arg;
+    int pos;
+
+    if (geterrcode() == ERRCODE_QUERY_CANCELED)
+        return;
+
+    Assert(ecb_arg->query_loc > -1);
+    pos = pg_mbstrlen_with_len(ecb_arg->source_str, ecb_arg->query_loc);
+    errposition(pos + geterrposition());
+}
+
 static Query *parse_and_analyze_cypher(const char *query_str)
 {
-    // TODO: parse and analyze cypher
+    List *values;
+    Query *query;
 
-    return generate_values_query_with_str(query_str);
+    values = parse_cypher(query_str);
+
+    query = generate_values_query_with_values(values);
+
+    return query;
+}
+
+static List *parse_cypher(const char *query_str)
+{
+    ag_scanner_t scanner;
+    struct ag_token tmp;
+    List *values;
+
+    scanner = ag_scanner_create(query_str);
+
+    tmp = ag_scanner_next_token(scanner);
+    if (tmp.type != AG_TOKEN_IDENTIFIER ||
+        strcasecmp(tmp.value.s, "return") != 0) {
+        ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+                        errmsg("\"RETURN\" is expected"),
+                        cypher_errposition(tmp.location, query_str)));
+    }
+
+    values = NIL;
+    for (;;) {
+        A_Const *n;
+
+        n = makeNode(A_Const);
+        tmp = ag_scanner_next_token(scanner);
+        switch (tmp.type) {
+        case AG_TOKEN_INTEGER:
+            n->val.type = T_Integer;
+            n->val.val.ival = tmp.value.i;
+            n->location = tmp.location;
+            break;
+        case AG_TOKEN_DECIMAL:
+        case AG_TOKEN_STRING:
+        case AG_TOKEN_IDENTIFIER:
+        case AG_TOKEN_PARAMETER:
+        case AG_TOKEN_LT_GT:
+        case AG_TOKEN_LT_EQ:
+        case AG_TOKEN_GT_EQ:
+        case AG_TOKEN_DOT_DOT:
+        case AG_TOKEN_PLUS_EQ:
+        case AG_TOKEN_EQ_TILDE:
+            n->val.type = T_String;
+            n->val.val.str = pstrdup(tmp.value.s);
+            n->location = tmp.location;
+            break;
+        case AG_TOKEN_CHAR: {
+            char buf[2] = {tmp.value.c, '\0'};
+
+            n->val.type = T_String;
+            n->val.val.str = pstrdup(buf);
+            n->location = tmp.location;
+            break;
+        }
+        default:
+            ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+                            errmsg("unexpected token type: %d", tmp.type),
+                            cypher_errposition(tmp.location, query_str)));
+            break;
+        }
+        values = lappend(values, n);
+
+        tmp = ag_scanner_next_token(scanner);
+        if (tmp.type == AG_TOKEN_CHAR && tmp.value.c == ',')
+            continue;
+        if (tmp.type == AG_TOKEN_NULL)
+            break;
+
+        ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+                        errmsg("\",\" or EOF is expected"),
+                        cypher_errposition(tmp.location, query_str)));
+    }
+
+    ag_scanner_destroy(scanner);
+
+    return values;
+}
+
+static int cypher_errposition(const int location, const char *query_str)
+{
+    int pos;
+
+    if (location < 0)
+        return 0;
+
+    pos = pg_mbstrlen_with_len(query_str, location) + 1;
+
+    return errposition(pos);
 }
 
 // XXX: dummy implementation
-static Query *generate_values_query_with_str(const char *str)
+static Query *generate_values_query_with_values(List *values)
 {
-    A_Const *col;
     SelectStmt *sel;
     ParseState *pstate;
     Query *query;
 
-    col = makeNode(A_Const);
-    col->val.type = T_String;
-    col->val.val.str = (char *)str;
-    col->location = -1;
-
     sel = makeNode(SelectStmt);
-    sel->valuesLists = list_make1(list_make1(col));
+    sel->valuesLists = list_make1(values);
 
     pstate = make_parsestate(NULL);
 
