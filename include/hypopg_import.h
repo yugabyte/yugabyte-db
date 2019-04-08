@@ -12,27 +12,13 @@
 #ifndef _HYPOPG_IMPORT_H_
 #define _HYPOPG_IMPORT_H_
 
+#include "commands/vacuum.h"
+#include "lib/stringinfo.h"
 #include "nodes/pg_list.h"
 #include "optimizer/planner.h"
 #include "utils/rel.h"
+#include "include/hypopg_import_index.h"
 
-
-/* adapted from nbtinsert.h */
-#define HYPO_BTMaxItemSize \
-	MAXALIGN_DOWN((BLCKSZ - \
-				MAXALIGN(SizeOfPageHeaderData + 3*sizeof(ItemIdData)) - \
-				MAXALIGN(sizeof(BTPageOpaqueData))) / 3)
-
-extern List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
-							   Relation heapRelation);
-extern Oid	GetIndexOpClass(List *opclass, Oid attrType,
-							char *accessMethodName, Oid accessMethodId);
-
-extern void CheckPredicate(Expr *predicate);
-extern bool CheckMutability(Expr *expr);
-#if PG_VERSION_NUM < 90500
-extern char *get_am_name(Oid amOid);
-#endif
 extern void get_opclass_name(Oid opclass, Oid actual_datatype, StringInfo buf);
 
-#endif
+#endif		/* _HYPOPG_IMPORT_H_ */

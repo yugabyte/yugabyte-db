@@ -7,7 +7,11 @@ REGRESS_OPTS = --inputdir=test
 PG_CONFIG = pg_config
 
 MODULE_big = hypopg
-OBJS = hypopg.o hypopg_import.o hypopg_index.o
+
+OBJS = hypopg.o \
+       hypopg_index.o \
+       import/hypopg_import.o \
+       import/hypopg_import_index.o
 
 all:
 
