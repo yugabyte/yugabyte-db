@@ -1443,9 +1443,9 @@ run_java_test() {
   local surefire_reports_dir
   if [[ -n ${YB_SUREFIRE_REPORTS_DIR:-} ]]; then
     surefire_reports_dir=$YB_SUREFIRE_REPORTS_DIR
-  elif should_run_java_test_methods_separately; then
+  else
     surefire_reports_dir=$module_dir/target/surefire-reports_${report_suffix}
-    if [[ -n $test_method_name ]]; then
+    if should_run_java_test_methods_separately && [[ -n $test_method_name ]]; then
       # This report directory only has data for one test method (see how we come up with
       # report_suffix above if test method name is defined ), so it is OK to clean it before running
       # the test.
