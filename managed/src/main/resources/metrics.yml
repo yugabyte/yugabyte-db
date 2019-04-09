@@ -251,7 +251,7 @@ redis_rpcs_per_sec_all:
     service_type: "RedisServerService"
   group_by: "service_method"
   layout:
-    title: "Total Redis Ops / Sec"
+    title: "Total YEDIS Ops / Sec"
     xaxis:
       type: "date"
     yaxis:
@@ -310,7 +310,7 @@ redis_rpcs_per_sec_hash:
     service_method: "hget|hmget|hgetall|hkeys|hvals|hlen|hexists|hstrlen|hset|hmset|hdel|hincrby"
   group_by: "service_method"
   layout:
-    title: "Total Redis Ops / Sec -- Hash"
+    title: "Total YEDIS Ops / Sec -- Hash"
     xaxis:
       type: "date"
     yaxis:
@@ -339,7 +339,7 @@ redis_rpcs_per_sec_ts:
     service_method: "tsget|tsadd|tsrangebytime|tsrem"
   group_by: "service_method"
   layout:
-    title: "Total Redis Ops / Sec -- TS"
+    title: "Total YEDIS Ops / Sec -- TS"
     xaxis:
       type: "date"
     yaxis:
@@ -360,7 +360,7 @@ redis_rpcs_per_sec_set:
     service_method: "smembers|sismember|scard|strlen|sadd|srem"
   group_by: "service_method"
   layout:
-    title: "Total Redis Ops / Sec -- Set"
+    title: "Total YEDIS Ops / Sec -- Set"
     xaxis:
       type: "date"
     yaxis:
@@ -384,7 +384,7 @@ redis_rpcs_per_sec_sortedset:
     service_method: "zadd|zrem|zcard|zrevrange|zrangebyscore"
   group_by: "service_method"
   layout:
-    title: "Total Redis Ops / Sec -- Sorted Set"
+    title: "Total YEDIS Ops / Sec -- Sorted Set"
     xaxis:
       type: "date"
     yaxis:
@@ -406,7 +406,7 @@ redis_rpcs_per_sec_str:
     service_method: "get|mget|strlen|exists|getrange|set|mset|getset|append|del|setrange|incr"
   group_by: "service_method"
   layout:
-    title: "Total Redis Ops / Sec -- Str"
+    title: "Total YEDIS Ops / Sec -- Str"
     xaxis:
       type: "date"
     yaxis:
@@ -435,7 +435,7 @@ redis_rpcs_per_sec_local:
     service_method: "echo|auth|config|info|role|ping|command|quit|flushdb"
   group_by: "service_method"
   layout:
-    title: "Total Redis Ops / Sec -- Others"
+    title: "Total YEDIS Ops / Sec -- Others"
     xaxis:
       type: "date"
     yaxis:
@@ -461,7 +461,7 @@ redis_ops_latency_all:
     service_type: "RedisServerService"
   group_by: "service_method"
   layout:
-    title: "Redis Op Latency"
+    title: "YEDIS Op Latency"
     xaxis:
       type: "date"
     yaxis:
@@ -524,7 +524,7 @@ redis_ops_latency_hash:
     service_method: "hget|hmget|hgetall|hkeys|hvals|hlen|hexists|hstrlen|hincrby|hset|hmset|hdel"
   group_by: "service_method"
   layout:
-    title: "Redis Op Latency -- Hash"
+    title: "YEDIS Op Latency -- Hash"
     xaxis:
       type: "date"
     yaxis:
@@ -556,7 +556,7 @@ redis_ops_latency_ts:
     service_method: "tsget|tsadd|tsrangebytime|tsrem"
   group_by: "service_method"
   layout:
-    title: "Redis Op Latency -- TS"
+    title: "YEDIS Op Latency -- TS"
     xaxis:
       type: "date"
     yaxis:
@@ -580,7 +580,7 @@ redis_ops_latency_set:
     service_method: "smembers|sismember|scard|strlen|sadd|srem"
   group_by: "service_method"
   layout:
-    title: "Redis Op Latency -- Set"
+    title: "YEDIS Op Latency -- Set"
     xaxis:
       type: "date"
     yaxis:
@@ -606,7 +606,7 @@ redis_ops_latency_sorted_set:
     service_method: "zadd|zrem|zcard|zrevrange|zrangebyscore"
   group_by: "service_method"
   layout:
-    title: "Redis Op Latency -- Sorted Set"
+    title: "YEDIS Op Latency -- Sorted Set"
     xaxis:
       type: "date"
     yaxis:
@@ -631,7 +631,7 @@ redis_ops_latency_str:
     service_method: "get|mget|strlen|exists|getrange|set|mset|getset|append|del|setrange|incr"
   group_by: "service_method"
   layout:
-    title: "Redis Op Latency -- Str"
+    title: "YEDIS Op Latency -- Str"
     xaxis:
       type: "date"
     yaxis:
@@ -663,7 +663,7 @@ redis_ops_latency_local:
     service_method: "echo|auth|config|info|role|ping|command|quit|flushdb"
   group_by: "service_method"
   layout:
-    title: "Redis Op Latency -- Others"
+    title: "YEDIS Op Latency -- Others"
     xaxis:
       type: "date"
     yaxis:
@@ -778,7 +778,39 @@ tserver_handler_latency:
       #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
 
-tserver_rpcs_per_sec:
+total_rpcs_per_sec:
+  metric: "rpc_latency_count"
+  function: "irate|sum"
+  range: "1m"
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Write|Read|Scan"
+  group_by: "service_method"
+  layout:
+    title: "Total RPCs / Sec"
+    xaxis:
+      type: "date"
+
+total_ops_latency:
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  range: "1m"
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Read|Write|Scan"
+  group_by: "service_method"
+  layout:
+    title: "Total Op Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;\u00B5s"
+
+tserver_rpcs_per_sec_per_node:
   metric: "rpc_latency_count"
   function: "irate|avg"
   range: "1m"
@@ -992,8 +1024,7 @@ tserver_tc_malloc_stats:
   operator: "/ 1048576"
   filters:
     export_type: "tserver_export"
-    saved_name: "tcmalloc_current_total_thread_cache_bytes|tcmalloc_max_total_thread_cache_bytes|
-           tcmalloc_pageheap_free_bytes|tcmalloc_pageheap_unmapped_bytes"
+    saved_name: "generic_current_allocated_bytes|generic_heap_size"
   group_by: "saved_name"
   layout:
     title: "TServer TCMalloc Stats"
@@ -1001,10 +1032,8 @@ tserver_tc_malloc_stats:
       type: "date"
     yaxis:
       alias:
-        "tcmalloc_current_total_thread_cache_bytes": "Reserved"
-        "tcmalloc_max_total_thread_cache_bytes": "Usage"
-        "tcmalloc_pageheap_free_bytes": "Free"
-        "tcmalloc_pageheap_unmapped_bytes": "Small"
+        "generic_current_allocated_bytes": "In Use"
+        "generic_heap_size": "Total"
       ticksuffix: "&nbsp;MB"
 
 tserver_log_stats:
@@ -1341,7 +1370,7 @@ cql_server_rpc_per_second:
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
   group_by: "service_method"
   layout:
-    title: "Total CQL Ops / Sec"
+    title: "Total YCQL Ops / Sec"
     xaxis:
       type: "date"
     yaxis:
@@ -1363,7 +1392,7 @@ cql_sql_latency:
     service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
   group_by: "service_method"
   layout:
-    title: "CQL Op Latency"
+    title: "YCQL Op Latency"
     xaxis:
       type: "date"
     yaxis:
@@ -1387,7 +1416,7 @@ cql_sql_latency_breakdown:
     service_method: "ProcessRequest|ParseRequest|AnalyzeRequest|ExecuteRequest"
   group_by: "service_method"
   layout:
-    title: "CQL Latency Breakdown"
+    title: "YCQL Latency Breakdown"
     xaxis:
       type: "date"
     yaxis:
