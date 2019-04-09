@@ -15,6 +15,7 @@
 
 #include <boost/optional/optional_io.hpp>
 
+#include "yb/common/partition.h"
 #include "yb/common/ql_storage_interface.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
@@ -293,7 +294,7 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                 data.deadline,
                                 data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
-    if (iterator.HasNext()) {
+    if (VERIFY_RESULT(iterator.HasNext())) {
       RETURN_NOT_OK(iterator.NextRow(table_row.get()));
     } else {
       table_row->Clear();
@@ -394,7 +395,7 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   // Fetching data.
   int match_count = 0;
   QLTableRow::SharedPtr row = std::make_shared<QLTableRow>();
-  while (resultset->rsrow_count() < row_count_limit && iter->HasNext()) {
+  while (resultset->rsrow_count() < row_count_limit && VERIFY_RESULT(iter->HasNext())) {
     // The filtering process runs in the following order.
     // <hash_code><hash_components><range_components><regular_column_id> -> value;
     row->Clear();
@@ -404,7 +405,7 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
       RETURN_NOT_OK(iter->NextRow(row.get()));
       RETURN_NOT_OK(row->GetValue(ybbasectid_id, &row_key));
       RETURN_NOT_OK(table_iter_->Seek(row_key.binary_value()));
-      if (!table_iter_->HasNext() ||
+      if (!VERIFY_RESULT(table_iter_->HasNext()) ||
           VERIFY_RESULT(table_iter_->GetRowKey()) != row_key.binary_value()) {
         DocKey doc_key;
         RETURN_NOT_OK(doc_key.DecodeFrom(Slice(row_key.binary_value())));
@@ -443,8 +444,27 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   }
   *restart_read_ht = iter->RestartReadHt();
 
+  return SetPagingStateIfNecessary(iter, resultset, row_count_limit);
+}
+
+Status PgsqlReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
+                                                     const PgsqlResultSet* resultset,
+                                                     const size_t row_count_limit) {
   if (resultset->rsrow_count() >= row_count_limit && !request_.is_aggregate()) {
-    RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, &response_));
+    SubDocKey next_row_key;
+    RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
+    // When the "limit" number of rows are returned and we are asked to return the paging state,
+    // return the partition key and row key of the next row to read in the paging state if there are
+    // still more rows to read. Otherwise, leave the paging state empty which means we are done
+    // reading from this tablet.
+    if (request_.return_paging_state()) {
+      if (!next_row_key.doc_key().empty()) {
+        PgsqlPagingStatePB* paging_state = response_.mutable_paging_state();
+        paging_state->set_next_partition_key(
+            PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
+        paging_state->set_next_row_key(next_row_key.Encode().data());
+      }
+    }
   }
 
   return Status::OK();

@@ -1681,7 +1681,7 @@ Result<uint64_t> CalcChecksum(tablet::Tablet* tablet) {
   QLTableRow value_map;
   ScanResultChecksummer collector;
 
-  while ((**iter).HasNext()) {
+  while (VERIFY_RESULT((**iter).HasNext())) {
     RETURN_NOT_OK((**iter).NextRow(&value_map));
     collector.HandleRow(schema, value_map);
   }

@@ -76,7 +76,7 @@ Status IterateToStringList(
   int fetched = 0;
   std::vector<std::pair<QLValue, std::string>> temp;
   QLTableRow row;
-  while (iter->HasNext() && fetched < limit) {
+  while (VERIFY_RESULT(iter->HasNext()) && fetched < limit) {
     RETURN_NOT_OK(iter->NextRow(&row));
     QLValue key;
     RETURN_NOT_OK(row.GetValue(schema.column_id(0), &key));

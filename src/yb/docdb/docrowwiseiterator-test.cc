@@ -135,7 +135,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -150,7 +150,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row1_e", value.string_value());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -164,7 +164,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 
   // Scan at a later hybrid_time.
@@ -175,7 +175,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     // This row is exactly the same as in the previous case. TODO: deduplicate.
@@ -192,7 +192,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row1_e", value.string_value());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -208,7 +208,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e_prime", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -251,7 +251,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -264,7 +264,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
     ASSERT_OK(row.GetValue(projection.column_id(2), &value));
     ASSERT_TRUE(value.IsNull());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -308,7 +308,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     // ColumnId 30, 40 should be hidden whereas ColumnId 50 should be visible.
@@ -322,7 +322,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row1_e", value.string_value());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -366,9 +366,9 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     // Ensure calling HasNext() again doesn't mess up anything.
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     // ColumnId 40 should be deleted whereas ColumnId 50 should be visible.
@@ -416,7 +416,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -427,7 +427,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
     ASSERT_EQ(10000, value.int64_value());
 
     // Now find next row.
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -437,7 +437,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ(20000, value.int64_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -500,9 +500,9 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     // Ensure Idempotency.
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -512,7 +512,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -561,7 +561,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -570,7 +570,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
     ASSERT_OK(row.GetValue(projection.column_id(1), &value));
     ASSERT_TRUE(value.IsNull());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -581,7 +581,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ(20000, value.int64_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -615,7 +615,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -624,7 +624,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
     ASSERT_OK(row.GetValue(projection.column_id(1), &value));
     ASSERT_EQ(11111, value.int64_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -766,7 +766,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -781,7 +781,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row1_e", value.string_value());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -795,7 +795,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 
   // Scan at a later hybrid_time.
@@ -809,7 +809,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -824,7 +824,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row1_e_t1", value.string_value());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -838,7 +838,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e_prime", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 
   // Scan at a later hybrid_time.
@@ -852,7 +852,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -866,7 +866,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e_t2", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -1008,7 +1008,7 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
   QLTableRow row;
   QLValue value;
 
-  ASSERT_TRUE(iter.HasNext());
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
   ASSERT_OK(iter.NextRow(&row));
 
   ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -1021,7 +1021,7 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
   ASSERT_OK(row.GetValue(projection.column_id(2), &value));
   ASSERT_TRUE(value.IsNull());
 
-  ASSERT_TRUE(iter.HasNext());
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
   ASSERT_OK(iter.NextRow(&row));
 
   ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -1034,7 +1034,7 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
   ASSERT_OK(row.GetValue(projection.column_id(2), &value));
   ASSERT_TRUE(value.IsNull());
 
-  ASSERT_FALSE(iter.HasNext());
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
 }
 
 }  // namespace docdb

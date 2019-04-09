@@ -18,6 +18,7 @@
 
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/docdb/doc_key.h"
 
 namespace yb {
 
@@ -40,7 +41,7 @@ class YQLRowwiseIteratorIf {
   // Pure virtual API methods.
   //------------------------------------------------------------------------------------------------
   // Checks whether next row exists.
-  virtual bool HasNext() const = 0;
+  virtual Result<bool> HasNext() const = 0;
 
   // Skip the current row.
   virtual void SkipRow() = 0;
@@ -64,15 +65,8 @@ class YQLRowwiseIteratorIf {
     return false;
   }
 
-  // Checks whether we have processed enough rows for a page and sets the appropriate paging
-  // state in the response object.
-  virtual CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                                   const size_t num_rows_skipped,
-                                                   QLResponsePB* response) const {
-    return Status::OK();
-  }
-  virtual CHECKED_STATUS SetPagingStateIfNecessary(const PgsqlReadRequestPB& request,
-                                                   PgsqlResponsePB* response) const {
+  // Retrieves the next key to read after the iterator finishes for the given page.
+  virtual CHECKED_STATUS GetNextReadSubDocKey(docdb::SubDocKey* sub_doc_key) const {
     return Status::OK();
   }
 

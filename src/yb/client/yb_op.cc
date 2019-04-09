@@ -404,8 +404,22 @@ Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
       ql_read_request_->paging_state().has_next_partition_key() &&
       !ql_read_request_->paging_state().next_partition_key().empty()) {
     *partition_key = ql_read_request_->paging_state().next_partition_key();
-    ql_read_request_->set_hash_code(
-        PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
+
+    // Check that the partition key we got from the paging state is within bounds.
+    uint16 paging_state_hash_code = PartitionSchema::DecodeMultiColumnHashValue(*partition_key);
+    if ((ql_read_request_->has_hash_code() &&
+            paging_state_hash_code < ql_read_request_->hash_code()) ||
+        (ql_read_request_->has_max_hash_code() &&
+            paging_state_hash_code > ql_read_request_->max_hash_code())) {
+    return STATUS_SUBSTITUTE(InternalError,
+                             "Out of bounds partition key found in paging state:"
+                             "Query's partition bounds: [%d, %d], paging state partition: %d",
+                             ql_read_request_->hash_code(),
+                             ql_read_request_->max_hash_code() ,
+                             paging_state_hash_code);
+    }
+
+    ql_read_request_->set_hash_code(paging_state_hash_code);
   }
 
   return Status::OK();
@@ -581,8 +595,22 @@ Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
       read_request_->paging_state().has_next_partition_key() &&
       !read_request_->paging_state().next_partition_key().empty()) {
     *partition_key = read_request_->paging_state().next_partition_key();
-    read_request_->set_hash_code(
-        PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
+
+    // Check that the partition key we got from the paging state is within bounds.
+    uint16 paging_state_hash_code = PartitionSchema::DecodeMultiColumnHashValue(*partition_key);
+    if ((read_request_->has_hash_code() &&
+            paging_state_hash_code < read_request_->hash_code()) ||
+        (read_request_->has_max_hash_code() &&
+            paging_state_hash_code > read_request_->max_hash_code())) {
+    return STATUS_SUBSTITUTE(InternalError,
+                             "Out of bounds partition key found in paging state:"
+                             "Query's partition bounds: [%d, %d], paging state partition: %d",
+                             read_request_->hash_code(),
+                             read_request_->max_hash_code() ,
+                             paging_state_hash_code);
+    }
+
+    read_request_->set_hash_code(paging_state_hash_code);
   }
 
   return Status::OK();
