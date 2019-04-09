@@ -392,7 +392,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
                           doc_db(), CoarseTimePoint::max() /* deadline */,
                           ReadHybridTime::FromUint64(3000));
   ASSERT_OK(iter.Init());
-  ASSERT_FALSE(iter.HasNext());
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
 
   // Now verify row exists even with one valid column.
   doc_key = DocKey(kFixedHashCode, PrimitiveValues(PrimitiveValue::Int32(100)), PrimitiveValues());
@@ -423,7 +423,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       schema, schema, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
-  ASSERT_TRUE(ql_iter.HasNext());
+  ASSERT_TRUE(ASSERT_RESULT(ql_iter.HasNext()));
   QLTableRow value_map;
   ASSERT_OK(ql_iter.NextRow(&value_map));
   ASSERT_EQ(4, value_map.ColumnCount());
@@ -471,7 +471,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       schema, schema, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
-  ASSERT_TRUE(ql_iter_system.HasNext());
+  ASSERT_TRUE(ASSERT_RESULT(ql_iter_system.HasNext()));
   QLTableRow value_map_system;
   ASSERT_OK(ql_iter_system.NextRow(&value_map_system));
   ASSERT_EQ(4, value_map_system.ColumnCount());
@@ -719,7 +719,7 @@ class DocOperationScanTest : public DocOperationTest {
           ASSERT_OK(ql_iter.Init(ql_scan_spec));
           LOG(INFO) << "Expected rows: " << yb::ToString(expected_rows);
           it = expected_rows.begin();
-          while (ql_iter.HasNext()) {
+          while (ASSERT_RESULT(ql_iter.HasNext())) {
             QLTableRow value_map;
             ASSERT_OK(ql_iter.NextRow(&value_map));
             ASSERT_EQ(3, value_map.ColumnCount());

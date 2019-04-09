@@ -732,8 +732,11 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
 
   // Default row count limit is the page size.
   // We should return paging state when page size limit is hit.
-  req->set_limit(params.page_size());
-  req->set_return_paging_state(true);
+  // For system tables, we do not support page size so do nothing.
+  if (!tnode->is_system()) {
+    req->set_limit(params.page_size());
+    req->set_return_paging_state(true);
+  }
 
   // Check if there is a limit and compute the new limit based on the number of returned rows.
   if (tnode->limit()) {
@@ -751,7 +754,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
     // the page size limit set from above, set the lower limit and do not return paging state when
     // this limit is hit.
     limit -= params.total_num_rows_read();
-    if (limit <= req->limit()) {
+    if (!req->has_limit() || limit <= req->limit()) {
       req->set_limit(limit);
       req->set_return_paging_state(false);
     }

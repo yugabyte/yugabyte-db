@@ -136,6 +136,12 @@ class PgsqlReadOperation : public DocExprExecutor {
   CHECKED_STATUS PopulateAggregate(const QLTableRow::SharedPtr& table_row,
                                    PgsqlResultSet *resultset);
 
+  // Checks whether we have processed enough rows for a page and sets the appropriate paging
+  // state in the response object.
+  CHECKED_STATUS SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
+                                           const PgsqlResultSet* resultset,
+                                           const size_t row_count_limit);
+
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;
   const TransactionOperationContextOpt txn_op_context_;
