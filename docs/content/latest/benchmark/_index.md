@@ -4,6 +4,7 @@ linkTitle: Benchmark
 description: Benchmark YugaByte DB
 image: /images/section_icons/explore/high_performance.png
 headcontent:
+section: USER GUIDES
 menu:
   latest:
     identifier: benchmark

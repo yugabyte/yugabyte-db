@@ -6,6 +6,7 @@ headcontent: Secure your deployment of YugaByte DB.
 image: /images/section_icons/index/secure.png
 aliases:
   - /secure/
+section: USER GUIDES
 menu:
   latest:
     identifier: secure

@@ -1,17 +1,36 @@
 ---
-title: Docker Swarm
-linkTitle: Docker Swarm
-description: Docker Swarm
+title: Docker 
+linkTitle: Docker 
+description: Docker
 aliases:
-  - /deploy/docker-swarm/
+ - /deploy/docker-swarm/
+ - /latest/deploy/docker-swarm/
+ - /latest/deploy/docker/
 menu:
   latest:
-    identifier: docker-swarm
     parent: deploy
-    weight: 621
-isTocNested: true
+    name: Docker
+    identifier: docker-swarm
+    weight: 625
+type: page
+isTocNested: false
 showAsideToc: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/docker/docker-swarm" class="nav-link active">
+      <i class="fas fa-layer-group"></i>
+      Docker Swarm
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/docker/docker-compose" class="nav-link">
+      <i class="fab fa-docker" aria-hidden="true"></i>
+      Docker Compose
+    </a>
+  </li>
+</ul>
 
 Docker includes [swarm](https://docs.docker.com/engine/swarm/) mode for natively managing a cluster of [Docker Engines](https://docs.docker.com/engine/) called a swarm. The Docker CLI can be used create a swarm, deploy application services to a swarm, and manage swarm behavior -- without using any additional orchestration software. Details on how swarm mode works are available [here](https://docs.docker.com/engine/swarm/key-concepts/).
 
@@ -232,7 +251,7 @@ n6padh2oqjk7        yb-tserver          global              3/3                 
 ```
 - Now we can go to http://192.168.99.101:9000 to see the yb-tserver admin UI.
 
-## 5. Test the client APIs
+## 5. Test the APIs
 
 ### YCQL API
 

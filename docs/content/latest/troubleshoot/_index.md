@@ -6,6 +6,7 @@ image: /images/section_icons/index/troubleshoot.png
 headcontent:
 aliases:
   - /troubleshoot/
+section: USER GUIDES
 menu:
   latest:
     identifier: troubleshoot

@@ -1,6 +1,6 @@
 ---
-title: Explore Core Features
-linkTitle: Explore Core Features
+title: Explore Core 
+linkTitle: Explore Core 
 description: Explore Core Features
 headcontent:
 image: /images/section_icons/index/explore.png
@@ -10,6 +10,7 @@ aliases:
   - /latest/explore/high-performance/
   - /latest/explore/planet-scale/
   - /latest/explore/cloud-native/orchestration-readiness/
+section: GET STARTED
 menu:
   latest:
     identifier: explore

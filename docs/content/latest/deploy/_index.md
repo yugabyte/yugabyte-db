@@ -6,6 +6,7 @@ headcontent: You can deploy YugaByte DB to any public cloud or private datacente
 image: /images/section_icons/index/deploy.png
 aliases:
   - /deploy/
+section: USER GUIDES
 menu:
   latest:
     identifier: deploy
@@ -49,13 +50,15 @@ menu:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="docker-swarm/">
+    <a class="section-link icon-offset" href="docker/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/docker-swarm.png" aria-hidden="true" />
-        <div class="title">Docker Swarm</div>
+        <div class="icon">
+          <i class="fab fa-docker"></i>
+        </div>
+        <div class="title">Docker</div>
       </div>
       <div class="body">
-        Orchestrated deployment of YugaByte DB in Docker Swarm, Docker's built-in orchestration engine.
+        Orchestrated deployment of YugaByte DB in Docker Swarm and Docker Compose.
       </div>
     </a>
   </div>
@@ -66,7 +69,7 @@ menu:
         <div class="title">Pivotal Cloud Foundry</div>
       </div>
       <div class="body">
-        Deploying and managing YugaByte DB through Pivotal Cloud Foundry (PCF).
+        Deploying and managing YugaByte DB through Pivotal Cloud Foundry (PCF) and Pivotal Container Service (PKS).
       </div>
     </a>
   </div>

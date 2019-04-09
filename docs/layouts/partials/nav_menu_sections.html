@@ -28,7 +28,7 @@
       <li {{ if $isCurrentSection }} class="open"{{ end }}>
         <a class="node-toggle{{ if $isCurrentSection }} current{{ end }}" title="{{ $section }}">
           {{ $section }}
-          <i class="fas fa-grip-lines"></i>
+          <i class="fas fa-bars"></i>
         </a>
 
         {{ partial "nav_menu" (dict "context" $.context "menu" (where $.menu "Page.Params.section" $section) "level" $.level) }}
@@ -41,7 +41,7 @@
       <li {{ if $isCurrentSection }} class="open"{{ end }}>
         <a class="node-toggle{{ if $isCurrentSection }} current{{ end }}" title="Misc">
           Misc
-          <i class="fas fa-grip-lines"></i>
+          <i class="fas fa-bars"></i>
         </a>
         {{ partial "nav_menu" (dict "context" $.context "menu" $unsectionedMenus "level" $.level) }}
       </li>

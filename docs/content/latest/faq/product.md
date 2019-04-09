@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## When is YugaByte DB a good fit?
 
-YugaByte DB is a good fit for cloud native applications that need to serve mission-critical data reliably, with zero data loss, high availability and low latency. Common use cases include:
+YugaByte DB is a good fit for fast-growing, cloud native applications that need to serve business-critical data reliably, with zero data loss, high availability and low latency. Common use cases include:
 
 1. Distributed Online Transaction Processing (OLTP) applications needing multi-region scalability without compromising strong consistency and low latency. E.g. User identity, Retail product catalog, Financial data service.
 
@@ -29,21 +29,37 @@ A few such use cases are detailed [here](https://www.yugabyte.com/).
 
 YugaByte DB is not a good fit for traditional Online Analytical Processing (OLAP) use cases that need complete ad-hoc analytics. Use an OLAP store such as [Druid](http://druid.io/druid.html) or a data warehouse such as [Snowflake](https://www.snowflake.net/).
 
+
+## How many major releases YugaByte DB has had so far?
+
+YugaByte DB has had 4 major releases.
+
+- [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017
+- [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018
+- [v1.1](https://blog.yugabyte.com/announcing-yugabyte-db-1-1-and-company-update/) in September 2018
+- [v1.2](https://blog.yugabyte.com/announcing-yugabyte-db-1-2-company-update-jepsen-distributed-sql/) in March 2019
+
+Next major release is the v2.0 release in Summer 2019.
+
 ## Can I deploy YugaByte DB to production?
 
-Yes, YugaByte DB is [production-ready](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-f6e543d3a92b) starting with the 1.0 release in May 2018.
+Yes, YugaByte DB is [production ready](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) starting with v1.0 in May 2018. The YSQL API is in beta and is expected to reach production readiness in the v2.0 (Summer 2019).
+
+## Which companies are currently using YugaByte DB in production?
+
+Reference deployments are listed [here](https://www.yugabyte.com/all-resources/resource-parent/case-studies/).
 
 ## What is the definition of the "Beta" feature tag?
 
 Some features are marked Beta in every release. Following are the points to consider:
 
-- Code is well tested. Enabling the feature is considered safe. Enabled by default.
+- Code is well tested. Enabling the feature is considered safe. Some of these features enabled by default.
 
 - Support for the overall feature will not be dropped, though details may change in incompatible ways in a subsequent beta or GA release. 
 
 - Recommended only for non-production use.
 
-Please do try our beta features and give feedback on them.
+Please do try our beta features and give feedback on them on our [Slack channel](https://www.yugabyte.com/slack) or by filing a [GitHub issue](https://github.com/YugaByte/yugabyte-db/issues).
 
 ## Any performance benchmarks available?
 
@@ -55,7 +71,7 @@ Details for both the above benchhmarks are published in [Building a Strongly Con
 
 ## What about correctness testing?
 
-[Jepsen](https://jepsen.io/) is a widely used framework to evaluate databases’ behavior under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. We have developed our own Jepsen test suite that cover failure scenarios involving single faults, random partition, majority ring partition and clock skew. We are pleased to report that YugaByte DB 1.1 passes these Jepsen tests. For a detailed report on these test results and our future plans, please review the [Jepsen Testing on YugaByte DB](https://blog.yugabyte.com/jepsen-testing-on-yugabyte-db-database/) blog post.
+[Jepsen](https://jepsen.io/) is a widely used framework to evaluate databases’ behavior under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugaByte DB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). 
 
 ## Is the Community Edition open source?
 

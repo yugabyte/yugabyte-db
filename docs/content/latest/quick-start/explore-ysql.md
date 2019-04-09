@@ -6,9 +6,6 @@ aliases:
   - /quick-start/test-postgresql/
   - /latest/quick-start/test-postgresql/
   - /latest/quick-start/test-ysql/
-  - /quick-start/test-cassandra/
-  - /latest/quick-start/test-cassandra/
-  - /latest/quick-start/test-ycql/
   - /latest/explore/postgresql/joins/
   - /latest/explore/postgresql/aggregations/
   - /latest/explore/postgresql/expressions/
@@ -448,7 +445,7 @@ source    |  percent_sales
 (1 row)
 ```
 
-
+<!--
 ## 8. Secondary Indexes
 
 Coming soon.
@@ -456,3 +453,4 @@ Coming soon.
 ## 9. JSONB Column Type
 
 Coming soon.
+-->

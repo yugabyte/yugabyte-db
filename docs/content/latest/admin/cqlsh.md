@@ -4,18 +4,23 @@ linkTitle: cqlsh
 description: cqlsh
 aliases:
   - /develop/tools/cqlsh/
+  - /latest/develop/tools/cqlsh/
 menu:
   latest:
     identifier: cqlsh
-    parent: tools
-    weight: 546
+    parent: admin
+    weight: 2460
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Overview
 
-`cqlsh` is a command-line shell for interacting with YugaByte DB through YCQL. It is installed as part of YugaByte DB and is located in the bin directory of YugaByte home. It is also available for download and install from [YugaByte's Github repository](https://github.com/YugaByte/cqlsh/releases).
+`cqlsh` is a command-line shell for interacting with YugaByte DB through [YCQL](../../api/ycql/). 
+
+## Download 
+
+cqlsh is installed as part of YugaByte DB and is located in the bin directory of YugaByte home. It is also available for download and install from YugaByte DB's [Github repo](https://github.com/YugaByte/cqlsh/releases).
 
 ## Example
 

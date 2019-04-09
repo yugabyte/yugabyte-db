@@ -6,6 +6,7 @@ image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 aliases:
   - /manage/
+section: USER GUIDES
 menu:
   latest:
     identifier: manage

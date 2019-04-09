@@ -6,10 +6,11 @@ image: /images/section_icons/index/comparisons.png
 headcontent: This page highlights how YugaByte DB compares against other operational databases in the distributed SQL and NoSQL categories. Click on the database name in the table header to see a more detailed comparison.
 aliases:
   - /comparisons/
+section: FAQ
 menu:
   latest:
     identifier: comparisons
-    weight: 1270
+    weight: 2720
 ---
 
 ## Distributed SQL Databases

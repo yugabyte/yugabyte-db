@@ -1,19 +1,38 @@
 ---
-title: docker-compose
-linkTitle: docker-compose
-description: docker-compose
+title: Docker
+linkTitle: Docker
+description: Docker
+aliases:
+ - /admin/docker-compose/
+ - /latest/admin/docker-compose/
 menu:
   latest:
+    parent: deploy
+    name: Docker
     identifier: docker-compose
-    parent: admin
-    weight: 2430
-aliases:
-  - admin/docker-compose
+    weight: 625
+type: page
 isTocNested: false
 showAsideToc: true
 ---
 
-Use the popular [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugaByte DB local clusters.
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/deploy/docker/docker-swarm" class="nav-link">
+      <i class="fas fa-layer-group"></i>
+      Docker Swarm
+    </a>
+  </li>
+  <li>
+    <a href="/latest/deploy/docker/docker-compose" class="nav-link active">
+      <i class="fab fa-docker" aria-hidden="true"></i>
+      Docker Compose
+    </a>
+  </li>
+</ul>
+
+Use [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugaByte DB local clusters. Note that this approach is not recommended for multi-node clusters used for performance testing and production environments.
 
 ## 1. Create a single node cluster
 
@@ -89,7 +108,7 @@ $ docker exec -it yb-master-n1 /home/yugabyte/bin/yb-admin --master_addresses yb
 
 Clients can now connect to the YSQL(Beta) API at localhost:5433, YCQL API at localhost:9042 and YEDIS API at localhost:6379. The yb-master admin service is available at http://localhost:7000.
 
-## 3. Test YugaByte DB APIs
+## 3. Test the APIs
 
 Follow the instructions in the [Quick Start](../../quick-start/) section with Docker.
 

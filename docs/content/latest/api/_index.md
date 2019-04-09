@@ -1,11 +1,12 @@
   ---
-title: API Reference
-linkTitle: API Reference
-description: API Reference
+title: APIs
+linkTitle: APIs
+description: APIs
 image: /images/section_icons/index/api.png
 headcontent: YugaByte DB API Reference 
 aliases:
   - /api/
+section: REFERENCE
 menu:
   latest:
     identifier: api
