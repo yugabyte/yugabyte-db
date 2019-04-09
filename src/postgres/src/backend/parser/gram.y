@@ -146,9 +146,13 @@ typedef struct ImportQual
 #define parser_ybc_signal_unsupported(pos, feature, issue) \
 	ybc_not_support(pos, yyscanner, feature " not supported yet", issue)
 
+#define parser_ybc_not_support_in_templates(pos, feature) \
+	ybc_not_support_in_templates(pos, yyscanner, feature " not supported yet in template0/template1")
+
 static void base_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner,
 						 const char *msg);
 static void ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue);
+static void ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg);
 static RawStmt *makeRawStmt(Node *stmt, int stmt_location);
 static void updateRawStmtEnd(RawStmt *rs, int end_location);
 static Node *makeColumnRef(char *colname, List *indirection,
@@ -838,11 +842,8 @@ stmt :
 			| AlterDatabaseStmt
 			| AlterTableStmt
 			| ConstraintsSetStmt
-			| CreateAsStmt
 			| CopyStmt
 			| CreateSchemaStmt
-			| CreateSeqStmt
-			| CreateStmt
 			| CreateUserStmt
 			| CreatedbStmt
 			| DeallocateStmt
@@ -865,6 +866,11 @@ stmt :
 			| VariableSetStmt
 			| VariableShowStmt
 			| ViewStmt
+
+			/* Not supported in template0/template1 statements */
+			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
+			| CreateSeqStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
+			| CreateStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
 
 			/* Not supported statements */
 			| AlterEventTrigStmt { parser_ybc_signal_unsupported(@1, "This statement", 1156); }
@@ -17048,38 +17054,68 @@ parser_init(base_yy_extra_type *yyext)
 	yyext->parsetree = NIL;		/* in case grammar forgets to set it */
 }
 
+bool
+yb_parser_used() {
+	return !YBIsInitDbModeEnvVarSet() && YBIsEnabledInPostgresEnvVar();
+}
+
 void
-ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
-	static bool use_yb_parser = false;
+raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
 	static int signal_level = ERROR;
 	static bool first_call = true;
 	if (first_call) {
 		first_call = false;
-		const char *pg_yb_mode = getenv("YB_ENABLED_IN_POSTGRES");
-		use_yb_parser = !YBIsPreparingTemplates() && pg_yb_mode != NULL && strcmp(pg_yb_mode, "1") == 0;
-
 		const char *pg_yb_suppress = getenv("YB_SUPPRESS_UNSUPPORTED_ERROR");
 		if (pg_yb_suppress != NULL && strcmp(pg_yb_suppress, "1") == 0) {
 			signal_level = WARNING;
 		}
+
+	}
+
+	if (issue > 0) {
+		ereport(signal_level,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("%s", msg),
+			errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
+				"Click '+' on the description to raise its priority", issue),
+			parser_errposition(pos)));
+
+	} else {
+		ereport(signal_level,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("%s", msg),
+			errhint("Please report the issue on "
+				"https://github.com/YugaByte/yugabyte-db/issues"),
+			parser_errposition(pos)));
+	}
+}
+
+void
+ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
+	static bool use_yb_parser = false;
+	static bool first_call = true;
+
+	if (first_call) {
+		first_call = false;
+		use_yb_parser = yb_parser_used();
 	}
 
 	if (use_yb_parser) {
-		if (issue > 0) {
-			ereport(signal_level,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("%s", msg),
-							 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-											 "Click '+' on the description to raise its priority", issue),
-							 parser_errposition(pos)));
-			
-		} else {
-			ereport(signal_level,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("%s", msg),
-							 errhint("Please report the issue on "
-											 "https://github.com/YugaByte/yugabyte-db/issues"),
-							 parser_errposition(pos)));
-		}
+		raise_feature_not_supported(pos, yyscanner, msg, issue);
+	}
+}
+
+void
+ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg) {
+	static bool restricted = false;
+	static bool first_call = true;
+
+	if (first_call) {
+		first_call = false;
+		restricted = yb_parser_used() && YBIsPreparingTemplates();
+	}
+
+	if (restricted) {
+		raise_feature_not_supported(pos, yyscanner, msg, -1);
 	}
 }
