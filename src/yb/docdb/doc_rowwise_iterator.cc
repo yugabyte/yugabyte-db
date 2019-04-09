@@ -542,12 +542,20 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
   return Status::OK();
 }
 
-bool DocRowwiseIterator::HasNext() const {
+Result<bool> DocRowwiseIterator::HasNext() const {
   VLOG(4) << __PRETTY_FUNCTION__;
-  if (!status_.ok() || row_ready_) {
-    // If row is ready, then HasNext returns true. In case of error, NextRow() will
-    // eventually report the error. HasNext is unable to return an error status.
+
+  // Repeated HasNext calls (without Skip/NextRow in between) should be idempotent:
+  // 1. If a previous call failed we returned the same status.
+  // 2. If a row is already available (row_ready_), return true directly.
+  // 3. If we finished all target rows for the scan (done_), return false directly.
+  RETURN_NOT_OK(has_next_status_);
+  if (row_ready_) {
+    // If row is ready, then HasNext returns true.
     return true;
+  }
+  if (done_) {
+    return false;
   }
 
   bool doc_found = false;
@@ -557,11 +565,12 @@ bool DocRowwiseIterator::HasNext() const {
       return false;
     }
 
-    auto fetched_key = db_iter_->FetchKey();
+    const auto fetched_key = db_iter_->FetchKey();
     if (!fetched_key.ok()) {
-      status_ = fetched_key.status();
-      return true;
+      has_next_status_ = fetched_key.status();
+      return has_next_status_;
     }
+
     VLOG(4) << "*fetched_key is " << *fetched_key;
 
     // The iterator is positioned by the previous GetSubDocument call (which places the iterator
@@ -571,20 +580,19 @@ bool DocRowwiseIterator::HasNext() const {
     if (!iter_key_.data().empty() &&
         (is_forward_scan_ ? iter_key_.CompareTo(*fetched_key) >= 0
                           : iter_key_.CompareTo(*fetched_key) <= 0)) {
-      status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
-                                  FormatRocksDBSliceAsStr(*fetched_key));
-      VLOG(1) << status_;
-      return true;
+      has_next_status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
+                                           FormatRocksDBSliceAsStr(*fetched_key));
+      return has_next_status_;
     }
     iter_key_.Reset(*fetched_key);
     VLOG(4) << " Current iter_key_ is " << iter_key_;
 
     const Result<size_t> dockey_size = row_key_.DecodeFrom(iter_key_);
     if (!dockey_size.ok()) {
-      // Defer error reporting to NextRow().
-      status_ = dockey_size.status();
-      return true;
+      has_next_status_ = dockey_size.status();
+      return has_next_status_;
     }
+
     if (!row_key_.BelongsTo(schema_) ||
         (has_bound_key_ && is_forward_scan_ == (row_key_ >= bound_key_))) {
       done_ = true;
@@ -616,12 +624,9 @@ bool DocRowwiseIterator::HasNext() const {
 
     GetSubDocumentData data = { sub_doc_key, &row_, &doc_found, TableTTL(schema_) };
     data.deadline_info = deadline_info_.get_ptr();
-    status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
+    has_next_status_ = GetSubDocument(db_iter_.get(), data, &projection_subkeys_);
+    RETURN_NOT_OK(has_next_status_);
     // After this, the iter should be positioned right after the subdocument.
-    if (!status_.ok()) {
-      // Defer error reporting to NextRow().
-      return true;
-    }
 
     if (!doc_found) {
       SubDocument full_row;
@@ -630,20 +635,14 @@ bool DocRowwiseIterator::HasNext() const {
       // may be optimized by exiting on the first column in future.
       db_iter_->Seek(row_key_);  // Position it for GetSubDocument.
       data.result = &full_row;
-      status_ = GetSubDocument(db_iter_.get(), data);
-      if (!status_.ok()) {
-        // Defer error reporting to NextRow().
-        return true;
-      }
+      has_next_status_ = GetSubDocument(db_iter_.get(), data);
+      RETURN_NOT_OK(has_next_status_);
     }
     if (scan_choices_ && !is_static_column) {
       scan_choices_->DoneWithCurrentTarget();
     }
-    status_ = AdvanceIteratorToNextDesiredRow();
-    if (!status_.ok()) {
-      // Defer error reporting to NextRow().
-      return true;
-    }
+    has_next_status_ = AdvanceIteratorToNextDesiredRow();
+    RETURN_NOT_OK(has_next_status_);
   }
   row_ready_ = true;
   return true;
@@ -701,10 +700,6 @@ bool DocRowwiseIterator::IsNextStaticColumn() const {
 
 Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table_row) {
   VLOG(4) << __PRETTY_FUNCTION__;
-  if (!status_.ok()) {
-    // An error happened in HasNext.
-    return status_;
-  }
 
   if (PREDICT_FALSE(done_)) {
     return STATUS(NotFound, "end of iter");
@@ -758,65 +753,17 @@ CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) 
   }
 
   // There are no more rows to fetch, so no next SubDocKey to read.
-  if (!HasNext()) {
+  if (!VERIFY_RESULT(HasNext())) {
     DVLOG(3) << "No Next SubDocKey";
     return Status::OK();
   }
+
   *sub_doc_key = SubDocKey(row_key_, read_time_.read);
   DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
   return Status::OK();
 }
 
-CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                                             const size_t num_rows_skipped,
-                                                             QLResponsePB* response) const {
-  // When the "limit" number of rows are returned and we are asked to return the paging state,
-  // return the partition key and row key of the next row to read in the paging state if there are
-  // still more rows to read. Otherwise, leave the paging state empty which means we are done
-  // reading from this tablet.
-  if (request.return_paging_state()) {
-    SubDocKey next_key;
-    RETURN_NOT_OK(GetNextReadSubDocKey(&next_key));
-    if (!next_key.doc_key().empty()) {
-      QLPagingStatePB* paging_state = response->mutable_paging_state();
-      paging_state->set_next_partition_key(
-          PartitionSchema::EncodeMultiColumnHashValue(next_key.doc_key().hash()));
-      paging_state->set_next_row_key(next_key.Encode().data());
-      paging_state->set_total_rows_skipped(request.paging_state().total_rows_skipped() +
-          num_rows_skipped);
-    } else if (request.has_offset()) {
-      QLPagingStatePB* paging_state = response->mutable_paging_state();
-      paging_state->set_total_rows_skipped(request.paging_state().total_rows_skipped() +
-          num_rows_skipped);
-    }
-  }
-  return Status::OK();
-}
-
-CHECKED_STATUS DocRowwiseIterator::SetPagingStateIfNecessary(const PgsqlReadRequestPB& request,
-                                                             PgsqlResponsePB* response) const {
-  // When the "limit" number of rows are returned and we are asked to return the paging state,
-  // return the partition key and row key of the next row to read in the paging state if there are
-  // still more rows to read. Otherwise, leave the paging state empty which means we are done
-  // reading from this tablet.
-  if (request.return_paging_state()) {
-    SubDocKey next_key;
-    RETURN_NOT_OK(GetNextReadSubDocKey(&next_key));
-    if (!next_key.doc_key().empty()) {
-      PgsqlPagingStatePB* paging_state = response->mutable_paging_state();
-      paging_state->set_next_partition_key(
-          PartitionSchema::EncodeMultiColumnHashValue(next_key.doc_key().hash()));
-      paging_state->set_next_row_key(next_key.Encode().data());
-    }
-  }
-  return Status::OK();
-}
-
-
 Result<string> DocRowwiseIterator::GetRowKey() const {
-  if (!status_.ok()) {
-    return status_;
-  }
   return std::move(*row_key_.Encode().mutable_data());
 }
 

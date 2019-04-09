@@ -395,7 +395,7 @@ class TabletTestBase : public YBTabletTest {
 
     QLTableRow row;
     QLValue value;
-    while ((**iter).HasNext()) {
+    while (ASSERT_RESULT((**iter).HasNext())) {
       ASSERT_OK_FAST((**iter).NextRow(&row));
 
       if (VLOG_IS_ON(2)) {

@@ -644,7 +644,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
 
   QLTableRow value_map;
   QLValue entry_type, entry_id, metadata;
-  while ((**iter).HasNext()) {
+  while (VERIFY_RESULT((**iter).HasNext())) {
     RETURN_NOT_OK((**iter).NextRow(&value_map));
     RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(type_col_idx), &entry_type));
     if (entry_type.int8_value() != tables_entry) {
@@ -687,7 +687,7 @@ Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
       VERIFY_RESULT(tablet->NewRowIterator(source_projection, boost::none, source_table_id));
   QLTableRow source_row;
   std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
-  while (iter->HasNext()) {
+  while (VERIFY_RESULT(iter->HasNext())) {
     RETURN_NOT_OK(iter->NextRow(&source_row));
     if (source_ybbasectid) {
       QLValue value;

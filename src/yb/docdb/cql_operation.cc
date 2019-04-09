@@ -15,12 +15,12 @@
 
 #include "yb/common/index.h"
 #include "yb/common/jsonb.h"
+#include "yb/common/partition.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
 #include "yb/common/ql_storage_interface.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
 
 #include "yb/util/bfpg/tserver_opcodes.h"
@@ -347,7 +347,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                 data.doc_write_batch->doc_db(),
                                 data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
-    if (iterator.HasNext()) {
+    if (VERIFY_RESULT(iterator.HasNext())) {
       RETURN_NOT_OK(iterator.NextRow(table_row));
     }
     data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
@@ -358,7 +358,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                 data.doc_write_batch->doc_db(),
                                 data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
-    if (iterator.HasNext()) {
+    if (VERIFY_RESULT(iterator.HasNext())) {
       RETURN_NOT_OK(iterator.NextRow(table_row));
       // If there are indexes to update, check if liveness column exists for update/delete because
       // that will affect whether the row will still exist after the DML and whether we need to
@@ -451,7 +451,7 @@ Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(const DocOperationApply
 
   // It is a duplicate value if the index key exist already and the associated indexed primary key
   // is not the same.
-  if (!iterator.HasNext()) {
+  if (!VERIFY_RESULT(iterator.HasNext())) {
     return false;
   }
   QLTableRow table_row;
@@ -823,7 +823,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         // Iterate through rows and delete those that match the condition.
         // TODO We do not lock here, so other write transactions coming in might appear partially
         // applied if they happen in the middle of a ranged delete.
-        while (iterator.HasNext()) {
+        while (VERIFY_RESULT(iterator.HasNext())) {
           existing_row.Clear();
           RETURN_NOT_OK(iterator.NextRow(&existing_row));
 
@@ -1074,7 +1074,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_, static_projection, schema, txn_op_context_, deadline, req_read_time,
         *static_row_spec, &static_row_iter));
-    if (static_row_iter->HasNext()) {
+    if (VERIFY_RESULT(static_row_iter->HasNext())) {
       RETURN_NOT_OK(static_row_iter->NextRow(&static_row));
     }
   }
@@ -1082,7 +1082,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   // Begin the normal fetch.
   int match_count = 0;
   bool static_dealt_with = true;
-  while (resultset->rsrow_count() < row_count_limit && iter->HasNext()) {
+  while (resultset->rsrow_count() < row_count_limit && VERIFY_RESULT(iter->HasNext())) {
     const bool last_read_static = iter->IsNextStaticColumn();
 
     // Note that static columns are sorted before non-static columns in DocDB as follows. This is
@@ -1127,7 +1127,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
         // the non-static row corresponds to this static row; if the non-static row doesn't
         // correspond to this static row, we will have to add it later, so set static_dealt_with to
         // false
-        if (iter->HasNext() && !iter->IsNextStaticColumn()) {
+        if (VERIFY_RESULT(iter->HasNext()) && !iter->IsNextStaticColumn()) {
           static_dealt_with = false;
           continue;
         }
@@ -1169,9 +1169,35 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   }
   *restart_read_ht = iter->RestartReadHt();
 
+  return SetPagingStateIfNecessary(iter.get(), resultset, row_count_limit, num_rows_skipped);
+}
+
+Status QLReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
+                                                  const QLResultSet* resultset,
+                                                  const size_t row_count_limit,
+                                                  const size_t num_rows_skipped) {
   if ((resultset->rsrow_count() >= row_count_limit || request_.has_offset()) &&
       !request_.is_aggregate()) {
-    RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, num_rows_skipped, &response_));
+    SubDocKey next_row_key;
+    RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
+    // When the "limit" number of rows are returned and we are asked to return the paging state,
+    // return the partition key and row key of the next row to read in the paging state if there are
+    // still more rows to read. Otherwise, leave the paging state empty which means we are done
+    // reading from this tablet.
+    if (request_.return_paging_state()) {
+      if (!next_row_key.doc_key().empty()) {
+        QLPagingStatePB* paging_state = response_.mutable_paging_state();
+        paging_state->set_next_partition_key(
+            PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
+        paging_state->set_next_row_key(next_row_key.Encode().data());
+        paging_state->set_total_rows_skipped(request_.paging_state().total_rows_skipped() +
+            num_rows_skipped);
+      } else if (request_.has_offset()) {
+        QLPagingStatePB* paging_state = response_.mutable_paging_state();
+        paging_state->set_total_rows_skipped(request_.paging_state().total_rows_skipped() +
+            num_rows_skipped);
+      }
+    }
   }
 
   return Status::OK();
