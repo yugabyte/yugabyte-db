@@ -187,7 +187,13 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     if (num_attempts != nullptr) {
       ++*num_attempts;
     }
-    Status s = func(master_proxy_.get(), req, resp, &rpc);
+
+    std::shared_ptr<MasterServiceProxy> master_proxy;
+    {
+      std::lock_guard<simple_spinlock> l(leader_master_lock_);
+      master_proxy = master_proxy_;
+    }
+    Status s = func(master_proxy.get(), req, resp, &rpc);
     if (s.IsNetworkError() || s.IsServiceUnavailable()) {
       YB_LOG_EVERY_N_SECS(WARNING, 1)
           << "Unable to send the request (" << req.ShortDebugString()
