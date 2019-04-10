@@ -256,6 +256,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
   State state_ = kPeerCreated;
   Consensus* consensus_ = nullptr;
   std::shared_ptr<rpc::Messenger> messenger_;
+  std::atomic<int> using_thread_pool_{0};
 };
 
 // A proxy to another peer. Usually a thin wrapper around an rpc proxy but can be replaced for
