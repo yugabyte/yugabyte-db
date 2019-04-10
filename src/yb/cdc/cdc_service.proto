@@ -1,0 +1,193 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.cdc;
+
+option java_package = "org.yb.cdc";
+
+import "google/protobuf/struct.proto";
+
+import "yb/common/common.proto";
+import "yb/common/wire_protocol.proto";
+import "yb/master/master.proto";
+import "yb/util/opid.proto";
+
+service CDCService {
+  rpc SetupCDC (SetupCDCRequestPB) returns (SetupCDCResponsePB);
+  rpc ListTablets (ListTabletsRequestPB) returns (ListTabletsResponsePB);
+  rpc GetChanges (GetChangesRequestPB) returns (GetChangesResponsePB);
+  rpc GetCheckpoint (GetCheckpointRequestPB) returns (GetCheckpointResponsePB);
+}
+
+message CDCErrorPB {
+  enum Code {
+    // An error which has no more specific error code.
+    // The code and message in 'status' may reveal more details.
+    //
+    // RPCs should avoid returning this, since callers will not be
+    // able to easily parse the error.
+    UNKNOWN_ERROR = 1;
+
+    // Requested tablet cannot be found
+    TABLET_NOT_FOUND = 2;
+
+    // Requested table cannot be found
+    TABLE_NOT_FOUND = 3;
+
+    // Subscriber UUID not found
+    SUBSCRIBER_NOT_FOUND = 4;
+
+    // Checkpoint older than available CDC records
+    CHECKPOINT_TOO_OLD = 5;
+
+    // Tablet not running
+    TABLET_NOT_RUNNING = 6;
+  }
+
+  // The error code.
+  optional Code code = 1 [default = UNKNOWN_ERROR];
+
+  // The Status object for the error. This will include a textual
+  // message that may be more useful to present in log messages, etc,
+  // though its error code is less specific.
+  optional AppStatusPB status = 2;
+}
+
+enum CDCRecordType {
+  CHANGE = 1;
+  AFTER = 2;
+  ALL = 3;
+}
+
+enum CDCRecordFormat {
+  JSON = 1;
+  WAL = 2; // Used for 2DC
+}
+
+message SetupCDCRequestPB {
+  // Table to set up CDC on
+  optional master.TableIdentifierPB table = 1;
+  // List of tablet UUIDs to set up CDC on
+  repeated bytes tablets = 2;
+  optional CDCRecordType record_type = 3 [default = CHANGE];
+  optional CDCRecordFormat record_format = 4;
+
+  // Time period for which CDC changes will be retained on producer.
+  // Calling GetChanges() with a checkpoint older than "retention" will result in
+  // CHECKPOINT_TOO_OLD error.
+  optional uint32 retention_sec = 5;
+}
+
+message SetupCDCResponsePB {
+  optional CDCErrorPB error = 1;
+  optional bytes subscriber_uuid = 2;
+}
+
+message ListTabletsRequestPB {
+  optional master.TableIdentifierPB table = 1;
+  // Whether to list tablets local to this tserver or all tablets in the cluster
+  optional bool local_only = 2 [default = false];
+}
+
+message ListTabletsResponsePB {
+  optional CDCErrorPB error = 1;
+  repeated CDCTabletPB tablets = 2;
+}
+
+message CDCTabletPB {
+  optional bytes tablet_uuid = 1;
+  // Tservers holding data for the tablet
+  repeated HostPortPB tserver = 2;
+}
+
+message CDCCheckpointPB {
+  optional OpIdPB op_id = 1;
+}
+
+message GetChangesRequestPB {
+  optional bytes subscriber_uuid = 1;
+  // Tablet to get the changes for
+  optional bytes tablet_uuid = 2;
+
+  // Checkpoint to start reading from (exclusive)
+  // Start reading from the first record after this checkpoint
+  optional CDCCheckpointPB from_checkpoint = 3;
+
+  // Mark the given checkpoint as committed
+  // CDC records before this checkpoint can be purged / compacted
+  optional CDCCheckpointPB commit_checkpoint = 4;
+
+  // Maximum records to read
+  optional uint32 max_records = 5;
+}
+
+message CDCRecordPB {
+  enum OperationType {
+    WRITE = 1;
+    DELETE = 2;
+  }
+  optional uint64 time = 1;
+  optional OperationType operation = 2;
+
+  // Primary key of the record that changed
+  optional google.protobuf.Struct key = 3;
+
+  // Key-value pairs (column_name : value) of changes / before record / after record
+  optional google.protobuf.Struct changes = 4;
+  optional google.protobuf.Struct before = 5;
+  optional google.protobuf.Struct after = 6;
+}
+
+message GetChangesResponsePB {
+  optional CDCErrorPB error = 1;
+  optional CDCRecordType record_type = 2 [default = CHANGE];
+  optional CDCRecordFormat record_format = 3;
+  repeated CDCRecordPB records = 4;
+  // Checkpoint that consumers can send back in GetChanges RPC
+  // to mark CDC records until this checkpoint as committed
+  optional CDCCheckpointPB checkpoint = 5;
+
+  // In case the tablet is no longer hosted on this tserver, provide the list of tservers holding
+  // data for the tablet
+  repeated HostPortPB tserver = 6;
+}
+
+message GetCheckpointRequestPB {
+  optional bytes subscriber_uuid = 1;
+  optional bytes tablet_uuid = 2;
+}
+
+message GetCheckpointResponsePB {
+  optional CDCErrorPB error = 1;
+  optional CDCCheckpointPB checkpoint = 2;
+}

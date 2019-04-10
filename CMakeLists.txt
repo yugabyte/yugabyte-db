@@ -1776,6 +1776,7 @@ add_subdirectory(src/yb/tools)
 add_subdirectory(src/yb/rocksutil)
 add_subdirectory(src/yb/docdb)
 add_subdirectory(src/yb/yql)
+add_subdirectory(src/yb/cdc)
 
 # PostgreSQL source code is not in src/yb so that we can grep non-PostgreSQL YB code easily.
 add_subdirectory(src/postgres)
