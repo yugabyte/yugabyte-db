@@ -4290,6 +4290,45 @@ TEST_F(TestRedisService, TestOverwrites) {
   VerifyCallbacks();
 }
 
+TEST_F(TestRedisService, TestSetNX) {
+  // Test Insert.
+  DoRedisTestInt(__LINE__, {"SETNX", "key1", "value1"}, 1);
+  DoRedisTestBulkString(__LINE__, {"GET", "key1"}, "value1");
+  // Overwrite the same key. Using SetNX.
+  DoRedisTestInt(__LINE__, {"SETNX", "key1", "new_value"}, 0);
+  DoRedisTestBulkString(__LINE__, {"GET", "key1"}, "value1");
+  // Test a new key.
+  DoRedisTestInt(__LINE__, {"SETNX", "key2", "value2"}, 1);
+  DoRedisTestBulkString(__LINE__, {"GET", "key2"}, "value2");
+
+  // Test `SET key value NX`.
+  DoRedisTestOk(__LINE__, {"SET", "key3", "value3", "NX"});
+  DoRedisTestBulkString(__LINE__, {"GET", "key3"}, "value3");
+  DoRedisTestNull(__LINE__, {"SET", "key3", "new_value", "NX"});
+  DoRedisTestBulkString(__LINE__, {"GET", "key3"}, "value3");
+
+  // Test `SET key value NX` after SETNX.
+  DoRedisTestNull(__LINE__, {"SET", "key1", "new_value", "NX"});
+  DoRedisTestBulkString(__LINE__, {"GET", "key1"}, "value1");
+
+  // Test SETNX after `SET key value NX`.
+  DoRedisTestInt(__LINE__, {"SETNX", "key3", "new_value"}, 0);
+  DoRedisTestBulkString(__LINE__, {"GET", "key3"}, "value3");
+  // Test a new key.
+  DoRedisTestInt(__LINE__, {"SETNX", "key4", "value4"}, 1);
+  DoRedisTestBulkString(__LINE__, {"GET", "key4"}, "value4");
+
+  // Now try invalid commands.
+  DoRedisTestExpectError(__LINE__, {"SETNX"}); // Not enough arguments.
+  DoRedisTestExpectError(__LINE__, {"SETNX", "key"}); // Not enough arguments.
+  DoRedisTestExpectError(__LINE__, {"SETNX", "key", "score", "value"}); // Too many arguments.
+  DoRedisTestExpectError(__LINE__, {"SETNX", "key", "score1", "value1", "score2",
+                                    "value2"}); // Too many arguments.
+
+  SyncClient();
+  VerifyCallbacks();
+}
+
 TEST_F(TestRedisService, TestAdditionalCommands) {
 
   // The default value is true, but we explicitly set this here for clarity.
