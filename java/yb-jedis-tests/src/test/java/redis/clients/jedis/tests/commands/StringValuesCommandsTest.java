@@ -66,7 +66,7 @@ public class StringValuesCommandsTest extends JedisCommandTestBase {
   }
 
   @Test
-  @Ignore public void setnx() {
+  public void setnx() {
     long status = jedis.setnx("foo", "bar");
     assertEquals(1, status);
     assertEquals("bar", jedis.get("foo"));

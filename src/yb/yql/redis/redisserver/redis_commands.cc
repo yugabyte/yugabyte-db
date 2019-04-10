@@ -150,6 +150,7 @@ namespace redisserver {
     ((rpop, RPop, 2, WRITE)) \
     ((rpush, RPush, -3, WRITE)) \
     ((llen, LLen, 2, READ)) \
+    ((setnx, SetNX, 3, WRITE)) \
     /**/
 
 #define DO_DEFINE_HISTOGRAM(name, cname, arity, type) \
