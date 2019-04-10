@@ -74,6 +74,11 @@ DEFINE_int32(consensus_rpc_timeout_ms, 3000,
              "Timeout used for all consensus internal RPC communications.");
 TAG_FLAG(consensus_rpc_timeout_ms, advanced);
 
+DEFINE_int32(max_wait_for_processresponse_before_closing_ms, 5000,
+             "Maximum amount of time we will wait in Peer::Close() for Peer::ProcessResponse() to "
+             "finish before returning proceding to close the Peer and return");
+TAG_FLAG(max_wait_for_processresponse_before_closing_ms, advanced);
+
 DECLARE_int32(raft_heartbeat_interval_ms);
 
 DEFINE_test_flag(double, fault_crash_on_leader_request_fraction, 0.0,
@@ -184,10 +189,12 @@ Status Peer::SignalRequest(RequestTriggerMode trigger_mode) {
     if (failed_attempts_ > 0 && trigger_mode == RequestTriggerMode::kNonEmptyOnly) {
       return Status::OK();
     }
-  }
 
+    using_thread_pool_.fetch_add(1, std::memory_order_acq_rel);
+  }
   auto status = raft_pool_token_->SubmitFunc(
       std::bind(&Peer::SendNextRequest, shared_from_this(), trigger_mode));
+  using_thread_pool_.fetch_sub(1, std::memory_order_acq_rel);
   if (status.ok()) {
     performing_lock.release();
   }
@@ -235,10 +242,10 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       return;
     }
 
+    using_thread_pool_.fetch_add(1, std::memory_order_acq_rel);
     s = SendRemoteBootstrapRequest();
+    using_thread_pool_.fetch_sub(1, std::memory_order_acq_rel);
     if (s.ok()) {
-      // If we successfully sent the request, release ownership of performing_lock so the semaphore
-      // won't be unlocked when we exits this method.
       performing_lock.release();
     }
     return;
@@ -374,11 +381,13 @@ void Peer::ProcessResponse() {
     return;
   }
 
+  using_thread_pool_.fetch_add(1, std::memory_order_acq_rel);
   processing_lock.unlock();
   // The queue's handling of the peer response may generate IO (reads against the WAL) and
   // SendNextRequest() may do the same thing. So we run the rest of the response handling logic on
   // our thread pool and not on the reactor thread.
   Status s = raft_pool_token_->SubmitFunc(std::bind(&Peer::DoProcessResponse, shared_from_this()));
+  using_thread_pool_.fetch_sub(1, std::memory_order_acq_rel);
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Unable to process peer response: " << s
                              << ": " << response_.ShortDebugString();
@@ -465,7 +474,19 @@ void Peer::Close() {
   // If the peer is already closed return.
   {
     std::lock_guard<simple_spinlock> processing_lock(peer_lock_);
-
+    if (using_thread_pool_.load(std::memory_order_acquire) > 0) {
+      auto deadline = std::chrono::steady_clock::now() +
+          std::chrono::milliseconds(FLAGS_max_wait_for_processresponse_before_closing_ms * 1ms);
+      BackoffWaiter waiter(deadline, 100ms);
+      while (using_thread_pool_.load(std::memory_order_acquire) > 0) {
+        if (!waiter.Wait()) {
+          LOG_WITH_PREFIX(DFATAL)
+              << "Timed out waiting for ThreadPoolToken::SubmitFunc() to finish. "
+              << "Number of pending calls: " << using_thread_pool_.load(std::memory_order_acquire);
+          break;
+        }
+      }
+    }
     if (state_ == kPeerClosed) {
       return;
     }
