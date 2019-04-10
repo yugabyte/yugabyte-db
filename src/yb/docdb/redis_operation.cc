@@ -552,12 +552,11 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
       MonoDelta::FromMilliseconds(request_.set_request().ttl()) : Value::kMaxTtl;
   DocPath doc_path = DocPath::DocPathFromRedisKey(kv.hash_code(), kv.key());
   if (kv.subkey_size() > 0) {
-    auto data_type = GetValueType(data);
-    RETURN_NOT_OK(data_type);
+    RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
     switch (kv.type()) {
       case REDIS_TYPE_TIMESERIES: FALLTHROUGH_INTENDED;
       case REDIS_TYPE_HASH: {
-        if (*data_type != kv.type() && *data_type != REDIS_TYPE_NONE) {
+        if (data_type != kv.type() && data_type != REDIS_TYPE_NONE) {
           response_.set_code(RedisResponsePB::WRONG_TYPE);
           response_.set_error_message(wrong_type_message);
           return Status::OK();
@@ -579,13 +578,12 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         // HMSET and TSADD.
         if (kv.subkey_size() == 1 && EmulateRedisResponse(kv.type()) &&
             !request_.set_request().expect_ok_response()) {
-          auto type = GetValueType(data, 0);
-          RETURN_NOT_OK(type);
+          RedisDataType type = VERIFY_RESULT(GetValueType(data, 0));
           // For HSET/TSADD, we return 0 or 1 depending on if the key already existed.
           // If flag is false, no int response is returned.
-          SetOptionalInt(*type, 0, 1, &response_);
+          SetOptionalInt(type, 0, 1, &response_);
         }
-        if (*data_type == REDIS_TYPE_NONE && kv.type() == REDIS_TYPE_TIMESERIES) {
+        if (data_type == REDIS_TYPE_NONE && kv.type() == REDIS_TYPE_TIMESERIES) {
           // Need to insert the document instead of extending it.
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
               doc_path, kv_entries, data.read_time, data.deadline, redis_query_id(), ttl,
@@ -597,7 +595,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         break;
       }
       case REDIS_TYPE_SORTEDSET: {
-        if (*data_type != kv.type() && *data_type != REDIS_TYPE_NONE) {
+        if (data_type != kv.type() && data_type != REDIS_TYPE_NONE) {
           response_.set_code(RedisResponsePB::WRONG_TYPE);
           response_.set_error_message(wrong_type_message);
           return Status::OK();
@@ -724,7 +722,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
 
         if (kv_entries.object_num_keys() > 0) {
           RETURN_NOT_OK(kv_entries.ConvertToRedisSortedSet());
-          if (*data_type == REDIS_TYPE_NONE) {
+          if (data_type == REDIS_TYPE_NONE) {
                 RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
                     doc_path, kv_entries, data.read_time, data.deadline, redis_query_id(), ttl));
           } else {
@@ -756,11 +754,18 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
     }
     const RedisWriteMode mode = request_.set_request().mode();
     if (mode != RedisWriteMode::REDIS_WRITEMODE_UPSERT) {
-      auto data_type = GetValueType(data);
-      RETURN_NOT_OK(data_type);
-      if ((mode == RedisWriteMode::REDIS_WRITEMODE_INSERT && *data_type != REDIS_TYPE_NONE)
-          || (mode == RedisWriteMode::REDIS_WRITEMODE_UPDATE && *data_type == REDIS_TYPE_NONE)) {
-        response_.set_code(RedisResponsePB::NIL);
+      RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
+      if ((mode == RedisWriteMode::REDIS_WRITEMODE_INSERT && data_type != REDIS_TYPE_NONE)
+          || (mode == RedisWriteMode::REDIS_WRITEMODE_UPDATE && data_type == REDIS_TYPE_NONE)) {
+
+        if (request_.set_request().has_expect_ok_response() &&
+            !request_.set_request().expect_ok_response()) {
+          // For SETNX we return 0 or 1 depending on if the key already existed.
+          response_.set_int_response(0);
+          response_.set_code(RedisResponsePB::OK);
+        } else {
+          response_.set_code(RedisResponsePB::NIL);
+        }
         return Status::OK();
       }
     }
@@ -768,6 +773,13 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         doc_path, Value(PrimitiveValue(kv.value(0)), ttl),
         data.read_time, data.deadline, redis_query_id()));
   }
+
+  if (request_.set_request().has_expect_ok_response() &&
+      !request_.set_request().expect_ok_response()) {
+    // For SETNX we return 0 or 1 depending on if the key already existed.
+    response_.set_int_response(1);
+  }
+
   response_.set_code(RedisResponsePB::OK);
   return Status::OK();
 }
@@ -896,9 +908,8 @@ Status RedisWriteOperation::ApplyAppend(const DocOperationApplyData& data) {
 //                  See ENG-807
 Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
   const RedisKeyValuePB& kv = request_.key_value();
-  auto data_type = GetValueType(data);
-  RETURN_NOT_OK(data_type);
-  if (*data_type != REDIS_TYPE_NONE && *data_type != kv.type() && kv.type() != REDIS_TYPE_NONE) {
+  RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
+  if (data_type != REDIS_TYPE_NONE && data_type != kv.type() && kv.type() != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB::WRONG_TYPE);
     response_.set_error_message(wrong_type_message);
     return Status::OK();
@@ -910,16 +921,16 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
   switch (kv.type()) {
     case REDIS_TYPE_NONE: {
       values = SubDocument(ValueType::kTombstone);
-      num_keys = *data_type == REDIS_TYPE_NONE ? 0 : 1;
+      num_keys = data_type == REDIS_TYPE_NONE ? 0 : 1;
       break;
     }
     case REDIS_TYPE_TIMESERIES: {
-      if (*data_type == REDIS_TYPE_NONE) {
+      if (data_type == REDIS_TYPE_NONE) {
         return Status::OK();
       }
       for (int i = 0; i < kv.subkey_size(); i++) {
         PrimitiveValue primitive_value;
-        RETURN_NOT_OK(PrimitiveValueFromSubKeyStrict(kv.subkey(i), *data_type, &primitive_value));
+        RETURN_NOT_OK(PrimitiveValueFromSubKeyStrict(kv.subkey(i), data_type, &primitive_value));
         values.SetChild(primitive_value, SubDocument(ValueType::kTombstone));
       }
       num_keys = kv.subkey_size();
@@ -977,9 +988,8 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
       // Avoid reads for redis timeseries type.
       if (EmulateRedisResponse(kv.type())) {
         for (int i = 0; i < kv.subkey_size(); i++) {
-          auto type = GetValueType(data, i);
-          RETURN_NOT_OK(type);
-          if (*type == REDIS_TYPE_STRING) {
+          RedisDataType type = VERIFY_RESULT(GetValueType(data, i));
+          if (type == REDIS_TYPE_STRING) {
             values.SetChild(PrimitiveValue(kv.subkey(i).string_subkey()),
                             SubDocument(ValueType::kTombstone));
           } else {
@@ -1047,9 +1057,8 @@ Status RedisWriteOperation::ApplyIncr(const DocOperationApplyData& data) {
                              "Redis data type $0 not supported in Incr command", kv.type());
   }
 
-  auto container_type = GetValueType(data);
-  RETURN_NOT_OK(container_type);
-  if (!VerifyTypeAndSetCode(kv.type(), *container_type, &response_,
+  RedisDataType container_type = VERIFY_RESULT(GetValueType(data));
+  if (!VerifyTypeAndSetCode(kv.type(), container_type, &response_,
                             VerifySuccessIfMissing::kTrue)) {
     // We've already set the error code in the response.
     return Status::OK();
@@ -1197,10 +1206,9 @@ Status RedisWriteOperation::ApplyPop(const DocOperationApplyData& data) {
 
 Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
   const RedisKeyValuePB& kv = request_.key_value();
-  auto data_type = GetValueType(data);
-  RETURN_NOT_OK(data_type);
+  RedisDataType data_type = VERIFY_RESULT(GetValueType(data));
 
-  if (*data_type != REDIS_TYPE_SET && *data_type != REDIS_TYPE_NONE) {
+  if (data_type != REDIS_TYPE_SET && data_type != REDIS_TYPE_NONE) {
     response_.set_code(RedisResponsePB::WRONG_TYPE);
     response_.set_error_message(wrong_type_message);
     return Status::OK();
@@ -1218,9 +1226,8 @@ Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
 
   for (int i = 0 ; i < kv.subkey_size(); i++) { // We know that each subkey is distinct.
     if (FLAGS_emulate_redis_responses) {
-      auto type = GetValueType(data, i);
-      RETURN_NOT_OK(type);
-      if (*type != REDIS_TYPE_NONE) {
+      RedisDataType type = VERIFY_RESULT(GetValueType(data, i));
+      if (type != REDIS_TYPE_NONE) {
         num_keys_found++;
       }
     }
@@ -1234,7 +1241,7 @@ Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
 
   Status s;
 
-  if (*data_type == REDIS_TYPE_NONE) {
+  if (data_type == REDIS_TYPE_NONE) {
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
         doc_path, set_entries, data.read_time, data.deadline, redis_query_id()));
   } else {
@@ -1503,10 +1510,9 @@ Status RedisReadOperation::ExecuteCollectionGetRange() {
       }
 
       // First make sure is of type sorted set or none.
-      auto type = GetValueType();
-      RETURN_NOT_OK(type);
+      RedisDataType type = VERIFY_RESULT(GetValueType());
       auto expected_type = RedisDataType::REDIS_TYPE_SORTEDSET;
-      if (!VerifyTypeAndSetCode(expected_type, *type, &response_, VerifySuccessIfMissing::kTrue)) {
+      if (!VerifyTypeAndSetCode(expected_type, type, &response_, VerifySuccessIfMissing::kTrue)) {
         return Status::OK();
       }
 
@@ -1619,10 +1625,9 @@ Status RedisReadOperation::ExecuteGetTtl() {
 }
 
 Status RedisReadOperation::ExecuteGetForRename() {
-  auto type = GetValueType();
-  RETURN_NOT_OK(type);
-  response_.set_type(*type);
-  switch (*type) {
+  RedisDataType type = VERIFY_RESULT(GetValueType());
+  response_.set_type(type);
+  switch (type) {
     case RedisDataType::REDIS_TYPE_STRING: {
       return ExecuteGet(RedisGetRequestPB::GET);
     }
@@ -1652,7 +1657,7 @@ Status RedisReadOperation::ExecuteGetForRename() {
 
     case RedisDataType::REDIS_TYPE_LIST:
     default: {
-      LOG(DFATAL) << "Unhandled Redis Data Type " << *type;
+      LOG(DFATAL) << "Unhandled Redis Data Type " << type;
     }
   }
   return Status::OK();
@@ -1668,7 +1673,7 @@ Status RedisReadOperation::ExecuteGet() { return ExecuteGet(request_.get_request
 
 Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
   auto request_type = get_request.request_type();
-  RedisDataType expected_type;
+  RedisDataType expected_type = REDIS_TYPE_NONE;
   switch (request_type) {
     case RedisGetRequestPB::GET:
       expected_type = REDIS_TYPE_STRING; break;
@@ -1688,19 +1693,18 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
     case RedisGetRequestPB::GET: FALLTHROUGH_INTENDED;
     case RedisGetRequestPB::TSGET: FALLTHROUGH_INTENDED;
     case RedisGetRequestPB::HGET: {
-      auto type = GetValueType();
-      RETURN_NOT_OK(type);
+      RedisDataType type = VERIFY_RESULT(GetValueType());
       // TODO: this is primarily glue for the Timeseries bug where the parent
       // may get compacted due to an outdated TTL even though the children
       // have longer TTL's and thus still exist. When fixing, take note that
       // GetValueType finds the value type of the parent, so if the parent
       // does not have the maximum TTL, it will return REDIS_TYPE_NONE when it
       // should not.
-      if (expected_type == REDIS_TYPE_TIMESERIES && *type == REDIS_TYPE_NONE) {
-        *type = expected_type;
+      if (expected_type == REDIS_TYPE_TIMESERIES && type == REDIS_TYPE_NONE) {
+        type = expected_type;
       }
       // If wrong type, we set the error code in the response.
-      if (VerifyTypeAndSetCode(expected_type, *type, &response_, VerifySuccessIfMissing::kTrue)) {
+      if (VerifyTypeAndSetCode(expected_type, type, &response_, VerifySuccessIfMissing::kTrue)) {
         auto value = request_type == RedisGetRequestPB::TSGET ? GetOverrideValue() : GetValue();
         RETURN_NOT_OK(value);
         if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_STRING, value->type, &response_,
@@ -1711,10 +1715,9 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
       return Status::OK();
     }
     case RedisGetRequestPB::ZSCORE: {
-      auto type = GetValueType();
-      RETURN_NOT_OK(type);
+      RedisDataType type = VERIFY_RESULT(GetValueType());
       // If wrong type, we set the error code in the response.
-      if (!VerifyTypeAndSetCode(expected_type, *type, &response_, VerifySuccessIfMissing::kTrue)) {
+      if (!VerifyTypeAndSetCode(expected_type, type, &response_, VerifySuccessIfMissing::kTrue)) {
         return Status::OK();
       }
       SubDocKey key_reverse = SubDocKey(
@@ -1737,20 +1740,17 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
     }
     case RedisGetRequestPB::HEXISTS: FALLTHROUGH_INTENDED;
     case RedisGetRequestPB::SISMEMBER: {
-      auto type = GetValueType();
-      RETURN_NOT_OK(type);
-      if (VerifyTypeAndSetCode(expected_type, *type, &response_, VerifySuccessIfMissing::kTrue)) {
-        auto subtype = GetValueType(0);
-        RETURN_NOT_OK(subtype);
-        SetOptionalInt(*subtype, 1, &response_);
+      RedisDataType type = VERIFY_RESULT(GetValueType());
+      if (VerifyTypeAndSetCode(expected_type, type, &response_, VerifySuccessIfMissing::kTrue)) {
+        RedisDataType subtype = VERIFY_RESULT(GetValueType(0));
+        SetOptionalInt(subtype, 1, &response_);
         response_.set_code(RedisResponsePB::OK);
       }
       return Status::OK();
     }
     case RedisGetRequestPB::HSTRLEN: {
-      auto type = GetValueType();
-      RETURN_NOT_OK(type);
-      if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_HASH, *type, &response_,
+      RedisDataType type = VERIFY_RESULT(GetValueType());
+      if (VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_HASH, type, &response_,
                                VerifySuccessIfMissing::kTrue)) {
         auto value = GetValue();
         RETURN_NOT_OK(value);
@@ -1763,9 +1763,8 @@ Status RedisReadOperation::ExecuteGet(const RedisGetRequestPB& get_request) {
       return STATUS(NotSupported, "MGET not yet supported");
     }
     case RedisGetRequestPB::HMGET: {
-      auto type = GetValueType();
-      RETURN_NOT_OK(type);
-      if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_HASH, *type, &response_,
+      RedisDataType type = VERIFY_RESULT(GetValueType());
+      if (!VerifyTypeAndSetCode(RedisDataType::REDIS_TYPE_HASH, type, &response_,
                                 VerifySuccessIfMissing::kTrue)) {
         return Status::OK();
       }
