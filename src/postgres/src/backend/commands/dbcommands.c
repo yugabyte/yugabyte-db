@@ -110,7 +110,6 @@ static void remove_dbtablespaces(Oid db_id);
 static bool check_db_file_conflict(Oid db_id);
 static int	errdetail_busy_db(int notherbackends, int npreparedxacts);
 
-
 /*
  * CREATE DATABASE
  */
@@ -147,6 +146,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	DefElem    *distemplate = NULL;
 	DefElem    *dallowconnections = NULL;
 	DefElem    *dconnlimit = NULL;
+	DefElem    **default_options[] = {&dctype, &dcollate, &dencoding, &dtablespacename};
 	char	   *dbname = stmt->dbname;
 	char	   *dbowner = NULL;
 	const char *dbtemplate = NULL;
@@ -346,6 +346,40 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	 */
 	if (!dbtemplate)
 		dbtemplate = "template1";	/* Default template database name */
+
+	/* Check YB options support */
+	if (YBIsUsingYBParser()) {
+		for (int i = lengthof(default_options); i > 0; --i) {
+			DefElem *option = *default_options[i - 1];
+			if (option != NULL && option->arg != NULL) {
+        ereport(YBUnsupportedFeatureSignalLevel(),
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("Value other than default for %s option is not yet supported", option->defname),
+             errhint("Please report the issue on "
+                     "https://github.com/YugaByte/yugabyte-db/issues"),
+             parser_errposition(pstate, option->location)));
+			}
+		}
+
+		if (strcmp(dbtemplate, "template0") != 0 && strcmp(dbtemplate, "template1") != 0) {
+      ereport(YBUnsupportedFeatureSignalLevel(),
+          (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+           errmsg("Value other than default, template0 or template1 "
+                  "for template option is not yet supported"),
+           errhint("Please report the issue on "
+                   "https://github.com/YugaByte/yugabyte-db/issues"),
+           parser_errposition(pstate, dtemplate->location)));
+		}
+
+		if (dbistemplate) {
+      ereport(YBUnsupportedFeatureSignalLevel(),
+          (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+           errmsg("Value other than default or false for is_template option is not yet supported"),
+           errhint("Please report the issue on "
+                   "https://github.com/YugaByte/yugabyte-db/issues"),
+           parser_errposition(pstate, distemplate->location)));
+		}
+	}
 
 	if (!get_db_info(dbtemplate, ShareLock,
 					 &src_dboid, &src_owner, &src_encoding,
@@ -1447,6 +1481,7 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 	DefElem    *dallowconnections = NULL;
 	DefElem    *dconnlimit = NULL;
 	DefElem    *dtablespace = NULL;
+	DefElem   **unsupported_options[] = {&distemplate, &dtablespace};
 	Datum		new_record[Natts_pg_database];
 	bool		new_record_nulls[Natts_pg_database];
 	bool		new_record_repl[Natts_pg_database];
@@ -1497,6 +1532,21 @@ AlterDatabase(ParseState *pstate, AlterDatabaseStmt *stmt, bool isTopLevel)
 					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("option \"%s\" not recognized", defel->defname),
 					 parser_errposition(pstate, defel->location)));
+	}
+
+	/* Check YB options support */
+	if (YBIsUsingYBParser()) {
+		for (int i = lengthof(unsupported_options); i > 0; --i) {
+			DefElem *option = *unsupported_options[i - 1];
+			if (option != NULL && option->arg != NULL) {
+				ereport(YBUnsupportedFeatureSignalLevel(),
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+										errmsg("Altering %s option is not yet supported", option->defname),
+                    errhint("Please report the issue on "
+                            "https://github.com/YugaByte/yugabyte-db/issues"),
+										parser_errposition(pstate, option->location)));
+			}
+		}
 	}
 
 	if (dtablespace)

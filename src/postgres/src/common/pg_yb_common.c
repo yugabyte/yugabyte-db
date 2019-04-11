@@ -33,6 +33,8 @@
 
 #include "common/pg_yb_common.h"
 
+#include "utils/elog.h"
+
 bool
 YBCIsEnvVarTrue(const char* env_var_name)
 {
@@ -97,4 +99,24 @@ void YBSetInitDbModeEnvVar()
 		perror("Could not set environment variable YB_PG_INITDB_MODE");
 		exit(EXIT_FAILURE);
 	}
+}
+
+bool
+YBIsUsingYBParser()
+{
+	static int cached_value = -1;
+	if (cached_value == -1) {
+		cached_value = !YBIsInitDbModeEnvVarSet() && YBIsEnabledInPostgresEnvVar();
+	}
+	return cached_value;
+}
+
+int
+YBUnsupportedFeatureSignalLevel()
+{
+	static int cached_value = -1;
+	if (cached_value == -1) {
+		cached_value = YBCIsEnvVarTrue("YB_SUPPRESS_UNSUPPORTED_ERROR") ? WARNING : ERROR;
+	}
+	return cached_value;
 }
