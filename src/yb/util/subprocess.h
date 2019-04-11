@@ -148,6 +148,7 @@ class Subprocess {
   pid_t pid() const;
 
   void SetEnv(const std::string& key, const std::string& value);
+  void SetParentDeathSignal(int signal);
 
  private:
   enum State {
@@ -179,6 +180,9 @@ class Subprocess {
   int cached_rc_;
 
   std::map<std::string, std::string> env_;
+
+  // Signal to send child process in case parent dies
+  int pdeath_signal_ = SIGTERM;
 
   DISALLOW_COPY_AND_ASSIGN(Subprocess);
 };
