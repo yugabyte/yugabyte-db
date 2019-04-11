@@ -10812,6 +10812,7 @@ AlterDatabaseStmt:
 				 }
 			| ALTER DATABASE database_name SET TABLESPACE name
 				 {
+					parser_ybc_not_support(@1, "ALTER DATABASE SET TABLESPACE");
 					AlterDatabaseStmt *n = makeNode(AlterDatabaseStmt);
 					n->dbname = $3;
 					n->options = list_make1(makeDefElem("tablespace",
@@ -17053,24 +17054,9 @@ parser_init(base_yy_extra_type *yyext)
 	yyext->parsetree = NIL;		/* in case grammar forgets to set it */
 }
 
-bool
-yb_parser_used() {
-	return !YBIsInitDbModeEnvVarSet() && YBIsEnabledInPostgresEnvVar();
-}
-
 void
 raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
-	static int signal_level = ERROR;
-	static bool first_call = true;
-	if (first_call) {
-		first_call = false;
-		const char *pg_yb_suppress = getenv("YB_SUPPRESS_UNSUPPORTED_ERROR");
-		if (pg_yb_suppress != NULL && strcmp(pg_yb_suppress, "1") == 0) {
-			signal_level = WARNING;
-		}
-
-	}
-
+	int signal_level = YBUnsupportedFeatureSignalLevel();
 	if (issue > 0) {
 		ereport(signal_level,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -17091,12 +17077,9 @@ raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, i
 
 void
 ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
-	static bool use_yb_parser = false;
-	static bool first_call = true;
-
-	if (first_call) {
-		first_call = false;
-		use_yb_parser = yb_parser_used();
+	static int use_yb_parser = -1;
+	if (use_yb_parser == -1) {
+		use_yb_parser = YBIsUsingYBParser();
 	}
 
 	if (use_yb_parser) {
@@ -17106,12 +17089,9 @@ ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
 
 void
 ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg) {
-	static bool restricted = false;
-	static bool first_call = true;
-
-	if (first_call) {
-		first_call = false;
-		restricted = yb_parser_used() && YBIsPreparingTemplates();
+	static int restricted = -1;
+	if (restricted == -1) {
+		restricted = YBIsUsingYBParser() && YBIsPreparingTemplates();
 	}
 
 	if (restricted) {
