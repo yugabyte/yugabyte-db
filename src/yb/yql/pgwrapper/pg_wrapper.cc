@@ -12,6 +12,8 @@
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+#include <signal.h>
+
 #include <vector>
 #include <string>
 #include <random>
@@ -101,6 +103,7 @@ Status PgWrapper::Start() {
   pg_proc_.emplace(postgres_executable, argv);
   pg_proc_->ShareParentStderr();
   pg_proc_->ShareParentStdout();
+  pg_proc_->SetParentDeathSignal(SIGINT);
   SetCommonEnv(&pg_proc_.get(), /* yb_enabled */ true);
   RETURN_NOT_OK(pg_proc_->Start());
   LOG(INFO) << "PostgreSQL server running as pid " << pg_proc_->pid();
@@ -231,6 +234,7 @@ PgSupervisor::PgSupervisor(PgProcessConf conf)
 Status PgSupervisor::Start() {
   std::lock_guard<std::mutex> lock(mtx_);
   RETURN_NOT_OK(ExpectStateUnlocked(PgProcessState::kNotStarted));
+  RETURN_NOT_OK(CleanupOldServerUnlocked());
   LOG(INFO) << "Starting PostgreSQL server";
   RETURN_NOT_OK(StartServerUnlocked());
 
@@ -243,6 +247,31 @@ Status PgSupervisor::Start() {
 
   state_ = PgProcessState::kRunning;
 
+  return Status::OK();
+}
+
+CHECKED_STATUS PgSupervisor::CleanupOldServerUnlocked() {
+  std::string postmaster_pid_filename = JoinPathSegments(conf_.data_dir, "postmaster.pid");
+  if (Env::Default()->FileExists(postmaster_pid_filename)) {
+    std::ifstream postmaster_pid_file;
+    postmaster_pid_file.open(postmaster_pid_filename, std::ios_base::in);
+    pid_t postgres_pid = 0;
+
+    if (!postmaster_pid_file.eof()) {
+      postmaster_pid_file >> postgres_pid;
+    }
+
+    if (!postmaster_pid_file.good() || postgres_pid == 0) {
+      LOG(ERROR) << strings::Substitute("Error reading postgres process ID from file $0. $1 $2",
+          postmaster_pid_filename, ErrnoToString(errno), errno);
+    } else {
+      LOG(WARNING) << "Killing older postgres process: " << postgres_pid;
+      if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH) {
+        return STATUS(RuntimeError, "Unable to kill", ErrnoToString(errno), errno);
+      }
+    }
+    ignore_result(Env::Default()->DeleteFile(postmaster_pid_filename));
+  }
   return Status::OK();
 }
 
