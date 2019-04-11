@@ -33,12 +33,18 @@ class CassandraCppDriverDependency(Dependency):
     def build(self, builder):
         cmake_build = 'Release' if builder.build_type == BUILD_TYPE_UNINSTRUMENTED else 'Debug'
 
+        cxx_flags = builder.compiler_flags + builder.cxx_flags + builder.ld_flags
+        if is_ubuntu():
+            cxx_flags.append('-Wno-error=implicit-fallthrough')
+
         builder.build_with_cmake(self,
                                  ['-DCMAKE_BUILD_TYPE={}'.format(cmake_build),
                                   '-DCMAKE_POSITION_INDEPENDENT_CODE=On',
                                   '-DCMAKE_INSTALL_PREFIX={}'.format(builder.prefix),
-                                  '-DBUILD_SHARED_LIBS=On'] +
+                                  '-DBUILD_SHARED_LIBS=On',
+                                  '-DCMAKE_CXX_FLAGS=' + ' '.join(cxx_flags)],
                                  get_openssl_related_cmake_args())
+
         if is_mac():
           lib_file = 'libcassandra.' + builder.dylib_suffix
           path = os.path.join(builder.prefix_lib, lib_file)

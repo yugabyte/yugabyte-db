@@ -23,7 +23,6 @@ import platform
 import re
 import subprocess
 import sys
-import logging
 
 
 from build_definitions import *
@@ -171,6 +170,8 @@ class Builder:
         parser.add_argument('--add_checksum',
                             help='Compute and add unknown checksums to %s' % CHECKSUM_FILE_NAME,
                             action='store_true')
+        parser.add_argument('--skip',
+                            help='Dependencies to skip')
         parser.add_argument('dependencies',
             nargs=argparse.REMAINDER, help='Dependencies to build.')
         parser.add_argument('-j', '--make-parallelism',
@@ -180,6 +181,10 @@ class Builder:
                             type=int)
         self.args = parser.parse_args()
 
+        if self.args.dependencies and self.args.skip:
+            raise ValueError(
+                "--skip is not compatible with specifying a list of dependencies to build")
+
         if self.args.dependencies:
             names = set([dep.name for dep in self.dependencies])
             for dep in self.args.dependencies:
@@ -188,6 +193,17 @@ class Builder:
             for dep in self.dependencies:
                 if dep.name in self.args.dependencies:
                     self.selected_dependencies.append(dep)
+        elif self.args.skip:
+            skipped = set(self.args.skip.split(','))
+            log("Skipping dependencies: {}".format(sorted(skipped)))
+            self.selected_dependencies = []
+            for dependency in self.dependencies:
+                if dependency.name in skipped:
+                    skipped.remove(dependency.name)
+                else:
+                    self.selected_dependencies.append(dependency)
+            if skipped:
+                raise ValueError("Unknown dependencies, cannot skip: %s" % sorted(skipped))
         else:
             self.selected_dependencies = self.dependencies
 
@@ -201,7 +217,7 @@ class Builder:
         self.prepare_out_dirs()
         self.curl_path = which('curl')
         os.environ['PATH'] = os.path.join(self.tp_installed_common_dir, 'bin') + ':' + \
-                             os.environ['PATH']
+                                 os.environ['PATH']
         self.build(BUILD_TYPE_COMMON)
         self.build(BUILD_TYPE_UNINSTRUMENTED)
         if is_linux():
