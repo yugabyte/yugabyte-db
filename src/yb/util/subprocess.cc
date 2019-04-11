@@ -307,7 +307,7 @@ Status Subprocess::Start() {
 #if defined(__linux__)
     // TODO: prctl(PR_SET_PDEATHSIG) is Linux-specific, look into portable ways
     // to prevent orphans when parent is killed.
-    prctl(PR_SET_PDEATHSIG, SIGTERM);
+    prctl(PR_SET_PDEATHSIG, pdeath_signal_);
 #endif
 
     // stdin
@@ -525,6 +525,10 @@ int Subprocess::ReleaseChildFd(int stdfd) {
   int ret = child_fds_[stdfd];
   child_fds_[stdfd] = -1;
   return ret;
+}
+
+void Subprocess::SetParentDeathSignal(int signal) {
+  pdeath_signal_ = signal;
 }
 
 pid_t Subprocess::pid() const {
