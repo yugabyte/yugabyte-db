@@ -482,10 +482,10 @@ SELECT json_agg(q ORDER BY x, y)
 UPDATE rows SET x = NULL WHERE x = 1;
 SELECT json_agg(q ORDER BY x NULLS FIRST, y)
   FROM rows q;
-       json_agg
------------------------
- [{"x":1,"y":"txt1"}, +
-  {"x":2,"y":"txt2"}, +
+         json_agg
+--------------------------
+ [{"x":null,"y":"txt1"}, +
+  {"x":2,"y":"txt2"},    +
   {"x":3,"y":"txt3"}]
 (1 row)
 
