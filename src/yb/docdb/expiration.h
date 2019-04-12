@@ -57,6 +57,10 @@ struct Expiration {
     MonoDelta new_ttl(ttl);
     return new_ttl -= elapsed_time;
   }
+
+  std::string ToString() const {
+    return Format("{ ttl: $0 write_ht: $1 always_override: $2 }", ttl, write_ht, always_override);
+  }
 };
 
 }  // namespace docdb

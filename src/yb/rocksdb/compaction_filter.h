@@ -47,6 +47,8 @@ struct CompactionFilterContext {
 // CompactionFilter allows an application to modify/delete a key-value at
 // the time of compaction.
 
+YB_DEFINE_ENUM(FilterDecision, (kKeep)(kDiscard));
+
 class CompactionFilter {
  public:
   // Context information of a compaction run
@@ -101,11 +103,11 @@ class CompactionFilter {
   // The last paragraph is not true if you set max_subcompactions to more than
   // 1. In that case, subcompaction from multiple threads may call a single
   // CompactionFilter concurrently.
-  virtual bool Filter(int level,
-                      const Slice& key,
-                      const Slice& existing_value,
-                      std::string* new_value,
-                      bool* value_changed) const = 0;
+  virtual FilterDecision Filter(int level,
+                                const Slice& key,
+                                const Slice& existing_value,
+                                std::string* new_value,
+                                bool* value_changed) = 0;
 
   // The compaction process invokes this method on every merge operand. If this
   // method returns true, the merge operand will be ignored and not written out

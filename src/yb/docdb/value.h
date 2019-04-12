@@ -90,13 +90,22 @@ class Value {
   }
 
   // Decode the entire value
-  CHECKED_STATUS Decode(const rocksdb::Slice &rocksdb_value);
+  CHECKED_STATUS Decode(const Slice& rocksdb_value);
+
+  // Decode value control fields, w/o decrypting actual value.
+  CHECKED_STATUS DecodeControlFields(Slice* slice);
 
   std::string ToString() const;
 
-  std::string Encode() const;
+  // Encode and return result as string.
+  // If external_value is not null, then it is appended to end of result instead of
+  // the primitive_value_ field of this object.
+  std::string Encode(const Slice* external_value = nullptr) const;
 
-  void EncodeAndAppend(std::string* value_bytes) const;
+  // Appends encoded value to value_bytes.
+  // If external_value is not null, then it is appended to end of value_bytes instead of
+  // the primitive_value_ field of this object.
+  void EncodeAndAppend(std::string* value_bytes, const Slice* external_value = nullptr) const;
 
   // Decodes the ValueType of the primitive value stored in the
   // given RocksDB value and any other values before it.
