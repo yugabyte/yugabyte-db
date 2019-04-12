@@ -376,6 +376,13 @@ class SubDocKey {
   static CHECKED_STATUS DecodePrefixLengths(
       Slice slice, boost::container::small_vector_base<size_t>* out);
 
+  // Fills out with ends of SubDocKey components. First item in out will be size of DocKey,
+  // second size of DocKey + size of first subkey and so on.
+  // If out is not empty, then it will be interpreted as partial result for this decoding operation
+  // and the appropriate prefix will be skipped.
+  static CHECKED_STATUS DecodeDocKeyAndSubKeyEnds(
+      Slice slice, boost::container::small_vector_base<size_t>* out);
+
   static Result<bool> DecodeSubkey(Slice* slice);
 
   CHECKED_STATUS FullyDecodeFromKeyWithOptionalHybridTime(const rocksdb::Slice& slice) {
@@ -450,10 +457,6 @@ class SubDocKey {
   bool has_hybrid_time() const {
     return doc_ht_.is_valid();
   }
-
-  // @return The number of initial components (including document key and subkeys) that this
-  //         SubDocKey shares with another one. This does not care about the hybrid_time field.
-  int NumSharedPrefixComponents(const SubDocKey& other) const;
 
   // Generate a RocksDB key that would allow us to seek to the smallest SubDocKey that has a
   // lexicographically higher sequence of subkeys than this one, but is not an extension of this

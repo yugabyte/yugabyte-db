@@ -632,6 +632,24 @@ Status SubDocKey::DecodePrefixLengths(
   return Status::OK();
 }
 
+Status SubDocKey::DecodeDocKeyAndSubKeyEnds(
+    Slice slice, boost::container::small_vector_base<size_t>* out) {
+  auto begin = slice.data();
+  if (out->empty()) {
+    auto doc_key_size = VERIFY_RESULT(DocKey::EncodedSize(
+        slice, DocKeyPart::WHOLE_DOC_KEY));
+    slice.remove_prefix(doc_key_size);
+    out->push_back(doc_key_size);
+  } else {
+    slice.remove_prefix(out->back());
+  }
+  while (VERIFY_RESULT(SubDocKey::DecodeSubkey(&slice))) {
+    out->push_back(slice.data() - begin);
+  }
+
+  return Status::OK();
+}
+
 std::string SubDocKey::DebugSliceToString(Slice slice) {
   SubDocKey key;
   auto status = key.FullyDecodeFrom(slice, HybridTimeRequired::kFalse);
@@ -739,22 +757,6 @@ string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes) {
 
 std::string BestEffortDocDBKeyToStr(const rocksdb::Slice& slice) {
   return BestEffortDocDBKeyToStr(KeyBytes(slice));
-}
-
-int SubDocKey::NumSharedPrefixComponents(const SubDocKey& other) const {
-  if (doc_key_ != other.doc_key_) {
-    return 0;
-  }
-  const int min_num_subkeys = min(num_subkeys(), other.num_subkeys());
-  for (int i = 0; i < min_num_subkeys; ++i) {
-    if (subkeys_[i] != other.subkeys_[i]) {
-      // If we found a mismatch at the first subkey (i = 0), but the DocKey matches, we return 1.
-      // If one subkey matches but the second one (i = 1) is a mismatch, we return 2, etc.
-      return i + 1;
-    }
-  }
-  // The DocKey and all subkeys match up until the subkeys in one of the SubDocKeys are exhausted.
-  return min_num_subkeys + 1;
 }
 
 KeyBytes SubDocKey::AdvanceOutOfSubDoc() const {

@@ -369,12 +369,12 @@ class FilterNumber : public CompactionFilter {
 
   std::string last_merge_operand_key() { return last_merge_operand_key_; }
 
-  bool Filter(int level, const rocksdb::Slice& key, const rocksdb::Slice& value,
-              std::string* new_value, bool* value_changed) const override {
+  FilterDecision Filter(int level, const rocksdb::Slice& key, const rocksdb::Slice& value,
+              std::string* new_value, bool* value_changed) override {
     if (value.size() == sizeof(uint64_t)) {
-      return num_ == DecodeFixed64(value.data());
+      return num_ == DecodeFixed64(value.data()) ? FilterDecision::kDiscard : FilterDecision::kKeep;
     }
-    return true;
+    return FilterDecision::kDiscard;
   }
 
   bool FilterMergeOperand(int level, const rocksdb::Slice& key,
@@ -603,9 +603,10 @@ class ChanglingCompactionFilter : public CompactionFilter {
 
   void SetName(const std::string& name) { name_ = name; }
 
-  bool Filter(int level, const Slice& key, const Slice& existing_value,
-              std::string* new_value, bool* value_changed) const override {
-    return false;
+  FilterDecision Filter(
+      int level, const Slice& key, const Slice& existing_value, std::string* new_value,
+      bool* value_changed) override {
+    return FilterDecision::kKeep;
   }
 
   const char* Name() const override { return name_.c_str(); }
