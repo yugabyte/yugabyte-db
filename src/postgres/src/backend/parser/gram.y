@@ -2401,7 +2401,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DROP CONSTRAINT IF EXISTS <name> [RESTRICT|CASCADE] */
 			| DROP CONSTRAINT IF_P EXISTS name opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE DROP CONSTRAINT", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropConstraint;
 					n->name = $5;
