@@ -155,3 +155,28 @@ INSERT INTO null_index VALUES(3, 3);
 SELECT * FROM null_index ORDER BY k;
 SELECT * FROM null_index WHERE v IS NULL ORDER BY k;
 SELECT * FROM null_index WHERE v IS NOT NULL ORDER BY k;
+
+-- Test index update with UPDATE and DELETE
+CREATE TABLE test_unique (k int PRIMARY KEY, v1 int, v2 int);
+CREATE UNIQUE INDEX ON test_unique (v1);
+CREATE INDEX ON test_unique (v2);
+
+-- Insert a row
+INSERT INTO test_unique VALUES (1, 1, 1);
+SELECT * FROM test_unique;
+
+-- UPDATE a row and verify the content of associated indexes via index-only scan
+UPDATE test_unique SET v1 = 2 WHERE k = 1;
+SELECT v1 FROM test_unique WHERE v1 IN (1, 2);
+SELECT v2 FROM test_unique WHERE v2 IN (1, 2);
+
+-- DELETE a row and verify the content of associated indexes via index-only scan
+DELETE FROM test_unique WHERE k = 1;
+SELECT v1 FROM test_unique WHERE v1 IN (1, 2);
+SELECT v2 FROM test_unique WHERE v2 IN (1, 2);
+
+-- Insert 2 rows of the affected v1 values. Make sure both can be inserted
+-- with no duplicate key violation.
+INSERT INTO test_unique VALUES (1, 1, 1);
+INSERT INTO test_unique VALUES (2, 2, 2);
+SELECT * FROM test_unique;
