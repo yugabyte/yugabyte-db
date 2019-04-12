@@ -467,7 +467,7 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
  * ----------------------------------------------------------------
  */
 void
-ExecDeleteIndexTuples(TupleTableSlot *slot, EState *estate)
+ExecDeleteIndexTuples(Datum ybctid, HeapTuple tuple, EState *estate)
 {
 	ResultRelInfo *resultRelInfo;
 	int			i;
@@ -476,9 +476,9 @@ ExecDeleteIndexTuples(TupleTableSlot *slot, EState *estate)
 	Relation	heapRelation;
 	IndexInfo **indexInfoArray;
 	ExprContext *econtext;
+	TupleTableSlot	*slot;
 	Datum		values[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
-	Datum		ybctid = YBCGetYBTupleIdFromSlot(slot);
 
 	/*
 	 * Get information from the result relation info structure.
@@ -495,7 +495,12 @@ ExecDeleteIndexTuples(TupleTableSlot *slot, EState *estate)
 	 */
 	econtext = GetPerTupleExprContext(estate);
 
-	/* Arrange for econtext's scan tuple to be the tuple under test */
+	/*
+	 * Arrange for econtext's scan tuple to be the tuple under test using
+	 * a temporary slot.
+	 */
+	slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRelation));
+	slot = ExecStoreTuple(tuple, slot, InvalidBuffer, false);
 	econtext->ecxt_scantuple = slot;
 
 	/*
@@ -555,6 +560,9 @@ ExecDeleteIndexTuples(TupleTableSlot *slot, EState *estate)
 					 indexInfo);	/* index AM may need this */
 
 	}
+
+	/* Drop the temporary slot */
+	ExecDropSingleTupleTableSlot(slot);
 }
 
 /* ----------------------------------------------------------------

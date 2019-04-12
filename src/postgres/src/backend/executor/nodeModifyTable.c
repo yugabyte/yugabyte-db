@@ -784,13 +784,10 @@ ExecDelete(ModifyTableState *mtstate,
 
 		if (resultRelInfo->ri_NumIndices > 0)
 		{
-			/*
-			 * Store the old tuple in plan slot, compute the old index entries
-			 * to delete and delete them from the indexes.
-			 */
-			planSlot = ExecStoreTuple(oldtuple, planSlot, InvalidBuffer, false);
+			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 
-			ExecDeleteIndexTuples(planSlot, estate);
+			/* Delete index entries of the old tuple */
+			ExecDeleteIndexTuples(ybctid, oldtuple, estate);
 		}
 	}
 	else
@@ -1122,13 +1119,10 @@ ExecUpdate(ModifyTableState *mtstate,
 
 		if (resultRelInfo->ri_NumIndices > 0)
 		{
-			/*
-			 * Store the old tuple in plan slot, compute the old index entries
-			 * to delete and delete them from the indexes.
-			 */
-			planSlot = ExecStoreTuple(oldtuple, planSlot, InvalidBuffer, false);
+			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 
-			ExecDeleteIndexTuples(planSlot, estate);
+			/* Delete index entries of the old tuple */
+			ExecDeleteIndexTuples(ybctid, oldtuple, estate);
 
 			/* Insert new index entries for tuple */
 			recheckIndexes = ExecInsertIndexTuples(slot, tuple,
@@ -2439,9 +2433,12 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 * inside an EvalPlanQual operation, the indexes might be open
 		 * already, since we share the resultrel state with the original
 		 * query.
+		 *
+		 * For a YugaByte table, we delete the old index entries during DELETE so
+		 * the indexes need to be opened still.
 		 */
 		if (resultRelInfo->ri_RelationDesc->rd_rel->relhasindex &&
-			operation != CMD_DELETE &&
+			(operation != CMD_DELETE || IsYugaByteEnabled()) &&
 			resultRelInfo->ri_IndexRelationDescs == NULL)
 			ExecOpenIndices(resultRelInfo,
 							node->onConflictAction != ONCONFLICT_NONE);
