@@ -153,10 +153,7 @@ Status PgSession::CreateSequencesDataTable() {
                                                     kPgSequencesDataNamespaceId));
 
   // Set up the schema.
-  TableProperties table_properties;
-  table_properties.SetTransactional(true);
   client::YBSchemaBuilder schemaBuilder;
-  schemaBuilder.SetTableProperties(table_properties);
   schemaBuilder.
       AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
   schemaBuilder.
