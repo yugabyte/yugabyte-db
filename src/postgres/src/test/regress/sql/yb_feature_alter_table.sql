@@ -128,10 +128,13 @@ drop table test2;
 alter table atacc1 add constraint checkb check (b < 0); -- should fail
 alter table atacc1 add constraint checkb check (b > 0);
 alter table atacc1 add constraint checkb2 check (b > 10);
+alter table atacc1 add constraint checkb3 check (b > 10);
 insert into atacc1 values (5, 5, 5); -- should fail
 alter table atacc1 drop constraint checkb2;
 insert into atacc1 values (5, 5, 5);
 alter table atacc1 drop constraint checkb;
+alter table atacc1 drop constraint if exists checkb2;
+alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
 
 -- test rename
