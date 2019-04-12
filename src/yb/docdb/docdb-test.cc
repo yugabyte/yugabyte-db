@@ -2791,8 +2791,8 @@ TEST_F(DocDBTest, TestUserTimestamp) {
   ASSERT_OK(WriteToRocksDB(doc_write_batch, ht));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 10000 w: 1 }]) -> {}; user_timestamp: 500
-SubDocKey(DocKey([], ["k1"]), ["s1", "s2"; HT{ physical: 10000 }]) -> "v1"; user_timestamp: 1000
+SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 10000 w: 1 }]) -> {}; user timestamp: 500
+SubDocKey(DocKey([], ["k1"]), ["s1", "s2"; HT{ physical: 10000 }]) -> "v1"; user timestamp: 1000
       )#");
 
   doc_write_batch.Clear();
@@ -2806,9 +2806,9 @@ SubDocKey(DocKey([], ["k1"]), ["s1", "s2"; HT{ physical: 10000 }]) -> "v1"; user
   ASSERT_OK(WriteToRocksDB(doc_write_batch, ht));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 10000 w: 1 }]) -> {}; user_timestamp: 500
-SubDocKey(DocKey([], ["k1"]), ["s1", "s2"; HT{ physical: 10000 }]) -> "v1"; user_timestamp: 1000
-SubDocKey(DocKey([], ["k1"]), ["s3"; HT{ physical: 10000 }]) -> {}; user_timestamp: 1000
+SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 10000 w: 1 }]) -> {}; user timestamp: 500
+SubDocKey(DocKey([], ["k1"]), ["s1", "s2"; HT{ physical: 10000 }]) -> "v1"; user timestamp: 1000
+SubDocKey(DocKey([], ["k1"]), ["s3"; HT{ physical: 10000 }]) -> {}; user timestamp: 1000
       )#");
 
   doc_write_batch.Clear();
@@ -2822,12 +2822,12 @@ SubDocKey(DocKey([], ["k1"]), ["s3"; HT{ physical: 10000 }]) -> {}; user_timesta
   ASSERT_OK(WriteToRocksDB(doc_write_batch, ht));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 10000 w: 1 }]) -> {}; user_timestamp: 500
-SubDocKey(DocKey([], ["k1"]), ["s1", "s2"; HT{ physical: 10000 }]) -> "v1"; user_timestamp: 1000
-SubDocKey(DocKey([], ["k1"]), ["s3"; HT{ physical: 10000 }]) -> {}; user_timestamp: 1000
-SubDocKey(DocKey([], ["k1"]), ["s3", "s4"; HT{ physical: 10000 }]) -> "v1"; user_timestamp: 2000
+SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 10000 w: 1 }]) -> {}; user timestamp: 500
+SubDocKey(DocKey([], ["k1"]), ["s1", "s2"; HT{ physical: 10000 }]) -> "v1"; user timestamp: 1000
+SubDocKey(DocKey([], ["k1"]), ["s3"; HT{ physical: 10000 }]) -> {}; user timestamp: 1000
+SubDocKey(DocKey([], ["k1"]), ["s3", "s4"; HT{ physical: 10000 }]) -> "v1"; user timestamp: 2000
 SubDocKey(DocKey([], ["k1"]), ["s3", "s5"; HT{ physical: 10000 w: 1 }]) -> "v1"; \
-    user_timestamp: 2000
+    user timestamp: 2000
       )#");
 }
 
@@ -2869,7 +2869,7 @@ TEST_F(DocDBTest, TestCompactionWithUserTimestamp) {
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s1")),
                          Value(PrimitiveValue("v13"), Value::kMaxTtl, 4000), t3000));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 3000 }]) -> "v13"; user_timestamp: 4000
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 3000 }]) -> "v13"; user timestamp: 4000
       )#");
 
   // Now try the same with TTL.
@@ -2878,7 +2878,7 @@ TEST_F(DocDBTest, TestCompactionWithUserTimestamp) {
 
   // Insert with TTL.
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 3000 }]) -> "v13"; user_timestamp: 4000
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 3000 }]) -> "v13"; user timestamp: 4000
       SubDocKey(DocKey([], ["k1"]), ["s2"; HT{ physical: 3000 }]) -> "v11"; ttl: 0.001s
       )#");
 
@@ -2889,22 +2889,22 @@ TEST_F(DocDBTest, TestCompactionWithUserTimestamp) {
                          ReadHybridTime::SingleTime(t3000)));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 3000 }]) -> "v13"; user_timestamp: 4000
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 3000 }]) -> "v13"; user timestamp: 4000
       SubDocKey(DocKey([], ["k1"]), ["s2"; HT{ physical: 3000 }]) -> "v11"; ttl: 0.001s
       )#");
 
   FullyCompactHistoryBefore(t5000);
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 3000 }]) -> "v13"; user_timestamp: 4000
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 3000 }]) -> "v13"; user timestamp: 4000
       )#");
 
   // Insert with lower timestamp after compaction works!
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue("s2")),
                          Value(PrimitiveValue("v13"), Value::kMaxTtl, 2000), t3000));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 3000 }]) -> "v13"; user_timestamp: 4000
-      SubDocKey(DocKey([], ["k1"]), ["s2"; HT{ physical: 3000 }]) -> "v13"; user_timestamp: 2000
+      SubDocKey(DocKey([], ["k1"]), ["s1"; HT{ physical: 3000 }]) -> "v13"; user timestamp: 4000
+      SubDocKey(DocKey([], ["k1"]), ["s2"; HT{ physical: 3000 }]) -> "v13"; user timestamp: 2000
       )#");
 }
 

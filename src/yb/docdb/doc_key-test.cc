@@ -305,31 +305,6 @@ TEST(DocKeyTest, TestSubDocKeyStartsWith) {
   }
 }
 
-TEST(DocKeyTest, TestNumSharedPrefixComponents) {
-  const DocKey doc_key({PrimitiveValue("a"), PrimitiveValue("b")});
-  const DocKey doc_key2({PrimitiveValue("aa")});
-  const SubDocKey k1(doc_key, PrimitiveValue("value"), PrimitiveValue(1000L),
-                     HybridTime::FromMicros(12345));
-
-  // If the document key is different, we have no shared prefix components.
-  ASSERT_EQ(0, k1.NumSharedPrefixComponents(SubDocKey(doc_key2)));
-
-  // When only the document key matches, we have one shared prefix component.
-  ASSERT_EQ(1, k1.NumSharedPrefixComponents(SubDocKey(doc_key)));
-  ASSERT_EQ(1, k1.NumSharedPrefixComponents(SubDocKey(doc_key, PrimitiveValue("another_value"))));
-
-  ASSERT_EQ(2, k1.NumSharedPrefixComponents(SubDocKey(doc_key, PrimitiveValue("value"))));
-  ASSERT_EQ(3, k1.NumSharedPrefixComponents(
-      SubDocKey(doc_key, PrimitiveValue("value"), PrimitiveValue(1000L))));
-
-  // Can't match more components than there are in one of the SubDocKeys.
-  ASSERT_EQ(3, k1.NumSharedPrefixComponents(
-      SubDocKey(doc_key,
-                PrimitiveValue("value"),
-                PrimitiveValue(1000L),
-                PrimitiveValue("some_more"))));
-}
-
 std::string EncodeSubDocKey(const std::string& hash_key,
     const std::string& range_key, const std::string& sub_key, uint64_t time) {
   DocKey dk(DocKey(0, PrimitiveValues(hash_key), PrimitiveValues(range_key)));

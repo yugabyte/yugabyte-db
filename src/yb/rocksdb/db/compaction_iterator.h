@@ -19,8 +19,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_DB_COMPACTION_ITERATOR_H
-#define ROCKSDB_DB_COMPACTION_ITERATOR_H
+#ifndef YB_ROCKSDB_DB_COMPACTION_ITERATOR_H
+#define YB_ROCKSDB_DB_COMPACTION_ITERATOR_H
 
 #pragma once
 
@@ -61,7 +61,7 @@ class CompactionIterator {
                      SequenceNumber earliest_write_conflict_snapshot, Env* env,
                      bool expect_valid_internal_key,
                      Compaction* compaction = nullptr,
-                     const CompactionFilter* compaction_filter = nullptr,
+                     CompactionFilter* compaction_filter = nullptr,
                      LogBuffer* log_buffer = nullptr);
 
   void ResetRecordCounts();
@@ -111,7 +111,7 @@ class CompactionIterator {
   Env* env_;
   bool expect_valid_internal_key_;
   Compaction* compaction_;
-  const CompactionFilter* compaction_filter_;
+  CompactionFilter* compaction_filter_;
   LogBuffer* log_buffer_;
   bool bottommost_level_;
   bool valid_ = false;
@@ -166,4 +166,4 @@ class CompactionIterator {
 };
 }  // namespace rocksdb
 
-#endif // ROCKSDB_DB_COMPACTION_ITERATOR_H
+#endif // YB_ROCKSDB_DB_COMPACTION_ITERATOR_H

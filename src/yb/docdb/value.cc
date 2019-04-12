@@ -84,42 +84,51 @@ Status Value::DecodeUserTimestamp(rocksdb::Slice* slice, UserTimeMicros* user_ti
   return Status::OK();
 }
 
-Status Value::Decode(const rocksdb::Slice& rocksdb_value) {
-  if (rocksdb_value.empty()) {
+Status Value::DecodeControlFields(Slice* slice) {
+  if (slice->empty()) {
     return STATUS(Corruption, "Cannot decode a value from an empty slice");
   }
 
-  rocksdb::Slice slice = rocksdb_value;
+  Slice original = *slice;
   RETURN_NOT_OK_PREPEND(
-      DecodeMergeFlags(&slice, &merge_flags_),
-      Format("Failed to decode merge flags in $0", rocksdb_value.ToDebugHexString()));
+      DecodeMergeFlags(slice, &merge_flags_),
+      Format("Failed to decode merge flags in $0", original.ToDebugHexString()));
   RETURN_NOT_OK_PREPEND(
-      DecodeIntentDocHT(&slice, &intent_doc_ht_),
-      Format("Failed to decode intent ht in $0", rocksdb_value.ToDebugHexString()));
+      DecodeIntentDocHT(slice, &intent_doc_ht_),
+      Format("Failed to decode intent ht in $0", original.ToDebugHexString()));
   RETURN_NOT_OK_PREPEND(
-      DecodeTTL(&slice, &ttl_),
-      Format("Failed to decode TTL in $0", rocksdb_value.ToDebugHexString()));
+      DecodeTTL(slice, &ttl_),
+      Format("Failed to decode TTL in $0", original.ToDebugHexString()));
   RETURN_NOT_OK_PREPEND(
-      DecodeUserTimestamp(&slice, &user_timestamp_),
-      Format("Failed to decode user timestamp in $0", rocksdb_value.ToDebugHexString()));
+      DecodeUserTimestamp(slice, &user_timestamp_),
+      Format("Failed to decode user timestamp in $0", original.ToDebugHexString()));
+  return Status::OK();
+}
+
+Status Value::Decode(const Slice& rocksdb_value) {
+  Slice slice = rocksdb_value;
+  RETURN_NOT_OK(DecodeControlFields(&slice));
   RETURN_NOT_OK_PREPEND(
       primitive_value_.DecodeFromValue(slice),
       Format("Failed to decode value in $0", rocksdb_value.ToDebugHexString()));
   return Status::OK();
 }
 
-string Value::ToString() const {
-  string to_string = primitive_value_.ToString();
+std::string Value::ToString() const {
+  std::string result = primitive_value_.ToString();
   if (merge_flags_) {
-    to_string += "; merge flags: " + std::to_string(merge_flags_);
+    result += Format("; merge flags: $0", merge_flags_);
+  }
+  if (intent_doc_ht_.is_valid()) {
+    result += Format("; intent doc ht: $0", intent_doc_ht_);
   }
   if (!ttl_.Equals(kMaxTtl)) {
-    to_string += "; ttl: " + ttl_.ToString();
+    result += Format("; ttl: $0", ttl_);
   }
   if (user_timestamp_ != kInvalidUserTimestamp) {
-    to_string += "; user_timestamp: " + std::to_string(user_timestamp_);
+    result += Format("; user timestamp: $0", user_timestamp_);
   }
-  return to_string;
+  return result;
 }
 
 std::string Value::DebugSliceToString(const Slice& encoded_value) {
@@ -132,34 +141,42 @@ std::string Value::DebugSliceToString(const Slice& encoded_value) {
   return value.ToString();
 }
 
-string Value::Encode() const {
-  string result;
-  EncodeAndAppend(&result);
+std::string Value::Encode(const Slice* external_value) const {
+  std::string result;
+  EncodeAndAppend(&result, external_value);
   return result;
 }
 
-void Value::EncodeAndAppend(std::string *value_bytes) const {
+void Value::EncodeAndAppend(std::string *value_bytes, const Slice* external_value) const {
   if (merge_flags_) {
     value_bytes->push_back(ValueTypeAsChar::kMergeFlags);
-    yb::util::FastAppendUnsignedVarIntToStr(merge_flags_, value_bytes);
+    util::FastAppendUnsignedVarIntToStr(merge_flags_, value_bytes);
+  }
+  if (intent_doc_ht_.is_valid()) {
+    value_bytes->push_back(ValueTypeAsChar::kHybridTime);
+    intent_doc_ht_.AppendEncodedInDocDbFormat(value_bytes);
   }
   if (!ttl_.Equals(kMaxTtl)) {
     value_bytes->push_back(ValueTypeAsChar::kTtl);
-    yb::util::FastAppendSignedVarIntToStr(ttl_.ToMilliseconds(), value_bytes);
+    util::FastAppendSignedVarIntToStr(ttl_.ToMilliseconds(), value_bytes);
   }
   if (user_timestamp_ != kInvalidUserTimestamp) {
     value_bytes->push_back(ValueTypeAsChar::kUserTimestamp);
     util::AppendBigEndianUInt64(user_timestamp_, value_bytes);
   }
-  value_bytes->append(primitive_value_.ToValue());
+  if (!external_value) {
+    value_bytes->append(primitive_value_.ToValue());
+  } else {
+    value_bytes->append(external_value->cdata(), external_value->size());
+  }
 }
 
-  Status Value::DecodePrimitiveValueType(
-      const rocksdb::Slice& rocksdb_value,
-      ValueType* value_type,
-      uint64_t* merge_flags,
-      MonoDelta* ttl,
-      int64_t* user_ts) {
+Status Value::DecodePrimitiveValueType(
+    const rocksdb::Slice& rocksdb_value,
+    ValueType* value_type,
+    uint64_t* merge_flags,
+    MonoDelta* ttl,
+    int64_t* user_ts) {
   auto slice_copy = rocksdb_value;
   uint64_t local_merge_flags;
   MonoDelta local_ttl;

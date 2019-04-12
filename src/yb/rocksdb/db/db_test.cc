@@ -2014,10 +2014,9 @@ TEST_F(DBTest, RecoverWithLargeLog) {
 namespace {
 class KeepFilter : public CompactionFilter {
  public:
-  virtual bool Filter(int level, const Slice& key, const Slice& value,
-                      std::string* new_value, bool* value_changed) const
-      override {
-    return false;
+  FilterDecision Filter(int level, const Slice& key, const Slice& value,
+                        std::string* new_value, bool* value_changed) override {
+    return FilterDecision::kKeep;
   }
 
   const char* Name() const override { return "KeepFilter"; }
@@ -2046,11 +2045,11 @@ class KeepFilterFactory : public CompactionFilterFactory {
 class DelayFilter : public CompactionFilter {
  public:
   explicit DelayFilter(DBTestBase* d) : db_test(d) {}
-  virtual bool Filter(int level, const Slice& key, const Slice& value,
-                      std::string* new_value,
-                      bool* value_changed) const override {
+  FilterDecision Filter(int level, const Slice& key, const Slice& value,
+                        std::string* new_value,
+                        bool* value_changed) override {
     db_test->env_->addon_time_.fetch_add(1000);
-    return true;
+    return FilterDecision::kDiscard;
   }
 
   const char* Name() const override { return "DelayFilter"; }

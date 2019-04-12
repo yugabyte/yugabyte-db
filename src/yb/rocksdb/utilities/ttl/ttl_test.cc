@@ -19,15 +19,17 @@
 
 #ifndef ROCKSDB_LITE
 
+#include <map>
 #include <memory>
+
+#ifndef OS_WIN
+#include <unistd.h>
+#endif
+
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/logging.h"
-#include <map>
-#ifndef OS_WIN
-#include <unistd.h>
-#endif
 
 namespace rocksdb {
 
@@ -310,9 +312,9 @@ class TtlTest : public testing::Test {
     // Keeps key if it is in [kSampleSize_/3, 2*kSampleSize_/3),
     // Change value if it is in [2*kSampleSize_/3, kSampleSize_)
     // Eg. kSampleSize_=6. Drop:key0-1...Keep:key2-3...Change:key4-5...
-    virtual bool Filter(int level, const Slice& key,
-                        const Slice& value, std::string* new_value,
-                        bool* value_changed) const override {
+    FilterDecision Filter(int level, const Slice& key,
+                          const Slice& value, std::string* new_value,
+                          bool* value_changed) override {
       assert(new_value != nullptr);
 
       std::string search_str = "0123456789";
@@ -328,18 +330,18 @@ class TtlTest : public testing::Test {
 #endif
 
       } else {
-        return false; // Keep keys not matching the format "key<NUMBER>"
+        return FilterDecision::kKeep; // Keep keys not matching the format "key<NUMBER>"
       }
 
       int64_t partition = kSampleSize_ / 3;
       if (num_key_end < partition) {
-        return true;
+        return FilterDecision::kDiscard;
       } else if (num_key_end < partition * 2) {
-        return false;
+        return FilterDecision::kKeep;
       } else {
         *new_value = kNewValue_;
         *value_changed = true;
-        return false;
+        return FilterDecision::kKeep;
       }
     }
 
@@ -353,27 +355,25 @@ class TtlTest : public testing::Test {
   };
 
   class TestFilterFactory : public CompactionFilterFactory {
-    public:
-      TestFilterFactory(const int64_t kSampleSize, const std::string& kNewValue)
+   public:
+    TestFilterFactory(const int64_t kSampleSize, const std::string& kNewValue)
         : kSampleSize_(kSampleSize),
-          kNewValue_(kNewValue) {
-      }
+      kNewValue_(kNewValue) {
+    }
 
-      virtual std::unique_ptr<CompactionFilter> CreateCompactionFilter(
-          const CompactionFilter::Context& context) override {
-        return std::unique_ptr<CompactionFilter>(
-            new TestFilter(kSampleSize_, kNewValue_));
-      }
+    std::unique_ptr<CompactionFilter> CreateCompactionFilter(
+        const CompactionFilter::Context& context) override {
+      return std::unique_ptr<CompactionFilter>(new TestFilter(kSampleSize_, kNewValue_));
+    }
 
-      const char* Name() const override {
-        return "TestFilterFactory";
-      }
+    const char* Name() const override {
+      return "TestFilterFactory";
+    }
 
-    private:
-      const int64_t kSampleSize_;
-      const std::string kNewValue_;
+   private:
+    const int64_t kSampleSize_;
+    const std::string kNewValue_;
   };
-
 
   // Choose carefully so that Put, Gets & Compaction complete in 1 second buffer
   static const int64_t kSampleSize_ = 100;
@@ -399,18 +399,18 @@ TEST_F(TtlTest, NoEffect) {
   int64_t boundary2 = 2 * boundary1;
 
   OpenTtl();
-  PutValues(0, boundary1);                       //T=0: Set1 never deleted
-  SleepCompactCheck(1, 0, boundary1);            //T=1: Set1 still there
+  PutValues(0, boundary1);                       // T=0: Set1 never deleted
+  SleepCompactCheck(1, 0, boundary1);            // T=1: Set1 still there
   CloseTtl();
 
   OpenTtl(0);
-  PutValues(boundary1, boundary2 - boundary1);   //T=1: Set2 never deleted
-  SleepCompactCheck(1, 0, boundary2);            //T=2: Sets1 & 2 still there
+  PutValues(boundary1, boundary2 - boundary1);   // T=1: Set2 never deleted
+  SleepCompactCheck(1, 0, boundary2);            // T=2: Sets1 & 2 still there
   CloseTtl();
 
   OpenTtl(-1);
-  PutValues(boundary2, kSampleSize_ - boundary2); //T=3: Set3 never deleted
-  SleepCompactCheck(1, 0, kSampleSize_, true);    //T=4: Sets 1,2,3 still there
+  PutValues(boundary2, kSampleSize_ - boundary2); // T=3: Set3 never deleted
+  SleepCompactCheck(1, 0, kSampleSize_, true);    // T=4: Sets 1,2,3 still there
   CloseTtl();
 }
 
