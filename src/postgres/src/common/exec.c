@@ -535,6 +535,14 @@ pclose_check(FILE *stream)
 	return exitstatus;
 }
 
+
+/*
+ * YugaByte needed functionality of executing system command and reading first line of output
+ */
+char* exec_pipe_read_line(char *cmd, char *line, int maxsize) {
+  return pipe_read_line(cmd, line, maxsize);
+}
+
 /*
  *	set_pglocale_pgservice
  *
