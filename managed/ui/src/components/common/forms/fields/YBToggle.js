@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import Toggle from 'react-toggle';
 import PropTypes from 'prop-types';
-import {isValidObject} from '../../../../utils/ObjectUtils';
+import { isValidObject } from '../../../../utils/ObjectUtils';
 import { YBLabel, DescriptionItem } from 'components/common/descriptors';
 import 'react-toggle/style.css';
 import './stylesheets/YBToggle.scss';
@@ -27,7 +27,7 @@ export default class YBToggle extends Component {
     return (
       <YBLabel label={label} meta={meta} insetError={insetError} infoContent={infoContent} infoTitle={infoTitle}>
         <DescriptionItem title={subLabel}>
-          <Toggle checked={!!input.value && checkedVal}  className="yb-toggle" onChange={onChange}
+          <Toggle checked={!!input.value && checkedVal} className="yb-toggle" onChange={onChange}
                   disabled={isReadOnly} />
         </DescriptionItem>
       </YBLabel>
