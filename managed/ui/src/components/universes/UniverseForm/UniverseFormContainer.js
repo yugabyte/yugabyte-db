@@ -153,6 +153,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].universeName = currentUniverse.data.name;
     data.formType = formType;
     data[clusterType].assignPublicIP = userIntent.assignPublicIP;
+    data[clusterType].useTimeSync = userIntent.useTimeSync;
     data[clusterType].enableYSQL = userIntent.enableYSQL;
     data[clusterType].enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     data[clusterType].enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
