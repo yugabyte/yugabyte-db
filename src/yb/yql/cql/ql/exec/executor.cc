@@ -16,9 +16,15 @@
 #include <yb/yql/cql/ql/util/errcodes.h>
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ql_processor.h"
-#include "yb/client/client.h"
+
 #include "yb/client/callbacks.h"
+#include "yb/client/client.h"
+#include "yb/client/error.h"
+#include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/wire_protocol.h"
@@ -36,21 +42,19 @@ using std::shared_ptr;
 using namespace std::placeholders;
 
 using client::YBColumnSpec;
+using client::YBOperation;
+using client::YBqlOpPtr;
+using client::YBqlReadOp;
+using client::YBqlReadOpPtr;
+using client::YBqlWriteOp;
+using client::YBqlWriteOpPtr;
 using client::YBSchema;
 using client::YBSchemaBuilder;
-using client::YBTable;
-using client::YBTableCreator;
-using client::YBTableAlterer;
-using client::YBTableType;
-using client::YBTableName;
 using client::YBSessionPtr;
-using client::YBOperation;
-using client::YBqlOp;
-using client::YBqlReadOp;
-using client::YBqlWriteOp;
-using client::YBqlOpPtr;
-using client::YBqlReadOpPtr;
-using client::YBqlWriteOpPtr;
+using client::YBTableAlterer;
+using client::YBTableCreator;
+using client::YBTableName;
+using client::YBTableType;
 using strings::Substitute;
 
 #define RETURN_STMT_NOT_OK(s) do {                                         \

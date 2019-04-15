@@ -18,6 +18,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/partition.h"

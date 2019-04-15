@@ -16,7 +16,10 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 

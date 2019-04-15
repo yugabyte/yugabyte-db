@@ -13,6 +13,7 @@
 
 #include <boost/scope_exit.hpp>
 
+#include "yb/client/session.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/txn-test-base.h"

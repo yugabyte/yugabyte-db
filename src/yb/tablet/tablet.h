@@ -45,6 +45,7 @@
 #include "yb/rocksdb/write_batch.h"
 
 #include "yb/client/client.h"
+#include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_manager.h"
 
 #include "yb/common/schema.h"

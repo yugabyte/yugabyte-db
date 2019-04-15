@@ -38,6 +38,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/table_creator.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/fs/fs_manager.h"
@@ -142,20 +143,11 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
 };
 
 void CreateTableStressTest::CreateBigTable(const YBTableName& table_name, int num_tablets) {
-  vector<const YBPartialRow*> split_rows;
-  int num_splits = num_tablets - 1; // 4 tablets == 3 splits.
-  // Let the "\x8\0\0\0" keys end up in the first split; start splitting at 1.
-  for (int i = 1; i <= num_splits; i++) {
-    YBPartialRow* row = schema_.NewRow();
-    CHECK_OK(row->SetInt32(0, i));
-    split_rows.push_back(row);
-  }
-
   ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(table_name)
             .schema(&schema_)
-            .split_rows(split_rows)
+            .num_tablets(num_tablets)
             .wait(false)
             .Create());
 }

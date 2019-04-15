@@ -32,13 +32,13 @@
 
 #include <mutex>
 
-#include <boost/bind.hpp>
 #include <glog/logging.h>
-
-#include "yb/client/meta_cache.h"
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/meta_cache.h"
+#include "yb/client/table.h"
+
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"

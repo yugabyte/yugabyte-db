@@ -37,6 +37,8 @@
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 
 #include "yb/common/schema.h"
@@ -59,7 +61,6 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 using client::YBTableName;
-using client::YBTableType;
 
 class MasterFailoverTest : public YBTest {
  public:

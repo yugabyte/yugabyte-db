@@ -40,6 +40,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/table_creator.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"

@@ -34,6 +34,8 @@
 
 #include <glog/logging.h>
 
+#include "yb/client/table.h"
+
 #include "yb/common/row.h"
 #include "yb/common/ql_rowwise_iterator_interface.h"
 

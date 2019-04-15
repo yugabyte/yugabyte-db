@@ -53,6 +53,9 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/session.h"
+#include "yb/client/table_creator.h"
+#include "yb/client/tablet_server.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_expr.h"

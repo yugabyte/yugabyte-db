@@ -29,7 +29,6 @@ using client::YBSession;
 using client::YBMetaDataCache;
 using client::YBTable;
 using client::YBTableName;
-using client::YBTableType;
 using client::YBPgsqlWriteOp;
 
 // TODO(neil) This should be derived from a GFLAGS.

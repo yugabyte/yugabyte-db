@@ -36,9 +36,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   explicit PgTableDesc(std::shared_ptr<client::YBTable> pg_table);
 
-  const client::YBTableName& table_name() const {
-    return table_->name();
-  }
+  const client::YBTableName& table_name() const;
 
   const std::shared_ptr<client::YBTable> table() const {
     return table_;
@@ -50,33 +48,14 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
     return columns_;
   }
 
-  const size_t num_hash_key_columns() const {
-    return table_->schema().num_hash_key_columns();
-  }
+  const size_t num_hash_key_columns() const;
+  const size_t num_key_columns() const;
+  const size_t num_columns() const;
 
-  const size_t num_key_columns() const {
-    return table_->schema().num_key_columns();
-  }
-
-  const size_t num_columns() const {
-    return table_->schema().num_columns();
-  }
-
-  client::YBPgsqlReadOp* NewPgsqlSelect() {
-    return table_->NewPgsqlSelect();
-  }
-
-  client::YBPgsqlWriteOp* NewPgsqlInsert() {
-    return table_->NewPgsqlInsert();
-  }
-
-  client::YBPgsqlWriteOp* NewPgsqlUpdate() {
-    return table_->NewPgsqlUpdate();
-  }
-
-  client::YBPgsqlWriteOp* NewPgsqlDelete() {
-    return table_->NewPgsqlDelete();
-  }
+  client::YBPgsqlReadOp* NewPgsqlSelect();
+  client::YBPgsqlWriteOp* NewPgsqlInsert();
+  client::YBPgsqlWriteOp* NewPgsqlUpdate();
+  client::YBPgsqlWriteOp* NewPgsqlDelete();
 
   // Find the column given the postgres attr number.
   Result<PgColumn *> FindColumn(int attr_num);

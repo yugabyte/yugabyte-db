@@ -37,6 +37,7 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/client/client.h"
+#include "yb/client/table_creator.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/string_case.h"

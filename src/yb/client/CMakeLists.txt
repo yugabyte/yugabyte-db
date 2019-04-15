@@ -38,18 +38,18 @@ set(CLIENT_SRCS
   client_builder-internal.cc
   client-internal.cc
   client_utils.cc
+  error.cc
   error_collector.cc
-  error-internal.cc
   in_flight_op.cc
   meta_cache.cc
+  meta_data_cache.cc
   permissions.cc
-  session-internal.cc
+  session.cc
   schema.cc
-  table-internal.cc
-  table_alterer-internal.cc
-  table_creator-internal.cc
+  table.cc
+  table_alterer.cc
+  table_creator.cc
   table_handle.cc
-  tablet_server-internal.cc
   tablet_rpc.cc
   transaction.cc
   transaction_manager.cc

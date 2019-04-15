@@ -16,6 +16,7 @@
 #include <mutex>
 #include <thread>
 
+#include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_pool.h"
 
 #include "yb/gutil/strings/join.h"

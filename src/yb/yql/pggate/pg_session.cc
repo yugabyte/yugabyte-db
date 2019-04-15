@@ -19,9 +19,13 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pggate_if_cxx_decl.h"
 
-#include "yb/client/yb_op.h"
-#include "yb/client/transaction.h"
 #include "yb/client/batcher.h"
+#include "yb/client/error.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
+#include "yb/client/table_creator.h"
+#include "yb/client/transaction.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_protocol_util.h"
 
