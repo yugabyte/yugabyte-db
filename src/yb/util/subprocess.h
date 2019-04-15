@@ -32,6 +32,8 @@
 #ifndef YB_UTIL_SUBPROCESS_H
 #define YB_UTIL_SUBPROCESS_H
 
+#include <signal.h>
+
 #include <string>
 #include <vector>
 #include <mutex>
