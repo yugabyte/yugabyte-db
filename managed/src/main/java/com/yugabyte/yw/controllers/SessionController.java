@@ -23,6 +23,7 @@ import play.mvc.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.UUID;
 import javax.persistence.PersistenceException;
 
 public class SessionController extends Controller {
@@ -38,7 +39,9 @@ public class SessionController extends Controller {
   ConfigHelper configHelper;
 
   public static final String AUTH_TOKEN = "authToken";
+  public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
+  private static final Integer FOREVER = 2147483647;
 
   public Result login() {
     Form<CustomerLoginFormData> formData = formFactory.form(CustomerLoginFormData.class).bindFromRequest();
@@ -63,6 +66,21 @@ public class SessionController extends Controller {
     authTokenJson.put(CUSTOMER_UUID, cust.uuid.toString());
     response().setCookie(Http.Cookie.builder(AUTH_TOKEN, authToken).withSecure(ctx().request().secure()).build());
     return ok(authTokenJson);
+  }
+
+  @With(TokenAuthenticator.class)
+  public Result api_token(UUID customerUUID) {
+    Customer cust = (Customer) Http.Context.current().args.get("customer");
+
+    if (cust == null) {
+      return ApiResponse.error(BAD_REQUEST, "Could not find customer from given credentials.");
+    }
+
+    String apiToken = cust.upsertApiToken();
+    ObjectNode apiTokenJson = Json.newObject();
+    apiTokenJson.put(API_TOKEN, apiToken);
+    response().setCookie(Http.Cookie.builder(API_TOKEN, apiToken).withSecure(ctx().request().secure()).withMaxAge(FOREVER).build());
+    return ok(apiTokenJson);
   }
 
   public Result register() {

@@ -156,6 +156,20 @@ public class CustomerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpsertApiToken() {
+    Customer c = Customer.create("C1", "Customer 1","foo@foo.com", "password");
+    c.save();
+
+    assertNotNull(c.uuid);
+
+    String apiToken = c.upsertApiToken();
+    assertNotNull(apiToken);
+
+    Customer apiCust = Customer.authWithApiToken(apiToken);
+    assertEquals(apiCust.uuid, c.uuid);
+  }
+
+  @Test
   public void testGetUniversesForProvider() {
     Customer c = ModelFactory.testCustomer();
     Provider p = ModelFactory.awsProvider(c);

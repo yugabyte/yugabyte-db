@@ -81,6 +81,9 @@ public class Customer extends Model {
   @Column(nullable = true)
   private Date authTokenIssueDate;
 
+  @Column(nullable = true)
+  private String apiToken;
+
   public Date getAuthTokenIssueDate() {
     return this.authTokenIssueDate;
   }
@@ -210,6 +213,17 @@ public class Customer extends Model {
   }
 
   /**
+   * Create a random auth token without expiry date for customer and store it in the DB.
+   *
+   * @return apiToken
+   */
+  public String upsertApiToken() {
+    apiToken = UUID.randomUUID().toString();
+    save();
+    return apiToken;
+  }
+
+  /**
    * Authenticate with Token, would check if the authToken is valid.
    *
    * @param authToken
@@ -229,7 +243,25 @@ public class Customer extends Model {
   }
 
   /**
-   * Delete the authToken for the customer.
+   * Authenticate with API Token, would check if apiToken is valid.
+   *
+   * @param apiToken
+   * @return Authenticated Customer Info
+   */
+  public static Customer authWithApiToken(String apiToken) {
+    if (apiToken == null) {
+      return null;
+    }
+
+    try {
+      return find.where().eq("apiToken", apiToken).findUnique();
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  /**
+   * Delete authToken for the customer.
    */
   public void deleteAuthToken() {
     authToken = null;
