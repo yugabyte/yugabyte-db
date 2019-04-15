@@ -135,6 +135,7 @@ export default class ClusterFields extends Component {
           numNodes: userIntent.numNodes,
           replicationFactor: userIntent.replicationFactor,
           ybSoftwareVersion: userIntent.ybSoftwareVersion,
+          useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
           enableNodeToNodeEncrypt: userIntent.enableNodeToNodeEncrypt,
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
@@ -821,8 +822,8 @@ export default class ClusterFields extends Component {
     }
 
     if (isNonEmptyObject(deviceInfo)) {
-      if (self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD') {
-        const currentProvider = this.getCurrentProvider(self.state.providerSelected);
+      const currentProvider = this.getCurrentProvider(self.state.providerSelected);
+      if ((self.state.volumeType === 'EBS' || self.state.volumeType === 'SSD') && isDefinedNotNull(currentProvider)) {
         const isInAws = currentProvider.code === 'aws';
         const isInGcp = currentProvider.code === 'gcp';
         // We don't want to keep the volume fixed in case of Kubernetes or persistent GCP storage.
