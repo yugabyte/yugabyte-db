@@ -34,6 +34,9 @@ namespace client {
 class YBClient;
 typedef std::shared_ptr<YBClient> YBClientPtr;
 
+class YBError;
+typedef std::vector<std::unique_ptr<YBError>> CollectedErrors;
+
 class YBTransaction;
 typedef std::shared_ptr<YBTransaction> YBTransactionPtr;
 
@@ -64,11 +67,16 @@ typedef std::shared_ptr<YBOperation> YBOperationPtr;
 class TableHandle;
 class TransactionManager;
 class TransactionPool;
+class YBColumnSpec;
+class YBLoggingCallback;
 class YBMetaDataCache;
 class YBSchema;
 class YBTableAlterer;
 class YBTableCreator;
 class YBTableName;
+class YBTabletServer;
+
+struct YBTableInfo;
 
 typedef std::function<void(std::vector<const TabletId*>*)> LocalTabletFilter;
 
@@ -76,6 +84,10 @@ YB_STRONGLY_TYPED_BOOL(UseCache);
 YB_STRONGLY_TYPED_BOOL(ForceConsistentRead);
 
 namespace internal {
+
+class AsyncRpc;
+class MetaCache;
+class TabletInvoker;
 
 struct InFlightOp;
 typedef std::shared_ptr<InFlightOp> InFlightOpPtr;
@@ -88,6 +100,9 @@ class RemoteTabletServer;
 
 class Batcher;
 typedef scoped_refptr<Batcher> BatcherPtr;
+
+struct AsyncRpcMetrics;
+typedef std::shared_ptr<AsyncRpcMetrics> AsyncRpcMetricsPtr;
 
 } // namespace internal
 

@@ -13,7 +13,10 @@
 
 #include "yb/yql/pggate/pggate.h"
 #include "yb/util/status.h"
+
+#include "yb/client/session.h"
 #include "yb/client/transaction.h"
+
 #include "yb/common/common.pb.h"
 
 namespace yb {

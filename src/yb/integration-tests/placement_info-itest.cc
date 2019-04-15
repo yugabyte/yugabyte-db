@@ -14,6 +14,8 @@
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/table_creator.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"

@@ -87,7 +87,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Takes a reference on error_collector. Creates a weak_ptr to 'session'.
   Batcher(YBClient* client,
           ErrorCollector* error_collector,
-          const std::shared_ptr<YBSessionData>& session,
+          const YBSessionPtr& session,
           YBTransactionPtr transaction,
           ConsistentReadPoint* read_point,
           bool force_consistent_read);
@@ -242,7 +242,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   State state_;
 
   YBClient* const client_;
-  std::weak_ptr<YBSessionData> weak_session_data_;
+  std::weak_ptr<YBSession> weak_session_;
 
   // Errors are reported into this error collector.
   scoped_refptr<ErrorCollector> const error_collector_;

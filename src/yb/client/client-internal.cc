@@ -45,7 +45,8 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/client/meta_cache.h"
-#include "yb/client/table-internal.h"
+#include "yb/client/table.h"
+
 #include "yb/common/index.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -456,7 +457,7 @@ Status YBClient::Data::CreateTable(YBClient* client,
       // response (e.g., due to failure before the successful
       // response could be sent back, or due to a I/O pause or a
       // network blip leading to a timeout, etc...)
-      YBTable::Info info;
+      YBTableInfo info;
       string keyspace = req.has_namespace_() ? req.namespace_().name() :
                         (req.name() == common::kRedisTableName ? common::kRedisKeyspaceName : "");
       const YBTableName table_name(!keyspace.empty()
@@ -846,14 +847,14 @@ class GetTableSchemaRpc : public Rpc {
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
                     const YBTableName& table_name,
-                    YBTable::Info* info,
+                    YBTableInfo* info,
                     const MonoTime& deadline,
                     const shared_ptr<rpc::Messenger>& messenger,
                     rpc::ProxyCache* proxy_cache);
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
                     const TableId& table_id,
-                    YBTable::Info* info,
+                    YBTableInfo* info,
                     const MonoTime& deadline,
                     const shared_ptr<rpc::Messenger>& messenger,
                     rpc::ProxyCache* proxy_cache);
@@ -874,7 +875,7 @@ class GetTableSchemaRpc : public Rpc {
   YBClient* client_;
   StatusCallback user_cb_;
   master::TableIdentifierPB table_identifier_;
-  YBTable::Info* info_;
+  YBTableInfo* info_;
   GetTableSchemaResponsePB resp_;
 };
 
@@ -897,7 +898,7 @@ master::TableIdentifierPB ToTableIdentifierPB(const TableId& table_id) {
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
                                      const YBTableName& table_name,
-                                     YBTable::Info* info,
+                                     YBTableInfo* info,
                                      const MonoTime& deadline,
                                      const shared_ptr<rpc::Messenger>& messenger,
                                      rpc::ProxyCache* proxy_cache)
@@ -911,7 +912,7 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
 GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
                                      const TableId& table_id,
-                                     YBTable::Info* info,
+                                     YBTableInfo* info,
                                      const MonoTime& deadline,
                                      const shared_ptr<rpc::Messenger>& messenger,
                                      rpc::ProxyCache* proxy_cache)
@@ -1055,7 +1056,7 @@ void GetTableSchemaRpc::Finished(const Status& status) {
 Status YBClient::Data::GetTableSchema(YBClient* client,
                                       const YBTableName& table_name,
                                       const MonoTime& deadline,
-                                      YBTable::Info* info) {
+                                      YBTableInfo* info) {
   Synchronizer sync;
   auto rpc = rpc::StartRpc<GetTableSchemaRpc>(
       client,
@@ -1071,7 +1072,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
 Status YBClient::Data::GetTableSchema(YBClient* client,
                                       const TableId& table_id,
                                       const MonoTime& deadline,
-                                      YBTable::Info* info) {
+                                      YBTableInfo* info) {
   Synchronizer sync;
   auto rpc = rpc::StartRpc<GetTableSchemaRpc>(
       client,

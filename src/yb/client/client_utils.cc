@@ -16,6 +16,7 @@
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/table.h"
 
 namespace yb {
 namespace client {

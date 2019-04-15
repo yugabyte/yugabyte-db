@@ -40,6 +40,7 @@
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema-internal.h"
+#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 
 #include "yb/consensus/quorum_util.h"

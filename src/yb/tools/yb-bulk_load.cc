@@ -22,6 +22,7 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 #include "yb/client/client.h"
+#include "yb/client/table.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema.h"

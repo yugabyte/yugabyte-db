@@ -502,6 +502,24 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   ReadHybridTime read_time_;
 };
 
+// This class is not thread-safe, though different YBNoOp objects on
+// different threads may share a single YBTable object.
+class YBNoOp {
+ public:
+  // Initialize the NoOp request object. The given 'table' object must remain valid
+  // for the lifetime of this object.
+  explicit YBNoOp(YBTable* table);
+  ~YBNoOp();
+
+  // Executes a no-op request against the tablet server on which the row specified
+  // by "key" lives.
+  CHECKED_STATUS Execute(const YBPartialRow& key);
+ private:
+  YBTable* table_;
+
+  DISALLOW_COPY_AND_ASSIGN(YBNoOp);
+};
+
 }  // namespace client
 }  // namespace yb
 

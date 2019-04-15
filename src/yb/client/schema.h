@@ -209,6 +209,10 @@ class YBColumnSchema {
 // TODO(KUDU-861): this API will also be used for an improved AlterTable API.
 class YBColumnSpec {
  public:
+  explicit YBColumnSpec(const std::string& col_name);
+
+  ~YBColumnSpec();
+
   // Operations only relevant for Create Table
   // ------------------------------------------------------------
 
@@ -270,12 +274,6 @@ class YBColumnSpec {
   class Data;
   friend class YBSchemaBuilder;
   friend class YBTableAlterer;
-
-  // This class should always be owned and deleted by one of its friends,
-  // not the user.
-  ~YBColumnSpec();
-
-  explicit YBColumnSpec(const std::string& col_name);
 
   CHECKED_STATUS ToColumnSchema(YBColumnSchema* col) const;
 

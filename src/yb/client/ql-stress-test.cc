@@ -15,6 +15,8 @@
 
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
 

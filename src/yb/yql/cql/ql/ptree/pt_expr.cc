@@ -15,6 +15,8 @@
 // Treenode definitions for expressions.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/client/table.h"
+
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"

@@ -20,6 +20,8 @@
 #include <functional>
 
 #include "yb/client/client.h"
+#include "yb/client/table.h"
+
 #include "yb/common/index.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/util/flag_tags.h"

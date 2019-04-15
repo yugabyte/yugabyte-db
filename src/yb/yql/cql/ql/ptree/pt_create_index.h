@@ -72,9 +72,7 @@ class PTCreateIndex : public PTCreateTable {
     return table_;
   }
 
-  const std::string& indexed_table_id() const {
-    return table_->id();
-  }
+  const std::string& indexed_table_id() const;
 
   bool is_local() const {
     return is_local_;

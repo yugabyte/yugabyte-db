@@ -16,6 +16,8 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 #include "yb/client/client.h"
+#include "yb/client/table.h"
+
 #include "yb/common/roles_permissions.h"
 #include "yb/util/flag_tags.h"
 #include "yb/yql/cql/ql/util/ql_env.h"

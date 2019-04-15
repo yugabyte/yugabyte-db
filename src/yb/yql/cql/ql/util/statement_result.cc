@@ -19,6 +19,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/schema-internal.h"
+#include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_protocol_util.h"

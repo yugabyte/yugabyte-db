@@ -36,6 +36,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/table_creator.h"
 #include "yb/common/schema.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -58,7 +59,6 @@ using client::YBSchemaBuilder;
 using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableName;
-using client::YBTableType;
 using std::shared_ptr;
 
 const std::string kKeyspaceName("my_keyspace");

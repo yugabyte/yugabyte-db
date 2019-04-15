@@ -52,8 +52,10 @@
 #include "yb/rocksdb/utilities/checkpoint.h"
 #include "yb/rocksdb/write_batch.h"
 
-#include "yb/client/client.h"
+#include "yb/client/error.h"
+#include "yb/client/table.h"
 #include "yb/client/transaction.h"
+#include "yb/client/session.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
