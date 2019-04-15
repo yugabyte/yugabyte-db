@@ -73,6 +73,8 @@ class GraphPanelHeader extends Component {
   componentWillMount() {
     const location = browserHistory.getCurrentLocation();
     const currentQuery = location.query;
+    // TODO remove on merge new overview
+    delete currentQuery.layout;
     let currentFilters = this.state;
     if (isValidObject(currentQuery) && Object.keys(currentQuery).length > 1) {
       const filterParams = {

@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { MetricsPanelOverview } from '../';
+import { MetricsPanelOverview, DiskUsagePanel } from '../';
 import './OverviewMetrics.scss';
 import { YBLoading } from '../../common/indicators';
 import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
@@ -83,7 +83,7 @@ class OverviewMetrics extends Component {
       const width = this.props.width;
       panelItem = panelTypes[type].metrics.map((metricKey, idx) => {
         // skip disk_usage and cpu_usage due to separate widget
-        if(isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error && metricKey !== "disk_usage" && metricKey !== "cpu_usage") {
+        if(isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error && (metricKey !== "disk_usage" || !this.props.layout) && metricKey !== "cpu_usage") {
           const legendData = [];
           for(let idx=0; idx < metrics[type][metricKey].data.length; idx++){
             metrics[type][metricKey].data[idx].line = {
@@ -100,10 +100,15 @@ class OverviewMetrics extends Component {
               <YBWidget
                 noMargin
                 headerRight={
+                  metricKey === "disk_usage" ? null :
                   <YBPanelLegend data={legendData} />
                 }
                 headerLeft={metrics[type][metricKey].layout.title}
-                body={
+                body={metricKey === "disk_usage" ?
+                  <DiskUsagePanel 
+                    metric={metrics[type][metricKey]}
+                    className={"disk-usage-container"}
+                  /> :
                   <MetricsPanelOverview 
                     metricKey={metricKey}
                     metric={metrics[type][metricKey]}
