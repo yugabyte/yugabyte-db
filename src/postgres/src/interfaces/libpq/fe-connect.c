@@ -219,7 +219,8 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"Database-Host-IP-Address", "", 45,
 	offsetof(struct pg_conn, pghostaddr)},
 
-	{"port", "PGPORT", DEF_PGPORT_STR, NULL,
+  /* Use YugaByte default port */
+	{"port", "PGPORT", DEF_YBPORT_STR, NULL,
 		"Database-Port", "", 6,
 	offsetof(struct pg_conn, pgport)},
 
@@ -1115,7 +1116,8 @@ connectOptions2(PGconn *conn)
 	{
 		if (conn->pguser)
 			free(conn->pguser);
-		conn->pguser = pg_fe_getauthname(&conn->errorMessage);
+		/* YugaByte default username to "postgres" */
+		conn->pguser = strdup("postgres");
 		if (!conn->pguser)
 		{
 			conn->status = CONNECTION_BAD;
@@ -1548,7 +1550,8 @@ connectFailureMessage(PGconn *conn, int errorno)
 			displayed_host = conn->connhost[conn->whichhost].host;
 		displayed_port = conn->connhost[conn->whichhost].port;
 		if (displayed_port == NULL || displayed_port[0] == '\0')
-			displayed_port = DEF_PGPORT_STR;
+			/* Use YugaByte default port */
+			displayed_port = DEF_YBPORT_STR;
 
 		/*
 		 * If the user did not supply an IP address using 'hostaddr', and
@@ -2100,7 +2103,8 @@ keep_going:						/* We will come back to here until there is
 
 		/* Figure out the port number we're going to use. */
 		if (ch->port == NULL || ch->port[0] == '\0')
-			thisport = DEF_PGPORT;
+			/* Use YugaByte default port */
+			thisport = DEF_YBPORT;
 		else
 		{
 			thisport = atoi(ch->port);
@@ -3285,7 +3289,8 @@ keep_going:						/* We will come back to here until there is
 							displayed_host = conn->connhost[conn->whichhost].host;
 						displayed_port = conn->connhost[conn->whichhost].port;
 						if (displayed_port == NULL || displayed_port[0] == '\0')
-							displayed_port = DEF_PGPORT_STR;
+							/* Use YugaByte default port */
+							displayed_port = DEF_YBPORT_STR;
 
 						appendPQExpBuffer(&conn->errorMessage,
 										  libpq_gettext("could not make a writable "
@@ -3332,7 +3337,8 @@ keep_going:						/* We will come back to here until there is
 					displayed_host = conn->connhost[conn->whichhost].host;
 				displayed_port = conn->connhost[conn->whichhost].port;
 				if (displayed_port == NULL || displayed_port[0] == '\0')
-					displayed_port = DEF_PGPORT_STR;
+					/* Use YugaByte default port */
+					displayed_port = DEF_YBPORT_STR;
 				appendPQExpBuffer(&conn->errorMessage,
 								  libpq_gettext("test \"SHOW transaction_read_only\" failed "
 												"on server \"%s:%s\"\n"),
@@ -5372,7 +5378,8 @@ conninfo_add_defaults(PQconninfoOption *options, PQExpBuffer errorMessage)
 		 */
 		if (strcmp(option->keyword, "user") == 0)
 		{
-			option->val = pg_fe_getauthname(NULL);
+		  /* YugaByte default username to "postgres" */
+			option->val = strdup("postgres");
 			continue;
 		}
 	}
@@ -6495,7 +6502,8 @@ passwordFromFile(const char *hostname, const char *port, const char *dbname,
 			hostname = DefaultHost;
 
 	if (port == NULL || port[0] == '\0')
-		port = DEF_PGPORT_STR;
+		/* Use YugaByte default port */
+		port = DEF_YBPORT_STR;
 
 	/* If password file cannot be opened, ignore it. */
 	if (stat(pgpassfile, &stat_buf) != 0)
