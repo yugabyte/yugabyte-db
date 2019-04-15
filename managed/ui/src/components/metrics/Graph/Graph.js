@@ -86,7 +86,7 @@ export default class Graph extends Component {
         var: 1,
         onUpdate: () => { 
           this.values = {
-            width: this.props.value * counter.var * 100,
+            width: Math.round(this.props.value * counter.var * 1000) / 10,
             color: this.calcColor(counter.var * this.props.value),
           };
           if (this.props.type === "semicircle") {
@@ -119,7 +119,7 @@ export default class Graph extends Component {
   }
 
   render() {
-    const value = this.props.unit === "percent" || this.props.unit === "%" ? this.props.value * 100 : this.props.value;
+    const value = this.props.unit === "percent" || this.props.unit === "%" ?  Math.round(this.props.value * 1000) / 10 : this.props.value;
     const unit = this.props.unit 
       ? (this.props.unit === "percent" || this.props.unit === "%" ? "%" : " " + this.props.unit)
       : null;
