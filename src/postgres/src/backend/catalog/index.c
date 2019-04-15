@@ -857,27 +857,35 @@ index_create(Relation heapRelation,
 		elog(ERROR, "shared relations must be placed in pg_global tablespace");
 
 	/*
-	 * Check for duplicate name (both as to the index, and as to the
-	 * associated constraint if any).  Such cases would fail on the relevant
-	 * catalogs' unique indexes anyway, but we prefer to give a friendlier
-	 * error message.
+	 * In YB mode, during bootstrap, a relation lookup by name will be a full-table scan
+	 * and slow because secondary indexes are not available yet. So we will skip this
+	 * duplicate name check as it will error later anyway when the indexes are created.
 	 */
-	if (get_relname_relid(indexRelationName, namespaceId))
+	if (!IsYugaByteEnabled() || !IsBootstrapProcessingMode())
 	{
-		if ((flags & INDEX_CREATE_IF_NOT_EXISTS) != 0)
+		/*
+		 * Check for duplicate name (both as to the index, and as to the
+		 * associated constraint if any).  Such cases would fail on the relevant
+		 * catalogs' unique indexes anyway, but we prefer to give a friendlier
+		 * error message.
+		 */
+		if (get_relname_relid(indexRelationName, namespaceId))
 		{
-			ereport(NOTICE,
-					(errcode(ERRCODE_DUPLICATE_TABLE),
-					 errmsg("relation \"%s\" already exists, skipping",
-							indexRelationName)));
-			heap_close(pg_class, RowExclusiveLock);
-			return InvalidOid;
-		}
+			if ((flags & INDEX_CREATE_IF_NOT_EXISTS) != 0)
+			{
+				ereport(NOTICE,
+						(errcode(ERRCODE_DUPLICATE_TABLE),
+						 errmsg("relation \"%s\" already exists, skipping",
+								indexRelationName)));
+				heap_close(pg_class, RowExclusiveLock);
+				return InvalidOid;
+			}
 
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_TABLE),
-				 errmsg("relation \"%s\" already exists",
-						indexRelationName)));
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_TABLE),
+					 errmsg("relation \"%s\" already exists",
+							indexRelationName)));
+		}
 	}
 
 	if ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0 &&

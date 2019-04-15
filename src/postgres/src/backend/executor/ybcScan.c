@@ -60,6 +60,34 @@ static void ybcFreeScanState(YbScanState ybc_state)
 }
 
 /*
+ * Checks if an attribute is a hash or primary key column and note it in
+ * the scan plan.
+ */
+static void ybcCheckPrimaryKeyAttribute(YbScanPlan      scan_plan,
+										YBCPgTableDesc  ybc_table_desc,
+										AttrNumber      attrNum)
+{
+	bool is_primary = false;
+	bool is_hash    = false;
+
+	HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
+											   attrNum,
+											   &is_primary,
+											   &is_hash), ybc_table_desc);
+
+	int bms_idx = attrNum - FirstLowInvalidHeapAttributeNumber;
+
+	if (is_hash)
+	{
+		scan_plan->hash_key = bms_add_member(scan_plan->hash_key, bms_idx);
+	}
+	if (is_primary)
+	{
+		scan_plan->primary_key = bms_add_member(scan_plan->primary_key, bms_idx);
+	}
+}
+
+/*
  * Get YugaByte-specific table metadata and load it into the scan_plan.
  * Currently only the hash and primary key info.
  */
@@ -73,22 +101,13 @@ static void ybcLoadTableInfo(Relation rel, YbScanPlan scan_plan)
 
 	for (AttrNumber attrNum = 1; attrNum <= rel->rd_att->natts; attrNum++)
 	{
-		bool is_primary = false;
-		bool is_hash    = false;
-		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
-		                                           attrNum,
-		                                           &is_primary,
-		                                           &is_hash), ybc_table_desc);
-		int bms_idx = attrNum - FirstLowInvalidHeapAttributeNumber;
-		if (is_hash)
-		{
-			scan_plan->hash_key = bms_add_member(scan_plan->hash_key, bms_idx);
-		}
-		if (is_primary)
-		{
-			scan_plan->primary_key = bms_add_member(scan_plan->primary_key, bms_idx);
-		}
+		ybcCheckPrimaryKeyAttribute(scan_plan, ybc_table_desc, attrNum);
 	}
+	if (rel->rd_rel->relhasoids)
+	{
+		ybcCheckPrimaryKeyAttribute(scan_plan, ybc_table_desc, ObjectIdAttributeNumber);
+	}
+
 	HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
 	ybc_table_desc = NULL;
 }
