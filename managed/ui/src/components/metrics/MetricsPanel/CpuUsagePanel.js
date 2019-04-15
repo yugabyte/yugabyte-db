@@ -36,7 +36,7 @@ export default class CpuUsagePanel extends Component {
           : 
             <Fragment>
               <Graph type={"semicircle"} value={value} />
-              <YBResourceCount size={value*100} kind="% used" inline={true} />
+              <YBResourceCount size={Math.round(value*1000)/10} kind="% used" inline={true} />
             </Fragment>
         }
       </div>
