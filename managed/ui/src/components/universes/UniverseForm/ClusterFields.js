@@ -747,10 +747,10 @@ export default class ClusterFields extends Component {
     if (!isDefinedNotNull(currentProvider) || currentProvider.code !== "kubernetes") {
       return null;
     }
-    if (!isDefinedNotNull(currentProvider.config.KUBECONFIG_STORAGE_CLASSES) || !isEmptyString(currentProvider.config.KUBECONFIG_STORAGE_CLASSES)) {
+    if (!isDefinedNotNull(currentProvider.config.KUBECONFIG_STORAGE_CLASSES) || isEmptyString(currentProvider.config.KUBECONFIG_STORAGE_CLASSES)) {
       return ['standard'];
     } else {
-      return currentProvider.config.KUBECONFIG_STORAGE_CLASSES.split(",");
+      return currentProvider.config.KUBECONFIG_STORAGE_CLASSES.split(",").map(val => val.trim());
     }
   }
 
