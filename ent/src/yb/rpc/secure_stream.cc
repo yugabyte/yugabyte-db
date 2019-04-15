@@ -562,9 +562,15 @@ Status SecureStream::ReadDecrypted() {
     size_t appended = 0;
     for (auto iov = out.begin(); iov != out.end();) {
       auto len = SSL_read(ssl_.get(), iov->iov_base, iov->iov_len);
-      if (len < 0) {
-        done = true;
-        break;
+      if (len <= 0) {
+        auto error = SSL_get_error(ssl_.get(), len);
+        if (error == SSL_ERROR_WANT_READ) {
+          done = true;
+          break;
+        } else {
+          LOG_WITH_PREFIX(INFO) << "SSL read error: " << error;
+          return STATUS_FORMAT(NetworkError, "SSL read failed: $0", error);
+        }
       }
       VLOG_WITH_PREFIX(4) << "Read decrypted: " << len;
       appended += len;
