@@ -13,33 +13,47 @@ import com.yugabyte.yw.models.Customer;
 
 public class TokenAuthenticator extends Action.Simple {
   public static final String COOKIE_AUTH_TOKEN = "authToken";
-  public static final String API_AUTH_TOKEN =  "X-AUTH-TOKEN";
+  public static final String AUTH_TOKEN_HEADER =  "X-AUTH-TOKEN";
+  public static final String COOKIE_API_TOKEN = "apiToken";
+  public static final String API_TOKEN_HEADER = "X-AUTH-YW-API-TOKEN";
 
   @Override
   public CompletionStage<Result> call(Http.Context ctx) {
-    String token = getTokenFromHeader(ctx);
-
+    String token = fetchToken(ctx, true);
+    Customer cust = null;
     if (token != null) {
-      Customer cust = Customer.authWithToken(token);
-      if (cust != null) {
-        ctx.request().withUsername(cust.getEmail());
-        ctx.args.put("customer_uuid", cust.uuid);
-        return delegate.call(ctx);
-      }
+      cust = Customer.authWithApiToken(token);
+    } else {
+      token = fetchToken(ctx, false);
+      cust = Customer.authWithToken(token);
+    }
+
+    if (cust != null) {
+      ctx.request().withUsername(cust.getEmail());
+      ctx.args.put("customer", cust);
+      return delegate.call(ctx);
     }
     // Send Forbidden Response if Authentication Fails
     return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate Customer"));
   }
 
-  private String getTokenFromHeader(Http.Context ctx) {
-    String[] authTokenHeader = ctx.request().headers().get(API_AUTH_TOKEN);
-    Http.Cookie cookieAuthToken = ctx.request().cookie(COOKIE_AUTH_TOKEN);
+  private String fetchToken(Http.Context ctx, boolean isApiToken) {
+    String header, cookie;
+    if (isApiToken) {
+      header = API_TOKEN_HEADER;
+      cookie = COOKIE_API_TOKEN;
+    } else {
+      header = AUTH_TOKEN_HEADER;
+      cookie = COOKIE_AUTH_TOKEN;
+    }
+    String[] headerValue = ctx.request().headers().get(header);
+    Http.Cookie cookieValue = ctx.request().cookie(cookie);
 
-    if ((authTokenHeader != null) && (authTokenHeader.length == 1)) {
-        return authTokenHeader[0];
-    } else if (cookieAuthToken != null) {
+    if ((headerValue != null) && (headerValue.length == 1)) {
+      return headerValue[0];
+    } else if (cookieValue != null) {
       // If we are accessing authenticated pages, the auth token would be in the cookie
-      return cookieAuthToken.value();
+      return cookieValue.value();
     }
     return null;
   }

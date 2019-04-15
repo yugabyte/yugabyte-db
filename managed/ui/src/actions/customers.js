@@ -2,6 +2,7 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../config';
+import Cookies from 'js-cookie';
 
 // Get current user(me) from token in localStorage
 export const VALIDATE_FROM_TOKEN = 'VALIDATE_FROM_TOKEN';
@@ -66,10 +67,14 @@ export const IMPORT_RELEASE_RESPONSE = 'IMPORT_RELEASE_RESPONSE';
 export const UPDATE_RELEASE = 'UPDATE_RELEASE';
 export const UPDATE_RELEASE_RESPONSE = 'UPDATE_RELEASE_RESPONSE';
 
-export function validateToken(tokenFromStorage) {
-  const cUUID = localStorage.getItem("customer_id");
-  const auth_token = localStorage.getItem("customer_token");
+export function validateToken() {
+  const cUUID = Cookies.get("customer_id") || localStorage.getItem("customer_id");
+  const auth_token = Cookies.get("customer_token") || localStorage.getItem("customer_token");
   axios.defaults.headers.common['X-AUTH-TOKEN'] = auth_token;
+  const api_token = Cookies.get("api_token") || localStorage.getItem("api_token");
+  if (api_token && api_token !== '') {
+    axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = api_token;
+  }
   const request = axios(`${ROOT_URL}/customers/${cUUID}`);
   return {
     type: VALIDATE_FROM_TOKEN,

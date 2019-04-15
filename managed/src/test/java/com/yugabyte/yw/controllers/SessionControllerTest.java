@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.mock;
@@ -208,6 +209,49 @@ public class SessionControllerTest {
     json = Json.parse(contentAsString(result));
     String authToken2 = json.get("authToken").asText();
     assertEquals(authToken1, authToken2);
+  }
+
+  @Test
+  public void testApiTokenUpsert() {
+    startApp(false);
+    ModelFactory.testCustomer("foo@bar.com");
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", "Foo@bar.com");
+    loginJson.put("password", "password");
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    JsonNode json = Json.parse(contentAsString(result));
+    String authToken = json.get("authToken").asText();
+    String custUuid = json.get("customerUUID").asText();
+    ObjectNode apiTokenJson = Json.newObject();
+    apiTokenJson.put("authToken", authToken);
+    result = route(fakeRequest("PUT", "/api/customers/" + custUuid + "/api_token").header("X-AUTH-TOKEN", authToken));
+    json = Json.parse(contentAsString(result));
+
+    assertEquals(OK, result.status());
+    assertNotNull(json.get("apiToken"));
+  }
+
+  @Test
+  public void testApiTokenUpdate() {
+    startApp(false);
+    ModelFactory.testCustomer("foo@bar.com");
+    ObjectNode loginJson = Json.newObject();
+    loginJson.put("email", "Foo@bar.com");
+    loginJson.put("password", "password");
+    Result result = route(fakeRequest("POST", "/api/login").bodyJson(loginJson));
+    JsonNode json = Json.parse(contentAsString(result));
+    String authToken = json.get("authToken").asText();
+    String custUuid = json.get("customerUUID").asText();
+    ObjectNode apiTokenJson = Json.newObject();
+    apiTokenJson.put("authToken", authToken);
+    result = route(fakeRequest("PUT", "/api/customers/" + custUuid + "/api_token").header("X-AUTH-TOKEN", authToken));
+    json = Json.parse(contentAsString(result));
+    String apiToken1 = json.get("apiToken").asText();
+    apiTokenJson.put("authToken", authToken);
+    result = route(fakeRequest("PUT", "/api/customers/" + custUuid + "/api_token").header("X-AUTH-TOKEN", authToken));
+    json = Json.parse(contentAsString(result));
+    String apiToken2 = json.get("apiToken").asText();
+    assertNotEquals(apiToken1, apiToken2);
   }
 
   @Test

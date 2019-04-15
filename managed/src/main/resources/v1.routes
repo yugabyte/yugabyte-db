@@ -8,6 +8,7 @@
 
 # Session specific API
 POST    /login                                    com.yugabyte.yw.controllers.SessionController.login()
+PUT     /customers/:cUUID/api_token               com.yugabyte.yw.controllers.SessionController.api_token(cUUID: java.util.UUID)
 GET     /logout                                   com.yugabyte.yw.controllers.SessionController.logout()
 POST    /register                                 com.yugabyte.yw.controllers.SessionController.register()
 GET     /customer_count                           com.yugabyte.yw.controllers.SessionController.customerCount()
