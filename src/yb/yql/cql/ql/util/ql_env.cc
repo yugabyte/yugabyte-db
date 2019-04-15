@@ -16,9 +16,12 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/client/client.h"
+#include "yb/client/meta_data_cache.h"
 #include "yb/client/permissions.h"
+#include "yb/client/session.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/util/ql_env.h"

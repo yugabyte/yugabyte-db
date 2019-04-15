@@ -39,6 +39,8 @@
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
+#include "yb/client/table_creator.h"
+
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/stl_util.h"
@@ -605,15 +607,9 @@ void RemoteBootstrapITest::ConcurrentRemoteBootstraps(YBTableType table_type) {
   // remotely bootstrapped to a single target node from the same leader host.
   const int kNumTablets = 10;
   YBSchema client_schema(YBSchemaFromSchema(GetSimpleTestSchema()));
-  vector<const YBPartialRow*> splits;
-  for (int i = 0; i < kNumTablets - 1; i++) {
-    YBPartialRow* row = client_schema.NewRow();
-    ASSERT_OK(row->SetInt32(0, numeric_limits<int32_t>::max() / kNumTablets * (i + 1)));
-    splits.push_back(row);
-  }
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(TestWorkloadOptions::kDefaultTableName)
-                          .split_rows(splits)
+                          .num_tablets(kNumTablets)
                           .schema(&client_schema)
                           .table_type(table_type)
                           .Create());

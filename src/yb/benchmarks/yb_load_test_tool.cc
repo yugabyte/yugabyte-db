@@ -21,6 +21,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/common/partition.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
@@ -255,20 +256,6 @@ void SetupYBTable(const shared_ptr<YBClient> &client) {
   }
 }
 
-vector<const YBPartialRow *> GetSplitsForTable(const YBSchema *schema) {
-  // Create the number of partitions based on the split keys.
-  vector<const YBPartialRow *> splits;
-  for (uint64_t j = 1; j < FLAGS_num_tablets; j++) {
-    YBPartialRow *row = schema->NewRow();
-    // We divide the interval between 0 and 2**64 into the requested number of intervals.
-    string split_key = FormatHexForLoadTestKey(((uint64_t)1 << 62) * 4.0 * j / (FLAGS_num_tablets));
-    LOG(INFO) << "split_key #" << j << "=" << split_key;
-    CHECK_OK(row->SetBinaryCopy(0, split_key));
-    splits.push_back(row);
-  }
-  return splits;
-}
-
 void CreateTable(const YBTableName &table_name, const shared_ptr<YBClient> &client) {
   if (!FLAGS_target_redis_server_addresses.empty() || FLAGS_create_redis_table_and_exit) {
     CreateRedisTable(table_name, client);
@@ -306,14 +293,11 @@ void CreateYBTable(const YBTableName &table_name, const shared_ptr<YBClient> &cl
   YBSchema schema;
   CHECK_OK(schemaBuilder.Build(&schema));
 
-  vector<const YBPartialRow *> splits = GetSplitsForTable(&schema);
-
   LOG(INFO) << "Creating table";
   gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   Status table_creation_status =
       table_creator->table_name(table_name)
           .schema(&schema)
-          .split_rows(splits)
           .table_type(yb::client::YBTableType::YQL_TABLE_TYPE)
           .Create();
   if (!table_creation_status.ok()) {

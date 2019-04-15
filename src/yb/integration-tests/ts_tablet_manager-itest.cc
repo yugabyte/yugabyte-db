@@ -35,6 +35,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/table_creator.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/quorum_util.h"

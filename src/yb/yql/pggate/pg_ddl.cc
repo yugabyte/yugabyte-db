@@ -15,7 +15,10 @@
 
 #include "yb/yql/pggate/pg_ddl.h"
 
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/entity_ids.h"
 
 namespace yb {

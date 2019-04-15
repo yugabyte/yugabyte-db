@@ -32,10 +32,14 @@
 
 
 #include "yb/client/client.h"
+
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema-internal.h"
+#include "yb/client/session.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/gutil/stl_util.h"

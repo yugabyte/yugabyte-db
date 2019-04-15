@@ -7,6 +7,7 @@
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 
 #include "yb/client/client.h"
+#include "yb/client/table.h"
 
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/gutil/strings/ascii_ctype.h"
@@ -218,6 +219,10 @@ Status PTCreateIndex::CheckPrimaryType(SemContext *sem_context,
 Status PTCreateIndex::ToTableProperties(TableProperties *table_properties) const {
   table_properties->SetTransactional(true);
   return PTCreateTable::ToTableProperties(table_properties);
+}
+
+const std::string& PTCreateIndex::indexed_table_id() const {
+  return table_->id();
 }
 
 }  // namespace ql

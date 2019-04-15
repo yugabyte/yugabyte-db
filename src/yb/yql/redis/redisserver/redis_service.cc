@@ -32,7 +32,11 @@
 #include "yb/client/client.h"
 #include "yb/client/client_builder-internal.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/error.h"
+#include "yb/client/meta_data_cache.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/redis_protocol.pb.h"

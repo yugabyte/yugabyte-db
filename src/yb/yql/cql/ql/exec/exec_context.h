@@ -26,6 +26,7 @@
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/common/common.pb.h"
 #include "yb/client/client.h"
+#include "yb/client/session.h"
 
 namespace yb {
 namespace ql {

@@ -16,6 +16,7 @@
 #include <thread>
 #include <cmath>
 
+#include "yb/client/table.h"
 #include "yb/common/jsonb.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"

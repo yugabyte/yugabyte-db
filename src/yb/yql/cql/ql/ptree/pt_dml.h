@@ -235,17 +235,11 @@ class PTDmlStmt : public PTCollection {
     return column_map_;
   }
 
-  int num_columns() const {
-    return table_->schema().num_columns();
-  }
+  int num_columns() const;
 
-  int num_key_columns() const {
-    return table_->schema().num_key_columns();
-  }
+  int num_key_columns() const;
 
-  int num_hash_key_columns() const {
-    return table_->schema().num_hash_key_columns();
-  }
+  int num_hash_key_columns() const;
 
   const MCVector<ColumnOp>& key_where_ops() const {
     return key_where_ops_;

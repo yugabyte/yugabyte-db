@@ -50,7 +50,8 @@
 #include "yb/client/error_collector.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/session-internal.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
@@ -112,18 +113,18 @@ const std::string Batcher::kErrorReachingOutToTServersMsg(
 
 Batcher::Batcher(YBClient* client,
                  ErrorCollector* error_collector,
-                 const std::shared_ptr<YBSessionData>& session_data,
+                 const YBSessionPtr& session,
                  YBTransactionPtr transaction,
                  ConsistentReadPoint* read_point,
                  bool force_consistent_read)
   : state_(kGatheringOps),
     client_(client),
-    weak_session_data_(session_data),
+    weak_session_(session),
     error_collector_(error_collector),
     next_op_sequence_number_(0),
     max_buffer_size_(7 * 1024 * 1024),
     buffer_bytes_used_(0),
-    async_rpc_metrics_(session_data->async_rpc_metrics()),
+    async_rpc_metrics_(session->async_rpc_metrics()),
     transaction_(std::move(transaction)),
     read_point_(read_point),
     force_consistent_read_(force_consistent_read) {
@@ -189,22 +190,22 @@ int Batcher::CountBufferedOperations() const {
 }
 
 void Batcher::CheckForFinishedFlush() {
-  std::shared_ptr<YBSessionData> session_data;
+  YBSessionPtr session;
   {
     std::lock_guard<simple_spinlock> l(mutex_);
     if (state_ != kFlushing || !ops_.empty()) {
       return;
     }
 
-    session_data = weak_session_data_.lock();
+    session = weak_session_.lock();
     state_ = kFlushed;
   }
 
-  if (session_data) {
+  if (session) {
     // Important to do this outside of the lock so that we don't have
     // a lock inversion deadlock -- the session lock should always
     // come before the batcher lock.
-    session_data->FlushFinished(this);
+    session->FlushFinished(this);
   }
 
   Status s;

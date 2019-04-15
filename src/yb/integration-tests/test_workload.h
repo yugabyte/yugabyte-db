@@ -33,6 +33,7 @@
 #define YB_INTEGRATION_TESTS_TEST_WORKLOAD_H_
 
 #include "yb/client/client.h"
+#include "yb/client/table.h"
 
 namespace yb {
 
