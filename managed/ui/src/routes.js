@@ -1,5 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
+import Cookies from 'js-cookie';
 import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 
@@ -24,9 +25,10 @@ import Importer from './pages/Importer';
 import Releases from './pages/Releases';
 
 function validateSession(store, replacePath, callback) {
-  const token = localStorage.getItem('customer_token');
+  const authToken = Cookies.get("customer_token") || localStorage.getItem('customer_token');
+  const apiToken = Cookies.get("api_token") || localStorage.getItem('api_token');
   // If the token is null or invalid, we just re-direct to login page
-  if(!token || token === '') {
+  if((!apiToken || apiToken === '') && (!authToken || authToken === '')) {
     store.dispatch(fetchCustomerCount()).then((response) => {
       if (!response.error) {
         const responseData = response.payload.data;
@@ -37,7 +39,7 @@ function validateSession(store, replacePath, callback) {
     });
     browserHistory.push('/login');
   } else {
-    store.dispatch(validateToken(token))
+    store.dispatch(validateToken())
       .then((response) => {
         store.dispatch(validateFromTokenResponse(response.payload));
         if (response.payload.status !== 200) {
