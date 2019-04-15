@@ -14,6 +14,7 @@
 #include <boost/container/stable_vector.hpp>
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/session.h"
 #include "yb/client/transaction.h"
 
 #include "yb/server/hybrid_clock.h"
