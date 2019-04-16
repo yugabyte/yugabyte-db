@@ -24,12 +24,17 @@ class TabletServer : public yb::tserver::TabletServer {
   void operator=(const TabletServer&) = delete;
   ~TabletServer();
 
+  Env* GetEnv() override;
+  rocksdb::Env* GetRocksDBEnv() override;
+
  protected:
   CHECKED_STATUS RegisterServices() override;
   CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
  private:
   std::unique_ptr<rpc::SecureContext> secure_context_;
+  std::unique_ptr<yb::Env> env_;
+  std::unique_ptr<rocksdb::Env> rocksdb_env_;
 };
 
 } // namespace enterprise

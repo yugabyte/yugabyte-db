@@ -13,6 +13,7 @@ set(TSERVER_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/remote_bootstrap_service_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/remote_bootstrap_session_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_server_ent.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/header_manager_impl.cc
   PARENT_SCOPE)
 
 # Additional tests support.
@@ -24,4 +25,6 @@ set(TSERVER_EXTENSIONS_TESTS
   backup_service-test
   remote_bootstrap_rocksdb_session-test_ent
   remote_bootstrap_rocksdb_client-test_ent
+  header_manager_impl-test
   PARENT_SCOPE)
+
