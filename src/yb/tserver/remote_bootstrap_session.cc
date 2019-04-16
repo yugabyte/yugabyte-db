@@ -474,8 +474,9 @@ Status RemoteBootstrapSession::OpenLogSegmentUnlocked(uint64_t segment_seqno) {
   log_segment = log_segments_[position];
   CHECK_EQ(log_segment->header().sequence_number(), segment_seqno);
 
-  uint64_t size = log_segment->readable_up_to();
-  Status s = AddImmutableFileToMap(&logs_, segment_seqno, log_segment->readable_file(), size);
+  uint64_t size = log_segment->readable_up_to() + log_segment->get_header_size();
+  Status s = AddImmutableFileToMap(
+      &logs_, segment_seqno, log_segment->readable_file_checkpoint(), size);
   if (!s.ok()) {
     s = s.CloneAndPrepend(
             Substitute("Error accessing data for log segment with seqno $0",

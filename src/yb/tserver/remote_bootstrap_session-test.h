@@ -112,9 +112,10 @@ class RemoteBootstrapTest : public YBTabletTest {
  protected:
   void SetUpTabletPeer() {
     scoped_refptr<Log> log;
-    ASSERT_OK(Log::Open(LogOptions(), fs_manager(), tablet()->tablet_id(),
+    ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
                        fs_manager()->GetFirstTabletWalDirOrDie(tablet()->metadata()->table_id(),
                                                                tablet()->tablet_id()),
+                       fs_manager()->uuid(),
                        *tablet()->schema(),
                        0,  // schema_version
                        nullptr, // metric_entity

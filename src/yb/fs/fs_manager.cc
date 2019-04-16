@@ -506,12 +506,12 @@ std::string FsManager::GetFirstTabletWalDirOrDie(const std::string& table_id,
   return JoinPathSegments(table_wal_dir, Substitute("tablet-$0", tablet_id));
 }
 
-std::string FsManager::GetTabletWalRecoveryDir(const string& tablet_wal_path) const {
+std::string FsManager::GetTabletWalRecoveryDir(const string& tablet_wal_path) {
   return tablet_wal_path + kWalsRecoveryDirSuffix;
 }
 
 std::string FsManager::GetWalSegmentFileName(const string& tablet_wal_path,
-                                             uint64_t sequence_number) const {
+                                             uint64_t sequence_number) {
   return JoinPathSegments(tablet_wal_path,
                           strings::Substitute("$0-$1",
                                               kWalFileNamePrefix,

@@ -48,8 +48,8 @@
 #include "yb/util/opid.h"
 #include "yb/util/logging.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/env_util.h"
 #include "yb/consensus/log_index.h"
-
 #include "yb/docdb/consensus_frontier.h"
 
 DEFINE_bool(skip_remove_old_recovery_dir, false,
@@ -422,31 +422,30 @@ Result<bool> TabletBootstrap::OpenTablet() {
 Status TabletBootstrap::PrepareToReplay(bool* needs_recovery) {
   *needs_recovery = false;
 
-  FsManager* fs_manager = tablet_->metadata()->fs_manager();
   const string& log_dir = tablet_->metadata()->wal_dir();
 
   // If the recovery directory exists, then we crashed mid-recovery.  Throw away any logs from the
   // previous recovery attempt and restart the log replay process from the beginning using the same
   // recovery dir as last time.
-  const string recovery_path = fs_manager->GetTabletWalRecoveryDir(log_dir);
-  if (fs_manager->Exists(recovery_path)) {
+  const string recovery_path = FsManager::GetTabletWalRecoveryDir(log_dir);
+  if (GetEnv()->FileExists(recovery_path)) {
     LOG_WITH_PREFIX(INFO) << "Previous recovery directory found at " << recovery_path << ": "
                           << "Replaying log files from this location instead of " << log_dir;
 
     // Since we have a recovery directory, clear out the log_dir by recursively deleting it and
     // creating a new one so that we don't end up with remnants of old WAL segments or indexes after
     // replay.
-    if (fs_manager->env()->FileExists(log_dir)) {
+    if (GetEnv()->FileExists(log_dir)) {
       LOG_WITH_PREFIX(INFO) << "Deleting old log files from previous recovery attempt in "
                             << log_dir;
-      RETURN_NOT_OK_PREPEND(fs_manager->env()->DeleteRecursively(log_dir),
+      RETURN_NOT_OK_PREPEND(GetEnv()->DeleteRecursively(log_dir),
                             "Could not recursively delete old log dir " + log_dir);
     }
 
-    RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(DirName(log_dir)),
+    RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(GetEnv(), DirName(log_dir)),
                           "Failed to create table log directory " + DirName(log_dir));
 
-    RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(log_dir),
+    RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(GetEnv(), log_dir),
                           "Failed to create tablet log directory " + log_dir);
 
     *needs_recovery = true;
@@ -456,14 +455,14 @@ Status TabletBootstrap::PrepareToReplay(bool* needs_recovery) {
   // If we made it here, there was no pre-existing recovery dir.  Now we look for log files in
   // log_dir, and if we find any then we rename the whole log_dir to a recovery dir and return
   // needs_recovery = true.
-  RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(DirName(log_dir)),
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(GetEnv(), DirName(log_dir)),
                         "Failed to create table log directory " + DirName(log_dir));
 
-  RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(log_dir),
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(GetEnv(), log_dir),
                         "Failed to create tablet log directory " + log_dir);
 
   vector<string> children;
-  RETURN_NOT_OK_PREPEND(fs_manager->ListDir(log_dir, &children),
+  RETURN_NOT_OK_PREPEND(GetEnv()->GetChildren(log_dir, &children),
                         "Couldn't list log segments.");
   for (const string& child : children) {
     if (!log::IsLogFileName(child)) {
@@ -487,10 +486,10 @@ Status TabletBootstrap::PrepareToReplay(bool* needs_recovery) {
     // directory.
     LOG_WITH_PREFIX(INFO) << "Moving log directory " << log_dir << " to recovery directory "
                           << recovery_path << " in preparation for log replay";
-    RETURN_NOT_OK_PREPEND(fs_manager->env()->RenameFile(log_dir, recovery_path),
+    RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(log_dir, recovery_path),
                           Substitute("Could not move log directory $0 to recovery dir $1",
                                      log_dir, recovery_path));
-    RETURN_NOT_OK_PREPEND(fs_manager->env()->CreateDir(log_dir),
+    RETURN_NOT_OK_PREPEND(GetEnv()->CreateDir(log_dir),
                           "Failed to recreate log directory " + log_dir);
   }
   return Status::OK();
@@ -500,23 +499,22 @@ Status TabletBootstrap::OpenLogReader() {
   auto wal_dir = tablet_->metadata()->wal_dir();
   auto wal_path = skip_wal_rewrite_ ? wal_dir :
       meta_->fs_manager()->GetTabletWalRecoveryDir(wal_dir);
-  VLOG_WITH_PREFIX(1) << "Opening log reader in log recovery dir "
-      << wal_path;
+  VLOG_WITH_PREFIX(1) << "Opening log reader in log recovery dir " << wal_path;
   // Open the reader.
   scoped_refptr<LogIndex> index(nullptr);
-  RETURN_NOT_OK_PREPEND(LogReader::Open(tablet_->metadata()->fs_manager(),
+  RETURN_NOT_OK_PREPEND(LogReader::Open(GetEnv(),
                                         index,
                                         tablet_->metadata()->tablet_id(),
                                         wal_path,
+                                        tablet_->metadata()->fs_manager()->uuid(),
                                         tablet_->GetMetricEntity().get(),
                                         &log_reader_), "Could not open LogReader. Reason");
   return Status::OK();
 }
 
 Status TabletBootstrap::RemoveRecoveryDir() {
-  FsManager* fs_manager = tablet_->metadata()->fs_manager();
-  const string recovery_path = fs_manager->GetTabletWalRecoveryDir(tablet_->metadata()->wal_dir());
-  if (!fs_manager->Exists(recovery_path)) {
+  const string recovery_path = FsManager::GetTabletWalRecoveryDir(tablet_->metadata()->wal_dir());
+  if (!GetEnv()->FileExists(recovery_path)) {
     VLOG(1) << "Tablet WAL recovery dir " << recovery_path << " does not exist.";
     if (!skip_wal_rewrite_) {
       return STATUS(IllegalState, "Expected recovery dir, none found.");
@@ -529,7 +527,7 @@ Status TabletBootstrap::RemoveRecoveryDir() {
   string tmp_path = Substitute("$0-$1", recovery_path, GetCurrentTimeMicros());
   LOG_WITH_PREFIX(INFO) << "Renaming log recovery dir from "  << recovery_path
                         << " to " << tmp_path;
-  RETURN_NOT_OK_PREPEND(fs_manager->env()->RenameFile(recovery_path, tmp_path),
+  RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(recovery_path, tmp_path),
                         Substitute("Could not rename old recovery dir from: $0 to: $1",
                                    recovery_path, tmp_path));
 
@@ -538,7 +536,7 @@ Status TabletBootstrap::RemoveRecoveryDir() {
     return Status::OK();
   }
   LOG_WITH_PREFIX(INFO) << "Deleting all files from renamed log recovery directory " << tmp_path;
-  RETURN_NOT_OK_PREPEND(fs_manager->env()->DeleteRecursively(tmp_path),
+  RETURN_NOT_OK_PREPEND(GetEnv()->DeleteRecursively(tmp_path),
                         "Could not remove renamed recovery dir " + tmp_path);
   LOG_WITH_PREFIX(INFO) << "Completed deletion of old log recovery files and directory "
                         << tmp_path;
@@ -546,10 +544,12 @@ Status TabletBootstrap::RemoveRecoveryDir() {
 }
 
 Status TabletBootstrap::OpenNewLog() {
-  RETURN_NOT_OK(Log::Open(LogOptions(),
-                          tablet_->metadata()->fs_manager(),
+  auto log_options = LogOptions();
+  log_options.env = GetEnv();
+  RETURN_NOT_OK(Log::Open(log_options,
                           tablet_->tablet_id(),
                           tablet_->metadata()->wal_dir(),
+                          tablet_->metadata()->fs_manager()->uuid(),
                           *tablet_->schema(),
                           tablet_->metadata()->schema_version(),
                           tablet_->GetMetricEntity(),
@@ -1034,6 +1034,13 @@ void TabletBootstrap::UpdateClock(uint64_t hybrid_time) {
 
 string TabletBootstrap::LogPrefix() const {
   return Substitute("T $0 P $1: ", meta_->tablet_id(), meta_->fs_manager()->uuid());
+}
+
+Env* TabletBootstrap::GetEnv() {
+  if (tablet_options_.env) {
+    return tablet_options_.env;
+  }
+  return meta_->fs_manager()->env();
 }
 
 // ============================================================================

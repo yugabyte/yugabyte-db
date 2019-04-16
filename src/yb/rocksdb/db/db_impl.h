@@ -180,6 +180,7 @@ class DBImpl : public DB {
       ColumnFamilyHandle* column_family) override;
   virtual const std::string& GetName() const override;
   virtual Env* GetEnv() const override;
+  Env* GetCheckpointEnv() const override;
   using DB::GetOptions;
   virtual const Options& GetOptions(
       ColumnFamilyHandle* column_family) const override;
@@ -473,6 +474,7 @@ class DBImpl : public DB {
 
  protected:
   Env* const env_;
+  Env* const checkpoint_env_;
   const std::string dbname_;
   unique_ptr<VersionSet> versions_;
   const DBOptions db_options_;

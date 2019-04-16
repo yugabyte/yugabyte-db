@@ -82,28 +82,30 @@ using strings::Substitute;
 
 const int LogReader::kNoSizeLimit = -1;
 
-Status LogReader::Open(FsManager *fs_manager,
+Status LogReader::Open(Env *env,
                        const scoped_refptr<LogIndex>& index,
                        const std::string& tablet_id,
                        const std::string& tablet_wal_path,
+                       const std::string& peer_uuid,
                        const scoped_refptr<MetricEntity>& metric_entity,
                        std::unique_ptr<LogReader> *reader) {
   std::unique_ptr<LogReader> log_reader(new LogReader(
-      fs_manager, index, tablet_id, metric_entity));
+      env, index, tablet_id, peer_uuid, metric_entity));
 
   RETURN_NOT_OK(log_reader->Init(tablet_wal_path));
   *reader = std::move(log_reader);
   return Status::OK();
 }
 
-LogReader::LogReader(FsManager* fs_manager,
+LogReader::LogReader(Env* env,
                      const scoped_refptr<LogIndex>& index,
                      string tablet_id,
+                     string peer_uuid,
                      const scoped_refptr<MetricEntity>& metric_entity)
-    : fs_manager_(fs_manager),
+    : env_(env),
       log_index_(index),
       tablet_id_(std::move(tablet_id)),
-      log_prefix_(Format("T $0 P $1: ", tablet_id_, fs_manager->uuid())),
+      log_prefix_(Format("T $0 P $1: ", tablet_id_, peer_uuid)),
       state_(kLogReaderInitialized) {
   if (metric_entity) {
     bytes_read_ = METRIC_log_reader_bytes_read.Instantiate(metric_entity);
@@ -122,9 +124,7 @@ Status LogReader::Init(const string& tablet_wal_path) {
   }
   VLOG_WITH_PREFIX(1) << "Reading wal from path:" << tablet_wal_path;
 
-  Env* env = fs_manager_->env();
-
-  if (!fs_manager_->Exists(tablet_wal_path)) {
+  if (!env_->FileExists(tablet_wal_path)) {
     return STATUS(IllegalState, "Cannot find wal location at", tablet_wal_path);
   }
 
@@ -132,7 +132,7 @@ Status LogReader::Init(const string& tablet_wal_path) {
   // list existing segment files
   vector<string> log_files;
 
-  RETURN_NOT_OK_PREPEND(env->GetChildren(tablet_wal_path, &log_files),
+  RETURN_NOT_OK_PREPEND(env_->GetChildren(tablet_wal_path, &log_files),
                         "Unable to read children from path");
 
   SegmentSequence read_segments;
@@ -142,7 +142,7 @@ Status LogReader::Init(const string& tablet_wal_path) {
     if (HasPrefixString(log_file, FsManager::kWalFileNamePrefix)) {
       string fqp = JoinPathSegments(tablet_wal_path, log_file);
       scoped_refptr<ReadableLogSegment> segment;
-      RETURN_NOT_OK_PREPEND(ReadableLogSegment::Open(env, fqp, &segment),
+      RETURN_NOT_OK_PREPEND(ReadableLogSegment::Open(env_, fqp, &segment),
                             "Unable to open readable log segment");
       DCHECK(segment);
       CHECK(segment->IsInitialized()) << "Uninitialized segment at: " << segment->path();

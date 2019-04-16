@@ -271,6 +271,7 @@ void DumpSupportInfo(Logger* logger) {
 
 DBImpl::DBImpl(const DBOptions& options, const std::string& dbname)
     : env_(options.env),
+      checkpoint_env_(options.checkpoint_env ? options.checkpoint_env : options.env),
       dbname_(dbname),
       db_options_(SanitizeOptions(dbname, options)),
       stats_(db_options_.statistics.get()),
@@ -5004,6 +5005,10 @@ const std::string& DBImpl::GetName() const {
 
 Env* DBImpl::GetEnv() const {
   return env_;
+}
+
+Env* DBImpl::GetCheckpointEnv() const {
+  return checkpoint_env_;
 }
 
 const Options& DBImpl::GetOptions(ColumnFamilyHandle* column_family) const {
