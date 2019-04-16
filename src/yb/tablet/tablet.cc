@@ -153,6 +153,9 @@ DEFINE_test_flag(
     "After modifying the flushed frontier in RocksDB, verify that the restored value of it "
     "is as expected. Used for testing.");
 
+DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
+DECLARE_int32(rocksdb_level0_stop_writes_trigger);
+
 using namespace std::placeholders;
 
 using std::shared_ptr;
@@ -502,6 +505,8 @@ Status Tablet::OpenKeyValueTablet() {
   });
 
   rocksdb_options.disable_auto_compactions = true;
+  rocksdb_options.level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
+  rocksdb_options.level0_stop_writes_trigger = std::numeric_limits<int>::max();
 
   const string db_dir = metadata()->rocksdb_dir();
   RETURN_NOT_OK(CreateTabletDirectories(db_dir, metadata()->fs_manager()));
@@ -561,7 +566,16 @@ Status Tablet::OpenKeyValueTablet() {
 
 Status Tablet::EnableCompactions() {
   Status regular_db_status;
+  std::unordered_map<std::string, std::string> new_options = {
+      { "level0_slowdown_writes_trigger"s,
+        std::to_string(FLAGS_rocksdb_level0_slowdown_writes_trigger)},
+      { "level0_stop_writes_trigger"s,
+        std::to_string(FLAGS_rocksdb_level0_stop_writes_trigger)},
+  };
   if (regular_db_) {
+    WARN_WITH_PREFIX_NOT_OK(
+        regular_db_->SetOptions(new_options),
+        "Failed to set options on regular DB");
     regular_db_status =
         regular_db_->EnableAutoCompaction({regular_db_->DefaultColumnFamily()});
     if (!regular_db_status.ok()) {
@@ -570,6 +584,9 @@ Status Tablet::EnableCompactions() {
     }
   }
   if (intents_db_) {
+    WARN_WITH_PREFIX_NOT_OK(
+        intents_db_->SetOptions(new_options),
+        "Failed to set options on provisional records DB");
     Status intents_db_status =
         intents_db_->EnableAutoCompaction({intents_db_->DefaultColumnFamily()});
     if (!intents_db_status.ok()) {
