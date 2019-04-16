@@ -104,6 +104,12 @@ struct LogOptions {
   LogOptions();
 };
 
+struct LogEntryMetadata {
+  RestartSafeCoarseTimePoint entry_time;
+  int64_t offset;
+  uint64_t active_segment_sequence_number;
+};
+
 // A sequence of segments, ordered by increasing sequence number.
 typedef std::vector<scoped_refptr<ReadableLogSegment> > SegmentSequence;
 typedef std::vector<std::unique_ptr<LogEntryPB>> LogEntries;
@@ -112,8 +118,8 @@ struct ReadEntriesResult {
   // Read entries
   LogEntries entries;
 
-  // Time of respective entry
-  std::vector<RestartSafeCoarseTimePoint> entry_times;
+  // Time, offset in WAL, and sequence number of respective entry
+  std::vector<LogEntryMetadata> entry_metadata;
 
   // Where we finished reading
   int64_t end_offset;
