@@ -32,6 +32,13 @@
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
 #define VAR_OID_PREFETCH		8192
 
+/*
+ * Number of OIDs to prefetch (preallocate) in YugaByte DB setup.
+ * Given there are multiple Postgres nodes, each node should prefetch
+ * in smaller chunks.
+ */
+#define YB_OID_PREFETCH	        256
+
 /* pointer to "variable cache" in shared memory (set up by shmem.c) */
 VariableCache ShmemVariableCache = NULL;
 
@@ -522,7 +529,7 @@ GetNewObjectId(void)
 
 			YBCReserveOids(MyDatabaseId,
 			               ShmemVariableCache->nextOid,
-			               VAR_OID_PREFETCH,
+			               YB_OID_PREFETCH,
 			               &begin_oid,
 			               &end_oid);
 			ShmemVariableCache->nextOid  = begin_oid;
