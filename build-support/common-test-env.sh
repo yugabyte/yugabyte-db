@@ -1119,8 +1119,13 @@ did_test_succeed() {
     return 1
   fi
 
-  if grep -q '(AddressSanitizer|UndefinedBehaviorSanitizer): undefined-behavior' "$log_path"; then
-    log 'Detected undefined behavior'
+  if grep -q 'AddressSanitizer: undefined-behavior' "$log_path"; then
+    log 'Detected ASAN undefined behavior'
+    return 1
+  fi
+
+  if grep -q 'UndefinedBehaviorSanitizer: undefined-behavior' "$log_path"; then
+    log 'Detected UBSAN undefined behavior'
     return 1
   fi
 
