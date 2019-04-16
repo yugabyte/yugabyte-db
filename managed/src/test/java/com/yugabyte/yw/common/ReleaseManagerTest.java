@@ -119,7 +119,7 @@ public class ReleaseManagerTest {
       Object expectedFile = expectedMap.get(version);
       JsonNode releaseJson = Json.toJson(releases.get(version));
       assertValue(releaseJson, "filePath", expectedFile.toString());
-      assertValue(releaseJson, "imageTag", "quay.io/yugabyte/yugabyte:" + version);
+      assertValue(releaseJson, "imageTag", version.toString());
       assertValue(releaseJson, "state", "ACTIVE");
     }
   }
@@ -240,7 +240,7 @@ public class ReleaseManagerTest {
     Map releaseInfo = releaseMap.getValue();
     assertTrue(releaseInfo.containsKey("0.0.1"));
     JsonNode releaseMetadata = Json.toJson(releaseInfo.get("0.0.1"));
-    assertValue(releaseMetadata, "imageTag", "quay.io/yugabyte/yugabyte:0.0.1");
+    assertValue(releaseMetadata, "imageTag", "0.0.1");
   }
 
   @Test
