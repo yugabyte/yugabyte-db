@@ -89,6 +89,13 @@
     } \
   } while (0);
 
+#define WARN_WITH_PREFIX_NOT_OK(to_call, warning_prefix) do { \
+    ::yb::Status _s = (to_call); \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      YB_LOG(WARNING) << LogPrefix() << (warning_prefix) << ": " << _s; \
+    } \
+  } while (0);
+
 // Log the given status and return immediately.
 #define YB_LOG_AND_RETURN(level, status) do { \
     ::yb::Status _s = (status); \
