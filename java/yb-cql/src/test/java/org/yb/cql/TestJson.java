@@ -339,9 +339,33 @@ public class TestJson extends BaseCQLTest {
     // Invalid updates.
     // Invalid rhs (needs to be valid json)
     runInvalidStmt("UPDATE test_json SET c2->'a'->'q'->'p' = 100 WHERE c1 = 1");
-    // non-existent key.
-    runInvalidStmt("UPDATE test_json SET c2->'a'->'q'->'xyz' = '100' WHERE c1 = 1");
+
+    // Interpret update of missing entry as insert when LHS path has only one extra hop.
+    session.execute("UPDATE test_json SET c2->'a'->'q'->'xyz' = '100' WHERE c1 = 1");
+    verifyResultSet(session.execute("SELECT * FROM test_json WHERE c2->'a'->'q'->'xyz' = " +
+          "'100'"));
+
+    // Interpret update of missing entry as insert when LHS path has only one extra hop -
+    // allow subtree to be inserted.
+    String subtree =
+      "{ " +
+        "\"def\" : " +
+          "{ " +
+            "\"ghi\" : 100," +
+            "\"jkl\" : 200" +
+          "}" +
+      "}";
+    session.execute(String.format(
+          "UPDATE test_json SET c2->'a'->'q'->'abc' = '%s' WHERE c1 = 1", subtree));
+    verifyResultSet(session.execute(
+          "SELECT * FROM test_json WHERE c2->'a'->'q'->'abc'->'def'->'ghi' = '100'"));
+    verifyResultSet(session.execute(
+          "SELECT * FROM test_json WHERE c2->'a'->'q'->'abc'->'def'->'jkl' = '200'"));
+
+    // Non-existent key - cannot interpret update of missing entry as insert when LHS path has
+    // multiple extra hops.
     runInvalidStmt("UPDATE test_json SET c2->'aa'->'q'->'p' = '100' WHERE c1 = 1");
+
     // Array out of bounds.
     runInvalidStmt("UPDATE test_json SET c2->'a1'->200->'k2'->2 = '2000' WHERE c1 = 1");
     runInvalidStmt("UPDATE test_json SET c2->'a1'->-2->'k2'->2 = '2000' WHERE c1 = 1");
