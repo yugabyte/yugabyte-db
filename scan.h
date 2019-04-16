@@ -3,8 +3,8 @@
 
 // AG_TOKEN_NULL indicates the end of a scan. The name came from YY_NULL.
 //
-// AG_TOKEN_DECIMAL can be a decimal, an octal, or a hexadecimal integer
-// literal that does not fit in "int" type.
+// AG_TOKEN_DECIMAL can be a decimal integer literal that does not fit in "int"
+// type.
 enum ag_token_type {
     AG_TOKEN_NULL,
     AG_TOKEN_INTEGER,

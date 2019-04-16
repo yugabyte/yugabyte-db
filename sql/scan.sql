@@ -60,8 +60,13 @@ $$) AS t(a int, b int, c int, d int, e int, f int, g int, h int);
 
 -- 2^31 - 1, 2^31
 SELECT * FROM cypher($$
-RETURN 017777777777, 020000000000
-$$) AS t(a int, b text);
+RETURN 000000000000, 017777777777, 0020000000000
+$$) AS t(a int, b int, c text);
+
+-- 2^60 - 1, 2^64 - 1
+SELECT * FROM cypher($$
+RETURN 077777777777777777777, 01777777777777777777777
+$$) AS t(a text, b text);
 
 -- an invalid character after reading valid digits
 SELECT * FROM cypher($$
@@ -95,8 +100,13 @@ $$) AS t(a int, b int, c int, d int, e int, f int);
 
 -- 2^31 - 1, 2^31
 SELECT * FROM cypher($$
-RETURN 0x7FFFFFFF, 0x80000000
-$$) AS t(a int, b text);
+RETURN 0x00000000, 0x7FFFFFFF, 0x080000000
+$$) AS t(a int, b int, c text);
+
+-- 10^18, 2^64 - 1
+SELECT * FROM cypher($$
+RETURN 0xde0b6b3a7640000, 0xffffffffffffffff
+$$) AS t(a text, b text);
 
 -- an invalid character after reading valid digits
 SELECT * FROM cypher($$

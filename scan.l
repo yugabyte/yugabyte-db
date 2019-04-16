@@ -236,7 +236,9 @@ static void strbuf_reset(struct strbuf *sb);
 
 struct ag_yy_extra {
     // accumulate matched strings to build a complete literal if multiple rules
-    // are needed to scan it
+    // are needed to scan it, or keep a decimal integer literal that is
+    // converted from a hexadecimal or an octal integer literal if it is too
+    // large to fit in "int" type
     struct strbuf literal_buf;
 
     // for Unicode surrogate pair
@@ -249,7 +251,13 @@ struct ag_yy_extra {
 };
 
 static void integer_literal_to_token(const char *s, struct ag_token *token,
-                                     const struct ag_yy_extra *extra);
+                                     struct ag_yy_extra *extra);
+#define hexadecimal_to_decimal(numstr, sb) _numstr_to_decimal(numstr, 16, sb)
+#define octal_to_decimal(numstr, sb) _numstr_to_decimal(numstr, 8, sb)
+static void _numstr_to_decimal(const char *numstr, const int base,
+                               struct strbuf *sb);
+static uint32 hexdigit_value(const char c);
+static uint32 octdigit_value(const char c);
 
 static bool is_high_surrogate(const pg_wchar c);
 static bool is_low_surrogate(const pg_wchar c);
@@ -743,7 +751,7 @@ static void strbuf_reset(struct strbuf *sb)
 }
 
 static void integer_literal_to_token(const char *s, struct ag_token *token,
-                                     const struct ag_yy_extra *extra)
+                                     struct ag_yy_extra *extra)
 {
     char *endptr;
     int i;
@@ -761,6 +769,24 @@ static void integer_literal_to_token(const char *s, struct ag_token *token,
 
     // Treat it as a decimal if it is too large to be an "int" value.
     if (errno == ERANGE) {
+        // Accessing s[0] and s[1] is safe because ERANGE is returned only if
+        // there are 10 or more characters in s. In this case, the shortest
+        // integer literals for decimal, hexadecimal, and octal integers are
+        // "2147483648", "0x80000000", and "020000000000" respectively.
+        if (s[0] == '0') {
+            strbuf_reset(&extra->literal_buf);
+
+            // No matter how many characters s has, if all digits in s are
+            // zeros, strtoint() returns 0 without an error.
+            // So, _numstr_to_decimal() assumes that there is at least one
+            // non-zero digit in s.
+            if (s[1] == 'X' || s[1] == 'x')
+                hexadecimal_to_decimal(s + 2, &extra->literal_buf);
+            else
+                octal_to_decimal(s + 1, &extra->literal_buf);
+
+            s = strbuf_get_str(&extra->literal_buf);
+        }
         token->type = AG_TOKEN_DECIMAL;
         token->value.s = s;
         return;
@@ -768,6 +794,198 @@ static void integer_literal_to_token(const char *s, struct ag_token *token,
 
     token->type = AG_TOKEN_INTEGER;
     token->value.i = i;
+}
+
+// convert a string of a hexadecimal or an octal integer to a string of the
+// corresponding decimal integer
+static void _numstr_to_decimal(const char *numstr, const int base,
+                               struct strbuf *sb)
+{
+    // constants for each base
+    int ndigits_per_word;
+    int nbits_per_digit;
+    uint32 (*digit_value)(const char);
+
+    // constants for the conversion
+    //
+    //     "divisor" is 10^9.
+    //
+    //     At most 3 divisions are needed to eliminate 1 word.
+    //         hex: 4294967295999999999 -> 4294967295 -> 4 -> 0
+    //         oct: 1073741823999999999 -> 1073741823 -> 1 -> 0
+    const uint64 divisor = 1000000000;
+    const int ndivisions = 3;
+    const int ndigits_per_remainder = 9;
+
+    int ndigits;
+    int nwords;
+    uint32 *words;
+    const char *digitp;
+    int word_i;
+    int ndigits_word0;
+    uint32 word;
+    uint32 *remainders;
+    int nremainders;
+    int i;
+
+    // set constants for each base
+    switch (base) {
+    case 16:
+        // Hexadecimal
+        //
+        // Maximum value for each word
+        //     0xFFFFFFFF = 4294967295
+        // Divisor
+        //     0x3B9ACA00 = 1000000000
+        // Maximum remainder
+        //     0x3B9AC9FF = 999999999
+        //
+        // Maximum dividend
+        //     0x3B9AC9FFFFFFFFFF = 4294967295999999999
+        // Quotient of the maximum dividend and the divisor
+        //     0xFFFFFFFF = 4294967295
+        // Remainer of the above division
+        //     0x3B9AC9FF = 999999999
+        ndigits_per_word = 8;
+        nbits_per_digit = 4;
+        digit_value = hexdigit_value;
+        break;
+    case 8:
+        // Octal
+        //
+        // Maximum value for each word
+        //     07777777777 = 1073741823
+        // Divisor
+        //     07346545000 = 1000000000
+        // Maximum remainder
+        //     07346544777 = 999999999
+        //
+        // Maximum dividend
+        //     073465447777777777777 = 1073741823999999999
+        // Quotient of the maximum dividend and the divisor
+        //     07777777777 = 1073741823
+        // Remainer of the above division
+        //     07346544777 = 999999999
+        ndigits_per_word = 10;
+        nbits_per_digit = 3;
+        digit_value = octdigit_value;
+        break;
+    default:
+        Assert(!"invalid base");
+        break;
+    }
+
+    // skip leading zeros
+    while (*numstr == '0')
+        numstr++;
+
+    // number of digits in "numstr"
+    ndigits = strlen(numstr);
+    Assert(ndigits > 0);
+
+    // prepare "words" to store "numstr" in two's complement representation
+    nwords = (ndigits + (ndigits_per_word - 1)) / ndigits_per_word;
+    words = palloc(sizeof(*words) * nwords);
+
+    digitp = numstr;
+    word_i = 0;
+
+    // number of digits for the first word
+    ndigits_word0 = ndigits % ndigits_per_word;
+    if (ndigits_word0 == 0)
+        ndigits_word0 = ndigits_per_word;
+
+    // fill the first word
+    word = digit_value(*digitp++);
+    for (i = 1; i < ndigits_word0; i++) {
+        word <<= nbits_per_digit;
+        word |= digit_value(*digitp++);
+    }
+    words[word_i++] = word;
+
+    // fill the rest of "words"
+    while (word_i < nwords) {
+        word = digit_value(*digitp++);
+        for (i = 1; i < ndigits_per_word; i++) {
+            word <<= nbits_per_digit;
+            word |= digit_value(*digitp++);
+        }
+        words[word_i++] = word;
+    }
+
+    // At most "ndivisions" divisions are needed to eliminate 1 word.
+    remainders = palloc(sizeof(*remainders) * (ndivisions * nwords));
+
+    nremainders = 0;
+    word_i = 0;
+    // repeat dividing "words" by "divisor" until the quotient becomes 0
+    while (word_i < nwords) {
+        uint64 r;
+
+        r = 0;
+        // divide "words" by "divisor"
+        for (i = word_i; i < nwords; i++) {
+            uint64 d;
+            uint64 q;
+
+            d = (uint64)words[i];
+            d |= r << (nbits_per_digit * ndigits_per_word);
+
+            q = d / divisor;
+            r = d % divisor;
+
+            words[i] = (uint32)q;
+        }
+
+        // collect the remainder to build the result
+        remainders[nremainders++] = (uint32)r;
+
+        // Divisions over the first effective word is done
+        // and "words" is getting closer to 0.
+        if (words[word_i] == 0)
+            word_i++;
+    }
+
+    // convert the collected remainders to a string, starting from the last one
+    for (i = nremainders - 1; i >= 0; i--) {
+        char buf[ndigits_per_remainder];
+        int buf_i;
+        uint32 tmp;
+
+        buf_i = ndigits_per_remainder;
+
+        for (tmp = remainders[i]; tmp > 0; tmp /= 10)
+            buf[--buf_i] = '0' + (char)(tmp % 10);
+
+        // leading zeros for intermediate digits
+        if (i < nremainders - 1) {
+            while (buf_i > 0)
+                buf[--buf_i] = '0';
+        }
+
+        strbuf_append_buf(sb, &buf[buf_i], ndigits_per_remainder - buf_i);
+    }
+
+    pfree(remainders);
+    pfree(words);
+}
+
+static uint32 hexdigit_value(const char c)
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+
+    if (c >= 'A' && c <= 'F')
+        return 0xA + (c - 'A');
+
+    Assert(c >= 'a' && c <= 'f');
+    return 0xA + (c - 'a');
+}
+
+static uint32 octdigit_value(const char c)
+{
+    Assert(c >= '0' && c <= '7');
+    return c - '0';
 }
 
 static bool is_high_surrogate(const pg_wchar c)
