@@ -690,6 +690,8 @@ class DB {
   // Get Env object from the DB
   virtual Env* GetEnv() const = 0;
 
+  virtual Env* GetCheckpointEnv() const = 0;
+
   // Get DB Options that we use.  During the process of opening the
   // column family, the options provided when calling DB::Open() or
   // DB::CreateColumnFamily() will have been "sanitized" and transformed

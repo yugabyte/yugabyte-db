@@ -183,10 +183,11 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
 
   RETURN_NOT_OK(fs_manager.Open());
   std::unique_ptr<LogReader> reader;
-  RETURN_NOT_OK(LogReader::Open(&fs_manager,
+  RETURN_NOT_OK(LogReader::Open(env,
                                 scoped_refptr<LogIndex>(),
                                 tablet_id,
                                 tablet_wal_path,
+                                fs_manager.uuid(),
                                 scoped_refptr<MetricEntity>(),
                                 &reader));
 

@@ -127,9 +127,9 @@ class RaftConsensusQuorumTest : public YBTest {
 
       scoped_refptr<Log> log;
       RETURN_NOT_OK(Log::Open(LogOptions(),
-                              fs_manager.get(),
                               kTestTablet,
                               fs_manager->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
+                              fs_manager->uuid(),
                               schema_,
                               0, // schema_version
                               nullptr, // metric_entity
@@ -392,11 +392,12 @@ class RaftConsensusQuorumTest : public YBTest {
     EXPECT_OK(log->WaitUntilAllFlushed());
     EXPECT_OK(log->Close());
     std::unique_ptr<LogReader> log_reader;
-    EXPECT_OK(log::LogReader::Open(fs_managers_[idx],
+    EXPECT_OK(log::LogReader::Open(fs_managers_[idx]->env(),
                                    scoped_refptr<log::LogIndex>(),
                                    kTestTablet,
                                    fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTable,
                                                                                 kTestTablet),
+                                   fs_managers_[idx]->uuid(),
                                    metric_entity_.get(),
                                    &log_reader));
     log::LogEntries ret;

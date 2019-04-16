@@ -245,6 +245,17 @@ static Status DoOpen(const string& filename, Env::CreateMode mode, int* fd, int 
   return Status::OK();
 }
 
+template <class Extractor>
+Result<uint64_t> GetFileStat(const std::string& fname, const char* event, Extractor extractor) {
+  TRACE_EVENT1("io", event, "path", fname);
+  ThreadRestrictions::AssertIOAllowed();
+  struct stat sbuf;
+  if (stat(fname.c_str(), &sbuf) != 0) {
+    return STATUS_IO_ERROR(fname, errno);
+  }
+  return extractor(sbuf);
+}
+
 class PosixSequentialFile: public SequentialFile {
  private:
   std::string filename_;
@@ -980,100 +991,62 @@ class PosixFileLock : public FileLock {
 class PosixEnv : public Env {
  public:
   PosixEnv();
+  explicit PosixEnv(std::unique_ptr<FileFactory> file_factory);
   virtual ~PosixEnv() {
-    fprintf(stderr, "Destroying Env::Default()\n");
-    exit(1);
+    fprintf(stdout, "Destroying Env::Default()\n");
   }
 
   virtual Status NewSequentialFile(const std::string& fname,
                                    gscoped_ptr<SequentialFile>* result) override {
-    TRACE_EVENT1("io", "PosixEnv::NewSequentialFile", "path", fname);
-    ThreadRestrictions::AssertIOAllowed();
-    FILE* f = fopen(fname.c_str(), "r");
-    if (f == nullptr) {
-      return STATUS_IO_ERROR(fname, errno);
-    } else {
-      result->reset(new PosixSequentialFile(fname, f));
-      return Status::OK();
-    }
+    return file_factory_->NewSequentialFile(fname, result);
   }
 
   virtual Status NewRandomAccessFile(const std::string& fname,
                                      gscoped_ptr<RandomAccessFile>* result) override {
-    return NewRandomAccessFile(RandomAccessFileOptions(), fname, result);
+    return file_factory_->NewRandomAccessFile(fname, result);
   }
 
   virtual Status NewRandomAccessFile(const RandomAccessFileOptions& opts,
                                      const std::string& fname,
                                      gscoped_ptr<RandomAccessFile>* result) override {
-    TRACE_EVENT1("io", "PosixEnv::NewRandomAccessFile", "path", fname);
-    ThreadRestrictions::AssertIOAllowed();
-    int fd = open(fname.c_str(), O_RDONLY);
-    if (fd < 0) {
-      return STATUS_IO_ERROR(fname, errno);
-    }
+    return file_factory_->NewRandomAccessFile(opts, fname, result);
+  }
 
-    result->reset(new PosixRandomAccessFile(fname, fd));
+  virtual Status NewRandomAccessFile(const std::string& fname,
+                                     std::unique_ptr<RandomAccessFile>* result) override {
+    gscoped_ptr<RandomAccessFile> temp;
+    RETURN_NOT_OK(NewRandomAccessFile(fname, &temp));
+    result->reset(temp.release());
     return Status::OK();
   }
 
   virtual Status NewWritableFile(const std::string& fname,
                                  gscoped_ptr<WritableFile>* result) override {
-    return NewWritableFile(WritableFileOptions(), fname, result);
+    return file_factory_->NewWritableFile(fname, result);
   }
 
   virtual Status NewWritableFile(const WritableFileOptions& opts,
                                  const std::string& fname,
                                  gscoped_ptr<WritableFile>* result) override {
-    TRACE_EVENT1("io", "PosixEnv::NewWritableFile", "path", fname);
-    int fd = -1;
-    int extra_flags = 0;
-#if defined(__linux__)
-    if (opts.o_direct) {
-      extra_flags = O_DIRECT | O_NOATIME | O_SYNC;
-    }
-#endif
-    RETURN_NOT_OK(DoOpen(fname, opts.mode, &fd, extra_flags));
-    return InstantiateNewWritableFile(fname, fd, opts, result);
+    return file_factory_->NewWritableFile(opts, fname, result);
   }
 
   virtual Status NewTempWritableFile(const WritableFileOptions& opts,
                                      const std::string& name_template,
                                      std::string* created_filename,
                                      gscoped_ptr<WritableFile>* result) override {
-    TRACE_EVENT1("io", "PosixEnv::NewTempWritableFile", "template", name_template);
-    ThreadRestrictions::AssertIOAllowed();
-    gscoped_ptr<char[]> fname(new char[name_template.size() + 1]);
-    ::snprintf(fname.get(), name_template.size() + 1, "%s", name_template.c_str());
-    int fd = -1;
-#if defined(__linux__)
-    if (opts.o_direct)
-      fd = ::mkostemp(fname.get(), O_DIRECT | O_NOATIME | O_SYNC);
-    else
-#endif
-      fd = ::mkstemp(fname.get());
-
-    if (fd < 0) {
-      return STATUS_IO_ERROR(Format("Call to mkstemp() failed on name template $0", name_template),
-                             errno);
-    }
-    *created_filename = fname.get();
-    return InstantiateNewWritableFile(*created_filename, fd, opts, result);
+    return file_factory_->NewTempWritableFile(opts, name_template, created_filename, result);
   }
 
   virtual Status NewRWFile(const string& fname,
                            gscoped_ptr<RWFile>* result) override {
-    return NewRWFile(RWFileOptions(), fname, result);
+    return file_factory_->NewRWFile(fname, result);
   }
 
   virtual Status NewRWFile(const RWFileOptions& opts,
                            const string& fname,
                            gscoped_ptr<RWFile>* result) override {
-    TRACE_EVENT1("io", "PosixEnv::NewRWFile", "path", fname);
-    int fd = -1;
-    RETURN_NOT_OK(DoOpen(fname, opts.mode, &fd));
-    result->reset(new PosixRWFile(fname, fd, opts.sync_on_close));
-    return Status::OK();
+    return file_factory_->NewRWFile(opts, fname, result);
   }
 
   bool FileExists(const std::string& fname) override {
@@ -1154,20 +1127,8 @@ class PosixEnv : public Env {
                                        Unretained(this)));
   }
 
-  template <class Extractor>
-  Result<uint64_t> GetFileStat(const std::string& fname, const char* event, Extractor extractor) {
-    TRACE_EVENT1("io", event, "path", fname);
-    ThreadRestrictions::AssertIOAllowed();
-    struct stat sbuf;
-    if (stat(fname.c_str(), &sbuf) != 0) {
-      return STATUS_IO_ERROR(fname, errno);
-    }
-    return extractor(sbuf);
-  }
-
   Result<uint64_t> GetFileSize(const std::string& fname) override {
-    return GetFileStat(
-        fname, "PosixEnv::GetFileSize", [](const struct stat& sbuf) { return sbuf.st_size; });
+    return file_factory_->GetFileSize(fname);
   }
 
   Result<uint64_t> GetFileINode(const std::string& fname) override {
@@ -1178,12 +1139,12 @@ class PosixEnv : public Env {
   Result<uint64_t> GetFileSizeOnDisk(const std::string& fname) override {
     return GetFileStat(
         fname, "PosixEnv::GetFileSizeOnDisk", [](const struct stat& sbuf) {
-            // From stat(2):
-            //
-            //   The st_blocks field indicates the number of blocks allocated to
-            //   the file, 512-byte units. (This may be smaller than st_size/512
-            //   when the file has holes.)
-            return sbuf.st_blocks * 512;
+          // From stat(2):
+          //
+          //   The st_blocks field indicates the number of blocks allocated to
+          //   the file, 512-byte units. (This may be smaller than st_size/512
+          //   when the file has holes.)
+          return sbuf.st_blocks * 512;
         });
   }
 
@@ -1456,6 +1417,10 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  FileFactory* GetFileFactory() {
+    return file_factory_.get();
+  }
+
  private:
   // gscoped_ptr Deleter implementation for fts_close
   struct FtsCloser {
@@ -1463,25 +1428,6 @@ class PosixEnv : public Env {
       if (fts) { fts_close(fts); }
     }
   };
-
-  Status InstantiateNewWritableFile(const std::string& fname,
-                                    int fd,
-                                    const WritableFileOptions& opts,
-                                    gscoped_ptr<WritableFile>* result) {
-    uint64_t file_size = 0;
-    if (opts.mode == OPEN_EXISTING) {
-      file_size = VERIFY_RESULT(GetFileSize(fname));
-    }
-    PosixWritableFile *posix_writable_file;
-#if defined(__linux)
-    if (opts.o_direct)
-      posix_writable_file = new PosixDirectIOWritableFile(fname, fd, file_size, opts.sync_on_close);
-    else
-#endif
-      posix_writable_file = new PosixWritableFile(fname, fd, file_size, opts.sync_on_close);
-    result->reset(posix_writable_file);
-    return Status::OK();
-  }
 
   Status DeleteRecursivelyCb(FileType type, const string& dirname, const string& basename) {
     string full_path = JoinPathSegments(dirname, basename);
@@ -1500,9 +1446,142 @@ class PosixEnv : public Env {
         return Status::OK();
     }
   }
+
+  std::unique_ptr<FileFactory> file_factory_;
 };
 
-PosixEnv::PosixEnv() {}
+class PosixFileFactory : public FileFactory {
+#if defined(__linux__)
+  static constexpr int kODirectFlags = O_DIRECT | O_NOATIME | O_SYNC;
+#else
+  static constexpr int kODirectFlags = 0;
+#endif
+
+ public:
+  PosixFileFactory() {}
+  ~PosixFileFactory() {}
+
+  Status NewSequentialFile(const std::string& fname, gscoped_ptr<SequentialFile>* result) override {
+    TRACE_EVENT1("io", "PosixEnv::NewSequentialFile", "path", fname);
+    ThreadRestrictions::AssertIOAllowed();
+    FILE* f = fopen(fname.c_str(), "r");
+    if (f == nullptr) {
+      return STATUS_IO_ERROR(fname, errno);
+    } else {
+      result->reset(new PosixSequentialFile(fname, f));
+      return Status::OK();
+    }
+  }
+
+  Status NewRandomAccessFile(const std::string& fname,
+                             gscoped_ptr<RandomAccessFile>* result) override {
+    return NewRandomAccessFile(RandomAccessFileOptions(), fname, result);
+  }
+
+  Status NewRandomAccessFile(const RandomAccessFileOptions& opts,
+                             const std::string& fname,
+                             gscoped_ptr<RandomAccessFile>* result) override {
+    TRACE_EVENT1("io", "PosixEnv::NewRandomAccessFile", "path", fname);
+    ThreadRestrictions::AssertIOAllowed();
+    int fd = open(fname.c_str(), O_RDONLY);
+    if (fd < 0) {
+      return STATUS_IO_ERROR(fname, errno);
+    }
+
+    result->reset(new PosixRandomAccessFile(fname, fd));
+    return Status::OK();
+  }
+
+  Status NewWritableFile(const std::string& fname,
+                         gscoped_ptr<WritableFile>* result) override {
+    return NewWritableFile(WritableFileOptions(), fname, result);
+  }
+
+  Status NewWritableFile(const WritableFileOptions& opts,
+                         const std::string& fname,
+                         gscoped_ptr<WritableFile>* result) override {
+    TRACE_EVENT1("io", "PosixEnv::NewWritableFile", "path", fname);
+    int fd = -1;
+    int extra_flags = 0;
+    if (UseODirect(opts.o_direct)) {
+      extra_flags = kODirectFlags;
+    }
+    RETURN_NOT_OK(DoOpen(fname, opts.mode, &fd, extra_flags));
+    return InstantiateNewWritableFile(fname, fd, opts, result);
+  }
+
+  Status NewTempWritableFile(const WritableFileOptions& opts,
+                             const std::string& name_template,
+                             std::string* created_filename,
+                             gscoped_ptr<WritableFile>* result) override {
+    TRACE_EVENT1("io", "PosixEnv::NewTempWritableFile", "template", name_template);
+    ThreadRestrictions::AssertIOAllowed();
+    gscoped_ptr<char[]> fname(new char[name_template.size() + 1]);
+    ::snprintf(fname.get(), name_template.size() + 1, "%s", name_template.c_str());
+    int fd = -1;
+    if (UseODirect(opts.o_direct)) {
+      fd = ::mkostemp(fname.get(), kODirectFlags);
+    } else {
+      fd = ::mkstemp(fname.get());
+    }
+    if (fd < 0) {
+      return STATUS_IO_ERROR(Format("Call to mkstemp() failed on name template $0", name_template),
+                             errno);
+    }
+    *created_filename = fname.get();
+    return InstantiateNewWritableFile(*created_filename, fd, opts, result);
+  }
+
+  Status NewRWFile(const string& fname, gscoped_ptr<RWFile>* result) override {
+    return NewRWFile(RWFileOptions(), fname, result);
+  }
+
+  Status NewRWFile(const RWFileOptions& opts, const string& fname,
+                   gscoped_ptr<RWFile>* result) override {
+    TRACE_EVENT1("io", "PosixEnv::NewRWFile", "path", fname);
+    int fd = -1;
+    RETURN_NOT_OK(DoOpen(fname, opts.mode, &fd));
+    result->reset(new PosixRWFile(fname, fd, opts.sync_on_close));
+    return Status::OK();
+  }
+
+  Result<uint64_t> GetFileSize(const std::string& fname) override {
+    return GetFileStat(
+        fname, "PosixEnv::GetFileSize", [](const struct stat& sbuf) { return sbuf.st_size; });
+  }
+
+ private:
+  bool UseODirect(bool o_direct) {
+#if defined(__linux__)
+    return o_direct;
+#else
+    return false;
+#endif
+  }
+
+  Status InstantiateNewWritableFile(const std::string& fname,
+                                    int fd,
+                                    const WritableFileOptions& opts,
+                                    gscoped_ptr<WritableFile>* result) {
+    uint64_t file_size = 0;
+    if (opts.mode == PosixEnv::OPEN_EXISTING) {
+      file_size = VERIFY_RESULT(GetFileSize(fname));
+    }
+    PosixWritableFile *posix_writable_file;
+#if defined(__linux__)
+    if (opts.o_direct)
+      posix_writable_file = new PosixDirectIOWritableFile(fname, fd, file_size, opts.sync_on_close);
+    else
+#endif
+    posix_writable_file = new PosixWritableFile(fname, fd, file_size, opts.sync_on_close);
+    result->reset(posix_writable_file);
+    return Status::OK();
+  }
+};
+
+PosixEnv::PosixEnv() : file_factory_(std::make_unique<PosixFileFactory>()) {}
+PosixEnv::PosixEnv(std::unique_ptr<FileFactory> file_factory) :
+  file_factory_(std::move(file_factory)) {}
 
 }  // namespace
 
@@ -1514,5 +1593,14 @@ Env* Env::Default() {
   pthread_once(&once, InitDefaultEnv);
   return default_env;
 }
+
+FileFactory* Env::DefaultFileFactory() {
+  return down_cast<PosixEnv*>(Env::Default())->GetFileFactory();
+}
+
+std::unique_ptr<Env> Env::NewDefaultEnv(std::unique_ptr<FileFactory> file_factory) {
+  return std::make_unique<PosixEnv>(std::move(file_factory));
+}
+
 
 }  // namespace yb
