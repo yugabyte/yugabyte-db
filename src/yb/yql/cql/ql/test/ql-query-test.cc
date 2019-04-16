@@ -1920,7 +1920,8 @@ TEST_F(TestQLQuery, TestJsonUpdate) {
   verifyJson(processor->row_block());
 
   ASSERT_OK(processor->Run("UPDATE test_json SET data->'a' = '100' WHERE k1 = 1"));
-  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'new-field' = '100' WHERE k1 = 1"));
+  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'new-field'->'c' = '100' WHERE k1 = 1"));
+  ASSERT_OK(processor->Run("UPDATE test_json SET data->'new-field' = '100' WHERE k1 = 1"));
 
   ASSERT_OK(processor->Run("UPDATE test_json SET data =  '{ \"a\": 2, \"b\": 4 }' WHERE k1 = 2"));
   ASSERT_NOK(processor->Run("UPDATE test_json SET data->'a' = '3' WHERE k1 = 3"));

@@ -163,6 +163,8 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
                                   rapidjson::Value::MemberIterator* memberit,
                                   rapidjson::Value::ValueIterator* valueit,
                                   bool* last_elem_object) {
+  *last_elem_object = false;
+
   int64_t array_index;
   if (document->IsArray()) {
     util::VarInt varint;
@@ -175,14 +177,22 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
     }
     *valueit = document->Begin();
     std::advance(*valueit, array_index);
-    *last_elem_object = false;
   } else if (document->IsObject()) {
+    util::VarInt varint;
+    auto status =
+      varint.DecodeFromComparable(column_value.json_args(index).operand().value().varint_value());
+    if (status.ok()) {
+      array_index = VERIFY_RESULT(varint.ToInt64());
+      return STATUS_SUBSTITUTE(QLError, "Cannot use array index $0 to access object", array_index);
+    }
+
+    *last_elem_object = true;
+
     const auto& member = column_value.json_args(index).operand().value().string_value().c_str();
     *memberit = document->FindMember(member);
     if (*memberit == document->MemberEnd()) {
       return STATUS_SUBSTITUTE(QLError, "Could not find member: ", member);
     }
-    *last_elem_object = true;
   } else {
     return STATUS_SUBSTITUTE(QLError, "JSON field is invalid", column_value.ShortDebugString());
   }
@@ -476,7 +486,8 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
                                                const DocPath& sub_path, const MonoDelta& ttl,
                                                const UserTimeMicros& user_timestamp,
                                                const ColumnSchema& column,
-                                               QLTableRow* existing_row) {
+                                               QLTableRow* existing_row,
+                                               bool is_insert) {
   using common::Jsonb;
   // Read the json column value inorder to perform a read modify write.
   QLValue ql_value;
@@ -496,19 +507,35 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
   // Update the json value.
   rapidjson::Value::MemberIterator memberit;
   rapidjson::Value::ValueIterator valueit;
-  bool last_elem_object = true;
-  RETURN_NOT_OK(FindMemberForIndex(column_value, 0, &document, &memberit, &valueit,
-                                   &last_elem_object));
-  for (int i = 1; i < column_value.json_args_size(); i++) {
-    if (last_elem_object) {
-      RETURN_NOT_OK(FindMemberForIndex(column_value, i, &(memberit->value), &memberit, &valueit,
-                                       &last_elem_object));
-    } else {
-      RETURN_NOT_OK(FindMemberForIndex(column_value, i, &(*valueit), &memberit, &valueit,
-                                       &last_elem_object));
-    }
+  bool last_elem_object;
+  rapidjson::Value* node = &document;
+
+  int i = 0;
+  auto status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
+      &last_elem_object);
+  for (i = 1; i < column_value.json_args_size() && status.ok(); i++) {
+    node = (last_elem_object) ? &(memberit->value) : &(*valueit);
+    status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
+        &last_elem_object);
   }
-  if (last_elem_object) {
+
+  bool update_missing = false;
+  if (is_insert) {
+    RETURN_NOT_OK(status);
+  } else {
+    update_missing = !status.ok();
+  }
+
+  if (update_missing) {
+    // NOTE: lhs path cannot exceed by more than one hop
+    if (last_elem_object && i == column_value.json_args_size()) {
+      auto val = column_value.json_args(i - 1).operand().value().string_value();
+      rapidjson::Value v(val.c_str(), val.size(), document.GetAllocator());
+      node->AddMember(v, rhs_doc, document.GetAllocator());
+    } else {
+      RETURN_NOT_OK(status);
+    }
+  } else if (last_elem_object) {
     memberit->value = rhs_doc.Move();
   } else {
     *valueit = rhs_doc.Move();
@@ -718,7 +745,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       // Add the appropriate liveness column only for inserts.
       // We never use init markers for QL to ensure we perform writes without any reads to
       // ensure our write path is fast while complicating the read path a bit.
-      if (request_.type() == QLWriteRequestPB::QL_STMT_INSERT && encoded_pk_doc_key_) {
+      auto is_insert = request_.type() == QLWriteRequestPB::QL_STMT_INSERT;
+      if (is_insert && encoded_pk_doc_key_) {
         const DocPath sub_path(encoded_pk_doc_key_.as_slice(),
                                PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
         const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
@@ -744,7 +772,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         QLValue expr_result;
         if (!column_value.json_args().empty()) {
           RETURN_NOT_OK(ApplyForJsonOperators(column_value, data, sub_path, ttl,
-                                              user_timestamp, column, &new_row));
+                                              user_timestamp, column, &new_row, is_insert));
         } else if (!column_value.subscript_args().empty()) {
           RETURN_NOT_OK(ApplyForSubscriptArgs(column_value, existing_row, data, ttl,
                                               user_timestamp, column, &sub_path));
