@@ -96,23 +96,6 @@ Status LogReader::Open(FsManager *fs_manager,
   return Status::OK();
 }
 
-Status LogReader::OpenFromRecoveryDir(FsManager *fs_manager,
-                                      const string& tablet_id,
-                                      const string& tablet_wal_path,
-                                      const scoped_refptr<MetricEntity>& metric_entity,
-                                      std::unique_ptr<LogReader>* reader) {
-  const std::string recovery_path = fs_manager->GetTabletWalRecoveryDir(tablet_wal_path);
-
-  // When recovering, we don't want to have any log index -- since it isn't fsynced()
-  // during writing, its contents are useless to us.
-  scoped_refptr<LogIndex> index(nullptr);
-  std::unique_ptr<LogReader> log_reader(new LogReader(fs_manager, index, tablet_id, metric_entity));
-  RETURN_NOT_OK_PREPEND(log_reader->Init(recovery_path),
-                        "Unable to initialize log reader");
-  *reader = std::move(log_reader);
-  return Status::OK();
-}
-
 LogReader::LogReader(FsManager* fs_manager,
                      const scoped_refptr<LogIndex>& index,
                      string tablet_id,

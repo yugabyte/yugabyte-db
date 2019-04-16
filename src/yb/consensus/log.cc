@@ -524,68 +524,77 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
   return Status::OK();
 }
 
-Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
-  RETURN_NOT_OK(entry_batch->Serialize());
-  Slice entry_batch_data = entry_batch->data();
-  LOG_IF(DFATAL, entry_batch_data.size() <= 0 && !entry_batch->flush_marker())
-      << "Cannot call DoAppend() with no data";
+Status Log::DoAppend(LogEntryBatch* entry_batch,
+                     bool caller_owns_operation,
+                     bool skip_wal_write) {
+  if (!skip_wal_write) {
+        RETURN_NOT_OK(entry_batch->Serialize());
+    Slice entry_batch_data = entry_batch->data();
+    LOG_IF(DFATAL, entry_batch_data.size() <= 0 && !entry_batch->flush_marker())
+        << "Cannot call DoAppend() with no data";
 
-  uint32_t entry_batch_bytes = entry_batch->total_size_bytes();
-  // If there is no data to write return OK.
-  if (PREDICT_FALSE(entry_batch_bytes == 0)) {
-    return Status::OK();
-  }
+    uint32_t entry_batch_bytes = entry_batch->total_size_bytes();
+    // If there is no data to write return OK.
+    if (PREDICT_FALSE(entry_batch_bytes == 0)) {
+      return Status::OK();
+    }
 
-  // if the size of this entry overflows the current segment, get a new one
-  if (allocation_state() == kAllocationNotStarted) {
-    if ((active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_) {
-      LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
-                            << "Starting new segment allocation. ";
-      RETURN_NOT_OK(AsyncAllocateSegment());
-      if (!options_.async_preallocate_segments) {
-        LOG_SLOW_EXECUTION(WARNING, 50, "Log roll took a long time") {
-          RETURN_NOT_OK(RollOver());
+    // if the size of this entry overflows the current segment, get a new one
+    if (allocation_state() == kAllocationNotStarted) {
+      if ((active_segment_->Size() + entry_batch_bytes + 4) > cur_max_segment_size_) {
+        LOG_WITH_PREFIX(INFO) << "Max segment size " << cur_max_segment_size_ << " reached. "
+                              << "Starting new segment allocation. ";
+        RETURN_NOT_OK(AsyncAllocateSegment());
+        if (!options_.async_preallocate_segments) {
+          LOG_SLOW_EXECUTION(WARNING, 50, "Log roll took a long time") {
+            RETURN_NOT_OK(RollOver());
+          }
+        }
+      }
+    } else if (allocation_state() == kAllocationFinished) {
+      LOG_SLOW_EXECUTION(WARNING, 50, "Log roll took a long time") {
+        RETURN_NOT_OK(RollOver());
+      }
+    } else {
+      VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
+    }
+
+    int64_t start_offset = active_segment_->written_offset();
+
+    LOG_SLOW_EXECUTION(WARNING, 50, "Append to log took a long time") {
+      SCOPED_LATENCY_METRIC(metrics_, append_latency);
+      SCOPED_WATCH_STACK(FLAGS_consensus_log_scoped_watch_delay_append_threshold_ms);
+
+      RETURN_NOT_OK(active_segment_->WriteEntryBatch(entry_batch_data));
+
+      // Check that entry_batch contains records. We could add empty entry batch, that just
+      // updates committed op id. So entry_batch_bytes will be non zero, but entry_batch->count()
+      // will be zero.
+      if (entry_batch->count()) {
+        // We don't update the last segment offset here anymore. This is done on the Sync() method
+        // to guarantee that we only try to read what we have persisted in disk.
+        if (post_append_listener_) {
+          post_append_listener_();
         }
       }
     }
-  } else if (allocation_state() == kAllocationFinished) {
-    LOG_SLOW_EXECUTION(WARNING, 50, "Log roll took a long time") {
-      RETURN_NOT_OK(RollOver());
+
+    if (metrics_) {
+      metrics_->bytes_logged->IncrementBy(entry_batch_bytes);
     }
-  } else {
-    VLOG_WITH_PREFIX(1) << "Segment allocation already in progress...";
+
+    // Populate the offset and sequence number for the entry batch if we did a WAL write.
+    entry_batch->offset_ = start_offset;
+    entry_batch->active_segment_sequence_number_ = active_segment_sequence_number_;
   }
 
-  int64_t start_offset = active_segment_->written_offset();
-
-  LOG_SLOW_EXECUTION(WARNING, 50, "Append to log took a long time") {
-    SCOPED_LATENCY_METRIC(metrics_, append_latency);
-    SCOPED_WATCH_STACK(FLAGS_consensus_log_scoped_watch_delay_append_threshold_ms);
-
-    RETURN_NOT_OK(active_segment_->WriteEntryBatch(entry_batch_data));
-
-    // We keep track of the last-written OpId here. This is needed to initialize Consensus on
-    // startup.
-    // Check that entry_batch contains records. We could add empty entry batch, that just
-    // updates committed op id. So entry_batch_bytes will be non zero, but entry_batch->count()
-    // will be zero.
-    if (entry_batch->count()) {
-      last_appended_entry_op_id_ = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
-
-      // We don't update the last segment offset here anymore. This is done on the Sync() method to
-      // guarantee that we only try to read what we have persisted in disk.
-
-      if (post_append_listener_) {
-        post_append_listener_();
-      }
-    }
+  // We keep track of the last-written OpId here. This is needed to initialize Consensus on
+  // startup.
+  if (entry_batch->count()) {
+    last_appended_entry_op_id_ = yb::OpId::FromPB(entry_batch->MaxReplicateOpId());
   }
 
-  if (metrics_) {
-    metrics_->bytes_logged->IncrementBy(entry_batch_bytes);
-  }
-
-  CHECK_OK(UpdateIndexForBatch(*entry_batch, start_offset));
+  CHECK_OK(UpdateIndexForBatch(*entry_batch));
   UpdateFooterForBatch(entry_batch);
 
   // We expect the caller to free the actual entries if caller_owns_operation is set.
@@ -599,8 +608,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, bool caller_owns_operation) {
   return Status::OK();
 }
 
-Status Log::UpdateIndexForBatch(const LogEntryBatch& batch,
-                                int64_t start_offset) {
+Status Log::UpdateIndexForBatch(const LogEntryBatch& batch) {
   if (batch.type_ != REPLICATE) {
     return Status::OK();
   }
@@ -609,8 +617,8 @@ Status Log::UpdateIndexForBatch(const LogEntryBatch& batch,
     LogIndexEntry index_entry;
 
     index_entry.op_id = entry_pb.replicate().id();
-    index_entry.segment_sequence_number = active_segment_sequence_number_;
-    index_entry.offset_in_segment = start_offset;
+    index_entry.segment_sequence_number = batch.active_segment_sequence_number_;
+    index_entry.offset_in_segment = batch.offset_;
     RETURN_NOT_OK(log_index_->AddEntry(index_entry));
   }
   return Status::OK();
@@ -739,10 +747,12 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   return Status::OK();
 }
 
-Status Log::Append(LogEntryPB* phys_entry, RestartSafeCoarseTimePoint batch_mono_time) {
+Status Log::Append(LogEntryPB* phys_entry,
+                   LogEntryMetadata entry_metadata,
+                   bool skip_wal_write) {
   LogEntryBatchPB entry_batch_pb;
-  if (batch_mono_time != RestartSafeCoarseTimePoint()) {
-    entry_batch_pb.set_mono_time(batch_mono_time.ToUInt64());
+  if (entry_metadata.entry_time != RestartSafeCoarseTimePoint()) {
+    entry_batch_pb.set_mono_time(entry_metadata.entry_time.ToUInt64());
   }
 
   entry_batch_pb.mutable_entry()->AddAllocated(phys_entry);
@@ -751,8 +761,14 @@ Status Log::Append(LogEntryPB* phys_entry, RestartSafeCoarseTimePoint batch_mono
   entry_batch.state_ = LogEntryBatch::kEntryReserved;
   // Ready assumes the data is reserved before it is ready.
   entry_batch.MarkReady();
-  Status s = DoAppend(&entry_batch, false);
-  if (s.ok()) {
+  if (skip_wal_write) {
+    // Get the LogIndex entry from read path metadata.
+    entry_batch.offset_ = entry_metadata.offset;
+    entry_batch.active_segment_sequence_number_ = entry_metadata.active_segment_sequence_number;
+  }
+  Status s = DoAppend(&entry_batch, false, skip_wal_write);
+  if (s.ok() && !skip_wal_write) {
+    // Only sync if we actually performed a wal write.
     s = Sync();
   }
   entry_batch.entry_batch_pb_.mutable_entry()->ExtractSubrange(0, 1, nullptr);

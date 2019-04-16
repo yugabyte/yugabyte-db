@@ -127,9 +127,12 @@ class Log : public RefCountedThreadSafe<Log> {
                              const StatusCallback& callback);
 
   // Synchronously append a new entry to the log.  Log does not take ownership of the passed
-  // 'entry'.
+  // 'entry'. If skip_wal_write is true, only update consensus metadata and LogIndex, skip write
+  // to wal.
   // TODO get rid of this method, transition to the asynchronous API.
-  CHECKED_STATUS Append(LogEntryPB* entry, RestartSafeCoarseTimePoint batch_mono_time);
+  CHECKED_STATUS Append(LogEntryPB* entry,
+                        LogEntryMetadata entry_metadata,
+                        bool skip_wal_write = false);
 
   // Append the given set of replicate messages, asynchronously.  This requires that the replicates
   // have already been assigned OpIds.
@@ -307,18 +310,20 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Writes serialized contents of 'entry' to the log. Called inside AppenderThread. If
   // 'caller_owns_operation' is true, then the 'operation' field of the entry will be released after
-  // the entry is appended.
+  // the entry is appended. If skip_wal_write is true, only update consensus metadata and LogIndex,
+  // skip WAL write.
   //
   // TODO once Append() is removed, 'caller_owns_operation' and associated logic will no longer be
   // needed.
-  CHECKED_STATUS DoAppend(LogEntryBatch* entry, bool caller_owns_operation = true);
+  CHECKED_STATUS DoAppend(
+      LogEntryBatch* entry, bool caller_owns_operation = true, bool skip_wal_write = false);
 
   // Update footer_builder_ to reflect the log indexes seen in 'batch'.
   void UpdateFooterForBatch(LogEntryBatch* batch);
 
   // Update the LogIndex to include entries for the replicate messages found in 'batch'. The index
   // entry points to the offset 'start_offset' in the current log segment.
-  CHECKED_STATUS UpdateIndexForBatch(const LogEntryBatch& batch, int64_t start_offset);
+  CHECKED_STATUS UpdateIndexForBatch(const LogEntryBatch& batch);
 
   // Replaces the last "empty" segment in 'log_reader_', i.e. the one currently being written to, by
   // the same segment once properly closed.
@@ -543,6 +548,12 @@ class LogEntryBatch {
 
   // Buffer to which 'phys_entries_' are serialized by call to 'Serialize()'
   faststring buffer_;
+
+  // Offset into the log file for this entry batch.
+  int64_t offset_;
+
+  // Segment sequence number for this entry batch.
+  uint64_t active_segment_sequence_number_;
 
   enum LogEntryState {
     kEntryInitialized,
