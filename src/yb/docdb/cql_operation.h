@@ -67,7 +67,8 @@ class QLWriteOperation :
                                        const DocPath& sub_path, const MonoDelta& ttl,
                                        const UserTimeMicros& user_timestamp,
                                        const ColumnSchema& column,
-                                       QLTableRow* current_row);
+                                       QLTableRow* current_row,
+                                       bool is_insert);
 
   CHECKED_STATUS ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
                                        const QLTableRow& current_row,
