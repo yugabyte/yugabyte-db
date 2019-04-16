@@ -538,8 +538,11 @@ ReadEntriesResult ReadableLogSegment::ReadEntries() {
     for (size_t i = 0; i < current_batch.entry_size(); ++i) {
       result.entries.emplace_back(current_batch.mutable_entry(i));
       DCHECK_NE(current_batch.mono_time(), 0);
-      result.entry_times.push_back(
-          RestartSafeCoarseTimePoint::FromUInt64(current_batch.mono_time()));
+      LogEntryMetadata entry_metadata;
+      entry_metadata.offset = this_batch_offset;
+      entry_metadata.active_segment_sequence_number = header().sequence_number();
+      entry_metadata.entry_time = RestartSafeCoarseTimePoint::FromUInt64(current_batch.mono_time());
+      result.entry_metadata.emplace_back(std::move(entry_metadata));
       num_entries_read++;
     }
     current_batch.mutable_entry()->ExtractSubrange(0, current_batch.entry_size(), nullptr);
