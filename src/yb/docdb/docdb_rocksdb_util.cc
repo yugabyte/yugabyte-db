@@ -501,6 +501,9 @@ void InitRocksDBOptions(
       options->rate_limiter.reset(
           rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
     }
+  } else {
+    options->level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
+    options->level0_stop_writes_trigger = std::numeric_limits<int>::max();
   }
 
   uint64_t max_file_size_for_compaction = FLAGS_rocksdb_max_file_size_for_compaction;
