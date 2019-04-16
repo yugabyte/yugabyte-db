@@ -101,6 +101,11 @@ struct LogOptions {
   // Whether the allocation should happen asynchronously.
   bool async_preallocate_segments;
 
+  // Env for log file operations.
+  Env* env;
+
+  std::string peer_uuid;
+
   LogOptions();
 };
 
@@ -220,12 +225,20 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
     return readable_file_;
   }
 
+  const std::shared_ptr<RandomAccessFile> readable_file_checkpoint() const {
+    return readable_file_checkpoint_;
+  }
+
   const int64_t file_size() const {
     return file_size_.Load();
   }
 
   const int64_t first_entry_offset() const {
     return first_entry_offset_;
+  }
+
+  const int64_t get_header_size() const {
+    return readable_file_->GetHeaderSize();
   }
 
   // Returns the full size of the file, if the segment is closed and has
@@ -323,6 +336,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // a readable file for a log segment (used on replay)
   const std::shared_ptr<RandomAccessFile> readable_file_;
 
+  std::shared_ptr<RandomAccessFile> readable_file_checkpoint_;
+
   bool is_initialized_;
 
   LogSegmentHeaderPB header_;
@@ -332,7 +347,7 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // True if the footer was rebuilt, rather than actually found on disk.
   bool footer_was_rebuilt_;
 
-  // the offset of the first entry in the log
+  // the offset of the first entry in the log.
   int64_t first_entry_offset_;
 
   DISALLOW_COPY_AND_ASSIGN(ReadableLogSegment);

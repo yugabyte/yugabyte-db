@@ -393,6 +393,9 @@ Status TSTabletManager::Init() {
       &server_->options(), server_->metric_entity(), server_->mem_tracker(),
       server_->messenger());
 
+  tablet_options_.env = server_->GetEnv();
+  tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
+
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
   // FsManager isn't initialized until this point.
@@ -1592,7 +1595,8 @@ Status DeleteTabletData(const scoped_refptr<TabletMetadata>& meta,
             << meta->tombstone_last_logged_opid();
   MAYBE_FAULT(FLAGS_fault_crash_after_blocks_deleted);
 
-  RETURN_NOT_OK(Log::DeleteOnDiskData(meta->fs_manager(), meta->tablet_id(), meta->wal_dir()));
+  RETURN_NOT_OK(Log::DeleteOnDiskData(
+      meta->fs_manager()->env(), meta->tablet_id(), meta->wal_dir(), meta->fs_manager()->uuid()));
   MAYBE_FAULT(FLAGS_fault_crash_after_wal_deleted);
 
   // We do not delete the superblock or the consensus metadata when tombstoning

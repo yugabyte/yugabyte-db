@@ -515,10 +515,11 @@ TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
 
   // Save the log path before shutting down the tablet (and destroying
   // the tablet peer).
-  string log_path = tablet_peer_->log()->ActiveSegmentPathForTests();
-  ShutdownTablet();
+  string log_path = tablet_peer_->log()->ActiveSegmentForTests()->path();
+  auto idx = tablet_peer_->log()->ActiveSegmentForTests()->first_entry_offset() + 300;
 
-  ASSERT_OK(log::CorruptLogFile(env_.get(), log_path, log::FLIP_BYTE, 300));
+  ShutdownTablet();
+  ASSERT_OK(log::CorruptLogFile(env_.get(), log_path, log::FLIP_BYTE, idx));
 
   ASSERT_FALSE(ShutdownAndRebuildTablet().ok());
 

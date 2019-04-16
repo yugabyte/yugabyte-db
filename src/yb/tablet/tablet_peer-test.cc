@@ -158,10 +158,10 @@ class TabletPeerTest : public YBTabletTest,
                  .unlimited_threads()
                  .Build(&append_pool_));
     scoped_refptr<Log> log;
-    ASSERT_OK(Log::Open(LogOptions(), fs_manager(), tablet()->tablet_id(),
-                        tablet()->metadata()->wal_dir(), *tablet()->schema(),
-                        tablet()->metadata()->schema_version(), metric_entity_.get(),
-                        append_pool_.get(), &log));
+    ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
+                        tablet()->metadata()->wal_dir(), tablet()->metadata()->fs_manager()->uuid(),
+                        *tablet()->schema(), tablet()->metadata()->schema_version(),
+                        metric_entity_.get(), append_pool_.get(), &log));
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),

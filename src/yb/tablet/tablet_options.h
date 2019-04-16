@@ -13,19 +13,29 @@
 #ifndef YB_TABLET_TABLET_OPTIONS_H
 #define YB_TABLET_TABLET_OPTIONS_H
 
+#include <memory>
+#include <vector>
+
+#include "yb/util/env.h"
+#include "yb/rocksdb/env.h"
+
 namespace rocksdb {
 class Cache;
 class EventListener;
 class MemoryMonitor;
+class Env;
 }
 
 namespace yb {
+class Env;
 namespace tablet {
 
 struct TabletOptions {
   std::shared_ptr<rocksdb::Cache> block_cache;
   std::shared_ptr<rocksdb::MemoryMonitor> memory_monitor;
   std::vector<std::shared_ptr<rocksdb::EventListener>> listeners;
+  yb::Env* env = Env::Default();
+  rocksdb::Env* rocksdb_env = rocksdb::Env::Default();
 };
 
 } // namespace tablet

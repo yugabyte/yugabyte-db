@@ -313,26 +313,26 @@ const Status Log::kLogShutdownStatus(
     STATUS(ServiceUnavailable, "WAL is shutting down", "", ESHUTDOWN));
 
 Status Log::Open(const LogOptions &options,
-                 FsManager *fs_manager,
                  const std::string& tablet_id,
                  const std::string& tablet_wal_path,
+                 const std::string& peer_uuid,
                  const Schema& schema,
                  uint32_t schema_version,
                  const scoped_refptr<MetricEntity>& metric_entity,
                  ThreadPool* append_thread_pool,
                  scoped_refptr<Log>* log) {
 
-  RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(DirName(tablet_wal_path)),
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(tablet_wal_path)),
                         Substitute("Failed to create table wal dir $0", DirName(tablet_wal_path)));
 
-  RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(tablet_wal_path),
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, tablet_wal_path),
                         Substitute("Failed to create tablet wal dir $0", tablet_wal_path));
 
   scoped_refptr<Log> new_log(new Log(options,
-                                     fs_manager,
                                      tablet_wal_path,
                                      tablet_id,
                                      tablet_wal_path,
+                                     peer_uuid,
                                      schema,
                                      schema_version,
                                      metric_entity,
@@ -342,14 +342,14 @@ Status Log::Open(const LogOptions &options,
   return Status::OK();
 }
 
-Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
-         string tablet_id, string tablet_wal_path, const Schema& schema, uint32_t schema_version,
-         const scoped_refptr<MetricEntity>& metric_entity,
+Log::Log(LogOptions options, string log_path,
+         string tablet_id, string tablet_wal_path, string peer_uuid, const Schema& schema,
+         uint32_t schema_version, const scoped_refptr<MetricEntity>& metric_entity,
          ThreadPool* append_thread_pool)
     : options_(std::move(options)),
-      fs_manager_(fs_manager),
       log_dir_(std::move(log_path)),
       tablet_id_(std::move(tablet_id)),
+      peer_uuid_(std::move(peer_uuid)),
       tablet_wal_path_(std::move(tablet_wal_path)),
       schema_(schema),
       schema_version_(schema_version),
@@ -364,7 +364,7 @@ Log::Log(LogOptions options, FsManager* fs_manager, string log_path,
       allocation_state_(kAllocationNotStarted),
       metric_entity_(metric_entity),
       on_disk_size_(0),
-      log_prefix_(Format("T $0 P $1: ", tablet_id_, fs_manager->uuid())) {
+      log_prefix_(Format("T $0 P $1: ", tablet_id_, peer_uuid_)) {
   CHECK_OK(ThreadPoolBuilder("log-alloc").set_max_threads(1).Build(&allocation_pool_));
   if (metric_entity_) {
     metrics_.reset(new LogMetrics(metric_entity_));
@@ -377,10 +377,11 @@ Status Log::Init() {
   // Init the index
   log_index_.reset(new LogIndex(log_dir_));
   // Reader for previous segments.
-  RETURN_NOT_OK(LogReader::Open(fs_manager_,
+  RETURN_NOT_OK(LogReader::Open(get_env(),
                                 log_index_,
                                 tablet_id_,
                                 tablet_wal_path_,
+                                peer_uuid_,
                                 metric_entity_.get(),
                                 &reader_));
 
@@ -649,10 +650,6 @@ Status Log::AllocateSegmentAndRollOver() {
   return RollOver();
 }
 
-FsManager* Log::GetFsManager() {
-  return fs_manager_;
-}
-
 Status Log::Sync() {
   TRACE_EVENT0("log", "Sync");
   SCOPED_LATENCY_METRIC(metrics_, sync_latency);
@@ -847,7 +844,7 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
     for (const scoped_refptr<ReadableLogSegment>& segment : segments_to_delete) {
       LOG_WITH_PREFIX(INFO) << "Deleting log segment in path: " << segment->path()
                             << " (GCed ops < " << min_op_idx << ")";
-      RETURN_NOT_OK(fs_manager_->env()->DeleteFile(segment->path()));
+      RETURN_NOT_OK(get_env()->DeleteFile(segment->path()));
       (*num_gced)++;
     }
 
@@ -963,14 +960,14 @@ Status Log::Close() {
   }
 }
 
-Status Log::DeleteOnDiskData(FsManager* fs_manager,
+Status Log::DeleteOnDiskData(Env* env,
                              const string& tablet_id,
-                             const string& tablet_wal_path) {
-  Env* env = fs_manager->env();
+                             const string& tablet_wal_path,
+                             const string& peer_uuid) {
   if (!env->FileExists(tablet_wal_path)) {
     return Status::OK();
   }
-  LOG(INFO) << "T " << tablet_id << "P " << fs_manager->uuid()
+  LOG(INFO) << "T " << tablet_id << "P " << peer_uuid
             << ": Deleting WAL dir " << tablet_wal_path;
   RETURN_NOT_OK_PREPEND(env->DeleteRecursively(tablet_wal_path),
                         "Unable to recursively delete WAL dir for tablet " + tablet_id);
@@ -1010,13 +1007,12 @@ Status Log::SwitchToAllocatedSegment() {
 
   // Increment "next" log segment seqno.
   active_segment_sequence_number_++;
-
   const string new_segment_path =
-      fs_manager_->GetWalSegmentFileName(tablet_wal_path_, active_segment_sequence_number_);
+      FsManager::GetWalSegmentFileName(tablet_wal_path_, active_segment_sequence_number_);
 
-  RETURN_NOT_OK(fs_manager_->env()->RenameFile(next_segment_path_, new_segment_path));
+  RETURN_NOT_OK(get_env()->RenameFile(next_segment_path_, new_segment_path));
   if (durable_wal_write_) {
-    RETURN_NOT_OK(fs_manager_->env()->SyncDir(log_dir_));
+    RETURN_NOT_OK(get_env()->SyncDir(log_dir_));
   }
 
   // Create a new segment.
@@ -1042,7 +1038,6 @@ Status Log::SwitchToAllocatedSegment() {
   }
 
   RETURN_NOT_OK(new_segment->WriteHeaderAndOpen(header));
-
   // Transform the currently-active segment into a readable one, since we need to be able to replay
   // the segments for other peers.
   {
@@ -1054,9 +1049,9 @@ Status Log::SwitchToAllocatedSegment() {
 
   // Open the segment we just created in readable form and add it to the reader.
   gscoped_ptr<RandomAccessFile> readable_file;
+  RETURN_NOT_OK(get_env()->NewRandomAccessFile(
+      RandomAccessFileOptions(), new_segment_path, &readable_file));
 
-  RandomAccessFileOptions opts;
-  RETURN_NOT_OK(fs_manager_->env()->NewRandomAccessFile(opts, new_segment_path, &readable_file));
   scoped_refptr<ReadableLogSegment> readable_segment(
     new ReadableLogSegment(new_segment_path,
                            shared_ptr<RandomAccessFile>(readable_file.release())));
@@ -1076,10 +1071,11 @@ Status Log::ReplaceSegmentInReaderUnlocked() {
   // We should never switch to a new segment if we wrote nothing to the old one.
   CHECK(active_segment_->IsClosed());
   shared_ptr<RandomAccessFile> readable_file;
-  RETURN_NOT_OK(OpenFileForRandom(fs_manager_->env(), active_segment_->path(), &readable_file));
+  RETURN_NOT_OK(OpenFileForRandom(
+      get_env(), active_segment_->path(), &readable_file));
+
   scoped_refptr<ReadableLogSegment> readable_segment(
-      new ReadableLogSegment(active_segment_->path(),
-                             readable_file));
+      new ReadableLogSegment(active_segment_->path(), readable_file));
   // Note: active_segment_->header() will only contain an initialized PB if we wrote the header out.
   RETURN_NOT_OK(readable_segment->Init(active_segment_->header(),
                                        active_segment_->footer(),
@@ -1094,10 +1090,10 @@ Status Log::CreatePlaceholderSegment(const WritableFileOptions& opts,
   string path_tmpl = JoinPathSegments(log_dir_, kSegmentPlaceholderFileTemplate);
   VLOG_WITH_PREFIX(2) << "Creating temp. file for place holder segment, template: " << path_tmpl;
   gscoped_ptr<WritableFile> segment_file;
-  RETURN_NOT_OK(fs_manager_->env()->NewTempWritableFile(opts,
-                                                        path_tmpl,
-                                                        result_path,
-                                                        &segment_file));
+  RETURN_NOT_OK(get_env()->NewTempWritableFile(opts,
+                                               path_tmpl,
+                                               result_path,
+                                               &segment_file));
   VLOG_WITH_PREFIX(1) << "Created next WAL segment, placeholder path: " << *result_path;
   out->reset(segment_file.release());
   return Status::OK();

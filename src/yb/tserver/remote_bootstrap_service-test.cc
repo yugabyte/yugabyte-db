@@ -364,10 +364,10 @@ TEST_F(RemoteBootstrapServiceTest, TestFetchLog) {
       << " and " << first_seg_seqno;
   const scoped_refptr<ReadableLogSegment>& segment = local_segments[0];
   faststring scratch;
-  int64_t size = segment->file_size();
+  int64_t size = ASSERT_RESULT(segment->readable_file_checkpoint()->Size());
   scratch.resize(size);
   Slice slice;
-  ASSERT_OK(ReadFully(segment->readable_file().get(), 0, size, &slice, scratch.data()));
+  ASSERT_OK(ReadFully(segment->readable_file_checkpoint().get(), 0, size, &slice, scratch.data()));
 
   AssertDataEqual(slice.data(), slice.size(), resp.chunk());
 }

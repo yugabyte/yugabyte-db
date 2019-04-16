@@ -1056,7 +1056,8 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
 
   class Wrapper : public WritableFileWrapper {
    public:
-    explicit Wrapper(WritableFile* target) : WritableFileWrapper(target) {}
+    explicit Wrapper(std::unique_ptr<WritableFile> target) :
+    WritableFileWrapper(std::move(target)) {}
 
     void CallProtectedMethods() {
       Allocate(0, 0);
@@ -1067,8 +1068,8 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
   int step = 0;
 
   {
-    Base b(&step);
-    Wrapper w(&b);
+    auto b = std::make_unique<Base>(&step);
+    Wrapper w(std::move(b));
     w.Append(Slice());
     w.Close();
     w.Flush();

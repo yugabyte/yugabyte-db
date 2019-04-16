@@ -55,8 +55,10 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/env.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/sysinfo.h"
+#include "yb/rocksdb/env.h"
 
 using std::make_shared;
 using std::shared_ptr;
@@ -388,6 +390,14 @@ void TabletServer::DisplayRpcIcons(std::stringstream* output) {
   //                                    FLAGS_pgsql_proxy_webserver_port);
   // DisplayIconTile(output, "fa-tasks", "SQL RPCs", sql_url);
 
+}
+
+Env* TabletServer::GetEnv() {
+  return Env::Default();
+}
+
+rocksdb::Env* TabletServer::GetRocksDBEnv() {
+  return rocksdb::Env::Default();
 }
 
 }  // namespace tserver

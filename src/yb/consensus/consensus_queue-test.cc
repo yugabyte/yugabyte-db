@@ -83,9 +83,9 @@ class ConsensusQueueTest : public YBTest {
     ASSERT_OK(fs_manager_->Open());
     ASSERT_OK(ThreadPoolBuilder("append").Build(&append_pool_));
     ASSERT_OK(log::Log::Open(log::LogOptions(),
-                            fs_manager_.get(),
                             kTestTablet,
                             fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
+                            fs_manager_->uuid(),
                             schema_,
                             0, // schema_version
                             NULL,

@@ -860,6 +860,9 @@ struct DBOptions {
   // Default: Env::Default()
   Env* env;
 
+  // Env used to create checkpoints. Default: Env::Default()
+  Env* checkpoint_env;
+
   // Use to control write rate of flush and compaction. Flush has higher
   // priority than compaction. Rate limiting is disabled if nullptr.
   // If rate limiter is enabled, bytes_per_sync is set to 1MB by default.

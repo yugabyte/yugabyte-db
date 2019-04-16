@@ -148,6 +148,8 @@ class TabletBootstrap {
   // Return a log prefix string in the standard "T xxx P yyy" format.
   std::string LogPrefix() const;
 
+  Env* GetEnv();
+
   BootstrapTabletData data_;
   scoped_refptr<TabletMetadata> meta_;
   std::shared_ptr<MemTracker> mem_tracker_;

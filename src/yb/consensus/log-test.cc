@@ -388,14 +388,14 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
       offset = entry.offset_in_segment + kEntryHeaderSize + 1;
       break;
   }
-  ASSERT_OK(CorruptLogFile(env_.get(), log_->ActiveSegmentPathForTests(), type, offset));
+  ASSERT_OK(CorruptLogFile(env_.get(), log_->ActiveSegmentForTests()->path(), type, offset));
 
   // Open a new reader -- we don't reuse the existing LogReader from log_
   // because it has a cached header.
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_.get(),
+  ASSERT_OK(LogReader::Open(fs_manager_->env(),
                             make_scoped_refptr(new LogIndex(log_->log_dir_)),
-                            kTestTablet, tablet_wal_path_, nullptr, &reader));
+                            kTestTablet, tablet_wal_path_, fs_manager_->uuid(), nullptr, &reader));
   ASSERT_EQ(1, reader->num_segments());
 
   SegmentSequence segments;
@@ -456,7 +456,9 @@ TEST_F(LogTest, TestSegmentRollover) {
   ASSERT_OK(log_->Close());
 
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_.get(), NULL, kTestTablet, tablet_wal_path_, NULL, &reader));
+  ASSERT_OK(
+      LogReader::Open(fs_manager_->env(), NULL, kTestTablet, tablet_wal_path_, fs_manager_->uuid(),
+                      NULL, &reader));
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_TRUE(segments.back()->HasFooter());
@@ -789,8 +791,8 @@ TEST_F(LogTest, TestWriteManyBatches) {
     uint32_t num_entries = 0;
 
     std::unique_ptr<LogReader> reader;
-    ASSERT_OK(LogReader::Open(fs_manager_.get(), nullptr, kTestTablet, tablet_wal_path_, nullptr,
-                              &reader));
+    ASSERT_OK(LogReader::Open(fs_manager_->env(), nullptr, kTestTablet, tablet_wal_path_,
+                              fs_manager_->uuid(), nullptr, &reader));
 
     std::vector<scoped_refptr<ReadableLogSegment> > segments;
     ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
@@ -812,9 +814,10 @@ TEST_F(LogTest, TestWriteManyBatches) {
 // seg003: 0.20 through 0.29
 // seg004: 0.30 through 0.39
 TEST_F(LogTest, TestLogReader) {
-  LogReader reader(fs_manager_.get(),
+  LogReader reader(fs_manager_->env(),
                    scoped_refptr<LogIndex>(),
                    kTestTablet,
+                   fs_manager_->uuid(),
                    nullptr);
   ASSERT_OK(reader.InitEmptyReaderForTests());
   ASSERT_OK(AppendNewEmptySegmentToReader(2, 10, &reader));

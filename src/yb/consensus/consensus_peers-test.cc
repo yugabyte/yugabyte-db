@@ -92,9 +92,9 @@ class ConsensusPeersTest : public YBTest {
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());
     ASSERT_OK(Log::Open(options_,
-                       fs_manager_.get(),
                        kTabletId,
                        fs_manager_->GetFirstTabletWalDirOrDie(kTableId, kTabletId),
+                       fs_manager_->uuid(),
                        schema_,
                        0, // schema_version
                        NULL,

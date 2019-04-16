@@ -53,6 +53,142 @@ struct WritableFileOptions;
 
 YB_STRONGLY_TYPED_BOOL(ExcludeDots);
 
+// FileFactory is the implementation of all NewxxxFile Env methods as well as any methods that
+// are used to create new files. This class is created to allow easy definition of how we create
+// new files without inheriting the whole env.
+class FileFactory {
+ public:
+  FileFactory() {}
+  virtual ~FileFactory() {}
+  // Create a brand new sequentially-readable file with the specified name.
+  // On success, stores a pointer to the new file in *result and returns OK.
+  // On failure stores NULL in *result and returns non-OK.  If the file does
+  // not exist, returns a non-OK status.
+  //
+  // The returned file will only be accessed by one thread at a time.
+  virtual CHECKED_STATUS NewSequentialFile(const std::string& fname,
+                                           gscoped_ptr<SequentialFile>* result) = 0;
+
+  // Create a brand new random access read-only file with the
+  // specified name.  On success, stores a pointer to the new file in
+  // *result and returns OK.  On failure stores NULL in *result and
+  // returns non-OK.  If the file does not exist, returns a non-OK
+  // status.
+  //
+  // The returned file may be concurrently accessed by multiple threads.
+  virtual CHECKED_STATUS NewRandomAccessFile(const std::string& fname,
+                                             gscoped_ptr<RandomAccessFile>* result) = 0;
+
+  // Like the previous NewRandomAccessFile, but allows options to be specified.
+  virtual CHECKED_STATUS NewRandomAccessFile(const RandomAccessFileOptions& opts,
+                                             const std::string& fname,
+                                             gscoped_ptr<RandomAccessFile>* result) = 0;
+
+  // Create an object that writes to a new file with the specified
+  // name.  Deletes any existing file with the same name and creates a
+  // new file.  On success, stores a pointer to the new file in
+  // *result and returns OK.  On failure stores NULL in *result and
+  // returns non-OK.
+  //
+  // The returned file will only be accessed by one thread at a time.
+  virtual CHECKED_STATUS NewWritableFile(const std::string& fname,
+                                         gscoped_ptr<WritableFile>* result) = 0;
+
+
+  // Like the previous NewWritableFile, but allows options to be
+  // specified.
+  virtual CHECKED_STATUS NewWritableFile(const WritableFileOptions& opts,
+                                         const std::string& fname,
+                                         gscoped_ptr<WritableFile>* result) = 0;
+
+  // Creates a new WritableFile provided the name_template parameter.
+  // The last six characters of name_template must be "XXXXXX" and these are
+  // replaced with a string that makes the filename unique.
+  // The resulting created filename, if successful, will be stored in the
+  // created_filename out parameter.
+  // The file is created with permissions 0600, that is, read plus write for
+  // owner only. The implementation will create the file in a secure manner,
+  // and will return an error Status if it is unable to open the file.
+  virtual CHECKED_STATUS NewTempWritableFile(const WritableFileOptions& opts,
+                                             const std::string& name_template,
+                                             std::string* created_filename,
+                                             gscoped_ptr<WritableFile>* result) = 0;
+
+  // Creates a new readable and writable file. If a file with the same name
+  // already exists on disk, it is deleted.
+  //
+  // Some of the methods of the new file may be accessed concurrently,
+  // while others are only safe for access by one thread at a time.
+  virtual CHECKED_STATUS NewRWFile(const std::string& fname,
+                                   gscoped_ptr<RWFile>* result) = 0;
+
+  // Like the previous NewRWFile, but allows options to be specified.
+  virtual CHECKED_STATUS NewRWFile(const RWFileOptions& opts,
+                                   const std::string& fname,
+                                   gscoped_ptr<RWFile>* result) = 0;
+
+  virtual Result<uint64_t> GetFileSize(const std::string& fname) = 0;
+};
+
+class FileFactoryWrapper : public FileFactory {
+ public:
+  explicit FileFactoryWrapper(FileFactory* t) : target_(t) {}
+  virtual ~FileFactoryWrapper() {}
+
+  CHECKED_STATUS NewSequentialFile(const std::string& fname,
+                                   gscoped_ptr<SequentialFile>* result) override {
+    return target_->NewSequentialFile(fname, result);
+  }
+
+  CHECKED_STATUS NewRandomAccessFile(const std::string& fname,
+                                     gscoped_ptr<RandomAccessFile>* result) override {
+    return target_->NewRandomAccessFile(fname, result);
+  }
+
+  // Like the previous NewRandomAccessFile, but allows options to be specified.
+  CHECKED_STATUS NewRandomAccessFile(const RandomAccessFileOptions& opts,
+                                     const std::string& fname,
+                                     gscoped_ptr<RandomAccessFile>* result) override {
+    return target_->NewRandomAccessFile(opts, fname, result);
+  }
+  CHECKED_STATUS NewWritableFile(const std::string& fname,
+                                 gscoped_ptr<WritableFile>* result) override {
+    return target_->NewWritableFile(fname, result);
+  }
+
+  CHECKED_STATUS NewWritableFile(const WritableFileOptions& opts,
+                                 const std::string& fname,
+                                 gscoped_ptr<WritableFile>* result) override {
+    return target_->NewWritableFile(opts, fname, result);
+  }
+
+  CHECKED_STATUS NewTempWritableFile(const WritableFileOptions& opts,
+                                     const std::string& name_template,
+                                     std::string* created_filename,
+                                     gscoped_ptr<WritableFile>* result) override {
+    return target_->NewTempWritableFile(opts, name_template, created_filename, result);
+  }
+
+  CHECKED_STATUS NewRWFile(const std::string& fname,
+                           gscoped_ptr<RWFile>* result) override {
+    return target_->NewRWFile(fname, result);
+  }
+
+  // Like the previous NewRWFile, but allows options to be specified.
+  CHECKED_STATUS NewRWFile(const RWFileOptions& opts,
+                           const std::string& fname,
+                           gscoped_ptr<RWFile>* result) override {
+    return target_->NewRWFile(opts, fname, result);
+  }
+
+  Result<uint64_t> GetFileSize(const std::string& fname) override {
+    return target_->GetFileSize(fname);
+  }
+
+ protected:
+  FileFactory* target_;
+};
+
 class Env {
  public:
   // Governs if/how the file is created.
@@ -78,6 +214,10 @@ class Env {
   // The result of Default() belongs to yb and must never be deleted.
   static Env* Default();
 
+  static FileFactory* DefaultFileFactory();
+
+  static std::unique_ptr<Env> NewDefaultEnv(std::unique_ptr<FileFactory> file_factory);
+
   // Create a brand new sequentially-readable file with the specified name.
   // On success, stores a pointer to the new file in *result and returns OK.
   // On failure stores NULL in *result and returns non-OK.  If the file does
@@ -102,6 +242,9 @@ class Env {
                                      const std::string& fname,
                                      gscoped_ptr<RandomAccessFile>* result) = 0;
 
+  // Wrapper function to instantiate RandomAccessFile into a unique_ptr.
+  virtual CHECKED_STATUS NewRandomAccessFile(const std::string& fname,
+                                             std::unique_ptr<RandomAccessFile>* result) = 0;
   // Create an object that writes to a new file with the specified
   // name.  Deletes any existing file with the same name and creates a
   // new file.  On success, stores a pointer to the new file in
@@ -381,6 +524,14 @@ class RandomAccessFile {
   // Returns the approximate memory usage of this RandomAccessFile including
   // the object itself.
   virtual size_t memory_footprint() const = 0;
+
+  virtual uint64_t GetHeaderSize() const {
+    return 0;
+  }
+
+  virtual bool IsEncrypted() const {
+    return false;
+  }
 };
 
 // Creation-time options for WritableFile
@@ -451,6 +602,70 @@ class WritableFile {
   // No copying allowed
   WritableFile(const WritableFile&);
   void operator=(const WritableFile&);
+};
+
+class SequentialFileWrapper : public SequentialFile {
+ public:
+  explicit SequentialFileWrapper(gscoped_ptr<SequentialFile> t) : target_(std::move(t)) { }
+  virtual ~SequentialFileWrapper() { }
+
+  // Return the target to which this SequentialFile forwards all calls.
+  SequentialFile* target() const { return target_.get(); }
+
+  CHECKED_STATUS Read(size_t n, Slice* result, uint8_t *scratch) override {
+    return target_->Read(n, result, scratch);
+  }
+  CHECKED_STATUS Skip(uint64_t n) override { return target_->Skip(n); }
+  const std::string& filename() const override { return target_->filename(); }
+ private:
+  gscoped_ptr<SequentialFile> target_;
+};
+
+// An implementation of WritableFile that forwards all calls to another
+// WritableFile. May be useful to clients who wish to override just part of the
+// functionality of another WritableFile.
+// It's declared as friend of WritableFile to allow forwarding calls to
+// protected virtual methods.
+class WritableFileWrapper : public WritableFile {
+ public:
+  explicit WritableFileWrapper(gscoped_ptr<WritableFile> t) : target_(std::move(t)) { }
+  virtual ~WritableFileWrapper() { }
+
+  // Return the target to which this WritableFile forwards all calls.
+  WritableFile* target() const { return target_.get(); }
+
+  CHECKED_STATUS PreAllocate(uint64_t size) override { return target_->PreAllocate(size); }
+  CHECKED_STATUS Append(const Slice& data) override { return target_->Append(data); }
+  CHECKED_STATUS AppendVector(const std::vector<Slice>& data_vector) override {
+    return target_->AppendVector(data_vector);
+  }
+  CHECKED_STATUS Close() override { return target_->Close(); }
+  CHECKED_STATUS Flush(FlushMode mode) override { return target_->Flush(mode); }
+  CHECKED_STATUS Sync() override { return target_->Sync(); }
+  uint64_t Size() const override { return target_->Size(); }
+  const std::string& filename() const override { return target_->filename(); }
+
+ private:
+  gscoped_ptr<WritableFile> target_;
+};
+
+class RandomAccessFileWrapper : public RandomAccessFile {
+ public:
+  explicit RandomAccessFileWrapper(gscoped_ptr<RandomAccessFile> t) : target_(std::move(t)) { }
+  virtual ~RandomAccessFileWrapper() { }
+
+  // Return the target to which this RandomAccessFile forwards all calls.
+  RandomAccessFile* target() const { return target_.get(); }
+
+  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t *scratch) const override {
+    return target_->Read(offset, n, result, scratch);
+  }
+  Result<uint64_t> Size() const override { return target_->Size(); }
+  Result<uint64_t> INode() const override { return target_->INode(); }
+  const std::string& filename() const override { return target_->filename(); }
+  size_t memory_footprint() const override { return target_->memory_footprint(); }
+ private:
+  gscoped_ptr<RandomAccessFile> target_;
 };
 
 // Creation-time options for RWFile
@@ -554,8 +769,7 @@ class FileLock {
 };
 
 // A utility routine: write "data" to the named file.
-extern CHECKED_STATUS WriteStringToFile(Env* env, const Slice& data,
-                                const std::string& fname);
+extern CHECKED_STATUS WriteStringToFile(Env* env, const Slice& data, const std::string& fname);
 
 // A utility routine: read contents of named file into *data
 extern CHECKED_STATUS ReadFileToString(Env* env, const std::string& fname,
@@ -585,6 +799,10 @@ class EnvWrapper : public Env {
                              const std::string& f,
                              gscoped_ptr<RandomAccessFile>* r) override {
     return target_->NewRandomAccessFile(opts, f, r);
+  }
+  CHECKED_STATUS NewRandomAccessFile(const std::string& fname,
+                                     std::unique_ptr<RandomAccessFile>* result) override {
+    return target_->NewRandomAccessFile(fname, result);
   }
   CHECKED_STATUS NewWritableFile(const std::string& f, gscoped_ptr<WritableFile>* r) override {
     return target_->NewWritableFile(f, r);

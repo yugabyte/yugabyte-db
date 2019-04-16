@@ -4758,6 +4758,8 @@ class ModelDB: public DB {
 
   Env* GetEnv() const override { return nullptr; }
 
+  Env* GetCheckpointEnv() const override { return nullptr; }
+
   using DB::GetOptions;
   virtual const Options& GetOptions(
       ColumnFamilyHandle* column_family) const override {
