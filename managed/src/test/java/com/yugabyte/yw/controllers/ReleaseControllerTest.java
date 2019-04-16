@@ -128,7 +128,7 @@ public class ReleaseControllerTest extends WithApplication {
         expectedFilePath = metadata.toString();
       }
       assertValue(releaseJson, "filePath", expectedFilePath);
-      assertValue(releaseJson, "imageTag", "quay.io/yugabyte/yugabyte:" + version);
+      assertValue(releaseJson, "imageTag", version.toString());
       assertValue(releaseJson, "state", expectedState);
     }
   }

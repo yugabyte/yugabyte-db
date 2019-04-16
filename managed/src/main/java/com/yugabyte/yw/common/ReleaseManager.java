@@ -43,7 +43,6 @@ public class ReleaseManager {
   }
 
   final ConfigHelper.ConfigType CONFIG_TYPE = ConfigHelper.ConfigType.SoftwareReleases;
-  static final String DEFAULT_DOCKER_REGISTRY = "quay.io/yugabyte/yugabyte";
 
   public static class ReleaseMetadata {
     public ReleaseState state = ReleaseState.ACTIVE;
@@ -64,8 +63,7 @@ public class ReleaseManager {
     public static ReleaseMetadata create(String version) {
       ReleaseMetadata rm = new ReleaseMetadata();
       rm.state = ReleaseState.ACTIVE;
-      // TODO: change this to read from registry config.
-      rm.imageTag = DEFAULT_DOCKER_REGISTRY + ":" + version;
+      rm.imageTag = version;
       rm.notes = new ArrayList<>();
       return rm;
     }
