@@ -7,9 +7,13 @@
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/backup_service.h"
+#include "yb/tserver/header_manager_impl.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/ntp_clock.h"
+#include "yb/util/encrypted_file_factory.h"
+
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 DEFINE_int32(ts_backup_svc_num_threads, 4,
              "Number of RPC worker threads for the TS backup service");
@@ -25,8 +29,10 @@ namespace enterprise {
 
 using yb::rpc::ServiceIf;
 
-TabletServer::TabletServer(const TabletServerOptions& opts) : super(opts) {
-}
+TabletServer::TabletServer(const TabletServerOptions& opts) :
+  super(opts),
+  env_(yb::enterprise::NewEncryptedEnv(DefaultHeaderManager())),
+  rocksdb_env_(yb::enterprise::NewRocksDBEncryptedEnv(DefaultHeaderManager())) {}
 
 TabletServer::~TabletServer() {
 }
@@ -52,6 +58,14 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
       options_.rpc_opts.rpc_bind_addresses, fs_manager_.get(),
       server::SecureContextType::kServerToServer, builder));
   return Status::OK();
+}
+
+Env* TabletServer::GetEnv() {
+  return env_.get();
+}
+
+rocksdb::Env* TabletServer::GetRocksDBEnv() {
+  return rocksdb_env_.get();
 }
 
 } // namespace enterprise
