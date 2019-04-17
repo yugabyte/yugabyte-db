@@ -9,7 +9,7 @@ menu:
   latest:
     parent: deploy
     name: Docker
-    identifier: docker-compose
+    identifier: docker-2-compose
     weight: 625
 type: page
 isTocNested: false

@@ -24,9 +24,9 @@ YugaByte DB offers strong consistency guarantees guarantees in the face of a var
 
 In terms of the [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugaByte DB is a CP database (consistent and partition tolerant), but achieves very high availability. The architectural design of YugaByte is similar to Google Cloud Spanner, which is also a CP system. The description about [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is just as valid for YugaByte DB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most users no longer have to be concerned about outages. For example, given there are many sources of outages for an application, if YugaByte DB is an insignificant contributor to its downtime, then users are correct to not worry about it.
 
-### Single-Key Lineazibility
+### Single-Key Linearizability
 
-YugaByte DB supports single-key lineazible writes. Linearizability is one of the strongest single-key consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single key: 
+YugaByte DB supports single-key linearizable writes. Linearizability is one of the strongest single-key consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single key: 
 
 * Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
 * If operation A completes before operation B begins, then B should logically take effect after A.

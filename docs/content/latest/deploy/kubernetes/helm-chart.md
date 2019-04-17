@@ -114,7 +114,7 @@ $ kubectl exec -it -n yb-demo yb-tserver-0 bash -- -c "YB_ENABLED_IN_POSTGRES=1 
 Connect using psql client as shown below.
 
 ```sh
-$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/postgres/bin/psql -- -U postgres -d postgres -h yb-tserver-0.yb-tservers.yb-demo -p 5433
+$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/psql -- -U postgres -d postgres -h yb-tserver-0.yb-tservers.yb-demo -p 5433
 ```
 
 ## Check Cluster Status

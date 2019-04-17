@@ -10,7 +10,7 @@ menu:
   latest:
     parent: deploy
     name: Docker
-    identifier: docker-swarm
+    identifier: docker-1-swarm
     weight: 625
 type: page
 isTocNested: false

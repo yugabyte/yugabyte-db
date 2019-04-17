@@ -14,7 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
-The `CREATE ROLE` statement is used to create a new role that is used to authenticate into YQL and as a group of permissions used to restrict operations on the database objects.
+The `CREATE ROLE` statement is used to create a new role that is used to authenticate into YCQL and as a group of permissions used to restrict operations on the database objects. Note that users are specific roles that are login enabled. There is no explicit `CREATE USER` command in YCQL.
 
 This statment is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../../admin/yb-tserver/#config-flags) to `true`.
 
@@ -61,9 +61,9 @@ cqlsh:example> CREATE ROLE role1;
 cqlsh:example> CREATE ROLE role2 WITH SUPERUSER = true;
 ```
 
-### Create a role used to connect to YQL.
+### Create a regular user with ability to login.
 
-You can do this as shown below.
+You can create a regular user with login privileges as shown below. Note the `SUPERUSER` set to `false`.
 
 ```sql
 cqlsh:example> CREATE ROLE role3 WITH SUPERUSER = false AND LOGIN = true AND PASSWORD = 'aid8134'
