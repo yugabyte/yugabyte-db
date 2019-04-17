@@ -1617,13 +1617,9 @@ var_value:	opt_boolean_or_string
 		;
 
 iso_level:	READ UNCOMMITTED						{ $$ = "read uncommitted"; }
-			| READ COMMITTED						{ $$ = "read committed"; }
-			| REPEATABLE READ						{ $$ = "repeatable read"; }
-			| SERIALIZABLE
-				{
-					parser_ybc_not_support(@1, "SERIALIZABLE isolation level");
-					$$ = "serializable";
-				}
+			| READ COMMITTED					{ $$ = "read committed"; }
+			| REPEATABLE READ					{ $$ = "repeatable read"; }
+			| SERIALIZABLE						{ $$ = "serializable"; }
 		;
 
 opt_boolean_or_string:
@@ -10464,7 +10460,6 @@ TransactionStmt:
 				}
 			| START TRANSACTION transaction_mode_list_or_empty
 				{
-					parser_ybc_not_support(@1, "START TRANSACTION");
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_START;
 					n->options = $3;
