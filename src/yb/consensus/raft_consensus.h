@@ -617,6 +617,11 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // server, we'll reply with the amount of time that has passed to avoid leader stepdown loops.s
   MonoTime election_lost_by_protege_at_;
 
+  // The number of times this node has called and lost a leader election since
+  // the last time it saw a stable leader (either itself or another node).
+  // This is used to calculate back-off of the election timeout.
+  int failed_elections_since_stable_leader_ = 0;
+
   const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk_;
 
   // Lock ordering note: If both this lock and the ReplicaState lock are to be
