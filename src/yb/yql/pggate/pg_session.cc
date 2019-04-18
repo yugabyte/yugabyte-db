@@ -372,8 +372,8 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
     if (!s.ok()) {
       VLOG(3) << "LoadTable: Server returns an error: " << s;
       // TODO: NotFound might not always be the right status here.
-      return STATUS_FORMAT(
-          NotFound, "Error loading table with id $0: $1", yb_table_id, s.ToString());
+      return STATUS_FORMAT(NotFound, "Error loading table with oid $0 in database with oid $1: $2",
+                           table_id.object_oid, table_id.database_oid, s.ToUserMessage());
     }
     table_cache_[yb_table_id] = table;
   } else {
