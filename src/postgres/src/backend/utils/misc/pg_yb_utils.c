@@ -105,6 +105,29 @@ IsYBRelationById(Oid relid)
 }
 
 bool
+HasYBSecondaryIndices(Relation relation)
+{
+	if (!relation->rd_rel->relhasindex)
+		return false;
+
+	bool	 has_indices = false;
+	List	 *indexlist = RelationGetIndexList(relation);
+	ListCell *lc;
+
+	foreach(lc, indexlist)
+	{
+		if (lfirst_oid(lc) == relation->rd_pkindex)
+			continue;
+		has_indices = true;
+		break;
+	}
+
+	list_free(indexlist);
+
+	return has_indices;
+}
+
+bool
 YBNeedRetryAfterCacheRefresh(ErrorData *edata)
 {
 	// TODO Inspect error code to distinguish retryable errors.

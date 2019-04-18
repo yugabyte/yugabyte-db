@@ -322,6 +322,13 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 
 		indexInfo = indexInfoArray[i];
 
+		/*
+		 * No need to update YugaByte primary key which is intrinic part of
+		 * the base table.
+		 */
+		if (IsYugaByteEnabled() && indexRelation->rd_index->indisprimary)
+			continue;
+
 		/* If the index is marked as read-only, ignore it */
 		if (!indexInfo->ii_ReadyForInserts)
 			continue;
@@ -513,6 +520,13 @@ ExecDeleteIndexTuples(Datum ybctid, HeapTuple tuple, EState *estate)
 		IndexInfo  *indexInfo;
 
 		if (indexRelation == NULL)
+			continue;
+
+		/*
+		 * No need to update YugaByte primary key which is intrinic part of
+		 * the base table.
+		 */
+		if (IsYugaByteEnabled() && indexRelation->rd_index->indisprimary)
 			continue;
 
 		indexInfo = indexInfoArray[i];
