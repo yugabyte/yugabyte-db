@@ -83,6 +83,8 @@ extern bool IsYBRelationById(Oid relid);
 
 extern bool IsYBRelation(Relation relation);
 
+extern bool HasYBSecondaryIndices(Relation relation);
+
 extern bool YBNeedRetryAfterCacheRefresh(ErrorData *error);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);

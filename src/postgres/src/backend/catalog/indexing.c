@@ -107,6 +107,13 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple)
 	 */
 	for (i = 0; i < numIndexes; i++)
 	{
+		/*
+		 * No need to update YugaByte primary key which is intrinic part of
+		 * the base table.
+		 */
+		if (IsYugaByteEnabled() && relationDescs[i]->rd_index->indisprimary)
+			continue;
+
 		IndexInfo  *indexInfo;
 
 		indexInfo = indexInfoArray[i];
@@ -190,6 +197,13 @@ CatalogIndexDelete(CatalogIndexState indstate, HeapTuple heapTuple)
 	 */
 	for (i = 0; i < numIndexes; i++)
 	{
+		/*
+		 * No need to update YugaByte primary key which is intrinic part of
+		 * the base table.
+		 */
+		if (IsYugaByteEnabled() && relationDescs[i]->rd_index->indisprimary)
+			continue;
+
 		IndexInfo  *indexInfo;
 
 		indexInfo = indexInfoArray[i];
@@ -318,9 +332,10 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 
 	if (IsYugaByteEnabled())
 	{
-		HeapTuple oldtup = NULL;
+		HeapTuple	oldtup = NULL;
+		bool		has_indices = HasYBSecondaryIndices(heapRel);
 
-		if (heapRel->rd_rel->relhasindex)
+		if (has_indices)
 		{
 			if (tup->t_ybctid)
 			{
@@ -336,7 +351,7 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 		/* Update the local cache automatically */
 		YBSetSysCacheTuple(heapRel, tup);
 
-		if (heapRel->rd_rel->relhasindex)
+		if (has_indices)
 			CatalogIndexInsert(indstate, tup);
 	}
 	else
@@ -363,9 +378,10 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 {
 	if (IsYugaByteEnabled())
 	{
-		HeapTuple oldtup = NULL;
+		HeapTuple	oldtup = NULL;
+		bool		has_indices = HasYBSecondaryIndices(heapRel);
 
-		if (heapRel->rd_rel->relhasindex)
+		if (has_indices)
 		{
 			if (tup->t_ybctid)
 			{
@@ -381,7 +397,7 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 		/* Update the local cache automatically */
 		YBSetSysCacheTuple(heapRel, tup);
 
-		if (heapRel->rd_rel->relhasindex)
+		if (has_indices)
 			CatalogIndexInsert(indstate, tup);
 	}
 	else
