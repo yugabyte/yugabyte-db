@@ -95,6 +95,17 @@ static TupleConversionMap *tupconv_map_for_subplan(ModifyTableState *node,
 						int whichplan);
 
 /*
+ * Returns if a table has secondary indices.
+ */
+static bool
+HasSecondaryIndices(ResultRelInfo *resultRelInfo)
+{
+	return resultRelInfo->ri_NumIndices > 1 ||
+			(resultRelInfo->ri_NumIndices == 1 &&
+			 !resultRelInfo->ri_IndexRelationDescs[0]->rd_index->indisprimary);
+}
+
+/*
  * Verify that the tuples to be produced by INSERT or UPDATE match the
  * target relation's rowtype
  *
@@ -430,10 +441,7 @@ ExecInsert(ModifyTableState *mtstate,
 			bool has_triggers = resultRelInfo->ri_TrigDesc &&
 			                    resultRelInfo->ri_TrigDesc->numtriggers > 0;
 
-			bool has_indices = resultRelInfo->ri_NumIndices > 1 ||
-			                   (resultRelInfo->ri_NumIndices == 1 &&
-			                    !resultRelInfo->ri_IndexRelationDescs[0]->rd_index
-			                                                            ->indisprimary);
+			bool has_indices = HasSecondaryIndices(resultRelInfo);
 
 			bool is_single_row_txn = estate->es_yb_is_single_row_modify_txn &&
 			                         !has_indices &&
@@ -452,7 +460,7 @@ ExecInsert(ModifyTableState *mtstate,
 				                         tuple);
 			}
 
-			if (resultRelInfo->ri_NumIndices > 0)
+			if (HasSecondaryIndices(resultRelInfo))
 			{
 				/* insert index entries for tuple */
 				recheckIndexes = ExecInsertIndexTuples(slot, tuple,
@@ -782,7 +790,7 @@ ExecDelete(ModifyTableState *mtstate,
 	{
 		YBCExecuteDelete(resultRelationDesc, planSlot);
 
-		if (resultRelInfo->ri_NumIndices > 0)
+		if (HasSecondaryIndices(resultRelInfo))
 		{
 			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 
@@ -1117,7 +1125,7 @@ ExecUpdate(ModifyTableState *mtstate,
 		if (resultRelInfo->ri_projectReturning)
 			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
 
-		if (resultRelInfo->ri_NumIndices > 0)
+		if (HasSecondaryIndices(resultRelInfo))
 		{
 			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
 
@@ -2210,9 +2218,8 @@ ExecModifyTable(PlanState *pstate)
 				 * wholerow junk attribute with the ybctid for removing old
 				 * index entries for UPDATE and DELETE.
 				 */
-				if (IsYugaByteEnabled() &&
-					IsYBRelation(resultRelInfo->ri_RelationDesc) &&
-					(resultRelInfo->ri_NumIndices > 0))
+				if (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+					HasSecondaryIndices(resultRelInfo))
 				{
 					resno = ExecFindJunkAttribute(junkfilter, "wholerow");
 					datum = ExecGetJunkAttribute(slot, resno, &isNull);
@@ -2434,12 +2441,14 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 * already, since we share the resultrel state with the original
 		 * query.
 		 *
-		 * For a YugaByte table, we delete the old index entries during DELETE so
-		 * the indexes need to be opened still.
+		 * For a YugaByte table, we need to update the secondary indices for
+		 * all of the INSERT, UPDATE, and DELETE statements.
 		 */
-		if (resultRelInfo->ri_RelationDesc->rd_rel->relhasindex &&
-			(operation != CMD_DELETE || IsYugaByteEnabled()) &&
-			resultRelInfo->ri_IndexRelationDescs == NULL)
+		if ((IsYBRelation(resultRelInfo->ri_RelationDesc) ?
+			 HasYBSecondaryIndices(resultRelInfo->ri_RelationDesc) :
+			 (resultRelInfo->ri_RelationDesc->rd_rel->relhasindex &&
+			  operation != CMD_DELETE)) &&
+			 resultRelInfo->ri_IndexRelationDescs == NULL)
 			ExecOpenIndices(resultRelInfo,
 							node->onConflictAction != ONCONFLICT_NONE);
 

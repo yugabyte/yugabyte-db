@@ -1319,9 +1319,9 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 	if (IsYBRelation(target_relation))
 	{
 		/*
-		 * If there are indexes on the target table, return the whole row also.
+		 * If there are secondary indices on the target table, return the whole row also.
 		 */	
-		if (target_relation->rd_rel->relhasindex)
+		if (HasYBSecondaryIndices(target_relation))
 		{
 			var = makeWholeRowVar(target_rte,
 								  parsetree->resultRelation,
