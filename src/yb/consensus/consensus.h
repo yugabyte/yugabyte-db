@@ -353,6 +353,8 @@ class Consensus {
   // This includes heartbeats too.
   virtual MonoTime TimeSinceLastMessageFromLeader() = 0;
 
+  virtual CHECKED_STATUS ReadReplicatedMessages(const OpId& from, ReplicateMsgs* msgs) = 0;
+
  protected:
   friend class RefCountedThreadSafe<Consensus>;
   friend class tablet::TabletPeer;
