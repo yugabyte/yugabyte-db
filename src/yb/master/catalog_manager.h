@@ -1339,14 +1339,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   TabletInfo *CreateTabletInfo(TableInfo* table,
                                const PartitionPB& partition);
 
-  // Create index info.
-  CHECKED_STATUS CreateIndexInfo(const TableId& indexed_table_id,
-                                 const Schema& indexed_schema,
-                                 const Schema& index_schema,
-                                 const bool is_local,
-                                 const bool is_unique,
-                                 IndexInfoPB* index_info);
-
   // Add index info to the indexed table.
   CHECKED_STATUS AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
                                      const IndexInfoPB& index_info);

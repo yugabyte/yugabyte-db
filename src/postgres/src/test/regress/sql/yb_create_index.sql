@@ -156,6 +156,22 @@ SELECT * FROM null_index ORDER BY k;
 SELECT * FROM null_index WHERE v IS NULL ORDER BY k;
 SELECT * FROM null_index WHERE v IS NOT NULL ORDER BY k;
 
+--
+-- NULL value in unique index
+--
+CREATE TABLE null_unique_index(k int, v int);
+CREATE UNIQUE INDEX ON null_unique_index(v);
+INSERT INTO null_unique_index(k) values(1);
+INSERT INTO null_unique_index values(2, NULL);
+INSERT INTO null_unique_index values(3, NULL);
+INSERT INTO null_unique_index values(4, 4);
+INSERT INTO null_unique_index values(5, 4); -- fail
+SELECT * FROM null_unique_index WHERE v IS NULL ORDER BY k;
+DELETE FROM null_unique_index WHERE k = 2;
+SELECT * FROM null_unique_index WHERE v IS NULL ORDER BY k;
+DELETE FROM null_unique_index WHERE v IS NULL;
+SELECT * FROM null_unique_index ORDER BY k;
+
 -- Test index update with UPDATE and DELETE
 CREATE TABLE test_unique (k int PRIMARY KEY, v1 int, v2 int);
 CREATE UNIQUE INDEX ON test_unique (v1);

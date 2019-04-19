@@ -261,10 +261,54 @@ using master::MasterServiceProxy;
 using yb::util::kBcryptHashSize;
 using yb::util::bcrypt_hashpw;
 
+namespace {
+
 const auto kLockLongLimit = RegularBuildVsSanitizers(100ms, 750ms);
 
-constexpr const char* const kDefaultCassandraUsername = "cassandra";
-constexpr const char* const kDefaultCassandraPassword = "cassandra";
+constexpr const char *const kDefaultCassandraUsername = "cassandra";
+constexpr const char *const kDefaultCassandraPassword = "cassandra";
+
+class IndexInfoBuilder {
+ public:
+  explicit IndexInfoBuilder(IndexInfoPB* index_info) : index_info_(*index_info) {
+  }
+
+  void ApplyProperties(const TableId& indexed_table_id, bool is_local, bool is_unique) {
+    index_info_.set_indexed_table_id(indexed_table_id);
+    index_info_.set_version(0);
+    index_info_.set_is_local(is_local);
+    index_info_.set_is_unique(is_unique);
+  }
+
+  CHECKED_STATUS ApplyColumnMapping(const Schema& indexed_schema, const Schema& index_schema) {
+    for (size_t i = 0; i < index_schema.num_columns(); i++) {
+      const auto& col_name = index_schema.column(i).name();
+      const auto indexed_col_idx = indexed_schema.find_column(col_name);
+      if (PREDICT_FALSE(indexed_col_idx == Schema::kColumnNotFound)) {
+        return STATUS(NotFound, "The indexed table column does not exist", col_name);
+      }
+      auto* col = index_info_.add_columns();
+      col->set_column_id(index_schema.column_id(i));
+      col->set_indexed_column_id(indexed_schema.column_id(indexed_col_idx));
+    }
+    index_info_.set_hash_column_count(index_schema.num_hash_key_columns());
+    index_info_.set_range_column_count(index_schema.num_range_key_columns());
+
+    for (size_t i = 0; i < indexed_schema.num_hash_key_columns(); i++) {
+      index_info_.add_indexed_hash_column_ids(indexed_schema.column_id(i));
+    }
+    for (size_t i = indexed_schema.num_hash_key_columns(); i < indexed_schema.num_key_columns();
+        i++) {
+      index_info_.add_indexed_range_column_ids(indexed_schema.column_id(i));
+    }
+    return Status::OK();
+  }
+
+ private:
+  IndexInfoPB& index_info_;
+};
+
+} // namespace
 
 #define RETURN_NAMESPACE_NOT_FOUND(s, resp)                                       \
   do {                                                                            \
@@ -1623,41 +1667,6 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
   return Status::OK();
 }
 
-Status CatalogManager::CreateIndexInfo(const TableId& indexed_table_id,
-                                       const Schema& indexed_schema,
-                                       const Schema& index_schema,
-                                       const bool is_local,
-                                       const bool is_unique,
-                                       IndexInfoPB* index_info) {
-  // index_info's table_id is set in CreateTableInfo() after the table id is generated.
-  index_info->set_indexed_table_id(indexed_table_id);
-  index_info->set_version(0);
-  index_info->set_is_local(is_local);
-  index_info->set_is_unique(is_unique);
-  for (size_t i = 0; i < index_schema.num_columns(); i++) {
-    const auto& col_name = index_schema.column(i).name();
-    const auto indexed_col_idx = indexed_schema.find_column(col_name);
-    if (PREDICT_FALSE(indexed_col_idx == Schema::kColumnNotFound)) {
-      return STATUS(NotFound, "The indexed table column does not exist", col_name);
-    }
-    auto* col = index_info->add_columns();
-    col->set_column_id(index_schema.column_id(i));
-    col->set_indexed_column_id(indexed_schema.column_id(indexed_col_idx));
-  }
-  index_info->set_hash_column_count(index_schema.num_hash_key_columns());
-  index_info->set_range_column_count(index_schema.num_range_key_columns());
-
-  for (size_t i = 0; i < indexed_schema.num_hash_key_columns(); i++) {
-    index_info->add_indexed_hash_column_ids(indexed_schema.column_id(i));
-  }
-  for (size_t i = indexed_schema.num_hash_key_columns(); i < indexed_schema.num_key_columns();
-       i++) {
-    index_info->add_indexed_range_column_ids(indexed_schema.column_id(i));
-  }
-
-  return Status::OK();
-}
-
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
                                            const IndexInfoPB& index_info) {
   TRACE("Locking indexed table");
@@ -2135,26 +2144,21 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // For index table, populate the index info.
   scoped_refptr<TableInfo> indexed_table;
   IndexInfoPB index_info;
-  const bool create_index_info = (orig_req->table_type() != PGSQL_TABLE_TYPE);
   if (req.has_indexed_table_id()) {
     TRACE("Looking up indexed table");
     indexed_table = GetTableInfo(req.indexed_table_id());
     if (indexed_table == nullptr) {
       return STATUS(NotFound, "The indexed table does not exist");
     }
-    if (create_index_info) {
+    IndexInfoBuilder index_info_builder(&index_info);
+    index_info_builder.ApplyProperties(req.indexed_table_id(),
+        req.is_local_index(), req.is_unique_index());
+    if (orig_req->table_type() != PGSQL_TABLE_TYPE) {
       Schema indexed_schema;
       RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
-
-      RETURN_NOT_OK(CreateIndexInfo(req.indexed_table_id(),
-                                    indexed_schema,
-                                    schema,
-                                    req.is_local_index(),
-                                    req.is_unique_index(),
-                                    &index_info));
+      RETURN_NOT_OK(index_info_builder.ApplyColumnMapping(indexed_schema, schema));
     }
   }
-
   TSDescriptorVector all_ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
   s = CheckValidReplicationInfo(replication_info, all_ts_descs, partitions, resp);
@@ -2183,8 +2187,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     RETURN_NOT_OK(CreateTableInMemory(req, schema, partition_schema, true /* create_tablets */,
-                                      namespace_id, partitions,
-                                      create_index_info ? &index_info : nullptr,
+                                      namespace_id, partitions, &index_info,
                                       &tablets, resp, &table));
   }
   if (PREDICT_FALSE(FLAGS_simulate_slow_table_create_secs > 0)) {
@@ -2226,7 +2229,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Wrote table to system table");
 
   // For index table, insert index info in the indexed table.
-  if (req.has_indexed_table_id() && create_index_info) {
+  if (req.has_indexed_table_id() && orig_req->table_type() != PGSQL_TABLE_TYPE) {
     s = AddIndexInfoToTable(indexed_table, index_info);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(table.get(), tablets,
