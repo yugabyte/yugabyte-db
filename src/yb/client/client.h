@@ -263,6 +263,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
   CHECKED_STATUS DeleteIndexTable(const YBTableName& table_name,
                                   YBTableName* indexed_table_name = nullptr,
                                   bool wait = true);
+
   CHECKED_STATUS DeleteIndexTable(const std::string& table_id,
                                   YBTableName* indexed_table_name = nullptr,
                                   bool wait = true);
