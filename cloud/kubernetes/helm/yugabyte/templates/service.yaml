@@ -298,3 +298,15 @@ spec:
             secretName: {{ .label }}-yugabyte-tls-cert
         {{- end }}
 {{- end }}
+
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .label }}-pdb
+spec:
+  maxUnavailable: {{ template "yugabyte.max_unavailable_for_quorum" $root }}
+  selector:
+    matchLabels:
+      app: {{ .label }}
+{{- end }}
