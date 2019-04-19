@@ -23,6 +23,8 @@
 
 namespace yb {
 
+class IndexInfo;
+
 namespace common {
 
 class YQLStorageIf;
@@ -36,9 +38,11 @@ class PgsqlWriteOperation :
     public DocExprExecutor {
  public:
   PgsqlWriteOperation(const Schema& schema,
-                      const TransactionOperationContextOpt& txn_op_context)
+                      const TransactionOperationContextOpt& txn_op_context,
+                      const IndexInfo* index_info)
       : schema_(schema),
-        txn_op_context_(txn_op_context) {
+        txn_op_context_(txn_op_context),
+        index_info_(index_info) {
   }
 
   // Initialize PgsqlWriteOperation. Content of request will be swapped out by the constructor.
@@ -69,7 +73,13 @@ class PgsqlWriteOperation :
 
   // Reading current row before operating on it.
   CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
-                             const QLTableRow::SharedPtr& table_row);
+                             const QLTableRow::SharedPtr& table_row) {
+    return ReadColumns(data, table_row, *range_doc_key_);
+  }
+
+  CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
+                             const QLTableRow::SharedPtr& table_row,
+                             const DocKey& key);
 
   CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row);
 
@@ -81,6 +91,7 @@ class PgsqlWriteOperation :
   // Context.
   const Schema& schema_;
   const TransactionOperationContextOpt txn_op_context_;
+  const IndexInfo* index_info_;
 
   // Input arguments.
   PgsqlResponsePB* response_ = nullptr;

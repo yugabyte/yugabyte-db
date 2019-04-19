@@ -288,7 +288,7 @@ Status PgCreateIndex::Exec() {
                           static_cast<int32_t>(PgSystemAttrNum::kYBBaseTupleId),
                           YB_YQL_DATA_TYPE_BINARY,
                           false /* is_hash */,
-                          !is_unique_index_  /* is_range */));
+                          true /* is_range */));
   return PgCreateTable::Exec();
 }
 
