@@ -372,6 +372,35 @@ Oid YBCExecuteSingleRowTxnInsert(Relation rel,
 	                                true /* is_single_row_txn */);
 }
 
+Oid YBCHeapInsert(TupleTableSlot *slot,
+									HeapTuple tuple,
+									EState *estate) {
+	/*
+	 * get information on the (current) result relation
+	 */
+	ResultRelInfo *resultRelInfo = estate->es_result_relation_info;
+	Relation resultRelationDesc = resultRelInfo->ri_RelationDesc;
+	bool has_triggers = resultRelInfo->ri_TrigDesc && resultRelInfo->ri_TrigDesc->numtriggers > 0;
+	bool has_indices = YBCRelInfoHasSecondaryIndices(resultRelInfo);
+	bool is_single_row_txn = estate->es_yb_is_single_row_modify_txn && !has_indices && !has_triggers;
+
+	if (is_single_row_txn)
+	{
+		/*
+		 * Try to execute the statement as a single row transaction (rather
+		 * than a distributed transaction) if it is safe to do so.
+		 * I.e. if we are in a single-statement transaction that targets a
+		 * single row (i.e. single-row-modify txn), and there are no indices
+		 * or triggers on the target table.
+		 */
+		return YBCExecuteSingleRowTxnInsert(resultRelationDesc, slot->tts_tupleDescriptor, tuple);
+	}
+	else
+	{
+		return YBCExecuteInsert(resultRelationDesc, slot->tts_tupleDescriptor, tuple);
+	}
+}
+
 void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum ybctid)
 {
 	Oid            dboid    = YBCGetDatabaseOid(index);
@@ -687,4 +716,35 @@ void YBCStartBufferingWriteOperations()
 void YBCFlushBufferedWriteOperations()
 {
 	HandleYBStatus(YBCPgFlushBufferedWriteOperations(ybc_pg_session));
+}
+
+bool
+YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo)
+{
+	return resultRelInfo->ri_NumIndices > 1 ||
+			(resultRelInfo->ri_NumIndices == 1 &&
+			 !resultRelInfo->ri_IndexRelationDescs[0]->rd_index->indisprimary);
+}
+
+bool
+YBCRelHasSecondaryIndices(Relation relation)
+{
+	if (!relation->rd_rel->relhasindex)
+		return false;
+
+	bool	 has_indices = false;
+	List	 *indexlist = RelationGetIndexList(relation);
+	ListCell *lc;
+
+	foreach(lc, indexlist)
+	{
+		if (lfirst_oid(lc) == relation->rd_pkindex)
+			continue;
+		has_indices = true;
+		break;
+	}
+
+	list_free(indexlist);
+
+	return has_indices;
 }

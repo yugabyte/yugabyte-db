@@ -40,6 +40,7 @@
 #include "utils/rel.h"
 
 #include "pg_yb_utils.h"
+#include "executor/ybcModifyTable.h"
 
 /* We use a list of these to detect recursion in RewriteQuery */
 typedef struct rewrite_event
@@ -1321,7 +1322,7 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 		/*
 		 * If there are secondary indices on the target table, return the whole row also.
 		 */	
-		if (HasYBSecondaryIndices(target_relation))
+		if (YBCRelHasSecondaryIndices(target_relation))
 		{
 			var = makeWholeRowVar(target_rte,
 								  parsetree->resultRelation,

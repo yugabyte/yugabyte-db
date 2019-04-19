@@ -11569,7 +11569,6 @@ insert_column_item:
 opt_on_conflict:
 			ON CONFLICT opt_conf_expr DO UPDATE SET set_clause_list	where_clause
 				{
-					parser_ybc_not_support(@1, "INSERT ON CONFLICT option");
 					$$ = makeNode(OnConflictClause);
 					$$->action = ONCONFLICT_UPDATE;
 					$$->infer = $3;
@@ -11580,7 +11579,6 @@ opt_on_conflict:
 			|
 			ON CONFLICT opt_conf_expr DO NOTHING
 				{
-					parser_ybc_not_support(@1, "INSERT ON CONFLICT option");
 					$$ = makeNode(OnConflictClause);
 					$$->action = ONCONFLICT_NOTHING;
 					$$->infer = $3;
