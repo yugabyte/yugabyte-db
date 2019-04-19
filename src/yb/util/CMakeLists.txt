@@ -30,6 +30,8 @@
 # under the License.
 #
 
+YB_INCLUDE_EXTENSIONS()
+
 #######################################
 # protoc-gen-insertions
 #######################################
@@ -122,8 +124,6 @@ else ()
   set(SEMAPHORE_CC "semaphore.cc")
 endif()
 
-YB_INCLUDE_EXTENSIONS()
-
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
@@ -144,6 +144,7 @@ set(UTIL_SRCS
   curl_util.cc
   date_time.cc
   debug-util.cc
+  debug/long_operation_tracker.cc
   debug/trace_event_impl.cc
   debug/trace_event_impl_constants.cc
   debug/trace_event_synthetic_delay.cc
@@ -246,7 +247,8 @@ set(UTIL_LIBS
   protobuf
   version_info_proto
   zlib
-  ${OPENSSL_CRYPTO_LIBRARY})
+  ${OPENSSL_CRYPTO_LIBRARY}
+  ${UTIL_LIBS_EXTENSIONS})
 
 if (NOT APPLE AND NOT USING_LINUXBREW)
   set(UTIL_LIBS ${UTIL_LIBS} atomic)
@@ -307,7 +309,7 @@ endif()
 # Unit tests
 #######################################
 
-set(YB_TEST_LINK_LIBS yb_util gutil gmock ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS}  ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
@@ -444,3 +446,11 @@ if(NOT "${NO_TESTS}")
   target_link_libraries(pb_util-test
     proto_container_test_proto)
 endif()
+
+#######################################
+# enterprise tests
+#######################################
+
+foreach(test ${UTIL_TESTS_EXTENSIONS})
+  ADD_YB_TEST(${test})
+endforeach()

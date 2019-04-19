@@ -134,6 +134,7 @@ public class TestYBClient extends BaseYBClientTest {
     assertFalse(resp.hasError());
     assertEquals(resp.getNumNotRunningTablets(), 0);
     assertEquals(resp.getCode(), TabletServerErrorPB.Code.UNKNOWN_ERROR);
+    assertEquals(resp.getTotalTablets(), 0);
   }
 
   /**

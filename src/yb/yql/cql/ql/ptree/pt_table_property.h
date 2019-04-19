@@ -116,10 +116,7 @@ class PTTableProperty : public PTProperty {
     return *copartition_table_name_;
   }
 
-  TableId copartition_table_id() const {
-    DCHECK_EQ(property_type_, PropertyType::kCoPartitionTable);
-    return copartition_table_->id();
-  }
+  TableId copartition_table_id() const;
 
  protected:
   bool IsValidProperty(const string& property_name) {

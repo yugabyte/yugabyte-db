@@ -126,17 +126,20 @@ usage(unsigned short int pager)
 	fprintf(output, _("\nConnection options:\n"));
 	/* Display default host */
 	env = getenv("PGHOST");
+	/* YugaByte use localhost instead of local socket */
 	fprintf(output, _("  -h, --host=HOSTNAME      database server host or socket directory (default: \"%s\")\n"),
-			env ? env : _("local socket"));
+			env ? env : "localhost");
+	/* YugaByte end */
 	/* Display default port */
 	env = getenv("PGPORT");
+	/* Use YugaByte default port */
 	fprintf(output, _("  -p, --port=PORT          database server port (default: \"%s\")\n"),
-			env ? env : DEF_PGPORT_STR);
+			env ? env : DEF_YBPORT_STR);
 	/* Display default user */
 	env = getenv("PGUSER");
 	if (!env)
 		env = user;
-	fprintf(output, _("  -U, --username=USERNAME  database user name (default: \"%s\")\n"), env);
+	fprintf(output, _("  -U, --username=USERNAME  database user name (default: \"postgres\")\n"));
 	fprintf(output, _("  -w, --no-password        never prompt for password\n"));
 	fprintf(output, _("  -W, --password           force password prompt (should happen automatically)\n"));
 

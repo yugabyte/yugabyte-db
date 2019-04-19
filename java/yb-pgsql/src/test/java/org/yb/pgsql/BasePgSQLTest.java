@@ -183,9 +183,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   protected Connection createConnection(int tserverIndex) throws Exception {
+    return createConnection(tserverIndex, DEFAULT_PG_DATABASE);
+  }
+
+  protected Connection createConnection(int tserverIndex, String pgDB) throws Exception {
     final String pgHost = getPgHost(tserverIndex);
     final int pgPort = getPgPort(tserverIndex);
-    String url = String.format("jdbc:postgresql://%s:%d/%s", pgHost, pgPort, DEFAULT_PG_DATABASE);
+    String url = String.format("jdbc:postgresql://%s:%d/%s", pgHost, pgPort, pgDB);
     if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
       url += "?loggerLevel=TRACE";
     }

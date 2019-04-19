@@ -52,8 +52,12 @@
 #include "yb/util/status.h"
 #include "yb/tserver/tablet_service.h"
 
-namespace yb {
+namespace rocksdb {
+class Env;
+}
 
+namespace yb {
+class Env;
 class MaintenanceManager;
 
 namespace tserver {
@@ -173,6 +177,10 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
     std::lock_guard<simple_spinlock> l(lock_);
     return ysql_catalog_version_;
   }
+
+  virtual Env* GetEnv();
+
+  virtual rocksdb::Env* GetRocksDBEnv();
 
  protected:
   virtual CHECKED_STATUS RegisterServices();

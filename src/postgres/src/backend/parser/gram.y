@@ -146,9 +146,13 @@ typedef struct ImportQual
 #define parser_ybc_signal_unsupported(pos, feature, issue) \
 	ybc_not_support(pos, yyscanner, feature " not supported yet", issue)
 
+#define parser_ybc_not_support_in_templates(pos, feature) \
+	ybc_not_support_in_templates(pos, yyscanner, feature " not supported yet in template0/template1")
+
 static void base_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner,
 						 const char *msg);
 static void ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue);
+static void ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg);
 static RawStmt *makeRawStmt(Node *stmt, int stmt_location);
 static void updateRawStmtEnd(RawStmt *rs, int end_location);
 static Node *makeColumnRef(char *colname, List *indirection,
@@ -838,11 +842,8 @@ stmt :
 			| AlterDatabaseStmt
 			| AlterTableStmt
 			| ConstraintsSetStmt
-			| CreateAsStmt
 			| CopyStmt
 			| CreateSchemaStmt
-			| CreateSeqStmt
-			| CreateStmt
 			| CreateUserStmt
 			| CreatedbStmt
 			| DeallocateStmt
@@ -865,6 +866,11 @@ stmt :
 			| VariableSetStmt
 			| VariableShowStmt
 			| ViewStmt
+
+			/* Not supported in template0/template1 statements */
+			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
+			| CreateSeqStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
+			| CreateStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
 
 			/* Not supported statements */
 			| AlterEventTrigStmt { parser_ybc_signal_unsupported(@1, "This statement", 1156); }
@@ -1611,13 +1617,9 @@ var_value:	opt_boolean_or_string
 		;
 
 iso_level:	READ UNCOMMITTED						{ $$ = "read uncommitted"; }
-			| READ COMMITTED						{ $$ = "read committed"; }
-			| REPEATABLE READ						{ $$ = "repeatable read"; }
-			| SERIALIZABLE
-				{
-					parser_ybc_not_support(@1, "SERIALIZABLE isolation level");
-					$$ = "serializable";
-				}
+			| READ COMMITTED					{ $$ = "read committed"; }
+			| REPEATABLE READ					{ $$ = "repeatable read"; }
+			| SERIALIZABLE						{ $$ = "serializable"; }
 		;
 
 opt_boolean_or_string:
@@ -2395,7 +2397,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DROP CONSTRAINT IF EXISTS <name> [RESTRICT|CASCADE] */
 			| DROP CONSTRAINT IF_P EXISTS name opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE DROP CONSTRAINT", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropConstraint;
 					n->name = $5;
@@ -10459,7 +10460,6 @@ TransactionStmt:
 				}
 			| START TRANSACTION transaction_mode_list_or_empty
 				{
-					parser_ybc_not_support(@1, "START TRANSACTION");
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_START;
 					n->options = $3;
@@ -10807,6 +10807,7 @@ AlterDatabaseStmt:
 				 }
 			| ALTER DATABASE database_name SET TABLESPACE name
 				 {
+					parser_ybc_not_support(@1, "ALTER DATABASE SET TABLESPACE");
 					AlterDatabaseStmt *n = makeNode(AlterDatabaseStmt);
 					n->dbname = $3;
 					n->options = list_make1(makeDefElem("tablespace",
@@ -17049,37 +17050,46 @@ parser_init(base_yy_extra_type *yyext)
 }
 
 void
-ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
-	static bool use_yb_parser = false;
-	static int signal_level = ERROR;
-	static bool first_call = true;
-	if (first_call) {
-		first_call = false;
-		const char *pg_yb_mode = getenv("YB_ENABLED_IN_POSTGRES");
-		use_yb_parser = !YBIsPreparingTemplates() && pg_yb_mode != NULL && strcmp(pg_yb_mode, "1") == 0;
+raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
+	int signal_level = YBUnsupportedFeatureSignalLevel();
+	if (issue > 0) {
+		ereport(signal_level,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("%s", msg),
+			errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
+				"Click '+' on the description to raise its priority", issue),
+			parser_errposition(pos)));
 
-		const char *pg_yb_suppress = getenv("YB_SUPPRESS_UNSUPPORTED_ERROR");
-		if (pg_yb_suppress != NULL && strcmp(pg_yb_suppress, "1") == 0) {
-			signal_level = WARNING;
-		}
+	} else {
+		ereport(signal_level,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("%s", msg),
+			errhint("Please report the issue on "
+				"https://github.com/YugaByte/yugabyte-db/issues"),
+			parser_errposition(pos)));
+	}
+}
+
+void
+ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
+	static int use_yb_parser = -1;
+	if (use_yb_parser == -1) {
+		use_yb_parser = YBIsUsingYBParser();
 	}
 
 	if (use_yb_parser) {
-		if (issue > 0) {
-			ereport(signal_level,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("%s", msg),
-							 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-											 "Click '+' on the description to raise its priority", issue),
-							 parser_errposition(pos)));
-			
-		} else {
-			ereport(signal_level,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("%s", msg),
-							 errhint("Please report the issue on "
-											 "https://github.com/YugaByte/yugabyte-db/issues"),
-							 parser_errposition(pos)));
-		}
+		raise_feature_not_supported(pos, yyscanner, msg, issue);
+	}
+}
+
+void
+ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg) {
+	static int restricted = -1;
+	if (restricted == -1) {
+		restricted = YBIsUsingYBParser() && YBIsPreparingTemplates();
+	}
+
+	if (restricted) {
+		raise_feature_not_supported(pos, yyscanner, msg, -1);
 	}
 }

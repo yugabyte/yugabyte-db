@@ -1,23 +1,4 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
-//
-// The following only applies to changes made to this file as part of YugaByte development.
-//
-// Portions Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -30,43 +11,84 @@
 // under the License.
 //
 
-#include <string>
+#include "yb/client/table_alterer.h"
 
-#include "yb/client/table_alterer-internal.h"
-
+#include "yb/client/client.h"
+#include "yb/client/client-internal.h"
 #include "yb/client/schema.h"
 #include "yb/client/schema-internal.h"
-#include "yb/client/client-internal.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/master/master.pb.h"
-
-using std::string;
 
 namespace yb {
 namespace client {
 
-using master::AlterTableRequestPB;
-using master::AlterTableRequestPB_AlterColumn;
-
-YBTableAlterer::Data::Data(YBClient* client, YBTableName name)
-    : client_(client),
-      table_name_(std::move(name)),
-      wait_(true) {
+YBTableAlterer::YBTableAlterer(YBClient* client, const YBTableName& name)
+  : client_(client), table_name_(name) {
 }
 
-YBTableAlterer::Data::Data(YBClient* client, string id)
-    : client_(client),
-      table_id_(std::move(id)),
-      wait_(true) {
+YBTableAlterer::YBTableAlterer(YBClient* client, const string id)
+  : client_(client), table_id_(std::move(id)) {
 }
 
-YBTableAlterer::Data::~Data() {
-  for (Step& s : steps_) {
-    delete s.spec;
+YBTableAlterer::~YBTableAlterer() {
+}
+
+YBTableAlterer* YBTableAlterer::RenameTo(const YBTableName& new_name) {
+  rename_to_ = new_name;
+  return this;
+}
+
+YBColumnSpec* YBTableAlterer::AddColumn(const string& name) {
+  steps_.push_back({master::AlterTableRequestPB::ADD_COLUMN, std::make_unique<YBColumnSpec>(name)});
+  return steps_.back().spec.get();
+}
+
+YBColumnSpec* YBTableAlterer::AlterColumn(const string& name) {
+  steps_.push_back(
+      {master::AlterTableRequestPB::ALTER_COLUMN, std::make_unique<YBColumnSpec>(name)});
+  return steps_.back().spec.get();
+}
+
+YBTableAlterer* YBTableAlterer::DropColumn(const string& name) {
+  steps_.push_back(
+      {master::AlterTableRequestPB::DROP_COLUMN, std::make_unique<YBColumnSpec>(name)});
+  return this;
+}
+
+YBTableAlterer* YBTableAlterer::SetTableProperties(const TableProperties& table_properties) {
+  table_properties_ = table_properties;
+  return this;
+}
+
+YBTableAlterer* YBTableAlterer::timeout(const MonoDelta& timeout) {
+  timeout_ = timeout;
+  return this;
+}
+
+YBTableAlterer* YBTableAlterer::wait(bool wait) {
+  wait_ = wait;
+  return this;
+}
+
+Status YBTableAlterer::Alter() {
+  master::AlterTableRequestPB req;
+  RETURN_NOT_OK(ToRequest(&req));
+
+  MonoDelta timeout = timeout_.Initialized() ?
+    timeout_ :
+    client_->default_admin_operation_timeout();
+  MonoTime deadline = MonoTime::Now();
+  deadline.AddDelta(timeout);
+  RETURN_NOT_OK(client_->data_->AlterTable(client_, req, deadline));
+  if (wait_) {
+    YBTableName alter_name = rename_to_.get_value_or(table_name_);
+    RETURN_NOT_OK(client_->data_->WaitForAlterTableToFinish(
+        client_, alter_name, table_id_, deadline));
   }
+
+  return Status::OK();
 }
 
-Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
+Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
   if (!status_.ok()) {
     return status_;
   }
@@ -94,11 +116,11 @@ Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
   }
 
   for (const Step& s : steps_) {
-    AlterTableRequestPB::Step* pb_step = req->add_alter_schema_steps();
+    auto* pb_step = req->add_alter_schema_steps();
     pb_step->set_type(s.step_type);
 
     switch (s.step_type) {
-      case AlterTableRequestPB::ADD_COLUMN:
+      case master::AlterTableRequestPB::ADD_COLUMN:
       {
         YBColumnSchema col;
         RETURN_NOT_OK(s.spec->ToColumnSchema(&col));
@@ -106,12 +128,12 @@ Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
                          pb_step->mutable_add_column()->mutable_schema());
         break;
       }
-      case AlterTableRequestPB::DROP_COLUMN:
+      case master::AlterTableRequestPB::DROP_COLUMN:
       {
         pb_step->mutable_drop_column()->set_name(s.spec->data_->name);
         break;
       }
-      case AlterTableRequestPB::ALTER_COLUMN:
+      case master::AlterTableRequestPB::ALTER_COLUMN:
         // TODO(KUDU-861): support altering a column in the wire protocol.
         // For now, we just give an error if the caller tries to do
         // any operation other than rename.
@@ -128,7 +150,7 @@ Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
         }
         pb_step->mutable_rename_column()->set_old_name(s.spec->data_->name);
         pb_step->mutable_rename_column()->set_new_name(s.spec->data_->rename_to);
-        pb_step->set_type(AlterTableRequestPB::RENAME_COLUMN);
+        pb_step->set_type(master::AlterTableRequestPB::RENAME_COLUMN);
         break;
       default:
         LOG(FATAL) << "unknown step type " << s.step_type;

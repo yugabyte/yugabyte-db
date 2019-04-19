@@ -46,8 +46,6 @@ struct AsyncRpcMetrics {
   scoped_refptr<Histogram> time_to_send;
 };
 
-typedef std::shared_ptr<AsyncRpcMetrics> AsyncRpcMetricsPtr;
-
 struct AsyncRpcData {
   scoped_refptr<Batcher> batcher;
   RemoteTablet* tablet = nullptr;

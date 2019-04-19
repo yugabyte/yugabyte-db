@@ -155,10 +155,10 @@ class FsManager {
   std::string GetFirstTabletWalDirOrDie(const std::string& table_id,
                                         const std::string& tablet_id) const;
 
-  std::string GetTabletWalRecoveryDir(const std::string& tablet_wal_path) const;
+  static std::string GetTabletWalRecoveryDir(const std::string& tablet_wal_path);
 
-  std::string GetWalSegmentFileName(const std::string& tablet_wal_path,
-                                    uint64_t sequence_number) const;
+  static std::string GetWalSegmentFileName(const std::string& tablet_wal_path,
+                                    uint64_t sequence_number);
 
   // Return the directory where tablet superblocks should be stored.
   std::string GetTabletMetadataDir() const;

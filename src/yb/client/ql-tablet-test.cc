@@ -20,6 +20,7 @@
 #include <boost/optional/optional_io.hpp>
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 
 #include "yb/consensus/consensus.h"
@@ -54,6 +55,10 @@ DECLARE_int32(TEST_delay_execute_async_ms);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_lease_revocation);
+DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
+DECLARE_int32(rocksdb_level0_stop_writes_trigger);
+DECLARE_bool(flush_rocksdb_on_shutdown);
 
 namespace yb {
 namespace client {
@@ -817,6 +822,50 @@ TEST_F(QLTabletTest, DeleteByHashKey) {
 
 TEST_F(QLTabletTest, DeleteByHashAndPartialRangeKey) {
   TestDeletePartialKey(1);
+}
+
+TEST_F(QLTabletTest, ManySstFilesBootstrap) {
+  FLAGS_flush_rocksdb_on_shutdown = false;
+
+  int key = 0;
+  {
+    google::FlagSaver flag_saver;
+
+    auto original_rocksdb_level0_stop_writes_trigger = FLAGS_rocksdb_level0_stop_writes_trigger;
+    FLAGS_rocksdb_level0_stop_writes_trigger = 10000;
+    FLAGS_rocksdb_level0_slowdown_writes_trigger = 10000;
+    FLAGS_rocksdb_disable_compactions = true;
+    CreateTable(kTable1Name, &table1_, 1);
+
+    auto session = CreateSession();
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    ASSERT_EQ(peers.size(), 1);
+    LOG(INFO) << "Leader: " << peers[0]->permanent_uuid();
+    int stop_key = 0;
+    for (;;) {
+      auto meta = peers[0]->tablet()->TEST_db()->GetLiveFilesMetaData();
+      LOG(INFO) << "Total files: " << meta.size();
+
+      ++key;
+      SetValue(session, key, ValueForKey(key), &table1_);
+      if (meta.size() <= original_rocksdb_level0_stop_writes_trigger) {
+        ASSERT_OK(peers[0]->tablet()->Flush(tablet::FlushMode::kSync));
+        stop_key = key + 10;
+      } else if (key >= stop_key) {
+        break;
+      }
+    }
+  }
+
+  cluster_->Shutdown();
+
+  LOG(INFO) << "Starting cluster";
+
+  ASSERT_OK(cluster_->StartSync());
+
+  LOG(INFO) << "Verify table";
+
+  VerifyTable(1, key, &table1_);
 }
 
 } // namespace client

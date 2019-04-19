@@ -18,6 +18,7 @@
 #include <memory>
 
 #include "yb/common/roles_permissions.h"
+#include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/yql/cql/ql/statement.h"
 #include "yb/util/thread_restrictions.h"
@@ -302,10 +303,30 @@ bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecute
                                            PermissionType::DROP_PERMISSION);
             break;
           case OBJECT_TYPE: FALLTHROUGH_INTENDED;
-          case OBJECT_INDEX:
-            s = ql_env_.HasResourcePermission("data", OBJECT_SCHEMA,
-                                              PermissionType::DROP_PERMISSION);
+          case OBJECT_INDEX: {
+            bool cache_used = false;
+            YBTableName table_name(drop_stmt->yb_table_name().namespace_name(),
+                                   drop_stmt->yb_table_name().table_name());
+            std::shared_ptr<client::YBTable> table = ql_env_.GetTableDesc(table_name, &cache_used);
+
+            // If the table is not found, or if it's not an index, let the operation go through
+            // so that we can return a "not found" error.s
+            if (table && table->IsIndex()) {
+              std::shared_ptr<client::YBTable> indexed_table =
+                  ql_env_.GetTableDesc(table->index_info().indexed_table_id(), &cache_used);
+
+              if (!indexed_table) {
+                s = STATUS_SUBSTITUTE(InternalError,
+                                      "Unable to find index $0",
+                                      drop_stmt->name()->QLName());
+                break;
+              }
+
+              s = ql_env_.HasTablePermission(indexed_table->name(),
+                                             PermissionType::ALTER_PERMISSION);
+            }
             break;
+          }
           default:
             break;
         }

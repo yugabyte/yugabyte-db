@@ -100,6 +100,7 @@ set(LOG_SRCS
   log_index.cc
   log_reader.cc
   log_metrics.cc
+  ${LOG_SRCS_EXTENSIONS}
 )
 
 add_library(log ${LOG_SRCS})

@@ -207,6 +207,9 @@ class PTCreateTable : public TreeNode {
                                   PTColumnDefinition *column,
                                   bool check_duplicate = false);
 
+  CHECKED_STATUS AppendColumnIfNotPresent(SemContext *sem_context,
+                                          PTColumnDefinition *column);
+
   static CHECKED_STATUS CheckType(SemContext *sem_context, const PTBaseType::SharedPtr& datatype);
 
   virtual CHECKED_STATUS CheckPrimaryType(SemContext *sem_context,

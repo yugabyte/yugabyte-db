@@ -230,6 +230,10 @@ class StackableDB : public DB {
     return db_->GetEnv();
   }
 
+  Env* GetCheckpointEnv() const override {
+    return db_->GetCheckpointEnv();
+  }
+
   using DB::GetOptions;
   virtual const Options& GetOptions(ColumnFamilyHandle* column_family) const
       override {

@@ -107,6 +107,7 @@ class PgSupervisor {
   CHECKED_STATUS ExpectStateUnlocked(PgProcessState state);
   CHECKED_STATUS StartServerUnlocked();
   void RunThread();
+  CHECKED_STATUS CleanupOldServerUnlocked();
 
   PgProcessConf conf_;
   boost::optional<PgWrapper> pg_wrapper_;

@@ -193,6 +193,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
     return state_.load(std::memory_order_acquire);
   }
 
+  const TabletDataState data_state() const;
+
   // Returns the current Raft configuration.
   const consensus::RaftConfigPB RaftConfig() const;
 

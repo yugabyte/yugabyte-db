@@ -64,20 +64,13 @@ class LogReader {
   // LogReader.
   //
   // 'index' may be NULL, but if it is, ReadReplicatesInRange() may not be used.
-  static CHECKED_STATUS Open(FsManager *fs_manager,
+  static CHECKED_STATUS Open(Env *env,
                              const scoped_refptr<LogIndex>& index,
                              const std::string& tablet_id,
                              const std::string& tablet_wal_path,
+                             const std::string& peer_uuid,
                              const scoped_refptr<MetricEntity>& metric_entity,
                              std::unique_ptr<LogReader> *reader);
-
-  // Opens a LogReader on a specific tablet log recovery directory, and sets
-  // 'reader' to the newly created LogReader.
-  static CHECKED_STATUS OpenFromRecoveryDir(FsManager *fs_manager,
-                                            const std::string& tablet_id,
-                                            const std::string& tablet_wal_path,
-                                            const scoped_refptr<MetricEntity>& metric_entity,
-                                            std::unique_ptr<LogReader> *reader);
 
   // Returns the biggest prefix of segments, from the current sequence, guaranteed
   // not to include any replicate messages with indexes >= 'index'.
@@ -192,8 +185,8 @@ class LogReader {
                                           faststring* tmp_buf,
                                           LogEntryBatchPB* batch) const;
 
-  LogReader(FsManager* fs_manager, const scoped_refptr<LogIndex>& index,
-            std::string tablet_name,
+  LogReader(Env* env, const scoped_refptr<LogIndex>& index,
+            std::string tablet_name, std::string peer_uuid,
             const scoped_refptr<MetricEntity>& metric_entity);
 
   // Reads the headers of all segments in 'path_'.
@@ -202,7 +195,8 @@ class LogReader {
   // Initializes an 'empty' reader for tests, i.e. does not scan a path looking for segments.
   CHECKED_STATUS InitEmptyReaderForTests();
 
-  FsManager *fs_manager_;
+  Env *env_;
+
   const scoped_refptr<LogIndex> log_index_;
   const std::string tablet_id_;
   const std::string log_prefix_;

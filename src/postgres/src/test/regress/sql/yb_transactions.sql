@@ -24,3 +24,11 @@ SELECT COUNT(*) FROM test; -- equals 1
 END;
 
 SELECT COUNT(*) FROM test; -- equals 1
+
+-- Check alternative syntax
+START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ WRITE;
+INSERT INTO test VALUES(1);
+SELECT COUNT(*) FROM test; -- equals 2
+ABORT;
+
+SELECT COUNT(*) FROM test; -- equals 1

@@ -438,6 +438,8 @@ void InitRocksDBOptions(
   if (FLAGS_db_write_buffer_size != -1) {
     options->write_buffer_size = FLAGS_db_write_buffer_size;
   }
+  options->env = tablet_options.rocksdb_env;
+  options->checkpoint_env = rocksdb::Env::Default();
   options->listeners.insert(
       options->listeners.end(), tablet_options.listeners.begin(),
       tablet_options.listeners.end()); // Append listeners
@@ -499,6 +501,9 @@ void InitRocksDBOptions(
       options->rate_limiter.reset(
           rocksdb::NewGenericRateLimiter(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec));
     }
+  } else {
+    options->level0_slowdown_writes_trigger = std::numeric_limits<int>::max();
+    options->level0_stop_writes_trigger = std::numeric_limits<int>::max();
   }
 
   uint64_t max_file_size_for_compaction = FLAGS_rocksdb_max_file_size_for_compaction;

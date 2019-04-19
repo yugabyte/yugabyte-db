@@ -126,7 +126,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
       auto iter = tablet()->NewRowIterator(client_schema_, boost::none);
       CHECK_OK(iter);
 
-      while ((**iter).HasNext() && running_insert_count_.count() > 0) {
+      while (ASSERT_RESULT((**iter).HasNext()) && running_insert_count_.count() > 0) {
         CHECK_OK((**iter).NextRow(&value_map));
 
         unsigned int seed = 1234;
@@ -167,7 +167,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
       auto iter = tablet()->NewRowIterator(client_schema_, boost::none);
       ASSERT_OK(iter);
 
-      for (int i = 0; i < max_iters && (**iter).HasNext(); i++) {
+      for (int i = 0; i < max_iters && ASSERT_RESULT((**iter).HasNext()); i++) {
         ASSERT_OK((**iter).NextRow(&row));
 
         if (running_insert_count_.WaitFor(MonoDelta::FromMilliseconds(1))) {
@@ -194,7 +194,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     CHECK_OK(iter);
 
     QLTableRow row;
-    while ((**iter).HasNext()) {
+    while (CHECK_RESULT((**iter).HasNext())) {
       CHECK_OK((**iter).NextRow(&row));
 
       QLValue value;

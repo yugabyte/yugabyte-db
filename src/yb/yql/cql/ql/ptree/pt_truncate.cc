@@ -16,6 +16,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
+
+#include "yb/client/table.h"
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 DECLARE_bool(use_cassandra_authentication);
@@ -51,6 +54,10 @@ Status PTTruncateStmt::Analyze(SemContext *sem_context) {
 void PTTruncateStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n TRUNCATE "
           << yb_table_name().ToString();
+}
+
+const std::string& PTTruncateStmt::table_id() const {
+  return table_->id();
 }
 
 }  // namespace ql

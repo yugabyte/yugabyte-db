@@ -17,6 +17,8 @@
 
 #include <boost/scope_exit.hpp>
 
+#include "yb/client/session.h"
+#include "yb/client/table_alterer.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_rpc.h"
 

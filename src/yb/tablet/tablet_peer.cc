@@ -567,12 +567,18 @@ Status TabletPeer::RunLogGC() {
   return log_->GC(min_log_index, &num_gced);
 }
 
+const TabletDataState TabletPeer::data_state() const {
+  std::lock_guard<simple_spinlock> lock(lock_);
+  return meta_->tablet_data_state();
+}
+
 string TabletPeer::HumanReadableState() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   TabletDataState data_state = meta_->tablet_data_state();
+  TabletStatePB state = this->state();
   // If failed, any number of things could have gone wrong.
-  if (state() == TabletStatePB::FAILED) {
-    return Substitute("$0 ($1): $2", TabletStatePB_Name(state_),
+  if (state == TabletStatePB::FAILED) {
+    return Substitute("$0 ($1): $2", TabletStatePB_Name(state),
                       TabletDataState_Name(data_state),
                       error_.get()->ToString());
   // If it's remotely bootstrapping, or tombstoned, that is the important thing
@@ -582,7 +588,7 @@ string TabletPeer::HumanReadableState() const {
   }
   // Otherwise, the tablet's data is in a "normal" state, so we just display
   // the runtime state (BOOTSTRAPPING, RUNNING, etc).
-  return TabletStatePB_Name(state_.load(std::memory_order_acquire));
+  return TabletStatePB_Name(state);
 }
 
 namespace {

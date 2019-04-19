@@ -55,7 +55,7 @@ struct ImmutableCFOptions {
 
   MergeOperator* merge_operator;
 
-  const CompactionFilter* compaction_filter;
+  CompactionFilter* compaction_filter;
 
   CompactionFilterFactory* compaction_filter_factory;
 

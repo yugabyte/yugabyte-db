@@ -16,8 +16,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H
-#define ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H
+#ifndef YB_ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H
+#define YB_ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H
 
 #pragma once
 
@@ -154,9 +154,8 @@ class TtlIterator : public Iterator {
 class TtlCompactionFilter : public CompactionFilter {
  public:
   TtlCompactionFilter(
-      int32_t ttl, Env* env, const CompactionFilter* user_comp_filter,
-      std::unique_ptr<const CompactionFilter> user_comp_filter_from_factory =
-          nullptr)
+      int32_t ttl, Env* env, CompactionFilter* user_comp_filter,
+      std::unique_ptr<CompactionFilter> user_comp_filter_from_factory = nullptr)
       : ttl_(ttl),
         env_(env),
         user_comp_filter_(user_comp_filter),
@@ -169,26 +168,25 @@ class TtlCompactionFilter : public CompactionFilter {
     }
   }
 
-  virtual bool Filter(int level, const Slice& key, const Slice& old_val,
-                      std::string* new_val, bool* value_changed) const
-      override {
+  FilterDecision Filter(int level, const Slice& key, const Slice& old_val,
+                        std::string* new_val, bool* value_changed) override {
     if (DBWithTTLImpl::IsStale(old_val, ttl_, env_)) {
-      return true;
+      return FilterDecision::kDiscard;
     }
     if (user_comp_filter_ == nullptr) {
-      return false;
+      return FilterDecision::kKeep;
     }
     assert(old_val.size() >= DBWithTTLImpl::kTSLength);
     Slice old_val_without_ts(old_val.data(),
                              old_val.size() - DBWithTTLImpl::kTSLength);
     if (user_comp_filter_->Filter(level, key, old_val_without_ts, new_val,
-                                  value_changed)) {
-      return true;
+                                  value_changed) != FilterDecision::kKeep) {
+      return FilterDecision::kDiscard;
     }
     if (*value_changed) {
       new_val->append(old_val.cend() - DBWithTTLImpl::kTSLength, DBWithTTLImpl::kTSLength);
     }
-    return false;
+    return FilterDecision::kKeep;
   }
 
   virtual const char* Name() const override { return "Delete By TTL"; }
@@ -196,8 +194,8 @@ class TtlCompactionFilter : public CompactionFilter {
  private:
   int32_t ttl_;
   Env* env_;
-  const CompactionFilter* user_comp_filter_;
-  std::unique_ptr<const CompactionFilter> user_comp_filter_from_factory_;
+  CompactionFilter* user_comp_filter_;
+  std::unique_ptr<CompactionFilter> user_comp_filter_from_factory_;
 };
 
 class TtlCompactionFilterFactory : public CompactionFilterFactory {
@@ -207,17 +205,16 @@ class TtlCompactionFilterFactory : public CompactionFilterFactory {
       std::shared_ptr<CompactionFilterFactory> comp_filter_factory)
       : ttl_(ttl), env_(env), user_comp_filter_factory_(comp_filter_factory) {}
 
-  virtual std::unique_ptr<CompactionFilter> CreateCompactionFilter(
+  std::unique_ptr<CompactionFilter> CreateCompactionFilter(
       const CompactionFilter::Context& context) override {
-    std::unique_ptr<const CompactionFilter> user_comp_filter_from_factory =
-        nullptr;
+    std::unique_ptr<CompactionFilter> user_comp_filter_from_factory;
     if (user_comp_filter_factory_) {
       user_comp_filter_from_factory =
           user_comp_filter_factory_->CreateCompactionFilter(context);
     }
 
-    return std::unique_ptr<TtlCompactionFilter>(new TtlCompactionFilter(
-        ttl_, env_, nullptr, std::move(user_comp_filter_from_factory)));
+    return std::make_unique<TtlCompactionFilter>(
+        ttl_, env_, nullptr, std::move(user_comp_filter_from_factory));
   }
 
   virtual const char* Name() const override {
@@ -343,4 +340,4 @@ class TtlMergeOperator : public MergeOperator {
 } // namespace rocksdb
 #endif  // ROCKSDB_LITE
 
-#endif // ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H
+#endif // YB_ROCKSDB_UTILITIES_TTL_DB_TTL_IMPL_H

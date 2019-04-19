@@ -177,9 +177,9 @@ class LogTestBase : public YBTest {
   void BuildLog() {
     Schema schema_with_ids = SchemaBuilder(schema_).Build();
     ASSERT_OK(Log::Open(options_,
-                       fs_manager_.get(),
                        kTestTablet,
                        tablet_wal_path_,
+                       fs_manager_->uuid(),
                        schema_with_ids,
                        0, // schema_version
                        metric_entity_.get(),

@@ -13,6 +13,9 @@
 
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/client/session.h"
+#include "yb/client/table.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/yql/redis/redisserver/redis_parser.h"

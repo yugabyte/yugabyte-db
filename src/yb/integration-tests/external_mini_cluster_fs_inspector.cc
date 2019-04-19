@@ -87,7 +87,7 @@ int ExternalMiniClusterFsInspector::CountFilesInDir(const string& path) {
 }
 
 int ExternalMiniClusterFsInspector::CountWALSegmentsOnTS(int index) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
   string ts_wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
   vector<string> tablets;
   vector<string> tables;
@@ -115,7 +115,7 @@ vector<string> ExternalMiniClusterFsInspector::ListTablets() {
 }
 
 vector<string> ExternalMiniClusterFsInspector::ListTabletsOnTS(int index) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
   string meta_dir = JoinPathSegments(data_dir, FsManager::kTabletMetadataDirName);
   vector<string> tablets;
   CHECK_OK(ListFilesInDir(meta_dir, &tablets));
@@ -123,7 +123,7 @@ vector<string> ExternalMiniClusterFsInspector::ListTabletsOnTS(int index) {
 }
 
 vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(int index) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
   string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
   vector<string> tables;
   vector<string> tablets;
@@ -139,7 +139,7 @@ vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(int index
 
 int ExternalMiniClusterFsInspector::CountWALSegmentsForTabletOnTS(int index,
                                                                   const string& tablet_id) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
   string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
   vector<string> tables;
   vector<string> tablets;
@@ -172,14 +172,14 @@ int ExternalMiniClusterFsInspector::CountReplicasInMetadataDirs() {
   // tablet servers isn't easy.
   int count = 0;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    string data_dir = cluster_->tablet_server(i)->data_dir();
+    string data_dir = cluster_->tablet_server(i)->GetFullDataDir();
     count += CountFilesInDir(JoinPathSegments(data_dir, FsManager::kTabletMetadataDirName));
   }
   return count;
 }
 
 Status ExternalMiniClusterFsInspector::CheckNoDataOnTS(int index) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
   if (CountFilesInDir(JoinPathSegments(data_dir, FsManager::kTabletMetadataDirName)) > 0) {
     return STATUS(IllegalState, "tablet metadata blocks still exist", data_dir);
   }
@@ -202,7 +202,7 @@ Status ExternalMiniClusterFsInspector::CheckNoData() {
 Status ExternalMiniClusterFsInspector::ReadTabletSuperBlockOnTS(int index,
                                                                 const string& tablet_id,
                                                                 TabletSuperBlockPB* sb) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
   string meta_dir = JoinPathSegments(data_dir, FsManager::kTabletMetadataDirName);
   string superblock_path = JoinPathSegments(meta_dir, tablet_id);
   return pb_util::ReadPBContainerFromPath(env_, superblock_path, sb);
@@ -211,7 +211,7 @@ Status ExternalMiniClusterFsInspector::ReadTabletSuperBlockOnTS(int index,
 Status ExternalMiniClusterFsInspector::ReadConsensusMetadataOnTS(int index,
                                                                  const string& tablet_id,
                                                                  ConsensusMetadataPB* cmeta_pb) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
   string cmeta_dir = JoinPathSegments(data_dir, FsManager::kConsensusMetadataDirName);
   string cmeta_file = JoinPathSegments(cmeta_dir, tablet_id);
   if (!env_->FileExists(cmeta_file)) {
@@ -329,7 +329,7 @@ Status ExternalMiniClusterFsInspector::WaitForFilePatternInTabletWalDirOnTs(
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
 
-  string data_dir = cluster_->tablet_server(ts_index)->data_dir();
+  string data_dir = cluster_->tablet_server(ts_index)->GetFullDataDir();
   string ts_wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
   vector<string> tables;
   RETURN_NOT_OK_PREPEND(ListFilesInDir(ts_wal_dir, &tables),

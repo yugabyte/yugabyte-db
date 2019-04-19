@@ -240,6 +240,9 @@ using std::string;
 using std::vector;
 using std::unordered_set;
 using strings::Substitute;
+using tablet::BOOTSTRAPPING;
+using tablet::NOT_STARTED;
+using tablet::RUNNING;
 using tablet::TABLET_DATA_COPYING;
 using tablet::TABLET_DATA_DELETED;
 using tablet::TABLET_DATA_READY;
@@ -252,6 +255,7 @@ using tablet::TabletPeerClass;
 using tablet::TabletPeerPtr;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
+using tablet::TabletStatePB;
 
 // Only called from the background task to ensure it's synchronized
 void TSTabletManager::MaybeFlushTablet() {
@@ -392,6 +396,9 @@ Status TSTabletManager::Init() {
       FLAGS_tserver_yb_client_default_timeout_ms / 1000, "" /* tserver_uuid */,
       &server_->options(), server_->metric_entity(), server_->mem_tracker(),
       server_->messenger());
+
+  tablet_options_.env = server_->GetEnv();
+  tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
@@ -1208,32 +1215,46 @@ int TSTabletManager::GetNumDirtyTabletsForTests() const {
   return dirty_tablets_.size();
 }
 
-int TSTabletManager::GetNumTabletsNotRunning() const {
+Status TSTabletManager::GetNumTabletsPendingBootstrap(
+    IsTabletServerReadyResponsePB* resp) const {
   if (state() != MANAGER_RUNNING) {
-    return INT_MAX;
+    resp->set_num_tablets_not_running(INT_MAX);
+    resp->set_total_tablets(INT_MAX);
+    return Status::OK();
   }
 
   boost::shared_lock<RWMutex> shared_lock(lock_);
-  int num_not_running = 0;
+  int num_pending = 0;
+  int total_tablets = 0;
   for (const auto& entry : tablet_map_) {
-    tablet::TabletStatePB state = entry.second->state();
-    if (state != tablet::RUNNING) {
-      num_not_running++;
+    TabletStatePB state = entry.second->state();
+    TabletDataState data_state = entry.second->data_state();
+    // Do not count tablets that will never get to RUNNING state.
+    if (data_state != TABLET_DATA_READY) {
+      continue;
+    }
+    bool not_started_or_bootstrap = state == NOT_STARTED || state == BOOTSTRAPPING;
+    if (not_started_or_bootstrap || state == RUNNING) {
+      total_tablets++;
+    }
+    if (not_started_or_bootstrap) {
+      num_pending++;
     }
   }
 
-  LOG(INFO) << num_not_running << " tablets not running out of " << tablet_map_.size();
+  LOG(INFO) << num_pending << " tablets pending bootstrap out of " << total_tablets;
+  resp->set_num_tablets_not_running(num_pending);
+  resp->set_total_tablets(total_tablets);
 
-  return num_not_running;
+  return Status::OK();
 }
 
 int TSTabletManager::GetNumLiveTablets() const {
   int count = 0;
   boost::shared_lock<RWMutex> lock(lock_);
   for (const auto& entry : tablet_map_) {
-    tablet::TabletStatePB state = entry.second->state();
-    if (state == tablet::BOOTSTRAPPING ||
-        state == tablet::RUNNING) {
+    TabletStatePB state = entry.second->state();
+    if (state == BOOTSTRAPPING || state == RUNNING) {
       count++;
     }
   }
@@ -1402,8 +1423,7 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(const scoped_refptr<Tablet
   }
 
   // Register TOMBSTONED tablets so that they get reported to the Master, which
-  // allows us to permanently delete replica tombstones when a table gets
-  // deleted.
+  // allows us to permanently delete replica tombstones when a table gets deleted.
   if (data_state == TABLET_DATA_TOMBSTONED) {
     RETURN_NOT_OK(CreateAndRegisterTabletPeer(meta, NEW_PEER));
   }
@@ -1592,7 +1612,8 @@ Status DeleteTabletData(const scoped_refptr<TabletMetadata>& meta,
             << meta->tombstone_last_logged_opid();
   MAYBE_FAULT(FLAGS_fault_crash_after_blocks_deleted);
 
-  RETURN_NOT_OK(Log::DeleteOnDiskData(meta->fs_manager(), meta->tablet_id(), meta->wal_dir()));
+  RETURN_NOT_OK(Log::DeleteOnDiskData(
+      meta->fs_manager()->env(), meta->tablet_id(), meta->wal_dir(), meta->fs_manager()->uuid()));
   MAYBE_FAULT(FLAGS_fault_crash_after_wal_deleted);
 
   // We do not delete the superblock or the consensus metadata when tombstoning

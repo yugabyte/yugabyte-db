@@ -1,23 +1,4 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
-//
-// The following only applies to changes made to this file as part of YugaByte development.
-//
-// Portions Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -30,30 +11,21 @@
 // under the License.
 //
 
-#include "yb/client/table-internal.h"
+#include "yb/client/table.h"
 
-#include <string>
-
+#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/sysinfo.h"
+#include "yb/client/yb_op.h"
+
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
-#include "yb/rpc/rpc_controller.h"
+
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/monotime.h"
 
 namespace yb {
-
-using master::GetTableLocationsRequestPB;
-using master::GetTableLocationsResponsePB;
-using rpc::RpcController;
-using std::string;
-
 namespace client {
 
-using std::shared_ptr;
+namespace {
 
 static Status PBToClientTableType(
     TableType table_type_from_pb,
@@ -78,21 +50,110 @@ static Status PBToClientTableType(
     "Invalid table type from master response: $0", table_type_from_pb));
 }
 
-YBTable::Data::Data(shared_ptr<YBClient> client, Info info)
+} // namespace
+
+YBTable::YBTable(std::shared_ptr<YBClient> client, const YBTableInfo& info)
     : client_(std::move(client)),
       // The table type is set after the table is opened.
       table_type_(YBTableType::UNKNOWN_TABLE_TYPE),
-      info_(std::move(info)) {
+      info_(info) {
 }
 
-YBTable::Data::~Data() {
+YBTable::~YBTable() {
 }
 
-Status YBTable::Data::Open() {
+//--------------------------------------------------------------------------------------------------
+
+const YBTableName& YBTable::name() const {
+  return info_.table_name;
+}
+
+YBTableType YBTable::table_type() const {
+  return table_type_;
+}
+
+const string& YBTable::id() const {
+  return info_.table_id;
+}
+
+YBClient* YBTable::client() const {
+  return client_.get();
+}
+
+const YBSchema& YBTable::schema() const {
+  return info_.schema;
+}
+
+const Schema& YBTable::InternalSchema() const {
+  return internal::GetSchema(info_.schema);
+}
+
+const IndexMap& YBTable::index_map() const {
+  return info_.index_map;
+}
+
+bool YBTable::IsIndex() const {
+  return info_.index_info != boost::none;
+}
+
+const IndexInfo& YBTable::index_info() const {
+  CHECK(info_.index_info);
+  return *info_.index_info;
+}
+
+const PartitionSchema& YBTable::partition_schema() const {
+  return info_.partition_schema;
+}
+
+const std::vector<std::string>& YBTable::GetPartitions() const {
+  return partitions_;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+YBqlWriteOp* YBTable::NewQLWrite() {
+  return new YBqlWriteOp(shared_from_this());
+}
+
+YBqlWriteOp* YBTable::NewQLInsert() {
+  return YBqlWriteOp::NewInsert(shared_from_this());
+}
+
+YBqlWriteOp* YBTable::NewQLUpdate() {
+  return YBqlWriteOp::NewUpdate(shared_from_this());
+}
+
+YBqlWriteOp* YBTable::NewQLDelete() {
+  return YBqlWriteOp::NewDelete(shared_from_this());
+}
+
+YBqlReadOp* YBTable::NewQLSelect() {
+  return YBqlReadOp::NewSelect(shared_from_this());
+}
+
+YBqlReadOp* YBTable::NewQLRead() {
+  return new YBqlReadOp(shared_from_this());
+}
+
+const std::string& YBTable::FindPartitionStart(
+    const std::string& partition_key, size_t group_by) const {
+  auto it = std::lower_bound(partitions_.begin(), partitions_.end(), partition_key);
+  if (it == partitions_.end() || *it > partition_key) {
+    DCHECK(it != partitions_.begin());
+    --it;
+  }
+  if (group_by <= 1) {
+    return *it;
+  }
+  size_t idx = (it - partitions_.begin()) / group_by * group_by;
+  return partitions_[idx];
+}
+
+Status YBTable::Open() {
   // TODO: fetch the schema from the master here once catalog is available.
-  GetTableLocationsRequestPB req;
+  master::GetTableLocationsRequestPB req;
   req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
-  GetTableLocationsResponsePB resp;
+  master::GetTableLocationsResponsePB resp;
 
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(client_->default_admin_operation_timeout());
@@ -106,7 +167,7 @@ Status YBTable::Data::Open() {
   // adding exponential backoff and allowing this to be used safely in a
   // a reactor thread.
   while (true) {
-    RpcController rpc;
+    rpc::RpcController rpc;
 
     // Have we already exceeded our deadline?
     MonoTime now = MonoTime::Now();
@@ -194,5 +255,31 @@ Status YBTable::Data::Open() {
   return Status::OK();
 }
 
-}  // namespace client
-}  // namespace yb
+//--------------------------------------------------------------------------------------------------
+
+YBPgsqlWriteOp* YBTable::NewPgsqlWrite() {
+  return new YBPgsqlWriteOp(shared_from_this());
+}
+
+YBPgsqlWriteOp* YBTable::NewPgsqlInsert() {
+  return YBPgsqlWriteOp::NewInsert(shared_from_this());
+}
+
+YBPgsqlWriteOp* YBTable::NewPgsqlUpdate() {
+  return YBPgsqlWriteOp::NewUpdate(shared_from_this());
+}
+
+YBPgsqlWriteOp* YBTable::NewPgsqlDelete() {
+  return YBPgsqlWriteOp::NewDelete(shared_from_this());
+}
+
+YBPgsqlReadOp* YBTable::NewPgsqlSelect() {
+  return YBPgsqlReadOp::NewSelect(shared_from_this());
+}
+
+YBPgsqlReadOp* YBTable::NewPgsqlRead() {
+  return new YBPgsqlReadOp(shared_from_this());
+}
+
+} // namespace client
+} // namespace yb

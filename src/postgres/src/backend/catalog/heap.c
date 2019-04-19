@@ -1086,11 +1086,11 @@ heap_create_with_catalog(const char *relname,
 	old_type_oid = InvalidOid;
 
 	/*
-	 * In YB mode, when preparing templates (initdb), do not waste a master
-	 * lookup for this as system catalogs should not have duplicates. If there
-	 * is a duplicate we will error out later anyway.
+	 * In YB mode, during bootstrap, a relation lookup by name will be a full-table scan
+	 * and slow because secondary indexes are not available yet. So we will skip this
+	 * duplicate name check as it will error later anyway when the indexes are created.
 	 */
-	if (!IsYugaByteEnabled() || !YBIsPreparingTemplates())
+	if (!IsYugaByteEnabled() || !IsBootstrapProcessingMode())
 	{
 		/*
 		 * This would fail later on anyway, if the relation already exists.  But

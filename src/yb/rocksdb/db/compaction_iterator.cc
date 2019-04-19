@@ -30,7 +30,7 @@ CompactionIterator::CompactionIterator(
     SequenceNumber last_sequence, std::vector<SequenceNumber>* snapshots,
     SequenceNumber earliest_write_conflict_snapshot, Env* env,
     bool expect_valid_internal_key, Compaction* compaction,
-    const CompactionFilter* compaction_filter, LogBuffer* log_buffer)
+    CompactionFilter* compaction_filter, LogBuffer* log_buffer)
     : input_(input),
       cmp_(cmp),
       merge_helper_(merge_helper),
@@ -182,7 +182,7 @@ void CompactionIterator::NextFromInput() {
           StopWatchNano timer(env_, true);
           to_delete = compaction_filter_->Filter(
               compaction_->level(), ikey_.user_key, value_,
-              &compaction_filter_value_, &value_changed);
+              &compaction_filter_value_, &value_changed) != FilterDecision::kKeep;
           iter_stats_.total_filter_time +=
               env_ != nullptr ? timer.ElapsedNanos() : 0;
         }

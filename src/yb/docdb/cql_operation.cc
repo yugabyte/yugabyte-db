@@ -15,12 +15,12 @@
 
 #include "yb/common/index.h"
 #include "yb/common/jsonb.h"
+#include "yb/common/partition.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
 #include "yb/common/ql_storage_interface.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
 
 #include "yb/util/bfpg/tserver_opcodes.h"
@@ -163,6 +163,8 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
                                   rapidjson::Value::MemberIterator* memberit,
                                   rapidjson::Value::ValueIterator* valueit,
                                   bool* last_elem_object) {
+  *last_elem_object = false;
+
   int64_t array_index;
   if (document->IsArray()) {
     util::VarInt varint;
@@ -175,14 +177,22 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
     }
     *valueit = document->Begin();
     std::advance(*valueit, array_index);
-    *last_elem_object = false;
   } else if (document->IsObject()) {
+    util::VarInt varint;
+    auto status =
+      varint.DecodeFromComparable(column_value.json_args(index).operand().value().varint_value());
+    if (status.ok()) {
+      array_index = VERIFY_RESULT(varint.ToInt64());
+      return STATUS_SUBSTITUTE(QLError, "Cannot use array index $0 to access object", array_index);
+    }
+
+    *last_elem_object = true;
+
     const auto& member = column_value.json_args(index).operand().value().string_value().c_str();
     *memberit = document->FindMember(member);
     if (*memberit == document->MemberEnd()) {
       return STATUS_SUBSTITUTE(QLError, "Could not find member: ", member);
     }
-    *last_elem_object = true;
   } else {
     return STATUS_SUBSTITUTE(QLError, "JSON field is invalid", column_value.ShortDebugString());
   }
@@ -347,7 +357,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                 data.doc_write_batch->doc_db(),
                                 data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
-    if (iterator.HasNext()) {
+    if (VERIFY_RESULT(iterator.HasNext())) {
       RETURN_NOT_OK(iterator.NextRow(table_row));
     }
     data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
@@ -358,7 +368,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                 data.doc_write_batch->doc_db(),
                                 data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
-    if (iterator.HasNext()) {
+    if (VERIFY_RESULT(iterator.HasNext())) {
       RETURN_NOT_OK(iterator.NextRow(table_row));
       // If there are indexes to update, check if liveness column exists for update/delete because
       // that will affect whether the row will still exist after the DML and whether we need to
@@ -451,7 +461,7 @@ Result<bool> QLWriteOperation::DuplicateUniqueIndexValue(const DocOperationApply
 
   // It is a duplicate value if the index key exist already and the associated indexed primary key
   // is not the same.
-  if (!iterator.HasNext()) {
+  if (!VERIFY_RESULT(iterator.HasNext())) {
     return false;
   }
   QLTableRow table_row;
@@ -476,7 +486,8 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
                                                const DocPath& sub_path, const MonoDelta& ttl,
                                                const UserTimeMicros& user_timestamp,
                                                const ColumnSchema& column,
-                                               QLTableRow* existing_row) {
+                                               QLTableRow* existing_row,
+                                               bool is_insert) {
   using common::Jsonb;
   // Read the json column value inorder to perform a read modify write.
   QLValue ql_value;
@@ -496,19 +507,35 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
   // Update the json value.
   rapidjson::Value::MemberIterator memberit;
   rapidjson::Value::ValueIterator valueit;
-  bool last_elem_object = true;
-  RETURN_NOT_OK(FindMemberForIndex(column_value, 0, &document, &memberit, &valueit,
-                                   &last_elem_object));
-  for (int i = 1; i < column_value.json_args_size(); i++) {
-    if (last_elem_object) {
-      RETURN_NOT_OK(FindMemberForIndex(column_value, i, &(memberit->value), &memberit, &valueit,
-                                       &last_elem_object));
-    } else {
-      RETURN_NOT_OK(FindMemberForIndex(column_value, i, &(*valueit), &memberit, &valueit,
-                                       &last_elem_object));
-    }
+  bool last_elem_object;
+  rapidjson::Value* node = &document;
+
+  int i = 0;
+  auto status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
+      &last_elem_object);
+  for (i = 1; i < column_value.json_args_size() && status.ok(); i++) {
+    node = (last_elem_object) ? &(memberit->value) : &(*valueit);
+    status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
+        &last_elem_object);
   }
-  if (last_elem_object) {
+
+  bool update_missing = false;
+  if (is_insert) {
+    RETURN_NOT_OK(status);
+  } else {
+    update_missing = !status.ok();
+  }
+
+  if (update_missing) {
+    // NOTE: lhs path cannot exceed by more than one hop
+    if (last_elem_object && i == column_value.json_args_size()) {
+      auto val = column_value.json_args(i - 1).operand().value().string_value();
+      rapidjson::Value v(val.c_str(), val.size(), document.GetAllocator());
+      node->AddMember(v, rhs_doc, document.GetAllocator());
+    } else {
+      RETURN_NOT_OK(status);
+    }
+  } else if (last_elem_object) {
     memberit->value = rhs_doc.Move();
   } else {
     *valueit = rhs_doc.Move();
@@ -718,7 +745,8 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
       // Add the appropriate liveness column only for inserts.
       // We never use init markers for QL to ensure we perform writes without any reads to
       // ensure our write path is fast while complicating the read path a bit.
-      if (request_.type() == QLWriteRequestPB::QL_STMT_INSERT && encoded_pk_doc_key_) {
+      auto is_insert = request_.type() == QLWriteRequestPB::QL_STMT_INSERT;
+      if (is_insert && encoded_pk_doc_key_) {
         const DocPath sub_path(encoded_pk_doc_key_.as_slice(),
                                PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
         const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
@@ -744,7 +772,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         QLValue expr_result;
         if (!column_value.json_args().empty()) {
           RETURN_NOT_OK(ApplyForJsonOperators(column_value, data, sub_path, ttl,
-                                              user_timestamp, column, &new_row));
+                                              user_timestamp, column, &new_row, is_insert));
         } else if (!column_value.subscript_args().empty()) {
           RETURN_NOT_OK(ApplyForSubscriptArgs(column_value, existing_row, data, ttl,
                                               user_timestamp, column, &sub_path));
@@ -823,7 +851,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
         // Iterate through rows and delete those that match the condition.
         // TODO We do not lock here, so other write transactions coming in might appear partially
         // applied if they happen in the middle of a ranged delete.
-        while (iterator.HasNext()) {
+        while (VERIFY_RESULT(iterator.HasNext())) {
           existing_row.Clear();
           RETURN_NOT_OK(iterator.NextRow(&existing_row));
 
@@ -1074,7 +1102,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_, static_projection, schema, txn_op_context_, deadline, req_read_time,
         *static_row_spec, &static_row_iter));
-    if (static_row_iter->HasNext()) {
+    if (VERIFY_RESULT(static_row_iter->HasNext())) {
       RETURN_NOT_OK(static_row_iter->NextRow(&static_row));
     }
   }
@@ -1082,7 +1110,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   // Begin the normal fetch.
   int match_count = 0;
   bool static_dealt_with = true;
-  while (resultset->rsrow_count() < row_count_limit && iter->HasNext()) {
+  while (resultset->rsrow_count() < row_count_limit && VERIFY_RESULT(iter->HasNext())) {
     const bool last_read_static = iter->IsNextStaticColumn();
 
     // Note that static columns are sorted before non-static columns in DocDB as follows. This is
@@ -1127,7 +1155,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
         // the non-static row corresponds to this static row; if the non-static row doesn't
         // correspond to this static row, we will have to add it later, so set static_dealt_with to
         // false
-        if (iter->HasNext() && !iter->IsNextStaticColumn()) {
+        if (VERIFY_RESULT(iter->HasNext()) && !iter->IsNextStaticColumn()) {
           static_dealt_with = false;
           continue;
         }
@@ -1169,9 +1197,35 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   }
   *restart_read_ht = iter->RestartReadHt();
 
+  return SetPagingStateIfNecessary(iter.get(), resultset, row_count_limit, num_rows_skipped);
+}
+
+Status QLReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
+                                                  const QLResultSet* resultset,
+                                                  const size_t row_count_limit,
+                                                  const size_t num_rows_skipped) {
   if ((resultset->rsrow_count() >= row_count_limit || request_.has_offset()) &&
       !request_.is_aggregate()) {
-    RETURN_NOT_OK(iter->SetPagingStateIfNecessary(request_, num_rows_skipped, &response_));
+    SubDocKey next_row_key;
+    RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
+    // When the "limit" number of rows are returned and we are asked to return the paging state,
+    // return the partition key and row key of the next row to read in the paging state if there are
+    // still more rows to read. Otherwise, leave the paging state empty which means we are done
+    // reading from this tablet.
+    if (request_.return_paging_state()) {
+      if (!next_row_key.doc_key().empty()) {
+        QLPagingStatePB* paging_state = response_.mutable_paging_state();
+        paging_state->set_next_partition_key(
+            PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
+        paging_state->set_next_row_key(next_row_key.Encode().data());
+        paging_state->set_total_rows_skipped(request_.paging_state().total_rows_skipped() +
+            num_rows_skipped);
+      } else if (request_.has_offset()) {
+        QLPagingStatePB* paging_state = response_.mutable_paging_state();
+        paging_state->set_total_rows_skipped(request_.paging_state().total_rows_skipped() +
+            num_rows_skipped);
+      }
+    }
   }
 
   return Status::OK();

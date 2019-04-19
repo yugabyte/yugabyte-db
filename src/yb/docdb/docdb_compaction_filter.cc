@@ -31,6 +31,7 @@ using std::unique_ptr;
 using std::unordered_set;
 using rocksdb::CompactionFilter;
 using rocksdb::VectorToString;
+using rocksdb::FilterDecision;
 
 namespace yb {
 namespace docdb {
@@ -47,11 +48,22 @@ DocDBCompactionFilter::DocDBCompactionFilter(
 DocDBCompactionFilter::~DocDBCompactionFilter() {
 }
 
-bool DocDBCompactionFilter::Filter(int level,
-                                   const rocksdb::Slice& key,
-                                   const rocksdb::Slice& existing_value,
-                                   std::string* new_value,
-                                   bool* value_changed) const {
+FilterDecision DocDBCompactionFilter::Filter(
+    int level, const Slice& key, const Slice& existing_value, std::string* new_value,
+    bool* value_changed) {
+  auto result = CHECK_RESULT(const_cast<DocDBCompactionFilter*>(this)->DoFilter(
+      level, key, existing_value, new_value, value_changed));
+  if (result != FilterDecision::kKeep) {
+    VLOG(3) << "Discarding key: " << BestEffortDocDBKeyToStr(key);
+  } else {
+    VLOG(4) << "Keeping key: " << BestEffortDocDBKeyToStr(key);
+  }
+  return result;
+}
+
+Result<FilterDecision> DocDBCompactionFilter::DoFilter(
+    int level, const Slice& key, const Slice& existing_value, std::string* new_value,
+    bool* value_changed) {
   const HybridTime history_cutoff = retention_.history_cutoff;
 
   if (!filter_usage_logged_) {
@@ -62,45 +74,32 @@ bool DocDBCompactionFilter::Filter(int level,
     filter_usage_logged_ = true;
   }
 
-#define DISCARD_KEY_AND_RETURN() \
-    do { \
-      VLOG(3) << "Discarding key: " << BestEffortDocDBKeyToStr(key); \
-      return true; \
-    } while (0)
-
-#define KEEP_KEY_AND_RETURN() \
-    do { \
-      VLOG(4) << "Keeping key: " << BestEffortDocDBKeyToStr(key); \
-      return false; \
-    } while (0)
-
   // Just remove intent records from regular DB, because it was beta feature.
   // Currently intents are stored in separate DB.
   if (DecodeValueType(key) == ValueType::kObsoleteIntentPrefix) {
-    DISCARD_KEY_AND_RETURN();
+    return FilterDecision::kDiscard;
   }
 
-  SubDocKey subdoc_key;
+  auto same_bytes = strings::MemoryDifferencePos(
+      key.data(), prev_subdoc_key_.data(), std::min(key.size(), prev_subdoc_key_.size()));
 
-  // TODO: Find a better way for handling of data corruption encountered during compactions.
-  const Status key_decode_status = subdoc_key.FullyDecodeFrom(key);
-  CHECK(key_decode_status.ok())
-      << "Error decoding a key during compaction: " << key_decode_status.ToString() << "\n"
-      << "    Key (raw): " << FormatRocksDBSliceAsStr(key) << "\n"
-      << "    Key (best-effort decoded): " << BestEffortDocDBKeyToStr(key);
-
-  if (is_first_key_value_) {
-    CHECK_EQ(0, overwrite_ht_.size());
-    CHECK_EQ(0, expiration_.size());
-    is_first_key_value_ = false;
+  // The number of initial components (including document key and subkeys) that this
+  // SubDocKey shares with previous one. This does not care about the hybrid_time field.
+  size_t num_shared_components = sub_key_ends_.size();
+  while (num_shared_components > 0 && sub_key_ends_[num_shared_components - 1] > same_bytes) {
+    --num_shared_components;
   }
 
-  const size_t num_shared_components = prev_subdoc_key_.NumSharedPrefixComponents(subdoc_key);
+  sub_key_ends_.resize(num_shared_components);
+
+  RETURN_NOT_OK(SubDocKey::DecodeDocKeyAndSubKeyEnds(key, &sub_key_ends_));
+  const size_t new_stack_size = sub_key_ends_.size();
+
   // Remove overwrite hybrid_times for components that are no longer relevant for the current
   // SubDocKey.
-  overwrite_ht_.resize(min(overwrite_ht_.size(), num_shared_components));
-  expiration_.resize(min(expiration_.size(), num_shared_components));
-  const DocHybridTime& ht = subdoc_key.doc_hybrid_time();
+  overwrite_.resize(min(overwrite_.size(), num_shared_components));
+  DocHybridTime ht;
+  RETURN_NOT_OK(ht.DecodeFromEnd(key));
   // We're comparing the hybrid time in this key with the stack top of overwrite_ht_ after
   // truncating the stack to the number of components in the common prefix of previous and current
   // key.
@@ -123,9 +122,9 @@ bool DocDBCompactionFilter::Filter(int level,
   //              deciding to remove this entry because 9 < 10.
   //
   const DocHybridTime prev_overwrite_ht =
-      overwrite_ht_.empty() ? DocHybridTime::kMin : overwrite_ht_.back();
+      overwrite_.empty() ? DocHybridTime::kMin : overwrite_.back().doc_ht;
   const Expiration prev_exp =
-      expiration_.empty() ? Expiration() : expiration_.back();
+      overwrite_.empty() ? Expiration() : overwrite_.back().expiration;
 
   // We only keep entries with hybrid_time equal to or later than the latest time the subdocument
   // was fully overwritten or deleted prior to or at the history cutoff time. The intuition is that
@@ -144,29 +143,25 @@ bool DocDBCompactionFilter::Filter(int level,
   // TODO: When more merge records are supported, isTtlRow should be redefined appropriately.
   bool isTtlRow = IsMergeRecord(existing_value);
   if (ht < prev_overwrite_ht && !isTtlRow) {
-    DISCARD_KEY_AND_RETURN();
+    return FilterDecision::kDiscard;
   }
-
-  const int new_stack_size = subdoc_key.num_subkeys() + 1;
 
   // Every subdocument was fully overwritten at least at the time any of its parents was fully
   // overwritten.
-
-  while (overwrite_ht_.size() < new_stack_size - 1) {
-    overwrite_ht_.push_back(prev_overwrite_ht);
-    expiration_.push_back(prev_exp);
+  if (overwrite_.size() < new_stack_size - 1) {
+    overwrite_.resize(new_stack_size - 1, {prev_overwrite_ht, prev_exp});
   }
 
-  Expiration popped_exp = expiration_.empty() ? Expiration() : expiration_.back();
+  Expiration popped_exp = overwrite_.empty() ? Expiration() : overwrite_.back().expiration;
   // This will happen in case previous key has the same document key and subkeys as the current
   // key, and the only difference is in the hybrid_time. We want to replace the hybrid_time at the
   // top of the overwrite_ht stack in this case.
-  if (overwrite_ht_.size() == new_stack_size) {
-    overwrite_ht_.pop_back();
-    expiration_.pop_back();
+  if (overwrite_.size() == new_stack_size) {
+    overwrite_.pop_back();
   }
-  if (subdoc_key.doc_key() != prev_subdoc_key_.doc_key() ||
-      subdoc_key.subkeys() != prev_subdoc_key_.subkeys()) {
+
+  // Check whether current key is the same as the previous key, except for the timestamp.
+  if (same_bytes != sub_key_ends_.back()) {
     within_merge_block_ = false;
   }
 
@@ -176,10 +171,9 @@ bool DocDBCompactionFilter::Filter(int level,
   // hybrid time that does not exceed the cutoff hybrid time. In that case this entry is obviously
   // too new to be garbage-collected.
   if (ht.hybrid_time() > history_cutoff) {
-    prev_subdoc_key_ = std::move(subdoc_key);
-    overwrite_ht_.push_back(prev_overwrite_ht);
-    expiration_.push_back(prev_exp);
-    KEEP_KEY_AND_RETURN();
+    AssignPrevSubDocKey(key.cdata(), same_bytes);
+    overwrite_.push_back({prev_overwrite_ht, prev_exp});
+    return FilterDecision::kKeep;
   }
 
   // Check for CQL columns deleted from the schema. This is done regardless of whether this is a
@@ -187,18 +181,24 @@ bool DocDBCompactionFilter::Filter(int level,
   //
   // TODO: could there be a case when there is still a read request running that uses an old schema,
   //       and we end up removing some data that the client expects to see?
-  if (subdoc_key.num_subkeys() > 0) {
-    const auto& first_subkey = subdoc_key.subkeys()[0];
+  if (sub_key_ends_.size() > 1) {
     // Column ID is the first subkey in every CQL row.
-    if (first_subkey.value_type() == ValueType::kColumnId &&
-        retention_.deleted_cols->count(first_subkey.GetColumnId()) != 0) {
-      DISCARD_KEY_AND_RETURN();
+    if (key[sub_key_ends_[0]]  == ValueTypeAsChar::kColumnId) {
+      Slice column_id_slice(key.data() + sub_key_ends_[0] + 1, key.data() + sub_key_ends_[1]);
+      auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarInt(&column_id_slice));
+      ColumnId column_id;
+      RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
+      if (retention_.deleted_cols->count(column_id) != 0) {
+        return FilterDecision::kDiscard;
+      }
     }
   }
-  overwrite_ht_.push_back(isTtlRow ? prev_overwrite_ht : max(prev_overwrite_ht, ht));
+
+  auto overwrite_ht = isTtlRow ? prev_overwrite_ht : max(prev_overwrite_ht, ht);
+
   ValueType value_type;
   MonoDelta ttl;
-  CHECK_OK(Value::DecodePrimitiveValueType(existing_value, &value_type, nullptr, &ttl));
+  RETURN_NOT_OK(Value::DecodePrimitiveValueType(existing_value, &value_type, nullptr, &ttl));
   const Expiration curr_exp(ht.hybrid_time(), ttl);
 
   // If within the merge block.
@@ -208,23 +208,28 @@ bool DocDBCompactionFilter::Filter(int level,
   //     If this is a TTL row, cache TTL (start merge block).
   //     If normal row, compute its ttl and continue.
 
+  Expiration expiration;
   if (within_merge_block_) {
-    expiration_.push_back(popped_exp);
+    expiration = popped_exp;
   } else if (ht.hybrid_time() >= prev_exp.write_ht &&
              (curr_exp.ttl != Value::kMaxTtl || isTtlRow)) {
-    expiration_.push_back(curr_exp);
+    expiration = curr_exp;
   } else {
-    expiration_.push_back(prev_exp);
+    expiration = prev_exp;
   }
 
-  CHECK_EQ(new_stack_size, overwrite_ht_.size());
-  CHECK_EQ(new_stack_size, expiration_.size());
-  prev_subdoc_key_ = std::move(subdoc_key);
+  overwrite_.push_back({overwrite_ht, expiration});
+
+  if (overwrite_.size() != new_stack_size) {
+    return STATUS_FORMAT(Corruption, "Overwrite size does not match new_stack_size: $0 vs $1",
+                         overwrite_.size(), new_stack_size);
+  }
+  AssignPrevSubDocKey(key.cdata(), same_bytes);
 
   // If the entry has the TTL flag, delete the entry.
   if (isTtlRow) {
     within_merge_block_ = true;
-    DISCARD_KEY_AND_RETURN();
+    return FilterDecision::kDiscard;
   }
 
   // If the value expires by the time of history cutoff, it is treated as deleted and filtered out.
@@ -232,10 +237,10 @@ bool DocDBCompactionFilter::Filter(int level,
 
   // Only check for expiration if the current hybrid time is at or below history cutoff.
   // The key could not have possibly expired by history_cutoff_ otherwise.
-  MonoDelta true_ttl = ComputeTTL(expiration_.back().ttl, retention_.table_ttl);
-  CHECK_OK(HasExpiredTTL(true_ttl == expiration_.back().ttl ?
-                         expiration_.back().write_ht : ht.hybrid_time(),
-                         true_ttl, history_cutoff, &has_expired));
+  MonoDelta true_ttl = ComputeTTL(expiration.ttl, retention_.table_ttl);
+  RETURN_NOT_OK(HasExpiredTTL(true_ttl == expiration.ttl ?
+                              expiration.write_ht : ht.hybrid_time(),
+                              true_ttl, history_cutoff, &has_expired));
   // As of 02/2017, we don't have init markers for top level documents in QL. As a result, we can
   // compact away each column if it has expired, including the liveness system column. The init
   // markers in Redis wouldn't be affected since they don't have any TTL associated with them and
@@ -244,46 +249,54 @@ bool DocDBCompactionFilter::Filter(int level,
     // This is consistent with the condition we're testing for deletes at the bottom of the function
     // because ht_at_or_below_cutoff is implied by has_expired.
     if (is_major_compaction_) {
-      DISCARD_KEY_AND_RETURN();
+      return FilterDecision::kDiscard;
     }
 
     // During minor compactions, expired values are written back as tombstones because removing the
     // record might expose earlier values which would be incorrect.
     *value_changed = true;
     *new_value = Value::EncodedTombstone();
-
   } else if (within_merge_block_) {
     *value_changed = true;
     Value value;
-    CHECK_OK(value.Decode(existing_value));
+    Slice value_slice = existing_value;
+    RETURN_NOT_OK(value.DecodeControlFields(&value_slice));
 
-    if (expiration_.back().ttl != Value::kMaxTtl) {
-      expiration_.back().ttl += MonoDelta::FromMicroseconds(
-          expiration_.back().write_ht.PhysicalDiff(ht.hybrid_time()));
+    if (expiration.ttl != Value::kMaxTtl) {
+      expiration.ttl += MonoDelta::FromMicroseconds(
+          overwrite_.back().expiration.write_ht.PhysicalDiff(ht.hybrid_time()));
+      overwrite_.back().expiration.ttl = expiration.ttl;
     }
-    *value.mutable_ttl() = expiration_.back().ttl;
-    *new_value = value.Encode();
+
+    *value.mutable_ttl() = expiration.ttl;
+    new_value->clear();
+
+    // We are reusing the existing encoded value without decoding/encoding it.
+    value.EncodeAndAppend(new_value, &value_slice);
     within_merge_block_ = false;
   }
+
   // Tombstones at or below the history cutoff hybrid_time can always be cleaned up on full (major)
   // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid times.
-  if (value_type == ValueType::kTombstone && is_major_compaction_) {
-    DISCARD_KEY_AND_RETURN();
-  } else {
-    KEEP_KEY_AND_RETURN();
-  }
+  return value_type == ValueType::kTombstone && is_major_compaction_ ? FilterDecision::kDiscard
+                                                                     : FilterDecision::kKeep;
 }
+
+void DocDBCompactionFilter::AssignPrevSubDocKey(
+    const char* data, size_t same_bytes) {
+  size_t size = sub_key_ends_.back();
+  prev_subdoc_key_.resize(size);
+  memcpy(prev_subdoc_key_.data() + same_bytes, data + same_bytes, size - same_bytes);
+}
+
 
 rocksdb::UserFrontierPtr DocDBCompactionFilter::GetLargestUserFrontier() const {
   auto* consensus_frontier = new ConsensusFrontier();
   consensus_frontier->set_history_cutoff(retention_.history_cutoff);
   return rocksdb::UserFrontierPtr(consensus_frontier);
 }
-
-#undef DISCARD_KEY_AND_RETURN
-#undef KEEP_KEY_AND_RETURN
 
 const char* DocDBCompactionFilter::Name() const {
   return "DocDBCompactionFilter";
@@ -292,8 +305,8 @@ const char* DocDBCompactionFilter::Name() const {
 // ------------------------------------------------------------------------------------------------
 
 DocDBCompactionFilterFactory::DocDBCompactionFilterFactory(
-    shared_ptr<HistoryRetentionPolicy> retention_policy)
-    : retention_policy_(retention_policy) {
+    std::shared_ptr<HistoryRetentionPolicy> retention_policy)
+    : retention_policy_(std::move(retention_policy)) {
 }
 
 DocDBCompactionFilterFactory::~DocDBCompactionFilterFactory() {
@@ -301,10 +314,9 @@ DocDBCompactionFilterFactory::~DocDBCompactionFilterFactory() {
 
 unique_ptr<CompactionFilter> DocDBCompactionFilterFactory::CreateCompactionFilter(
     const CompactionFilter::Context& context) {
-  return unique_ptr<DocDBCompactionFilter>(
-      new DocDBCompactionFilter(
-          retention_policy_->GetRetentionDirective(),
-          IsMajorCompaction(context.is_full_compaction)));
+  return std::make_unique<DocDBCompactionFilter>(
+      retention_policy_->GetRetentionDirective(),
+      IsMajorCompaction(context.is_full_compaction));
 }
 
 const char* DocDBCompactionFilterFactory::Name() const {

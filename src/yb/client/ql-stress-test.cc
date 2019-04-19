@@ -15,6 +15,8 @@
 
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
 
@@ -523,8 +525,9 @@ void QLStressTest::VerifyFlushedFrontiers() {
       ASSERT_OK(CreateCheckpoint(db, checkpoint_dir));
 
       rocksdb::Options options;
-
-      InitRocksDBOptions(&options, "", nullptr, TabletOptions());
+      auto tablet_options = TabletOptions();
+      tablet_options.rocksdb_env = db->GetEnv();
+      InitRocksDBOptions(&options, "", nullptr, tablet_options);
       std::unique_ptr<rocksdb::DB> checkpoint_db;
       rocksdb::DB* checkpoint_db_raw_ptr = nullptr;
 

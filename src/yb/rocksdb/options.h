@@ -253,7 +253,7 @@ struct ColumnFamilyOptions {
   // thread-safe.
   //
   // Default: nullptr
-  const CompactionFilter* compaction_filter;
+  CompactionFilter* compaction_filter;
 
   // This is a factory that provides compaction filter objects which allow
   // an application to modify/delete a key-value during background compaction.
@@ -859,6 +859,9 @@ struct DBOptions {
   // e.g. to read/write files, schedule background work, etc.
   // Default: Env::Default()
   Env* env;
+
+  // Env used to create checkpoints. Default: Env::Default()
+  Env* checkpoint_env;
 
   // Use to control write rate of flush and compaction. Flush has higher
   // priority than compaction. Rate limiting is disabled if nullptr.

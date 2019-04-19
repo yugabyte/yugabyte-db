@@ -136,7 +136,8 @@ LogOptions::LogOptions()
                                          FLAGS_interval_durable_wal_write_ms) : MonoDelta()),
       bytes_durable_wal_write_mb(FLAGS_bytes_durable_wal_write_mb),
       preallocate_segments(FLAGS_log_preallocate_segments),
-      async_preallocate_segments(FLAGS_log_async_preallocate_segments) {
+      async_preallocate_segments(FLAGS_log_async_preallocate_segments),
+      env(Env::Default()) {
 }
 
 Status ReadableLogSegment::Open(Env* env,
@@ -159,7 +160,9 @@ ReadableLogSegment::ReadableLogSegment(
       readable_to_offset_(0),
       readable_file_(std::move(readable_file)),
       is_initialized_(false),
-      footer_was_rebuilt_(false) {}
+      footer_was_rebuilt_(false) {
+  env_util::OpenFileForRandom(Env::Default(), path_, &readable_file_checkpoint_);
+}
 
 Status ReadableLogSegment::Init(const LogSegmentHeaderPB& header,
                                 const LogSegmentFooterPB& footer,
@@ -301,7 +304,7 @@ Status ReadableLogSegment::ReadHeader() {
   // Read and parse the log segment header.
   RETURN_NOT_OK_PREPEND(ReadFully(readable_file_.get(), kLogSegmentHeaderMagicAndHeaderLength,
                                   header_size, &header_slice, header_space.data()),
-                        "Unable to read fully");
+                                      "Unable to read fully");
 
   RETURN_NOT_OK_PREPEND(pb_util::ParseFromArray(&header,
                                                 header_slice.data(),
@@ -538,8 +541,11 @@ ReadEntriesResult ReadableLogSegment::ReadEntries() {
     for (size_t i = 0; i < current_batch.entry_size(); ++i) {
       result.entries.emplace_back(current_batch.mutable_entry(i));
       DCHECK_NE(current_batch.mono_time(), 0);
-      result.entry_times.push_back(
-          RestartSafeCoarseTimePoint::FromUInt64(current_batch.mono_time()));
+      LogEntryMetadata entry_metadata;
+      entry_metadata.offset = this_batch_offset;
+      entry_metadata.active_segment_sequence_number = header().sequence_number();
+      entry_metadata.entry_time = RestartSafeCoarseTimePoint::FromUInt64(current_batch.mono_time());
+      result.entry_metadata.emplace_back(std::move(entry_metadata));
       num_entries_read++;
     }
     current_batch.mutable_entry()->ExtractSubrange(0, current_batch.entry_size(), nullptr);
@@ -574,12 +580,20 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
        offset += kChunkSize - kEntryHeaderSize) {
     int rem = std::min<int64_t>(file_size() - offset, kChunkSize);
     Slice chunk;
-    RETURN_NOT_OK(ReadFully(readable_file().get(), offset, rem, &chunk, &buf[0]));
+    // If encryption is enabled, need to use checkpoint file to read pre-allocated file since
+    // we want to preserve all 0s.
+    RETURN_NOT_OK(ReadFully(readable_file_checkpoint().get(),
+                            offset + readable_file()->GetHeaderSize(), rem, &chunk, &buf[0]));
 
     // Optimization for the case where a chunk is all zeros -- this is common in the
     // case of pre-allocated files. This avoids a lot of redundant CRC calculation.
     if (IsAllZeros(chunk)) {
       continue;
+    }
+
+    if (readable_file()->IsEncrypted()) {
+      // If encryption enabled, decrypt the contents of the file.
+      RETURN_NOT_OK(ReadFully(readable_file().get(), offset, rem, &chunk, &buf[0]));
     }
 
     // Check if this chunk has a valid entry header.

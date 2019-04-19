@@ -15,6 +15,8 @@
 // Treenode definitions for expressions.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/client/table.h"
+
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
@@ -1008,7 +1010,7 @@ CHECKED_STATUS PTJsonColumnWithOperators::SetupCoveringIndexColumn(SemContext *s
 
   column->set_loc(*this);
   column->datatype()->set_loc(*this);
-  return table->AppendColumn(sem_context, column, true /* check_duplicate */);
+  return table->AppendColumnIfNotPresent(sem_context, column);
 }
 
 //--------------------------------------------------------------------------------------------------

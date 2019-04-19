@@ -54,6 +54,8 @@ void RandomString(void* dest, size_t n, Random* rng);
 // pid & tid.
 uint32_t GetRandomSeed32();
 
+std::vector<uint8_t> RandomBytes(size_t len, std::mt19937_64* rng = nullptr);
+
 std::string RandomHumanReadableString(int len, Random* rnd);
 
 class RandomDeviceSequence {
@@ -82,6 +84,14 @@ Int RandomUniformInt(Int min, Int max, std::mt19937_64* rng = nullptr) {
     rng = &ThreadLocalRandom();
   }
   return std::uniform_int_distribution<Int>(min, max)(*rng);
+}
+
+template <class Int>
+std::vector<Int> RandomUniformVector(Int min, Int max, uint32_t size,
+                                     std::mt19937_64* rng = nullptr) {
+  std::vector<Int> vec(size);
+  std::generate(vec.begin(), vec.end(), [=] { return RandomUniformInt(min, max, rng); });
+  return vec;
 }
 
 template <class Int>

@@ -322,7 +322,7 @@ public class TestSelect extends BaseCQLTest {
     assertQuery(stmt, expected);
   }
 
-  private void testScansWithOffset(int pageSize) {
+  private void testMultiShardScansWithOffset(int pageSize) {
     assertQueryWithPageSize("SELECT * FROM test_offset LIMIT 9 OFFSET 0",
         "Row[5, 5, 5]" +
         "Row[1, 1, 1]" +
@@ -412,6 +412,35 @@ public class TestSelect extends BaseCQLTest {
         "Row[3, 3, 3]", pageSize);
   }
 
+  private void testSingleShardScansWithOffset() {
+    assertQueryWithPageSize(
+        "SELECT * FROM test_offset WHERE h1 = 1 ORDER BY r1 DESC LIMIT 2 OFFSET 3",
+        "Row[1, 2, 2]" +
+        "Row[1, 1, 1]", Integer.MAX_VALUE);
+    assertQueryWithPageSize(
+        "SELECT * FROM test_offset WHERE h1 = 1 ORDER BY r1 DESC LIMIT 2 OFFSET 4",
+        "Row[1, 1, 1]", Integer.MAX_VALUE);
+    assertQueryWithPageSize("SELECT * FROM test_offset WHERE h1 = 1 ORDER BY r1 DESC OFFSET 2",
+                            "Row[1, 3, 3]" +
+                            "Row[1, 2, 2]" +
+                            "Row[1, 1, 1]", Integer.MAX_VALUE);
+
+    // Offset applies only to matching rows.
+    assertQueryWithPageSize(
+        "SELECT * FROM test_offset WHERE c1 <= 4 AND h1 = 1 ORDER BY r1 DESC LIMIT 2 OFFSET 2",
+        "Row[1, 2, 2]" +
+        "Row[1, 1, 1]", Integer.MAX_VALUE);
+    assertQueryWithPageSize(
+        "SELECT * FROM test_offset WHERE c1 IN (1, 3, 5) AND h1 = 1 ORDER BY r1 DESC LIMIT 2 " +
+        "OFFSET 1",
+        "Row[1, 3, 3]" +
+        "Row[1, 1, 1]", Integer.MAX_VALUE);
+    assertQueryWithPageSize(
+        "SELECT * FROM test_offset WHERE c1 IN (1, 3, 5) AND h1 = 1 ORDER BY r1 DESC LIMIT 2 " +
+         "OFFSET 2",
+        "Row[1, 1, 1]", Integer.MAX_VALUE);
+  }
+
   @Test
   public void testSelectWithOffset() throws Exception {
     session.execute("CREATE TABLE test_offset (h1 int, r1 int, c1 int, PRIMARY KEY(h1, r1))");
@@ -423,6 +452,7 @@ public class TestSelect extends BaseCQLTest {
     session.execute("INSERT INTO test_offset (h1, r1, c1) VALUES (1, 4, 4)");
     session.execute("INSERT INTO test_offset (h1, r1, c1) VALUES (1, 5, 5)");
 
+    // Test full scan but with single-shard data.
     assertQueryWithPageSize("SELECT * FROM test_offset LIMIT 2 OFFSET 3",
         "Row[1, 4, 4]" +
         "Row[1, 5, 5]", Integer.MAX_VALUE);
@@ -436,18 +466,6 @@ public class TestSelect extends BaseCQLTest {
         "Row[1, 4, 4]" +
         "Row[1, 5, 5]", Integer.MAX_VALUE);
 
-    assertQueryWithPageSize(
-        "SELECT * FROM test_offset WHERE h1 = 1 ORDER BY r1 DESC LIMIT 2 OFFSET 3",
-        "Row[1, 2, 2]" +
-        "Row[1, 1, 1]", Integer.MAX_VALUE);
-    assertQueryWithPageSize(
-        "SELECT * FROM test_offset WHERE h1 = 1 ORDER BY r1 DESC LIMIT 2 OFFSET 4",
-        "Row[1, 1, 1]", Integer.MAX_VALUE);
-    assertQueryWithPageSize("SELECT * FROM test_offset WHERE h1 = 1 ORDER BY r1 DESC OFFSET 2",
-        "Row[1, 3, 3]" +
-        "Row[1, 2, 2]" +
-        "Row[1, 1, 1]", Integer.MAX_VALUE);
-
     // Offset applies only to matching rows.
     assertQueryWithPageSize("SELECT * FROM test_offset WHERE c1 >= 2 LIMIT 2 OFFSET 2",
         "Row[1, 4, 4]" +
@@ -458,19 +476,16 @@ public class TestSelect extends BaseCQLTest {
     assertQueryWithPageSize("SELECT * FROM test_offset WHERE c1 IN (1, 3, 5) LIMIT 2 OFFSET 2",
         "Row[1, 5, 5]", Integer.MAX_VALUE);
 
-    assertQueryWithPageSize(
-        "SELECT * FROM test_offset WHERE c1 <= 4 AND h1 = 1 ORDER BY r1 DESC LIMIT 2 OFFSET 2",
-        "Row[1, 2, 2]" +
-        "Row[1, 1, 1]", Integer.MAX_VALUE);
-    assertQueryWithPageSize(
-        "SELECT * FROM test_offset WHERE c1 IN (1, 3, 5) AND h1 = 1 ORDER BY r1 DESC LIMIT 2 " +
-        "OFFSET 1",
-        "Row[1, 3, 3]" +
-        "Row[1, 1, 1]", Integer.MAX_VALUE);
-    assertQueryWithPageSize(
-        "SELECT * FROM test_offset WHERE c1 IN (1, 3, 5) AND h1 = 1 ORDER BY r1 DESC LIMIT 2 " +
-        "OFFSET 2",
-        "Row[1, 1, 1]", Integer.MAX_VALUE);
+    // Test single-shard scan.
+    testSingleShardScansWithOffset();
+
+    // Test single-shard scan with dense data (other rows in the database).
+    // Insert a bunch of other hashes to ensure there are rows before/after the target range on that
+    // tablet. This ensure the start/end detection works correctly.
+    for (Integer h1 = 0; h1 < 100; h1++) {
+      session.execute("INSERT INTO test_offset (h1, r1, c1) VALUES (?, 1, 1)", h1);
+    }
+    testSingleShardScansWithOffset();
 
     // Test multi-shard offset and limits.
     // Delete and re-create the table first.
@@ -485,9 +500,9 @@ public class TestSelect extends BaseCQLTest {
           i, i, i));
     }
 
-    testScansWithOffset(Integer.MAX_VALUE);
+    testMultiShardScansWithOffset(Integer.MAX_VALUE);
     for (int i = 0; i <= totalShards; i++) {
-      testScansWithOffset(i);
+      testMultiShardScansWithOffset(i);
     }
 
     // Test select with offset and limit. Fetch the exact number of rows. Verify that the query

@@ -151,11 +151,11 @@ class YBClient::Data {
   CHECKED_STATUS GetTableSchema(YBClient* client,
                                 const YBTableName& table_name,
                                 const MonoTime& deadline,
-                                YBTable::Info* info);
+                                YBTableInfo* info);
   CHECKED_STATUS GetTableSchema(YBClient* client,
                                 const TableId& table_id,
                                 const MonoTime& deadline,
-                                YBTable::Info* info);
+                                YBTableInfo* info);
 
   CHECKED_STATUS InitLocalHostNames();
 

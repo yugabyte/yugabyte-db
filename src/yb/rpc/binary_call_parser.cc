@@ -65,8 +65,11 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
         Slice buffer(call_data_.data() + received_size, call_data_size - received_size);
         return ProcessDataResult{ full_size, buffer };
       } else if (read_buffer_full && consumed == 0) {
+        auto consumption = blocking_mem_tracker ? blocking_mem_tracker->consumption() : -1;
+        auto limit = blocking_mem_tracker ? blocking_mem_tracker->limit() : -1;
         LOG(WARNING) << "Unable to allocate read buffer because of limit, required: "
-                     << call_data_size << ", blocked by: " << yb::ToString(blocking_mem_tracker);
+                     << call_data_size << ", blocked by: " << yb::ToString(blocking_mem_tracker)
+                     << ", consumption: " << consumption << " of " << limit;
       }
       break;
     }

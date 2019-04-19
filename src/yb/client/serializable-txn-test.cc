@@ -13,6 +13,7 @@
 
 #include "yb/client/txn-test-base.h"
 
+#include "yb/client/session.h"
 #include "yb/client/transaction.h"
 
 #include "yb/util/bfql/gen_opcodes.h"

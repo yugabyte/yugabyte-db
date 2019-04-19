@@ -16,6 +16,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
+
+#include "yb/client/table.h"
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 DECLARE_bool(use_cassandra_authentication);
@@ -81,6 +84,18 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other)
 }
 
 PTDmlStmt::~PTDmlStmt() {
+}
+
+int PTDmlStmt::num_columns() const {
+  return table_->schema().num_columns();
+}
+
+int PTDmlStmt::num_key_columns() const {
+  return table_->schema().num_key_columns();
+}
+
+int PTDmlStmt::num_hash_key_columns() const {
+  return table_->schema().num_hash_key_columns();
 }
 
 Status PTDmlStmt::LookupTable(SemContext *sem_context) {

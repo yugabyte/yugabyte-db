@@ -74,7 +74,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // This must always be called before NextRow. The implementation actually finds the
   // first row to scan, and NextRow expects the RocksDB iterator to already be properly
   // positioned.
-  bool HasNext() const override;
+  Result<bool> HasNext() const override;
 
   std::string ToString() const override;
 
@@ -85,13 +85,6 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   // Is the next row to read a row with a static column?
   bool IsNextStaticColumn() const override;
-
-  CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                           const size_t num_rows_skipped,
-                                           QLResponsePB* response) const override;
-
-  CHECKED_STATUS SetPagingStateIfNecessary(const PgsqlReadRequestPB& request,
-                                           PgsqlResponsePB* response) const override;
 
   const DocKey& row_key() const {
     return row_key_;
@@ -111,10 +104,10 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // Seek to the given key.
   virtual CHECKED_STATUS Seek(const std::string& row_key) override;
 
- private:
-
   // Retrieves the next key to read after the iterator finishes for the given page.
-  CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
+  CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const override;
+
+ private:
 
   // Get the non-key column values of a QL row.
   CHECKED_STATUS GetValues(const Schema& projection, vector<SubDocument>* values);
@@ -204,8 +197,8 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   mutable std::vector<PrimitiveValue> projection_subkeys_;
 
-  // Used for keeping track of errors that happen in HasNext. Returned
-  mutable Status status_;
+  // Used for keeping track of errors in HasNext.
+  mutable Status has_next_status_;
 
   mutable boost::optional<DeadlineInfo> deadline_info_;
 };

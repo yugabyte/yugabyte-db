@@ -19,9 +19,13 @@
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pggate_if_cxx_decl.h"
 
-#include "yb/client/yb_op.h"
-#include "yb/client/transaction.h"
 #include "yb/client/batcher.h"
+#include "yb/client/error.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
+#include "yb/client/table_creator.h"
+#include "yb/client/transaction.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_protocol_util.h"
 
@@ -149,10 +153,7 @@ Status PgSession::CreateSequencesDataTable() {
                                                     kPgSequencesDataNamespaceId));
 
   // Set up the schema.
-  TableProperties table_properties;
-  table_properties.SetTransactional(true);
   client::YBSchemaBuilder schemaBuilder;
-  schemaBuilder.SetTableProperties(table_properties);
   schemaBuilder.
       AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
   schemaBuilder.
@@ -371,8 +372,8 @@ Result<PgTableDesc::ScopedRefPtr> PgSession::LoadTable(const PgObjectId& table_i
     if (!s.ok()) {
       VLOG(3) << "LoadTable: Server returns an error: " << s;
       // TODO: NotFound might not always be the right status here.
-      return STATUS_FORMAT(
-          NotFound, "Error loading table with id $0: $1", yb_table_id, s.ToString());
+      return STATUS_FORMAT(NotFound, "Error loading table with oid $0 in database with oid $1: $2",
+                           table_id.object_oid, table_id.database_oid, s.ToUserMessage());
     }
     table_cache_[yb_table_id] = table;
   } else {

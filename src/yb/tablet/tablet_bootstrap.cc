@@ -48,12 +48,18 @@
 #include "yb/util/opid.h"
 #include "yb/util/logging.h"
 #include "yb/util/stopwatch.h"
-
+#include "yb/util/env_util.h"
+#include "yb/consensus/log_index.h"
 #include "yb/docdb/consensus_frontier.h"
 
 DEFINE_bool(skip_remove_old_recovery_dir, false,
             "Skip removing WAL recovery dir after startup. (useful for debugging)");
 TAG_FLAG(skip_remove_old_recovery_dir, hidden);
+
+DEFINE_bool(skip_wal_rewrite, false,
+            "Skip rewriting WAL files during bootstrap.");
+TAG_FLAG(skip_wal_rewrite, experimental);
+TAG_FLAG(skip_wal_rewrite, runtime);
 
 DEFINE_test_flag(double, fault_crash_during_log_replay, 0.0,
                  "Fraction of the time when the tablet will crash immediately "
@@ -79,6 +85,8 @@ using log::LogEntryPB;
 using log::LogOptions;
 using log::LogReader;
 using log::ReadableLogSegment;
+using log::LogEntryMetadata;
+using log::LogIndex;
 using consensus::ChangeConfigRecordPB;
 using consensus::RaftConfigPB;
 using consensus::ConsensusBootstrapInfo;
@@ -292,7 +300,8 @@ TabletBootstrap::TabletBootstrap(const BootstrapTabletData& data)
       listener_(data.listener),
       log_anchor_registry_(data.log_anchor_registry),
       tablet_options_(data.tablet_options),
-      append_pool_(data.append_pool) {
+      append_pool_(data.append_pool),
+      skip_wal_rewrite_(FLAGS_skip_wal_rewrite) {
 }
 
 TabletBootstrap::~TabletBootstrap() {}
@@ -329,9 +338,9 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
   bool has_blocks = VERIFY_RESULT(OpenTablet());
 
   bool needs_recovery;
-  RETURN_NOT_OK(PrepareRecoveryDir(&needs_recovery));
+  RETURN_NOT_OK(PrepareToReplay(&needs_recovery));
   if (needs_recovery) {
-    RETURN_NOT_OK(OpenLogReaderInRecoveryDir());
+    RETURN_NOT_OK(OpenLogReader());
   }
 
   // This is a new tablet, nothing left to do.
@@ -410,34 +419,33 @@ Result<bool> TabletBootstrap::OpenTablet() {
   return has_ss_tables.get();
 }
 
-Status TabletBootstrap::PrepareRecoveryDir(bool* needs_recovery) {
+Status TabletBootstrap::PrepareToReplay(bool* needs_recovery) {
   *needs_recovery = false;
 
-  FsManager* fs_manager = tablet_->metadata()->fs_manager();
   const string& log_dir = tablet_->metadata()->wal_dir();
 
   // If the recovery directory exists, then we crashed mid-recovery.  Throw away any logs from the
   // previous recovery attempt and restart the log replay process from the beginning using the same
   // recovery dir as last time.
-  const string recovery_path = fs_manager->GetTabletWalRecoveryDir(log_dir);
-  if (fs_manager->Exists(recovery_path)) {
+  const string recovery_path = FsManager::GetTabletWalRecoveryDir(log_dir);
+  if (GetEnv()->FileExists(recovery_path)) {
     LOG_WITH_PREFIX(INFO) << "Previous recovery directory found at " << recovery_path << ": "
                           << "Replaying log files from this location instead of " << log_dir;
 
     // Since we have a recovery directory, clear out the log_dir by recursively deleting it and
     // creating a new one so that we don't end up with remnants of old WAL segments or indexes after
     // replay.
-    if (fs_manager->env()->FileExists(log_dir)) {
+    if (GetEnv()->FileExists(log_dir)) {
       LOG_WITH_PREFIX(INFO) << "Deleting old log files from previous recovery attempt in "
                             << log_dir;
-      RETURN_NOT_OK_PREPEND(fs_manager->env()->DeleteRecursively(log_dir),
+      RETURN_NOT_OK_PREPEND(GetEnv()->DeleteRecursively(log_dir),
                             "Could not recursively delete old log dir " + log_dir);
     }
 
-    RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(DirName(log_dir)),
+    RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(GetEnv(), DirName(log_dir)),
                           "Failed to create table log directory " + DirName(log_dir));
 
-    RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(log_dir),
+    RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(GetEnv(), log_dir),
                           "Failed to create tablet log directory " + log_dir);
 
     *needs_recovery = true;
@@ -447,66 +455,79 @@ Status TabletBootstrap::PrepareRecoveryDir(bool* needs_recovery) {
   // If we made it here, there was no pre-existing recovery dir.  Now we look for log files in
   // log_dir, and if we find any then we rename the whole log_dir to a recovery dir and return
   // needs_recovery = true.
-  RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(DirName(log_dir)),
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(GetEnv(), DirName(log_dir)),
                         "Failed to create table log directory " + DirName(log_dir));
 
-  RETURN_NOT_OK_PREPEND(fs_manager->CreateDirIfMissing(log_dir),
+  RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(GetEnv(), log_dir),
                         "Failed to create tablet log directory " + log_dir);
 
   vector<string> children;
-  RETURN_NOT_OK_PREPEND(fs_manager->ListDir(log_dir, &children),
+  RETURN_NOT_OK_PREPEND(GetEnv()->GetChildren(log_dir, &children),
                         "Couldn't list log segments.");
   for (const string& child : children) {
     if (!log::IsLogFileName(child)) {
       continue;
     }
 
+    *needs_recovery = true;
     string source_path = JoinPathSegments(log_dir, child);
+    if (skip_wal_rewrite_) {
+      LOG_WITH_PREFIX(INFO) << "Will attempt to recover log segment " << source_path;
+      continue;
+    }
+
     string dest_path = JoinPathSegments(recovery_path, child);
     LOG_WITH_PREFIX(INFO) << "Will attempt to recover log segment " << source_path
                           << " to " << dest_path;
-    *needs_recovery = true;
   }
 
-  if (*needs_recovery) {
+  if (!skip_wal_rewrite_ && *needs_recovery) {
     // Atomically rename the log directory to the recovery directory and then re-create the log
     // directory.
     LOG_WITH_PREFIX(INFO) << "Moving log directory " << log_dir << " to recovery directory "
                           << recovery_path << " in preparation for log replay";
-    RETURN_NOT_OK_PREPEND(fs_manager->env()->RenameFile(log_dir, recovery_path),
+    RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(log_dir, recovery_path),
                           Substitute("Could not move log directory $0 to recovery dir $1",
                                      log_dir, recovery_path));
-    RETURN_NOT_OK_PREPEND(fs_manager->env()->CreateDir(log_dir),
+    RETURN_NOT_OK_PREPEND(GetEnv()->CreateDir(log_dir),
                           "Failed to recreate log directory " + log_dir);
   }
   return Status::OK();
 }
 
-Status TabletBootstrap::OpenLogReaderInRecoveryDir() {
-  VLOG_WITH_PREFIX(1) << "Opening log reader in log recovery dir "
-      << meta_->fs_manager()->GetTabletWalRecoveryDir(tablet_->metadata()->wal_dir());
+Status TabletBootstrap::OpenLogReader() {
+  auto wal_dir = tablet_->metadata()->wal_dir();
+  auto wal_path = skip_wal_rewrite_ ? wal_dir :
+      meta_->fs_manager()->GetTabletWalRecoveryDir(wal_dir);
+  VLOG_WITH_PREFIX(1) << "Opening log reader in log recovery dir " << wal_path;
   // Open the reader.
-  RETURN_NOT_OK_PREPEND(LogReader::OpenFromRecoveryDir(tablet_->metadata()->fs_manager(),
-                                                       tablet_->metadata()->tablet_id(),
-                                                       tablet_->metadata()->wal_dir(),
-                                                       tablet_->GetMetricEntity().get(),
-                                                       &log_reader_),
-                        "Could not open LogReader. Reason");
+  scoped_refptr<LogIndex> index(nullptr);
+  RETURN_NOT_OK_PREPEND(LogReader::Open(GetEnv(),
+                                        index,
+                                        tablet_->metadata()->tablet_id(),
+                                        wal_path,
+                                        tablet_->metadata()->fs_manager()->uuid(),
+                                        tablet_->GetMetricEntity().get(),
+                                        &log_reader_), "Could not open LogReader. Reason");
   return Status::OK();
 }
 
 Status TabletBootstrap::RemoveRecoveryDir() {
-  FsManager* fs_manager = tablet_->metadata()->fs_manager();
-  const string recovery_path = fs_manager->GetTabletWalRecoveryDir(tablet_->metadata()->wal_dir());
-  CHECK(fs_manager->Exists(recovery_path))
-      << "Tablet WAL recovery dir " << recovery_path << " does not exist.";
+  const string recovery_path = FsManager::GetTabletWalRecoveryDir(tablet_->metadata()->wal_dir());
+  if (!GetEnv()->FileExists(recovery_path)) {
+    VLOG(1) << "Tablet WAL recovery dir " << recovery_path << " does not exist.";
+    if (!skip_wal_rewrite_) {
+      return STATUS(IllegalState, "Expected recovery dir, none found.");
+    }
+    return Status::OK();
+  }
 
   LOG_WITH_PREFIX(INFO) << "Preparing to delete log recovery files and directory " << recovery_path;
 
   string tmp_path = Substitute("$0-$1", recovery_path, GetCurrentTimeMicros());
   LOG_WITH_PREFIX(INFO) << "Renaming log recovery dir from "  << recovery_path
                         << " to " << tmp_path;
-  RETURN_NOT_OK_PREPEND(fs_manager->env()->RenameFile(recovery_path, tmp_path),
+  RETURN_NOT_OK_PREPEND(GetEnv()->RenameFile(recovery_path, tmp_path),
                         Substitute("Could not rename old recovery dir from: $0 to: $1",
                                    recovery_path, tmp_path));
 
@@ -515,7 +536,7 @@ Status TabletBootstrap::RemoveRecoveryDir() {
     return Status::OK();
   }
   LOG_WITH_PREFIX(INFO) << "Deleting all files from renamed log recovery directory " << tmp_path;
-  RETURN_NOT_OK_PREPEND(fs_manager->env()->DeleteRecursively(tmp_path),
+  RETURN_NOT_OK_PREPEND(GetEnv()->DeleteRecursively(tmp_path),
                         "Could not remove renamed recovery dir " + tmp_path);
   LOG_WITH_PREFIX(INFO) << "Completed deletion of old log recovery files and directory "
                         << tmp_path;
@@ -523,13 +544,12 @@ Status TabletBootstrap::RemoveRecoveryDir() {
 }
 
 Status TabletBootstrap::OpenNewLog() {
-  OpId init;
-  init.set_term(0);
-  init.set_index(0);
-  RETURN_NOT_OK(Log::Open(LogOptions(),
-                          tablet_->metadata()->fs_manager(),
+  auto log_options = LogOptions();
+  log_options.env = GetEnv();
+  RETURN_NOT_OK(Log::Open(log_options,
                           tablet_->tablet_id(),
                           tablet_->metadata()->wal_dir(),
+                          tablet_->metadata()->fs_manager()->uuid(),
                           *tablet_->schema(),
                           tablet_->metadata()->schema_version(),
                           tablet_->GetMetricEntity(),
@@ -543,8 +563,7 @@ Status TabletBootstrap::OpenNewLog() {
 // Handle the given log entry. If OK is returned, then takes ownership of 'entry'.  Otherwise,
 // caller frees.
 Status TabletBootstrap::HandleEntry(
-    RestartSafeCoarseTimePoint entry_time, ReplayState* state,
-    std::unique_ptr<LogEntryPB>* entry_ptr) {
+    LogEntryMetadata entry_metadata, ReplayState* state, std::unique_ptr<LogEntryPB>* entry_ptr) {
   auto& entry = **entry_ptr;
   if (VLOG_IS_ON(1)) {
     VLOG_WITH_PREFIX(1) << "Handling entry: " << entry.ShortDebugString();
@@ -552,7 +571,7 @@ Status TabletBootstrap::HandleEntry(
 
   switch (entry.type()) {
     case log::REPLICATE:
-      RETURN_NOT_OK(HandleReplicateMessage(entry_time, state, entry_ptr));
+      RETURN_NOT_OK(HandleReplicateMessage(entry_metadata, state, entry_ptr));
       break;
     default:
       return STATUS(Corruption, Substitute("Unexpected log entry type: $0", entry.type()));
@@ -563,7 +582,7 @@ Status TabletBootstrap::HandleEntry(
 
 // Takes ownership of 'replicate_entry' on OK status.
 Status TabletBootstrap::HandleReplicateMessage(
-    RestartSafeCoarseTimePoint entry_time, ReplayState* state,
+    LogEntryMetadata entry_metadata, ReplayState* state,
     std::unique_ptr<LogEntryPB>* replicate_entry_ptr) {
   auto& replicate_entry = **replicate_entry_ptr;
   stats_.ops_read++;
@@ -600,8 +619,9 @@ Status TabletBootstrap::HandleReplicateMessage(
     state->UpdateCommittedOpId(replicate.id());
   }
 
-  // Append the replicate message to the log as is
-  RETURN_NOT_OK(log_->Append(replicate_entry_ptr->get(), entry_time));
+  // Append the replicate message to the log as is if we are not skipping wal rewrite. If we are
+  // skipping, set consensus_state_only to true.
+  RETURN_NOT_OK(log_->Append(replicate_entry_ptr->get(), entry_metadata, skip_wal_rewrite_));
 
   auto min_index = std::min(
       state->regular_stored_op_id.index(), state->intents_stored_op_id.index());
@@ -629,9 +649,9 @@ Status TabletBootstrap::HandleReplicateMessage(
     state->pending_replicates.erase(iter, state->pending_replicates.end());
   }
 
-  DCHECK(entry_time != RestartSafeCoarseTimePoint());
+  DCHECK(entry_metadata.entry_time != RestartSafeCoarseTimePoint());
   CHECK(state->pending_replicates.emplace(
-      op_id.index(), Entry{std::move(*replicate_entry_ptr), entry_time}).second);
+      op_id.index(), Entry{std::move(*replicate_entry_ptr), entry_metadata.entry_time}).second);
 
   CHECK(replicate.has_committed_op_id())
       << "Replicate message has no committed_op_id for table type "
@@ -780,8 +800,9 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   log::SegmentSequence segments;
   RETURN_NOT_OK(log_reader_->GetSegmentsSnapshot(&segments));
 
-  // We defer opening the log until here, so that we properly reproduce the point-in-time schema
-  // from the log we're reading into the log we're writing.
+  // Open a new log. If skip_wal_rewrite is false, append each replayed entry to this new log.
+  // Otherwise, defer appending to this log until bootstrap is finished to preserve the state of
+  // old log.
   RETURN_NOT_OK_PREPEND(OpenNewLog(), "Failed to open new log");
 
   int segment_count = 0;
@@ -792,7 +813,7 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
     last_committed_op_id = std::max(last_committed_op_id, read_result.committed_op_id);
     for (int entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {
       Status s = HandleEntry(
-          read_result.entry_times[entry_idx], &state, &read_result.entries[entry_idx]);
+          read_result.entry_metadata[entry_idx], &state, &read_result.entries[entry_idx]);
       if (!s.ok()) {
         LOG(INFO) << "Dumping replay state to log";
         DumpReplayStateToLog(state);
@@ -802,8 +823,8 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
                                            *read_result.entries[entry_idx]));
       }
     }
-    if (!read_result.entry_times.empty()) {
-      last_entry_time = read_result.entry_times.back();
+    if (!read_result.entry_metadata.empty()) {
+      last_entry_time = read_result.entry_metadata.back().entry_time;
     }
 
     // If the LogReader failed to read for some reason, we'll still try to replay as many entries as
@@ -1013,6 +1034,13 @@ void TabletBootstrap::UpdateClock(uint64_t hybrid_time) {
 
 string TabletBootstrap::LogPrefix() const {
   return Substitute("T $0 P $1: ", meta_->tablet_id(), meta_->fs_manager()->uuid());
+}
+
+Env* TabletBootstrap::GetEnv() {
+  if (tablet_options_.env) {
+    return tablet_options_.env;
+  }
+  return meta_->fs_manager()->env();
 }
 
 // ============================================================================

@@ -12,6 +12,7 @@
 //
 
 #include "yb/client/client.h"
+#include "yb/client/meta_data_cache.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/yql/cql/ql/util/statement_params.h"

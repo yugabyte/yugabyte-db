@@ -496,9 +496,11 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   virtual void Shutdown();
 
-  const std::string& data_dir() const { return full_data_dir_; }
+  const std::string& GetFullDataDir() const { return full_data_dir_; }
 
   const std::string& exe() const { return exe_; }
+
+  const std::string& GetDataDir() const { return data_dir_; }
 
   // Return a pointer to the flags used for this server on restart.  Modifying these flags will only
   // take effect on the next restart.

@@ -58,7 +58,6 @@
 
 namespace yb {
 
-class FsManager;
 class MetricEntity;
 class ThreadPool;
 
@@ -98,9 +97,9 @@ class Log : public RefCountedThreadSafe<Log> {
   // Opens or continues a log and sets 'log' to the newly built Log.
   // After a successful Open() the Log is ready to receive entries.
   static CHECKED_STATUS Open(const LogOptions &options,
-                             FsManager *fs_manager,
                              const std::string& tablet_id,
                              const std::string& tablet_wal_path,
+                             const std::string& peer_uuid,
                              const Schema& schema,
                              uint32_t schema_version,
                              const scoped_refptr<MetricEntity>& metric_entity,
@@ -127,9 +126,12 @@ class Log : public RefCountedThreadSafe<Log> {
                              const StatusCallback& callback);
 
   // Synchronously append a new entry to the log.  Log does not take ownership of the passed
-  // 'entry'.
+  // 'entry'. If skip_wal_write is true, only update consensus metadata and LogIndex, skip write
+  // to wal.
   // TODO get rid of this method, transition to the asynchronous API.
-  CHECKED_STATUS Append(LogEntryPB* entry, RestartSafeCoarseTimePoint batch_mono_time);
+  CHECKED_STATUS Append(LogEntryPB* entry,
+                        LogEntryMetadata entry_metadata,
+                        bool skip_wal_write = false);
 
   // Append the given set of replicate messages, asynchronously.  This requires that the replicates
   // have already been assigned OpIds.
@@ -153,9 +155,10 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Delete all WAL data from the log associated with this tablet.
   // REQUIRES: The Log must be closed.
-  static CHECKED_STATUS DeleteOnDiskData(FsManager* fs_manager,
+  static CHECKED_STATUS DeleteOnDiskData(Env* env,
                                          const std::string& tablet_id,
-                                         const std::string& tablet_wal_path);
+                                         const std::string& tablet_wal_path,
+                                         const std::string& peer_uuid);
 
   // Returns a reader that is able to read through the previous segments. The reader pointer is
   // guaranteed to be live as long as the log itself is initialized and live.
@@ -208,9 +211,11 @@ class Log : public RefCountedThreadSafe<Log> {
                                      std::map<int64_t, int64_t>* max_idx_to_segment_size) const;
 
   // Returns the file system location of the currently active WAL segment.
-  const std::string& ActiveSegmentPathForTests() const {
-    return active_segment_->path();
+  const WritableLogSegment* ActiveSegmentForTests() const {
+    return active_segment_.get();
   }
+
+
 
   // Forces the Log to allocate a new segment and roll over.  This can be used to make sure all
   // entries appended up to this point are available in closed, readable segments.
@@ -219,9 +224,6 @@ class Log : public RefCountedThreadSafe<Log> {
   // Returns the total size of the current segments, in bytes.
   // Returns 0 if the log is shut down.
   uint64_t OnDiskSize();
-
-  // Returns this Log's FsManager.
-  FsManager* GetFsManager();
 
   void ListenPostAppend(std::function<void()> listener) {
     post_append_listener_ = std::move(listener);
@@ -274,10 +276,14 @@ class Log : public RefCountedThreadSafe<Log> {
     kAllocationFinished // Next segment ready
   };
 
-  Log(LogOptions options, FsManager* fs_manager, std::string log_path,
-      std::string tablet_id, std::string tablet_wal_path, const Schema& schema,
-      uint32_t schema_version, const scoped_refptr<MetricEntity>& metric_entity,
-      ThreadPool* append_thread_pool);
+  Log(LogOptions options, std::string log_path,
+      std::string tablet_id, std::string tablet_wal_path, std::string peer_uuid,
+      const Schema& schema, uint32_t schema_version,
+      const scoped_refptr<MetricEntity>& metric_entity, ThreadPool* append_thread_pool);
+
+  Env* get_env() {
+    return options_.env;
+  }
 
   // Initializes a new one or continues an existing log.
   CHECKED_STATUS Init();
@@ -307,18 +313,20 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Writes serialized contents of 'entry' to the log. Called inside AppenderThread. If
   // 'caller_owns_operation' is true, then the 'operation' field of the entry will be released after
-  // the entry is appended.
+  // the entry is appended. If skip_wal_write is true, only update consensus metadata and LogIndex,
+  // skip WAL write.
   //
   // TODO once Append() is removed, 'caller_owns_operation' and associated logic will no longer be
   // needed.
-  CHECKED_STATUS DoAppend(LogEntryBatch* entry, bool caller_owns_operation = true);
+  CHECKED_STATUS DoAppend(
+      LogEntryBatch* entry, bool caller_owns_operation = true, bool skip_wal_write = false);
 
   // Update footer_builder_ to reflect the log indexes seen in 'batch'.
   void UpdateFooterForBatch(LogEntryBatch* batch);
 
   // Update the LogIndex to include entries for the replicate messages found in 'batch'. The index
   // entry points to the offset 'start_offset' in the current log segment.
-  CHECKED_STATUS UpdateIndexForBatch(const LogEntryBatch& batch, int64_t start_offset);
+  CHECKED_STATUS UpdateIndexForBatch(const LogEntryBatch& batch);
 
   // Replaces the last "empty" segment in 'log_reader_', i.e. the one currently being written to, by
   // the same segment once properly closed.
@@ -335,11 +343,13 @@ class Log : public RefCountedThreadSafe<Log> {
   }
 
   LogOptions options_;
-  FsManager *fs_manager_;
   std::string log_dir_;
 
   // The ID of the tablet this log is dedicated to.
   std::string tablet_id_;
+
+  // Peer this log is dedicated to.
+  std::string peer_uuid_;
 
   // The path where the write-ahead log for this tablet is stored.
   std::string tablet_wal_path_;
@@ -543,6 +553,12 @@ class LogEntryBatch {
 
   // Buffer to which 'phys_entries_' are serialized by call to 'Serialize()'
   faststring buffer_;
+
+  // Offset into the log file for this entry batch.
+  int64_t offset_;
+
+  // Segment sequence number for this entry batch.
+  uint64_t active_segment_sequence_number_;
 
   enum LogEntryState {
     kEntryInitialized,

@@ -86,7 +86,7 @@ class TabletBootstrap {
   // is also returned as true in this case.
   //
   // If no log segments are found, 'needs_recovery' is set to false.
-  CHECKED_STATUS PrepareRecoveryDir(bool* needs_recovery);
+  CHECKED_STATUS PrepareToReplay(bool* needs_recovery);
 
   // Opens the latest log segments for the Tablet that will allow to rebuild the tablet's soft
   // state. If there are existing log segments in the tablet's log directly they are moved to a
@@ -96,7 +96,7 @@ class TabletBootstrap {
   // If a "log-recovery" directory is already present, we will continue to replay from the
   // "log-recovery" directory. Tablet metadata is updated once replay has finished from the
   // "log-recovery" directory.
-  CHECKED_STATUS OpenLogReaderInRecoveryDir();
+  CHECKED_STATUS OpenLogReader();
 
   // Opens a new log in the tablet's log directory.  The directory is expected to be clean.
   CHECKED_STATUS OpenNewLog();
@@ -128,10 +128,10 @@ class TabletBootstrap {
 
   // Handlers for each type of message seen in the log during replay.
   CHECKED_STATUS HandleEntry(
-      RestartSafeCoarseTimePoint entry_time, ReplayState* state,
+      yb::log::LogEntryMetadata entry_metadata, ReplayState* state,
       std::unique_ptr<log::LogEntryPB>* entry);
   CHECKED_STATUS HandleReplicateMessage(
-      RestartSafeCoarseTimePoint entry_time, ReplayState* state,
+      yb::log::LogEntryMetadata entry_metadata, ReplayState* state,
       std::unique_ptr<log::LogEntryPB>* replicate_entry);
   CHECKED_STATUS HandleEntryPair(
       ReplayState* state, log::LogEntryPB* replicate_entry, RestartSafeCoarseTimePoint entry_time);
@@ -147,6 +147,8 @@ class TabletBootstrap {
 
   // Return a log prefix string in the standard "T xxx P yyy" format.
   std::string LogPrefix() const;
+
+  Env* GetEnv();
 
   BootstrapTabletData data_;
   scoped_refptr<TabletMetadata> meta_;
@@ -189,6 +191,8 @@ class TabletBootstrap {
   } stats_;
 
   HybridTime rocksdb_last_entry_hybrid_time_ = HybridTime::kMin;
+
+  bool skip_wal_rewrite_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(TabletBootstrap);

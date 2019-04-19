@@ -20,6 +20,8 @@
 
 #include "yb/client/callbacks.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/table.h"
+
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
@@ -58,7 +60,6 @@ using client::YBSession;
 using client::YBStatusMemberCallback;
 using client::YBTable;
 using client::YBTableCreator;
-using client::YBTableType;
 using strings::Split;
 
 class FlushUnderLoadTest : public YBTableTestBase {

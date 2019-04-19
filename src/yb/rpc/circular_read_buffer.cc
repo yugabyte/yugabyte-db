@@ -51,7 +51,8 @@ Result<IoVecs> CircularReadBuffer::PrepareAppend() {
   }
 
   if (result.empty()) {
-    return STATUS_FORMAT(Busy, "Circular read buffer is full: $0", capacity_);
+    static Status busy_status = STATUS(Busy, "Circular read buffer is full");
+    return busy_status;
   }
 
   return result;

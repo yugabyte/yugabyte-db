@@ -877,6 +877,9 @@ bool EitherIsNull(const QLValuePB& lhs, const QLValuePB& rhs) {
 bool BothNotNull(const QLValuePB& lhs, const QLValuePB& rhs) {
   return !IsNull(lhs) && !IsNull(rhs);
 }
+bool BothNull(const QLValuePB& lhs, const QLValuePB& rhs) {
+  return IsNull(lhs) && IsNull(rhs);
+}
 bool Comparable(const QLValuePB& lhs, const QLValuePB& rhs) {
   return lhs.value_case() == rhs.value_case() || EitherIsNull(lhs, rhs);
 }
@@ -888,6 +891,9 @@ bool Comparable(const QLValuePB& lhs, const QLValue& rhs) {
 }
 bool BothNotNull(const QLValuePB& lhs, const QLValue& rhs) {
   return !IsNull(lhs) && !rhs.IsNull();
+}
+bool BothNull(const QLValuePB& lhs, const QLValue& rhs) {
+  return IsNull(lhs) && rhs.IsNull();
 }
 int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
   CHECK(Comparable(lhs, rhs));
@@ -1042,49 +1048,48 @@ int Compare(const bool lhs, const bool rhs) {
   }
 }
 
+// In YCQL null is not comparable with regular values (w.r.t. ordering).
 bool operator <(const QLValuePB& lhs, const QLValuePB& rhs) {
   return BothNotNull(lhs, rhs) && Compare(lhs, rhs) < 0;
 }
 bool operator >(const QLValuePB& lhs, const QLValuePB& rhs) {
   return BothNotNull(lhs, rhs) && Compare(lhs, rhs) > 0;
 }
+
+// In YCQL equality holds for null values.
 bool operator <=(const QLValuePB& lhs, const QLValuePB& rhs) {
-  return BothNotNull(lhs, rhs) && Compare(lhs, rhs) <= 0;
+  return (BothNotNull(lhs, rhs) && Compare(lhs, rhs) <= 0) || BothNull(lhs, rhs);
 }
 bool operator >=(const QLValuePB& lhs, const QLValuePB& rhs) {
-  return BothNotNull(lhs, rhs) && Compare(lhs, rhs) >= 0;
+  return (BothNotNull(lhs, rhs) && Compare(lhs, rhs) >= 0) || BothNull(lhs, rhs);
 }
 bool operator ==(const QLValuePB& lhs, const QLValuePB& rhs) {
-  // Equality holds for null values
-  if (IsNull(lhs) && IsNull(rhs)) {
-    return true;
-  }
-  return BothNotNull(lhs, rhs) && Compare(lhs, rhs) == 0;
+  return (BothNotNull(lhs, rhs) && Compare(lhs, rhs) == 0) || BothNull(lhs, rhs);
 }
 bool operator !=(const QLValuePB& lhs, const QLValuePB& rhs) {
-  return BothNotNull(lhs, rhs) && Compare(lhs, rhs) != 0;
+  return !(lhs == rhs);
 }
+
+// In YCQL null is not comparable with regular values (w.r.t. ordering).
 bool operator <(const QLValuePB& lhs, const QLValue& rhs) {
   return BothNotNull(lhs, rhs) && Compare(lhs, rhs) < 0;
 }
 bool operator >(const QLValuePB& lhs, const QLValue& rhs) {
   return BothNotNull(lhs, rhs) && Compare(lhs, rhs) > 0;
 }
+
+// In YCQL equality holds for null values.
 bool operator <=(const QLValuePB& lhs, const QLValue& rhs) {
-  return BothNotNull(lhs, rhs) && Compare(lhs, rhs) <= 0;
+  return (BothNotNull(lhs, rhs) && Compare(lhs, rhs) <= 0) || BothNull(lhs, rhs);
 }
 bool operator >=(const QLValuePB& lhs, const QLValue& rhs) {
-  return BothNotNull(lhs, rhs) && Compare(lhs, rhs) >= 0;
+  return (BothNotNull(lhs, rhs) && Compare(lhs, rhs) >= 0) || BothNull(lhs, rhs);
 }
 bool operator ==(const QLValuePB& lhs, const QLValue& rhs) {
-  // Equality holds for null values
-  if (IsNull(lhs) && rhs.IsNull()) {
-    return true;
-  }
-  return BothNotNull(lhs, rhs) && Compare(lhs, rhs) == 0;
+  return (BothNotNull(lhs, rhs) && Compare(lhs, rhs) == 0) || BothNull(lhs, rhs);
 }
 bool operator !=(const QLValuePB& lhs, const QLValue& rhs) {
-  return BothNotNull(lhs, rhs) && Compare(lhs, rhs) != 0;
+  return !(lhs == rhs);
 }
 
 } // namespace yb

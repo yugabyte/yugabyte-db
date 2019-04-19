@@ -300,13 +300,15 @@ TEST_F(QLTestAnalyzer, TestCreateIndex) {
   ANALYZE_VALID_STMT("CREATE INDEX i ON t (r2, r1, h1, h2) INCLUDE (c1) WITH CLUSTERING ORDER BY "
                      "(r1 DESC, h1 DESC, h2 ASC);", &parse_tree);
 
+  // Duplicate covering columns - should succeed
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t ((r1), r2) INCLUDE (r1);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t ((r1), r2) INCLUDE (r2);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t (r1, r2, c1) INCLUDE (c1);", &parse_tree);
+  ANALYZE_VALID_STMT("CREATE INDEX i ON t (r1, r2) INCLUDE (c1, c1);", &parse_tree);
+
   // Duplicate primary key columns.
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r1);", &parse_tree);
-  // Duplicate covering columns.
-  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((r1), r2) INCLUDE (r1);", &parse_tree);
-  ANALYZE_INVALID_STMT("CREATE INDEX i ON t ((r1), r2) INCLUDE (r2);", &parse_tree);
-  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r2, c1) INCLUDE (c1);", &parse_tree);
-  ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r1, r2) INCLUDE (c1, c1);", &parse_tree);
+
   // Non-clustering key column in order by.
   ANALYZE_INVALID_STMT("CREATE INDEX i ON t (r2, r1) INCLUDE (c1) WITH CLUSTERING ORDER BY "
                        "(r2 DESC, r1 ASC);", &parse_tree);

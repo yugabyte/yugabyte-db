@@ -138,6 +138,69 @@ struct EnvOptions {
   RateLimiter* rate_limiter = nullptr;
 };
 
+// RocksDBFileFactory is the implementation of all NewxxxFile Env methods as well as any methods
+// that are used to create new files. This class is created to allow easy definition of how we
+// create new files without inheriting the whole env.
+class RocksDBFileFactory {
+ public:
+  virtual ~RocksDBFileFactory() {}
+  virtual CHECKED_STATUS NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
+                                           const EnvOptions& options) = 0;
+  virtual CHECKED_STATUS NewRandomAccessFile(const std::string& f,
+                                             unique_ptr<RandomAccessFile>* r,
+                                             const EnvOptions& options) = 0;
+  virtual CHECKED_STATUS NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+                                         const EnvOptions& options) = 0;
+  virtual CHECKED_STATUS ReuseWritableFile(const std::string& fname,
+                                   const std::string& old_fname,
+                                   unique_ptr<WritableFile>* result,
+                                   const EnvOptions& options) = 0;
+  virtual CHECKED_STATUS GetFileSize(const std::string& fname, uint64_t* size) = 0;
+
+  // Does the file factory produce plaintext files.
+  virtual bool IsPlainText() const = 0;
+};
+
+class RocksDBFileFactoryWrapper : public rocksdb::RocksDBFileFactory {
+ public:
+  explicit RocksDBFileFactoryWrapper(rocksdb::RocksDBFileFactory* t) : target_(t) {}
+
+  virtual ~RocksDBFileFactoryWrapper() {}
+
+  // The following text is boilerplate that forwards all methods to target()
+  Status NewSequentialFile(const std::string& f, unique_ptr <rocksdb::SequentialFile>* r,
+                           const rocksdb::EnvOptions& options) override {
+    return target_->NewSequentialFile(f, r, options);
+  }
+  Status NewRandomAccessFile(const std::string& f,
+                             unique_ptr <rocksdb::RandomAccessFile>* r,
+                             const EnvOptions& options) override {
+    return target_->NewRandomAccessFile(f, r, options);
+  }
+  Status NewWritableFile(const std::string& f, unique_ptr <rocksdb::WritableFile>* r,
+                         const EnvOptions& options) override {
+    return target_->NewWritableFile(f, r, options);
+  }
+
+  Status ReuseWritableFile(const std::string& fname,
+                           const std::string& old_fname,
+                           unique_ptr<WritableFile>* result,
+                           const EnvOptions& options) override {
+    return target_->ReuseWritableFile(fname, old_fname, result, options);
+  }
+
+  Status GetFileSize(const std::string& fname, uint64_t* size) override {
+    return target_->GetFileSize(fname, size);
+  }
+
+  bool IsPlainText() const override {
+    return target_->IsPlainText();
+  }
+
+ private:
+  rocksdb::RocksDBFileFactory* target_;
+};
+
 class Env {
  public:
   struct FileAttributes {
@@ -158,6 +221,11 @@ class Env {
   //
   // The result of Default() belongs to rocksdb and must never be deleted.
   static Env* Default();
+
+  static RocksDBFileFactory* DefaultFileFactory();
+
+  static std::unique_ptr<Env> NewRocksDBDefaultEnv(
+      std::unique_ptr<RocksDBFileFactory> file_factory);
 
   // Create a brand new sequentially-readable file with the specified name.
   // On success, stores a pointer to the new file in *result and returns OK.
@@ -398,6 +466,10 @@ class Env {
   // GetThreadList().
   virtual ThreadStatusUpdater* GetThreadStatusUpdater() const {
     return thread_status_updater_;
+  }
+
+  virtual bool IsPlainText() const {
+    return true;
   }
 
   // Returns the ID of the current thread.
@@ -993,8 +1065,55 @@ class EnvWrapper : public Env {
     return target_->GetThreadID();
   }
 
+  bool IsPlainText() const override {
+    return target_->IsPlainText();
+  }
+
  private:
   Env* target_;
+};
+
+class RandomAccessFileWrapper : public RandomAccessFile {
+ public:
+  explicit RandomAccessFileWrapper(std::unique_ptr<RandomAccessFile> t) : target_(std::move(t)) { }
+
+  Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const override {
+    return target_->Read(offset, n , result, scratch);
+  }
+
+  bool ShouldForwardRawRequest() const override {
+    return target_->ShouldForwardRawRequest();
+  }
+
+  void EnableReadAhead() override { return target_->EnableReadAhead(); }
+
+  size_t GetUniqueId(char* id, size_t max_size) const override {
+    return target_->GetUniqueId(id, max_size);
+  }
+
+  void Hint(AccessPattern pattern) override { return target_->Hint(pattern); }
+
+  Status InvalidateCache(size_t offset, size_t length) override {
+    return target_->InvalidateCache(offset, length);
+  }
+
+ private:
+  std::unique_ptr<RandomAccessFile> target_;
+
+};
+
+class SequentialFileWrapper : public SequentialFile {
+ public:
+  explicit SequentialFileWrapper(std::unique_ptr<SequentialFile> t) : target_(std::move(t)) { }
+
+  Status Read(size_t n, Slice* result, char* scratch) override {
+    return target_->Read(n, result, scratch); }
+  Status Skip(uint64_t n) override { return target_->Skip(n); }
+  Status InvalidateCache(size_t offset, size_t length) override {
+    return target_->InvalidateCache(offset, length);
+  }
+ private:
+  std::unique_ptr<SequentialFile> target_;
 };
 
 // An implementation of WritableFile that forwards all calls to another
@@ -1004,7 +1123,7 @@ class EnvWrapper : public Env {
 // protected virtual methods.
 class WritableFileWrapper : public WritableFile {
  public:
-  explicit WritableFileWrapper(WritableFile* t) : target_(t) { }
+  explicit WritableFileWrapper(std::unique_ptr<WritableFile> t) : target_(std::move(t)) { }
 
   Status Append(const Slice& data) override { return target_->Append(data); }
   Status PositionedAppend(const Slice& data, uint64_t offset) override {
@@ -1041,7 +1160,7 @@ class WritableFileWrapper : public WritableFile {
   }
 
  private:
-  WritableFile* target_;
+  std::unique_ptr<WritableFile> target_;
 };
 
 // Returns a new environment that stores its data in memory and delegates

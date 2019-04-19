@@ -68,6 +68,10 @@ class DummyDB : public StackableDB {
     return options_.env;
   }
 
+  Env* GetCheckpointEnv() const override {
+    return options_.checkpoint_env;
+  }
+
   using DB::GetOptions;
   virtual const Options& GetOptions(ColumnFamilyHandle* column_family) const
       override {

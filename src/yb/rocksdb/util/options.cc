@@ -239,6 +239,7 @@ DBOptions::DBOptions()
       error_if_exists(false),
       paranoid_checks(true),
       env(Env::Default()),
+      checkpoint_env(nullptr),
       rate_limiter(nullptr),
       sst_file_manager(nullptr),
       info_log(nullptr),

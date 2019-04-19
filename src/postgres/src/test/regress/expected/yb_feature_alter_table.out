@@ -228,12 +228,18 @@ alter table atacc1 add constraint checkb check (b < 0); -- should fail
 ERROR:  check constraint "checkb" is violated by some row
 alter table atacc1 add constraint checkb check (b > 0);
 alter table atacc1 add constraint checkb2 check (b > 10);
+alter table atacc1 add constraint checkb3 check (b > 10);
 insert into atacc1 values (5, 5, 5); -- should fail
 ERROR:  new row for relation "atacc1" violates check constraint "checkb2"
 DETAIL:  Failing row contains (5, 5, 5).
 alter table atacc1 drop constraint checkb2;
 insert into atacc1 values (5, 5, 5);
+ERROR:  new row for relation "atacc1" violates check constraint "checkb3"
+DETAIL:  Failing row contains (5, 5, 5).
 alter table atacc1 drop constraint checkb;
+alter table atacc1 drop constraint if exists checkb2;
+NOTICE:  constraint "checkb2" of relation "atacc1" does not exist, skipping
+alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
 -- test rename
 alter table atacc1 rename b to e;

@@ -351,7 +351,7 @@ if [[ $iteration -gt 0 ]]; then
     fi
     comment+="; test log path: $test_log_path"
   else
-    rm -f "$raw_test_log_path"
+    rm -f "$test_log_path"
     if "$is_java_test"; then
       set +e
       rm -rf "$YB_SUREFIRE_REPORTS_DIR"
