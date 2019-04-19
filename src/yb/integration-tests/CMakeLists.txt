@@ -59,7 +59,8 @@ target_link_libraries(integration-tests
   yb-redisserver-test
   yb_test_util
   yb-redis
-  yb_pgwrapper)
+  yb_pgwrapper
+  ${INTEGRATION_TESTS_LIB_EXTENSIONS})
 
 add_dependencies(integration-tests
   yb-tserver
@@ -68,6 +69,7 @@ add_dependencies(integration-tests
 # Tests
 set(YB_TEST_LINK_LIBS
     integration-tests yb_client yb_tools_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
+
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
 ADD_YB_TEST(registration-test)
