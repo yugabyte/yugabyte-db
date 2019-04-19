@@ -85,8 +85,8 @@ class LogCache {
   // Requires that the cache is empty.
   void Init(const OpId& preceding_op);
 
-  // Read operations from the log, following 'after_op_index'.  If such an op exists in the log, an
-  // OK result will always include at least one operation.
+  // Read operations from the log, following 'after_op_index'.
+  // If such an op exists in the log, an OK result will always include at least one operation.
   //
   // The result will be limited such that the total ByteSize() of the returned ops is less than
   // max_size_bytes, unless that would result in an empty result, in which case exactly one op is
@@ -99,10 +99,21 @@ class LogCache {
   // from disk. Therefore, this function may take a substantial amount of time and should not be
   // called with important locks held, etc.
   CHECKED_STATUS ReadOps(int64_t after_op_index,
-                 int max_size_bytes,
-                 ReplicateMsgs* messages,
-                 OpId* preceding_op,
-                 bool* have_more_messages = nullptr);
+                         int max_size_bytes,
+                         ReplicateMsgs* messages,
+                         OpId* preceding_op,
+                         bool* have_more_messages = nullptr);
+
+  // Same as above but also includes a 'to_op_index' parameter which will be used to limit results
+  // until 'to_op_index' (inclusive).
+  //
+  // If 'to_op_index' is 0, then all operations after 'after_op_index' will be included.
+  CHECKED_STATUS ReadOps(int64_t after_op_index,
+                         int64_t to_op_index,
+                         int max_size_bytes,
+                         ReplicateMsgs* messages,
+                         OpId* preceding_op,
+                         bool* have_more_messages = nullptr);
 
   // Append the operations into the log and the cache.  When the messages have completed writing
   // into the on-disk log, fires 'callback'.

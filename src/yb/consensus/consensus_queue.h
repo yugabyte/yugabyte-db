@@ -312,6 +312,9 @@ class PeerMessageQueue {
     return local_peer_pb_.cloud_info();
   }
 
+  // Read replicated log records starting from the OpId immediately after last_op_id.
+  CHECKED_STATUS ReadReplicatedMessages(const OpId& last_op_id, ReplicateMsgs *msgs);
+
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
 
@@ -433,6 +436,14 @@ class PeerMessageQueue {
   CoarseTimePoint LeaderLeaseExpirationWatermark();
   MicrosTime HybridTimeLeaseExpirationWatermark();
   OpId OpIdWatermark();
+
+  CHECKED_STATUS ReadFromLogCache(int64_t from_index,
+                                  int64_t to_index,
+                                  int max_batch_size,
+                                  const std::string& peer_uuid,
+                                  ReplicateMsgs* messages,
+                                  OpId* preceding_id,
+                                  bool* have_more_messages);
 
   std::vector<PeerMessageQueueObserver*> observers_;
 

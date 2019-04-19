@@ -98,7 +98,9 @@ void TransactionTestBase::SetUp() {
   FLAGS_load_balancer_max_concurrent_adds = 100;
   ASSERT_NO_FATALS(KeyValueTableTest::SetUp());
 
-  CreateTable(Transactional::kTrue);
+  if (create_table_) {
+    CreateTable(Transactional::kTrue);
+  }
 
   FLAGS_log_segment_size_bytes = log_segment_size_bytes();
   FLAGS_log_min_seconds_to_retain = 5;

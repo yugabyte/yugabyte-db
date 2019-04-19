@@ -30,6 +30,8 @@
 # under the License.
 #
 
+YB_INCLUDE_EXTENSIONS()
+
 #########################################
 # cdc_service_proto
 #########################################
@@ -50,4 +52,3 @@ ADD_YB_LIBRARY(cdc_service_proto
   SRCS ${CDC_YRPC_SRCS}
   DEPS ${CDC_YRPC_LIBS}
   NONLINK_DEPS ${CDC_YRPC_TGTS})
-
