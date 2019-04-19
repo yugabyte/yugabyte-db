@@ -45,11 +45,18 @@
 #include "yb/util/status.h"
 #include "yb/util/version_info.h"
 
+#if defined(__linux__)
+#include <sys/prctl.h>
+#endif
+
 using std::string;
 
 DEFINE_string(fs_data_dirs, "",
               "Comma-separated list of data directories. This argument must be specified.");
 TAG_FLAG(fs_data_dirs, stable);
+DEFINE_bool(stop_on_parent_termination, false,
+            "When specified, this process will terminate when parent process terminates."
+            "Linux-only.");
 
 namespace yb {
 
@@ -103,6 +110,11 @@ Status SetupLogDir(const std::string& server_type) {
 }
 
 Status InitYB(const std::string &server_type, const char* argv0) {
+#if defined(__linux__)
+  if (FLAGS_stop_on_parent_termination) {
+    prctl(PR_SET_PDEATHSIG, SIGTERM);
+  }
+#endif
   RETURN_NOT_OK(CheckCPUFlags());
   RETURN_NOT_OK(SetupLogDir(server_type));
   RETURN_NOT_OK(VersionInfo::Init());
