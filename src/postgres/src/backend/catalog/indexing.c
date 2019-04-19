@@ -333,7 +333,7 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 	if (IsYugaByteEnabled())
 	{
 		HeapTuple	oldtup = NULL;
-		bool		has_indices = HasYBSecondaryIndices(heapRel);
+		bool		has_indices = YBCRelHasSecondaryIndices(heapRel);
 
 		if (has_indices)
 		{
@@ -379,7 +379,7 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 	if (IsYugaByteEnabled())
 	{
 		HeapTuple	oldtup = NULL;
-		bool		has_indices = HasYBSecondaryIndices(heapRel);
+		bool		has_indices = YBCRelHasSecondaryIndices(heapRel);
 
 		if (has_indices)
 		{
