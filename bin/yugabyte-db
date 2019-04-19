@@ -1,0 +1,194 @@
+#!/usr/bin/env python
+
+import argparse
+import atexit
+import logging
+import os
+import sys
+import time
+import subprocess
+from signal import SIGABRT, SIGINT, SIGTERM, SIG_DFL, signal
+
+"""
+Run `yugabyte-db` to start a single-node YugaByte DB process. If no options are specified,
+`yugabyte-db` will assume the following default directory tree:
+
+yugabyte
++-- bin
+|   |   +-- yugabyte-db
+|   |   +-- yb-master
+|   |   +-- yb-tserver
++-- logs
+|   |   +-- master & tserver logfiles
++-- data
+|   |   +-- yb-data
+"""
+
+
+class YugaByteProcessManager(object):
+    def __init__(self):
+        self.processes = []
+
+    def start(self, args):
+        logging.info("Starting YugaByte DB...")
+        self.set_signals(self.kill_yugabyte)
+        atexit.register(self.kill_yugabyte)
+        self.start_processes(args)
+
+    # Called after receiving certain signals or on exit.
+    def kill_yugabyte(self, signum=None, frame=None):
+        logging.info("Killing YugaByte DB processes...")
+        cur_pid = os.getpid()
+        pgid = os.getpgid(cur_pid)
+        if not pgid:
+            logging.error(
+                "PGID could not be found for PID %d. Is YugaByte DB running?", cur_pid)
+            sys.exit(1)
+
+        self.set_signals(SIG_DFL)
+
+        for p in self.processes:
+            p.delete_pidfile()
+
+        try:
+            # Kill process group instead of self.processes to ensure
+            # any spawned child processes are killed
+            os.killpg(pgid, SIGTERM)
+            logging.error(
+                "YugaByte DB may not have terminated properly... Please check PGID %d.", pgid)
+            sys.exit(1)
+        except OSError as err:
+            logging.error(
+                "Failed to kill PGID %d... Is YugaByte DB running?\n%s", pgid, str(err))
+            sys.exit(1)
+
+    def start_processes(self, args):
+        common_args = [
+            "--stop_on_parent_termination",
+            "--undefok=stop_on_parent_termination",
+            "--fs_data_dirs={}".format(args.data_dir)]
+        yb_master_cmd = [os.path.join(args.install_dir, "bin/yb-master")] + common_args
+        yb_tserver_cmd = [os.path.join(args.install_dir, "bin/yb-tserver")] + common_args
+        self.processes = [
+            ProcessManager("master", yb_master_cmd, args.log_dir, args.data_dir),
+            ProcessManager("tserver", yb_tserver_cmd, args.log_dir, args.data_dir)
+        ]
+
+        for p in self.processes:
+            pid = p.get_pid()
+            if pid:
+                logging.error(
+                    "%s was already running with PID %d.", p.name, pid)
+                return
+            else:
+                p.start()
+
+        while True:
+            for p in self.processes:
+                if not p.get_pid() or (p.process and p.process.poll() is not None):
+                    logging.error("%s died unexpectedly. Restarting...", p.name)
+                    p.start()
+            time.sleep(int(args.polling_interval))
+
+    def set_signals(self, func):
+        for sig in (SIGABRT, SIGINT, SIGTERM):
+            signal(sig, func)
+
+    def run(self):
+        logging.basicConfig(
+            level=logging.INFO,
+            format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--install_dir", help="Directory where YugaByte DB is installed.")
+        parser.add_argument(
+            "--polling_interval", default=5,
+            help="Interval in seconds in which YugaByte DB will poll"
+            "and ensure yb-master and yb-tserver are running.")
+        parser.add_argument(
+            "--log_dir", help="Directory to store YugaByte DB logs.")
+        args = parser.parse_args()
+
+        if args.install_dir:
+            args.install_dir = os.path.realpath(args.install_dir)
+        else:
+            args.install_dir = os.path.dirname(os.path.dirname(__file__))
+
+        if args.log_dir:
+            args.log_dir = os.path.realpath(args.log_dir)
+        else:
+            args.log_dir = os.path.join(args.install_dir, "logs")
+        args.data_dir = os.path.join(args.install_dir, "data")
+        if not os.path.exists(args.data_dir):
+            os.makedirs(args.data_dir)
+        if not os.path.exists(args.log_dir):
+            os.makedirs(args.log_dir)
+
+        self.start(args)
+
+
+class ProcessManager(object):
+    def __init__(self, name, cmd, log_dir, data_dir):
+        self.name = name
+        self.cmd = cmd
+        self.log_dir = log_dir
+        self.pidfile = os.path.join(data_dir, "{}.pid".format(name))
+        self.data_dir = data_dir
+        self.process = None
+
+    def start(self):
+        out_log = os.path.join(self.log_dir, "{}.out".format(self.name))
+        err_log = os.path.join(self.log_dir, "{}.err".format(self.name))
+        with open(out_log, "a") as out_log, open(err_log, "a") as err_log:
+            self.process = subprocess.Popen(self.cmd, stdout=out_log, stderr=err_log)
+        with open(self.pidfile, "w+") as pid_file:
+            pid_file.write(str(self.process.pid))
+            logging.info("%s running with PID %d.", self.name, self.process.pid)
+        log_path = os.path.join(self.log_dir, self.name)
+        if not os.path.islink(log_path):
+            try:
+                data_log_path = os.path.join(self.data_dir, "yb-data/{}/logs".format(self.name))
+                os.symlink(data_log_path, log_path)
+            except OSError as e:
+                logging.error(
+                        "Failed to create symlink from {} to {}".format(data_log_path, log_path))
+
+    def get_pid(self):
+        if os.path.exists(self.pidfile):
+            with open(self.pidfile, "r") as f:
+                try:
+                    pid = int(f.readline())
+                except ValueError as e:
+                    logging.error("Could not parse int PID from %s. Deleting file.", self.pidfile)
+                    self.delete_pidfile()
+                    return None
+
+            command = ProcessManager.get_command(pid).split()
+            if command and self.name in command[0]:
+                return pid
+
+            logging.error(
+                "Pidfile %s was not properly deleted. Contained PID %d. Deleting file.",
+                self.pidfile, pid)
+            self.delete_pidfile()
+        return None
+
+    def delete_pidfile(self):
+        if os.path.exists(self.pidfile):
+            try:
+                os.remove(self.pidfile)
+            except OSError as e:
+                if os.path.exists(self.pidfile):
+                    logging.error("Failed to delete %s.", self.pidfile)
+                    sys.exit(1)
+
+    @staticmethod
+    def get_command(pid):
+        try:
+            return subprocess.check_output(["ps", "-p", str(pid), "-o", "command="])
+        except subprocess.CalledProcessError as e:
+            return ""
+
+
+if __name__ == '__main__':
+    YugaByteProcessManager().run()
