@@ -583,7 +583,10 @@ typedef struct EState
                              initial value is 0, it means that value is not initialised */
 
 	bool es_yb_is_single_row_modify_txn; /* Is this query a single-row modify
-                                          * and the only stmt in this txn. */
+																				* and the only stmt in this txn. */
+	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
+																		 * we cache the conflict tuple here when processing and
+																		 * then free the slot after the conflict is resolved. */
 } EState;
 
 

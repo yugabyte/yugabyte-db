@@ -30,6 +30,14 @@
 // YugaByte modify table API.
 
 /*
+ * Insert data into YugaByte table.
+ * This function is equivalent to "heap_insert", but it sends data to DocDB (YugaByte storage).
+ */
+extern Oid YBCHeapInsert(TupleTableSlot *slot,
+												 HeapTuple tuple,
+												 EState *estate);
+
+/*
  * Insert a tuple into a YugaByte table. Will execute within a distributed
  * transaction if the table is transactional (YSQL default).
  */
@@ -92,5 +100,12 @@ extern void YBCFlushBufferedWriteOperations();
 // Utility methods.
 
 extern Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot);
+
+/*
+ * Returns if a table has secondary indices.
+ */
+extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
+
+extern bool YBCRelHasSecondaryIndices(Relation relation);
 
 #endif							/* YBCMODIFYTABLE_H */
