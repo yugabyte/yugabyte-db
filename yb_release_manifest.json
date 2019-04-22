@@ -26,6 +26,7 @@
   "lib"      : ["thirdparty/installed/common/cqlsh/lib/*"],
   "pylib"    : ["thirdparty/installed/common/cqlsh/pylib/*"],
   "%symlinks%": {
-    "bin/psql": "../postgres/bin/psql"
+    "bin/ysqlsh": "../postgres/bin/ysqlsh",
+    "bin/psql": "../postgres/bin/ysqlsh"
   }
 }
