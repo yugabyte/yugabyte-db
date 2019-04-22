@@ -19,37 +19,69 @@
 
 #include "yb/util/cipher_stream.h"
 #include "yb/util/header_manager.h"
-#include "yb/util/encryption_header.pb.h"
+#include "yb/util/encryption.pb.h"
 
 #include "yb/gutil/endian.h"
-
-DECLARE_bool(enable_encryption);
 
 namespace yb {
 namespace enterprise {
 
 constexpr uint32_t kDefaultKeySize = 16;
 
-void EncryptionParams::ToEncryptionHeaderPB(yb::EncryptionHeaderPB* encryption_header) const {
+void EncryptionParams::ToEncryptionParamsPB(yb::EncryptionParamsPB* encryption_header) const {
   encryption_header->set_data_key(key, key_size);
   encryption_header->set_nonce(nonce, kBlockSize - 4);
   encryption_header->set_counter(counter);
 }
 
-void EncryptionParams::FromEncryptionHeaderPB(const yb::EncryptionHeaderPB& encryption_header) {
-  memcpy(key, encryption_header.data_key().c_str(), encryption_header.data_key().size());
-  memcpy(nonce, encryption_header.nonce().c_str(), kBlockSize - 4);
-  counter = encryption_header.counter();
-  key_size = encryption_header.data_key().size();
+Result<EncryptionParamsPtr> EncryptionParams::FromEncryptionParamsPB(
+    const yb::EncryptionParamsPB& encryption_header) {
+  auto encryption_params = std::make_unique<EncryptionParams>();
+  memcpy(encryption_params->key, encryption_header.data_key().c_str(),
+         encryption_header.data_key().size());
+  memcpy(encryption_params->nonce, encryption_header.nonce().c_str(), kBlockSize - 4);
+  encryption_params->counter = encryption_header.counter();
+  auto size = encryption_header.data_key().size();
+  RETURN_NOT_OK(IsValidKeySize(size));
+  encryption_params->key_size = size;
+  return encryption_params;
 }
 
-std::unique_ptr<EncryptionParams> EncryptionParams::NewEncryptionParams() {
-  auto encryption_params = std::make_unique<yb::enterprise::EncryptionParams>();
+Result<EncryptionParamsPtr> EncryptionParams::FromKeyFile(const Slice& s) {
+  auto params = std::make_unique<EncryptionParams>();
+  Slice mutable_s(s);
+  memcpy(params->nonce, s.data(), sizeof(params->nonce));
+  memcpy(&params->counter, s.data() + sizeof(params->nonce), sizeof(params->counter));
+  mutable_s.remove_prefix(sizeof(params->nonce) + sizeof(params->counter));
+  RETURN_NOT_OK(IsValidKeySize(mutable_s.size()));
+  memcpy(params->key, mutable_s.data(), mutable_s.size());
+  params->key_size = mutable_s.size();
+  return params;
+}
+
+EncryptionParamsPtr EncryptionParams::NewEncryptionParams() {
+  auto encryption_params = std::make_unique<EncryptionParams>();
   RAND_bytes(encryption_params->key, kDefaultKeySize);
   RAND_bytes(encryption_params->nonce, kBlockSize - 4);
   RAND_bytes(boost::reinterpret_pointer_cast<uint8_t>(&encryption_params->counter), 4);
   encryption_params->key_size = kDefaultKeySize;
   return encryption_params;
+}
+
+Status EncryptionParams::IsValidKeySize(uint32_t size) {
+  if (size != 16 && size != 24 && size != 32) {
+    return STATUS_SUBSTITUTE(
+        InvalidArgument,
+        "After parsing nonce and counter, expect 16, 24, or 32 bytes, found $0", size);
+  }
+  return Status::OK();
+}
+
+bool EncryptionParams::Equals(const EncryptionParams& other) {
+  return memcmp(key, other.key, other.key_size) == 0 &&
+         memcmp(nonce, other.nonce, sizeof(nonce)) == 0 &&
+         counter == other.counter &&
+         key_size == other.key_size;
 }
 
 void* EncryptionBuffer::GetBuffer(uint32_t size_needed) {

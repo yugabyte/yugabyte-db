@@ -26,8 +26,6 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-DECLARE_bool(enable_encryption);
-
 namespace yb {
 namespace enterprise {
 
@@ -38,13 +36,13 @@ class TestEncryptedEnv : public YBTest {};
 TEST_F(TestEncryptedEnv, FileOps) {
   auto header_manager = GetMockHeaderManager();
   HeaderManager* hm_ptr = header_manager.get();
+
   auto env = yb::enterprise::NewEncryptedEnv(std::move(header_manager));
   auto fname_template = "test-fileXXXXXX";
   auto bytes = RandomBytes(kDataSize);
   Slice data(bytes.data(), kDataSize);
 
   for (bool encrypted : {false, true}) {
-    FLAGS_enable_encryption = encrypted;
     down_cast<HeaderManagerMockImpl*>(hm_ptr)->SetFileEncryption(encrypted);
 
     string fname;

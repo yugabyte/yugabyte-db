@@ -21,11 +21,22 @@
 namespace yb {
 namespace enterprise {
 class HeaderManager;
+class UniverseKeyManager;
 }
 namespace tserver {
 namespace enterprise {
 
-std::unique_ptr<yb::enterprise::HeaderManager> DefaultHeaderManager();
+// Implementation of used by FileFactory to construct header for encrypted files.
+// The header format looks like:
+//
+// magic encryption string
+// header size (4 bytes)
+// universe key id size (4 bytes)
+// universe key id
+// EncryptionParamsPB size (4 bytes)
+// EncryptionParamsPB
+std::unique_ptr<yb::enterprise::HeaderManager> DefaultHeaderManager(
+    yb::enterprise::UniverseKeyManager* universe_key_manager);
 
 } // namespace enterprise
 } // namespace tserver

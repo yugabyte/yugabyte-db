@@ -19,8 +19,6 @@
 #include "yb/util/header_manager.h"
 #include "yb/util/encryption_util.h"
 
-DECLARE_bool(enable_encryption);
-
 namespace yb {
 namespace enterprise {
 
@@ -79,8 +77,8 @@ class EncryptedWritableFile : public WritableFileWrapper {
   static Status Create(gscoped_ptr<WritableFile>* result,
                        HeaderManager* header_manager,
                        gscoped_ptr<WritableFile> underlying) {
-    return CreateWritableFile<EncryptedWritableFile>
-        (result, header_manager, std::move(underlying), FLAGS_enable_encryption);
+    return CreateWritableFile<EncryptedWritableFile>(
+        result, header_manager, std::move(underlying));
   }
 
   // Default constructor.

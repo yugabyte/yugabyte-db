@@ -28,14 +28,15 @@ class HeaderManagerMockImpl : public yb::enterprise::HeaderManager {
   Result<string> SerializeEncryptionParams(
       const EncryptionParams& encryption_info) override;
 
-  Result<std::unique_ptr<EncryptionParams>> DecodeEncryptionParamsFromEncryptionMetadata(
+  Result<EncryptionParamsPtr> DecodeEncryptionParamsFromEncryptionMetadata(
       const Slice& s) override;
 
   uint32_t GetEncryptionMetadataStartIndex() override;
   Result<FileEncryptionStatus> GetFileEncryptionStatusFromPrefix(const Slice& s) override;
+  bool IsEncryptionEnabled() override;
 
  private:
-  std::unique_ptr<EncryptionParams> encryption_params_;
+  EncryptionParamsPtr encryption_params_;
   bool file_encrypted_ = false;
 };
 

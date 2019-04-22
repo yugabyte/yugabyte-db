@@ -7,6 +7,14 @@
 
 namespace yb {
 
+class UniverseKeyRegistryPB;
+
+namespace enterprise {
+
+class UniverseKeyManager;
+
+}
+
 namespace rpc {
 
 class SecureContext;
@@ -26,6 +34,9 @@ class TabletServer : public yb::tserver::TabletServer {
 
   Env* GetEnv() override;
   rocksdb::Env* GetRocksDBEnv() override;
+  yb::enterprise::UniverseKeyManager* GetUniverseKeyManager();
+  CHECKED_STATUS SetUniverseKeyRegistry(
+      const yb::UniverseKeyRegistryPB& universe_key_registry) override;
 
  protected:
   CHECKED_STATUS RegisterServices() override;
@@ -33,7 +44,12 @@ class TabletServer : public yb::tserver::TabletServer {
 
  private:
   std::unique_ptr<rpc::SecureContext> secure_context_;
+  // Object that manages the universe key registry used for encrypting and decrypting data keys.
+  // Copies are given to each Env.
+  std::shared_ptr<yb::enterprise::UniverseKeyManager> universe_key_manager_;
+  // Encrypted env for all non-rocksdb file i/o operations.
   std::unique_ptr<yb::Env> env_;
+  // Encrypted env for all rocksdb file i/o operations.
   std::unique_ptr<rocksdb::Env> rocksdb_env_;
 };
 
