@@ -202,9 +202,9 @@ INSERT INTO t1 VALUES (1, 1, 11, 11), (1, 2, 11, 12);
 INSERT INTO t2 VALUES (1, 1, 21, 21);
 -- The following 2 inserts should produce error due to duplicate primary key / unique index value
 INSERT INTO t1 VALUES (1, 1, 99, 99);
-ERROR:  Query error: Duplicate key found in primary key or unique index
+ERROR:  duplicate key value violates unique constraint "t1_pkey"
 INSERT INTO t1 VALUES (1, 3, 11, 11);
-ERROR:  Query error: Duplicate key found in primary key or unique index
+ERROR:  duplicate key value violates unique constraint "t1_v1_v2_idx"
 INSERT INTO t1 VALUES (1, 3, 11, 13), (2, 1, 12, 13), (2, 2, 12, 14);
 EXPLAIN (COSTS OFF) SELECT * FROM t1 ORDER BY h, r;
         QUERY PLAN

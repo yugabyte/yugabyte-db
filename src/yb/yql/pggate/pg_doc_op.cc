@@ -143,6 +143,9 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
         return true;
       }
     }
+  } else if (op->response().status() == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
+    // We're doing this to eventually replace error message by a one mentioning index name
+    exec_status_ = STATUS(AlreadyPresent, op->response().error_message());
   } else {
     exec_status_ = STATUS(QLError, op->response().error_message());
   }

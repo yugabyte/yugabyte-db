@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -559,6 +560,20 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
+  protected void assertQuery(Statement stmt, String query, Row... expectedRows)
+      throws SQLException {
+    List<Row> actualRows = getRowList(stmt.executeQuery(query));
+    assertEquals(
+        "Expected " + expectedRows.length + " rows, got " + actualRows.size() + ": " + actualRows,
+        expectedRows.length, actualRows.size());
+    assertArrayEquals(expectedRows, actualRows.toArray(new Row[0]));
+  }
+
+  protected void assertNoRows(Statement stmt, String query) throws SQLException {
+    List<Row> actualRows = getRowList(stmt.executeQuery(query));
+    assertTrue("Expected no results, got " + actualRows, actualRows.isEmpty());
+  }
+
   protected void assertNextRow(ResultSet rs, Object... values) throws SQLException {
     assertTrue(rs.next());
     for (int i = 0; i < values.length; i++) {
@@ -656,14 +671,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
    *
    * @param statement The statement used to execute the query.
    * @param query The query string.
-   * @param errorSubstring A substring of the expected error message.
+   * @param errorSubstring A (case-insensitive) substring of the expected error message.
    */
   protected void runInvalidQuery(Statement statement, String query, String errorSubstring) {
     try {
       statement.execute(query);
       fail(String.format("Statement did not fail: %s", query));
     } catch (SQLException e) {
-      if (e.getMessage().contains(errorSubstring)) {
+      if (StringUtils.containsIgnoreCase(e.getMessage(), errorSubstring)) {
         LOG.info("Expected exception", e);
       } else {
         fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",

@@ -81,6 +81,10 @@ bool YBCStatusIsNotFound(YBCStatus s) {
   return (s->code == Status::Code::kNotFound);
 }
 
+bool YBCStatusIsAlreadyPresent(YBCStatus s) {
+  return (s->code == Status::Code::kAlreadyPresent);
+}
+
 void YBCFreeStatus(YBCStatus s) {
   FreeYBCStatus(s);
 }
