@@ -3660,7 +3660,6 @@ ColConstraintElem:
 				}
 			| UNIQUE opt_definition OptConsTableSpace
 				{
-					parser_ybc_signal_unsupported(@1, "UNIQUE column", 1022);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_UNIQUE;
 					n->location = @1;
@@ -3872,7 +3871,6 @@ ConstraintElem:
 			| UNIQUE '(' columnList ')' opt_c_include opt_definition OptConsTableSpace
 				ConstraintAttributeSpec
 				{
-					parser_ybc_signal_unsupported(@1, "UNIQUE constraint", 1022);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_UNIQUE;
 					n->location = @1;
@@ -3888,7 +3886,6 @@ ConstraintElem:
 				}
 			| UNIQUE ExistingIndex ConstraintAttributeSpec
 				{
-					parser_ybc_signal_unsupported(@1, "UNIQUE constraint", 1022);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_UNIQUE;
 					n->location = @1;

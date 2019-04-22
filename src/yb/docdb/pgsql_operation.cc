@@ -122,7 +122,9 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
   RETURN_NOT_OK(ReadColumns(data, table_row));
   if (!table_row->IsEmpty()) {
     // Primary key or unique index value found.
-    return STATUS(QLError, "Duplicate key found in primary key or unique index");
+    response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
+    response_->set_error_message("Duplicate key found in primary key or unique index");
+    return Status::OK();
   }
 
   const MonoDelta ttl = Value::kMaxTtl;

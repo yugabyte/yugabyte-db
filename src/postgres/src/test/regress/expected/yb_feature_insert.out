@@ -79,7 +79,7 @@ INSERT INTO feature_tab_dml VALUES(
 			 TRUE,
 			 '{ 1, 1, 1 }',
 			 '{ "one", "one", "one" }');
-ERROR:  Query error: Duplicate key found in primary key or unique index
+ERROR:  duplicate key value violates unique constraint "feature_tab_dml_pkey"
 --
 INSERT INTO feature_tab_dml VALUES(
 			 2,
