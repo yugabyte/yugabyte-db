@@ -23,4 +23,5 @@ set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   secure_connection_test
   snapshot-test
   transaction-ent-test
+  encryption-test
   PARENT_SCOPE)
