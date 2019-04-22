@@ -530,15 +530,15 @@ TEST_F(RaftConsensusTest, TestPendingOperations) {
   // Now we test what this peer does with the pending operations once it's elected leader.
   {
     InSequence dummy;
+    // Peer manager gets updated with the new set of peers to send stuff to.
+    EXPECT_CALL(*peer_manager_, UpdateRaftConfig(_))
+        .Times(1);
     // The no-op should be appended to the queue.
     EXPECT_CALL(*consensus_.get(), AppendNewRoundToQueueUnlocked(_))
         .Times(1);
     // One more op will be appended for the election.
     EXPECT_CALL(*queue_, AppendOperationsMock(_, _, _, _))
         .Times(1).WillRepeatedly(Return(Status::OK()));;
-    // Peer manager gets updated with the new set of peers to send stuff to.
-    EXPECT_CALL(*peer_manager_, UpdateRaftConfig(_))
-        .Times(1);
   }
 
   // Emulate an election, this will make this peer become leader and trigger the
