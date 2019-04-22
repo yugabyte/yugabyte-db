@@ -67,6 +67,7 @@ YB_DEFINE_ENUM(TreeNodeOpcode,
                (kPTTableRef)
                (kPTOrderBy)
                (kPTRoleOption)
+               (kPTExplainStmt)
 
                // Expressions.
                (kPTExpr)

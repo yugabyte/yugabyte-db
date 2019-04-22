@@ -212,6 +212,7 @@ bool QLProcessor::CheckPermissions(const ParseTree& parse_tree, StatementExecute
       }
       case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
       case TreeNodeOpcode::kPTDeleteStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTExplainStmt: FALLTHROUGH_INTENDED;
       case TreeNodeOpcode::kPTInsertStmt: {
         const YBTableName table_name = static_cast<const PTDmlStmt*>(tnode)->table_name();
         s = ql_env_.HasTablePermission(table_name, PermissionType::MODIFY_PERMISSION);

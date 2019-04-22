@@ -40,6 +40,7 @@ add_library(ql_ptree
             pt_insert.cc
             pt_insert_values_clause.cc
             pt_delete.cc
+            pt_explain.cc
             pt_update.cc
             pt_transaction.cc
             pt_expr.cc

@@ -91,6 +91,7 @@
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
 #include "yb/yql/cql/ql/ptree/pt_insert_values_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_explain.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
@@ -264,6 +265,9 @@ using namespace yb::ql;
                           // Index.
                           IndexStmt
 
+                          //Explain
+                          ExplainStmt ExplainableStmt
+
 %type <PCollection>       // Select can be either statement or expression of collection types.
                           SelectStmt select_no_parens select_with_parens select_clause
 
@@ -387,7 +391,7 @@ using namespace yb::ql;
 // The rule names are currently not used.
 
 %type <KeywordType>       iso_level opt_encoding opt_boolean_or_string row_security_cmd
-                          RowSecurityDefaultForCmd explain_option_name all_Op MathOp extract_arg
+                          RowSecurityDefaultForCmd all_Op MathOp extract_arg
 
 %type <PChar>             enable_trigger
 
@@ -451,9 +455,9 @@ using namespace yb::ql;
                           DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt
                           DropPolicyStmt DropUserStmt DropdbStmt DropTableSpaceStmt DropFdwStmt
                           DropTransformStmt
-                          DropForeignServerStmt DropUserMappingStmt ExplainStmt FetchStmt
+                          DropForeignServerStmt DropUserMappingStmt FetchStmt
                           ImportForeignSchemaStmt
-                          ListenStmt LoadStmt LockStmt NotifyStmt ExplainableStmt PreparableStmt
+                          ListenStmt LoadStmt LockStmt NotifyStmt PreparableStmt
                           CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
                           RemoveFuncStmt RemoveOperStmt RenameStmt
                           RuleActionStmt RuleActionStmtOrEmpty RuleStmt
@@ -511,8 +515,6 @@ using namespace yb::ql;
                           tablesample_clause opt_repeatable_clause
                           generic_option_arg
                           generic_option_elem alter_generic_option_elem
-                          explain_option_arg
-                          explain_option_elem
                           copy_generic_opt_arg copy_generic_opt_arg_list_item
                           copy_generic_opt_elem
                           var_value zone_value
@@ -562,7 +564,7 @@ using namespace yb::ql;
                           ExclusionConstraintElem row explicit_row implicit_row
                           type_list when_clause_list NumericOnly_list
                           func_alias_clause generic_option_list alter_generic_option_list
-                          explain_option_list copy_generic_opt_list copy_generic_opt_arg_list
+                          copy_generic_opt_list copy_generic_opt_arg_list
                           copy_options constraints_set_list xml_attribute_list
                           xml_attributes within_group_clause
                           window_definition_list opt_partition_clause DefACLOptionList var_list
@@ -852,6 +854,12 @@ dml:
     }
     $$ = $1;
   }
+  | ExplainStmt {
+      if ($1 != nullptr) {
+        parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+      }
+      $$ = $1;
+  }
 ;
 
 stmt:
@@ -908,6 +916,9 @@ stmt:
       parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
     }
     $$ = $1;
+  }
+  | ExplainStmt {
+      $$ = $1;
   }
   | InsertStmt {
     if ($1 != nullptr) {
@@ -5459,7 +5470,6 @@ inactive_stmt:
   | DropUserMappingStmt
   | DropdbStmt
   | ExecuteStmt
-  | ExplainStmt
   | FetchStmt
   | ImportForeignSchemaStmt
   | ListenStmt
@@ -9344,62 +9354,33 @@ opt_name_list:
 /*****************************************************************************
  *
  *    QUERY:
- *        EXPLAIN [ANALYZE] [VERBOSE] query
- *        EXPLAIN ( options ) query
+ *        EXPLAIN query
  *
  *****************************************************************************/
 
 ExplainStmt:
   EXPLAIN ExplainableStmt {
-    PARSER_UNSUPPORTED(@1);
+    $$ = MAKE_NODE(@1, PTExplainStmt, $2);
   }
-  | EXPLAIN analyze_keyword opt_verbose ExplainableStmt {
-    PARSER_UNSUPPORTED(@1);
+  | EXPLAIN analyze_keyword ExplainableStmt {
+    PARSER_UNSUPPORTED(@2);
+  }
+  | EXPLAIN analyze_keyword VERBOSE ExplainableStmt {
+    PARSER_UNSUPPORTED(@2);
+  }
+  | EXPLAIN VERBOSE analyze_keyword ExplainableStmt {
+    PARSER_UNSUPPORTED(@3);
   }
   | EXPLAIN VERBOSE ExplainableStmt {
-    PARSER_UNSUPPORTED(@1);
-  }
-  | EXPLAIN '(' explain_option_list ')' ExplainableStmt {
-    PARSER_UNSUPPORTED(@1);
+    PARSER_UNSUPPORTED(@2);
   }
 ;
 
 ExplainableStmt:
-  SelectStmt              { $$ = nullptr; }
-  | InsertStmt            { $$ = nullptr; }
-  | UpdateStmt            { $$ = nullptr; }
-  | DeleteStmt            { $$ = nullptr; }
-  | DeclareCursorStmt     { $$ = nullptr; }
-  | CreateAsStmt          { $$ = nullptr; }
-  | CreateMatViewStmt     { $$ = nullptr; }
-  | RefreshMatViewStmt    { $$ = nullptr; }
-  | ExecuteStmt           { $$ = nullptr; }
-;
-
-explain_option_list:
-  explain_option_elem {
-  }
-  | explain_option_list ',' explain_option_elem {
-  }
-;
-
-explain_option_elem:
-  explain_option_name explain_option_arg {
-  }
-;
-
-explain_option_name:
-  NonReservedWord     { $$ = $1->c_str(); }
-  | analyze_keyword   { $$ = "analyze"; }
-;
-
-explain_option_arg:
-  opt_boolean_or_string {
-  }
-  | NumericOnly {
-  }
-  | /* EMPTY */ {
-  }
+  SelectStmt { $$ = $1; }
+  | InsertStmt { $$ = $1; }
+  | UpdateStmt { $$ = $1; }
+  | DeleteStmt { $$ = $1; }
 ;
 
 /*****************************************************************************

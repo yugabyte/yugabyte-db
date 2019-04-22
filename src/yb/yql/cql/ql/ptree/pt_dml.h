@@ -26,10 +26,44 @@
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/common/table_properties_constants.h"
+#include "yb/common/common.pb.h"
 #include "yb/client/client.h"
 
 namespace yb {
 namespace ql {
+
+inline ostream& operator<< (ostream& out, const QLOperator& ql_op) {
+  switch (ql_op) {
+    case QL_OP_AND:
+      out << "AND";
+      break;
+    case QL_OP_EQUAL:
+      out << "=";
+      break;
+    case QL_OP_LESS_THAN:
+      out << "<";
+      break;
+    case QL_OP_LESS_THAN_EQUAL:
+      out << "<=";
+      break;
+    case QL_OP_GREATER_THAN:
+      out << ">";
+      break;
+    case QL_OP_GREATER_THAN_EQUAL:
+      out << ">=";
+      break;
+    case QL_OP_IN:
+      out << "IN";
+      break;
+    case QL_OP_NOT_IN:
+      out << "NOT IN";
+      break;
+    default:
+      out << "";
+      break;
+  }
+  return out;
+}
 
 //--------------------------------------------------------------------------------------------------
 // Counter of operators on each column. "gt" includes ">" and ">=". "lt" includes "<" and "<=".
@@ -208,6 +242,8 @@ class PTDmlStmt : public PTCollection {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
 
+  virtual ExplainPlanPB AnalysisResultToPB() = 0;
+
   // Find column descriptor. From the context, the column value will be marked to be read if
   // necessary when executing the QL statement.
   const ColumnDesc *GetColumnDesc(const SemContext *sem_context, const MCString& col_name);
@@ -240,6 +276,8 @@ class PTDmlStmt : public PTCollection {
   int num_key_columns() const;
 
   int num_hash_key_columns() const;
+
+  string hash_key_columns() const;
 
   const MCVector<ColumnOp>& key_where_ops() const {
     return key_where_ops_;
@@ -395,6 +433,47 @@ class PTDmlStmt : public PTCollection {
   }
 
  protected:
+
+  template <typename T>
+  string conditionsToString(T conds) {
+    string str;
+    for (auto col_op = conds.begin(); col_op != conds.end(); ++col_op) {
+      std::stringstream s;
+      if (col_op != conds.begin()) {
+        s << " AND ";
+      }
+      s << "(" << col_op->desc()->name() << " " << col_op->yb_op();
+
+      if (col_op->expr()->expr_op() != ExprOperator::kBindVar &&
+          col_op->expr()->ql_type_id() == DataType::STRING) {
+        s << " '" << col_op->expr()->QLName() << "')";
+      } else {
+        s << " " << col_op->expr()->QLName() << ")";
+      }
+      str += s.str();
+    }
+    return str;
+  }
+
+  string partitionkeyToString(MCList<PartitionKeyOp> conds) {
+    string str;
+    for (auto col_op = conds.begin(); col_op != conds.end(); ++col_op) {
+      std::stringstream s;
+      if (col_op != conds.begin()) {
+        s << " AND ";
+      }
+      // Partition_hash is stored as INT32, token is stored as INT64, unless you specify the
+      // rhs expression e.g partition_hash(h1, h2) >= 3 in which case it's stored as an VARINT.
+      // So setting the default to the yql partition_hash in that case seems reasonable.
+      string label = (col_op->expr()->expected_internal_type() == InternalType::kInt64Value) ?
+          "token" : "partition_hash";
+      s << "(" << label << "(" << hash_key_columns() <<  ") " << col_op->yb_op()
+        << " " << col_op->expr()->QLName() << ")";
+      str += s.str();
+    }
+    return str;
+  }
+
   // Lookup table from the metadata database.
   CHECKED_STATUS LookupTable(SemContext *sem_context);
 
@@ -494,6 +573,7 @@ class PTDmlStmt : public PTCollection {
   // For optimizing SELECT queries with IN condition on hash key: does this SELECT have all primary
   // key columns set with '=' or 'IN' conditions.
   bool select_has_primary_keys_set_ = false;
+  bool has_incomplete_hash_ = false;
 };
 
 }  // namespace ql

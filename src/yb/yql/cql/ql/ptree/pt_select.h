@@ -160,6 +160,7 @@ class PTSelectStmt : public PTDmlStmt {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
+  ExplainPlanPB AnalysisResultToPB() override;
 
   // Execution opcode.
   virtual TreeNodeOpcode opcode() const override {
