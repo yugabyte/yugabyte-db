@@ -42,6 +42,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/faststring.h"
 #include "yb/util/status.h"
+#include "yb/util/result.h"
 
 namespace google {
 namespace protobuf {
@@ -90,6 +91,13 @@ bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile);
 // Similar to MessageLite::ParseFromArray, with the difference that it returns
 // Status::kCorruption if the message could not be parsed.
 Status ParseFromArray(MessageLite* msg, const uint8_t* data, uint32_t length);
+
+template<class T>
+Result<T> ParseFromSlice(const Slice& slice) {
+  T result;
+  RETURN_NOT_OK(ParseFromArray(&result, slice.data(), slice.size()));
+  return result;
+}
 
 // Load a protobuf from the given path.
 Status ReadPBFromPath(Env* env, const std::string& path, MessageLite* msg);

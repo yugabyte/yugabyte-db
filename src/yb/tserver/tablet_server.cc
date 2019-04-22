@@ -347,6 +347,11 @@ Status TabletServer::GetTabletStatus(const GetTabletStatusRequestPB* req,
   return Status::OK();
 }
 
+Status TabletServer::SetUniverseKeyRegistry(
+    const yb::UniverseKeyRegistryPB& universe_key_registry) {
+  return Status::OK();
+}
+
 void TabletServer::set_cluster_uuid(const std::string& cluster_uuid) {
   std::lock_guard<simple_spinlock> l(lock_);
   cluster_uuid_ = cluster_uuid;

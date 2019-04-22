@@ -215,6 +215,10 @@ class MasterServiceImpl : public MasterServiceIf,
                             IsInitDbDoneResponsePB* resp,
                             rpc::RpcContext rpc) override;
 
+  void ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
+                            ChangeEncryptionInfoResponsePB* resp,
+                            rpc::RpcContext rpc) override;
+
  private:
 };
 

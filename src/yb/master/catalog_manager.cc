@@ -413,6 +413,11 @@ Status CatalogManager::Init(bool is_first_run) {
   return Status::OK();
 }
 
+Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
+                                            ChangeEncryptionInfoResponsePB* resp) {
+  return STATUS(InvalidCommand, "Command only supported in enterprise build.");
+}
+
 Status CatalogManager::ElectedAsLeaderCb() {
   return worker_pool_->SubmitClosure(
       Bind(&CatalogManager::LoadSysCatalogDataTask, Unretained(this)));
@@ -5839,6 +5844,11 @@ int64_t CatalogManager::GetNumBlacklistReplicas() {
   }
 
   return blacklist_replicas;
+}
+
+Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
+                                             TSHeartbeatResponsePB* resp) {
+  return Status::OK();
 }
 
 Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB* resp) {
