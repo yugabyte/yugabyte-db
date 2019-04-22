@@ -19,14 +19,18 @@
 #include "yb/util/flag_tags.h"
 #include "yb/gutil/endian.h"
 
-DEFINE_bool(enable_encryption, false, "Flag to enable and disable encryption");
-TAG_FLAG(enable_encryption, experimental);
-
 namespace yb {
 namespace enterprise {
 
+Result<std::unique_ptr<BlockAccessCipherStream>> BlockAccessCipherStream::FromEncryptionParams(
+    EncryptionParamsPtr encryption_params) {
+  auto stream = std::make_unique<BlockAccessCipherStream>(std::move(encryption_params));
+  RETURN_NOT_OK(stream->Init());
+  return stream;
+}
+
 BlockAccessCipherStream::BlockAccessCipherStream(
-    std::unique_ptr<EncryptionParams> encryption_params) :
+    EncryptionParamsPtr encryption_params) :
     encryption_params_(std::move(encryption_params)),
     encryption_context_(EVP_CIPHER_CTX_new(), [](EVP_CIPHER_CTX* ctx){
       EVP_CIPHER_CTX_cleanup(ctx);

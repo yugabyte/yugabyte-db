@@ -8,6 +8,7 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog-internal.h"
 #include "yb/master/async_snapshot_tasks.h"
+#include "yb/master/universe_key_registry_service.h"
 #include "yb/tserver/backup.proxy.h"
 #include "yb/util/cast.h"
 #include "yb/util/tostring.h"
@@ -525,6 +526,24 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
   return Status::OK();
 }
 
+Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
+                                            ChangeEncryptionInfoResponsePB* resp) {
+  auto l = cluster_config_->LockForWrite();
+  auto encryption_info = l->mutable_data()->pb.mutable_encryption_info();
+
+  RETURN_NOT_OK(RotateUniverseKey(req, encryption_info, resp));
+
+  l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
+  RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+  l->Commit();
+
+  std::lock_guard<simple_spinlock> lock(should_send_universe_key_registry_mutex_);
+  for (auto& entry : should_send_universe_key_registry_) {
+    entry.second = true;
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
                                             NamespaceMap* ns_map) {
   DCHECK_EQ(entry.type(), SysRowEntry::NAMESPACE);
@@ -1027,6 +1046,44 @@ void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placemen
       ts_descs->push_back(ts_desc);
     }
   }
+}
+
+Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
+                                             TSHeartbeatResponsePB* resp) {
+
+  SysClusterConfigEntryPB cluster_config;
+  RETURN_NOT_OK(GetClusterConfig(&cluster_config));
+  const auto& ts_uuid = req->common().ts_instance().permanent_uuid();
+  bool should_resend_registry;
+  {
+    std::lock_guard<simple_spinlock> lock(should_send_universe_key_registry_mutex_);
+    auto it = should_send_universe_key_registry_.find(ts_uuid);
+    should_resend_registry = it ==
+        should_send_universe_key_registry_.end() || it->second || req->has_registration();
+    if (it == should_send_universe_key_registry_.end()) {
+      should_send_universe_key_registry_.emplace(ts_uuid, false);
+    } else {
+      it->second = false;
+    }
+  }
+
+  if (!cluster_config.has_encryption_info() || !should_resend_registry) {
+    return Status::OK();
+  }
+
+  const auto& encryption_info = cluster_config.encryption_info();
+  Slice decrypted_registry(encryption_info.universe_key_registry_encoded());
+  std::string decrypted;
+  if (encryption_info.encryption_enabled()) {
+    decrypted = VERIFY_RESULT(
+        DecryptUniverseKeyRegistry(decrypted_registry, encryption_info.key_path()));
+    decrypted_registry = Slice(decrypted);
+  }
+
+  auto registry = VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(decrypted_registry));
+  resp->mutable_universe_key_registry()->CopyFrom(registry);
+
+  return Status::OK();
 }
 
 void CatalogManager::SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
