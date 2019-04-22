@@ -300,6 +300,7 @@ message PgsqlResponsePB {
     PGSQL_STATUS_RUNTIME_ERROR = 2;
     PGSQL_STATUS_USAGE_ERROR = 3;
     PGSQL_STATUS_RESTART_REQUIRED_ERROR = 4;
+    PGSQL_STATUS_DUPLICATE_KEY_ERROR = 5;
   }
 
   // Status and error message

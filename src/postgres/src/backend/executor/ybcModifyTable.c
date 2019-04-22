@@ -168,7 +168,7 @@ static bool IsSystemCatalogChange(Relation rel)
  * Will handle the case if the write changes the system catalogs meaning
  * we need to increment the catalog versions accordingly.
  */
-static void YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel)
+static YBCStatus YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel)
 {
 	bool is_syscatalog_change = IsSystemCatalogChange(rel);
 	bool is_syscatalog_version_change = false;
@@ -185,7 +185,7 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel)
 		               ybc_stmt);
 
 	/* Execute the insert. */
-	HandleYBStmtStatus(YBCPgDmlExecWriteOp(ybc_stmt), ybc_stmt);
+	YBCStatus status = YBCPgDmlExecWriteOp(ybc_stmt);
 
 	/*
 	 * Optimization to increment the catalog version for the local cache as
@@ -197,9 +197,56 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel)
 	 * other backends).
 	 * If changes occurred, then a cache refresh will be needed as usual.
 	 */
-	if (is_syscatalog_version_change)
+	if (!status && is_syscatalog_version_change)
 	{
 		yb_catalog_cache_version += 1;
+	}
+
+	return status;
+}
+
+/*
+ * Utility method to handle the status of an insert statement to return unique
+ * constraint violation error message due to duplicate key in primary key or
+ * unique index / constraint.
+ */
+static void YBCHandleInsertStatus(YBCStatus status, Relation rel, YBCPgStatement stmt)
+{
+	if (!status)
+		return;
+
+	HandleYBStatus(YBCPgDeleteStatement(stmt));
+
+	if (YBCStatusIsAlreadyPresent(status))
+	{
+		char *constraint;
+
+		/*
+		 * If this is the base table and there is a primary key, the primary key is
+		 * the constraint. Otherwise, the rel is the unique index constraint.
+		 */
+		if (!rel->rd_index && rel->rd_pkindex != InvalidOid)
+		{
+			Relation pkey = RelationIdGetRelation(rel->rd_pkindex);
+
+			constraint = pstrdup(RelationGetRelationName(pkey));
+
+			RelationClose(pkey);
+		}
+		else
+		{
+			constraint = pstrdup(RelationGetRelationName(rel));
+		}
+
+		YBCFreeStatus(status);
+		ereport(ERROR,
+				(errcode(ERRCODE_UNIQUE_VIOLATION),
+				 errmsg("duplicate key value violates unique constraint \"%s\"",
+						constraint)));
+	}
+	else
+	{
+		HandleYBStatus(status);
 	}
 }
 
@@ -274,7 +321,7 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	}
 
 	/* Execute the insert */
-	YBCExecWriteStmt(insert_stmt, rel);
+	YBCHandleInsertStatus(YBCExecWriteStmt(insert_stmt, rel), rel, insert_stmt);
 
 	/*
 	 * If the relation has indexes, save ybctid to insert the new row into the
@@ -366,7 +413,7 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 					   insert_stmt);
 
 	/* Execute the insert and clean up. */
-	YBCExecWriteStmt(insert_stmt, index);
+	YBCHandleInsertStatus(YBCExecWriteStmt(insert_stmt, index), index, insert_stmt);
 	HandleYBStatus(YBCPgDeleteStatement(insert_stmt));
 	insert_stmt = NULL;
 }
@@ -394,7 +441,7 @@ void YBCExecuteDelete(Relation rel, TupleTableSlot *slot)
 	HandleYBStmtStatus(YBCPgDmlBindColumn(delete_stmt,
 										  YBTupleIdAttributeNumber,
 										  ybctid_expr), delete_stmt);
-	YBCExecWriteStmt(delete_stmt, rel);
+	HandleYBStmtStatus(YBCExecWriteStmt(delete_stmt, rel), delete_stmt);
 
 	/* Complete execution */
 	HandleYBStatus(YBCPgDeleteStatement(delete_stmt));
@@ -443,7 +490,7 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	}
 
 	/* Execute the delete and clean up. */
-	YBCExecWriteStmt(ybc_stmt, index);
+	HandleYBStmtStatus(YBCExecWriteStmt(ybc_stmt, index), ybc_stmt);
 
 	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
 	ybc_stmt = NULL;
@@ -488,7 +535,7 @@ void YBCExecuteUpdate(Relation rel, TupleTableSlot *slot, HeapTuple tuple)
 	}
 
 	/* Execute the statement and clean up */
-	YBCExecWriteStmt(update_stmt, rel);
+	HandleYBStmtStatus(YBCExecWriteStmt(update_stmt, rel), update_stmt);
 	HandleYBStatus(YBCPgDeleteStatement(update_stmt));
 	update_stmt = NULL;
 
@@ -552,7 +599,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	 */
 	CacheInvalidateHeapTuple(rel, tuple, NULL);
 
-	YBCExecWriteStmt(delete_stmt, rel);
+	HandleYBStmtStatus(YBCExecWriteStmt(delete_stmt, rel), delete_stmt);
 
 	/* Complete execution */
 	HandleYBStatus(YBCPgDeleteStatement(delete_stmt));
@@ -627,7 +674,7 @@ void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple oldtuple, HeapTuple tuple)
 		CacheInvalidateHeapTuple(rel, tuple, NULL);
 
 	/* Execute the statement and clean up */
-	YBCExecWriteStmt(update_stmt, rel);
+	HandleYBStmtStatus(YBCExecWriteStmt(update_stmt, rel), update_stmt);
 	HandleYBStatus(YBCPgDeleteStatement(update_stmt));
 	update_stmt = NULL;
 }

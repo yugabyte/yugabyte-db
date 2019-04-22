@@ -253,6 +253,7 @@ class Status {
          const char* file_name,
          int line_number,
          const Slice& msg,
+         // Error message details. If present - would be combined as "msg: msg2".
          const Slice& msg2 = Slice(),
          int64_t error_code = -1,
          DupFileName dup_file_name = DupFileName::kFalse);
