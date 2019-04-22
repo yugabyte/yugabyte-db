@@ -478,6 +478,11 @@ Status Heartbeater::Thread::TryHeartbeat() {
       return STATUS(ServiceUnavailable, "master is no longer the leader");
     }
 
+    // Check for a universe key registry for encryption.
+    if (resp.has_universe_key_registry()) {
+      RETURN_NOT_OK(server_->SetUniverseKeyRegistry(resp.universe_key_registry()));
+    }
+
     // At this point we know resp is a successful heartbeat response from the master so set it as
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
     // below (hence using the nested scope for resp until here).

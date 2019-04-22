@@ -784,6 +784,9 @@ class FileLock {
 // A utility routine: write "data" to the named file.
 extern CHECKED_STATUS WriteStringToFile(Env* env, const Slice& data, const std::string& fname);
 
+extern CHECKED_STATUS WriteStringToFileSync(Env* env, const Slice& data, const std::string& fname);
+
+
 // A utility routine: read contents of named file into *data
 extern CHECKED_STATUS ReadFileToString(Env* env, const std::string& fname,
                                faststring* data);

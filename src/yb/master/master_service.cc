@@ -138,6 +138,13 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     resp->set_cluster_uuid(cluster_config.cluster_uuid());
   }
 
+  s = server_->catalog_manager()->FillHeartbeatResponse(req, resp);
+  if (!s.ok()) {
+    LOG(WARNING) << "Unable to set universe key registry: " << s.ToString();
+    rpc.RespondFailure(s);
+  }
+
+
   // TODO: KUDU-86 if something fails after this point the TS will not be able
   //       to register again.
 
@@ -648,6 +655,14 @@ void MasterServiceImpl::IsInitDbDone(const IsInitDbDoneRequestPB* req,
                                      RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::IsInitDbDone, HoldCatalogLock::kFalse);
 }
+
+void MasterServiceImpl::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
+                                             ChangeEncryptionInfoResponsePB* resp,
+                                             rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &YB_EDITION_NS_PREFIX CatalogManager::ChangeEncryptionInfo);
+}
+
+
 
 } // namespace master
 } // namespace yb

@@ -51,6 +51,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/master/master.pb.h"
 
 namespace rocksdb {
 class Env;
@@ -181,6 +182,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   virtual Env* GetEnv();
 
   virtual rocksdb::Env* GetRocksDBEnv();
+
+  virtual CHECKED_STATUS SetUniverseKeyRegistry(
+      const yb::UniverseKeyRegistryPB& universe_key_registry);
 
  protected:
   virtual CHECKED_STATUS RegisterServices();
