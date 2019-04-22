@@ -94,6 +94,8 @@ class Master;
 class SysCatalogTable;
 class TableInfo;
 class TSDescriptor;
+class ChangeEncryptionInfoRequestPB;
+class ChangeEncryptionInfoResponsePB;
 
 struct DeferredAssignmentActions;
 
@@ -329,6 +331,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                GetUDTypeInfoResponsePB* resp,
                                rpc::RpcContext* rpc);
 
+  virtual CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
+                                              ChangeEncryptionInfoResponsePB* resp);
+
   Result<uint64_t> IncrementYsqlCatalogVersion();
 
   // Records the fact that initdb has succesfully completed.
@@ -339,6 +344,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS IsInitDbDone(const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp);
 
   uint64_t GetYsqlCatalogVersion();
+
+  virtual CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
+                                               TSHeartbeatResponsePB* resp);
 
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
 

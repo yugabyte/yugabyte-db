@@ -39,6 +39,7 @@ import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/tablet/metadata.proto";
+import "yb/util/encryption.proto";
 
 ////////////////////////////////////////////////////////////
 // Common data structures
@@ -372,7 +373,22 @@ message SysRedisConfigEntryPB {
   repeated bytes args = 2;
 }
 
-// The on-disk entry in the sys.catalog table for configuration information
+message ChangeEncryptionInfoRequestPB {
+  optional bool encryption_enabled = 1;
+  optional string key_path = 2;
+}
+
+message ChangeEncryptionInfoResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message EncryptionInfoPB {
+  optional bool encryption_enabled = 1 [default = false];
+  optional bytes universe_key_registry_encoded = 2;
+  optional string key_path = 3;
+}
+
+// The on-disk entry in the sys.catalog table for configuration vinformation
 // that are relevant to the entire cluster. This has a version entry that is
 // used for ensuring that client read-modify-writes are valid.
 message SysClusterConfigEntryPB {
@@ -380,6 +396,7 @@ message SysClusterConfigEntryPB {
   optional string cluster_uuid = 4;
   optional ReplicationInfoPB replication_info = 2;
   optional BlacklistPB server_blacklist = 3;
+  optional EncryptionInfoPB encryption_info = 5;
 }
 
 message SysRoleEntryPB {
@@ -562,6 +579,8 @@ message TSHeartbeatResponsePB {
   // Current YSQL catalog schema version.
   // Used by tservers and postgres backends to decide if a cache refresh is needed.
   optional uint64 ysql_catalog_version = 10;
+
+  optional UniverseKeyRegistryPB universe_key_registry = 11;
 }
 
 message TSInformationPB {
@@ -1455,4 +1474,6 @@ service MasterService {
   rpc IsFlushTablesDone(IsFlushTablesDoneRequestPB) returns (IsFlushTablesDoneResponsePB);
 
   rpc IsInitDbDone(IsInitDbDoneRequestPB) returns (IsInitDbDoneResponsePB);
+
+  rpc ChangeEncryptionInfo(ChangeEncryptionInfoRequestPB) returns (ChangeEncryptionInfoResponsePB);
 }

@@ -82,7 +82,7 @@ ADD_YB_LIBRARY(version_info_proto
   NONLINK_DEPS ${VERSION_INFO_PROTO_TGTS})
 
 #######################################
-# version_info_proto
+# op_id_proto
 #######################################
 
 PROTOBUF_GENERATE_CPP(
@@ -94,6 +94,19 @@ ADD_YB_LIBRARY(opid_proto
   SRCS ${OP_ID_PROTO_SRCS}
   DEPS protobuf
   NONLINK_DEPS ${OP_ID_PROTO_TGTS})
+
+#########################################
+# encryption_proto
+#########################################
+PROTOBUF_GENERATE_CPP(
+  ENCRYPTION_PROTO_SRCS ENCRYPTION_PROTO_HDRS ENCRYPTION_PROTO_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES encryption.proto)
+ADD_YB_LIBRARY(encryption_proto
+  SRCS ${ENCRYPTION_PROTO_SRCS}
+  DEPS protobuf
+  NONLINK_DEPS ${ENCRYPTION_PROTO_TGTS})
 
 ############################################################
 # Version stamp
@@ -247,6 +260,7 @@ set(UTIL_LIBS
   pb_util_proto
   protobuf
   version_info_proto
+  encryption_proto
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
   ${UTIL_LIBS_EXTENSIONS})
