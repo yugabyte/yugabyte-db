@@ -342,7 +342,6 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
       return Status::OK();
     }
   }
-
   // Run error checking on the LIMIT clause.
   RETURN_NOT_OK(AnalyzeLimitClause(sem_context));
 
@@ -359,6 +358,63 @@ void PTSelectStmt::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
 }
 
+ExplainPlanPB PTSelectStmt::AnalysisResultToPB() {
+  ExplainPlanPB explain_plan;
+  SelectPlanPB *select_plan = explain_plan.mutable_select_plan();
+  // Determines scan_type, child_select_ != null means an index is being used.
+  if (child_select_) {
+    string index_type = (child_select_->covers_fully() ? "Index Only" : "Index");
+    string lookup_type = (child_select_->select_has_primary_keys_set_ ? "Key Lookup" : "Scan");
+    select_plan->set_select_type(index_type + " " + lookup_type + " using " +
+      child_select()->table()->name().ToString() + " on " + table_name().ToString());
+  // Index is not being used, query only uses main table.
+  } else if (select_has_primary_keys_set_) {
+    select_plan->set_select_type("Primary Key Lookup on " + table_name().ToString());
+  } else if (!(key_where_ops().empty() && partition_key_ops().empty())) {
+    select_plan->set_select_type("Range Scan on " + table_name().ToString());
+  } else {
+    select_plan->set_select_type("Seq Scan on " + table_name().ToString());
+  }
+  string key_conditions = "  Key Conditions: ";
+  string filter = "  Filter: ";
+  size_t longest = 0;
+  // If overarching information( "Aggregate" | "Limit") then rest of the explain plan output needs
+  // to be indented.
+  if (is_aggregate() || limit_clause_) {
+    string aggr = (is_aggregate()) ? "Aggregate" : "Limit";
+    select_plan->set_aggregate(aggr);
+    key_conditions = "      " + key_conditions;
+    filter = "      " + filter;
+    select_plan->set_select_type("  ->  " + select_plan->select_type());
+    longest = max(longest, aggr.length());
+  }
+  longest = max(longest, select_plan->select_type().length());
+  // If index is being used, change the split of key conditions and filters to that of the index.
+  const auto& keys = child_select_ ? child_select_->key_where_ops() : key_where_ops();
+  const auto& filters = child_select_ ? child_select_->where_ops() : where_ops();
+  // Rebuild the conditions and filter into strings from internal format.
+  string filled_key_conds = conditionsToString<MCVector<ColumnOp>>(keys);
+  string filled_filter = conditionsToString<MCList<ColumnOp>>(filters);
+
+  filled_key_conds += partitionkeyToString(partition_key_ops());
+
+  // If the query has key conditions or filters on either the index or the main table, then output
+  // to query plan.
+  if (!filled_key_conds.empty()) {
+    key_conditions += filled_key_conds;
+    longest = max(longest, key_conditions.length());
+    select_plan->set_key_conditions(key_conditions);
+  }
+  if (!filled_filter.empty()) {
+    filter += filled_filter;
+    longest = max(longest, filter.length());
+    select_plan->set_filter(filter);
+  }
+
+  // Set the output_width that has been calculated throughout the construction of the query plan.
+  select_plan->set_output_width(longest);
+  return explain_plan;
+}
 //--------------------------------------------------------------------------------------------------
 
 // Check whether we can use an index.

@@ -307,5 +307,18 @@ TEST_F(QLTestParser, TestTruncate) {
   PARSE_INVALID_STMT("TRUNCATE TYPE t;");
 }
 
+TEST_F(QLTestParser, TestExplain) {
+  // Valid statement: TRUNCATE [TABLE] [keyspace.]table.
+  PARSE_VALID_STMT("EXPLAIN SELECT * FROM t WHERE C1=:c1;");
+  PARSE_VALID_STMT("EXPLAIN INSERT INTO human_resource(id, name) VALUES(7, \"Scott Tiger\");");
+  PARSE_VALID_STMT("EXPLAIN UPDATE human_resource SET name = \"Joe Street\" WHERE id = 7;");
+  PARSE_VALID_STMT("EXPLAIN DELETE FROM t WHERE h1 = 1 AND h2 = 'a' AND r1 = 2 AND r2 = 'c' "
+                   "IF EXISTS ELSE ERROR;");
+  // Invalid statement: invalid target type.
+  PARSE_INVALID_STMT("EXPLAIN CREATE TABLE human_resource(id int, name varchar);");
+  PARSE_INVALID_STMT("EXPLAIN TRUNCATE TABLE T;");
+  PARSE_INVALID_STMT("EXPLAIN ANALYZE SELECT * FROM t WHERE C1=:c1;");
+}
+
 }  // namespace ql
 }  // namespace yb

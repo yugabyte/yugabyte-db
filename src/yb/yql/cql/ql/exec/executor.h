@@ -41,6 +41,7 @@
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
+#include "yb/yql/cql/ql/ptree/pt_explain.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -131,6 +132,9 @@ class Executor : public QLExprExecutor {
 
   // Update statement.
   CHECKED_STATUS ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_context);
+
+  // Explain statement.
+  CHECKED_STATUS ExecPTNode(const PTExplainStmt *tnode);
 
   // Truncate statement.
   CHECKED_STATUS ExecPTNode(const PTTruncateStmt *tnode);

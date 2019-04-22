@@ -1302,6 +1302,11 @@ class PTBindVar : public PTExpr {
     return TreeNodeOpcode::kPTBindVar;
   }
 
+  virtual string QLName() const override {
+    string qlname = (user_pos_) ? user_pos_->ToString() : name()->c_str();
+    return ":" +  qlname;
+  }
+
   // Access to op_.
   virtual ExprOperator expr_op() const override {
     return ExprOperator::kBindVar;

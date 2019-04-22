@@ -140,6 +140,7 @@ class PTUpdateStmt : public PTDmlStmt {
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
   CHECKED_STATUS AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context);
+  ExplainPlanPB AnalysisResultToPB() override;
 
   // Table name.
   client::YBTableName table_name() const override {
