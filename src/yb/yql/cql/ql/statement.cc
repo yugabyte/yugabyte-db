@@ -56,6 +56,7 @@ Status Statement::Prepare(QLProcessor *processor, const MemTrackerPtr& mem_track
       case TreeNodeOpcode::kPTSelectStmt: FALLTHROUGH_INTENDED;
       case TreeNodeOpcode::kPTInsertStmt: FALLTHROUGH_INTENDED;
       case TreeNodeOpcode::kPTUpdateStmt: FALLTHROUGH_INTENDED;
+      case TreeNodeOpcode::kPTExplainStmt: FALLTHROUGH_INTENDED;
       case TreeNodeOpcode::kPTDeleteStmt:
         result->reset(new PreparedResult(static_cast<const PTDmlStmt&>(stmt)));
         break;

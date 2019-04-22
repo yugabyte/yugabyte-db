@@ -563,3 +563,56 @@ message QLBCallPB {
   optional int32 opcode = 1;
   repeated QLExpressionPB operands = 2;
 }
+
+
+//--------------------------------------------------------------------------------------------------
+// EXPLAIN PLAN
+//
+// Explain Plan Protobufs for 4 main DDL statements.
+// Output examples at https://github.com/YugaByte/yugabyte-db/issues/861#issuecomment-469350077
+// TODO: Change from just explain plan strings to proper Query Plan with enums.
+// - Cqlsh output is right-justified so 'output_width' is used to right-pad the output so that it
+//   appears left-justified like PostgreSQL explain plan.
+// - 'key_conditions' is the set of columns of the where clause that are part of the primary key.
+// - 'filter' is the set of the rest of the where clause columns are that not in the primary key.
+//--------------------------------------------------------------------------------------------------
+
+message ExplainPlanPB {
+  oneof plan {
+    SelectPlanPB select_plan = 1;
+    InsertPlanPB insert_plan = 2;
+    UpdatePlanPB update_plan = 3;
+    DeletePlanPB delete_plan = 4;
+  }
+}
+
+message SelectPlanPB {
+  optional string select_type = 1;
+  // Overarching information like "Aggregate" or "Limit"
+  optional string aggregate = 2;
+  optional string key_conditions = 3;
+  optional string filter = 4;
+  optional int32 output_width = 5;
+}
+
+message InsertPlanPB {
+  optional string insert_type = 1;
+  optional int32 output_width = 2;
+}
+
+message UpdatePlanPB {
+  optional string update_type = 1;
+  // For update, scan_type is currently only primary key lookup.
+  optional string scan_type = 2;
+  optional string key_conditions = 3;
+  optional int32 output_width = 4;
+}
+
+message DeletePlanPB {
+  optional string delete_type = 1;
+  // For delete, scan_type is currently either primary key lookup or range scan.
+  optional string scan_type = 2;
+  optional string key_conditions = 3;
+  optional string filter = 4;
+  optional int32 output_width = 5;
+}
