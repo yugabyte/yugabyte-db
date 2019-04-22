@@ -838,6 +838,9 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   state_->SetLeaderNoOpCommittedUnlocked(false);
   queue_->RegisterObserver(this);
 
+  // Refresh queue and peers before initiating NO_OP.
+  RefreshConsensusQueueAndPeersUnlocked();
+
   // Initiate a NO_OP operation that is sent at the beginning of every term
   // change in raft.
   auto replicate = std::make_shared<ReplicateMsg>();
@@ -860,7 +863,7 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
                                              &DoNothingStatusCB, std::placeholders::_1));
   RETURN_NOT_OK(AppendNewRoundToQueueUnlocked(round));
 
-  RefreshConsensusQueueAndPeersUnlocked();
+  peer_manager_->SignalRequest(RequestTriggerMode::kNonEmptyOnly);
 
   return Status::OK();
 }

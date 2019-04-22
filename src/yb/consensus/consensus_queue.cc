@@ -426,7 +426,6 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   if (PREDICT_FALSE(*needs_remote_bootstrap)) {
       YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(INFO, 30)
           << "Peer needs remote bootstrap: " << uuid;
-    *needs_remote_bootstrap = true;
     return Status::OK();
   }
   *needs_remote_bootstrap = false;

@@ -93,17 +93,23 @@ class QLStressTest : public QLDmlTestBase {
     builder->AddColumn(kValueColumn)->Type(STRING);
   }
 
-  YBqlWriteOpPtr InsertRow(const YBSessionPtr& session, int32_t key, const std::string& value) {
-    auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  YBqlWriteOpPtr InsertRow(const YBSessionPtr& session,
+                           const TableHandle& table,
+                           int32_t key,
+                           const std::string& value) {
+    auto op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
-    table_.AddStringColumnValue(req, kValueColumn, value);
+    table.AddStringColumnValue(req, kValueColumn, value);
     EXPECT_OK(session->Apply(op));
     return op;
   }
 
-  CHECKED_STATUS WriteRow(const YBSessionPtr& session, int32_t key, const std::string& value) {
-    auto op = InsertRow(session, key, value);
+  CHECKED_STATUS WriteRow(const YBSessionPtr& session,
+                          const TableHandle& table,
+                          int32_t key,
+                          const std::string& value) {
+    auto op = InsertRow(session, table, key, value);
     RETURN_NOT_OK(session->Flush());
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
       return STATUS_FORMAT(
@@ -113,17 +119,17 @@ class QLStressTest : public QLDmlTestBase {
     return Status::OK();
   }
 
-  YBqlReadOpPtr SelectRow(const YBSessionPtr& session, int32_t key) {
-    auto op = table_.NewReadOp();
+  YBqlReadOpPtr SelectRow(const YBSessionPtr& session, const TableHandle& table, int32_t key) {
+    auto op = table.NewReadOp();
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, key);
-    table_.AddColumns({kValueColumn}, req);
+    table.AddColumns({kValueColumn}, req);
     EXPECT_OK(session->Apply(op));
     return op;
   }
 
-  Result<QLValue> ReadRow(const YBSessionPtr& session, int32_t key) {
-    auto op = SelectRow(session, key);
+  Result<QLValue> ReadRow(const YBSessionPtr& session, const TableHandle& table, int32_t key) {
+    auto op = SelectRow(session, table, key);
     RETURN_NOT_OK(session->Flush());
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
       return STATUS_FORMAT(
@@ -137,6 +143,26 @@ class QLStressTest : public QLDmlTestBase {
     return row.column(0);
   }
 
+  YBqlWriteOpPtr InsertRow(const YBSessionPtr& session,
+                           int32_t key,
+                           const std::string& value) {
+    return QLStressTest::InsertRow(session, table_, key, value);
+  }
+
+  CHECKED_STATUS WriteRow(const YBSessionPtr& session,
+                          int32_t key,
+                          const std::string& value) {
+    return QLStressTest::WriteRow(session, table_, key, value);
+  }
+
+  YBqlReadOpPtr SelectRow(const YBSessionPtr& session, int32_t key) {
+    return QLStressTest::SelectRow(session, table_, key);
+  }
+
+  Result<QLValue> ReadRow(const YBSessionPtr& session, int32_t key) {
+    return QLStressTest::ReadRow(session, table_, key);
+  }
+
   void VerifyFlushedFrontiers();
 
   void TestRetryWrites(bool restarts);
@@ -147,6 +173,32 @@ class QLStressTest : public QLDmlTestBase {
 
   int checkpoint_index_ = 0;
 };
+
+/*
+ * Create a lot of tables and check that each of them are usable (can read/write to them).
+ * Test enough rows/keys to ensure that most tablets will be hit.
+ */
+TEST_F(QLStressTest, LargeNumberOfTables) {
+  int num_tables = NonTsanVsTsan(20, 10);
+  int num_tablets_per_table = NonTsanVsTsan(3, 1);
+  auto session = NewSession();
+  for (int i = 0; i < num_tables; i++) {
+    YBSchemaBuilder b;
+    InitSchemaBuilder(&b);
+    CompleteSchemaBuilder(&b);
+    TableHandle table;
+    client::YBTableName table_name("my_keyspace", "ql_client_test_table_" + std::to_string(i));
+    ASSERT_OK(table.Create(table_name, num_tablets_per_table, client_.get(), &b));
+
+    int num_rows = num_tablets_per_table * 5;
+    for (int key = i; key < i + num_rows; key++) {
+      string value = "value_" + std::to_string(key);
+      ASSERT_OK(WriteRow(session, table, key, value));
+      auto read_value = ASSERT_RESULT(ReadRow(session, table, key));
+      ASSERT_EQ(read_value.string_value(), value) << read_value.ToString();
+    }
+  }
+}
 
 bool QLStressTest::CheckRetryableRequestsCounts(size_t* total_entries, size_t* total_leaders) {
   *total_entries = 0;
