@@ -21,22 +21,30 @@ namespace yb {
 namespace enterprise {
 
 struct EncryptionParams;
+typedef std::unique_ptr<EncryptionParams> EncryptionParamsPtr;
+
 struct FileEncryptionStatus;
 
-// Class used by FileFactory to construct header for encrypted files. The header format looks like:
-// magic encryption string
-// header size
-// EncryptionHeaderPB
+// Class for managing encryption headers of files.
 class HeaderManager {
  public:
   virtual ~HeaderManager() {}
 
-  virtual Result<std::unique_ptr<EncryptionParams>> DecodeEncryptionParamsFromEncryptionMetadata(
+  // Slice starts from GetEncryptionMetadataStartIndex() and has length header_size from calling
+  // GetFileEncryptionStatusFromPrefix. Generate encryption params for the given file, used when
+  // creating a readable file.
+  virtual Result<EncryptionParamsPtr> DecodeEncryptionParamsFromEncryptionMetadata(
       const Slice& s) = 0;
+  // Given encryption params, create a file header. Used when creating a writable file.
   virtual Result<std::string> SerializeEncryptionParams(
       const EncryptionParams& encryption_info) = 0;
+  // Start index of the encryption file metadata for the given file.
   virtual uint32_t GetEncryptionMetadataStartIndex() = 0;
+  // Returns whether the file is encrypted and if so, what is the size of the header. Slice starts
+  // from 0 and has length GetEncryptionMetadataStartIndex().
   virtual Result<FileEncryptionStatus> GetFileEncryptionStatusFromPrefix(const Slice& s) = 0;
+  // Is encryption enabled for new files.
+  virtual bool IsEncryptionEnabled() = 0;
 };
 
 } // namespace enterprise

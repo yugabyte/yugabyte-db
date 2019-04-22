@@ -12,6 +12,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/ntp_clock.h"
 #include "yb/util/encrypted_file_factory.h"
+#include "yb/util/universe_key_manager.h"
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
@@ -31,8 +32,10 @@ using yb::rpc::ServiceIf;
 
 TabletServer::TabletServer(const TabletServerOptions& opts) :
   super(opts),
-  env_(yb::enterprise::NewEncryptedEnv(DefaultHeaderManager())),
-  rocksdb_env_(yb::enterprise::NewRocksDBEncryptedEnv(DefaultHeaderManager())) {}
+  universe_key_manager_(std::make_unique<yb::enterprise::UniverseKeyManager>()),
+  env_(yb::enterprise::NewEncryptedEnv(DefaultHeaderManager(universe_key_manager_.get()))),
+  rocksdb_env_(yb::enterprise::NewRocksDBEncryptedEnv(
+      DefaultHeaderManager(universe_key_manager_.get()))) {}
 
 TabletServer::~TabletServer() {
 }
@@ -66,6 +69,16 @@ Env* TabletServer::GetEnv() {
 
 rocksdb::Env* TabletServer::GetRocksDBEnv() {
   return rocksdb_env_.get();
+}
+
+yb::enterprise::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
+  return universe_key_manager_.get();
+}
+
+Status TabletServer::SetUniverseKeyRegistry(
+    const yb::UniverseKeyRegistryPB& universe_key_registry) {
+  universe_key_manager_->SetUniverseKeyRegistry(universe_key_registry);
+  return Status::OK();
 }
 
 } // namespace enterprise

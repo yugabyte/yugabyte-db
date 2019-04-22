@@ -28,8 +28,6 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-DECLARE_bool(enable_encryption);
-
 namespace yb {
 namespace enterprise {
 
@@ -46,7 +44,6 @@ TEST_F(TestRocksDBEncryptedEnv, FileOps) {
   Slice data(bytes.data(), bytes.size());
 
   for (bool encrypted : {false, true}) {
-    FLAGS_enable_encryption = encrypted;
     down_cast<HeaderManagerMockImpl*>(hm_ptr)->SetFileEncryption(encrypted);
 
     std::unique_ptr<rocksdb::WritableFile> writable_file;

@@ -16,26 +16,30 @@
 
 #include "yb/util/status.h"
 #include "yb/util/result.h"
-
 #include "yb/util/header_manager.h"
 #include "yb/util/cipher_stream.h"
-
+#include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/env.h"
+
 #include "yb/rocksdb/env.h"
 
 namespace yb {
-class EncryptionHeaderPB;
+
+class EncryptionParamsPB;
 class RandomAccessFile;
+
 namespace enterprise {
 
 class HeaderManager;
 class BlockAccessCipherStream;
 
+// Struct generated for encryption status of existing files.
 struct FileEncryptionStatus {
   bool is_encrypted;
   uint32_t header_size;
 };
 
+// Encryption params consisting of key size 16, 24, or 32, nonce size 12, and counter size 4.
 struct EncryptionParams {
   static constexpr uint32_t kBlockSize = 16;
   static constexpr uint32_t kMaxKeySize = 32;
@@ -47,12 +51,31 @@ struct EncryptionParams {
   uint32_t counter;
   uint32_t key_size;
 
-  void ToEncryptionHeaderPB(EncryptionHeaderPB* encryption_header) const;
-  void FromEncryptionHeaderPB(const EncryptionHeaderPB& encryption_header);
+  void ToEncryptionParamsPB(EncryptionParamsPB* encryption_header) const;
+
+  static Result<std::unique_ptr<EncryptionParams>> FromEncryptionParamsPB(
+      const EncryptionParamsPB& encryption_header);
+
+  // Given a slice, convert contents to encryption params. Used to read latest universe key.
+  static Result<std::unique_ptr<EncryptionParams>> FromKeyFile(const Slice& s);
 
   static std::unique_ptr<EncryptionParams> NewEncryptionParams();
+
+  static CHECKED_STATUS IsValidKeySize(uint32_t size);
+
+  bool Equals(const EncryptionParams& other);
 };
 
+typedef std::unique_ptr<EncryptionParams> EncryptionParamsPtr;
+
+YB_STRONGLY_TYPED_UUID(UniverseKeyId);
+
+struct UniverseKeyParams {
+  UniverseKeyId version_id = UniverseKeyId::Nil();
+  EncryptionParamsPtr params;
+};
+
+// Thread local buffer for any encryption operations.
 class EncryptionBuffer {
  public:
   void* GetBuffer(uint32_t size_needed);
@@ -64,6 +87,7 @@ class EncryptionBuffer {
 };
 
 
+// Given a readable file, generate a cipher stream and header size for that file.
 template <typename BufType, typename Readable>
 Result<bool> GetEncryptionInfoFromFile(HeaderManager* header_manager,
                                        Readable* underlying_r,
@@ -96,6 +120,7 @@ Result<bool> GetEncryptionInfoFromFile(HeaderManager* header_manager,
   return true;
 }
 
+// Given a writable file, generate a new stream and header for that file.
 template <typename Writable>
 Status CreateEncryptionInfoForWrite(HeaderManager* header_manager,
                                     Writable* underlying_w,
@@ -137,10 +162,9 @@ Status CreateRandomAccessFile(ReadablePtr* result,
 template <typename EncryptedFile, typename WritablePtr>
 Status CreateWritableFile(WritablePtr* result,
                           HeaderManager* header_manager,
-                          WritablePtr underlying,
-                          bool enable_encryption) {
+                          WritablePtr underlying) {
   result->reset();
-  if (!enable_encryption) {
+  if (!header_manager->IsEncryptionEnabled()) {
     *result = std::move(underlying);
     return Status::OK();
   }
