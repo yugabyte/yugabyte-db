@@ -38,7 +38,7 @@ Result<string> HeaderManagerMockImpl::SerializeEncryptionParams(
   return header;
 }
 
-Result<std::unique_ptr<EncryptionParams>>
+Result<EncryptionParamsPtr>
 HeaderManagerMockImpl::DecodeEncryptionParamsFromEncryptionMetadata(const yb::Slice& s) {
   auto encryption_params = std::make_unique<EncryptionParams>();
   memcpy(encryption_params.get(), encryption_params_.get(), sizeof(EncryptionParams));
@@ -59,6 +59,10 @@ Result<FileEncryptionStatus> HeaderManagerMockImpl::GetFileEncryptionStatusFromP
 
 std::unique_ptr<HeaderManager> GetMockHeaderManager() {
   return std::make_unique<HeaderManagerMockImpl>();
+}
+
+bool HeaderManagerMockImpl::IsEncryptionEnabled() {
+  return file_encrypted_;
 }
 
 } // namespace enterprise

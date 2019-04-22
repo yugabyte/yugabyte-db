@@ -147,6 +147,24 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
           std::vector<string>(args.begin() + 2, args.end())), "Unable to set preferred zones");
         return Status::OK();
       });
+
+  Register(
+      "rotate_universe_key", " key_path",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 2) {
+          UsageAndExit(args[0]);
+        }
+        RETURN_NOT_OK_PREPEND(
+            client->RotateUniverseKey(args[2]), "Unable to rotate universe key.");
+        return Status::OK();
+      });
+
+  Register(
+      "disable_encryption", "",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK_PREPEND(client->DisableEncryption(), "Unable to disable encryption.");
+        return Status::OK();
+      });
 }
 
 }  // namespace enterprise

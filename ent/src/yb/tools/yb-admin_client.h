@@ -40,7 +40,14 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   CHECKED_STATUS SetPreferredZones(const std::vector<string>& preferred_zones);
 
+  CHECKED_STATUS RotateUniverseKey(const std::string& key_path);
+
+  CHECKED_STATUS DisableEncryption();
+
  private:
+
+  CHECKED_STATUS SendEncryptionRequest(const std::string& key_path, bool enable_encryption);
+
   std::unique_ptr<master::MasterBackupServiceProxy> master_backup_proxy_;
 
   // Secure connection info to connect with tls enabled servers.
