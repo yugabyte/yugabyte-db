@@ -118,6 +118,9 @@ DEFINE_int32(o_direct_block_alignment_bytes, 4096,
              "Alignment (in bytes) for blocks used for O_DIRECT operations.");
 TAG_FLAG(o_direct_block_alignment_bytes, advanced);
 
+DEFINE_test_flag(bool, TEST_simulate_fs_without_fallocate, false,
+    "If true, the system simulates a file system that doesn't support fallocate");
+
 using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
 using std::vector;
@@ -390,6 +393,10 @@ class PosixWritableFile : public WritableFile {
     TRACE_EVENT1("io", "PosixWritableFile::PreAllocate", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
     uint64_t offset = std::max(filesize_, pre_allocated_size_);
+    if (PREDICT_FALSE(FLAGS_TEST_simulate_fs_without_fallocate)) {
+      YB_LOG_FIRST_N(WARNING, 1) << "Simulating a filesystem without fallocate() support";
+      return Status::OK();
+    }
     if (fallocate(fd_, 0, offset, size) < 0) {
       if (errno == EOPNOTSUPP) {
         YB_LOG_FIRST_N(WARNING, 1) << "The filesystem does not support fallocate().";
@@ -398,6 +405,8 @@ class PosixWritableFile : public WritableFile {
       } else {
         return STATUS_IO_ERROR(filename_, errno);
       }
+      // We don't want to modify pre_allocated_size_ since nothing was pre-allocated.
+      return Status::OK();
     }
     pre_allocated_size_ = offset + size;
     return Status::OK();

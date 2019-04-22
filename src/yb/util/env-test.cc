@@ -56,6 +56,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_int32(o_direct_block_size_bytes);
+DECLARE_bool(TEST_simulate_fs_without_fallocate);
 
 #if !defined(__APPLE__)
 #include <linux/falloc.h>
@@ -92,6 +93,11 @@ class TestEnv : public YBTest, public ::testing::WithParamInterface<bool> {
   void CheckFallocateSupport() {
     static bool checked = false;
     if (checked) return;
+
+    if (FLAGS_TEST_simulate_fs_without_fallocate) {
+      checked = true;
+      return;
+    }
 
 #if defined(__linux__)
     int fd = creat(GetTestPath("check-fallocate").c_str(), S_IWUSR);
