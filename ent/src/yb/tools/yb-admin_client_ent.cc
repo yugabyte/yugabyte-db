@@ -50,6 +50,8 @@ using master::SysTablesEntryPB;
 using master::IdPairPB;
 using master::IsCreateTableDoneRequestPB;
 using master::IsCreateTableDoneResponsePB;
+using master::ChangeEncryptionInfoRequestPB;
+using master::ChangeEncryptionInfoResponsePB;
 using yb::util::to_uchar_ptr;
 
 using namespace std::literals;
@@ -467,6 +469,39 @@ Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferre
     return STATUS(ServiceUnavailable, resp.error().status().message());
   }
 
+  return Status::OK();
+}
+
+
+
+Status ClusterAdminClient::RotateUniverseKey(const std::string& key_path) {
+  return SendEncryptionRequest(key_path, true);
+}
+
+Status ClusterAdminClient::DisableEncryption() {
+  return SendEncryptionRequest("", false);
+}
+
+Status ClusterAdminClient::SendEncryptionRequest(
+    const std::string& key_path, bool enable_encryption) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  // Get the cluster config from the master leader.
+  master::ChangeEncryptionInfoRequestPB encryption_info_req;
+  master::ChangeEncryptionInfoResponsePB encryption_info_resp;
+  encryption_info_req.set_encryption_enabled(enable_encryption);
+  if (key_path != "") {
+    encryption_info_req.set_key_path(key_path);
+  }
+  RETURN_NOT_OK_PREPEND(master_proxy_->
+      ChangeEncryptionInfo(encryption_info_req, &encryption_info_resp, &rpc),
+                        "MasterServiceImpl::ChangeEncryptionInfo call fails.")
+
+  if (encryption_info_resp.has_error()) {
+    return StatusFromPB(encryption_info_resp.error().status());
+  }
   return Status::OK();
 }
 

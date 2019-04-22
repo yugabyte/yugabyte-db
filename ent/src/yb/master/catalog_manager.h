@@ -4,7 +4,6 @@
 #define ENT_SRC_YB_MASTER_CATALOG_MANAGER_H
 
 #include "../../../../src/yb/master/catalog_manager.h"
-
 #include "yb/master/master_backup.pb.h"
 
 namespace yb {
@@ -124,6 +123,9 @@ class CatalogManager : public yb::master::CatalogManager {
   CHECKED_STATUS ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req,
                                     ImportSnapshotMetaResponsePB* resp);
 
+  CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
+                                      ChangeEncryptionInfoResponsePB* resp) override;
+
   void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error);
 
   void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error);
@@ -145,6 +147,10 @@ class CatalogManager : public yb::master::CatalogManager {
   void GetTsDescsFromPlacementInfo(const PlacementInfoPB& placement_info,
                                    const TSDescriptorVector& all_ts_descs,
                                    TSDescriptorVector* ts_descs);
+
+  // Fills the heartbeat response with the decrypted universe key registry.
+  CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
+                                       TSHeartbeatResponsePB* resp) override;
 
  private:
   friend class SnapshotLoader;
@@ -210,6 +216,12 @@ class CatalogManager : public yb::master::CatalogManager {
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo> > SnapshotInfoMap;
   SnapshotInfoMap snapshot_ids_map_;
   SnapshotId current_snapshot_id_;
+
+  // mutex on should_send_universe_key_registry_mutex_.
+  mutable simple_spinlock should_send_universe_key_registry_mutex_;
+  // Should catalog manager resend latest universe key registry to tserver.
+  std::unordered_map<TabletServerId, bool> should_send_universe_key_registry_
+  GUARDED_BY(should_send_universe_key_registry_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

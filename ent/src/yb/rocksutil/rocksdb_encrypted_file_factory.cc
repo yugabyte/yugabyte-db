@@ -18,9 +18,6 @@
 #include "yb/util/header_manager.h"
 #include "yb/util/encryption_util.h"
 
-DECLARE_bool(enable_encryption);
-DECLARE_int32(key_size);
-
 namespace yb {
 namespace enterprise {
 
@@ -120,8 +117,8 @@ class RocksDBEncryptedWritableFile : public rocksdb::WritableFileWrapper {
   static Status Create(std::unique_ptr<rocksdb::WritableFile>* result,
                        HeaderManager* header_manager,
                        std::unique_ptr<rocksdb::WritableFile> underlying) {
-    return CreateWritableFile<RocksDBEncryptedWritableFile>
-        (result, header_manager, std::move(underlying), FLAGS_enable_encryption);
+    return CreateWritableFile<RocksDBEncryptedWritableFile>(
+        result, header_manager, std::move(underlying));
   }
 
   // Default constructor.

@@ -41,6 +41,7 @@ set(MASTER_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/master_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/cluster_balance.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/ts_descriptor.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/universe_key_registry_service.cc
   PARENT_SCOPE)
 
 set(MASTER_ADDITIONAL_TESTS

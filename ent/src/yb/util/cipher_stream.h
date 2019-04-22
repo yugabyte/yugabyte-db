@@ -29,11 +29,14 @@ class BufferAllocator;
 namespace enterprise {
 
 struct EncryptionParams;
+typedef std::unique_ptr<EncryptionParams> EncryptionParamsPtr;
 
 // BlockAccessCipherStream is the base class for any cipher stream.
 class BlockAccessCipherStream {
  public:
-  explicit BlockAccessCipherStream(std::unique_ptr<EncryptionParams> encryption_params);
+  static Result<std::unique_ptr<BlockAccessCipherStream>> FromEncryptionParams(
+      EncryptionParamsPtr encryption_params);
+  explicit BlockAccessCipherStream(EncryptionParamsPtr encryption_params);
   CHECKED_STATUS Init();
   // Encrypt data at an offset.
   CHECKED_STATUS Encrypt(uint64_t file_offset, const Slice& input, void* output);
@@ -45,7 +48,7 @@ class BlockAccessCipherStream {
   CHECKED_STATUS EncryptByBlock(uint64_t block_index, const Slice& input, void* output);
 
  private:
-  std::unique_ptr<EncryptionParams> encryption_params_;
+  EncryptionParamsPtr encryption_params_;
   std::unique_ptr<EVP_CIPHER_CTX, std::function<void(EVP_CIPHER_CTX*)>> encryption_context_;
   mutable simple_spinlock mutex_;
 };
