@@ -13,10 +13,8 @@ import { METRIC_COLORS } from '../MetricsConfig';
 
 const panelTypes = {
   overview: {title: "Overview",
-    metrics: ["cql_server_rpc_per_second",
-      "cql_sql_latency",
-      "redis_rpcs_per_sec_all",
-      "redis_ops_latency_all", 
+    metrics: ["total_rpcs_per_sec",
+      "total_ops_latency",
       "cpu_usage", 
       "disk_usage", "memory_usage"]}
 };

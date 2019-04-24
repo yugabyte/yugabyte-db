@@ -95,6 +95,7 @@ public class NodeDetails {
 
   // True if this node is a YSQL server, along with port info.
   public boolean isYsqlServer = true;
+  public int ysqlServerHttpPort = 13000;
   public int ysqlServerRpcPort = 5433;
 
   // List of states which are considered in-transit and ops such as upgrade should not be allowed.

@@ -50,6 +50,7 @@ public class SwamperHelper {
     TSERVER_EXPORT(9000),
     REDIS_EXPORT(11000),
     CQL_EXPORT(12000),
+    YSQL_EXPORT(13000),
     INVALID_EXPORT(0);
 
     private int port;

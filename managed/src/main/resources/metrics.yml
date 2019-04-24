@@ -1358,6 +1358,52 @@ docdb_transaction:
         "transaction_conflicts": "Transaction Conflicts"
         "expired_transactions": "Expired Transactions"
 
+#Ysql Metrics
+ysql_server_rpc_per_second:
+  metric: "rpc_latency_count"
+  function: "irate|sum"
+  range : "1m"
+  filters:
+    export_type: "ysql_export"
+    server_type: "yb_ysqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
+  group_by: "service_method"
+  layout:
+    title: "Total YSQL Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "SelectStmt": "Select"
+        "InsertStmt": "Insert"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+        "OtherStmt": "Other"
+
+ysql_sql_latency:
+  metric: "rpc_latency.avg"
+  function: "irate|avg"
+  range : "1m"
+  filters:
+    export_type: "ysql_export"
+    server_type: "yb_ysqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt|OtherStmts"
+  group_by: "service_method"
+  layout:
+    title: "YSQL Op Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "SelectStmt": "Select"
+        "InsertStmt": "Insert"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+        "OtherStmts": "Others"
+      ticksuffix: "&nbsp;\u00B5s"
+
 #Cassandra Metrics
 cql_server_rpc_per_second:
   metric: "rpc_latency_count"
