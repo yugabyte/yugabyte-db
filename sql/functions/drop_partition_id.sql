@@ -188,37 +188,41 @@ LOOP
                     PERFORM update_step(v_step_id, 'OK', 'Done');
                 END IF;
             ELSIF v_retention_keep_index = false THEN
-                FOR v_index IN 
-                     WITH child_info AS (
-                        SELECT c1.oid
-                        FROM pg_catalog.pg_class c1
-                        JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
-                        WHERE c1.relname = v_row.partition_tablename::name
-                        AND n1.nspname = v_row.partition_schema::name
-                    )
-                    SELECT c.relname as name
-                        , con.conname
-                    FROM pg_catalog.pg_index i
-                    JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid
-                    LEFT JOIN pg_catalog.pg_constraint con ON i.indexrelid = con.conindid
-                    JOIN child_info ON i.indrelid = child_info.oid
-                LOOP
-                    IF v_jobmon_schema IS NOT NULL THEN
-                        v_step_id := add_step(v_job_id, format('Drop index %s from %s.%s'
-                            , v_index.name
-                            , v_row.partition_schemaname
-                            , v_row.partition_tablename));
-                    END IF;
-                    IF v_index.conname IS NOT NULL THEN
-                        EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I', v_row.partition_schemaname, v_row.partition_tablename, v_index.conname);
-                    ELSE
-                        EXECUTE format('DROP INDEX %I.%I', v_row.partition_schemaname, v_index.name);
-                    END IF;
-                    IF v_jobmon_schema IS NOT NULL THEN
-                        PERFORM update_step(v_step_id, 'OK', 'Done');
-                    END IF;
-                END LOOP;
-            END IF;
+                IF v_partition_type = 'partman' OR 
+                       ( v_partition_type = 'native' AND  current_setting('server_version_num')::int < 110000) THEN
+                    -- Cannot drop child indexes on native partition sets in PG11+
+                    FOR v_index IN 
+                         WITH child_info AS (
+                            SELECT c1.oid
+                            FROM pg_catalog.pg_class c1
+                            JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
+                            WHERE c1.relname = v_row.partition_tablename::name
+                            AND n1.nspname = v_row.partition_schema::name
+                        )
+                        SELECT c.relname as name
+                            , con.conname
+                        FROM pg_catalog.pg_index i
+                        JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid
+                        LEFT JOIN pg_catalog.pg_constraint con ON i.indexrelid = con.conindid
+                        JOIN child_info ON i.indrelid = child_info.oid
+                    LOOP
+                        IF v_jobmon_schema IS NOT NULL THEN
+                            v_step_id := add_step(v_job_id, format('Drop index %s from %s.%s'
+                                , v_index.name
+                                , v_row.partition_schemaname
+                                , v_row.partition_tablename));
+                        END IF;
+                        IF v_index.conname IS NOT NULL THEN
+                            EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I', v_row.partition_schemaname, v_row.partition_tablename, v_index.conname);
+                        ELSE
+                            EXECUTE format('DROP INDEX %I.%I', v_row.partition_schemaname, v_index.name);
+                        END IF;
+                        IF v_jobmon_schema IS NOT NULL THEN
+                            PERFORM update_step(v_step_id, 'OK', 'Done');
+                        END IF;
+                    END LOOP;
+                END IF; -- end native/11 check 
+            END IF; -- end v_retention_keep_index IF
         ELSE -- Move to new schema
             IF v_jobmon_schema IS NOT NULL THEN
                 v_step_id := add_step(v_job_id, format('Moving table %s.%s to schema %s'
@@ -279,4 +283,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

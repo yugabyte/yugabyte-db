@@ -95,6 +95,9 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND v_epoch <> 'none') THEN
                     child_start_time := to_timestamp(v_year || '-07-01', 'YYYY-MM-DD');
                 WHEN v_quarter = '4' THEN
                     child_start_time := to_timestamp(v_year || '-10-01', 'YYYY-MM-DD');
+                ELSE
+                    -- handle case when partition name did not use "q" convetion
+                    child_start_time := to_timestamp(v_suffix, v_datetime_string);
             END CASE;
         END IF;
 

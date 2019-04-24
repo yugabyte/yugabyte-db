@@ -7,6 +7,7 @@ v_adv_lock          boolean;
 v_batch_count       int := 0;
 v_control           text;
 v_control_type      text;
+v_epoch             text;
 v_is_autovac_off    boolean := false;
 v_lockwait_count    int := 0;
 v_parent_schema     text;
@@ -26,8 +27,8 @@ IF v_adv_lock = 'false' THEN
     RETURN;
 END IF;
 
-SELECT control
-INTO v_control
+SELECT control, epoch
+INTO v_control, v_epoch
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table;
 IF NOT FOUND THEN
@@ -55,6 +56,10 @@ IF p_source_table IS NOT NULL THEN
 END IF;
  
 SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+
+IF v_control_type = 'id' AND v_epoch <> 'none' THEN
+        v_control_type := 'time';
+END IF;
 
 /*
 -- Currently no way to catch exception and reset autovac settings back to normal. Until I can do that, leaving this feature out for now
@@ -138,4 +143,5 @@ EXCEPTION
 */
 END;
 $$;
+
 

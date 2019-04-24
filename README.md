@@ -21,7 +21,7 @@ INSTALLATION
 ------------
 Requirement: PostgreSQL >= 9.4
 
-Recommended: pg_jobmon (>=v1.3.2). PG Job Monitor will automatically be used if it is installed and setup properly.
+Recommended: pg_jobmon (>=v1.4.0). PG Job Monitor will automatically be used if it is installed and setup properly.
 https://github.com/omniti-labs/pg_jobmon
 
 In the directory where you downloaded pg_partman, run
@@ -47,9 +47,10 @@ Log into PostgreSQL and run the following commands. Schema is optional (but reco
     CREATE SCHEMA partman;
     CREATE EXTENSION pg_partman SCHEMA partman;
 
-As of version 4.0.0, the privileges required to run pg_partman have been reduced greatly. Superuser is still required to install pg_partman and a superuser must still own the extension objects for things to fully run. But the functions with SECURITY DEFINER (ie, run as a superuser) are very minimal, and in a future update, will be completely optional. It is recommended that a dedicated role is created for running pg_partman functions and to be the owner of all partition sets that pg_partman maintains. At a minimum this role will need the following privileges (assuming pg_partman is installed to the "partman" schema):
+As of version 4.1.0, pg_partman no longer requires a superuser to run for native partitioning. Trigger-based partitioning still requires it, so if you want to not require superuser, look to migrating to native partitioning. Superuser is still required to install pg_partman. It is recommended that a dedicated role is created for running pg_partman functions and to be the owner of all partition sets that pg_partman maintains. At a minimum this role will need the following privileges (assuming pg_partman is installed to the "partman" schema and that dedicated role is called "partman"):
 
     CREATE ROLE partman WITH LOGIN;
+    GRANT ALL ON SCHEMA partman TO partman;
     GRANT ALL ON ALL TABLES IN SCHEMA partman TO partman;
     GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA partman TO partman;
     GRANT EXECUTE ON ALL PROCEDURES IN SCHEMA partman TO partman;  -- PG11+ only
@@ -70,7 +71,7 @@ Run "make install" same as above to put the script files and libraries in place.
 
 If you are doing a pg_dump/restore and you've upgraded pg_partman in place from previous versions, it is recommended you use the --column-inserts option when dumping and/or restoring pg_partman's configuration tables. This is due to ordering of the configuration columns possibly being different (upgrades just add the columns onto the end, whereas the default of a new install may be different).
 
-If upgrading between any major versions of pg_partman (1.x -> 2.x, 2.x -> 3.x, etc), please carefully read all intervening version notes in the CHANGELOG, especially those notes for the major version. There are often additional instructions (Ex. updating trigger functions) and other important considerations for the updates.
+If upgrading between any major versions of pg_partman (2.x -> 3.x, etc), please carefully read all intervening version notes in the CHANGELOG, especially those notes for the major version. There are often additional instructions (Ex. updating trigger functions) and other important considerations for the updates.
 
 EXAMPLE
 -------
@@ -84,7 +85,7 @@ Then just run the create_parent() function with the appropriate parameters
 
     SELECT partman.create_parent('test.part_test', 'col3', 'partman', 'daily');
     or
-    SELECT partman.create_parent('test.part_test', 'col1', 'partman', '100000');
+    SELECT partman.create_parent('test.part_test', 'col1', 'native', '100000');
 
 This will turn your table into a parent table and premake 4 future partitions and also make 4 past partitions. To make new partitions, schedule the run_maintenance() function to run periodically or use the background worker settings in postgresql.conf (the latter is recommended). 
 

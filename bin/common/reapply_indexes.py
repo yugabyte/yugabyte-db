@@ -3,7 +3,7 @@
 import argparse, psycopg2, re, sys, time
 from multiprocessing import Process
 
-partman_version = "3.1.0"
+partman_version = "4.1.0"
 
 parser = argparse.ArgumentParser(description="Script for reapplying indexes on child tables in a partition set to match the parent table. Any indexes that currently exist on the children and match the definition on the parent will be left as is. There is an option to recreate matching as well indexes if desired, as well as the primary key. Indexes that do not exist on the parent will be dropped. Commits are done after each index is dropped/created to help prevent long running transactions & locks.", epilog="NOTE: New index names are made based off the child table name & columns used, so their naming may differ from the name given on the parent. This is done to allow the tool to account for long or duplicate index names. If an index name would be duplicated, an incremental counter is added on to the end of the index name to allow it to be created. Use the --dryrun option first to see what it will do and which names may cause dupes to be handled like this.")
 parser.add_argument('-p', '--parent', help="Parent table of an already created partition set. (Required)")
@@ -19,6 +19,30 @@ parser.add_argument('-q', '--quiet', action="store_true", help="Turn off all out
 parser.add_argument('--nonpartman', action="store_true", help="If the partition set you are running this on is not managed by pg_partman, set this flag otherwise this script may not work. Note that the pg_partman extension is still required to be installed for this to work since it uses certain internal functions. When this is set the order that the tables are reindexed is alphabetical instead of logical.")
 parser.add_argument('--version', action="store_true", help="Print out the minimum version of pg_partman this script is meant to work with. The version of pg_partman installed may be greater than this.")
 args = parser.parse_args()
+
+def check_compatibility(conn, partman_schema):
+    cur = conn.cursor()
+    
+    sql = """SELECT current_setting('server_version_num')::int"""
+    cur.execute(sql)
+    pg_version = int(cur.fetchone()[0])
+
+    if pg_version < 90400:
+        print("ERROR: This script requires PostgreSQL minimum version of 9.4.0")
+        sys.exit(2)
+
+    sql = "SELECT partition_type FROM " + partman_schema + ".part_config WHERE parent_table = %s"
+    cur.execute(sql, [args.parent])
+    partition_type = cur.fetchone()[0]
+
+    if pg_version >= 110000 and partition_type == "native":
+        print("This script cannot currently work with native partition sets in PG11+. Please use native index inheritance methods if possible.")
+        cur.close()
+        conn_close(conn)
+        sys.exit(2)
+
+    cur.close()
+
 
 def create_conn():
     conn = psycopg2.connect(args.connection)
@@ -71,7 +95,7 @@ def create_index(conn, partman_schema, child_schemaname, child_tablename, child_
             while True:
                 sql = "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = %s AND c.relname = %s"
                 cur = conn.cursor()
-                cur.execute(sql, [parent_schemaname, index_name])
+                cur.execute(sql, [child_schemaname, index_name])
                 index_exists = cur.fetchone()[0]
                 if index_exists != None and index_exists > 0:
                     index_name = child_tablename
@@ -280,14 +304,8 @@ if __name__ == "__main__":
 
     conn = create_conn()
 
-    cur = conn.cursor()
-    cur.execute("SELECT current_setting('server_version_num')::int > 90400")
-    if cur.fetchone()[0] == False:
-        print("ERROR: This script requires PostgreSQL minimum version of 9.4.0")
-        sys.exit(2)
-    cur.close()
-
     partman_schema = get_partman_schema(conn)
+    check_compatibility(conn,partman_schema)
     parent = get_parent(conn, partman_schema)
     parent_index_list = get_parent_index_list(conn, parent)
     child_list = get_children(conn, partman_schema)

@@ -1,5 +1,5 @@
 -- ########## TIME CUSTOM TESTS NATIVE ##########
-
+  -- Additional tests: Inherit privileges
 -- May fail when run in the first or second 30 seconds of the minute due to rounding down to the nearest minute.
 -- If it does, wait until the next block of 30 seconds starts and try again.
 -- If it is failing no matter when it is run, please create an issue on Github with a log of your result when running with "pg_prove -ovf" 
@@ -42,6 +42,9 @@ GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
 SELECT create_parent('partman_test.time_taptest_table', 'col3', 'native', '30 seconds', p_template_table := 'partman_test.time_taptest_table_template');
 -- Must run_maintenance because when interval time is between 1 hour and 1 minute, the first partition name done by above is always the nearest hour rounded down 
 SELECT run_maintenance();
+UPDATE part_config SET inherit_privileges = TRUE;
+SELECT reapply_privileges('partman_test.time_taptest_table');
+
 
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 

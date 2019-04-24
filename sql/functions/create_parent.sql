@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION @extschema@.create_parent(
+CREATE FUNCTION @extschema@.create_parent(
     p_parent_table text
     , p_control text
     , p_type text
@@ -36,6 +36,7 @@ v_higher_parent_control         text;
 v_higher_parent_schema          text := split_part(p_parent_table, '.', 1);
 v_higher_parent_table           text := split_part(p_parent_table, '.', 2);
 v_id_interval                   bigint;
+v_inherit_privileges            boolean := false;
 v_job_id                        bigint;
 v_jobmon_schema                 text;
 v_last_partition_created        boolean;
@@ -192,7 +193,7 @@ IF p_type = 'native' THEN
             END IF;
     END IF;
 
-ELSE
+ELSE -- if not native 
 
     IF current_setting('server_version_num')::int >= 100000 THEN
         SELECT p.partstrat INTO v_partstrat
@@ -207,7 +208,8 @@ ELSE
         RAISE EXCEPTION 'Given parent table has been set up with native partitioning therefore cannot be used with pg_partman''s other partitioning types. Either recreate table non-native or set the type argument to ''native''';
     END IF;
 
-END IF;
+END IF; -- end if "native" check
+
 
 IF p_publications IS NOT NULL THEN
     IF current_setting('server_version_num')::int < 100000 THEN
@@ -224,6 +226,14 @@ IF p_publications IS NOT NULL THEN
             RAISE EXCEPTION 'Given publication name (%) does not exist in system catalog. Ensure it is created first.', v_row.pubname;
         END IF;
     END LOOP;
+END IF;
+
+-- Only inherit parent ownership/privileges on non-native sets by default
+-- This is false by default so initial partition set creation doesn't require superuser.
+IF p_type = 'native' THEN
+    v_inherit_privileges = false;
+ELSE
+    v_inherit_privileges  = true;
 END IF;
 
 SELECT current_setting('search_path') INTO v_old_search_path;
@@ -277,6 +287,7 @@ FOR v_row IN
         , sub_upsert
         , sub_trigger_return_null
         , sub_template_table
+        , sub_inherit_privileges
     FROM @extschema@.part_config_sub a
     JOIN sibling_children b on a.sub_parent = b.tablename LIMIT 1
 LOOP
@@ -301,7 +312,8 @@ LOOP
         , sub_trigger_exception_handling
         , sub_upsert
         , sub_trigger_return_null
-        , sub_template_table)
+        , sub_template_table
+        , sub_inherit_privileges)
     VALUES (
         p_parent_table
         , v_row.sub_partition_type
@@ -323,8 +335,14 @@ LOOP
         , v_row.sub_trigger_exception_handling
         , v_row.sub_upsert
         , v_row.sub_trigger_return_null
-        , v_row.sub_template_table);
-    
+        , v_row.sub_template_table
+        , v_row.sub_inherit_privileges);
+
+    -- Set this equal to sibling configs so that newly created child table 
+    -- privileges are set properly below during initial setup.
+    -- This setting is special because it applies immediately to the new child 
+    -- tables of a given parent, not just during maintenance like most other settings.
+    v_inherit_privileges = v_row.sub_inherit_privileges;
 END LOOP;
 
 IF v_control_type = 'time' OR (v_control_type = 'id' AND p_epoch <> 'none') THEN
@@ -436,7 +454,8 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND p_epoch <> 'none') THEN
         , upsert
         , trigger_return_null
         , template_table
-        , publications)
+        , publications
+        , inherit_privileges)
     VALUES (
         p_parent_table
         , p_type
@@ -452,7 +471,8 @@ IF v_control_type = 'time' OR (v_control_type = 'id' AND p_epoch <> 'none') THEN
         , p_upsert
         , p_trigger_return_null
         , v_template_schema||'.'||v_template_tablename
-        , p_publications); 
+        , p_publications
+        , v_inherit_privileges); 
 
     RAISE DEBUG 'create_parent: v_partition_time_array: %', v_partition_time_array;
 
@@ -590,7 +610,8 @@ IF v_control_type = 'id' AND p_epoch = 'none' THEN
         , upsert
         , trigger_return_null
         , template_table
-        , publications)
+        , publications
+        , inherit_privileges)
     VALUES (
         p_parent_table
         , p_type
@@ -604,7 +625,8 @@ IF v_control_type = 'id' AND p_epoch = 'none' THEN
         , p_upsert
         , p_trigger_return_null
         , v_template_schema||'.'||v_template_tablename
-        , p_publications); 
+        , p_publications
+        , v_inherit_privileges); 
 
     v_last_partition_created := @extschema@.create_partition_id(p_parent_table, v_partition_id_array, false);
 
@@ -682,8 +704,6 @@ IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 TH
         EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE %I', v_parent_schema, v_default_partition, v_parent_tablespace);
     END IF;
 
-    -- NOTE: Privileges currently not automatically inherited for native
-    PERFORM @extschema@.apply_privileges(v_parent_schema, v_parent_tablename, v_parent_schema, v_default_partition, v_job_id);
 END IF;
 
 IF p_type <> 'native' THEN

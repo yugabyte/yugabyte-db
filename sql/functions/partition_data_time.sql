@@ -15,6 +15,9 @@ v_control                   text;
 v_control_type              text;
 v_datetime_string           text;
 v_current_partition_name    text;
+v_default_exists            boolean;
+v_default_schemaname        text;
+v_default_tablename         text;
 v_epoch                     text;
 v_last_partition            text;
 v_lock_iter                 int := 1;
@@ -23,7 +26,6 @@ v_max_partition_timestamp   timestamptz;
 v_min_partition_timestamp   timestamptz;
 v_new_search_path           text := '@extschema@,pg_temp';
 v_old_search_path           text;
-v_parent_schema             text;
 v_parent_tablename          text;
 v_parent_tablename_real     text;
 v_partition_expression      text;
@@ -31,7 +33,10 @@ v_partition_interval        interval;
 v_partition_suffix          text;
 v_partition_timestamp       timestamptz[];
 v_partition_type            text;
+v_source_schemaname         text;
+v_source_tablename          text;
 v_rowcount                  bigint;
+v_sql                       text;
 v_start_control             timestamptz;
 v_total_rows                bigint := 0;
 
@@ -56,16 +61,16 @@ IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: No entry in part_config found for given table:  %', p_parent_table;
 END IF;
 
-IF v_partition_type = 'native' AND p_source_table IS NULL THEN
-    RAISE EXCEPTION 'Partitioning data for a native partition set requires the p_source_table parameter to be set.';
-END IF;
-
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+SELECT schemaname, tablename INTO v_source_schemaname, v_source_tablename
 FROM pg_catalog.pg_tables
 WHERE schemaname = split_part(p_parent_table, '.', 1)::name
 AND tablename = split_part(p_parent_table, '.', 2)::name;
 
-SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, v_control);
+-- Preserve real parent tablename for use below
+v_parent_tablename := v_source_tablename;
+
+SELECT general_type INTO v_control_type FROM @extschema@.check_control_type(v_source_schemaname, v_source_tablename, v_control);
+
 IF v_control_type <> 'time' THEN 
     IF (v_control_type = 'id' AND v_epoch = 'none') OR v_control_type <> 'id' THEN
         RAISE EXCEPTION 'Cannot run on partition set without time based control column or epoch flag set with an id column. Found control: %, epoch: %', v_control_type, v_epoch;
@@ -74,17 +79,48 @@ END IF;
 
 -- Replace the parent variables with the source variables if using source table for child table data
 IF p_source_table IS NOT NULL THEN
-    v_parent_tablename_real := v_parent_tablename; -- Preserve for use later
-    v_parent_schema := NULL;
-    v_parent_tablename := NULL;
+    -- Set source table to user given source table instead of parent table
+    v_source_schemaname := NULL;
+    v_source_tablename := NULL;
 
-    SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+    SELECT schemaname, tablename INTO v_source_schemaname, v_source_tablename
     FROM pg_catalog.pg_tables
     WHERE schemaname = split_part(p_source_table, '.', 1)::name
     AND tablename = split_part(p_source_table, '.', 2)::name;
 
-    IF v_parent_tablename IS NULL THEN
+    IF v_source_tablename IS NULL THEN
         RAISE EXCEPTION 'Given source table does not exist in system catalogs: %', p_source_table;
+    END IF;
+
+
+ELSIF v_partition_type = 'native' AND current_setting('server_version_num')::int >= 110000 THEN
+
+    IF p_batch_interval IS NOT NULL AND p_batch_interval != v_partition_interval THEN
+        -- This is true because all data for a given child table must be moved out of the default partition before the child table can be created.
+        -- So cannot create the child table when only some of the data has been moved out of the default partition.
+        RAISE EXCEPTION 'Custom intervals are not allowed when moving data out of the DEFAULT partition in a native set. Please leave p_interval/p_batch_interval parameters unset or NULL to allow use of partition set''s default partitioning interval.';
+    END IF;
+    -- Set source table to default table if PG11+, p_source_table is not set, and it exists
+    -- Otherwise just return with a DEBUG that no data source exists
+    v_sql := format('SELECT n.nspname::text, c.relname::text FROM
+        pg_catalog.pg_inherits h
+        JOIN pg_catalog.pg_class c ON c.oid = h.inhrelid
+        JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+        WHERE h.inhparent = ''%I.%I''::regclass
+        AND pg_get_expr(relpartbound, c.oid) = ''DEFAULT'''
+        , v_source_schemaname
+        , v_source_tablename);
+
+    EXECUTE v_sql INTO v_default_schemaname, v_default_tablename;
+    IF v_default_tablename IS NOT NULL THEN
+        v_source_schemaname := v_default_schemaname;
+        v_source_tablename := v_default_tablename;
+
+        v_default_exists := true;
+        EXECUTE format ('CREATE TEMP TABLE IF NOT EXISTS partman_temp_data_storage (LIKE %I.%I INCLUDING INDEXES)', v_source_schemaname, v_source_tablename);
+    ELSE
+        RAISE DEBUG 'No default table found when partition_data_id() was called';
+        RETURN v_total_rows;
     END IF;
 END IF;
 
@@ -106,9 +142,9 @@ END;
 FOR i IN 1..p_batch_count LOOP
 
     IF p_order = 'ASC' THEN
-        EXECUTE format('SELECT min(%s) FROM ONLY %I.%I', v_partition_expression, v_parent_schema, v_parent_tablename) INTO v_start_control;
+        EXECUTE format('SELECT min(%s) FROM ONLY %I.%I', v_partition_expression, v_source_schemaname, v_source_tablename) INTO v_start_control;
     ELSIF p_order = 'DESC' THEN
-        EXECUTE format('SELECT max(%s) FROM ONLY %I.%I', v_partition_expression, v_parent_schema, v_parent_tablename) INTO v_start_control;
+        EXECUTE format('SELECT max(%s) FROM ONLY %I.%I', v_partition_expression, v_source_schemaname, v_source_tablename) INTO v_start_control;
     ELSE
         RAISE EXCEPTION 'Invalid value for p_order. Must be ASC or DESC';
     END IF;
@@ -139,7 +175,7 @@ FOR i IN 1..p_batch_count LOOP
                 v_min_partition_timestamp := date_trunc('year', v_start_control);
         END CASE;
     ELSIF v_partition_type IN ('time-custom', 'native') THEN
-        SELECT child_start_time INTO v_min_partition_timestamp FROM @extschema@.show_partition_info(v_parent_schema||'.'||v_last_partition
+        SELECT child_start_time INTO v_min_partition_timestamp FROM @extschema@.show_partition_info(v_source_schemaname||'.'||v_last_partition
             , v_partition_interval::text
             , p_parent_table);
         v_max_partition_timestamp := v_min_partition_timestamp + v_partition_interval;
@@ -193,8 +229,8 @@ FOR i IN 1..p_batch_count LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
                 EXECUTE format('SELECT * FROM ONLY %I.%I WHERE %s >= %L AND %3$s < %5$L FOR UPDATE NOWAIT'
-                    , v_parent_schema
-                    , v_parent_tablename
+                    , v_source_schemaname
+                    , v_source_tablename
                     , v_partition_expression
                     , v_min_partition_timestamp
                     , v_max_partition_timestamp);
@@ -211,21 +247,48 @@ FOR i IN 1..p_batch_count LOOP
         END IF;
     END IF;
 
-    PERFORM @extschema@.create_partition_time(p_parent_table, v_partition_timestamp, p_analyze);
     -- This suffix generation code is in create_partition_time() as well
     v_partition_suffix := to_char(v_min_partition_timestamp, v_datetime_string);
-    v_current_partition_name := @extschema@.check_name_length(COALESCE(v_parent_tablename_real, v_parent_tablename), v_partition_suffix, TRUE);
+    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_partition_suffix, TRUE);
 
-    EXECUTE format('WITH partition_data AS (
-                        DELETE FROM ONLY %I.%I WHERE %s >= %L AND %3$s < %5$L RETURNING *)
-                     INSERT INTO %I.%I SELECT * FROM partition_data'
-                        , v_parent_schema
-                        , v_parent_tablename
-                        , v_partition_expression
-                        , v_min_partition_timestamp
-                        , v_max_partition_timestamp
-                        , v_parent_schema
-                        , v_current_partition_name);
+    IF v_default_exists THEN
+        -- Child tables cannot be created in native partitioning if data that belongs to it exists in the default
+        -- Have to move data out to temporary location, create child table, then move it back
+
+        -- Temp table created above to avoid excessive temp creation in loop
+        EXECUTE format('WITH partition_data AS (
+                DELETE FROM %1$I.%2$I WHERE %3$I >= %4$L AND %3$I < %5$L RETURNING *)
+            INSERT INTO partman_temp_data_storage SELECT * FROM partition_data'
+            , v_source_schemaname
+            , v_source_tablename
+            , v_control
+            , v_min_partition_timestamp
+            , v_max_partition_timestamp);
+
+        PERFORM @extschema@.create_partition_time(p_parent_table, v_partition_timestamp, p_analyze);
+
+        EXECUTE format('WITH partition_data AS (
+                DELETE FROM partman_temp_data_storage RETURNING *)
+            INSERT INTO %I.%I SELECT * FROM partition_data'
+            , v_source_schemaname
+            , v_current_partition_name);
+
+    ELSE
+
+        PERFORM @extschema@.create_partition_time(p_parent_table, v_partition_timestamp, p_analyze);
+
+        EXECUTE format('WITH partition_data AS (
+                            DELETE FROM ONLY %I.%I WHERE %s >= %L AND %3$s < %5$L RETURNING *)
+                         INSERT INTO %I.%I SELECT * FROM partition_data'
+                            , v_source_schemaname
+                            , v_source_tablename
+                            , v_partition_expression
+                            , v_min_partition_timestamp
+                            , v_max_partition_timestamp
+                            , v_source_schemaname
+                            , v_current_partition_name);
+    END IF;
+
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
     v_total_rows := v_total_rows + v_rowcount;
     IF v_rowcount = 0 THEN
@@ -244,5 +307,4 @@ RETURN v_total_rows;
 
 END
 $$;
-
 

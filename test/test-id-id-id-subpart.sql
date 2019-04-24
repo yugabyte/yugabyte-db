@@ -1729,7 +1729,7 @@ SELECT run_maintenance();
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(100101,107500));
 
 -- Stuff likely went into some parent tables. It's diffcult to test a constant stream of input data to regularly run run_maintenence() against.
-SELECT results_eq('SELECT parent_table, count::int FROM check_parent() ORDER BY parent_table', $$VALUES 
+SELECT results_eq('SELECT default_table, count::int FROM check_default() ORDER BY default_table', $$VALUES 
                                                                                                 ('partman_test.id_taptest_table_p100000_p101000', 900), 
                                                                                                 ('partman_test.id_taptest_table_p100000_p102000', 900), 
                                                                                                 ('partman_test.id_taptest_table_p100000_p103000', 900), 
@@ -1737,7 +1737,7 @@ SELECT results_eq('SELECT parent_table, count::int FROM check_parent() ORDER BY 
                                                                                                 ('partman_test.id_taptest_table_p100000_p105000', 900), 
                                                                                                 ('partman_test.id_taptest_table_p100000_p106000', 900), 
                                                                                                 ('partman_test.id_taptest_table_p100000_p107000',  401)$$, 
-                    'check_parent() run to see if stuff was put into parent tables');
+                    'check_default() run to see if stuff was put into parent tables');
 
 
 SELECT results_eq('SELECT partition_data_id(''partman_test.id_taptest_table_p100000_p101000'', p_batch_count := 20)::int', ARRAY[900], 
@@ -1755,7 +1755,7 @@ SELECT results_eq('SELECT partition_data_id(''partman_test.id_taptest_table_p100
 SELECT results_eq('SELECT partition_data_id(''partman_test.id_taptest_table_p100000_p107000'', p_batch_count := 20)::int', ARRAY[401], 
     'Check that partitioning function returns correct count of rows moved for id_taptest_table_p100000_p107000');
 
-SELECT is_empty('SELECT * from check_parent()', 'check_parent() should return nothing now.');
+SELECT is_empty('SELECT * from check_default()', 'check_default() should return nothing now.');
 
 -- Check for the rest of batch 2 tables now
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p100000_p100000_p100000', ARRAY[100], 'Check count fromid_taptest_table_p100000_p100000_p100000');

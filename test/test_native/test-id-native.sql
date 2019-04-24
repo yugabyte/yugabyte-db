@@ -1,5 +1,5 @@
 -- ########## ID DYNAMIC TESTS ##########
--- Additional tests: turn off pg_jobmon logging, UNLOGGED, PUBLIC role, start with higher number, inherit FK
+-- Additional tests: turn off pg_jobmon logging, UNLOGGED, PUBLIC role, start with higher number, inherit FK, inherit privileges
     -- Test using a pre-created template table and passing to create_parent. Should allow indexes to be made for initial children.
     -- Tests that foreign keys and normal indexes for PG10 use the template and for PG11 they use the parent. Also since this is id partitioning, we can use the partition key for primary key, so that should work from parent on PG11 as well.
 
@@ -48,6 +48,8 @@ END IF;
 END $pg11_objects_check$;
 
 SELECT create_parent('partman_test.id_taptest_table', 'col1', 'native', '10', p_jobmon := false, p_start_partition := '3000000000', p_template_table := 'partman_test.template_id_taptest_table');
+UPDATE part_config SET inherit_privileges = TRUE;
+SELECT reapply_privileges('partman_test.id_taptest_table');
 
 INSERT INTO partman_test.id_taptest_table (col1, col4) VALUES (generate_series(3000000001,3000000009), 'stuff'||generate_series(3000000001,3000000009));
 

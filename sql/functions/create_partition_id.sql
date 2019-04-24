@@ -16,6 +16,7 @@ v_grantees              text[];
 v_hasoids               boolean;
 v_id                    bigint;
 v_inherit_fk            boolean;
+v_inherit_privileges    boolean;
 v_job_id                bigint;
 v_jobmon                boolean;
 v_jobmon_schema         text;
@@ -53,6 +54,7 @@ SELECT control
     , jobmon
     , template_table
     , publications
+    , inherit_privileges
 INTO v_control
     , v_partition_type
     , v_partition_interval
@@ -60,6 +62,7 @@ INTO v_control
     , v_jobmon
     , v_template_table
     , v_publications
+    , v_inherit_privileges
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table;
 
@@ -204,8 +207,10 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
 
     END IF;
     
-    -- NOTE: Privileges currently not automatically inherited for native
-    PERFORM @extschema@.apply_privileges(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name, v_job_id);
+    -- NOTE: Privileges not automatically inherited for native. Only do so if config flag is set
+    IF v_partition_type != 'native' OR (v_partition_type = 'native' AND v_inherit_privileges = TRUE) THEN
+        PERFORM @extschema@.apply_privileges(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name, v_job_id);
+    END IF;
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -233,6 +238,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , sub_jobmon
             , sub_trigger_exception_handling
             , sub_template_table
+            , sub_inherit_privileges
         FROM @extschema@.part_config_sub
         WHERE sub_parent = p_parent_table
     LOOP
@@ -272,6 +278,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , optimize_constraint = v_row.sub_optimize_constraint
             , infinite_time_partitions = v_row.sub_infinite_time_partitions
             , trigger_exception_handling = v_row.sub_trigger_exception_handling
+            , inherit_privileges = v_row.sub_inherit_privileges
         WHERE parent_table = v_parent_schema||'.'||v_partition_name;
 
         IF v_jobmon_schema IS NOT NULL THEN

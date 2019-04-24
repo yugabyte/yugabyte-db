@@ -24,6 +24,7 @@ CREATE TABLE @extschema@.part_config (
     , trigger_return_null boolean NOT NULL DEFAULT true
     , template_table text
     , publications text[]
+    , inherit_privileges boolean DEFAULT false
     , CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table)
     , CONSTRAINT positive_premake_check CHECK (premake > 0)
     , CONSTRAINT publications_no_empty_set_chk CHECK (publications <> '{}')
@@ -55,6 +56,7 @@ CREATE TABLE @extschema@.part_config_sub (
     , sub_upsert TEXT NOT NULL DEFAULT ''
     , sub_trigger_return_null boolean NOT NULL DEFAULT true
     , sub_template_table text
+    , sub_inherit_privileges boolean DEFAULT false
     , CONSTRAINT part_config_sub_pkey PRIMARY KEY (sub_parent)
     , CONSTRAINT part_config_sub_sub_parent_fkey FOREIGN KEY (sub_parent) REFERENCES @extschema@.part_config (parent_table) ON DELETE CASCADE ON UPDATE CASCADE DEFERRABLE INITIALLY DEFERRED
     , CONSTRAINT positive_premake_check CHECK (sub_premake > 0)

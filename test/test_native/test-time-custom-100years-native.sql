@@ -1,5 +1,5 @@
 -- ########## TIME CUSTOM TESTS NATIVE ##########
--- Other tests: Use undo_partition_native()
+-- Other tests: Use undo_partition_native(), inherit privileges
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -35,6 +35,9 @@ GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
 
 SELECT create_parent('partman_test.time_taptest_table', 'col3', 'native', '100 years', p_template_table := 'partman_test.time_taptest_table_template');
+UPDATE part_config SET inherit_privileges = TRUE;
+SELECT reapply_privileges('partman_test.time_taptest_table');
+
 
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 

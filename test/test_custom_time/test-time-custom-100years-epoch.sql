@@ -21,7 +21,7 @@ GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
 SELECT create_parent('partman_test.time_taptest_table', 'col3', 'partman', '100 years', p_epoch := 'seconds');
 
 SELECT results_eq('SELECT partition_type FROM part_config WHERE parent_table = ''partman_test.time_taptest_table'''
-        , ARRAY['time-custom'], 'Check that part_config has time-custom for partitipe_type value');
+        , ARRAY['time-custom'], 'Check that part_config has time-custom for partition_type value');
 
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP), 'YYYY'), 'Check time_taptest_table_'||to_char(date_trunc('century', CURRENT_TIMESTAMP), 'YYYY')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP)+'100 years'::interval, 'YYYY'), 
