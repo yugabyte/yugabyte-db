@@ -60,6 +60,8 @@ public class CustomerController extends AuthenticatedController {
     }
     responseJson.put("callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
+    responseJson.put("features", customer.getFeatures());
+
     return ok(responseJson);
   }
 
@@ -111,6 +113,11 @@ public class CustomerController extends AuthenticatedController {
     } else if (config != null) {
       config.data = Json.toJson(formData.get().alertingData);
       config.update();
+    }
+
+    String features = formData.get().features;
+    if (features != null) {
+      customer.upsertFeatures(Json.toJson(features));
     }
 
     CustomerConfig.upsertCallhomeConfig(customerUUID, formData.get().callhomeLevel);

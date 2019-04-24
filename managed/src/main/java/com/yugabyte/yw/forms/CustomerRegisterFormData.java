@@ -30,6 +30,8 @@ public class CustomerRegisterFormData {
   @Constraints.MinLength(3)
   public String name;
 
+  public String features;
+
   static public class AlertingData {
     @Constraints.Email
     @Constraints.MinLength(5)

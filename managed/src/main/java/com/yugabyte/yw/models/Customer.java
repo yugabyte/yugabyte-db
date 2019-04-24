@@ -22,9 +22,11 @@ import org.mindrot.jbcrypt.BCrypt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.avaje.ebean.annotation.DbJson;
 import com.avaje.ebean.Model;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
 
 import play.data.validation.Constraints;
@@ -83,6 +85,9 @@ public class Customer extends Model {
 
   @Column(nullable = true)
   private String apiToken;
+
+  @Column(nullable = true)
+  private JsonNode features;
 
   public Date getAuthTokenIssueDate() {
     return this.authTokenIssueDate;
@@ -266,6 +271,21 @@ public class Customer extends Model {
   public void deleteAuthToken() {
     authToken = null;
     authTokenIssueDate = null;
+    save();
+  }
+
+  /**
+   * Get features for this customer;
+   */
+  public JsonNode getFeatures() {
+    return features;
+  }
+
+  /**
+   * Updates features for the customer.
+   */
+  public void upsertFeatures(JsonNode input) {
+    features = input;
     save();
   }
 }
