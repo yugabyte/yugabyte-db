@@ -314,7 +314,7 @@ insert into insertconflicttest values (26, 'Fig') on conflict (key) do update se
 -- fails, since UPDATE is to row with key value 26, and we're updating "fruit"
 -- to a value that happens to exist in another row ('peach'):
 insert into insertconflicttest values (26, 'Peach') on conflict (key) do update set fruit = excluded.fruit;
-ERROR:  Query error: Duplicate key found in primary key or unique index
+ERROR:  duplicate key value violates unique constraint "fruit_index"
 -- succeeds, since "key" isn't repeated/referenced in UPDATE, and "fruit"
 -- arbitrates that statement updates existing "Fig" row:
 insert into insertconflicttest values (25, 'Fig') on conflict (fruit) do update set fruit = excluded.fruit;
