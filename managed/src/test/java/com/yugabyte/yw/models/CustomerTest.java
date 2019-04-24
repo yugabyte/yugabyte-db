@@ -9,6 +9,7 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.h2.jdbc.JdbcSQLException;
 import org.junit.Test;
 import org.mindrot.jbcrypt.BCrypt;
+import play.libs.Json;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 
@@ -167,6 +168,19 @@ public class CustomerTest extends FakeDBApplication {
 
     Customer apiCust = Customer.authWithApiToken(apiToken);
     assertEquals(apiCust.uuid, c.uuid);
+  }
+
+  @Test
+  public void testUpsertFeatures() {
+    Customer c = Customer.create("C1", "Customer 1","foo@foo.com", "password");
+    c.save();
+
+    assertNotNull(c.uuid);
+
+    String features = "{\"TLS\": true, \"backups\": false";
+    c.upsertFeatures(Json.toJson(features));
+
+    assertEquals(Json.toJson(features), c.getFeatures());
   }
 
   @Test
