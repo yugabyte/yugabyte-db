@@ -62,6 +62,8 @@ const panelTypes = {
   proxies: {title: "Overall Ops and Latency",
     metrics: ["total_rpcs_per_sec",
       "total_ops_latency",
+      "ysql_server_rpc_per_second",
+      "ysql_sql_latency",
       "cql_server_rpc_per_second",
       "cql_sql_latency",
       "redis_rpcs_per_sec_all",
