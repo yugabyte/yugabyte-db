@@ -2683,10 +2683,7 @@ setup_data_file_paths(void)
 	set_input(&conf_file, "postgresql.conf.sample");
 	set_input(&conversion_file, "conversion_create.sql");
 	set_input(&dictionary_file, "snowball_create.sql");
-	if (IsYugaByteEnabledInInitdb())
-		set_input(&info_schema_file, "yb_information_schema.sql");
-	else
-		set_input(&info_schema_file, "information_schema.sql");
+	set_input(&info_schema_file, "information_schema.sql");
 	set_input(&features_file, "sql_features.txt");
 	if (IsYugaByteEnabledInInitdb())
 		set_input(&system_views_file, "yb_system_views.sql");
@@ -3079,7 +3076,7 @@ initialize_data_directory(void)
 		setup_description(cmdfd);
 
 	setup_collation(cmdfd);
-	
+
 	if (!IsYugaByteEnabledInInitdb())
 	{
 		setup_conversion(cmdfd);
@@ -3087,10 +3084,12 @@ initialize_data_directory(void)
 		setup_dictionary(cmdfd);
 
 		setup_privileges(cmdfd);
+	}
 
-		/* Do not support copy in YB yet */
-		setup_schema(cmdfd);
+	setup_schema(cmdfd);
 
+  if (!IsYugaByteEnabledInInitdb())
+  {
 		load_plpgsql(cmdfd);
 
 		/* Do not need to vacuum in YB */
