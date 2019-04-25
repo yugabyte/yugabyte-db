@@ -36,7 +36,6 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
-#include "executor/ybcScan.h"
 #include "miscadmin.h"
 #include "nodes/relation.h"
 #include "utils/datum.h"
@@ -49,153 +48,415 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
-static YbScanDesc
-setup_ybcscan_from_scankey(Relation relation,
-						   Relation index,
-						   bool index_cols_only,
-						   int nkeys,
-						   ScanKey key)
+typedef struct YbScanPlanData
 {
-	TupleDesc  tupdesc       = RelationGetDescr(relation);
-	TupleDesc  where_tupdesc = NULL;
-	List       *where_cond   = NIL;
-	List       *target_attrs = NIL;
-	AttrNumber sk_attno[INDEX_MAX_KEYS * 2]; /* A pair of lower/upper bounds per column max */
+	/* Primary and hash key columns of the referenced table/relation. */
+	Bitmapset *primary_key;
+	Bitmapset *hash_key;
 
-	if (nkeys > INDEX_MAX_KEYS * 2)
-		ereport(ERROR,
-				(errcode(ERRCODE_TOO_MANY_COLUMNS),
-				 errmsg("cannot use more than %d predicates in a table or index scan",
-						INDEX_MAX_KEYS * 2)));
+	/* The set of scan key columns to apply. */
+	Bitmapset *sk_cols;
 
-	if (index)
+} YbScanPlanData;
+
+typedef YbScanPlanData *YbScanPlan;
+
+/*
+ * Checks if an attribute is a hash or primary key column and note it in
+ * the scan plan.
+ */
+static void ybcCheckPrimaryKeyAttribute(YbScanPlan      scan_plan,
+										YBCPgTableDesc  ybc_table_desc,
+										AttrNumber      attnum)
+{
+	bool is_primary = false;
+	bool is_hash    = false;
+
+	HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
+											   attnum,
+											   &is_primary,
+											   &is_hash), ybc_table_desc);
+
+	int idx = attnum - FirstLowInvalidHeapAttributeNumber;
+
+	if (is_hash)
 	{
-		if (index->rd_index->indisprimary)
-		{
-			/*
-			 * If scanning a table using the primary key, change the attribute numbers in the
-			 * scan key to the table's column numbers.
-			 */
-			for (int i = 0; i < nkeys; i++)
-			{
-				sk_attno[i] = index->rd_index->indkey.values[key[i].sk_attno - 1];
-			}
-			where_tupdesc = RelationGetDescr(relation);
-		}
-		else
-		{
-			/*
-			 * If scanning a table using a local index in the same scan, change the attribute
-			 * numbers in the scan key to the index's column numbers.
-			 */
-			int	i, j;
+		scan_plan->hash_key = bms_add_member(scan_plan->hash_key, idx);
+	}
+	if (is_primary)
+	{
+		scan_plan->primary_key = bms_add_member(scan_plan->primary_key, idx);
+	}
+}
 
-			for (i = 0; i < nkeys; i++)
-			{
-				for (j = 0; j < index->rd_index->indnatts; j++)
-				{
-					if (key[i].sk_attno == index->rd_index->indkey.values[j])
-					{
-						sk_attno[i] = j + 1;
-						break;
-					}
-				}
-				if (j == index->rd_index->indnatts)
-					elog(ERROR, "column is not in index");
-			}
-			where_tupdesc = RelationGetDescr(index);
-		}
+/*
+ * Get YugaByte-specific table metadata and load it into the scan_plan.
+ * Currently only the hash and primary key info.
+ */
+static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
+{
+	Oid            dboid          = YBCGetDatabaseOid(relation);
+	Oid            relid          = RelationGetRelid(relation);
+	YBCPgTableDesc ybc_table_desc = NULL;
+
+	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session, dboid, relid, &ybc_table_desc));
+
+	for (AttrNumber attnum = 1; attnum <= relation->rd_att->natts; attnum++)
+	{
+		ybcCheckPrimaryKeyAttribute(scan_plan, ybc_table_desc, attnum);
+	}
+	if (relation->rd_rel->relhasoids)
+	{
+		ybcCheckPrimaryKeyAttribute(scan_plan, ybc_table_desc, ObjectIdAttributeNumber);
+	}
+
+	HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
+}
+
+/*
+ * Bind a scan key.
+ */
+static void ybcBindColumn(YbScanDesc ybScan, bool useIndex, AttrNumber attnum, Datum value)
+{
+	Oid	atttypid;
+
+	if (attnum > 0)
+	{
+		/* Get the type from the description */
+		atttypid = TupleDescAttr(ybScan->tupdesc, attnum - 1)->atttypid;
 	}
 	else
 	{
-		/* For regular table / index fetch, just copy the scan attribute numbers. */
-		for (int i = 0; i < nkeys; i++)
+		/* This must be an OID column. */
+		atttypid = OIDOID;
+	}
+
+	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, value, false /* isnull */);
+
+	if (useIndex)
+		HandleYBStmtStatusWithOwner(YBCPgDmlBindIndexColumn(ybScan->handle, attnum, ybc_expr),
+									ybScan->handle,
+									ybScan->stmt_owner);
+	else
+		HandleYBStmtStatusWithOwner(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr),
+									ybScan->handle,
+									ybScan->stmt_owner);
+}
+
+/*
+ * Add a target column.
+ */
+static void ybcAddTargetColumn(YbScanDesc ybScan, AttrNumber attnum)
+{
+	/* Regular (non-system) attribute. */
+	Oid atttypid = InvalidOid;
+	int32 atttypmod = 0;
+	if (attnum > 0)
+	{
+		Form_pg_attribute attr = TupleDescAttr(ybScan->tupdesc, attnum - 1);
+		/* Ignore dropped attributes */
+		if (attr->attisdropped)
+			return;
+		atttypid = attr->atttypid;
+		atttypmod = attr->atttypmod;
+	}
+
+	YBCPgTypeAttrs type_attrs = { atttypmod };
+	YBCPgExpr expr = YBCNewColumnRef(ybScan->handle, attnum, atttypid, &type_attrs);
+	HandleYBStmtStatusWithOwner(YBCPgDmlAppendTarget(ybScan->handle, expr),
+								ybScan->handle,
+								ybScan->stmt_owner);
+}
+
+static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan)
+{
+	HeapTuple tuple    = NULL;
+	bool      has_data = false;
+	TupleDesc tupdesc  = ybScan->tupdesc;
+
+	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
+	bool            *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	YBCPgSysColumns syscols;
+
+	/* Fetch one row. */
+	HandleYBStmtStatusWithOwner(YBCPgDmlFetch(ybScan->handle,
+	                                          tupdesc->natts,
+	                                          (uint64_t *) values,
+	                                          nulls,
+	                                          &syscols,
+	                                          &has_data),
+	                            ybScan->handle,
+	                            ybScan->stmt_owner);
+
+	if (has_data)
+	{
+		tuple = heap_form_tuple(tupdesc, values, nulls);
+
+		if (syscols.oid != InvalidOid)
 		{
-			sk_attno[i] = key[i].sk_attno;
+			HeapTupleSetOid(tuple, syscols.oid);
 		}
-		where_tupdesc = RelationGetDescr(relation);
+		if (syscols.ybctid != NULL)
+		{
+			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+		}
+	}
+	pfree(values);
+	pfree(nulls);
+
+	return tuple;
+}
+
+static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index)
+{
+	IndexTuple tuple    = NULL;
+	bool       has_data = false;
+	TupleDesc  tupdesc  = ybScan->tupdesc;
+
+	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
+	bool            *nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
+	YBCPgSysColumns syscols;
+
+	/* Fetch one row. */
+	HandleYBStmtStatusWithOwner(YBCPgDmlFetch(ybScan->handle,
+	                                          tupdesc->natts,
+	                                          (uint64_t *) values,
+	                                          nulls,
+	                                          &syscols,
+	                                          &has_data),
+	                            ybScan->handle,
+	                            ybScan->stmt_owner);
+
+	if (has_data)
+	{
+		/*
+		 * Return the IndexTuple. If this is a primary key, reorder the values first as expected
+		 * in the index's column order first.
+		 */
+		if (index->rd_index->indisprimary)
+		{
+			Assert(index->rd_index->indnatts <= INDEX_MAX_KEYS);
+
+			Datum ivalues[INDEX_MAX_KEYS];
+			bool  inulls[INDEX_MAX_KEYS];
+
+			for (int i = 0; i < index->rd_index->indnatts; i++)
+			{
+				AttrNumber attno = index->rd_index->indkey.values[i];
+				ivalues[i] = values[attno - 1];
+				inulls[i]  = nulls[attno - 1];
+			}
+
+			tuple = index_form_tuple(RelationGetDescr(index), ivalues, inulls);
+			if (syscols.ybctid != NULL)
+			{
+				tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+			}
+		}
+		else
+		{
+			tuple = index_form_tuple(tupdesc, values, nulls);
+			if (syscols.ybbasectid != NULL)
+			{
+				tuple->t_ybctid = PointerGetDatum(syscols.ybbasectid);
+			}
+		}
+
+	}
+	pfree(values);
+	pfree(nulls);
+
+	return tuple;
+}
+
+/*
+ * Set up scan plan:
+ * 1. map the scan keys to the base table / index columns
+ * 2. load table info
+ * 3. set up tuple descriptor for the scan keys.
+ */
+static void
+ybcSetupScanPlan(Relation relation, Relation index, YbScanDesc ybScan, YbScanPlan scan_plan)
+{
+	memset(scan_plan, 0, sizeof(*scan_plan));
+
+	int i, j;
+
+	/*
+	 * For regular table scan (or index-only scan like plain table scan), just copy the scan
+	 * attribute numbers.
+	 */
+	if (!index)
+	{
+		for (i = 0; i < ybScan->nkeys; i++)
+		{
+			ybScan->sk_attno[i] = ybScan->key[i].sk_attno;
+		}
+
+		ybcLoadTableInfo(relation, scan_plan);
+		ybScan->tupdesc = RelationGetDescr(relation);
+		return;
 	}
 
 	/*
-	 * Set up the where clause condition (for the YB scan).
+	 * If scanning a table using the primary key, change the attribute numbers in the scan key
+	 * to the table's column numbers.
 	 */
-	for (int i = 0; i < nkeys; i++)
+	if (index->rd_index->indisprimary)
 	{
-		if (sk_attno[i] == InvalidOid)
+		for (i = 0; i < ybScan->nkeys; i++)
+		{
+			ybScan->sk_attno[i] = index->rd_index->indkey.values[ybScan->key[i].sk_attno - 1];
+		}
+
+		ybcLoadTableInfo(relation, scan_plan);
+		ybScan->tupdesc = RelationGetDescr(relation);
+		return;
+	}
+
+	/*
+	 * If scanning a table using a local index in the same scan, change the attribute numbers
+	 * in the scan key to the index's column numbers.
+	 */
+	for (i = 0; i < ybScan->nkeys; i++)
+	{
+		for (j = 0; j < index->rd_index->indnatts; j++)
+		{
+			if (ybScan->key[i].sk_attno == index->rd_index->indkey.values[j])
+			{
+				ybScan->sk_attno[i] = j + 1;
+				break;
+			}
+		}
+		if (j == index->rd_index->indnatts)
+			elog(ERROR, "column is not in index");
+	}
+
+	ybcLoadTableInfo(index, scan_plan);
+	ybScan->tupdesc = RelationGetDescr(index);
+}
+
+/*
+ * Begin a scan of a table or index. When "relation" is a table, an optional local "index" may be
+ * given, in which case we will scan using that index co-located with the table (which currently
+ * applies to sys catalog table in yb-master only) in the same scan.
+ *
+ * Alternatively, when scanning an index directly, "relation" points to the index itself and "index"
+ * will be NULL.
+ */
+static YbScanDesc
+ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys, ScanKey key)
+{
+	if (nkeys > YB_MAX_SCAN_KEYS)
+		ereport(ERROR,
+				(errcode(ERRCODE_TOO_MANY_COLUMNS),
+				 errmsg("cannot use more than %d predicates in a table or index scan",
+						YB_MAX_SCAN_KEYS)));
+
+	/* Set up YugaByte scan description */
+	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
+	ybScan->key   = key;
+	ybScan->nkeys = nkeys;
+
+	/* Setup up the scan plan */
+	YbScanPlanData	scan_plan;
+	ybcSetupScanPlan(relation, index, ybScan, &scan_plan);
+
+	/*
+	 * Find the scan keys that are the primary key.
+	 */
+	for (int i = 0; i < ybScan->nkeys; i++)
+	{
+		if (ybScan->sk_attno[i] == InvalidOid)
 			break;
 
 		/*
 		 * TODO: support the different search options like SK_SEARCHARRAY and SK_SEARCHNULL,
-		 *  SK_SEARCHNOTNULL.
+		 * SK_SEARCHNOTNULL, and search strategies other than equality.
 		 */
-		if (key[i].sk_flags != 0)
+		if (ybScan->key[i].sk_flags != 0 ||
+			ybScan->key[i].sk_strategy != BTEqualStrategyNumber)
 			continue;
 
-		OpExpr *cond = makeNode(OpExpr);
-		/*
-		 * Note: YugaByte will only use the operator to decide whether it is
-		 * an equality operator (which it can handle) or not (we will
-		 * need to filter the results below).
-		 * So we do not bother finding the correctly typed operator to pass it
-		 * to YugaByte here.
-		 * TODO: We should clean this up as part of refactoring the scan API
-		 * to use common utilities for internal syscatalog scans and FDW scans.
-		 */
-		if (key[i].sk_strategy == BTEqualStrategyNumber)
-			cond->opno = Int4EqualOperator;
-		else
-			cond->opno = InvalidOid;
-
-		/* Set up column (lhs) */
-		Var *lhs = makeNode(Var);
-		lhs->varattno = sk_attno[i];
-		if (lhs->varattno > 0)
-		{
-			/* Get the type from the description */
-			lhs->vartype = TupleDescAttr(where_tupdesc, lhs->varattno - 1)->atttypid;
-		}
-		else
-		{
-			/* This must be an OID column. */
-			lhs->vartype = OIDOID;
-		}
-		cond->args = lappend(cond->args, lhs);
-
-		/* Set up value (rhs) */
-		Const *rhs = makeNode(Const);
-		rhs->constvalue  = key[i].sk_argument;
-		rhs->constisnull = false;
-		cond->args       = lappend(cond->args, rhs);
-
-		where_cond = lappend(where_cond, cond);
+		int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
+		
+		if (bms_is_member(idx, scan_plan.hash_key) ||
+			bms_is_member(idx, scan_plan.primary_key))
+			scan_plan.sk_cols = bms_add_member(scan_plan.sk_cols, idx);
 	}
+
+	/*
+	 * If hash key is not fully set, we must do a full-table scan so we will clear all the scan
+	 * keys. Othrwise, if primary key is set only partially, clear the remaining scan keys after
+	 * the first missing one.
+	 *
+	 * TODO: We scan the primary key columns by increasing attribute number to look for the first
+	 * missing one. Currently, this works because there is a bug where the range columns of the
+	 * primary key in YugaByte follows the same order as the attribute number. When the bug is
+	 * fixed, this scan needs to be updated.
+	 */
+	bool clear_key = !bms_is_subset(scan_plan.hash_key, scan_plan.sk_cols);
+	for (int idx = 0; idx <= ybScan->tupdesc->natts - FirstLowInvalidHeapAttributeNumber; idx++)
+	{
+		if ( bms_is_member(idx, scan_plan.primary_key) &&
+			!bms_is_member(idx, scan_plan.sk_cols))
+			clear_key = true;
+
+		if (clear_key)
+			bms_del_member(scan_plan.sk_cols, idx);
+	}
+
+	Oid		dboid    = YBCGetDatabaseOid(relation);
+	Oid		relid    = RelationGetRelid(relation);
+	bool	useIndex = (index && !index->rd_index->indisprimary);
+	Oid		index_id = useIndex ? RelationGetRelid(index) : InvalidOid;
+
+	HandleYBStatus(YBCPgNewSelect(ybc_pg_session, dboid, relid, index_id, &ybScan->handle,
+								  NULL /* read_time */));
+	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
+	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybScan->handle);
+	ybScan->stmt_owner = CurrentResourceOwner;
+
+	/* Bind the scan keys */
+	for (int i = 0; i < ybScan->nkeys; i++)
+	{
+		int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
+
+		if (bms_is_member(idx, scan_plan.sk_cols))
+			ybcBindColumn(ybScan, useIndex, ybScan->sk_attno[i], key[i].sk_argument);
+	}
+
+	/* If scanning with the primary key, switch the attribute numbers in the scan keys
+	 * to the table's column numbers. Switch the tuple descriptor to the table's tuple
+	 * to set up the target columns.
+	 */
+	bool indisprimary = (index && index->rd_index->indisprimary);
+	for (int i = 0; i < ybScan->nkeys; i++)
+	{
+		ybScan->sk_attno[i] = indisprimary ? index->rd_index->indkey.values[key[i].sk_attno - 1]
+				                           : key[i].sk_attno;
+	}
+	ybScan->tupdesc = RelationGetDescr(relation);
 
 	/*
 	 * Set up the scan targets. If the table is indexed and only the indexed columns should be
 	 * returned, fetch just those columns. Otherwise, fetch all "real" columns.
 	 */
 	if (relation->rd_rel->relhasoids)
-	{
-		TargetEntry *target = makeNode(TargetEntry);
-		target->resno = ObjectIdAttributeNumber;
-		target_attrs = lappend(target_attrs, target);
-	}
+		ybcAddTargetColumn(ybScan, ObjectIdAttributeNumber);
+
 	if (index != NULL && index_cols_only)
 	{
 		for (int i = 0; i < index->rd_index->indnatts; i++)
 		{
-			TargetEntry *target = makeNode(TargetEntry);
-			target->resno = index->rd_index->indkey.values[i];
-			target_attrs = lappend(target_attrs, target);
+			ybcAddTargetColumn(ybScan, index->rd_index->indkey.values[i]);
 		}
 	}
 	else
 	{
-		for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
+		for (AttrNumber attnum = 1; attnum <= ybScan->tupdesc->natts; attnum++)
 		{
-			TargetEntry *target = makeNode(TargetEntry);
-			target->resno = attnum;
-			target_attrs = lappend(target_attrs, target);
+			ybcAddTargetColumn(ybScan, attnum);
 		}
 	}
 
@@ -203,30 +464,47 @@ setup_ybcscan_from_scankey(Relation relation,
 	 * If it is an index, select the ybbasectid for index scan. Otherwise,
 	 * include ybctid column also for building indexes.
 	 */
-	TargetEntry *target = makeNode(TargetEntry);
-	target->resno = (relation->rd_index != NULL) ? YBBaseTupleIdAttributeNumber
-			                                     : YBTupleIdAttributeNumber;
-	target_attrs = lappend(target_attrs, target);
+	if (relation->rd_index)
+		ybcAddTargetColumn(ybScan, YBBaseTupleIdAttributeNumber);
+	else
+		ybcAddTargetColumn(ybScan, YBTupleIdAttributeNumber);
 
-	/* Set up YugaByte scan description. Scan with an index if it is a secondary index */
-	bool indisprimary = (index && index->rd_index->indisprimary);
-	bool indissecondary = (index && !index->rd_index->indisprimary);
-	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
-	ybScan->state = ybcBeginScan(relation, indissecondary ? index : NULL, target_attrs, where_cond);
-	ybScan->key = key;
-	ybScan->nkeys = nkeys;
-	for (int i = 0; i < nkeys; i++)
+	/*
+	 * Set the current syscatalog version (will check that we are up to date).
+	 * Avoid it for syscatalog tables so that we can still use this for
+	 * refreshing the caches when we are behind.
+	 * Note: This works because we do not allow modifying schemas (alter/drop)
+	 * for system catalog tables.
+	 */
+	if (!IsSystemRelation(relation))
 	{
-		/* If scanning with the primary key, switch the attribute numbers in the scan keys
-		 * to the table's column numbers.
-		 */
-		ybScan->sk_attno[i] = indisprimary ? index->rd_index->indkey.values[key[i].sk_attno - 1]
-				                           : key[i].sk_attno;
+		HandleYBStmtStatusWithOwner(YBCPgSetCatalogCacheVersion(ybScan->handle,
+		                                                        yb_catalog_cache_version),
+		                            ybScan->handle,
+		                            ybScan->stmt_owner);
 	}
+
+	/* Execute the select statement. */
+	HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybScan->handle),
+	                            ybScan->handle,
+	                            ybScan->stmt_owner);
+
+	bms_free(scan_plan.hash_key);
+	bms_free(scan_plan.primary_key);
+	bms_free(scan_plan.sk_cols);
 
 	return ybScan;
 }
 
+static void ybcEndScan(YbScanDesc ybScan)
+{
+	if (ybScan->handle)
+	{
+		HandleYBStatus(YBCPgDeleteStatement(ybScan->handle));
+		ResourceOwnerForgetYugaByteStmt(ybScan->stmt_owner, ybScan->handle);
+	}
+	pfree(ybScan);
+}
 
 static bool
 heaptuple_matches_key(HeapTuple tup,
@@ -348,8 +626,8 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
                                 ScanKey key,
 								bool temp_snap)
 {
-	YbScanDesc ybScan = setup_ybcscan_from_scankey(relation, NULL /* index */,
-												   false /* index_cols_only */, nkeys, key);
+	YbScanDesc ybScan = ybcBeginScan(relation, NULL /* index */, false /* index_cols_only */,
+									 nkeys, key);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -385,8 +663,7 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 		}
 	}
 
-	YbScanDesc ybScan = setup_ybcscan_from_scankey(relation, index,
-												   false /* index_cols_only */, nkeys, key);
+	YbScanDesc ybScan = ybcBeginScan(relation, index, false /* index_cols_only */, nkeys, key);
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
@@ -421,9 +698,8 @@ void ybc_pkey_beginscan(Relation relation,
 	 */
 	Assert(index->rd_index->indisprimary);
 
-	YbScanDesc ybScan = setup_ybcscan_from_scankey(relation, index,
-												   scan_desc->xs_want_itup /* index_cols_only */,
-												   nkeys, key);
+	YbScanDesc ybScan = ybcBeginScan(relation, index, scan_desc->xs_want_itup /* index_cols_only */,
+									 nkeys, key);
 	ybScan->index = index;
 
 	scan_desc->opaque = ybScan;
@@ -445,8 +721,8 @@ void ybc_index_beginscan(Relation index,
 	 * Scan the index directly as if we are scanning a table. Passing "index_cols_only" as false
 	 * because we are scanning the index directly, not scanning base table with an index.
 	 */
-	YbScanDesc ybScan = setup_ybcscan_from_scankey(index /* relation */, NULL /* index */,
-												   false /* index_cols_only */, nkeys, key);
+	YbScanDesc ybScan = ybcBeginScan(index /* relation */, NULL /* index */,
+									 false /* index_cols_only */, nkeys, key);
 	ybScan->index = index;
 
 	scan_desc->opaque = ybScan;
@@ -454,19 +730,18 @@ void ybc_index_beginscan(Relation index,
 
 static HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool *recheck)
 {
-	YbScanState scan_state = ybScan->state;
-	int         nkeys      = ybScan->nkeys;
-	ScanKey     key        = ybScan->key;
-	AttrNumber *sk_attno   = ybScan->sk_attno;
-	HeapTuple   tup = NULL;
+	int         nkeys    = ybScan->nkeys;
+	ScanKey     key      = ybScan->key;
+	AttrNumber *sk_attno = ybScan->sk_attno;
+	HeapTuple   tup      = NULL;
 
 	/*
 	 * YB Scan may not be able to push down the scan key condition so we may
 	 * need additional filtering here.
 	 */
-	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(scan_state)))
+	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan)))
 	{
-		if (heaptuple_matches_key(tup, scan_state->tupleDesc, nkeys, key, sk_attno, recheck))
+		if (heaptuple_matches_key(tup, ybScan->tupdesc, nkeys, key, sk_attno, recheck))
 			return tup;
 
 		heap_freetuple(tup);
@@ -477,18 +752,17 @@ static HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool *recheck)
 
 static IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool *recheck)
 {
-	YbScanState scan_state = ybScan->state;
-	int         nkeys      = ybScan->nkeys;
-	ScanKey     key        = ybScan->key;
-	AttrNumber *sk_attno   = ybScan->sk_attno;
-	Relation    index      = ybScan->index;
-	IndexTuple  tup = NULL;
+	int         nkeys    = ybScan->nkeys;
+	ScanKey     key      = ybScan->key;
+	AttrNumber *sk_attno = ybScan->sk_attno;
+	Relation    index    = ybScan->index;
+	IndexTuple  tup      = NULL;
 
 	/*
 	 * YB Scan may not be able to push down the scan key condition so we may
 	 * need additional filtering here.
 	 */
-	while (PointerIsValid(tup = ybcFetchNextIndexTuple(scan_state, index)))
+	while (PointerIsValid(tup = ybcFetchNextIndexTuple(ybScan, index)))
 	{
 		if (indextuple_matches_key(tup, RelationGetDescr(index), nkeys, key, sk_attno, recheck))
 			return tup;
@@ -544,35 +818,30 @@ IndexTuple ybc_index_getnext(IndexScanDesc scan_desc)
 void ybc_heap_endscan(HeapScanDesc scan_desc)
 {
 	Assert(PointerIsValid(scan_desc->ybscan));
-	ybcEndScan(scan_desc->ybscan->state);
+	ybcEndScan(scan_desc->ybscan);
 	if (scan_desc->rs_temp_snap)
 		UnregisterSnapshot(scan_desc->rs_snapshot);
-	pfree(scan_desc->ybscan);
 	pfree(scan_desc);
 }
 
 void ybc_systable_endscan(SysScanDesc scan_desc)
 {
 	Assert(PointerIsValid(scan_desc->ybscan));
-	ybcEndScan(scan_desc->ybscan->state);
-	pfree(scan_desc->ybscan);
-	pfree(scan_desc);
+	ybcEndScan(scan_desc->ybscan);
 }
 
 void ybc_pkey_endscan(IndexScanDesc scan_desc)
 {
 	YbScanDesc ybscan = (YbScanDesc) scan_desc->opaque;
 	Assert(PointerIsValid(ybscan));
-	ybcEndScan(ybscan->state);
-	pfree(ybscan);
+	ybcEndScan(ybscan);
 }
 
 void ybc_index_endscan(IndexScanDesc scan_desc)
 {
 	YbScanDesc ybscan = (YbScanDesc) scan_desc->opaque;
 	Assert(PointerIsValid(ybscan));
-	ybcEndScan(ybscan->state);
-	pfree(ybscan);
+	ybcEndScan(ybscan);
 }
 
 /* --------------------------------------------------------------------------------------------- */

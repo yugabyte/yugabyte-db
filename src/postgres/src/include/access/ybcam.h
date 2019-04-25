@@ -35,14 +35,22 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 #include "executor/ybcExpr.h"
-#include "executor/ybcScan.h"
 
 typedef struct YbScanDescData
 {
-	YbScanState state;
-	int nkeys;
+#define YB_MAX_SCAN_KEYS (INDEX_MAX_KEYS * 2) /* A pair of lower/upper bounds per column max */
+
+	int     nkeys;
 	ScanKey key;
-	AttrNumber sk_attno[INDEX_MAX_KEYS * 2];
+
+	/* Attribut numbers and tuple descriptor for the scan keys / target columns */
+	AttrNumber sk_attno[YB_MAX_SCAN_KEYS];
+	TupleDesc  tupdesc;
+
+	/* The handle for the internal YB Select statement. */
+	YBCPgStatement  handle;
+	ResourceOwner   stmt_owner;
+
 	Relation index;
 } YbScanDescData;
 

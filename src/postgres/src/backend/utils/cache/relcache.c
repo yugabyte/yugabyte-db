@@ -94,7 +94,6 @@
 
 #include "pg_yb_utils.h"
 #include "access/ybcam.h"
-#include "executor/ybcScan.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
