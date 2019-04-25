@@ -297,8 +297,7 @@ spec:
           secret:
             secretName: {{ .label }}-yugabyte-tls-cert
         {{- end }}
-{{- end }}
-
+{{- if eq $root.Values.isMultiAz false }}
 ---
 apiVersion: policy/v1beta1
 kind: PodDisruptionBudget
@@ -309,4 +308,5 @@ spec:
   selector:
     matchLabels:
       app: {{ .label }}
+{{- end }}
 {{- end }}

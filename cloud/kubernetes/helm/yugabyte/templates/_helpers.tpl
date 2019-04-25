@@ -70,11 +70,7 @@ Get the fully qualified server address
 Compute the maximum number of unavailable pods based on the number of master replicas
 */}}
 {{- define "yugabyte.max_unavailable_for_quorum" -}}
-{{- if .Values.isMultiAz -}}
-{{- $master_replicas := .Values.replicas.totalMasters | int | mul 100 -}}
-{{- else -}}
 {{- $master_replicas := .Values.replicas.master | int | mul 100 -}}
-{{- end -}}
 {{- $master_replicas := 100 | div (100 | sub (2 | div ($master_replicas | add 100))) -}}
 {{- printf "%d" $master_replicas -}}
 {{- end -}}
