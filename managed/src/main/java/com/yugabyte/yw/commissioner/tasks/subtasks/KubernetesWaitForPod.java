@@ -106,7 +106,11 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
 
   // Waits for pods as well as the containers inside the pod.
   private String waitForPod() {
-    ShellResponse podResponse = kubernetesManager.getPodStatus(taskParams().config, taskParams().nodePrefix,
+    Map<String, String> config = taskParams().config;
+    if (taskParams().config == null) {
+      config = Provider.get(taskParams().providerUUID).getConfig();
+    }
+    ShellResponse podResponse = kubernetesManager.getPodStatus(config, taskParams().nodePrefix,
         taskParams().podName);
     JsonNode podInfo = parseShellResponseAsJson(podResponse);
     JsonNode statusNode = podInfo.path("status");
