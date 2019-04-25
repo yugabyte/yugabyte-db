@@ -46,7 +46,6 @@
 #include "utils/tqual.h"
 
 #include "pg_yb_utils.h"
-#include "executor/ybcScan.h"
 
  /* #define CACHEDEBUG */	/* turns DEBUG elogs on */
 
