@@ -86,6 +86,7 @@ class YugaByteProcessManager(object):
         while True:
             for p in self.processes:
                 if not p.get_pid() or (p.process and p.process.poll() is not None):
+                    p.check_errors()
                     logging.error("%s died unexpectedly. Restarting...", p.name)
                     p.start()
             time.sleep(int(args.polling_interval))
@@ -134,6 +135,7 @@ class ProcessManager(object):
         self.log_dir = log_dir
         self.pidfile = os.path.join(data_dir, "{}.pid".format(name))
         self.data_dir = data_dir
+        self.data_log_path = "{}/yb-data/{}/logs".format(data_dir, self.name)
         self.process = None
 
     def start(self):
@@ -147,11 +149,10 @@ class ProcessManager(object):
         log_path = os.path.join(self.log_dir, self.name)
         if not os.path.islink(log_path):
             try:
-                data_log_path = os.path.join(self.data_dir, "yb-data/{}/logs".format(self.name))
-                os.symlink(data_log_path, log_path)
+                os.symlink(self.data_log_path, log_path)
             except OSError as e:
                 logging.error(
-                        "Failed to create symlink from {} to {}".format(data_log_path, log_path))
+                    "Failed to create symlink from {} to {}".format(self.data_log_path, log_path))
 
     def get_pid(self):
         if os.path.exists(self.pidfile):
@@ -181,6 +182,22 @@ class ProcessManager(object):
                 if os.path.exists(self.pidfile):
                     logging.error("Failed to delete %s.", self.pidfile)
                     sys.exit(1)
+
+    def check_errors(self):
+        fatal_log = "{}/yb-{}.FATAL".format(self.data_log_path, self.name)
+        socket_error = "Could not start on address"
+        if os.path.isfile(fatal_log):
+            with open(fatal_log) as log:
+                for line in log.readlines():
+                    if socket_error in line:
+                        err_msg = line.split(socket_error)
+                        # Try to find address, otherwise print entire error message.
+                        if len(err_msg) == 2:
+                            err_msg = err_msg[1]
+                        else:
+                            err_msg = line
+                        logging.error("Failed to bind to address: %s. Is port open?", err_msg)
+                        sys.exit(1)
 
     @staticmethod
     def get_command(pid):
