@@ -61,6 +61,7 @@ class ServicePool : public RpcService {
  public:
   ServicePool(size_t max_tasks,
               ThreadPool* thread_pool,
+              Scheduler* scheduler,
               ServiceIfPtr service,
               const scoped_refptr<MetricEntity>& metric_entity);
   virtual ~ServicePool();
@@ -68,8 +69,8 @@ class ServicePool : public RpcService {
   // Shut down the queue and the thread pool.
   virtual void Shutdown();
 
-  virtual void QueueInboundCall(InboundCallPtr call) override;
-  virtual void Handle(InboundCallPtr call) override;
+  void QueueInboundCall(InboundCallPtr call) override;
+  void Handle(InboundCallPtr call) override;
   const Counter* RpcsTimedOutInQueueMetricForTests() const;
   const Counter* RpcsQueueOverflowMetric() const;
   std::string service_name() const;

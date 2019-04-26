@@ -273,7 +273,7 @@ void CQLInboundCall::LogTrace() const {
 }
 
 std::string CQLInboundCall::ToString() const {
-  return Format("CQL Call from $0", connection()->remote());
+  return Format("CQL Call from $0, stream id: $1", connection()->remote(), stream_id_);
 }
 
 bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
