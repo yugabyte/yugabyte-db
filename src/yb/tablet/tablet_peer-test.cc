@@ -66,6 +66,8 @@ METRIC_DECLARE_entity(tablet);
 
 DECLARE_int32(log_min_seconds_to_retain);
 
+DECLARE_bool(quick_leader_election_on_create);
+
 namespace yb {
 namespace tablet {
 
@@ -178,8 +180,14 @@ class TabletPeerTest : public YBTabletTest,
   Status StartPeer(const ConsensusBootstrapInfo& info) {
     RETURN_NOT_OK(tablet_peer_->Start(info));
 
-    RETURN_NOT_OK(tablet_peer_->consensus()->EmulateElection());
-
+    AssertLoggedWaitFor([&]() -> Result<bool> {
+      if (FLAGS_quick_leader_election_on_create) {
+        return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+      }
+      RETURN_NOT_OK(tablet_peer_->consensus()->EmulateElection());
+      return true;
+    }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
+                                         "leader, otherwise emulate.");
     return Status::OK();
   }
 
