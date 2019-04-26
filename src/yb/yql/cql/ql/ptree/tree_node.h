@@ -68,6 +68,8 @@ YB_DEFINE_ENUM(TreeNodeOpcode,
                (kPTOrderBy)
                (kPTRoleOption)
                (kPTExplainStmt)
+               (kPTInsertValuesClause)
+               (kPTInsertJsonClause)
 
                // Expressions.
                (kPTExpr)

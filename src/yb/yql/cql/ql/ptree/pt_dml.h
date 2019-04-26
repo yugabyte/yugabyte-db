@@ -349,8 +349,12 @@ class PTDmlStmt : public PTCollection {
 
   // Access for column_args.
   const MCVector<ColumnArg>& column_args() const {
-    CHECK(column_args_ != nullptr) << "column arguments not set up";
-    return *column_args_;
+    return *CHECK_NOTNULL(column_args_.get());
+  }
+
+  // Mutable acccess to column_args, used in PreExec phase
+  MCVector<ColumnArg>& column_args() {
+    return *CHECK_NOTNULL(column_args_.get());
   }
 
   // Add column ref to be read by DocDB.
