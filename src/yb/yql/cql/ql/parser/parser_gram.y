@@ -90,6 +90,7 @@
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
+#include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_insert_values_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_explain.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
@@ -120,6 +121,7 @@ typedef PTConstInt::SharedPtr          PConstInt;
 typedef PTCollectionExpr::SharedPtr    PCollectionExpr;
 typedef PTCollection::SharedPtr        PCollection;
 typedef PTInsertValuesClause::SharedPtr     PInsertValuesClause;
+typedef PTInsertJsonClause::SharedPtr       PInsertJsonClause;
 typedef PTSelectStmt::SharedPtr        PSelectStmt;
 typedef PTTableRef::SharedPtr          PTableRef;
 typedef PTTableRefListNode::SharedPtr  PTableRefListNode;
@@ -275,6 +277,8 @@ using namespace yb::ql;
 
 %type <PInsertValuesClause>     values_clause
 
+%type <PInsertJsonClause>       json_clause
+
 %type <PExpr>             // Expression clause. These expressions are used in a specific context.
                           if_clause
                           where_clause opt_where_clause
@@ -384,7 +388,7 @@ using namespace yb::ql;
 %type <KeywordType>       unreserved_keyword type_func_name_keyword
 %type <KeywordType>       col_name_keyword reserved_keyword
 
-%type <PBool>             boolean opt_else_clause opt_returns_clause
+%type <PBool>             boolean opt_else_clause opt_returns_clause opt_json_clause_default_null
 
 //--------------------------------------------------------------------------------------------------
 // Inactive tree node declarations (%type).
@@ -612,7 +616,7 @@ using namespace yb::ql;
                           INITIALLY INLINE_P INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD
                           INT_P INTEGER INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
-                          JOIN JSONB
+                          JOIN JSON JSONB
 
                           KEY KEYSPACE KEYSPACES
 
@@ -653,7 +657,7 @@ using namespace yb::ql;
                           TYPE_P TYPES_P PARTITION_HASH
 
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
-                          UNLOGGED UNTIL UPDATE USE USER USING UUID
+                          UNLOGGED UNSET UNTIL UPDATE USE USER USING UUID
 
                           VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC VARINT
                           VARYING VERBOSE VERSION_P VIEW VIEWS VOLATILE
@@ -2153,6 +2157,32 @@ values_clause:
   }
 ;
 
+// Sconst parsing is delayed
+json_clause:
+  JSON Sconst opt_json_clause_default_null {
+    PTConstText::SharedPtr json_expr = MAKE_NODE(@2, PTConstText, $2);
+    $$ = MAKE_NODE(@1, PTInsertJsonClause, json_expr, $3);
+  }
+  | JSON bindvar opt_json_clause_default_null {
+    if ($2 != nullptr) {
+      parser_->AddBindVariable(static_cast<PTBindVar*>($2.get()));
+    }
+    $$ = MAKE_NODE(@1, PTInsertJsonClause, $2, $3);
+  }
+;
+
+opt_json_clause_default_null:
+  /* EMPTY */ {
+    $$ = true;
+  }
+  | DEFAULT NULL_P {
+    $$ = true;
+  }
+  | DEFAULT UNSET {
+    $$ = false;
+  }
+;
+
 into_clause:
   /* EMPTY */ {
     $$ = nullptr;
@@ -2561,6 +2591,11 @@ InsertStmt:
   opt_using_ttl_timestamp_clause opt_returns_clause
   {
     $$ = MAKE_NODE(@2, PTInsertStmt, $3, $5, $7, $8, $9, $10, $11);
+  }
+  | INSERT INTO insert_target json_clause opt_on_conflict opt_using_ttl_timestamp_clause
+  opt_returns_clause
+  {
+    $$ = MAKE_NODE(@2, PTInsertStmt, $3, nullptr, $4, nullptr, false, $6, $7);
   }
   | INSERT INTO insert_target DEFAULT VALUES opt_on_conflict returning_clause {
     PARSER_CQL_INVALID_MSG(@4, "DEFAULT VALUES feature is not supported");
@@ -5156,6 +5191,7 @@ unreserved_keyword:
   | UNKNOWN { $$ = $1; }
   | UNLISTEN { $$ = $1; }
   | UNLOGGED { $$ = $1; }
+  | UNSET { $$ = $1; }
   | UNTIL { $$ = $1; }
   | UPDATE { $$ = $1; }
   | VACUUM { $$ = $1; }
@@ -5209,6 +5245,7 @@ col_name_keyword:
   | GREATEST { $$ = $1; }
   | GROUPING { $$ = $1; }
   | INET { $$ = $1; }
+  | JSON { $$ = $1; }
   | JSONB { $$ = $1; }
   | INOUT { $$ = $1; }
   | INT_P { $$ = $1; }

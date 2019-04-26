@@ -45,12 +45,17 @@ class PTInsertValuesClause : public PTCollection {
     return MCMakeShared<PTInsertValuesClause>(memctx, std::forward<TypeArgs>(args)...);
   }
 
+  // Node type.
+  TreeNodeOpcode opcode() const override {
+    return TreeNodeOpcode::kPTInsertValuesClause;
+  }
+
   // Add a tree node at the end.
   void Append(const PTExprListNode::SharedPtr& tnode);
   void Prepend(const PTExprListNode::SharedPtr& tnode);
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext* sem_context) override;
+  CHECKED_STATUS Analyze(SemContext* sem_context) override;
   void PrintSemanticAnalysisResult(SemContext* sem_context);
 
   // Access function for tuples_.

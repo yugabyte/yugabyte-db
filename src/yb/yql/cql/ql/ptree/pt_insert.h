@@ -21,6 +21,7 @@
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_insert_values_clause.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 
@@ -75,6 +76,10 @@ class PTInsertStmt : public PTDmlStmt {
     return relation_->loc();
   }
 
+  const PTCollection::SharedPtr& InsertingValue() const {
+    return inserting_value_;
+  }
+
  private:
 
   //
@@ -86,6 +91,9 @@ class PTInsertStmt : public PTDmlStmt {
 
   CHECKED_STATUS AnanlyzeValuesClause(PTInsertValuesClause* values_clause,
                                       SemContext* sem_context);
+
+  CHECKED_STATUS AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
+                                    SemContext* sem_context);
 
   CHECKED_STATUS ProcessColumn(const MCSharedPtr<MCString>& mc_col_name,
                                const ColumnDesc* col_desc,
