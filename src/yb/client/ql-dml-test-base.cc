@@ -75,11 +75,7 @@ void QLDmlTestBase::DoTearDown() {
   // if (table_) {
   //   ASSERT_OK(client_->DeleteTable(kTableName));
   // }
-  if (cluster_) {
-    cluster_->Shutdown();
-    cluster_.reset();
-  }
-  YBMiniClusterTestBase::DoTearDown();
+  MiniClusterTestWithClient::DoTearDown();
 }
 
 void KeyValueTableTest::CreateTable(Transactional transactional) {
@@ -197,7 +193,7 @@ Result<std::map<int32_t, int32_t>> KeyValueTableTest::SelectAllRows(
 
 YBSessionPtr KeyValueTableTest::CreateSession(const YBTransactionPtr& transaction,
                                               const server::ClockPtr& clock) {
-  auto session = std::make_shared<YBSession>(client_, clock);
+  auto session = std::make_shared<YBSession>(client_.get(), clock);
   if (transaction) {
     session->SetTransaction(transaction);
   }

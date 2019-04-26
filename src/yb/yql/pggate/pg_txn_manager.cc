@@ -23,7 +23,6 @@ namespace yb {
 namespace pggate {
 
 using client::YBTransaction;
-using client::YBClientPtr;
 using client::AsyncClientInitialiser;
 using client::TransactionManager;
 using client::YBTransactionPtr;

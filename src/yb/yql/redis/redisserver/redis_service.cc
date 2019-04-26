@@ -336,7 +336,7 @@ class Operation {
 
 class SessionPool {
  public:
-  void Init(const std::shared_ptr<client::YBClient>& client,
+  void Init(client::YBClient* client,
             const scoped_refptr<MetricEntity>& metric_entity) {
     client_ = client;
     auto* proto = &METRIC_redis_allocated_sessions;
@@ -365,7 +365,7 @@ class SessionPool {
     queue_.push(session.get());
   }
  private:
-  std::shared_ptr<client::YBClient> client_;
+  client::YBClient* client_;
   std::mutex mutex_;
   std::vector<std::shared_ptr<client::YBSession>> sessions_;
   boost::lockfree::queue<client::YBSession*> queue_{30};
@@ -789,7 +789,7 @@ struct RedisServiceImplData : public RedisServiceData {
   // Mutex that protects the creation of client_ and populating db_to_opened_table_.
   std::mutex yb_mutex_;
   std::atomic<bool> initialized_;
-  std::shared_ptr<client::YBClient> client_;
+  std::unique_ptr<client::YBClient> client_;
   SessionPool session_pool_;
   std::unordered_map<std::string, std::shared_ptr<client::YBTable>> db_to_opened_table_;
   std::shared_ptr<client::YBMetaDataCache> tables_cache_;
@@ -837,8 +837,8 @@ class BatchContextImpl : public BatchContext {
     return call_;
   }
 
-  const std::shared_ptr<client::YBClient>& client() const override {
-    return impl_data_->client_;
+  client::YBClient* client() const override {
+    return impl_data_->client_.get();
   }
 
   RedisServiceImplData* service_data() override {
@@ -1361,11 +1361,12 @@ Status RedisServiceImplData::Initialize() {
     client_builder.set_metric_entity(server_->metric_entity());
     client_builder.set_parent_mem_tracker(server_->mem_tracker());
     client_builder.set_callback_threadpool_size(FLAGS_redis_callbacks_threadpool_size);
+    rpc::Messenger* messenger = nullptr;
     if (server_->tserver() != nullptr) {
       if (!server_->tserver()->permanent_uuid().empty()) {
         client_builder.set_tserver_uuid(server_->tserver()->permanent_uuid());
       }
-      client_builder.use_messenger(server_->tserver()->messenger());
+      messenger = server_->tserver()->messenger();
     }
 
     CloudInfoPB cloud_info_pb;
@@ -1374,7 +1375,7 @@ Status RedisServiceImplData::Initialize() {
     cloud_info_pb.set_placement_zone(FLAGS_placement_zone);
     client_builder.set_cloud_info_pb(cloud_info_pb);
 
-    RETURN_NOT_OK(client_builder.Build(&client_));
+    client_ = VERIFY_RESULT(client_builder.Build(messenger));
 
     // Add proxy to call local tserver if available.
     if (server_->tserver() != nullptr) {
@@ -1387,9 +1388,9 @@ Status RedisServiceImplData::Initialize() {
       server_->tserver()->SetPublisher(std::bind(&RedisServiceImplData::Publish, this, _1, _2));
     }
 
-    tables_cache_ = std::make_shared<YBMetaDataCache>(client_,
-        false /* Update roles permissions cache */);
-    session_pool_.Init(client_, server_->metric_entity());
+    tables_cache_ = std::make_shared<YBMetaDataCache>(
+        client_.get(), false /* Update roles permissions cache */);
+    session_pool_.Init(client_.get(), server_->metric_entity());
 
     initialized_.store(true, std::memory_order_release);
   }

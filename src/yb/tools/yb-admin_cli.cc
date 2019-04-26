@@ -36,6 +36,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/range.hpp>
 
+#include "yb/rpc/messenger.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/flags.h"
 

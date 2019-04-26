@@ -193,7 +193,6 @@ using base::subtle::Barrier_AtomicIncrement;
 
 using client::ChildTransactionData;
 using client::TransactionManager;
-using client::YBClientPtr;
 using client::YBSession;
 using client::YBTransaction;
 using client::YBTablePtr;
@@ -305,7 +304,7 @@ string DocDbOpIds::ToString() const {
 
 Tablet::Tablet(
     const scoped_refptr<TabletMetadata>& metadata,
-    const std::shared_future<client::YBClientPtr> &client_future,
+    const std::shared_future<client::YBClient*> &client_future,
     const server::ClockPtr& clock,
     const shared_ptr<MemTracker>& parent_mem_tracker,
     MetricRegistry* metric_registry,
@@ -1032,7 +1031,7 @@ void Tablet::CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, con
 }
 
 void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
-  YBClientPtr client;
+  client::YBClient* client = nullptr;
   client::YBSessionPtr session;
   client::YBTransactionPtr txn;
   std::vector<std::pair<std::shared_ptr<client::YBqlWriteOp>, QLWriteOperation*>> index_ops;

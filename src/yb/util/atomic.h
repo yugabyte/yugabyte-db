@@ -356,7 +356,7 @@ class AtomicUniquePtr {
     return ptr_.load(memory_order);
   }
 
-  void reset(T* ptr, std::memory_order memory_order = std::memory_order_acq_rel) {
+  void reset(T* ptr = nullptr, std::memory_order memory_order = std::memory_order_acq_rel) {
     delete ptr_.exchange(ptr, memory_order);
   }
 

@@ -78,7 +78,7 @@ static const std::vector<string> all_permissions_for_role =
 
 class QLTestAuthentication : public QLTestBase {
  public:
-  QLTestAuthentication() : QLTestBase(), permissions_cache_(client_, false) {}
+  QLTestAuthentication() : QLTestBase(), permissions_cache_(client_.get(), false) {}
 
   virtual void SetUp() override {
     QLTestBase::SetUp();
@@ -300,7 +300,7 @@ class TestQLPermission : public QLTestAuthentication {
         {"DESCRIBE", PermissionType::DESCRIBE_PERMISSION}
     };
 
-    client::internal::PermissionsCache permissions_cache(client_, false);
+    client::internal::PermissionsCache permissions_cache(client_.get(), false);
     ASSERT_OK(client_->GetPermissions(&permissions_cache));
 
     std::shared_ptr<client::internal::RolesPermissionsMap> roles_permissions_map =

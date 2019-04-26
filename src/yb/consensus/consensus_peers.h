@@ -125,8 +125,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
  public:
   Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,
        PeerProxyPtr proxy, PeerMessageQueue* queue,
-       ThreadPoolToken* raft_pool_token, Consensus* consensus,
-       std::shared_ptr<rpc::Messenger> messenger);
+       ThreadPoolToken* raft_pool_token, Consensus* consensus, rpc::Messenger* messenger);
 
   // Initializes a peer and get its status.
   CHECKED_STATUS Init();
@@ -169,7 +168,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
       ThreadPoolToken* raft_pool_token,
       PeerProxyPtr proxy,
       Consensus* consensus,
-      std::shared_ptr<rpc::Messenger> messenger);
+      rpc::Messenger* messenger);
 
   uint64_t failed_attempts() {
     std::lock_guard<simple_spinlock> l(peer_lock_);
@@ -255,7 +254,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
   mutable simple_spinlock peer_lock_;
   State state_ = kPeerCreated;
   Consensus* consensus_ = nullptr;
-  std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* messenger_ = nullptr;
   std::atomic<int> using_thread_pool_{0};
 };
 
@@ -313,7 +312,7 @@ class PeerProxyFactory {
 
   virtual ~PeerProxyFactory() {}
 
-  virtual std::shared_ptr<rpc::Messenger> messenger() const {
+  virtual rpc::Messenger* messenger() const {
     return nullptr;
   }
 };
@@ -359,17 +358,16 @@ class RpcPeerProxy : public PeerProxy {
 // PeerProxyFactory implementation that generates RPCPeerProxies
 class RpcPeerProxyFactory : public PeerProxyFactory {
  public:
-  RpcPeerProxyFactory(std::shared_ptr<rpc::Messenger> messenger, rpc::ProxyCache* proxy_cache,
-                      CloudInfoPB from);
+  RpcPeerProxyFactory(rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache, CloudInfoPB from);
 
   PeerProxyPtr NewProxy(const RaftPeerPB& peer_pb) override;
 
   virtual ~RpcPeerProxyFactory();
 
-  std::shared_ptr<rpc::Messenger> messenger() const override;
+  rpc::Messenger* messenger() const override;
 
  private:
-  std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* messenger_ = nullptr;
   rpc::ProxyCache* const proxy_cache_;
   const CloudInfoPB from_;
 };

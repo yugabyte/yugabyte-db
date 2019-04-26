@@ -179,7 +179,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   ~ExternalMiniCluster();
 
   // Start the cluster.
-  CHECKED_STATUS Start(const rpc::MessengerPtr& messenger = nullptr);
+  CHECKED_STATUS Start(rpc::Messenger* messenger = nullptr);
 
   // Restarts the cluster. Requires that it has been Shutdown() first.
   CHECKED_STATUS Restart();
@@ -307,7 +307,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   }
 
   // Return the client messenger used by the ExternalMiniCluster.
-  std::shared_ptr<rpc::Messenger> messenger();
+  rpc::Messenger* messenger();
 
   rpc::ProxyCache& proxy_cache() {
     return *proxy_cache_;
@@ -384,14 +384,9 @@ class ExternalMiniCluster : public MiniClusterBase {
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
-  // Create a client configured to talk to this cluster.  Builder may contain override options for
-  // the client. The master address will be overridden to talk to the running master.
-  //
-  // REQUIRES: the cluster must have already been Start()ed.
-  virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
-      std::shared_ptr<client::YBClient>* client);
+  void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
-  virtual HostPort DoGetLeaderMasterBoundRpcAddr();
+  HostPort DoGetLeaderMasterBoundRpcAddr() override;
 
   CHECKED_STATUS StartMasters();
 
@@ -447,7 +442,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::vector<scoped_refptr<ExternalMaster> > masters_;
   std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;
 
-  std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* messenger_ = nullptr;
+  std::unique_ptr<rpc::Messenger> messenger_holder_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
   std::vector<std::unique_ptr<FileLock>> free_port_file_locks_;
@@ -467,7 +463,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   ExternalDaemon(
       std::string daemon_id,
-      std::shared_ptr<rpc::Messenger> messenger,
+      rpc::Messenger* messenger,
       std::string exe,
       std::string data_dir,
       std::string server_type,
@@ -563,7 +559,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   std::string ProcessNameAndPidStr();
 
   const std::string daemon_id_;
-  const std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* messenger_ = nullptr;
   const std::string exe_;
   const std::string data_dir_;
   const std::string full_data_dir_;
@@ -626,7 +622,7 @@ class ExternalMaster : public ExternalDaemon {
  public:
   ExternalMaster(
     int master_index,
-    const std::shared_ptr<rpc::Messenger>& messenger,
+    rpc::Messenger* messenger,
     const std::string& exe,
     const std::string& data_dir,
     const std::vector<std::string>& extra_flags,
@@ -652,7 +648,7 @@ class ExternalMaster : public ExternalDaemon {
 class ExternalTabletServer : public ExternalDaemon {
  public:
   ExternalTabletServer(
-      int tablet_server_index, const std::shared_ptr<rpc::Messenger>& messenger,
+      int tablet_server_index, rpc::Messenger* messenger,
       const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
       uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
       uint16_t cql_rpc_port, uint16_t cql_http_port,

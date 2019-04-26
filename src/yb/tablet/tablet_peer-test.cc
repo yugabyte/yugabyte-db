@@ -84,7 +84,6 @@ using docdb::KeyValueWriteBatchPB;
 using log::Log;
 using log::LogAnchorRegistry;
 using log::LogOptions;
-using rpc::Messenger;
 using server::Clock;
 using server::LogicalClock;
 using std::shared_ptr;
@@ -118,7 +117,7 @@ class TabletPeerTest : public YBTabletTest,
 
     rpc::MessengerBuilder builder(CURRENT_TEST_NAME());
     messenger_ = ASSERT_RESULT(builder.Build());
-    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "test-tablet");
 
@@ -167,8 +166,8 @@ class TabletPeerTest : public YBTabletTest,
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
-                                           std::shared_future<client::YBClientPtr>(),
-                                           messenger_,
+                                           std::shared_future<client::YBClient*>(),
+                                           messenger_.get(),
                                            proxy_cache_.get(),
                                            log,
                                            metric_entity_,
@@ -199,6 +198,7 @@ class TabletPeerTest : public YBTabletTest,
   }
 
   void TearDown() override {
+    messenger_->Shutdown();
     tablet_peer_->Shutdown();
     YBTabletTest::TearDown();
   }
@@ -284,7 +284,7 @@ class TabletPeerTest : public YBTabletTest,
   int32_t delete_counter_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
-  shared_ptr<Messenger> messenger_;
+  std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::unique_ptr<ThreadPool> raft_pool_;
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;

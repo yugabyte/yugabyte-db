@@ -23,6 +23,7 @@
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/tostring.h"
 
 namespace yb {

@@ -346,7 +346,7 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
   workload.Setup();
 
   struct Item {
-    client::YBClientPtr client;
+    std::unique_ptr<client::YBClient> client;
     std::unique_ptr<client::TableHandle> table;
     client::YBSessionPtr session;
     std::future<Status> future;
@@ -356,11 +356,10 @@ TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMast
   constexpr size_t kNumRequests = 40;
   while (items.size() != kNumRequests) {
     Item item;
-    client::YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(&builder, &item.client));
+    item.client = ASSERT_RESULT(cluster_->CreateClient());
     item.table = std::make_unique<client::TableHandle>();
     ASSERT_OK(item.table->Open(TestWorkloadOptions::kDefaultTableName, item.client.get()));
-    item.session = std::make_shared<client::YBSession>(item.client);
+    item.session = std::make_shared<client::YBSession>(item.client.get());
     items.push_back(std::move(item));
   }
 

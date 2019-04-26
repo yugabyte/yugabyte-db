@@ -484,7 +484,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
   tablet::BootstrapTabletData data = { metadata,
-                                       std::shared_future<client::YBClientPtr>(),
+                                       std::shared_future<client::YBClient*>(),
                                        scoped_refptr<server::Clock>(master_->clock()),
                                        master_->mem_tracker(),
                                        metric_registry_,
@@ -502,7 +502,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
   // handling split in the TS?
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->InitTabletPeer(tablet,
-                                                     std::shared_future<client::YBClientPtr>(),
+                                                     std::shared_future<client::YBClient*>(),
                                                      master_->messenger(),
                                                      &master_->proxy_cache(),
                                                      log,

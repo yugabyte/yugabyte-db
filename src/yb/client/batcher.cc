@@ -521,7 +521,7 @@ void Batcher::FlushBuffersIfReady() {
               need_consistent_read);
 }
 
-const std::shared_ptr<rpc::Messenger>& Batcher::messenger() const {
+rpc::Messenger* Batcher::messenger() const {
   return client_->messenger();
 }
 

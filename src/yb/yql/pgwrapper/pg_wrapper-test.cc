@@ -49,7 +49,6 @@ using yb::util::TrimTrailingWhitespaceFromEveryLine;
 using yb::util::LeftShiftTextBlock;
 using yb::client::YBTableName;
 using yb::rpc::RpcController;
-using yb::client::YBClientPtr;
 
 using namespace std::literals;
 
@@ -188,8 +187,7 @@ TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestCompactHistoryWithTxn)) {
   string table_id;
   LOG(INFO) << "Preparing to force a compaction on the table we created";
   {
-    YBClientPtr client;
-    ASSERT_OK(cluster_->CreateClient(&client));
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
 
     vector<std::pair<string, YBTableName>> tables;
     ASSERT_OK(client->ListTablesWithIds(&tables));

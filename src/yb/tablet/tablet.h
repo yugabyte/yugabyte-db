@@ -209,7 +209,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // within the provided registry. Otherwise, no metrics are collected.
   Tablet(
       const scoped_refptr<TabletMetadata>& metadata,
-      const std::shared_future<client::YBClientPtr> &client_future,
+      const std::shared_future<client::YBClient*> &client_future,
       const scoped_refptr<server::Clock>& clock,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       MetricRegistry* metric_registry,
@@ -679,7 +679,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::unique_ptr<TransactionParticipant> transaction_participant_;
 
-  std::shared_future<client::YBClientPtr> client_future_;
+  std::shared_future<client::YBClient*> client_future_;
 
   // Created only when secondary indexes are present.
   boost::optional<client::TransactionManager> transaction_manager_;

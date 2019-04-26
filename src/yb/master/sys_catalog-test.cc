@@ -79,16 +79,17 @@ class SysCatalogTest : public YBTest {
     // Create a client proxy to it.
     MessengerBuilder bld("Client");
     client_messenger_ = ASSERT_RESULT(bld.Build());
-    rpc::ProxyCache proxy_cache(client_messenger_);
+    rpc::ProxyCache proxy_cache(client_messenger_.get());
     proxy_.reset(new MasterServiceProxy(&proxy_cache, mini_master_->bound_rpc_addr()));
   }
 
   void TearDown() override {
+    client_messenger_->Shutdown();
     mini_master_->Shutdown();
     YBTest::TearDown();
   }
 
-  shared_ptr<Messenger> client_messenger_;
+  std::unique_ptr<Messenger> client_messenger_;
   gscoped_ptr<MiniMaster> mini_master_;
   Master* master_;
   gscoped_ptr<MasterServiceProxy> proxy_;

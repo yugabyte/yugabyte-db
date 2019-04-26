@@ -32,7 +32,6 @@ namespace yb {
 namespace client {
 
 class YBClient;
-typedef std::shared_ptr<YBClient> YBClientPtr;
 
 class YBError;
 typedef std::vector<std::unique_ptr<YBError>> CollectedErrors;

@@ -115,6 +115,7 @@ void YBTableTestBase::TearDown() {
   // Fetch the tablet server metrics page after we delete the table. [ENG-135].
   FetchTSMetricsPage();
 
+  client_.reset();
   if (use_external_mini_cluster()) {
     external_mini_cluster_->Shutdown();
   } else {
@@ -135,16 +136,14 @@ void YBTableTestBase::CreateClient() {
   client_ = CreateYBClient();
 }
 
-shared_ptr<yb::client::YBClient> YBTableTestBase::CreateYBClient() {
-  shared_ptr<yb::client::YBClient> client;
+std::unique_ptr<YBClient> YBTableTestBase::CreateYBClient() {
   YBClientBuilder builder;
   builder.default_rpc_timeout(MonoDelta::FromMilliseconds(client_rpc_timeout_ms()));
   if (use_external_mini_cluster()) {
-    CHECK_OK(external_mini_cluster_->CreateClient(&builder, &client));
+    return CHECK_RESULT(external_mini_cluster_->CreateClient(&builder));
   } else {
-    CHECK_OK(mini_cluster_->CreateClient(&builder, &client));
+    return CHECK_RESULT(mini_cluster_->CreateClient(&builder));
   }
-  return client;
 }
 
 void YBTableTestBase::OpenTable() {
@@ -152,8 +151,7 @@ void YBTableTestBase::OpenTable() {
   session_ = NewSession();
 }
 
-void YBTableTestBase::CreateRedisTable(shared_ptr<yb::client::YBClient> client,
-                                       YBTableName table_name) {
+void YBTableTestBase::CreateRedisTable(YBTableName table_name) {
   ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name(),
                                                 YQLDatabase::YQL_DATABASE_REDIS));
   ASSERT_OK(NewTableCreator()->table_name(table_name)

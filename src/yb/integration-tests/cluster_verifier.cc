@@ -42,6 +42,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster_base.h"
+#include "yb/rpc/messenger.h"
 #include "yb/tools/ysck_remote.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_util.h"
@@ -125,9 +126,8 @@ Status ClusterVerifier::DoCheckRowCount(const YBTableName& table_name,
                                         ComparisonMode mode,
                                         int expected_row_count,
                                         YBConsistencyLevel consistency) {
-  std::shared_ptr<client::YBClient> client;
-  client::YBClientBuilder builder;
-  RETURN_NOT_OK_PREPEND(cluster_->CreateClient(&builder, &client), "Unable to connect to cluster");
+  auto client = VERIFY_RESULT_PREPEND(
+      cluster_->CreateClient(), "Unable to connect to cluster");
 
   client::TableHandle table;
   RETURN_NOT_OK_PREPEND(table.Open(table_name, client.get()), "Unable to open table");

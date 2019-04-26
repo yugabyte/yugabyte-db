@@ -128,7 +128,7 @@ class TabletHarness {
     clock_ = server::LogicalClock::CreateStartingAt(HybridTime::kInitial);
     TabletOptions tablet_options;
     tablet_.reset(new TabletClass(metadata,
-                                  std::shared_future<client::YBClientPtr>(),
+                                  std::shared_future<client::YBClient*>(),
                                   clock_,
                                   std::shared_ptr<MemTracker>(),
                                   metrics_registry_.get(),

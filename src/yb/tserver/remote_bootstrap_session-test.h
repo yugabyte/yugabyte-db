@@ -106,6 +106,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   }
 
   virtual void TearDown() override {
+    messenger_->Shutdown();
     session_.reset();
     tablet_peer_->Shutdown();
     YBTabletTest::TearDown();
@@ -154,14 +155,14 @@ class RemoteBootstrapTest : public YBTabletTest {
                                        config, consensus::kMinimumTerm, &cmeta));
 
     MessengerBuilder mbuilder(CURRENT_TEST_NAME());
-    auto messenger = ASSERT_RESULT(mbuilder.Build());
-    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger);
+    messenger_ = ASSERT_RESULT(mbuilder.Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
     log_anchor_registry_.reset(new LogAnchorRegistry());
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
-                                          std::shared_future<client::YBClientPtr>(),
-                                          messenger,
+                                          std::shared_future<client::YBClient*>(),
+                                          messenger_.get(),
                                           proxy_cache_.get(),
                                           log,
                                           metric_entity,
@@ -225,6 +226,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   unique_ptr<ThreadPool> append_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
   scoped_refptr<YB_EDITION_NS_PREFIX RemoteBootstrapSession> session_;
+  std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
 

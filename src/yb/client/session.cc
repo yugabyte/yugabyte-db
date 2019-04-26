@@ -32,8 +32,8 @@ using internal::ErrorCollector;
 
 using std::shared_ptr;
 
-YBSession::YBSession(YBClientPtr client, const scoped_refptr<ClockBase>& clock)
-    : client_(std::move(client)),
+YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock)
+    : client_(client),
       read_point_(clock ? std::make_unique<ConsistentReadPoint>(clock) : nullptr),
       error_collector_(new ErrorCollector()),
       timeout_(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms)) {
@@ -140,7 +140,7 @@ void YBSession::ReadAsync(std::shared_ptr<YBOperation> yb_op, StatusFunctor call
 }
 
 YBClient* YBSession::client() const {
-  return client_.get();
+  return client_;
 }
 
 void YBSession::FlushFinished(internal::BatcherPtr batcher) {
@@ -170,7 +170,7 @@ ConsistentReadPoint* YBSession::read_point() {
 internal::Batcher& YBSession::Batcher() {
   if (!batcher_) {
     batcher_.reset(new internal::Batcher(
-        client_.get(), error_collector_.get(), shared_from_this(), transaction_, read_point(),
+        client_, error_collector_.get(), shared_from_this(), transaction_, read_point(),
         force_consistent_read_));
     if (timeout_.Initialized()) {
       batcher_->SetTimeout(timeout_);

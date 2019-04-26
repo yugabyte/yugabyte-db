@@ -87,7 +87,7 @@ MessengerBuilder CreateMessengerBuilder(const std::string& name,
   return bld;
 }
 
-std::shared_ptr<Messenger> CreateMessenger(const std::string& name,
+std::unique_ptr<Messenger> CreateMessenger(const std::string& name,
                                            const scoped_refptr<MetricEntity>& metric_entity,
                                            const MessengerOptions& options) {
   return EXPECT_RESULT(CreateMessengerBuilder(name, metric_entity, options).Build());
@@ -195,7 +195,7 @@ class CalculatorService: public CalculatorServiceIf {
       : CalculatorServiceIf(entity), name_(std::move(name)) {
   }
 
-  void SetMessenger(const std::weak_ptr<Messenger>& messenger) {
+  void SetMessenger(Messenger* messenger) {
     messenger_ = messenger;
   }
 
@@ -276,10 +276,8 @@ class CalculatorService: public CalculatorServiceIf {
       context.RespondSuccess();
       return;
     }
-    auto messenger = messenger_.lock();
-    YB_ASSERT_TRUE(messenger);
     HostPort hostport(req->host(), req->port());
-    ProxyCache cache(messenger);
+    ProxyCache cache(messenger_);
     rpc_test::CalculatorServiceProxy proxy(&cache, hostport);
 
     ForwardRequestPB forwarded_req;
@@ -301,7 +299,7 @@ class CalculatorService: public CalculatorServiceIf {
   }
 
   std::string name_;
-  std::weak_ptr<Messenger> messenger_;
+  Messenger* messenger_ = nullptr;
 };
 
 } // namespace
@@ -312,16 +310,16 @@ std::unique_ptr<ServiceIf> CreateCalculatorService(
 }
 
 TestServer::TestServer(std::unique_ptr<ServiceIf> service,
-                       const std::shared_ptr<Messenger>& messenger,
+                       std::unique_ptr<Messenger>&& messenger,
                        const TestServerOptions& options)
     : service_name_(service->service_name()),
-      messenger_(messenger),
+      messenger_(std::move(messenger)),
       thread_pool_("rpc-test", kQueueLength, options.n_worker_threads) {
 
   // If it is CalculatorService then we should set messenger for it.
   CalculatorService* calculator_service = dynamic_cast<CalculatorService*>(service.get());
   if (calculator_service) {
-    calculator_service->SetMessenger(messenger_);
+    calculator_service->SetMessenger(messenger_.get());
   }
 
   service_pool_.reset(new ServicePool(kQueueLength,
@@ -346,9 +344,7 @@ TestServer::~TestServer() {
     }
     service_pool_->Shutdown();
   }
-  if (messenger_) {
-    messenger_->Shutdown();
-  }
+  messenger_->Shutdown();
 }
 
 void TestServer::Shutdown() {
@@ -460,9 +456,17 @@ TestServer RpcTestBase::StartTestServer(const std::string& name, const IpAddress
 
 void RpcTestBase::StartTestServerWithGeneratedCode(HostPort* server_hostport,
                                                    const TestServerOptions& options) {
-  auto messenger = options.messenger ? options.messenger
-                                     : CreateMessenger("TestServer", options.messenger_options);
-  server_.reset(new TestServer(CreateCalculatorService(metric_entity_), messenger, options));
+  server_.reset(new TestServer(
+      CreateCalculatorService(metric_entity_),
+      CreateMessenger("TestServer", options.messenger_options), options));
+  *server_hostport = HostPort::FromBoundEndpoint(server_->bound_endpoint());
+}
+
+void RpcTestBase::StartTestServerWithGeneratedCode(std::unique_ptr<Messenger>&& messenger,
+                                                   HostPort* server_hostport,
+                                                   const TestServerOptions& options) {
+  server_.reset(new TestServer(
+      CreateCalculatorService(metric_entity_), std::move(messenger), options));
   *server_hostport = HostPort::FromBoundEndpoint(server_->bound_endpoint());
 }
 
@@ -476,8 +480,8 @@ CHECKED_STATUS RpcTestBase::StartFakeServer(Socket* listen_sock, HostPort* liste
   return Status::OK();
 }
 
-std::shared_ptr<Messenger> RpcTestBase::CreateMessenger(const string &name,
-                                                        const MessengerOptions& options) {
+std::unique_ptr<Messenger> RpcTestBase::CreateMessenger(
+    const string &name, const MessengerOptions& options) {
   return yb::rpc::CreateMessenger(name, metric_entity_, options);
 }
 

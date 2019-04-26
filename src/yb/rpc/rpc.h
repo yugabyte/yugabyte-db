@@ -87,9 +87,9 @@ YB_STRONGLY_TYPED_BOOL(RetryWhenBusy);
 // All RPCs should use HandleResponse() to retry certain generic errors.
 class RpcRetrier {
  public:
-  RpcRetrier(MonoTime deadline, std::shared_ptr<Messenger> messenger, ProxyCache *proxy_cache)
+  RpcRetrier(MonoTime deadline, Messenger* messenger, ProxyCache *proxy_cache)
       : deadline_(std::move(deadline)),
-        messenger_(std::move(messenger)),
+        messenger_(messenger),
         proxy_cache_(*proxy_cache) {
     controller_.Reset();
   }
@@ -130,7 +130,7 @@ class RpcRetrier {
 
   MonoTime deadline() const { return deadline_; }
 
-  const std::shared_ptr<Messenger>& messenger() const {
+  rpc::Messenger* messenger() const {
     return messenger_;
   }
 
@@ -162,7 +162,7 @@ class RpcRetrier {
   const MonoTime deadline_;
 
   // Messenger to use when sending the RPC.
-  std::shared_ptr<Messenger> messenger_;
+  Messenger* messenger_ = nullptr;
 
   ProxyCache& proxy_cache_;
 
@@ -184,7 +184,7 @@ class RpcRetrier {
 class Rpc : public RpcCommand {
  public:
   Rpc(const MonoTime& deadline,
-      const std::shared_ptr<Messenger>& messenger,
+      Messenger* messenger,
       ProxyCache* proxy_cache)
       : retrier_(deadline, messenger, proxy_cache) {
   }

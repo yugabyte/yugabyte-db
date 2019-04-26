@@ -93,7 +93,7 @@ string RpcServer::ToString() const {
   return "RpcServer";
 }
 
-Status RpcServer::Init(const shared_ptr<Messenger>& messenger) {
+Status RpcServer::Init(Messenger* messenger) {
   CHECK_EQ(server_state_, UNINITIALIZED);
   messenger_ = messenger;
 
@@ -173,7 +173,7 @@ void RpcServer::Shutdown() {
   if (messenger_) {
     messenger_->ShutdownThreadPools();
     messenger_->ShutdownAcceptor();
-    WARN_NOT_OK(messenger_->UnregisterAllServices(), "Unable to unregister our services");
+    messenger_->UnregisterAllServices();
   }
 }
 

@@ -107,11 +107,11 @@ void TransactionTestBase::SetUp() {
   HybridTime::TEST_SetPrettyToString(true);
 
   ASSERT_OK(clock_->Init());
-  transaction_manager_.emplace(client_, clock_, client::LocalTabletFilter());
+  transaction_manager_.emplace(client_.get(), clock_, client::LocalTabletFilter());
 
   server::ClockPtr clock2(new server::HybridClock(skewed_clock_));
   ASSERT_OK(clock2->Init());
-  transaction_manager2_.emplace(client_, clock2, client::LocalTabletFilter());
+  transaction_manager2_.emplace(client_.get(), clock2, client::LocalTabletFilter());
 }
 
 uint64_t TransactionTestBase::log_segment_size_bytes() const {

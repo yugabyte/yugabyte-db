@@ -136,10 +136,10 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(num_replicas()));
 
-    CHECK_OK(YBClientBuilder()
-             .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
-             .default_admin_operation_timeout(MonoDelta::FromSeconds(60))
-             .Build(&client_));
+    client_ = CHECK_RESULT(YBClientBuilder()
+        .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
+        .default_admin_operation_timeout(MonoDelta::FromSeconds(60))
+        .Build());
 
     CHECK_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
 
@@ -158,6 +158,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTearDown() override {
+    client_.reset();
     tablet_peer_.reset();
     cluster_->Shutdown();
   }
@@ -255,7 +256,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
 
   static const YBTableName kTableName;
 
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
 
   YBSchema schema_;
 

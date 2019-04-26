@@ -39,6 +39,7 @@
 
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/server_base.h"
 #include "yb/server/server_base.proxy.h"
@@ -104,7 +105,7 @@ class RemoteYsckMaster : public YsckMaster {
 
  private:
   explicit RemoteYsckMaster(
-      const HostPort& address, const std::shared_ptr<rpc::Messenger>& messenger);
+      const HostPort& address, std::unique_ptr<rpc::Messenger>&& messenger);
 
   CHECKED_STATUS GetTableInfo(
       const client::YBTableName& table_name, Schema* schema, int* num_replicas);
@@ -117,6 +118,7 @@ class RemoteYsckMaster : public YsckMaster {
       std::string* last_partition_key, std::vector<std::shared_ptr<YsckTablet> >* tablets,
       bool* more_tablets);
 
+  std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   const std::shared_ptr<server::GenericServiceProxy> generic_proxy_;
   std::shared_ptr<master::MasterServiceProxy> proxy_;

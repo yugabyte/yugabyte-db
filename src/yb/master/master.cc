@@ -141,9 +141,6 @@ Master::Master(const MasterOptions& opts)
 
 Master::~Master() {
   Shutdown();
-  if (messenger_) {
-    messenger_->Shutdown();
-  }
 }
 
 string Master::ToString() const {
@@ -262,6 +259,10 @@ void Master::Shutdown() {
     string name = ToString();
     LOG(INFO) << name << " shutting down...";
     maintenance_manager_->Shutdown();
+    // We shutdown RpcAndWebServerBase here in order to shutdown messenger and reactor threads
+    // before shutting down catalog manager. This is needed to prevent async calls callbacks
+    // (running on reactor threads) from trying to use catalog manager thread pool which would be
+    // already shutdown.
     RpcAndWebServerBase::Shutdown();
     catalog_manager_->Shutdown();
     LOG(INFO) << name << " shutdown complete.";

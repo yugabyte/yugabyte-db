@@ -48,7 +48,7 @@ Status YBPartitionGenerator::Init() {
   for (const string& master_address : master_addresses_) {
     builder.add_master_server_addr(master_address);
   }
-  RETURN_NOT_OK(builder.Build(&client_));
+  client_ = VERIFY_RESULT(builder.Build());
   RETURN_NOT_OK(client_->OpenTable(table_name_, &table_));
   RepeatedPtrField<TabletLocationsPB> tablets;
   RETURN_NOT_OK(client_->GetTablets(table_name_, /* max_tablets */ 0, &tablets));

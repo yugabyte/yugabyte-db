@@ -37,12 +37,13 @@ class MasterSysNamespaceTest : public YBTest {
     ASSERT_OK(cluster_->Start());
     rpc::MessengerBuilder bld("Client");
     client_messenger_ = ASSERT_RESULT(bld.Build());
-    rpc::ProxyCache proxy_cache(client_messenger_);
+    rpc::ProxyCache proxy_cache(client_messenger_.get());
     proxy_.reset(new MasterServiceProxy(&proxy_cache,
                                         cluster_->leader_mini_master()->bound_rpc_addr()));
   }
 
   void TearDown() override {
+    client_messenger_->Shutdown();
     if (cluster_) {
       cluster_->Shutdown();
       cluster_.reset();
@@ -89,7 +90,7 @@ class MasterSysNamespaceTest : public YBTest {
 
   std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<MasterServiceProxy> proxy_;
-  std::shared_ptr<rpc::Messenger> client_messenger_;
+  std::unique_ptr<rpc::Messenger> client_messenger_;
 };
 
 TEST_F(MasterSysNamespaceTest, TestSysNamespace) {

@@ -84,7 +84,7 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   GetLeaderMasterRpc(LeaderCallback user_cb,
                      const server::MasterAddresses& addrs,
                      MonoTime deadline,
-                     const std::shared_ptr<rpc::Messenger>& messenger,
+                     rpc::Messenger* messenger,
                      rpc::ProxyCache* proxy_cache,
                      rpc::Rpcs* rpcs,
                      bool should_timeout_to_follower_ = false);

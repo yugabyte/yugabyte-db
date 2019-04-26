@@ -143,7 +143,7 @@ class MasterTest : public YBTest {
 
     // Create a client proxy to it.
     client_messenger_ = ASSERT_RESULT(MessengerBuilder("Client").Build());
-    rpc::ProxyCache proxy_cache(client_messenger_);
+    rpc::ProxyCache proxy_cache(client_messenger_.get());
     proxy_.reset(new MasterServiceProxy(&proxy_cache, mini_master_->bound_rpc_addr()));
 
     // Create the default test namespace.
@@ -153,6 +153,7 @@ class MasterTest : public YBTest {
   }
 
   void TearDown() override {
+    client_messenger_->Shutdown();
     mini_master_->Shutdown();
     YBTest::TearDown();
   }
@@ -239,7 +240,7 @@ class MasterTest : public YBTest {
     LOG(INFO) << "Update cluster config to: " << cluster_config->ShortDebugString();
   }
 
-  shared_ptr<Messenger> client_messenger_;
+  std::unique_ptr<Messenger> client_messenger_;
   gscoped_ptr<MiniMaster> mini_master_;
   gscoped_ptr<MasterServiceProxy> proxy_;
   shared_ptr<RpcController> controller_;
@@ -250,7 +251,7 @@ TEST_F(MasterTest, TestPingServer) {
   server::PingRequestPB req;
   server::PingResponsePB resp;
 
-  rpc::ProxyCache proxy_cache(client_messenger_);
+  rpc::ProxyCache proxy_cache(client_messenger_.get());
   server::GenericServiceProxy generic_proxy(&proxy_cache, mini_master_->bound_rpc_addr());
   ASSERT_OK(generic_proxy.Ping(req, &resp, ResetAndGetController()));
 }

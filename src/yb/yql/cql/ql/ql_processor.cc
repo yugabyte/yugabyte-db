@@ -122,7 +122,7 @@ QLMetrics::QLMetrics(const scoped_refptr<yb::MetricEntity> &metric_entity) {
       METRIC_handler_latency_yb_cqlserver_SQLProcessor_ResponseSize.Instantiate(metric_entity);
 }
 
-QLProcessor::QLProcessor(shared_ptr<YBClient> client,
+QLProcessor::QLProcessor(client::YBClient* client,
                          shared_ptr<YBMetaDataCache> cache, QLMetrics* ql_metrics,
                          const server::ClockPtr& clock,
                          TransactionPoolProvider transaction_pool_provider)

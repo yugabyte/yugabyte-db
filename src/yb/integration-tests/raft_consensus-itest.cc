@@ -478,8 +478,8 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
 
   rpc::MessengerBuilder builder("test builder");
   builder.set_num_reactors(1);
-  auto messenger = ASSERT_RESULT(builder.Build());
-  rpc::ProxyCache proxy_cache(messenger);
+  std::unique_ptr<rpc::Messenger> messenger = ASSERT_RESULT(builder.Build());
+  rpc::ProxyCache proxy_cache(messenger.get());
 
   // Set a decent timeout for allowing the masters to find eachother.
   const auto kTimeout = 30s;

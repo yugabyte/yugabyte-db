@@ -99,8 +99,8 @@ class TsTabletManagerITest : public YBTest {
   const YBSchema schema_;
 
   gscoped_ptr<MiniCluster> cluster_;
-  std::shared_ptr<YBClient> client_;
-  std::shared_ptr<Messenger> client_messenger_;
+  std::unique_ptr<Messenger> client_messenger_;
+  std::unique_ptr<YBClient> client_;
 };
 
 void TsTabletManagerITest::SetUp() {
@@ -113,10 +113,12 @@ void TsTabletManagerITest::SetUp() {
   opts.num_tablet_servers = kNumReplicas;
   cluster_.reset(new MiniCluster(env_.get(), opts));
   ASSERT_OK(cluster_->Start());
-  ASSERT_OK(cluster_->CreateClient(&client_));
+  client_ = ASSERT_RESULT(cluster_->CreateClient(client_messenger_.get()));
 }
 
 void TsTabletManagerITest::TearDown() {
+  client_.reset();
+  client_messenger_->Shutdown();
   cluster_->Shutdown();
   YBTest::TearDown();
 }
@@ -143,7 +145,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
             .Create());
   ASSERT_OK(client_->OpenTable(kTableName, &table));
 
-  rpc::ProxyCache proxy_cache(client_messenger_);
+  rpc::ProxyCache proxy_cache(client_messenger_.get());
 
   // Build a TServerDetails map so we can check for convergence.
   MasterServiceProxy master_proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());

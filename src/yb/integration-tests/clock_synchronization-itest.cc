@@ -56,13 +56,11 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
     b.AddColumn("value")->Type(INT64)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
-    rpc::MessengerBuilder bld("Client");
-    ASSERT_OK(bld.Build().MoveTo(&client_messenger_));
-    client::YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(&builder, &client_));
+    client_ = ASSERT_RESULT(cluster_->CreateClient());
   }
 
   void DoTearDown() override {
+    client_.reset();
     cluster_->Shutdown();
   }
 
@@ -107,11 +105,11 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
     FLAGS_time_source = "mock";
   }
 
-  std::shared_ptr<client::YBClient> client_;
+  std::unique_ptr<client::YBClient> client_;
   client::YBSchema schema_;
   std::unique_ptr<client::YBTableName> table_name_;
   std::shared_ptr<client::YBTable> table_;
-  std::shared_ptr<rpc::Messenger> client_messenger_;
+  std::unique_ptr<rpc::Messenger> client_messenger_;
   Random random_;
   MockClock mock_clock_;
   constexpr static const char* const kNamespace = "my_namespace";

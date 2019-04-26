@@ -132,7 +132,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
   gscoped_ptr<Master> server(new YB_EDITION_NS_PREFIX Master(*opts));
   RETURN_NOT_OK(server->Init());
 
-  server::TEST_SetupConnectivity(server->messenger().get(), index_);
+  server::TEST_SetupConnectivity(server->messenger(), index_);
 
   RETURN_NOT_OK(server->StartAsync());
 

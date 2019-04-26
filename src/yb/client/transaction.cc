@@ -495,7 +495,7 @@ class YBTransaction::Impl final {
         UpdateTransaction(
             TransactionRpcDeadline(),
             status_tablet_.get(),
-            manager_->client().get(),
+            manager_->client(),
             &req,
             std::bind(&Impl::CommitDone, this, _1, _2, transaction)),
         &commit_handle_);
@@ -519,7 +519,7 @@ class YBTransaction::Impl final {
         AbortTransaction(
             TransactionRpcDeadline(),
             status_tablet_.get(),
-            manager_->client().get(),
+            manager_->client(),
             &req,
             std::bind(&Impl::AbortDone, this, _1, _2, transaction)),
         &abort_handle_);
@@ -570,7 +570,7 @@ class YBTransaction::Impl final {
       std::unique_lock<std::mutex> lock(mutex_);
       abort_requests_.reserve(abort_requests_.size() + remote_tablet_servers.size());
       for (auto* server : remote_tablet_servers) {
-        auto status = server->InitProxy(manager_->client().get());
+        auto status = server->InitProxy(manager_->client());
         if (!status.ok()) {
           LOG(WARNING) << "Failed to init proxy to " << server->ToString() << ": " << status;
           continue;
@@ -700,7 +700,7 @@ class YBTransaction::Impl final {
         UpdateTransaction(
             TransactionRpcDeadline(),
             status_tablet_.get(),
-            manager_->client().get(),
+            manager_->client(),
             &req,
             std::bind(&Impl::HeartbeatDone, this, _1, _2, status, transaction)),
         &heartbeat_handle_);

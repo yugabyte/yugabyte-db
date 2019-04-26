@@ -52,8 +52,8 @@ static Status PBToClientTableType(
 
 } // namespace
 
-YBTable::YBTable(std::shared_ptr<YBClient> client, const YBTableInfo& info)
-    : client_(std::move(client)),
+YBTable::YBTable(client::YBClient* client, const YBTableInfo& info)
+    : client_(client),
       // The table type is set after the table is opened.
       table_type_(YBTableType::UNKNOWN_TABLE_TYPE),
       info_(info) {
@@ -77,7 +77,7 @@ const string& YBTable::id() const {
 }
 
 YBClient* YBTable::client() const {
-  return client_.get();
+  return client_;
 }
 
 const YBSchema& YBTable::schema() const {
@@ -189,7 +189,7 @@ Status YBTable::Open() {
                      << s.ToString();
         if (client_->IsMultiMaster()) {
           LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_.get(), deadline),
+          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_, deadline),
                       "Failed to determine new Master");
           continue;
         }
@@ -204,7 +204,7 @@ Status YBTable::Open() {
                      << s.ToString();
         if (client_->IsMultiMaster()) {
           LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_.get(), deadline),
+          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_, deadline),
                       "Failed to determine new Master");
           continue;
         }
@@ -217,7 +217,7 @@ Status YBTable::Open() {
                      << " is no longer the leader master.";
         if (client_->IsMultiMaster()) {
           LOG(INFO) << "Determining the leader master again and retrying.";
-          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_.get(), deadline),
+          WARN_NOT_OK(client_->data_->SetMasterServerProxy(client_, deadline),
                       "Failed to determine new Master");
           continue;
         }

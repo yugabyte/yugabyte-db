@@ -525,7 +525,7 @@ CQLResponse* CQLProcessor::ProcessResult(const ExecutedResult::SharedPtr& result
 }
 
 bool CQLProcessor::NeedReschedule() {
-  auto messenger = service_impl_->messenger().lock();
+  auto messenger = service_impl_->messenger();
   if (!messenger) {
     return false;
   }
@@ -533,7 +533,7 @@ bool CQLProcessor::NeedReschedule() {
 }
 
 void CQLProcessor::Reschedule(rpc::ThreadPoolTask* task) {
-  auto messenger = service_impl_->messenger().lock();
+  auto messenger = service_impl_->messenger();
   DCHECK(messenger != nullptr) << "No messenger to reschedule CQL call";
   messenger->ThreadPool(rpc::ServicePriority::kNormal).Enqueue(task);
 }

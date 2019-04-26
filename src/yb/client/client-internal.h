@@ -42,6 +42,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/util/atomic.h"
@@ -253,7 +254,8 @@ class YBClient::Data {
       const std::function<Status(
           master::MasterServiceProxy*, const ReqClass&, RespClass*, rpc::RpcController*)>& func);
 
-  std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* messenger_ = nullptr;
+  std::unique_ptr<rpc::Messenger> messenger_holder_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   gscoped_ptr<DnsResolver> dns_resolver_;
   scoped_refptr<internal::MetaCache> meta_cache_;

@@ -152,6 +152,8 @@ void RpcServerBase::SetConnectionContextFactory(
 
 RpcServerBase::~RpcServerBase() {
   Shutdown();
+  rpc_server_.reset();
+  messenger_.reset();
   if (mem_tracker_->parent()) {
     mem_tracker_->UnregisterFromParent();
   }
@@ -226,9 +228,9 @@ Status RpcServerBase::Init() {
   builder.UseDefaultConnectionContextFactory(mem_tracker());
   RETURN_NOT_OK(SetupMessengerBuilder(&builder));
   messenger_ = VERIFY_RESULT(builder.Build());
-  proxy_cache_.reset(new rpc::ProxyCache(messenger_));
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
-  RETURN_NOT_OK(rpc_server_->Init(messenger_));
+  RETURN_NOT_OK(rpc_server_->Init(messenger_.get()));
   RETURN_NOT_OK(rpc_server_->Bind());
   clock_->RegisterMetrics(metric_entity_);
 
@@ -362,7 +364,9 @@ void RpcServerBase::Shutdown() {
     stop_metrics_logging_latch_.CountDown();
     metrics_logging_thread_->Join();
   }
-  rpc_server_->Shutdown();
+  if (rpc_server_) {
+    rpc_server_->Shutdown();
+  }
   if (messenger_) {
     messenger_->Shutdown();
   }
@@ -533,7 +537,7 @@ Status RpcAndWebServerBase::Start() {
   GenerateInstanceID();
 
   AddDefaultPathHandlers(web_server_.get());
-  AddRpczPathHandlers(messenger_, web_server_.get());
+  AddRpczPathHandlers(messenger_.get(), web_server_.get());
   RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
   TracingPathHandlers::RegisterHandlers(web_server_.get());
   web_server_->RegisterPathHandler("/utilz", "Utilities",

@@ -243,10 +243,9 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   BuildAndStart(ts_flags, master_flags);
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
 
-  shared_ptr<YBClient> client;
-  ASSERT_OK(YBClientBuilder()
-            .add_master_server_addr(master_address)
-            .Build(&client));
+  auto client = ASSERT_RESULT(YBClientBuilder()
+      .add_master_server_addr(master_address)
+      .Build());
 
   // Default table that gets created;
   string table_name = kTableName.table_name();

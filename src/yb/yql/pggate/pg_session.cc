@@ -84,7 +84,7 @@ static constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 //--------------------------------------------------------------------------------------------------
 
 PgSession::PgSession(
-    std::shared_ptr<client::YBClient> client,
+    client::YBClient* client,
     const string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     scoped_refptr<server::HybridClock> clock)

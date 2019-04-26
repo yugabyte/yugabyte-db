@@ -39,6 +39,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/mini_master.h"
+#include "yb/rpc/messenger.h"
 #include "yb/tools/data_gen_util.h"
 #include "yb/tools/ysck_remote.h"
 #include "yb/util/monotime.h"
@@ -87,12 +88,10 @@ class RemoteYsckTest : public YBTest {
     mini_cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(mini_cluster_->Start());
 
-    master_rpc_addr_ = mini_cluster_->mini_master()->bound_rpc_addr();
+    master_rpc_addr_ = mini_cluster_->GetLeaderMasterBoundRpcAddr();
 
     // Connect to the cluster.
-    ASSERT_OK(client::YBClientBuilder()
-                     .add_master_server_addr(ToString(master_rpc_addr_))
-                     .Build(&client_));
+    client_ = ASSERT_RESULT(mini_cluster_->CreateClient());
 
     // Create one table.
     ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
@@ -110,6 +109,7 @@ class RemoteYsckTest : public YBTest {
   }
 
   void TearDown() override {
+    client_.reset();
     if (mini_cluster_) {
       mini_cluster_->Shutdown();
       mini_cluster_.reset();
@@ -167,7 +167,7 @@ class RemoteYsckTest : public YBTest {
   }
 
   std::shared_ptr<Ysck> ysck_;
-  shared_ptr<client::YBClient> client_;
+  std::unique_ptr<client::YBClient> client_;
 
  private:
   HostPort master_rpc_addr_;

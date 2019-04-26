@@ -62,7 +62,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Access function to Pggate attribute.
-  std::shared_ptr<client::YBClient> client() {
+  client::YBClient* client() {
     return async_client_init_.client();
   }
 

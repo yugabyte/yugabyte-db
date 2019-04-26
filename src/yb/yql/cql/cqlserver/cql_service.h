@@ -80,7 +80,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   }
 
   // Return the YBClient to communicate with either master or tserver.
-  const std::shared_ptr<client::YBClient>& client() const;
+  client::YBClient* client() const;
 
   // Return the YBClientCache.
   const std::shared_ptr<client::YBMetaDataCache>& metadata_cache() const;
@@ -89,7 +89,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   std::shared_ptr<CQLMetrics> cql_metrics() const { return cql_metrics_; }
 
   // Return the messenger.
-  std::weak_ptr<rpc::Messenger> messenger() { return messenger_; }
+  rpc::Messenger* messenger() { return messenger_; }
 
   client::TransactionPool* GetTransactionPool();
 
@@ -156,7 +156,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
   std::shared_ptr<CQLMetrics> cql_metrics_;
   // Used to requeue the cql_inbound call to handle the response callback(s).
-  std::weak_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* messenger_ = nullptr;
 
   client::LocalTabletFilter local_tablet_filter_;
 

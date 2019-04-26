@@ -214,7 +214,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     const scoped_refptr<MetricEntity>& metric_entity,
     const scoped_refptr<server::Clock>& clock,
     ReplicaOperationFactory* operation_factory,
-    const shared_ptr<rpc::Messenger>& messenger,
+    rpc::Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
     const scoped_refptr<log::Log>& log,
     const shared_ptr<MemTracker>& parent_mem_tracker,

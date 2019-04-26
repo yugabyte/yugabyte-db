@@ -164,9 +164,9 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(cluster_->Start());
 
     // Connect to the cluster.
-    ASSERT_OK(YBClientBuilder()
+    client_ = ASSERT_RESULT(YBClientBuilder()
         .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
-        .Build(&client_));
+        .Build());
 
     // Create a keyspace;
     ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
@@ -176,6 +176,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTearDown() override {
+    client_.reset();
     if (cluster_) {
       cluster_->Shutdown();
       cluster_.reset();
@@ -403,7 +404,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
   void DoApplyWithoutFlushTest(int sleep_micros);
 
-  Result<std::shared_ptr<rpc::Messenger>> CreateMessenger(const std::string& name) {
+  Result<std::unique_ptr<rpc::Messenger>> CreateMessenger(const std::string& name) {
     return rpc::MessengerBuilder(name).Build();
   }
 
@@ -416,7 +417,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   YBSchema schema_;
 
   gscoped_ptr<MiniCluster> cluster_;
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   TableHandle client_table_;
   TableHandle client_table2_;
 };
@@ -1495,7 +1496,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 
   MiniTabletServer* new_leader = cluster_->mini_tablet_server(new_leader_idx);
   ASSERT_TRUE(new_leader != nullptr);
-  rpc::ProxyCache proxy_cache(client_messenger);
+  rpc::ProxyCache proxy_cache(client_messenger.get());
   consensus::ConsensusServiceProxy new_leader_proxy(
       &proxy_cache, HostPort::FromBoundEndpoint(new_leader->bound_rpc_addr()));
 
@@ -1700,7 +1701,7 @@ int CheckRowsEqual(const TableHandle& tbl, int32_t expected) {
 
 // Return a session "loaded" with updates. Sets the session timeout
 // to the parameter value. Larger timeouts decrease false positives.
-shared_ptr<YBSession> LoadedSession(const shared_ptr<YBClient>& client,
+shared_ptr<YBSession> LoadedSession(YBClient* client,
                                     const TableHandle& tbl,
                                     bool fwd, int max, MonoDelta timeout) {
   shared_ptr<YBSession> session = client->NewSession();
@@ -1726,10 +1727,9 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
 
   // Make reverse client who will make batches that update rows
   // in reverse order. Separate client used so rpc calls come in at same time.
-  shared_ptr<YBClient> rev_client;
-  ASSERT_OK(YBClientBuilder()
-                   .add_master_server_addr(ToString(cluster_->mini_master()->bound_rpc_addr()))
-                   .Build(&rev_client));
+  auto rev_client = ASSERT_RESULT(YBClientBuilder()
+      .add_master_server_addr(ToString(cluster_->mini_master()->bound_rpc_addr()))
+      .Build());
   TableHandle rev_table;
   ASSERT_OK(rev_table.Open(kTableName, client_.get()));
 
@@ -1752,8 +1752,8 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
   shared_ptr<YBSession> fwd_sessions[kNumSessions];
   shared_ptr<YBSession> rev_sessions[kNumSessions];
   for (int i = 0; i < kNumSessions; ++i) {
-    fwd_sessions[i] = LoadedSession(client_, client_table_, true, kNumRows, kTimeout);
-    rev_sessions[i] = LoadedSession(rev_client, rev_table, true, kNumRows, kTimeout);
+    fwd_sessions[i] = LoadedSession(client_.get(), client_table_, true, kNumRows, kTimeout);
+    rev_sessions[i] = LoadedSession(rev_client.get(), rev_table, true, kNumRows, kTimeout);
   }
 
   // Run async calls - one thread updates sequentially, another in reverse.
@@ -1809,9 +1809,9 @@ TEST_F(ClientTest, CreateTableWithoutTservers) {
   ASSERT_OK(cluster_->Start());
 
   // Connect to the cluster.
-  ASSERT_OK(YBClientBuilder()
+  client_ = ASSERT_RESULT(YBClientBuilder()
       .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
-      .Build(&client_));
+      .Build());
 
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
@@ -1919,7 +1919,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
   ASSERT_EQ(cluster_->num_tablet_servers() - 1, followers.size());
 
   auto client_messenger = ASSERT_RESULT(CreateMessenger("client"));
-  rpc::ProxyCache proxy_cache(client_messenger);
+  rpc::ProxyCache proxy_cache(client_messenger.get());
   for (const master::TSInfoPB& ts_info : followers) {
     // Try to read from followers.
     auto tserver_proxy = std::make_unique<tserver::TabletServerServiceProxy>(

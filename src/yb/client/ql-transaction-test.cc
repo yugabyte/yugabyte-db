@@ -309,7 +309,7 @@ TEST_F(QLTransactionTest, WriteAfterReadRestart) {
 
 TEST_F(QLTransactionTest, Child) {
   auto txn = CreateTransaction();
-  TransactionManager manager2(client_, clock_, client::LocalTabletFilter());
+  TransactionManager manager2(client_.get(), clock_, client::LocalTabletFilter());
   auto data_pb = txn->PrepareChildFuture(ForceConsistentRead::kFalse).get();
   ASSERT_OK(data_pb);
   auto data = ChildTransactionData::FromPB(*data_pb);
@@ -347,7 +347,7 @@ TEST_F(QLTransactionTest, ChildReadRestart) {
 
   server::ClockPtr clock3(new server::HybridClock(skewed_clock_));
   ASSERT_OK(clock3->Init());
-  TransactionManager manager3(client_, clock3, client::LocalTabletFilter());
+  TransactionManager manager3(client_.get(), clock3, client::LocalTabletFilter());
   auto child_txn = std::make_shared<YBTransaction>(&manager3, std::move(*data));
 
   auto session = CreateSession(child_txn);

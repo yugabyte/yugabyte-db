@@ -50,14 +50,13 @@ namespace rpc {
 
 class RpcBench : public RpcTestBase {
  public:
-  RpcBench()
-  {}
+  RpcBench() {}
 
  protected:
   friend class ClientThread;
 
   HostPort server_hostport_;
-  shared_ptr<Messenger> client_messenger_;
+  std::unique_ptr<Messenger> client_messenger_;
   std::atomic<bool> should_run_{true};
 };
 
@@ -77,8 +76,8 @@ class ClientThread {
   }
 
   void Run() {
-    shared_ptr<Messenger> client_messenger = bench_->CreateMessenger("Client");
-    ProxyCache proxy_cache(client_messenger);
+    std::unique_ptr<Messenger> client_messenger = bench_->CreateMessenger("Client");
+    ProxyCache proxy_cache(client_messenger.get());
 
     rpc_test::CalculatorServiceProxy p(&proxy_cache, HostPort(bench_->server_hostport_));
 
