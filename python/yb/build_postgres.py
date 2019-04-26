@@ -438,7 +438,9 @@ class PostgresBuilder:
 
     def make_postgres(self):
         self.set_env_vars('make')
-        make_cmd = ['make', '-f', 'Makefile']
+        # Postgresql requires MAKELEVEL to be 0 or non-set when calling its make.
+        # But in case YB project is built with make, MAKELEVEL is not 0 at this point.
+        make_cmd = ['make', 'MAKELEVEL=0']
 
         make_parallelism = os.environ.get('YB_MAKE_PARALLELISM')
         if make_parallelism:
