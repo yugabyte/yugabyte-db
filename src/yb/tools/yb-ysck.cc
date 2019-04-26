@@ -40,6 +40,7 @@
 
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/messenger.h"
 #include "yb/tools/ysck_remote.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"

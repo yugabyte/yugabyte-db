@@ -14,6 +14,8 @@
 #ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_BASE_H_
 #define YB_INTEGRATION_TESTS_MINI_CLUSTER_BASE_H_
 
+#include "yb/client/client.h"
+
 #include "yb/util/status.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -30,13 +32,38 @@ class YBClient;
 // for both types of mini cluster.
 class MiniClusterBase {
  public:
-  CHECKED_STATUS CreateClient(client::YBClientBuilder* builder,
-      std::shared_ptr<client::YBClient>* client) {
-    return DoCreateClient(builder, client);
+
+  // Create a client configured to talk to this cluster.  Builder may contain override options for
+  // the client. The master address will be overridden to talk to the running master.
+  // If 'builder' is not specified, default options will be used.
+  // Client is wrapped into a holder which will shutdown client on holder destruction.
+  //
+  // REQUIRES: the cluster must have already been Start()ed.
+
+  // Created client won't shutdown messenger.
+  Result<std::unique_ptr<client::YBClient>> CreateClient(rpc::Messenger* messenger) {
+    client::YBClientBuilder builder;
+    ConfigureClientBuilder(&builder);
+    return builder.Build(messenger);
   }
 
-  CHECKED_STATUS CreateClient(std::shared_ptr<client::YBClient>* client) {
-    return DoCreateClient(nullptr /* builder */, client);
+  // Created client will shutdown messenger on client shutdown.
+  Result<std::unique_ptr<client::YBClient>> CreateClient(
+      client::YBClientBuilder* builder = nullptr) {
+    if (builder == nullptr) {
+      client::YBClientBuilder default_builder;
+      return CreateClient(&default_builder);
+    }
+    ConfigureClientBuilder(builder);
+    return builder->Build();
+  }
+
+  // Created client gets messenger ownership and will shutdown messenger on client shutdown.
+  Result<std::unique_ptr<client::YBClient>> CreateClient(
+      std::unique_ptr<rpc::Messenger>&& messenger) {
+    client::YBClientBuilder builder;
+    ConfigureClientBuilder(&builder);
+    return builder.Build(std::move(messenger));
   }
 
   HostPort GetLeaderMasterBoundRpcAddr() {
@@ -51,8 +78,8 @@ class MiniClusterBase {
   std::atomic<bool> running_ { false };
 
  private:
-  virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
-      std::shared_ptr<client::YBClient>* client) = 0;
+  virtual void ConfigureClientBuilder(client::YBClientBuilder* builder) = 0;
+
   virtual HostPort DoGetLeaderMasterBoundRpcAddr() = 0;
 };
 

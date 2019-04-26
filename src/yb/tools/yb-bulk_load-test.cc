@@ -89,9 +89,9 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
 
-    ASSERT_OK(YBClientBuilder()
-              .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
-              .Build(&client_));
+    client_ = ASSERT_RESULT(YBClientBuilder()
+        .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
+        .Build());
 
     YBSchemaBuilder b;
     b.AddColumn("hash_key")->Type(INT64)->NotNull()->HashPrimaryKey();
@@ -104,10 +104,9 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     b.AddColumn("v4")->Type(DOUBLE)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
-    YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(&builder, &client_));
+    client_ = ASSERT_RESULT(cluster_->CreateClient());
     client_messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("Client").Build());
-    rpc::ProxyCache proxy_cache(client_messenger_);
+    rpc::ProxyCache proxy_cache(client_messenger_.get());
     proxy_.reset(new master::MasterServiceProxy(&proxy_cache,
                                                 cluster_->leader_mini_master()->bound_rpc_addr()));
 
@@ -137,6 +136,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTearDown() override {
+    client_messenger_->Shutdown();
+    client_.reset();
     cluster_->Shutdown();
   }
 
@@ -356,12 +357,12 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     *rowblock = rowsResult.GetRowBlock();
   }
 
-  std::shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   YBSchema schema_;
   std::unique_ptr<YBTableName> table_name_;
   std::shared_ptr<YBTable> table_;
   std::unique_ptr<master::MasterServiceProxy> proxy_;
-  std::shared_ptr<rpc::Messenger> client_messenger_;
+  std::unique_ptr<rpc::Messenger> client_messenger_;
   std::unique_ptr<YBPartitionGenerator> partition_generator_;
   std::vector<std::string> master_addresses_;
   std::string master_addresses_comma_separated_;
@@ -530,7 +531,7 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
       }
     }
 
-    rpc::ProxyCache proxy_cache(client_messenger_);
+    rpc::ProxyCache proxy_cache(client_messenger_.get());
     auto tserver_proxy = std::make_unique<tserver::TabletServerServiceProxy>(&proxy_cache,
                                                                              leader_tserver);
 

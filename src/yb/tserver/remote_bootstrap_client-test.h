@@ -60,7 +60,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
   explicit RemoteBootstrapClientTest(TableType table_type = DEFAULT_TABLE_TYPE)
       : RemoteBootstrapTest(table_type) {}
 
-  virtual void SetUp() override {
+  void SetUp() override {
     RemoteBootstrapTest::SetUp();
 
     fs_manager_.reset(new FsManager(Env::Default(), GetTestPath("client_tablet"), "tserver_test"));
@@ -71,10 +71,14 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
     SetUpRemoteBootstrapClient();
   }
 
+  void TearDown() override {
+    messenger_->Shutdown();
+    RemoteBootstrapTest::TearDown();
+  }
+
   virtual void SetUpRemoteBootstrapClient() {
-    messenger_ = ASSERT_RESULT(
-        rpc::MessengerBuilder(CURRENT_TEST_NAME()).Build());
-    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
+    messenger_ = ASSERT_RESULT(rpc::MessengerBuilder(CURRENT_TEST_NAME()).Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
     client_.reset(new RemoteBootstrapClientClass(GetTabletId(),
                                                  fs_manager_.get(),
@@ -90,7 +94,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
   CHECKED_STATUS CompareFileContents(const string& path1, const string& path2);
 
   gscoped_ptr<FsManager> fs_manager_;
-  shared_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   gscoped_ptr<RemoteBootstrapClientClass> client_;
   scoped_refptr<TabletMetadata> meta_;

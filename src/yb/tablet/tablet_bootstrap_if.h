@@ -113,7 +113,7 @@ class TabletStatusListener {
 
 struct BootstrapTabletData {
   scoped_refptr<TabletMetadata> meta;
-  std::shared_future<client::YBClientPtr> client_future;
+  std::shared_future<client::YBClient*> client_future;
   scoped_refptr<server::Clock> clock;
   std::shared_ptr<MemTracker> mem_tracker;
   MetricRegistry* metric_registry;

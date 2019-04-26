@@ -418,17 +418,18 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   }
 
   virtual void TearDown() override {
+    client_.reset();
     if (cluster_) {
       cluster_->Shutdown();
     }
     tablet_servers_.clear();
   }
 
-  void CreateClient(std::shared_ptr<client::YBClient>* client) {
+  Result<std::unique_ptr<client::YBClient>> CreateClient() {
     // Connect to the cluster.
-    ASSERT_OK(client::YBClientBuilder()
-                     .add_master_server_addr(yb::ToString(cluster_->master()->bound_rpc_addr()))
-                     .Build(client));
+    return client::YBClientBuilder()
+               .add_master_server_addr(yb::ToString(cluster_->master()->bound_rpc_addr()))
+               .Build();
   }
 
   // Create a table with a single tablet.
@@ -444,7 +445,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   void BuildAndStart(const std::vector<std::string>& ts_flags = std::vector<std::string>(),
                      const std::vector<std::string>& master_flags = std::vector<std::string>()) {
     CreateCluster("raft_consensus-itest-cluster", ts_flags, master_flags);
-    ASSERT_NO_FATALS(CreateClient(&client_));
+    client_ = ASSERT_RESULT(CreateClient());
     ASSERT_NO_FATALS(CreateTable());
     WaitForTSAndReplicas();
     CHECK_GT(tablet_replicas_.size(), 0);
@@ -471,7 +472,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   // Maps tablet to all replicas.
   TabletReplicaMap tablet_replicas_;
 
-  std::shared_ptr<client::YBClient> client_;
+  std::unique_ptr<client::YBClient> client_;
   client::TableHandle table_;
   std::string tablet_id_;
 

@@ -114,12 +114,11 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   friend class YBClient;
   friend class internal::GetTableSchemaRpc;
 
-  YBTable(std::shared_ptr<YBClient> client, const YBTableInfo& info);
+  YBTable(client::YBClient* client, const YBTableInfo& info);
 
   CHECKED_STATUS Open();
 
-  // Owned.
-  std::shared_ptr<YBClient> client_;
+  client::YBClient* const client_;
   YBTableType table_type_;
   YBTableInfo info_;
   std::vector<std::string> partitions_;

@@ -32,7 +32,7 @@ namespace client {
 
 class YBMetaDataCache {
  public:
-  YBMetaDataCache(std::shared_ptr<YBClient> client,
+  YBMetaDataCache(client::YBClient* client,
                   bool create_roles_permissions_cache = false) : client_(client)  {
     if (create_roles_permissions_cache) {
       permissions_cache_ = std::make_shared<client::internal::PermissionsCache>(client);
@@ -92,7 +92,7 @@ class YBMetaDataCache {
       const internal::CacheCheckMode check_mode =  internal::CacheCheckMode::RETRY);
 
  private:
-  std::shared_ptr<YBClient> client_;
+  client::YBClient* const client_;
 
   // Map from table-name to YBTable instances.
   typedef std::unordered_map<YBTableName,

@@ -120,7 +120,7 @@ Status MiniTabletServer::Start() {
   gscoped_ptr<TabletServer> server(new YB_EDITION_NS_PREFIX TabletServer(opts_));
   RETURN_NOT_OK(server->Init());
 
-  server::TEST_SetupConnectivity(server->messenger().get(), index_);
+  server::TEST_SetupConnectivity(server->messenger(), index_);
 
   RETURN_NOT_OK(server->Start());
 
@@ -147,9 +147,9 @@ Status MiniTabletServer::Start() {
 
 void MiniTabletServer::SetIsolated(bool isolated) {
   if (isolated) {
-    server::TEST_Isolate(server_->messenger().get());
+    server::TEST_Isolate(server_->messenger());
   } else {
-    server::TEST_SetupConnectivity(server_->messenger().get(), index_);
+    server::TEST_SetupConnectivity(server_->messenger(), index_);
   }
 }
 

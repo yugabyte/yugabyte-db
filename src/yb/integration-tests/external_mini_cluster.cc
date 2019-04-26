@@ -195,6 +195,9 @@ ExternalMiniCluster::ExternalMiniCluster(const ExternalMiniClusterOptions& opts)
 
 ExternalMiniCluster::~ExternalMiniCluster() {
   Shutdown();
+  if (messenger_holder_) {
+    messenger_holder_->Shutdown();
+  }
 }
 
 Status ExternalMiniCluster::DeduceBinRoot(std::string* ret) {
@@ -230,7 +233,7 @@ Status ExternalMiniCluster::HandleOptions() {
   return Status::OK();
 }
 
-Status ExternalMiniCluster::Start(const rpc::MessengerPtr& messenger) {
+Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   CHECK(masters_.empty()) << "Masters are not empty (size: " << masters_.size()
       << "). Maybe you meant Restart()?";
   CHECK(tablet_servers_.empty()) << "Tablet servers are not empty (size: "
@@ -238,12 +241,14 @@ Status ExternalMiniCluster::Start(const rpc::MessengerPtr& messenger) {
   RETURN_NOT_OK(HandleOptions());
   FLAGS_replication_factor = opts_.num_masters;
 
-  if (!messenger) {
+  if (messenger == nullptr) {
     rpc::MessengerBuilder builder("minicluster-messenger");
     builder.set_num_reactors(1);
-    RETURN_NOT_OK_PREPEND(builder.Build().MoveTo(&messenger_),
-        "Failed to start Messenger for minicluster");
+    messenger_holder_ = VERIFY_RESULT_PREPEND(
+        builder.Build(), "Failed to start Messenger for minicluster");
+    messenger_ = messenger_holder_.get();
   } else {
+    messenger_holder_ = nullptr;
     messenger_ = messenger;
   }
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
@@ -1279,7 +1284,7 @@ HostPort ExternalMiniCluster::pgsql_hostport(int node_index) const {
                   tablet_servers_[node_index]->pgsql_rpc_port());
 }
 
-std::shared_ptr<rpc::Messenger> ExternalMiniCluster::messenger() {
+rpc::Messenger* ExternalMiniCluster::messenger() {
   return messenger_;
 }
 
@@ -1308,18 +1313,13 @@ std::shared_ptr<server::GenericServiceProxy> ExternalMiniCluster::master_generic
   return std::make_shared<server::GenericServiceProxy>(proxy_cache_.get(), bound_rpc_addr);
 }
 
-Status ExternalMiniCluster::DoCreateClient(client::YBClientBuilder* builder,
-                                           std::shared_ptr<client::YBClient>* client) {
-  if (builder == nullptr) {
-    client::YBClientBuilder default_builder;
-    return DoCreateClient(&default_builder, client);
-  }
+void ExternalMiniCluster::ConfigureClientBuilder(client::YBClientBuilder* builder) {
+  CHECK_NOTNULL(builder);
   CHECK(!masters_.empty());
   builder->clear_master_server_addrs();
   for (const scoped_refptr<ExternalMaster>& master : masters_) {
     builder->add_master_server_addr(master->bound_rpc_hostport().ToString());
   }
-  return builder->Build(client);
 }
 
 HostPort ExternalMiniCluster::DoGetLeaderMasterBoundRpcAddr() {
@@ -1510,7 +1510,7 @@ class ExternalDaemon::LogTailerThread {
 
 ExternalDaemon::ExternalDaemon(
     std::string daemon_id,
-    std::shared_ptr<rpc::Messenger> messenger,
+    rpc::Messenger* messenger,
     string exe,
     string data_dir,
     string server_type,
@@ -1952,7 +1952,7 @@ ScopedResumeExternalDaemon::~ScopedResumeExternalDaemon() {
 //------------------------------------------------------------
 ExternalMaster::ExternalMaster(
     int master_index,
-    const std::shared_ptr<rpc::Messenger>& messenger,
+    rpc::Messenger* messenger,
     const string& exe,
     const string& data_dir,
     const std::vector<string>& extra_flags,
@@ -2002,7 +2002,7 @@ Status ExternalMaster::Restart() {
 //------------------------------------------------------------
 
 ExternalTabletServer::ExternalTabletServer(
-    int tablet_server_index, const std::shared_ptr<rpc::Messenger>& messenger,
+    int tablet_server_index, rpc::Messenger* messenger,
     const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
     uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
     uint16_t cql_rpc_port, uint16_t cql_http_port,

@@ -96,11 +96,11 @@ class AlterTableRandomized : public YBTest {
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
-    YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(&builder, &client_));
+    client_ = ASSERT_RESULT(cluster_->CreateClient());
   }
 
   void TearDown() override {
+    client_.reset();
     cluster_->Shutdown();
     YBTest::TearDown();
   }
@@ -115,7 +115,7 @@ class AlterTableRandomized : public YBTest {
 
  protected:
   gscoped_ptr<ExternalMiniCluster> cluster_;
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
 };
 
 typedef std::vector<std::pair<std::string, int32_t>> Row;
@@ -231,8 +231,8 @@ struct TableState {
 };
 
 struct MirrorTable {
-  explicit MirrorTable(shared_ptr<YBClient> client)
-      : client_(std::move(client)) {}
+  explicit MirrorTable(client::YBClient* client)
+      : client_(client) {}
 
   Status Create() {
     RETURN_NOT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
@@ -342,7 +342,7 @@ struct MirrorTable {
     vector<string> rows;
     {
       client::TableHandle table;
-      CHECK_OK(table.Open(kTableName, client_.get()));
+      CHECK_OK(table.Open(kTableName, client_));
       client::ScanTableToStrings(table, &rows);
     }
     std::sort(rows.begin(), rows.end());
@@ -418,7 +418,7 @@ struct MirrorTable {
     return shared_ptr<YBqlWriteOp>();
   }
 
-  shared_ptr<YBClient> client_;
+  YBClient* client_;
   TableState ts_;
 };
 
@@ -434,7 +434,7 @@ struct MirrorTable {
 // date. We periodically scan the actual table, and ensure that the data in YB
 // matches our in-memory "mirror".
 TEST_F(AlterTableRandomized, TestRandomSequence) {
-  MirrorTable t(client_);
+  MirrorTable t(client_.get());
   ASSERT_OK(t.Create());
 
   Random rng(SeedRandom());
@@ -482,7 +482,7 @@ TEST_F(AlterTableRandomized, TestRandomSequence) {
 }
 
 TEST_F(AlterTableRandomized, AddDropRestart) {
-  MirrorTable t(client_);
+  MirrorTable t(client_.get());
   ASSERT_OK(t.Create());
 
   t.AddAColumn("value", true);

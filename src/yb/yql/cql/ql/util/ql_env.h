@@ -47,7 +47,7 @@ class QLEnv {
 
   //------------------------------------------------------------------------------------------------
   // Constructor & destructor.
-  QLEnv(std::shared_ptr<client::YBClient> client,
+  QLEnv(client::YBClient* client,
         std::shared_ptr<client::YBMetaDataCache> cache,
         const server::ClockPtr& clock,
         TransactionPoolProvider transaction_pool_provider);
@@ -204,7 +204,7 @@ class QLEnv {
   // Persistent attributes.
 
   // YBClient, an API that SQL engine uses to communicate with all servers.
-  std::shared_ptr<client::YBClient> client_;
+  client::YBClient* const client_;
 
   // YBMetaDataCache, a cache to avoid creating a new table or type for each call.
   // Also used to hold the permissions cache when authentication is enabled.

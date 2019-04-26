@@ -403,12 +403,12 @@ class NoOpTestPeerProxyFactory : public PeerProxyFactory {
     return std::make_unique<NoOpTestPeerProxy>(pool_.get(), peer_pb);
   }
 
-  std::shared_ptr<rpc::Messenger> messenger() const override {
-    return messenger_;
+  Messenger* messenger() const override {
+    return messenger_.get();
   }
 
   gscoped_ptr<ThreadPool> pool_;
-  std::shared_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::Messenger> messenger_;
 };
 
 typedef std::unordered_map<std::string, std::shared_ptr<RaftConsensus> > TestPeerMap;
@@ -616,13 +616,13 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
     return proxies_;
   }
 
-  std::shared_ptr<rpc::Messenger> messenger() const override {
-    return messenger_;
+  rpc::Messenger* messenger() const override {
+    return messenger_.get();
   }
 
  private:
   gscoped_ptr<ThreadPool> pool_;
-  std::shared_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::Messenger> messenger_;
   TestPeerMapManager* const peers_;
     // NOTE: There is no need to delete this on the dctor because proxies are externally managed
   vector<LocalTestPeerProxy*> proxies_;

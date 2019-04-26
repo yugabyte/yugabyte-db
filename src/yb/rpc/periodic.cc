@@ -42,20 +42,19 @@ PeriodicTimer::Options::Options()
 }
 
 shared_ptr<PeriodicTimer> PeriodicTimer::Create(
-    shared_ptr<Messenger> messenger,
+    Messenger* messenger,
     RunTaskFunctor functor,
     MonoDelta period,
     Options options) {
-  return std::make_shared<PeriodicTimer>(
-      std::move(messenger), std::move(functor), period, options);
+  return std::make_shared<PeriodicTimer>(messenger, std::move(functor), period, options);
 }
 
 PeriodicTimer::PeriodicTimer(
-    shared_ptr<Messenger> messenger,
+    Messenger* messenger,
     RunTaskFunctor functor,
     MonoDelta period,
     Options options)
-    : messenger_(std::move(messenger)),
+    : messenger_(messenger),
       functor_(std::move(functor)),
       period_(period),
       options_(std::move(options)),

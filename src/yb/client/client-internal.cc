@@ -64,6 +64,7 @@
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/messenger.h"
 #include "yb/tserver/tserver_flags.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/curl_util.h"
@@ -301,13 +302,6 @@ YBClient::Data::Data()
       id_(ClientId::GenerateRandom()) {}
 
 YBClient::Data::~Data() {
-  // Workaround for KUDU-956: the user may close a YBClient while a flush
-  // is still outstanding. In that case, the flush's callback will be the last
-  // holder of the client reference, causing it to shut down on the reactor
-  // thread. This triggers a ThreadRestrictions crash. It's not critical to
-  // fix urgently, because typically once a client is shutting down, latency
-  // jitter on the reactor is not a big deal (and DNS resolutions are not in flight).
-  ThreadRestrictions::ScopedAllowWait allow_wait;
   dns_resolver_.reset();
   rpcs_.Shutdown();
 }
@@ -849,14 +843,14 @@ class GetTableSchemaRpc : public Rpc {
                     const YBTableName& table_name,
                     YBTableInfo* info,
                     const MonoTime& deadline,
-                    const shared_ptr<rpc::Messenger>& messenger,
+                    rpc::Messenger* messenger,
                     rpc::ProxyCache* proxy_cache);
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
                     const TableId& table_id,
                     YBTableInfo* info,
                     const MonoTime& deadline,
-                    const shared_ptr<rpc::Messenger>& messenger,
+                    rpc::Messenger* messenger,
                     rpc::ProxyCache* proxy_cache);
 
   void SendRpc() override;
@@ -872,7 +866,7 @@ class GetTableSchemaRpc : public Rpc {
 
   void NewLeaderMasterDeterminedCb(const Status& status);
 
-  YBClient* client_;
+  YBClient* const client_;
   StatusCallback user_cb_;
   master::TableIdentifierPB table_identifier_;
   YBTableInfo* info_;
@@ -900,7 +894,7 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      const YBTableName& table_name,
                                      YBTableInfo* info,
                                      const MonoTime& deadline,
-                                     const shared_ptr<rpc::Messenger>& messenger,
+                                     rpc::Messenger* messenger,
                                      rpc::ProxyCache* proxy_cache)
     : Rpc(deadline, messenger, proxy_cache),
       client_(DCHECK_NOTNULL(client)),
@@ -914,7 +908,7 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      const TableId& table_id,
                                      YBTableInfo* info,
                                      const MonoTime& deadline,
-                                     const shared_ptr<rpc::Messenger>& messenger,
+                                     rpc::Messenger* messenger,
                                      rpc::ProxyCache* proxy_cache)
     : Rpc(deadline, messenger, proxy_cache),
       client_(DCHECK_NOTNULL(client)),

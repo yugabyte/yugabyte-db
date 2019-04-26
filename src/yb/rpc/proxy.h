@@ -109,7 +109,7 @@ class ProxyContext {
 // After initialization, multiple threads may make calls using the same proxy object.
 class Proxy {
  public:
-  Proxy(std::shared_ptr<ProxyContext> context,
+  Proxy(ProxyContext* context,
         const HostPort& remote,
         const Protocol* protocol = nullptr);
   ~Proxy();
@@ -169,7 +169,7 @@ class Proxy {
 
   static void NotifyFailed(RpcController* controller, const Status& status);
 
-  std::shared_ptr<ProxyContext> context_;
+  ProxyContext* context_;
   HostPort remote_;
   const Protocol* const protocol_;
   mutable std::atomic<bool> is_started_{false};
@@ -191,7 +191,7 @@ class Proxy {
 
 class ProxyCache {
  public:
-  explicit ProxyCache(const std::shared_ptr<ProxyContext>& context)
+  explicit ProxyCache(ProxyContext* context)
       : context_(context) {}
 
   std::shared_ptr<Proxy> Get(const HostPort& remote, const Protocol* protocol);
@@ -208,7 +208,7 @@ class ProxyCache {
     }
   };
 
-  std::shared_ptr<ProxyContext> context_;
+  ProxyContext* context_;
   std::mutex mutex_;
   std::unordered_map<ProxyKey, std::shared_ptr<Proxy>, ProxyKeyHash> proxies_;
 };

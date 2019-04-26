@@ -136,7 +136,7 @@ class ConsensusPeersTest : public YBTest {
         raft_pool_.get(), new NoOpTestPeerProxy(raft_pool_.get(), peer_pb));
     *peer = CHECK_RESULT(Peer::NewRemotePeer(
         peer_pb, kTabletId, kLeaderUuid, message_queue_.get(), raft_pool_token_.get(),
-        PeerProxyPtr(proxy_ptr), nullptr /* consensus */, messenger_));
+        PeerProxyPtr(proxy_ptr), nullptr /* consensus */, messenger_.get()));
     return proxy_ptr;
   }
 
@@ -173,7 +173,7 @@ class ConsensusPeersTest : public YBTest {
   LogOptions options_;
   unique_ptr<ThreadPoolToken> raft_pool_token_;
   scoped_refptr<server::Clock> clock_;
-  shared_ptr<Messenger> messenger_;
+  std::unique_ptr<Messenger> messenger_;
 };
 
 // Tests that a remote peer is correctly built and tracked
@@ -321,7 +321,7 @@ TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
   auto peer = ASSERT_RESULT(Peer::NewRemotePeer(
       FakeRaftPeerPB(kFollowerUuid), kTabletId, kLeaderUuid, message_queue_.get(),
       raft_pool_token_.get(), PeerProxyPtr(mock_proxy), nullptr /* consensus */,
-      messenger_));
+      messenger_.get()));
 
   // Make the peer respond without making any progress -- it always returns
   // that it has only replicated op 0.0. When we see the response, we always
@@ -350,7 +350,7 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   auto peer = ASSERT_RESULT(Peer::NewRemotePeer(
       FakeRaftPeerPB(kFollowerUuid), kTabletId, kLeaderUuid, message_queue_.get(),
       raft_pool_token_.get(), PeerProxyPtr(mock_proxy), nullptr /* consensus */,
-      messenger_));
+      messenger_.get()));
 
   BOOST_SCOPE_EXIT(&peer) {
     // This guarantees that the Peer object doesn't get destroyed if there is a pending request.

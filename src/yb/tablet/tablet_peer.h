@@ -110,8 +110,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
   CHECKED_STATUS InitTabletPeer(const std::shared_ptr<TabletClass> &tablet,
-                                const std::shared_future<client::YBClientPtr> &client_future,
-                                const std::shared_ptr<rpc::Messenger> &messenger,
+                                const std::shared_future<client::YBClient*> &client_future,
+                                rpc::Messenger* messenger,
                                 rpc::ProxyCache* proxy_cache,
                                 const scoped_refptr<log::Log> &log,
                                 const scoped_refptr<MetricEntity> &metric_entity,
@@ -275,7 +275,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   bool Enqueue(rpc::ThreadPoolTask* task) override;
 
-  const std::shared_future<client::YBClientPtr>& client_future() const override {
+  const std::shared_future<client::YBClient*>& client_future() const override {
     return client_future_;
   }
 
@@ -419,7 +419,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
     return LeaderTerm() != OpId::kUnknownTerm;
   }
 
-  std::shared_future<client::YBClientPtr> client_future_;
+  std::shared_future<client::YBClient*> client_future_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };

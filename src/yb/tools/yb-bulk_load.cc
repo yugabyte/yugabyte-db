@@ -132,7 +132,7 @@ class BulkLoad {
   CHECKED_STATUS RetryableSubmit(vector<pair<TabletId, string>> rows);
   CHECKED_STATUS CompactFiles();
 
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   shared_ptr<YBTable> table_;
   unique_ptr<YBPartitionGenerator> partition_generator_;
   gscoped_ptr<ThreadPool> thread_pool_;
@@ -411,8 +411,8 @@ Status BulkLoad::FinishTabletProcessing(const TabletId &tablet_id,
 
   // Finalize the import.
   rpc::MessengerBuilder bld("Client");
-  auto client_messenger = VERIFY_RESULT(bld.Build());
-  rpc::ProxyCache proxy_cache(client_messenger);
+  std::unique_ptr<rpc::Messenger> client_messenger = VERIFY_RESULT(bld.Build());
+  rpc::ProxyCache proxy_cache(client_messenger.get());
   vector<string> lines;
   boost::split(lines, bulk_load_helper_stdout, boost::is_any_of("\n"));
   for (const string &line : lines) {
@@ -468,7 +468,7 @@ Status BulkLoad::InitYBBulkLoad() {
   YBClientBuilder builder;
   builder.add_master_server_addr(FLAGS_master_addresses);
 
-  RETURN_NOT_OK(builder.Build(&client_));
+  client_ = VERIFY_RESULT(builder.Build());
   RETURN_NOT_OK(client_->OpenTable(table_name, &table_));
   partition_generator_.reset(new YBPartitionGenerator(table_name, {FLAGS_master_addresses}));
   RETURN_NOT_OK(partition_generator_->Init());

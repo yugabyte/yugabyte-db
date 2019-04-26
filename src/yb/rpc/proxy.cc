@@ -72,9 +72,8 @@ using std::shared_ptr;
 namespace yb {
 namespace rpc {
 
-Proxy::Proxy(std::shared_ptr<ProxyContext> context, const HostPort& remote,
-             const Protocol* protocol)
-    : context_(std::move(context)),
+Proxy::Proxy(ProxyContext* context, const HostPort& remote, const Protocol* protocol)
+    : context_(context),
       remote_(remote),
       protocol_(protocol ? protocol : context_->DefaultProtocol()),
       outbound_call_metrics_(context_->metric_entity() ?

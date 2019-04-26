@@ -871,7 +871,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           *handle = UpdateTransaction(
               deadline,
               nullptr /* remote_tablet */,
-              context_.client_future().get().get(),
+              context_.client_future().get(),
               &req,
               [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
                 if (propagated_hybrid_time.is_valid()) {

@@ -45,7 +45,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   typedef scoped_refptr<PgSession> ScopedRefPtr;
 
   // Constructors.
-  PgSession(std::shared_ptr<client::YBClient> client,
+  PgSession(client::YBClient* client,
             const string& database_name,
             scoped_refptr<PgTxnManager> pg_txn_manager,
             scoped_refptr<server::HybridClock> clock);
@@ -191,7 +191,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Status CombineErrorsToStatus(client::CollectedErrors errors, Status status);
 
   // YBClient, an API that SQL engine uses to communicate with all servers.
-  std::shared_ptr<client::YBClient> client_;
+  client::YBClient* const client_;
 
   // YBSession to execute operations.
   std::shared_ptr<client::YBSession> session_;

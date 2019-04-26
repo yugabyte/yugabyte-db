@@ -31,7 +31,7 @@ class AsyncClientInitialiser {
       const uint32_t timeout_seconds, const std::string& tserver_uuid,
       const server::ServerBaseOptions* opts, scoped_refptr<MetricEntity> metric_entity,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
-      const std::shared_ptr<rpc::Messenger>& messenger = nullptr);
+      rpc::Messenger* messenger = nullptr);
 
   ~AsyncClientInitialiser();
 
@@ -39,8 +39,9 @@ class AsyncClientInitialiser {
 
   void Start();
 
-  const std::shared_ptr<client::YBClient>& client() const;
-  const std::shared_future<client::YBClientPtr>& get_client_future() const {
+  YBClient* client() const;
+
+  const std::shared_future<client::YBClient*>& get_client_future() const {
     return client_future_;
   }
 
@@ -48,8 +49,10 @@ class AsyncClientInitialiser {
   void InitClient();
 
   YBClientBuilder client_builder_;
-  std::promise<client::YBClientPtr> client_promise_;
-  mutable std::shared_future<client::YBClientPtr> client_future_;
+  rpc::Messenger* messenger_ = nullptr;
+  std::promise<client::YBClient*> client_promise_;
+  mutable std::shared_future<client::YBClient*> client_future_;
+  AtomicUniquePtr<client::YBClient> client_holder_;
 
   std::thread init_client_thread_;
   std::atomic<bool> stopping_ = {false};

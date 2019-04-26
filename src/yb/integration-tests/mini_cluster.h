@@ -194,16 +194,9 @@ class MiniCluster : public MiniClusterBase {
     kRegistrationWaitTimeSeconds = NonTsanVsTsan(30, 60)
   };
 
-  // Create a client configured to talk to this cluster. Builder may contain
-  // override options for the client. The master address will be overridden to
-  // talk to the running master. If 'builder' is NULL, default options will be
-  // used.
-  //
-  // REQUIRES: the cluster must have already been Start()ed.
-  virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
-      std::shared_ptr<client::YBClient>* client);
+  void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
-  virtual HostPort DoGetLeaderMasterBoundRpcAddr();
+  HostPort DoGetLeaderMasterBoundRpcAddr() override;
 
   // Allocates ports for the given daemon type and saves them to the ports vector. Does not
   // overwrite values in the ports vector that are non-zero already.

@@ -102,6 +102,7 @@ namespace yb {
 class RemoteBootstrapITest : public YBTest {
  public:
   void TearDown() override {
+    client_.reset();
     if (HasFatalFailure()) {
       LOG(INFO) << "Found fatal failure";
       if (cluster_) {
@@ -149,7 +150,7 @@ class RemoteBootstrapITest : public YBTest {
 
   gscoped_ptr<ExternalMiniCluster> cluster_;
   gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   itest::TabletServerMap ts_map_;
 
   MonoDelta crash_test_timeout_;
@@ -175,8 +176,7 @@ void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flag
   ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
                                          &cluster_->proxy_cache(),
                                          &ts_map_));
-  YBClientBuilder builder;
-  ASSERT_OK(cluster_->CreateClient(&builder, &client_));
+  client_ = ASSERT_RESULT(cluster_->CreateClient());
 }
 
 void RemoteBootstrapITest::CrashTestSetUp(YBTableType table_type) {

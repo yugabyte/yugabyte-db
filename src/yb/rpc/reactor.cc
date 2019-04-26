@@ -117,7 +117,7 @@ bool HasReactorStartedClosing(ReactorState state) {
 // Reactor class members
 // ------------------------------------------------------------------------------------------------
 
-Reactor::Reactor(const std::shared_ptr<Messenger>& messenger,
+Reactor::Reactor(Messenger* messenger,
                  int index,
                  const MessengerBuilder &bld)
     : messenger_(messenger),
@@ -478,10 +478,6 @@ void Reactor::RunThread() {
   DVLOG(6) << "Calling Reactor::RunThread()...";
   loop_.run(/* flags */ 0);
   VLOG(1) << name() << " thread exiting.";
-
-  // No longer need the messenger. This causes the messenger to
-  // get deleted when all the reactors exit.
-  messenger_.reset();
 }
 
 namespace {
@@ -742,8 +738,7 @@ std::string ReactorTask::ToString() const {
 // ------------------------------------------------------------------------------------------------
 
 DelayedTask::DelayedTask(StatusFunctor func, MonoDelta when, int64_t id,
-                         const SourceLocation& source_location,
-                         const std::shared_ptr<Messenger>& messenger)
+                         const SourceLocation& source_location, Messenger* messenger)
     : ReactorTask(source_location),
       func_(std::move(func)),
       when_(when),
@@ -819,9 +814,8 @@ void DelayedTask::AbortTask(const Status& abort_status) {
 }
 
 void DelayedTask::DoAbort(const Status& abort_status) {
-  auto messenger = messenger_.lock();
-  if (messenger != nullptr) {
-    messenger->RemoveScheduledTask(id_);
+  if (messenger_ != nullptr) {
+    messenger_->RemoveScheduledTask(id_);
   }
 
   AbortTask(abort_status);
@@ -841,9 +835,8 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
   auto holder = shared_from_this();
 
   reactor_->scheduled_tasks_.erase(shared_from(this));
-  auto messenger = messenger_.lock();
-  if (messenger != nullptr) {
-    messenger->RemoveScheduledTask(id_);
+  if (messenger_ != nullptr) {
+    messenger_->RemoveScheduledTask(id_);
   }
 
   if (EV_ERROR & revents) {

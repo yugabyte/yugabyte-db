@@ -123,7 +123,7 @@ static const int64_t kNoParticularCountExpected = -1;
 // facilitates checking for data integrity.
 class LinkedListTester {
  public:
-  LinkedListTester(std::shared_ptr<client::YBClient> client,
+  LinkedListTester(client::YBClient* client,
                    client::YBTableName table_name, int num_chains, int num_tablets,
                    int num_replicas, bool enable_mutation)
       : verify_projection_({kKeyColumnName, kLinkColumnName, kUpdatedColumnName}),
@@ -133,7 +133,7 @@ class LinkedListTester {
         num_replicas_(num_replicas),
         enable_mutation_(enable_mutation),
         latency_histogram_(1000000, 3),
-        client_(std::move(client)) {
+        client_(client) {
     client::YBSchemaBuilder b;
 
     b.AddColumn(kKeyColumnName)->Type(INT64)->NotNull()->HashPrimaryKey();
@@ -224,7 +224,7 @@ class LinkedListTester {
   const int num_replicas_;
   const bool enable_mutation_;
   HdrHistogram latency_histogram_;
-  std::shared_ptr<client::YBClient> client_;
+  client::YBClient* const client_;
   SnapsAndCounts sampled_hybrid_times_and_counts_;
 
  private:
@@ -266,9 +266,9 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
   }
 
   void ResetClientAndTester() {
-    YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(&builder, &client_));
-    tester_.reset(new LinkedListTester(client_, kTableName,
+    client_ = ASSERT_RESULT(cluster_->CreateClient());
+    tester_.reset(new LinkedListTester(client_.get(),
+                                       kTableName,
                                        FLAGS_num_chains,
                                        FLAGS_num_tablets,
                                        FLAGS_replication_factor,
@@ -293,7 +293,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
     }
   }
 
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   gscoped_ptr<LinkedListTester> tester_;
 };
 
@@ -551,7 +551,7 @@ Status LinkedListTester::LoadLinkedList(
 
   sampled_hybrid_times_and_counts_.clear();
   client::TableHandle table;
-  RETURN_NOT_OK_PREPEND(table.Open(table_name_, client_.get()),
+  RETURN_NOT_OK_PREPEND(table.Open(table_name_, client_),
                         "Could not open table " + table_name_.ToString());
 
   // Instantiate a hybrid clock so that we can collect hybrid_times since we're running the
@@ -685,7 +685,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
             << ", log_errors=" << log_errors
             << ", latest_at_leader=" << latest_at_leader;
   client::TableHandle table;
-  RETURN_NOT_OK(table.Open(table_name_, client_.get()));
+  RETURN_NOT_OK(table.Open(table_name_, client_));
 
   string snapshot_str;
   if (is_latest) {

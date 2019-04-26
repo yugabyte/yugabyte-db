@@ -109,7 +109,7 @@ class TabletInvoker {
         current_ts_ != nullptr;
   }
 
-  YBClient* client_;
+  YBClient* const client_;
 
   rpc::RpcCommand* const command_;
 

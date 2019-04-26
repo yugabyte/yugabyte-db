@@ -405,7 +405,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       const LookupTabletCallback& callback,
       Lock* lock);
 
-  YBClient* client_;
+  YBClient* const client_;
 
   boost::shared_mutex mutex_;
 

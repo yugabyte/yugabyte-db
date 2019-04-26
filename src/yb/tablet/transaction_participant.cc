@@ -1111,7 +1111,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   client::YBClient* client() const {
-    return participant_context_.client_future().get().get();
+    return participant_context_.client_future().get();
   }
 
   const std::string& LogPrefix() const override {

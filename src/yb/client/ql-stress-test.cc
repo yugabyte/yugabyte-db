@@ -218,7 +218,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   if (transactional) {
     server::ClockPtr clock(new server::HybridClock(WallClock()));
     ASSERT_OK(clock->Init());
-    txn_manager.emplace(client_, clock, client::LocalTabletFilter());
+    txn_manager.emplace(client_.get(), clock, client::LocalTabletFilter());
   }
 
   std::vector<std::thread> write_threads;

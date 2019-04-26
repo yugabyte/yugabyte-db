@@ -162,8 +162,8 @@ TabletPeer::~TabletPeer() {
 }
 
 Status TabletPeer::InitTabletPeer(const shared_ptr<TabletClass> &tablet,
-                                  const std::shared_future<client::YBClientPtr> &client_future,
-                                  const shared_ptr<Messenger> &messenger,
+                                  const std::shared_future<client::YBClient*> &client_future,
+                                  Messenger* messenger,
                                   rpc::ProxyCache* proxy_cache,
                                   const scoped_refptr<Log> &log,
                                   const scoped_refptr<MetricEntity> &metric_entity,

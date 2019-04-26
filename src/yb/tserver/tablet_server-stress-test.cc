@@ -32,6 +32,7 @@
 #include "yb/tserver/tablet_server-test-base.h"
 
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/messenger.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/stopwatch.h"
 

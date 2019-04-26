@@ -264,7 +264,7 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
 
   scoped_refptr<log::LogAnchorRegistry> reg(new log::LogAnchorRegistry());
   tablet::TabletOptions tablet_options;
-  Tablet t(meta, std::shared_future<client::YBClientPtr>(), scoped_refptr<server::Clock>(),
+  Tablet t(meta, std::shared_future<client::YBClient*>(), scoped_refptr<server::Clock>(),
            shared_ptr<MemTracker>(), nullptr, reg.get(), tablet_options,
            std::string() /* log_prefix_suffix */, nullptr,
            client::LocalTabletFilter(), nullptr);

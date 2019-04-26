@@ -725,12 +725,13 @@ TEST_F(TabletServerTest, TestRpcServerCreateDestroy) {
         "server1", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
   }
   {
-    server::RpcServer server2(
-        "server2", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
     MessengerBuilder mb("foo");
-    auto messenger = mb.Build();
-    ASSERT_OK(messenger);
-    ASSERT_OK(server2.Init(*messenger));
+    auto messenger = ASSERT_RESULT(mb.Build());
+    {
+      server::RpcServer server2(
+          "server2", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
+      ASSERT_OK(server2.Init(messenger.get()));
+    }
   }
 }
 
@@ -741,24 +742,23 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   ServerRegistrationPB reg;
   auto tbo = ASSERT_RESULT(TabletServerOptions::CreateTabletServerOptions());
   MessengerBuilder mb("foo");
-  auto messenger = mb.Build();
-  ASSERT_OK(messenger);
+  auto messenger = ASSERT_RESULT(mb.Build());
 
   server::RpcServer server1(
       "server1", opts, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
-  ASSERT_OK(server1.Init(*messenger));
+  ASSERT_OK(server1.Init(messenger.get()));
 
   FLAGS_rpc_bind_addresses = "0.0.0.0:2000,0.0.0.1:2001";
   server::RpcServerOptions opts2;
   server::RpcServer server2(
       "server2", opts2, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
-  ASSERT_OK(server2.Init(*messenger));
+  ASSERT_OK(server2.Init(messenger.get()));
 
   FLAGS_rpc_bind_addresses = "10.20.30.40:2017";
   server::RpcServerOptions opts3;
   server::RpcServer server3(
       "server3", opts3, rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>());
-  ASSERT_OK(server3.Init(*messenger));
+  ASSERT_OK(server3.Init(messenger.get()));
 
   reg.Clear();
   tbo.fs_opts.data_paths = { GetTestPath("fake-ts") };

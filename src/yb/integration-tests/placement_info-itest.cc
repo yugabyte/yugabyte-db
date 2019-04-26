@@ -63,11 +63,10 @@ class PlacementInfoTest : public YBTest {
       ts_uuid_to_index_.emplace(ts_uuid, i);
     }
 
-    YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(&builder, &client_));
+    client_ = ASSERT_RESULT(cluster_->CreateClient());
     rpc::MessengerBuilder bld("Client");
     client_messenger_ = ASSERT_RESULT(bld.Build());
-    rpc::ProxyCache proxy_cache(client_messenger_);
+    rpc::ProxyCache proxy_cache(client_messenger_.get());
     proxy_.reset(new master::MasterServiceProxy(&proxy_cache,
                                                 cluster_->leader_mini_master()->bound_rpc_addr()));
 
@@ -98,6 +97,8 @@ class PlacementInfoTest : public YBTest {
   }
 
   void TearDown() override {
+    client_messenger_->Shutdown();
+    client_.reset();
     if (cluster_) {
       cluster_->Shutdown();
       cluster_.reset();
@@ -124,7 +125,6 @@ class PlacementInfoTest : public YBTest {
                              const std::string& placement_region,
                              int expected_ts_index,
                              internal::RemoteTablet* remote_tablet) {
-    std::shared_ptr<client::YBClient> client;
     CloudInfoPB cloud_info;
     cloud_info.set_placement_zone(placement_zone);
     cloud_info.set_placement_region(placement_region);
@@ -133,7 +133,7 @@ class PlacementInfoTest : public YBTest {
     client_builder.set_tserver_uuid(client_uuid);
     client_builder.set_cloud_info_pb(cloud_info);
     client_builder.add_master_server_addr(cluster_->leader_mini_master()->bound_rpc_addr_str());
-    CHECK_OK(client_builder.Build(&client));
+    auto client = CHECK_RESULT(client_builder.Build());
 
     // Select tserver.
     vector<internal::RemoteTabletServer *> candidates;
@@ -146,9 +146,9 @@ class PlacementInfoTest : public YBTest {
   }
 
   std::unique_ptr<MiniCluster> cluster_;
-  std::shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   std::unique_ptr<master::MasterServiceProxy> proxy_;
-  std::shared_ptr<rpc::Messenger> client_messenger_;
+  std::unique_ptr<rpc::Messenger> client_messenger_;
   std::map<std::string, int> ts_uuid_to_index_;
   std::unique_ptr<YBTableName> table_name_;
 };
