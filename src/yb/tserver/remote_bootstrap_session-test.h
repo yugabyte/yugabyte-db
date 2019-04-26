@@ -62,6 +62,8 @@
 
 METRIC_DECLARE_entity(tablet);
 
+DECLARE_bool(quick_leader_election_on_create);
+
 using std::shared_ptr;
 using std::string;
 
@@ -171,7 +173,15 @@ class RemoteBootstrapTest : public YBTabletTest {
 
     ASSERT_OK(tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(2)));
 
-    ASSERT_OK(tablet_peer_->consensus()->EmulateElection());
+
+    AssertLoggedWaitFor([&]() -> Result<bool> {
+      if (FLAGS_quick_leader_election_on_create) {
+        return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+      }
+      RETURN_NOT_OK(tablet_peer_->consensus()->EmulateElection());
+      return true;
+    }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
+                                         "leader, otherwise emulate.");
   }
 
   void TabletPeerStateChangedCallback(const string& tablet_id,
