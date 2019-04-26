@@ -446,7 +446,7 @@ class LookupRpc : public Rpc {
  public:
   LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
             const MonoTime& deadline,
-            const shared_ptr<Messenger>& messenger,
+            Messenger* messenger,
             rpc::ProxyCache* proxy_cache);
 
   virtual ~LookupRpc();
@@ -488,7 +488,7 @@ class LookupRpc : public Rpc {
 
 LookupRpc::LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
                      const MonoTime& deadline,
-                     const shared_ptr<Messenger>& messenger,
+                     Messenger* messenger,
                      rpc::ProxyCache* proxy_cache)
     : Rpc(deadline, messenger, proxy_cache),
       meta_cache_(meta_cache),
@@ -765,7 +765,7 @@ class LookupByIdRpc : public LookupRpc {
                 LookupTabletCallback user_cb,
                 TabletId tablet_id,
                 const MonoTime& deadline,
-                const shared_ptr<Messenger>& messenger,
+                Messenger* messenger,
                 rpc::ProxyCache* proxy_cache)
       : LookupRpc(meta_cache, deadline, messenger, proxy_cache),
         user_cb_(std::move(user_cb)),
@@ -819,7 +819,7 @@ class LookupByKeyRpc : public LookupRpc {
                  const YBTable* table,
                  MetaCache::PartitionGroupKey partition_group_start,
                  const MonoTime& deadline,
-                 const shared_ptr<Messenger>& messenger,
+                 Messenger* messenger,
                  rpc::ProxyCache* proxy_cache)
       : LookupRpc(meta_cache, deadline, messenger, proxy_cache),
         table_(table->shared_from_this()),

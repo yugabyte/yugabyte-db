@@ -83,7 +83,6 @@ class InboundCall;
 typedef std::shared_ptr<InboundCall> InboundCallPtr;
 
 class Messenger;
-typedef std::shared_ptr<Messenger> MessengerPtr;
 
 class OutboundCall;
 typedef std::shared_ptr<OutboundCall> OutboundCallPtr;

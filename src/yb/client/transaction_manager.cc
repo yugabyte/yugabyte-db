@@ -67,7 +67,7 @@ struct TransactionTableState {
 // Picks status tablet for transaction.
 class PickStatusTabletTask {
  public:
-  PickStatusTabletTask(const YBClientPtr& client,
+  PickStatusTabletTask(YBClient* client,
                        TransactionTableState* table_state,
                        PickStatusTabletCallback callback)
       : client_(client), table_state_(table_state),
@@ -101,12 +101,12 @@ class PickStatusTabletTask {
       callback_(status);
     }
     callback_ = PickStatusTabletCallback();
-    client_.reset();
+    client_ = nullptr;
   }
 
  private:
 
-  YBClientPtr client_;
+  YBClient* client_;
   TransactionTableState* table_state_;
   PickStatusTabletCallback callback_;
 };
@@ -141,7 +141,7 @@ constexpr size_t kMaxWorkers = 50;
 
 class TransactionManager::Impl {
  public:
-  explicit Impl(const YBClientPtr& client, const scoped_refptr<ClockBase>& clock,
+  explicit Impl(YBClient* client, const scoped_refptr<ClockBase>& clock,
                 LocalTabletFilter local_tablet_filter)
       : client_(client),
         clock_(clock),
@@ -172,7 +172,7 @@ class TransactionManager::Impl {
     return clock_;
   }
 
-  const YBClientPtr& client() const {
+  YBClient* client() const {
     return client_;
   }
 
@@ -198,7 +198,7 @@ class TransactionManager::Impl {
   }
 
  private:
-  YBClientPtr client_;
+  YBClient* const client_;
   scoped_refptr<ClockBase> clock_;
   TransactionTableState table_state_;
   std::atomic<bool> closed_{false};
@@ -209,7 +209,7 @@ class TransactionManager::Impl {
 };
 
 TransactionManager::TransactionManager(
-    const YBClientPtr& client, const scoped_refptr<ClockBase>& clock,
+    YBClient* client, const scoped_refptr<ClockBase>& clock,
     LocalTabletFilter local_tablet_filter)
     : impl_(new Impl(client, clock, std::move(local_tablet_filter))) {}
 
@@ -221,7 +221,7 @@ void TransactionManager::PickStatusTablet(PickStatusTabletCallback callback) {
   impl_->PickStatusTablet(std::move(callback));
 }
 
-const YBClientPtr& TransactionManager::client() const {
+YBClient* TransactionManager::client() const {
   return impl_->client();
 }
 

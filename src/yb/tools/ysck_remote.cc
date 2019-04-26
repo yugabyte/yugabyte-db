@@ -193,10 +193,9 @@ Status RemoteYsckMaster::Connect() const {
 
 Status RemoteYsckMaster::Build(const HostPort& address, shared_ptr<YsckMaster>* master) {
   MessengerBuilder builder(kMessengerName);
-  auto messenger = builder.Build();
-  RETURN_NOT_OK(messenger);
-  (**messenger).TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));;
-  master->reset(new RemoteYsckMaster(address, *messenger));
+  auto messenger = VERIFY_RESULT(builder.Build());
+  messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));;
+  master->reset(new RemoteYsckMaster(address, std::move(messenger)));
   return Status::OK();
 }
 
@@ -317,8 +316,9 @@ Status RemoteYsckMaster::GetTableInfo(const YBTableName& table_name,
 }
 
 RemoteYsckMaster::RemoteYsckMaster(
-    const HostPort& address, const std::shared_ptr<rpc::Messenger>& messenger)
-    : proxy_cache_(new rpc::ProxyCache(messenger)),
+    const HostPort& address, std::unique_ptr<rpc::Messenger>&& messenger)
+    : messenger_(std::move(messenger)),
+      proxy_cache_(new rpc::ProxyCache(messenger_.get())),
       generic_proxy_(new server::GenericServiceProxy(proxy_cache_.get(), address)),
       proxy_(new master::MasterServiceProxy(proxy_cache_.get(), address)) {}
 

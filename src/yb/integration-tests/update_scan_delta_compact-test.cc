@@ -123,10 +123,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
     // Start mini-cluster with 1 tserver.
     cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
-    YBClientBuilder client_builder;
-    client_builder.add_master_server_addr(
-        cluster_->mini_master()->bound_rpc_addr_str());
-    ASSERT_OK(client_builder.Build(&client_));
+    client_ = ASSERT_RESULT(cluster_->CreateClient());
   }
 
   shared_ptr<YBSession> CreateSession() {
@@ -157,7 +154,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
 
   YBSchema schema_;
   client::TableHandle table_;
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
 };
 
 const YBTableName UpdateScanDeltaCompactionTest::kTableName(

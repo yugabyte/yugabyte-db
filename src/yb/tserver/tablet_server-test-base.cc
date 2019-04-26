@@ -85,10 +85,11 @@ void TabletServerTestBase::SetUp() {
   key_schema_ = schema_.CreateKeyProjection();
 
   client_messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("Client").Build());
-  proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_messenger_);
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_messenger_.get());
 }
 
 void TabletServerTestBase::TearDown() {
+  client_messenger_->Shutdown();
   tablet_peer_.reset();
   if (mini_server_) {
     mini_server_->Shutdown();

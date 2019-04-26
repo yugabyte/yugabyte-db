@@ -86,7 +86,7 @@ YB_STRONGLY_TYPED_BOOL(Restart);
 // This class is not thread-safe.
 class YBSession : public std::enable_shared_from_this<YBSession> {
  public:
-  explicit YBSession(YBClientPtr client, const scoped_refptr<ClockBase>& clock = nullptr);
+  explicit YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock = nullptr);
 
   ~YBSession();
 
@@ -238,7 +238,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   internal::Batcher& Batcher();
 
   // The client that this session is associated with.
-  const std::shared_ptr<YBClient> client_;
+  client::YBClient* const client_;
 
   std::unique_ptr<ConsistentReadPoint> read_point_;
   YBTransactionPtr transaction_;

@@ -93,6 +93,7 @@ class MasterFailoverTest : public YBTest {
   }
 
   void TearDown() override {
+    client_.reset();
     if (cluster_) {
       cluster_->Shutdown();
     }
@@ -106,8 +107,7 @@ class MasterFailoverTest : public YBTest {
     }
     cluster_.reset(new ExternalMiniCluster(opts_));
     ASSERT_OK(cluster_->Start());
-    YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(&builder, &client_));
+    client_ = ASSERT_RESULT(cluster_->CreateClient());
   }
 
   Status CreateTable(const YBTableName& table_name, CreateTableMode mode) {
@@ -156,7 +156,7 @@ class MasterFailoverTest : public YBTest {
   int num_masters_;
   ExternalMiniClusterOptions opts_;
   gscoped_ptr<ExternalMiniCluster> cluster_;
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
 };
 
 // Test that synchronous CreateTable (issue CreateTable call and then

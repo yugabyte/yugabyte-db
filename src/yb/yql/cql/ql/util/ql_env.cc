@@ -47,11 +47,11 @@ using client::YBTableCreator;
 using client::YBTableAlterer;
 using client::YBTableName;
 
-QLEnv::QLEnv(shared_ptr<YBClient> client,
+QLEnv::QLEnv(client::YBClient* client,
              shared_ptr<YBMetaDataCache> cache,
              const server::ClockPtr& clock,
              TransactionPoolProvider transaction_pool_provider)
-    : client_(std::move(client)),
+    : client_(client),
       metadata_cache_(std::move(cache)),
       clock_(std::move(clock)),
       transaction_pool_provider_(std::move(transaction_pool_provider)) {

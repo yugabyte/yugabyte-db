@@ -257,7 +257,7 @@ class LocalCommandData {
     return context_->call();
   }
 
-  const std::shared_ptr<client::YBClient>& client() const {
+  client::YBClient* client() const {
     return context_->client();
   }
 

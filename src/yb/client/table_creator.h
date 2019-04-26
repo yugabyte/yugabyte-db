@@ -114,7 +114,7 @@ class YBTableCreator {
 
   explicit YBTableCreator(YBClient* client);
 
-  YBClient* client_;
+  YBClient* const client_;
 
   YBTableName table_name_; // Required.
 

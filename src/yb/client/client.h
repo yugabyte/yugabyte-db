@@ -197,16 +197,23 @@ class YBClientBuilder {
 
   YBClientBuilder& set_parent_mem_tracker(const std::shared_ptr<MemTracker>& mem_tracker);
 
-  YBClientBuilder& use_messenger(const std::shared_ptr<rpc::Messenger>& messenger);
-
   // Creates the client.
+  // Will use specified messenger if not nullptr.
+  // If messenger is nullptr - messenger will be created and owned by client. Client will shutdown
+  // messenger on client shutdown.
   //
   // The return value may indicate an error in the create operation, or a
   // misuse of the builder; in the latter case, only the last error is
   // returned.
-  CHECKED_STATUS Build(std::shared_ptr<YBClient>* client);
+  Result<std::unique_ptr<YBClient>> Build(rpc::Messenger* messenger = nullptr);
+
+  // Creates the client which gets the messenger ownership and shuts it down on client shutdown.
+  Result<std::unique_ptr<YBClient>> Build(std::unique_ptr<rpc::Messenger>&& messenger);
+
  private:
   class Data;
+
+  CHECKED_STATUS DoBuild(rpc::Messenger* messenger, std::unique_ptr<client::YBClient>* client);
 
   std::unique_ptr<Data> data_;
 
@@ -237,7 +244,7 @@ class YBClientBuilder {
 // as well.
 //
 // This class is thread-safe.
-class YBClient : public std::enable_shared_from_this<YBClient> {
+class YBClient {
  public:
   ~YBClient();
 
@@ -515,7 +522,7 @@ class YBClient : public std::enable_shared_from_this<YBClient> {
                         LookupTabletCallback callback,
                         UseCache use_cache);
 
-  const std::shared_ptr<rpc::Messenger>& messenger() const;
+  rpc::Messenger* messenger() const;
 
   const scoped_refptr<MetricEntity>& metric_entity() const;
 

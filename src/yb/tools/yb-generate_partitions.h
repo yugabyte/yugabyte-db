@@ -14,7 +14,7 @@
 #ifndef YB_TOOLS_YB_GENERATE_PARTITIONS_H
 #define YB_TOOLS_YB_GENERATE_PARTITIONS_H
 
-#include "yb/client/client_fwd.h"
+#include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
@@ -51,7 +51,7 @@ class YBPartitionGenerator {
   TabletMap tablet_map_;
   client::YBTableName table_name_;
   std::vector<std::string> master_addresses_;
-  std::shared_ptr<client::YBClient> client_;
+  std::unique_ptr<client::YBClient> client_;
   std::shared_ptr<client::YBTable> table_;
 };
 

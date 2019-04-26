@@ -74,7 +74,14 @@ template class YBMiniClusterTestBase<ExternalMiniCluster>;
 template <class T>
 Status MiniClusterTestWithClient<T>::CreateClient() {
   // Connect to the cluster.
-  return YBMiniClusterTestBase<T>::cluster_->CreateClient(&client_);
+  client_ = VERIFY_RESULT(YBMiniClusterTestBase<T>::cluster_->CreateClient());
+  return Status::OK();
+}
+
+template <class T>
+void MiniClusterTestWithClient<T>::DoTearDown() {
+  client_.reset();
+  YBMiniClusterTestBase<T>::DoTearDown();
 }
 
 template <class T>

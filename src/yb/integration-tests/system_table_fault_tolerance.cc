@@ -75,14 +75,13 @@ TEST_F(SystemTableFaultTolerance, TestFaultTolerance) {
   builder.add_master_server_addr(cluster_->GetLeaderMaster()->bound_rpc_hostport().ToString());
   builder.default_rpc_timeout(MonoDelta::FromSeconds(10))
     .default_admin_operation_timeout(MonoDelta::FromSeconds(10));
-  std::shared_ptr<client::YBClient> client;
-  ASSERT_OK(builder.Build(&client));
+  auto client = ASSERT_RESULT(builder.Build());
 
-  auto metadata_cache = std::make_shared<client::YBMetaDataCache>(client,
+  auto metadata_cache = std::make_shared<client::YBMetaDataCache>(client.get(),
       false /* Update roles' permissions cache */);
   server::ClockPtr clock(new server::HybridClock());
   ASSERT_OK(clock->Init());
-  auto processor = std::make_unique<ql::QLProcessor>(client, metadata_cache, nullptr, clock,
+  auto processor = std::make_unique<ql::QLProcessor>(client.get(), metadata_cache, nullptr, clock,
                                                      ql::TransactionPoolProvider());
   Synchronizer s;
   ql::StatementParameters statement_parameters;

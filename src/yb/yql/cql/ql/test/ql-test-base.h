@@ -98,7 +98,7 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
   typedef std::unique_ptr<const TestQLProcessor> UniPtrConst;
 
   // Constructors.
-  TestQLProcessor(std::shared_ptr<client::YBClient> client,
+  TestQLProcessor(client::YBClient* client,
                   std::shared_ptr<client::YBMetaDataCache> cache,
                   const RoleName& role_name)
       : QLProcessor(client, cache, nullptr /* ql_metrics */, clock_,
@@ -197,7 +197,9 @@ class QLTestBase : public YBTest {
   virtual void SetUp() override {
     YBTest::SetUp();
   }
+
   virtual void TearDown() override {
+    client_.reset();
     if (cluster_ != nullptr) {
       cluster_->Shutdown();
     }
@@ -262,7 +264,7 @@ class QLTestBase : public YBTest {
   std::shared_ptr<MiniCluster> cluster_;
 
   // Simulated YB client.
-  std::shared_ptr<client::YBClient> client_;
+  std::unique_ptr<client::YBClient> client_;
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
   // QL Processor.

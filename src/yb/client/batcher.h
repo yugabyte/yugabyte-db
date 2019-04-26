@@ -131,7 +131,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
     return deadline_;
   }
 
-  const std::shared_ptr<rpc::Messenger>& messenger() const;
+  rpc::Messenger* messenger() const;
 
   rpc::ProxyCache& proxy_cache() const;
 

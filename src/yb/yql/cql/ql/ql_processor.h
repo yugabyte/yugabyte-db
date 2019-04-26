@@ -59,7 +59,7 @@ class QLProcessor : public Rescheduler {
   typedef std::unique_ptr<const QLProcessor> UniPtrConst;
 
   // Constructors.
-  QLProcessor(std::shared_ptr<client::YBClient> client,
+  QLProcessor(client::YBClient* client,
               std::shared_ptr<client::YBMetaDataCache> cache,
               QLMetrics* ql_metrics,
               const server::ClockPtr& clock,

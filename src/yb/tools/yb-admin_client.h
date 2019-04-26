@@ -34,6 +34,7 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/util/status.h"
 #include "yb/util/monotime.h"
@@ -45,6 +46,7 @@
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/messenger.h"
 
 namespace yb {
 
@@ -70,7 +72,7 @@ class ClusterAdminClient {
   // If certs_dir is non-empty, caller will init the yb_client_.
   ClusterAdminClient(std::string addrs, int64_t timeout_millis, string certs_dir);
 
-  virtual ~ClusterAdminClient() = default;
+  virtual ~ClusterAdminClient();
 
   // Initialized the client and connects to the specified tablet server.
   virtual CHECKED_STATUS Init();
@@ -177,12 +179,12 @@ class ClusterAdminClient {
   const std::string master_addr_list_;
   const MonoDelta timeout_;
   HostPort leader_addr_;
-  std::shared_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::unique_ptr<master::MasterServiceProxy> master_proxy_;
   // Skip yb_client_ and related fields' initialization.
   bool client_init_ = true;
-  std::shared_ptr<client::YBClient> yb_client_;
+  std::unique_ptr<client::YBClient> yb_client_;
   bool initted_ = false;
 
  private:

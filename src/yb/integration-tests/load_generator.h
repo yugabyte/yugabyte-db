@@ -77,7 +77,7 @@ class YBSessionFactory : public SessionFactory {
   SingleThreadedReader* GetReader(MultiThreadedReader* reader, int idx) override;
 
  protected:
-  yb::client::YBClient* client_;
+  yb::client::YBClient* const client_;
   yb::client::TableHandle* table_;
 };
 
@@ -232,7 +232,7 @@ class YBSingleThreadedWriter : public SingleThreadedWriter {
       : SingleThreadedWriter(writer, writer_index), client_(client), table_(table) {}
 
  protected:
-  client::YBClient* client_;
+  client::YBClient* const client_;
   client::TableHandle* table_;
   std::shared_ptr<client::YBSession> session_;
 
@@ -363,7 +363,7 @@ class YBSingleThreadedReader : public SingleThreadedReader {
       : SingleThreadedReader(reader, reader_index), client_(client), table_(table) {}
 
  protected:
-  client::YBClient* client_;
+  client::YBClient* const client_;
   client::TableHandle* table_;
   std::shared_ptr<client::YBSession> session_;
 

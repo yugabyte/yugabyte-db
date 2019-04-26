@@ -53,7 +53,7 @@ YBTableName RedisTableTestBase::table_name() {
 
 void RedisTableTestBase::CreateTable() {
   if (!table_exists_) {
-    CreateRedisTable(client_, table_name());
+    CreateRedisTable(table_name());
     client::YBSchema schema;
     PartitionSchema partition_schema;
     CHECK_OK(client_->GetTableSchema(RedisTableTestBase::table_name(), &schema, &partition_schema));

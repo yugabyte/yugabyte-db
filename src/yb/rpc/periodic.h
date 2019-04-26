@@ -100,7 +100,7 @@ class PeriodicTimer : public std::enable_shared_from_this<PeriodicTimer> {
   //
   // 'options' allows additional (optional) customization of the timer.
   static std::shared_ptr<PeriodicTimer> Create(
-      std::shared_ptr<Messenger> messenger,
+      Messenger* messenger,
       RunTaskFunctor functor,
       MonoDelta period,
       Options options = {});
@@ -141,7 +141,7 @@ class PeriodicTimer : public std::enable_shared_from_this<PeriodicTimer> {
   // Does nothing if the timer is already stopped.
   void Stop();
 
-  PeriodicTimer(std::shared_ptr<Messenger> messenger,
+  PeriodicTimer(Messenger* messenger,
                 RunTaskFunctor functor,
                 MonoDelta period,
                 Options options);
@@ -170,7 +170,7 @@ class PeriodicTimer : public std::enable_shared_from_this<PeriodicTimer> {
   int64_t NumCallbacksForTests() const;
 
   // Schedules invocations of Callback() in the future.
-  std::shared_ptr<Messenger> messenger_;
+  Messenger* messenger_ = nullptr;
 
   // User-defined task functor.
   RunTaskFunctor functor_;

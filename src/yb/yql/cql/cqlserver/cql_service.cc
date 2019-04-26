@@ -92,8 +92,8 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
 CQLServiceImpl::~CQLServiceImpl() {
 }
 
-const std::shared_ptr<client::YBClient>& CQLServiceImpl::client() const {
-  auto& client = async_client_init_.client();
+client::YBClient* CQLServiceImpl::client() const {
+  auto client = async_client_init_.client();
   if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> l(metadata_init_mutex_);
     if (!is_metadata_initialized_.load(std::memory_order_acquire)) {

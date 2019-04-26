@@ -148,18 +148,22 @@ ClusterAdminClient::ClusterAdminClient(string addrs,
       client_init_(certs_dir.empty()),
       initted_(false) {}
 
+ClusterAdminClient::~ClusterAdminClient() {
+  yb_client_.reset();
+  messenger_->Shutdown();
+}
+
 Status ClusterAdminClient::Init() {
   CHECK(!initted_);
 
   // Check if caller will initialize the client and related parts.
   if (client_init_) {
-    CHECK_OK(YBClientBuilder()
-      .add_master_server_addr(master_addr_list_)
-      .default_admin_operation_timeout(timeout_)
-      .Build(&yb_client_));
-
     messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
-    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
+    yb_client_ = CHECK_RESULT(YBClientBuilder()
+        .add_master_server_addr(master_addr_list_)
+        .default_admin_operation_timeout(timeout_)
+        .Build(messenger_.get()));
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
     // Find the leader master's socket info to set up the master proxy.
     leader_addr_ = yb_client_->GetMasterLeaderAddress();

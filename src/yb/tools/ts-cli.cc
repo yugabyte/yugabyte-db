@@ -166,7 +166,7 @@ class TsAdminClient {
   shared_ptr<server::GenericServiceProxy> generic_proxy_;
   gscoped_ptr<tserver::TabletServerServiceProxy> ts_proxy_;
   gscoped_ptr<tserver::TabletServerAdminServiceProxy> ts_admin_proxy_;
-  shared_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<Messenger> messenger_;
 
   DISALLOW_COPY_AND_ASSIGN(TsAdminClient);
 };
@@ -183,7 +183,7 @@ Status TsAdminClient::Init() {
   RETURN_NOT_OK(host_port.ParseString(addr_, tserver::TabletServer::kDefaultPort));
   messenger_ = VERIFY_RESULT(MessengerBuilder("ts-cli").Build());
 
-  rpc::ProxyCache proxy_cache(messenger_);
+  rpc::ProxyCache proxy_cache(messenger_.get());
 
   generic_proxy_.reset(new server::GenericServiceProxy(&proxy_cache, host_port));
   ts_proxy_.reset(new TabletServerServiceProxy(&proxy_cache, host_port));

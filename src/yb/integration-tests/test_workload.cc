@@ -102,7 +102,7 @@ class TestWorkload::State {
   void WriteThread(const TestWorkloadOptions& options);
 
   MiniClusterBase* cluster_;
-  std::shared_ptr<client::YBClient> client_;
+  std::unique_ptr<client::YBClient> client_;
   CountDownLatch start_latch_{0};
   std::atomic<bool> should_run_{false};
   std::atomic<int64_t> pathological_one_row_counter_{0};
@@ -232,7 +232,7 @@ void TestWorkload::Setup(YBTableType table_type) {
 void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOptions& options) {
   client::YBClientBuilder client_builder;
   client_builder.default_rpc_timeout(options.default_rpc_timeout);
-  CHECK_OK(cluster_->CreateClient(&client_builder, &client_));
+  client_ = CHECK_RESULT(cluster_->CreateClient(&client_builder));
   CHECK_OK(client_->CreateNamespaceIfNotExists(options.table_name.namespace_name()));
 
   // Retry YBClient::TableExists() until we make that call retry reliably.

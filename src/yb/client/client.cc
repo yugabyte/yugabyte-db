@@ -305,31 +305,27 @@ YBClientBuilder& YBClientBuilder::set_parent_mem_tracker(const MemTrackerPtr& me
   return *this;
 }
 
-YBClientBuilder& YBClientBuilder::use_messenger(const std::shared_ptr<rpc::Messenger>& messenger) {
-  data_->messenger_ = messenger;
-  return *this;
-}
-
 YBClientBuilder& YBClientBuilder::set_skip_master_leader_resolution(bool value) {
   data_->skip_master_leader_resolution_ = value;
   return *this;
 }
 
-Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
+Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBClient>* client) {
   RETURN_NOT_OK(CheckCPUFlags());
 
-  shared_ptr<YBClient> c(new YBClient());
+  std::unique_ptr<YBClient> c(new YBClient());
 
   // Init messenger.
-  if (data_->messenger_) {
-    c->data_->messenger_ = data_->messenger_;
+  if (messenger) {
+    c->data_->messenger_holder_ = nullptr;
+    c->data_->messenger_ = messenger;
   } else {
     MessengerBuilder builder(data_->client_name_);
     builder.set_num_reactors(data_->num_reactors_);
     builder.set_metric_entity(data_->metric_entity_);
     builder.UseDefaultConnectionContextFactory(data_->parent_mem_tracker_);
-    c->data_->messenger_ = VERIFY_RESULT(builder.Build());
-
+    c->data_->messenger_holder_ = VERIFY_RESULT(builder.Build());
+    c->data_->messenger_ = c->data_->messenger_holder_.get();
     if (FLAGS_running_test) {
       c->data_->messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));
     }
@@ -370,11 +366,28 @@ Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   return Status::OK();
 }
 
+Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(rpc::Messenger* messenger) {
+  std::unique_ptr<YBClient> client;
+  RETURN_NOT_OK(DoBuild(messenger, &client));
+  return client;
+}
+
+Result<std::unique_ptr<YBClient>> YBClientBuilder::Build(
+    std::unique_ptr<rpc::Messenger>&& messenger) {
+  std::unique_ptr<YBClient> client;
+  RETURN_NOT_OK(DoBuild(messenger.get(), &client));
+  client->data_->messenger_holder_ = std::move(messenger);
+  return client;
+}
+
 YBClient::YBClient() : data_(new YBClient::Data()) {
   yb::InitCommonFlags();
 }
 
 YBClient::~YBClient() {
+  if (data_->messenger_holder_) {
+    data_->messenger_holder_->Shutdown();
+  }
   if (data_->meta_cache_) {
     data_->meta_cache_->Shutdown();
   }
@@ -951,7 +964,7 @@ Status YBClient::GetTablets(const YBTableName& table_name,
   return Status::OK();
 }
 
-const std::shared_ptr<rpc::Messenger>& YBClient::messenger() const {
+rpc::Messenger* YBClient::messenger() const {
   return data_->messenger_;
 }
 
@@ -1128,7 +1141,7 @@ Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* t
 
   // In the future, probably will look up the table in some map to reuse YBTable
   // instances.
-  std::shared_ptr<YBTable> ret(new YBTable(shared_from_this(), info));
+  std::shared_ptr<YBTable> ret(new YBTable(this, info));
   RETURN_NOT_OK(ret->Open());
   table->swap(ret);
   return Status::OK();
@@ -1142,14 +1155,14 @@ Status YBClient::OpenTable(const TableId& table_id, shared_ptr<YBTable>* table) 
 
   // In the future, probably will look up the table in some map to reuse YBTable
   // instances.
-  std::shared_ptr<YBTable> ret(new YBTable(shared_from_this(), info));
+  std::shared_ptr<YBTable> ret(new YBTable(this, info));
   RETURN_NOT_OK(ret->Open());
   table->swap(ret);
   return Status::OK();
 }
 
 shared_ptr<YBSession> YBClient::NewSession() {
-  return std::make_shared<YBSession>(shared_from_this());
+  return std::make_shared<YBSession>(this);
 }
 
 bool YBClient::IsMultiMaster() const {

@@ -466,20 +466,13 @@ Status MiniCluster::WaitForTabletServerCount(int count,
   return STATUS(TimedOut, Substitute("$0 TS(s) never registered with master", count));
 }
 
-Status MiniCluster::DoCreateClient(YBClientBuilder* builder,
-                                   std::shared_ptr<YBClient>* client) {
-  YBClientBuilder default_builder;
-  if (builder == nullptr) {
-    builder = &default_builder;
-  }
+void MiniCluster::ConfigureClientBuilder(YBClientBuilder* builder) {
+  CHECK_NOTNULL(builder);
   builder->clear_master_server_addrs();
   for (const shared_ptr<MiniMaster>& master : mini_masters_) {
     CHECK(master);
     builder->add_master_server_addr(master->bound_rpc_addr_str());
   }
-  RETURN_NOT_OK(builder->Build(client));
-
-  return Status::OK();
 }
 
 HostPort MiniCluster::DoGetLeaderMasterBoundRpcAddr() {

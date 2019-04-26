@@ -40,8 +40,7 @@ namespace yb {
 
 class Webserver;
 
-void AddRpczPathHandlers(const std::shared_ptr<rpc::Messenger>& messenger,
-                         Webserver* webserver);
+void AddRpczPathHandlers(rpc::Messenger* messenger, Webserver* webserver);
 
 } // namespace yb
 #endif /* YB_SERVER_RPCZ_PATH_HANDLER_H */

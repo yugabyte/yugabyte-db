@@ -83,7 +83,7 @@ class BatchContext : public RefCountedThreadSafe<BatchContext> {
   virtual std::shared_ptr<client::YBTable> table() = 0;
   virtual const RedisClientCommand& command(size_t idx) const = 0;
   virtual const std::shared_ptr<RedisInboundCall>& call() const = 0;
-  virtual const std::shared_ptr<client::YBClient>& client() const = 0;
+  virtual client::YBClient* client() const = 0;
   virtual const RedisServer* server() = 0;
   virtual RedisServiceData* service_data() = 0;
   virtual void CleanYBTableFromCache() = 0;

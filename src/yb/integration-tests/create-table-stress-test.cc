@@ -115,19 +115,21 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
 
-    ASSERT_OK(YBClientBuilder()
-                     .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
-                     .Build(&client_));
+    client_ = ASSERT_RESULT(YBClientBuilder()
+        .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
+        .Build());
 
     messenger_ = ASSERT_RESULT(
         MessengerBuilder("stress-test-msgr").set_num_reactors(1).Build());
-    rpc::ProxyCache proxy_cache(messenger_);
+    rpc::ProxyCache proxy_cache(messenger_.get());
     master_proxy_.reset(new MasterServiceProxy(&proxy_cache,
                                                cluster_->mini_master()->bound_rpc_addr()));
     ASSERT_OK(CreateTabletServerMap(master_proxy_.get(), &proxy_cache, &ts_map_));
   }
 
   void DoTearDown() override {
+    messenger_->Shutdown();
+    client_.reset();
     cluster_->Shutdown();
     ts_map_.clear();
   }
@@ -135,9 +137,9 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
   void CreateBigTable(const YBTableName& table_name, int num_tablets);
 
  protected:
-  std::shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   YBSchema schema_;
-  std::shared_ptr<Messenger> messenger_;
+  std::unique_ptr<Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> master_proxy_;
   TabletServerMap ts_map_;
 };

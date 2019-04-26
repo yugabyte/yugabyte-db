@@ -112,10 +112,10 @@ Result<PeerPtr> Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
                                     ThreadPoolToken* raft_pool_token,
                                     PeerProxyPtr proxy,
                                     Consensus* consensus,
-                                    std::shared_ptr<rpc::Messenger> messenger) {
+                                    rpc::Messenger* messenger) {
   auto new_peer = std::make_shared<Peer>(
       peer_pb, tablet_id, leader_uuid, std::move(proxy), queue, raft_pool_token, consensus,
-      std::move(messenger));
+      messenger);
   RETURN_NOT_OK(new_peer->Init());
   return Result<PeerPtr>(std::move(new_peer));
 }
@@ -123,7 +123,7 @@ Result<PeerPtr> Peer::NewRemotePeer(const RaftPeerPB& peer_pb,
 Peer::Peer(
     const RaftPeerPB& peer_pb, string tablet_id, string leader_uuid, PeerProxyPtr proxy,
     PeerMessageQueue* queue, ThreadPoolToken* raft_pool_token, Consensus* consensus,
-    std::shared_ptr<rpc::Messenger> messenger)
+    rpc::Messenger* messenger)
     : tablet_id_(std::move(tablet_id)),
       leader_uuid_(std::move(leader_uuid)),
       peer_pb_(peer_pb),
@@ -131,7 +131,7 @@ Peer::Peer(
       queue_(queue),
       raft_pool_token_(raft_pool_token),
       consensus_(consensus),
-      messenger_(std::move(messenger)) {}
+      messenger_(messenger) {}
 
 void Peer::SetTermForTest(int term) {
   response_.set_responder_term(term);
@@ -550,8 +550,8 @@ void RpcPeerProxy::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB* req
 RpcPeerProxy::~RpcPeerProxy() {}
 
 RpcPeerProxyFactory::RpcPeerProxyFactory(
-    shared_ptr<Messenger> messenger, rpc::ProxyCache* proxy_cache, CloudInfoPB from)
-    : messenger_(std::move(messenger)), proxy_cache_(proxy_cache), from_(std::move(from)) {}
+    Messenger* messenger, rpc::ProxyCache* proxy_cache, CloudInfoPB from)
+    : messenger_(messenger), proxy_cache_(proxy_cache), from_(std::move(from)) {}
 
 PeerProxyPtr RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb) {
   auto hostport = HostPortFromPB(DesiredHostPort(peer_pb, from_));
@@ -561,7 +561,7 @@ PeerProxyPtr RpcPeerProxyFactory::NewProxy(const RaftPeerPB& peer_pb) {
 
 RpcPeerProxyFactory::~RpcPeerProxyFactory() {}
 
-std::shared_ptr<rpc::Messenger> RpcPeerProxyFactory::messenger() const { return messenger_; }
+rpc::Messenger* RpcPeerProxyFactory::messenger() const { return messenger_; }
 
 struct GetNodeInstanceRequest {
   GetNodeInstanceRequestPB req;

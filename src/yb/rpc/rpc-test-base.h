@@ -126,6 +126,7 @@ class GenericCalculatorService : public ServiceIf {
 };
 
 struct MessengerOptions {
+  MessengerOptions() = delete;
   size_t n_reactors;
   std::chrono::milliseconds keep_alive_timeout;
   int num_connections_to_server = -1;
@@ -136,7 +137,6 @@ extern const MessengerOptions kDefaultServerMessengerOptions;
 
 struct TestServerOptions {
   MessengerOptions messenger_options = kDefaultServerMessengerOptions;
-  std::shared_ptr<Messenger> messenger;
   size_t n_worker_threads = 3;
   Endpoint endpoint;
 };
@@ -144,7 +144,7 @@ struct TestServerOptions {
 class TestServer {
  public:
   TestServer(std::unique_ptr<ServiceIf> service,
-             const std::shared_ptr<Messenger>& messenger,
+             std::unique_ptr<Messenger>&& messenger,
              const TestServerOptions& options = TestServerOptions());
 
   TestServer(TestServer&& rhs)
@@ -160,11 +160,12 @@ class TestServer {
   void Shutdown();
 
   const Endpoint& bound_endpoint() const { return bound_endpoint_; }
-  Messenger& messenger() const { return *messenger_; }
+  Messenger* messenger() const { return messenger_.get(); }
   ServicePool& service_pool() const { return *service_pool_; }
+
  private:
   string service_name_;
-  std::shared_ptr<Messenger> messenger_;
+  std::unique_ptr<Messenger> messenger_;
   ThreadPool thread_pool_;
   scoped_refptr<ServicePool> service_pool_;
   Endpoint bound_endpoint_;
@@ -176,7 +177,7 @@ class RpcTestBase : public YBTest {
 
   void TearDown() override;
  protected:
-  std::shared_ptr<Messenger> CreateMessenger(
+  std::unique_ptr<Messenger> CreateMessenger(
       const string &name,
       const MessengerOptions& options = kDefaultClientMessengerOptions);
 
@@ -191,6 +192,8 @@ class RpcTestBase : public YBTest {
                      Status::Code expected_code = Status::Code::kOk);
 
   void DoTestExpectTimeout(Proxy* proxy, const MonoDelta &timeout);
+
+  // Starts test server.
   void StartTestServer(HostPort* server_hostport,
                        const TestServerOptions& options = TestServerOptions());
   void StartTestServer(Endpoint* server_endpoint,
@@ -198,12 +201,15 @@ class RpcTestBase : public YBTest {
   TestServer StartTestServer(const std::string& name, const IpAddress& address);
   void StartTestServerWithGeneratedCode(HostPort* server_hostport,
                                         const TestServerOptions& options = TestServerOptions());
+  void StartTestServerWithGeneratedCode(std::unique_ptr<Messenger>&& messenger,
+                                        HostPort* server_hostport,
+                                        const TestServerOptions& options = TestServerOptions());
 
   // Start a simple socket listening on a local port, returning the address.
   // This isn't an RPC server -- just a plain socket which can be helpful for testing.
   CHECKED_STATUS StartFakeServer(Socket *listen_sock, HostPort* listen_hostport);
 
-  Messenger& server_messenger() const { return server_->messenger(); }
+  Messenger* server_messenger() const { return server_->messenger(); }
   TestServer& server() const { return *server_; }
   const scoped_refptr<MetricEntity>& metric_entity() const { return metric_entity_; }
 
