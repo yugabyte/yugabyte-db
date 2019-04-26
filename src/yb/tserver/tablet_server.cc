@@ -113,7 +113,7 @@ DEFINE_string(cql_proxy_bind_address, "", "Address to bind the CQL proxy to");
 DEFINE_int32(cql_proxy_webserver_port, 0, "Webserver port for CQL proxy");
 
 DEFINE_string(pgsql_proxy_bind_address, "", "Address to bind the PostgreSQL proxy to");
-DEFINE_int32(pgsql_proxy_webserver_port, 0, "Webserver port for PostgreSQL proxy");
+DECLARE_int32(pgsql_proxy_webserver_port);
 
 DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 

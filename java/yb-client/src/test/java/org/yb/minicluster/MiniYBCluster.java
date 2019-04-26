@@ -491,6 +491,8 @@ public class MiniYBCluster implements AutoCloseable {
     final int redisWebPort = TestUtils.findFreePort(tserverBindAddress);
     final int cqlWebPort = TestUtils.findFreePort(tserverBindAddress);
     final int postgresPort = TestUtils.findFreePort(tserverBindAddress);
+    final int pgsqlWebPort = TestUtils.findFreePort(tserverBindAddress);
+
     // TODO: use a random port here as well.
     final int redisPort = REDIS_PORT;
 
@@ -512,6 +514,7 @@ public class MiniYBCluster implements AutoCloseable {
         "--heartbeat_interval_ms=" + TSERVER_HEARTBEAT_INTERVAL_MS,
         "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
         "--cql_proxy_webserver_port=" + cqlWebPort,
+        "--pgsql_proxy_webserver_port=" + pgsqlWebPort,
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
         "--callhome_enabled=false");
 
@@ -533,7 +536,7 @@ public class MiniYBCluster implements AutoCloseable {
 
     final MiniYBDaemon daemon = configureAndStartProcess(MiniYBDaemonType.TSERVER,
         tsCmdLine.toArray(new String[tsCmdLine.size()]),
-        tserverBindAddress, rpcPort, webPort,
+        tserverBindAddress, rpcPort, webPort, pgsqlWebPort,
         cqlWebPort, redisWebPort, dataDirPath);
     tserverProcesses.put(HostAndPort.fromParts(tserverBindAddress, rpcPort), daemon);
     cqlContactPoints.add(new InetSocketAddress(tserverBindAddress, CQL_PORT));
@@ -593,7 +596,7 @@ public class MiniYBCluster implements AutoCloseable {
 
     final MiniYBDaemon daemon = configureAndStartProcess(
         MiniYBDaemonType.MASTER, masterCmdLine.toArray(new String[masterCmdLine.size()]),
-        masterBindAddress, rpcPort, webPort, -1, -1, dataDirPath);
+        masterBindAddress, rpcPort, webPort, -1, -1, -1, dataDirPath);
 
     final HostAndPort masterHostPort = HostAndPort.fromParts(masterBindAddress, rpcPort);
     masterHostPorts.add(masterHostPort);
@@ -672,7 +675,7 @@ public class MiniYBCluster implements AutoCloseable {
           configureAndStartProcess(
               MiniYBDaemonType.MASTER,
               masterCmdLine.toArray(new String[masterCmdLine.size()]),
-              masterBindAddress, masterRpcPort, masterWebPort, -1, -1, dataDirPath));
+              masterBindAddress, masterRpcPort, masterWebPort, -1, -1, -1, dataDirPath));
 
       if (flagsPath.startsWith(baseDirPath)) {
         // We made a temporary copy of the flags; delete them later.
@@ -704,6 +707,7 @@ public class MiniYBCluster implements AutoCloseable {
                                                 String bindIp,
                                                 int rpcPort,
                                                 int webPort,
+                                                int pgsqlWebPort,
                                                 int cqlWebPort,
                                                 int redisWebPort,
                                                 String dataDirPath) throws Exception {
@@ -730,8 +734,8 @@ public class MiniYBCluster implements AutoCloseable {
     LOG.info("Starting process: {}", Joiner.on(" ").join(command));
     Process proc = new ProcessBuilder(command).redirectErrorStream(true).start();
     final MiniYBDaemon daemon =
-        new MiniYBDaemon(type, indexForLog, command, proc, bindIp, rpcPort, webPort, cqlWebPort,
-                         redisWebPort, dataDirPath);
+        new MiniYBDaemon(type, indexForLog, command, proc, bindIp, rpcPort, webPort,
+                         pgsqlWebPort, cqlWebPort, redisWebPort, dataDirPath);
     logPrinters.add(daemon.getLogPrinter());
 
     Thread.sleep(300);
