@@ -1171,8 +1171,9 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
 
   // see var declaration
   auto wait_start = CoarseMonoClock::now();
-  auto wait_duration = deadline - wait_start;
-  std::unique_lock<decltype(update_mutex_)> lock(update_mutex_, wait_duration);
+  auto wait_duration = deadline != CoarseTimePoint::max() ? deadline - wait_start
+                                                          : CoarseDuration::max();
+  auto lock = LockMutex(&update_mutex_, wait_duration);
   if (!lock.owns_lock()) {
     return STATUS_FORMAT(TimedOut, "Unable to lock update mutex for $0", wait_duration);
   }

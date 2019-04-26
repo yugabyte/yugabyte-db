@@ -303,6 +303,24 @@ auto ToVector(const Container& container, std::mutex* mutex) {
   return result;
 }
 
+template <class Mutex, class Rep, class Period>
+std::unique_lock<Mutex> LockMutex(Mutex* mutex, std::chrono::duration<Rep, Period> duration) {
+  if (duration == std::chrono::duration<Rep, Period>::max()) {
+    return std::unique_lock<Mutex>(*mutex);
+  }
+
+  return std::unique_lock<Mutex>(*mutex, duration);
+}
+
+template <class Mutex, class Clock, class Duration>
+std::unique_lock<Mutex> LockMutex(Mutex* mutex, std::chrono::time_point<Clock, Duration> time) {
+  if (time == std::chrono::time_point<Clock, Duration>::max()) {
+    return std::unique_lock<Mutex>(*mutex);
+  }
+
+  return std::unique_lock<Mutex>(*mutex, time);
+}
+
 } // namespace yb
 
 #endif // YB_UTIL_LOCKS_H
