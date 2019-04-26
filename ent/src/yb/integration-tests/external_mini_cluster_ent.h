@@ -30,7 +30,7 @@ std::shared_ptr<master::MasterBackupServiceProxy> master_backup_proxy(
 void StartSecure(
   std::unique_ptr<ExternalMiniCluster>* cluster,
   std::unique_ptr<rpc::SecureContext>* secure_context,
-  rpc::MessengerPtr* messenger,
+  std::unique_ptr<rpc::Messenger>* messenger,
   const std::vector<std::string>& master_flags = std::vector<std::string>());
 
 } // namespace yb
