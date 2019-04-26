@@ -68,12 +68,11 @@ Status ClusterAdminClient::Init() {
         "", "", server::SecureContextType::kClientToServer, &messenger_builder));
     messenger_ = VERIFY_RESULT(messenger_builder.Build());
     client::YBClientBuilder yb_builder;
-    yb_builder.use_messenger(messenger_);
-    CHECK_OK(yb_builder
+    yb_client_ = CHECK_RESULT(yb_builder
         .add_master_server_addr(master_addr_list_)
         .default_admin_operation_timeout(timeout_)
-        .Build(&yb_client_));
-    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
+        .Build(messenger_.get()));
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
     // Find the leader master's socket info to set up the proxy
     leader_addr_ = yb_client_->GetMasterLeaderAddress();
@@ -82,7 +81,7 @@ Status ClusterAdminClient::Init() {
     LOG(INFO) << "Built secure client using certs dir " << certs_dir_;;
   }
 
-  rpc::ProxyCache proxy_cache(messenger_);
+  rpc::ProxyCache proxy_cache(messenger_.get());
   master_backup_proxy_.reset(new master::MasterBackupServiceProxy(&proxy_cache, leader_addr_));
   return Status::OK();
 }

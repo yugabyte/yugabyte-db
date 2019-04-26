@@ -33,7 +33,7 @@ std::shared_ptr<MasterBackupServiceProxy> master_backup_proxy(
 void StartSecure(
     std::unique_ptr<ExternalMiniCluster>* cluster,
     std::unique_ptr<rpc::SecureContext>* secure_context,
-    rpc::MessengerPtr* messenger,
+    std::unique_ptr<rpc::Messenger>* messenger,
     const std::vector<std::string>& master_flags) {
   rpc::MessengerBuilder messenger_builder("test_client");
   *secure_context = ASSERT_RESULT(server::SetupSecureContext(
@@ -51,7 +51,7 @@ void StartSecure(
   opts.num_tablet_servers = 3;
   opts.use_even_ips = true;
   *cluster = std::make_unique<ExternalMiniCluster>(opts);
-  ASSERT_OK((**cluster).Start(*messenger));
+  ASSERT_OK((**cluster).Start(messenger->get()));
 }
 
 } // namespace yb
