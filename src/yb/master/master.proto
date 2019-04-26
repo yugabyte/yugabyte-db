@@ -403,6 +403,19 @@ message SysYSQLCatalogConfigEntryPB {
   // YSQL catalog version. Every time the catalog tables are changed (i.e. by DDL statements)
   // this version gets incremented.
   optional uint64 version = 1;
+
+  // This is true if the master ran initdb and it finished, succesfully or not.
+  optional bool initdb_done = 2;
+
+  // A master leader started running initdb.
+  optional bool initdb_started_by_master = 3;
+
+  // Someone (a previous failed master leader, or a previous external invocation) started running
+  // initdb. Determined based on the existence of template1.pg_proc;
+  optional bool initdb_started = 4;
+
+  // If this is set, initdb has failed.
+  optional string initdb_error = 5;
 }
 
 // Various cluster configuration.
@@ -1348,6 +1361,25 @@ message GetYsqlCatalogConfigResponsePB {
   optional uint64 version = 2;
 }
 
+message IsInitDbDoneRequestPB {
+}
+
+message IsInitDbDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  // Someone started running initdb, as indicated by the existence of template1.pg_proc.
+  optional bool started = 2;
+
+  // A master leader started running initdb.
+  optional bool started_by_master = 3;
+
+  // This is true if the master ran initdb and it finished, succesfully or not.
+  optional bool done = 4;
+
+  // If this is set to a non-empty string, initdb has failed.
+  optional string initdb_error = 5;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -1431,4 +1463,6 @@ service MasterService {
 
   rpc FlushTables(FlushTablesRequestPB) returns (FlushTablesResponsePB);
   rpc IsFlushTablesDone(IsFlushTablesDoneRequestPB) returns (IsFlushTablesDoneResponsePB);
+
+  rpc IsInitDbDone(IsInitDbDoneRequestPB) returns (IsInitDbDoneResponsePB);
 }

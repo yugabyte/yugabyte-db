@@ -304,7 +304,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ ! $output_file = *.o && ${#library_files[@]} -gt 0 ]]; then
+if [[ $output_file != *.o && ${#library_files[@]} -gt 0 ]]; then
   input_files+=( "${library_files[@]}" )
   library_files=()
 fi
@@ -595,7 +595,7 @@ if which ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; 
   export CCACHE_TEMPDIR=${CCACHE_TEMPDIR:-/tmp/ccache_tmp_$USER}
   jenkins_ccache_dir=/n/jenkins/ccache
   if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs; then
-    if ! is_jenkins; then
+    if [[ ${YB_DEBUG_CCACHE:-0} == "1" ]] && ! is_jenkins; then
       log "is_jenkins (based on JOB_NAME) is false for some reason, even though" \
           "the user is 'jenkins'. Setting CCACHE_DIR to '$jenkins_ccache_dir' anyway." \
           "This is host $HOSTNAME, and current directory is $PWD."

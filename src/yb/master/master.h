@@ -49,6 +49,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/promise.h"
 #include "yb/util/status.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 namespace yb {
 

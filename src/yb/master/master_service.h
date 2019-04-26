@@ -211,6 +211,10 @@ class MasterServiceImpl : public MasterServiceIf,
                                  IsFlushTablesDoneResponsePB* resp,
                                  rpc::RpcContext rpc) override;
 
+  virtual void IsInitDbDone(const IsInitDbDoneRequestPB* req,
+                            IsInitDbDoneResponsePB* resp,
+                            rpc::RpcContext rpc) override;
+
  private:
 };
 
