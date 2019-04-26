@@ -175,13 +175,30 @@ Status PgWrapper::InitDbForYSQL(const string& master_addresses, const string& tm
   std::mt19937 rng{std::random_device()()};
   conf.data_dir = Format("$0/tmp_pg_data_$1", tmp_dir_base, rng());
   BOOST_SCOPE_EXIT(&conf) {
-    Status del_status = Env::Default()->DeleteRecursively(conf.data_dir);
-    if (!del_status.ok()) {
-      LOG(WARNING) << "Failed to delete directory " << conf.data_dir;
+    auto is_dir = Env::Default()->IsDirectory(conf.data_dir);
+    if (is_dir.ok()) {
+      if (is_dir.get()) {
+        Status del_status = Env::Default()->DeleteRecursively(conf.data_dir);
+        if (!del_status.ok()) {
+          LOG(WARNING) << "Failed to delete directory " << conf.data_dir;
+        }
+      }
+    } else {
+      LOG(INFO) << "Failed to check directory existence for " << conf.data_dir << ": "
+                << is_dir.status();
     }
   } BOOST_SCOPE_EXIT_END;
   PgWrapper pg_wrapper(conf);
-  return pg_wrapper.InitDb(/* yb_enabled */ true);
+  auto start_time = std::chrono::steady_clock::now();
+  Status initdb_status = pg_wrapper.InitDb(/* yb_enabled */ true);
+  auto elapsed_time = std::chrono::steady_clock::now() - start_time;
+  LOG(INFO)
+      << "initdb took "
+      << std::chrono::duration_cast<std::chrono::milliseconds>(elapsed_time).count() << " ms";
+  if (!initdb_status.ok()) {
+    LOG(ERROR) << "initdb failed: " << initdb_status;
+  }
+  return initdb_status;
 }
 
 string PgWrapper::GetPostgresExecutablePath() {

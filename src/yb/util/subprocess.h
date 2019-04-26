@@ -93,6 +93,15 @@ class Subprocess {
   // NOTE: unlike the standard wait(2) call, this may be called multiple
   // times. If the process has exited, it will repeatedly return the same
   // exit code.
+  //
+  // The integer pointed by ret (ret must be non-NULL) is set to the "status" value as described
+  // by the waitpid documentation (https://linux.die.net/man/2/waitpid), paraphrasing below.
+  //
+  // If ret is not NULL, wait() and waitpid() store status information in the int to which it
+  // points. This integer can be inspected with the following macros (which take the integer
+  // itself as an argument, not a pointer to it, as is done in wait() and waitpid()!):
+  // WCONTINUED, WCOREDUMP, WEXITSTATUS, WIFCONTINUED, WIFEXITED, WIFSIGNALED, WIFSTOPPED,
+  // WNOHANG, WSTOPSIG, WTERMSIG, WUNTRACED.
   CHECKED_STATUS Wait(int* ret);
 
   Result<int> Wait();

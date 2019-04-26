@@ -626,5 +626,12 @@ void MasterServiceImpl::IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
   HandleIn(req, resp, &rpc, &FlushManager::IsFlushTablesDone);
 }
 
+
+void MasterServiceImpl::IsInitDbDone(const IsInitDbDoneRequestPB* req,
+                                     IsInitDbDoneResponsePB* resp,
+                                     RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::IsInitDbDone, HoldCatalogLock::kFalse);
+}
+
 } // namespace master
 } // namespace yb

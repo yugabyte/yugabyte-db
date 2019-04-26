@@ -199,6 +199,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // uses SIGKILL on each daemon for a non-graceful shutdown.
   void Shutdown(NodeSelectionMode mode = ALL);
 
+  // Waits for the master to finishing running initdb.
+  CHECKED_STATUS WaitForInitDb();
+
   // Return the IP address that the tablet server with the given index will bind to.  If
   // options.bind_to_unique_loopback_addresses is false, this will be 127.0.0.1 Otherwise, it is
   // another IP in the local netblock.

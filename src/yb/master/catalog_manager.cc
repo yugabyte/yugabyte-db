@@ -217,6 +217,12 @@ TAG_FLAG(hide_pg_catalog_table_creation_logs, hidden);
 DEFINE_test_flag(int32, simulate_slow_table_create_secs, 0,
     "Simulates a slow table creation by sleeping after the table has been added to memory.");
 
+DEFINE_bool(
+    // TODO: switch the default to true after updating all external callers (yb-ctl, YugaWare)
+    // and unit tests.
+    master_auto_run_initdb, false,
+    "Automatically run initdb on master leader initialization");
+
 namespace yb {
 namespace master {
 
@@ -260,6 +266,8 @@ using tserver::TabletServerErrorPB;
 using master::MasterServiceProxy;
 using yb::util::kBcryptHashSize;
 using yb::util::bcrypt_hashpw;
+using yb::pgwrapper::PgWrapper;
+using yb::server::MasterAddressesToString;
 
 namespace {
 
@@ -972,7 +980,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   }
 
   LOG(INFO) << __func__ << ": Acquire catalog manager lock_ before loading sys catalog..";
-  boost::lock_guard<LockType> lock(lock_);
+  std::lock_guard<LockType> lock(lock_);
   VLOG(1) << __func__ << ": Acquired the catalog manager lock_";
 
   // Abort any outstanding tasks. All TableInfos are orphaned below, so
@@ -1002,6 +1010,9 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
 
   BuildRecursiveRolesUnlocked();
+
+  // No error handling here -- this does not wait for initdb to finish, that is done asynchronously.
+  StartRunningInitDbIfNeeded();
 
   return Status::OK();
 }
@@ -1163,6 +1174,52 @@ Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
   }
 
   return Status::OK();
+}
+
+void CatalogManager::StartRunningInitDbIfNeeded() {
+  CHECK(lock_.is_locked());
+  if (!FLAGS_master_auto_run_initdb) {
+    return;
+  }
+
+  {
+    auto l = ysql_catalog_config_->LockForRead();
+    if (l->data().pb.ysql_catalog_config().initdb_done()) {
+      LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
+      return;
+    }
+  }
+
+  const bool pg_proc_exists = DoesPgProcExistUnlocked();
+
+  {
+    auto l = ysql_catalog_config_->LockForWrite();
+    auto* mutable_ysql_catalog_config = l->mutable_data()->pb.mutable_ysql_catalog_config();
+
+    // If pg_proc_exists is set, we're not actually planning to run initdb (see the logic below
+    // this locking block), but we are still setting the initdb_started flag to indicate that
+    // someone else has started running initdb previously.
+    mutable_ysql_catalog_config->set_initdb_started(true);
+    if (!pg_proc_exists) {
+      mutable_ysql_catalog_config->set_initdb_started_by_master(true);
+    }
+    l->Commit();
+  }
+
+  if (pg_proc_exists) {
+    LOG(INFO) << "Table pg_proc exists, assuming initdb has already been run";
+    return;
+  }
+
+  LOG(INFO) << "initdb has never been run on this cluster, running it";
+  string master_addresses_str = MasterAddressesToString(
+      *master_->opts().GetMasterAddresses());
+
+  initdb_future_ = std::async(std::launch::async, [this, master_addresses_str] {
+    Status initdb_status = PgWrapper::InitDbForYSQL(master_addresses_str, "/tmp");
+    InitDbFinished(initdb_status);
+    return initdb_status;
+  });
 }
 
 Status CatalogManager::PrepareDefaultNamespaces(int64_t term) {
@@ -1598,6 +1655,12 @@ void CatalogManager::Shutdown() {
   // Shut down the underlying storage for tables and tablets.
   if (sys_catalog_) {
     sys_catalog_->Shutdown();
+  }
+
+  if (initdb_future_ && initdb_future_->wait_for(0s) != std::future_status::ready) {
+    LOG(WARNING) << "initdb is still running, waiting for it to complete.";
+    initdb_future_->wait();
+    LOG(INFO) << "Finished running initdb, proceeding with catalog manager shutdown.";
   }
 }
 
@@ -5382,6 +5445,42 @@ Result<uint64_t> CatalogManager::IncrementYsqlCatalogVersion() {
   return new_version;
 }
 
+void CatalogManager::InitDbFinished(Status initdb_status) {
+  if (initdb_status.ok()) {
+    LOG(INFO) << "initdb completed successfully";
+  } else {
+    LOG(ERROR) << "initdb failed: " << initdb_status;
+  }
+
+  auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForWrite();
+  auto* mutable_ysql_catalog_config = l->mutable_data()->pb.mutable_ysql_catalog_config();
+  mutable_ysql_catalog_config->set_initdb_done(true);
+  if (!initdb_status.ok()) {
+    mutable_ysql_catalog_config->set_initdb_error(initdb_status.ToString());
+  } else {
+    mutable_ysql_catalog_config->clear_initdb_error();
+  }
+
+  l->Commit();
+}
+
+CHECKED_STATUS CatalogManager::IsInitDbDone(
+    const IsInitDbDoneRequestPB* req,
+    IsInitDbDoneResponsePB* resp) {
+  RETURN_NOT_OK(CheckOnline());
+
+  auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForRead();
+  const auto& ysql_catalog_config = l->data().pb.ysql_catalog_config();
+  resp->set_started(ysql_catalog_config.initdb_started());
+  resp->set_started_by_master(ysql_catalog_config.initdb_started_by_master());
+  resp->set_done(ysql_catalog_config.initdb_done());
+  if (ysql_catalog_config.has_initdb_error() &&
+      !ysql_catalog_config.initdb_error().empty()) {
+    resp->set_initdb_error(ysql_catalog_config.initdb_error());
+  }
+  return Status::OK();
+}
+
 uint64_t CatalogManager::GetYsqlCatalogVersion() {
   auto l = ysql_catalog_config_->LockForRead();
   return l->data().pb.ysql_catalog_config().version();
@@ -7047,6 +7146,21 @@ void CatalogManager::ScopedLeaderSharedLock::Unlock() {
     }
   }
 }
+
+bool CatalogManager::DoesPgProcExistUnlocked() {
+  // Checking if the pg_proc table from template1 database exists.
+  // There will be a pg_proc table in each user database (e.g. the "postgres" database for the
+  // "postgres" user) too.
+
+  const uint32_t kTemplate1Oid = 1;  // Hardcoded for template1. (in initdb.c)
+  const uint32_t kPgProcTableOid = 1255;  // Hardcoded for pg_proc. (in pg_proc.h)
+  static string kPgProcTableMap = GetPgsqlTableId(kTemplate1Oid, kPgProcTableOid);
+  return table_ids_map_.count(kPgProcTableMap);
+}
+
+// ------------------------------------------------------------------------------------------------
+// END OF CatalogManager implementation
+// ------------------------------------------------------------------------------------------------
 
 ////////////////////////////////////////////////////////////
 // TabletInfo
