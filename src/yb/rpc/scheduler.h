@@ -56,6 +56,20 @@ class ScheduledTask : public ScheduledTaskBase {
   F f_;
 };
 
+template<class F>
+class ScheduledTaskWithId : public ScheduledTaskBase {
+ public:
+  explicit ScheduledTaskWithId(ScheduledTaskId id, const SteadyTimePoint& time, const F& f)
+      : ScheduledTaskBase(id, time), f_(f) {}
+
+  void Run(const Status& status) override {
+    f_(id(), status);
+  }
+
+ private:
+  F f_;
+};
+
 class Scheduler {
  public:
   explicit Scheduler(IoService* io_service);
@@ -67,15 +81,26 @@ class Scheduler {
   }
 
   template<class F>
-  ScheduledTaskId Schedule(const F& f, std::chrono::steady_clock::time_point time) {
+  auto Schedule(const F& f, std::chrono::steady_clock::time_point time) ->
+      decltype(f(Status()), ScheduledTaskId()) {
     auto id = NextId();
     DoSchedule(std::make_shared<ScheduledTask<F>>(id, time, f));
+    return id;
+  }
+
+  template<class F>
+  auto Schedule(const F& f, std::chrono::steady_clock::time_point time) ->
+      decltype(f(ScheduledTaskId(), Status()), ScheduledTaskId()) {
+    auto id = NextId();
+    DoSchedule(std::make_shared<ScheduledTaskWithId<F>>(id, time, f));
     return id;
   }
 
   void Abort(ScheduledTaskId task_id);
 
   void Shutdown();
+
+  IoService& io_service();
 
  private:
   ScheduledTaskId NextId();

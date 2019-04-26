@@ -97,6 +97,10 @@ class Scheduler::Impl {
     return ++id_;
   }
 
+  IoService& io_service() {
+    return io_service_;
+  }
+
  private:
   void StartTimer() {
     DCHECK(strand_.running_in_this_thread());
@@ -174,6 +178,10 @@ void Scheduler::DoSchedule(std::shared_ptr<ScheduledTaskBase> task) {
 
 ScheduledTaskId Scheduler::NextId() {
   return impl_->NextId();
+}
+
+IoService& Scheduler::io_service() {
+  return impl_->io_service();
 }
 
 } // namespace rpc

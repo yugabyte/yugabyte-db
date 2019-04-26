@@ -424,7 +424,7 @@ void CallHome::SendData(const string& payload) {
 }
 
 void CallHome::ScheduleCallHome(int delay_seconds) {
-  scheduler_->Schedule(std::bind(&CallHome::DoCallHome, this),
+  scheduler_->Schedule([this](const Status& status) { DoCallHome(); },
                        std::chrono::seconds(delay_seconds));
 }
 

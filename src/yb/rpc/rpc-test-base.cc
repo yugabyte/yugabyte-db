@@ -326,6 +326,7 @@ TestServer::TestServer(std::unique_ptr<ServiceIf> service,
 
   service_pool_.reset(new ServicePool(kQueueLength,
                                       &thread_pool_,
+                                      &messenger_->scheduler(),
                                       std::move(service),
                                       messenger_->metric_entity()));
 
