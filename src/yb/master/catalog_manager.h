@@ -66,6 +66,7 @@
 #include "yb/util/random.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/status.h"
+#include "yb/gutil/thread_annotations.h"
 
 namespace yb {
 
@@ -1002,6 +1003,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   Result<uint64_t> IncrementYsqlCatalogVersion();
 
+  // Records the fact that initdb has succesfully completed.
+  void InitDbFinished(Status initdb_status);
+
+  // Check if the initdb operation has been completed. This is intended for use by whoever wants
+  // to wait for the cluster to be fully initialized, e.g. minicluster, YugaWare, etc.
+  CHECKED_STATUS IsInitDbDone(const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp);
+
   uint64_t GetYsqlCatalogVersion();
 
   SysCatalogTable* sys_catalog() { return sys_catalog_.get(); }
@@ -1260,6 +1268,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Sets up various system configs.
   CHECKED_STATUS PrepareDefaultSysConfig(int64_t term);
+
+  // Starts an asynchronous run of initdb. Errors are handled in the callback.
+  void StartRunningInitDbIfNeeded() SHARED_LOCKS_REQUIRED(lock_);
 
   CHECKED_STATUS PrepareDefaultNamespaces(int64_t term);
 
@@ -1597,6 +1608,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS RemoveAllPermissionsForResource(const std::string& canonical_resource,
                                                  RespClass* resp);
 
+  // Checks if the pg_proc table exists, which indicates that initdb has at least started running.
+  bool DoesPgProcExistUnlocked() SHARED_LOCKS_REQUIRED(lock_);
+
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
   // easy to make a "gettable set".
@@ -1607,8 +1621,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Note: Namespaces and tables for YSQL databases are identified by their ids only and therefore
   // are not saved in the name maps below.
-  TableInfoMap table_ids_map_;         // Table map: table-id -> TableInfo
-  TableInfoByNameMap table_names_map_; // Table map: [namespace-id, table-name] -> TableInfo
+
+  // Table map: table-id -> TableInfo
+  TableInfoMap table_ids_map_;
+
+  // Table map: [namespace-id, table-name] -> TableInfo
+  TableInfoByNameMap table_names_map_;
 
   DeletedTabletMap deleted_tablet_map_; // Deleted Tablets map:
                                         // [tserver-id, tablet-id] -> DeletedTableInfo
@@ -1750,6 +1768,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
       PermissionType::DROP_PERMISSION, PermissionType::MODIFY_PERMISSION,
       PermissionType::SELECT_PERMISSION
   };
+
+  boost::optional<std::future<Status>> initdb_future_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);

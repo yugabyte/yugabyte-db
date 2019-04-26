@@ -93,6 +93,8 @@ using strings::Substitute;
 
 using yb::master::GetLeaderMasterRpc;
 using yb::master::MasterServiceProxy;
+using yb::master::IsInitDbDoneRequestPB;
+using yb::master::IsInitDbDoneResponsePB;
 using yb::server::ServerStatusPB;
 using yb::tserver::ListTabletsRequestPB;
 using yb::tserver::ListTabletsResponsePB;
@@ -270,11 +272,6 @@ Status ExternalMiniCluster::Start(const rpc::MessengerPtr& messenger) {
       opts_.num_tablet_servers, kTabletServerRegistrationTimeout));
 
   running_ = true;
-  if (opts_.start_pgsql_proxy) {
-    string tmp_dir_base;
-    RETURN_NOT_OK(Env::Default()->GetTestDirectory(&tmp_dir_base));
-    RETURN_NOT_OK(PgWrapper::InitDbForYSQL(GetMasterAddresses(), tmp_dir_base));
-  }
   return Status::OK();
 }
 
@@ -898,6 +895,9 @@ Status ExternalMiniCluster::StartMasters() {
   string peer_addrs_str = JoinStrings(peer_addrs, ",");
   vector<string> flags = opts_.extra_master_flags;
   flags.push_back("--enable_leader_failure_detection=true");
+  if (opts_.start_pgsql_proxy) {
+    flags.push_back("--master_auto_run_initdb");
+  }
   string exe = GetBinaryPath(kMasterBinaryName);
 
   // Start the masters.
@@ -918,7 +918,48 @@ Status ExternalMiniCluster::StartMasters() {
     masters_.push_back(peer);
   }
 
+  if (opts_.start_pgsql_proxy) {
+    RETURN_NOT_OK(WaitForInitDb());
+  }
   return Status::OK();
+}
+
+Status ExternalMiniCluster::WaitForInitDb() {
+  const auto start_time = std::chrono::steady_clock::now();
+  const auto kTimeout = 600s;
+  while (true) {
+    for (int i = 0; i < opts_.num_masters; i++) {
+      auto elapsed_time = std::chrono::steady_clock::now() - start_time;
+      if (elapsed_time > kTimeout) {
+        return STATUS_FORMAT(
+            TimedOut,
+            "Timed out while waiting for initdb to complete: elapsed time is $0, timeout is $1",
+            elapsed_time, kTimeout);
+      }
+      std::shared_ptr<MasterServiceProxy> proxy = master_proxy(i);
+      rpc::RpcController rpc;
+      rpc.set_timeout(opts_.timeout);
+      IsInitDbDoneRequestPB req;
+      IsInitDbDoneResponsePB resp;
+      RETURN_NOT_OK(proxy->IsInitDbDone(req, &resp, &rpc));
+      if (resp.has_error() &&
+          resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
+
+        return STATUS(RuntimeError, Substitute(
+            "IsInitDbDone RPC response hit error: $0",
+            resp.error().ShortDebugString()));
+      }
+      if (resp.done()) {
+        if (resp.has_initdb_error() && !resp.initdb_error().empty()) {
+          LOG(ERROR) << "master reported an initdb error: " << resp.initdb_error();
+          return STATUS(RuntimeError, "initdb failed: " + resp.initdb_error());
+        }
+        LOG(INFO) << "master indicated that initdb is done";
+        return Status::OK();
+      }
+    }
+    std::this_thread::sleep_for(500ms);
+  }
 }
 
 string ExternalMiniCluster::GetBindIpForTabletServer(int index) const {
