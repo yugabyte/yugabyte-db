@@ -53,7 +53,7 @@ class TransactionEntTest : public client::KeyValueTableTest {
     EXPECT_OK(clock->Init());
 
     std::lock_guard<std::mutex> lock(transaction_managers_mutex_);
-    transaction_managers_.emplace_back(client_, clock, client::LocalTabletFilter());
+    transaction_managers_.emplace_back(client_.get(), clock, client::LocalTabletFilter());
     return transaction_managers_.back();
   }
 

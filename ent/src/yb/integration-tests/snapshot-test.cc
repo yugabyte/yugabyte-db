@@ -100,14 +100,14 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
 
     messenger_ = ASSERT_RESULT(
         MessengerBuilder("test-msgr").set_num_reactors(1).Build());
-    rpc::ProxyCache proxy_cache(messenger_);
+    rpc::ProxyCache proxy_cache(messenger_.get());
     proxy_.reset(new MasterServiceProxy(
         &proxy_cache, cluster_->mini_master()->bound_rpc_addr()));
     proxy_backup_.reset(new MasterBackupServiceProxy(
         &proxy_cache, cluster_->mini_master()->bound_rpc_addr()));
 
     // Connect to the cluster.
-    ASSERT_OK(cluster_->CreateClient(&client_));
+    client_ = ASSERT_RESULT(cluster_->CreateClient());
   }
 
   void DoTearDown() override {
@@ -117,6 +117,10 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     if (exist.get()) {
       ASSERT_OK(client_->DeleteTable(kTableName));
     }
+
+    client_.reset();
+
+    messenger_->Shutdown();
 
     if (cluster_) {
       cluster_->Shutdown();
@@ -331,11 +335,11 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
  protected:
-  shared_ptr<Messenger> messenger_;
+  std::unique_ptr<Messenger> messenger_;
   unique_ptr<MasterServiceProxy> proxy_;
   unique_ptr<MasterBackupServiceProxy> proxy_backup_;
   RpcController controller_;
-  client::YBClientPtr client_;
+  std::unique_ptr<client::YBClient> client_;
   boost::optional<google::FlagSaver> flag_saver_;
 };
 
