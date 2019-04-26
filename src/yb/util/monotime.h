@@ -89,6 +89,7 @@ class MonoDelta {
   MonoDelta& operator+=(const MonoDelta& rhs);
   MonoDelta& operator-=(const MonoDelta& rhs);
   MonoDelta& operator*=(int64_t mul);
+  MonoDelta& operator/=(int64_t mul);
 
   // Update struct timeval to current value of delta, with microsecond accuracy.
   // Note that if MonoDelta::IsPositive() returns true, the struct timeval
@@ -128,6 +129,7 @@ std::string FormatForComparisonFailureMessage(const MonoDelta& op, const MonoDel
 inline MonoDelta operator-(MonoDelta lhs, MonoDelta rhs) { return lhs -= rhs; }
 inline MonoDelta operator+(MonoDelta lhs, MonoDelta rhs) { return lhs += rhs; }
 inline MonoDelta operator*(MonoDelta lhs, int64_t rhs) { return lhs *= rhs; }
+inline MonoDelta operator/(MonoDelta lhs, int64_t rhs) { return lhs /= rhs; }
 
 inline std::ostream& operator<<(std::ostream& out, MonoDelta delta) {
   return out << delta.ToString();
@@ -226,7 +228,7 @@ inline MonoDelta operator-(const MonoTime& lhs, const MonoTime& rhs) {
   return lhs.GetDeltaSince(rhs);
 }
 
-inline MonoTime& operator -=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
+inline MonoTime& operator-=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
   lhs.SubtractDelta(rhs);
   return lhs;
 }
@@ -298,6 +300,7 @@ inline double ToSeconds(MonoDelta delta) {
 std::string ToString(CoarseMonoClock::TimePoint value);
 
 CoarseTimePoint ToCoarse(MonoTime monotime);
+std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point);
 
 } // namespace yb
 

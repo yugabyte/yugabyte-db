@@ -132,8 +132,8 @@ Status RpcServer::RegisterService(size_t queue_limit,
 
   rpc::ThreadPool& thread_pool = messenger_->ThreadPool(priority);
 
-  scoped_refptr<rpc::ServicePool> service_pool =
-    new rpc::ServicePool(queue_limit, &thread_pool, std::move(service), metric_entity);
+  scoped_refptr<rpc::ServicePool> service_pool(new rpc::ServicePool(
+      queue_limit, &thread_pool, &messenger_->scheduler(), std::move(service), metric_entity));
   RETURN_NOT_OK(messenger_->RegisterService(service_name, service_pool));
   return Status::OK();
 }

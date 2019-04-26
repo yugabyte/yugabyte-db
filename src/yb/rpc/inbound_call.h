@@ -53,6 +53,8 @@
 #include "yb/yql/cql/ql/ql_session.h"
 
 #include "yb/util/faststring.h"
+#include "yb/util/lockfree.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
@@ -82,8 +84,18 @@ struct InboundCallTiming {
   MonoTime time_completed;  // Time the call handler completed.
 };
 
+class InboundCallHandler {
+ public:
+  virtual void Handle(InboundCallPtr call) = 0;
+
+  virtual void Failure(const InboundCallPtr& call, const Status& status) = 0;
+
+ protected:
+  ~InboundCallHandler() = default;
+};
+
 // Inbound call on server
-class InboundCall : public RpcCall {
+class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
  public:
   typedef std::function<void(InboundCall*)> CallProcessedListener;
 
@@ -135,9 +147,26 @@ class InboundCall : public RpcCall {
   // it gets handled.
   MonoDelta GetTimeInQueue() const;
 
+  ThreadPoolTask* BindTask(InboundCallHandler* handler) {
+    task_.Bind(handler, shared_from(this));
+    return &task_;
+  }
+
   virtual const std::string& method_name() const = 0;
   virtual const std::string& service_name() const = 0;
   virtual void RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code, const Status& status) = 0;
+
+  // Do appropriate actions when call is timed out.
+  //
+  // message contains human readable information on why call timed out.
+  //
+  // Returns true if actions were applied, false if call was already processed.
+  bool RespondTimedOutIfPending(const char* message);
+
+  bool TryStartProcessing() {
+    bool expected = false;
+    return processing_started_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
+  }
 
   std::string LogPrefix() const override;
 
@@ -148,8 +177,18 @@ class InboundCall : public RpcCall {
     return result;
   }
 
+  // Retain this object, so it would not get deleted even when all external references to it are
+  // destroyed. We need this function to have ability to add InboundCall to data structures that
+  // could operate only on raw pointers.
+  void RetainSelf();
+
+  // Stop retaining this object.
+  void UnretainSelf();
+
  protected:
   void NotifyTransferred(const Status& status, Connection* conn) override;
+
+  virtual void Clear();
 
   // Log a WARNING message if the RPC response was slow enough that the
   // client likely timed out. This is based on the client-provided timeout
@@ -172,6 +211,8 @@ class InboundCall : public RpcCall {
   // Timing information related to this RPC call.
   InboundCallTiming timing_;
 
+  std::atomic<bool> processing_started_{false};
+
   std::atomic<bool> responded_{false};
 
  private:
@@ -179,6 +220,27 @@ class InboundCall : public RpcCall {
   ConnectionPtr conn_ = nullptr;
   RpcMetrics* rpc_metrics_;
   const std::function<void(InboundCall*)> call_processed_listener_;
+
+  class InboundCallTask : public ThreadPoolTask {
+   public:
+    void Bind(InboundCallHandler* handler, InboundCallPtr call) {
+      handler_ = handler;
+      call_ = std::move(call);
+    }
+
+    void Run() override;
+
+    void Done(const Status& status) override;
+
+    virtual ~InboundCallTask() = default;
+
+   private:
+    InboundCallHandler* handler_;
+    InboundCallPtr call_;
+  };
+
+  InboundCallTask task_;
+  InboundCallPtr retained_self_;
 
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
 };

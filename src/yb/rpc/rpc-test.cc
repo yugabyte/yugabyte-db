@@ -578,6 +578,66 @@ TEST_F(TestRpc, TestRpcContextClientDeadline) {
   ASSERT_OK(p.SyncRequest(method, req, &resp, &controller));
 }
 
+// Send multiple long running calls to a single worker thread. All of them except the first one,
+// should time out early w/o starting processing them.
+TEST_F(TestRpc, QueueTimeout) {
+  const MonoDelta kSleep = 1s;
+  constexpr auto kCalls = 10;
+
+  // Set up server.
+  TestServerOptions options;
+  options.n_worker_threads = 1;
+  HostPort server_addr;
+  StartTestServerWithGeneratedCode(&server_addr, options);
+
+  // Set up client.
+  auto client_messenger = CreateMessenger("Client");
+  Proxy p(client_messenger, server_addr);
+
+  const auto* method = CalculatorServiceMethods::SleepMethod();
+
+  CountDownLatch latch(kCalls);
+
+  struct Call {
+    rpc_test::SleepRequestPB req;
+    rpc_test::SleepResponsePB resp;
+    RpcController controller;
+  };
+  std::vector<Call> calls(kCalls);
+
+  for (int i = 0; i != kCalls; ++i) {
+    auto& call = calls[i];
+    auto& req = call.req;
+    req.set_sleep_micros(kSleep.ToMicroseconds());
+    req.set_client_timeout_defined(true);
+    call.controller.set_timeout(kSleep / 2);
+    p.AsyncRequest(method, req, &call.resp, &call.controller,
+        [&latch, &call] {
+      latch.CountDown();
+      ASSERT_TRUE(call.controller.status().IsTimedOut()) << call.controller.status();
+    });
+  }
+
+  latch.Wait();
+
+  // Give some time for algorithm to work.
+  std::this_thread::sleep_for((kSleep / 2).ToSteadyDuration());
+
+  Counter* counter = nullptr;
+  std::string metric_name("rpcs_timed_out_early_in_queue");
+  const auto& map = metric_entity()->UnsafeMetricsMapForTests();
+  for (const auto& p : map) {
+    if (p.first->name() == metric_name) {
+      counter = down_cast<Counter*>(p.second.get());
+      break;
+    }
+  }
+
+  ASSERT_NE(counter, nullptr);
+  // First call should succeed, other should timeout.
+  ASSERT_EQ(counter->value(), kCalls - 1);
+}
+
 struct DisconnectShare {
   Proxy proxy;
   size_t left;

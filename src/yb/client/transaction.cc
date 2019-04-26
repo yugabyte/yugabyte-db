@@ -729,8 +729,9 @@ class YBTransaction::Impl final {
       }
       std::weak_ptr<YBTransaction> weak_transaction(transaction);
       manager_->client()->messenger()->scheduler().Schedule(
-          std::bind(&Impl::SendHeartbeat, this, TransactionStatus::PENDING,
-                    metadata_.transaction_id, weak_transaction),
+          [this, weak_transaction](const Status&) {
+              SendHeartbeat(TransactionStatus::PENDING, metadata_.transaction_id, weak_transaction);
+          },
           std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
     } else {
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status;
