@@ -92,10 +92,9 @@ TEST_F(AdminCliTest, DISABLED_TestTLS) {
 TEST_F(AdminCliTest, TestCreateSnapshot) {
   string master_address = StartRF1CluterAndGetMasterAddrs();
 
-  shared_ptr<YBClient> client;
-  ASSERT_OK(YBClientBuilder()
-            .add_master_server_addr(master_address)
-            .Build(&client));
+  auto client = ASSERT_RESULT(YBClientBuilder()
+      .add_master_server_addr(master_address)
+      .Build());
 
   // There is custom table.
   vector<YBTableName> tables;

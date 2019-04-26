@@ -53,14 +53,17 @@ class ExternalMiniClusterSecureTest :
     DontVerifyClusterBeforeNextTearDown(); // Verify requires insecure connection.
   }
 
+  void DoTearDown() override {
+    messenger_->Shutdown();
+    MiniClusterTestWithClient::DoTearDown();
+  }
+
   CHECKED_STATUS CreateClient() override {
-    client::YBClientBuilder builder;
-    builder.use_messenger(messenger_);
-    return cluster_->CreateClient(&builder, &client_);
+    return cluster_->CreateClient(messenger_.get()).MoveTo(&client_);
   }
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
-  rpc::MessengerPtr messenger_;
+  std::unique_ptr<rpc::Messenger> messenger_;
   client::TableHandle table_;
 };
 

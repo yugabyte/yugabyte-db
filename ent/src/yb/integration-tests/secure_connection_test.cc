@@ -57,9 +57,8 @@ class SecureConnectionTest : public client::KeyValueTableTest {
         "", "", server::SecureContextType::kClientToServer, &messenger_builder));
     auto messenger = VERIFY_RESULT(messenger_builder.Build());
     messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress("127.0.0.1")));
-    client::YBClientBuilder builder;
-    builder.use_messenger(messenger);
-    return cluster_->CreateClient(&builder, &client_);
+    client_ = VERIFY_RESULT(cluster_->CreateClient(std::move(messenger)));
+    return Status::OK();
   }
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
