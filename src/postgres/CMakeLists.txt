@@ -13,7 +13,7 @@
 
 set(POSTGRES_EXTRA_C_CXX_FLAGS "")
 get_property(yb_cmake_include_dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-             PROPERTY INCLUDE_DIRECTORIES)
+        PROPERTY INCLUDE_DIRECTORIES)
 foreach(include_dir ${yb_cmake_include_dirs})
   set(POSTGRES_EXTRA_C_CXX_FLAGS "${POSTGRES_EXTRA_C_CXX_FLAGS} -I${include_dir}")
 endforeach(include_dir)
@@ -23,17 +23,17 @@ endforeach(include_dir)
 # We add spaces before every "flags" parameter so that Python's argparse does not interpret them as
 # its own flags.
 add_custom_target(
-  postgres
-  COMMAND "${BUILD_SUPPORT_DIR}/build_postgres"
-  --build_root "${YB_BUILD_ROOT}"
+        postgres
+        COMMAND "${BUILD_SUPPORT_DIR}/build_postgres"
+        --build_root "${YB_BUILD_ROOT}"
 
-  --cflags     " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
-  --cxxflags   " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
-  --ldflags    " ${CMAKE_SHARED_LINKER_FLAGS}"
-  --ldflags_ex " ${CMAKE_EXE_LINKER_FLAGS}"
+        --cflags     " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
+        --cxxflags   " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
+        --ldflags    " ${CMAKE_SHARED_LINKER_FLAGS}"
+        --ldflags_ex " ${CMAKE_EXE_LINKER_FLAGS}"
 
-  --compiler_type "$ENV{YB_COMPILER_TYPE}"
-  DEPENDS yb_util yb_pggate)
+        --compiler_type "$ENV{YB_COMPILER_TYPE}"
+        DEPENDS yb_util yb_pggate server_process)
 
 # Make sure we rebuild postgres before the master/tserver libraries.
 add_dependencies(master postgres)
@@ -41,3 +41,4 @@ add_dependencies(tserver postgres)
 
 # PostgreSQL server links with the pggate library.
 add_dependencies(postgres yb_pggate)
+add_dependencies(postgres server_process)

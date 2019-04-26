@@ -34,6 +34,8 @@ DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bi
 DEFINE_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API. This should eventually "
             "be set to true by default.");
+DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
+DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
 TAG_FLAG(pg_transactions_enabled, hidden);
 
@@ -99,6 +101,15 @@ Status PgWrapper::Start() {
     argv.push_back("-c");
     argv.push_back("log_directory=" + FLAGS_log_dir);
   }
+
+  argv.push_back("-c");
+  // TODO: we should probably load the metrics library in a different way once we let
+  // users change the shared_preload_libraries conf parameter.
+  argv.push_back("shared_preload_libraries=yb_pg_metrics");
+  argv.push_back("-c");
+  argv.push_back("yb_pg_metrics.node_name=" + FLAGS_metric_node_name);
+  argv.push_back("-c");
+  argv.push_back("yb_pg_metrics.port=" + std::to_string(FLAGS_pgsql_proxy_webserver_port));
 
   pg_proc_.emplace(postgres_executable, argv);
   pg_proc_->ShareParentStderr();
