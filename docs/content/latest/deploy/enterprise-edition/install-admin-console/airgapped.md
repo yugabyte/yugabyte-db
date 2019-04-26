@@ -41,7 +41,7 @@ $ wget https://downloads.yugabyte.com/replicated.tar.gz
 
 Get the yugaware binary where the last 4 digits refer to the version of the binary. Change this number as needed.
 ```sh
-$ wget https://downloads.yugabyte.com/yugaware-1.2.0.0.airgap
+$ wget https://downloads.yugabyte.com/yugaware-1.2.5.airgap
 ```
 
 Change to the directory.
