@@ -24,6 +24,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+
 /**
  * A class to retrieve metrics from a YB server.
  */
@@ -109,6 +110,27 @@ public class Metrics {
     }
   }
 
+  /**
+   * A YSQL Metric.
+   */
+   public static class YSQLMetric extends Metric {
+     public final int count;
+     public final int sum;
+
+     /**
+      * Constructs a {@code YSQLMetric} metric.
+      *
+      * @param metric  the JSON object that contains the metric
+      */
+
+     YSQLMetric(JsonObject metric) {
+      super(metric);
+      count = metric.get("count").getAsInt();
+      sum = metric.get("sum").getAsInt();
+     }
+
+   }
+
   // The metrics map.
   Map<String, Metric> map;
 
@@ -157,6 +179,9 @@ public class Metrics {
       } else if (metric.has("total_count")) {
         Histogram histogram = new Histogram(metric);
         map.put(histogram.name, histogram);
+      } else if (metric.has("count") && metric.has("sum")) {
+        YSQLMetric ysqlmetric = new YSQLMetric(metric);
+        map.put(ysqlmetric.name, ysqlmetric);
       }
     }
   }
@@ -177,5 +202,14 @@ public class Metrics {
    */
   public Histogram getHistogram(String name) {
     return (Histogram)map.get(name);
+  }
+
+  /**
+   * Retrieves a {@code YSQL} metric.
+   *
+   * @param name  the metric name
+   */
+  public YSQLMetric getYSQLMetric(String name) {
+    return (YSQLMetric)map.get(name);
   }
 }

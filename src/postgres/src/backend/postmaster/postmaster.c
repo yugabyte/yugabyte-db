@@ -5880,12 +5880,6 @@ maybe_start_bgworkers(void)
 	StartWorkerNeeded = false;
 	HaveCrashedWorker = false;
 
-	/* Do not need any bgworkers in YugaByte mode at this point. */
-	if (YBIsEnabledInPostgresEnvVar())
-	{
-		return;
-	}
-
 	slist_foreach_modify(iter, &BackgroundWorkerList)
 	{
 		RegisteredBgWorker *rw;
