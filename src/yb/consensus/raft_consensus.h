@@ -334,9 +334,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   CHECKED_STATUS BecomeLeaderUnlocked();
 
   // Makes the peer become a replica, i.e. a FOLLOWER or a LEARNER.
+  // initial_fd_wait is the initial wait time before the FailureDetector wakes up and triggers a
+  // leader election.
   //
   // The ReplicaState must be locked for configuration change before calling.
-  CHECKED_STATUS BecomeReplicaUnlocked(const std::string& new_leader_uuid);
+  CHECKED_STATUS BecomeReplicaUnlocked(const std::string& new_leader_uuid,
+                                       MonoDelta initial_fd_wait = MonoDelta());
 
   // Updates the state in a replica by storing the received operations in the log
   // and triggering the required operations. This method won't return until all

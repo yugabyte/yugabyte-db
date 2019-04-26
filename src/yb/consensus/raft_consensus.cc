@@ -191,6 +191,11 @@ DEFINE_test_flag(int32, log_change_config_every_n, 1, "How often to log change c
 
 DEFINE_bool(enable_lease_revocation, true, "Enables lease revocation mechanism");
 
+DEFINE_bool(quick_leader_election_on_create, true, "Do we trigger quick leader elections on table "
+                                                   "creation.");
+TAG_FLAG(quick_leader_election_on_create, advanced);
+TAG_FLAG(quick_leader_election_on_create, hidden);
+
 namespace yb {
 namespace consensus {
 
@@ -361,8 +366,6 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForConfigChange(&lock));
 
-    EnableFailureDetector();
-
     // If this is the first term expire the FD immediately so that we have a fast first
     // election, otherwise we just let the timer expire normally.
     MonoDelta initial_delta = MonoDelta();
@@ -372,17 +375,22 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
       // election timer). We do it this way instead of immediately running an
       // election to get a higher likelihood of enough servers being available
       // when the first one attempts an election to avoid multiple election
-      // cycles on startup, while keeping that "waiting period" random.
+      // cycles on startup, while keeping that "waiting period" random. If there is only one peer,
+      // trigger an election right away.
       if (PREDICT_TRUE(FLAGS_enable_leader_failure_detection)) {
         LOG_WITH_PREFIX(INFO) << "Consensus starting up: Expiring fail detector timer "
                                  "to make a prompt election more likely";
-        initial_delta = MonoDelta::FromMilliseconds(
-            rng_.Uniform(FLAGS_raft_heartbeat_interval_ms));
+        // Gating quick leader elections on table creation since prompter leader elections are
+        // more likely to fail due to uninitialized peers or conflicting elections, which could
+        // have unforseen consequences.
+        if (FLAGS_quick_leader_election_on_create) {
+          initial_delta = (state_->GetCommittedConfigUnlocked().peers_size() == 1) ?
+              MonoDelta::kZero :
+              MonoDelta::FromMilliseconds(rng_.Uniform(FLAGS_raft_heartbeat_interval_ms));
+        }
       }
     }
-    EnableFailureDetector(initial_delta);
-
-    RETURN_NOT_OK(BecomeReplicaUnlocked(std::string()));
+    RETURN_NOT_OK(BecomeReplicaUnlocked(std::string(), initial_delta));
   }
 
   RETURN_NOT_OK(ExecuteHook(POST_START));
@@ -857,7 +865,8 @@ Status RaftConsensus::BecomeLeaderUnlocked() {
   return Status::OK();
 }
 
-Status RaftConsensus::BecomeReplicaUnlocked(const std::string& new_leader_uuid) {
+Status RaftConsensus::BecomeReplicaUnlocked(const std::string& new_leader_uuid,
+                                            MonoDelta initial_fd_wait) {
   LOG_WITH_PREFIX(INFO)
       << "Becoming Follower/Learner. State: " << state_->ToStringUnlocked()
       << ", new leader: " << new_leader_uuid;
@@ -869,7 +878,7 @@ Status RaftConsensus::BecomeReplicaUnlocked(const std::string& new_leader_uuid) 
   state_->ClearLeaderUnlocked();
 
   // FD should be running while we are a follower.
-  EnableFailureDetector();
+  EnableFailureDetector(initial_fd_wait);
 
   // Now that we're a replica, we can allow voting for other nodes.
   withhold_votes_until_ = MonoTime::Min();
