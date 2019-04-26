@@ -136,6 +136,12 @@ class PTExpr : public TreeNode {
     return ql_type_;
   }
 
+  // This is only useful during pre-exec phase.
+  // Normally you'd want to use CheckExpectedTypeCompatibility instead.
+  virtual void set_expected_internal_type(InternalType expected_internal_type) {
+    expected_internal_type_ = expected_internal_type;
+  }
+
   // Expression return result set column type in QL format.
   virtual void rscol_type_PB(QLTypePB *pb_type ) const {
     ql_type_->ToQLTypePB(pb_type);

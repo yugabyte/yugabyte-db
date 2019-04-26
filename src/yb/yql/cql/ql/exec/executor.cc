@@ -171,7 +171,30 @@ Status Executor::Execute(const ParseTree& parse_tree, const StatementParameters&
   // Prepare execution context and execute the parse tree's root node.
   exec_contexts_.emplace_back(parse_tree, params);
   exec_context_ = &exec_contexts_.back();
-  return ProcessStatementStatus(parse_tree, ExecTreeNode(parse_tree.root().get()));
+  auto root_node = parse_tree.root().get();
+  RETURN_NOT_OK(PreExecTreeNode(root_node));
+  return ProcessStatementStatus(parse_tree, ExecTreeNode(root_node));
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::PreExecTreeNode(TreeNode *tnode) {
+  if (!tnode) {
+    return Status::OK();
+  } else if (tnode->opcode() == TreeNodeOpcode::kPTInsertStmt) {
+    return PreExecTreeNode(static_cast<PTInsertStmt*>(tnode));
+  } else {
+    return Status::OK();
+  }
+}
+
+Status Executor::PreExecTreeNode(PTInsertStmt *tnode) {
+  if (tnode->InsertingValue()->opcode() == TreeNodeOpcode::kPTInsertJsonClause) {
+    // We couldn't resolve JSON clause bind variable until now
+    return PreExecTreeNode(static_cast<PTInsertJsonClause*>(tnode->InsertingValue().get()));
+  } else {
+    return Status::OK();
+  }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -992,9 +1015,17 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
   }
 
   // Set the values for columns.
-  s = ColumnArgsToPB(tnode, req);
-  if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+  if (tnode->InsertingValue()->opcode() == TreeNodeOpcode::kPTInsertJsonClause) {
+    // Error messages are already formatted and don't need additional wrap
+    RETURN_NOT_OK(
+        InsertJsonClauseToPB(tnode,
+                             static_cast<PTInsertJsonClause*>(tnode->InsertingValue().get()),
+                             req));
+  } else {
+    s = ColumnArgsToPB(tnode, req);
+    if (PREDICT_FALSE(!s.ok())) {
+      return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    }
   }
 
   // Setup the column values that need to be read.
@@ -2157,6 +2188,18 @@ void Executor::Reset() {
   result_ = nullptr;
   cb_.Reset();
   returns_status_batch_opt_ = boost::none;
+}
+
+QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_desc) {
+  if (col_desc.is_hash()) {
+    return req->add_hashed_column_values();
+  } else if (col_desc.is_primary()) {
+    return req->add_range_column_values();
+  } else {
+    QLColumnValuePB *col_pb = req->add_column_values();
+    col_pb->set_column_id(col_desc.id());
+    return col_pb->mutable_expr();
+  }
 }
 
 }  // namespace ql

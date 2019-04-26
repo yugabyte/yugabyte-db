@@ -81,8 +81,10 @@ CHECKED_STATUS PTInsertStmt::AnalyzeInsertingValue(PTCollection* inserting_value
   RETURN_NOT_OK(inserting_value->Analyze(sem_context));
   if (auto values_clause = dynamic_cast<PTInsertValuesClause*>(inserting_value)) {
     return AnanlyzeValuesClause(values_clause, sem_context);
+  } else if (auto json_clause = dynamic_cast<PTInsertJsonClause*>(inserting_value)) {
+    return AnanlyzeJsonClause(json_clause, sem_context);
   } else {
-    return STATUS(InternalError, "Clause can only be VALUES");
+    return STATUS(InternalError, "Clause can be either VALUES or JSON");
   }
 }
 
@@ -196,6 +198,18 @@ CHECKED_STATUS PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_c
     }
   }
 
+  return Status::OK();
+}
+
+CHECKED_STATUS PTInsertStmt::AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
+                                                SemContext* sem_context) {
+  // Since JSON could be a PTBindVar, at this stage we don't have a clue about a JSON we've got
+  // other than its type is a string.
+  // However, INSERT JSON should initialize all non-mentioned columns to NULLs
+  // (prevented by appending DEFAULT UNSET)
+  RETURN_NOT_OK(InitRemainingColumns(json_clause->IsDefaultNull(), sem_context));
+  RETURN_NOT_OK(json_clause->Analyze(sem_context));
+  AddRefForAllColumns();
   return Status::OK();
 }
 

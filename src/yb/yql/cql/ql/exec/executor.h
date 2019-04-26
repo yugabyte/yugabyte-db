@@ -85,6 +85,23 @@ class Executor : public QLExprExecutor {
   // Execute a parse tree.
   CHECKED_STATUS Execute(const ParseTree& parse_tree, const StatementParameters& params);
 
+  // Run runtime analysis and prepare for execution within the execution context.
+  // Serves for processing things unavailable for initial semantic analysis.
+  CHECKED_STATUS PreExecTreeNode(TreeNode *tnode);
+
+  CHECKED_STATUS PreExecTreeNode(PTInsertStmt *tnode);
+
+  CHECKED_STATUS PreExecTreeNode(PTInsertJsonClause *tnode);
+
+  // Convert JSON value to an expression acording to its given expected type
+  Result<PTExpr::SharedPtr> ConvertJsonToExpr(const rapidjson::Value& json_value,
+                                              const QLType::SharedPtr& type,
+                                              const YBLocation::SharedPtr& loc);
+
+  Result<PTExpr::SharedPtr> ConvertJsonToExprInner(const rapidjson::Value& json_value,
+                                                   const QLType::SharedPtr& type,
+                                                   const YBLocation::SharedPtr& loc);
+
   // Execute any TreeNode. This function determines how to execute a node.
   CHECKED_STATUS ExecTreeNode(const TreeNode *tnode);
 
@@ -306,6 +323,11 @@ class Executor : public QLExprExecutor {
   // Convert column arguments to protobuf.
   CHECKED_STATUS ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req);
 
+  // Convert INSERT JSON clause to protobuf.
+  CHECKED_STATUS InsertJsonClauseToPB(const PTInsertStmt *insert_stmt,
+                                      const PTInsertJsonClause *json_clause,
+                                      QLWriteRequestPB *req);
+
   //------------------------------------------------------------------------------------------------
   // Where clause evaluation.
 
@@ -472,6 +494,13 @@ class Executor : public QLExprExecutor {
 
   FlushAsyncTask flush_async_task_;
 };
+
+// Normalize the JSON object key according to CQL rules:
+// Key is made lowercase unless it's double-quoted - in which case double quotes are removed
+std::string NormalizeJsonKey(const std::string& key);
+
+// Create an appropriate QLExpressionPB depending on a column description
+QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_desc);
 
 }  // namespace ql
 }  // namespace yb

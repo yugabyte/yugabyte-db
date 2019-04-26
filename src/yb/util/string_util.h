@@ -27,6 +27,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/util/slice.h"
 #include "yb/util/tostring.h"
 
 namespace yb {
@@ -91,13 +92,13 @@ void AppendItem(vector<string>* dest, const T& t, const Args&... args) {
 } // namespace details
 
 // Whether the string contains (arbitrary long) integer value
-bool IsBigInteger(const std::string& s);
+bool IsBigInteger(const Slice& s);
 
 // Whether the string contains (arbitrary long) decimal or integer value
-bool IsDecimal(const std::string& s);
+bool IsDecimal(const Slice& s);
 
 // Whether the string is "true"/"false" (case-insensitive)
-bool IsBoolean(const std::string& s);
+bool IsBoolean(const Slice& s);
 
 using StringVector = std::vector<std::string>;
 StringVector StringSplit(const std::string& arg, char delim);
