@@ -28,14 +28,19 @@ class RpcTestEnt : public RpcTestBase {
     secure_context_ = std::make_unique<SecureContext>();
     EXPECT_OK(secure_context_->TEST_GenerateKeys(512, "127.0.0.1"));
     TestServerOptions options;
-    options.messenger = CreateSecureMessenger("TestServer");
-    StartTestServerWithGeneratedCode(&server_hostport_, options);
+    StartTestServerWithGeneratedCode(
+        CreateSecureMessenger("TestServer"), &server_hostport_, options);
     client_messenger_ = CreateSecureMessenger("Client");
-    proxy_cache_ = std::make_unique<ProxyCache>(client_messenger_);
+    proxy_cache_ = std::make_unique<ProxyCache>(client_messenger_.get());
+  }
+
+  void TearDown() override {
+    client_messenger_->Shutdown();
+    RpcTestBase::TearDown();
   }
 
  protected:
-  std::shared_ptr<Messenger> CreateSecureMessenger(const std::string& name) {
+  std::unique_ptr<Messenger> CreateSecureMessenger(const std::string& name) {
     auto builder = CreateMessengerBuilder(name);
     builder.SetListenProtocol(SecureStreamProtocol());
     builder.AddStreamFactory(
@@ -47,7 +52,7 @@ class RpcTestEnt : public RpcTestBase {
 
   HostPort server_hostport_;
   std::unique_ptr<SecureContext> secure_context_;
-  std::shared_ptr<Messenger> client_messenger_;
+  std::unique_ptr<Messenger> client_messenger_;
   std::unique_ptr<ProxyCache> proxy_cache_;
 };
 

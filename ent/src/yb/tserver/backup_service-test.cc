@@ -3,6 +3,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
 
+#include "yb/rpc/messenger.h"
+
 #include "yb/tablet/tablet.h"
 
 #include "yb/tserver/backup.proxy.h"
