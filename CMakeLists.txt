@@ -381,7 +381,6 @@ function(add_executable name)
   endif()
 endfunction()
 
-
 macro(YB_SETUP_SANITIZER SANITIZER)
   if(NOT (("${COMPILER_FAMILY}" STREQUAL "clang") OR
           ("${COMPILER_FAMILY}" STREQUAL "gcc" AND "${COMPILER_VERSION}" VERSION_GREATER "4.8")))
@@ -879,7 +878,7 @@ GCC include dir tried: ${LINUXBREW_CXX_INCLUDE_DIR}")
   include_directories(SYSTEM ${LINUXBREW_CXX_INCLUDE_DIR}/x86_64-unknown-linux-gnu)
 endif()
 
-if (USING_LINUXBREW AND IS_CLANG)
+if (USING_LINUXBREW)
   include_directories(SYSTEM ${LINUXBREW_DIR}/include)
   ADD_LINKER_FLAGS("-latomic")
 endif()
