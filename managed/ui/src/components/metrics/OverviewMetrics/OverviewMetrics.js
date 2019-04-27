@@ -8,15 +8,14 @@ import { YBLoading } from '../../common/indicators';
 import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 import { YBPanelLegend } from '../../common/descriptors';
 import { YBWidget } from '../../panels';
-import { Col } from 'react-bootstrap';
 import { METRIC_COLORS } from '../MetricsConfig';
 
 const panelTypes = {
   overview: {title: "Overview",
     metrics: ["total_rpcs_per_sec",
       "total_ops_latency",
-      "cpu_usage", 
-      "disk_usage", "memory_usage"]}
+      "cpu_usage",
+      "disk_usage"]}
 };
 
 class OverviewMetrics extends Component {
@@ -64,13 +63,13 @@ class OverviewMetrics extends Component {
 
   render() {
     const { type, graph: { metrics } } = this.props;
-    let panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
-      return (<Col lg={4} md={6} sm={6} xs={12} key={idx}><YBWidget key={type+idx}
+    let panelItem = panelTypes[type].metrics.filter((metricKey) => metricKey !== "disk_usage" && metricKey !== "cpu_usage").map(function(metricKey, idx) {
+      return (<YBWidget key={type+idx}
         noMargin
         body={
           <YBLoading />
         }
-      /></Col>);
+      />);
     });
     if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
       /* Logic here is, since there will be multiple instances of GraphPanel
@@ -94,28 +93,26 @@ class OverviewMetrics extends Component {
             });
           }
           return (
-            <Col lg={4} md={6} sm={6} xs={12} key={idx}>
-              <YBWidget
-                noMargin
-                headerRight={
-                  metricKey === "disk_usage" ? null :
-                  <YBPanelLegend data={legendData} />
-                }
-                headerLeft={metrics[type][metricKey].layout.title}
-                body={metricKey === "disk_usage" ?
-                  <DiskUsagePanel 
-                    metric={metrics[type][metricKey]}
-                    className={"disk-usage-container"}
-                  /> :
-                  <MetricsPanelOverview 
-                    metricKey={metricKey}
-                    metric={metrics[type][metricKey]}
-                    className={"metrics-panel-container"}
-                    width={width}
-                  />
-                }
-              />
-            </Col>
+            <YBWidget key={idx}
+              noMargin
+              headerRight={
+                metricKey === "disk_usage" ? null :
+                <YBPanelLegend data={legendData} />
+              }
+              headerLeft={metrics[type][metricKey].layout.title}
+              body={metricKey === "disk_usage" ?
+                <DiskUsagePanel
+                  metric={metrics[type][metricKey]}
+                  className={"disk-usage-container"}
+                /> :
+                <MetricsPanelOverview
+                  metricKey={metricKey}
+                  metric={metrics[type][metricKey]}
+                  className={"metrics-panel-container"}
+                  width={width}
+                />
+              }
+            />
           );
         }
         return null;

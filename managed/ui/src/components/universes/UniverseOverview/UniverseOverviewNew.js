@@ -1,11 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component, PureComponent } from 'react';
+import React, { Component, PureComponent, Fragment } from 'react';
 import { Link } from 'react-router';
 
 import { Row, Col } from 'react-bootstrap';
 import PropTypes from 'prop-types';
-import { FormattedDate } from 'react-intl';
+import { FormattedDate, FormattedRelative } from 'react-intl';
 import { ClusterInfoPanelContainer, YBWidget } from '../../panels';
 import { OverviewMetricsContainer, StandaloneMetricsPanelContainer, DiskUsagePanel, CpuUsagePanel } from '../../metrics';
 import { YBResourceCount, YBCost, DescriptionList, YBCopyButton } from 'components/common/descriptors';
@@ -38,7 +38,7 @@ class DatabasePanel extends PureComponent {
     const primaryCluster = getPrimaryCluster(clusters);
     const userIntent = primaryCluster && primaryCluster.userIntent;
     const universeId = universeInfo.universeUUID;
-    
+
     const formattedCreationDate = (
       <FormattedDate value={universeInfo.creationDate} year='numeric' month='long' day='2-digit'
                      hour='2-digit' minute='2-digit' second='2-digit' timeZoneName='short' />
@@ -51,13 +51,11 @@ class DatabasePanel extends PureComponent {
     const primaryNodeIPs = primaryNodeDetails
       .filter((node) => isDefinedNotNull(node.cloudInfo.private_ip) && isDefinedNotNull(node.cloudInfo.public_ip))
       .map((node) => ({ privateIP: node.cloudInfo.private_ip, publicIP: node.cloudInfo.public_ip }));
-    
-    const universeIdData = <FlexContainer><FlexGrow style={{overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1, minWidth: 0 }}>{universeId}</FlexGrow><FlexGrow power={100} style={{position: "relative", flexShrink: 0, minWidth: "24px", flexBasis: "24px" }}><YBCopyButton className={"btn-copy-round"} text={universeId}><span className={"fa fa-clone"}></span></YBCopyButton></FlexGrow></FlexContainer>;
+
     const ycqlServiceUrl = getUniverseEndpoint(universeId) + "/yqlservers";
     const yedisServiceUrl = getUniverseEndpoint(universeId) + "/redisservers";
     const universeInfoItems = [
       {name: "Service endpoints", data: <span>{this.renderEndpointUrl(ycqlServiceUrl,"YCQL")} &nbsp;/&nbsp; {this.renderEndpointUrl(yedisServiceUrl,"YEDIS")}</span>},
-      {name: "Universe ID", data: universeIdData},
       {name: "Launch Time", data: formattedCreationDate},
     ];
 
@@ -73,7 +71,7 @@ class DatabasePanel extends PureComponent {
         </FlexContainer>);
       universeInfoItems.push({name: "Hosted Zone Name", data: dnsNameData });
     }
-    
+
     return (
       <Row className={"overview-widget-database"}>
         <Col xs={6} className="centered" >
@@ -98,7 +96,7 @@ class HealthHeart extends PureComponent {
     return (
       <div id="health-heart">
         <span className={`fa fa-heart${status === "loading" ? " status-loading" : ""}`}></span>
-        { status === "success" &&  
+        { status === "success" &&
           <div id="health-heartbeat">
             <svg x="0px" y="0px" viewBox="0 0 41.8 22.2" xmlns="http://www.w3.org/2000/svg" strokeLinejoin="round" strokeLinecap="round" >
               <polyline strokeLinejoin="round" strokeLinecap="round" points="38.3,11.9 29.5,11.9 27.6,9 24,18.6 21.6,3.1 18.6,11.9 2.8,11.9 "/>
@@ -106,7 +104,7 @@ class HealthHeart extends PureComponent {
           </div>
         }
 
-        { status === "error" &&  
+        { status === "error" &&
           <div id="health-droplet">
             <svg x="0px" y="0px" width="264.564px" height="264.564px" viewBox="0 0 264.564 264.564" xmlns="http://www.w3.org/2000/svg" strokeLinejoin="round" strokeLinecap="round" >
               <path strokeLinejoin="round" strokeLinecap="round" d="M132.281,264.564c51.24,0,92.931-41.681,92.931-92.918c0-50.18-87.094-164.069-90.803-168.891L132.281,0l-2.128,2.773 c-3.704,4.813-90.802,118.71-90.802,168.882C39.352,222.883,81.042,264.564,132.281,264.564z"/>
@@ -120,11 +118,12 @@ class HealthHeart extends PureComponent {
 
 class HealthInfoPanel extends PureComponent {
   static propTypes = {
-    healthCheck: PropTypes.object.isRequired
+    healthCheck: PropTypes.object.isRequired,
+    universeInfo: PropTypes.object.isRequired
   };
 
   render() {
-    const { healthCheck } = this.props;
+    const { healthCheck, universeInfo } = this.props;
     if (getPromiseState(healthCheck).isSuccess()) {
       const healthCheckData = JSON.parse([...healthCheck.data].reverse()[0]);
       const lastUpdateDate = moment(healthCheckData.timestamp);
@@ -135,31 +134,36 @@ class HealthInfoPanel extends PureComponent {
         if (check.has_error) errorNodesCounter++;
       });
 
+      const errorText = errorNodesCounter + " " + pluralize('Error', errorNodesCounter);
+      let errorSpan = <span className="text-red text-light">{errorText}</span>;
+      let errorHeader = <span className="fa fa-exclamation-triangle text-red" />;
+      if (errorNodesCounter && isNonEmptyObject(universeInfo)) {
+        errorSpan = <Link className="text-red text-light" to={`/universes/${universeInfo.universeUUID}?tab=health`}>{errorText}</Link>;
+        errorHeader = <Link className="fa fa-exclamation-triangle text-red" to={`/universes/${universeInfo.universeUUID}?tab=health`}/>;
+      }
+
       const healthCheckInfoItems = [
-        {name: "", data: errorNodesCounter 
-          ? <span className="text-red text-light">{errorNodesCounter + " " + pluralize('Error', errorNodesCounter)}</span>
+        {name: "", data: errorNodesCounter
+          ? errorSpan
           : (totalNodesCounter
             ? <span className="text-green text-light"><i className={"fa fa-check"}></i> All running fine</span>
             : <span className="text-light">No finished check</span>
           )
         },
         {name: "", data: lastUpdateDate
-          ? <span className="text-lightgray text-light"><i className={"fa fa-clock-o"}></i> Updated <span className={"text-dark text-normal"}><FormattedDate
-          value={lastUpdateDate}
-          year='numeric'
-          month='short'
-          day='2-digit' /></span></span>
+          ? <span className="text-lightgray text-light"><i className={"fa fa-clock-o"}></i> Updated <span className={"text-dark text-normal"}><FormattedRelative
+          value={lastUpdateDate} /></span></span>
           : null
         },
       ];
-      
+
       return (<YBWidget
         size={1}
         className={"overview-widget-cluster-primary"}
         headerLeft={
-          "Health check"
+          "Health Check"
         }
-        headerRight={errorNodesCounter ? <span className={"fa fa-exclamation-triangle text-red"}></span> : null}
+        headerRight={errorNodesCounter ? errorHeader : null}
         body={
           <FlexContainer className={"centered"} direction={"column"}>
             <FlexGrow>
@@ -172,7 +176,7 @@ class HealthInfoPanel extends PureComponent {
         }
       />);
     }
-    
+
     const errorContent = {};
     if (getPromiseState(healthCheck).isEmpty()) {
       errorContent.heartStatus = "empty";
@@ -190,7 +194,7 @@ class HealthInfoPanel extends PureComponent {
       size={1}
       className={"overview-widget-cluster-primary"}
       headerLeft={
-        "Health check"
+        "Health Check"
       }
       body={
         <FlexContainer className={"centered"} direction={"column"}>
@@ -284,7 +288,7 @@ export default class UniverseOverviewNew extends Component {
         }
       });
     }
-    return (<Col lg={4} md={6} xs={12}>
+    return (
       <YBWidget
         size={1}
         className={"overview-widget-tables"}
@@ -307,35 +311,36 @@ export default class UniverseOverviewNew extends Component {
             </FlexGrow>
           </FlexContainer>
         }
-      />
-    </Col>);
+      />);
   }
 
-  getHealthWidget = (healthCheck) => {
+  getHealthWidget = (healthCheck, universeInfo) => {
     return (<Col lg={2} md={4} sm={4} xs={6}>
-      <HealthInfoPanel healthCheck={healthCheck} />
+      <HealthInfoPanel healthCheck={healthCheck} universeInfo={universeInfo} />
     </Col>);
   }
 
-  getDiskUsageWidget = () => {
-    return (<Col lg={4} md={6} xs={12}>
+  getDiskUsageWidget = (universeInfo) => {
+    // For kubernetes the disk usage would be in container tab, rest it would be server tab.
+    const subTab = isKubernetesUniverse(universeInfo) ? "container" : "server";
+    return (
       <StandaloneMetricsPanelContainer metricKey="disk_usage" type="overview">
         { props => {
           return (<YBWidget
             noMargin
-            headerRight={"Details"
+            headerRight={
+              isNonEmptyObject(universeInfo) ? <Link to={`/universes/${universeInfo.universeUUID}?tab=metrics&subtab=` + subTab}>Details</Link> : null
             }
             headerLeft={props.metric.layout.title}
             body={
-              <DiskUsagePanel 
+              <DiskUsagePanel
                 metric={props.metric}
                 className={"disk-usage-container"}
               />
             }
           />);
         }}
-      </StandaloneMetricsPanelContainer>
-    </Col>);
+      </StandaloneMetricsPanelContainer>);
   }
 
 
@@ -347,7 +352,7 @@ export default class UniverseOverviewNew extends Component {
             noMargin
             headerLeft={"CPU Usage"}
             body={
-              <CpuUsagePanel 
+              <CpuUsagePanel
                 metric={props.metric}
                 className={"disk-usage-container"}
               />
@@ -361,7 +366,7 @@ export default class UniverseOverviewNew extends Component {
   getRegionMapWidget = (universeInfo) => {
 
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
-    
+
     const mapWidget = (
       <YBWidget
         numNode
@@ -372,26 +377,18 @@ export default class UniverseOverviewNew extends Component {
         }
         body={
           <div>
-            <RegionMap universe={universeInfo} type={"Universe"} />
+            <RegionMap universe={universeInfo} type={"Universe"} setBounds={false} />
             <YBMapLegend title="Data Placement (In AZs)" clusters={universeInfo.universeDetails.clusters} type="Universe"/>
           </div>
         }
       />
     );
 
-    if (this.hasReadReplica(universeInfo)) {
-      return (
-        <Col lg={12} xs={12}>
-          {mapWidget}
-        </Col>
-      );
-    } else {
-      return (
-        <Col lg={4} xs={12}>
-          {mapWidget}
-        </Col>
-      );
-    }
+    return (
+      <Col lg={4} xs={12}>
+        {mapWidget}
+      </Col>
+    );
   }
 
   getDatabaseWidget = (universeInfo, tasks) => {
@@ -399,7 +396,7 @@ export default class UniverseOverviewNew extends Component {
     const { updateAvailable } = this.props;
     const infoWidget = (<YBWidget
         headerLeft={
-          "Database"
+          "Info"
         }
         headerRight={
           updateAvailable ? (
@@ -436,18 +433,27 @@ export default class UniverseOverviewNew extends Component {
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
 
     return (
-      <Row>
-        {this.getDatabaseWidget(universeInfo, tasks)}
-        {this.getPrimaryClusterWidget(universeInfo)}
-        {this.getCostWidget(universeInfo)}
-        {this.getHealthWidget(universe.healthCheck)}
-        {this.getCPUWidget()}
-        {this.getRegionMapWidget(universeInfo)}
-        {this.getDiskUsageWidget()}
-        {this.getTablesWidget(universeInfo)}
-        <OverviewMetricsContainer universeUuid={universeInfo.universeUUID} type={"overview"} origin={"universe"}
+      <Fragment>
+        <Row>
+          {this.getDatabaseWidget(universeInfo, tasks)}
+          {this.getPrimaryClusterWidget(universeInfo)}
+          {this.getCostWidget(universeInfo)}
+          {this.getHealthWidget(universe.healthCheck, universeInfo)}
+          {this.getCPUWidget()}
+        </Row>
+        <Row>
+          {this.getRegionMapWidget(universeInfo)}
+
+          <Col lg={4} xs={12} md={6} sm={6}>
+            <OverviewMetricsContainer universeUuid={universeInfo.universeUUID} type={"overview"} origin={"universe"}
               width={width} nodePrefixes={nodePrefixes} layout={"new"} />
-      </Row>
+          </Col>
+          <Col lg={4} md={6} sm={6} xs={12}>
+            {this.getDiskUsageWidget(universeInfo)}
+            {this.getTablesWidget(universeInfo)}
+          </Col>
+        </Row>
+      </Fragment>
     );
   }
 }

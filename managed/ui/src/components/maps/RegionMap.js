@@ -17,12 +17,14 @@ import { isNonEmptyArray, isDefinedNotNull } from '../../utils/ObjectUtils';
 export default class RegionMap extends Component {
   static propTypes = {
     type: PropTypes.oneOf(['All', 'Universe', 'Region', 'Table']),
-    showLabels: PropTypes.bool
+    showLabels: PropTypes.bool,
+    setBounds: PropTypes.bool
   };
 
   static defaultProps = {
     showLabels: false,
     showRegionLegend: true,
+    setBounds: true
   };
 
   constructor(props) {
@@ -35,7 +37,7 @@ export default class RegionMap extends Component {
   };
 
   render() {
-    const { regions, type, showLabels, showRegionLabels, universe } = this.props;
+    const { regions, type, showLabels, setBounds, showRegionLabels, universe } = this.props;
     let regionMarkers = [];
     let bounds = [[61.96, 105.78], [-21.96, -95.78]];
     let regionData = [];
@@ -77,7 +79,7 @@ export default class RegionMap extends Component {
                                     longitude={region.longitude} type={type}/>);
       });
     }
-    if (isNonEmptyArray(regionLatLngs) && type !== "All") {
+    if (isNonEmptyArray(regionLatLngs) && type !== "All" && setBounds) {
       bounds = regionLatLngs;
     }
     const attribution =
@@ -85,7 +87,7 @@ export default class RegionMap extends Component {
 
     const regionMap = (
       <Map bounds={bounds} boundsOptions={{padding: [50, 50]}}
-           center={[-1, 0]} zoom={1}
+           center={[-1, 0]} zoom={2}
            zoomControl={false} className="yb-region-map" minZoom={1} maxZoom={5}
            touchZoom={false} scrollWheelZoom={false} doubleClickZoom={false}
            draggable={false} onzoomend={this.onMapZoomEnd}>

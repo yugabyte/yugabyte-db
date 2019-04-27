@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import { GraphPanelHeaderContainer, GraphPanelContainer } from '../../metrics';
 import PropTypes from 'prop-types';
 import { PanelGroup } from 'react-bootstrap';
+import { browserHistory } from 'react-router';
 
 const graphPanelTypes = {
   "universe": {
@@ -36,8 +37,12 @@ export default class CustomerMetricsPanel extends Component {
 
   render() {
     const { origin, nodePrefixes, width, tableName, isKubernetesUniverse } = this.props;
+    const location = browserHistory.getCurrentLocation();
+    const currentQuery = location.query;
     const graphPanelContainers = graphPanelTypes[origin].data.map(function (type, idx) {
-      return (<GraphPanelContainer key={idx} isOpen={graphPanelTypes[origin].isOpen[idx]} type={type} width={width}
+      // if we have subtab query param, then we would have that metric tab open by default
+      const isOpen = currentQuery.subtab ? type === currentQuery.subtab : graphPanelTypes[origin].isOpen[idx];
+      return (<GraphPanelContainer key={idx} isOpen={isOpen} type={type} width={width}
                   nodePrefixes={nodePrefixes} tableName={tableName} isKubernetesUniverse={isKubernetesUniverse} />);
     });
 
