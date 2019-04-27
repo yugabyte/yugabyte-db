@@ -4,19 +4,24 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 import './MetricsPanel.scss';
+import Measure from 'react-measure';
 import _ from 'lodash';
 import { METRIC_FONT } from '../MetricsConfig';
 
 const Plotly = require('plotly.js/lib/core');
 
-const WIDTH_OFFSET = 0;
-const MAX_GRAPH_WIDTH_PX = 600;
-const GRAPH_GUTTER_WIDTH_PX = 15;
-
 export default class MetricsPanelOverview extends Component {
   static propTypes = {
     metric: PropTypes.object.isRequired,
     metricKey: PropTypes.string.isRequired
+  }
+
+  constructor(props) {
+    super(props);
+    this.state = {
+      graphMounted:false,
+      dimensions: {},
+    };
   }
 
   componentDidMount() {
@@ -36,8 +41,8 @@ export default class MetricsPanelOverview extends Component {
       });
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
-      metric.layout.width = this.getGraphWidth(this.props.width || 1200);
-      metric.layout.height = 135;
+      metric.layout.width = this.state.dimensions.width || 300;
+      metric.layout.height = 145;
       metric.layout.title = "";
       metric.layout.showlegend = false;
       metric.layout.margin = {
@@ -95,28 +100,23 @@ export default class MetricsPanelOverview extends Component {
         metric.layout.yaxis = {range: [0, 2], color: '#444444', linecolor: '#eee'};
       }
 
+      this.setState({graphMounted: true});
       Plotly.newPlot(metricKey, metric.data, metric.layout, {displayModeBar: false});
     }
   }
 
-  componentWillReceiveProps(newProps) {
-    if (newProps.width !== this.props.width) {
-      Plotly.relayout(this.props.metricKey, {width: this.getGraphWidth(newProps.width)});
-    }
-  }
-
-  getGraphWidth(containerWidth) {
-    const width = containerWidth - WIDTH_OFFSET+25+Math.round(16000/containerWidth);
-    // TODO workaround before bootstrap 4
-    const columnCount = Math.ceil(width / MAX_GRAPH_WIDTH_PX) > 3 ? 3 : Math.ceil(width / MAX_GRAPH_WIDTH_PX);
-    return Math.floor(width / columnCount) - GRAPH_GUTTER_WIDTH_PX;
+  onResize(dimensions) {
+    this.setState({dimensions});
+    if (this.state.graphMounted) Plotly.relayout(this.props.metricKey, {width: dimensions.width});
   }
 
   render() {
     return (
-      <div id={this.props.metricKey} className="metrics-panel">
-        <div />
-      </div>
+      <Measure onMeasure={this.onResize.bind(this)}>
+        <div id={this.props.metricKey} className="metrics-panel">
+          <div />
+        </div>
+      </Measure>
     );
   }
 }

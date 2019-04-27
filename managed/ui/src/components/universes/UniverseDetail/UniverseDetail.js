@@ -8,7 +8,7 @@ import { CustomerMetricsPanel } from '../../metrics';
 import { TaskProgressContainer, TaskListTable } from '../../tasks';
 import { RollingUpgradeFormContainer } from 'components/common/forms';
 import { UniverseFormContainer, UniverseStatusContainer, NodeDetailsContainer,
-         DeleteUniverseContainer, UniverseAppsModal, UniverseOverviewContainer, UniverseOverviewContainerNew } from '../../universes';
+         DeleteUniverseContainer, UniverseAppsModal, UniverseOverviewContainerNew } from '../../universes';
 import { YBButton } from '../../common/forms/fields';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsPanel } from '../../panels';
@@ -20,7 +20,7 @@ import { hasLiveNodes } from 'utils/UniverseUtils';
 
 import { YBLoading, YBErrorIndicator } from '../../common/indicators';
 import { mouseTrap } from 'react-mousetrap';
-import {TASK_SHORT_TIMEOUT} from '../../tasks/constants';
+import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import UniverseHealthCheckList from './UniverseHealthCheckList/UniverseHealthCheckList.js';
 
 import './UniverseDetail.scss';
@@ -116,12 +116,11 @@ class UniverseDetail extends Component {
       showSoftwareUpgradesModal,
       showGFlagsModal,
       showDeleteUniverseModal,
-      closeModal,
-      currentCustomer
+      closeModal
     } = this.props;
 
     const isReadOnlyUniverse = getPromiseState(currentUniverse).isSuccess() && currentUniverse.data.universeDetails.capability === "READ_ONLY";
-    
+
     if (pathname === "/universes/create") {
       return <UniverseFormContainer type="Create"/>;
     }
@@ -132,7 +131,7 @@ class UniverseDetail extends Component {
     }
     if (isNonEmptyObject(query) && query.edit && query.async) {
       if (isReadOnlyUniverse) {
-        // not fully legit but mandatory fallback for manually edited query 
+        // not fully legit but mandatory fallback for manually edited query
         this.transitToDefaultRoute();
       }
       else {
@@ -141,7 +140,7 @@ class UniverseDetail extends Component {
     }
     if (isNonEmptyObject(query) && query.edit) {
       if (isReadOnlyUniverse) {
-        // not fully legit but mandatory fallback for manually edited query 
+        // not fully legit but mandatory fallback for manually edited query
         this.transitToDefaultRoute();
       }
       else {
@@ -160,7 +159,7 @@ class UniverseDetail extends Component {
       //common tabs for every universe
       ...[
         <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
-          {query.layout === 'new' ? <UniverseOverviewContainerNew width={width} universe={universe} updateAvailable={updateAvailable} showSoftwareUpgradesModal={showSoftwareUpgradesModal} /> : <UniverseOverviewContainer width={width} currentUniverse={currentUniverse} customer={currentCustomer} />}
+          <UniverseOverviewContainerNew width={width} universe={universe} updateAvailable={updateAvailable} showSoftwareUpgradesModal={showSoftwareUpgradesModal} />
         </Tab>,
         <Tab eventKey={"tables"} title="Tables" key="tables-tab" mountOnEnter={true} unmountOnExit={true}>
           <ListTablesContainer/>
@@ -203,7 +202,7 @@ class UniverseDetail extends Component {
     );
 
     return (
-      <Grid id="page-wrapper" fluid={true} className={`universe-details ${query.layout === 'new' ? "universe-details-new" : ""}`}>
+      <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new"}`}>
         <Row>
           <Col lg={10} sm={8} xs={6}>
 
@@ -230,7 +229,7 @@ class UniverseDetail extends Component {
                   <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
                     Upgrade Software
                   </YBLabelWithIcon>
-                  { this.showUpgradeMarker() ? <span className="badge badge-pill pull-right">{updateAvailable}</span> : ""} 
+                  { this.showUpgradeMarker() ? <span className="badge badge-pill pull-right">{updateAvailable}</span> : ""}
                 </MenuItem>
                 {!isReadOnlyUniverse && <MenuItem eventKey="2" onClick={this.onEditReadReplicaButtonClick} >
                   <YBLabelWithIcon icon="fa fa-copy fa-fw">
