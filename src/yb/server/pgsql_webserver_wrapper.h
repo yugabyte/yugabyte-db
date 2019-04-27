@@ -13,7 +13,13 @@
 #ifndef YB_SERVER_PGSQL_WEBSERVER_WRAPPER_H
 #define YB_SERVER_PGSQL_WEBSERVER_WRAPPER_H
 
+#ifdef __cplusplus
+#include <atomic>
+using std::atomic_ulong;
+#else
 #include <stdatomic.h>
+#endif
+
 #include "yb/util/ybc_util.h"
 
 #ifdef __cplusplus
