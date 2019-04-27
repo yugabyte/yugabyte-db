@@ -1128,7 +1128,7 @@ parse_table_identifier(List *qualified_tables, char separator, List **select_tab
 		 * schema named "*" thus this test should be before we remove the
 		 * escape character.
 		 */
-		if (str[0] == '*' || str[1] == '.')
+		if (str[0] == '*' && str[1] == '.')
 			t->allschemas = true;
 		else
 			t->allschemas = false;
