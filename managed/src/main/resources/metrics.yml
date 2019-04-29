@@ -778,38 +778,6 @@ tserver_handler_latency:
       #ticksuffix: "&nbsp;ms"
       ticksuffix: "&nbsp;\u00B5s"
 
-total_rpcs_per_sec:
-  metric: "rpc_latency_count"
-  function: "irate|sum"
-  range: "1m"
-  filters:
-    export_type: "tserver_export"
-    server_type: "yb_tserver"
-    service_type: "TabletServerService"
-    service_method: "Write|Read|Scan"
-  group_by: "service_method"
-  layout:
-    title: "Total RPCs / Sec"
-    xaxis:
-      type: "date"
-
-total_ops_latency:
-  metric: "rpc_latency.avg"
-  function: "irate|avg"
-  range: "1m"
-  filters:
-    export_type: "tserver_export"
-    server_type: "yb_tserver"
-    service_type: "TabletServerService"
-    service_method: "Read|Write|Scan"
-  group_by: "service_method"
-  layout:
-    title: "Total Op Latency"
-    xaxis:
-      type: "date"
-    yaxis:
-      ticksuffix: "&nbsp;\u00B5s"
-
 tserver_rpcs_per_sec_per_node:
   metric: "rpc_latency_count"
   function: "irate|avg"
