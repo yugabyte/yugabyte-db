@@ -219,7 +219,9 @@ class Builder:
         os.environ['PATH'] = os.path.join(self.tp_installed_common_dir, 'bin') + ':' + \
                                  os.environ['PATH']
         self.build(BUILD_TYPE_COMMON)
-        self.build(BUILD_TYPE_UNINSTRUMENTED)
+        if is_linux():
+            self.build(BUILD_TYPE_UNINSTRUMENTED)
+        self.build(BUILD_TYPE_CLANG_UNINSTRUMENTED)
         if is_linux():
             self.build(BUILD_TYPE_ASAN)
             self.build(BUILD_TYPE_TSAN)
@@ -589,13 +591,12 @@ class Builder:
                 return
 
         self.set_build_type(type)
-        instrumented = type == BUILD_TYPE_ASAN or type == BUILD_TYPE_TSAN
-        self.set_instrumented(instrumented)
+        self.setup_compiler()
         # This is needed at least for glog to be able to find gflags.
         self.add_rpath(os.path.join(self.tp_installed_dir, self.build_type, 'lib'))
         build_group = BUILD_GROUP_COMMON if type == BUILD_TYPE_COMMON else BUILD_GROUP_INSTRUMENTED
         for dep in self.selected_dependencies:
-            if dep.build_group == build_group and dep.should_build(instrumented):
+            if dep.build_group == build_group and dep.should_build(self):
                 self.build_dependency(dep)
 
     def set_build_type(self, type):
@@ -607,42 +608,38 @@ class Builder:
         self.prefix_bin = os.path.join(self.prefix, 'bin')
         self.prefix_lib = os.path.join(self.prefix, 'lib')
         self.prefix_include = os.path.join(self.prefix, 'include')
-        if type in [BUILD_TYPE_COMMON, BUILD_TYPE_UNINSTRUMENTED]:
-            self.set_compiler('gcc')
-        else:
-            self.set_compiler('clang')
+        self.set_compiler('clang' if self.building_with_clang() else 'gcc')
         heading("Building {} dependencies".format(type))
 
-    def set_instrumented(self, flag):
+    def setup_compiler(self):
         self.init_flags()
-        if flag:
-            if self.build_type == BUILD_TYPE_ASAN:
-                self.compiler_flags += ['-fsanitize=address', '-fsanitize=undefined',
-                                        '-DADDRESS_SANITIZER']
-            elif self.build_type == BUILD_TYPE_TSAN:
-                self.compiler_flags += ['-fsanitize=thread', '-DTHREAD_SANITIZER']
-            else:
-                fatal("Wrong instrumentation type: {}".format(self.build_type))
-        if self.build_type == BUILD_TYPE_ASAN or self.build_type == BUILD_TYPE_TSAN:
-            stdlib_suffix = self.build_type if flag else BUILD_TYPE_UNINSTRUMENTED
-            stdlib_path = os.path.join(self.tp_installed_dir, stdlib_suffix, 'libcxx')
-            stdlib_include = os.path.join(stdlib_path, 'include', 'c++', 'v1')
-            stdlib_lib = os.path.join(stdlib_path, 'lib')
-            self.cxx_flags.insert(0, '-nostdinc++')
-            self.cxx_flags.insert(0, '-isystem')
-            self.cxx_flags.insert(1, stdlib_include)
-            self.cxx_flags.insert(0, '-stdlib=libc++')
-            # CLang complains about argument unused during compilation: '-stdlib=libc++' when both
-            # -stdlib=libc++ and -nostdinc++ are specified.
-            self.cxx_flags.insert(0, '-Wno-error=unused-command-line-argument')
-            self.prepend_lib_dir_and_rpath(stdlib_lib)
-        if self.using_linuxbrew and self.compiler_type == 'clang':
+        if is_mac() or not self.building_with_clang():
+            return
+        if self.build_type == BUILD_TYPE_ASAN:
+            self.compiler_flags += ['-fsanitize=address', '-fsanitize=undefined',
+                                    '-DADDRESS_SANITIZER']
+        elif self.build_type == BUILD_TYPE_TSAN:
+            self.compiler_flags += ['-fsanitize=thread', '-DTHREAD_SANITIZER']
+        elif self.build_type == BUILD_TYPE_CLANG_UNINSTRUMENTED:
+            pass
+        else:
+            fatal("Wrong instrumentation type: {}".format(self.build_type))
+        stdlib_suffix = self.build_type
+        stdlib_path = os.path.join(self.tp_installed_dir, stdlib_suffix, 'libcxx')
+        stdlib_include = os.path.join(stdlib_path, 'include', 'c++', 'v1')
+        stdlib_lib = os.path.join(stdlib_path, 'lib')
+        self.cxx_flags.insert(0, '-nostdinc++')
+        self.cxx_flags.insert(0, '-isystem')
+        self.cxx_flags.insert(1, stdlib_include)
+        self.cxx_flags.insert(0, '-stdlib=libc++')
+        # CLang complains about argument unused during compilation: '-stdlib=libc++' when both
+        # -stdlib=libc++ and -nostdinc++ are specified.
+        self.cxx_flags.insert(0, '-Wno-error=unused-command-line-argument')
+        self.prepend_lib_dir_and_rpath(stdlib_lib)
+        if self.using_linuxbrew:
             self.compiler_flags.append('--gcc-toolchain={}'.format(self.linuxbrew_dir))
 
     def build_dependency(self, dep):
-        if self.args.build_type == BUILD_TYPE_UNINSTRUMENTED and \
-           dep.name in ['llvm', 'libcxx', 'include-what-you-use']:
-            return
         if not self.should_rebuild_dependency(dep):
             return
         log("")
@@ -746,6 +743,22 @@ class Builder:
             log("Bootstrapping {} from {}".format(build_dir, src_dir))
             subprocess.check_call(['rsync', '-a', src_dir + '/', build_dir])
         return build_dir
+
+    def is_release_build(self):
+        return self.build_type == BUILD_TYPE_UNINSTRUMENTED or \
+               self.build_type == BUILD_TYPE_CLANG_UNINSTRUMENTED
+
+    def cmake_build_type(self):
+        return 'Release' if self.is_release_build() else 'Debug'
+
+    # Returns true if we are using clang to build current build_type.
+    def building_with_clang(self):
+        return self.build_type == BUILD_TYPE_ASAN or self.build_type == BUILD_TYPE_TSAN or \
+               self.build_type == BUILD_TYPE_CLANG_UNINSTRUMENTED
+
+    # Returns true if we will need clang to complete full thirdparty build, requested by user.
+    def will_need_clang(self):
+        return self.args.build_type != BUILD_TYPE_UNINSTRUMENTED
 
 def main():
     unset_if_set('CC')

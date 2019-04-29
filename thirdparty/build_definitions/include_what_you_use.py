@@ -33,3 +33,7 @@ class IncludeWhatYouUseDependency(Dependency):
                                   '-DBUILD_TOOLS=0',
                                   '-DCMAKE_PREFIX_PATH='.format(builder.prefix),
                                   '-DCMAKE_INSTALL_PREFIX:PATH={}'.format(builder.prefix)])
+
+
+    def should_build(self, builder):
+        return builder.will_need_clang()

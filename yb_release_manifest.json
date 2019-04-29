@@ -22,7 +22,7 @@
           "thirdparty/installed/common/cqlsh/bin/cqlsh",
           "thirdparty/installed/common/cqlsh/bin/cqlsh.py",
           "thirdparty/installed/common/bin/redis-cli",
-          "thirdparty/installed/uninstrumented/bin/pprof"],
+          "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof"],
   "lib"      : ["thirdparty/installed/common/cqlsh/lib/*"],
   "pylib"    : ["thirdparty/installed/common/cqlsh/pylib/*"],
   "%symlinks%": {

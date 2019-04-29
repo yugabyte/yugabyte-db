@@ -42,7 +42,9 @@ BUILD_TYPE_COMMON = 'common'
 BUILD_TYPE_UNINSTRUMENTED = 'uninstrumented'
 BUILD_TYPE_ASAN = 'asan'
 BUILD_TYPE_TSAN = 'tsan'
-BUILD_TYPES = [BUILD_TYPE_COMMON, BUILD_TYPE_UNINSTRUMENTED, BUILD_TYPE_ASAN, BUILD_TYPE_TSAN]
+BUILD_TYPE_CLANG_UNINSTRUMENTED = 'clang_uninstrumented'
+BUILD_TYPES = [BUILD_TYPE_COMMON, BUILD_TYPE_UNINSTRUMENTED, BUILD_TYPE_CLANG_UNINSTRUMENTED,
+               BUILD_TYPE_ASAN, BUILD_TYPE_TSAN]
 
 
 TAR_EXTRACT = 'tar xf {}'
@@ -198,7 +200,7 @@ class Dependency(object):
         self.archive_name = make_archive_name(name, version, self.download_url)
         self.patch_version = 0
 
-    def should_build(self, instrumented):
+    def should_build(self, builder):
         return True
 
 
