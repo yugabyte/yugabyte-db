@@ -14,6 +14,8 @@ import { YBModal } from '../../common/forms/fields';
 import TimelineMax from 'gsap/TimelineMax';
 import { Power1 } from "gsap/all";
 import { getPrimaryCluster, getReadOnlyCluster, getClusterProviderUUIDs, getProviderMetadata } from "../../../utils/UniverseUtils";
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+
 const moment = require('moment');
 
 class CTAButton extends Component {
@@ -55,7 +57,10 @@ class CTAButtonAnimated extends Component {
     this.icons = [];
   }
 
-
+  componentWillUnmount = () => {
+    if (isDefinedNotNull(this.mainTween)) this.mainTween.kill();
+    if (isDefinedNotNull(this.plusTween)) this.plusTween.kill();
+  }
 
   componentDidMount = () => {
     this.plusTween
