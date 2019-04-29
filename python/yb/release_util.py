@@ -16,7 +16,7 @@ import re
 from subprocess import call, check_output
 from xml.dom import minidom
 from yb.command_util import run_program, mkdir_p, copy_deep
-from yb.common_util import get_thirdparty_dir
+from yb.common_util import get_thirdparty_dir, is_macos
 
 RELEASE_MANIFEST_NAME = "yb_release_manifest.json"
 RELEASE_VERSION_FILE = "version.txt"
@@ -74,6 +74,10 @@ class ReleaseUtil(object):
             new_value = os.path.join(get_thirdparty_dir(), thirdparty_prefix_match.group(1))
         # Substitution for BUILD_ROOT.
         new_value = new_value.replace("$BUILD_ROOT", self.build_root)
+        thirdparty_intrumentation = "clang_uninstrumented" if is_macos() else "uninstrumented"
+        new_value = new_value.replace(
+            "$THIRDPARTY_BUILD_SPECIFIC_DIR",
+            os.path.join(get_thirdparty_dir(), "installed", thirdparty_intrumentation))
         if new_value != old_value:
             logging.info("Substituting '{}' -> '{}' in manifest".format(
                 old_value, new_value))

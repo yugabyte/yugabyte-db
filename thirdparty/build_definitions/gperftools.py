@@ -39,5 +39,5 @@ class GPerfToolsDependency(Dependency):
         log_output(log_prefix, ['make', 'clean'])
         log_output(log_prefix, ['make', 'install', '-j', '1'])
 
-    def should_build(self, instrumented):
-        return not instrumented
+    def should_build(self, builder):
+        return builder.is_release_build()

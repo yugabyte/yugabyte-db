@@ -31,8 +31,6 @@ class CassandraCppDriverDependency(Dependency):
         self.patch_strip = 1
 
     def build(self, builder):
-        cmake_build = 'Release' if builder.build_type == BUILD_TYPE_UNINSTRUMENTED else 'Debug'
-
         cxx_flags = []
         if not is_mac():
             cxx_flags = builder.compiler_flags + builder.cxx_flags + builder.ld_flags
@@ -41,7 +39,7 @@ class CassandraCppDriverDependency(Dependency):
 
         builder.build_with_cmake(
                 self,
-                ['-DCMAKE_BUILD_TYPE={}'.format(cmake_build),
+                ['-DCMAKE_BUILD_TYPE={}'.format(builder.cmake_build_type()),
                  '-DCMAKE_POSITION_INDEPENDENT_CODE=On',
                  '-DCMAKE_INSTALL_PREFIX={}'.format(builder.prefix),
                  '-DBUILD_SHARED_LIBS=On'] +
