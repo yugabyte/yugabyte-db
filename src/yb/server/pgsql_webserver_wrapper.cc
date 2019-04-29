@@ -68,8 +68,9 @@ static void PgPrometheusMetricsHandler(const Webserver::WebRequest& req,
 
   PrometheusWriter writer(output);
 
+  // Max size of ybpgm_table name (100 incl \0 char) + max size of "_count"/"_sum" (6 excl \0).
+  char copied_name[106];
   for (int i = 0; i < ybpgm_num_entries; ++i) {
-    char copied_name[105];
     snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_count");
     WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr,
                                         copied_name,
