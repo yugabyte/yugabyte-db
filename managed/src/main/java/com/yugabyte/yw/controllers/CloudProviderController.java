@@ -243,7 +243,7 @@ public class CloudProviderController extends AuthenticatedController {
     Provider provider = null;
     try {
       Map<String, String> config = formData.config;
-      provider = Provider.create(customerUUID, providerCode, formData.name, config);
+      provider = Provider.create(customerUUID, providerCode, formData.name);
       boolean isConfigInProvider = updateKubeConfig(provider, config, false);
       if (isConfigInProvider) {
         kubernetesProvision(provider, config, customerUUID);

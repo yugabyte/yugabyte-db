@@ -378,6 +378,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     Provider provider = Provider.get(taskParams().providerUUID);
     Map<String, String> config = provider.getConfig();
     Map<String, String> azConfig = new HashMap<String, String>();
+    Map<String, String> regionConfig = new HashMap<String, String>();
 
     Universe u = Universe.get(taskParams().universeUUID);
     // TODO: This only takes into account primary cluster for Kuberentes, we need to
@@ -416,6 +417,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
             replicationFactor = isMultiAz ?
                 taskParams().masterAddresses.split(",").length : userIntent.replicationFactor;
             azConfig = AvailabilityZone.get(zone.uuid).getConfig();
+            regionConfig = Region.get(region.uuid).getConfig();
           }
         }
       }
@@ -594,9 +596,21 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     // TODO (Arnav): Update this to use overrides created at the provider, region or
     // zone level.
     Map<String, Object> annotations = new HashMap<String, Object>();
-    if (config.containsKey("KUBECONFIG_ANNOTATIONS")) {
-      annotations =(HashMap<String, Object>) yaml.load(
-          config.get("KUBECONFIG_ANNOTATIONS"));
+    String overridesYAML = null;
+    if (!azConfig.containsKey("OVERRIDES")) {
+      if (!regionConfig.containsKey("OVERRIDES")) {
+        if (config.containsKey("OVERRIDES")) {
+          overridesYAML = config.get("OVERRIDES");
+        }
+      } else {
+        overridesYAML = regionConfig.get("OVERRIDES");
+      }
+    } else {
+      overridesYAML = azConfig.get("OVERRIDES");
+    }
+
+    if (overridesYAML != null) {
+      annotations =(HashMap<String, Object>) yaml.load(overridesYAML);
       if (annotations != null ) {
         overrides.putAll(annotations);
       }
