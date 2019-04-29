@@ -17,4 +17,3 @@ export { default as StandaloneMetricsPanel } from './StandaloneMetricsPanel/Stan
 export { default as StandaloneMetricsPanelContainer } from './StandaloneMetricsPanel/StandaloneMetricsPanelContainer';
 
 export { default as Graph } from './Graph/Graph';
-export { default as LinearGraph } from './Graph/LinearGraph';

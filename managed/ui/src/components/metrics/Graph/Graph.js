@@ -6,6 +6,7 @@ import PropTypes from 'prop-types';
 import { Power2 } from "gsap/all";
 import TweenMax from 'gsap/TweenMax';
 import './Graph.scss';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 
 const colorObj = {
   green: {
@@ -44,7 +45,6 @@ export default class Graph extends Component {
     this.state = {
     };
 
-    //this.initTween = new TweenMax();
     this.values = {
       width: 0,
       color: "#339e34"
@@ -52,6 +52,7 @@ export default class Graph extends Component {
     this.bar = null;
     this.label = null;
     this.counter = { var: 0 };
+    this.initTween = null;
   }
 
   calcColor = (value) => {
@@ -77,7 +78,11 @@ export default class Graph extends Component {
     return color;
   }
 
-  componentDidMount() {
+  componentWillUnmount = () => {
+    if (isDefinedNotNull(this.initTween)) this.initTween.kill();
+  }
+
+  componentDidMount = () => {
     const counter = { var: 0 };
     this.initTween = TweenMax.to(
       counter, 
@@ -89,11 +94,11 @@ export default class Graph extends Component {
             width: Math.round(this.props.value * counter.var * 1000) / 10,
             color: this.calcColor(counter.var * this.props.value),
           };
-          if (this.props.type === "semicircle") {
+          if (this.props.type === "semicircle" && this.bar) {
             TweenMax.set(this.bar, { css: { stroke: this.values.color, strokeDashoffset: 100 - this.values.width}});
           }
 
-          if (this.props.type === "linear") {
+          if (this.props.type === "linear" && this.bar) {
             TweenMax.set(this.bar, { css: { backgroundColor: this.values.color, width: this.values.width+"%"}});
           }
         },
