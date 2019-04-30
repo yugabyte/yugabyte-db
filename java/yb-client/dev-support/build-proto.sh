@@ -42,7 +42,7 @@
 # In case we are on NFS, try to use the shared thirdparty, if possible.
 find_thirdparty_dir
 
-if [[ is_mac ]]; then
+if is_mac; then
   THIRDPARTY_BUILD_TYPE=clang_uninstrumented
 else
   THIRDPARTY_BUILD_TYPE=uninstrumented

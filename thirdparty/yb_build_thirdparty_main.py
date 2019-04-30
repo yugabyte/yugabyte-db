@@ -127,6 +127,7 @@ class Builder:
             build_definitions.gmock.GMockDependency(),
             build_definitions.snappy.SnappyDependency(),
             build_definitions.crcutil.CRCUtilDependency(),
+            build_definitions.libcds.LibCDSDependency(),
 
             build_definitions.libuv.LibUvDependency(),
             build_definitions.cassandra_cpp_driver.CassandraCppDriverDependency(),

@@ -256,6 +256,7 @@ void SerializableTxnTest::TestIncrements(bool transactional) {
   while (threads.size() != kThreads) {
     int key = threads.size();
     threads.emplace_back([this, key, transactional] {
+      CDSAttacher attacher;
       TestIncrement(key, transactional);
     });
   }
@@ -320,6 +321,7 @@ TEST_F(SerializableTxnTest, Coloring) {
     while (threads.size() != kColors) {
       int32_t color = threads.size();
       threads.emplace_back([this, color, &successes, kKeys] {
+        CDSAttacher attacher;
         for (;;) {
           auto txn = CreateTransaction();
           LOG(INFO) << "Start: " << txn->id() << ", color: " << color;

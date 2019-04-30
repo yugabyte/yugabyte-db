@@ -74,14 +74,11 @@
 #if DYNAMIC_ANNOTATIONS_ENABLED == 1 \
     && DYNAMIC_ANNOTATIONS_EXTERNAL_IMPL == 0
 
-void AnnotateRWLockCreate(const char *file, int line,
-                          const volatile void *lock){}
-void AnnotateRWLockDestroy(const char *file, int line,
-                           const volatile void *lock){}
-void AnnotateRWLockAcquired(const char *file, int line,
-                            const volatile void *lock, long is_w){}
-void AnnotateRWLockReleased(const char *file, int line,
-                            const volatile void *lock, long is_w){}
+void AnnotateRWLockCreate(const char *file, int line, void *lock) {}
+void AnnotateRWLockCreateStatic(const char *file, int line, void *lock) {}
+void AnnotateRWLockDestroy(const char *file, int line, void *lock) {}
+void AnnotateRWLockAcquired(const char *file, int line, void *lock, long is_w) {}
+
 void AnnotateBarrierInit(const char *file, int line,
                          const volatile void *barrier, long count,
                          long reinitialization_allowed) {}
@@ -113,9 +110,7 @@ void AnnotatePCQPut(const char *file, int line,
                     const volatile void *pcq){}
 void AnnotatePCQGet(const char *file, int line,
                     const volatile void *pcq){}
-void AnnotateNewMemory(const char *file, int line,
-                       const volatile void *mem,
-                       long size){}
+void AnnotateNewMemory(const char *file, int line, void *mem, size_t size) {}
 void AnnotateExpectRace(const char *file, int line,
                         const volatile void *mem,
                         const char *description){}
