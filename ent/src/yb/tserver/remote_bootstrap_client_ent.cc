@@ -45,7 +45,8 @@ Status RemoteBootstrapClient::DownloadSnapshotFiles() {
   CHECK(started_);
   CHECK(downloaded_rocksdb_files_);
 
-  const string& rocksdb_dir = new_superblock_->rocksdb_dir();
+  const auto& kv_store = new_superblock_->kv_store();
+  const string& rocksdb_dir = kv_store.rocksdb_dir();
   const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
   // Create the snapshots directory first.
   RETURN_NOT_OK_PREPEND(fs_manager_->CreateDirIfMissingAndSync(top_snapshots_dir),
@@ -54,7 +55,7 @@ Status RemoteBootstrapClient::DownloadSnapshotFiles() {
 
   DataIdPB data_id;
   data_id.set_type(DataIdPB::SNAPSHOT_FILE);
-  for (auto const& file_pb : new_superblock_->snapshot_files()) {
+  for (auto const& file_pb : kv_store.snapshot_files()) {
     const string snapshot_dir = JoinPathSegments(top_snapshots_dir, file_pb.snapshot_id());
 
     RETURN_NOT_OK_PREPEND(fs_manager_->CreateDirIfMissingAndSync(snapshot_dir),
