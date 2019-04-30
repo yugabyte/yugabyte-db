@@ -42,6 +42,13 @@
         }
       }
     }
+    &.disabled {
+      cursor: not-allowed;
+      > a {
+        color: $YB_DARK_GRAY;
+        cursor: not-allowed;
+      }
+    }
   }
 }
 

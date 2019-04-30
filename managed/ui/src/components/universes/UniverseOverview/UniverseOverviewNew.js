@@ -19,6 +19,7 @@ import { getPromiseState } from 'utils/PromiseUtils';
 import { NodeConnectModal } from '../../universes';
 import moment from 'moment';
 import pluralize from 'pluralize';
+import { isEnabled } from 'utils/LayoutUtils';
 
 class DatabasePanel extends PureComponent {
   static propTypes = {
@@ -34,7 +35,15 @@ class DatabasePanel extends PureComponent {
   }
 
   render() {
-    const { universeInfo, universeInfo: {universeDetails, universeDetails: {clusters}}} = this.props;
+    const {
+      universeInfo,
+      universeInfo: {
+        universeDetails,
+        universeDetails: {
+          clusters
+        }
+      }
+    } = this.props;
     const primaryCluster = getPrimaryCluster(clusters);
     const userIntent = primaryCluster && primaryCluster.userIntent;
     const universeId = universeInfo.universeUUID;
@@ -62,12 +71,12 @@ class DatabasePanel extends PureComponent {
     if (userIntent.providerType === "aws" && universeInfo.dnsName) {
       const dnsNameData = (
         <FlexContainer>
-          <FlexGrow style={{overflow: 'hidden', textOverflow: 'ellipsis'}}>
+          <FlexGrow style={{overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1, minWidth: 0 }}>
             {universeInfo.dnsName}
           </FlexGrow>
-          <FlexShrink>
+          <FlexGrow power={100} style={{position: "relative", flexShrink: 0, minWidth: "24px", flexBasis: "24px" }}>
             <YBCopyButton className={"btn-copy-round"} text={universeInfo.dnsName} ><span className={"fa fa-clone"}></span></YBCopyButton>
-          </FlexShrink>
+          </FlexGrow>
         </FlexContainer>);
       universeInfoItems.push({name: "Hosted Zone Name", data: dnsNameData });
     }
@@ -426,6 +435,7 @@ export default class UniverseOverviewNew extends Component {
       universe,
       universe: { currentUniverse },
       tasks,
+      currentCustomer,
       width
     } = this.props;
 
@@ -437,7 +447,7 @@ export default class UniverseOverviewNew extends Component {
         <Row>
           {this.getDatabaseWidget(universeInfo, tasks)}
           {this.getPrimaryClusterWidget(universeInfo)}
-          {this.getCostWidget(universeInfo)}
+          {isEnabled(currentCustomer.data.features, "universes.details.overview.costs") && this.getCostWidget(universeInfo)}
           {this.getHealthWidget(universe.healthCheck, universeInfo)}
           {this.getCPUWidget()}
         </Row>

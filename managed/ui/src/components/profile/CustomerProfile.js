@@ -6,6 +6,8 @@ import {YBInputField, YBButton, YBToggle, YBSelect} from '../common/forms/fields
 import { Field } from 'redux-form';
 import _ from 'lodash';
 import { isDefinedNotNull } from 'utils/ObjectUtils';
+import { browserHistory} from 'react-router';
+import { isNonAvailable } from 'utils/LayoutUtils';
 
 // TODO set predefined defaults another way not to share defaults this way
 const CHECK_INTERVAL_MS = 300000;
@@ -16,6 +18,12 @@ export default class CustomerProfile extends Component {
     super(props);
     this.toggleSendAlertsToYb = this.toggleSendAlertsToYb.bind(this);
   }
+
+  componentWillMount() {
+    const { customer } = this.props;
+    if (isNonAvailable(customer.features, "main.profile")) browserHistory.push('/');
+  }
+
 
   componentWillReceiveProps(nextProps) {
     if (!_.isEqual(this.props.customer, nextProps.customer)) {

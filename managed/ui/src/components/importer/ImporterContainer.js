@@ -22,6 +22,7 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state) {
   return {
     universeImport: state.universe.universeImport,
+    customer: state.customer,
   };
 }
 

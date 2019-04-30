@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { Row, Col, ListGroup, ListGroupItem } from 'react-bootstrap';
-import { Link } from 'react-router';
+import { Link, browserHistory } from 'react-router';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { isObject } from 'lodash';
 import { isNonEmptyArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
@@ -12,6 +12,7 @@ import { YBCost } from '../../common/descriptors';
 import { UniverseStatusContainer } from '../../universes';
 import { getUniverseNodes, getPlacementRegions,
         getClusterProviderUUIDs, getProviderMetadata, isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { isNonAvailable } from 'utils/LayoutUtils';
 const moment = require('moment');
 const pluralize = require('pluralize');
 
@@ -20,6 +21,9 @@ export default class UniverseTable extends Component {
   componentWillMount() {
     this.props.fetchUniverseMetadata();
     this.props.fetchUniverseTasks();
+
+    const { customer: { currentCustomer }} = this.props;
+    if (isNonAvailable(currentCustomer.data.features, "universes.display")) browserHistory.push('/');
   }
 
   componentWillUnmount() {

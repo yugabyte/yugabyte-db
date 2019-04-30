@@ -12,6 +12,7 @@ import { isNonEmptyObject } from 'utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
+import { isEnabled } from 'utils/LayoutUtils';
 
 export default class UniverseOverview extends Component {
   hasReadReplica = (universeInfo) => {
@@ -28,7 +29,7 @@ export default class UniverseOverview extends Component {
     }
 
     const isItKubernetesUniverse = isKubernetesUniverse(currentUniverse.data);
-    
+
     const mapWidget = (
       <YBWidget
         noMargin
@@ -123,7 +124,8 @@ export default class UniverseOverview extends Component {
   render() {
     const {
       currentUniverse,
-      width
+      width,
+      currentCustomer
     } = this.props;
 
     const universeInfo = currentUniverse.data;
@@ -138,11 +140,11 @@ export default class UniverseOverview extends Component {
               <UniverseResources split='left'
                   resources={universeResources} renderType={"Display"}/>
             </FlexGrow>
-            <FlexShrink>
+            {isEnabled(currentCustomer.data.features, "universes.details.overview.costs") && <FlexShrink>
               <div className="operating-costs">
                 <UniverseResources split='right' resources={universeResources} renderType={"Display"}/>
               </div>
-            </FlexShrink>
+            </FlexShrink>}
           </FlexContainer>
         }
         body={

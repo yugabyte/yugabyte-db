@@ -2,7 +2,7 @@
 
 import { connect } from 'react-redux';
 
-import TopNavBar from './TopNavBar';
+import NavBar from './NavBar';
 import { logout, logoutSuccess, logoutFailure } from '../../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
@@ -27,4 +27,4 @@ const mapStateToProps = (state) => {
   };
 };
 
-export default connect(mapStateToProps, mapDispatchToProps)(TopNavBar);
+export default connect(mapStateToProps, mapDispatchToProps)(NavBar);

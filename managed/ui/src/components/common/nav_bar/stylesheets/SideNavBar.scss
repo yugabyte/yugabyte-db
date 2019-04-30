@@ -56,9 +56,42 @@
   & > li {
     position: relative;
     display: block;
-    cursor: pointer;
 
-    & > a {
+    & > a, & > div {
+      cursor: pointer;
+      text-align: center !important;
+      font-weight: 300;
+      font-size: 13px;
+      padding: 14px 5px;
+      letter-spacing: -0.025em;
+
+      i {
+        font-size: 25px;
+        text-align: center;
+        margin-bottom: 5px;
+        display: block;
+        margin: 0 auto 5px auto;
+
+        &.toggle-up {
+          display: none !important;
+        }
+      }
+
+      @media screen and ( max-height: 610px ) {
+        span {
+          display: none;
+        }
+      }
+    
+      @media screen and ( max-height: 460px ) {
+        margin: 0 !important;
+    
+        i {
+          font-size: 18px;
+          margin: 0 auto !important;
+        }
+      }
+
       & {
         color: #fff;
         font-weight: 500 !important;
@@ -69,7 +102,6 @@
       }
 
       &, &:focus {
-        padding: 3px 0;
         background: transparent;
 
         i, span {
@@ -89,6 +121,22 @@
 
         i {
           color: $YB_SIDEBAR_ICON_HOVER;
+        }
+      }
+    }
+
+    & > div {
+      cursor: no-drop;
+
+      &, &:hover, &:focus, &:active {
+          color: $YB_SIDEBAR_ICON;
+          background: transparent;
+          font-weight: 500 !important;
+          background: $YB_VIOLET_DARK;
+
+        i {
+          color: $YB_SIDEBAR_ICON;
+          opacity: 0.7;
         }
       }
     }
@@ -162,7 +210,8 @@
     text-align: left;
   }
 }
-.nav.side-menu.position-bottom > li > a{
+.nav.side-menu.position-bottom > li > a {
+  padding-top: 20px;
   i {
     width: 24px;
     height: 24px;
@@ -172,6 +221,8 @@
     display: block;
     border-radius: 18px;
     margin: 0 auto;
+    top: -5px;
+    position: relative;
     background-color: $YB_ORANGE;
     
     @media screen and ( max-height: 460px ) {

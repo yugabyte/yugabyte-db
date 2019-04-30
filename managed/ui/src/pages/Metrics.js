@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 
-import { CustomerMetricsPanel } from '../components/metrics';
+import { CustomerMetricsPanelContainer } from '../components/metrics';
 import Measure from 'react-measure';
 
 class Metrics extends Component {
@@ -17,7 +17,7 @@ class Metrics extends Component {
   render() {
     return (
       <Measure onMeasure={this.onResize.bind(this)}>
-        <CustomerMetricsPanel origin={"customer"} width={this.state.dimensions.width} />
+        <CustomerMetricsPanelContainer origin={"customer"} width={this.state.dimensions.width} />
       </Measure>
     );
   }
