@@ -332,7 +332,7 @@ class TestLoadBalancerEnterprise : public TestLoadBalancerBase<ClusterLoadBalanc
     consensus::RaftPeerPB::Role role = is_live ?
         consensus::RaftPeerPB::FOLLOWER :
         consensus::RaftPeerPB::LEARNER;
-    NewReplica(ts_desc.get(), tablet::TabletStatePB::RUNNING, role, &replica);
+    NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING, role, &replica);
     InsertOrDie(&replicas, ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
