@@ -68,7 +68,7 @@ using std::string;
 using std::vector;
 using std::cout;
 using std::endl;
-using tablet::TabletMetadata;
+using tablet::RaftGroupMetadata;
 using tserver::WriteRequestPB;
 
 enum PrintEntryType {

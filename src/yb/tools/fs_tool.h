@@ -49,7 +49,7 @@ class Schema;
 class RandomAccessFile;
 
 namespace tablet {
-class TabletMetadata;
+class RaftGroupMetadata;
 }
 
 namespace tools {

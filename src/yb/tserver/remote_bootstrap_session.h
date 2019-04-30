@@ -127,7 +127,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   MonoTime start_time() { return start_time_; }
 
-  const tablet::TabletSuperBlockPB& tablet_superblock() const { return tablet_superblock_; }
+  const tablet::RaftGroupReplicaSuperBlockPB& tablet_superblock() const {
+    return tablet_superblock_; }
 
   const consensus::ConsensusStatePB& initial_committed_cstate() const {
     return initial_committed_cstate_;
@@ -182,7 +183,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   LogMap logs_;     // Protected by session_lock_.
 
-  tablet::TabletSuperBlockPB tablet_superblock_;
+  tablet::RaftGroupReplicaSuperBlockPB tablet_superblock_;
 
   consensus::ConsensusStatePB initial_committed_cstate_;
 

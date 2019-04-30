@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "yb/util/result.h"
+#include "yb/util/strongly_typed_string.h"
 
 namespace yb {
 
@@ -36,6 +37,11 @@ using UDTypeId = std::string;
 using PeerId = std::string;
 using TabletServerId = PeerId;
 using TabletId = std::string;
+
+YB_STRONGLY_TYPED_STRING(KvStoreId);
+
+// TODO(#79): switch to YB_STRONGLY_TYPED_STRING
+using RaftGroupId = std::string;
 
 using NamespaceIdTableNamePair = std::pair<NamespaceId, TableName>;
 

@@ -84,7 +84,7 @@ using strings::Substitute;
 using tablet::YBTabletTest;
 using tablet::TabletPeer;
 using tablet::TabletPeerClass;
-using tablet::TabletSuperBlockPB;
+using tablet::RaftGroupReplicaSuperBlockPB;
 using tablet::WriteOperationState;
 
 const int64_t kLeaderTerm = 1;

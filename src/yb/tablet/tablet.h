@@ -208,7 +208,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // If 'metric_registry' is non-NULL, then this tablet will create a 'tablet' entity
   // within the provided registry. Otherwise, no metrics are collected.
   Tablet(
-      const scoped_refptr<TabletMetadata>& metadata,
+      const scoped_refptr<RaftGroupMetadata>& metadata,
       const std::shared_future<client::YBClient*> &client_future,
       const scoped_refptr<server::Clock>& clock,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
@@ -406,10 +406,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Set the conter to at least 'value'.
   void UpdateMonotonicCounter(int64_t value);
 
-  const TabletMetadata *metadata() const { return metadata_.get(); }
-  TabletMetadata *metadata() { return metadata_.get(); }
+  const RaftGroupMetadata *metadata() const { return metadata_.get(); }
+  RaftGroupMetadata *metadata() { return metadata_.get(); }
 
-  const std::string& tablet_id() const override { return metadata_->tablet_id(); }
+  const std::string& tablet_id() const override { return metadata_->raft_group_id(); }
 
   // Return the metrics for this tablet.
   // May be NULL in unit tests, etc.
@@ -580,7 +580,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   const Schema key_schema_;
 
-  scoped_refptr<TabletMetadata> metadata_;
+  scoped_refptr<RaftGroupMetadata> metadata_;
   TableType table_type_;
 
   // Used for tests only.

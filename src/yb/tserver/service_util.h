@@ -120,9 +120,9 @@ Result<std::shared_ptr<tablet::TabletPeer>> LookupTabletPeerOrRespond(
   }
 
   // Check RUNNING state.
-  tablet::TabletStatePB state = result->state();
+  tablet::RaftGroupStatePB state = result->state();
   if (PREDICT_FALSE(state != tablet::RUNNING)) {
-    Status s = STATUS(IllegalState, "Tablet not RUNNING", tablet::TabletStatePB_Name(state));
+    Status s = STATUS(IllegalState, "Tablet not RUNNING", tablet::RaftGroupStatePB_Name(state));
     if (state == tablet::FAILED) {
       s = s.CloneAndAppend(result->error().ToString());
     }

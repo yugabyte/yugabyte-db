@@ -256,9 +256,9 @@ using tablet::TABLET_DATA_DELETED;
 using tablet::TABLET_DATA_READY;
 using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
-using tablet::TabletMetadata;
+using tablet::RaftGroupMetadata;
 using tablet::TabletPeer;
-using tablet::TabletStatePB;
+using tablet::RaftGroupStatePB;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 using tserver::HandleReplacingStaleTablet;
@@ -3034,7 +3034,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   resp->mutable_indexes()->CopyFrom(l->data().pb.indexes());
   if (l->data().pb.has_index_info()) {
     *resp->mutable_index_info() = l->data().pb.index_info();
-    resp->set_deprecated_indexed_table_id(l->data().pb.index_info().indexed_table_id());
+    resp->set_obsolete_indexed_table_id(l->data().pb.index_info().indexed_table_id());
   }
 
   // Get namespace name by id.
@@ -5190,7 +5190,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   int64_t leader_term = req.caller_term();
 
   std::shared_ptr<TabletPeer> old_tablet_peer;
-  scoped_refptr<TabletMetadata> meta;
+  scoped_refptr<RaftGroupMetadata> meta;
   bool replacing_tablet = false;
 
   if (tablet_exists_) {

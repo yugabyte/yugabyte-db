@@ -392,7 +392,7 @@ static int TsCliMain(int argc, char** argv) {
       Partition partition;
       Partition::FromPB(ts.partition(), &partition);
 
-      string state = tablet::TabletStatePB_Name(ts.state());
+      string state = tablet::RaftGroupStatePB_Name(ts.state());
       std::cout << "Tablet id: " << ts.tablet_id() << std::endl;
       std::cout << "State: " << state << std::endl;
       std::cout << "Table name: " << ts.table_name() << std::endl;
@@ -411,7 +411,7 @@ static int TsCliMain(int argc, char** argv) {
       TabletStatusPB ts = status_and_schema.tablet_status();
       if (ts.state() != tablet::RUNNING) {
         std::cout << "Tablet id: " << ts.tablet_id() << " is "
-                  << tablet::TabletStatePB_Name(ts.state()) << std::endl;
+                  << tablet::RaftGroupStatePB_Name(ts.state()) << std::endl;
         all_running = false;
       }
     }

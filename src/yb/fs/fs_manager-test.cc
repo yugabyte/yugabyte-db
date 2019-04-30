@@ -79,7 +79,7 @@ class FsManagerTestBase : public YBTest {
 
   void ValidateRootDataPaths(const string& data_path, const string& wal_path) {
     ASSERT_TRUE(HasPrefixString(fs_manager()->GetConsensusMetadataDir(), data_path));
-    ASSERT_TRUE(HasPrefixString(fs_manager()->GetTabletMetadataDir(), data_path));
+    ASSERT_TRUE(HasPrefixString(fs_manager()->GetRaftGroupMetadataDir(), data_path));
     vector<string> data_dirs = fs_manager()->GetDataRootDirs();
     ASSERT_EQ(1, data_dirs.size());
     ASSERT_TRUE(HasPrefixString(data_dirs[0], data_path));
@@ -190,7 +190,7 @@ TEST_F(FsManagerTestBase, TestListTablets) {
   ASSERT_OK(fs_manager()->ListTabletIds(&tablet_ids));
   ASSERT_EQ(0, tablet_ids.size());
 
-  string path = fs_manager()->GetTabletMetadataDir();
+  string path = fs_manager()->GetRaftGroupMetadataDir();
   gscoped_ptr<WritableFile> writer;
   ASSERT_OK(env_->NewWritableFile(
       JoinPathSegments(path, "foo.tmp"), &writer));

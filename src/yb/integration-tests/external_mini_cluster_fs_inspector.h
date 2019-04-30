@@ -30,8 +30,8 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_CLUSTER_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H_
-#define YB_INTEGRATION_TESTS_CLUSTER_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H_
+#ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
+#define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H
 
 #include <string>
 #include <vector>
@@ -50,7 +50,7 @@ class ConsensusMetadataPB;
 }
 
 namespace tablet {
-class TabletSuperBlockPB;
+class RaftGroupReplicaSuperBlockPB;
 }
 
 namespace itest {
@@ -87,7 +87,7 @@ class ExternalMiniClusterFsInspector {
   CHECKED_STATUS CheckNoData();
 
   CHECKED_STATUS ReadTabletSuperBlockOnTS(int index, const std::string& tablet_id,
-                                  tablet::TabletSuperBlockPB* sb);
+                                  tablet::RaftGroupReplicaSuperBlockPB* sb);
   CHECKED_STATUS ReadConsensusMetadataOnTS(int index, const std::string& tablet_id,
                                    consensus::ConsensusMetadataPB* cmeta_pb);
   CHECKED_STATUS CheckTabletDataStateOnTS(int index,
@@ -95,12 +95,14 @@ class ExternalMiniClusterFsInspector {
                                   tablet::TabletDataState state);
 
   CHECKED_STATUS WaitForNoData(const MonoDelta& timeout = MonoDelta::FromSeconds(30));
-  CHECKED_STATUS WaitForNoDataOnTS(int index, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
+  CHECKED_STATUS WaitForNoDataOnTS(
+      int index, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
   CHECKED_STATUS WaitForMinFilesInTabletWalDirOnTS(int index,
                                            const std::string& tablet_id,
                                            int count,
                                            const MonoDelta& timeout = MonoDelta::FromSeconds(60));
-  CHECKED_STATUS WaitForReplicaCount(int expected, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
+  CHECKED_STATUS WaitForReplicaCount(
+      int expected, const MonoDelta& timeout = MonoDelta::FromSeconds(30));
   CHECKED_STATUS WaitForTabletDataStateOnTS(int index,
                                     const std::string& tablet_id,
                                     tablet::TabletDataState data_state,
@@ -130,4 +132,4 @@ class ExternalMiniClusterFsInspector {
 } // namespace itest
 } // namespace yb
 
-#endif // YB_INTEGRATION_TESTS_CLUSTER_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H_
+#endif // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_FS_INSPECTOR_H

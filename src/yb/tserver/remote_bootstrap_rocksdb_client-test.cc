@@ -23,7 +23,7 @@ namespace tserver {
 
 using consensus::GetRaftConfigLeader;
 using consensus::RaftPeerPB;
-using tablet::TabletMetadata;
+using tablet::RaftGroupMetadata;
 using tablet::TabletStatusListener;
 
 class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {

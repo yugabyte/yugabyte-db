@@ -63,9 +63,9 @@ using consensus::RaftPeerPB;
 using log::LogAnchorRegistry;
 using log::ReadableLogSegment;
 using strings::Substitute;
-using tablet::TabletMetadata;
+using tablet::RaftGroupMetadata;
 using tablet::TabletPeer;
-using tablet::TabletSuperBlockPB;
+using tablet::RaftGroupReplicaSuperBlockPB;
 
 RemoteBootstrapSession::RemoteBootstrapSession(
     const std::shared_ptr<TabletPeer>& tablet_peer, std::string session_id,
@@ -103,12 +103,11 @@ Status RemoteBootstrapSession::ChangeRole() {
   // tombstoned while the bootstrap is happening. This causes the peer's consensus object to be
   // null.
   if (!consensus) {
-    tablet::TabletStatePB tablet_state = tablet_peer_->state();
-    return STATUS(IllegalState, Substitute("Unable to change role for server $0 in config for "
-                                           "tablet $1. Consensus is not available. "
-                                           "Tablet state: $2 ($3)",
-                                           requestor_uuid_, tablet_peer_->tablet_id(),
-                                           tablet::TabletStatePB_Name(tablet_state), tablet_state));
+    tablet::RaftGroupStatePB tablet_state = tablet_peer_->state();
+    return STATUS(IllegalState, Substitute(
+        "Unable to change role for server $0 in config for tablet $1. Consensus is not available. "
+        "Tablet state: $2 ($3)", requestor_uuid_, tablet_peer_->tablet_id(),
+        tablet::RaftGroupStatePB_Name(tablet_state), tablet_state));
   }
 
   // If peer being bootstrapped is already a VOTER, don't send the ChangeConfig request. This could
@@ -165,11 +164,11 @@ Status RemoteBootstrapSession::ChangeRole() {
 Status RemoteBootstrapSession::SetInitialCommittedState() {
   shared_ptr <consensus::Consensus> consensus = tablet_peer_->shared_consensus();
   if (!consensus) {
-    tablet::TabletStatePB tablet_state = tablet_peer_->state();
+    tablet::RaftGroupStatePB tablet_state = tablet_peer_->state();
     return STATUS(IllegalState,
                   Substitute("Unable to initialize remote bootstrap session "
                              "for tablet $0. Consensus is not available. Tablet state: $1 ($2)",
-                             tablet_peer_->tablet_id(), tablet::TabletStatePB_Name(tablet_state),
+                             tablet_peer_->tablet_id(), tablet::RaftGroupStatePB_Name(tablet_state),
                              tablet_state));
   }
   initial_committed_cstate_ = consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
@@ -221,7 +220,7 @@ Status RemoteBootstrapSession::Init() {
       MinimumOpId().index(), anchor_owner_token, &log_anchor_);
 
   // Read the SuperBlock from disk.
-  const scoped_refptr<TabletMetadata>& metadata = tablet_peer_->tablet_metadata();
+  const scoped_refptr<RaftGroupMetadata>& metadata = tablet_peer_->tablet_metadata();
   RETURN_NOT_OK_PREPEND(metadata->ReadSuperBlockFromDisk(&tablet_superblock_),
                         Substitute("Unable to access superblock for tablet $0",
                                    tablet_id));
@@ -238,17 +237,18 @@ Status RemoteBootstrapSession::Init() {
   }
 
   MonoTime now = MonoTime::Now();
-  auto checkpoints_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(), "checkpoints");
+  auto* kv_store = tablet_superblock_.mutable_kv_store();
+  const auto checkpoints_dir = JoinPathSegments(kv_store->rocksdb_dir(), "checkpoints");
 
   auto session_checkpoint_dir = std::to_string(last_logged_opid.index) + "_" + now.ToString();
   checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
 
   // Clear any previous RocksDB files in the superblock. Each session should create a new list
   // based the checkpoint directory files.
-  tablet_superblock_.clear_rocksdb_files();
+  kv_store->clear_rocksdb_files();
   auto status = tablet->CreateCheckpoint(checkpoint_dir_);
   if (status.ok()) {
-    *tablet_superblock_.mutable_rocksdb_files() = VERIFY_RESULT(ListFiles(checkpoint_dir_));
+    *kv_store->mutable_rocksdb_files() = VERIFY_RESULT(ListFiles(checkpoint_dir_));
   } else if (!status.IsNotSupported()) {
     RETURN_NOT_OK(status);
   }
@@ -285,7 +285,7 @@ Status RemoteBootstrapSession::Init() {
 
 Status RemoteBootstrapSession::InitSnapshotFiles() {
   // Snapshots are not supported in the community edition.
-  tablet_superblock_.clear_snapshot_files();
+  tablet_superblock_.mutable_kv_store()->clear_snapshot_files();
   return Status::OK();
 }
 

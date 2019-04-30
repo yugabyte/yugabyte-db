@@ -140,7 +140,7 @@ class TabletPeerTest : public YBTabletTest,
 
     // Make TabletPeer use the same LogAnchorRegistry as the Tablet created by the harness.
     // TODO: Refactor TabletHarness to allow taking a LogAnchorRegistry, while also providing
-    // TabletMetadata for consumption by TabletPeer before Tablet is instantiated.
+    // RaftGroupMetadata for consumption by TabletPeer before Tablet is instantiated.
     tablet_peer_->log_anchor_registry_ = tablet()->log_anchor_registry_;
 
     consensus::RaftConfigPB config;

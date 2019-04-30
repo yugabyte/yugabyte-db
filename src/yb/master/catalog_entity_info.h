@@ -49,7 +49,7 @@ namespace master {
 // This is copyable so that no locking is needed.
 struct TabletReplica {
   TSDescriptor* ts_desc;
-  tablet::TabletStatePB state;
+  tablet::RaftGroupStatePB state;
   consensus::RaftPeerPB::Role role;
   consensus::RaftPeerPB::MemberType member_type;
 
@@ -105,7 +105,7 @@ class MetadataCowWrapper {
   }
 
   // Access the persistent metadata. Typically you should use
-  // TabletMetadataLock to gain access to this data.
+  // RaftGroupMetadataLock to gain access to this data.
   const CowObject<PersistentDataEntryPB>& metadata() const { return metadata_; }
   CowObject<PersistentDataEntryPB>* mutable_metadata() { return &metadata_; }
 
@@ -152,10 +152,10 @@ typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
 // on disk. This allows the mutated data to be staged and written to disk
 // while readers continue to access the previous version. These portions
 // of data are in PersistentTableInfo above, and typically accessed using
-// TabletMetadataLock. For example:
+// RaftGroupMetadataLock. For example:
 //
 //   TabletInfo* table = ...;
-//   TabletMetadataLock l(tablet, TableMetadataLock::READ);
+//   RaftGroupMetadataLock l(tablet, TableMetadataLock::READ);
 //   if (l.data().is_running()) { ... }
 //
 // The non-persistent information about the tablet is protected by an internal
