@@ -22,8 +22,7 @@ $ ./yb-docker-ctl add_node
 $ ./yb-docker-ctl add_node
 ```
 
-
-Create a CQL table. The keyspace and table name below must be named as shown below, since the sample application writes data to this table. We will use the sample application to write data to this table to understand sharding in a subsequent step.
+Create a YCQL table. The keyspace and table name below must be named as shown below, since the sample application writes data to this table. We will use the sample application to write data to this table to understand sharding in a subsequent step.
 
 ```sh
 $ ./bin/cqlsh
@@ -50,11 +49,9 @@ You can also navigate to the table details for these two tables by going to <URL
 Note here that the tablets balancing across nodes happens on a per-table basis, so that each table is scaled out to an appropriate number of nodes.
 
 
-## 3. Insert/query the Redis table
+## 3. Insert/query table
 
-## 4. Insert/query the Cassandra table
-
-## 5. Clean up (optional)
+## 4. Clean up (optional)
 
 Optionally, you can shutdown the local cluster created in Step 1.
 

@@ -28,7 +28,7 @@ $ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sa
 
 By default, the key-value sample application runs with strong read consistency where all data is read from the tablet leader. We are going to populate exactly one key with a 10KB value into the system. Since the replication factor is 3, this key will get replicated to only 3 of the 4 nodes in the universe.
 
-Let us run the Cassandra sample key-value app to constantly update this key-value, as well as perform reads with strong consistency against the local universe.
+Let us run the sample key-value app to constantly update this key-value, as well as perform reads with strong consistency against the local universe.
 
 ```sh
 $ java -jar ./yb-sample-apps.jar --workload CassandraKeyValue \

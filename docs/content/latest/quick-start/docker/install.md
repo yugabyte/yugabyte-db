@@ -1,7 +1,6 @@
 **NOTE:**
 The Docker option to run local clusters is recommended only for advanced Docker users. This is because running stateful apps like YugaByte DB in Docker is more complex and error-prone than the more common stateless app use cases.
 
-
 ## Prerequisites
 
 a) You must have the Docker runtime installed on your localhost. Follow the links below to download and install Docker if you have not done so already.

@@ -44,10 +44,10 @@ $ ./bin/yb-ctl status
 ```
 
 
-## 2. Create a Cassandra table
+## 2. Create a table
 
 
-Create a Cassandra table. The keyspace and table name below must created exactly as shown below, since we will be using the sample application to write data into this table.
+Create a YCQL table. The keyspace and table name below must created exactly as shown below, since we will be using the sample application to write data into this table.
 
 ```sh
 $ ./bin/cqlsh
@@ -71,7 +71,7 @@ For each table, we have instructed YugaByte DB to create 4 shards per tserver pr
 
 You can see the number of tablets per node in the Tablet Servers page of the master Admin UI, by going to the [table details page](http://127.0.0.1:7000/tablet-servers). The page should look something like the image below.
 
-![Number of tablets in the Cassandra table](/images/ce/auto-sharding-cassandra-table-1.png)
+![Number of tablets in the table](/images/ce/auto-sharding-cassandra-table-1.png)
 
 We see that each node has 4 tablets, and the total number of tablets is 12 as we expected.
 
@@ -79,7 +79,7 @@ We see that each node has 4 tablets, and the total number of tablets is 12 as we
 
 Let us navigate to the [table details page](http://127.0.0.1:7000/table?keyspace_name=ybdemo_keyspace&table_name=cassandrakeyvalue) to examine the various tablets. This page should look as follows.
 
-![Tablet details of the Cassandra table](/images/ce/auto-sharding-cassandra-tablets.png)
+![Tablet details of the table](/images/ce/auto-sharding-cassandra-tablets.png)
 
 What we see here is that there are 12 tablets as expected, and the key ranges owned by each tablet are shown. This page also shows which node that is currently hosting (and is the leader for) each of these tablets. Note here that the tablets balancing across nodes happens on a per-table basis, so that each table is scaled out to an appropriate number of nodes.
 
@@ -106,7 +106,7 @@ $ du -hs /tmp/yugabyte-local-cluster/node*/disk*/yb-data/tserver/data/rocksdb/ta
  20K    /tmp/yugabyte-local-cluster/node-3/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-5aaeb96381044aa2b09ed9973830bb27
  ```
 
-## 4. Insert/query the Cassandra table
+## 4. Insert/query a table
 
 Let us insert a key-value entry, with the value size around 2MB. Since the memstores are configured to be 1MB, this will cause the data to flush to disk immediately. Note that the key flags we pass to the sample app are:
 

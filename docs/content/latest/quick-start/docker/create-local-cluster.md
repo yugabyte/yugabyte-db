@@ -2,7 +2,6 @@
   
 We will use the [`yb-docker-ctl`](../../admin/yb-docker-ctl/) utility downloaded in the previous step to create and administer a containerized local cluster. Detailed output for the *create* command is available in [yb-docker-ctl Reference](../../admin/yb-docker-ctl/#create-cluster).
   
-
 ```sh
 $ ./yb-docker-ctl create
 ```
