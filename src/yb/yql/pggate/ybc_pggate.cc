@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <cds/init.h>
+
 #include "yb/util/ybc-internal.h"
 #include "yb/util/atomic.h"
 
@@ -45,6 +47,8 @@ std::atomic<bool> pgapi_shutdown_done;
 extern "C" {
 
 void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count) {
+  InitThreading();
+
   const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
   if (initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0) {
     YBCSetInitDbMode();

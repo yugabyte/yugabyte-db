@@ -44,6 +44,7 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/async_util.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -99,6 +100,8 @@ class ThreadJoiner {
 
   DISALLOW_COPY_AND_ASSIGN(ThreadJoiner);
 };
+
+typedef scoped_refptr<Thread> ThreadPtr;
 
 // Thin wrapper around pthread that can register itself with the singleton ThreadMgr
 // (a private class implemented in thread.cc entirely, which tracks all live threads so
@@ -178,6 +181,22 @@ class Thread : public RefCountedThreadSafe<Thread> {
                        const A1& a1, const A2& a2, const A3& a3, const A4& a4, const A5& a5,
                        const A6& a6, scoped_refptr<Thread>* holder) {
     return StartThread(category, name, std::bind(f, a1, a2, a3, a4, a5, a6), holder);
+  }
+
+  template <class F>
+  static Result<ThreadPtr> Make(
+      const std::string& category, const std::string& name, const F& f) {
+    ThreadPtr result;
+    RETURN_NOT_OK(StartThread(category, name, f, &result));
+    return result;
+  }
+
+  template <class... Args>
+  static Result<ThreadPtr> Make(
+      const std::string& category, const std::string& name, Args&&... args) {
+    ThreadPtr result;
+    RETURN_NOT_OK(StartThread(category, name, std::bind(std::forward<Args>(args)...), &result));
+    return result;
   }
 
   // Emulates std::thread and detaches.
@@ -326,8 +345,9 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // initialised and its TID has been read. Waits for notification from the started
   // thread that initialisation is complete before returning. On success, stores a
   // reference to the thread in holder.
-  static CHECKED_STATUS StartThread(const std::string& category, const std::string& name,
-                            const ThreadFunctor& functor, scoped_refptr<Thread>* holder);
+  static CHECKED_STATUS StartThread(
+      const std::string& category, const std::string& name,
+      ThreadFunctor functor, ThreadPtr* holder);
 
   // Wrapper for the user-supplied function. Invoked from the new thread,
   // with the Thread as its only argument. Executes functor_, but before
@@ -364,6 +384,12 @@ Status StartThreadInstrumentation(const scoped_refptr<MetricEntity>& server_metr
 void InitThreading();
 
 void SetThreadName(const std::string& name);
+
+class CDSAttacher {
+ public:
+  CDSAttacher();
+  ~CDSAttacher();
+};
 
 } // namespace yb
 

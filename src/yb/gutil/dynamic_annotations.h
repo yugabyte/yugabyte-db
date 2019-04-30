@@ -69,8 +69,8 @@
       Macros are defined as calls to non-inlinable empty functions
       that are intercepted by Valgrind. */
 
-#ifndef __DYNAMIC_ANNOTATIONS_H__
-#define __DYNAMIC_ANNOTATIONS_H__
+#ifndef YB_GUTIL_DYNAMIC_ANNOTATIONS_H
+#define YB_GUTIL_DYNAMIC_ANNOTATIONS_H
 
 #ifndef DYNAMIC_ANNOTATIONS_ENABLED
 # define DYNAMIC_ANNOTATIONS_ENABLED 0
@@ -479,16 +479,11 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-void AnnotateRWLockCreate(const char *file, int line,
-                          const volatile void *lock);
-void AnnotateRWLockCreateStatic(const char *file, int line,
-                          const volatile void *lock);
-void AnnotateRWLockDestroy(const char *file, int line,
-                           const volatile void *lock);
-void AnnotateRWLockAcquired(const char *file, int line,
-                            const volatile void *lock, long is_w);
-void AnnotateRWLockReleased(const char *file, int line,
-                            const volatile void *lock, long is_w);
+void AnnotateRWLockCreate(const char *file, int line, void *lock);
+void AnnotateRWLockCreateStatic(const char *file, int line, void *lock);
+void AnnotateRWLockDestroy(const char *file, int line, void *lock);
+void AnnotateRWLockAcquired(const char *file, int line, void *lock, long is_w);
+void AnnotateRWLockReleased(const char *file, int line, void *lock, long is_w);
 void AnnotateBarrierInit(const char *file, int line,
                          const volatile void *barrier, long count,
                          long reinitialization_allowed);
@@ -519,9 +514,7 @@ void AnnotatePCQPut(const char *file, int line,
                     const volatile void *pcq);
 void AnnotatePCQGet(const char *file, int line,
                     const volatile void *pcq);
-void AnnotateNewMemory(const char *file, int line,
-                       const volatile void *address,
-                       long size);
+void AnnotateNewMemory(const char *file, int line, void *address, size_t size);
 void AnnotateExpectRace(const char *file, int line,
                         const volatile void *address,
                         const char *description);
@@ -782,4 +775,4 @@ void __asan_set_death_callback(void (*callback)(void));
 #undef ANNOTALYSIS_STATIC_INLINE
 #undef ANNOTALYSIS_SEMICOLON_OR_EMPTY_BODY
 
-#endif  /* __DYNAMIC_ANNOTATIONS_H__ */
+#endif  /* YB_GUTIL_DYNAMIC_ANNOTATIONS_H */

@@ -76,6 +76,7 @@ class ClientThread {
   }
 
   void Run() {
+    CDSAttacher attacher;
     std::unique_ptr<Messenger> client_messenger = bench_->CreateMessenger("Client");
     ProxyCache proxy_cache(client_messenger.get());
 

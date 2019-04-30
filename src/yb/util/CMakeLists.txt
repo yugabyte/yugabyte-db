@@ -235,6 +235,7 @@ set(UTIL_SRCS
 set(UTIL_LIBS
   boost_system
   boost_thread
+  cds
   icui18n
   icuuc
   crcutil
