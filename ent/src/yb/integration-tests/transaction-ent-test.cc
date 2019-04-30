@@ -81,6 +81,7 @@ TEST_F(TransactionEntTest, RandomErrorClock) {
 
   while (threads.size() < share.values.size()) {
     threads.emplace_back([this, &share, key = threads.size()] {
+      CDSAttacher attacher;
       auto& transaction_manager = CreateTransactionManager();
       auto session = CreateSession();
       while (!share.stopped.load(std::memory_order_acquire)) {
@@ -111,6 +112,7 @@ TEST_F(TransactionEntTest, RandomErrorClock) {
 
   while (threads.size() < share.values.size() + kNumReaders) {
     threads.emplace_back([this, &share] {
+      CDSAttacher attacher;
       // We need separate transaction manager for each thread to have different clocks for different
       // threads.
       auto& transaction_manager = CreateTransactionManager();
