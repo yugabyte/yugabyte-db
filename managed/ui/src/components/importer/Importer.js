@@ -6,10 +6,11 @@ import { YBFormInput, YBFormSelect, YBButton } from '../common/forms/fields';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { isNonEmptyObject } from "../../utils/ObjectUtils";
 import Highlight from 'react-highlight';
-import { Link } from 'react-router';
+import { Link, browserHistory } from 'react-router';
 import { Formik, Field } from 'formik';
 import * as Yup from "yup";
 import './Importer.scss';
+import { isNonAvailable } from 'utils/LayoutUtils';
 
 const stepsEnum = [
   "BEGIN",
@@ -50,7 +51,10 @@ export default class Importer extends Component {
     }
   }
 
-  componentWillMount = () => {
+  componentWillMount() {
+    const { customer: { currentCustomer }} = this.props;
+    if (isNonAvailable(currentCustomer.data.features, "universes.import")) browserHistory.push('/');
+
     const { universeImport } = this.props;
     // repopulate form if it was not finished
     if (isNonEmptyObject(universeImport.data)) {
@@ -82,14 +86,14 @@ export default class Importer extends Component {
         universeName: this.state.universeName || universeImport.data.universeName,
         masterAddresses: this.state.masterAddresses || universeImport.data.masterAddresses,
         checks: {
-          ...this.state.checks, 
+          ...this.state.checks,
           ...importChecks
         }
       });
     } else {
       this.setState({
         checks: {
-          ...this.state.checks, 
+          ...this.state.checks,
           ...importChecks
         }
       });
@@ -116,15 +120,15 @@ export default class Importer extends Component {
         </ul>
       </div>));
   }
-  
+
   generateProgressBar = () => {
     const currentStep = stepsEnum.indexOf(this.state.currentState);
-    const barWidth = currentStep === -1 
-      ? "0%" 
+    const barWidth = currentStep === -1
+      ? "0%"
       : (33.33 *currentStep) +"%";
     const listLabels = stepsEnum.map(function(item, idx) {
-      const itemClass = (this.props.universeImport.error && idx === currentStep-1) || (!this.props.universeImport.error && idx === currentStep && currentStep!==0) ? 
-        "finished" : 
+      const itemClass = (this.props.universeImport.error && idx === currentStep-1) || (!this.props.universeImport.error && idx === currentStep && currentStep!==0) ?
+        "finished" :
         (
           this.props.universeImport.error && idx === currentStep+1 ? "failed" : ""
         );
@@ -138,7 +142,7 @@ export default class Importer extends Component {
         {listLabels}
       </ul>
     );
-    
+
   }
 
   render() {
@@ -152,7 +156,7 @@ export default class Importer extends Component {
     if (getPromiseState(universeImport).isSuccess()) {
       // LOGIC get the response from the import and render it in div
       // Master OK
-      // 
+      //
       if (this.state.currentState === "IMPORTED_MASTERS") {
         status = <span className="yb-success-color">Imported YB-Masters successfully</span>;
         submitButtonTxt = "Import TServers";
@@ -223,12 +227,12 @@ export default class Importer extends Component {
                     <Field name="cloudProviderType" type="select" isDisabled={currentStep > 0} component={YBFormSelect} label="Cloud Type" options={universeProviderList} isClearable={false}/>
                     <Field name="masterAddresses" readOnly={currentStep > 0} type="text" component={YBFormInput} label="Master Addresses" placeholder="Master Addresses" />
                   </div>
-                  { this.state.currentState === "FINISHED" ? 
-                    
+                  { this.state.currentState === "FINISHED" ?
+
                     <Link to="/universes">
                       <YBButton btnText={submitButtonTxt} disabled={isSubmitting || getPromiseState(universeImport).isLoading() } btnClass="btn btn-default pull-right"/>
                     </Link> :
-                    
+
                     <Fragment>
                       <YBButton btnText={"Step "+(currentStep+1)+": "+submitButtonTxt} btnType="submit" disabled={isSubmitting || getPromiseState(universeImport).isLoading() } btnClass="btn btn-orange pull-right"/>
                       <YBButton btnText={"Reset form"} onClick={() => this.resetForm(false)} disabled={isSubmitting || getPromiseState(universeImport).isLoading() } btnClass="btn btn-default pull-right"/>

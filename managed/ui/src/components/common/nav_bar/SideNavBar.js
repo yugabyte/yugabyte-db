@@ -5,10 +5,12 @@ import { Link, IndexLink, withRouter } from 'react-router';
 import { NavDropdown } from 'react-bootstrap';
 import gitterIcon from '../../help/HelpItem/images/gitter.svg';
 import './stylesheets/SideNavBar.scss';
+import { getPromiseState } from 'utils/PromiseUtils';
+import { getFeatureState } from 'utils/LayoutUtils';
 
 class NavLink extends Component {
   render () {
-    const { router, index, to, icon, text, ...props } = this.props;
+    const { router, display, index, to, icon, text, ...props } = this.props;
 
     // Added by withRouter in React Router 3.0.
     delete props.params;
@@ -17,9 +19,13 @@ class NavLink extends Component {
     const isActive = router.isActive(to, index);
     const LinkComponent = index ?  IndexLink : Link;
 
+    if (!display || display === "hidden") return null;
+
     return (
-      <li className={isActive ? 'active' : ''}>
-        <LinkComponent to={to} title={text} {...props}><i className={icon}></i><span>{text}</span></LinkComponent>
+      <li className={`${isActive ? 'active' : ''}${display === 'disabled' ? ' disabled' : ''}`}>
+        { display === 'disabled'
+          ? <div><i className={icon}></i><span>{text}</span></div>
+          : <LinkComponent to={to} title={text} disabled={display === 'disabled'} {...props}><i className={icon}></i><span>{text}</span></LinkComponent> }
       </li>
     );
   }
@@ -31,19 +37,20 @@ NavLink = withRouter(NavLink);
 export default class SideNavBar extends Component {
 
   render() {
+    const { customer: { currentCustomer } } = this.props;
     return (
       <div className="side-nav-container">
         <div className="left_col" >
           <div className="left_col scroll-view">
-            <div id="sidebar-menu" className="main-menu-side hidden-print main-menu">
+            {(getPromiseState(currentCustomer).isSuccess() || getPromiseState(currentCustomer).isInit()) && <div id="sidebar-menu" className="main-menu-side hidden-print main-menu">
               <div className="menu_section">
                 <ul className="nav side-menu">
-                  <NavLink to="/" index={true} icon="fa fa-dashboard" text="Dashboard" />
-                  <NavLink to="/universes" icon="fa fa-globe" text="Universes" />
-                  <NavLink to="/metrics" icon="fa fa-line-chart" text="Metrics" />
-                  <NavLink to="/tasks" icon="fa fa-list" text="Tasks" />
-                  <NavLink to="/alerts" icon="fa fa-bell-o" text="Alerts" />
-                  <NavLink to="/config" icon="fa fa-cloud-upload" text="Configuration" />
+                  <NavLink to="/"          icon="fa fa-dashboard"    text="Dashboard"     display={getFeatureState(currentCustomer.features, "dashboard.display")} index={true} />
+                  <NavLink to="/universes" icon="fa fa-globe"        text="Universes"     display={getFeatureState(currentCustomer.features, "universes.display")} />
+                  <NavLink to="/metrics"   icon="fa fa-line-chart"   text="Metrics"       display={getFeatureState(currentCustomer.features, "metrics.display")} />
+                  <NavLink to="/tasks"     icon="fa fa-list"         text="Tasks"         display={getFeatureState(currentCustomer.features, "tasks.display")} />
+                  <NavLink to="/alerts"    icon="fa fa-bell-o"       text="Alerts"        display={getFeatureState(currentCustomer.features, "alerts.display")} />
+                  <NavLink to="/config"    icon="fa fa-cloud-upload" text="Configs" display={getFeatureState(currentCustomer.features, "config.display")} />
                 </ul>
                 <ul className="nav side-menu position-bottom">
                   <NavDropdown dropup eventKey="2" title={<div><i className="fa fa-question"></i><span>Help</span></div>} id="help-dropdown">
@@ -80,7 +87,7 @@ export default class SideNavBar extends Component {
                   </NavDropdown>
                 </ul>
               </div>
-            </div>
+            </div>}
           </div>
         </div>
       </div>

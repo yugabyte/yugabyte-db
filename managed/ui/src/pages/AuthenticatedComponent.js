@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import NavBar from '../components/common/nav_bar/NavBar';
+import NavBarContainer from '../components/common/nav_bar/NavBarContainer';
 import { Footer } from '../components/common/footer';
 import AuthenticatedComponentContainer from '../components/Authenticated/AuthenticatedComponentContainer';
 import { mouseTrap } from 'react-mousetrap';
@@ -54,7 +54,7 @@ class AuthenticatedComponent extends Component {
   render() {
     return (
       <AuthenticatedComponentContainer>
-        <NavBar />
+        <NavBarContainer />
         <div className="container-body">
           {this.props.children}
           <YBModal title={"Keyboard Shortcut"}

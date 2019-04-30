@@ -19,11 +19,11 @@ class YBTabsPanel extends Component {
   };
 
   queryTabHandler = () => {
-    const {location, children} = this.props;
+    const { location, children } = this.props;
     const locationTabKey = location.query.tab;
     if (isDefinedNotNull(locationTabKey)) {
       return children.some((item) => {
-        return item.props.eventKey.indexOf(locationTabKey) >= 0;
+        return item.props.eventKey.indexOf(locationTabKey) >= 0 && !item.props.disabled;
       }) ? locationTabKey : false;
     }
     return false;
@@ -39,7 +39,7 @@ class YBTabsPanel extends Component {
   }
 
   render() {
-    const {activeTab, defaultTab} = this.props;
+    const { activeTab, defaultTab } = this.props;
     const activeTabKey = activeTab || this.queryTabHandler() || defaultTab;
     return (
       <Tabs activeKey={activeTabKey} onSelect={this.tabSelect} id={this.props.id} className={this.props.className}>

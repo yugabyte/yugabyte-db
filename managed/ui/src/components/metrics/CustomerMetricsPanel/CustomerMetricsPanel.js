@@ -4,7 +4,8 @@ import React, { Component } from 'react';
 import { GraphPanelHeaderContainer, GraphPanelContainer } from '../../metrics';
 import PropTypes from 'prop-types';
 import { PanelGroup } from 'react-bootstrap';
-import { browserHistory } from 'react-router';
+import { browserHistory} from 'react-router';
+import { isNonAvailable } from 'utils/LayoutUtils';
 
 const graphPanelTypes = {
   "universe": {
@@ -34,6 +35,11 @@ export default class CustomerMetricsPanel extends Component {
     tableName: null,
     width: null
   };
+
+  componentWillMount() {
+    const { customer: { currentCustomer }} = this.props;
+    if (isNonAvailable(currentCustomer.data.features, "metrics.display")) browserHistory.push('/');
+  }
 
   render() {
     const { origin, nodePrefixes, width, tableName, isKubernetesUniverse } = this.props;

@@ -38,18 +38,16 @@ export default class UniverseResources extends Component {
         universeNodes = <YBResourceCount size={resources.numNodes || 0} kind="Node" pluralizeKind />;
       }
     }
-    
+
     return (
       this.props.split ? (
-        this.props.split==='left' ? 
+        this.props.split === 'left' ? 
           <div className={(empty ? "universe-resources empty" : "universe-resources")}>
             {universeNodes}
             <YBResourceCount size={numCores || 0} kind="Core" pluralizeKind />
             <YBResourceCount size={memSizeGB || 0} unit="GB" kind="Memory" />
             <YBResourceCount size={volumeSizeGB || 0} unit="GB" kind="Storage" />
             <YBResourceCount size={volumeCount || 0} kind="Volume" pluralizeKind />
-            <YBResourceCount className="hidden-costs" size={costPerDay} kind="/day" />
-            <YBResourceCount className="hidden-costs" size={costPerMonth} kind="/month" />
             {this.props.children}
           </div>
         :

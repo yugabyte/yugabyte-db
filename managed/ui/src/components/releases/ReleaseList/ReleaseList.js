@@ -10,6 +10,9 @@ import { TableAction } from 'components/tables';
 import { YBLoadingIcon } from 'components/common/indicators';
 import { getPromiseState } from 'utils/PromiseUtils';
 
+import { browserHistory } from 'react-router';
+import { isNonAvailable } from 'utils/LayoutUtils';
+
 import './ReleaseList.scss';
 
 export default class ReleaseList extends Component {
@@ -19,6 +22,9 @@ export default class ReleaseList extends Component {
 
   componentWillMount() {
     this.props.getYugaByteReleases();
+
+    const { customer: { currentCustomer }} = this.props;
+    if (isNonAvailable(currentCustomer.data.features, "main.releases")) browserHistory.push('/');
   }
 
   refreshRelease = () => {

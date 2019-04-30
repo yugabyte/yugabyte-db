@@ -84,7 +84,7 @@
       border: 0;
 
       li {
-        a {
+        a, div {
           padding: 10px 20px;
           height: 42px;
           font-weight: 300;
@@ -117,6 +117,17 @@
         color: $YB_TEXT_COLOR;
         text-decoration: none;
         background-color: $YB_BACKGROUND !important;
+      }
+    }
+
+    > div {
+      &, &:hover, &:focus {
+        cursor: not-allowed;
+        background-color: $YB_BACKGROUND !important;
+
+        i {
+          color: $YB_GRAY_HOVER !important;
+        }
       }
     }
   }

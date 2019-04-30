@@ -25,6 +25,7 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   return {
     universe: state.universe,
+    customer: state.customer,
     tasks: state.tasks
   };
 }

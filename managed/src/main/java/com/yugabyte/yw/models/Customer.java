@@ -30,6 +30,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Joiner;
 
 import play.data.validation.Constraints;
+import play.libs.Json;
 
 
 @Entity
@@ -278,7 +279,7 @@ public class Customer extends Model {
    * Get features for this customer;
    */
   public JsonNode getFeatures() {
-    return features;
+    return features == null ? Json.newObject() : features;
   }
 
   /**
