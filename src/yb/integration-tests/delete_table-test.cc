@@ -70,7 +70,7 @@ using yb::tablet::TABLET_DATA_DELETED;
 using yb::tablet::TABLET_DATA_READY;
 using yb::tablet::TABLET_DATA_TOMBSTONED;
 using yb::tablet::TabletDataState;
-using yb::tablet::TabletSuperBlockPB;
+using yb::tablet::RaftGroupReplicaSuperBlockPB;
 using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::TabletServerErrorPB;
 using std::numeric_limits;
@@ -174,7 +174,7 @@ Status DeleteTableTest::CheckTabletTombstonedOrDeletedOnTS(
   if (is_superblock_expected == SUPERBLOCK_EXPECTED) {
     RETURN_NOT_OK(inspect_->CheckTabletDataStateOnTS(index, tablet_id, data_state));
   } else {
-    TabletSuperBlockPB superblock_pb;
+    RaftGroupReplicaSuperBlockPB superblock_pb;
     Status s = inspect_->ReadTabletSuperBlockOnTS(index, tablet_id, &superblock_pb);
     if (!s.IsNotFound()) {
       return STATUS(IllegalState, "Found unexpected superblock for tablet " + tablet_id);
@@ -873,7 +873,7 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   ASSERT_OK(itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED,
                                 boost::none, timeout));
   ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kFollowerIndex, tablet_id, CMETA_EXPECTED));
-  TabletSuperBlockPB superblock_pb;
+  RaftGroupReplicaSuperBlockPB superblock_pb;
   ASSERT_OK(inspect_->ReadTabletSuperBlockOnTS(kFollowerIndex, tablet_id, &superblock_pb));
 }
 

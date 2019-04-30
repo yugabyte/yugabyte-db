@@ -85,11 +85,11 @@ class BootstrapTest : public LogTestBase {
     LogTestBase::SetUp();
   }
 
-  Status LoadTestTabletMetadata(int mrs_id, int delta_id, scoped_refptr<TabletMetadata>* meta) {
+  Status LoadTestRaftGroupMetadata(scoped_refptr<RaftGroupMetadata>* meta) {
     Schema schema = SchemaBuilder(schema_).Build();
     std::pair<PartitionSchema, Partition> partition = CreateDefaultPartition(schema);
 
-    RETURN_NOT_OK(TabletMetadata::LoadOrCreate(
+    RETURN_NOT_OK(RaftGroupMetadata::LoadOrCreate(
         fs_manager_.get(),
         log::kTestTable,
         log::kTestTablet,
@@ -104,15 +104,15 @@ class BootstrapTest : public LogTestBase {
     return (*meta)->Flush();
   }
 
-  Status PersistTestTabletMetadataState(TabletDataState state) {
-    scoped_refptr<TabletMetadata> meta;
-    RETURN_NOT_OK(LoadTestTabletMetadata(-1, -1, &meta));
+  Status PersistTestRaftGroupMetadataState(TabletDataState state) {
+    scoped_refptr<RaftGroupMetadata> meta;
+    RETURN_NOT_OK(LoadTestRaftGroupMetadata(&meta));
     meta->set_tablet_data_state(state);
     RETURN_NOT_OK(meta->Flush());
     return Status::OK();
   }
 
-  Status RunBootstrapOnTestTablet(const scoped_refptr<TabletMetadata>& meta,
+  Status RunBootstrapOnTestTablet(const scoped_refptr<RaftGroupMetadata>& meta,
                                   shared_ptr<TabletClass>* tablet,
                                   ConsensusBootstrapInfo* boot_info) {
     gscoped_ptr<TabletStatusListener> listener(new TabletStatusListener(meta));
@@ -137,12 +137,10 @@ class BootstrapTest : public LogTestBase {
     return Status::OK();
   }
 
-  Status BootstrapTestTablet(int mrs_id,
-                             int delta_id,
-                             shared_ptr<TabletClass>* tablet,
+  Status BootstrapTestTablet(shared_ptr<TabletClass>* tablet,
                              ConsensusBootstrapInfo* boot_info) {
-    scoped_refptr<TabletMetadata> meta;
-    RETURN_NOT_OK_PREPEND(LoadTestTabletMetadata(mrs_id, delta_id, &meta),
+    scoped_refptr<RaftGroupMetadata> meta;
+    RETURN_NOT_OK_PREPEND(LoadTestRaftGroupMetadata(&meta),
                           "Unable to load test tablet metadata");
 
     consensus::RaftConfigPB config;
@@ -152,7 +150,7 @@ class BootstrapTest : public LogTestBase {
     peer->set_member_type(consensus::RaftPeerPB::VOTER);
 
     std::unique_ptr<ConsensusMetadata> cmeta;
-    RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(meta->fs_manager(), meta->tablet_id(),
+    RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(meta->fs_manager(), meta->raft_group_id(),
                                                     meta->fs_manager()->uuid(),
                                                     config, kMinimumTerm, &cmeta),
                           "Unable to create consensus metadata");
@@ -180,7 +178,7 @@ TEST_F(BootstrapTest, TestBootstrap) {
   AppendReplicateBatch(current_op_id, current_op_id);
   shared_ptr<TabletClass> tablet;
   ConsensusBootstrapInfo boot_info;
-  ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
+  ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
 
   vector<string> results;
   IterateTabletRows(tablet.get(), &results);
@@ -191,12 +189,12 @@ TEST_F(BootstrapTest, TestBootstrap) {
 TEST_F(BootstrapTest, TestIncompleteRemoteBootstrap) {
   BuildLog();
 
-  ASSERT_OK(PersistTestTabletMetadataState(TABLET_DATA_COPYING));
+  ASSERT_OK(PersistTestRaftGroupMetadataState(TABLET_DATA_COPYING));
   shared_ptr<TabletClass> tablet;
   ConsensusBootstrapInfo boot_info;
-  Status s = BootstrapTestTablet(-1, -1, &tablet, &boot_info);
+  Status s = BootstrapTestTablet(&tablet, &boot_info);
   ASSERT_TRUE(s.IsCorruption()) << "Expected corruption: " << s.ToString();
-  ASSERT_STR_CONTAINS(s.ToString(), "TabletMetadata bootstrap state is TABLET_DATA_COPYING");
+  ASSERT_STR_CONTAINS(s.ToString(), "RaftGroupMetadata bootstrap state is TABLET_DATA_COPYING");
   LOG(INFO) << "State is still TABLET_DATA_COPYING, as expected: " << s.ToString();
 }
 
@@ -215,7 +213,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
   // Bootstrap the tablet. It shouldn't replay anything.
   ConsensusBootstrapInfo boot_info;
   shared_ptr<TabletClass> tablet;
-  ASSERT_OK(BootstrapTestTablet(0, 0, &tablet, &boot_info));
+  ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
 
   // Table should be empty because we didn't replay the REPLICATE.
   vector<string> results;
@@ -236,8 +234,8 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
 TEST_F(BootstrapTest, TestMissingConsensusMetadata) {
   BuildLog();
 
-  scoped_refptr<TabletMetadata> meta;
-  ASSERT_OK(LoadTestTabletMetadata(-1, -1, &meta));
+  scoped_refptr<RaftGroupMetadata> meta;
+  ASSERT_OK(LoadTestRaftGroupMetadata(&meta));
 
   shared_ptr<TabletClass> tablet;
   ConsensusBootstrapInfo boot_info;
@@ -263,7 +261,7 @@ TEST_F(BootstrapTest, TestCommitFirstMessageBySpecifyingCommittedIndexInSecond) 
                        {TupleForAppend(10, 2, "this is a test mutate")}, true /* sync */);
   ConsensusBootstrapInfo boot_info;
   shared_ptr<TabletClass> tablet;
-  ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
+  ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 1);
   ASSERT_OPID_EQ(boot_info.last_committed_id, insert_opid);
 
@@ -292,7 +290,7 @@ TEST_F(BootstrapTest, TestOperationOverwriting) {
   // When bootstrapping we should apply ops 1.1 and get 3.2 as pending.
   ConsensusBootstrapInfo boot_info;
   shared_ptr<TabletClass> tablet;
-  ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
+  ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
 
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 1);
   ASSERT_OPID_EQ(boot_info.orphaned_replicates[0]->id(), MakeOpId(3, 2));
@@ -329,7 +327,7 @@ TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderHybridTime) {
 
   ConsensusBootstrapInfo boot_info;
   shared_ptr<TabletClass> tablet;
-  ASSERT_OK(BootstrapTestTablet(-1, -1, &tablet, &boot_info));
+  ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
   ASSERT_EQ(boot_info.orphaned_replicates.size(), 0);
   ASSERT_OPID_EQ(boot_info.last_committed_id, second_opid);
 

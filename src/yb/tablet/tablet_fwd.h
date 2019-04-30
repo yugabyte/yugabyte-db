@@ -19,7 +19,7 @@ namespace yb {
 namespace tablet {
 
 class AbstractTablet;
-class TabletMetadata;
+class RaftGroupMetadata;
 class TabletPeer;
 class TabletStatusPB;
 class TabletStatusListener;

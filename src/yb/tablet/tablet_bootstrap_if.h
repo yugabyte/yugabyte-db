@@ -74,7 +74,7 @@ class Clock;
 
 namespace tablet {
 class Tablet;
-class TabletMetadata;
+class RaftGroupMetadata;
 class TransactionCoordinatorContext;
 class TransactionParticipantContext;
 struct TabletOptions;
@@ -83,7 +83,7 @@ struct TabletOptions;
 // piping it into the web UI.
 class TabletStatusListener {
  public:
-  explicit TabletStatusListener(const scoped_refptr<TabletMetadata>& meta);
+  explicit TabletStatusListener(const scoped_refptr<RaftGroupMetadata>& meta);
 
   ~TabletStatusListener();
 
@@ -105,14 +105,14 @@ class TabletStatusListener {
  private:
   mutable boost::shared_mutex lock_;
 
-  scoped_refptr<TabletMetadata> meta_;
+  scoped_refptr<RaftGroupMetadata> meta_;
   std::string last_status_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletStatusListener);
 };
 
 struct BootstrapTabletData {
-  scoped_refptr<TabletMetadata> meta;
+  scoped_refptr<RaftGroupMetadata> meta;
   std::shared_future<client::YBClient*> client_future;
   scoped_refptr<server::Clock> clock;
   std::shared_ptr<MemTracker> mem_tracker;

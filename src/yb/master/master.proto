@@ -261,8 +261,8 @@ message SysTabletsEntryPB {
   }
 
   // DEPRECATED. Replaced by 'partition'.
-  optional bytes DEPRECATED_start_key = 1;
-  optional bytes DEPRECATED_end_key = 2;
+  optional bytes OBSOLETE_start_key = 1;
+  optional bytes OBSOLETE_end_key = 2;
 
   // Tablet partition.
   optional PartitionPB partition = 7;
@@ -450,7 +450,7 @@ message TSRegistrationPB {
 
 message ReportedTabletPB {
   required bytes tablet_id = 1;
-  optional tablet.TabletStatePB state = 2 [ default = UNKNOWN ];
+  optional tablet.RaftGroupStatePB state = 2 [ default = UNKNOWN ];
   optional tablet.TabletDataState tablet_data_state = 6 [ default = TABLET_DATA_UNKNOWN ];
 
   // The latest _committed_ consensus state.
@@ -897,7 +897,7 @@ message GetTableSchemaResponsePB {
   repeated IndexInfoPB indexes = 10;
 
   // For index table: [to be deprecated and replaced by "index_info"]
-  optional bytes DEPRECATED_indexed_table_id = 11; // Indexed table id of this index.
+  optional bytes OBSOLETE_indexed_table_id = 11; // Indexed table id of this index.
 
   // For index table: information about this index.
   optional IndexInfoPB index_info = 12;

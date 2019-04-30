@@ -52,6 +52,6 @@ message ContainerSupHeaderPB {
   required google.protobuf.FileDescriptorSet protos = 1;
 
   // The PB message type expected in each data entry in this container. Must
-  // be fully qualified (i.e. yb.tablet.TabletSuperBlockPB).
+  // be fully qualified (i.e. yb.tablet.RaftGroupReplicaSuperBlockPB).
   required string pb_type = 2;
 }

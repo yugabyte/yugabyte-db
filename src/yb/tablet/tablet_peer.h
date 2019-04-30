@@ -99,7 +99,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentSizeMap;
 
-  TabletPeer(const scoped_refptr<TabletMetadata>& meta,
+  TabletPeer(const scoped_refptr<RaftGroupMetadata>& meta,
              const consensus::RaftPeerPB& local_peer_pb,
              const scoped_refptr<server::Clock> &clock,
              const std::string& permanent_uuid,
@@ -189,7 +189,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
     return tablet_;
   }
 
-  const TabletStatePB state() const {
+  const RaftGroupStatePB state() const {
     return state_.load(std::memory_order_acquire);
   }
 
@@ -204,10 +204,10 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   // Sets the tablet to a BOOTSTRAPPING state, indicating it is starting up.
   CHECKED_STATUS SetBootstrapping() {
-    return UpdateState(TabletStatePB::NOT_STARTED, TabletStatePB::BOOTSTRAPPING, "");
+    return UpdateState(RaftGroupStatePB::NOT_STARTED, RaftGroupStatePB::BOOTSTRAPPING, "");
   }
 
-  CHECKED_STATUS UpdateState(TabletStatePB expected, TabletStatePB new_state,
+  CHECKED_STATUS UpdateState(RaftGroupStatePB expected, RaftGroupStatePB new_state,
                              const std::string& error_message);
 
   // sets the tablet state to FAILED additionally setting the error to the provided
@@ -319,7 +319,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Return pointer to the transaction tracker for this peer.
   const OperationTracker* operation_tracker() const { return &operation_tracker_; }
 
-  const scoped_refptr<TabletMetadata>& tablet_metadata() const {
+  const scoped_refptr<RaftGroupMetadata>& tablet_metadata() const {
     return meta_;
   }
 
@@ -350,7 +350,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   virtual std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg);
 
-  const scoped_refptr<TabletMetadata> meta_;
+  const scoped_refptr<RaftGroupMetadata> meta_;
 
   const std::string tablet_id_;
 
@@ -359,7 +359,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // The atomics state_, error_ and has_consensus_ maintain information about the tablet peer.
   // While modifying the other fields in tablet peer, state_ is modified last.
   // error_ is set before state_ is set to an error state.
-  std::atomic<enum TabletStatePB> state_;
+  std::atomic<enum RaftGroupStatePB> state_;
   AtomicUniquePtr<Status> error_;
   std::atomic<bool> has_consensus_ = {false};
 

@@ -53,7 +53,7 @@ namespace master {
 string TabletReplica::ToString() const {
   return Format("{ ts_desc: $0 state: $1 role: $2 }",
                 ts_desc->permanent_uuid(),
-                tablet::TabletStatePB_Name(state),
+                tablet::RaftGroupStatePB_Name(state),
                 consensus::RaftPeerPB_Role_Name(role));
 }
 

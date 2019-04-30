@@ -194,8 +194,8 @@ Status SysCatalogTable::CreateAndFlushConsensusMeta(
 Status SysCatalogTable::Load(FsManager* fs_manager) {
   LOG(INFO) << "Trying to load previous SysCatalogTable data from disk";
   // Load Metadata Information from disk
-  scoped_refptr<tablet::TabletMetadata> metadata;
-  RETURN_NOT_OK(tablet::TabletMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
+  scoped_refptr<tablet::RaftGroupMetadata> metadata;
+  RETURN_NOT_OK(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
 
   // Verify that the schema is the current one
   if (!metadata->schema().Equals(BuildTableSchema())) {
@@ -224,7 +224,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   // 1. We always believe the local config options for who is in the consensus configuration.
   // 2. We always want to look up all node's UUIDs on start (via RPC).
   //    - TODO: Cache UUIDs. See KUDU-526.
-  string tablet_id = metadata->tablet_id();
+  string tablet_id = metadata->raft_group_id();
   std::unique_ptr<ConsensusMetadata> cmeta;
   RETURN_NOT_OK_PREPEND(ConsensusMetadata::Load(fs_manager, tablet_id, fs_manager->uuid(), &cmeta),
                         "Unable to load consensus metadata for tablet " + tablet_id);
@@ -260,7 +260,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
 Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   LOG(INFO) << "Creating new SysCatalogTable data";
   // Create the new Metadata
-  scoped_refptr<tablet::TabletMetadata> metadata;
+  scoped_refptr<tablet::RaftGroupMetadata> metadata;
   Schema schema = BuildTableSchema();
   PartitionSchema partition_schema;
   RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
@@ -270,7 +270,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   DCHECK_EQ(1, partitions.size());
 
-  RETURN_NOT_OK(tablet::TabletMetadata::CreateNew(
+  RETURN_NOT_OK(tablet::RaftGroupMetadata::CreateNew(
     fs_manager,
     kSysCatalogTableId,
     kSysCatalogTabletId,
@@ -454,7 +454,7 @@ Status SysCatalogTable::GoIntoShellMode() {
   return Status::OK();
 }
 
-void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::TabletMetadata>& metadata) {
+void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetadata>& metadata) {
   InitLocalRaftPeerPB();
 
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
@@ -462,12 +462,12 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::TabletMetadata
   std::shared_ptr<tablet::TabletPeer> tablet_peer = std::make_shared<TabletPeerClass>(
       metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
-      Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->tablet_id()));
+      Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()));
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
 
-Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::TabletMetadata>& metadata) {
+Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata) {
   SetupTabletPeer(metadata);
 
   RETURN_NOT_OK(OpenTablet(metadata));
@@ -475,7 +475,7 @@ Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::TabletMetadata>&
   return Status::OK();
 }
 
-Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& metadata) {
+Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata) {
   CHECK(tablet_peer());
 
   shared_ptr<TabletClass> tablet;

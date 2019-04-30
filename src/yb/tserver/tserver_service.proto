@@ -102,7 +102,7 @@ message ListTabletsForTabletServerResponsePB {
     optional string table_name = 1;
     optional bytes tablet_id = 2;
     optional bool is_leader = 3;
-    optional tablet.TabletStatePB state = 4;
+    optional tablet.RaftGroupStatePB state = 4;
   }
 
   repeated Entry entries = 1;

@@ -44,12 +44,12 @@ using std::shared_ptr;
 
 using consensus::ConsensusBootstrapInfo;
 
-TabletStatusListener::TabletStatusListener(const scoped_refptr<TabletMetadata>& meta)
+TabletStatusListener::TabletStatusListener(const scoped_refptr<RaftGroupMetadata>& meta)
     : meta_(meta) {
 }
 
 const string TabletStatusListener::tablet_id() const {
-  return meta_->tablet_id();
+  return meta_->raft_group_id();
 }
 
 const string TabletStatusListener::table_name() const {
@@ -80,7 +80,7 @@ Status BootstrapTablet(
     scoped_refptr<log::Log>* rebuilt_log,
     ConsensusBootstrapInfo* consensus_info) {
   TRACE_EVENT1("tablet", "BootstrapTablet",
-               "tablet_id", data.meta->tablet_id());
+               "tablet_id", data.meta->raft_group_id());
   YB_EDITION_NS_PREFIX TabletBootstrap bootstrap(data);
   RETURN_NOT_OK(bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, consensus_info));
   // This is necessary since OpenNewLog() initially disables sync.

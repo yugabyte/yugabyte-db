@@ -87,7 +87,7 @@ using master::TabletLocationsPB_ReplicaPB;
 using master::TSInfoPB;
 using rpc::Messenger;
 using rpc::Rpc;
-using tablet::TabletStatePB;
+using tablet::RaftGroupStatePB;
 using tserver::LocalTabletServer;
 using tserver::TabletServerServiceProxy;
 
@@ -301,10 +301,10 @@ void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) 
   for (RemoteReplica& replica : replicas_) {
     if (replica.Failed()) {
       switch (replica.state) {
-        case TabletStatePB::UNKNOWN: FALLTHROUGH_INTENDED;
-        case TabletStatePB::NOT_STARTED: FALLTHROUGH_INTENDED;
-        case TabletStatePB::BOOTSTRAPPING: FALLTHROUGH_INTENDED;
-        case TabletStatePB::RUNNING:
+        case RaftGroupStatePB::UNKNOWN: FALLTHROUGH_INTENDED;
+        case RaftGroupStatePB::NOT_STARTED: FALLTHROUGH_INTENDED;
+        case RaftGroupStatePB::BOOTSTRAPPING: FALLTHROUGH_INTENDED;
+        case RaftGroupStatePB::RUNNING:
           // These are non-terminal states that may retry. Check and update failed local replica's
           // current state. For remote replica, just wait for some time before retrying.
           if (replica.ts->IsLocal()) {
@@ -322,10 +322,10 @@ void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) 
 
             DCHECK_EQ(resp.tablet_status().tablet_id(), tablet_id_);
             VLOG_WITH_PREFIX(3) << "GetTabletStatus returned status: "
-                                << tablet::TabletStatePB_Name(resp.tablet_status().state())
+                                << tablet::RaftGroupStatePB_Name(resp.tablet_status().state())
                                 << " for replica " << replica.ts->ToString();
             replica.state = resp.tablet_status().state();
-            if (replica.state != tablet::TabletStatePB::RUNNING) {
+            if (replica.state != tablet::RaftGroupStatePB::RUNNING) {
               continue;
             }
           } else if ((MonoTime::Now() - replica.last_failed_time) <
@@ -333,9 +333,9 @@ void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) 
             continue;
           }
           break;
-        case TabletStatePB::FAILED: FALLTHROUGH_INTENDED;
-        case TabletStatePB::QUIESCING: FALLTHROUGH_INTENDED;
-        case TabletStatePB::SHUTDOWN:
+        case RaftGroupStatePB::FAILED: FALLTHROUGH_INTENDED;
+        case RaftGroupStatePB::QUIESCING: FALLTHROUGH_INTENDED;
+        case RaftGroupStatePB::SHUTDOWN:
           // These are terminal states, so we won't retry.
           continue;
       }

@@ -109,8 +109,8 @@ class TabletHarness {
     }
     RETURN_NOT_OK(fs_manager_->Open());
 
-    scoped_refptr<TabletMetadata> metadata;
-    RETURN_NOT_OK(TabletMetadata::LoadOrCreate(fs_manager_.get(),
+    scoped_refptr<RaftGroupMetadata> metadata;
+    RETURN_NOT_OK(RaftGroupMetadata::LoadOrCreate(fs_manager_.get(),
                                                "YBTableTest",
                                                options_.tablet_id,
                                                "YBTableTest",

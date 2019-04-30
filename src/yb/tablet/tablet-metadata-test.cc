@@ -43,9 +43,9 @@
 namespace yb {
 namespace tablet {
 
-class TestTabletMetadata : public YBTabletTest {
+class TestRaftGroupMetadata : public YBTabletTest {
  public:
-  TestTabletMetadata()
+  TestRaftGroupMetadata()
       : YBTabletTest(GetSimpleTestSchema()) {
   }
 
@@ -61,7 +61,7 @@ class TestTabletMetadata : public YBTabletTest {
   gscoped_ptr<LocalTabletWriter> writer_;
 };
 
-void TestTabletMetadata::BuildPartialRow(int key, int intval, const char* strval,
+void TestRaftGroupMetadata::BuildPartialRow(int key, int intval, const char* strval,
                                          QLWriteRequestPB* req) {
   req->Clear();
   QLAddInt32HashValue(req, key);
@@ -70,7 +70,7 @@ void TestTabletMetadata::BuildPartialRow(int key, int intval, const char* strval
 }
 
 // Test that loading & storing the superblock results in an equivalent file.
-TEST_F(TestTabletMetadata, TestLoadFromSuperBlock) {
+TEST_F(TestRaftGroupMetadata, TestLoadFromSuperBlock) {
   // Write some data to the tablet and flush.
   QLWriteRequestPB req;
   BuildPartialRow(0, 0, "foo", &req);
@@ -85,17 +85,17 @@ TEST_F(TestTabletMetadata, TestLoadFromSuperBlock) {
   // Shut down the tablet.
   harness_->tablet()->Shutdown();
 
-  TabletMetadata* meta = harness_->tablet()->metadata();
+  RaftGroupMetadata* meta = harness_->tablet()->metadata();
 
   // Dump the superblock to a PB. Save the PB to the side.
-  TabletSuperBlockPB superblock_pb_1;
+  RaftGroupReplicaSuperBlockPB superblock_pb_1;
   meta->ToSuperBlock(&superblock_pb_1);
 
-  // Load the superblock PB back into the TabletMetadata.
+  // Load the superblock PB back into the RaftGroupMetadata.
   ASSERT_OK(meta->ReplaceSuperBlock(superblock_pb_1));
 
   // Dump the tablet metadata to a superblock PB again, and save it.
-  TabletSuperBlockPB superblock_pb_2;
+  RaftGroupReplicaSuperBlockPB superblock_pb_2;
   meta->ToSuperBlock(&superblock_pb_2);
 
   // Compare the 2 dumped superblock PBs.

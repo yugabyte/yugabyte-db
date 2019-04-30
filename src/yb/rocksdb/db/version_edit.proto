@@ -47,7 +47,7 @@ message NewFilePB {
   optional BoundaryValuesPB largest = 6;
   optional uint32 path_id = 7;
   optional bool marked_for_compaction = 8;
-  optional yb.OpIdPB deprecated_last_op_id = 9;
+  optional yb.OpIdPB obsolete_last_op_id = 9;
   optional bool imported = 10;
 }
 
@@ -68,6 +68,6 @@ message VersionEditPB {
   // it includes column family name.
   optional string column_family_name = 10;
   optional bool is_column_family_drop = 11;
-  optional yb.OpIdPB deprecated_last_op_id = 12;
+  optional yb.OpIdPB obsolete_last_op_id = 12;
   optional google.protobuf.Any flushed_frontier = 13;
 }

@@ -92,20 +92,37 @@ message TableInfoPB {
   repeated DeletedColumnPB deleted_cols = 9;
 }
 
-// The super-block keeps track of the tablet data blocks.
-// A tablet contains one or more RowSets, which contain
-// a set of blocks (one for each column), a set of delta blocks
-// and optionally a block containing the bloom filter
-// and a block containing the compound-keys.
-message TabletSuperBlockPB {
-  // Table ID of the primary table in this tablet.
+// KV-store meta data. Single KV-store is backed by one or two RocksDB instances, depending on
+// whether distributed transactions are enabled for the table. KV-store for sys catalog could
+// contain multiple tables.
+message KvStoreInfoPB {
+  // KV-store id. For more convenient logs browsing and investigation, by default set to
+  // raft_group_id for the KV-store which was created first in the Raft group.
+  required bytes kv_store_id = 1;
+
+  // The RocksDB directory for this KV-store.
+  optional string rocksdb_dir = 2;
+
+  // List of RocksDB SST files.
+  repeated FilePB rocksdb_files = 3;
+
+  // List of Snapshot files.
+  repeated SnapshotFilePB snapshot_files = 4;
+
+  // List of tables sharing this KV-store. Primary table always goes first.
+  repeated TableInfoPB tables = 5;
+}
+
+// The super-block keeps track of the Raft group.
+message RaftGroupReplicaSuperBlockPB {
+  // Table ID of the primary table in this Raft group. For now we can only have more than one
+  // tables in master Raft group and sys catalog table is the primary table in this case.
   required bytes primary_table_id = 1;
 
-  // Tablet Id
-  required bytes tablet_id = 2;
+  required bytes raft_group_id = 2;
 
-  // The latest durable MemRowSet id
-  required int64 last_durable_mrs_id = 3;
+  // deprecated MemRowSet id.
+  reserved 3;
 
   // Reserved for deprecated start_key, end_key, orphaned_blocks.
   reserved 4, 5, 11;
@@ -116,45 +133,51 @@ message TabletSuperBlockPB {
   // The latest schema
   // TODO: maybe this should be TableSchemaPB? Need to actually put those attributes
   // into use throughout the code. Using the simpler one for now.
-  required string DEPRECATED_table_name = 7;
-  optional TableType DEPRECATED_table_type = 15 [ default = DEFAULT_TABLE_TYPE ];
-  required SchemaPB DEPRECATED_schema = 8;
-  required uint32 DEPRECATED_schema_version = 9;
+  optional string OBSOLETE_table_name = 7;
+  optional TableType OBSOLETE_table_type = 15 [ default = DEFAULT_TABLE_TYPE ];
+  optional SchemaPB OBSOLETE_schema = 8;
+  optional uint32 OBSOLETE_schema_version = 9;
 
   // The partition schema of the table.
-  optional PartitionSchemaPB DEPRECATED_partition_schema = 14;
+  optional PartitionSchemaPB OBSOLETE_partition_schema = 14;
 
-  // The current state of the tablet's data.
+  // The current state of the Raft group's data.
   optional TabletDataState tablet_data_state = 10 [ default = TABLET_DATA_UNKNOWN ];
 
-  // The RocksDB directory for this tablet.
-  optional string rocksdb_dir = 16;
-
-  // The write-ahead log directory for this tablet.
+  // The write-ahead log directory for this Raft group.
   optional string wal_dir = 18;
-
-  // List of RocksDB SST files.
-  repeated FilePB rocksdb_files = 17;
-
-  // List of Snapshot files.
-  repeated SnapshotFilePB snapshot_files = 20;
 
   // For tablets that have been tombstoned, stores the last OpId stored in the
   // WAL before tombstoning.
   // Only relevant for TOMBSTONED tablets.
   optional OpIdPB tombstone_last_logged_opid = 12;
 
+  // KV-store for this Raft group.
+  optional KvStoreInfoPB kv_store = 24;
+
+  // ----------------------------------------------------------------------------------------------
+  // Deprecated fields, only for backward compatibility during load, shouldn't be used during save:
+
+  // The RocksDB directory for this tablet.
+  optional string OBSOLETE_rocksdb_dir = 16;
+
+  // List of RocksDB SST files.
+  repeated FilePB OBSOLETE_rocksdb_files = 17;
+
+  // List of Snapshot files.
+  repeated SnapshotFilePB OBSOLETE_snapshot_files = 20;
+
   // Deleted column IDs with timestamps so that memory can be cleaned up.
-  repeated DeletedColumnPB DEPRECATED_deleted_cols = 19;
+  repeated DeletedColumnPB OBSOLETE_deleted_cols = 19;
 
   // Secondary indexes of the table.
-  repeated IndexInfoPB DEPRECATED_indexes = 21;
+  repeated IndexInfoPB OBSOLETE_indexes = 21;
 
   // For index table: information about this index.
-  optional IndexInfoPB DEPRECATED_index_info = 22;
+  optional IndexInfoPB OBSOLETE_index_info = 22;
 
   // Tables co-located in this tablet.
-  repeated TableInfoPB tables = 23;
+  repeated TableInfoPB OBSOLETE_tables = 23;
 }
 
 message FilePB {
@@ -174,29 +197,28 @@ message SnapshotFilePB {
   optional bytes snapshot_id = 2;
 }
 
-// The enum of tablet states.
-// Tablet states are sent in TabletReports and kept in TabletPeer.
-enum TabletStatePB {
+// The enum of Raft group states.
+// Raft group states are sent in TabletReports and kept in TabletPeer.
+enum RaftGroupStatePB {
   UNKNOWN = 999;
 
-  // Tablet has not yet started.
+  // Raft group has not yet started.
   NOT_STARTED = 5;
 
-  // Indicates the Tablet is bootstrapping, i.e. that the Tablet is not
-  // available for RPC.
+  // Indicates the Raft group is bootstrapping, i.e. that the Raft group is not available for RPC.
   BOOTSTRAPPING = 0;
 
-  // Once the configuration phase is over Peers are in RUNNING state. In this
-  // state Peers are available for client RPCs.
+  // Once the configuration phase is over Peers are in RUNNING state. In this state Peers are
+  // available for client RPCs.
   RUNNING = 1;
 
-  // The tablet failed to for some reason. TabletPeer::error() will return
-  // the reason for the failure.
+  // The Raft group failed to for some reason. TabletPeer::error() will return the reason for the
+  // failure.
   FAILED = 2;
 
-  // The Tablet is shutting down, and will not accept further requests.
+  // The Raft group is shutting down, and will not accept further requests.
   QUIESCING = 3;
 
-  // The Tablet has been stopped.
+  // The Raft group has been stopped.
   SHUTDOWN = 4;
 }

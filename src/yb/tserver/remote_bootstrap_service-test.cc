@@ -98,10 +98,11 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
         remote_bootstrap_proxy_->BeginRemoteBootstrapSession(req, resp, controller), controller);
   }
 
-  Status DoBeginValidRemoteBootstrapSession(string* session_id,
-                                            tablet::TabletSuperBlockPB* superblock = nullptr,
-                                            uint64_t* idle_timeout_millis = nullptr,
-                                            vector<uint64_t>* sequence_numbers = nullptr) {
+  Status DoBeginValidRemoteBootstrapSession(
+      string* session_id,
+      tablet::RaftGroupReplicaSuperBlockPB* superblock = nullptr,
+      uint64_t* idle_timeout_millis = nullptr,
+      vector<uint64_t>* sequence_numbers = nullptr) {
     BeginRemoteBootstrapSessionResponsePB resp;
     RpcController controller;
     RETURN_NOT_OK(DoBeginRemoteBootstrapSession(GetTabletId(), GetLocalUUID(), &resp, &controller));
@@ -206,7 +207,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
 // Test beginning and ending a remote bootstrap session.
 TEST_F(RemoteBootstrapServiceTest, TestSimpleBeginEndSession) {
   string session_id;
-  tablet::TabletSuperBlockPB superblock;
+  tablet::RaftGroupReplicaSuperBlockPB superblock;
   uint64_t idle_timeout_millis;
   vector<uint64_t> segment_seqnos;
   ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id,
@@ -334,7 +335,7 @@ TEST_F(RemoteBootstrapServiceTest, TestInvalidBlockOrOpId) {
 // Test that we are able to fetch log segments.
 TEST_F(RemoteBootstrapServiceTest, TestFetchLog) {
   string session_id;
-  tablet::TabletSuperBlockPB superblock;
+  tablet::RaftGroupReplicaSuperBlockPB superblock;
   uint64_t idle_timeout_millis;
   vector<uint64_t> segment_seqnos;
   ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id,

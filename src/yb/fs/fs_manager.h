@@ -160,11 +160,11 @@ class FsManager {
   static std::string GetWalSegmentFileName(const std::string& tablet_wal_path,
                                     uint64_t sequence_number);
 
-  // Return the directory where tablet superblocks should be stored.
-  std::string GetTabletMetadataDir() const;
+  // Return the directory where Raft group superblocks should be stored.
+  std::string GetRaftGroupMetadataDir() const;
 
-  // Return the path for a specific tablet's superblock.
-  std::string GetTabletMetadataPath(const std::string& tablet_id) const;
+  // Return the path for a specific Raft group's superblock.
+  std::string GetRaftGroupMetadataPath(const std::string& tablet_id) const;
 
   // List the tablet IDs in the metadata directory.
   CHECKED_STATUS ListTabletIds(std::vector<std::string>* tablet_ids);
@@ -238,7 +238,7 @@ class FsManager {
                           const std::vector<std::string>& objects);
 
   static const char *kDataDirName;
-  static const char *kTabletMetadataDirName;
+  static const char *kRaftGroupMetadataDirName;
   static const char *kCorruptedSuffix;
   static const char *kInstanceMetadataFileName;
   static const char *kInstanceMetadataMagicNumber;
