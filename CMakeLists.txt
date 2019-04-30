@@ -1394,6 +1394,12 @@ ADD_THIRDPARTY_LIB(glog
   SHARED_LIB "${GLOG_SHARED_LIB}")
 list(APPEND YB_BASE_LIBS glog)
 
+find_package(CDS REQUIRED)
+include_directories(SYSTEM ${CDS_INCLUDE_DIR})
+ADD_THIRDPARTY_LIB(cds
+  STATIC_LIB "${CDS_STATIC_LIB}"
+  SHARED_LIB "${CDS_SHARED_LIB}")
+
 ## libunwind (dependent of glog)
 ## Doesn't build on OSX.
 if (NOT APPLE)

@@ -15,10 +15,31 @@
 
 #include <thread>
 
-#include "yb/gutil/strings/substitute.h"
+#include <boost/lockfree/queue.hpp>
 
-#include "yb/util/test_util.h"
+#include <boost/thread/tss.hpp>
+
+#include <cds/init.h>
+
+#include <cds/container/basket_queue.h>
+#include <cds/container/fcqueue.h>
+#include <cds/container/msqueue.h>
+#include <cds/container/moir_queue.h>
+#include <cds/container/optimistic_queue.h>
+#include <cds/container/rwqueue.h>
+#include <cds/container/segmented_queue.h>
+#include <cds/container/vyukov_mpmc_cycle_queue.h>
+
+#include <cds/gc/dhp.h>
+#include <cds/gc/hp.h>
+
 #include "yb/util/lockfree.h"
+#include "yb/util/logging.h"
+#include "yb/util/random_util.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread.h"
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -120,6 +141,273 @@ TEST(LockfreeTest, MPSCQueueConcurrent) {
   for (auto& thread : threads) {
     thread.join();
   }
+}
+
+#ifndef NDEBUG
+constexpr auto kEntries = RegularBuildVsSanitizers(1000000, 1000);
+#else
+constexpr auto kEntries = 10000000;
+#endif
+
+template <class T, class Allocator = std::allocator<T>>
+struct BlockAllocator {
+  template <class U>
+  struct rebind {
+    typedef BlockAllocator<U, typename Allocator::template rebind<U>::other> other;
+  };
+
+  typedef typename Allocator::value_type value_type;
+  typedef typename Allocator::pointer pointer;
+  typedef typename Allocator::size_type size_type;
+
+  void deallocate(pointer p, size_type n) {
+    BlockEntry* entry = OBJECT_FROM_MEMBER(BlockEntry, value, p);
+    if (entry->counter->fetch_sub(1, std::memory_order_acq_rel) == 1) {
+      Block* block = OBJECT_FROM_MEMBER(Block, counter, entry->counter);
+      impl_.deallocate(block, 1);
+    }
+  }
+
+  static constexpr size_t kBlockEntries = 0x80;
+
+  struct BlockEntry {
+    std::atomic<size_t>* counter;
+    T value;
+  };
+
+  struct Block {
+    std::atomic<size_t> counter;
+    BlockEntry entries[kBlockEntries];
+  };
+
+  struct TSS {
+    size_t idx = kBlockEntries;
+    Block* block = nullptr;
+
+    ~TSS() {
+      auto delta = kBlockEntries - idx;
+      if (delta != 0 && block->counter.fetch_sub(delta, std::memory_order_acq_rel) == delta) {
+        Impl().deallocate(block, 1);
+      }
+    }
+  };
+
+  static thread_local std::unique_ptr<TSS> tss_;
+
+  pointer allocate(size_type n) {
+    TSS* tss = tss_.get();
+    if (PREDICT_FALSE(!tss)) {
+      tss_.reset(new TSS);
+      tss = tss_.get();
+    }
+    if (PREDICT_FALSE(tss->idx == kBlockEntries)) {
+      tss->block = impl_.allocate(1);
+      tss->block->counter.store(kBlockEntries, std::memory_order_release);
+      tss->idx = 0;
+    }
+    auto& entry = tss->block->entries[tss->idx++];
+    entry.counter = &tss->block->counter;
+    return &entry.value;
+  }
+
+  typedef typename Allocator::template rebind<Block>::other Impl;
+  Impl impl_;
+};
+
+template <class T, class Allocator>
+thread_local std::unique_ptr<typename BlockAllocator<T, Allocator>::TSS>
+    BlockAllocator<T, Allocator>::tss_;
+
+class QueuePerformanceHelper {
+ public:
+  void Warmup() {
+    // Empty name would not be printed, so we use it for warmup.
+    TestQueue<boost::lockfree::queue<ptrdiff_t>>("", 1000);
+  }
+
+  void Perform(size_t workers, bool mixed_mode) {
+    Setup(workers, mixed_mode);
+    RunAll();
+  }
+
+ private:
+  void Setup(size_t workers, bool mixed_mode) {
+    workers_ = workers;
+    mixed_mode_ = mixed_mode;
+
+    LOG(INFO) << "Setup, workers: " << workers << ", mixed mode: " << mixed_mode;
+  }
+
+  void RunAll() {
+    typedef cds::opt::allocator<BlockAllocator<int>> OptAllocator;
+    TestQueue<boost::lockfree::queue<ptrdiff_t, boost::lockfree::fixed_sized<true>>>(
+        "boost::lockfree::queue", 50000);
+    TestQueue<cds::container::BasketQueue<cds::gc::HP, ptrdiff_t>>("BasketQueue");
+    TestQueue<cds::container::BasketQueue<cds::gc::DHP, ptrdiff_t>>("BasketQueue/DHP");
+    TestQueue<cds::container::BasketQueue<
+        cds::gc::HP, ptrdiff_t,
+        cds::container::basket_queue::make_traits<OptAllocator>::type>>(
+            "BasketQueue/BlockAllocator");
+    TestQueue<cds::container::BasketQueue<
+        cds::gc::DHP, ptrdiff_t,
+        cds::container::basket_queue::make_traits<OptAllocator>::type>>(
+            "BasketQueue/BlockAllocator/DHP");
+    // FCQueue disabled, since looks like it has bugs.
+    // TestQueue<cds::container::FCQueue<ptrdiff_t>>("FCQueue");
+    TestQueue<cds::container::MoirQueue<cds::gc::HP, ptrdiff_t>>("MoirQueue");
+    TestQueue<cds::container::MoirQueue<cds::gc::DHP, ptrdiff_t>>("MoirQueue/DHP");
+    TestQueue<cds::container::MoirQueue<
+        cds::gc::HP, ptrdiff_t,
+        cds::container::msqueue::make_traits<OptAllocator>::type>>(
+            "MoirQueue/BlockAllocator");
+    TestQueue<cds::container::MoirQueue<
+        cds::gc::DHP, ptrdiff_t,
+        cds::container::msqueue::make_traits<OptAllocator>::type>>(
+            "MoirQueue/BlockAllocator/DHP");
+    TestQueue<cds::container::MSQueue<cds::gc::HP, ptrdiff_t>>("MSQueue");
+    TestQueue<cds::container::MSQueue<cds::gc::DHP, ptrdiff_t>>("MSQueue/DHP");
+    TestQueue<cds::container::MSQueue<
+        cds::gc::HP, ptrdiff_t,
+        cds::container::msqueue::make_traits<OptAllocator>::type>>(
+            "MSQueue/BlockAllocator");
+    TestQueue<cds::container::MSQueue<
+        cds::gc::DHP, ptrdiff_t,
+        cds::container::msqueue::make_traits<OptAllocator>::type>>(
+            "MSQueue/BlockAllocator/DHP");
+    TestQueue<cds::container::OptimisticQueue<cds::gc::HP, ptrdiff_t>>("OptimisticQueue");
+    TestQueue<cds::container::OptimisticQueue<cds::gc::DHP, ptrdiff_t>>("OptimisticQueue/DHP");
+    TestQueue<cds::container::OptimisticQueue<
+        cds::gc::HP, ptrdiff_t,
+        cds::container::optimistic_queue::make_traits<OptAllocator>::type>>(
+            "OptimisticQueue/BlockAllocator");
+    TestQueue<cds::container::OptimisticQueue<
+        cds::gc::DHP, ptrdiff_t,
+        cds::container::optimistic_queue::make_traits<OptAllocator>::type>>(
+            "OptimisticQueue/BlockAllocator/DHP");
+    TestQueue<cds::container::RWQueue<ptrdiff_t>>("RWQueue");
+    TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/16", 16);
+    TestQueue<cds::container::SegmentedQueue<cds::gc::HP, ptrdiff_t>>("SegmentedQueue/128", 128);
+    TestQueue<cds::container::VyukovMPMCCycleQueue<ptrdiff_t>>("VyukovMPMCCycleQueue", 50000);
+  }
+ private:
+  template <class T, class... Args>
+  void DoTestQueue(const std::string& name, T* queue) {
+    std::atomic<size_t> pushes(0);
+    std::atomic<size_t> pops(0);
+
+    std::vector<std::thread> threads;
+    threads.reserve(workers_);
+
+    CountDownLatch latch(workers_);
+
+    enum class Role {
+      kReader,
+      kWriter,
+      kBoth,
+    };
+
+    for (int i = 0; i != workers_; ++i) {
+      Role role = mixed_mode_ ? Role::kBoth : (i & 1 ? Role::kReader : Role::kWriter);
+      threads.emplace_back([queue, &latch, &pushes, &pops, role] {
+        CDSAttacher attacher;
+        latch.CountDown();
+        latch.Wait();
+        bool push_done = false;
+        bool pop_done = false;
+        int commands_left = 0;
+        uint64_t commands = 0;
+        std::mt19937_64& random = ThreadLocalRandom();
+        if (role == Role::kWriter) {
+          pop_done = true;
+        } else if (role == Role::kReader) {
+          push_done = true;
+        }
+        while (!push_done || !pop_done) {
+          if (commands_left == 0) {
+            switch (role) {
+              case Role::kReader:
+                commands = 0;
+                break;
+              case Role::kWriter:
+                commands = std::numeric_limits<uint64_t>::max();
+                break;
+              case Role::kBoth:
+                commands = random();;
+                break;
+            }
+            commands_left = sizeof(commands) * 8;
+          }
+          bool push = (commands & 1) != 0;
+          commands >>= 1;
+          --commands_left;
+          if (push) {
+            auto entry = pushes.fetch_add(1, std::memory_order_acq_rel);
+            if (entry > kEntries) {
+              push_done = true;
+              continue;
+            }
+            while (!queue->push(entry)) {}
+          } else {
+            if (pops.load(std::memory_order_acquire) >= kEntries) {
+              pop_done = true;
+              continue;
+            }
+            typename T::value_type entry;
+            if (queue->pop(entry)) {
+              if (pops.fetch_add(1, std::memory_order_acq_rel) == kEntries - 1) {
+                pop_done = true;
+                continue;
+              }
+            }
+          }
+        }
+      });
+    }
+
+    latch.Wait();
+    auto start = MonoTime::Now();
+
+    for (auto& thread : threads) {
+      thread.join();
+    }
+
+    auto stop = MonoTime::Now();
+    auto passed = stop - start;
+
+    if (!name.empty()) {
+      LOG(INFO) << name << ": " << passed;
+    }
+  }
+
+  template <class T>
+  void TestQueue(const std::string& name) {
+    T queue;
+    DoTestQueue(name, &queue);
+  }
+
+  template <class T, class... Args>
+  void TestQueue(const std::string& name, Args&&... args) {
+    T queue(std::forward<Args>(args)...);
+    DoTestQueue(name, &queue);
+  }
+
+  size_t workers_ = 0x100;
+  bool mixed_mode_ = false;
+};
+
+TEST(LockfreeTest, QueuePerformance) {
+  InitGoogleLoggingSafeBasic("lockfree");
+  cds::gc::hp::GarbageCollector::construct(0 /* nHazardPtrCount */, 1000 /* nMaxThreadCount */);
+  InitThreading();
+
+  // We should move it is ThreadMgr in case we decide to use some data struct that uses GC.
+  // I.e. anything that is customized with cds::gc::HP/cds::gc::DHP.
+  QueuePerformanceHelper helper;
+  helper.Warmup();
+  helper.Perform(0x100, false);
+  helper.Perform(0x100, true);
+  helper.Perform(0x10, false);
+  helper.Perform(0x10, true);
 }
 
 } // namespace yb

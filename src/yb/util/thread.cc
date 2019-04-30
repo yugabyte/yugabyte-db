@@ -49,6 +49,9 @@
 #include <set>
 #include <vector>
 
+#include <cds/init.h>
+#include <cds/gc/dhp.h>
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/mathlimits.h"
@@ -143,9 +146,13 @@ class ThreadMgr {
       : metrics_enabled_(false),
         threads_started_metric_(0),
         threads_running_metric_(0) {
+    cds::Initialize();
+    cds::gc::dhp::GarbageCollector::construct();
+    cds::threading::Manager::attachThread();
   }
 
   ~ThreadMgr() {
+    cds::Terminate();
     MutexLock l(lock_);
     thread_categories_.clear();
   }
@@ -571,13 +578,13 @@ std::string Thread::ToString() const {
 }
 
 Status Thread::StartThread(const std::string& category, const std::string& name,
-                           const ThreadFunctor& functor, scoped_refptr<Thread> *holder) {
+                           ThreadFunctor functor, scoped_refptr<Thread> *holder) {
   InitThreading();
   const string log_prefix = Substitute("$0 ($1) ", name, category);
   SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "starting thread");
 
   // Temporary reference for the duration of this function.
-  scoped_refptr<Thread> t(new Thread(category, name, functor));
+  scoped_refptr<Thread> t(new Thread(category, name, std::move(functor)));
 
   {
     SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "creating pthread");
@@ -653,6 +660,8 @@ void* Thread::SuperviseThread(void* arg) {
   thread_manager->SetThreadName(name, t->tid());
   thread_manager->AddThread(pthread_self(), name, t->category(), t->tid());
 
+  cds::threading::Manager::attachThread();
+
   // FinishThread() is guaranteed to run (even if functor_ throws an
   // exception) because pthread_cleanup_push() creates a scoped object
   // whose destructor invokes the provided callback.
@@ -664,6 +673,8 @@ void* Thread::SuperviseThread(void* arg) {
 }
 
 void Thread::FinishThread(void* arg) {
+  cds::threading::Manager::detachThread();
+
   Thread* t = static_cast<Thread*>(arg);
 
   for (Closure& c : t->exit_callbacks_) {
@@ -681,6 +692,14 @@ void Thread::FinishThread(void* arg) {
 
   VLOG(2) << "Ended thread " << t->tid() << " - "
           << t->category() << ":" << t->name();
+}
+
+CDSAttacher::CDSAttacher() {
+  cds::threading::Manager::attachThread();
+}
+
+CDSAttacher::~CDSAttacher() {
+  cds::threading::Manager::detachThread();
 }
 
 } // namespace yb

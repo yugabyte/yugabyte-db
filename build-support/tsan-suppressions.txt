@@ -89,6 +89,20 @@ race:yb::ExternalDaemon::LogTailerThread::LogTailerThread
 # Known well implemented lock-free containers
 race:boost::lockfree
 
+# Supressions from libcds:
+
+# false: LazyList potential deadlock
+deadlock:cds/intrusive/impl/lazy_list.h
+deadlock:cds/intrusive/lazy_list_nogc.h
+
+# false: BronsonAVLTree potential deadlock
+deadlock:cds/container/impl/bronson_avltree_map_rcu.h
+
+#TODO: temporary suppressed. Must be researched later
+race:cds/container/impl/bronson_avltree_map_rcu.h
+
+race:cds::gc::dhp::retired_array
+
 # std::locale is thread safe
 race:std::locale::classic
 

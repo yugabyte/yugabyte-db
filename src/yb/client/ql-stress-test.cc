@@ -279,6 +279,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   while (write_threads.size() < kConcurrentWrites) {
     write_threads.emplace_back([this, &key_source, &stop_requested, &txn_manager,
                                 kTransactionalWriteProbability] {
+      CDSAttacher attacher;
       auto session = NewSession();
       while (!stop_requested.load(std::memory_order_acquire)) {
         int32_t key = key_source.fetch_add(1, std::memory_order_acq_rel);
@@ -317,6 +318,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   std::thread restart_thread;
   if (restarts) {
     restart_thread = std::thread([this, &stop_requested] {
+      CDSAttacher attacher;
       int it = 0;
       while (!stop_requested.load(std::memory_order_acquire)) {
         std::this_thread::sleep_for(5s);
@@ -600,6 +602,7 @@ TEST_F_EX(QLStressTest, FlushCompact, QLStressTestSingleTablet) {
   std::atomic<bool> stop(false);
 
   std::thread writer([this, &stop] {
+    CDSAttacher attacher;
     auto session = NewSession();
     int key = 0;
     std::string value = "value_";
@@ -644,6 +647,7 @@ TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingl
     std::atomic<bool> stop(false);
 
     std::thread writer([this, &stop, &key] {
+      CDSAttacher attacher;
       auto session = NewSession();
       std::string value_prefix = "value_";
       while (!stop.load(std::memory_order_acquire)) {
@@ -709,6 +713,7 @@ TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
   down_cast<consensus::RaftConsensus*>(peers[0]->consensus())->TEST_DelayUpdate(20s);
 
   std::thread writer([this, &stop, &key] {
+    CDSAttacher attacher;
     auto session = NewSession();
     std::string value_prefix = std::string(100_KB, 'X');
     while (!stop.load(std::memory_order_acquire)) {
