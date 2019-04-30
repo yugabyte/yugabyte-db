@@ -299,6 +299,11 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   int tserver_count = 1;
 
   std::string pid_file = JoinPathSegments(pg_ts_->GetDataDir(), "pg_data", "postmaster.pid");
+  // Wait for postgres server to start and setup postmaster.pid file
+  AssertLoggedWaitFor(
+      [this, &pid_file] {
+        return env_->FileExists(pid_file);
+      }, timeout, "Waiting for postgres server to create postmaster.pid file");
   ASSERT_TRUE(env_->FileExists(pid_file));
 
   // Shutdown tserver and wait for postgres server to shut down and delete postmaster.pid file
@@ -310,8 +315,13 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   ASSERT_FALSE(env_->FileExists(pid_file));
 
   // Create empty postmaster.pid file and ensure that tserver can start up
+  // Use sync_on_close flag to ensure that the file is flushed to disk when tserver tries to read it
   gscoped_ptr<RWFile> file;
-  ASSERT_OK(env_->NewRWFile(pid_file, &file));
+  RWFileOptions opts;
+  opts.sync_on_close = true;
+  opts.mode = Env::CREATE_IF_NON_EXISTING_TRUNCATE;
+
+  ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
   ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */, true /* start_pgsql_proxy */));
   ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
 
@@ -324,7 +334,7 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   ASSERT_FALSE(env_->FileExists(pid_file));
 
   // Create postmaster.pid file with string pid (invalid) and ensure that tserver can start up
-  ASSERT_OK(env_->NewRWFile(pid_file, &file));
+  ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
   ASSERT_OK(file->Write(0, "abcde\n" + pid_file));
   ASSERT_OK(file->Close());
 
@@ -340,7 +350,7 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   ASSERT_FALSE(env_->FileExists(pid_file));
 
   // Create postgres pid file with integer pid (valid) and ensure that tserver can start up
-  ASSERT_OK(env_->NewRWFile(pid_file, &file));
+  ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
   ASSERT_OK(file->Write(0, "1002\n" + pid_file));
   ASSERT_OK(file->Close());
 

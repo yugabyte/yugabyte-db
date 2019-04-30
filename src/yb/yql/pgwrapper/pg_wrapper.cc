@@ -297,7 +297,9 @@ CHECKED_STATUS PgSupervisor::CleanupOldServerUnlocked() {
           postmaster_pid_filename, ErrnoToString(errno), errno);
     } else {
       LOG(WARNING) << "Killing older postgres process: " << postgres_pid;
-      if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH) {
+      // If process does not exist, system may return "process does not exist" or
+      // "operation not permitted" error. Ignore those errors.
+      if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
         return STATUS(RuntimeError, "Unable to kill", ErrnoToString(errno), errno);
       }
     }
