@@ -67,6 +67,7 @@ using std::vector;
 static const char* kTestFileName = "pb_container.meta";
 static const char* kTestKeyvalName = "my-key";
 static const int kTestKeyvalValue = 1;
+static const std::string kTestString = "test-string";
 
 class TestPBUtil : public YBTest {
  public:
@@ -457,6 +458,30 @@ TEST_F(TestPBUtil, TestEnumToString) {
     ASSERT_EQ(kExpectedStr, ToString(kInvalidValue));
   }
 #endif
+}
+
+TEST_F(TestPBUtil, TestPBRequiredToRepeated) {
+  // Write the file with required fields.
+  {
+    TestObjectRequiredPB pb;
+    pb.set_string1(kTestString + "1");
+    pb.set_string2(kTestString + "2");
+    pb.mutable_record()->set_text(kTestString);
+    ASSERT_OK(WritePBContainerToPath(env_.get(), path_, pb, OVERWRITE, SYNC));
+  }
+
+  // Read it back as repeated fields, should validate and contain the expected values.
+  TestObjectRepeatedPB pb;
+  ASSERT_OK(ReadPBContainerFromPath(env_.get(), path_, &pb));
+  ASSERT_EQ(1, pb.string1_size());
+  ASSERT_EQ(1, pb.string2_size());
+  ASSERT_EQ(1, pb.record_size());
+  ASSERT_EQ(kTestString + "1", pb.string1()[0]);
+  ASSERT_EQ(kTestString + "2", pb.string2()[0]);
+  ASSERT_EQ(kTestString, pb.record()[0].text()[0]);
+
+  // Delete the file.
+  ASSERT_OK(env_->DeleteFile(path_));
 }
 
 } // namespace pb_util

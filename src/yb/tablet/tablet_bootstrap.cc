@@ -309,7 +309,7 @@ TabletBootstrap::~TabletBootstrap() {}
 Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
                                   scoped_refptr<Log>* rebuilt_log,
                                   ConsensusBootstrapInfo* consensus_info) {
-  string tablet_id = meta_->tablet_id();
+  string tablet_id = meta_->raft_group_id();
 
   // Replay requires a valid Consensus metadata file to exist in order to compare the committed
   // consensus configuration seqno with the log entries and also to persist committed but
@@ -323,14 +323,14 @@ Status TabletBootstrap::Bootstrap(shared_ptr<TabletClass>* rebuilt_tablet,
   TabletDataState tablet_data_state = meta_->tablet_data_state();
   if (tablet_data_state != TABLET_DATA_READY) {
     return STATUS(Corruption, "Unable to locally bootstrap tablet " + tablet_id + ": " +
-                              "TabletMetadata bootstrap state is " +
+                              "RaftGroupMetadata bootstrap state is " +
                               TabletDataState_Name(tablet_data_state));
   }
 
   listener_->StatusMessage("Bootstrap starting.");
 
   if (VLOG_IS_ON(1)) {
-    TabletSuperBlockPB super_block;
+    RaftGroupReplicaSuperBlockPB super_block;
     meta_->ToSuperBlock(&super_block);
     VLOG_WITH_PREFIX(1) << "Tablet Metadata: " << super_block.DebugString();
   }
@@ -504,7 +504,7 @@ Status TabletBootstrap::OpenLogReader() {
   scoped_refptr<LogIndex> index(nullptr);
   RETURN_NOT_OK_PREPEND(LogReader::Open(GetEnv(),
                                         index,
-                                        tablet_->metadata()->tablet_id(),
+                                        tablet_->metadata()->raft_group_id(),
                                         wal_path,
                                         tablet_->metadata()->fs_manager()->uuid(),
                                         tablet_->GetMetricEntity().get(),
@@ -1033,7 +1033,7 @@ void TabletBootstrap::UpdateClock(uint64_t hybrid_time) {
 }
 
 string TabletBootstrap::LogPrefix() const {
-  return Substitute("T $0 P $1: ", meta_->tablet_id(), meta_->fs_manager()->uuid());
+  return Substitute("T $0 P $1: ", meta_->raft_group_id(), meta_->fs_manager()->uuid());
 }
 
 Env* TabletBootstrap::GetEnv() {

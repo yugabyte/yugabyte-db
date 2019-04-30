@@ -272,9 +272,9 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
   if (pb.has_last_sequence()) {
     last_sequence_ = pb.last_sequence();
   }
-  if (pb.has_deprecated_last_op_id()) {
+  if (pb.has_obsolete_last_op_id()) {
     flushed_frontier_ = extractor->CreateFrontier();
-    flushed_frontier_->FromOpIdPBDeprecated(pb.deprecated_last_op_id());
+    flushed_frontier_->FromOpIdPBDeprecated(pb.obsolete_last_op_id());
   }
   if (pb.has_flushed_frontier()) {
     flushed_frontier_ = extractor->CreateFrontier();
@@ -300,9 +300,9 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
                              source.path_id(),
                              source.total_file_size(),
                              source.base_file_size());
-    if (source.has_deprecated_last_op_id()) {
+    if (source.has_obsolete_last_op_id()) {
       meta.largest.user_frontier = extractor->CreateFrontier();
-      meta.largest.user_frontier->FromOpIdPBDeprecated(source.deprecated_last_op_id());
+      meta.largest.user_frontier->FromOpIdPBDeprecated(source.obsolete_last_op_id());
     }
     auto status = DecodeBoundaryValues(extractor, source.smallest(), &meta.smallest);
     if (!status.ok()) {

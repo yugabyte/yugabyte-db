@@ -124,7 +124,7 @@ message BeginRemoteBootstrapSessionResponsePB {
   required uint64 session_idle_timeout_millis = 2;
 
   // Active superblock at the time of the request.
-  required tablet.TabletSuperBlockPB superblock = 3;
+  required tablet.RaftGroupReplicaSuperBlockPB superblock = 3;
 
   // Identifiers for the WAL segments available for download.
   // Each WAL segment is keyed by its sequence number.

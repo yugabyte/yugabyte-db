@@ -303,7 +303,7 @@ string DocDbOpIds::ToString() const {
 }
 
 Tablet::Tablet(
-    const scoped_refptr<TabletMetadata>& metadata,
+    const scoped_refptr<RaftGroupMetadata>& metadata,
     const std::shared_future<client::YBClient*> &client_future,
     const server::ClockPtr& clock,
     const shared_ptr<MemTracker>& parent_mem_tracker,
@@ -322,7 +322,7 @@ Tablet::Tablet(
           Format("tablet-$0", tablet_id()), parent_mem_tracker, AddToParent::kTrue,
           CreateMetrics::kFalse)),
       clock_(clock),
-      mvcc_(Format("T $0$1: ", metadata_->tablet_id(), log_prefix_suffix), clock),
+      mvcc_(Format("T $0$1: ", metadata_->raft_group_id(), log_prefix_suffix), clock),
       tablet_options_(tablet_options),
       client_future_(client_future),
       local_tablet_filter_(std::move(local_tablet_filter)),

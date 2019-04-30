@@ -461,7 +461,7 @@ void RemoteBootstrapITest::DeleteTabletDuringRemoteBootstrap(YBTableType table_t
   // Start up a RemoteBootstrapClient and open a remote bootstrap session.
   gscoped_ptr<RemoteBootstrapClient> rb_client(
       new RemoteBootstrapClient(tablet_id, fs_manager.get(), fs_manager->uuid()));
-  scoped_refptr<tablet::TabletMetadata> meta;
+  scoped_refptr<tablet::RaftGroupMetadata> meta;
   ASSERT_OK(rb_client->Start(cluster_->tablet_server(kTsIndex)->uuid(),
                              &cluster_->proxy_cache(),
                              cluster_->tablet_server(kTsIndex)->bound_rpc_hostport(),

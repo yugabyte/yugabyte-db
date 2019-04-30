@@ -136,7 +136,7 @@ class SysCatalogTable {
   }
 
   // Create a new tablet peer with information from the metadata
-  void SetupTabletPeer(const scoped_refptr<tablet::TabletMetadata>& metadata);
+  void SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
 
   // Update the in-memory master addresses. Report missing uuid's in the
   // config when check_missing_uuids is set to true.
@@ -175,9 +175,9 @@ class SysCatalogTable {
   void SysCatalogStateChanged(const std::string& tablet_id,
                               std::shared_ptr<consensus::StateChangeContext> context);
 
-  CHECKED_STATUS SetupTablet(const scoped_refptr<tablet::TabletMetadata>& metadata);
+  CHECKED_STATUS SetupTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
 
-  CHECKED_STATUS OpenTablet(const scoped_refptr<tablet::TabletMetadata>& metadata);
+  CHECKED_STATUS OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
 
   // Use the master options to generate a new consensus configuration.
   // In addition, resolve all UUIDs of this consensus configuration.

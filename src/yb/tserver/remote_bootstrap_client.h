@@ -62,10 +62,10 @@ class RaftPeerPB;
 } // namespace consensus
 
 namespace tablet {
-class TabletMetadata;
+class RaftGroupMetadata;
 class TabletPeer;
 class TabletStatusListener;
-class TabletSuperBlockPB;
+class RaftGroupReplicaSuperBlockPB;
 } // namespace tablet
 
 namespace tserver {
@@ -101,13 +101,13 @@ class RemoteBootstrapClient {
   // If the consensus metadata exists on disk for this tablet, and if
   // 'caller_term' is lower than the current term stored in that consensus
   // metadata, then this method will fail with a Status::InvalidArgument error.
-  CHECKED_STATUS SetTabletToReplace(const scoped_refptr<tablet::TabletMetadata>& meta,
+  CHECKED_STATUS SetTabletToReplace(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
                                     int64_t caller_term);
 
   // Start up a remote bootstrap session to bootstrap from the specified
   // bootstrap peer. Place a new superblock indicating that remote bootstrap is
   // in progress. If the 'metadata' pointer is passed as NULL, it is ignored,
-  // otherwise the TabletMetadata object resulting from the initial remote
+  // otherwise the RaftGroupMetadata object resulting from the initial remote
   // bootstrap response is returned.
   // ts_manager pointer allows the bootstrap function to assign non-random
   // data and wal directories for the bootstrapped tablets.
@@ -115,7 +115,7 @@ class RemoteBootstrapClient {
   CHECKED_STATUS Start(const std::string& bootstrap_peer_uuid,
                        rpc::ProxyCache* proxy_cache,
                        const HostPort& bootstrap_peer_addr,
-                       scoped_refptr<tablet::TabletMetadata>* metadata,
+                       scoped_refptr<tablet::RaftGroupMetadata>* metadata,
                        TSTabletManager* ts_manager = nullptr);
 
   // Runs a "full" remote bootstrap, copying the physical layout of a tablet
@@ -201,7 +201,7 @@ class RemoteBootstrapClient {
   bool replace_tombstoned_tablet_;
 
   // Local tablet metadata file.
-  scoped_refptr<tablet::TabletMetadata> meta_;
+  scoped_refptr<tablet::RaftGroupMetadata> meta_;
 
   // Local Consensus metadata file. This may initially be NULL if this is
   // bootstrapping a new replica (rather than replacing an old one).
@@ -211,8 +211,8 @@ class RemoteBootstrapClient {
   std::shared_ptr<RemoteBootstrapServiceProxy> proxy_;
   std::string session_id_;
   uint64_t session_idle_timeout_millis_;
-  gscoped_ptr<tablet::TabletSuperBlockPB> superblock_;
-  gscoped_ptr<tablet::TabletSuperBlockPB> new_superblock_;
+  gscoped_ptr<tablet::RaftGroupReplicaSuperBlockPB> superblock_;
+  gscoped_ptr<tablet::RaftGroupReplicaSuperBlockPB> new_superblock_;
   gscoped_ptr<consensus::ConsensusStatePB> remote_committed_cstate_;
   std::vector<uint64_t> wal_seqnos_;
 

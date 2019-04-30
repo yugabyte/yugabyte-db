@@ -76,7 +76,7 @@ void SetupClusterConfig(vector<string> azs, ReplicationInfoPB* replication_info)
 }
 
 void NewReplica(
-    TSDescriptor* ts_desc, tablet::TabletStatePB state, consensus::RaftPeerPB::Role role,
+    TSDescriptor* ts_desc, tablet::RaftGroupStatePB state, consensus::RaftPeerPB::Role role,
     TabletReplica* replica) {
   replica->ts_desc = ts_desc;
   replica->state = state;
@@ -793,7 +793,7 @@ class TestLoadBalancerBase {
     }
 
     // Prepare the replicas.
-    tablet::TabletStatePB state = tablet::RUNNING;
+    tablet::RaftGroupStatePB state = tablet::RUNNING;
     for (int i = 0; i < tablets_.size(); ++i) {
       TabletInfo::ReplicaMap replica_map;
       for (int j = 0; j < ts_descs_.size(); ++j) {
@@ -858,7 +858,7 @@ class TestLoadBalancerBase {
     tablet->GetReplicaLocations(&replicas);
 
     TabletReplica replica;
-    NewReplica(ts_desc.get(), tablet::TabletStatePB::RUNNING,
+    NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING,
                consensus::RaftPeerPB::FOLLOWER, &replica);
     InsertOrDie(&replicas, ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);

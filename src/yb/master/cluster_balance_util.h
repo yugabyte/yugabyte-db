@@ -274,7 +274,7 @@ class ClusterLoadState {
         ts_meta_it->second.leaders.insert(tablet_id);
       }
 
-      const tablet::TabletStatePB& tablet_state = replica.second.state;
+      const tablet::RaftGroupStatePB& tablet_state = replica.second.state;
       if (tablet_state == tablet::RUNNING) {
         ts_meta_it->second.running_tablets.insert(tablet_id);
         ++tablet_meta.running;

@@ -1022,14 +1022,14 @@ Status WaitForNumTabletsOnTS(TServerDetails* ts,
 
 Status WaitUntilTabletInState(TServerDetails* ts,
                               const std::string& tablet_id,
-                              tablet::TabletStatePB state,
+                              tablet::RaftGroupStatePB state,
                               const MonoDelta& timeout) {
   MonoTime start = MonoTime::Now();
   MonoTime deadline = start;
   deadline.AddDelta(timeout);
   vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
   Status s;
-  tablet::TabletStatePB last_state = tablet::UNKNOWN;
+  tablet::RaftGroupStatePB last_state = tablet::UNKNOWN;
   while (true) {
     s = ListTablets(ts, MonoDelta::FromSeconds(10), &tablets);
     if (s.ok()) {
@@ -1055,9 +1055,9 @@ Status WaitUntilTabletInState(TServerDetails* ts,
   return STATUS(TimedOut, Substitute("T $0 P $1: Tablet not in $2 state after $3: "
                                      "Tablet state: $4, Status message: $5",
                                      tablet_id, ts->uuid(),
-                                     tablet::TabletStatePB_Name(state),
+                                     tablet::RaftGroupStatePB_Name(state),
                                      MonoTime::Now().GetDeltaSince(start).ToString(),
-                                     tablet::TabletStatePB_Name(last_state), s.ToString()));
+                                     tablet::RaftGroupStatePB_Name(last_state), s.ToString()));
 }
 
 // Wait until the specified tablet is in RUNNING state.

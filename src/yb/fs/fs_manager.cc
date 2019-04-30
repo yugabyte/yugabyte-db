@@ -91,7 +91,7 @@ const char *FsManager::kWalDirName = "wals";
 const char *FsManager::kWalFileNamePrefix = "wal";
 const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
 const char *FsManager::kRocksDBDirName = "rocksdb";
-const char *FsManager::kTabletMetadataDirName = "tablet-meta";
+const char *FsManager::kRaftGroupMetadataDirName = "tablet-meta";
 const char *FsManager::kDataDirName = "data";
 const char *FsManager::kCorruptedSuffix = ".corrupted";
 const char *FsManager::kInstanceMetadataFileName = "instance";
@@ -241,7 +241,7 @@ Status FsManager::DeleteFileSystemLayout(bool delete_logs_also) {
     removal_set = canonicalized_all_fs_roots_;
   } else {
     auto removal_list = GetWalRootDirs();
-    removal_list.push_back(GetTabletMetadataDir());
+    removal_list.push_back(GetRaftGroupMetadataDir());
     removal_list.push_back(GetConsensusMetadataDir());
     for (const string& root : canonicalized_all_fs_roots_) {
       removal_list.push_back(GetInstanceMetadataPath(root));
@@ -312,7 +312,7 @@ Status FsManager::CreateInitialFileSystemLayout() {
 
   // Initialize ancillary directories.
   auto ancillary_dirs = GetWalRootDirs();
-  ancillary_dirs.push_back(GetTabletMetadataDir());
+  ancillary_dirs.push_back(GetRaftGroupMetadataDir());
   ancillary_dirs.push_back(GetConsensusMetadataDir());
 
   for (const string& dir : ancillary_dirs) {
@@ -443,14 +443,15 @@ vector<string> FsManager::GetWalRootDirs() const {
   return wal_dirs;
 }
 
-string FsManager::GetTabletMetadataDir() const {
+string FsManager::GetRaftGroupMetadataDir() const {
   DCHECK(initted_);
   return JoinPathSegments(
-      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_), kTabletMetadataDirName);
+      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_),
+      kRaftGroupMetadataDirName);
 }
 
-string FsManager::GetTabletMetadataPath(const string& tablet_id) const {
-  return JoinPathSegments(GetTabletMetadataDir(), tablet_id);
+string FsManager::GetRaftGroupMetadataPath(const string& tablet_id) const {
+  return JoinPathSegments(GetRaftGroupMetadataDir(), tablet_id);
 }
 
 namespace {
@@ -472,7 +473,7 @@ bool IsValidTabletId(const std::string& fname) {
 } // anonymous namespace
 
 Status FsManager::ListTabletIds(vector<string>* tablet_ids) {
-  string dir = GetTabletMetadataDir();
+  string dir = GetRaftGroupMetadataDir();
   vector<string> children;
   RETURN_NOT_OK_PREPEND(ListDir(dir, &children),
                         Substitute("Couldn't list tablets in metadata directory $0", dir));
