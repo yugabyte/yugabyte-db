@@ -107,6 +107,7 @@ function mapStateToProps(state, ownProps) {
   };
 
   return {
+    customer: state.customer,
     universe: state.universe,
     tasks: state.tasks,
     modal: state.modal,

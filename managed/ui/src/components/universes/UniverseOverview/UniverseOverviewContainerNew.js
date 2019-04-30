@@ -6,6 +6,7 @@ import { connect } from 'react-redux';
 function mapStateToProps(state) {
   return {
     currentCustomer: state.customer.currentCustomer,
+    layout: state.customer.layout,
     tasks: state.tasks,
     tables: state.tables
   };

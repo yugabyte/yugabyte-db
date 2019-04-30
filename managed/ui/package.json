@@ -95,6 +95,7 @@
     "redux-logger": "^2.6.1",
     "redux-promise": "^0.5.1",
     "style-loader": "^0.13.1",
-    "tapable": "^0.2.6"
+    "tapable": "^0.2.6",
+    "typy": "^3.0.2"
   }
 }

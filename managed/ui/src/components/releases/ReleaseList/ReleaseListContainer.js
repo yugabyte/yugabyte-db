@@ -23,7 +23,8 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state) {
   return {
     refreshReleases: state.customer.refreshReleases,
-    releases: state.customer.releases
+    releases: state.customer.releases,
+    customer: state.customer
   };
 }
 

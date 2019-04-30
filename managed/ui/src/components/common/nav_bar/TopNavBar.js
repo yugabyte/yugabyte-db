@@ -7,7 +7,29 @@ import { Link } from 'react-router';
 import YBLogo from '../YBLogo/YBLogo';
 import './stylesheets/TopNavBar.scss';
 import { getPromiseState } from 'utils/PromiseUtils';
-import {LinkContainer} from 'react-router-bootstrap';
+import { LinkContainer } from 'react-router-bootstrap';
+import { isNotHidden, isDisabled } from 'utils/LayoutUtils';
+
+class YBMenuItem extends Component {
+  render() {
+    const { disabled, to, id, className, onClick } = this.props;
+    if (disabled) return (
+      <li>
+        <div className={className}>
+          {this.props.children}
+        </div>
+      </li>
+    );
+
+    return (
+      <LinkContainer to={to} id={id}>
+        <MenuItem className={className} onClick={onClick}>
+          {this.props.children}
+        </MenuItem>
+      </LinkContainer>
+    );
+  }
+}
 
 export default class TopNavBar extends Component {
   handleLogout = event => {
@@ -16,7 +38,7 @@ export default class TopNavBar extends Component {
   };
 
   render() {
-    const { customer: { currentCustomer } } = this.props;
+    const { customer: { currentCustomer }} = this.props;
     const customerEmail = getPromiseState(currentCustomer).isSuccess()
         ? currentCustomer.data.email
         : "";
@@ -34,26 +56,24 @@ export default class TopNavBar extends Component {
         </div>
         <Nav pullRight>
           <NavDropdown  eventKey="2" title={<span><i className="fa fa-user fa-fw"></i> {customerEmail}</span>} id="profile-dropdown">
-            <LinkContainer to="/profile">
-              <MenuItem eventKey="2.1">
+            {isNotHidden(currentCustomer.data.features, "main.profile") &&
+              <YBMenuItem to={"/profile"} disabled={isDisabled(currentCustomer.data.features, "main.profile")}>
                 <i className="fa fa-user fa-fw"></i>Profile
-              </MenuItem>
-            </LinkContainer>
-            <LinkContainer to="/logs">
-              <MenuItem eventKey="2.2">
+              </YBMenuItem>
+            }
+            {isNotHidden(currentCustomer.data.features, "main.logs") &&
+              <YBMenuItem to={"/logs"} disabled={isDisabled(currentCustomer.data.features, "main.logs")}>
                 <i className="fa fa-file fa-fw"></i>Logs
-              </MenuItem>
-            </LinkContainer>
-            <LinkContainer to="/releases">
-              <MenuItem eventKey="2.2">
+              </YBMenuItem>
+            }
+            {isNotHidden(currentCustomer.data.features, "main.releases") &&
+              <YBMenuItem to={"/releases"} disabled={isDisabled(currentCustomer.data.features, "main.releases")}>
                 <i className="fa fa-code-fork fa-fw"></i>Releases
-              </MenuItem>
-            </LinkContainer>
-            <LinkContainer to="/login">
-              <MenuItem eventKey="2.3" id="logoutLink" onClick={this.handleLogout}>
-                <i className="fa fa-sign-out fa-fw"></i>Logout
-              </MenuItem>
-            </LinkContainer>
+              </YBMenuItem>
+            }
+            <YBMenuItem to="/login" id="logoutLink" onClick={this.handleLogout}>
+              <i className="fa fa-sign-out fa-fw"></i>Logout
+            </YBMenuItem>
           </NavDropdown>
         </Nav>
       </Navbar>
