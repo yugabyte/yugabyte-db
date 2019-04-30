@@ -53,10 +53,12 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
 TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields) {
   auto superblock = session_->tablet_superblock();
   LOG(INFO) << superblock.ShortDebugString();
-  ASSERT_TRUE(superblock.deprecated_table_type() == YQL_TABLE_TYPE);
-  ASSERT_TRUE(superblock.has_rocksdb_dir());
+  ASSERT_TRUE(superblock.obsolete_table_type() == YQL_TABLE_TYPE);
 
-  const string& rocksdb_dir = superblock.rocksdb_dir();
+  const auto& kv_store = superblock.kv_store();
+  ASSERT_TRUE(kv_store.has_rocksdb_dir());
+
+  const string& rocksdb_dir = kv_store.rocksdb_dir();
   ASSERT_TRUE(env_->FileExists(rocksdb_dir));
 
   const string top_snapshots_dir = Tablet::SnapshotsDirName(rocksdb_dir);
@@ -69,12 +71,13 @@ TEST_F(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields) {
   ASSERT_OK(env_->GetChildren(snapshot_dir, &snapshot_files));
 
   // Ignore "." and ".." entries in snapshot_dir.
-  ASSERT_EQ(superblock.snapshot_files().size(), snapshot_files.size() - 2);
+  ASSERT_EQ(kv_store.snapshot_files().size(), snapshot_files.size() - 2);
 
-  for (int i = 0; i < superblock.snapshot_files().size(); ++i) {
-    const string& snapshot_id = superblock.snapshot_files(i).snapshot_id();
-    const string& snapshot_file_name = superblock.snapshot_files(i).file().name();
-    const uint64_t snapshot_file_size_bytes = superblock.snapshot_files(i).file().size_bytes();
+  for (int i = 0; i < kv_store.snapshot_files().size(); ++i) {
+    const auto& snapshot_file = kv_store.snapshot_files(i);
+    const string& snapshot_id = snapshot_file.snapshot_id();
+    const string& snapshot_file_name = snapshot_file.file().name();
+    const uint64_t snapshot_file_size_bytes = snapshot_file.file().size_bytes();
 
     ASSERT_EQ(snapshot_id, kSnapshotId);
 

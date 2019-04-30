@@ -45,7 +45,7 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
   RETURN_NOT_OK(HostPort::ParseStrings(hosts, 0, &host_ports));
 
   return server::SetupSecureContext(
-      DirName(fs_manager->GetTabletMetadataDir()), host_ports[0].host(), type, builder);
+      DirName(fs_manager->GetRaftGroupMetadataDir()), host_ports[0].host(), type, builder);
 }
 
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
