@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-[Presto](https://prestodb.io/) is a distributed SQL query engine optimized for ad-hoc analysis at interactive speed. It supports standard ANSI SQL, including complex queries, aggregations, joins, and window functions. It has a connector architecture to query data from many data sources.
+[Presto](https://prestosql.io/) is a distributed SQL query engine optimized for ad-hoc analysis at interactive speed. It supports standard ANSI SQL, including complex queries, aggregations, joins, and window functions. It has a connector architecture to query data from many data sources.
 This page shows how Presto can be setup to query YugaByte DB's YCQL tables.
 
 ## 1. Start Local Cluster
@@ -21,19 +21,19 @@ This page shows how Presto can be setup to query YugaByte DB's YCQL tables.
 Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte DB cluster. Test YugaByte DB's Cassandra compatible API as [documented](../../../quick-start/test-cassandra/) so that you can confirm that you have a Cassandra compatible service running on `localhost:9042`. We assume you have created the keyspace and table, and inserted sample data as described there.
 
 ## 2. Download and Configure Presto
-Detailed steps are documented [here](https://prestodb.io/docs/current/installation/deployment.html).
+Detailed steps are documented [here](https://prestosql.io/docs/current/installation/deployment.html).
 The following are the minimal setup steps for getting started.
 
 ```sh
-$ wget https://repo1.maven.org/maven2/com/facebook/presto/presto-server/0.212/presto-server-0.212.tar.gz
+$ wget https://repo1.maven.org/maven2/io/prestosql/presto-server/309/presto-server-309.tar.gz
 ```
 
 ```sh
-$ tar xvf presto-server-0.212.tar.gz
+$ tar xvf presto-server-309.tar.gz
 ```
 
 ```sh
-$ cd presto-server-0.212
+$ cd presto-server-309
 ```
 
 ### Create the “etc”, “etc/catalog”, and “data” directory inside the installation directory.
@@ -59,7 +59,7 @@ $ cat > etc/node.properties
 ```
 node.environment=test
 node.id=ffffffff-ffff-ffff-ffff-ffffffffffff
-node.data-dir=/Users/<username>/presto-server-0.212/data
+node.data-dir=/Users/<username>/presto-server-309/data
 ```
 
 ### Create jvm.config file
@@ -102,13 +102,13 @@ $ cat > etc/log.properties
 ```
 
 ```
-com.facebook.presto=INFO
+io.prestosql=INFO
 ```
 
 ### Configure Cassandra connector to Yugabyte DB
 
 Create the cassandra catalog properties file in etc/catalog directory.
-Detailed instructions are [here](https://prestodb.io/docs/current/connector/cassandra.html).
+Detailed instructions are [here](https://prestosql.io/docs/current/connector/cassandra.html).
 
 ```sh
 $ cat > etc/catalog/cassandra.properties
@@ -122,24 +122,24 @@ cassandra.contact-points=127.0.0.1
 ## 3. Download Presto CLI
 
 ```sh
-$ cd ~/presto-server-0.212/bin
+$ cd ~/presto-server-309/bin
 ```
 
 ```sh
-$ wget https://repo1.maven.org/maven2/com/facebook/presto/presto-cli/0.212/presto-cli-0.212-executable.jar
+$ wget https://repo1.maven.org/maven2/io/prestosql/presto-cli/309/presto-cli-309-executable.jar
 ```
 
 Rename jar to ‘presto’. It is meant to be a self-running binary.
 
 ```sh
-$ mv presto-cli-0.212-executable.jar presto && chmod +x presto
+$ mv presto-cli-309-executable.jar presto && chmod +x presto
 ```
 
 
 ## 4. Launch Presto server
 
 ```sh
-$ cd presto-server-0.212
+$ cd presto-server-309
 ```
 
 To run in foreground mode.
