@@ -414,7 +414,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
             numNodes = zone.numNodesInAZ;
             replicationFactorZone = zone.replicationFactor;
             replicationFactor = isMultiAz ?
-                taskParams().masterAddresses.split(",").length : zone.replicationFactor;
+                taskParams().masterAddresses.split(",").length : userIntent.replicationFactor;
             azConfig = AvailabilityZone.get(zone.uuid).getConfig();
           }
         }
