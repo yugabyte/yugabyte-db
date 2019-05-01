@@ -49,8 +49,7 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
                                           const Schema& static_projection,
                                           std::unique_ptr<common::QLScanSpec>* spec,
                                           std::unique_ptr<common::QLScanSpec>*
-                                          static_row_spec,
-                                          ReadHybridTime* req_read_time) const {
+                                          static_row_spec) const {
   // Populate dockey from QL key columns.
   auto hash_code = request.has_hash_code() ?
       boost::make_optional<int32_t>(request.hash_code()) : boost::none;
@@ -62,7 +61,6 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
       request.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
 
-  *req_read_time = read_time;
   SubDocKey start_sub_doc_key;
   // Decode the start SubDocKey from the paging state and set scan start key and hybrid time.
   if (request.has_paging_state() &&
@@ -71,10 +69,6 @@ Status QLRocksDBStorage::BuildYQLScanSpec(const QLReadRequestPB& request,
 
     KeyBytes start_key_bytes(request.paging_state().next_row_key());
     RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
-    DCHECK_LE(req_read_time->read, req_read_time->local_limit);
-    DCHECK_LE(req_read_time->read, req_read_time->global_limit);
-    *req_read_time = ReadHybridTime::SingleTime(start_sub_doc_key.hybrid_time());
-    // TODO(dtxn) What should we do with read_limit_ht here?
 
     // If we start the scan with a specific primary key, the normal scan spec we return below will
     // not include the static columns if any for the start key. We need to return a separate scan

@@ -207,9 +207,8 @@ void RowsResult::SetPagingState(YBqlOp *op) {
 }
 
 void RowsResult::SetPagingState(const QLPagingStatePB& paging_state) {
-  faststring s;
-  CHECK(pb_util::SerializeToString(paging_state, &s));
-  paging_state_ = s.ToString();
+  paging_state_.clear();
+  CHECK(paging_state.SerializeToString(&paging_state_));
 }
 
 void RowsResult::SetPagingState(RowsResult&& other) {

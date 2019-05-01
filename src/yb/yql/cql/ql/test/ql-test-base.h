@@ -252,7 +252,7 @@ class QLTestBase : public YBTest {
       if (processor->rows_result()->paging_state().empty()) {
         break;
       }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+      CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
     } while (true);
     EXPECT_EQ(expected_rows, rows);
   }

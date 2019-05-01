@@ -50,6 +50,10 @@ void YBSession::SetReadPoint(const Restart restart) {
   }
 }
 
+void YBSession::SetReadPoint(const ReadHybridTime& read_time) {
+  read_point_->SetReadTime(read_time, {} /* local_limits */);
+}
+
 bool YBSession::IsRestartRequired() {
   auto rp = read_point();
   return rp && rp->IsRestartRequired();
