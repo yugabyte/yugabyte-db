@@ -81,7 +81,12 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
   session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
-  session_->SetReadPoint(client::Restart::kFalse);
+  auto read_time = params.read_time();
+  if (read_time) {
+    session_->SetReadPoint(read_time);
+  } else {
+    session_->SetReadPoint(client::Restart::kFalse);
+  }
   RETURN_STMT_NOT_OK(Execute(parse_tree, params));
   FlushAsync();
 }
@@ -849,7 +854,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
 
   // Statement (paging) parameters.
   StatementParameters current_params;
-  RETURN_NOT_OK(current_params.set_paging_state(current_result->paging_state()));
+  RETURN_NOT_OK(current_params.SetPagingState(current_result->paging_state()));
 
   const size_t total_rows_skipped = exec_context->params().total_rows_skipped() +
                                     current_params.total_rows_skipped();
@@ -918,6 +923,8 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
       // Within a partition, set the exact primary key to resume from (if any).
       paging_state.set_next_partition_key(current_params.next_partition_key());
       paging_state.set_next_row_key(current_params.next_row_key());
+
+      paging_state.set_original_request_id(exec_context_->params().request_id());
 
       current_result->SetPagingState(paging_state);
     }
@@ -1497,6 +1504,14 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
       if (root->opcode() == TreeNodeOpcode::kPTSelectStmt) {
         result_ = nullptr;
       }
+
+      // We should restart read, but read time was specified by caller.
+      // For instance it could happen in case of pagination.
+      if (exec_context_->params().read_time()) {
+        RETURN_STMT_NOT_OK(
+            STATUS(IllegalState, "Restart read required, but read time specified by caller"));
+      }
+
       YBSessionPtr session = GetSession(exec_context_);
       session->SetReadPoint(client::Restart::kTrue);
       RETURN_STMT_NOT_OK(ExecTreeNode(root));
@@ -1941,6 +1956,8 @@ bool Executor::WriteBatch::Empty() const {
 
 Status Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_context) {
   DCHECK(write_batch_.Empty()) << "Concurrent read and write operations not supported yet";
+
+  op->mutable_request()->set_request_id(exec_context_->params().request_id());
   tnode_context->AddOperation(op);
 
   // We need consistent read point if statement is executed in multiple RPC commands.

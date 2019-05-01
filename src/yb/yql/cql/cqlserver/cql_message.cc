@@ -24,6 +24,8 @@
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/random_util.h"
+
 namespace yb {
 namespace cqlserver {
 
@@ -508,6 +510,7 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
   RETURN_NOT_OK(ParseConsistency(&params->consistency));
   RETURN_NOT_OK(params->ValidateConsistency());
   RETURN_NOT_OK(ParseByte(&params->flags));
+  params->set_request_id(RandomUniformInt<uint64_t>());
   if (params->flags & CQLMessage::QueryParameters::kWithValuesFlag) {
     const bool with_name = (params->flags & CQLMessage::QueryParameters::kWithNamesForValuesFlag);
     uint16_t count = 0;
@@ -529,7 +532,7 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
   if (params->flags & CQLMessage::QueryParameters::kWithPagingStateFlag) {
     string paging_state;
     RETURN_NOT_OK(ParseBytes(&paging_state));
-    RETURN_NOT_OK(params->set_paging_state(paging_state));
+    RETURN_NOT_OK(params->SetPagingState(paging_state));
   }
   if (params->flags & CQLMessage::QueryParameters::kWithSerialConsistencyFlag) {
     RETURN_NOT_OK(ParseConsistency(&params->serial_consistency));

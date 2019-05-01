@@ -68,6 +68,12 @@ message QLPagingStatePB {
   // The number of valid rows that we've skipped so far. This is needed to properly implement
   // SELECT's OFFSET clause.
   optional uint64 total_rows_skipped = 6;
+
+  // Request id of the first request, that started paging.
+  optional uint64 original_request_id = 7;
+
+  // Used read time.
+  optional ReadHybridTimePB read_time = 8;
 }
 
 //-------------------------------------- Column request --------------------------------------
