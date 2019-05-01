@@ -56,7 +56,9 @@ class AuthenticatedComponent extends Component {
       <AuthenticatedComponentContainer>
         <NavBarContainer />
         <div className="container-body">
-          {this.props.children}
+          <div className="dashboard-container">
+            {this.props.children}
+          </div>
           <YBModal title={"Keyboard Shortcut"}
                    visible={this.state.showKeyboardShortcuts}
                    onHide={this._toggleShortcutsHelp}>

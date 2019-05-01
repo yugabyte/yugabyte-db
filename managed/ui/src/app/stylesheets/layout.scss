@@ -21,7 +21,11 @@
 }
 
 .container-body {
-  padding: 85px 30px 80px 120px;
+  padding: 60px 0 80px 90px;
+
+  .dashboard-container {
+    padding: 30px;
+  }
 }
 
 .container-fluid {
