@@ -30,7 +30,7 @@ class ProviderBootstrapView extends Component {
       <div>
         <Row className="config-section-header">
           <Col md={12}>
-            <span className="create-provider-label-text">Creating Provider </span>
+            <span className="create-provider-label-text">Creating Provider</span>
             <span className="pull-right" title={`Delete ${providerType.toUpperCase()} Config`}>
               <YBButton btnText="Delete Configuration" disabled={deleteButtonDisabled}
                         btnClass={deleteButtonClassName} onClick={this.showDeleteProviderModal}/>
@@ -45,9 +45,7 @@ class ProviderBootstrapView extends Component {
         </Row>
         <Row>
           <Col md={12}>
-            <div className="provider-task-progress-container">
-              <TaskProgressContainer type={"StepBar"} taskUUIDs={this.props.taskUUIDs} onTaskSuccess={this.props.reloadCloudMetadata}/>
-            </div>
+            <TaskProgressContainer type={"StepBar"} taskUUIDs={this.props.taskUUIDs} onTaskSuccess={this.props.reloadCloudMetadata}/>
           </Col>
         </Row>
       </div>
