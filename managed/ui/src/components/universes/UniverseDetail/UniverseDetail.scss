@@ -91,25 +91,19 @@
   left: 120px;
 }
 .universe-detail {
-  margin-top: 56px;
-  @media (max-width: 767px) {
-    margin-top: 110px;
-  }
   .content-title {
     position: static;
     margin-right: 30px;
   }
   .nav-tabs {
-    position: fixed;
     background: white;
     z-index: 1001;
-    top: 60px;
     height: 57px;
     right: 0;
     left: 90px;
     padding: 0 20px;
-    @media (max-width: 767px) {
-      height: 114px;
+    @media (max-width: 1120px) {
+      height: fit-content;
       padding-top: 57px;
     }
     box-shadow: inset 0 0px 1px rgba($YB_DARK_GRAY_2, 0.1);
@@ -148,7 +142,7 @@
     }
   }
   .tab-content {
-    padding: 0;
+    padding: 30px;
     background-color: transparent;
     border: none;
     box-shadow: none;
@@ -180,7 +174,7 @@
   padding: 0;
   padding-top: 9px;
   width: auto;
-  @media (max-width: 767px) {
+  @media (max-width: 1120px) {
     right: auto;
     left: 115px;
     top: 65px;

@@ -19,7 +19,7 @@ export default class Dashboard extends Component {
   render() {
     const { customer: { currentCustomer } } = this.props;
     return (
-      <div id="page-wrapper" className="dashboard-container">
+      <div id="page-wrapper">
         {isAvailable(currentCustomer.data.features, "main.stats") && <div className="dashboard-stats">
           <HighlightedStatsPanelContainer />
         </div>}
