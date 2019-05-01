@@ -6,7 +6,7 @@ OBJS = yb_pg_metrics.o $(WIN32RES)
 EXTENSION = yb_pg_metrics
 DATA =
 PGFILEDESC = "yb_pg_metrics - YugaByte metrics"
-SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lserver_process -latomic
+SHLIB_LINK += -L$(YB_BUILD_ROOT)/lib -lserver_process
 subdir = contrib/yb_pg_metrics
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global

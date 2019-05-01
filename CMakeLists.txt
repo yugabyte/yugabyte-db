@@ -865,6 +865,9 @@ endif()
 
 if (USING_LINUXBREW)
   include_directories(SYSTEM ${LINUXBREW_DIR}/include)
+endif()
+
+if (NOT IS_CLANG)
   ADD_LINKER_FLAGS("-latomic")
 endif()
 
