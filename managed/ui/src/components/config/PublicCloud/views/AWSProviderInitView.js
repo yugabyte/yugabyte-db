@@ -11,6 +11,7 @@ import { connect } from 'react-redux';
 import AddRegionPopupForm from './AddRegionPopupForm';
 import _ from 'lodash';
 
+import './providerView.scss';
 
 // These should match the metadata in devops under opscli/ybops/data/aws-metadata.yml
 const regionsData =
@@ -468,6 +469,8 @@ class AWSProviderInitView extends Component {
         }
         return this.props.createAWSProvider(formValues.accountName, awsProviderConfig, regionFormVals);
       };
+    } else if (this.state.keypairsInputType === 'yw_keypairs') {
+      return this.props.createAWSProvider(formValues.accountName, awsProviderConfig, regionFormVals);
     }
   };
 

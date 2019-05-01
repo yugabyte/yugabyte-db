@@ -66,9 +66,17 @@ export default class TaskProgress extends Component {
       return <YBLoading />;
     }
     if (type === "StepBar") {
-      return <TaskProgressStepBar progressData={taskProgressData.data}/>;
+      return (
+        <div className="provider-task-progress-container">
+          <TaskProgressStepBar progressData={taskProgressData.data}/>
+        </div>
+      );
     } else {
-      return <TaskProgressBar progressData={taskProgressData.data} />;
+      return (
+        <div className="provider-task-progress-container">
+          <TaskProgressBar progressData={taskProgressData.data} />
+        </div>
+      );
     }
   }
 }
