@@ -2144,9 +2144,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return CreateCopartitionedTable(req, resp, rpc, schema, namespace_id);
   }
 
-  // If hashing scheme is not specified by protobuf request, table_type and hash_key are used to
-  // determine which hashing scheme should be used.
-  if (!req.partition_schema().has_hash_schema()) {
+  // If neither hash nor range schema have been specified by the protobuf request, we assume the
+  // table uses a hash schema, and we use the table_type and hash_key to determine the hashing
+  // scheme (redis or multi-column) that should be used.
+  if (!req.partition_schema().has_hash_schema() && !req.partition_schema().has_range_schema()) {
     if (req.table_type() == REDIS_TABLE_TYPE) {
       req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
     } else if (schema.num_hash_key_columns() > 0) {
@@ -2180,22 +2181,30 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   PartitionSchema partition_schema;
   vector<Partition> partitions;
   s = PartitionSchema::FromPB(req.partition_schema(), schema, &partition_schema);
-  switch (partition_schema.hash_schema()) {
-    case YBHashSchema::kPgsqlHash:
-      // TODO(neil) After a discussion, PGSQL hash should be done appropriately.
-      // For now, let's not doing anything. Just borrow the multi column hash.
-      FALLTHROUGH_INTENDED;
-    case YBHashSchema::kMultiColumnHash: {
-      // Use the given number of tablets to create partitions and ignore the other schema options
-      // in the request.
-      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
-      break;
+  if (req.partition_schema().has_hash_schema()) {
+    switch (partition_schema.hash_schema()) {
+      case YBHashSchema::kPgsqlHash:
+        // TODO(neil) After a discussion, PGSQL hash should be done appropriately.
+        // For now, let's not doing anything. Just borrow the multi column hash.
+        FALLTHROUGH_INTENDED;
+      case YBHashSchema::kMultiColumnHash: {
+        // Use the given number of tablets to create partitions and ignore the other schema options
+        // in the request.
+        RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions));
+        break;
+      }
+      case YBHashSchema::kRedisHash: {
+        RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions,
+                                                        kRedisClusterSlots));
+        break;
+      }
     }
-    case YBHashSchema::kRedisHash: {
-      RETURN_NOT_OK(partition_schema.CreatePartitions(num_tablets, &partitions,
-                                                      kRedisClusterSlots));
-      break;
-    }
+  } else if (req.partition_schema().has_range_schema()) {
+    vector<YBPartialRow> split_rows;
+    RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
+    DCHECK_EQ(1, partitions.size());
+  } else {
+    DFATAL_OR_RETURN_NOT_OK(STATUS(InvalidArgument, "Invalid partition method"));
   }
 
   // Validate the table placement rules are a subset of the cluster ones.
