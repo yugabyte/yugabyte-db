@@ -138,7 +138,7 @@ TEST_F(TestQLCmd, TestQLCmd) {
               // Extract the paging state from the result (if present) and populate it in the
               // statement parameters to retrieve the next set of rows until the end is reached
               // when there is no more table id in the paging state (below).
-              CHECK_OK(params.set_paging_state(rows_result->paging_state()));
+              CHECK_OK(params.SetPagingState(rows_result->paging_state()));
               break;
             }
             case ExecutedResult::Type::SCHEMA_CHANGE:

@@ -74,8 +74,7 @@ CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(
     const bool include_static_columns,
     const Schema& static_projection,
     std::unique_ptr<common::QLScanSpec>* spec,
-    std::unique_ptr<common::QLScanSpec>* static_row_spec,
-    ReadHybridTime* req_read_time) const {
+    std::unique_ptr<common::QLScanSpec>* static_row_spec) const {
   // There should be no static columns in system tables so we are not handling it.
   if (include_static_columns) {
     return STATUS(IllegalState, "system table contains no static columns");
@@ -83,7 +82,6 @@ CHECKED_STATUS YQLVirtualTable::BuildYQLScanSpec(
   spec->reset(new common::QLScanSpec(
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
       request.is_forward_scan()));
-  *req_read_time = read_time;
   return Status::OK();
 }
 

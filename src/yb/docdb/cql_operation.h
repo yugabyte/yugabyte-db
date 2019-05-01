@@ -215,7 +215,8 @@ class QLReadOperation : public DocExprExecutor {
   CHECKED_STATUS SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
                                            const QLResultSet* resultset,
                                            const size_t row_count_limit,
-                                           const size_t num_rows_skipped);
+                                           const size_t num_rows_skipped,
+                                           const ReadHybridTime& read_time);
 
   const QLReadRequestPB& request_;
   const TransactionOperationContextOpt txn_op_context_;

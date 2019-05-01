@@ -1080,12 +1080,11 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
 
   std::unique_ptr<common::YQLRowwiseIteratorIf> iter;
   std::unique_ptr<common::QLScanSpec> spec, static_row_spec;
-  ReadHybridTime req_read_time;
   RETURN_NOT_OK(ql_storage.BuildYQLScanSpec(
       request_, read_time, schema, read_static_columns, static_projection, &spec,
-      &static_row_spec, &req_read_time));
+      &static_row_spec));
   RETURN_NOT_OK(ql_storage.GetIterator(request_, projection, schema, txn_op_context_,
-                                       deadline, req_read_time, *spec, &iter));
+                                       deadline, read_time, *spec, &iter));
   if (FLAGS_trace_docdb_calls) {
     TRACE("Initialized iterator");
   }
@@ -1100,7 +1099,7 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   if (static_row_spec != nullptr) {
     std::unique_ptr<common::YQLRowwiseIteratorIf> static_row_iter;
     RETURN_NOT_OK(ql_storage.GetIterator(
-        request_, static_projection, schema, txn_op_context_, deadline, req_read_time,
+        request_, static_projection, schema, txn_op_context_, deadline, read_time,
         *static_row_spec, &static_row_iter));
     if (VERIFY_RESULT(static_row_iter->HasNext())) {
       RETURN_NOT_OK(static_row_iter->NextRow(&static_row));
@@ -1195,15 +1194,21 @@ Status QLReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   if (FLAGS_trace_docdb_calls) {
     TRACE("Fetched $0 rows.", resultset->rsrow_count());
   }
+
+  RETURN_NOT_OK(SetPagingStateIfNecessary(
+      iter.get(), resultset, row_count_limit, num_rows_skipped, read_time));
+
+  // SetPagingStateIfNecessary could perform read, so we assign restart_read_ht after it.
   *restart_read_ht = iter->RestartReadHt();
 
-  return SetPagingStateIfNecessary(iter.get(), resultset, row_count_limit, num_rows_skipped);
+  return Status::OK();
 }
 
 Status QLReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
                                                   const QLResultSet* resultset,
                                                   const size_t row_count_limit,
-                                                  const size_t num_rows_skipped) {
+                                                  const size_t num_rows_skipped,
+                                                  const ReadHybridTime& read_time) {
   if ((resultset->rsrow_count() >= row_count_limit || request_.has_offset()) &&
       !request_.is_aggregate()) {
     SubDocKey next_row_key;
@@ -1225,6 +1230,9 @@ Status QLReadOperation::SetPagingStateIfNecessary(const common::YQLRowwiseIterat
         paging_state->set_total_rows_skipped(request_.paging_state().total_rows_skipped() +
             num_rows_skipped);
       }
+    }
+    if (response_.has_paging_state()) {
+      read_time.AddToPB(response_.mutable_paging_state());
     }
   }
 

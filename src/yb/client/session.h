@@ -28,6 +28,8 @@ namespace yb {
 
 class ConsistentReadPoint;
 
+struct ReadHybridTime;
+
 namespace client {
 
 namespace internal {
@@ -95,6 +97,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // the read point will be updated to restart read-time. Otherwise, the read point will be set to
   // the current time.
   void SetReadPoint(Restart restart);
+
+  void SetReadPoint(const ReadHybridTime& read_time);
 
   // Returns true if our current read point requires restart.
   bool IsRestartRequired();

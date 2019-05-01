@@ -704,7 +704,7 @@ TEST_F(TestQLQuery, TestPagingState) {
       if (processor->rows_result()->paging_state().empty()) {
         break;
       }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+      CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
     } while (true);
     CHECK_EQ(page_count, kNumRows / kPageSize);
   }
@@ -733,7 +733,7 @@ TEST_F(TestQLQuery, TestPagingState) {
         break;
       }
       CHECK_EQ(row_block->row_count(), kPageSize);
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+      CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
     } while (true);
     CHECK_EQ(i, kLimit);
     CHECK_EQ(page_count, static_cast<int>(ceil(static_cast<double>(kLimit) /
@@ -773,7 +773,7 @@ TEST_F(TestQLQuery, TestPagingState) {
       if (processor->rows_result()->paging_state().empty()) {
         break;
       }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+      CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
     } while (true);
     CHECK_EQ(row_count, kNumRows);
     // Page count should be at least "kNumRows / kPageSize". Can be more because some pages may not
@@ -805,7 +805,7 @@ TEST_F(TestQLQuery, TestPagingState) {
       if (processor->rows_result()->paging_state().empty()) {
         break;
       }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+      CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
     } while (true);
     CHECK_EQ(row_count, kLimit);
     // Page count should be at least "kLimit / kPageSize". Can be more because some pages may not
@@ -877,7 +877,7 @@ do {                                                                            
     if (processor->rows_result()->paging_state().empty()) {                                        \
       break;                                                                                       \
     }                                                                                              \
-    CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));                   \
+    CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));                   \
   } while (true);                                                                                  \
   /* Page count should be at least "<nrRowsRead> / kPageSize". */                                  \
   /* Can be more since some pages may not be fully filled depending on hash key distribution. */   \
