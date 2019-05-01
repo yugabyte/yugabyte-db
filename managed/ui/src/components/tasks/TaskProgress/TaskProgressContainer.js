@@ -24,4 +24,4 @@ function mapStateToProps(state, ownProps) {
   };
 }
 
-export default connect( mapStateToProps, mapDispatchToProps)(TaskProgress);
+export default connect(mapStateToProps, mapDispatchToProps)(TaskProgress);
