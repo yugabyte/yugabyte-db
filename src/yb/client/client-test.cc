@@ -74,6 +74,7 @@
 #include "yb/server/metadata.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -1994,5 +1995,72 @@ TEST_F(ClientTest, Capability) {
   }
 }
 
+TEST_F(ClientTest, TestCreateTableWithRangePartition) {
+  gscoped_ptr <YBTableCreator> table_creator(client_->NewTableCreator());
+  const std::string kPgsqlKeyspaceID = "1234";
+  const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
+  const std::string kPgsqlTableName = "pgsqlrangepartitionedtable";
+  const std::string kPgsqlTableId = "pgsqlrangepartitionedtableid";
+  const size_t kColIdx = 1;
+  const int64_t kKeyValue = 48238;
+  auto pgsql_table_name = YBTableName(kPgsqlKeyspaceID, kPgsqlKeyspaceName, kPgsqlTableName);
+
+  auto yql_table_name = YBTableName(kKeyspaceName, "yqlrangepartitionedtable");
+
+  YBSchemaBuilder schemaBuilder;
+  schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::STRING)->NotNull();
+  schemaBuilder.AddColumn("value")->Type(yb::INT64)->NotNull();
+  YBSchema schema;
+  EXPECT_OK(client_->CreateNamespaceIfNotExists(kPgsqlKeyspaceName,
+                                                YQLDatabase::YQL_DATABASE_PGSQL,
+                                                "" /* creator_role_name */,
+                                                kPgsqlKeyspaceID));
+  // Create a PGSQL table using range partition.
+  EXPECT_OK(schemaBuilder.Build(&schema));
+  Status s = table_creator->table_name(pgsql_table_name)
+      .table_id(kPgsqlTableId)
+      .schema(&schema_)
+      .set_range_partition_columns({"key"})
+      .table_type(PGSQL_TABLE_TYPE)
+      .num_tablets(1)
+      .Create();
+  EXPECT_OK(s);
+
+  // Write to the PGSQL table.
+  shared_ptr<YBTable> pgsq_table;
+  EXPECT_OK(client_->OpenTable(kPgsqlTableId , &pgsq_table));
+  std::shared_ptr<YBPgsqlWriteOp> pgsql_write_op(pgsq_table->NewPgsqlInsert());
+  PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
+
+  psql_write_request->add_range_column_values()->mutable_value()->set_string_value("pgsql_key1");
+  PgsqlColumnValuePB* pgsql_column = psql_write_request->add_column_values();
+  // 1 is the index for column value.
+
+  pgsql_column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
+  pgsql_column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
+  std::shared_ptr<YBSession> session = CreateSession(client_.get());
+  EXPECT_OK(session->Apply(pgsql_write_op));
+
+  // Create a YQL table using range partition.
+  s = table_creator->table_name(yql_table_name)
+      .schema(&schema_)
+      .set_range_partition_columns({"key"})
+      .table_type(YQL_TABLE_TYPE)
+      .num_tablets(1)
+      .Create();
+  EXPECT_OK(s);
+
+  // Write to the YQL table.
+  client::TableHandle table;
+  EXPECT_OK(table.Open(yql_table_name, client_.get()));
+  std::shared_ptr<YBqlWriteOp> write_op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  QLWriteRequestPB* const req = write_op->mutable_request();
+  req->add_range_column_values()->mutable_value()->set_string_value("key1");
+  QLColumnValuePB* column = req->add_column_values();
+  // 1 is the index for column value.
+  column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
+  column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
+  EXPECT_OK(session->Apply(write_op));
+}
 }  // namespace client
 }  // namespace yb
