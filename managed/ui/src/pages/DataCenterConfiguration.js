@@ -1,12 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
+import React, { Component } from 'react';
 import DataCenterConfigurationContainer from '../components/config/ConfigProvider/DataCenterConfigurationContainer';
 
-const DataCenterConfiguration = (props) => {
-  return (
-    <DataCenterConfigurationContainer {...props} />
-  );
-};
-
+class DataCenterConfiguration extends Component {
+  render() {
+    return (
+      <div className="dashboard-container">
+        <DataCenterConfigurationContainer {...this.props} />
+      </div>
+    );
+  }
+}
 export default DataCenterConfiguration;

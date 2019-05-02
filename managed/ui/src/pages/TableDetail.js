@@ -1,15 +1,16 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
+import React, { Component } from 'react';
+import Universes from './Universes';
 import { TableDetailContainer } from '../components/tables';
 
-const TableDetail = ({ params }) => {
-  return (
-    <div>
-      <TableDetailContainer universeUUID={params.uuid}
-        tableUUID={params.tableUUID}/>
-    </div>
-  );
-};
-
-export default TableDetail;
+export default class TableDetail extends Component {
+  render() {
+    return (
+      <Universes>
+        <TableDetailContainer universeUUID={this.props.params.uuid}
+          tableUUID={this.props.params.tableUUID}/>
+      </Universes>
+    );
+  }
+}

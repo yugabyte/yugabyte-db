@@ -11,6 +11,7 @@ import Register from './pages/Register';
 import AuthenticatedComponent from './pages/AuthenticatedComponent';
 import Dashboard from './pages/Dashboard';
 import UniverseDetail from './pages/UniverseDetail';
+import Universes from './pages/Universes';
 import {Tasks, TasksList, TaskDetail} from './pages/tasks';
 import Alerts from './pages/Alerts';
 import ListUniverse from './pages/ListUniverse';
@@ -71,7 +72,8 @@ export default (store) => {
       <Route path="/register" component={Register} />
       <Route onEnter={authenticatedSession} onChange={checkIfAuthenticated} component={AuthenticatedComponent}>
         <IndexRoute component={Dashboard} />
-        <Route path="/universes" component={ListUniverse} >
+        <Route path="/universes" component={Universes} >
+          <IndexRoute component={ListUniverse} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail}/>
         </Route>

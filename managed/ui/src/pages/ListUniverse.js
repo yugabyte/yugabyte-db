@@ -1,14 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
+import React, {Component} from 'react';
 import { ListUniverseContainer } from '../components/universes';
 
-const ListUniverse = () => {
-  return (
-    <div>
-      <ListUniverseContainer />
-    </div>
-  );
-};
-
-export default ListUniverse;
+export default class ListUniverse extends Component {
+  render() {
+    return (
+      <div className="dashboard-container">
+        <ListUniverseContainer />
+      </div>
+    );
+  }
+}

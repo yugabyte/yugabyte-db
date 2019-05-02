@@ -1,14 +1,16 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
+import React, { Component } from 'react';
+
 import { UniverseDetailContainer } from '../components/universes';
 
-const UniverseDetail = ({ params }) => {
-  return (
-    <div>
-      <UniverseDetailContainer uuid={params.uuid}/>
-    </div>
-  );
-};
-
+class UniverseDetail extends Component {
+  render() {
+    return (
+      <div>
+        <UniverseDetailContainer uuid={this.props.params.uuid}/>
+      </div>
+    );
+  }
+}
 export default UniverseDetail;
