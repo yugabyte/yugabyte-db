@@ -109,24 +109,6 @@ YBCStatus YBCPgReserveOids(YBCPgSession pg_session,
 
 YBCStatus YBCPgGetCatalogMasterVersion(YBCPgSession pg_session, uint64_t *version);
 
-// SCHEMA ------------------------------------------------------------------------------------------
-// Create schema "database_name.schema_name".
-// - When "database_name" is NULL, the connected database name is used.
-YBCStatus YBCPgNewCreateSchema(YBCPgSession pg_session,
-                               const char *database_name,
-                               const char *schema_name,
-                               bool if_not_exist,
-                               YBCPgStatement *handle);
-YBCStatus YBCPgExecCreateSchema(YBCPgStatement handle);
-
-// Drop schema "database_name.schema_name".
-// - When "database_name" is NULL, the connected database name is used.
-YBCStatus YBCPgDropSchema(YBCPgSession pg_session,
-                          const char *schema_name,
-                          bool if_exist,
-                          YBCPgStatement *handle);
-YBCStatus YBCPgExecDropSchema(YBCPgStatement handle);
-
 // TABLE -------------------------------------------------------------------------------------------
 // Create and drop table "database_name.schema_name.table_name()".
 // - When "schema_name" is NULL, the table "database_name.table_name" is created.

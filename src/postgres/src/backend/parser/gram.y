@@ -1690,10 +1690,7 @@ NonReservedWord_or_Sconst:
 		;
 
 VariableResetStmt:
-			RESET reset_rest
-				{
-					$$ = (Node *) $2;
-				}
+			RESET reset_rest						{ $$ = (Node *) $2; }
 		;
 
 reset_rest:
@@ -1749,6 +1746,7 @@ FunctionSetResetClause:
 			SET set_rest_more				{ $$ = $2; }
 			| VariableResetStmt				{ $$ = (VariableSetStmt *) $1; }
 		;
+
 
 VariableShowStmt:
 			SHOW var_name
@@ -2077,14 +2075,8 @@ AlterTableStmt:
 		;
 
 alter_table_cmds:
-			alter_table_cmd
-				{
-					$$ = list_make1($1);
-				}
-			| alter_table_cmds ',' alter_table_cmd
-				{
-					$$ = lappend($1, $3);
-				}
+			alter_table_cmd							{ $$ = list_make1($1); }
+			| alter_table_cmds ',' alter_table_cmd	{ $$ = lappend($1, $3); }
 		;
 
 partition_cmd:
@@ -3458,21 +3450,10 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
  * implement LOCAL as meaning the same as our default temp table behavior,
  * so we'll probably continue to treat LOCAL as a noise word.
  */
-
-OptTemp:
-			TEMPORARY
-				{
-					$$ = RELPERSISTENCE_TEMP;
-				}
-			| TEMP { $$ = RELPERSISTENCE_TEMP; }
-			| LOCAL TEMPORARY
-				{
-					$$ = RELPERSISTENCE_TEMP;
-				}
-			| LOCAL TEMP
-				{
-					$$ = RELPERSISTENCE_TEMP;
-				}
+OptTemp:	TEMPORARY					{ $$ = RELPERSISTENCE_TEMP; }
+			| TEMP						{ $$ = RELPERSISTENCE_TEMP; }
+			| LOCAL TEMPORARY			{ $$ = RELPERSISTENCE_TEMP; }
+			| LOCAL TEMP				{ $$ = RELPERSISTENCE_TEMP; }
 			| GLOBAL TEMPORARY
 				{
 					ereport(WARNING,
@@ -4157,19 +4138,9 @@ OptWith:
 			| /*EMPTY*/					{ $$ = NIL; }
 		;
 
-OnCommitOption:
-			ON COMMIT DROP
-				{
-					$$ = ONCOMMIT_DROP;
-				}
-			| ON COMMIT DELETE_P ROWS
-				{
-					$$ = ONCOMMIT_DELETE_ROWS;
-				}
-			| ON COMMIT PRESERVE ROWS
-				{
-					$$ = ONCOMMIT_PRESERVE_ROWS;
-				}
+OnCommitOption:  ON COMMIT DROP				{ $$ = ONCOMMIT_DROP; }
+			| ON COMMIT DELETE_P ROWS		{ $$ = ONCOMMIT_DELETE_ROWS; }
+			| ON COMMIT PRESERVE ROWS		{ $$ = ONCOMMIT_PRESERVE_ROWS; }
 			| /*EMPTY*/						{ $$ = ONCOMMIT_NOOP; }
 		;
 
@@ -10556,20 +10527,14 @@ opt_transaction:	WORK							{}
 
 transaction_mode_item:
 			ISOLATION LEVEL iso_level
-				{
-					$$ = makeDefElem("transaction_isolation",
-									 makeStringConst($3, @3), @1);
-				}
+					{ $$ = makeDefElem("transaction_isolation",
+									   makeStringConst($3, @3), @1); }
 			| READ ONLY
-				{
-					$$ = makeDefElem("transaction_read_only",
-									 makeIntConst(true, @1), @1);
-				}
+					{ $$ = makeDefElem("transaction_read_only",
+									   makeIntConst(true, @1), @1); }
 			| READ WRITE
-				{
-					$$ = makeDefElem("transaction_read_only",
-									 makeIntConst(false, @1), @1);
-				}
+					{ $$ = makeDefElem("transaction_read_only",
+									   makeIntConst(false, @1), @1); }
 			| DEFERRABLE
 				{
 					parser_ybc_signal_unsupported(@1, "TRANSACTION DEFERRABLE mode", 1125);
@@ -10599,6 +10564,7 @@ transaction_mode_list_or_empty:
 			| /* EMPTY */
 					{ $$ = NIL; }
 		;
+
 
 /*****************************************************************************
  *
@@ -11617,10 +11583,7 @@ opt_conf_expr:
 		;
 
 returning_clause:
-			RETURNING target_list
-				{
-					$$ = $2;
-				}
+			RETURNING target_list		{ $$ = $2; }
 			| /* EMPTY */				{ $$ = NIL; }
 		;
 
@@ -11649,12 +11612,12 @@ DeleteStmt: opt_with_clause DELETE_P FROM relation_expr_opt_alias
 		;
 
 using_clause:
-			/*EMPTY*/								{ $$ = NIL; }
-			| USING from_list
+			USING from_list
 				{
 					parser_ybc_signal_unsupported(@1, "USING clause in DELETE", 738);
 					$$ = $2;
 				}
+			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
 
@@ -13196,13 +13159,9 @@ Typename:	SimpleTypename opt_array_bounds
 
 opt_array_bounds:
 			opt_array_bounds '[' ']'
-				{
-					$$ = lappend($1, makeInteger(-1));
-				}
+					{  $$ = lappend($1, makeInteger(-1)); }
 			| opt_array_bounds '[' Iconst ']'
-				{
-					$$ = lappend($1, makeInteger($3));
-				}
+					{  $$ = lappend($1, makeInteger($3)); }
 			| /*EMPTY*/
 					{  $$ = NIL; }
 		;
@@ -13266,10 +13225,7 @@ GenericType:
 				}
 		;
 
-opt_type_modifiers: '(' expr_list ')'
-				{
-					$$ = $2;
-				}
+opt_type_modifiers: '(' expr_list ')'				{ $$ = $2; }
 				| /* EMPTY */					{ $$ = NIL; }
 		;
 

@@ -260,50 +260,6 @@ Status PgApiImpl::GetCatalogMasterVersion(PgSession *pg_session, uint64_t *versi
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::NewCreateSchema(PgSession *pg_session,
-                                  const char *database_name,
-                                  const char *schema_name,
-                                  bool if_not_exist,
-                                  PgStatement **handle) {
-  *handle = nullptr;
-  if (pg_session == nullptr) {
-    return STATUS(InvalidArgument, "Invalid session handle");
-  }
-
-  auto stmt = make_scoped_refptr<PgCreateSchema>(pg_session, database_name, schema_name,
-                                                 if_not_exist);
-  *handle = stmt.detach();
-  return Status::OK();
-}
-
-Status PgApiImpl::ExecCreateSchema(PgStatement *handle) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_SCHEMA)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  return down_cast<PgCreateSchema*>(handle)->Exec();
-}
-
-Status PgApiImpl::NewDropSchema(PgSession *pg_session,
-                                const char *database_name,
-                                const char *schema_name,
-                                bool if_exist,
-                                PgStatement **handle) {
-  auto stmt = make_scoped_refptr<PgDropSchema>(pg_session, database_name, schema_name, if_exist);
-  *handle = stmt.detach();
-  return Status::OK();
-}
-
-Status PgApiImpl::ExecDropSchema(PgStatement *handle) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_SCHEMA)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  return down_cast<PgDropSchema*>(handle)->Exec();
-}
-
-//--------------------------------------------------------------------------------------------------
-
 Status PgApiImpl::NewCreateTable(PgSession *pg_session,
                                  const char *database_name,
                                  const char *schema_name,
