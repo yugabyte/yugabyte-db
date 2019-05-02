@@ -87,67 +87,6 @@ class PgDropDatabase : public PgDdl {
 };
 
 //--------------------------------------------------------------------------------------------------
-// CREATE SCHEMA
-//
-// TODO(neil) This is not yet supported.  After Mihnea figures out how PostgreSQL implemented it,
-// we can add support for schema.
-//--------------------------------------------------------------------------------------------------
-
-class PgCreateSchema : public PgDdl {
- public:
-  // Public types.
-  typedef scoped_refptr<PgCreateSchema> ScopedRefPtr;
-  typedef scoped_refptr<const PgCreateSchema> ScopedRefPtrConst;
-
-  typedef std::unique_ptr<PgCreateSchema> UniPtr;
-  typedef std::unique_ptr<const PgCreateSchema> UniPtrConst;
-
-  // Constructors.
-  PgCreateSchema(PgSession::ScopedRefPtr pg_session,
-                 const char *database_name,
-                 const char *schema_name,
-                 bool if_not_exist);
-  virtual ~PgCreateSchema();
-
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_SCHEMA; }
-
-  // Execute.
-  CHECKED_STATUS Exec();
-
- private:
-  const char *database_name_;
-  const char *schema_name_;
-  bool if_not_exist_;
-};
-
-class PgDropSchema : public PgDdl {
- public:
-  // Public types.
-  typedef scoped_refptr<PgDropSchema> ScopedRefPtr;
-  typedef scoped_refptr<const PgDropSchema> ScopedRefPtrConst;
-
-  typedef std::unique_ptr<PgDropSchema> UniPtr;
-  typedef std::unique_ptr<const PgDropSchema> UniPtrConst;
-
-  // Constructors.
-  PgDropSchema(PgSession::ScopedRefPtr pg_session,
-               const char *database_name,
-               const char *schema_name,
-               bool if_exist);
-  virtual ~PgDropSchema();
-
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_DROP_SCHEMA; }
-
-  // Execute.
-  CHECKED_STATUS Exec();
-
- private:
-  const char *database_name_;
-  const char *schema_name_;
-  bool if_exist_;
-};
-
-//--------------------------------------------------------------------------------------------------
 // CREATE TABLE
 //--------------------------------------------------------------------------------------------------
 

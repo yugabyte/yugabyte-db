@@ -265,6 +265,7 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	Bitmapset      *pkey    = GetTablePrimaryKey(rel);
 	YBCPgStatement insert_stmt = NULL;
 	bool           is_null  = false;
+	bool		   has_indices = YBCRelHasSecondaryIndices(rel);
 
 	/* Generate a new oid for this row if needed */
 	if (rel->rd_rel->relhasoids)
@@ -310,7 +311,7 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	 * If the relation has indexes, request ybctid of the inserted row to update
 	 * the indexes.
 	 */
-	if (rel->rd_rel->relhasindex)
+	if (has_indices)
 	{
 		YBCPgTypeAttrs type_attrs = {0};
 		YBCPgExpr      ybc_expr   = YBCNewColumnRef(insert_stmt,
@@ -327,7 +328,7 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	 * If the relation has indexes, save ybctid to insert the new row into the
 	 * indexes.
 	 */
-	if (rel->rd_rel->relhasindex)
+	if (has_indices)
 	{
 		YBCPgSysColumns syscols;
 		bool            has_data = false;
@@ -568,7 +569,7 @@ void YBCExecuteUpdate(Relation rel, TupleTableSlot *slot, HeapTuple tuple)
 	/*
 	 * If the relation has indexes, save the ybctid to insert the updated row into the indexes.
 	 */
-	if (rel->rd_rel->relhasindex)
+	if (YBCRelHasSecondaryIndices(rel))
 	{
 		tuple->t_ybctid = ybctid;
 	}
