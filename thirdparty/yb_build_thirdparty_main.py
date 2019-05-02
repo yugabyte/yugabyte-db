@@ -761,6 +761,13 @@ class Builder:
     def will_need_clang(self):
         return self.args.build_type != BUILD_TYPE_UNINSTRUMENTED
 
+    def check_cxx_compiler_flag(self, flag):
+        process = subprocess.Popen([self.cxx_wrapper, '-x', 'c++', flag, '-'],
+                                   stdin=subprocess.PIPE)
+        process.stdin.write("int main() { return 0; }")
+        process.stdin.close()
+        return process.wait() == 0
+
 def main():
     unset_if_set('CC')
     unset_if_set('CXX')

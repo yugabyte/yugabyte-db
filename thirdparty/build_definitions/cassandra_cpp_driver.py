@@ -34,8 +34,9 @@ class CassandraCppDriverDependency(Dependency):
         cxx_flags = []
         if not is_mac():
             cxx_flags = builder.compiler_flags + builder.cxx_flags + builder.ld_flags
-            if is_ubuntu():
-                cxx_flags.append('-Wno-error=implicit-fallthrough')
+            implicit_fallthrough_flag = '-Wno-error=implicit-fallthrough'
+            if builder.check_cxx_compiler_flag(implicit_fallthrough_flag):
+                cxx_flags.append(implicit_fallthrough_flag)
 
         builder.build_with_cmake(
                 self,
