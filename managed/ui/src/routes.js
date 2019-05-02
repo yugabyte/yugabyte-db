@@ -47,6 +47,8 @@ function validateSession(store, replacePath, callback) {
           localStorage.clear();
           browserHistory.push('/login');
           callback();
+        } else if ("uuid" in response.payload.data) {
+          localStorage.setItem("customer_id", response.payload.data["uuid"]);
         }
       });
   }
