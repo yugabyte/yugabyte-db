@@ -1582,6 +1582,30 @@ public class PlacementInfoUtil {
     }
     return azToConfig;
   }
+
+  public static String getKubernetesNamespace(String nodePrefix, String azName) {
+    return String.format("%s-%s", nodePrefix, azName);
+  }
+
+  public static Map<String, String> getConfigPerNamespace(PlacementInfo pi, String nodePrefix) {
+    Map<String, String> namespaceToConfig = new HashMap<String, String>();
+    Map<UUID, Map<String, String>> azToConfig = getConfigPerAZ(pi);
+    for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+      String kubeconfig = entry.getValue().get("KUBECONFIG");
+      if (kubeconfig == null) {
+        throw new NullPointerException("Couldn't find a kubeconfig");
+      }
+      if (azToConfig.size() == 1) {
+        namespaceToConfig.put(nodePrefix, kubeconfig);
+        break;
+      } else {
+        String azName = AvailabilityZone.get(entry.getKey()).code;
+        String namespace = getKubernetesNamespace(nodePrefix, azName);
+        namespaceToConfig.put(namespace, kubeconfig);
+      }
+    }
+    return namespaceToConfig;
+  }
       
 
   // Compute the master addresses of the pods in the deployment if multiAZ.
