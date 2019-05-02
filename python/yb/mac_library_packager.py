@@ -132,6 +132,11 @@ class MacLibraryPackager:
         postgres_lib = os.path.join(postgres_dst, 'lib')
         for bin_file in os.listdir(postgres_bin):
             self.fix_postgres_load_paths(os.path.join(postgres_bin, bin_file), dst)
+        for lib_file in os.listdir(postgres_lib):
+            if os.path.isdir(os.path.join(postgres_lib, lib_file)):
+                continue
+            logging.debug("Processing postgres library %s", lib_file)
+            self.fix_postgres_load_paths(os.path.join(postgres_lib, lib_file), dst)
 
     # Run otool to extract information from an object file. Returns the command's output to stdout,
     # or an empty string if filename is not a valid object file.
@@ -317,7 +322,7 @@ class MacLibraryPackager:
 
     # Special case for now (10/14/18).
     def fix_postgres_load_paths(self, filename, dst):
-        if (os.path.islink(filename)):
+        if os.path.islink(filename):
             return []
 
         libs = []
@@ -337,6 +342,8 @@ class MacLibraryPackager:
         self.remove_rpaths(filename, rpaths)
 
         logging.debug('Processing file %s for rpaths %s', filename, rpaths)
+        if len(rpaths) == 0:
+            return []
 
         # Dependency path will have the paths as extracted by 'otool -L'
         dependency_paths, absolute_dependency_paths = \
