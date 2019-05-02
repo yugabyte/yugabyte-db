@@ -7,11 +7,13 @@ import akka.actor.Scheduler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.HealthManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellProcessHandler;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -19,12 +21,16 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.ArgumentCaptor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +49,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyLong;
+import static org.mockito.Matchers.anyList;
 import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -68,6 +75,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   Customer defaultCustomer;
   Provider defaultProvider;
+  Provider kubernetesProvider;
 
   Universe universe;
   AccessKey accessKey;
@@ -77,6 +85,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+    kubernetesProvider = ModelFactory.kubernetesProvider(defaultCustomer);
 
     when(mockActorSystem.scheduler()).thenReturn(mockScheduler);
 
@@ -114,6 +123,21 @@ public class HealthCheckerTest extends FakeDBApplication {
     return Universe.get(universe.universeUUID);
   }
 
+  private Universe setupK8sUniverse(String name) {
+    Region r = Region.create(kubernetesProvider, "region-1", "PlacementRegion-1", "default-image");
+    AvailabilityZone az = AvailabilityZone.create(r, "az-1", "PlacementAZ-1", "subnet-1");
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZoneHelper(az.uuid, pi);
+    Map<String, String> config = new HashMap<>();
+    config.put("KUBECONFIG", "foo");
+    kubernetesProvider.setConfig(config);
+    // Universe modifies customer, so we need to refresh our in-memory view of this reference.
+    defaultCustomer = Customer.get(defaultCustomer.uuid);
+    universe = ModelFactory.createUniverse(name, UUID.randomUUID(), defaultCustomer.getCustomerId(),
+        Common.CloudType.kubernetes, pi);
+    return Universe.get(universe.universeUUID);
+  }
+
   private void setupAlertingData(String alertingEmail, boolean sendAlertsToYb) {
     // Setup alerting data.
     AlertingData data = new AlertingData();
@@ -133,9 +157,29 @@ public class HealthCheckerTest extends FakeDBApplication {
         eq(true));
   }
 
+  private void verifyK8sHealthManager(Universe u, String expectedEmail) {
+    ArgumentCaptor<List> expectedClusters = ArgumentCaptor.forClass(List.class);
+    verify(mockHealthManager, times(1)).runCommand(
+        eq(kubernetesProvider),
+        expectedClusters.capture(),
+        eq(u.name),
+        eq(String.format("[%s][%s]", defaultCustomer.email, defaultCustomer.code)),
+        eq(expectedEmail),
+        eq(0L),
+        eq(true));
+    HealthManager.ClusterInfo cluster = (HealthManager.ClusterInfo) expectedClusters.getValue().get(0);
+    assertEquals(cluster.namespaceToConfig.get("univ1"), "foo");
+    assertEquals(expectedClusters.getValue().size(), 1);
+  }
+
   private void testSingleUniverse(Universe u, String expectedEmail) {
     healthChecker.checkSingleUniverse(u, defaultCustomer, customerConfig, true);
     verifyHealthManager(u, expectedEmail);
+  }
+
+  private void testSingleK8sUniverse(Universe u, String expectedEmail) {
+    healthChecker.checkSingleUniverse(u, defaultCustomer, customerConfig, true);
+    verifyK8sHealthManager(u, expectedEmail);
   }
 
   private void validateNoDevopsCall() {
@@ -150,6 +194,13 @@ public class HealthCheckerTest extends FakeDBApplication {
     Universe u = setupUniverse("univ1");
     setupAlertingData(null, false);
     testSingleUniverse(u, null);
+  }
+
+  @Test
+  public void testSingleK8sUniverseNoEmail() {
+    Universe u = setupK8sUniverse("univ1");
+    setupAlertingData(null, false);
+    testSingleK8sUniverse(u, null);
   }
 
   @Test

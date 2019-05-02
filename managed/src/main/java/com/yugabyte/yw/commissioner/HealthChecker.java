@@ -16,6 +16,7 @@ import com.google.inject.Singleton;
 
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.HealthManager;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -189,7 +190,6 @@ public class HealthChecker {
       HealthManager.ClusterInfo info = new HealthManager.ClusterInfo();
       clusterMetadata.put(cluster.uuid, info);
       info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
-      info.nodePrefix = details.nodePrefix;
       info.enableYSQL = cluster.userIntent.enableYSQL;
       Provider provider = Provider.get(UUID.fromString(cluster.userIntent.provider));
       if (provider == null) {
@@ -199,6 +199,11 @@ public class HealthChecker {
         break;
       }
       providerCode = provider.code;
+      if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
+        info.namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(
+            cluster.placementInfo, details.nodePrefix);
+      }
+
       // TODO(bogdan): We do not have access to the default port constant at this level, as it is
       // baked in devops...hardcode it for now.
       // Default to 54422.
@@ -251,20 +256,11 @@ public class HealthChecker {
         break;
       }
       // TODO: we do not have a good way of marking the whole universe as k8s only.
-      boolean isK8s = providerCode.equals(Common.CloudType.kubernetes.toString());
       if (nd.isMaster) {
-        if (isK8s) {
-          info.masterNodes.add(nd.nodeName);
-        } else {
-          info.masterNodes.add(nd.cloudInfo.private_ip);
-        }
+        info.masterNodes.add(nd.cloudInfo.private_ip);
       }
       if (nd.isTserver) {
-        if (isK8s) {
-          info.tserverNodes.add(nd.nodeName);
-        } else {
-          info.tserverNodes.add(nd.cloudInfo.private_ip);
-        }
+        info.tserverNodes.add(nd.cloudInfo.private_ip);
       }
     }
     // If any nodes were invalid, abort for this universe.

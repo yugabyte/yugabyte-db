@@ -7,11 +7,16 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.yugabyte.yw.common.PlacementInfoUtil;
+
+import play.libs.Json;
 
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
@@ -50,15 +55,18 @@ public class TableManager extends DevopsBase {
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
     Map<String, String> extraVars = new HashMap<>();
+    Map<String, String> namespaceToConfig = new HashMap<>();
+
+    if (region.provider.code.equals("kubernetes")) {
+      PlacementInfo pi = primaryCluster.placementInfo;
+      namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(pi,
+          universe.getUniverseDetails().nodePrefix);
+    }
 
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(subType.getScript());
     commandArgs.add("--masters");
-    if (region.provider.code.equals("kubernetes")) {
-      commandArgs.add(universe.getKubernetesMasterAddresses());
-    } else {
-      commandArgs.add(universe.getMasterAddresses());
-    }
+    commandArgs.add(universe.getMasterAddresses());
     commandArgs.add("--table");
     commandArgs.add(taskParams.tableName);
     commandArgs.add("--keyspace");
@@ -72,8 +80,8 @@ public class TableManager extends DevopsBase {
                                                            backupTableParams.storageConfigUUID);
 
         if (region.provider.code.equals("kubernetes")) {
-            commandArgs.add("--k8s_namespace");
-            commandArgs.add(universe.getUniverseDetails().nodePrefix);
+            commandArgs.add("--k8s_config");
+            commandArgs.add(Json.stringify(Json.toJson(namespaceToConfig)));
         } else {
           if (accessKey.getKeyInfo().sshUser != null && !accessKey.getKeyInfo().sshUser.isEmpty()) {
             commandArgs.add("--ssh_user");

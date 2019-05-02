@@ -303,7 +303,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         // The namespace of the deployment in multi-az is constructed by appending
         // the zone to the universe name.
         String namespace = isMultiAz ?
-            String.format("%s-%s", taskParams().nodePrefix, hostname.split("_")[1]) :
+            PlacementInfoUtil.getKubernetesNamespace(taskParams().nodePrefix, hostname.split("_")[1]) :
             taskParams().nodePrefix;
         JsonNode podVals = pod.getValue();
         UUID azUUID = UUID.fromString(podVals.get("az_uuid").asText());
