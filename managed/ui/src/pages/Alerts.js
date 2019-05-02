@@ -1,14 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
+import React, { Component } from 'react';
 import AlertsListContainer from '../components/alerts/AlertList/AlertsListContainer';
 
-const Alerts = () => {
-  return (
-    <div>
-      <AlertsListContainer/>
-    </div>
-  );
-};
-
-export default Alerts;
+export default class Alerts extends Component {
+  render() {
+    return (
+      <div className="dashboard-container">
+        <AlertsListContainer/>
+      </div>
+    );
+  }
+}

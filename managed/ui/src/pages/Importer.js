@@ -1,14 +1,17 @@
 // Copyright (c) YugaByte, Inc.
 
-import React from 'react';
+import React, { Component } from 'react';
+
 import { ImporterContainer } from '../components/importer';
 
-const Importer = () => {
-  return (
-    <div>
-      <ImporterContainer />
-    </div>
-  );
-};
+class Importer extends Component {
+  render() {
+    return (
+      <div className="dashboard-container">
+        <ImporterContainer />
+      </div>
+    );
+  }
+}
 
 export default Importer;

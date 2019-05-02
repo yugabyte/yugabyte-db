@@ -16,9 +16,11 @@ class Metrics extends Component {
   }
   render() {
     return (
-      <Measure onMeasure={this.onResize.bind(this)}>
-        <CustomerMetricsPanelContainer origin={"customer"} width={this.state.dimensions.width} />
-      </Measure>
+      <div className="dashboard-container">
+        <Measure onMeasure={this.onResize.bind(this)}>
+          <CustomerMetricsPanelContainer origin={"customer"} width={this.state.dimensions.width} />
+        </Measure>
+      </div>
     );
   }
 }

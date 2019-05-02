@@ -2,12 +2,14 @@
 
 import React, { Component } from 'react';
 
-export default class Tasks extends Component {
+class Universes extends Component {
   render() {
     return (
-      <div className="dashboard-container">
+      <div>
         {this.props.children}
       </div>
     );
   }
 }
+
+export default Universes;
