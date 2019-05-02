@@ -152,25 +152,6 @@ class PgApiImpl {
   CHECKED_STATUS GetCatalogMasterVersion(PgSession *pg_session, uint64_t *version);
 
   //------------------------------------------------------------------------------------------------
-  // Create and drop schema.
-  // - When "database_name" is NULL, the connected database name is used.
-  CHECKED_STATUS NewCreateSchema(PgSession *pg_session,
-                                 const char *database_name,
-                                 const char *schema_name,
-                                 bool if_not_exist,
-                                 PgStatement **handle);
-
-  CHECKED_STATUS ExecCreateSchema(PgStatement *handle);
-
-  CHECKED_STATUS NewDropSchema(PgSession *pg_session,
-                               const char *database_name,
-                               const char *schema_name,
-                               bool if_exist,
-                               PgStatement **handle);
-
-  CHECKED_STATUS ExecDropSchema(PgStatement *handle);
-
-  //------------------------------------------------------------------------------------------------
   // Create, alter and drop table.
   CHECKED_STATUS NewCreateTable(PgSession *pg_session,
                                 const char *database_name,

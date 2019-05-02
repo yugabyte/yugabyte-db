@@ -253,9 +253,31 @@ YBCTruncateTable(Relation rel) {
 	YBCPgStatement handle;
 	Oid relationId = RelationGetRelid(rel);
 
+	/* Truncate the base table */
 	HandleYBStatus(YBCPgNewTruncateTable(ybc_pg_session, MyDatabaseId, relationId, &handle));
 	HandleYBStmtStatus(YBCPgExecTruncateTable(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
+
+	if (!rel->rd_rel->relhasindex)
+		return;
+
+	/* Truncate the associated secondary indexes */
+	List	 *indexlist = RelationGetIndexList(rel);
+	ListCell *lc;
+
+	foreach(lc, indexlist)
+	{
+		Oid indexId = lfirst_oid(lc);
+
+		if (indexId == rel->rd_pkindex)
+			continue;
+
+		HandleYBStatus(YBCPgNewTruncateTable(ybc_pg_session, MyDatabaseId, indexId, &handle));
+		HandleYBStmtStatus(YBCPgExecTruncateTable(handle), handle);
+		HandleYBStatus(YBCPgDeleteStatement(handle));
+	}
+
+	list_free(indexlist);
 }
 
 void

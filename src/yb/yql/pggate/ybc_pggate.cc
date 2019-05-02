@@ -161,7 +161,7 @@ YBCStatus YBCPgGetCatalogMasterVersion(YBCPgSession pg_session, uint64_t *versio
   return ToYBCStatus(pgapi->GetCatalogMasterVersion(pg_session, version));
 }
 
-// Schema Operations -------------------------------------------------------------------------------
+// Statement Operations ----------------------------------------------------------------------------
 
 YBCStatus YBCPgDeleteStatement(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->DeleteStatement(handle));
@@ -171,48 +171,7 @@ YBCStatus YBCPgClearBinds(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ClearBinds(handle));
 }
 
-// Schema Operations -------------------------------------------------------------------------------
-YBCStatus YBCPgNewCreateSchema(YBCPgSession pg_session,
-                               const char *database_name,
-                               const char *schema_name,
-                               bool if_not_exist,
-                               YBCPgStatement *handle) {
-  return YBCStatusNotSupport("SCHEMA");
-#if (0)
-  // TODO(neil) Turn this ON when schema is supported.
-  return ToYBCStatus(pgapi->NewCreateSchema(pg_session, schema_name, database_name,
-                                            if_not_exist, handle));
-#endif
-}
-
-YBCStatus YBCPgExecCreateSchema(YBCPgStatement handle) {
-  return YBCStatusNotSupport("SCHEMA");
-#if (0)
-  // TODO(neil) Turn this ON when schema is supported.
-  return ToYBCStatus(pgapi->ExecCreateSchema(handle));
-#endif
-}
-
-YBCStatus YBCPgNewDropSchema(YBCPgSession pg_session,
-                             const char *database_name,
-                             const char *schema_name,
-                             bool if_exist,
-                             YBCPgStatement *handle) {
-  return YBCStatusNotSupport("SCHEMA");
-#if (0)
-  // TODO(neil) Turn this ON when schema is supported.
-  return ToYBCStatus(pgapi->NewDropSchema(pg_session, database_name, schema_name,
-                                          if_exist, handle));
-#endif
-}
-
-YBCStatus YBCPgExecDropSchema(YBCPgStatement handle) {
-  return YBCStatusNotSupport("SCHEMA");
-#if (0)
-  // TODO(neil) Turn this ON when schema is supported.
-  return ToYBCStatus(pgapi->ExecDropSchema(handle));
-#endif
-}
+// Sequence Operations -----------------------------------------------------------------------------
 
 YBCStatus YBCInsertSequenceTuple(YBCPgSession pg_session,
                                  int64_t db_oid,

@@ -76,48 +76,6 @@ Status PgDropDatabase::Exec() {
 }
 
 //--------------------------------------------------------------------------------------------------
-// PgCreateSchema
-//--------------------------------------------------------------------------------------------------
-
-PgCreateSchema::PgCreateSchema(PgSession::ScopedRefPtr pg_session,
-                               const char *database_name,
-                               const char *schema_name,
-                               bool if_not_exist)
-    : PgDdl(pg_session),
-      database_name_(database_name),
-      schema_name_(schema_name),
-      if_not_exist_(if_not_exist) {
-}
-
-PgCreateSchema::~PgCreateSchema() {
-}
-
-Status PgCreateSchema::Exec() {
-  LOG(FATAL) << "Create schema (" << database_name_ << "," << schema_name_ << "," << if_not_exist_
-             << ") is under development";
-  return STATUS(NotSupported, "SCHEMA is not yet implemented");
-}
-
-PgDropSchema::PgDropSchema(PgSession::ScopedRefPtr pg_session,
-                           const char *database_name,
-                           const char *schema_name,
-                           bool if_exist)
-    : PgDdl(pg_session),
-      database_name_(database_name),
-      schema_name_(schema_name),
-      if_exist_(if_exist) {
-}
-
-PgDropSchema::~PgDropSchema() {
-}
-
-Status PgDropSchema::Exec() {
-  LOG(FATAL) << "Drop schema " << database_name_ << "." << schema_name_ << "," << if_exist_
-             << ") is underdevelopment";
-  return STATUS(NotSupported, "SCHEMA is not yet implemented");
-}
-
-//--------------------------------------------------------------------------------------------------
 // PgCreateTable
 //--------------------------------------------------------------------------------------------------
 
