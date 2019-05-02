@@ -68,7 +68,12 @@ export const UPDATE_RELEASE = 'UPDATE_RELEASE';
 export const UPDATE_RELEASE_RESPONSE = 'UPDATE_RELEASE_RESPONSE';
 
 export function validateToken() {
-  const cUUID = Cookies.get("customer_id") || localStorage.getItem("customer_id");
+  let cUUID = Cookies.get("customer_id");
+  if (cUUID) {
+    localStorage.setItem("customer_id", cUUID);
+  } else {
+    cUUID = localStorage.getItem("customer_id");
+  }
   const auth_token = Cookies.get("customer_token") || localStorage.getItem("customer_token");
   axios.defaults.headers.common['X-AUTH-TOKEN'] = auth_token;
   const api_token = Cookies.get("api_token") || localStorage.getItem("api_token");
