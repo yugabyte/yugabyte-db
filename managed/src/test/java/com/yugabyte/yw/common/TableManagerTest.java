@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -14,6 +15,7 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -24,7 +26,10 @@ import org.mockito.runners.MockitoJUnitRunner;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.UUID;
+
+import play.libs.Json;
 
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BACKUP;
 import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
@@ -152,24 +157,29 @@ import static org.mockito.Mockito.when;
   private List<String> getExpectedBackupTableCommand(
       BackupTableParams backupTableParams, String storageType) {
     AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
+    Map<String, String> namespaceToConfig = new HashMap<>();
 
+    if (testProvider.code.equals("kubernetes")) {
+      PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+      namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(pi,
+          testUniverse.getUniverseDetails().nodePrefix);
+    }
+    
     List<String> cmd = new LinkedList<>();
     cmd.add(PY_WRAPPER);
     cmd.add(BACKUP.getScript());
     cmd.add("--masters");
     // TODO(bogdan): we do not have nodes to test this?
-    if (testProvider.code.equals("kubernetes")) {
-      cmd.add(testUniverse.getKubernetesMasterAddresses());
-    } else {
-      cmd.add(testUniverse.getMasterAddresses());
-    }
+    
+    cmd.add(testUniverse.getMasterAddresses());
+    
     cmd.add("--table");
     cmd.add(backupTableParams.tableName);
     cmd.add("--keyspace");
     cmd.add(backupTableParams.keyspace);
     if (testProvider.code.equals("kubernetes")) {
-      cmd.add("--k8s_namespace");
-      cmd.add(testUniverse.getUniverseDetails().nodePrefix);
+      cmd.add("--k8s_config");
+      cmd.add(Json.stringify(Json.toJson(namespaceToConfig)));
     } else {
       if (accessKey.getKeyInfo().sshUser != null) {
         cmd.add("--ssh_user");
@@ -320,7 +330,9 @@ import static org.mockito.Mockito.when;
   @Test
   public void testCreateBackupKubernetes() {
     setupUniverse(ModelFactory.kubernetesProvider(testCustomer));
-
+    Map<String, String> config = new HashMap<>();
+    config.put("KUBECONFIG", "foo");
+    testProvider.setConfig(config);
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -328,6 +340,7 @@ import static org.mockito.Mockito.when;
     Backup.create(testCustomer.uuid, backupTableParams);
     List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
+    expectedEnvVars.put("KUBECONFIG", "foo");
     tableManager.createBackup(backupTableParams);
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
   }

@@ -9,6 +9,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import play.libs.Json;
 
 import java.util.HashSet;
@@ -77,6 +78,10 @@ public class ModelFactory {
     return createUniverse(universeName, UUID.randomUUID(), 1L, cloudType);
   }
   public static Universe createUniverse(String universeName, UUID universeUUID, long customerId, Common.CloudType cloudType) {
+    return createUniverse(universeName, universeUUID, customerId, cloudType, null);
+  }
+  public static Universe createUniverse(String universeName, UUID universeUUID, long customerId, Common.CloudType cloudType,
+                                        PlacementInfo pi) {
     Customer c = Customer.get(customerId);
     // Custom setup a default AWS provider, can be overridden later.
     Provider p = Provider.get(c.uuid, cloudType);
@@ -89,7 +94,8 @@ public class ModelFactory {
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.universeUUID = universeUUID;
     params.nodeDetailsSet = new HashSet<>();
-    params.upsertPrimaryCluster(userIntent, null);
+    params.nodePrefix = universeName;
+    params.upsertPrimaryCluster(userIntent, pi);
     Universe u = Universe.create(params, customerId);
     c.addUniverseUUID(u.universeUUID);
     c.save();

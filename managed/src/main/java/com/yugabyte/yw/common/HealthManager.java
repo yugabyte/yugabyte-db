@@ -9,6 +9,7 @@ import com.google.inject.Singleton;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 
 import play.libs.Json;
@@ -28,7 +29,7 @@ public class HealthManager extends DevopsBase {
     public int sshPort;
     // TODO: this is to be used by k8s.
     // Note: this is the same across all clusters, so maybe we should pull it out one level above.
-    public String nodePrefix = null;
+    public Map<String, String> namespaceToConfig = new HashMap<>();
     public List<String> masterNodes = new ArrayList<>();
     public List<String> tserverNodes = new ArrayList<>();
     public String ybSoftwareVersion = null;
