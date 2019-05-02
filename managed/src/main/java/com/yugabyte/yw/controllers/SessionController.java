@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import play.Configuration;
+import play.Environment;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
@@ -37,6 +38,11 @@ public class SessionController extends Controller {
 
   @Inject
   ConfigHelper configHelper;
+
+
+  @Inject
+  Environment environment;
+
 
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
@@ -121,6 +127,14 @@ public class SessionController extends Controller {
       cust.deleteAuthToken();
     }
     return ok();
+  }
+
+  public Result getUITheme() {
+    try {
+      return Results.ok(environment.resourceAsStream("theme/theme.css"));
+    } catch (NullPointerException ne) {
+      return ApiResponse.error(BAD_REQUEST, "Theme file doesn't exists.");
+    }
   }
 
   public Result customerCount() {
