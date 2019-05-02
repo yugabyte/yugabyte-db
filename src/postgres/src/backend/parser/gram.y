@@ -3684,7 +3684,6 @@ ColConstraintElem:
 				}
 			| GENERATED generated_when AS IDENTITY_P OptParenthesizedSeqOptList
 				{
-					parser_ybc_signal_unsupported(@1, "GENERATED constraint", 1129);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_IDENTITY;
 					n->generated_when = $2;
