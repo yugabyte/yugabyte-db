@@ -105,8 +105,8 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
       threads.emplace_back([this, color, kKeys, &complete] {
         auto conn = ASSERT_RESULT(Connect());
 
-        ASSERT_OK(Execute(conn.get(), "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
         ASSERT_OK(Execute(conn.get(), "BEGIN"));
+        ASSERT_OK(Execute(conn.get(), "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
 
         auto res = Fetch(conn.get(), "SELECT * FROM t");
         if (!res.ok()) {

@@ -35,7 +35,7 @@ YBC_CLASS_START_REF_COUNTED_THREAD_SAFE
 
 YBC_VIRTUAL_DESTRUCTOR
 
-YBC_STATUS_METHOD_NO_ARGS(BeginTransaction)
+YBC_STATUS_METHOD(BeginTransaction, ((int, isolation)))
 YBC_STATUS_METHOD_NO_ARGS(CommitTransaction)
 YBC_STATUS_METHOD_NO_ARGS(AbortTransaction)
 YBC_STATUS_METHOD(SetIsolationLevel, ((int, isolation)));

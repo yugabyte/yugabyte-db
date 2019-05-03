@@ -2219,6 +2219,13 @@ ExecModifyTable(PlanState *pstate)
 		EvalPlanQualSetSlot(&node->mt_epqstate, planSlot);
 		slot = planSlot;
 
+		if (IsYugaByteEnabled() && resultRelInfo->ri_RelationDesc->trigdesc &&
+		    !IsolationIsYBSerializable()) 
+		{
+			YBRaiseNotSupported("Operation only supported in SERIALIZABLE"
+			                    "isolation level", 1199);
+		}
+
 		tupleid = NULL;
 		oldtuple = NULL;
 		if (junkfilter != NULL)
@@ -2234,14 +2241,18 @@ ExecModifyTable(PlanState *pstate)
 				AttrNumber  resno;
 
 				relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
-
 				/*
-				 * For YugaByte table with indexes, extract the old row from
-				 * wholerow junk attribute with the ybctid for removing old
-				 * index entries for UPDATE and DELETE.
+				 * For YugaByte relations extract the old row from the wholerow junk
+				 * attribute if needed.
+				 * 1. For tables with secondary indexes we need the (old) ybctid for
+				 *    removing old index entries (for UPDATE and DELETE)
+				 * 2. For tables with row triggers we need to pass the old row for
+				 *    trigger execution.
 				 */
 				if (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
-					YBCRelInfoHasSecondaryIndices(resultRelInfo))
+					(YBCRelInfoHasSecondaryIndices(resultRelInfo) ||
+					YBRelHasOldRowTriggers(resultRelInfo->ri_RelationDesc, 
+					                       operation)))
 				{
 					resno = ExecFindJunkAttribute(junkfilter, "wholerow");
 					datum = ExecGetJunkAttribute(slot, resno, &isNull);

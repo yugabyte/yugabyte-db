@@ -100,6 +100,8 @@ void YBCLogImpl(int severity,
 // string is allocated using palloc.
 const char* YBCFormatBytesAsStr(const char* data, size_t size);
 
+const char* YBCGetStackTrace();
+
 #ifdef __cplusplus
 } // extern "C"
 #endif
