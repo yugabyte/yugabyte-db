@@ -1585,16 +1585,17 @@ public class PlacementInfoUtil {
       
 
   // Compute the master addresses of the pods in the deployment if multiAZ.
-  public static String computeMasterAddresses(Map<UUID, Integer> azToNumMasters, String nodePrefix) {
+  public static String computeMasterAddresses(PlacementInfo pi, Map<UUID, Integer> azToNumMasters,
+                                              String nodePrefix, Provider provider) {
     List<String> masters = new ArrayList<String>();
+    Map<UUID, String> azToDomain = getDomainPerAZ(pi);
     if (azToNumMasters.size() == 1) {
       return null;
     }
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
       AvailabilityZone az = AvailabilityZone.get(entry.getKey());
+      String domain = azToDomain.get(entry.getKey());
       for (int idx = 0; idx < entry.getValue(); idx++) {
-        // Domain name can be parameterized later to support different providers
-        String domain = "svc.cluster.local";
         int port = 7100;
         String master = String.format("yb-master-%d.yb-masters.%s-%s.%s:%d", idx, nodePrefix, az.code,
             domain, port);
@@ -1602,6 +1603,23 @@ public class PlacementInfoUtil {
       }
     }
     return String.join(",", masters);
+  }
+
+  public static Map<UUID, String> getDomainPerAZ(PlacementInfo pi) {
+    Map<UUID, String> azToDomain = new HashMap<>();
+    for (PlacementCloud pc : pi.cloudList) {
+      for (PlacementRegion pr : pc.regionList) {
+        for (PlacementAZ pa : pr.azList) {
+          Map<String, String> config = AvailabilityZone.get(pa.uuid).getConfig();
+          if (config.containsKey("KUBE_DOMAIN")) {
+            azToDomain.put(pa.uuid, String.format("%s.%s", "svc", config.get("KUBE_DOMAIN")));
+          } else {
+            azToDomain.put(pa.uuid, "svc.cluster.local");
+          }
+        }
+      }
+    }
+    return azToDomain;
   }
 
   // Returns the start index for provisioning new nodes based on the current maximum node index
