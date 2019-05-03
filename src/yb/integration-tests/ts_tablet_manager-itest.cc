@@ -108,6 +108,7 @@ void TsTabletManagerITest::SetUp() {
 
   MessengerBuilder bld("client");
   client_messenger_ = ASSERT_RESULT(bld.Build());
+  client_messenger_->TEST_SetOutboundIpBase(ASSERT_RESULT(HostToAddress("127.0.0.1")));
 
   MiniClusterOptions opts;
   opts.num_tablet_servers = kNumReplicas;
