@@ -5,12 +5,10 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CloudQueryHelper;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.ModelFactory;
@@ -137,6 +135,37 @@ public class CustomerControllerTest extends WithApplication {
     CustomerConfig callhomeConfig = CustomerConfig.getCallhomeConfig(customer.uuid);
     CollectionLevel callhomeLevel = CustomerConfig.getCallhomeLevel(customer.uuid);
     assertEquals(CollectionLevel.MEDIUM, callhomeLevel);
+  }
+
+  @Test
+  public void testCustomerPUTWithValidFeatures() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("code", "tc");
+    params.put("email", "foo@bar.com");
+    params.put("name", "Test Customer");
+    JsonNode features = Json.parse("{\"foo\": \"bar\"}");
+    params.set("features", features);
+
+    Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid).cookie(validCookie).bodyJson(params));
+    assertEquals(OK, result.status());
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(features, json.get("features"));
+  }
+
+  @Test
+  public void testCustomerPUTWithInvalidFeatures() {
+    String authToken = customer.createAuthToken();
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
+    ObjectNode params = Json.newObject();
+    params.put("code", "tc");
+    params.put("email", "foo@bar.com");
+    params.put("name", "Test Customer");
+    params.put("features", "foo");
+
+    Result result = route(fakeRequest("PUT", "/api/customers/" + customer.uuid).cookie(validCookie).bodyJson(params));
+    assertBadRequest(result, "{\"features\":[\"Invalid value\"]}");
   }
 
   @Test

@@ -115,9 +115,10 @@ public class CustomerController extends AuthenticatedController {
       config.update();
     }
 
-    String features = formData.get().features;
-    if (features != null) {
-      customer.upsertFeatures(Json.toJson(features));
+    // Features would be a nested json, so we should fetch it differently.
+    JsonNode requestBody = request().body().asJson();
+    if (requestBody.has("features")) {
+      customer.upsertFeatures(requestBody.get("features"));
     }
 
     CustomerConfig.upsertCallhomeConfig(customerUUID, formData.get().callhomeLevel);
