@@ -2,19 +2,18 @@
 
 import React, { Component } from 'react';
 import { TaskListTable } from '../../tasks';
-import { browserHistory} from 'react-router';
-import { isNonAvailable } from 'utils/LayoutUtils';
+import { showOrRedirect } from 'utils/LayoutUtils';
 
 export default class TasksList extends Component {
 
   componentWillMount() {
     this.props.fetchCustomerTasks();
-    const { customer: { currentCustomer }} = this.props;
-    if (isNonAvailable(currentCustomer.data.features, "tasks.display")) browserHistory.push('/');
   }
 
   render() {
-    const {tasks: {customerTaskList}} = this.props;
+    const {tasks: {customerTaskList}, customer: { currentCustomer }} = this.props;
+    showOrRedirect(currentCustomer.data.features, "menu.tasks");
+
     return (
       <TaskListTable taskList={customerTaskList}/>
     );

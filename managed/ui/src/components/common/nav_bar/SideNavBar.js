@@ -6,7 +6,7 @@ import { NavDropdown } from 'react-bootstrap';
 import gitterIcon from '../../help/HelpItem/images/gitter.svg';
 import './stylesheets/SideNavBar.scss';
 import { getPromiseState } from 'utils/PromiseUtils';
-import { getFeatureState } from 'utils/LayoutUtils';
+import { isNotHidden, getFeatureState } from 'utils/LayoutUtils';
 
 class NavLink extends Component {
   render () {
@@ -45,13 +45,14 @@ export default class SideNavBar extends Component {
             {(getPromiseState(currentCustomer).isSuccess() || getPromiseState(currentCustomer).isInit()) && <div id="sidebar-menu" className="main-menu-side hidden-print main-menu">
               <div className="menu_section">
                 <ul className="nav side-menu">
-                  <NavLink to="/"          icon="fa fa-dashboard"    text="Dashboard"     display={getFeatureState(currentCustomer.features, "dashboard.display")} index={true} />
-                  <NavLink to="/universes" icon="fa fa-globe"        text="Universes"     display={getFeatureState(currentCustomer.features, "universes.display")} />
-                  <NavLink to="/metrics"   icon="fa fa-line-chart"   text="Metrics"       display={getFeatureState(currentCustomer.features, "metrics.display")} />
-                  <NavLink to="/tasks"     icon="fa fa-list"         text="Tasks"         display={getFeatureState(currentCustomer.features, "tasks.display")} />
-                  <NavLink to="/alerts"    icon="fa fa-bell-o"       text="Alerts"        display={getFeatureState(currentCustomer.features, "alerts.display")} />
-                  <NavLink to="/config"    icon="fa fa-cloud-upload" text="Configs" display={getFeatureState(currentCustomer.features, "config.display")} />
+                  <NavLink to="/"          icon="fa fa-dashboard"    text="Dashboard"     display={getFeatureState(currentCustomer.data.features, "menu.dashboard")} index={true} />
+                  <NavLink to="/universes" icon="fa fa-globe"        text="Universes"     display={getFeatureState(currentCustomer.data.features, "menu.universes")} />
+                  <NavLink to="/metrics"   icon="fa fa-line-chart"   text="Metrics"       display={getFeatureState(currentCustomer.data.features, "menu.metrics")} />
+                  <NavLink to="/tasks"     icon="fa fa-list"         text="Tasks"         display={getFeatureState(currentCustomer.data.features, "menu.tasks")} />
+                  <NavLink to="/alerts"    icon="fa fa-bell-o"       text="Alerts"        display={getFeatureState(currentCustomer.data.features, "menu.alerts")} />
+                  <NavLink to="/config"    icon="fa fa-cloud-upload" text="Configs" display={getFeatureState(currentCustomer.data.features, "menu.config")} />
                 </ul>
+                {isNotHidden(currentCustomer.data.features, "menu.help") &&
                 <ul className="nav side-menu position-bottom">
                   <NavDropdown dropup eventKey="2" title={<div><i className="fa fa-question"></i><span>Help</span></div>} id="help-dropdown">
                     <h4>Resources</h4>
@@ -85,7 +86,7 @@ export default class SideNavBar extends Component {
                       <a href="mailto:support@yugabyte.com"><i className="fa fa-envelope-o"></i> Email</a>
                     </li>
                   </NavDropdown>
-                </ul>
+                </ul>}
               </div>
             </div>}
           </div>

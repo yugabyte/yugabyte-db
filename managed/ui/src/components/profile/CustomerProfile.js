@@ -6,8 +6,7 @@ import {YBInputField, YBButton, YBToggle, YBSelect} from '../common/forms/fields
 import { Field } from 'redux-form';
 import _ from 'lodash';
 import { isDefinedNotNull } from 'utils/ObjectUtils';
-import { browserHistory} from 'react-router';
-import { isNonAvailable } from 'utils/LayoutUtils';
+import { showOrRedirect } from 'utils/LayoutUtils';
 
 // TODO set predefined defaults another way not to share defaults this way
 const CHECK_INTERVAL_MS = 300000;
@@ -18,12 +17,6 @@ export default class CustomerProfile extends Component {
     super(props);
     this.toggleSendAlertsToYb = this.toggleSendAlertsToYb.bind(this);
   }
-
-  componentWillMount() {
-    const { customer } = this.props;
-    if (isNonAvailable(customer.features, "main.profile")) browserHistory.push('/');
-  }
-
 
   componentWillReceiveProps(nextProps) {
     if (!_.isEqual(this.props.customer, nextProps.customer)) {
@@ -49,7 +42,9 @@ export default class CustomerProfile extends Component {
   }
 
   render() {
-    const {handleSubmit, submitting, customerProfile} = this.props;
+    const {handleSubmit, submitting, customerProfile, customer} = this.props;
+    showOrRedirect(customer.features, "main.profile");
+
     let profileUpdateStatus = <span/>;
     if (customerProfile.data === "updated-success") {
       profileUpdateStatus = <span className="pull-right yb-success-color">Profile Updated Successfully</span>;

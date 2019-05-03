@@ -5,7 +5,7 @@ import { GraphPanelHeaderContainer, GraphPanelContainer } from '../../metrics';
 import PropTypes from 'prop-types';
 import { PanelGroup } from 'react-bootstrap';
 import { browserHistory} from 'react-router';
-import { isNonAvailable } from 'utils/LayoutUtils';
+import { showOrRedirect } from 'utils/LayoutUtils';
 
 const graphPanelTypes = {
   "universe": {
@@ -38,7 +38,7 @@ export default class CustomerMetricsPanel extends Component {
 
   componentWillMount() {
     const { customer: { currentCustomer }} = this.props;
-    if (isNonAvailable(currentCustomer.data.features, "metrics.display")) browserHistory.push('/');
+    showOrRedirect(currentCustomer.data.features, "menu.metrics");
   }
 
   render() {
