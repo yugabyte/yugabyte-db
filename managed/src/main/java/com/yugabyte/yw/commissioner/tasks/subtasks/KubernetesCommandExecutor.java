@@ -257,6 +257,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     PlacementInfo pi = taskParams().placementInfo;
 
     Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
+    Map<UUID, String> azToDomain = PlacementInfoUtil.getDomainPerAZ(pi);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(pi);
 
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
@@ -305,19 +306,21 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
             String.format("%s-%s", taskParams().nodePrefix, hostname.split("_")[1]) :
             taskParams().nodePrefix;
         JsonNode podVals = pod.getValue();
+        UUID azUUID = UUID.fromString(podVals.get("az_uuid").asText());
+        String domain = azToDomain.get(azUUID);
         if (hostname.contains("master")) {
           nodeDetail.isTserver = false;
           nodeDetail.isMaster = true;
           nodeDetail.cloudInfo.private_ip = String.format("%s.%s.%s.%s", hostname.split("_")[0],
-              "yb-masters", namespace, "svc.cluster.local");
+              "yb-masters", namespace, domain);
         }
         else {
           nodeDetail.isMaster = false;
           nodeDetail.isTserver = true;
           nodeDetail.cloudInfo.private_ip = String.format("%s.%s.%s.%s", hostname.split("_")[0],
-              "yb-tservers", namespace, "svc.cluster.local");
+              "yb-tservers", namespace, domain);
         }
-        nodeDetail.azUuid = UUID.fromString(podVals.get("az_uuid").asText());
+        nodeDetail.azUuid = azUUID;
         nodeDetail.placementUuid = placementUuid;
         nodeDetail.state = NodeDetails.NodeState.Live;
         nodeDetail.nodeName = hostname;
@@ -574,10 +577,6 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     if (placementUuid != null && tserverOverrides.get("placement_uuid") == null) {
       tserverOverrides.put("placement_uuid", placementUuid.toString());
     }
-    if (userIntent.enableYSQL) {
-      tserverOverrides.put("start_pgsql_proxy", "true");
-      tserverOverrides.put("pgsql_proxy_bind_address", String.format("$(POD_IP):%s", YSQL_PORT));
-    }
     if (taskParams().rootCA != null) {
       tserverOverrides.put("use_node_to_node_encryption", userIntent.enableNodeToNodeEncrypt);
       tserverOverrides.put("use_client_to_server_encryption", userIntent.enableClientToNodeEncrypt);
@@ -614,6 +613,13 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       if (annotations != null ) {
         overrides.putAll(annotations);
       }
+    }
+
+    if (azConfig.containsKey("KUBE_DOMAIN")) {
+      overrides.put("domainName", azConfig.get("KUBE_DOMAIN"));
+    }
+    if (!userIntent.enableYSQL) {
+      overrides.put("disableYsql", true);
     }
 
     try {

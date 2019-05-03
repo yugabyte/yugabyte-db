@@ -56,11 +56,14 @@ public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
       
       selectNumMastersAZ(pi);
 
+      Provider provider = Provider.get(UUID.fromString(
+          taskParams().getPrimaryCluster().userIntent.provider));
+
       Map<UUID, Integer> azToNumMasters = PlacementInfoUtil.getNumMasterPerAZ(pi);
       Map<UUID, Integer> azToNumTServers = PlacementInfoUtil.getNumTServerPerAZ(pi);
       Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
-      String masterAddresses = PlacementInfoUtil.computeMasterAddresses(azToNumMasters,
-          taskParams().nodePrefix);
+      String masterAddresses = PlacementInfoUtil.computeMasterAddresses(pi, azToNumMasters,
+          taskParams().nodePrefix, provider);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(pi);
 

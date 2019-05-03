@@ -247,8 +247,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     tserverOverrides.put("placement_zone", defaultAZ.code);
     // tserverOverrides.put("placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid);
     tserverOverrides.put("placement_uuid", hackPlacementUUID.toString());
-    tserverOverrides.put("start_pgsql_proxy", "true");
-    tserverOverrides.put("pgsql_proxy_bind_address", String.format("$(POD_IP):%s", KubernetesCommandExecutor.YSQL_PORT));
     if (defaultUserIntent.enableClientToNodeEncrypt || defaultUserIntent.enableNodeToNodeEncrypt) {
       tserverOverrides.put("use_node_to_node_encryption", true);
       tserverOverrides.put("allow_insecure_connections", true);
@@ -282,6 +280,9 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       if (annotations != null ) {
         expectedOverrides.putAll(annotations);
       }
+    }
+    if (!defaultUserIntent.enableYSQL) {
+      expectedOverrides.put("disableYsql", true);
     }
 
     return expectedOverrides;

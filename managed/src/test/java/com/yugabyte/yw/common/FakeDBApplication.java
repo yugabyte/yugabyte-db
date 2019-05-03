@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.HealthChecker;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.test.Helpers;
@@ -18,6 +19,7 @@ import static play.inject.Bindings.bind;
 public class FakeDBApplication extends WithApplication {
   public Commissioner mockCommissioner;
   protected CallHome mockCallHome;
+  HealthChecker mockHealthChecker;
 
   @Override
   protected Application provideApplication() {
@@ -30,6 +32,7 @@ public class FakeDBApplication extends WithApplication {
         .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(CallHome.class).toInstance(mockCallHome))
+        .overrides(bind(HealthChecker.class).toInstance(mockHealthChecker))
         .overrides(bind(Executors.class).toInstance(mockExecutors))
       .build();
   }
