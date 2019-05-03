@@ -58,6 +58,8 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
+
 
 /* ----------
  * Local definitions
@@ -277,21 +279,25 @@ RI_FKey_check(TriggerData *trigdata)
 		new_row_buf = trigdata->tg_trigtuplebuf;
 	}
 
-	/*
-	 * We should not even consider checking the row if it is no longer valid,
-	 * since it was either deleted (so the deferred check should be skipped)
-	 * or updated (in which case only the latest version of the row should be
-	 * checked).  Test its liveness according to SnapshotSelf.  We need pin
-	 * and lock on the buffer to call HeapTupleSatisfiesVisibility.  Caller
-	 * should be holding pin, but not lock.
-	 */
-	LockBuffer(new_row_buf, BUFFER_LOCK_SHARE);
-	if (!HeapTupleSatisfiesVisibility(new_row, SnapshotSelf, new_row_buf))
+	/* For YB relations visibility will be handled by DocDB (storage layer). */
+	if (!IsYBRelation(trigdata->tg_relation))
 	{
+		/*
+		* We should not even consider checking the row if it is no longer valid,
+		* since it was either deleted (so the deferred check should be skipped)
+		* or updated (in which case only the latest version of the row should be
+		* checked).  Test its liveness according to SnapshotSelf.  We need pin
+		* and lock on the buffer to call HeapTupleSatisfiesVisibility.  Caller
+		* should be holding pin, but not lock.
+		*/
+		LockBuffer(new_row_buf, BUFFER_LOCK_SHARE);
+		if (!HeapTupleSatisfiesVisibility(new_row, SnapshotSelf, new_row_buf))
+		{
+			LockBuffer(new_row_buf, BUFFER_LOCK_UNLOCK);
+			return PointerGetDatum(NULL);
+		}
 		LockBuffer(new_row_buf, BUFFER_LOCK_UNLOCK);
-		return PointerGetDatum(NULL);
 	}
-	LockBuffer(new_row_buf, BUFFER_LOCK_UNLOCK);
 
 	/*
 	 * Get the relation descriptors of the FK and PK tables.
@@ -425,7 +431,15 @@ RI_FKey_check(TriggerData *trigdata)
 			querysep = "AND";
 			queryoids[i] = fk_type;
 		}
-		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+
+		/*
+		 * TODO In YB mode we currently only allow foreign key DMLs
+		 * in YB serializable mode -- so no need for key share here
+		 */
+		if (!IsYBRelation(pk_rel))
+		{
+			appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+		}
 
 		/* Prepare and save the plan */
 		qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
@@ -560,7 +574,15 @@ ri_Check_Pk_Match(Relation pk_rel, Relation fk_rel,
 			querysep = "AND";
 			queryoids[i] = pk_type;
 		}
-		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+
+		/*
+		 * TODO In YB mode we currently only allow foreign key DMLs
+		 * in YB serializable mode -- so no need for key share here
+		 */
+		if (!IsYBRelation(pk_rel))
+		{
+			appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+		}
 
 		/* Prepare and save the plan */
 		qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
@@ -821,7 +843,15 @@ ri_restrict(TriggerData *trigdata, bool is_no_action)
 					querysep = "AND";
 					queryoids[i] = pk_type;
 				}
-				appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+
+				/*
+				* TODO In YB mode we currently only allow foreign key DMLs
+				* in YB serializable mode -- so no need for key share here
+				*/
+				if (!IsYBRelation(pk_rel))
+				{
+					appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+				}
 
 				/* Prepare and save the plan */
 				qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
@@ -2568,7 +2598,7 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 	 * that SPI_execute_snapshot will register the snapshots, so we don't need
 	 * to bother here.
 	 */
-	if (IsolationUsesXactSnapshot() && detectNewRows)
+	if (!IsYBRelation(pk_rel) && IsolationUsesXactSnapshot() && detectNewRows)
 	{
 		CommandCounterIncrement();	/* be sure all my own work is visible */
 		test_snapshot = GetLatestSnapshot();

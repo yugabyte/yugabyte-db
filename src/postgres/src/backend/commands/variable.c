@@ -588,9 +588,10 @@ void
 assign_XactIsoLevel(const char *newval, void *extra)
 {
 	XactIsoLevel = *((int *) extra);
-	if (YBTransactionsEnabled()) {
-    YBCPgTxnManager_SetIsolationLevel(YBCGetPgTxnManager(), XactIsoLevel);
-  }
+	if (YBTransactionsEnabled())
+	{
+		YBCPgTxnManager_SetIsolationLevel(YBCGetPgTxnManager(), XactIsoLevel);
+	}
 }
 
 const char *

@@ -2376,10 +2376,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 
 			if (is_hash || is_primary)
 			{
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Update PRIMARY KEY columns are not yet supported"),
-						 errhint("Please contact YugaByte for its release schedule.")));
+				YBRaiseNotSupported("Update PRIMARY KEY columns are not yet supported", 659);
 			}
 		}
 

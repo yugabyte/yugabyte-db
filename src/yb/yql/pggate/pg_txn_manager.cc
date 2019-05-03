@@ -49,12 +49,13 @@ PgTxnManager::~PgTxnManager() {
   ResetTxnAndSession();
 }
 
-Status PgTxnManager::BeginTransaction() {
+Status PgTxnManager::BeginTransaction(int isolation_level) {
   VLOG(2) << "BeginTransaction: txn_in_progress_=" << txn_in_progress_;
   if (txn_in_progress_) {
     return STATUS(IllegalState, "Transaction is already in progress");
   }
   ResetTxnAndSession();
+  isolation_level_ = isolation_level;
   txn_in_progress_ = true;
   StartNewSession();
   return Status::OK();
@@ -77,10 +78,13 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
 
   auto isolation = isolation_level_ == kRepeatableRead || isolation_level_ == kSerializable
       ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
+  // Sanity check, query layer should ensure this does not happen.
+  if (txn_ && txn_->isolation() != isolation) {
+    return STATUS(IllegalState, "Changing txn isolation level in the middle of a transaction");
+  }
   if (read_only_op && isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
     return Status::OK();
   }
-
   if (txn_) {
     return Status::OK();
   }
@@ -166,7 +170,7 @@ TransactionManager* PgTxnManager::GetOrCreateTransactionManager() {
 
 Result<client::YBSession*> PgTxnManager::GetTransactionalSession() {
   if (!txn_in_progress_) {
-    RETURN_NOT_OK(BeginTransaction());
+    RETURN_NOT_OK(BeginTransaction(isolation_level_));
   }
   return session_.get();
 }
