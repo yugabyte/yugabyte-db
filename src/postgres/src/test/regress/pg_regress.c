@@ -120,7 +120,7 @@ static void make_directory(const char *dir);
 
 static void header(const char *fmt,...) pg_attribute_printf(1, 2);
 static void status(const char *fmt,...) pg_attribute_printf(1, 2);
-static void psql_command(const char *database, const char *query,...) pg_attribute_printf(2, 3);
+static void ysqlsh_command(const char *database, const char *query,...) pg_attribute_printf(2, 3);
 
 /*
  * allow core files if possible.
@@ -752,9 +752,9 @@ initialize_environment(void)
 	}
 
 	/*
-	 * Set translation-related settings to English; otherwise psql will
+	 * Set translation-related settings to English; otherwise ysqlsh will
 	 * produce translated messages and produce diffs.  (XXX If we ever support
-	 * translation of pg_regress, this needs to be moved elsewhere, where psql
+	 * translation of pg_regress, this needs to be moved elsewhere, where ysqlsh
 	 * is actually called.)
 	 */
 	unsetenv("LANGUAGE");
@@ -795,9 +795,9 @@ initialize_environment(void)
 	if (temp_instance)
 	{
 		/*
-		 * Clear out any environment vars that might cause psql to connect to
+		 * Clear out any environment vars that might cause ysqlsh to connect to
 		 * the wrong postmaster, or otherwise behave in nondefault ways. (Note
-		 * we also use psql's -X switch consistently, so that ~/.psqlrc files
+		 * we also use ysqlsh's -X switch consistently, so that ~/.psqlrc files
 		 * won't mess things up.)  Also, set PGPORT to the temp port, and set
 		 * PGHOST depending on whether we are using TCP or Unix sockets.
 		 */
@@ -1073,16 +1073,16 @@ config_sspi_auth(const char *pgdata)
 #endif
 
 /*
- * Issue a command via psql, connecting to the specified database
+ * Issue a command via ysqlsh, connecting to the specified database
  *
  * Since we use system(), this doesn't return until the operation finishes
  */
 static void
-psql_command(const char *database, const char *query,...)
+ysqlsh_command(const char *database, const char *query,...)
 {
 	char		query_formatted[1024];
 	char		query_escaped[2048];
-	char		psql_cmd[MAXPGPATH + 2048];
+	char		ysqlsh_cmd[MAXPGPATH + 2048];
 	va_list		args;
 	char	   *s;
 	char	   *d;
@@ -1103,17 +1103,17 @@ psql_command(const char *database, const char *query,...)
 	*d = '\0';
 
 	/* And now we can build and execute the shell command */
-	snprintf(psql_cmd, sizeof(psql_cmd),
-			 "\"%s%spsql\" -X -c \"%s\" \"%s\"",
+	snprintf(ysqlsh_cmd, sizeof(ysqlsh_cmd),
+			 "\"%s%sysqlsh\" -X -c \"%s\" \"%s\"",
 			 bindir ? bindir : "",
 			 bindir ? "/" : "",
 			 query_escaped,
 			 database);
 
-	if (system(psql_cmd) != 0)
+	if (system(ysqlsh_cmd) != 0)
 	{
-		/* psql probably already reported the error */
-		fprintf(stderr, _("command failed: %s\n"), psql_cmd);
+		/* ysqlsh probably already reported the error */
+		fprintf(stderr, _("command failed: %s\n"), ysqlsh_cmd);
 		exit(2);
 	}
 }
@@ -1943,7 +1943,7 @@ static void
 drop_database_if_exists(const char *dbname)
 {
 	header(_("dropping database \"%s\""), dbname);
-	psql_command("postgres", "DROP DATABASE IF EXISTS \"%s\"", dbname);
+	ysqlsh_command("postgres", "DROP DATABASE IF EXISTS \"%s\"", dbname);
 }
 
 static void
@@ -1957,12 +1957,12 @@ create_database(const char *dbname)
 	 */
 	header(_("creating database \"%s\""), dbname);
 	if (encoding)
-		psql_command("postgres", "CREATE DATABASE \"%s\" TEMPLATE=template0 ENCODING='%s'%s", dbname, encoding,
+		ysqlsh_command("postgres", "CREATE DATABASE \"%s\" TEMPLATE=template0 ENCODING='%s'%s", dbname, encoding,
 					 (nolocale) ? " LC_COLLATE='C' LC_CTYPE='C'" : "");
 	else
-		psql_command("postgres", "CREATE DATABASE \"%s\" TEMPLATE=template0%s", dbname,
+		ysqlsh_command("postgres", "CREATE DATABASE \"%s\" TEMPLATE=template0%s", dbname,
 					 (nolocale) ? " LC_COLLATE='C' LC_CTYPE='C'" : "");
-	psql_command(dbname,
+	ysqlsh_command(dbname,
 				 "ALTER DATABASE \"%s\" SET lc_messages TO 'C';"
 				 "ALTER DATABASE \"%s\" SET lc_monetary TO 'C';"
 				 "ALTER DATABASE \"%s\" SET lc_numeric TO 'C';"
@@ -1978,7 +1978,7 @@ create_database(const char *dbname)
 	for (sl = loadlanguage; sl != NULL; sl = sl->next)
 	{
 		header(_("installing %s"), sl->str);
-		psql_command(dbname, "CREATE OR REPLACE LANGUAGE \"%s\"", sl->str);
+		ysqlsh_command(dbname, "CREATE OR REPLACE LANGUAGE \"%s\"", sl->str);
 	}
 
 	/*
@@ -1988,7 +1988,7 @@ create_database(const char *dbname)
 	for (sl = loadextension; sl != NULL; sl = sl->next)
 	{
 		header(_("installing %s"), sl->str);
-		psql_command(dbname, "CREATE EXTENSION IF NOT EXISTS \"%s\"", sl->str);
+		ysqlsh_command(dbname, "CREATE EXTENSION IF NOT EXISTS \"%s\"", sl->str);
 	}
 }
 
@@ -1996,17 +1996,17 @@ static void
 drop_role_if_exists(const char *rolename)
 {
 	header(_("dropping role \"%s\""), rolename);
-	psql_command("postgres", "DROP ROLE IF EXISTS \"%s\"", rolename);
+	ysqlsh_command("postgres", "DROP ROLE IF EXISTS \"%s\"", rolename);
 }
 
 static void
 create_role(const char *rolename, const _stringlist *granted_dbs)
 {
 	header(_("creating role \"%s\""), rolename);
-	psql_command("postgres", "CREATE ROLE \"%s\" WITH LOGIN", rolename);
+	ysqlsh_command("postgres", "CREATE ROLE \"%s\" WITH LOGIN", rolename);
 	for (; granted_dbs != NULL; granted_dbs = granted_dbs->next)
 	{
-		psql_command("postgres", "GRANT ALL ON DATABASE \"%s\" TO \"%s\"",
+		ysqlsh_command("postgres", "GRANT ALL ON DATABASE \"%s\" TO \"%s\"",
 					 granted_dbs->str, rolename);
 	}
 }
@@ -2029,7 +2029,7 @@ help(void)
 	printf(_("      --encoding=ENCODING       use ENCODING as the encoding\n"));
 	printf(_("  -h, --help                    show this help, then exit\n"));
 	printf(_("      --inputdir=DIR            take input files from DIR (default \".\")\n"));
-	printf(_("      --launcher=CMD            use CMD as launcher of psql\n"));
+	printf(_("      --launcher=CMD            use CMD as launcher of ysqlsh\n"));
 	printf(_("      --load-extension=EXT      load the named extension before running the\n"));
 	printf(_("                                tests; can appear multiple times\n"));
 	printf(_("      --load-language=LANG      load the named language before running the\n"));
@@ -2363,7 +2363,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 		 * Check if there is a postmaster running already.
 		 */
 		snprintf(buf2, sizeof(buf2),
-				 "\"%s%spsql\" -X postgres <%s 2>%s",
+				 "\"%s%sysqlsh\" -X postgres <%s 2>%s",
 				 bindir ? bindir : "",
 				 bindir ? "/" : "",
 				 DEVNULL, DEVNULL);
@@ -2432,7 +2432,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 
 		for (i = 0; i < wait_seconds; i++)
 		{
-			/* Done if psql succeeds */
+			/* Done if ysqlsh succeeds */
 			if (system(buf2) == 0)
 				break;
 
