@@ -1967,8 +1967,9 @@ StartTransaction(void)
 	 */
 	s->state = TRANS_INPROGRESS;
 
-	if (YBTransactionsEnabled()) {
-		YBCPgTxnManager_BeginTransaction(YBCGetPgTxnManager());
+	if (YBTransactionsEnabled())
+	{
+		YBCPgTxnManager_BeginTransaction(YBCGetPgTxnManager(), XactIsoLevel);
 	}
 
 	ShowTransactionState("StartTransaction");

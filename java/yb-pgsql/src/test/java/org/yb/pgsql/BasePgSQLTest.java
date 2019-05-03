@@ -18,6 +18,7 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.postgresql.core.TransactionState;
 import org.postgresql.jdbc.PgConnection;
+import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.IsInitDbDoneResponse;
@@ -199,6 +200,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected Connection createConnectionNoAutoCommit() throws Exception {
     Connection conn = createConnection();
     conn.setAutoCommit(false);
+    return conn;
+  }
+
+  protected Connection createConnectionSerializableNoAutoCommit() throws Exception {
+    Connection conn = createConnectionNoAutoCommit();
+    conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
     return conn;
   }
 
@@ -411,7 +418,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected void executeWithTimeout(Statement statement, String sql)
       throws SQLException, TimeoutException, InterruptedException {
     // Maintain our map saying how many statements are being run by each backend pid.
-    // Later we can determine stuck
+    // Later we can determine (possibly) stuck backends based on this.
     final int backendPid = getPgBackendPid(statement.getConnection());
 
     AtomicReference<SQLException> sqlExceptionWrapper = new AtomicReference<>();
@@ -436,6 +443,98 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         throw sqlExceptionWrapper.get();
       }
     }
+  }
+
+  public class PgTxnState {
+    public PgTxnState(Connection connection, String connectionName) {
+      this.connection = connection;
+      this.connectionName = connectionName;
+    }
+
+    boolean isFinished() {
+      return stmtExecuted != null &&
+          beforeCommitState != null &&
+          afterCommitState != null &&
+          committed != null;
+    }
+
+    public boolean isSuccess() {
+      return isFinished() &&
+          stmtExecuted &&
+          TransactionState.OPEN == beforeCommitState &&
+          committed &&
+          TransactionState.IDLE == afterCommitState;
+    }
+
+    public boolean isFailure() {
+      if (!isFinished()) {
+        return false;
+      }
+
+      // We have two cases:
+      // 1. If stmt execution succeeded but commit failed.
+      // 2. If stmt exec failed. Then txn should be in failed state and commit should succeed (but
+      //    effectively do a rollback/abort).
+      if (stmtExecuted) {
+        return TransactionState.OPEN == beforeCommitState &&
+            !committed &&
+            TransactionState.IDLE == afterCommitState;
+
+      } else {
+        return TransactionState.FAILED == beforeCommitState &&
+            committed &&
+            TransactionState.IDLE == afterCommitState;
+      }
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder();
+      sb.append("PgTxnState: ").append(connectionName).append("\n");
+      sb.append("{\n");
+      sb.append("  stmtExecuted: ").append(String.valueOf(stmtExecuted)).append("\n");
+      sb.append("  beforeCommitState: ").append(String.valueOf(beforeCommitState)).append("\n");
+      sb.append("  committed: ").append(String.valueOf(committed)).append("\n");
+      sb.append("  afterCommitState: ").append(String.valueOf(afterCommitState)).append("\n");
+      sb.append("}\n");
+      return sb.toString();
+    }
+
+    private Statement getStatement() throws SQLException {
+      if (statement != null) {
+        return statement;
+      }
+      return connection.createStatement();
+    }
+
+    private String connectionName;
+    private Connection connection;
+    private Statement statement = null;
+
+    private Boolean stmtExecuted = null;
+    private TransactionState beforeCommitState = null;
+    private Boolean committed = null;
+    private TransactionState afterCommitState = null;
+  }
+
+
+  protected void executeWithTxnState(PgTxnState txnState, String query) throws Exception {
+    boolean previousStmtFailed = Boolean.FALSE.equals(txnState.stmtExecuted);
+    txnState.stmtExecuted = false;
+    try {
+      executeWithTimeout(txnState.getStatement(), query);
+      txnState.stmtExecuted = !previousStmtFailed;
+    } catch (PSQLException ex) {
+      // TODO: validate the exception message.
+      // Not reporting a stack trace here on purpose, because this will happen a lot in a test.
+      LOG.info("Error while inserting on the second connection:" + ex.getMessage());
+    }
+  }
+
+  protected void commitWithTxnState(PgTxnState txnState) {
+    txnState.beforeCommitState = getPgTxnState(txnState.connection);
+    txnState.committed = commitAndCatchException(txnState.connection, txnState.connectionName);
+    txnState.afterCommitState = getPgTxnState(txnState.connection);
   }
 
   //------------------------------------------------------------------------------------------------

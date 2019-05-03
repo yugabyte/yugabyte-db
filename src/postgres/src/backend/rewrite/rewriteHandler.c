@@ -1320,9 +1320,12 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 	if (IsYBRelation(target_relation))
 	{
 		/*
-		 * If there are secondary indices on the target table, return the whole row also.
+		 * If there are secondary indices on the target table, or if we have a 
+		 * row-level trigger corresponding to the operations, then also return 
+		 * the whole row.
 		 */	
-		if (YBCRelHasSecondaryIndices(target_relation))
+		if (YBRelHasOldRowTriggers(target_relation, parsetree->commandType) ||
+		    YBCRelHasSecondaryIndices(target_relation))
 		{
 			var = makeWholeRowVar(target_rte,
 								  parsetree->resultRelation,

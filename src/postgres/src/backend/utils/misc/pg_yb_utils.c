@@ -46,6 +46,11 @@
 
 #include "utils/resowner_private.h"
 
+#include "fmgr.h"
+#include "access/htup.h"
+#include "access/htup_details.h"
+#include "access/tupdesc.h"
+
 YBCPgSession ybc_pg_session = NULL;
 
 uint64 yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
@@ -124,6 +129,18 @@ AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
 	AttrNumber attr_num = YBGetFirstLowInvalidAttributeNumber(relation);
 	RelationClose(relation);
 	return attr_num;
+}
+
+extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
+{
+	TriggerDesc *trigdesc = rel->trigdesc;
+	return (trigdesc &&
+		((operation == CMD_UPDATE &&
+			(trigdesc->trig_update_after_row ||
+			trigdesc->trig_update_before_row)) ||
+		(operation == CMD_DELETE &&
+			(trigdesc->trig_delete_after_row || 
+			trigdesc->trig_delete_before_row))));
 }
 
 bool
@@ -541,4 +558,70 @@ Oid
 YBCGetDatabaseOid(Relation rel)
 {
 	return rel->rd_rel->relisshared ? TemplateDbOid : MyDatabaseId;
+}
+
+void
+YBRaiseNotSupported(const char *msg, int issue_no)
+{
+	int signal_level = YBUnsupportedFeatureSignalLevel();
+	if (issue_no > 0)
+	{
+		ereport(signal_level,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s", msg),
+				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
+						 "Click '+' on the description to raise its priority", issue_no)));
+	}
+	else
+	{
+		ereport(signal_level,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s", msg),
+				 errhint("Please report the issue on "
+						 "https://github.com/YugaByte/yugabyte-db/issues")));
+	}
+}
+
+//------------------------------------------------------------------------------
+// YB Debug utils.
+
+bool yb_debug_mode = false;
+
+const char*
+YBDatumToString(Datum datum, Oid typid)
+{
+	Oid			typoutput = InvalidOid;
+	bool		typisvarlena = false;
+
+	getTypeOutputInfo(typid, &typoutput, &typisvarlena);
+	return OidOutputFunctionCall(typoutput, datum);
+}
+
+const char*
+YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
+{
+	Datum attr = (Datum) 0;
+	int natts = tupleDesc->natts;
+	bool isnull = false;
+	StringInfoData buf;
+	initStringInfo(&buf);
+
+	appendStringInfoChar(&buf, '(');
+	for (int attnum = 1; attnum <= natts; ++attnum) {
+		attr = heap_getattr(tuple, attnum, tupleDesc, &isnull);
+		if (isnull) 
+		{
+			appendStringInfoString(&buf, "null");
+		}
+		else
+		{
+			Oid typid = TupleDescAttr(tupleDesc, attnum - 1)->atttypid;
+			appendStringInfoString(&buf, YBDatumToString(attr, typid));
+		}
+		if (attnum != natts) {
+			appendStringInfoString(&buf, ", ");
+		}
+	}
+	appendStringInfoChar(&buf, ')');
+	return buf.data;
 }

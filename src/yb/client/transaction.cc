@@ -130,6 +130,10 @@ class YBTransaction::Impl final {
     return Status::OK();
   }
 
+  const IsolationLevel isolation() const {
+    return metadata_.isolation;
+  }
+
   // This transaction is a restarted transaction, so we set it up with data from original one.
   CHECKED_STATUS FillRestartedTransaction(Impl* other) {
     VLOG_WITH_PREFIX(1) << "Setup restart to " << other->ToString();
@@ -885,6 +889,10 @@ void YBTransaction::Commit(CommitCallback callback) {
 
 const TransactionId& YBTransaction::id() const {
   return impl_->id();
+}
+
+const IsolationLevel YBTransaction::isolation() const {
+  return impl_->isolation();
 }
 
 const ConsistentReadPoint& YBTransaction::read_point() const {

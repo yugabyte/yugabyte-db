@@ -3748,13 +3748,6 @@ ATController(AlterTableStmt *parsetree,
 	foreach(lcmd, cmds)
 	{
 		AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
-		/* Currently don't support multiple commands that include an "add constraint" */
-		if (IsYugaByteEnabled() && cmd->subtype == AT_AddConstraint && cmds->length > 1)
-		{
-			YBReportFeatureUnsupported("Alter Table with multiple commands "
-									   "including an add constraint is not supported");
-		}
-
 		ATPrepCmd(&wqueue, rel, cmd, recurse, false, lockmode);
 	}
 

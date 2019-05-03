@@ -59,7 +59,7 @@ YBIsEnabledInPostgresEnvVar()
 {
 	static int cached_value = -1;
 	if (cached_value == -1)
-    {
+	{
 		cached_value = YBCIsEnvVarTrue("YB_ENABLED_IN_POSTGRES");
 	}
 	return cached_value;

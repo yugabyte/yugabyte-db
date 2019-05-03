@@ -1014,29 +1014,29 @@ ProcessUtilitySlow(ParseState *pstate,
 															 secondaryObject,
 															 stmt);
 
-							/*
-							 * Let NewRelationCreateToastTable decide if this
-							 * one needs a secondary relation too.
-							 */
-							CommandCounterIncrement();
-
-							/*
-							 * parse and validate reloptions for the toast
-							 * table
-							 */
-							toast_options = transformRelOptions((Datum) 0,
-																((CreateStmt *) stmt)->options,
-																"toast",
-																validnsps,
-																true,
-																false);
-							(void) heap_reloptions(RELKIND_TOASTVALUE,
-												   toast_options,
-												   true);
-
 							/* No need for toasting attributes in YB mode */
 							if (!IsYugaByteEnabled())
 							{
+								/*
+								* Let NewRelationCreateToastTable decide if this
+								* one needs a secondary relation too.
+								*/
+								CommandCounterIncrement();
+
+								/*
+								* parse and validate reloptions for the toast
+								* table
+								*/
+								toast_options = transformRelOptions((Datum) 0,
+																	((CreateStmt *) stmt)->options,
+																	"toast",
+																	validnsps,
+																	true,
+																	false);
+								(void) heap_reloptions(RELKIND_TOASTVALUE,
+													toast_options,
+													true);
+
 								NewRelationCreateToastTable(address.objectId,
 								                            toast_options);
 							}

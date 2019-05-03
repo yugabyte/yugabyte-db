@@ -129,6 +129,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   std::string ToString() const;
 
+  const IsolationLevel isolation() const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

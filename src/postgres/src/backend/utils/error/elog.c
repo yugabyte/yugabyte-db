@@ -430,12 +430,6 @@ errfinish(int dummy,...)
 	CHECK_STACK_DEPTH();
 	elevel = edata->elevel;
 
-	/* TODO Make this a YB-debug-mode feature */
-	if (IsYugaByteEnabled() && elevel >= FATAL)
-	{
-		YBC_LOG_ERROR_STACK_TRACE("Stack trace for a FATAL log message");
-	}
-
 	/*
 	 * Do processing in ErrorContext, which we hope has enough reserved space
 	 * to report an error.
@@ -746,6 +740,10 @@ errcode_for_socket_access(void)
 		} \
 		/* Done with expanded fmt */ \
 		pfree(fmtbuf); \
+		/* In YB debug mode, add stack trace info (to first msg only) */ \
+		if (IsYugaByteEnabled() && yb_debug_mode && !appendval) { \
+			appendStringInfoString(&buf, YBCGetStackTrace()); \
+		} \
 		/* Save the completed message into the stack item */ \
 		if (edata->targetfield) \
 			pfree(edata->targetfield); \

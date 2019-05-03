@@ -66,6 +66,7 @@
 #include "utils/snapmgr.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 /* Hooks for plugins to get control in ExecutorStart/Run/Finish/End */
 ExecutorStart_hook_type ExecutorStart_hook = NULL;
@@ -961,6 +962,11 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			case ROW_MARK_SHARE:
 			case ROW_MARK_KEYSHARE:
 				relation = heap_open(relid, RowShareLock);
+				if (IsYBRelation(relation)) 
+				{
+					YBRaiseNotSupported("SELECT locking option only supported for temporary tables",
+										1199);
+				}
 				break;
 			case ROW_MARK_REFERENCE:
 				relation = heap_open(relid, AccessShareLock);

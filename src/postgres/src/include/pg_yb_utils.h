@@ -92,6 +92,12 @@ extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
 
 /*
+ * Check if a relation has row triggers that may reference the old row.
+ * Specifically for an update/delete DML (where there actually is an old row).
+ */
+extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation);
+
+/*
  * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed
  * transactions.
  */
@@ -240,5 +246,31 @@ const char* YBCGetSchemaName(Oid schemaoid);
  * template1.
  */
 Oid YBCGetDatabaseOid(Relation rel);
+
+/*
+ * Raise an unsupported feature error with the given message and
+ * linking to the referenced issue (if any).
+ */
+void YBRaiseNotSupported(const char *msg, int issue_no);
+
+//------------------------------------------------------------------------------
+// YB Debug utils.
+
+/**
+ * YSQL variable that can be used to enable/disable yugabyte debug mode.
+ * e.g. 'SET yb_debug_mode=true'.
+ */
+extern bool yb_debug_mode;
+
+/*
+ * Get a string representation of a datum (given its type).
+ */
+extern const char* YBDatumToString(Datum datum, Oid typid);
+
+/*
+ * Get a string representation of a tuple (row) given its tuple description (schema).
+ */
+extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+
 
 #endif /* PG_YB_UTILS_H */

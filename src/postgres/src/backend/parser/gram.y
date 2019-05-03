@@ -3693,7 +3693,6 @@ ColConstraintElem:
 				}
 			| REFERENCES qualified_name opt_column_list key_match key_actions
 				{
-					parser_ybc_signal_unsupported(@1, "REFERENCES constraint", 1129);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_FOREIGN;
 					n->location = @1;
@@ -3933,7 +3932,6 @@ ConstraintElem:
 			| FOREIGN KEY '(' columnList ')' REFERENCES qualified_name
 				opt_column_list key_match key_actions ConstraintAttributeSpec
 				{
-					parser_ybc_signal_unsupported(@1, "FOREIGN KEY constraint", 1129);
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_FOREIGN;
 					n->location = @1;
@@ -12359,7 +12357,6 @@ having_clause:
 for_locking_clause:
 			for_locking_items
 				{
-					parser_ybc_not_support(@1, "SELECT locking option");
 					$$ = $1;
 				}
 			| FOR READ ONLY							{ $$ = NIL; }

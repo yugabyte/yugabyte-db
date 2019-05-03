@@ -120,6 +120,10 @@ const char* YBCFormatBytesAsStr(const char* data, size_t size) {
   return YBCPAllocStdString(util::FormatBytesAsStr(data, size));
 }
 
+const char* YBCGetStackTrace() {
+  return YBCPAllocStdString(yb::GetStackTrace());
+}
+
 } // extern "C"
 
 } // namespace yb
