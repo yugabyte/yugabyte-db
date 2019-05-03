@@ -1,0 +1,602 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+//
+// The following only applies to changes made to this file as part of YugaByte development.
+//
+// Portions Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#ifndef YB_MASTER_CATALOG_ENTITY_INFO_H
+#define YB_MASTER_CATALOG_ENTITY_INFO_H
+
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/master.pb.h"
+#include "yb/util/cow_object.h"
+#include "yb/common/entity_ids.h"
+#include "yb/util/monotime.h"
+#include "yb/server/monitored_task.h"
+#include "yb/common/schema.h"
+#include "yb/common/index.h"
+
+namespace yb {
+namespace master {
+
+// Information on a current replica of a tablet.
+// This is copyable so that no locking is needed.
+struct TabletReplica {
+  TSDescriptor* ts_desc;
+  tablet::TabletStatePB state;
+  consensus::RaftPeerPB::Role role;
+  consensus::RaftPeerPB::MemberType member_type;
+
+  std::string ToString() const;
+};
+
+// This class is a base wrapper around the protos that get serialized in the data column of the
+// sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
+// protos and instances of these will be wrapped around CowObjects and locks for access and
+// modifications.
+template <class DataEntryPB, SysRowEntry::Type entry_type>
+struct Persistent {
+  // Type declaration to be used in templated read/write methods. We are using typename
+  // Class::data_type in templated methods for figuring out the type we need.
+  typedef DataEntryPB data_type;
+
+  // Subclasses of this need to provide a valid value of the entry type through
+  // the template class argument.
+  static SysRowEntry::Type type() { return entry_type; }
+
+  // The proto that is persisted in the sys_catalog.
+  DataEntryPB pb;
+};
+
+// This class is used to manage locking of the persistent metadata returned from the
+// MetadataCowWrapper objects.
+template <class MetadataClass>
+class MetadataLock : public CowLock<typename MetadataClass::cow_state> {
+ public:
+  typedef CowLock<typename MetadataClass::cow_state> super;
+  MetadataLock(MetadataClass* info, typename super::LockMode mode)
+      : super(DCHECK_NOTNULL(info)->mutable_metadata(), mode) {}
+  MetadataLock(const MetadataClass* info, typename super::LockMode mode)
+      : super(&(DCHECK_NOTNULL(info))->metadata(), mode) {}
+};
+
+// This class is a base wrapper around accessors for the persistent proto data, through CowObject.
+// The locks are taken on subclasses of this class, around the object returned from metadata().
+template <class PersistentDataEntryPB>
+class MetadataCowWrapper {
+ public:
+  // Type declaration for use in the Lock classes.
+  typedef PersistentDataEntryPB cow_state;
+  typedef MetadataLock<MetadataCowWrapper<PersistentDataEntryPB>> lock_type;
+
+  // This method should return the id to be written into the sys_catalog id column.
+  virtual const std::string& id() const = 0;
+
+  // Pretty printing.
+  virtual std::string ToString() const {
+    return strings::Substitute(
+        "Object type = $0 (id = $1)", PersistentDataEntryPB::type(), id());
+  }
+
+  // Access the persistent metadata. Typically you should use
+  // TabletMetadataLock to gain access to this data.
+  const CowObject<PersistentDataEntryPB>& metadata() const { return metadata_; }
+  CowObject<PersistentDataEntryPB>* mutable_metadata() { return &metadata_; }
+
+  std::unique_ptr<lock_type> LockForRead() const {
+    return std::unique_ptr<lock_type>(new lock_type(this, lock_type::READ));
+  }
+
+  std::unique_ptr<lock_type> LockForWrite() {
+    return std::unique_ptr<lock_type>(new lock_type(this, lock_type::WRITE));
+  }
+
+ protected:
+  virtual ~MetadataCowWrapper() = default;
+  CowObject<PersistentDataEntryPB> metadata_;
+};
+
+// The data related to a tablet which is persisted on disk.
+// This portion of TableInfo is managed via CowObject.
+// It wraps the underlying protobuf to add useful accessors.
+struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntry::TABLET> {
+  bool is_running() const {
+    return pb.state() == SysTabletsEntryPB::RUNNING;
+  }
+
+  bool is_deleted() const {
+    return pb.state() == SysTabletsEntryPB::REPLACED ||
+           pb.state() == SysTabletsEntryPB::DELETED;
+  }
+
+  // Helper to set the state of the tablet with a custom message.
+  // Requires that the caller has prepared this object for write.
+  // The change will only be visible after Commit().
+  void set_state(SysTabletsEntryPB::State state, const std::string& msg);
+};
+
+class TableInfo;
+
+typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
+
+// The information about a single tablet which exists in the cluster,
+// including its state and locations.
+//
+// This object uses copy-on-write for the portions of data which are persisted
+// on disk. This allows the mutated data to be staged and written to disk
+// while readers continue to access the previous version. These portions
+// of data are in PersistentTableInfo above, and typically accessed using
+// TabletMetadataLock. For example:
+//
+//   TabletInfo* table = ...;
+//   TabletMetadataLock l(tablet, TableMetadataLock::READ);
+//   if (l.data().is_running()) { ... }
+//
+// The non-persistent information about the tablet is protected by an internal
+// spin-lock.
+//
+// The object is owned/managed by the CatalogManager, and exposed for testing.
+class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
+                   public MetadataCowWrapper<PersistentTabletInfo> {
+ public:
+  typedef std::unordered_map<std::string, TabletReplica> ReplicaMap;
+
+  TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id);
+  virtual const TabletId& id() const override { return tablet_id_; }
+
+  const TabletId& tablet_id() const { return tablet_id_; }
+  const scoped_refptr<TableInfo>& table() const { return table_; }
+
+  // Accessors for the latest known tablet replica locations.
+  // These locations include only the members of the latest-reported Raft
+  // configuration whose tablet servers have ever heartbeated to this Master.
+  void SetReplicaLocations(ReplicaMap replica_locations);
+  void GetReplicaLocations(ReplicaMap* replica_locations) const;
+
+  // Adds the given replica to the replica_locations_ map.
+  // Returns true iff the replica was inserted.
+  bool AddToReplicaLocations(const TabletReplica& replica);
+
+  // Accessors for the last time the replica locations were updated.
+  void set_last_update_time(const MonoTime& ts);
+  MonoTime last_update_time() const;
+
+  // Accessors for the last reported schema version.
+  bool set_reported_schema_version(uint32_t version);
+  uint32_t reported_schema_version() const;
+
+  // No synchronization needed.
+  std::string ToString() const override;
+
+  // This is called when a leader stepdown request fails. Optionally, takes an amount of time since
+  // the stepdown failure, in case it happened in the past (e.g. we talked to a tablet server and
+  // it told us that it previously tried to step down in favor of this server and that server lost
+  // the election).
+  void RegisterLeaderStepDownFailure(const TabletServerId& intended_leader,
+                                     MonoDelta time_since_stepdown_failure);
+
+  // Retrieves a map of recent leader step-down failures. At the same time, forgets about step-down
+  // failures that happened before a certain point in time.
+  void GetLeaderStepDownFailureTimes(MonoTime forget_failures_before,
+                                     LeaderStepDownFailureTimes* dest);
+ private:
+  friend class RefCountedThreadSafe<TabletInfo>;
+  ~TabletInfo();
+
+  const TabletId tablet_id_;
+  const scoped_refptr<TableInfo> table_;
+
+  // Lock protecting the below mutable fields.
+  // This doesn't protect metadata_ (the on-disk portion).
+  mutable simple_spinlock lock_;
+
+  // The last time the replica locations were updated.
+  // Also set when the Master first attempts to create the tablet.
+  MonoTime last_update_time_;
+
+  // The locations in the latest Raft config where this tablet has been
+  // reported. The map is keyed by tablet server UUID.
+  ReplicaMap replica_locations_;
+
+  // Reported schema version (in-memory only).
+  uint32_t reported_schema_version_ = 0;
+
+  LeaderStepDownFailureTimes leader_stepdown_failure_times_;
+
+  DISALLOW_COPY_AND_ASSIGN(TabletInfo);
+};
+
+typedef scoped_refptr<TabletInfo> TabletInfoPtr;
+typedef std::vector<TabletInfoPtr> TabletInfos;
+
+// The data related to a table which is persisted on disk.
+// This portion of TableInfo is managed via CowObject.
+// It wraps the underlying protobuf to add useful accessors.
+struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TABLE> {
+  bool started_deleting() const {
+    return pb.state() == SysTablesEntryPB::DELETING ||
+           pb.state() == SysTablesEntryPB::DELETED;
+  }
+
+  bool is_deleted() const {
+    return pb.state() == SysTablesEntryPB::DELETED;
+  }
+
+  bool is_running() const {
+    return pb.state() == SysTablesEntryPB::RUNNING ||
+           pb.state() == SysTablesEntryPB::ALTERING;
+  }
+
+  // Return the table's name.
+  const TableName& name() const {
+    return pb.name();
+  }
+
+  // Return the table's type.
+  const TableType table_type() const {
+    return pb.table_type();
+  }
+
+  // Return the table's namespace id.
+  const NamespaceName& namespace_id() const { return pb.namespace_id(); }
+
+  const SchemaPB& schema() const {
+    return pb.schema();
+  }
+
+  // Helper to set the state of the tablet with a custom message.
+  void set_state(SysTablesEntryPB::State state, const std::string& msg);
+};
+
+// The information about a table, including its state and tablets.
+//
+// This object uses copy-on-write techniques similarly to TabletInfo.
+// Please see the TabletInfo class doc above for more information.
+//
+// The non-persistent information about the table is protected by an internal
+// spin-lock.
+class TableInfo : public RefCountedThreadSafe<TableInfo>,
+                  public MetadataCowWrapper<PersistentTableInfo> {
+ public:
+  explicit TableInfo(TableId table_id);
+
+  const TableName name() const;
+
+  bool is_running() const;
+
+  std::string ToString() const override;
+
+  const NamespaceId namespace_id() const;
+
+  const CHECKED_STATUS GetSchema(Schema* schema) const;
+
+  // Return the table's ID. Does not require synchronization.
+  virtual const std::string& id() const override { return table_id_; }
+
+  // Return the indexed table id if the table is an index table. Otherwise, return an empty string.
+  const std::string indexed_table_id() const;
+
+  // For index table
+  bool is_local_index() const;
+  bool is_unique_index() const;
+
+  // Return the table type of the table.
+  TableType GetTableType() const;
+
+  // Checks if the table is the internal redis table.
+  bool IsRedisTable() const {
+    return GetTableType() == REDIS_TABLE_TYPE;
+  }
+
+  // Add a tablet to this table.
+  void AddTablet(TabletInfo *tablet);
+  // Add multiple tablets to this table.
+  void AddTablets(const std::vector<TabletInfo*>& tablets);
+
+  // Return true if tablet with 'partition_key_start' has been
+  // removed from 'tablet_map_' below.
+  bool RemoveTablet(const std::string& partition_key_start);
+
+  // This only returns tablets which are in RUNNING state.
+  void GetTabletsInRange(const GetTableLocationsRequestPB* req, TabletInfos *ret) const;
+
+  void GetAllTablets(TabletInfos *ret) const;
+
+  // Get info of the specified index.
+  IndexInfo GetIndexInfo(const TableId& index_id) const;
+
+  // Returns true if the table creation is in-progress.
+  bool IsCreateInProgress() const;
+
+  // Returns true if an "Alter" operation is in-progress.
+  bool IsAlterInProgress(uint32_t version) const;
+
+  // Set the Status related to errors on CreateTable.
+  void SetCreateTableErrorStatus(const Status& status);
+
+  // Get the Status of the last error from the current CreateTable.
+  CHECKED_STATUS GetCreateTableErrorStatus() const;
+
+  std::size_t NumTasks() const;
+  bool HasTasks() const;
+  bool HasTasks(MonitoredTask::Type type) const;
+  void AddTask(std::shared_ptr<MonitoredTask> task);
+  void RemoveTask(const std::shared_ptr<MonitoredTask>& task);
+  void AbortTasks();
+  void AbortTasksAndClose();
+  void WaitTasksCompletion();
+
+  // Allow for showing outstanding tasks in the master UI.
+  std::unordered_set<std::shared_ptr<MonitoredTask>> GetTasks();
+
+ private:
+  friend class RefCountedThreadSafe<TableInfo>;
+  ~TableInfo();
+
+  void AddTabletUnlocked(TabletInfo* tablet);
+  void AbortTasksAndCloseIfRequested(bool close);
+
+  const TableId table_id_;
+
+  // Sorted index of tablet start partition-keys to TabletInfo.
+  // The TabletInfo objects are owned by the CatalogManager.
+  typedef std::map<std::string, TabletInfo *> TabletInfoMap;
+  TabletInfoMap tablet_map_;
+
+  // Protects tablet_map_ and pending_tasks_.
+  mutable simple_spinlock lock_;
+
+  // If closing, requests to AddTask will be promptly aborted.
+  bool closing_ = false;
+
+  // List of pending tasks (e.g. create/alter tablet requests).
+  std::unordered_set<std::shared_ptr<MonitoredTask>> pending_tasks_;
+
+  // The last error Status of the currently running CreateTable. Will be OK, if freshly constructed
+  // object, or if the CreateTable was successful.
+  Status create_table_error_;
+
+  DISALLOW_COPY_AND_ASSIGN(TableInfo);
+};
+
+class DeletedTableInfo;
+typedef std::pair<TabletServerId, TabletId> TabletKey;
+typedef std::unordered_map<
+    TabletKey, scoped_refptr<DeletedTableInfo>, boost::hash<TabletKey>> DeletedTabletMap;
+
+class DeletedTableInfo : public RefCountedThreadSafe<DeletedTableInfo> {
+ public:
+  explicit DeletedTableInfo(const TableInfo* table);
+
+  const TableId& id() const { return table_id_; }
+
+  std::size_t NumTablets() const;
+  bool HasTablets() const;
+
+  void DeleteTablet(const TabletKey& key);
+
+  void AddTabletsToMap(DeletedTabletMap* tablet_map);
+
+ private:
+  const TableId table_id_;
+
+  // Protects tablet_set_.
+  mutable simple_spinlock lock_;
+
+  typedef std::unordered_set<TabletKey, boost::hash<TabletKey>> TabletSet;
+  TabletSet tablet_set_;
+};
+
+// The data related to a namespace which is persisted on disk.
+// This portion of NamespaceInfo is managed via CowObject.
+// It wraps the underlying protobuf to add useful accessors.
+struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB, SysRowEntry::NAMESPACE> {
+  // Get the namespace name.
+  const NamespaceName& name() const {
+    return pb.name();
+  }
+
+  YQLDatabase database_type() const {
+    return pb.database_type();
+  }
+};
+
+// The information about a namespace.
+//
+// This object uses copy-on-write techniques similarly to TabletInfo.
+// Please see the TabletInfo class doc above for more information.
+class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
+                      public MetadataCowWrapper<PersistentNamespaceInfo> {
+ public:
+  explicit NamespaceInfo(NamespaceId ns_id);
+
+  virtual const std::string& id() const override { return namespace_id_; }
+
+  const NamespaceName& name() const;
+
+  YQLDatabase database_type() const;
+
+  std::string ToString() const override;
+
+ private:
+  friend class RefCountedThreadSafe<NamespaceInfo>;
+  ~NamespaceInfo() = default;
+
+  // The ID field is used in the sys_catalog table.
+  const NamespaceId namespace_id_;
+
+  DISALLOW_COPY_AND_ASSIGN(NamespaceInfo);
+};
+
+// The data related to a User-Defined Type which is persisted on disk.
+// This portion of UDTypeInfo is managed via CowObject.
+// It wraps the underlying protobuf to add useful accessors.
+struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntry::UDTYPE> {
+  // Return the type's name.
+  const UDTypeName& name() const {
+    return pb.name();
+  }
+
+  // Return the table's namespace id.
+  const NamespaceName& namespace_id() const {
+    return pb.namespace_id();
+  }
+
+  int field_names_size() const {
+    return pb.field_names_size();
+  }
+
+  const string& field_names(int index) const {
+    return pb.field_names(index);
+  }
+
+  int field_types_size() const {
+    return pb.field_types_size();
+  }
+
+  const QLTypePB& field_types(int index) const {
+    return pb.field_types(index);
+  }
+};
+
+class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
+                   public MetadataCowWrapper<PersistentUDTypeInfo> {
+ public:
+  explicit UDTypeInfo(UDTypeId udtype_id);
+
+  // Return the user defined type's ID. Does not require synchronization.
+  virtual const std::string& id() const override { return udtype_id_; }
+
+  const UDTypeName& name() const;
+
+  const NamespaceName& namespace_id() const;
+
+  int field_names_size() const;
+
+  const string& field_names(int index) const;
+
+  int field_types_size() const;
+
+  const QLTypePB& field_types(int index) const;
+
+  std::string ToString() const override;
+
+ private:
+  friend class RefCountedThreadSafe<UDTypeInfo>;
+  ~UDTypeInfo() = default;
+
+  // The ID field is used in the sys_catalog table.
+  const UDTypeId udtype_id_;
+
+  DISALLOW_COPY_AND_ASSIGN(UDTypeInfo);
+};
+
+// This wraps around the proto containing cluster level config information. It will be used for
+// CowObject managed access.
+struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB,
+                                                       SysRowEntry::CLUSTER_CONFIG> {
+};
+
+// This is the in memory representation of the cluster config information serialized proto data,
+// using metadata() for CowObject access.
+class ClusterConfigInfo : public RefCountedThreadSafe<ClusterConfigInfo>,
+                          public MetadataCowWrapper<PersistentClusterConfigInfo> {
+ public:
+  ClusterConfigInfo() {}
+
+  virtual const std::string& id() const override { return fake_id_; }
+
+ private:
+  friend class RefCountedThreadSafe<ClusterConfigInfo>;
+  ~ClusterConfigInfo() = default;
+
+  // We do not use the ID field in the sys_catalog table.
+  const std::string fake_id_;
+
+  DISALLOW_COPY_AND_ASSIGN(ClusterConfigInfo);
+};
+
+struct PersistentRedisConfigInfo
+    : public Persistent<SysRedisConfigEntryPB, SysRowEntry::REDIS_CONFIG> {};
+
+class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
+                        public MetadataCowWrapper<PersistentRedisConfigInfo> {
+ public:
+  explicit RedisConfigInfo(const std::string key) : config_key_(key) {}
+
+  virtual const std::string& id() const override { return config_key_; }
+
+ private:
+  friend class RefCountedThreadSafe<RedisConfigInfo>;
+  ~RedisConfigInfo() = default;
+
+  const std::string config_key_;
+
+  DISALLOW_COPY_AND_ASSIGN(RedisConfigInfo);
+};
+
+struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntry::ROLE> {};
+
+class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
+                 public MetadataCowWrapper<PersistentRoleInfo> {
+ public:
+  explicit RoleInfo(const std::string& role) : role_(role) {}
+  const std::string& id() const override { return role_; }
+
+ private:
+  friend class RefCountedThreadSafe<RoleInfo>;
+  ~RoleInfo() = default;
+
+  const std::string role_;
+
+  DISALLOW_COPY_AND_ASSIGN(RoleInfo);
+};
+
+struct PersistentSysConfigInfo
+    : public Persistent<SysConfigEntryPB, SysRowEntry::SYS_CONFIG> {};
+
+class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
+                      public MetadataCowWrapper<PersistentSysConfigInfo> {
+ public:
+  explicit SysConfigInfo(const std::string& config_type) : config_type_(config_type) {}
+  const std::string& id() const override { return config_type_; /* config type is the entry id */ }
+
+ private:
+  friend class RefCountedThreadSafe<SysConfigInfo>;
+  ~SysConfigInfo() = default;
+
+  const std::string config_type_;
+
+  DISALLOW_COPY_AND_ASSIGN(SysConfigInfo);
+};
+
+}  // namespace master
+}  // namespace yb
+
+#endif  // YB_MASTER_CATALOG_ENTITY_INFO_H

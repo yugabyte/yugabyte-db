@@ -37,6 +37,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/server/metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/pb_util.h"
@@ -59,13 +60,6 @@ class MasterOptions;
 // Forward declaration from internal header file.
 class VisitorBase;
 class SysCatalogWriter;
-
-static const char* const kSysCatalogTabletId = "00000000000000000000000000000000";
-static const char* const kSysCatalogTableId = "sys.catalog.uuid";
-static const char* const kSysCatalogTableName = "sys.catalog";
-static const char* const kSysCatalogTableColType = "entry_type";
-static const char* const kSysCatalogTableColId = "entry_id";
-static const char* const kSysCatalogTableColMetadata = "metadata";
 
 // SysCatalogTable is a YB table that keeps track of table and
 // tablet metadata.
