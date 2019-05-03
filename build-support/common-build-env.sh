@@ -2179,10 +2179,12 @@ lint_java_code() {
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunner\.class\)' \
              "$java_test_file" &&
          ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanOnly\.class\)' \
+             "$java_test_file" &&
+         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerLinuxOnly\.class\)' \
              "$java_test_file"
       then
-        log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, nor" \
-            "YBTestRunnerNonTsanOnly are being used in test"
+        log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
+            "YBTestRunnerNonTsanOnly, nor YBTestRunnerLinuxOnly are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||
