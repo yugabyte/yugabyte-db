@@ -75,7 +75,7 @@ class PgWrapperTest : public PgWrapperTestBase {
     ASSERT_OK(tmp_file->Close());
 
     vector<string> argv {
-        GetPostgresInstallRoot() + "/bin/psql",
+        GetPostgresInstallRoot() + "/bin/ysqlsh",
         "-h", pg_ts->bind_host(),
         "-p", std::to_string(pg_ts->pgsql_rpc_port()),
         "-U", "postgres",
