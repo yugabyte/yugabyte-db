@@ -131,8 +131,11 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
     Map<UUID, Integer> azToNumTservers = PlacementInfoUtil.getNumTServerPerAZ(pi);
     Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
 
-    String masterAddresses = PlacementInfoUtil.computeMasterAddresses(azToNumMasters,
-        taskParams().nodePrefix);
+    Provider provider = Provider.get(UUID.fromString(
+          taskParams().getPrimaryCluster().userIntent.provider));
+
+    String masterAddresses = PlacementInfoUtil.computeMasterAddresses(pi, azToNumMasters,
+        taskParams().nodePrefix, provider);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(pi);
 
     if (!taskParams().masterGFlags.isEmpty() || !flag) {
