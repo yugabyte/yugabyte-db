@@ -54,6 +54,7 @@ export default class TopNavBar extends Component {
 
         <div className="flex-grow">
         </div>
+        {isNotHidden(currentCustomer.data.features, "main.dropdown") &&
         <Nav pullRight>
           <NavDropdown  eventKey="2" title={<span><i className="fa fa-user fa-fw"></i> {customerEmail}</span>} id="profile-dropdown">
             {isNotHidden(currentCustomer.data.features, "main.profile") &&
@@ -75,7 +76,7 @@ export default class TopNavBar extends Component {
               <i className="fa fa-sign-out fa-fw"></i>Logout
             </YBMenuItem>
           </NavDropdown>
-        </Nav>
+        </Nav>}
       </Navbar>
     );
   }

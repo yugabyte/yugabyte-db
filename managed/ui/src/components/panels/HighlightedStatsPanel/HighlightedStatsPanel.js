@@ -9,10 +9,11 @@ import { YBResourceCount } from '../../common/descriptors';
 import './HighlightedStatsPanel.scss';
 import { isDefinedNotNull, isNonEmptyObject } from "../../../utils/ObjectUtils";
 import { getUniverseNodes } from "../../../utils/UniverseUtils";
+import { isAvailable } from 'utils/LayoutUtils';
 
 export default class HighlightedStatsPanel extends Component {
   render() {
-    const { universe: { universeList } } = this.props;
+    const { universe: { universeList }, customer: { currentCustomer } } = this.props;
     let numNodes = 0;
     let totalCost = 0;
     if (getPromiseState(universeList).isLoading()) {
@@ -39,8 +40,8 @@ export default class HighlightedStatsPanel extends Component {
     return (
       <div className="tile_count highlighted-stats-panel">
         <YBResourceCount kind="Universes" size={isDefinedNotNull(universeList.data) ? universeList.data.length : 0}/>
-        <YBResourceCount kind="Nodes" size={numNodes}/>  
-        <YBResourceCount kind="Per Month" size={formattedCost}/>
+        <YBResourceCount kind="Nodes" size={numNodes}/>
+        {isAvailable(currentCustomer.data.features, "costs.stats_panel") && <YBResourceCount kind="Per Month" size={formattedCost}/>}
       </div>
     );
   }

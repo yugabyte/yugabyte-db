@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { Row, Col, ListGroup, ListGroupItem } from 'react-bootstrap';
-import { Link, browserHistory } from 'react-router';
+import { Link } from 'react-router';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { isObject } from 'lodash';
 import { isNonEmptyArray, isNonEmptyObject } from '../../../utils/ObjectUtils';
@@ -12,7 +12,7 @@ import { YBCost } from '../../common/descriptors';
 import { UniverseStatusContainer } from '../../universes';
 import { getUniverseNodes, getPlacementRegions,
         getClusterProviderUUIDs, getProviderMetadata, isKubernetesUniverse } from '../../../utils/UniverseUtils';
-import { isNonAvailable } from 'utils/LayoutUtils';
+import { isAvailable, showOrRedirect } from 'utils/LayoutUtils';
 const moment = require('moment');
 const pluralize = require('pluralize');
 
@@ -21,9 +21,6 @@ export default class UniverseTable extends Component {
   componentWillMount() {
     this.props.fetchUniverseMetadata();
     this.props.fetchUniverseTasks();
-
-    const { customer: { currentCustomer }} = this.props;
-    if (isNonAvailable(currentCustomer.data.features, "universes.display")) browserHistory.push('/');
   }
 
   componentWillUnmount() {
@@ -32,7 +29,9 @@ export default class UniverseTable extends Component {
 
   render() {
     const self = this;
-    const { universe: { universeList }, universeReadWriteData, tasks } = this.props;
+    const { universe: { universeList }, universeReadWriteData, tasks, customer: { currentCustomer } } = this.props;
+    showOrRedirect(currentCustomer.data.features, "menu.universes");
+
     if (!isObject(universeList) || !isNonEmptyArray(universeList.data)) {
       return <h5>No universes defined.</h5>;
     }
@@ -66,8 +65,8 @@ export default class UniverseTable extends Component {
 
 class YBUniverseItem extends Component {
   render() {
-    const { universe } = this.props;
-    
+    const { universe, customer: { currentCustomer } } = this.props;
+
     return (
       <div className={"universe-list-item"}>
         <ListGroupItem >
@@ -96,13 +95,13 @@ class YBUniverseItem extends Component {
                 <CellResourcesPanel {...this.props}/>
               </Col>
             </Row>
-
-            <div className="cell-cost">
+            {isAvailable(currentCustomer.data.features, "costs.universe_list") ?
+            (<div className="cell-cost">
               <div className="cell-cost-value">
                 <YBCost value={this.props.universe.pricePerHour} multiplier="month"/>
               </div>
               /month
-            </div>
+            </div>): (<div/>)}
           </div>
         </ListGroupItem>
       </div>

@@ -2,24 +2,22 @@
 
 import React, { Component } from 'react';
 import { isDefinedNotNull, isNonEmptyObject } from 'utils/ObjectUtils';
-import { browserHistory} from 'react-router';
-import { isNonAvailable } from 'utils/LayoutUtils';
+import { showOrRedirect } from 'utils/LayoutUtils';
 
 export default class YugawareLogs extends Component {
   componentWillMount() {
     this.props.getLogs();
-
-    const { customer: { currentCustomer }} = this.props;
-    if (isNonAvailable(currentCustomer.data.features, "main.logs")) browserHistory.push('/');
   }
 
   render() {
-    const { customer } = this.props;
+    const { customer: { currentCustomer, yugaware_logs} } = this.props;
+    showOrRedirect(currentCustomer.data.features, "main.logs");
+
     let logContent = <span />;
-    if (isDefinedNotNull(customer.yugaware_logs) && isNonEmptyObject(customer.yugaware_logs)) {
+    if (isDefinedNotNull(yugaware_logs) && isNonEmptyObject(yugaware_logs)) {
       logContent = (
         <pre style={{"whiteSpace": "pre-wrap"}}>
-          { customer.yugaware_logs.join('\n') }
+          { yugaware_logs.join('\n') }
         </pre>
       );
     }

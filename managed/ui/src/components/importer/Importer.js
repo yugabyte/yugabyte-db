@@ -6,11 +6,11 @@ import { YBFormInput, YBFormSelect, YBButton } from '../common/forms/fields';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { isNonEmptyObject } from "../../utils/ObjectUtils";
 import Highlight from 'react-highlight';
-import { Link, browserHistory } from 'react-router';
+import { Link } from 'react-router';
 import { Formik, Field } from 'formik';
 import * as Yup from "yup";
 import './Importer.scss';
-import { isNonAvailable } from 'utils/LayoutUtils';
+import { showOrRedirect } from 'utils/LayoutUtils';
 
 const stepsEnum = [
   "BEGIN",
@@ -52,9 +52,6 @@ export default class Importer extends Component {
   }
 
   componentWillMount() {
-    const { customer: { currentCustomer }} = this.props;
-    if (isNonAvailable(currentCustomer.data.features, "universes.import")) browserHistory.push('/');
-
     const { universeImport } = this.props;
     // repopulate form if it was not finished
     if (isNonEmptyObject(universeImport.data)) {
@@ -146,7 +143,8 @@ export default class Importer extends Component {
   }
 
   render() {
-    const { universeImport} = this.props;
+    const { universeImport, customer: { currentCustomer }} = this.props;
+    showOrRedirect(currentCustomer.data.features, "universe.import");
 
     const currentStep = stepsEnum.indexOf(this.state.currentState);
 

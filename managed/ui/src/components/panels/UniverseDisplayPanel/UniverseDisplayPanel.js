@@ -15,6 +15,7 @@ import TimelineMax from 'gsap/TimelineMax';
 import { Power1 } from "gsap/all";
 import { getPrimaryCluster, getReadOnlyCluster, getClusterProviderUUIDs, getProviderMetadata } from "../../../utils/UniverseUtils";
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { isNotHidden, isDisabled } from 'utils/LayoutUtils';
 
 const moment = require('moment');
 
@@ -83,8 +84,16 @@ class CTAButtonAnimated extends Component {
     this.setState({hover: false});
     this.mainTween.reverse();
   }
+
+  disableLink = (e) => {
+    e.preventDefault();
+  }
+
   render() {
-    const { labelText, onClick, otherProps, className } = this.props;
+    const { labelText, onClick, otherProps, className, currentCustomer } = this.props;
+
+    const createDisabled = isDisabled(currentCustomer.data.features, "universe.create");
+    const importDisabled = isDisabled(currentCustomer.data.features, "universe.import");
 
     return (
       <div>
@@ -96,16 +105,22 @@ class CTAButtonAnimated extends Component {
             {labelText}
           </div>
           <div className="button-group">
-            <Link className="btn btn-default" to={"/universes/create"} onClick={onClick}>
+            {isNotHidden(currentCustomer.data.features, "universe.create") &&
+            <Link className="btn btn-default" to={"/universes/create"}
+              disabled={createDisabled}
+              onClick={createDisabled ? this.disableLink: onClick}>
               <div ref={ block => this.addUniverseElems[0] = block }>
                 <span className="fa fa-plus"></span> Create Universe
               </div>
-            </Link>
-            <Link to={"/importer"} className="btn btn-default">
+            </Link>}
+            {isNotHidden(currentCustomer.data.features, "universe.import") &&
+            <Link to={"/importer"} className="btn btn-default"
+              disabled={importDisabled}
+              onClick={importDisabled ? this.disableLink: onClick}>
               <div ref={ block => this.addUniverseElems[1] = block }>
                 <span className="fa fa-mail-forward"></span> Import Universe
               </div>
-            </Link>
+            </Link>}
           </div>
         </div>
       </div>
@@ -193,7 +208,7 @@ export default class UniverseDisplayPanel extends Component {
   }
   render() {
     const self = this;
-    const { universe: {universeList}, cloud: {providers}} = this.props;
+    const { universe: {universeList}, cloud: {providers}, customer: { currentCustomer } } = this.props;
     if (getPromiseState(providers).isSuccess()) {
       let universeDisplayList = <span/>;
       if (getPromiseState(universeList).isSuccess()) {
@@ -209,8 +224,9 @@ export default class UniverseDisplayPanel extends Component {
       const createUniverseButton =
         (<Col sm={4} md={3} lg={2}><CTAButtonAnimated
           labelText={"Add Universe"}
-          className={self.state.addUniverseModal? "active" : ""} 
+          className={self.state.addUniverseModal? "active" : ""}
           onClick={() => 0}
+          currentCustomer={currentCustomer}
         /></Col>);
       return (
         <div className="universe-display-panel-container">

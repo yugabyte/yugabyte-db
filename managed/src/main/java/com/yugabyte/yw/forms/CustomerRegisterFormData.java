@@ -2,9 +2,9 @@
 
 package com.yugabyte.yw.forms;
 
-import com.yugabyte.yw.models.Customer;
 
 import play.data.validation.Constraints;
+import java.util.Map;
 
 
 /**
@@ -30,7 +30,7 @@ public class CustomerRegisterFormData {
   @Constraints.MinLength(3)
   public String name;
 
-  public String features;
+  public Map features;
 
   static public class AlertingData {
     @Constraints.Email
