@@ -61,6 +61,10 @@ set(MASTER_SRCS
   call_home.cc
   catalog_manager.cc
   catalog_manager_util.cc
+  catalog_entity_info.cc
+  catalog_manager_bg_tasks.cc
+  catalog_loaders.cc
+  scoped_leader_shared_lock.cc
   cluster_balance.cc
   flush_manager.cc
   master.cc

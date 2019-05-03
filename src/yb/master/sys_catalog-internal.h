@@ -20,6 +20,8 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/pb_util.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/master/sys_catalog.h"
 
 namespace yb {
 namespace master {
