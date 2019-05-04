@@ -143,7 +143,7 @@ Status RpcRetrier::DelayedRetry(
   // exchanges below to succeed.
   expected_state = RpcRetrierState::kScheduling;
   if (task_id_.load(std::memory_order_acquire) == kInvalidTaskId) {
-    auto result = STATUS_FORMAT(IllegalState, "Failed to schedule: $0", rpc);
+    auto result = STATUS_FORMAT(Aborted, "Failed to schedule: $0", rpc);
     LOG(WARNING) << result;
     CHECK(state_.compare_exchange_strong(
         expected_state, RpcRetrierState::kFinished, std::memory_order_acq_rel));
@@ -252,6 +252,14 @@ RpcController* RpcRetrier::PrepareController(MonoDelta single_call_timeout) {
   }
   controller_.set_deadline(std::min(deadline_, MonoTime::Now() + single_call_timeout));
   return &controller_;
+}
+
+void Rpc::ScheduleRetry(const Status& status) {
+  auto retry_status = mutable_retrier()->DelayedRetry(this, status);
+  if (!retry_status.ok()) {
+    LOG(WARNING) << "Failed to schedule retry: " << retry_status;
+    Finished(retry_status);
+  }
 }
 
 Rpcs::Rpcs(std::mutex* mutex) {

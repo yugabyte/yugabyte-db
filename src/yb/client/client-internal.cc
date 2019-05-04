@@ -960,8 +960,7 @@ void GetTableSchemaRpc::NewLeaderMasterDeterminedCb(const Status& status) {
     SendRpc();
   } else {
     LOG(WARNING) << "Failed to determine new Master: " << status.ToString();
-    auto retry_status = mutable_retrier()->DelayedRetry(this, status);
-    LOG_IF(DFATAL, !retry_status.ok()) << "Retry failed: " << retry_status;
+    ScheduleRetry(status);
   }
 }
 

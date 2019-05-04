@@ -29,7 +29,7 @@ LocalOutboundCall::LocalOutboundCall(
     google::protobuf::Message* response_storage, RpcController* controller,
     RpcMetrics* rpc_metrics, ResponseCallback callback)
     : OutboundCall(remote_method, outbound_call_metrics, response_storage, controller, rpc_metrics,
-                   std::move(callback)) {
+                   std::move(callback), nullptr /* callback_thread_pool */) {
 }
 
 Status LocalOutboundCall::SetRequestParam(

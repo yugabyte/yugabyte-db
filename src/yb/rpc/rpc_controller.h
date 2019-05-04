@@ -48,10 +48,18 @@ namespace rpc {
 
 class ErrorStatusPB;
 
+// Specifies how to run callback for async outbound call.
+YB_DEFINE_ENUM(InvokeCallbackMode,
+    // On reactor thread.
+    (kReactorThread)
+    // On thread pool.
+    (kThreadPool));
+
 // Controller for managing properties of a single RPC call, on the client side.
 //
-// An RpcController maps to exactly one call and is not thread-safe. The client
-// may use this class prior to sending an RPC in order to set properties such
+// An RpcController maps to exactly one call and is not thread-safe. RpcController can be reused
+// for another call to avoid extra destruction/construction, see RpcController::Reset.
+// The client may use this class prior to sending an RPC in order to set properties such
 // as the call's timeout.
 //
 // After the call has been sent (e.g using Proxy::AsyncRequest()) the user
@@ -70,6 +78,7 @@ class RpcController {
   void Swap(RpcController* other);
 
   // Reset this controller so it may be used with another call.
+  // Note that reset doesn't reset controller's properties except the call itself.
   void Reset();
 
   // Return true if the call has finished.
@@ -124,6 +133,14 @@ class RpcController {
   void set_allow_local_calls_in_curr_thread(bool al) { allow_local_calls_in_curr_thread_ = al; }
   bool allow_local_calls_in_curr_thread() const { return allow_local_calls_in_curr_thread_; }
 
+  // Sets where to invoke callback on receiving response to the async call.
+  // For sync calls callback is always executed on reactor thread.
+  void set_invoke_callback_mode(InvokeCallbackMode invoke_callback_mode) {
+    invoke_callback_mode_ = invoke_callback_mode;
+  }
+
+  InvokeCallbackMode invoke_callback_mode() { return invoke_callback_mode_; }
+
   // Return the configured timeout.
   MonoDelta timeout() const;
 
@@ -147,6 +164,7 @@ class RpcController {
   // Once the call is sent, it is tracked here.
   OutboundCallPtr call_;
   bool allow_local_calls_in_curr_thread_ = false;
+  InvokeCallbackMode invoke_callback_mode_ = InvokeCallbackMode::kThreadPool;
 
   DISALLOW_COPY_AND_ASSIGN(RpcController);
 };
