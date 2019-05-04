@@ -69,6 +69,7 @@ void RpcController::Swap(RpcController* other) {
   std::swap(timeout_, other->timeout_);
   std::swap(allow_local_calls_in_curr_thread_, other->allow_local_calls_in_curr_thread_);
   std::swap(call_, other->call_);
+  std::swap(invoke_callback_mode_, other->invoke_callback_mode_);
 }
 
 void RpcController::Reset() {

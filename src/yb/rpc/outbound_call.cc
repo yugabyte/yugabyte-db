@@ -90,8 +90,6 @@ using strings::Substitute;
 using google::protobuf::Message;
 using google::protobuf::io::CodedOutputStream;
 
-static const double kMicrosPerSecond = 1000000.0;
-
 OutboundCallMetrics::OutboundCallMetrics(const scoped_refptr<MetricEntity>& entity)
     : queue_time(METRIC_handler_latency_outbound_call_queue_time.Instantiate(entity)),
       send_time(METRIC_handler_latency_outbound_call_send_time.Instantiate(entity)),
@@ -162,16 +160,34 @@ const std::string kEmptyString;
 
 } // namespace
 
+void InvokeCallbackTask::Run() {
+  CHECK_NOTNULL(call_.get());
+  call_->InvokeCallbackSync();
+}
+
+void InvokeCallbackTask::Done(const Status& status) {
+  CHECK_NOTNULL(call_.get());
+  if (!status.ok()) {
+    LOG(WARNING) << Format(
+        "Failed to schedule invoking callback on response for request $0 to $1: $2",
+        call_->remote_method(), call_->hostname(), status);
+    call_->InvokeCallbackSync();
+  }
+  // Clear the call, since it holds OutboundCall object.
+  call_ = nullptr;
+}
+
 ///
 /// OutboundCall
 ///
 
-OutboundCall::OutboundCall(
-    const RemoteMethod* remote_method,
-    const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
-    google::protobuf::Message* response_storage, RpcController* controller,
-    RpcMetrics* rpc_metrics,
-    ResponseCallback callback)
+OutboundCall::OutboundCall(const RemoteMethod* remote_method,
+                           const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
+                           google::protobuf::Message* response_storage,
+                           RpcController* controller,
+                           RpcMetrics* rpc_metrics,
+                           ResponseCallback callback,
+                           ThreadPool* callback_thread_pool)
     : hostname_(&kEmptyString),
       start_(MonoTime::Now()),
       controller_(DCHECK_NOTNULL(controller)),
@@ -179,6 +195,7 @@ OutboundCall::OutboundCall(
       call_id_(NextCallId()),
       remote_method_(remote_method),
       callback_(std::move(callback)),
+      callback_thread_pool_(callback_thread_pool),
       trace_(new Trace),
       outbound_call_metrics_(outbound_call_metrics),
       remote_method_pool_(RemoteMethodsCache::Instance().Find(*remote_method_)),
@@ -225,7 +242,6 @@ void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
     } else {
       VLOG_WITH_PREFIX(1) << "Connection torn down before " << ToString()
                           << " could send its call: " << status.ToString();
-
       SetFailed(status);
     }
   }
@@ -319,9 +335,20 @@ void OutboundCall::set_state(State new_state) {
   }
 }
 
-void OutboundCall::CallCallback() {
+void OutboundCall::InvokeCallback() {
+  if (callback_thread_pool_) {
+    callback_task_.SetOutboundCall(shared_from(this));
+    callback_thread_pool_->Enqueue(&callback_task_);
+    TRACE_TO(trace_, "Callback called asynchronously.");
+  } else {
+    InvokeCallbackSync();
+    TRACE_TO(trace_, "Callback called.");
+  }
+}
+
+void OutboundCall::InvokeCallbackSync() {
   if (!callback_) {
-    LOG(DFATAL) << "Callback is empty, it means that we already invoked callback";
+    LOG(DFATAL) << "Callback has been already invoked.";
     return;
   }
 
@@ -335,11 +362,10 @@ void OutboundCall::CallCallback() {
   int64_t end_cycles = CycleClock::Now();
   int64_t wait_cycles = end_cycles - start_cycles;
   if (PREDICT_FALSE(wait_cycles > FLAGS_rpc_callback_max_cycles)) {
-    double micros = static_cast<double>(wait_cycles) / base::CyclesPerSecond()
-      * kMicrosPerSecond;
+    auto time_spent = MonoDelta::FromSeconds(
+        static_cast<double>(wait_cycles) / base::CyclesPerSecond());
 
-    LOG(WARNING) << "RPC callback for " << ToString() << " blocked reactor thread for "
-                 << micros << "us";
+    LOG(WARNING) << "RPC callback for " << ToString() << " took " << time_spent;
   }
 }
 
@@ -364,8 +390,7 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
       return;
     }
     set_state(FINISHED_SUCCESS);
-    CallCallback();
-    TRACE_TO(trace_, "Callback called.");
+    InvokeCallback();
   } else {
     // Error
     auto err = std::make_unique<ErrorStatusPB>();
@@ -406,7 +431,7 @@ void OutboundCall::SetFinished() {
         MonoTime::Now().GetDeltaSince(start_).ToMicroseconds());
   }
   set_state(FINISHED_SUCCESS);
-  CallCallback();
+  InvokeCallback();
   TRACE_TO(trace_, "Callback called.");
 }
 
@@ -423,7 +448,7 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
     }
     set_state(FINISHED_ERROR);
   }
-  CallCallback();
+  InvokeCallback();
 }
 
 void OutboundCall::SetTimedOut() {
@@ -438,7 +463,7 @@ void OutboundCall::SetTimedOut() {
     status_ = std::move(status);
     set_state(TIMED_OUT);
   }
-  CallCallback();
+  InvokeCallback();
 }
 
 bool OutboundCall::IsTimedOut() const {

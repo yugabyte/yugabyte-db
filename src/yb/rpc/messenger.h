@@ -66,7 +66,6 @@ namespace yb {
 
 class MemTracker;
 class Socket;
-class ThreadPool;
 
 namespace rpc {
 
@@ -224,6 +223,10 @@ class Messenger : public ProxyContext {
   void Handle(InboundCallPtr call) override;
 
   const Protocol* DefaultProtocol() override { return listen_protocol_; }
+
+  rpc::ThreadPool& CallbackThreadPool() override {
+    return ThreadPool(ServicePriority::kNormal);
+  }
 
   CHECKED_STATUS QueueEventOnAllReactors(
       ServerEventListPtr server_event, const SourceLocation& source_location);

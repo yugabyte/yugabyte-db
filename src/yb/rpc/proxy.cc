@@ -115,6 +115,32 @@ void Proxy::AsyncRequest(const RemoteMethod* method,
                          google::protobuf::Message* resp,
                          RpcController* controller,
                          ResponseCallback callback) {
+  DoAsyncRequest(
+      method, req, resp, controller, std::move(callback),
+      false /* force_run_callback_on_reactor */);
+}
+
+ThreadPool* Proxy::GetCallbackThreadPool(
+    bool force_run_callback_on_reactor, InvokeCallbackMode invoke_callback_mode) {
+  if (force_run_callback_on_reactor) {
+    return nullptr;
+  }
+  switch (invoke_callback_mode) {
+    case InvokeCallbackMode::kReactorThread:
+      return nullptr;
+      break;
+    case InvokeCallbackMode::kThreadPool:
+      return &context_->CallbackThreadPool();
+  }
+  FATAL_INVALID_ENUM_VALUE(InvokeCallbackMode, invoke_callback_mode);
+}
+
+void Proxy::DoAsyncRequest(const RemoteMethod* method,
+                           const google::protobuf::Message& req,
+                           google::protobuf::Message* resp,
+                           RpcController* controller,
+                           ResponseCallback callback,
+                           bool force_run_callback_on_reactor) {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
   is_started_.store(true, std::memory_order_release);
 
@@ -131,7 +157,10 @@ void Proxy::AsyncRequest(const RemoteMethod* method,
                                      resp,
                                      controller,
                                      &context_->rpc_metrics(),
-                                     std::move(callback));
+                                     std::move(callback),
+                                     GetCallbackThreadPool(
+                                         force_run_callback_on_reactor,
+                                         controller->invoke_callback_mode()));
   auto call = controller->call_.get();
   Status s = call->SetRequestParam(req, mem_tracker_);
   if (PREDICT_FALSE(!s.ok())) {
@@ -260,8 +289,11 @@ Status Proxy::SyncRequest(const RemoteMethod* method,
                           google::protobuf::Message* resp,
                           RpcController* controller) {
   CountDownLatch latch(1);
-  AsyncRequest(method, req, DCHECK_NOTNULL(resp), controller, [&latch]() { latch.CountDown(); });
-
+  // We want to execute this fast callback in reactor thread to avoid overhead on putting in
+  // separate pool.
+  DoAsyncRequest(
+      method, req, DCHECK_NOTNULL(resp), controller, [&latch]() { latch.CountDown(); },
+      true /* force_run_callback_on_reactor */);
   latch.Wait();
   return controller->status();
 }

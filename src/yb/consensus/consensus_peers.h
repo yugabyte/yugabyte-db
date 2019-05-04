@@ -178,13 +178,9 @@ class Peer : public std::enable_shared_from_this<Peer> {
  private:
   void SendNextRequest(RequestTriggerMode trigger_mode);
 
-  // Signals that a response was received from the peer.  This method is called from the reactor
-  // thread and calls DoProcessResponse() on raft_pool_token_ to do any work that requires IO or
-  // lock-taking.
+  // Signals that a response was received from the peer. This method does response handling that
+  // requires IO or may block.
   void ProcessResponse();
-
-  // Run on 'raft_pool_token'. Does response handling that requires IO or may block.
-  void DoProcessResponse();
 
   // Fetch the desired remote bootstrap request from the queue and send it to the peer. The callback
   // goes to ProcessRemoteBootstrapResponse().

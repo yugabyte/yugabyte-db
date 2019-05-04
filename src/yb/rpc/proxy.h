@@ -79,6 +79,8 @@ class ProxyContext {
 
   virtual const Protocol* DefaultProtocol() = 0;
 
+  virtual ThreadPool& CallbackThreadPool() = 0;
+
   virtual IoService& io_service() = 0;
 
   virtual RpcMetrics& rpc_metrics() = 0;
@@ -138,11 +140,10 @@ class Proxy {
   // controller: the RpcController to associate with this call. Each call
   //             must use a unique controller object. Does not take ownership.
   //
-  // callback: the callback to invoke upon call completion. This callback may
-  //           be invoked before AsyncRequest() itself returns, or any time
-  //           thereafter. It may be invoked either on the caller's thread
-  //           or by an RPC IO thread, and thus should take care to not
-  //           block or perform any heavy CPU work.
+  // callback: the callback to invoke upon call completion. This callback may be invoked before
+  // AsyncRequest() itself returns, or any time thereafter. It may be invoked either on the
+  // caller's thread or asynchronously. RpcController::set_invoke_callback_mode could be used to
+  // specify on which thread to invoke callback in case of asynchronous invocation.
   void AsyncRequest(const RemoteMethod* method,
                     const google::protobuf::Message& req,
                     google::protobuf::Message* resp,
@@ -166,6 +167,17 @@ class Proxy {
   void ResolveDone(const boost::system::error_code& ec, const Resolver::results_type& entries);
   void NotifyAllFailed(const Status& status);
   void QueueCall(RpcController* controller, const Endpoint& endpoint);
+  ThreadPool *GetCallbackThreadPool(
+      bool force_run_callback_on_reactor, InvokeCallbackMode invoke_callback_mode);
+
+  // Implements logic for AsyncRequest function, but allows to force to run callback on
+  // reactor thread. This is an optimisation used by SyncRequest function.
+  void DoAsyncRequest(const RemoteMethod* method,
+                      const google::protobuf::Message& req,
+                      google::protobuf::Message* resp,
+                      RpcController* controller,
+                      ResponseCallback callback,
+                      bool force_run_callback_on_reactor);
 
   static void NotifyFailed(RpcController* controller, const Status& status);
 

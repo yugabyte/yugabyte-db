@@ -200,6 +200,8 @@ class Rpc : public RpcCommand {
     retrier_.Abort();
   }
 
+  void ScheduleRetry(const Status& status);
+
  protected:
   const RpcRetrier& retrier() const { return retrier_; }
   RpcRetrier* mutable_retrier() { return &retrier_; }
