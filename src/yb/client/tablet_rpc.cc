@@ -192,7 +192,10 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
 
   // Fail to a replica in the event of a DNS resolution failure.
   if (!status.ok()) {
-    FailToNewReplica(status);
+    status = FailToNewReplica(status);
+    if (!status.ok()) {
+      command_->Finished(status);
+    }
     return;
   }
 
@@ -202,8 +205,8 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   rpc_->SendRpcToTserver();
 }
 
-void TabletInvoker::FailToNewReplica(const Status& reason,
-                                     const tserver::TabletServerErrorPB* error_code) {
+Status TabletInvoker::FailToNewReplica(const Status& reason,
+                                       const tserver::TabletServerErrorPB* error_code) {
   VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason.ToString();
 
   bool found = ErrorCode(error_code) != tserver::TabletServerErrorPB::STALE_FOLLOWER &&
@@ -217,7 +220,10 @@ void TabletInvoker::FailToNewReplica(const Status& reason,
   }
 
   auto status = retrier_->DelayedRetry(command_, reason);
-  LOG_IF(DFATAL, !status.ok()) << "Retry failed: " << status;
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to schedule retry on new replica: " << status;
+  }
+  return status;
 }
 
 bool TabletInvoker::Done(Status* status) {
@@ -238,8 +244,8 @@ bool TabletInvoker::Done(Status* status) {
   // TODO: This is probably too harsh; some network failures should be
   // retried on the current replica.
   if (status->IsNetworkError()) {
-    FailToNewReplica(*status);
-    return false;
+    // The whole operation is completed if we can't schedule a retry.
+    return !FailToNewReplica(*status).ok();
   }
 
   // Prefer controller failures over response failures.
@@ -285,7 +291,8 @@ bool TabletInvoker::Done(Status* status) {
     }
 
     if (status->IsIllegalState() || TabletNotFoundOnTServer(rpc_->response_error(), *status)) {
-      FailToNewReplica(*status, rpc_->response_error());
+      // The whole operation is completed if we can't schedule a retry.
+      return !FailToNewReplica(*status, rpc_->response_error()).ok();
     } else {
       auto retry_status = retrier_->DelayedRetry(command_, *status);
       if (!retry_status.ok()) {

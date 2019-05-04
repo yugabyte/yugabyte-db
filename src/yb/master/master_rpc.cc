@@ -216,9 +216,12 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
   if (status.IsNetworkError() || status.IsNotFound()) {
     // TODO (KUDU-573): Allow cancelling delayed tasks on reactor so
     // that we can safely use DelayedRetry here.
-    auto status = mutable_retrier()->DelayedRetry(this, Status::OK());
-    LOG_IF(DFATAL, !status.ok()) << "Retry failed: " << status;
-    return;
+    auto retry_status = mutable_retrier()->DelayedRetry(this, Status::OK());
+    if (!retry_status.ok()) {
+      LOG(WARNING) << "Failed to schedule retry: " << retry_status;
+    } else {
+      return;
+    }
   }
   {
     std::lock_guard<simple_spinlock> l(lock_);

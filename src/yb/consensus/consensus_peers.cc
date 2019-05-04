@@ -328,8 +328,6 @@ std::unique_lock<simple_spinlock> Peer::StartProcessingUnlocked() {
 }
 
 void Peer::ProcessResponse() {
-  // Note: This method runs on the reactor thread.
-
   request_.mutable_ops()->ExtractSubrange(0, request_.ops().size(), nullptr /* elements */);
 
   DCHECK(performing_mutex_.is_locked()) << "Got a response when nothing was pending";
@@ -378,30 +376,6 @@ void Peer::ProcessResponse() {
     // this error response through to the queue.
     queue_->NotifyPeerIsResponsiveDespiteError(peer_pb_.permanent_uuid());
     ProcessResponseError(StatusFromPB(response_.error().status()));
-    return;
-  }
-
-  using_thread_pool_.fetch_add(1, std::memory_order_acq_rel);
-  processing_lock.unlock();
-  // The queue's handling of the peer response may generate IO (reads against the WAL) and
-  // SendNextRequest() may do the same thing. So we run the rest of the response handling logic on
-  // our thread pool and not on the reactor thread.
-  Status s = raft_pool_token_->SubmitFunc(std::bind(&Peer::DoProcessResponse, shared_from_this()));
-  using_thread_pool_.fetch_sub(1, std::memory_order_acq_rel);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Unable to process peer response: " << s
-                             << ": " << response_.ShortDebugString();
-  } else {
-    performing_lock.release();
-  }
-}
-
-void Peer::DoProcessResponse() {
-  auto retain_self = shared_from_this();
-  DCHECK(performing_mutex_.is_locked());
-  auto performing_lock = LockPerforming(std::adopt_lock);
-  auto processing_lock = StartProcessingUnlocked();
-  if (!processing_lock.owns_lock()) {
     return;
   }
 
