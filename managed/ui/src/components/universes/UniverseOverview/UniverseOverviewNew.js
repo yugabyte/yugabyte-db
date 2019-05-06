@@ -28,9 +28,7 @@ class DatabasePanel extends PureComponent {
 
   renderEndpointUrl = (endpointUrl, endpointName) => {
     return (
-      <a href={endpointUrl} target="_blank" rel="noopener noreferrer">{endpointName} &nbsp;
-        <i className="fa fa-external-link" aria-hidden="true"></i>
-      </a>
+      <a href={endpointUrl} target="_blank" rel="noopener noreferrer">{endpointName}</a>
     );
   }
 
@@ -62,9 +60,10 @@ class DatabasePanel extends PureComponent {
       .map((node) => ({ privateIP: node.cloudInfo.private_ip, publicIP: node.cloudInfo.public_ip }));
 
     const ycqlServiceUrl = getUniverseEndpoint(universeId) + "/yqlservers";
+    const ysqlServiceUrl = getUniverseEndpoint(universeId) + "/ysqlservers";
     const yedisServiceUrl = getUniverseEndpoint(universeId) + "/redisservers";
     const universeInfoItems = [
-      {name: "Service endpoints", data: <span>{this.renderEndpointUrl(ycqlServiceUrl,"YCQL")} &nbsp;/&nbsp; {this.renderEndpointUrl(yedisServiceUrl,"YEDIS")}</span>},
+      {name: "Service endpoints", data: <span>{this.renderEndpointUrl(ycqlServiceUrl,"YCQL")} &nbsp;/&nbsp; {userIntent.enableYSQL && this.renderEndpointUrl(ysqlServiceUrl,"YSQL")} { userIntent.enableYSQL && '\u00A0/\u00A0' } {this.renderEndpointUrl(yedisServiceUrl,"YEDIS")}</span>},
       {name: "Launch Time", data: formattedCreationDate},
     ];
 
@@ -353,16 +352,17 @@ export default class UniverseOverviewNew extends Component {
   }
 
 
-  getCPUWidget = () => {
+  getCPUWidget = (universeInfo) => {
     return (<Col lg={2} md={4} sm={4} xs={6}>
       <StandaloneMetricsPanelContainer metricKey="cpu_usage" type="overview">
         { props => {
           return (<YBWidget
             noMargin
             headerLeft={"CPU Usage"}
+            headerRight={<Link to={`/universes/${universeInfo.universeUUID}?tab=metrics&subtab=server`}>Details</Link>}
             body={
               <CpuUsagePanel
-                metric={props.metric}
+                 metric={props.metric}
                 className={"disk-usage-container"}
               />
             }
@@ -448,8 +448,8 @@ export default class UniverseOverviewNew extends Component {
           {this.getDatabaseWidget(universeInfo, tasks)}
           {this.getPrimaryClusterWidget(universeInfo)}
           {isEnabled(currentCustomer.data.features, "universes.details.overview.costs") && this.getCostWidget(universeInfo)}
+          {this.getCPUWidget(universeInfo)}
           {this.getHealthWidget(universe.healthCheck, universeInfo)}
-          {this.getCPUWidget()}
         </Row>
         <Row>
           {this.getRegionMapWidget(universeInfo)}
