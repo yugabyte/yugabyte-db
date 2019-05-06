@@ -56,7 +56,6 @@ Status StatementParameters::SetPagingState(const std::string& paging_state) {
   if (!paging_state_->ParseFromString(paging_state)) {
     STATUS(Corruption, "Invalid paging state");
   }
-  LOG(INFO) << "Paging state: " << paging_state_->ShortDebugString();
 
   if (paging_state_->has_original_request_id()) {
     request_id_ = paging_state_->original_request_id();
