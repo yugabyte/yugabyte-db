@@ -52,9 +52,8 @@ export default class TopNavBar extends Component {
           </Link>
         </Navbar.Header>
 
-        <div className="flex-grow">
-        </div>
-        {isNotHidden(currentCustomer.data.features, "main.dropdown") &&
+        <div className="flex-grow"></div>
+        {getPromiseState(currentCustomer).isSuccess() && isNotHidden(currentCustomer.data.features, "main.dropdown") &&
         <Nav pullRight>
           <NavDropdown  eventKey="2" title={<span><i className="fa fa-user fa-fw"></i> {customerEmail}</span>} id="profile-dropdown">
             {isNotHidden(currentCustomer.data.features, "main.profile") &&
