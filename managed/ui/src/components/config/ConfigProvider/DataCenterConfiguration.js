@@ -84,11 +84,13 @@ class DataCenterConfiguration extends Component {
                   <OnPremConfigurationContainer params={params} />
                 </Tab>
               </YBTabsPanel>
-            </Tab>}
-            {isAvailable(currentCustomer.data.features, "config.backup") &&
+            </Tab>
+          }
+          {isAvailable(currentCustomer.data.features, "config.backup") &&
             <Tab eventKey="backup" title="Backup" key="storage-config">
               <StorageConfigurationContainer activeTab={section} />
-            </Tab>}
+            </Tab>
+          }
         </YBTabsPanel>
       </div>
     );

@@ -37,8 +37,7 @@ export default class ClusterInfoPanel extends Component {
       {name: "Provider", data: provider && provider.name},
       {name: "Regions", data: regionList},
       {name: "Instance Type", data: userIntent && userIntent.instanceType},
-      {name: "Replication Factor", data: userIntent.replicationFactor},
-      {name: "SSH Key", data: userIntent.accessKeyCode}
+      {name: "Replication Factor", data: userIntent.replicationFactor}
     ];
     const connectStringPanelItemsShrink = [
       {name: "Instance Type", data: userIntent && userIntent.instanceType},
