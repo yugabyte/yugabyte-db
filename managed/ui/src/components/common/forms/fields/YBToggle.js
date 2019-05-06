@@ -12,7 +12,7 @@ export default class YBToggle extends Component {
 
   render() {
     const {
-      input, label, onToggle, isReadOnly, meta, insetError, subLabel, infoContent, infoTitle, checkedVal
+      input, label, onToggle, isReadOnly, meta, insetError, subLabel, infoContent, infoTitle, checkedVal, name,
     } = this.props;
     const onChange = (event) => {
       if (!this.props.disableOnChange) {
@@ -27,7 +27,7 @@ export default class YBToggle extends Component {
     return (
       <YBLabel label={label} meta={meta} insetError={insetError} infoContent={infoContent} infoTitle={infoTitle}>
         <DescriptionItem title={subLabel}>
-          <Toggle checked={!!input.value && checkedVal} className="yb-toggle" onChange={onChange}
+          <Toggle checked={!!input.value && checkedVal} name={name} className="yb-toggle" onChange={onChange}
                   disabled={isReadOnly} />
         </DescriptionItem>
       </YBLabel>
