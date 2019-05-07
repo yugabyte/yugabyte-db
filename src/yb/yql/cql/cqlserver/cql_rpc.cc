@@ -58,7 +58,8 @@ CQLConnectionContext::CQLConnectionContext(
     const MemTrackerPtr& call_tracker)
     : ql_session_(new ql::QLSession()),
       parser_(buffer_tracker, CQLMessage::kMessageHeaderLength, CQLMessage::kHeaderPosLength,
-              FLAGS_max_message_length, rpc::IncludeHeader::kTrue, this),
+              FLAGS_max_message_length, rpc::IncludeHeader::kTrue, rpc::SkipEmptyMessages::kFalse,
+              this),
       read_buffer_(receive_buffer_size, buffer_tracker),
       call_tracker_(call_tracker) {
 }

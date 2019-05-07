@@ -55,6 +55,10 @@ METRIC_DECLARE_histogram(rpc_incoming_queue_time);
 DEFINE_int32(rpc_test_connection_keepalive_num_iterations, 1,
   "Number of iterations in TestRpc.TestConnectionKeepalive");
 
+DECLARE_uint64(rpc_connection_timeout_ms);
+DECLARE_int32(num_connections_to_server);
+DECLARE_bool(enable_rpc_keepalive);
+
 using namespace std::chrono_literals;
 using std::string;
 using std::shared_ptr;
@@ -64,6 +68,22 @@ namespace yb {
 namespace rpc {
 
 class TestRpc : public RpcTestBase {
+ public:
+  void CheckServerMessengerConnections(size_t num_connections) {
+    ReactorMetrics metrics;
+    ASSERT_OK(server_messenger()->TEST_GetReactorMetrics(0, &metrics));
+    ASSERT_EQ(metrics.num_server_connections_, num_connections)
+        << "Server should have " << num_connections << " server connection(s)";
+    ASSERT_EQ(metrics.num_client_connections_, 0) << "Server should have 0 client connections";
+  }
+
+  void CheckClientMessengerConnections(Messenger* messenger, size_t num_connections) {
+    ReactorMetrics metrics;
+    ASSERT_OK(messenger->TEST_GetReactorMetrics(0, &metrics));
+    ASSERT_EQ(metrics.num_server_connections_, 0) << "Client should have 0 server connections";
+    ASSERT_EQ(metrics.num_client_connections_, num_connections)
+        << "Client should have " << num_connections << " client connection(s)";
+  }
 };
 
 namespace {
@@ -111,7 +131,7 @@ TEST_F(TestRpc, Endpoint) {
 }
 
 TEST_F(TestRpc, TestMessengerCreateDestroy) {
-  std::unique_ptr<Messenger> messenger(CreateMessenger("TestCreateDestroy"));
+  std::unique_ptr<Messenger> messenger = CreateMessenger("TestCreateDestroy");
   LOG(INFO) << "started messenger " << messenger->name();
   messenger->Shutdown();
 }
@@ -123,7 +143,7 @@ TEST_F(TestRpc, TestMessengerCreateDestroy) {
 TEST_F(TestRpc, TestAcceptorPoolStartStop) {
   int n_iters = AllowSlowTests() ? 100 : 5;
   for (int i = 0; i < n_iters; i++) {
-    std::unique_ptr<Messenger> messenger(CreateMessenger("TestAcceptorPoolStartStop"));
+    std::unique_ptr<Messenger> messenger = CreateMessenger("TestAcceptorPoolStartStop");
     Endpoint bound_endpoint;
     ASSERT_OK(messenger->ListenAddress(
         CreateConnectionContextFactory<YBInboundConnectionContext>(),
@@ -142,7 +162,7 @@ TEST_F(TestRpc, TestCall) {
 
   // Set up client.
   LOG(INFO) << "Connecting to " << server_addr;
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   for (int i = 0; i < 10; i++) {
@@ -152,7 +172,7 @@ TEST_F(TestRpc, TestCall) {
 
 // Test that connecting to an invalid server properly throws an error.
 TEST_F(TestRpc, TestCallToBadServer) {
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   HostPort addr;
   Proxy p(client_messenger.get(), addr);
 
@@ -173,7 +193,7 @@ TEST_F(TestRpc, TestInvalidMethodCall) {
 
   // Set up client.
   LOG(INFO) << "Connecting to " << server_addr;
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Call the method which fails.
@@ -192,7 +212,7 @@ TEST_F(TestRpc, TestWrongService) {
   StartTestServer(&server_addr);
 
   // Set up client with the wrong service name.
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Call the method which fails.
@@ -238,18 +258,25 @@ TEST_F(TestRpc, TestHighFDs) {
   // Set up server and client, and verify we can make a successful call.
   HostPort server_addr;
   StartTestServer(&server_addr);
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   Proxy p(client_messenger.get(), server_addr);
   ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
 }
 
-// Test that connections are kept alive between calls.
+// Test that connections are kept alive by ScanIdleConnections between calls.
 TEST_F(TestRpc, TestConnectionKeepalive) {
+  google::FlagSaver saver;
+
   // Only run one reactor per messenger, so we can grab the metrics from that
   // one without having to check all.
-  MessengerOptions messenger_options = { 1, 100ms };
+  const auto kGcTimeout = 300ms;
+  MessengerOptions messenger_options = { 1, kGcTimeout };
   TestServerOptions options;
   options.messenger_options = messenger_options;
+  // RPC heartbeats shouldn't prevent idle connections from being GCed. To test that we set
+  // rpc_connection_timeout less than kGcTimeout.
+  FLAGS_rpc_connection_timeout_ms = MonoDelta(kGcTimeout).ToMilliseconds() / 2;
+  FLAGS_enable_rpc_keepalive = true;
 
   // Set up server.
   HostPort server_addr;
@@ -257,32 +284,21 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
   for (int i = 0; i < FLAGS_rpc_test_connection_keepalive_num_iterations; ++i) {
     // Set up client.
     LOG(INFO) << "Connecting to " << server_addr;
-    std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client", messenger_options));
+    std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client", messenger_options);
     Proxy p(client_messenger.get(), server_addr);
 
     ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
 
-    SleepFor(MonoDelta::FromMilliseconds(5));
+    SleepFor(kGcTimeout / 2);
 
-    ReactorMetrics metrics;
-    ASSERT_OK(server_messenger()->reactors_[0]->GetMetrics(&metrics));
-    ASSERT_EQ(1, metrics.num_server_connections_) << "Server should have 1 server connection";
-    ASSERT_EQ(0, metrics.num_client_connections_) << "Server should have 0 client connections";
+    ASSERT_NO_FATALS(CheckServerMessengerConnections(1));
+    ASSERT_NO_FATALS(CheckClientMessengerConnections(client_messenger.get(), 1));
 
-    ASSERT_OK(client_messenger->reactors_[0]->GetMetrics(&metrics));
-    ASSERT_EQ(0, metrics.num_server_connections_) << "Client should have 0 server connections";
-    ASSERT_EQ(1, metrics.num_client_connections_) << "Client should have 1 client connections";
-
-    SleepFor(MonoDelta::FromMilliseconds(200));
+    SleepFor(kGcTimeout * 2);
 
     // After sleeping, the keepalive timer should have closed both sides of the connection.
-    ASSERT_OK(server_messenger()->reactors_[0]->GetMetrics(&metrics));
-    ASSERT_EQ(0, metrics.num_server_connections_) << "Server should have 0 server connections";
-    ASSERT_EQ(0, metrics.num_client_connections_) << "Server should have 0 client connections";
-
-    ASSERT_OK(client_messenger->reactors_[0]->GetMetrics(&metrics));
-    ASSERT_EQ(0, metrics.num_server_connections_) << "Client should have 0 server connections";
-    ASSERT_EQ(0, metrics.num_client_connections_) << "Client should have 0 client connections";
+    ASSERT_NO_FATALS(CheckServerMessengerConnections(0));
+    ASSERT_NO_FATALS(CheckClientMessengerConnections(client_messenger.get(), 0));
   }
 }
 
@@ -301,7 +317,7 @@ TEST_F(TestRpc, TestCallLongerThanKeepalive) {
   // Set up client.
   auto client_options = kDefaultClientMessengerOptions;
   client_options.keep_alive_timeout = 100ms;
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client", client_options));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client", client_options);
   Proxy p(client_messenger.get(), server_addr);
 
   // Make a call which sleeps longer than the keepalive.
@@ -313,6 +329,40 @@ TEST_F(TestRpc, TestCallLongerThanKeepalive) {
   ASSERT_OK(p.SyncRequest(CalculatorServiceMethods::SleepMethod(), req, &resp, &controller));
 }
 
+// Test that connections are kept alive by heartbeats between calls.
+TEST_F(TestRpc, TestConnectionHeartbeating) {
+  google::FlagSaver saver;
+
+  const auto kTestTimeout = 300ms;
+
+  // Only run one reactor per messenger, so we can grab the metrics from that
+  // one without having to check all. Set ScanIdleConnections keep alive to huge value in order
+  // to not affect heartbeats testing.
+  MessengerOptions messenger_options = { 1, kTestTimeout * 100 };
+  TestServerOptions options;
+  options.messenger_options = messenger_options;
+  FLAGS_num_connections_to_server = 1;
+  FLAGS_rpc_connection_timeout_ms = MonoDelta(kTestTimeout).ToMilliseconds();
+
+  // Set up server.
+  HostPort server_addr;
+  StartTestServer(&server_addr, options);
+
+  for (int i = 0; i < FLAGS_rpc_test_connection_keepalive_num_iterations; ++i) {
+    // Set up client.
+    LOG(INFO) << "Connecting to " << server_addr;
+    std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client", messenger_options);
+    Proxy p(client_messenger.get(), server_addr);
+
+    ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
+
+    SleepFor(kTestTimeout * 3);
+    // Both client and server connections should survive when there is no application traffic.
+    ASSERT_NO_FATALS(CheckServerMessengerConnections(1));
+    ASSERT_NO_FATALS(CheckClientMessengerConnections(client_messenger.get(), 1));
+  }
+}
+
 // Test that the RpcSidecar transfers the expected messages.
 TEST_F(TestRpc, TestRpcSidecar) {
   // Set up server.
@@ -320,7 +370,7 @@ TEST_F(TestRpc, TestRpcSidecar) {
   StartTestServer(&server_addr);
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Test some small sidecars
@@ -342,7 +392,7 @@ TEST_F(TestRpc, TestRpcSidecar) {
 TEST_F(TestRpc, TestCallTimeout) {
   HostPort server_addr;
   StartTestServer(&server_addr);
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   uint64_t delay_ns = 1;
@@ -387,7 +437,7 @@ TEST_F(TestRpc, TestNegotiationTimeout) {
                                   &acceptor_thread));
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   ASSERT_NO_FATALS(DoTestExpectTimeout(&p, MonoDelta::FromMilliseconds(100)));
@@ -405,7 +455,7 @@ TEST_F(TestRpc, TestServerShutsDown) {
 
   // Set up client.
   LOG(INFO) << "Connecting to " << server_addr;
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   // Send a call.
@@ -499,7 +549,7 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
 
   // Set up client.
 
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   RpcController controller;
@@ -531,7 +581,7 @@ TEST_F(TestRpc, TestRpcHandlerLatencyMetric) {
 }
 
 TEST_F(TestRpc, TestRpcCallbackDestroysMessenger) {
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   HostPort bad_addr;
   CountDownLatch latch(1);
 
@@ -561,7 +611,7 @@ TEST_F(TestRpc, TestRpcContextClientDeadline) {
   StartTestServerWithGeneratedCode(&server_addr);
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
   Proxy p(client_messenger.get(), server_addr);
 
   rpc_test::SleepRequestPB req;
@@ -683,7 +733,7 @@ TEST_F(TestRpc, TestDisconnect) {
   StartTestServerWithGeneratedCode(&server_addr);
 
   // Set up client.
-  std::unique_ptr<Messenger> client_messenger(CreateMessenger("Client"));
+  std::unique_ptr<Messenger> client_messenger = CreateMessenger("Client");
 
   constexpr size_t kRequests = 10000;
   DisconnectShare share = { { client_messenger.get(), server_addr }, kRequests };

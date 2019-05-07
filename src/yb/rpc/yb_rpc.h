@@ -57,6 +57,8 @@ class YBInboundConnectionContext : public YBConnectionContext {
       const MemTrackerPtr& call_tracker)
       : YBConnectionContext(receive_buffer_size, buffer_tracker, call_tracker) {}
 
+  void Shutdown(const Status& status) override;
+
   static std::string Name() { return "Inbound RPC"; }
  private:
   // Takes ownership of call_data content.
@@ -69,9 +71,21 @@ class YBInboundConnectionContext : public YBConnectionContext {
   // Takes ownership of call_data content.
   CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, std::vector<char>* call_data);
 
+  void HandleTimeout(ev::timer& watcher, int revents); // NOLINT
+
   RpcConnectionPB::StateType State() override { return state_; }
 
   RpcConnectionPB::StateType state_ = RpcConnectionPB::UNKNOWN;
+
+  void SetEventLoop(ev::loop_ref* loop) override;
+
+  void UpdateLastWrite(const ConnectionPtr& connection) override;
+
+  std::weak_ptr<Connection> connection_;
+
+  ev::timer timer_;
+
+  CoarseTimePoint last_write_time_;
 };
 
 class YBInboundCall : public InboundCall {
@@ -194,6 +208,8 @@ class YBOutboundConnectionContext : public YBConnectionContext {
       const MemTrackerPtr& call_tracker)
       : YBConnectionContext(receive_buffer_size, buffer_tracker, call_tracker) {}
 
+  void Shutdown(const Status& status) override;
+
   static std::string Name() { return "Outbound RPC"; }
 
  private:
@@ -205,9 +221,21 @@ class YBOutboundConnectionContext : public YBConnectionContext {
   CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
   void Connected(const ConnectionPtr& connection) override;
   void AssignConnection(const ConnectionPtr& connection) override;
-  Result<ProcessDataResult> ProcessCalls(
-      const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full)
-          override;
+  Result<ProcessDataResult> ProcessCalls(const ConnectionPtr& connection,
+                              const IoVecs& data,
+                              ReadBufferFull read_buffer_full) override;
+
+  void SetEventLoop(ev::loop_ref* loop) override;
+
+  void UpdateLastRead(const ConnectionPtr& connection) override;
+
+  void HandleTimeout(ev::timer& watcher, int revents); // NOLINT
+
+  std::weak_ptr<Connection> connection_;
+
+  ev::timer timer_;
+
+  CoarseTimePoint last_read_time_;
 };
 
 } // namespace rpc

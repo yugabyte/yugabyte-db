@@ -25,6 +25,7 @@ namespace yb {
 namespace rpc {
 
 YB_STRONGLY_TYPED_BOOL(IncludeHeader);
+YB_STRONGLY_TYPED_BOOL(SkipEmptyMessages);
 
 // Listener of BinaryCallParser, invoked when call is parsed.
 class BinaryCallParserListener {
@@ -39,7 +40,8 @@ class BinaryCallParser {
  public:
   explicit BinaryCallParser(const MemTrackerPtr& parent_tracker,
                             size_t header_size, size_t size_offset, size_t max_message_length,
-                            IncludeHeader include_header, BinaryCallParserListener* listener);
+                            IncludeHeader include_header, SkipEmptyMessages skip_empty_messages,
+                            BinaryCallParserListener* listener);
 
   Result<ProcessDataResult> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data,
                                   ReadBufferFull read_buffer_full);
@@ -53,6 +55,7 @@ class BinaryCallParser {
   const size_t size_offset_;
   const size_t max_message_length_;
   const IncludeHeader include_header_;
+  const SkipEmptyMessages skip_empty_messages_;
   BinaryCallParserListener* const listener_;
 };
 

@@ -137,11 +137,6 @@ Status SerializeHeader(const MessageLite& header,
 Status ParseYBMessage(const Slice& buf,
                       MessageLite* parsed_header,
                       Slice* parsed_main_message) {
-  if (PREDICT_FALSE(buf.size() < kMsgLengthPrefixLength)) {
-    return STATUS(Corruption, "Invalid packet: not enough bytes for length header",
-                              buf.ToDebugString());
-  }
-
   CodedInputStream in(buf.data(), buf.size());
   in.SetTotalBytesLimit(FLAGS_rpc_max_message_size, FLAGS_rpc_max_message_size*3/4);
 

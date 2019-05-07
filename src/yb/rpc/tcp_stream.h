@@ -40,6 +40,11 @@ class TcpStream : public Stream {
   static StreamFactoryPtr Factory();
 
  private:
+  struct FillIovResult {
+    int len;
+    bool only_heartbeats;
+  };
+
   CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
   void Close() override;
   void Shutdown(const Status& status) override;
@@ -75,7 +80,7 @@ class TcpStream : public Stream {
   // Updates listening events.
   void UpdateEvents();
 
-  int FillIov(iovec* out);
+  FillIovResult FillIov(iovec* out);
 
   void DelayConnectHandler(ev::timer& watcher, int revents); // NOLINT
 
