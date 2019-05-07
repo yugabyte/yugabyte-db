@@ -353,6 +353,8 @@ class SecureStream : public Stream, public StreamContext {
 
   // Implementation StreamContext
   void UpdateLastActivity() override;
+  void UpdateLastRead() override;
+  void UpdateLastWrite() override;
   void Transferred(const OutboundDataPtr& data, const Status& status) override;
   void Destroy(const Status& status) override;
   Result<ProcessDataResult> ProcessReceived(
@@ -484,6 +486,14 @@ std::string SecureStream::ToString() {
 
 void SecureStream::UpdateLastActivity() {
   context_->UpdateLastActivity();
+}
+
+void SecureStream::UpdateLastRead() {
+  context_->UpdateLastRead();
+}
+
+void SecureStream::UpdateLastWrite() {
+  context_->UpdateLastWrite();
 }
 
 void SecureStream::Transferred(const OutboundDataPtr& data, const Status& status) {
