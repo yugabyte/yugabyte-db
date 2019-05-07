@@ -13,6 +13,8 @@
 
 #include "yb/rpc/connection_context.h"
 
+#include "yb/rpc/connection.h"
+
 #include "yb/rpc/growable_buffer.h"
 
 #include "yb/util/env.h"
@@ -27,6 +29,13 @@ DEFINE_int64(read_buffer_memory_limit, -5,
 
 namespace yb {
 namespace rpc {
+
+void ConnectionContext::UpdateLastRead(const ConnectionPtr& connection) {
+  // By default any read events on connection updates it's last activity. This could be
+  // overriden in subclasses for example in order to not treat application-level heartbeats as
+  // activity preventing connection from being GCed.
+  connection->UpdateLastActivity();
+}
 
 ConnectionContextFactory::ConnectionContextFactory(
     int64_t memory_limit, const std::string& name,

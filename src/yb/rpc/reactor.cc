@@ -122,6 +122,7 @@ Reactor::Reactor(Messenger* messenger,
                  const MessengerBuilder &bld)
     : messenger_(messenger),
       name_(StringPrintf("%s_R%03d", messenger->name().c_str(), index)),
+      log_prefix_(name_ + ": "),
       loop_(kDefaultLibEvFlags),
       cur_time_(CoarseMonoClock::Now()),
       last_unused_tcp_scan_(cur_time_),
@@ -131,21 +132,22 @@ Reactor::Reactor(Messenger* messenger,
   static std::once_flag libev_once;
   std::call_once(libev_once, DoInitLibEv);
 
-  VLOG(1) << "Create reactor with keep alive_time: " << ToSeconds(connection_keepalive_time_)
-          << ", coarse timer granularity: " << ToSeconds(coarse_timer_granularity_);
+  VLOG_WITH_PREFIX(1) << "Create reactor with keep alive_time: "
+                      << yb::ToString(connection_keepalive_time_)
+                      << ", coarse timer granularity: " << yb::ToString(coarse_timer_granularity_);
 
   process_outbound_queue_task_ =
       MakeFunctorReactorTask(std::bind(&Reactor::ProcessOutboundQueue, this), SOURCE_LOCATION());
 }
 
 Reactor::~Reactor() {
-  LOG_IF(DFATAL, !pending_tasks_.empty())
+  LOG_IF_WITH_PREFIX(DFATAL, !pending_tasks_.empty())
       << "Not empty pending tasks when destroyed reactor: " << yb::ToString(pending_tasks_);
 }
 
 Status Reactor::Init() {
   DCHECK(thread_.get() == nullptr) << "Already started";
-  DVLOG(6) << "Called Reactor::Init()";
+  DVLOG_WITH_PREFIX(6) << "Called Reactor::Init()";
   // Register to get async notifications in our epoll loop.
   async_.set(loop_);
   async_.set<Reactor, &Reactor::AsyncHandler>(this);
@@ -170,7 +172,7 @@ void Reactor::Shutdown() {
     if (state_.compare_exchange_weak(old_state,
                                      ReactorState::kClosing,
                                      std::memory_order_acq_rel)) {
-      VLOG(1) << name() << ": shutting down Reactor thread.";
+      VLOG_WITH_PREFIX(1) << "shutting down Reactor thread.";
       WakeThread();
     }
   } while (!HasReactorStartedClosing(old_state));
@@ -181,16 +183,16 @@ void Reactor::Shutdown() {
 void Reactor::ShutdownConnection(const ConnectionPtr& conn) {
   DCHECK(IsCurrentThread());
 
-  VLOG(1) << name() << ": shutting down " << conn->ToString();
+  VLOG_WITH_PREFIX(1) << "shutting down " << conn->ToString();
   conn->Shutdown(ServiceUnavailableError());
   if (!conn->context().Idle()) {
-    VLOG(1) << name() << ": connection is not idle: " << conn->ToString();
+    VLOG_WITH_PREFIX(1) << "connection is not idle: " << conn->ToString();
     std::weak_ptr<Connection> weak_conn(conn);
     conn->context().ListenIdle([this, weak_conn]() {
       DCHECK(IsCurrentThreadOrStartedClosing());
       auto conn = weak_conn.lock();
       if (conn) {
-        VLOG(1) << name() << ": connection became idle " << conn->ToString();
+        VLOG_WITH_PREFIX(1) << "connection became idle " << conn->ToString();
         // The access to waiting_conns_ is safe here, because this code can only be called on the
         // reactor thread or when holding final_abort_mutex_ during shutdown.
         waiting_conns_.erase(conn);
@@ -198,7 +200,7 @@ void Reactor::ShutdownConnection(const ConnectionPtr& conn) {
     });
     waiting_conns_.insert(conn);
   } else {
-    VLOG(1) << name() << ": connection is idle: " << conn->ToString();
+    VLOG_WITH_PREFIX(1) << "connection is idle: " << conn->ToString();
   }
 }
 
@@ -209,7 +211,7 @@ void Reactor::ShutdownInternal() {
   stop_start_time_ = CoarseMonoClock::Now();
 
   // Tear down any outbound TCP connections.
-  VLOG(1) << name() << ": tearing down outbound TCP connections...";
+  VLOG_WITH_PREFIX(1) << "tearing down outbound TCP connections...";
   decltype(client_conns_) client_conns = std::move(client_conns_);
   for (auto& pair : client_conns) {
     ShutdownConnection(pair.second);
@@ -217,7 +219,7 @@ void Reactor::ShutdownInternal() {
   client_conns.clear();
 
   // Tear down any inbound TCP connections.
-  VLOG(1) << name() << ": tearing down inbound TCP connections...";
+  VLOG_WITH_PREFIX(1) << "tearing down inbound TCP connections...";
   for (const ConnectionPtr& conn : server_conns_) {
     ShutdownConnection(conn);
   }
@@ -227,7 +229,7 @@ void Reactor::ShutdownInternal() {
   //
   // These won't be found in the Reactor's list of pending tasks
   // because they've been "run" (that is, they've been scheduled).
-  VLOG(1) << name() << ": aborting scheduled tasks";
+  VLOG_WITH_PREFIX(1) << "aborting scheduled tasks";
   Status aborted = AbortedError();
   for (const auto& task : scheduled_tasks_) {
     task->Abort(aborted);
@@ -235,12 +237,12 @@ void Reactor::ShutdownInternal() {
   scheduled_tasks_.clear();
 
   // async_handler_tasks_ are the tasks added by ScheduleReactorTask.
-  VLOG(1) << name() << ": aborting async handler tasks";
+  VLOG_WITH_PREFIX(1) << "aborting async handler tasks";
   for (const auto& task : async_handler_tasks_) {
     task->Abort(aborted);
   }
 
-  VLOG(1) << name() << ": aborting outbound calls";
+  VLOG_WITH_PREFIX(1) << "aborting outbound calls";
   CHECK(processing_outbound_queue_.empty()) << yb::ToString(processing_outbound_queue_);
   {
     std::lock_guard<simple_spinlock> lock(outbound_queue_lock_);
@@ -267,10 +269,11 @@ void Reactor::Join() {
     return;
   }
   if (join_result.IsInvalidArgument()) {
-    LOG(WARNING) << join_result;
+    LOG_WITH_PREFIX(WARNING) << join_result;
     return;
   }
-  LOG(DFATAL) << "Failed to join Reactor " << thread_->ToString() << ": " << join_result;
+  LOG_WITH_PREFIX(DFATAL) << "Failed to join Reactor " << thread_->ToString() << ": "
+                          << join_result;
   // Fallback to endless join in release mode.
   thread_->Join();
 }
@@ -305,31 +308,31 @@ void Reactor::WakeThread() {
 void Reactor::CheckReadyToStop() {
   DCHECK(IsCurrentThread());
 
-  VLOG(4) << "Check ready to stop: " << thread_->ToString() << ", "
+  VLOG_WITH_PREFIX(4) << "Check ready to stop: " << thread_->ToString() << ", "
           << "waiting connections: " << yb::ToString(waiting_conns_);
 
   if (VLOG_IS_ON(4)) {
     for (const auto& conn : waiting_conns_) {
-      VLOG(4) << "Connection: " << conn->ToString() << ", idle=" << conn->Idle() << ", why: "
-              << conn->ReasonNotIdle();
+      VLOG_WITH_PREFIX(4) << "Connection: " << conn->ToString() << ", idle=" << conn->Idle()
+                          << ", why: " << conn->ReasonNotIdle();
     }
   }
 
   if (waiting_conns_.empty()) {
-    VLOG(4) << "Reactor ready to stop, breaking loop: " << this;
+    VLOG_WITH_PREFIX(4) << "Reactor ready to stop, breaking loop: " << this;
 
-    VLOG(2) << "Marking reactor as closed: " << thread_.get()->ToString();
+    VLOG_WITH_PREFIX(2) << "Marking reactor as closed: " << thread_.get()->ToString();
     ReactorTasks final_tasks;
     {
       std::lock_guard<simple_spinlock> lock(pending_tasks_mtx_);
       state_.store(ReactorState::kClosed, std::memory_order_release);
       final_tasks.swap(pending_tasks_);
     }
-    VLOG(2) << "Running final pending task aborts: " << thread_.get()->ToString();;
+    VLOG_WITH_PREFIX(2) << "Running final pending task aborts: " << thread_.get()->ToString();;
     for (auto task : final_tasks) {
       task->Abort(ServiceUnavailableError());
     }
-    VLOG(2) << "Breaking reactor loop: " << thread_.get()->ToString();;
+    VLOG_WITH_PREFIX(2) << "Breaking reactor loop: " << thread_.get()->ToString();;
     loop_.break_loop(); // break the epoll loop and terminate the thread
   }
 }
@@ -362,7 +365,7 @@ void Reactor::RegisterConnection(const ConnectionPtr& conn) {
   if (s.ok()) {
     server_conns_.push_back(conn);
   } else {
-    LOG(WARNING) << "Failed to start connection: " << conn->ToString() << ": " << s;
+    LOG_WITH_PREFIX(WARNING) << "Failed to start connection: " << conn->ToString() << ": " << s;
   }
 }
 
@@ -374,7 +377,7 @@ ConnectionPtr Reactor::AssignOutboundCall(const OutboundCallPtr& call) {
   const MonoDelta &timeout = call->controller()->timeout();
   MonoTime deadline;
   if (!timeout.Initialized()) {
-    LOG(WARNING) << "Client call " << call->remote_method().ToString()
+    LOG_WITH_PREFIX(WARNING) << "Client call " << call->remote_method().ToString()
                  << " has no timeout set for connection id: "
                  << call->conn_id().ToString();
     deadline = MonoTime::Max();
@@ -404,8 +407,7 @@ void Reactor::TimerHandler(ev::timer &watcher, int revents) {
   DCHECK(IsCurrentThread());
 
   if (EV_ERROR & revents) {
-    LOG(WARNING) << "Reactor " << name() << " got an error in "
-      "the timer handler.";
+    LOG_WITH_PREFIX(WARNING) << "Reactor got an error in the timer handler.";
     return;
   }
 
@@ -415,7 +417,7 @@ void Reactor::TimerHandler(ev::timer &watcher, int revents) {
   }
 
   auto now = CoarseMonoClock::Now();
-  VLOG(4) << name() << ": timer tick at " << ToSeconds(now.time_since_epoch());
+  VLOG_WITH_PREFIX(4) << "timer tick at " << ToSeconds(now.time_since_epoch());
   cur_time_ = now;
 
   ScanIdleConnections();
@@ -424,7 +426,7 @@ void Reactor::TimerHandler(ev::timer &watcher, int revents) {
 void Reactor::ScanIdleConnections() {
   DCHECK(IsCurrentThread());
   if (connection_keepalive_time_ == CoarseMonoClock::Duration::zero()) {
-    VLOG(3) << "Skipping Idle connections check since connection_keepalive_time_ = 0";
+    VLOG_WITH_PREFIX(3) << "Skipping Idle connections check since connection_keepalive_time_ = 0";
     return;
   }
 
@@ -435,7 +437,7 @@ void Reactor::ScanIdleConnections() {
   for (; c != c_end; ) {
     const ConnectionPtr& conn = *c;
     if (!conn->Idle()) {
-      VLOG(3) << "Connection " << conn->ToString() << " not idle";
+      VLOG_WITH_PREFIX(3) << "Connection " << conn->ToString() << " not idle";
       ++c; // TODO: clean up this loop
       continue;
     }
@@ -445,11 +447,11 @@ void Reactor::ScanIdleConnections() {
     if (connection_delta > connection_keepalive_time_) {
       conn->Shutdown(STATUS_FORMAT(
           NetworkError, "Connection timed out after $0", ToSeconds(connection_delta)));
-      VLOG(1) << "Timing out connection " << conn->ToString() << " - it has been idle for "
-              << ToSeconds(connection_delta) << "s (delta: " << ToSeconds(connection_delta)
-              << ", current time: " << ToSeconds(cur_time_.time_since_epoch())
-              << ", last activity time: " << ToSeconds(last_activity_time.time_since_epoch())
-              << ")";
+      VLOG_WITH_PREFIX(1)
+          << "Timing out connection " << conn->ToString() << " - it has been idle for "
+          << ToSeconds(connection_delta) << "s (delta: " << ToSeconds(connection_delta)
+          << ", current time: " << ToSeconds(cur_time_.time_since_epoch())
+          << ", last activity time: " << ToSeconds(last_activity_time.time_since_epoch()) << ")";
       server_conns_.erase(c++);
       ++timed_out;
     } else {
@@ -460,7 +462,7 @@ void Reactor::ScanIdleConnections() {
   // TODO: above only times out on the server side.
   // Clients may want to set their keepalive timeout as well.
 
-  VLOG_IF(1, timed_out > 0) << name() << ": timed out " << timed_out << " TCP connections.";
+  VLOG_IF_WITH_PREFIX(1, timed_out > 0) << "timed out " << timed_out << " TCP connections.";
 }
 
 bool Reactor::IsCurrentThread() const {
@@ -475,9 +477,9 @@ bool Reactor::IsCurrentThreadOrStartedClosing() const {
 void Reactor::RunThread() {
   ThreadRestrictions::SetWaitAllowed(false);
   ThreadRestrictions::SetIOAllowed(false);
-  DVLOG(6) << "Calling Reactor::RunThread()...";
+  DVLOG_WITH_PREFIX(6) << "Calling Reactor::RunThread()...";
   loop_.run(/* flags */ 0);
-  VLOG(1) << name() << " thread exiting.";
+  VLOG_WITH_PREFIX(1) << "thread exiting.";
 }
 
 namespace {
@@ -528,7 +530,8 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
   }
 
   // No connection to this remote. Need to create one.
-  VLOG(2) << name() << " FindOrStartConnection: creating new connection for " << conn_id.ToString();
+  VLOG_WITH_PREFIX(2) << "FindOrStartConnection: creating new connection for "
+                      << conn_id.ToString();
 
   // Create a new socket and start connecting to the remote.
   auto sock = VERIFY_RESULT(CreateClientSocket(conn_id.remote()));
@@ -541,14 +544,16 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     address_bytes[3] |= conn_id.remote().address().to_v4().to_bytes()[3] & 1;
     boost::asio::ip::address_v4 outbound_address(address_bytes);
     auto status = sock.Bind(Endpoint(outbound_address, 0));
-    LOG_IF(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: " << status;
+    LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "
+                                              << status;
   } else if (FLAGS_local_ip_for_outbound_sockets.empty()) {
     auto outbound_address = conn_id.remote().address().is_v6()
         ? messenger_->outbound_address_v6()
         : messenger_->outbound_address_v4();
     if (!outbound_address.is_unspecified()) {
       auto status = sock.Bind(Endpoint(outbound_address, 0));
-      LOG_IF(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: " << status;
+      LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "
+                                                << status;
     }
   }
 
@@ -604,7 +609,7 @@ void Reactor::DropWithRemoteAddress(const IpAddress& address) {
 void Reactor::DropIncomingWithRemoteAddress(const IpAddress& address) {
   DCHECK(IsCurrentThread());
 
-  VLOG(1) << "Dropping Incoming connections from " << address;
+  VLOG_WITH_PREFIX(1) << "Dropping Incoming connections from " << address;
   for (auto& conn : server_conns_) {
     ShutdownIfRemoteAddressIs(conn, address);
   }
@@ -612,7 +617,7 @@ void Reactor::DropIncomingWithRemoteAddress(const IpAddress& address) {
 
 void Reactor::DropOutgoingWithRemoteAddress(const IpAddress& address) {
   DCHECK(IsCurrentThread());
-  VLOG(1) << "Dropping Outgoing connections to " << address;
+  VLOG_WITH_PREFIX(1) << "Dropping Outgoing connections to " << address;
   for (auto& pair : client_conns_) {
     ShutdownIfRemoteAddressIs(pair.second, address);
   }
@@ -621,7 +626,8 @@ void Reactor::DropOutgoingWithRemoteAddress(const IpAddress& address) {
 void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
   DCHECK(IsCurrentThread());
 
-  VLOG(3) << "DestroyConnection(" << conn->ToString() << ", " << conn_status.ToString() << ")";
+  VLOG_WITH_PREFIX(3) << "DestroyConnection(" << conn->ToString() << ", " << conn_status.ToString()
+                      << ")";
 
   ConnectionPtr retained_conn = conn->shared_from_this();
   conn->Shutdown(conn_status);
@@ -637,9 +643,9 @@ void Reactor::DestroyConnection(Connection *conn, const Status &conn_status) {
       }
     }
     if (!erased) {
-      LOG(WARNING) << "Looking for " << conn->ToString();
+      LOG_WITH_PREFIX(WARNING) << "Looking for " << conn->ToString();
       for (auto &p : client_conns_) {
-        LOG(WARNING) << "  Client connection: " << p.first.ToString() << ", "
+        LOG_WITH_PREFIX(WARNING) << "  Client connection: " << p.first.ToString() << ", "
                      << p.second->ToString();
       }
     }
@@ -687,8 +693,8 @@ void Reactor::ProcessOutboundQueue() {
 }
 
 void Reactor::QueueOutboundCall(OutboundCallPtr call) {
-  DVLOG(3) << "Queueing outbound call "
-           << call->ToString() << " to remote " << call->conn_id().remote();
+  DVLOG_WITH_PREFIX(3) << "Queueing outbound call "
+                       << call->ToString() << " to remote " << call->conn_id().remote();
 
   bool was_empty = false;
   bool closing = false;
@@ -707,7 +713,7 @@ void Reactor::QueueOutboundCall(OutboundCallPtr call) {
   }
   if (was_empty) {
     auto scheduled = ScheduleReactorTask(process_outbound_queue_task_);
-    LOG_IF(WARNING, !scheduled) << "Failed to schedule process outbound queue task";
+    LOG_IF_WITH_PREFIX(WARNING, !scheduled) << "Failed to schedule process outbound queue task";
   }
   TRACE_TO(call->trace(), "Scheduled.");
 }
@@ -855,13 +861,13 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 void Reactor::RegisterInboundSocket(
     Socket *socket, const Endpoint& remote, std::unique_ptr<ConnectionContext> connection_context,
     const MemTrackerPtr& mem_tracker) {
-  VLOG(3) << name_ << ": new inbound connection to " << remote;
+  VLOG_WITH_PREFIX(3) << "New inbound connection to " << remote;
 
   auto stream = CreateStream(
       messenger_->stream_factories_, messenger_->listen_protocol_,
       {remote, std::string(), socket, mem_tracker});
   if (!stream.ok()) {
-    LOG(DFATAL) << "Failed to create stream for " << remote << ": " << stream.status();
+    LOG_WITH_PREFIX(DFATAL) << "Failed to create stream for " << remote << ": " << stream.status();
     return;
   }
   auto conn = std::make_shared<Connection>(this,

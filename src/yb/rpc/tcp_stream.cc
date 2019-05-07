@@ -58,6 +58,7 @@ Status TcpStream::Start(bool connect, ev::loop_ref* loop, StreamContext* context
   connected_ = !connect;
 
   RETURN_NOT_OK(socket_.SetNoDelay(true));
+  // These timeouts don't affect non-blocking sockets:
   RETURN_NOT_OK(socket_.SetSendTimeout(FLAGS_rpc_connection_timeout_ms * 1ms));
   RETURN_NOT_OK(socket_.SetRecvTimeout(FLAGS_rpc_connection_timeout_ms * 1ms));
 
@@ -143,11 +144,16 @@ Status TcpStream::TryWrite() {
   return result;
 }
 
-int TcpStream::FillIov(iovec* out) {
+TcpStream::FillIovResult TcpStream::FillIov(iovec* out) {
   int index = 0;
   size_t offset = send_position_;
+  bool only_heartbeats = true;
   for (auto& data : sending_) {
-    if (data.skipped || (offset == 0 && data.data && data.data->IsFinished())) {
+    const auto wrapped_data = data.data;
+    if (wrapped_data && !wrapped_data->IsHeartbeat()) {
+      only_heartbeats = false;
+    }
+    if (data.skipped || (offset == 0 && wrapped_data && wrapped_data->IsFinished())) {
       queued_bytes_to_send_ -= data.bytes_size();
       data.ClearBytes();
       data.skipped = true;
@@ -163,12 +169,12 @@ int TcpStream::FillIov(iovec* out) {
       out[index].iov_len = bytes.size() - offset;
       offset = 0;
       if (++index == kMaxIov) {
-        return index;
+        return FillIovResult{index, only_heartbeats};
       }
     }
   }
 
-  return index;
+  return FillIovResult{index, only_heartbeats};
 }
 
 Status TcpStream::DoWrite() {
@@ -179,12 +185,17 @@ Status TcpStream::DoWrite() {
   // If we weren't waiting write to be ready, we could try to write data to socket.
   while (!sending_.empty()) {
     iovec iov[kMaxIov];
-    int iov_len = FillIov(iov);
+    auto fill_result = FillIov(iov);
 
-    context_->UpdateLastActivity();
+    context_->UpdateLastWrite();
+    if (!fill_result.only_heartbeats) {
+      context_->UpdateLastActivity();
+    }
 
     int32_t written = 0;
-    auto status = iov_len != 0 ? socket_.Writev(iov, iov_len, &written) : Status::OK();
+    auto status = fill_result.len != 0
+        ? socket_.Writev(iov, fill_result.len, &written)
+        : Status::OK();
     DVLOG_WITH_PREFIX(4) << "Queued writes " << queued_bytes_to_send_ << " bytes. written "
                          << written << " . Status " << status << " sending_ .size() "
                          << sending_.size();
@@ -232,6 +243,7 @@ void TcpStream::Handler(ev::io& watcher, int revents) {  // NOLINT
   auto status = Status::OK();
   if (revents & ev::ERROR) {
     status = STATUS(NetworkError, ToString() + ": Handler encountered an error");
+    VLOG_WITH_PREFIX(3) << status;
   }
 
   if (status.ok() && (revents & ev::READ)) {
@@ -269,7 +281,7 @@ void TcpStream::UpdateEvents() {
 }
 
 Status TcpStream::ReadHandler() {
-  context_->UpdateLastActivity();
+  context_->UpdateLastRead();
 
   for (;;) {
     auto received = Receive();

@@ -47,6 +47,8 @@ class OutboundData : public std::enable_shared_from_this<OutboundData> {
 
   virtual bool IsFinished() const { return false; }
 
+  virtual bool IsHeartbeat() const { return false; }
+
   virtual ~OutboundData() {}
 };
 
