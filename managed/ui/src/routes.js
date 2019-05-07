@@ -45,6 +45,9 @@ function validateSession(store, replacePath, callback) {
         if (response.payload.status !== 200) {
           store.dispatch(resetCustomer());
           localStorage.clear();
+          Cookies.remove("api_token");
+          Cookies.remove("customer_token");
+          Cookies.remove("customer_id");
           browserHistory.push('/login');
           callback();
         } else if ("uuid" in response.payload.data) {
