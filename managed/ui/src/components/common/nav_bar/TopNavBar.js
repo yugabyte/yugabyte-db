@@ -1,5 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
+import Cookies from 'js-cookie';
 import React, { Component } from 'react';
 import 'react-fa';
 import { MenuItem , NavDropdown, Navbar, Nav } from 'react-bootstrap';
@@ -34,6 +35,9 @@ class YBMenuItem extends Component {
 export default class TopNavBar extends Component {
   handleLogout = event => {
     localStorage.clear();
+    Cookies.remove("api_token");
+    Cookies.remove("customer_token");
+    Cookies.remove("customer_id");
     this.props.logoutProfile();
   };
 
