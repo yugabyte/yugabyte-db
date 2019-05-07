@@ -13,7 +13,7 @@ import { METRIC_COLORS } from '../MetricsConfig';
 const panelTypes = {
   overview: {title: "Overview",
     metrics: ["total_rpcs_per_sec",
-      "total_ops_latency",
+      "tserver_ops_latency",
       "cpu_usage",
       "disk_usage"]}
 };
