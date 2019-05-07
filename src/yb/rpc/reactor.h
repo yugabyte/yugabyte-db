@@ -312,6 +312,8 @@ class Reactor {
   // This may be called from another thread.
   const std::string &name() const { return name_; }
 
+  const std::string& LogPrefix() { return log_prefix_; }
+
   Messenger *messenger() const { return messenger_; }
 
   CoarseTimePoint cur_time() const { return cur_time_; }
@@ -423,6 +425,8 @@ class Reactor {
   Messenger* const messenger_;
 
   const std::string name_;
+
+  const std::string log_prefix_;
 
   mutable simple_spinlock pending_tasks_mtx_;
 

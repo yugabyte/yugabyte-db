@@ -354,6 +354,15 @@ bool Messenger::TEST_ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &re
   return false;
 }
 
+Status Messenger::TEST_GetReactorMetrics(size_t reactor_idx, ReactorMetrics* metrics) {
+  if (reactor_idx < 0 || reactor_idx >= reactors_.size()) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Invalid reactor index $0, should be >=0 and <$1", reactor_idx,
+        reactors_.size());
+  }
+  return reactors_[reactor_idx]->GetMetrics(metrics);
+}
+
 void Messenger::ShutdownAcceptor() {
   std::unique_ptr<Acceptor> acceptor;
   {

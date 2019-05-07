@@ -16,16 +16,18 @@
 
 #include "yb/gutil/endian.h"
 
+#include "yb/rpc/connection.h"
+
 namespace yb {
 namespace rpc {
 
 BinaryCallParser::BinaryCallParser(
     const MemTrackerPtr& parent_tracker,
     size_t header_size, size_t size_offset, size_t max_message_length, IncludeHeader include_header,
-    BinaryCallParserListener* listener)
+    SkipEmptyMessages skip_empty_messages, BinaryCallParserListener* listener)
     : buffer_(header_size), size_offset_(size_offset),
       max_message_length_(max_message_length), include_header_(include_header),
-      listener_(listener) {
+      skip_empty_messages_(skip_empty_messages), listener_(listener) {
   buffer_tracker_ = MemTracker::FindOrCreateTracker("Reading", parent_tracker);
 }
 
@@ -74,9 +76,14 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
       break;
     }
 
-    CallData call_data(total_length - body_offset);
-    IoVecsToBuffer(data, consumed + body_offset, consumed + total_length, call_data.data());
-    RETURN_NOT_OK(listener_->HandleCall(connection, &call_data));
+    // We might need to skip empty messages (we use them as low level heartbeats for inter-YB RPC
+    // connections, don't confuse with RAFT heartbeats which are higher level non-empty messages).
+    if (!skip_empty_messages_ || data_length > 0) {
+      connection->UpdateLastActivity();
+      CallData call_data(total_length - body_offset);
+      IoVecsToBuffer(data, consumed + body_offset, consumed + total_length, call_data.data());
+      RETURN_NOT_OK(listener_->HandleCall(connection, &call_data));
+    }
 
     consumed += total_length;
   }

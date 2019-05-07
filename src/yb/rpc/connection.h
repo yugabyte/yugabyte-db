@@ -33,7 +33,6 @@
 #ifndef YB_RPC_CONNECTION_H_
 #define YB_RPC_CONNECTION_H_
 
-
 #include <atomic>
 #include <cstdint>
 #include <limits>
@@ -112,6 +111,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   CoarseTimePoint last_activity_time() const {
     return last_activity_time_;
   }
+
+  void UpdateLastActivity() override;
 
   // Returns true if we are not in the process of receiving or sending a
   // message, and we have no outstanding calls.
@@ -193,7 +194,10 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   void ProcessResponseQueue();
 
   // Stream context implementation
-  void UpdateLastActivity() override;
+  void UpdateLastRead() override;
+
+  void UpdateLastWrite() override;
+
   void Transferred(const OutboundDataPtr& data, const Status& status) override;
   void Destroy(const Status& status) override;
   Result<ProcessDataResult> ProcessReceived(
@@ -267,6 +271,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   std::atomic<uint64_t> responded_call_count_{0};
 };
+
+void StartTimer(CoarseMonoClock::Duration left, ev::timer* timer);
 
 }  // namespace rpc
 }  // namespace yb

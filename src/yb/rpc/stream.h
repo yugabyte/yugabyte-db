@@ -76,6 +76,8 @@ class StreamReadBuffer {
 class StreamContext {
  public:
   virtual void UpdateLastActivity() = 0;
+  virtual void UpdateLastRead() = 0;
+  virtual void UpdateLastWrite() = 0;
   virtual void Transferred(const OutboundDataPtr& data, const Status& status) = 0;
   virtual void Destroy(const Status& status) = 0;
   virtual void Connected() = 0;

@@ -297,8 +297,9 @@ class Messenger : public ProxyContext {
 
   bool TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote);
 
+  CHECKED_STATUS TEST_GetReactorMetrics(size_t reactor_idx, ReactorMetrics* metrics);
+
  private:
-  FRIEND_TEST(TestRpc, TestConnectionKeepalive);
   friend class DelayedTask;
 
   explicit Messenger(const MessengerBuilder &bld);

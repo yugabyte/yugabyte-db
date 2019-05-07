@@ -162,10 +162,6 @@ void Connection::OutboundQueued() {
   }
 }
 
-void StartTimer(CoarseMonoClock::Duration left, ev::timer* timer) {
-  timer->start(MonoDelta(left).ToSeconds(), 0);
-}
-
 void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   DCHECK(reactor_->IsCurrentThread());
 
@@ -433,6 +429,8 @@ void Connection::ProcessResponseQueue() {
 Status Connection::Start(ev::loop_ref* loop) {
   DCHECK(reactor_->IsCurrentThread());
 
+  context_->SetEventLoop(loop);
+
   RETURN_NOT_OK(stream_->Start(direction_ == Direction::CLIENT, loop, this));
 
   timer_.set(*loop);
@@ -476,6 +474,14 @@ void Connection::UpdateLastActivity() {
   last_activity_time_ = reactor_->cur_time();
 }
 
+void Connection::UpdateLastRead() {
+  context_->UpdateLastRead(shared_from_this());
+}
+
+void Connection::UpdateLastWrite() {
+  context_->UpdateLastWrite(shared_from_this());
+}
+
 void Connection::Transferred(const OutboundDataPtr& data, const Status& status) {
   data->Transferred(status, this);
 }
@@ -486,6 +492,10 @@ void Connection::Destroy(const Status& status) {
 
 std::string Connection::LogPrefix() const {
   return ToString() + ": ";
+}
+
+void StartTimer(CoarseMonoClock::Duration left, ev::timer* timer) {
+  timer->start(MonoDelta(left).ToSeconds(), 0 /* repeat */);
 }
 
 }  // namespace rpc

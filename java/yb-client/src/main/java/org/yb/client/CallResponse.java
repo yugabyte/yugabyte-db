@@ -69,14 +69,22 @@ final class CallResponse {
     this.buf = buf;
 
     this.totalResponseSize = buf.readInt();
-    YRpc.checkArrayLength(buf, this.totalResponseSize);
-    TabletClient.ensureReadable(buf, this.totalResponseSize);
+    if (this.totalResponseSize > 0) {
+      YRpc.checkArrayLength(buf, this.totalResponseSize);
+      TabletClient.ensureReadable(buf, this.totalResponseSize);
 
-    final int headerSize = Bytes.readVarInt32(buf);
-    final Slice headerSlice = nextBytes(buf, headerSize);
-    RpcHeader.ResponseHeader.Builder builder = RpcHeader.ResponseHeader.newBuilder();
-    YRpc.readProtobuf(headerSlice, builder);
-    this.header = builder.build();
+      final int headerSize = Bytes.readVarInt32(buf);
+      final Slice headerSlice = nextBytes(buf, headerSize);
+      RpcHeader.ResponseHeader.Builder builder = RpcHeader.ResponseHeader.newBuilder();
+      YRpc.readProtobuf(headerSlice, builder);
+      this.header = builder.build();
+    } else {
+      this.header = null;
+    }
+  }
+
+  public boolean isEmpty() {
+    return this.totalResponseSize == 0;
   }
 
   /**

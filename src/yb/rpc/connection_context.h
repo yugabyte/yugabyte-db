@@ -14,6 +14,8 @@
 #ifndef YB_RPC_CONNECTION_CONTEXT_H
 #define YB_RPC_CONNECTION_CONTEXT_H
 
+#include <ev++.h>
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
@@ -59,6 +61,8 @@ class ConnectionContext {
 
   virtual void QueueResponse(const ConnectionPtr& connection, InboundCallPtr call) = 0;
 
+  virtual void SetEventLoop(ev::loop_ref* loop) {}
+
   virtual void AssignConnection(const ConnectionPtr& connection) {}
 
   virtual void Connected(const ConnectionPtr& connection) = 0;
@@ -70,6 +74,10 @@ class ConnectionContext {
   virtual StreamReadBuffer& ReadBuffer() = 0;
 
   virtual CHECKED_STATUS ReportPendingWriteBytes(size_t bytes_in_queue) = 0;
+
+  virtual void UpdateLastRead(const ConnectionPtr& connection);
+
+  virtual void UpdateLastWrite(const ConnectionPtr& connection) {}
 };
 
 class ConnectionContextBase : public ConnectionContext {
