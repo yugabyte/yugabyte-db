@@ -102,8 +102,6 @@ Status PgWrapper::Start() {
     argv.push_back("log_directory=" + FLAGS_log_dir);
   }
 
-  // TODO Temporarily disabling pg_metrics on mac until the packaging script is fixed.
-#ifndef OS_MACOSX
   argv.push_back("-c");
   // TODO: we should probably load the metrics library in a different way once we let
   // users change the shared_preload_libraries conf parameter.
@@ -112,7 +110,6 @@ Status PgWrapper::Start() {
   argv.push_back("yb_pg_metrics.node_name=" + FLAGS_metric_node_name);
   argv.push_back("-c");
   argv.push_back("yb_pg_metrics.port=" + std::to_string(FLAGS_pgsql_proxy_webserver_port));
-#endif
 
   pg_proc_.emplace(postgres_executable, argv);
   pg_proc_->ShareParentStderr();
