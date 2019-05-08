@@ -11479,7 +11479,6 @@ insert_rest:
 				}
 			| OVERRIDING override_kind VALUE_P SelectStmt
 				{
-					parser_ybc_not_support(@1, "INSERT OVERRIDING VALUE");
 					$$ = makeNode(InsertStmt);
 					$$->cols = NIL;
 					$$->override = $2;
@@ -11493,7 +11492,6 @@ insert_rest:
 				}
 			| '(' insert_column_list ')' OVERRIDING override_kind VALUE_P SelectStmt
 				{
-					parser_ybc_not_support(@1, "INSERT OVERRIDING VALUE");
 					$$ = makeNode(InsertStmt);
 					$$->cols = $2;
 					$$->override = $5;
@@ -11501,7 +11499,6 @@ insert_rest:
 				}
 			| DEFAULT VALUES
 				{
-					parser_ybc_not_support(@1, "INSERT DEFAULT VALUES");
 					$$ = makeNode(InsertStmt);
 					$$->cols = NIL;
 					$$->selectStmt = NULL;
