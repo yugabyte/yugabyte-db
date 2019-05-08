@@ -266,35 +266,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
 
   // Get user and system tablet leader and follower counts for each TabletServer
   TabletCountMap tablet_map;
-
-  vector<scoped_refptr<TableInfo>> tables;
-  master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
-  for (const auto& table : tables) {
-    TabletInfos tablets;
-    table->GetAllTablets(&tablets);
-    bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
-
-    for (const auto& tablet : tablets) {
-      TabletInfo::ReplicaMap replication_locations;
-      tablet->GetReplicaLocations(&replication_locations);
-
-      for (const auto& replica : replication_locations) {
-        if (is_user_table) {
-          if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
-            tablet_map[replica.first].user_tablet_leaders++;
-          } else {
-            tablet_map[replica.first].user_tablet_followers++;
-          }
-        } else {
-          if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
-            tablet_map[replica.first].system_tablet_leaders++;
-          } else {
-            tablet_map[replica.first].system_tablet_followers++;
-          }
-        }
-      }
-    }
-  }
+  CalculateTabletMap(tablet_map);
 
   unordered_set<string> read_replica_uuids;
   for (auto desc : descs) {
@@ -320,6 +292,121 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     TServerTable(output);
     TServerDisplay(read_replica_uuid, &descs, &tablet_map, output);
   }
+}
+
+void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req,
+                                             stringstream* output) {
+  master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
+
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  SysClusterConfigEntryPB config;
+  Status s = master_->catalog_manager()->GetClusterConfig(&config);
+  if (!s.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(s.ToString());
+    return;
+  }
+
+  vector<std::shared_ptr<TSDescriptor> > descs;
+  const auto& ts_manager = master_->ts_manager();
+  ts_manager->GetAllDescriptors(&descs);
+
+  // Get user and system tablet leader and follower counts for each TabletServer.
+  TabletCountMap tablet_map;
+  CalculateTabletMap(tablet_map);
+
+  unordered_set<string> cluster_uuids;
+  auto primary_uuid = config.replication_info().live_replicas().placement_uuid();
+  cluster_uuids.insert(primary_uuid);
+  for (auto desc : descs) {
+    cluster_uuids.insert(desc->placement_uuid());
+  }
+
+  jw.StartObject();
+  for (const auto& cur_uuid : cluster_uuids) {
+    jw.String(cur_uuid);
+    jw.StartObject();
+    for (auto desc : descs) {
+      if (desc->placement_uuid() == cur_uuid) {
+        TSRegistrationPB reg = desc->GetRegistration();
+        string host_port = Substitute("$0:$1",
+                                      reg.common().http_addresses(0).host(),
+                                      reg.common().http_addresses(0).port());
+        jw.String(host_port);
+
+        jw.StartObject();
+
+        const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
+        jw.String("time_since_hb");
+        jw.String(time_since_hb);
+
+        if (master_->ts_manager()->IsTSLive(desc)) {
+          jw.String("status");
+          jw.String(kTserverAlive);
+
+          jw.String("uptime_seconds");
+          jw.Uint(desc->uptime_seconds());
+        } else {
+          jw.String("status");
+          jw.String(kTserverDead);
+
+          jw.String("uptime_seconds");
+          jw.Uint(0);
+        }
+
+        jw.String("ram_used");
+        jw.String(BytesToHumanReadable(desc->total_memory_usage()));
+
+        jw.String("total_sst_file_size");
+        jw.String(BytesToHumanReadable(desc->total_sst_file_size()));
+
+        jw.String("uncompressed_sst_file_size");
+        jw.String(BytesToHumanReadable(desc->uncompressed_sst_file_size()));
+
+        jw.String("read_ops_per_sec");
+        jw.Double(desc->read_ops_per_sec());
+
+        jw.String("write_ops_per_sec");
+        jw.Double(desc->write_ops_per_sec());
+
+        auto tserver = tablet_map.find(desc->permanent_uuid());
+        uint user_tablets_total = 0;
+        uint user_tablets_leaders = 0;
+        uint system_tablets_total = 0;
+        uint system_tablets_leaders = 0;
+        int active_tablets = 0;
+        if (!(tserver == tablet_map.end())) {
+          user_tablets_total = tserver->second.user_tablet_leaders +
+            tserver->second.user_tablet_followers;
+          user_tablets_leaders = tserver->second.user_tablet_leaders;
+          system_tablets_total = tserver->second.system_tablet_leaders +
+            tserver->second.system_tablet_followers;
+          system_tablets_leaders = tserver->second.system_tablet_leaders;
+          active_tablets = desc->num_live_replicas();
+        }
+        jw.String("user_tablets_total");
+        jw.Uint(user_tablets_total);
+
+        jw.String("user_tablets_leaders");
+        jw.Uint(user_tablets_leaders);
+
+        jw.String("system_tablets_total");
+        jw.Uint(system_tablets_total);
+
+        jw.String("system_tablets_leaders");
+        jw.Uint(system_tablets_leaders);
+
+        jw.String("active_tablets");
+        jw.Int(active_tablets);
+
+        jw.EndObject();
+      }
+    }
+    jw.EndObject();
+  }
+  jw.EndObject();
 }
 
 void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
@@ -947,6 +1034,10 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/tablet-servers", "Tablet Servers",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar, "fa fa-server");
+  cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
+  server->RegisterPathHandler(
+    "/api/tablet-servers", "Tserver Statuses",
+    std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
                  this, _1, _2, false /* skip_system_tables */);
   server->RegisterPathHandler(
@@ -1015,6 +1106,37 @@ string MasterPathHandlers::RegistrationToHtml(
                            reg.http_addresses(0).port(), link_html);
   }
   return link_html;
+}
+
+void MasterPathHandlers::CalculateTabletMap(TabletCountMap tablet_map) {
+  vector<scoped_refptr<TableInfo>> tables;
+  master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
+  for (const auto& table : tables) {
+    TabletInfos tablets;
+    table->GetAllTablets(&tablets);
+    bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
+
+    for (const auto& tablet : tablets) {
+      TabletInfo::ReplicaMap replication_locations;
+      tablet->GetReplicaLocations(&replication_locations);
+
+      for (const auto& replica : replication_locations) {
+        if (is_user_table) {
+          if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
+            tablet_map[replica.first].user_tablet_leaders++;
+          } else {
+            tablet_map[replica.first].user_tablet_followers++;
+          }
+        } else {
+          if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
+            tablet_map[replica.first].system_tablet_leaders++;
+          } else {
+            tablet_map[replica.first].system_tablet_followers++;
+          }
+        }
+      }
+    }
+  }
 }
 
 } // namespace master
