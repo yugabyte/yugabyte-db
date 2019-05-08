@@ -670,6 +670,9 @@ public class MiniYBCluster implements AutoCloseable {
       if (extraMasterArgs != null) {
         masterCmdLine.addAll(extraMasterArgs);
       }
+      if (startPgSqlProxy) {
+        masterCmdLine.add("--master_auto_run_initdb");
+      }
       final HostAndPort masterHostAndPort = HostAndPort.fromParts(masterBindAddress, masterRpcPort);
       masterProcesses.put(masterHostAndPort,
           configureAndStartProcess(
@@ -827,10 +830,10 @@ public class MiniYBCluster implements AutoCloseable {
       return;
     }
     assert(cqlContactPoints.remove(new InetSocketAddress(hostPort.getHostText(), CQL_PORT)));
-    AssertionWrappers.assertTrue(
+    assertTrue(
         redisContactPoints.removeIf((InetSocketAddress addr) ->
             addr.getHostName().equals(hostPort.getHostText())));
-    AssertionWrappers.assertTrue(
+    assertTrue(
         pgsqlContactPoints.removeIf((InetSocketAddress addr) ->
             addr.getHostName().equals(hostPort.getHostText())));
     destroyDaemonAndWait(ts);

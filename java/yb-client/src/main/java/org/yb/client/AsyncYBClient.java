@@ -551,6 +551,16 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Check if initdb executed by the master is done running.
+   */
+  public Deferred<IsInitDbDoneResponse> getIsInitDbDone() {
+    checkIsClosed();
+    IsInitDbDoneRequest rpc = new IsInitDbDoneRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Get the master tablet id.
    * @return the constant master tablet uuid.
    */
