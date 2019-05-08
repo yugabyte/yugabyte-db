@@ -12,7 +12,6 @@
 //
 package org.yb.pgsql;
 
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -21,11 +20,10 @@ import org.postgresql.core.TransactionState;
 import org.postgresql.jdbc.PgConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.minicluster.LogPrinter;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.minicluster.MiniYBDaemon;
 import org.yb.util.*;
 
 import java.io.File;
@@ -36,10 +34,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.yb.AssertionWrappers.*;
-import static org.yb.client.TestUtils.getBaseTmpDir;
-import static org.yb.util.ProcessUtil.pidStrOfProcess;
 import static org.yb.util.SanitizerUtil.isTSAN;
-import static org.yb.util.SanitizerUtil.nonTsanVsTsan;
 
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
@@ -60,8 +55,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static Connection connection;
 
-  private static File initdbDataDir;
-
   protected File pgBinDir;
 
   private static List<Connection> connectionsToClose = new ArrayList<>();
@@ -77,34 +70,43 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     final int tserverIndex = 0;
     PgRegressRunner pgRegress = new PgRegressRunner(schedule,
         getPgHost(tserverIndex), getPgPort(tserverIndex), DEFAULT_PG_USER);
-    pgRegress.setEnvVars(getInitDbEnvVars());
+    pgRegress.setEnvVars(getPgRegressEnvVars());
     pgRegress.start();
     pgRegress.stop();
+  }
+
+  private static int getRetryableRpcSingleCallTimeoutMs() {
+    if (TestUtils.isReleaseBuild()) {
+      return 10000;
+    } else if (TestUtils.IS_LINUX) {
+      if (SanitizerUtil.isASAN()) {
+        return 20000;
+      } else if (SanitizerUtil.isTSAN()) {
+        return 45000;
+      } else {
+        // Linux debug builds.
+        return 15000;
+      }
+    } else {
+      // We get a lot of timeouts in macOS debug builds.
+      return 45000;
+    }
+  }
+
+  private Map<String, String> getMasterAndTServerFlags() {
+    Map<String, String> flagMap = new TreeMap<>();
+    flagMap.put(
+        "retryable_rpc_single_call_timeout_ms",
+        String.valueOf(getRetryableRpcSingleCallTimeoutMs()));
+    return flagMap;
   }
 
   /**
    * @return flags shared between tablet server and initdb
    */
-  private Map<String, String> getTServerAndInitDbFlags() {
+  private Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = new TreeMap<>();
 
-    int callTimeoutMs;
-    if (TestUtils.isReleaseBuild()) {
-      callTimeoutMs = 10000;
-    } else if (TestUtils.IS_LINUX) {
-      if (SanitizerUtil.isASAN()) {
-        callTimeoutMs = 20000;
-      } else if (SanitizerUtil.isTSAN()) {
-        callTimeoutMs = 45000;
-      } else {
-        // Linux debug builds.
-        callTimeoutMs = 15000;
-      }
-    } else {
-      // We get a lot of timeouts in macOS debug builds.
-      callTimeoutMs = 45000;
-    }
-    flagMap.put("retryable_rpc_single_call_timeout_ms", String.valueOf(callTimeoutMs));
     if (isTSAN()) {
       flagMap.put("yb_client_admin_operation_timeout_sec", "120");
     }
@@ -127,8 +129,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    for (Map.Entry<String, String> entry : getTServerAndInitDbFlags().entrySet()) {
+    for (Map.Entry<String, String> entry : getTServerFlags().entrySet()) {
       builder.addCommonTServerArgs("--" + entry.getKey() + "=" + entry.getValue());
+    }
+    for (Map.Entry<String, String> entry : getMasterAndTServerFlags().entrySet()) {
+      String flagStr = "--" + entry.getKey() + "=" + entry.getValue();
+      builder.addCommonTServerArgs(flagStr);
+      builder.addMasterArgs(flagStr);
     }
     builder.enablePostgres(true);
   }
@@ -144,7 +151,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     // Postgres bin directory.
     pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
 
-    runInitDb();
+    LOG.info("Waiting for initdb to complete on master");
+    TestUtils.waitFor(
+        () -> {
+          IsInitDbDoneResponse initdbStatusResp = miniCluster.getClient().getIsInitDbDone();
+          if (initdbStatusResp.isDone()) {
+            return true;
+          }
+          if (initdbStatusResp.hasError()) {
+            throw new RuntimeException(
+                "Could not request initdb status: " + initdbStatusResp.getServerError());
+          }
+          String initdbError = initdbStatusResp.getInitDbError();
+          if (initdbError != null && !initdbError.isEmpty()) {
+            throw new RuntimeException("initdb failed: " + initdbError);
+          }
+          return false;
+        },
+        600000);
+    LOG.info("initdb has completed successfully on master");
 
     if (connection != null) {
       LOG.info("Closing previous connection");
@@ -201,6 +226,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     for (int attempt = 1; attempt <= MAX_ATTEMPTS; ++attempt) {
       try {
         connection = DriverManager.getConnection(url, DEFAULT_PG_USER, DEFAULT_PG_PASSWORD);
+        if (connection == null) {
+          throw new NullPointerException("getConnection returned null");
+        }
         connectionsToClose.add(connection);
         configureConnection(connection);
         // JDBC does not specify a default for auto-commit, let's set it to true here for
@@ -239,72 +267,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     throw new IllegalStateException("Should not be able to reach here");
   }
 
-  protected Map<String, String> getInitDbEnvVars() {
-    Map<String, String> initdbEnvVars = new TreeMap<>();
-    assertNotNull(initdbDataDir);
-    initdbEnvVars.put(PG_DATA_FLAG, initdbDataDir.toString());
-    initdbEnvVars.put(MASTERS_FLAG, masterAddresses);
-    initdbEnvVars.put(YB_ENABLED_IN_PG_ENV_VAR_NAME, "1");
-
-    for (Map.Entry<String, String> entry : getTServerAndInitDbFlags().entrySet()) {
-      initdbEnvVars.put("FLAGS_" + entry.getKey(), entry.getValue());
-    }
-
-    // Disable reporting signal-unsafe behavior for PostgreSQL because it does a lot of work in
-    // signal handlers on shutdown.
-    SanitizerUtil.addToSanitizerOptions(initdbEnvVars, "report_signal_unsafe=0");
+  protected Map<String, String> getPgRegressEnvVars() {
+    Map<String, String> pgRegressEnvVars = new TreeMap<>();
+    pgRegressEnvVars.put(MASTERS_FLAG, masterAddresses);
+    pgRegressEnvVars.put(YB_ENABLED_IN_PG_ENV_VAR_NAME, "1");
 
     for (Map.Entry<String, String> entry : System.getenv().entrySet()) {
       String envVarName = entry.getKey();
       if (envVarName.startsWith("postgres_FLAGS_")) {
         String downstreamEnvVarName = envVarName.substring(9);
         LOG.info("Found env var " + envVarName + ", setting " + downstreamEnvVarName + " for " +
-            "initdb to " + entry.getValue());
-        initdbEnvVars.put(downstreamEnvVarName, entry.getValue());
+                 "pg_regress to " + entry.getValue());
+        pgRegressEnvVars.put(downstreamEnvVarName, entry.getValue());
       }
     }
 
     // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
-    initdbEnvVars.put("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
+    pgRegressEnvVars.put("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
 
-    return initdbEnvVars;
-  }
-
-  private void runInitDb() throws Exception {
-    initdbDataDir = new File(getBaseTmpDir() + "/ybpgdata-" + System.currentTimeMillis());
-    if (!initdbDataDir.mkdir()) {
-      throw new Exception("Failed to create data dir for initdb: " + initdbDataDir);
-    }
-
-    final Map<String, String> postgresEnvVars = getInitDbEnvVars();
-
-    // Dump environment variables we'll be using for the initdb command.
-    LOG.info("Setting the following environment variables for the initdb command:\n" +
-             StringUtil.getEnvVarMapDumpStr(postgresEnvVars, ": ", 4));
-
-    LOG.info("Running initdb");
-    String initCmd = String.format("%s/%s", pgBinDir, "initdb");
-    ProcessBuilder procBuilder =
-        new ProcessBuilder(
-            initCmd, "-U", DEFAULT_PG_USER, "--encoding=UTF8").redirectErrorStream(true);
-    procBuilder.environment().putAll(postgresEnvVars);
-    // Change the directory to something different from the data directory so that we can collect
-    // a core file there if necessary. The data directory may be deleted automatically.
-    File initDbWorkDir = new File(TestUtils.getBaseTmpDir() + "/initdb_cwd");
-    initDbWorkDir.mkdirs();
-    procBuilder.directory(initDbWorkDir);
-    Process initProc = procBuilder.start();
-    String logPrefix = MiniYBDaemon.makeLogPrefix(
-        "initdb",
-        MiniYBDaemon.NO_DAEMON_INDEX,
-        pidStrOfProcess(initProc),
-        MiniYBDaemon.NO_RPC_PORT,
-        MiniYBDaemon.NO_WEB_UI_URL);
-    LogPrinter initDbLogPrinter = new LogPrinter(initProc.getInputStream(), logPrefix);
-    initProc.waitFor();
-    initDbLogPrinter.stop();
-    CoreFileUtil.processCoreFile(ProcessUtil.pidOfProcess(initProc),
-        initCmd, "initdb", initDbWorkDir, CoreFileUtil.CoreFileMatchMode.ANY_CORE_FILE);
+    return pgRegressEnvVars;
   }
 
   @After
@@ -364,7 +345,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       LOG.info("Closing connections.");
       for (Connection connection : connectionsToClose) {
         try {
-          connection.close();
+          if (connection == null) {
+            LOG.error("connectionsToClose contains a null connection!");
+          } else {
+            connection.close();
+          }
         } catch (SQLException ex) {
           LOG.error("Exception while trying to close connection");
           throw ex;
@@ -376,9 +361,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     LOG.info("Finished closing connection.");
 
     LOG.info("Finished stopping postgres server.");
-
-    LOG.info("Deleting PostgreSQL data directory at " + initdbDataDir.getPath());
-    FileUtils.deleteDirectory(initdbDataDir);
   }
 
   /**

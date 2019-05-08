@@ -70,7 +70,9 @@ public class MiniYBClusterBuilder {
   }
 
   /**
-   * Configure additional command-line arguments for starting master.
+   * Configure additional command-line arguments for starting master. This replaces the list of
+   * existing additional master arguments.
+   *
    * @param masterArgs additional command-line arguments
    * @return this instance
    */
@@ -78,6 +80,16 @@ public class MiniYBClusterBuilder {
     this.masterArgs = masterArgs;
     return this;
   }
+
+  /**
+   * Configure additional command-line arguments for starting master. This appends to the list of
+   * additional master arguments.
+   */
+  public MiniYBClusterBuilder addMasterArgs(String... newArgs) {
+    this.masterArgs.addAll(Arrays.asList(newArgs));
+    return this;
+  }
+
 
   /**
    * Configure additional command-line arguments for starting tserver.
