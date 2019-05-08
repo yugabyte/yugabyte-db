@@ -162,7 +162,8 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
                                   rapidjson::Value* document,
                                   rapidjson::Value::MemberIterator* memberit,
                                   rapidjson::Value::ValueIterator* valueit,
-                                  bool* last_elem_object) {
+                                  bool* last_elem_object,
+                                  bool is_insert) {
   *last_elem_object = false;
 
   int64_t array_index;
@@ -178,12 +179,15 @@ CHECKED_STATUS FindMemberForIndex(const QLColumnValuePB& column_value,
     *valueit = document->Begin();
     std::advance(*valueit, array_index);
   } else if (document->IsObject()) {
-    util::VarInt varint;
-    auto status =
-      varint.DecodeFromComparable(column_value.json_args(index).operand().value().varint_value());
-    if (status.ok()) {
-      array_index = VERIFY_RESULT(varint.ToInt64());
-      return STATUS_SUBSTITUTE(QLError, "Cannot use array index $0 to access object", array_index);
+    if (!is_insert) {
+      util::VarInt varint;
+      auto status =
+        varint.DecodeFromComparable(column_value.json_args(index).operand().value().varint_value());
+      if (status.ok()) {
+        array_index = VERIFY_RESULT(varint.ToInt64());
+        return STATUS_SUBSTITUTE(QLError, "Cannot use array index $0 to access object",
+            array_index);
+      }
     }
 
     *last_elem_object = true;
@@ -512,11 +516,11 @@ Status QLWriteOperation::ApplyForJsonOperators(const QLColumnValuePB& column_val
 
   int i = 0;
   auto status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
-      &last_elem_object);
+      &last_elem_object, is_insert);
   for (i = 1; i < column_value.json_args_size() && status.ok(); i++) {
     node = (last_elem_object) ? &(memberit->value) : &(*valueit);
     status = FindMemberForIndex(column_value, i, node, &memberit, &valueit,
-        &last_elem_object);
+        &last_elem_object, is_insert);
   }
 
   bool update_missing = false;
