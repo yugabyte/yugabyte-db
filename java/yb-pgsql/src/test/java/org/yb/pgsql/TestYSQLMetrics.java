@@ -13,7 +13,6 @@
 
 package org.yb.pgsql;
 
-import org.junit.Ignore;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBDaemon;
 
@@ -22,7 +21,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerLinuxOnly;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.SQLException;
@@ -43,8 +41,7 @@ import org.slf4j.LoggerFactory;
 
 import static org.yb.AssertionWrappers.*;
 
-// TODO disabled on mac until the packaging script is fixed to handle the pg_metrics extension.
-@RunWith(value=YBTestRunnerLinuxOnly.class)
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestYSQLMetrics extends BasePgSQLTest {
       private static final Logger LOG = LoggerFactory.getLogger(MiniYBDaemon.class);
 
