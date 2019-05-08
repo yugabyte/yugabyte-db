@@ -357,6 +357,14 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Check if initdb executed by the master is done running.
+   */
+  public IsInitDbDoneResponse getIsInitDbDone() throws Exception {
+    Deferred<IsInitDbDoneResponse> d = asyncClient.getIsInitDbDone();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Wait for the master server to be running and initialized.
    * @param hp the host and port for the master.
    * @param timeoutMS timeout in milliseconds to wait for.
