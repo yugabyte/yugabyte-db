@@ -126,6 +126,7 @@ class IntentAwareIterator {
   // This method positions the iterator at the beginning of the DocKey found before the doc_key
   // provided.
   void PrevDocKey(const DocKey& doc_key);
+  void PrevDocKey(const Slice& encoded_doc_key);
 
   // Adds new value to prefix stack. The top value of this stack is used to filter returned entries.
   void PushPrefix(const Slice& prefix);
