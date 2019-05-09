@@ -42,6 +42,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.yb.client.YBClient;
@@ -424,6 +425,12 @@ public class UniverseController extends AuthenticatedController {
     if (primaryCluster.userIntent.providerType.equals(CloudType.kubernetes)) {
       taskType = TaskType.DestroyKubernetesUniverse;
     }
+
+    // Update all current tasks for this universe to be marked as done if it is a force delete.
+    if (isForceDelete) {
+      markAllUniverseTasksAsCompleted(universe.universeUUID);
+    }
+
     UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info("Submitted destroy universe for " + universeUUID + ", task uuid = " + taskUUID);
 
@@ -871,6 +878,20 @@ public class UniverseController extends AuthenticatedController {
       return ApiResponse.error(BAD_REQUEST, e.getMessage());
     } finally {
       ybService.closeClient(client, hostPorts);
+    }
+  }
+
+  private void markAllUniverseTasksAsCompleted(UUID universeUUID) {
+    List<CustomerTask> existingTasks = CustomerTask.findIncompleteByTargetUUID(universeUUID);
+    if (existingTasks == null) {
+      return;
+    }
+    for (CustomerTask task : existingTasks) {
+      task.markAsCompleted();
+      TaskInfo taskInfo = TaskInfo.get(task.getTaskUUID());
+      if (taskInfo != null) {
+        taskInfo.setTaskState(TaskInfo.State.Failure);
+      }
     }
   }
 

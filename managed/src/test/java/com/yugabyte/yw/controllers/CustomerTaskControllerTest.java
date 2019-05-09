@@ -27,6 +27,7 @@ import play.test.Helpers;
 import java.util.Calendar;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
@@ -103,6 +104,16 @@ public class CustomerTaskControllerTest extends WithApplication {
     responseJson.put("target", targetName);
     responseJson.put("targetUUID", targetUUID.toString());
     responseJson.put("type", taskType.name());
+    if (percentComplete == 100.0) {
+      // Sleep 3 seconds so that the completed time is greater than
+      // creation time.
+      try {
+        TimeUnit.SECONDS.sleep(3);
+        task.markAsCompleted(); 
+      } catch (Exception e) {
+        // Do nothing
+      }
+    }
     return taskUUID;
   }
 
