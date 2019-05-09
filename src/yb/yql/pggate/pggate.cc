@@ -23,24 +23,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/messenger.h"
-
-DEFINE_int32(pgsql_rpc_keepalive_time_ms, 0,
-             "If an RPC connection from a client is idle for this amount of time, the server "
-             "will disconnect the client. Setting flag to 0 disables this clean up.");
-TAG_FLAG(pgsql_rpc_keepalive_time_ms, advanced);
-
-DEFINE_int32(pggate_rpc_timeout_secs, 60,
-             "Timeout for RPCs from pggate to YB cluster");
-
-DEFINE_int32(pggate_ybclient_reactor_threads, 2,
-             "The number of reactor threads to be used for processing ybclient "
-             "requests originating in the PostgreSQL proxy server");
-
-DEFINE_string(pggate_proxy_bind_address, "",
-              "Address to which the PostgreSQL proxy server is bound.");
-
-DEFINE_string(pggate_master_addresses, "",
-              "Addresses of the master servers to which the PostgreSQL proxy server connects.");
+#include "yb/yql/pggate/pggate_flags.h"
 
 namespace yb {
 namespace pggate {

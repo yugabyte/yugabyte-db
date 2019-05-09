@@ -38,9 +38,6 @@ class PgDocOp {
 
   typedef scoped_refptr<PgDocOp> ScopedRefPtr;
 
-  // Public constants.
-  static const int64_t kPrefetchLimit = INT32_MAX;
-
   // Constructors & Destructors.
   // read_time points to place where read_time for whole postgres statement is stored.
   // It is available while statement is executed.

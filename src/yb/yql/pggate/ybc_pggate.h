@@ -334,7 +334,7 @@ YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 bool YBCIsInitDbModeEnvVarSet();
 
 // This is called by initdb. Used to customize some behavior.
-void YBCSetInitDbMode();
+void YBCInitFlags();
 
 #ifdef __cplusplus
 }  // extern "C"
