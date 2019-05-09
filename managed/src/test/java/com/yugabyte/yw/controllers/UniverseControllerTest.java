@@ -62,6 +62,7 @@ import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.Ignore;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
 
@@ -634,6 +635,48 @@ public class UniverseControllerTest extends WithApplication {
     assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
+
+    assertTrue(customer.getUniverseUUIDs().isEmpty());
+  }
+
+  @Test
+  public void testUniverseDestroyValidUUIDIsForceDelete() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Universe u = createUniverse(customer.getCustomerId());
+
+    UUID randUUID = UUID.randomUUID();
+    CustomerTask tt = CustomerTask.create(customer, u.universeUUID, randUUID,
+        CustomerTask.TargetType.Backup, CustomerTask.TaskType.Create, "test");
+
+    // Add the cloud info into the universe.
+    Universe.UniverseUpdater updater = new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+        UserIntent userIntent = new UserIntent();
+        userIntent.providerType = CloudType.aws;
+        universeDetails.upsertPrimaryCluster(userIntent, null);
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+    // Save the updates to the universe.
+    Universe.saveDetails(u.universeUUID, updater);
+
+    String url = "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "?isForceDelete=true"; 
+    Result result = doRequestWithAuthToken("DELETE", url, authToken);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    CustomerTask th = CustomerTask.find.where().eq("task_uuid", fakeTaskUUID).findUnique();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
+
+    assertNotNull(CustomerTask.findByTaskUUID(randUUID).getCompletionTime());
 
     assertTrue(customer.getUniverseUUIDs().isEmpty());
   }

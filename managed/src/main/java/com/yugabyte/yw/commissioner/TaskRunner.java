@@ -11,6 +11,7 @@ import java.util.UUID;
 
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.ScheduleTask;
+import com.yugabyte.yw.models.CustomerTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -151,6 +152,12 @@ public class TaskRunner implements Runnable {
       updateTaskState(TaskInfo.State.Failure);
 
     } finally {
+      // Update the customer task to a completed state.
+      CustomerTask customerTask = CustomerTask.findByTaskUUID(taskInfo.getTaskUUID());
+      if (customerTask != null) {
+        customerTask.markAsCompleted();
+      }
+
       // In case it was a scheduled task, update state of the task.
       ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(getTaskUUID());
       if (scheduleTask != null) {

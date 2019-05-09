@@ -144,7 +144,7 @@ public class CustomerTask extends Model {
   public void markAsCompleted() {
     if (completionTime == null) {
       completionTime = new Date();
-      save();
+      this.save();
     }
   }
 
@@ -174,6 +174,13 @@ public class CustomerTask extends Model {
 
   public static CustomerTask findByTaskUUID(UUID taskUUID) {
     return find.where().eq("task_uuid", taskUUID).findUnique();
+  }
+
+  public static List<CustomerTask> findIncompleteByTargetUUID(UUID targetUUID) {
+    return find.where()
+      .eq("target_uuid", targetUUID)
+      .isNull("completion_time")
+      .findList();
   }
 
   public static CustomerTask getLatestByUniverseUuid(UUID universeUUID) {
