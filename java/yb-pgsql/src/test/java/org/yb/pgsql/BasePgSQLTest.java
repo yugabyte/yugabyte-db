@@ -101,6 +101,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return flagMap;
   }
 
+  protected String pgPrefetchLimit() {
+    return null;
+  }
+
   /**
    * @return flags shared between tablet server and initdb
    */
@@ -112,6 +116,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
     flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
     flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
+
+    // Setup flag for postgres test on prefetch-limit when starting tserver.
+    if (pgPrefetchLimit() != null) {
+      flagMap.put("ysql_prefetch_limit", pgPrefetchLimit());
+    }
 
     return flagMap;
   }
