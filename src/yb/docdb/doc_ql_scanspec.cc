@@ -29,10 +29,7 @@ DocQLScanSpec::DocQLScanSpec(const Schema& schema,
       schema_(schema),
       hashed_components_(nullptr),
       include_static_columns_(false),
-      doc_key_(doc_key),
-      start_doc_key_(DocKey()),
-      lower_doc_key_(DocKey()),
-      upper_doc_key_(DocKey()),
+      doc_key_(doc_key.Encode()),
       query_id_(query_id) {
 }
 
@@ -52,8 +49,7 @@ DocQLScanSpec::DocQLScanSpec(const Schema& schema,
       max_hash_code_(max_hash_code),
       hashed_components_(&hashed_components),
       include_static_columns_(include_static_columns),
-      doc_key_(),
-      start_doc_key_(start_doc_key),
+      start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(bound_key(true)),
       upper_doc_key_(bound_key(false)),
       query_id_(query_id) {
@@ -139,26 +135,30 @@ void DocQLScanSpec::InitRangeOptions(const QLConditionPB& condition) {
   }
 }
 
-DocKey DocQLScanSpec::bound_key(const bool lower_bound) const {
+KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
+  KeyBytes result;
+  auto encoder = DocKeyEncoder(&result).CotableId(Uuid(boost::uuids::nil_uuid()));
+
   // If no hashed_component use hash lower/upper bounds if set.
   if (hashed_components_->empty()) {
     // use lower bound hash code if set in request (for scans using token)
     if (lower_bound && hash_code_) {
-      return DocKey(*hash_code_, {PrimitiveValue(ValueType::kLowest)}, {});
+      encoder.HashAndRange(*hash_code_, {PrimitiveValue(ValueType::kLowest)}, {});
     }
     // use upper bound hash code if set in request (for scans using token)
     if (!lower_bound && max_hash_code_) {
-      return DocKey(*max_hash_code_, {PrimitiveValue(ValueType::kHighest)}, {});
+      encoder.HashAndRange(*max_hash_code_, {PrimitiveValue(ValueType::kHighest)}, {});
     }
-    return DocKey();
+    return result;
   }
 
   // If hash_components are non-empty then hash_code and max_hash_code must both be set and equal.
   DCHECK(hash_code_);
   DCHECK(max_hash_code_);
   DCHECK_EQ(*hash_code_, *max_hash_code_);
-  auto hash_code = static_cast<DocKeyHash> (*hash_code_);
-  return DocKey(hash_code, *hashed_components_, range_components(lower_bound));
+  auto hash_code = static_cast<DocKeyHash>(*hash_code_);
+  encoder.HashAndRange(hash_code, *hashed_components_, range_components(lower_bound));
+  return result;
 }
 
 std::vector<PrimitiveValue> DocQLScanSpec::range_components(const bool lower_bound) const {
@@ -195,67 +195,65 @@ std::vector<PrimitiveValue> DocQLScanSpec::range_components(const bool lower_bou
 namespace {
 
 template <class Predicate>
-bool KeySatisfiesBound(const DocKey& key, const DocKey& bound_key, const Predicate& predicate) {
+bool KeySatisfiesBound(const KeyBytes& key, const KeyBytes& bound_key, const Predicate& predicate) {
   if (bound_key.empty()) {
-    return true;
-  }
-  if (bound_key.range_group().empty() && key.HashedComponentsEqual(bound_key)) {
     return true;
   }
   return predicate(bound_key, key);
 }
 
-bool KeyWithinRange(const DocKey& key, const DocKey& lower_key, const DocKey& upper_key) {
+bool KeyWithinRange(const KeyBytes& key, const KeyBytes& lower_key, const KeyBytes& upper_key) {
   // Verify that the key is within the lower/upper bound, which is either:
   // 1. the bound is empty,
-  // 2. the bound has no range component and the key's hash components are the same as the bound's,
-  // 3. the key is <= or >= the fully-specified bound.
+  // 2. the key is <= or >= the fully-specified bound.
   return KeySatisfiesBound(key, lower_key, std::less_equal<>()) &&
          KeySatisfiesBound(key, upper_key, std::greater_equal<>());
 }
 
 } // namespace
 
-Status DocQLScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
+Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
   // If a full doc key is specified, that is the exactly doc to scan. Otherwise, compute the
   // lower/upper bound doc keys to scan from the range.
   if (!doc_key_.empty()) {
-    *key = doc_key_;
-    if (!lower_bound) {
-      // We add +inf as an extra component to make sure this is greater than all keys in range.
-      // For lower bound, this is true already, because dockey + suffix is > dockey
-      key->AddRangeComponent(PrimitiveValue(ValueType::kHighest));
+    if (lower_bound) {
+      return doc_key_;
     }
-    return Status::OK();
+    KeyBytes result = doc_key_;
+    // We add +inf as an extra component to make sure this is greater than all keys in range.
+    // For lower bound, this is true already, because dockey + suffix is > dockey
+    result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
+    return std::move(result);
   }
 
   // If start doc_key is set, that is the lower bound for the scan range.
   if (lower_bound && !start_doc_key_.empty()) {
     if (range_bounds_ != nullptr &&
         !KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_)) {
-      return STATUS_SUBSTITUTE(Corruption,
-          "Invalid start_doc_key: $0. Range: $1, $2",
-          start_doc_key_.ToString(),
-          lower_doc_key_.ToString(),
-          upper_doc_key_.ToString());
+      return STATUS_FORMAT(
+          Corruption, "Invalid start_doc_key: $0. Range: $1, $2",
+          start_doc_key_, lower_doc_key_, upper_doc_key_);
     }
-    *key = start_doc_key_;
-    return Status::OK();
+    return start_doc_key_;
   }
 
   if (lower_bound) {
-    *key = lower_doc_key_;
+    // For lower-bound key, if static columns should be included in the scan, the lower-bound key
+    // should be the hash key with no range components in order to include the static columns.
+    if (!include_static_columns_) {
+      return lower_doc_key_;
+    }
+
+    KeyBytes result = lower_doc_key_;
 
     // For lower-bound key, if static columns should be included in the scan, the lower-bound key
     // should be the hash key with no range components in order to include the static columns.
-    if (include_static_columns_) {
-      key->ClearRangeComponents();
-    }
+    RETURN_NOT_OK(ClearRangeComponents(&result, AllowSpecial::kTrue));
 
+    return result;
   } else {
-    *key = upper_doc_key_;
+    return upper_doc_key_;
   }
-  return Status::OK();
 }
 
 rocksdb::UserBoundaryTag TagForRangeComponent(size_t index);

@@ -350,14 +350,14 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
     case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
       std::string bytes;
-      CHECK_OK(uuid_val_.EncodeToComparable(&bytes));
+      uuid_val_.EncodeToComparable(&bytes);
       key_bytes->AppendString(bytes);
       return;
     }
 
     case ValueType::kUuidDescending: {
       std::string bytes;
-      CHECK_OK(uuid_val_.EncodeToComparable(&bytes));
+      uuid_val_.EncodeToComparable(&bytes);
       key_bytes->AppendDescendingString(bytes);
       return;
     }
@@ -513,7 +513,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
       std::string bytes;
-      CHECK_OK(uuid_val_.EncodeToComparable(&bytes))
+      uuid_val_.EncodeToComparable(&bytes);
       result.append(bytes);
       return result;
     }

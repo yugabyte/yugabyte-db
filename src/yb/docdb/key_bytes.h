@@ -63,6 +63,10 @@ class KeyBytes {
     return yb::util::FormatBytesAsStr(data_);
   }
 
+  bool empty() const {
+    return data_.empty();
+  }
+
   const std::string& data() const {
     return data_;
   }
@@ -85,6 +89,15 @@ class KeyBytes {
 
   void AppendValueType(ValueType value_type) {
     data_.push_back(static_cast<char>(value_type));
+  }
+
+  void AppendValueTypeBeforeGroupEnd(ValueType value_type) {
+    if (data_.empty() || data_[data_.size() - 1] != ValueTypeAsChar::kGroupEnd) {
+      AppendValueType(value_type);
+      AppendValueType(ValueType::kGroupEnd);
+    } else {
+      data_.insert(data_.size() - 1, 1, static_cast<char>(value_type));
+    }
   }
 
   void AppendString(const std::string& raw_string) {
@@ -256,14 +269,6 @@ class KeyBytes {
     return rocksdb::Slice(data_).compare(other);
   }
 
-  bool operator <(const KeyBytes& other) {
-    return data_ < other.data_;
-  }
-
-  bool operator >(const KeyBytes& other) {
-    return data_ > other.data_;
-  }
-
   // This can be used to e.g. move the internal state of KeyBytes somewhere else, including a
   // string field in a protobuf, without copying the bytes.
   std::string* mutable_data() {
@@ -283,6 +288,22 @@ class KeyBytes {
 
   std::string data_;
 };
+
+inline bool operator<(const KeyBytes& lhs, const KeyBytes& rhs) {
+  return lhs.data() < rhs.data();
+}
+
+inline bool operator>=(const KeyBytes& lhs, const KeyBytes& rhs) {
+  return !(lhs < rhs);
+}
+
+inline bool operator>(const KeyBytes& lhs, const KeyBytes& rhs) {
+  return rhs < lhs;
+}
+
+inline bool operator<=(const KeyBytes& lhs, const KeyBytes& rhs) {
+  return !(rhs < lhs);
+}
 
 void AppendDocHybridTime(const DocHybridTime& time, KeyBytes* key);
 

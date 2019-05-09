@@ -43,12 +43,12 @@ class DocQLScanSpec : public common::QLScanSpec {
       bool include_static_columns = false, const DocKey& start_doc_key = DocKey());
 
   // Return the inclusive lower and upper bounds of the scan.
-  CHECKED_STATUS lower_bound(DocKey* key) const {
-    return GetBoundKey(true /* lower_bound */, key);
+  Result<KeyBytes> LowerBound() const {
+    return Bound(true /* lower_bound */);
   }
 
-  CHECKED_STATUS upper_bound(DocKey* key) const {
-    return GetBoundKey(false /* upper_bound */, key);
+  Result<KeyBytes> UpperBound() const {
+    return Bound(false /* upper_bound */);
   }
 
   // Create file filter based on range components.
@@ -72,9 +72,8 @@ class DocQLScanSpec : public common::QLScanSpec {
   }
 
  private:
-
   // Return inclusive lower/upper range doc key considering the start_doc_key.
-  CHECKED_STATUS GetBoundKey(const bool lower_bound, DocKey* key) const;
+  Result<KeyBytes> Bound(const bool lower_bound) const;
 
   // Initialize range_options_ if hashed_components_ in set and all range columns have one or more
   // options (i.e. using EQ/IN conditions). Otherwise range_options_ will stay null and we will
@@ -82,7 +81,7 @@ class DocQLScanSpec : public common::QLScanSpec {
   void InitRangeOptions(const QLConditionPB& condition);
 
   // Returns the lower/upper doc key based on the range components.
-  DocKey bound_key(const bool lower_bound) const;
+  KeyBytes bound_key(const bool lower_bound) const;
 
   // Returns the lower/upper range components of the key.
   std::vector<PrimitiveValue> range_components(const bool lower_bound) const;
@@ -111,14 +110,14 @@ class DocQLScanSpec : public common::QLScanSpec {
   const bool include_static_columns_;
 
   // Specific doc key to scan if not empty.
-  const DocKey doc_key_;
+  const KeyBytes doc_key_;
 
   // Starting doc key when requested by the client.
-  const DocKey start_doc_key_;
+  const KeyBytes start_doc_key_;
 
   // Lower/upper doc keys basing on the range.
-  const DocKey lower_doc_key_;
-  const DocKey upper_doc_key_;
+  const KeyBytes lower_doc_key_;
+  const KeyBytes upper_doc_key_;
 
   // Query ID of this scan.
   const rocksdb::QueryId query_id_;

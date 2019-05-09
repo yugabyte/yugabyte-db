@@ -56,23 +56,24 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   // Filters.
   std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const;
 
-  CHECKED_STATUS lower_bound(DocKey* key) const {
-    return GetBoundKey(true /* lower_bound */, key);
+  // Return the inclusive lower and upper bounds of the scan.
+  Result<KeyBytes> LowerBound() const {
+    return Bound(true /* lower_bound */);
   }
 
-  CHECKED_STATUS upper_bound(DocKey* key) const {
-    return GetBoundKey(false /* upper_bound */, key);
+  Result<KeyBytes> UpperBound() const {
+    return Bound(false /* upper_bound */);
   }
-
-  // Return inclusive lower/upper range doc key considering the start_doc_key.
-  CHECKED_STATUS GetBoundKey(const bool lower_bound, DocKey* key) const;
 
   // Returns the lower/upper range components of the key.
   std::vector<PrimitiveValue> range_components(const bool lower_bound) const;
 
  private:
+  // Return inclusive lower/upper range doc key considering the start_doc_key.
+  Result<KeyBytes> Bound(const bool lower_bound) const;
+
   // Returns the lower/upper doc key based on the range components.
-  DocKey bound_key(const Schema& schema, const bool lower_bound) const;
+  KeyBytes bound_key(const Schema& schema, const bool lower_bound) const;
 
   // Query ID of this scan.
   const rocksdb::QueryId query_id_;
@@ -89,14 +90,14 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   const boost::optional<int32_t> max_hash_code_;
 
   // Specific doc key to scan if not empty.
-  const DocKey doc_key_;
+  const KeyBytes doc_key_;
 
   // Starting doc key when requested by the client.
-  const DocKey start_doc_key_;
+  KeyBytes start_doc_key_;
 
   // Lower and upper keys for range condition.
-  const DocKey lower_doc_key_;
-  const DocKey upper_doc_key_;
+  KeyBytes lower_doc_key_;
+  KeyBytes upper_doc_key_;
 
   // Scan behavior.
   bool is_forward_scan_;

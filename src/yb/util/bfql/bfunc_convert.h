@@ -181,7 +181,7 @@ CHECKED_STATUS SetTimestampResult(PTypePtr source, RTypePtr target) {
     case QLValue::InternalType::kTimeuuidValue: {
       Uuid time_uuid = source->timeuuid_value();
       int64_t unix_timestamp;
-      RETURN_NOT_OK(time_uuid.toUnixTimestamp(&unix_timestamp));
+      RETURN_NOT_OK(time_uuid.ToUnixTimestamp(&unix_timestamp));
       target->set_timestamp_value(Timestamp(DateTime::AdjustPrecision
                                             (unix_timestamp,
                                              DateTime::kMillisecondPrecision,
@@ -215,7 +215,7 @@ CHECKED_STATUS SetDateResult(PTypePtr source, RTypePtr target) {
     case QLValue::InternalType::kTimeuuidValue: {
       Uuid time_uuid = source->timeuuid_value();
       int64_t unix_timestamp;
-      RETURN_NOT_OK(time_uuid.toUnixTimestamp(&unix_timestamp));
+      RETURN_NOT_OK(time_uuid.ToUnixTimestamp(&unix_timestamp));
       target->set_date_value(VERIFY_RESULT(DateTime::DateFromUnixTimestamp(unix_timestamp)));
       break;
     }
@@ -1099,7 +1099,7 @@ CHECKED_STATUS ConvertTimeuuidToUnixTimestamp(PTypePtr source, RTypePtr target) 
   } else {
     Uuid time_uuid = source->timeuuid_value();
     int64_t unix_timestamp;
-    RETURN_NOT_OK(time_uuid.toUnixTimestamp(&unix_timestamp));
+    RETURN_NOT_OK(time_uuid.ToUnixTimestamp(&unix_timestamp));
     target->set_int64_value(unix_timestamp);
   }
   return Status::OK();
@@ -1115,7 +1115,7 @@ CHECKED_STATUS ConvertToMaxTimeuuid(PTypePtr source, RTypePtr target) {
                                                      DateTime::kMillisecondPrecision);
 
     Uuid uuid;
-    RETURN_NOT_OK(uuid.maxFromUnixTimestamp(timestamp_ms));
+    RETURN_NOT_OK(uuid.MaxFromUnixTimestamp(timestamp_ms));
     target->set_timeuuid_value(uuid);
   }
   return Status::OK();
@@ -1131,7 +1131,7 @@ CHECKED_STATUS ConvertToMinTimeuuid(PTypePtr source, RTypePtr target) {
                                                      DateTime::kMillisecondPrecision);
 
     Uuid uuid;
-    RETURN_NOT_OK(uuid.minFromUnixTimestamp(timestamp_ms));
+    RETURN_NOT_OK(uuid.MinFromUnixTimestamp(timestamp_ms));
     target->set_timeuuid_value(uuid);
   }
   return Status::OK();

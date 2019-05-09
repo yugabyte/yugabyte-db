@@ -455,9 +455,11 @@ void IntentAwareIterator::PrevSubDocKey(const KeyBytes& key_bytes) {
 }
 
 void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
-  auto key_bytes = doc_key.Encode();
+  PrevDocKey(doc_key.Encode().AsSlice());
+}
 
-  ROCKSDB_SEEK(iter_.get(), key_bytes);
+void IntentAwareIterator::PrevDocKey(const Slice& encoded_doc_key) {
+  ROCKSDB_SEEK(iter_.get(), encoded_doc_key);
   if (iter_->Valid()) {
     iter_->Prev();
   } else {
@@ -467,7 +469,7 @@ void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
 
   if (intent_iter_) {
     ResetIntentUpperbound();
-    ROCKSDB_SEEK(intent_iter_.get(), GetIntentPrefixForKeyWithoutHt(key_bytes));
+    ROCKSDB_SEEK(intent_iter_.get(), GetIntentPrefixForKeyWithoutHt(encoded_doc_key));
     if (intent_iter_->Valid()) {
       intent_iter_->Prev();
     } else {

@@ -863,8 +863,7 @@ Status QLWriteOperation::Apply(const DocOperationApplyData& data) {
           bool match = false;
           RETURN_NOT_OK(spec.Match(existing_row, &match));
           if (match) {
-            const DocKey& row_key = iterator.row_key();
-            const DocPath row_path(row_key.Encode());
+            const DocPath row_path(iterator.row_key());
             RETURN_NOT_OK(DeleteRow(row_path, data.doc_write_batch, data.read_time, data.deadline));
             if (update_indexes_) {
               liveness_column_exists_ = iterator.LivenessColumnExists();
