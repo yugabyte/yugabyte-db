@@ -63,7 +63,13 @@ enum class DocKeyPart {
   HASHED_PART_ONLY
 };
 
+class DocKeyDecoder;
+
 YB_STRONGLY_TYPED_BOOL(HybridTimeRequired)
+
+// Parts of range component of doc key, that should not be present in stored doc key.
+// But could be used during read, for instance kLowest and kHighest.
+YB_STRONGLY_TYPED_BOOL(AllowSpecial)
 
 class DocKey {
  public:
@@ -124,19 +130,28 @@ class DocKey {
   // Decodes a document key from the given RocksDB key.
   // slice (in/out) - a slice corresponding to a RocksDB key. Any consumed bytes are removed.
   // part_to_decode specifies which part of key to decode.
-  CHECKED_STATUS DecodeFrom(rocksdb::Slice* slice,
-      DocKeyPart part_to_decode = DocKeyPart::WHOLE_DOC_KEY);
+  CHECKED_STATUS DecodeFrom(
+      Slice* slice,
+      DocKeyPart part_to_decode = DocKeyPart::WHOLE_DOC_KEY,
+      AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Decodes a document key from the given RocksDB key similar to the above but return the number
   // of bytes decoded from the input slice.
-  Result<size_t> DecodeFrom(const rocksdb::Slice& slice,
-      DocKeyPart part_to_decode = DocKeyPart::WHOLE_DOC_KEY);
+  Result<size_t> DecodeFrom(
+      const Slice& slice,
+      DocKeyPart part_to_decode = DocKeyPart::WHOLE_DOC_KEY,
+      AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Splits given RocksDB key into vector of slices that forms range_group of document key.
   static CHECKED_STATUS PartiallyDecode(Slice* slice,
                                         boost::container::small_vector_base<Slice>* out);
 
-  static Result<size_t> EncodedSize(Slice slice, DocKeyPart part);
+  static Result<size_t> EncodedSize(
+      Slice slice, DocKeyPart part, AllowSpecial allow_special = AllowSpecial::kFalse);
+
+  // Returns size of encoded hash part and whole part of DocKey.
+  static Result<std::pair<size_t, size_t>> EncodedSizes(
+      Slice slice, AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and
   // return an error status if that is not the case.
@@ -144,6 +159,7 @@ class DocKey {
 
   // Converts the document key to a human-readable representation.
   std::string ToString() const;
+  static std::string DebugSliceToString(Slice slice);
 
   // Check if it is an empty key.
   bool empty() const {
@@ -197,8 +213,9 @@ class DocKey {
   friend class DecodeFromCallback;
 
   template<class Callback>
-  static CHECKED_STATUS DoDecode(rocksdb::Slice* slice,
+  static CHECKED_STATUS DoDecode(DocKeyDecoder* decoder,
                                  DocKeyPart part_to_decode,
+                                 AllowSpecial allow_special,
                                  const Callback& callback);
 
   // Uuid of the non-primary table this DocKey belongs to co-located in a tablet. Nil for the
@@ -210,6 +227,128 @@ class DocKey {
   std::vector<PrimitiveValue> hashed_group_;
   std::vector<PrimitiveValue> range_group_;
 };
+
+template <class Collection>
+void AppendDocKeyItems(const Collection& doc_key_items, KeyBytes* result) {
+  for (const auto& item : doc_key_items) {
+    item.AppendToKey(result);
+  }
+  result->AppendValueType(ValueType::kGroupEnd);
+}
+
+class DocKeyEncoderAfterHashStep {
+ public:
+  explicit DocKeyEncoderAfterHashStep(KeyBytes* out) : out_(out) {}
+
+  template <class Collection>
+  void Range(const Collection& range_group) {
+    AppendDocKeyItems(range_group, out_);
+  }
+
+ private:
+  KeyBytes* out_;
+};
+
+class DocKeyEncoderAfterCotableIdStep {
+ public:
+  explicit DocKeyEncoderAfterCotableIdStep(KeyBytes* out) : out_(out) {
+  }
+
+  template <class Collection>
+  DocKeyEncoderAfterHashStep Hash(
+      bool hash_present, uint16_t hash, const Collection& hashed_group) {
+    if (!hash_present) {
+      return DocKeyEncoderAfterHashStep(out_);
+    }
+
+    return Hash(hash, hashed_group);
+  }
+
+  template <class Collection>
+  DocKeyEncoderAfterHashStep Hash(uint16_t hash, const Collection& hashed_group) {
+    // We are not setting the "more items in group" bit on the hash field because it is not part
+    // of "hashed" or "range" groups.
+    out_->AppendValueType(ValueType::kUInt16Hash);
+    out_->AppendUInt16(hash);
+    AppendDocKeyItems(hashed_group, out_);
+
+    return DocKeyEncoderAfterHashStep(out_);
+  }
+
+  template <class HashCollection, class RangeCollection>
+  void HashAndRange(uint16_t hash, const HashCollection& hashed_group,
+                    const RangeCollection& range_collection) {
+    Hash(hash, hashed_group).Range(range_collection);
+  }
+
+  void HashAndRange(uint16_t hash, const std::initializer_list<PrimitiveValue>& hashed_group,
+                    const std::initializer_list<PrimitiveValue>& range_collection) {
+    Hash(hash, hashed_group).Range(range_collection);
+  }
+
+ private:
+  KeyBytes* out_;
+};
+
+class DocKeyEncoder {
+ public:
+  explicit DocKeyEncoder(KeyBytes* out) : out_(out) {}
+
+  DocKeyEncoderAfterCotableIdStep CotableId(const Uuid& cotable_id);
+
+ private:
+  KeyBytes* out_;
+};
+
+class DocKeyDecoder {
+ public:
+  explicit DocKeyDecoder(const Slice& input) : input_(input) {}
+
+  Result<bool> DecodeCotable(Uuid* uuid = nullptr);
+  Result<bool> HasPrimitiveValue();
+
+  Result<bool> DecodeHashCode(
+      uint16_t* out = nullptr, AllowSpecial allow_special = AllowSpecial::kFalse);
+
+  Result<bool> DecodeHashCode(AllowSpecial allow_special) {
+    return DecodeHashCode(nullptr /* out */, allow_special);
+  }
+
+  CHECKED_STATUS DecodePrimitiveValue(
+      PrimitiveValue* out = nullptr, AllowSpecial allow_special = AllowSpecial::kFalse);
+
+  CHECKED_STATUS DecodePrimitiveValue(AllowSpecial allow_special) {
+    return DecodePrimitiveValue(nullptr /* out */, allow_special);
+  }
+
+  CHECKED_STATUS ConsumeGroupEnd();
+
+  bool GroupEnded() const;
+
+  const Slice& left_input() const {
+    return input_;
+  }
+
+  size_t ConsumedSizeFrom(const uint8_t* start) const {
+    return input_.data() - start;
+  }
+
+  Slice* mutable_input() {
+    return &input_;
+  }
+
+  CHECKED_STATUS DecodeToRangeGroup();
+
+ private:
+  Slice input_;
+};
+
+// Clears range components from provided key. Returns true if they were exists.
+Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special = AllowSpecial::kFalse);
+
+Result<bool> HashedComponentsEqual(const Slice& lhs, const Slice& rhs);
+
+bool DocKeyBelongsTo(Slice doc_key, const Schema& schema);
 
 // Consume a group of document key components, ending with ValueType::kGroupEnd.
 // @param slice - the current point at which we are decoding a key

@@ -85,11 +85,11 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
     : PgsqlScanSpec(YQL_CLIENT_PGSQL, nullptr),
       query_id_(query_id),
       hashed_components_(nullptr),
-      doc_key_(doc_key),
-      start_doc_key_(DocKey(schema)),
-      lower_doc_key_(DocKey(schema)),
-      upper_doc_key_(DocKey(schema)),
+      doc_key_(doc_key.Encode()),
       is_forward_scan_(is_forward_scan) {
+  DocKeyEncoder(&start_doc_key_).CotableId(schema.cotable_id());
+  lower_doc_key_ = start_doc_key_;
+  upper_doc_key_ = start_doc_key_;
 }
 
 DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
@@ -105,8 +105,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
       hashed_components_(&hashed_components),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
-      doc_key_(),
-      start_doc_key_(start_doc_key),
+      start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(bound_key(schema, true)),
       upper_doc_key_(bound_key(schema, false)),
       is_forward_scan_(is_forward_scan) {
@@ -116,18 +115,25 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
   }
 }
 
-DocKey DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_bound) const {
+KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_bound) const {
+  KeyBytes result;
+  auto encoder = DocKeyEncoder(&result).CotableId(schema.cotable_id());
+
   // If no hashed_component use hash lower/upper bounds if set.
   if (hashed_components_->empty()) {
     // use lower bound hash code if set in request (for scans using token)
     if (lower_bound && hash_code_) {
-      return DocKey(schema, *hash_code_, {PrimitiveValue(ValueType::kLowest)}, {});
+      encoder.HashAndRange(*hash_code_, { PrimitiveValue(ValueType::kLowest) }, {});
     }
     // use upper bound hash code if set in request (for scans using token)
-    if (!lower_bound && max_hash_code_) {
-      return DocKey(schema, *max_hash_code_, {PrimitiveValue(ValueType::kHighest)}, {});
+    if (!lower_bound) {
+      if (max_hash_code_) {
+        encoder.HashAndRange(*max_hash_code_, { PrimitiveValue(ValueType::kHighest) }, {});
+      } else {
+        result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
+      }
     }
-    return DocKey(schema);
+    return result;
   }
 
   DocKeyHash min_hash = hash_code_ ?
@@ -135,12 +141,11 @@ DocKey DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_bound)
   DocKeyHash max_hash = max_hash_code_ ?
       static_cast<DocKeyHash> (*max_hash_code_) : std::numeric_limits<DocKeyHash>::max();
 
+  encoder.HashAndRange(lower_bound ? min_hash : max_hash,
+                       *hashed_components_,
+                       range_components(lower_bound));
 
-  // if hash_code not set (-1) default to 0 (start from the beginning)
-  return DocKey(schema,
-                lower_bound ? min_hash : max_hash,
-                *hashed_components_,
-                range_components(lower_bound));
+  return result;
 }
 
 std::vector<PrimitiveValue> DocPgsqlScanSpec::range_components(const bool lower_bound) const {
@@ -153,31 +158,31 @@ std::vector<PrimitiveValue> DocPgsqlScanSpec::range_components(const bool lower_
   return result;
 }
 
-CHECKED_STATUS DocPgsqlScanSpec::GetBoundKey(const bool lower_bound, DocKey* key) const {
+// Return inclusive lower/upper range doc key considering the start_doc_key.
+Result<KeyBytes> DocPgsqlScanSpec::Bound(const bool lower_bound) const {
   // If a full doc key is specified, that is the exactly doc to scan. Otherwise, compute the
   // lower/upper bound doc keys to scan from the range.
   if (!doc_key_.empty()) {
-    *key = doc_key_;
-    if (!lower_bound) {
-      // We add +inf as an extra component to make sure this is greater than all keys in range.
-      // For lower bound, this is true already, because dockey + suffix is > dockey
-      key->AddRangeComponent(PrimitiveValue(ValueType::kHighest));
+    if (lower_bound || doc_key_.empty()) {
+      return doc_key_;
     }
-    return Status::OK();
+    KeyBytes result = doc_key_;
+    // We add +inf as an extra component to make sure this is greater than all keys in range.
+    // For lower bound, this is true already, because dockey + suffix is > dockey
+    result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
+    return std::move(result);
   }
 
   // If start doc_key is set, that is the lower bound for the scan range.
   if (lower_bound) {
     if (!start_doc_key_.empty()) {
-      *key = start_doc_key_;
+      return start_doc_key_;
     } else {
-      *key = lower_doc_key_;
+      return lower_doc_key_;
     }
   } else {
-    *key = upper_doc_key_;
+    return upper_doc_key_;
   }
-
-  return Status::OK();
 }
 
 std::shared_ptr<rocksdb::ReadFileFilter> DocPgsqlScanSpec::CreateFileFilter() const {

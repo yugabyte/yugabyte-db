@@ -41,7 +41,7 @@ namespace {
 
 // Checks whether slice starts with primitive value.
 // Valid cases are end of group or primitive value starting with value type.
-Result<bool> HasPrimitiveValue(Slice* slice) {
+Result<bool> HasPrimitiveValue(Slice* slice, AllowSpecial allow_special) {
   if (PREDICT_FALSE(slice->empty())) {
     return STATUS(Corruption, "Unexpected end of key when decoding document key");
   }
@@ -50,21 +50,25 @@ Result<bool> HasPrimitiveValue(Slice* slice) {
     slice->consume_byte();
     return false;
   }
-  if (PREDICT_FALSE(!IsPrimitiveValueType(current_value_type))) {
-    return STATUS_FORMAT(Corruption,
-        "Expected a primitive value type, got $0",
-        current_value_type);
+
+  if (IsPrimitiveValueType(current_value_type)) {
+    return true;
   }
-  return true;
+
+  if (allow_special && IsSpecialValueType(current_value_type)) {
+    return true;
+  }
+
+  return STATUS_FORMAT(Corruption, "Expected a primitive value type, got $0", current_value_type);
 }
 
 // Consumes all primitive values from key until group end is found.
 // Callback is called for each value and responsible for consuming this single value from slice.
 template<class Callback>
-Status ConsumePrimitiveValuesFromKey(Slice* slice, Callback callback) {
+Status ConsumePrimitiveValuesFromKey(Slice* slice, AllowSpecial allow_special, Callback callback) {
   const auto initial_slice(*slice);  // For error reporting.
   while (true) {
-    if (!VERIFY_RESULT(HasPrimitiveValue(slice))) {
+    if (!VERIFY_RESULT(HasPrimitiveValue(slice, allow_special))) {
       return Status::OK();
     }
 
@@ -74,9 +78,9 @@ Status ConsumePrimitiveValuesFromKey(Slice* slice, Callback callback) {
   }
 }
 
-Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice,
+Status ConsumePrimitiveValuesFromKey(Slice* slice, AllowSpecial allow_special,
                                      boost::container::small_vector_base<Slice>* result) {
-  return ConsumePrimitiveValuesFromKey(slice, [slice, result] {
+  return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result] {
     auto begin = slice->data();
     RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, nullptr));
     if (result) {
@@ -86,11 +90,12 @@ Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice,
   });
 }
 
-void AppendDocKeyItems(const vector<PrimitiveValue>& doc_key_items, KeyBytes* result) {
-  for (const PrimitiveValue& item : doc_key_items) {
-    item.AppendToKey(result);
-  }
-  result->AppendValueType(ValueType::kGroupEnd);
+Status ConsumePrimitiveValuesFromKey(
+    Slice* slice, AllowSpecial allow_special, std::vector<PrimitiveValue>* result) {
+  return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result] {
+    result->emplace_back();
+    return result->back().DecodeFromKey(slice);
+  });
 }
 
 } // namespace
@@ -98,19 +103,15 @@ void AppendDocKeyItems(const vector<PrimitiveValue>& doc_key_items, KeyBytes* re
 // Consumes single primitive value from start of slice.
 // Returns true when value was consumed, false when group end is found.
 Result<bool> ConsumePrimitiveValueFromKey(Slice* slice) {
-  if (!VERIFY_RESULT(HasPrimitiveValue(slice))) {
+  if (!VERIFY_RESULT(HasPrimitiveValue(slice, AllowSpecial::kFalse))) {
     return false;
   }
   RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, nullptr /* out */));
   return true;
 }
 
-Status ConsumePrimitiveValuesFromKey(rocksdb::Slice* slice,
-                                     std::vector<PrimitiveValue>* result) {
-  return ConsumePrimitiveValuesFromKey(slice, [slice, result] {
-    result->emplace_back();
-    return result->back().DecodeFromKey(slice);
-  });
+Status ConsumePrimitiveValuesFromKey(Slice* slice, std::vector<PrimitiveValue>* result) {
+  return ConsumePrimitiveValuesFromKey(slice, AllowSpecial::kFalse, result);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -188,20 +189,8 @@ RefCntPrefix DocKey::EncodeAsRefCntPrefix() const {
 }
 
 void DocKey::AppendTo(KeyBytes* out) const {
-  if (!cotable_id_.IsNil()) {
-    std::string bytes;
-    CHECK_OK(cotable_id_.EncodeToComparable(&bytes))
-    out->AppendValueType(ValueType::kTableId);
-    out->AppendString(bytes);
-  }
-  if (hash_present_) {
-    // We are not setting the "more items in group" bit on the hash field because it is not part
-    // of "hashed" or "range" groups.
-    out->AppendValueType(ValueType::kUInt16Hash);
-    out->AppendUInt16(hash_);
-    AppendDocKeyItems(hashed_group_, out);
-  }
-  AppendDocKeyItems(range_group_, out);
+  DocKeyEncoder(out).CotableId(cotable_id_).Hash(hash_present_, hash_, hashed_group_).
+      Range(range_group_);
 }
 
 void DocKey::Clear() {
@@ -260,18 +249,63 @@ class DummyCallback {
   }
 };
 
+class EncodedSizesCallback {
+ public:
+  explicit EncodedSizesCallback(DocKeyDecoder* decoder) : decoder_(decoder) {}
+
+  boost::container::small_vector_base<Slice>* hashed_group() const {
+    return nullptr;
+  }
+
+  boost::container::small_vector_base<Slice>* range_group() const {
+    range_group_start_ = decoder_->left_input().data();
+    return nullptr;
+  }
+
+  void SetHash(...) const {}
+
+  void SetCoTableId(const Uuid cotable_id) const {}
+
+  PrimitiveValue* AddSubkey() const {
+    return nullptr;
+  }
+
+  const uint8_t* range_group_start() {
+    return range_group_start_;
+  }
+
+ private:
+  DocKeyDecoder* decoder_;
+  mutable const uint8_t* range_group_start_ = nullptr;
+};
+
 } // namespace
 
-yb::Status DocKey::PartiallyDecode(rocksdb::Slice *slice,
+yb::Status DocKey::PartiallyDecode(Slice *slice,
                                    boost::container::small_vector_base<Slice>* out) {
   CHECK_NOTNULL(out);
-  return DoDecode(slice, DocKeyPart::WHOLE_DOC_KEY, DecodeDocKeyCallback(out));
+  DocKeyDecoder decoder(*slice);
+  RETURN_NOT_OK(DoDecode(
+      &decoder, DocKeyPart::WHOLE_DOC_KEY, AllowSpecial::kFalse, DecodeDocKeyCallback(out)));
+  *slice = decoder.left_input();
+  return Status::OK();
 }
 
-Result<size_t> DocKey::EncodedSize(Slice slice, DocKeyPart part) {
+Result<size_t> DocKey::EncodedSize(Slice slice, DocKeyPart part, AllowSpecial allow_special) {
   auto initial_begin = slice.cdata();
-  RETURN_NOT_OK(DoDecode(&slice, part, DummyCallback()));
-  return slice.cdata() - initial_begin;
+  DocKeyDecoder decoder(slice);
+  RETURN_NOT_OK(DoDecode(&decoder, part, allow_special, DummyCallback()));
+  return decoder.left_input().cdata() - initial_begin;
+}
+
+Result<std::pair<size_t, size_t>> DocKey::EncodedSizes(Slice slice, AllowSpecial allow_special) {
+  auto initial_begin = slice.data();
+  DocKeyDecoder decoder(slice);
+  EncodedSizesCallback callback(&decoder);
+  RETURN_NOT_OK(DoDecode(
+      &decoder, DocKeyPart::WHOLE_DOC_KEY, allow_special, callback));
+  return std::make_pair(callback.range_group_start() - initial_begin,
+                        decoder.left_input().data() - initial_begin);
 }
 
 class DocKey::DecodeFromCallback {
@@ -301,57 +335,37 @@ class DocKey::DecodeFromCallback {
   DocKey* key_;
 };
 
-yb::Status DocKey::DecodeFrom(rocksdb::Slice *slice, DocKeyPart part_to_decode) {
+Status DocKey::DecodeFrom(Slice *slice, DocKeyPart part_to_decode, AllowSpecial allow_special) {
   Clear();
-
-  return DoDecode(slice, part_to_decode, DecodeFromCallback(this));
+  DocKeyDecoder decoder(*slice);
+  RETURN_NOT_OK(DoDecode(&decoder, part_to_decode, allow_special, DecodeFromCallback(this)));
+  *slice = decoder.left_input();
+  return Status::OK();
 }
 
-Result<size_t> DocKey::DecodeFrom(const rocksdb::Slice& slice, DocKeyPart part_to_decode) {
-  rocksdb::Slice copy = slice;
-  RETURN_NOT_OK(DecodeFrom(&copy, part_to_decode));
+Result<size_t> DocKey::DecodeFrom(
+    const Slice& slice, DocKeyPart part_to_decode, AllowSpecial allow_special) {
+  Slice copy = slice;
+  RETURN_NOT_OK(DecodeFrom(&copy, part_to_decode, allow_special));
   return slice.size() - copy.size();
 }
 
 template<class Callback>
-yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
+yb::Status DocKey::DoDecode(DocKeyDecoder* decoder,
                             DocKeyPart part_to_decode,
+                            AllowSpecial allow_special,
                             const Callback& callback) {
-  if (slice->empty()) {
-    return STATUS(Corruption, "Document key is empty");
-  }
-
-  ValueType first_value_type = static_cast<ValueType>(*slice->data());
-
-  if (first_value_type == ValueType::kTableId) {
-    Uuid cotable_id;
-    string bytes;
-    slice->remove_prefix(1);
-    RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
-    RETURN_NOT_OK(cotable_id.DecodeFromComparable(bytes));
+  Uuid cotable_id;
+  if (VERIFY_RESULT(decoder->DecodeCotable(&cotable_id))) {
     callback.SetCoTableId(cotable_id);
-    first_value_type = static_cast<ValueType>(*slice->data());
   }
 
-  if (!IsPrimitiveValueType(first_value_type) && first_value_type != ValueType::kGroupEnd) {
-    return STATUS_FORMAT(Corruption,
-        "Expected first value type to be primitive or GroupEnd, got $0 in $1",
-        first_value_type, slice->ToDebugHexString());
-  }
-
-  if (first_value_type == ValueType::kUInt16Hash) {
-    if (slice->size() >= sizeof(DocKeyHash) + 1) {
-      // We'll need to update this code if we ever change the size of the hash field.
-      static_assert(sizeof(DocKeyHash) == sizeof(uint16_t),
-          "It looks like the DocKeyHash's size has changed -- need to update encoder/decoder.");
-      callback.SetHash(/* present */ true, BigEndian::Load16(slice->data() + 1));
-      slice->remove_prefix(sizeof(DocKeyHash) + 1);
-    } else {
-      return STATUS_SUBSTITUTE(Corruption,
-          "Could not decode a 16-bit hash component of a document key: only $0 bytes left",
-          slice->size());
-    }
-    RETURN_NOT_OK_PREPEND(ConsumePrimitiveValuesFromKey(slice, callback.hashed_group()),
+  uint16_t hash_code;
+  if (VERIFY_RESULT(decoder->DecodeHashCode(&hash_code, allow_special))) {
+    callback.SetHash(/* present */ true, hash_code);
+    RETURN_NOT_OK_PREPEND(
+        ConsumePrimitiveValuesFromKey(
+            decoder->mutable_input(), allow_special, callback.hashed_group()),
         "Error when decoding hashed components of a document key");
   } else {
     callback.SetHash(/* present */ false);
@@ -359,18 +373,17 @@ yb::Status DocKey::DoDecode(rocksdb::Slice *slice,
 
   switch (part_to_decode) {
     case DocKeyPart::WHOLE_DOC_KEY:
-      RETURN_NOT_OK_PREPEND(ConsumePrimitiveValuesFromKey(slice, callback.range_group()),
-          "Error when decoding range components of a document key");
+      if (!decoder->left_input().empty()) {
+        RETURN_NOT_OK_PREPEND(
+            ConsumePrimitiveValuesFromKey(
+                decoder->mutable_input(), allow_special, callback.range_group()),
+            "Error when decoding range components of a document key");
+      }
       return Status::OK();
     case DocKeyPart::HASHED_PART_ONLY:
       return Status::OK();
   }
-  auto part_to_decode_printable =
-      static_cast<std::underlying_type_t<DocKeyPart>>(part_to_decode);
-  LOG(FATAL) << "Corrupted part_to_decode parameter: " << part_to_decode_printable;
-  // TODO: should we abort process here to avoid data corruption, since we have memory corruption?
-  return STATUS_SUBSTITUTE(Corruption, "Corrupted part_to_decode parameter: $0",
-      part_to_decode_printable);
+  FATAL_INVALID_ENUM_VALUE(DocKeyPart, part_to_decode);
 }
 
 yb::Status DocKey::FullyDecodeFrom(const rocksdb::Slice& slice) {
@@ -465,6 +478,21 @@ KeyBytes DocKey::EncodedFromRedisKey(uint16_t hash, const std::string &key) {
   return result;
 }
 
+std::string DocKey::DebugSliceToString(Slice slice) {
+  DocKey key;
+  auto decoded_size = key.DecodeFrom(slice, DocKeyPart::WHOLE_DOC_KEY, AllowSpecial::kTrue);
+  if (!decoded_size.ok()) {
+    return decoded_size.status().ToString() + ": " + slice.ToDebugHexString();
+  }
+  slice.remove_prefix(*decoded_size);
+  auto result = key.ToString();
+  if (!slice.empty()) {
+    result += " + ";
+    result += slice.ToDebugHexString();
+  }
+  return result;
+}
+
 // ------------------------------------------------------------------------------------------------
 // SubDocKey
 // ------------------------------------------------------------------------------------------------
@@ -537,7 +565,7 @@ class SubDocKey::DecodeCallback {
   SubDocKey* key_;
 };
 
-Status SubDocKey::DecodeFrom(rocksdb::Slice* slice, HybridTimeRequired require_hybrid_time) {
+Status SubDocKey::DecodeFrom(Slice* slice, HybridTimeRequired require_hybrid_time) {
   Clear();
   return DoDecode(slice, require_hybrid_time, DecodeCallback(this));
 }
@@ -848,6 +876,184 @@ const rocksdb::FilterPolicy::KeyTransformer* DocDbAwareFilterPolicy::GetKeyTrans
   return &HashedComponentsExtractor::GetInstance();
 }
 
-}  // namespace docdb
+DocKeyEncoderAfterCotableIdStep DocKeyEncoder::CotableId(const Uuid& cotable_id) {
+  if (!cotable_id.IsNil()) {
+    std::string bytes;
+    cotable_id.EncodeToComparable(&bytes);
+    out_->AppendValueType(ValueType::kTableId);
+    out_->AppendRawBytes(bytes);
+  }
+  return DocKeyEncoderAfterCotableIdStep(out_);
+}
 
+Result<bool> DocKeyDecoder::DecodeCotable(Uuid* uuid) {
+  if (input_.empty() || input_[0] != ValueTypeAsChar::kTableId) {
+    return false;
+  }
+
+  input_.consume_byte();
+
+  if (input_.size() < kUuidSize) {
+    return STATUS_FORMAT(
+        Corruption, "Not enough bytes for cotable id: $0", input_.ToDebugHexString());
+  }
+
+  if (uuid) {
+    RETURN_NOT_OK(uuid->DecodeFromComparableSlice(Slice(input_.data(), kUuidSize)));
+  }
+  input_.remove_prefix(kUuidSize);
+
+  return true;
+}
+
+Result<bool> DocKeyDecoder::DecodeHashCode(uint16_t* out, AllowSpecial allow_special) {
+  if (input_.empty()) {
+    return false;
+  }
+
+  auto first_value_type = static_cast<ValueType>(input_[0]);
+
+  auto good_value_type = allow_special ? IsPrimitiveOrSpecialValueType(first_value_type)
+                                       : IsPrimitiveValueType(first_value_type);
+  if (!good_value_type && first_value_type != ValueType::kGroupEnd) {
+    return STATUS_FORMAT(Corruption,
+        "Expected first value type to be primitive or GroupEnd, got $0 in $1",
+        first_value_type, input_.ToDebugHexString());
+  }
+
+  if (input_.empty() || input_[0] != ValueTypeAsChar::kUInt16Hash) {
+    return false;
+  }
+
+  if (input_.size() < sizeof(DocKeyHash) + 1) {
+    return STATUS_FORMAT(
+        Corruption,
+        "Could not decode a 16-bit hash component of a document key: only $0 bytes left",
+        input_.size());
+  }
+
+  // We'll need to update this code if we ever change the size of the hash field.
+  static_assert(sizeof(DocKeyHash) == sizeof(uint16_t),
+      "It looks like the DocKeyHash's size has changed -- need to update encoder/decoder.");
+  if (out) {
+    *out = BigEndian::Load16(input_.data() + 1);
+  }
+  input_.remove_prefix(sizeof(DocKeyHash) + 1);
+  return true;
+}
+
+Status DocKeyDecoder::DecodePrimitiveValue(PrimitiveValue* out, AllowSpecial allow_special) {
+  if (allow_special && !input_.empty()) {
+    if (input_[0] == ValueTypeAsChar::kLowest && input_[0] == ValueTypeAsChar::kHighest) {
+      input_.consume_byte();
+      return Status::OK();
+    }
+  }
+  return PrimitiveValue::DecodeKey(&input_, out);
+}
+
+Status DocKeyDecoder::ConsumeGroupEnd() {
+  if (input_.empty() || input_[0] != ValueTypeAsChar::kGroupEnd) {
+    return STATUS_FORMAT(Corruption, "Group end expected but $0 found", input_.ToDebugHexString());
+  }
+  input_.consume_byte();
+  return Status::OK();
+}
+
+bool DocKeyDecoder::GroupEnded() const {
+  return input_.empty() || input_[0] == ValueTypeAsChar::kGroupEnd;
+}
+
+Result<bool> DocKeyDecoder::HasPrimitiveValue() {
+  return docdb::HasPrimitiveValue(&input_, AllowSpecial::kFalse);
+}
+
+Status DocKeyDecoder::DecodeToRangeGroup() {
+  RETURN_NOT_OK(DecodeCotable());
+  if (VERIFY_RESULT(DecodeHashCode())) {
+    while (VERIFY_RESULT(HasPrimitiveValue())) {
+      RETURN_NOT_OK(DecodePrimitiveValue());
+    }
+  }
+
+  return Status::OK();
+}
+
+Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special) {
+  auto prefix_size = VERIFY_RESULT(
+      DocKey::EncodedSize(out->AsSlice(), DocKeyPart::HASHED_PART_ONLY, allow_special));
+  auto& str = *out->mutable_data();
+  if (str.size() == prefix_size + 1 && str[prefix_size] == ValueTypeAsChar::kGroupEnd) {
+    return false;
+  }
+  if (str.size() > prefix_size) {
+    str[prefix_size] = ValueTypeAsChar::kGroupEnd;
+    str.resize(prefix_size + 1);
+  } else {
+    str.push_back(ValueTypeAsChar::kGroupEnd);
+  }
+  return true;
+}
+
+Result<bool> HashedComponentsEqual(const Slice& lhs, const Slice& rhs) {
+  DocKeyDecoder lhs_decoder(lhs);
+  DocKeyDecoder rhs_decoder(rhs);
+  RETURN_NOT_OK(lhs_decoder.DecodeCotable());
+  RETURN_NOT_OK(rhs_decoder.DecodeCotable());
+
+  bool hash_present = VERIFY_RESULT(lhs_decoder.DecodeHashCode(AllowSpecial::kTrue));
+  RETURN_NOT_OK(rhs_decoder.DecodeHashCode(AllowSpecial::kTrue));
+
+  size_t consumed = lhs_decoder.ConsumedSizeFrom(lhs.data());
+  if (consumed != rhs_decoder.ConsumedSizeFrom(rhs.data()) ||
+      !strings::memeq(lhs.data(), rhs.data(), consumed)) {
+    return false;
+  }
+  if (!hash_present) {
+    return true;
+  }
+
+  while (!lhs_decoder.GroupEnded()) {
+    auto lhs_start = lhs_decoder.left_input().data();
+    auto rhs_start = rhs_decoder.left_input().data();
+    auto value_type = lhs_start[0];
+    if (rhs_decoder.GroupEnded() || rhs_start[0] != value_type) {
+      return false;
+    }
+
+    if (PREDICT_FALSE(!IsPrimitiveOrSpecialValueType(static_cast<ValueType>(value_type)))) {
+      return false;
+    }
+
+    RETURN_NOT_OK(lhs_decoder.DecodePrimitiveValue(AllowSpecial::kTrue));
+    RETURN_NOT_OK(rhs_decoder.DecodePrimitiveValue(AllowSpecial::kTrue));
+    consumed = lhs_decoder.ConsumedSizeFrom(lhs_start);
+    if (consumed != rhs_decoder.ConsumedSizeFrom(rhs_start) ||
+        !strings::memeq(lhs_start, rhs_start, consumed)) {
+      return false;
+    }
+  }
+
+  return rhs_decoder.GroupEnded();
+}
+
+bool DocKeyBelongsTo(Slice doc_key, const Schema& schema) {
+  bool has_table_id = !doc_key.empty() && doc_key[0] == ValueTypeAsChar::kTableId;
+
+  if (schema.cotable_id().IsNil()) {
+    return !has_table_id;
+  }
+
+  if (!has_table_id) {
+    return false;
+  }
+
+  doc_key.consume_byte();
+
+  std::string bytes;
+  schema.cotable_id().EncodeToComparable(&bytes);
+  return doc_key.starts_with(bytes);
+}
+
+}  // namespace docdb
 }  // namespace yb

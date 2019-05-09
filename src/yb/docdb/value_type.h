@@ -211,6 +211,14 @@ constexpr inline bool IsPrimitiveValueType(const ValueType value_type) {
          value_type != ValueType::kTombstone;
 }
 
+constexpr inline bool IsSpecialValueType(ValueType value_type) {
+  return value_type == ValueType::kLowest || value_type == ValueType::kHighest;
+}
+
+constexpr inline bool IsPrimitiveOrSpecialValueType(ValueType value_type) {
+  return IsPrimitiveValueType(value_type) || IsSpecialValueType(value_type);
+}
+
 // Decode the first byte of the given slice as a ValueType.
 inline ValueType DecodeValueType(const rocksdb::Slice& value) {
   return value.empty() ? ValueType::kInvalid: static_cast<ValueType>(value.data()[0]);

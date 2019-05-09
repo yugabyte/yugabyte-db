@@ -86,7 +86,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // Is the next row to read a row with a static column?
   bool IsNextStaticColumn() const override;
 
-  const DocKey& row_key() const {
+  const Slice& row_key() const {
     return row_key_;
   }
 
@@ -108,6 +108,15 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const override;
 
  private:
+  template <class T>
+  CHECKED_STATUS DoInit(const T& spec);
+
+  Result<bool> InitScanChoices(
+      const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key);
+
+  Result<bool> InitScanChoices(
+      const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
+      const KeyBytes& upper_doc_key);
 
   // Get the non-key column values of a QL row.
   CHECKED_STATUS GetValues(const Schema& projection, vector<SubDocument>* values);
@@ -167,7 +176,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // reaches this point. This is exclusive bound for forward scans and inclusive bound for
   // reverse scans.
   bool has_bound_key_;
-  DocKey bound_key_;
+  KeyBytes bound_key_;
 
   std::unique_ptr<ScanChoices> scan_choices_;
   std::unique_ptr<IntentAwareIterator> db_iter_;
@@ -185,7 +194,10 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   mutable SubDocument row_;
 
   // The current row's primary key. It is set to lower bound in the beginning.
-  mutable DocKey row_key_;
+  mutable Slice row_key_;
+
+  // The current row's hash part of primary key.
+  mutable Slice row_hash_key_;
 
   // The current row's iterator key.
   mutable KeyBytes iter_key_;
@@ -201,6 +213,8 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   mutable Status has_next_status_;
 
   mutable boost::optional<DeadlineInfo> deadline_info_;
+
+  std::string prefix_;
 };
 
 }  // namespace docdb

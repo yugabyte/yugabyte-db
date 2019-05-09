@@ -635,8 +635,8 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
   if (req->has_delete_type()) {
     delete_type = req->delete_type();
   }
-  LOG(INFO) << "Processing DeleteTablet for tablet " << req->tablet_id()
-            << " with delete_type " << TabletDataState_Name(delete_type)
+  LOG(INFO) << "T " << req->tablet_id() << "P " << server_->permanent_uuid()
+            << ": Processing DeleteTablet with delete_type " << TabletDataState_Name(delete_type)
             << (req->has_reason() ? (" (" + req->reason() + ")") : "")
             << " from " << context.requestor_string();
   VLOG(1) << "Full request: " << req->DebugString();
@@ -1150,6 +1150,7 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
             << ", safe: " << read_context->safe_ht_to_read;
     auto result = DoRead(read_context);
     if (!result.ok()) {
+      WARN_NOT_OK(result.status(), "DoRead");
       SetupErrorAndRespond(
           read_context->resp->mutable_error(), result.status(), TabletServerErrorPB::UNKNOWN_ERROR,
           read_context->context);
@@ -1171,6 +1172,7 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
       down_cast<Tablet*>(read_context->tablet.get())->metrics()->restart_read_requests->Increment();
       break;
     }
+
     if (CoarseMonoClock::now() > read_context->context->GetClientDeadline()) {
       TRACE("Read timed out");
       SetupErrorAndRespond(read_context->resp->mutable_error(), STATUS(TimedOut, ""),
