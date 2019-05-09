@@ -17,6 +17,7 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/pggate.h"
+#include "yb/yql/pggate/pggate_flags.h"
 
 DECLARE_bool(client_suppress_created_logs);
 
@@ -49,14 +50,9 @@ extern "C" {
 void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count) {
   InitThreading();
 
-  const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
-  if (initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0) {
-    YBCSetInitDbMode();
-  }
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
 
-  SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
-                &FLAGS_num_connections_to_server);
+  YBCInitFlags();
 
   pgapi_shutdown_done.exchange(false);
   pgapi = new pggate::PgApiImpl(YBCDataTypeTable, count);
@@ -516,9 +512,19 @@ YBCPgTxnManager YBCGetPgTxnManager() {
   return pgapi->GetPgTxnManager();
 }
 
-void YBCSetInitDbMode() {
-  // Suppress log spew during initdb.
-  FLAGS_client_suppress_created_logs = true;
+void YBCInitFlags() {
+  const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
+  if (initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0) {
+    // Suppress log spew during initdb.
+    FLAGS_client_suppress_created_logs = true;
+  }
+
+  SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
+                &FLAGS_num_connections_to_server);
+
+  // TODO(neil) Init a gflag for "YB_PG_TRANSACTIONS_ENABLED" here also.
+  // Mikhail agreed that this flag should just be initialized once at the beginning here.
+  // Currently, it is initialized for every CREATE statement.
 }
 
 } // extern "C"

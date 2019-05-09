@@ -15,7 +15,8 @@ set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 
 set(PGWRAPPER_LIBS
-    yb_util)
+    yb_util
+    yb_pggate_flags)
 
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
@@ -25,7 +26,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include)
 link_directories(${YB_BUILD_ROOT}/postgres/lib)
 
 add_library(pg_wrapper_test_base pg_wrapper_test_base.cc libpq_utils.cc)
-target_link_libraries(pg_wrapper_test_base pq gutil integration-tests)
+target_link_libraries(pg_wrapper_test_base pq gutil integration-tests yb_pggate_flags)
 
 set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_base
    ${YB_MIN_TEST_LIBS})

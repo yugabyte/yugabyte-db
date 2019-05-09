@@ -35,11 +35,16 @@ set(PGGATE_SRCS
     pg_tabledesc.cc
     pg_txn_manager.cc)
 
+ADD_YB_LIBRARY(yb_pggate_flags
+               SRCS pggate_flags.cc
+               DEPS yb_util)
+
 set(PGGATE_LIBS
     yb_util
     yb_common
     yb_client
-    yb_pggate_util)
+    yb_pggate_util
+    yb_pggate_flags)
 
 ADD_YB_LIBRARY(yb_pggate
                SRCS ${PGGATE_SRCS}

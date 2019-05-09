@@ -42,7 +42,7 @@ TAG_FLAG(pg_transactions_enabled, hidden);
 using std::vector;
 using std::string;
 
-using namespace std::literals;
+using namespace std::literals;  // NOLINT
 
 namespace yb {
 namespace pgwrapper {

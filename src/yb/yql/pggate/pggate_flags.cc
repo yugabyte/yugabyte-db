@@ -1,0 +1,43 @@
+//--------------------------------------------------------------------------------------------------
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//--------------------------------------------------------------------------------------------------
+
+// This file contains flag definitions that should be known to master, tserver, and pggate
+// (linked into postgres).
+
+#include <gflags/gflags.h>
+
+#include "yb/util/flags.h"
+#include "yb/util/flag_tags.h"
+#include "yb/yql/pggate/pggate_flags.h"
+
+DEFINE_int32(pgsql_rpc_keepalive_time_ms, 0,
+             "If an RPC connection from a client is idle for this amount of time, the server "
+             "will disconnect the client. Setting flag to 0 disables this clean up.");
+TAG_FLAG(pgsql_rpc_keepalive_time_ms, advanced);
+
+DEFINE_int32(pggate_rpc_timeout_secs, 60,
+             "Timeout for RPCs from pggate to YB cluster");
+
+DEFINE_int32(pggate_ybclient_reactor_threads, 2,
+             "The number of reactor threads to be used for processing ybclient "
+             "requests originating in the PostgreSQL proxy server");
+
+DEFINE_string(pggate_proxy_bind_address, "",
+              "Address to which the PostgreSQL proxy server is bound.");
+
+DEFINE_string(pggate_master_addresses, "",
+              "Addresses of the master servers to which the PostgreSQL proxy server connects.");
+
+DEFINE_int32(ysql_prefetch_limit, 4096,
+             "Maximum number of rows to prefetch");

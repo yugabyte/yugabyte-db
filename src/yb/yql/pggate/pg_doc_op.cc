@@ -13,8 +13,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_doc_op.h"
-
-using std::shared_ptr;
+#include "yb/yql/pggate/pggate_flags.h"
 
 namespace yb {
 namespace pggate {
@@ -167,7 +166,7 @@ void PgDocReadOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
   PgDocOp::InitUnlocked(lock);
 
   PgsqlReadRequestPB *req = read_op_->mutable_request();
-  req->set_limit(kPrefetchLimit);
+  req->set_limit(FLAGS_ysql_prefetch_limit);
   req->set_return_paging_state(true);
 }
 

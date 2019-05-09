@@ -115,7 +115,8 @@ target_link_libraries(master
   ${MASTER_PROTO_LIBS}
   rpc_header_proto
   master_util
-  version_info_proto)
+  version_info_proto
+  yb_pggate_flags)
 
 set(MASTER_RPC_SRCS
   master_rpc.cc)
