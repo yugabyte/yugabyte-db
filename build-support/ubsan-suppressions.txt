@@ -61,12 +61,7 @@ enum:Aws::Utils::Outcome*operator=
 alignment:crcutil::Crc32cSSE4::Crc32c
 
 # snappy works with unaligned data
-alignment:snappy::internal::CompressFragment
-alignment:snappy::EmitLiteral
-alignment:snappy::EmitCopyLessThan64
-alignment:snappy::internal::CompressFragment
-alignment:snappy::internal::FindMatchLength
-alignment:snappy::SnappyDecompressor::DecompressAllTags
+alignment:snappy::
 
 # https://goo.gl/AaE3P5
 pointer-overflow:google::*::DumpStackFrameInfo*
