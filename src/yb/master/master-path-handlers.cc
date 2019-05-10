@@ -266,7 +266,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
 
   // Get user and system tablet leader and follower counts for each TabletServer
   TabletCountMap tablet_map;
-  CalculateTabletMap(tablet_map);
+  CalculateTabletMap(&tablet_map);
 
   unordered_set<string> read_replica_uuids;
   for (auto desc : descs) {
@@ -315,7 +315,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
   // Get user and system tablet leader and follower counts for each TabletServer.
   TabletCountMap tablet_map;
-  CalculateTabletMap(tablet_map);
+  CalculateTabletMap(&tablet_map);
 
   unordered_set<string> cluster_uuids;
   auto primary_uuid = config.replication_info().live_replicas().placement_uuid();
@@ -1108,7 +1108,7 @@ string MasterPathHandlers::RegistrationToHtml(
   return link_html;
 }
 
-void MasterPathHandlers::CalculateTabletMap(TabletCountMap tablet_map) {
+void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   vector<scoped_refptr<TableInfo>> tables;
   master_->catalog_manager()->GetAllTables(&tables, true /* include only running tables */);
   for (const auto& table : tables) {
@@ -1123,15 +1123,15 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap tablet_map) {
       for (const auto& replica : replication_locations) {
         if (is_user_table) {
           if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
-            tablet_map[replica.first].user_tablet_leaders++;
+            (*tablet_map)[replica.first].user_tablet_leaders++;
           } else {
-            tablet_map[replica.first].user_tablet_followers++;
+            (*tablet_map)[replica.first].user_tablet_followers++;
           }
         } else {
           if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
-            tablet_map[replica.first].system_tablet_leaders++;
+            (*tablet_map)[replica.first].system_tablet_leaders++;
           } else {
-            tablet_map[replica.first].system_tablet_followers++;
+            (*tablet_map)[replica.first].system_tablet_followers++;
           }
         }
       }

@@ -124,7 +124,7 @@ class MasterPathHandlers {
   void HandleGetClusterConfig(const Webserver::WebRequest& req, std::stringstream* output);
 
   // Calcuates number of leaders/followers per table.
-  void CalculateTabletMap(TabletCountMap tablet_map);
+  void CalculateTabletMap(TabletCountMap* tablet_map);
 
   // Convert location of peers to HTML, indicating the roles
   // of each tablet server in a consensus configuration.
