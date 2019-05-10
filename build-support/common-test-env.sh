@@ -774,11 +774,14 @@ handle_cxx_test_xml_output() {
     test_failed=true
   fi
   if "$test_failed"; then
-    log "Updating $xml_output_file with a link to test log"
+    log "Test failed, updating $xml_output_file"
+  else
+    log "Test succeeded, updating $xml_output_file"
   fi
   "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
     --result-xml "$xml_output_file" \
     --log-url "$test_log_url" \
+    --mark-as-failed "$test_failed"
 
   # Useful for distributed builds in an NFS environment.
   chmod g+w "$xml_output_file"

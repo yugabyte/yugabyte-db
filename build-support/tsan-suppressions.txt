@@ -98,10 +98,16 @@ deadlock:cds/intrusive/lazy_list_nogc.h
 # false: BronsonAVLTree potential deadlock
 deadlock:cds/container/impl/bronson_avltree_map_rcu.h
 
-#TODO: temporary suppressed. Must be researched later
+#TODO: temporarily suppressed. Must be researched later
 race:cds/container/impl/bronson_avltree_map_rcu.h
 
 race:cds::gc::dhp::retired_array
+
+# https://gist.githubusercontent.com/mbautin/fcb0ce293027b7bc3f93cb358c4c053c/raw
+race:cds::intrusive::BasketQueue
+
+# https://gist.githubusercontent.com/mbautin/268c31aaa4daef367d8d76809f8ca5ba/raw
+race:cds::threading::pthread::Manager::attachThread
 
 # std::locale is thread safe
 race:std::locale::classic
@@ -141,4 +147,3 @@ race:cass::RefCounted<cass::*>::dec_ref
 race:uv__io_feed
 race:uv__update_time
 race:uv_timer_start
-
