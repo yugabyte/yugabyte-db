@@ -2535,7 +2535,7 @@ std::string RaftConsensus::LogPrefix() {
 }
 
 void RaftConsensus::SetLeaderUuidUnlocked(const string& uuid) {
-  failed_elections_since_stable_leader_ = 0;
+  failed_elections_since_stable_leader_.store(0, std::memory_order_release);
   state_->SetLeaderUuidUnlocked(uuid);
   auto context = std::make_shared<StateChangeContext>(StateChangeReason::NEW_LEADER_ELECTED, uuid);
   MarkDirty(context);
@@ -2730,7 +2730,7 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
     }
   }
   if (result.decision == ElectionVote::kDenied) {
-    failed_elections_since_stable_leader_++;
+    failed_elections_since_stable_leader_.fetch_add(1, std::memory_order_acq_rel);
     LOG_WITH_PREFIX(INFO) << "Leader " << election_name << " lost for term "
                           << result.election_term << ". Reason: "
                           << (!result.message.empty() ? result.message : "None given")
@@ -2905,7 +2905,9 @@ MonoDelta RaftConsensus::MinimumElectionTimeout() const {
 MonoDelta RaftConsensus::LeaderElectionExpBackoffDeltaUnlocked() {
   // Compute a backoff factor based on how many leader elections have
   // taken place since a stable leader was last seen.
-  double backoff_factor = pow(1.1, failed_elections_since_stable_leader_ + 1);
+  double backoff_factor = pow(
+      1.1,
+      failed_elections_since_stable_leader_.load(std::memory_order_acquire) + 1);
   double min_timeout = MinimumElectionTimeout().ToMilliseconds();
   double max_timeout = std::min<double>(
       min_timeout * backoff_factor,
