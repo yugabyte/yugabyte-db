@@ -3,16 +3,16 @@ HypoPG
 
 HypoPG is a PostgreSQL extension adding support for hypothetical indexes.
 
-An hypothetical, or virtual, index is an index that doesn't really exists, and
+An hypothetical -- or virtual -- index is an index that doesn't really exists, and
 thus doesn't cost CPU, disk or any resource to create.  They're useful to know
 if specific indexes can increase performance for problematic queries, since
 you can know if PostgreSQL will use these indexes or not without having to
 spend resources to create them.
 
-For more thorough informations, pease consult the [oficial
+For more thorough informations, please consult the [official
 documentation](https://hypopg.readthedocs.io).
 
-For other general informations, you can also consult [this blog
+For other general information, you can also consult [this blog
 post](https://rjuju.github.io/postgresql/2015/07/02/how-about-hypothetical-indexes.html).
 
 Installation
@@ -20,16 +20,16 @@ Installation
 
 - Compatible with PostgreSQL 9.2 and above
 - Needs PostgreSQL header files
-- decompress the tarball
-- sudo make install
-- In every needed database: CREATE EXTENSION hypopg;
+- Decompress the tarball
+- `sudo make install`
+- In every needed database: `CREATE EXTENSION hypopg;`
 
 Usage
 -----
 
 NOTE: The hypothetical indexes are contained in a single backend. Therefore,
-if you add multiple hypothetical indexes, concurrent connexions doing
-EXPLAIN won't be bothered by your hypothetical indexes.
+if you add multiple hypothetical indexes, concurrent connections doing
+`EXPLAIN` won't be bothered by your hypothetical indexes.
 
 Assuming a simple test case:
 
@@ -43,15 +43,15 @@ Assuming a simple test case:
 
 
 The easiest way to create an hypothetical index is to use the
-**hypopg_create_index** functions with a regular CREATE INDEX statement as arg.
+`hypopg_create_index` functions with a regular `CREATE INDEX` statement as arg.
 
 For instance:
 
     rjuju=# SELECT * FROM hypopg_create_index('CREATE INDEX ON hypo (id)');
 
-NOTE: Some information of the CREATE INDEX statement will be ignored, such as
-the index name if provided. Some of ignored informations will be handled in
-future release.
+NOTE: Some information from the `CREATE INDEX` statement will be ignored, such as
+the index name if provided. Some of the ignored information will be handled in
+a future release.
 
 You can check the available hypothetical indexes in your own backend:
 
@@ -61,11 +61,11 @@ You can check the available hypothetical indexes in your own backend:
          205101 | <41072>btree_hypo_id                      | public  | hypo    | btree
 
 
-If you need more technical informations on the hypothetical indexes, the
-hypopg() function will return the hypothetical indexes in a similar way as
-pg_index system catalog.
+If you need more technical information on the hypothetical indexes, the
+`hypopg()` function will return the hypothetical indexes in a similar way as
+`pg_index` system catalog.
 
-And now, let's see if your previous EXPLAIN statement would use such an index:
+And now, let's see if your previous `EXPLAIN` statement would use such an index:
 
     rjuju=# EXPLAIN SELECT * FROM hypo WHERE id = 1;
                                          QUERY PLAN
@@ -75,7 +75,7 @@ And now, let's see if your previous EXPLAIN statement would use such an index:
     (2 rows)
 
 
-Of course, only EXPLAIN without analyze will use hypothetical indexes:
+Of course, only `EXPLAIN` without `ANALYZE` will use hypothetical indexes:
 
     rjuju=# EXPLAIN ANALYZE SELECT * FROM hypo WHERE id = 1;
                                                QUERY PLAN
@@ -88,6 +88,6 @@ Of course, only EXPLAIN without analyze will use hypothetical indexes:
     (5 rows)
 
 To remove your backend's hypothetical indexes, you can use the function
-**hypopg_drop_index(indexrelid)** with the OID that **hypopg_list_indexes()**
-function returns, call **hypopg_reset()** to remove all at once or just close
+`hypopg_drop_index(indexrelid)` with the OID that the `hypopg_list_indexes()`
+function returns and call `hypopg_reset()` to remove all at once, or just close
 your current connection.
