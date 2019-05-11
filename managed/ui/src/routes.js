@@ -24,6 +24,14 @@ import YugawareLogs from './pages/YugawareLogs';
 import Importer from './pages/Importer';
 import Releases from './pages/Releases';
 
+const clearCredentials = () => {
+  localStorage.clear();
+  Cookies.remove("api_token");
+  Cookies.remove("customer_token");
+  Cookies.remove("customer_id");
+  browserHistory.push('/login');
+};
+
 function validateSession(store, replacePath, callback) {
   const authToken = Cookies.get("customer_token") || localStorage.getItem('customer_token');
   const apiToken = Cookies.get("api_token") || localStorage.getItem('api_token');
@@ -41,14 +49,23 @@ function validateSession(store, replacePath, callback) {
   } else {
     store.dispatch(validateToken())
       .then((response) => {
+        if (response.error) {
+          const { status } = response.payload;
+          switch (status) {
+            case 403:
+              store.dispatch(resetCustomer());
+              clearCredentials();
+              break;
+            default:
+              // Do nothing
+          }
+          return;
+        }
+
         store.dispatch(validateFromTokenResponse(response.payload));
         if (response.payload.status !== 200) {
           store.dispatch(resetCustomer());
-          localStorage.clear();
-          Cookies.remove("api_token");
-          Cookies.remove("customer_token");
-          Cookies.remove("customer_id");
-          browserHistory.push('/login');
+          clearCredentials();
           callback();
         } else if ("uuid" in response.payload.data) {
           localStorage.setItem("customer_id", response.payload.data["uuid"]);
