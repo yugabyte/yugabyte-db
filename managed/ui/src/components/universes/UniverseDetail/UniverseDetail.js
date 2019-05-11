@@ -312,7 +312,7 @@ class YBMenuItem extends Component {
 
 class UniverseTaskList extends Component {
   tasksForUniverse = () => {
-    const {universe: {currentUniverse: { data: {universeUUID}}}, tasks: {customerTaskList}} = this.props;
+    const { universe: { currentUniverse: { data: { universeUUID }}}, tasks: { customerTaskList }} = this.props;
     const resultTasks = [];
     if(isNonEmptyArray(customerTaskList)) {
       customerTaskList.forEach((taskItem) => {
@@ -331,7 +331,7 @@ class UniverseTaskList extends Component {
     let currentTaskProgress = <span/>;
     if (isEmptyArray(customerTaskList)) {
       universeTaskHistory = <YBLoading />;
-      currentTaskProgress = <YBLoading/>;
+      currentTaskProgress = <YBLoading />;
     }
     if (isNonEmptyArray(customerTaskList) && isNonEmptyObject(currentUniverse.data) && isNonEmptyArray(currentUniverseTasks)) {
       universeTaskUUIDs = currentUniverseTasks.map(function(task) {

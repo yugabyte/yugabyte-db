@@ -13,11 +13,11 @@ export class YBControlledNumericInput extends Component {
     minVal: 0,
   };
   render() {
-    const {input, val, onInputChanged, onInputSelect, onInputBlur, onInputFocus, valueFormat, minVal, readOnly} = this.props;
+    const {input, val, className, onInputChanged, onInputSelect, onInputBlur, disabled, onInputFocus, valueFormat, minVal, readOnly} = this.props;
     return (
-      <NumericInput {...input} className="form-control" value={val} onChange={onInputChanged}
+      <NumericInput {...input} className={`form-control ${className}`} value={val} onChange={onInputChanged}
                     onSelect={onInputSelect} onFocus={onInputFocus} onBlur={onInputBlur} format={valueFormat}
-                    min={minVal} readOnly={readOnly} />
+                    min={minVal} readOnly={readOnly} disabled={disabled}/>
     );
   }
 }

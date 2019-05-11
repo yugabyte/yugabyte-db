@@ -78,7 +78,7 @@ export function pickArray(objects, propertyNames) {
 // TODO: Move these functions to Universe and UserIntent model/class files.
 
 export function areIntentsEqual(userIntent1, userIntent2) {
-  return (_.isEqual(userIntent1.numNodes,userIntent2.numNodes)
+  return isDefinedNotNull(userIntent1) && isDefinedNotNull(userIntent2) && (_.isEqual(userIntent1.numNodes,userIntent2.numNodes)
   && _.isEqual(userIntent1.regionList.sort(), userIntent2.regionList.sort())
   && _.isEqual(userIntent1.deviceInfo, userIntent2.deviceInfo)
   && _.isEqual(userIntent1.replicationFactor, userIntent2.replicationFactor)

@@ -16,7 +16,7 @@ import { GET_REGION_LIST, GET_REGION_LIST_RESPONSE, GET_PROVIDER_LIST, GET_PROVI
 
 import { getInitialState, setInitialState, setSuccessState, setFailureState, setLoadingState, setPromiseResponse }
   from '../utils/PromiseUtils';
-import {isNonEmptyArray, sortInstanceTypeList} from 'utils/ObjectUtils';
+import {isNonEmptyArray, isDefinedNotNull, sortInstanceTypeList} from 'utils/ObjectUtils';
 import _ from 'lodash';
 
 const INITIAL_STATE = {
@@ -55,7 +55,11 @@ export default function(state = INITIAL_STATE, action) {
       return {...setLoadingState(state, "providers", []), fetchMetadata: false};
     case GET_PROVIDER_LIST_RESPONSE:
       if (action.payload.status !== 200) {
-        return {...setFailureState(state, "providers", action.payload.data.error), fetchMetadata: false};
+        if (isDefinedNotNull(action.payload.data)) {
+          return {...setFailureState(state, "providers", action.payload.data.error), fetchMetadata: false};
+        } else {
+          return state;
+        }
       }
       return {...setSuccessState(state, "providers", action.payload.data), fetchMetadata: false};
 
@@ -82,7 +86,7 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "supportedRegionList", []);
     case GET_SUPPORTED_REGION_DATA_RESPONSE:
       if (action.payload.status !== 200) {
-        return setFailureState(state, "supportedRegionList", action.payload.data.error);
+        return setFailureState(state, "supportedRegionList", action.payload.data ? action.payload.data.error : "Unable to fetch resources");
       }
       return setSuccessState(state, "supportedRegionList", _.sortBy(action.payload.data, "name"));
 

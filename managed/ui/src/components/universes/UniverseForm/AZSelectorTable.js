@@ -290,24 +290,26 @@ export default class AZSelectorTable extends Component {
   }
 
   componentWillReceiveProps(nextProps) {
-    const {universe: {universeConfigTemplate}, clusterType} = nextProps;
-    if (getPromiseState(universeConfigTemplate).isSuccess()) {
+    const {universe: {universeConfigTemplate, currentUniverse}, clusterType, type } = nextProps;
+    if ((getPromiseState(universeConfigTemplate).isSuccess())) {
       const placementInfo = this.getGroupWithCounts(universeConfigTemplate.data);
       const azGroups = placementInfo.groups;
       if (!areUniverseConfigsEqual(this.props.universe.universeConfigTemplate.data, universeConfigTemplate.data)) {
         this.setState({azItemState: azGroups});
       }
-      const currentCluster = isNonEmptyObject(universeConfigTemplate.data) ?
+      const currentCluster =  getPromiseState(currentUniverse).isSuccess() ? getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType) : {};
+      const configTemplateCurrentCluster = isNonEmptyObject(universeConfigTemplate.data) ?
         getClusterByType(universeConfigTemplate.data.clusters, clusterType) :
         null;
-      if (isNonEmptyObject(currentCluster) && isNonEmptyObject(currentCluster.placementInfo) &&
+      if (isNonEmptyObject(configTemplateCurrentCluster) && isNonEmptyObject(configTemplateCurrentCluster.placementInfo) &&
           !_.isEqual(universeConfigTemplate, this.props.universe.universeConfigTemplate)) {
         const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ];
-        if (isNonEmptyObject(uniqueAZs)) {
+        const totalNodes = placementInfo.groups.reduce((acc, obj) => acc + obj.count, 0);
+        if (isNonEmptyObject(uniqueAZs) && (type === "Create" || (type === "Async" && !isDefinedNotNull(currentCluster)) || currentCluster.userIntent.numNodes !== totalNodes)) {
           const placementStatusObject = {
             numUniqueRegions: placementInfo.uniqueRegions,
             numUniqueAzs: placementInfo.uniqueAzs,
-            replicationFactor: currentCluster.userIntent.replicationFactor
+            replicationFactor: configTemplateCurrentCluster.userIntent.replicationFactor
           };
           this.props.setPlacementStatus(placementStatusObject);
         }
@@ -316,7 +318,7 @@ export default class AZSelectorTable extends Component {
   }
 
   render() {
-    const {universe: {universeConfigTemplate}, cloud: {regions}, clusterType} = this.props;
+    const { universe: { universeConfigTemplate }, cloud: { regions }, clusterType } = this.props;
     const self = this;
     const isReadOnlyTab = clusterType === "async";
     let azListForSelectedRegions = [];
@@ -352,6 +354,7 @@ export default class AZSelectorTable extends Component {
               <Col xs={4}>
                 <Field name={`nodes${idx}`} component={YBControlledNumericInput}
                 val={azGroupItem.count}
+                className={getPromiseState(universeConfigTemplate).isLoading() ? "readonly" : ""}
                 onInputChanged={self.handleAZNodeCountChange.bind(self, idx)}/>
               </Col>
             </Row>
@@ -361,7 +364,7 @@ export default class AZSelectorTable extends Component {
                   onClick={self.handleAffinitizedZoneChange.bind(self, idx)}/>
           </FlexShrink>}
         </FlexContainer>
-    ));
+      ));
       return (
         <div className={"az-table-container form-field-grid"}>
           <div className="az-selector-label">

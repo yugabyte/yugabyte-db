@@ -20,7 +20,15 @@ function setPromiseState(state, object, promiseState, data = null, error = null)
 }
 
 export function setLoadingState(state, object, data = null) {
-  return setPromiseState(state, object, PromiseState.LOADING, data);
+  if (data) {
+    return setPromiseState(state, object, PromiseState.LOADING, data);
+  } else {
+    return Object.assign({}, state, {
+      [object]: Object.assign({}, state[object], { 
+        promiseState: PromiseState.LOADING 
+      })
+    });
+  }
 }
 
 export function setSuccessState(state, object, data) {
@@ -41,6 +49,7 @@ export function setInitialState(state, object, data = {}, error = null) {
 
 export function getPromiseState(dataObject) {
   if (isDefinedNotNull(dataObject.data) && (isNonEmptyArray(dataObject.data) || !isEmptyObject(dataObject.data))) {
+    if (dataObject.promiseState === PromiseState.LOADING) return PromiseState.LOADING;
     return PromiseState.SUCCESS;
   } else if (isDefinedNotNull(dataObject.promiseState) && dataObject.promiseState.isSuccess()) {
     return PromiseState.EMPTY;
