@@ -225,7 +225,7 @@ class UniverseDetail extends Component {
       </div>
     );
     return (
-      <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new"}`}>
+      <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
         <Row>
           <Col lg={10} sm={8} xs={6}>
 
