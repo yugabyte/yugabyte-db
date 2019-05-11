@@ -377,3 +377,14 @@
   width: auto;
   background-color: $YB_GRAY_HOVER;
 }
+
+// TODO: to be removed when universeForm migrated to Formik
+.react-numeric-input {
+  input.readonly {
+    pointer-events: none;
+    background-color: #eeeeee;
+  }
+  input.readonly + b, input.readonly + b + b {
+    display: none;
+  }
+}

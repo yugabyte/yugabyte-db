@@ -1,19 +1,20 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { Grid } from 'react-bootstrap';
 import { change, Fields } from 'redux-form';
 import {browserHistory, withRouter} from 'react-router';
 import _ from 'lodash';
 import { isNonEmptyObject, isDefinedNotNull, isNonEmptyString, isNonEmptyArray } from 'utils/ObjectUtils';
-import { YBButton } from 'components/common/forms/fields';
+import { YBButton, YBModal } from 'components/common/forms/fields';
 import { UniverseResources } from '../UniverseResources';
 import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import './UniverseForm.scss';
 import ClusterFields from './ClusterFields';
 import { getPrimaryCluster, getReadOnlyCluster } from "../../../utils/UniverseUtils";
 import { DeleteUniverseContainer } from '../../universes';
+import { getPromiseState } from 'utils/PromiseUtils';
 
 const initialState = {
   instanceTypeSelected: '',
@@ -42,8 +43,13 @@ class UniverseForm extends Component {
     this.getCurrentProvider = this.getCurrentProvider.bind(this);
     this.state = {
       ...initialState,
+      hasFieldChanged: true,
       currentView: props.type === "Async" ? 'Async' : 'Primary'
     };
+  }
+
+  handleHasFieldChanged = (hasFieldChanged) => {
+    if (hasFieldChanged === this.state.hasFieldChanged) this.setState({hasFieldChanged: !hasFieldChanged});
   }
 
   getCurrentProvider(providerUUID) {
@@ -160,9 +166,9 @@ class UniverseForm extends Component {
   }
 
   getFormPayload = () => {
-    const {formValues, universe, type} = this.props;
+    const { formValues, universe, type } = this.props;
 
-    const {universeConfigTemplate, currentUniverse: {data: {universeDetails}}} = universe;
+    const { universeConfigTemplate, currentUniverse: { data: { universeDetails }}} = universe;
     const submitPayload = {..._.clone(universeConfigTemplate.data, true)};
     const self = this;
     const getIntentValues = function (clusterType) {
@@ -280,9 +286,25 @@ class UniverseForm extends Component {
   }
 
   render() {
-    const {handleSubmit, universe, softwareVersions, cloud,  getInstanceTypeListItems, submitConfigureUniverse, type,
-      getRegionListItems, resetConfig, formValues, fetchUniverseResources, fetchNodeInstanceList, 
-      showDeleteReadReplicaModal, closeModal} = this.props;
+    const { 
+      handleSubmit, 
+      universe, 
+      universe: { universeConfigTemplate }, 
+      softwareVersions, 
+      cloud,
+      getInstanceTypeListItems, 
+      submitConfigureUniverse, 
+      type,
+      getRegionListItems, 
+      resetConfig, 
+      formValues, 
+      fetchUniverseResources, 
+      fetchNodeInstanceList, 
+      showDeleteReadReplicaModal, 
+      closeModal,
+      showFullMoveModal,
+      modal: { showModal, visibleModal }
+    } = this.props;
     const createUniverseTitle =
       (<h2 className="content-title">
         <FlexContainer>
@@ -358,7 +380,7 @@ class UniverseForm extends Component {
       accessKeys: this.props.accessKeys, softwareVersions: softwareVersions, updateFormField: this.updateFormField,
       formValues: formValues, submitConfigureUniverse: submitConfigureUniverse, setPlacementStatus: this.props.setPlacementStatus,
       fetchUniverseResources: fetchUniverseResources, fetchUniverseTasks: this.props.fetchUniverseTasks,
-      fetchNodeInstanceList: fetchNodeInstanceList,
+      fetchNodeInstanceList: fetchNodeInstanceList, handleHasFieldChanged: this.handleHasFieldChanged,
       reset: this.props.reset, fetchUniverseMetadata: this.props.fetchUniverseMetadata,
       fetchCustomerTasks: this.props.fetchCustomerTasks, type: type, getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
       fetchCurrentUniverse: this.props.fetchCurrentUniverse, location: this.props.location,
@@ -370,6 +392,23 @@ class UniverseForm extends Component {
       // show async cluster if view if async
       clusterForm = (<ReadOnlyClusterFields {...clusterProps} />);
     }
+
+    // check nodes if all live nodes is going to be removed (full move)
+    const existingPrimaryNodes = getPromiseState(universeConfigTemplate).isSuccess() ? universeConfigTemplate.data.nodeDetailsSet.filter(node => node.nodeName && (type === "Async" ? node.nodeName.includes("readonly") : !node.nodeName.includes("readonly"))) : [];
+    const submitControl = (existingPrimaryNodes.length && existingPrimaryNodes.filter(node => node.state !== "ToBeRemoved").length) || type === "Create"
+      ?
+        // not a full move
+        <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={submitTextLabel} btnType={"submit"} disabled={this.state.hasFieldChanged} />
+      :
+        // full move
+        (<Fragment>
+          <YBButton onClick={showFullMoveModal} btnClass="btn btn-orange universe-form-submit-btn" btnText={submitTextLabel} disabled={this.state.hasFieldChanged} />
+          
+          <YBModal visible={showModal && visibleModal === "fullMoveModal"}
+                onHide={ closeModal } submitLabel={'Proceed'} cancelLabel={'Cancel'} showCancelButton={true} title={ "Confirm Full Move Update" } onFormSubmit={ handleSubmit(this.handleSubmitButtonClick) } >
+            This operation will migrate this universe and all it’s data to a completely new set of nodes. Would like to proceed?
+          </YBModal>
+        </Fragment>);
 
     return (
       <Grid id="page-wrapper" fluid={true} className="universe-form-new">
@@ -383,7 +422,7 @@ class UniverseForm extends Component {
               {primaryReplicaBtn}
               <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText="Cancel" onClick={this.handleCancelButtonClick}/>
               {asyncReplicaBtn}
-              <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={submitTextLabel} btnType={"submit"} />
+              {submitControl}
             </UniverseResources>
             <div className="mobile-view-btn-container">
               {primaryReplicaBtn}

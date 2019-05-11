@@ -44,6 +44,7 @@ const initialState = {
   regionList: [],
   numNodes: 3,
   nodeSetViaAZList: false,
+  isAZUpdating: false,
   replicationFactor: 3,
   deviceInfo: {},
   placementInfo: {},
@@ -302,7 +303,7 @@ export default class ClusterFields extends Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
-    const {universe: {currentUniverse}, formValues, clusterType} = this.props;
+    const { universe: { currentUniverse, universeConfigTemplate }, formValues, clusterType, type } = this.props;
     let currentProviderUUID = this.state.providerSelected;
     const self = this;
 
@@ -336,6 +337,7 @@ export default class ClusterFields extends Component {
             }
           };
           this.props.setPlacementStatus(placementStatusObject);
+          this.configureUniverseNodeList();
         }
       } else {
         this.configureUniverseNodeList();
@@ -352,6 +354,13 @@ export default class ClusterFields extends Component {
         }
       };
       this.props.setPlacementStatus(placementStatusObject);
+    }
+    //hook from parent universeForm to check if any fields was changed
+    const nodeDetailsSet = getPromiseState(currentUniverse).isSuccess() ? universeConfigTemplate.data.nodeDetailsSet : [];
+    if (type === "Edit" || (this.props.type === "Async" && this.state.isReadOnlyExists)) {
+      this.props.handleHasFieldChanged(this.hasFieldChanged() || !_.isEqual(currentUniverse.data.universeDetails.nodeDetailsSet, nodeDetailsSet));
+    } else {
+      this.props.handleHasFieldChanged(true);
     }
   }
 
@@ -533,13 +542,13 @@ export default class ClusterFields extends Component {
   };
 
   hasFieldChanged = () => {
-    const {universe: {currentUniverse}} = this.props;
+    const {universe: {currentUniverse}, clusterType} = this.props;
     if (isEmptyObject(currentUniverse.data) || isEmptyObject(currentUniverse.data.universeDetails)) {
       return true;
     }
-    const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
-    const existingIntent = isNonEmptyObject(primaryCluster) ?
-      _.clone(primaryCluster.userIntent, true) : null;
+    const currentCluster = getClusterByType(currentUniverse.data.universeDetails.clusters, clusterType);
+    const existingIntent = isNonEmptyObject(currentCluster) ?
+      _.clone(currentCluster.userIntent, true) : null;
     const currentIntent = this.getCurrentUserIntent();
 
     return !areIntentsEqual(existingIntent, currentIntent);
@@ -1099,15 +1108,16 @@ export default class ClusterFields extends Component {
           <Row>
             <Col md={6}>
               <h4 style={{marginBottom: 40}}>Cloud Configuration</h4>
+              {this.state.isAZUpdating}
               <div className="form-right-aligned-labels">
                 {universeNameField}
                 {providerNameField}
                 <Field name={`${clusterType}.regionList`} component={YBMultiSelectWithLabel} options={universeRegionList}
                   label="Regions" isMulti={true} selectValChanged={this.regionListChanged} providerSelected={currentProviderUUID}/>
                 { clusterType === "async"
-                  ? [<Field key="numNodes" name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
+                  ? [<Field key="numNodes" name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}  className={getPromiseState(this.props.universe.universeConfigTemplate).isLoading() ? "readonly" : ""}
                       label={this.state.isKubernetesUniverse ? "Pods" : "Nodes"} onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
-                      minVal={Number(this.state.replicationFactor)}/>,
+                      minVal={Number(this.state.replicationFactor)} />,
                     <Field key="replicationFactor" name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 2, 3, 4, 5, 6, 7]}
                       label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>]
                   : null
@@ -1118,7 +1128,7 @@ export default class ClusterFields extends Component {
                 <Row>
                   <div className="form-right-aligned-labels">
                     <Col lg={5}>
-                      <Field name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
+                      <Field name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel} className={getPromiseState(this.props.universe.universeConfigTemplate).isLoading() ? "readonly" : ""}
                             label={this.state.isKubernetesUniverse ? "Pods" : "Nodes"} onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
                             minVal={Number(this.state.replicationFactor)}/>
                     </Col>
