@@ -146,7 +146,7 @@ class HealthInfoPanel extends PureComponent {
       let errorSpan = <span className="text-red text-light">{errorText}</span>;
       let errorHeader = <span className="fa fa-exclamation-triangle text-red" />;
       if (errorNodesCounter && isNonEmptyObject(universeInfo)) {
-        errorSpan = <Link className="text-red text-light" to={`/universes/${universeInfo.universeUUID}?tab=health`}>{errorText}</Link>;
+        errorSpan = <Link className="text-red text-regular" to={`/universes/${universeInfo.universeUUID}?tab=health`}>{errorText}</Link>;
         errorHeader = <Link className="fa fa-exclamation-triangle text-red" to={`/universes/${universeInfo.universeUUID}?tab=health`}/>;
       }
 

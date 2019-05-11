@@ -7,7 +7,7 @@ import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse,
   getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from '../../../actions/cloud';
 import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse,
-  configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess,
+  configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess, configureUniverseTemplateLoading,
   configureUniverseResources, configureUniverseResourcesResponse,
   checkIfUniverseExists, setPlacementStatus, resetUniverseConfiguration,
   fetchUniverseInfo, fetchUniverseInfoResponse, fetchUniverseMetadata, fetchUniverseTasks,
@@ -23,12 +23,14 @@ import { getClusterByType } from '../../../utils/UniverseUtils';
 const mapDispatchToProps = (dispatch) => {
   return {
     submitConfigureUniverse: (values) => {
+      dispatch(configureUniverseTemplateLoading());
       dispatch(configureUniverseTemplate(values)).then((response) => {
         dispatch(configureUniverseTemplateResponse(response.payload));
       });
     },
 
     fetchUniverseResources: (payload) => {
+      dispatch(configureUniverseResources(payload));
       dispatch(configureUniverseResources(payload)).then((resourceData) => {
         dispatch(configureUniverseResourcesResponse(resourceData.payload));
       });
@@ -122,6 +124,10 @@ const mapDispatchToProps = (dispatch) => {
 
     showDeleteReadReplicaModal: () => {
       dispatch(openDialog("deleteReadReplicaModal"));
+    },
+
+    showFullMoveModal: () => {
+      dispatch(openDialog("fullMoveModal"));
     },
 
     fetchNodeInstanceList: (providerUUID) => {
