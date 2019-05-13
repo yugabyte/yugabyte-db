@@ -49,7 +49,7 @@ update ::= [ WITH [ RECURSIVE ] with_query [, ...] ]
           ( column_name [, ...] ) = ( subquery )
         } [, ...]
         [ WHERE condition | WHERE CURRENT OF cursor_name ]
-        [ RETURNING * | output_expression [ [ AS ] output_name ] [, ...] ]
+        [ RETURNING { * | output_expression [ [ AS ] output_name ] [, ...] } ]
 ```
 
 Where

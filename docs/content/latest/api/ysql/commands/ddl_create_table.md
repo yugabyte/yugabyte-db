@@ -34,19 +34,19 @@ The `CREATE TABLE` command creates a new table in a database. It defines the tab
 
 ### Grammar
 ```
-create_table ::= CREATE TABLE qualified_name '(' table_element [ ',' table_element ...] ')';
+create_table ::= CREATE TABLE qualified_name ( table_element [, ...] );
 
 table_element ::= table_column | table_constraints
 
-table_column ::= name column_type [ column_constraint ... | default_value ]
+table_column ::= name column_type [ column_constraint [, ...] | default_value ]
 
-column_constraint ::= PRIMARY KEY | NOT NULL | CHECK '(' expression ')'
+column_constraint ::= PRIMARY KEY | NOT NULL | CHECK ( expression )
 
 default_value ::= DEFAULT expression
 
-table_constraints ::= PRIMARY KEY '(' column_list ')'
+table_constraints ::= PRIMARY KEY ( column_list )
 
-column_list ::= name [ ',' name ...]
+column_list ::= name [, ...]
 ```
 
 Where

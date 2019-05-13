@@ -23,7 +23,7 @@ The `DROP TABLE` command removes a table and all of its data from the database.
 
 ### Grammar
 ```
-drop_table ::= DROP TABLE qualified_name;
+drop_table ::= DROP TABLE [ IF EXISTS ] qualified_name;
 ```
 Where
 

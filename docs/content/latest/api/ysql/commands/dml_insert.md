@@ -35,14 +35,18 @@ The `INSERT` command adds one or more rows to the specified table.
 ### Grammar
 
 ```
-insert = INSERT INTO qualified_name [ AS name ] '(' column_list ')' VALUES values_list [ ',' ...];
-values_list = '(' expression [ ',' ...] ')';
+insert ::= [ WITH [ RECURSIVE ] with_query [, ...] ]
+           INSERT INTO table_name [ AS alias ] [ ( column_names ) ]
+               { DEFAULT VALUES | VALUES ( column_values ) [, ... ] | subquery }
+               [ RETURNING { * | output_expression [ [ AS ] output_name ] [,...] } ] ;
+
+column_values ::= { expression | DEFAULT } [, ... ]
 ```
 
 Where
 
 - `qualified_name` and `name` are identifiers.
-- `column_list` is a comma-separated list of columns names (identifiers).
+- `column_names` is a comma-separated list of columns names (identifiers).
 
 ## Semantics
  - An error is raised if the specified table does not exist. 

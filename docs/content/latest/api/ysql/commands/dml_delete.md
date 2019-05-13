@@ -33,7 +33,7 @@ delete := [ WITH [ RECURSIVE ] with_query [, ...] ]
        DELETE FROM [ ONLY ] table_name [ * ] [ [ AS ] alias ]
        [ USING using_list ]
        [ WHERE condition | WHERE CURRENT OF cursor_name ]
-       [ RETURNING * | output_expression [ [ AS ] output_name ] [, ...] ]
+       [ RETURNING { * | output_expression [ [ AS ] output_name ] [, ...] } ]
 ```
 
 Where

@@ -32,26 +32,26 @@ showAsideToc: true
 ### Grammar
 ```
 copy_from ::= COPY table_name [ ( column_name [, ...] ) ]
-              FROM { 'filename' | PROGRAM 'command' | STDIN }
-              [ [ WITH ] ( option [, ...] ) ]
+                  FROM { filename | PROGRAM command | STDIN }
+                  [ [ WITH ] ( option [, ...] ) ] ;
 
 copy_to ::= COPY { table_name [ ( column_name [, ...] ) ] | ( query ) }
-            TO { 'filename' | PROGRAM 'command' | STDOUT }
-            [ [ WITH ] ( option [, ...] ) ]
+                TO ( filename | PROGRAM command | STDOUT )
+                [ [ WITH ] ( option [, ...] ) ] ;
 
 copy_option ::=
-  { FORMAT format_name
+    FORMAT format_name
     | OIDS [ boolean ]
     | FREEZE [ boolean ]
-    | DELIMITER 'delimiter_character'
-    | NULL 'null_string'
+    | DELIMITER delimiter_character
+    | NULL null_string
     | HEADER [ boolean ]
-    | QUOTE 'quote_character'
-    | ESCAPE 'escape_character'
-    | FORCE_QUOTE { ( column_name [, ...] ) | * }
+    | QUOTE quote_character
+    | ESCAPE escape_character
+    | FORCE_QUOTE ( ( column_name [, ...] ) | * )
     | FORCE_NOT_NULL ( column_name [, ...] )
     | FORCE_NULL ( column_name [, ...] )
-    | ENCODING 'encoding_name' }
+    | ENCODING encoding_name
 ```
 
 Where
@@ -60,9 +60,9 @@ Where
 
 - `column_name` specifies column to be copied.
 
-- 'query' can be either SELECT, VALUES, INSERT, UPDATE or DELETE whose results will be copied to files. RETURNING clause must be provided for INSERT, UPDATE and DELETE commands.
+- `query` can be either SELECT, VALUES, INSERT, UPDATE or DELETE whose results will be copied to files. RETURNING clause must be provided for INSERT, UPDATE and DELETE commands.
 
-- 'filename' specifies an absolute or relative path of a file to be copied.
+- `filename` specifies an absolute or relative path of a file to be copied.
 
 ## Examples
 

@@ -25,7 +25,7 @@ showAsideToc: true
 ### Syntax
 
 ```
-commit_transaction ::= { 'COMMIT' } [ 'TRANSACTION' | 'WORK' ] ;
+commit_transaction ::= COMMIT [ TRANSACTION | WORK ] ;
 ```
 
 ## Semantics
