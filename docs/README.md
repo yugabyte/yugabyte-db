@@ -41,7 +41,7 @@ cp config.yaml.sample config.yaml
 
 4. Install node modules as shown below:
 ```
-$ npm install
+$ npm ci
 ```
 
 ## Step 2. Update your docs repo and start the local webserver
