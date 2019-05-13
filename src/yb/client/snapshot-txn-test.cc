@@ -24,7 +24,11 @@
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 
+#include "yb/yql/cql/ql/util/statement_result.h"
+
 using namespace std::literals;
+
+DECLARE_bool(ycql_consistent_transactional_paging);
 
 namespace yb {
 namespace client {
@@ -117,6 +121,61 @@ void SnapshotTxnTest::TestBankAccountsThread(
   failure = false;
 }
 
+std::thread RandomClockSkewWalkThread(MiniCluster* cluster, std::atomic<bool>* stop) {
+  // Clock skew is modified by a random amount every 100ms.
+  return std::thread([cluster, stop] {
+    while (!stop->load(std::memory_order_acquire)) {
+      auto num_servers = cluster->num_tablet_servers();
+      std::vector<server::SkewedClock::DeltaTime> time_deltas(num_servers);
+
+      for (int i = 0; i != num_servers; ++i) {
+        auto* tserver = cluster->mini_tablet_server(i)->server();
+        auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
+        auto skewed_clock =
+            std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock());
+        auto shift = RandomUniformInt(-10, 10);
+        std::chrono::milliseconds change(1 << std::abs(shift));
+        if (shift < 0) {
+          change = -change;
+        }
+
+        time_deltas[i] += change;
+        skewed_clock->SetDelta(time_deltas[i]);
+
+        std::this_thread::sleep_for(100ms);
+      }
+    }
+  });
+}
+
+std::thread StrobeThread(MiniCluster* cluster, std::atomic<bool>* stop) {
+  // When strobe time is enabled we greatly change time delta for a short amount of time,
+  // then change it back to 0.
+  return std::thread([cluster, stop] {
+    int iteration = 0;
+    while (!stop->load(std::memory_order_acquire)) {
+      for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+        auto* tserver = cluster->mini_tablet_server(i)->server();
+        auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
+        auto skewed_clock =
+            std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock());
+        server::SkewedClock::DeltaTime time_delta;
+        if (iteration & 1) {
+          time_delta = server::SkewedClock::DeltaTime();
+        } else {
+          auto shift = RandomUniformInt(-16, 16);
+          time_delta = std::chrono::microseconds(1 << (12 + std::abs(shift)));
+          if (shift < 0) {
+            time_delta = -time_delta;
+          }
+        }
+        skewed_clock->SetDelta(time_delta);
+        std::this_thread::sleep_for(15ms);
+      }
+    }
+  });
+}
+
 void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDuration duration,
                                        int minimal_updates_per_second) {
   TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
@@ -137,31 +196,7 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
 
   std::thread strobe_thread;
   if (options.Test(BankAccountsOption::kTimeStrobe)) {
-    // When strobe time is enabled we greatly change time delta for a short amount of time,
-    // then change it back to 0.
-    strobe_thread = std::thread([this, &stop] {
-      int iteration = 0;
-      while (!stop.load(std::memory_order_acquire)) {
-        for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
-          auto* tserver = cluster_->mini_tablet_server(i)->server();
-          auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
-          auto skewed_clock =
-              std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock());
-          server::SkewedClock::DeltaTime time_delta;
-          if (iteration & 1) {
-            time_delta = 0;
-          } else {
-            auto shift = RandomUniformInt(-16, 16);
-            time_delta = 1 << (12 + std::abs(shift));
-            if (shift < 0) {
-              time_delta = -time_delta;
-            }
-          }
-          skewed_clock->SetDelta(time_delta);
-          std::this_thread::sleep_for(15ms);
-        }
-      }
-    });
+    strobe_thread = StrobeThread(cluster_.get(), &stop);
   }
 
   std::atomic<int64_t> updates(0);
@@ -249,6 +284,154 @@ TEST_F(SnapshotTxnTest, BankAccountsWithTimeJump) {
   TestBankAccounts(
       BankAccountsOptions{BankAccountsOption::kTimeJump, BankAccountsOption::kStepDown}, 30s,
       RegularBuildVsSanitizers(3, 1) /* minimal_updates_per_second */);
+}
+
+struct PagingReadCounts {
+  int good = 0;
+  int failed = 0;
+  int inconsistent = 0;
+
+  std::string ToString() const {
+    return Format("{ good: $1 failed: $2 inconsistent: $3 }", good, failed, inconsistent);
+  }
+};
+
+class SingleTabletSnapshotTxnTest : public SnapshotTxnTest {
+ protected:
+  int NumTablets() {
+    return 1;
+  }
+
+  Result<PagingReadCounts> TestPaging();
+};
+
+// Test reading from a transactional table using paging.
+// Writes values in one thread, and reads them using paging in another thread.
+//
+// Clock skew is randomized, so we expect failures because of that.
+// When ycql_consistent_transactional_paging is true we expect read restart failures.
+// And we expect missing values when ycql_consistent_transactional_paging is false.
+Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
+  std::atomic<bool> stop(false);
+  std::atomic<int32_t> last_written(0);
+
+  auto write_thread = VERIFY_RESULT(Thread::Make("test", "writer", [this, &stop, &last_written] {
+    BOOST_SCOPE_EXIT(&stop) {
+      stop.store(true, std::memory_order_release);
+    } BOOST_SCOPE_EXIT_END;
+    auto session = CreateSession();
+    int i = 1;
+    while (!stop.load(std::memory_order_acquire)) {
+      auto txn = CreateTransaction();
+      session->SetTransaction(txn);
+      ASSERT_OK(WriteRow(session, i, -i));
+      auto commit_status = txn->CommitFuture().get();
+      if (!commit_status.ok()) {
+        // That could happen because of time jumps.
+        ASSERT_TRUE(commit_status.IsExpired()) << commit_status;
+        continue;
+      }
+      last_written.store(i, std::memory_order_release);
+      ++i;
+    }
+  }));
+
+  auto strobe_thread = RandomClockSkewWalkThread(cluster_.get(), &stop);
+
+  auto deadline = CoarseMonoClock::now() + 30s;
+  auto session = CreateSession(nullptr /* transaction */, clock_);
+  PagingReadCounts counts;
+  while (CoarseMonoClock::now() < deadline) {
+    std::set<int32_t> keys;
+    QLPagingStatePB paging_state;
+    auto written_value = last_written.load(std::memory_order_acquire);
+    bool failed = false;
+
+    for (;;) {
+      const YBqlReadOpPtr op = table_.NewReadOp();
+      auto* const req = op->mutable_request();
+      table_.AddColumns(table_.AllColumnNames(), req);
+      req->set_limit(last_written / 2 + 10);
+      req->set_return_paging_state(true);
+      if (paging_state.has_table_id()) {
+        if (paging_state.has_read_time()) {
+          ReadHybridTime read_time = ReadHybridTime::FromPB(paging_state.read_time());
+          if (read_time) {
+            session->SetReadPoint(read_time);
+          }
+        }
+        session->SetForceConsistentRead(ForceConsistentRead::kTrue);
+        *req->mutable_paging_state() = std::move(paging_state);
+      }
+      RETURN_NOT_OK(session->ApplyAndFlush(op));
+
+      if (!op->succeeded()) {
+        failed = true;
+        break;
+      }
+
+      auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
+      for (const auto& row : rowblock->rows()) {
+        auto key = row.column(0).int32_value();
+        EXPECT_EQ(key, -row.column(1).int32_value());
+        EXPECT_TRUE(keys.insert(key).second);
+      }
+      if (!op->response().has_paging_state()) {
+        break;
+      }
+      paging_state = op->response().paging_state();
+    }
+
+    if (failed) {
+      ++counts.failed;
+      continue;
+    }
+
+    while (keys.size() > written_value) {
+      keys.erase(--keys.end());
+    }
+    if (keys.size() != written_value ||
+        (written_value > 0 && (*keys.begin() != 1 || *--keys.end() != written_value))) {
+      ++counts.inconsistent;
+    } else {
+      ++counts.good;
+    }
+  }
+
+  stop.store(true, std::memory_order_release);
+
+  strobe_thread.join();
+  write_thread->Join();
+
+  EXPECT_GE(last_written.load(std::memory_order_acquire), RegularBuildVsSanitizers(1000, 100));
+
+  LOG(INFO) << "Read counts: " << counts.ToString();
+  return counts;
+}
+
+
+TEST_F_EX(SnapshotTxnTest, Paging, SingleTabletSnapshotTxnTest) {
+  FLAGS_ycql_consistent_transactional_paging = true;
+
+  auto counts = ASSERT_RESULT(TestPaging());
+
+  if (!IsSanitizer()) {
+    EXPECT_GE(counts.good, 20);
+    EXPECT_GE(counts.failed, 20);
+  }
+  EXPECT_EQ(counts.inconsistent, 0);
+}
+
+TEST_F_EX(SnapshotTxnTest, InconsistentPaging, SingleTabletSnapshotTxnTest) {
+  FLAGS_ycql_consistent_transactional_paging = false;
+
+  auto counts = ASSERT_RESULT(TestPaging());
+
+  if (!IsSanitizer()) {
+    EXPECT_GE(counts.good, 20);
+    EXPECT_GE(counts.inconsistent, 20);
+  }
+  EXPECT_EQ(counts.failed, 0);
 }
 
 } // namespace client

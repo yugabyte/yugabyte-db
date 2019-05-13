@@ -52,7 +52,8 @@ YB_STRONGLY_TYPED_BOOL(Flush);
 
 class KeyValueTableTest : public QLDmlTestBase {
  public:
-  static void CreateTable(Transactional transactional, YBClient* client, TableHandle* table);
+  static void CreateTable(Transactional transactional, int num_tablets, YBClient* client,
+                          TableHandle* table);
 
   // Insert/update a full, single row, equivalent to the statement below. Return a YB write op that
   // has been applied.
@@ -114,6 +115,8 @@ class KeyValueTableTest : public QLDmlTestBase {
   Result<std::map<int32_t, int32_t>> SelectAllRows(const YBSessionPtr& session) {
     return SelectAllRows(&table_, session);
   }
+
+  virtual int NumTablets();
 
   static const std::string kKeyColumn;
   static const std::string kValueColumn;

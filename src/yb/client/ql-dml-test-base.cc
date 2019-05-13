@@ -79,11 +79,11 @@ void QLDmlTestBase::DoTearDown() {
 }
 
 void KeyValueTableTest::CreateTable(Transactional transactional) {
-  CreateTable(transactional, client_.get(), &table_);
+  CreateTable(transactional, NumTablets(), client_.get(), &table_);
 }
 
 void KeyValueTableTest::CreateTable(
-    Transactional transactional, YBClient* client, TableHandle* table) {
+    Transactional transactional, int num_tablets, YBClient* client, TableHandle* table) {
   ASSERT_OK(client->CreateNamespaceIfNotExists(kTableName.namespace_name()));
 
   YBSchemaBuilder builder;
@@ -95,7 +95,11 @@ void KeyValueTableTest::CreateTable(
     builder.SetTableProperties(table_properties);
   }
 
-  ASSERT_OK(table->Create(kTableName, CalcNumTablets(3), client, &builder));
+  ASSERT_OK(table->Create(kTableName, num_tablets, client, &builder));
+}
+
+int KeyValueTableTest::NumTablets() {
+  return CalcNumTablets(3);
 }
 
 Result<YBqlWriteOpPtr> KeyValueTableTest::WriteRow(
