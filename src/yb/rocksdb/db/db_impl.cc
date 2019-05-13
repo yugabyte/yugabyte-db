@@ -5226,6 +5226,10 @@ Status DBImpl::Import(const std::string& source_dir) {
   return ApplyVersionEdit(&edit);
 }
 
+bool DBImpl::NeedsDelay() {
+  return write_controller_.NeedsDelay();
+}
+
 void DBImpl::TEST_SwitchMemtable() {
   std::lock_guard<InstrumentedMutex> lock(mutex_);
   WriteContext context;

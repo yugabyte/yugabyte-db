@@ -283,7 +283,7 @@ class RaftConsensusQuorumTest : public YBTest {
     while (true) {
       {
         auto lock = state->LockForRead();
-        if (OpIdCompare(state->GetLastReceivedOpIdUnlocked(), to_wait_for) >= 0) {
+        if (state->GetLastReceivedOpIdUnlocked().index >= to_wait_for.index()) {
           return;
         }
       }
@@ -309,7 +309,7 @@ class RaftConsensusQuorumTest : public YBTest {
     while (true) {
       {
         auto lock = state->LockForRead();
-        committed_op_id = state->GetCommittedOpIdUnlocked();
+        state->GetCommittedOpIdUnlocked().ToPB(&committed_op_id);
         if (OpIdCompare(committed_op_id, to_wait_for) >= 0) {
           return;
         }

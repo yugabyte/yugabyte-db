@@ -260,7 +260,6 @@ void PeerMessageQueue::CheckPeersInActiveConfigIfLeaderUnlocked() const {
 }
 
 void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
-                                               const StatusCallback& callback,
                                                const Status& status) {
   CHECK_OK(status);
 
@@ -283,20 +282,16 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   }
   bool junk;
   ResponseFromPeer(local_peer_uuid_, fake_response, &junk);
-
-  callback.Run(status);
 }
 
 Status PeerMessageQueue::TEST_AppendOperation(const ReplicateMsgPtr& msg) {
   return AppendOperations(
-      { msg }, yb::OpId::FromPB(msg->committed_op_id()), RestartSafeCoarseMonoClock().Now(),
-      Bind(DoNothingStatusCB));
+      { msg }, yb::OpId::FromPB(msg->committed_op_id()), RestartSafeCoarseMonoClock().Now());
 }
 
 Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
                                           const yb::OpId& committed_op_id,
-                                          RestartSafeCoarseTimePoint batch_mono_time,
-                                          const StatusCallback& log_append_callback) {
+                                          RestartSafeCoarseTimePoint batch_mono_time) {
   DFAKE_SCOPED_LOCK(append_fake_lock_);
   OpId last_id;
   if (!msgs.empty()) {
@@ -320,8 +315,7 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
   // be executed and queue_state_.last_appended will be updated correctly.
   RETURN_NOT_OK(log_cache_.AppendOperations(
       msgs, committed_op_id, batch_mono_time,
-      Bind(&PeerMessageQueue::LocalPeerAppendFinished, Unretained(this), last_id,
-           log_append_callback)));
+      Bind(&PeerMessageQueue::LocalPeerAppendFinished, Unretained(this), last_id)));
 
   if (!msgs.empty()) {
     std::unique_lock<simple_spinlock> lock(queue_lock_);

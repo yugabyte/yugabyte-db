@@ -57,8 +57,6 @@ class PreparerImpl {
  private:
   using OperationDrivers = std::vector<OperationDriver*>;
 
-  scoped_refptr<yb::Thread> thread_;
-
   consensus::Consensus* const consensus_;
 
   // We set this to true to tell the Run function to return. No new tasks will be accepted, but

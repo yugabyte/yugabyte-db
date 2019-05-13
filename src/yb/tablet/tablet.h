@@ -515,6 +515,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // it can't be used because there are pending reads at lower timestamps.
   HybridTime Get(HybridTime lower_bound);
 
+  bool ShouldApplyWrite();
+
   rocksdb::DB* TEST_db() const {
     return regular_db_.get();
   }

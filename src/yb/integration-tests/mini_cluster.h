@@ -252,6 +252,9 @@ CHECKED_STATUS StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
     ForceStepDown force_step_down);
 
+std::thread RestartsThread(
+    MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag);
+
 }  // namespace yb
 
 #endif /* YB_INTEGRATION_TESTS_MINI_CLUSTER_H_ */

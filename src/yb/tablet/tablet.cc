@@ -2063,6 +2063,10 @@ Status Tablet::CreateReadIntents(
   return Status::OK();
 }
 
+bool Tablet::ShouldApplyWrite() {
+  return !regular_db_->NeedsDelay();
+}
+
 // ------------------------------------------------------------------------------------------------
 
 Result<ScopedReadOperation> ScopedReadOperation::Create(

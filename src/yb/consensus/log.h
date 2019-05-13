@@ -236,8 +236,9 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // Waits until specified op id is added to log.
   // Returns current op id after waiting, which could be greater than or equal to specified op id.
-  // `op_id` should be already committed.
-  yb::OpId WaitForSafeOpIdToApply(const yb::OpId& op_id);
+  //
+  // On timeout returns default constructed OpId.
+  yb::OpId WaitForSafeOpIdToApply(const yb::OpId& op_id, MonoDelta duration = MonoDelta());
 
   void TEST_SetSleepDuration(const std::chrono::nanoseconds& duration) {
     sleep_duration_.store(duration, std::memory_order_release);

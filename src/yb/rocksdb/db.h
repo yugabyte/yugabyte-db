@@ -881,6 +881,8 @@ class DB {
     return STATUS(NotSupported, "");
   }
 
+  virtual bool NeedsDelay() { return false; }
+
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}
 
