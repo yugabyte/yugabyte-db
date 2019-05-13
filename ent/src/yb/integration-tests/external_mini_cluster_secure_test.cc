@@ -68,7 +68,8 @@ class ExternalMiniClusterSecureTest :
 };
 
 TEST_F(ExternalMiniClusterSecureTest, Simple) {
-  client::KeyValueTableTest::CreateTable(client::Transactional::kFalse, client_.get(), &table_);
+  client::KeyValueTableTest::CreateTable(
+      client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_);
 
   const int32_t kKey = 1;
   const int32_t kValue = 2;
