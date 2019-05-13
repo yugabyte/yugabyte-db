@@ -320,6 +320,12 @@ class Consensus {
     return STATUS(NotFound, "Not implemented.");
   }
 
+  Result<OpId> GetLastOpId(OpIdType type) {
+    OpId result;
+    RETURN_NOT_OK(GetLastOpId(type, &result));
+    return result;
+  }
+
   Result<OpId> GetLastReceivedOpId() {
     OpId result;
     RETURN_NOT_OK(GetLastOpId(OpIdType::RECEIVED_OPID, &result));

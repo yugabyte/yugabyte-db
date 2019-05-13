@@ -300,7 +300,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // append to our log, after they've been deduplicated.
   struct LeaderRequest {
     std::string leader_uuid;
-    const OpId* preceding_opid;
+    yb::OpId preceding_opid;
     ReplicateMsgs messages;
     // The positional index of the first message selected to be appended, in the
     // original leader's request message sequence.
@@ -341,11 +341,18 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   CHECKED_STATUS BecomeReplicaUnlocked(const std::string& new_leader_uuid,
                                        MonoDelta initial_fd_wait = MonoDelta());
 
+  struct UpdateReplicaResult {
+    yb::OpId wait_for_op_id;
+
+    // Start an election after the writes are committed?
+    bool start_election = false;
+  };
+
   // Updates the state in a replica by storing the received operations in the log
   // and triggering the required operations. This method won't return until all
   // operations have been stored in the log and all Prepares() have been completed,
   // and a replica cannot accept any more Update() requests until this is done.
-  CHECKED_STATUS UpdateReplica(
+  Result<UpdateReplicaResult> UpdateReplica(
       ConsensusRequestPB* request,
       ConsensusResponsePB* response);
 
@@ -567,13 +574,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                        LeaderRequest* deduped_req,
                                        ConsensusResponsePB* response);
   // Returns last op id received from leader.
-  OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, const yb::OpId& committed_op_id,
-                             WriteEmpty write_empty, const StatusCallback& sync_status_cb);
+  yb::OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, const yb::OpId& committed_op_id,
+                                 WriteEmpty write_empty);
   CHECKED_STATUS MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB& request,
                                                    const LeaderRequest& deduped_req,
-                                                   OpId last_from_leader);
-  CHECKED_STATUS WaitWritesUnlocked(const LeaderRequest& deduped_req,
-                                    Synchronizer* log_synchronizer);
+                                                   yb::OpId last_from_leader);
+  CHECKED_STATUS WaitForWrites(const yb::OpId& wait_for_op_id);
 
   // See comment for ReplicaState::CancelPendingOperation
   void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg, bool should_exists);

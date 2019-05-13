@@ -17,8 +17,6 @@
 #include <queue>
 #include <thread>
 
-#include <boost/thread/reverse_lock.hpp>
-
 #include "yb/util/debug-util.h"
 #include "yb/util/thread.h"
 
@@ -96,17 +94,17 @@ class LongOperationTrackerHelper {
         continue;
       }
 
-      const auto& first_entry = queue_.top();
+      const CoarseTimePoint first_entry_time = queue_.top()->time;
 
       auto now = CoarseMonoClock::now();
-      if (now < first_entry->time) {
-        if (cond_.wait_for(lock, first_entry->time - now) != std::cv_status::timeout) {
+      if (now < first_entry_time) {
+        if (cond_.wait_for(lock, first_entry_time - now) != std::cv_status::timeout) {
           continue;
         }
         now = CoarseMonoClock::now();
       }
 
-      TrackedOperationPtr operation = first_entry;
+      TrackedOperationPtr operation = queue_.top();
       queue_.pop();
       if (!operation.unique()) {
         lock.unlock();
@@ -122,7 +120,7 @@ class LongOperationTrackerHelper {
 
   std::mutex mutex_;
   std::condition_variable cond_;
-  bool stop_ = false;
+  bool stop_;
   std::thread thread_;
 };
 

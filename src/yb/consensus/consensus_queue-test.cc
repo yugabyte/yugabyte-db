@@ -662,23 +662,21 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   ASSERT_OK(log_->WaitUntilAllFlushed());
   ASSERT_OPID_EQ(queue_->GetAllReplicatedIndexForTests(), MakeOpId(1, 10));
   // Now rewrite some of the operations and wait for the log to append.
-  Synchronizer synch;
   ASSERT_OK(queue_->AppendOperations(
       { CreateDummyReplicate(2, 5, clock_->Now(), 0) }, yb::OpId() /* committed_op_id */,
-        restart_safe_coarse_mono_clock.Now(), synch.AsStatusCallback()));
+        restart_safe_coarse_mono_clock.Now()));
 
   // Wait for the operation to be in the log.
-  ASSERT_OK(synch.Wait());
+  log_->WaitForSafeOpIdToApply(yb::OpId(2, 5));
 
   // Without the fix the following append would trigger a check failure
   // in log cache.
-  synch.Reset();
   ASSERT_OK(queue_->AppendOperations(
       { CreateDummyReplicate(2, 6, clock_->Now(), 0) }, yb::OpId() /* committed_op_id */,
-      restart_safe_coarse_mono_clock.Now(), synch.AsStatusCallback()));
+      restart_safe_coarse_mono_clock.Now()));
 
   // Wait for the operation to be in the log.
-  ASSERT_OK(synch.Wait());
+  log_->WaitForSafeOpIdToApply(yb::OpId(2, 6));
 
   // Now the all replicated watermark should have moved backward.
   ASSERT_OPID_EQ(queue_->GetAllReplicatedIndexForTests(), MakeOpId(2, 6));

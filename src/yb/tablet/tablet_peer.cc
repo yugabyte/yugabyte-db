@@ -828,6 +828,10 @@ void TabletPeer::SetPropagatedSafeTime(HybridTime ht) {
   (**driver).ExecuteAsync();
 }
 
+bool TabletPeer::ShouldApplyWrite() {
+  return tablet_->ShouldApplyWrite();
+}
+
 consensus::Consensus* TabletPeer::consensus() const {
   std::lock_guard<simple_spinlock> lock(lock_);
   return consensus_.get();

@@ -1653,7 +1653,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ASSERT_TRUE(resp.has_error()) << resp.DebugString();
   ASSERT_EQ(resp.error().status().message(),
             "New operation's index does not follow the previous op's index. "
-            "Current: 2.6. Previous: 2.4");
+            "Current: { term: 2 index: 6 }. Previous: { term: 2 index: 4 }");
 
   resp.Clear();
   req.clear_ops();
@@ -1666,8 +1666,8 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
   ASSERT_TRUE(resp.has_error()) << resp.DebugString();
   ASSERT_EQ(resp.error().status().message(),
-            "New operation's term is not >= than the previous op's term."
-            " Current: 2.6. Previous: 3.5");
+            "New operation's term is not >= than the previous op's term. "
+            "Current: { term: 2 index: 6 }. Previous: { term: 3 index: 5 }");
 
   LOG(INFO) << "Regression test for KUDU-639";
   // If we send a valid request, but the
