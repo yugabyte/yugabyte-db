@@ -21,7 +21,7 @@ namespace server {
 
 class SkewedClock : public PhysicalClock {
  public:
-  typedef int64_t DeltaTime;
+  typedef std::chrono::microseconds DeltaTime;
 
   static const std::string kName;
 
@@ -29,9 +29,7 @@ class SkewedClock : public PhysicalClock {
 
   template <class Duration>
   DeltaTime SetDelta(Duration duration) {
-    auto micros = static_cast<DeltaTime>(
-        std::chrono::duration_cast<std::chrono::microseconds>(duration).count());
-    return SetDelta(micros);
+    return SetDelta(std::chrono::duration_cast<DeltaTime>(duration));
   }
 
   DeltaTime SetDelta(DeltaTime new_delta);
@@ -43,7 +41,7 @@ class SkewedClock : public PhysicalClock {
   MicrosTime MaxGlobalTime(PhysicalTime time) override;
 
   PhysicalClockPtr impl_;
-  std::atomic<DeltaTime> delta_{0};
+  std::atomic<DeltaTime> delta_{DeltaTime()};
 };
 
 typedef std::shared_ptr<SkewedClock> SkewedClockPtr;
