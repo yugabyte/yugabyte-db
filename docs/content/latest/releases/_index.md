@@ -15,7 +15,6 @@ Download YugaByte DB using the table below and then follow the [Quick Start](../
 
 Release | Date | Download Binary | Pull Docker Image
 --------|------|-------------------------------|-----------------
-
 [v1.2.8](./v1.2.8) (latest) | May 8, 2019 | [<i class="fab fa-apple"> macOS</i>](https://downloads.yugabyte.com/yugabyte-ce-1.2.8.0-darwin.tar.gz), [<i class="fab fa-linux"> Linux</i>](https://downloads.yugabyte.com/yugabyte-ce-1.2.8.0-linux.tar.gz) | docker pull yugabytedb/yugabyte:1.2.8.0-b1
 [v1.2.6](./v1.2.6) | April 26, 2019 | [<i class="fab fa-apple"> macOS</i>](https://downloads.yugabyte.com/yugabyte-ce-1.2.6.0-darwin.tar.gz), [<i class="fab fa-linux"> Linux</i>](https://downloads.yugabyte.com/yugabyte-ce-1.2.6.0-linux.tar.gz) | docker pull yugabytedb/yugabyte:1.2.6.0-b3
 [v1.2.5](./v1.2.5) | April 18, 2019 | [<i class="fab fa-apple"> macOS</i>](https://downloads.yugabyte.com/yugabyte-ce-1.2.5.0-darwin.tar.gz), [<i class="fab fa-linux"> Linux</i>](https://downloads.yugabyte.com/yugabyte-ce-1.2.5.0-linux.tar.gz) | docker pull yugabytedb/yugabyte:1.2.5.0-b13
