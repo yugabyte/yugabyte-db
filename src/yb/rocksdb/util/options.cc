@@ -31,8 +31,6 @@
 #include <inttypes.h>
 #include <limits>
 
-#include <gflags/gflags.h>
-
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/comparator.h"
@@ -49,15 +47,6 @@
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/xfunc.h"
-
-DEFINE_int32(memstore_size_mb, 128,
-             "Max size (in mb) of the memstore, before needing to flush.");
-
-DEFINE_int32(num_reserved_small_compaction_threads, -1, "Number of reserved small compaction "
-             "threads. It allows splitting small vs. large compactions.");
-
-DEFINE_bool(enable_ondisk_compression, true,
-            "Determines whether SSTable compression is enabled or not.");
 
 namespace rocksdb {
 
@@ -109,12 +98,11 @@ ColumnFamilyOptions::ColumnFamilyOptions()
       merge_operator(nullptr),
       compaction_filter(nullptr),
       compaction_filter_factory(nullptr),
-      write_buffer_size(FLAGS_memstore_size_mb << 20), // Option expects bytes.
+      write_buffer_size(4_MB), // Option expects bytes.
       max_write_buffer_number(2),
       min_write_buffer_number_to_merge(1),
       max_write_buffer_number_to_maintain(0),
-      compression(Snappy_Supported() && FLAGS_enable_ondisk_compression ?
-                  kSnappyCompression : kNoCompression),
+      compression(Snappy_Supported() ? kSnappyCompression : kNoCompression),
       prefix_extractor(nullptr),
       num_levels(7),
       level0_file_num_compaction_trigger(4),
@@ -259,7 +247,7 @@ DBOptions::DBOptions()
       delete_obsolete_files_period_micros(6ULL * 60 * 60 * 1000000),
       base_background_compactions(-1),
       max_background_compactions(1),
-      num_reserved_small_compaction_threads(FLAGS_num_reserved_small_compaction_threads),
+      num_reserved_small_compaction_threads(-1),
       compaction_size_threshold_bytes(std::numeric_limits<uint64_t>::max()),
       max_subcompactions(1),
       max_background_flushes(1),

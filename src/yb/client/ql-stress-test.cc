@@ -50,6 +50,11 @@ DECLARE_bool(combine_batcher_errors);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(retryable_request_range_time_limit_secs);
+DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
+DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
+DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
+DECLARE_int32(rocksdb_universal_compaction_size_ratio);
+DECLARE_int64(db_write_buffer_size);
 
 using namespace std::literals;
 
@@ -273,12 +278,12 @@ void QLStressTest::TestRetryWrites(bool restarts) {
     txn_manager.emplace(client_.get(), clock, client::LocalTabletFilter());
   }
 
-  std::vector<std::thread> write_threads;
+  TestThreadHolder thread_holder;
   std::atomic<int32_t> key_source(0);
-  std::atomic<bool> stop_requested(false);
-  while (write_threads.size() < kConcurrentWrites) {
-    write_threads.emplace_back([this, &key_source, &stop_requested, &txn_manager,
-                                kTransactionalWriteProbability] {
+  for (int i = 0; i != kConcurrentWrites; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &key_source, &stop_requested = thread_holder.stop_flag(),
+         &txn_manager, kTransactionalWriteProbability] {
       CDSAttacher attacher;
       auto session = NewSession();
       while (!stop_requested.load(std::memory_order_acquire)) {
@@ -317,27 +322,10 @@ void QLStressTest::TestRetryWrites(bool restarts) {
 
   std::thread restart_thread;
   if (restarts) {
-    restart_thread = std::thread([this, &stop_requested] {
-      CDSAttacher attacher;
-      int it = 0;
-      while (!stop_requested.load(std::memory_order_acquire)) {
-        std::this_thread::sleep_for(5s);
-        ASSERT_OK(cluster_->mini_tablet_server(++it % cluster_->num_tablet_servers())->Restart());
-      }
-    });
+    thread_holder.AddThread(RestartsThread(cluster_.get(), 5s, &thread_holder.stop_flag()));
   }
 
-  std::this_thread::sleep_for(restarts ? 60s : 15s);
-
-  stop_requested.store(true, std::memory_order_release);
-
-  for (auto& thread : write_threads) {
-    thread.join();
-  }
-
-  if (restart_thread.joinable()) {
-    restart_thread.join();
-  }
+  thread_holder.WaitAndStop(restarts ? 60s : 15s);
 
   int written_keys = key_source.load(std::memory_order_acquire);
   auto session = NewSession();
@@ -599,9 +587,9 @@ void QLStressTest::VerifyFlushedFrontiers() {
 }
 
 TEST_F_EX(QLStressTest, FlushCompact, QLStressTestSingleTablet) {
-  std::atomic<bool> stop(false);
+  TestThreadHolder thread_holder;
 
-  std::thread writer([this, &stop] {
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
     CDSAttacher attacher;
     auto session = NewSession();
     int key = 0;
@@ -611,11 +599,6 @@ TEST_F_EX(QLStressTest, FlushCompact, QLStressTestSingleTablet) {
       ++key;
     }
   });
-
-  BOOST_SCOPE_EXIT(&stop, &writer) {
-    stop.store(true);
-    writer.join();
-  } BOOST_SCOPE_EXIT_END;
 
   auto start_time = MonoTime::Now();
   const auto kTimeout = MonoDelta::FromSeconds(60);
@@ -704,7 +687,6 @@ TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingl
 }
 
 TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
-  std::atomic<bool> stop(false);
   std::atomic<int> key(0);
 
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kNonLeaders);
@@ -712,7 +694,8 @@ TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
 
   down_cast<consensus::RaftConsensus*>(peers[0]->consensus())->TEST_DelayUpdate(20s);
 
-  std::thread writer([this, &stop, &key] {
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &key] {
     CDSAttacher attacher;
     auto session = NewSession();
     std::string value_prefix = std::string(100_KB, 'X');
@@ -723,12 +706,7 @@ TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
     }
   });
 
-  BOOST_SCOPE_EXIT(&stop, &writer) {
-    stop.store(true);
-    writer.join();
-  } BOOST_SCOPE_EXIT_END;
-
-  std::this_thread::sleep_for(30s);
+  thread_holder.WaitAndStop(30s);
 
   down_cast<consensus::RaftConsensus*>(peers[0]->consensus())->TEST_DelayUpdate(0s);
 
@@ -741,6 +719,71 @@ TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
   }
   LOG(INFO) << "Peak consumption: " << max_peak_consumption;
   ASSERT_LE(max_peak_consumption, 150_MB);
+}
+
+class QLStressTestDelayWrite : public QLStressTestSingleTablet {
+ private:
+  void SetUp() override {
+    FLAGS_db_write_buffer_size = 1_KB;
+    FLAGS_rocksdb_level0_slowdown_writes_trigger = 4;
+    FLAGS_rocksdb_level0_file_num_compaction_trigger = 2;
+    FLAGS_rocksdb_universal_compaction_min_merge_width = 2;
+    FLAGS_rocksdb_universal_compaction_size_ratio = 1000;
+    QLStressTestSingleTablet::SetUp();
+  }
+};
+
+TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite) {
+  std::atomic<int> key(0);
+
+  const std::string value_prefix = std::string(1_KB, 'X');
+
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &key, &value_prefix] {
+    auto session = NewSession();
+    while (!stop.load(std::memory_order_acquire)) {
+      auto new_key = key + 1;
+      ASSERT_OK(WriteRow(session, new_key, value_prefix + std::to_string(new_key)));
+      ++key;
+    }
+  });
+
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &key, &value_prefix] {
+    auto session = NewSession();
+    while (!stop.load(std::memory_order_acquire)) {
+      auto had_key = key.load(std::memory_order_acquire);
+      if (had_key == 0) {
+        std::this_thread::sleep_for(50ms);
+        continue;
+      }
+      auto value = ASSERT_RESULT(ReadRow(session, had_key)).string_value();
+      ASSERT_EQ(value, value_prefix + std::to_string(had_key));
+    }
+  });
+
+  thread_holder.AddThread(RestartsThread(cluster_.get(), 5s, &thread_holder.stop_flag()));
+  thread_holder.WaitAndStop(60s);
+
+  LOG(INFO) << "Total keys written: " << key.load(std::memory_order_acquire);
+  ASSERT_GT(key.load(std::memory_order_acquire), RegularBuildVsSanitizers(2000, 100));
+
+  ASSERT_OK(WaitFor([cluster = cluster_.get()] {
+    auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
+    consensus::OpId first_op_id = consensus::MinimumOpId();
+    for (const auto& peer : peers) {
+      if (!peer->consensus()) {
+        return false;
+      }
+      auto current = CHECK_RESULT(peer->consensus()->GetLastOpId(
+          consensus::OpIdType::COMMITTED_OPID));
+      if (consensus::OpIdEquals(first_op_id, consensus::MinimumOpId())) {
+        first_op_id = current;
+      } else if (!consensus::OpIdEquals(current, first_op_id)) {
+        return false;
+      }
+    }
+    return true;
+  }, 30s, "Waiting tablets to sync up"));
 }
 
 } // namespace client

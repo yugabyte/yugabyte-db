@@ -787,7 +787,7 @@ yb::OpId Log::GetLatestEntryOpId() const {
   return last_synced_entry_op_id_.load(std::memory_order_acquire);
 }
 
-yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed) {
+yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta duration) {
   if (FLAGS_log_consider_all_ops_safe || all_op_ids_safe_) {
     return min_allowed;
   }
@@ -797,12 +797,18 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed) {
   if (result.index < min_allowed.index || result.term < min_allowed.term) {
     auto start = CoarseMonoClock::Now();
     std::unique_lock<std::mutex> lock(last_synced_entry_op_id_mutex_);
+    auto wait_time = duration ? duration.ToSteadyDuration() : 15s;
     for (;;) {
-      if (last_synced_entry_op_id_cond_.wait_for(lock, 15s, [this, min_allowed, &result] {
-        result = last_synced_entry_op_id_.load(std::memory_order_acquire);
-        return result.index >= min_allowed.index && result.term >= min_allowed.term;
+      if (last_synced_entry_op_id_cond_.wait_for(
+              lock, wait_time, [this, min_allowed, &result] {
+            result = last_synced_entry_op_id_.load(std::memory_order_acquire);
+            return result.term > min_allowed.term ||
+                   (result.term == min_allowed.term && result.index >= min_allowed.index);
       })) {
         break;
+      }
+      if (duration) {
+        return yb::OpId();
       }
       LOG_WITH_PREFIX(DFATAL) << "Long wait for safe op id: " << min_allowed
                               << ", passed: " << (CoarseMonoClock::Now() - start);

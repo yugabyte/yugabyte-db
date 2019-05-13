@@ -469,6 +469,8 @@ class DBImpl : public DB {
   // And max seqno of imported database is less that active seqno of destination db.
   CHECKED_STATUS Import(const std::string& source_dir) override;
 
+  bool NeedsDelay() override;
+
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
 

@@ -625,4 +625,17 @@ Status StepDown(
   return Status::OK();
 }
 
+std::thread RestartsThread(
+    MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag) {
+  return std::thread([cluster, interval, stop_flag] {
+    CDSAttacher attacher;
+    SetFlagOnExit set_stop_on_exit(stop_flag);
+    int it = 0;
+    while (!stop_flag->load(std::memory_order_acquire)) {
+      std::this_thread::sleep_for(interval);
+      ASSERT_OK(cluster->mini_tablet_server(++it % cluster->num_tablet_servers())->Restart());
+    }
+  });
+}
+
 }  // namespace yb

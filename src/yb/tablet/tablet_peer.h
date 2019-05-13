@@ -175,6 +175,9 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // UpdateReplica -> EnqueuePreparesUnlocked on Raft heartbeats.
   void SetPropagatedSafeTime(HybridTime ht) override;
 
+  // Returns false if it is preferable to don't apply write operation.
+  bool ShouldApplyWrite() override;
+
   consensus::Consensus* consensus() const;
 
   std::shared_ptr<consensus::Consensus> shared_consensus() const;

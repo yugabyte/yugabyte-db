@@ -684,6 +684,8 @@ class MockOperationFactory : public ReplicaOperationFactory {
 
   void SetPropagatedSafeTime(HybridTime ht) override {}
 
+  bool ShouldApplyWrite() override { return true; }
+
   MOCK_METHOD1(StartReplicaOperationMock, Status(ConsensusRound* round));
 };
 
@@ -707,6 +709,8 @@ class TestOperationFactory : public ReplicaOperationFactory {
   }
 
   void SetPropagatedSafeTime(HybridTime ht) override {}
+
+  bool ShouldApplyWrite() override { return true; }
 
   void ReplicateAsync(ConsensusRound* round) {
     CHECK_OK(consensus_->TEST_Replicate(round));

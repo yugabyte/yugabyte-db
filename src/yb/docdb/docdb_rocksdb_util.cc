@@ -20,6 +20,7 @@
 
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
+#include "yb/rocksdb/util/compression.h"
 
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -72,6 +73,9 @@ DEFINE_int64(db_min_keys_per_index_block, 100,
 DEFINE_int64(db_write_buffer_size, -1,
              "Size of RocksDB write buffer (in bytes). -1 to use default.");
 
+DEFINE_int32(memstore_size_mb, 128,
+             "Max size (in mb) of the memstore, before needing to flush.");
+
 DEFINE_bool(use_docdb_aware_bloom_filter, true,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
 DEFINE_int32(max_nexts_to_avoid_seek, 1,
@@ -80,6 +84,12 @@ DEFINE_bool(trace_docdb_calls, false, "Whether we should trace calls into the do
 DEFINE_bool(use_multi_level_index, true, "Whether to use multi-level data index.");
 
 DEFINE_uint64(initial_seqno, 1ULL << 50, "Initial seqno for new RocksDB instances.");
+
+DEFINE_int32(num_reserved_small_compaction_threads, -1, "Number of reserved small compaction "
+             "threads. It allows splitting small vs. large compactions.");
+
+DEFINE_bool(enable_ondisk_compression, true,
+            "Determines whether SSTable compression is enabled or not.");
 
 using std::shared_ptr;
 using std::string;
@@ -437,9 +447,19 @@ void InitRocksDBOptions(
   options->memory_monitor = tablet_options.memory_monitor;
   if (FLAGS_db_write_buffer_size != -1) {
     options->write_buffer_size = FLAGS_db_write_buffer_size;
+  } else {
+    options->write_buffer_size = FLAGS_memstore_size_mb * 1_MB;
   }
   options->env = tablet_options.rocksdb_env;
   options->checkpoint_env = rocksdb::Env::Default();
+
+  if (FLAGS_num_reserved_small_compaction_threads != -1) {
+    options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;
+  }
+
+  options->compression = rocksdb::Snappy_Supported() && FLAGS_enable_ondisk_compression
+      ? rocksdb::kSnappyCompression : rocksdb::kNoCompression;
+
   options->listeners.insert(
       options->listeners.end(), tablet_options.listeners.begin(),
       tablet_options.listeners.end()); // Append listeners

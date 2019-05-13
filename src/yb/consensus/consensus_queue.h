@@ -218,8 +218,7 @@ class PeerMessageQueue {
   // we update committed op id.
   virtual CHECKED_STATUS AppendOperations(
       const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
-      RestartSafeCoarseTimePoint batch_mono_time,
-      const StatusCallback& log_append_callback);
+      RestartSafeCoarseTimePoint batch_mono_time);
 
   // Assembles a request for a peer, adding entries past 'op_id' up to
   // 'consensus_max_batch_size_bytes'.
@@ -420,7 +419,6 @@ class PeerMessageQueue {
 
   // Callback when a REPLICATE message has finished appending to the local log.
   void LocalPeerAppendFinished(const OpId& id,
-                               const StatusCallback& callback,
                                const Status& status);
 
   // Updates op id replicated on each node.
