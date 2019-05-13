@@ -56,7 +56,7 @@ DEFINE_bool(skip_remove_old_recovery_dir, false,
             "Skip removing WAL recovery dir after startup. (useful for debugging)");
 TAG_FLAG(skip_remove_old_recovery_dir, hidden);
 
-DEFINE_bool(skip_wal_rewrite, false,
+DEFINE_bool(skip_wal_rewrite, true,
             "Skip rewriting WAL files during bootstrap.");
 TAG_FLAG(skip_wal_rewrite, experimental);
 TAG_FLAG(skip_wal_rewrite, runtime);
