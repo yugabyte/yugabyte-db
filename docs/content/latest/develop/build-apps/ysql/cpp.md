@@ -1,9 +1,9 @@
 
-## Pre-requisites
+## Prerequisites
 
 The tutorial assumes that you have:
 
-- installed YugaByte DB, and created a universe with YSQL enabled. If not, please follow these steps in the [quick start guide](../../../quick-start/explore-ysql).
+- installed YugaByte DB, and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2+, clang 3.4+ installed.
 
@@ -11,7 +11,7 @@ The tutorial assumes that you have:
 
 Download the source from [here](https://github.com/jtv/libpqxx) and build the binaries as follows. Detailed instructions are provided [here](https://github.com/jtv/libpqxx).
 
-### Getting the source 
+### Get the source 
 
 ```sh
 $ git clone https://github.com/jtv/libpqxx.git
@@ -36,7 +36,7 @@ $ make install
 
 ## Working Example
 
-### Writing the C++ Code.
+### Sample C++ Code
 
 Create a file `ybsql_hello_world.cpp` and copy the contents below:
 
@@ -101,7 +101,7 @@ int main(int, char *argv[])
 }
 ```
 
-### Running the application
+### Run the application
 
 You can compile the file using gcc or clang. Note that C++11 is the minimum supported C++ version. Make sure your compiler supports this, and if necessary, that you have support for C++11 configured. For gcc, you can use:
 

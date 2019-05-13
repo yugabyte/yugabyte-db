@@ -1,6 +1,6 @@
 ## Prerequisites
 
-You must have [Minikube](https://github.com/kubernetes/minikube) installed on your localhost. [Follow these instructions](https://kubernetes.io/docs/tasks/tools/install-minikube/) to install Minikube along with its pre-requisites.
+You must have [Minikube](https://github.com/kubernetes/minikube) installed on your localhost. [Follow these instructions](https://kubernetes.io/docs/tasks/tools/install-minikube/) to install Minikube along with its prerequisites.
 
 We will be using the [StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) workload API of Kubernetes, so you should have a version that supports this (preferably 1.8+). Run the version commands as shown below to verify the version.
 

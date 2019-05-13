@@ -1,4 +1,4 @@
-## Pre-requisites
+## Prerequisites
 
 This tutorial assumes that you have:
 
@@ -6,9 +6,11 @@ This tutorial assumes that you have:
 - installed Visual Studio
 
 ## Writing a HelloWorld C# app
+
 In your Visual Studio create a new Project and choose Console Application as template. Follow the instructions to save the project.
 
 ### Install Cassandra C# driver
+
 To install the driver in your Visual Studio project
 <ol>
   <li>Open your Project Solution View.</li>

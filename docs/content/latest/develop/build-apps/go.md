@@ -1,14 +1,15 @@
 ---
-title: Python
-linkTitle: Python
-description: Develop Python Apps
+title: Go
+linkTitle: Go
+description: Build a Go App
 aliases:
-  - /develop/client-drivers/python/
+  - /develop/client-drivers/go/
+  - /latest/develop/client-drivers/go/
 menu:
   latest:
-    identifier: client-drivers-python
-    parent: client-drivers
-    weight: 556
+    identifier: build-apps-go
+    parent: build-apps
+    weight: 552
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -27,10 +28,10 @@ menu:
 </ul>
 
 <div class="tab-content">
-  <div id="ysql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-tab">
-    {{% includeMarkdown "ysql/python.md" /%}}
+    <div id="ysql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-tab">
+    {{% includeMarkdown "ysql/go.md" /%}}
   </div>
   <div id="ycql" class="tab-pane fade" role="tabpanel" aria-labelledby="ycql-tab">
-    {{% includeMarkdown "ycql/python.md" /%}}
+    {{% includeMarkdown "ycql/go.md" /%}}
   </div>
 </div>

@@ -28,6 +28,7 @@ $ ps aux | grep yb-master
 ```
 
 If the processes are not running you can start them with:
+
 - `yb-ctl` when using a local cluster.
 
 - `bin/yb-tserver` and `bin/yb-master` binaries when using a multi-node cluster.

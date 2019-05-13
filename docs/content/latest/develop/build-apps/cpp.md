@@ -1,18 +1,19 @@
 ---
-title: NodeJS
-linkTitle: NodeJS
-description: Develop NodeJS Apps
+title: C++
+linkTitle: C++
+description: Build a C++ App
 aliases:
-  - /develop/client-drivers/nodejs/
+  - /develop/client-drivers/cpp/
+  - /latest/develop/client-drivers/cpp/
 menu:
   latest:
-    identifier: client-drivers-nodejs
-    parent: client-drivers
-    weight: 555
+    identifier: build-apps-cpp
+    parent: build-apps
+    weight: 556
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">
-  <li>
+   <li>
     <a href="#ysql" class="nav-link active" id="ysql-tab" data-toggle="tab" role="tab" aria-controls="ysql" aria-selected="false">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
@@ -28,9 +29,10 @@ menu:
 
 <div class="tab-content">
   <div id="ysql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-tab">
-    {{% includeMarkdown "ysql/nodejs.md" /%}}
+    {{% includeMarkdown "ysql/cpp.md" /%}}
   </div>
   <div id="ycql" class="tab-pane fade" role="tabpanel" aria-labelledby="ycql-tab">
-    {{% includeMarkdown "ycql/nodejs.md" /%}}
+    {{% includeMarkdown "ycql/cpp.md" /%}}
   </div>
 </div>
+

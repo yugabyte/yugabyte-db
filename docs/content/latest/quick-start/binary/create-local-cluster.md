@@ -6,7 +6,9 @@ We will use the [`yb-ctl`](../../admin/yb-ctl/) utility located in the `bin` dir
 $ ./bin/yb-ctl create
 ```
 
-By default, the above command will create a 1 node cluster with Replication Factor (RF) 1. You can create a 3 node cluster with RF 3 by using the command below.
+By default, the above command will create a 1 node cluster with Replication Factor (RF) 1. The initial cluster creation may take a minute or so **without any output** on the prompt.
+
+You can create a 3 node cluster with RF 3 by using the command below.
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
@@ -24,8 +26,27 @@ Run the command below to see that we now have 1 `yb-master` process and 1 `yb-ts
 $ ./bin/yb-ctl status
 ```
 ```
-2019-01-15 22:18:40,387 INFO: Server is running: type=master, node_id=1, PID=12818, admin service=http://127.0.0.1:7000
-2019-01-15 22:18:40,408 INFO: Server is running: type=tserver, node_id=1, PID=12827, admin service=http://127.0.0.1:9000, cql service=127.0.0.1:9042, redis service=127.0.0.1:6379, pgsql service=127.0.0.1:5433
+----------------------------------------------------------------------------------------------------
+| Node Count: 1 | Replication Factor: 1                                                            |
+----------------------------------------------------------------------------------------------------
+| JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
+| YSQL Shell          : ./bin/ysqlsh -U postgres -h 127.0.0.1 -p 5433                              |
+| YCQL Shell          : ./bin/cqlsh 127.0.0.1 9042                                                 |
+| YEDIS Shell         : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
+| Web UI              : http://127.0.0.1:7000/                                                     |
+| Cluster Data        : /Users/schoudhury/yugabyte-data                                            |
+----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
+| Node 1: yb-tserver (pid 68412), yb-master (pid 68409)                                            |
+----------------------------------------------------------------------------------------------------
+| JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
+| YSQL Shell          : ./bin/ysqlsh -U postgres -h 127.0.0.1 -p 5433                              |
+| YCQL Shell          : ./bin/cqlsh 127.0.0.1 9042                                                 |
+| YEDIS Shell         : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
+| data-dir[0]         : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data                      |
+| yb-tserver Logs     : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data/tserver/logs         |
+| yb-master Logs      : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data/master/logs          |
+----------------------------------------------------------------------------------------------------
 ```
 
 ## 3. Check cluster status with Admin UI

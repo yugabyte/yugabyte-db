@@ -1,7 +1,47 @@
+---
+title: Build a Java App
+linkTitle: Build a Java App
+description: Build a Java App
+aliases:
+  - /develop/client-drivers/java/
+  - /latest/develop/client-drivers/java/
+  - /latest/develop/build-apps/java/
+menu:
+  latest:
+    parent: build-apps
+    name: Java
+    identifier: java-1
+    weight: 550
+type: page
+isTocNested: true
+showAsideToc: true
+---
+
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/develop/build-apps/java/ysql-jdbc" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - JDBC
+    </a>
+  </li>
+  <li >
+    <a href="/latest/develop/build-apps/java/ysql-spring-data" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Spring Data with JPA/Hibernate
+    </a>
+  </li>
+  <li>
+    <a href="/latest/develop/build-apps/java/ycql" class="nav-link">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
 
 ## Maven
 
-To build your Java application using the Postgresql JDBC driver, add the following Maven dependency to your application:
+To build your Java application using the PostgreSQL JDBC driver, add the following Maven dependency to your application:
 
 ```mvn
 <dependency>
@@ -11,18 +51,17 @@ To build your Java application using the Postgresql JDBC driver, add the followi
 </dependency>
 ```
 
-
 ## Working Example
 
-### Pre-requisites
+### Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [quick start guide](../../../quick-start/explore-ysql/).
+- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
 - installed JDK version 1.8+ and maven 3.3+
 
 
-### Creating the maven build file
+### Create the maven build file
 
 Create a maven build file `pom.xml` and add the following content into it.
 
@@ -83,7 +122,7 @@ Create a maven build file `pom.xml` and add the following content into it.
 </project>
 ```
 
-### Writing a HelloWorld CQL app
+### Write an app
 
 Create the appropriate directory structure as expected by maven.
 
@@ -146,7 +185,7 @@ public class YBSqlHelloWorld {
 ```
 
 
-### Building and running the app
+### Build and run the app
 
 To build the application, just run the following command.
 

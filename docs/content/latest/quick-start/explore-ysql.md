@@ -57,9 +57,9 @@ $ ls data/
 orders.sql  products.sql  reviews.sql users.sql
 ```
 
--  Connect using psql
+-  Connect using ysqlsh
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
       <i class="fab fa-apple" aria-hidden="true"></i>

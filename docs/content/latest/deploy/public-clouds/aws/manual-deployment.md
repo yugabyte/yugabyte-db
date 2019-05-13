@@ -181,7 +181,7 @@ done
 
 ### Verify System Configuration
 
-Below is an example of setting up these pre-requisites in  CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. Full documentation for system config is available [here](../manual-deployment/system-config/).
+Below is an example of setting up these prerequisites in  CentOS 7 or RHEL. For Ubuntu, the specific steps could be slightly different. Full documentation for system config is available [here](../manual-deployment/system-config/).
 
 #### Install ntp & Other Optional Packages
 

@@ -92,7 +92,7 @@ Are you sure you want to continue connecting (yes/no)? yes
 
 YugaWare comes with a pre-packaged set of sample applications. We will run a simple key-value workload against the Cassandra API and the Redis API.
 
-### Pre-requisites
+### Prerequisites
 
 - **Install Java**
 

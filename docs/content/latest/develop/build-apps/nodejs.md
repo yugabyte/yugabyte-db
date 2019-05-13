@@ -1,14 +1,15 @@
 ---
-title: Go
-linkTitle: Go
-description: Develop Go Apps
+title: NodeJS
+linkTitle: NodeJS
+description: Build a NodeJS App
 aliases:
-  - /develop/client-drivers/go/
+  - /develop/client-drivers/nodejs/
+  - /latest/develop/client-drivers/nodejs/ 
 menu:
   latest:
-    identifier: client-drivers-go
-    parent: client-drivers
-    weight: 553
+    identifier: build-apps-nodejs
+    parent: build-apps
+    weight: 551
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -27,10 +28,10 @@ menu:
 </ul>
 
 <div class="tab-content">
-    <div id="ysql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-tab">
-    {{% includeMarkdown "ysql/go.md" /%}}
+  <div id="ysql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-tab">
+    {{% includeMarkdown "ysql/nodejs.md" /%}}
   </div>
   <div id="ycql" class="tab-pane fade" role="tabpanel" aria-labelledby="ycql-tab">
-    {{% includeMarkdown "ycql/go.md" /%}}
+    {{% includeMarkdown "ycql/nodejs.md" /%}}
   </div>
 </div>

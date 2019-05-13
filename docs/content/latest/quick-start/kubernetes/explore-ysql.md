@@ -26,11 +26,11 @@ kubectl cp ./data/users.sql yb-tserver-n1:/home/yugabyte/data/.
 Run psql to connect to the service.
 
 ```sh
-$ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/psql -- -U postgres -d postgres -h yb-tserver-0 -p 5433  --echo-queries
+$ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -U postgres -d postgres -h yb-tserver-0 -p 5433  --echo-queries
 ```
 
 ```
-psql (11.2)
+ysqlsh (11.2)
 Type "help" for help.
 
 postgres=#

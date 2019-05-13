@@ -1,5 +1,5 @@
 
-## Installation
+## Install the pg driver gem
 
 Install the Ruby PostgreSQL driver (pg) using the following command. You can get further details for the driver [here](https://bitbucket.org/ged/ruby-pg/wiki/Home).
 
@@ -9,11 +9,11 @@ $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_conf
 
 ## Working Example
 
-### Pre-requisites
+### Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [quick start guide](../../../quick-start/explore-ysql/).
+- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
 
 
 ### Writing the Ruby code

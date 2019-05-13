@@ -7,11 +7,11 @@ aliases:
   - /latest/introduction/overview/
   - /latest/introduction/benefits/
   - /latest/introduction/core-features/
-section: FAQ
+section: GET STARTED
 menu:
   latest:
     identifier: introduction
-    weight: 2710
+    weight: 150
 isTocNested: true
 showAsideToc: true
 ---

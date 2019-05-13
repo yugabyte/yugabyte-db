@@ -1,8 +1,8 @@
-## Pre-requisites
+## Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [quick start guide](../../../quick-start/explore-ysql/).
+- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
 - installed Go version 1.8+
 
 ## Install Go PostgreSQL Driver
@@ -13,7 +13,7 @@ To install the driver locally run:
 $ go get github.com/lib/pq
 ```
 
-## Writing a HelloWorld YSQL app
+## Sample app
 
 Create a file `ybsql_hello_world.go` and copy the contents below.
 

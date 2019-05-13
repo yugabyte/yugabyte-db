@@ -1,14 +1,15 @@
 ---
 title: C
 linkTitle: C
-description: Develop C Apps
+description: Build a C App
 aliases:
   - /develop/client-drivers/c/
+  - /latest/develop/client-drivers/c/
 menu:
   latest:
-    identifier: client-drivers-c
-    parent: client-drivers
-    weight: 550
+    identifier: build-apps-c
+    parent: build-apps
+    weight: 555
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

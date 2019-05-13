@@ -1,4 +1,4 @@
-## Pre-requisites
+## Prerequisites
 
 This tutorial assumes that you have:
 

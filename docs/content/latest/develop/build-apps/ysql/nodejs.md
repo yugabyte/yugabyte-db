@@ -1,5 +1,5 @@
 
-## Installation
+## Install the pg driver
 
 Install the nodejs driver using the following command. You can find further details and the source for the driver [here](https://node-postgres.com/).
 
@@ -9,11 +9,11 @@ $ npm install pg
 
 ## Working Example
 
-### Pre-requisites
+### Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [quick start guide](../../../quick-start/explore-ysql/).
+- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
 - installed a recent version of `node`. If not, you can find install instructions [here](https://nodejs.org/en/download/).
 
 We will be using the [async](https://github.com/caolan/async) JS utility to work with asynchronous Javascript. Install this by running the following command:
@@ -23,7 +23,7 @@ $ npm install --save async
 ```
 
 
-### Writing the js code
+### Sample js code
 
 Create a file `yb-ysql-helloworld.js` and add the following content to it.
 

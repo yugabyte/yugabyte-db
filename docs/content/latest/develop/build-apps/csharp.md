@@ -1,14 +1,15 @@
 ---
 title: C#
 linkTitle: C#
-description: Develop C# Apps
+description: Build a C# App
 aliases:
   - /develop/client-drivers/csharp/
+  - /latest/develop/client-drivers/csharp/
 menu:
   latest:
-    identifier: client-drivers-csharp
-    parent: client-drivers
-    weight: 552
+    identifier: build-apps-csharp
+    parent: build-apps
+    weight: 557
 ---
 
 <ul class="nav nav-tabs nav-tabs-yb">

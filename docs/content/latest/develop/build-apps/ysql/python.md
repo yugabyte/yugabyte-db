@@ -1,5 +1,5 @@
 
-## Installation
+## Install the psycopg2 driver
 
 Install the python PostgreSQL driver using the following command. You can get further details for the driver [here](https://pypi.org/project/psycopg2/).
 
@@ -9,11 +9,11 @@ $ pip install psycopg2-binary
 
 ## Working Example
 
-### Pre-requisites
+### Prerequisites
 
 This tutorial assumes that you have:
 
-- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [quick start guide](../../../quick-start/explore-ysql/).
+- installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
 
 
 ### Writing the python code

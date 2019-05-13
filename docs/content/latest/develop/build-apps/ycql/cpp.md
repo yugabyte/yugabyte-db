@@ -1,5 +1,5 @@
 
-## Pre-requisites
+## Prerequisites
 
 The tutorial assumes that you have:
 
@@ -41,7 +41,7 @@ $ make install
 
 ## Working Example
 
-### Writing the C/C++ Code.
+### Write an app
 
 Create a file `ybcql_hello_world.c` and copy the contents below:
 
@@ -190,7 +190,7 @@ int main() {
 }
 ```
 
-### Running the application
+### Run the app
 
 You can compile the file using gcc or clang. 
 For clang, you can use:

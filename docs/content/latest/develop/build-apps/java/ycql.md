@@ -1,3 +1,44 @@
+---
+title: Build a Java App
+linkTitle: Build a Java App
+description: Build a Java App
+aliases:
+  - /develop/client-drivers/java/
+  - /latest/develop/client-drivers/java/
+  - /latest/develop/build-apps/java/
+menu:
+  latest:
+    parent: build-apps
+    name: Java
+    identifier: java-3
+    weight: 550
+type: page
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/latest/develop/build-apps/java/ysql-jdbc" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - JDBC
+    </a>
+  </li>
+  <li >
+    <a href="/latest/develop/build-apps/java/ysql-spring-data" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Spring Data with JPA/Hibernate
+    </a>
+  </li>
+  <li>
+    <a href="/latest/develop/build-apps/java/ycql" class="nav-link active">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YCQL
+    </a>
+  </li>
+</ul>
+
+
 
 ## Maven
 
@@ -14,7 +55,7 @@ To build your Java application using the YugaByte DB Cassandra driver, add the f
 
 ## Working Example
 
-### Pre-requisites
+### Prerequisites
 
 This tutorial assumes that you have:
 
@@ -74,7 +115,7 @@ Create a maven build file `pom.xml` and add the following content into it.
 </project>
 ```
 
-### Writing a HelloWorld CQL app
+### Writing a sample app
 
 Create the appropriate directory structure as expected by maven.
 

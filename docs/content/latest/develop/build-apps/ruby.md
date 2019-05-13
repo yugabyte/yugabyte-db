@@ -1,13 +1,14 @@
 ---
-title: Java
-linkTitle: Java
-description: Develop Java Apps
+title: Ruby
+linkTitle: Ruby
+description: Build a Ruby App
 aliases:
-  - /develop/client-drivers/java/
+  - /develop/client-drivers/ruby/
+  - /latest/develop/client-drivers/ruby/
 menu:
   latest:
-    identifier: client-drivers-java
-    parent: client-drivers
+    identifier: build-apps-ruby
+    parent: build-apps
     weight: 554
 ---
 
@@ -28,9 +29,9 @@ menu:
 
 <div class="tab-content">
   <div id="ysql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysql-tab">
-    {{% includeMarkdown "ysql/java.md" /%}}
+    {{% includeMarkdown "ysql/ruby.md" /%}}
   </div>
-  <div id="ycql" class="tab-pane fade " role="tabpanel" aria-labelledby="ycql-tab">
-    {{% includeMarkdown "ycql/java.md" /%}}
+  <div id="ycql" class="tab-pane fade" role="tabpanel" aria-labelledby="ycql-tab">
+    {{% includeMarkdown "ycql/ruby.md" /%}}
   </div>
 </div>

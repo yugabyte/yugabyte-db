@@ -1,35 +1,35 @@
 
 ## Installation
 
-Install the Ruby YCQL driver using the following command. You can get further details for the driver [here](https://github.com/YugaByte/cassandra-ruby-driver).
+Install the python driver using the following command.
 
 ```sh
-$ gem install yugabyte-ycql-driver
+$ pip install yb-cassandra-driver
 ```
 
 ## Working Example
 
-### Pre-requisites
+### Prerequisites
 
 This tutorial assumes that you have:
 
 - installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
 
 
-### Writing the Ruby code
+### Writing the python code
 
-Create a file `yb-ycql-helloworld.rb` and add the following content to it.
+Create a file `yb-cql-helloworld.py` and add the following content to it.
 
-```ruby
-require 'ycql'
+```python
+from cassandra.cluster import Cluster
 
-# Create the cluster connection, connects to localhost by default.
-cluster = Cassandra.cluster
+# Create the cluster connection.
+cluster = Cluster(['127.0.0.1'])
 session = cluster.connect()
 
 # Create the keyspace.
 session.execute('CREATE KEYSPACE IF NOT EXISTS ybdemo;')
-puts "Created keyspace ybdemo"
+print "Created keyspace ybdemo"
 
 # Create the table.
 session.execute(
@@ -39,24 +39,23 @@ session.execute(
                                               age int,
                                               language varchar);
   """)
-puts "Created table employee"
+print "Created table employee"
 
 # Insert a row.
 session.execute(
   """
   INSERT INTO ybdemo.employee (id, name, age, language)
-  VALUES (1, 'John', 35, 'Ruby');
+  VALUES (1, 'John', 35, 'NodeJS');
   """)
-puts "Inserted (id, name, age, language) = (1, 'John', 35, 'Ruby')"
+print "Inserted (id, name, age, language) = (1, 'John', 35, 'Python')"
 
 # Query the row.
 rows = session.execute('SELECT name, age, language FROM ybdemo.employee WHERE id = 1;')
-rows.each do |row|
-  puts "Query returned: %s %s %s" % [ row['name'], row['age'], row['language'] ]
-end
+for row in rows:
+  print row.name, row.age, row.language
 
 # Close the connection.
-cluster.close()
+cluster.shutdown()
 ```
 
 ### Running the application
@@ -64,7 +63,7 @@ cluster.close()
 To run the application, type the following:
 
 ```sh
-$ ruby yb-cql-helloworld.rb
+$ python yb-cql-helloworld.py
 ```
 
 You should see the following output.
@@ -72,6 +71,6 @@ You should see the following output.
 ```
 Created keyspace ybdemo
 Created table employee
-Inserted (id, name, age, language) = (1, 'John', 35, 'Ruby')
-Query returned: John 35 Ruby
+Inserted (id, name, age, language) = (1, 'John', 35, 'Python')
+John 35 Python
 ```
