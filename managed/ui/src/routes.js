@@ -4,7 +4,7 @@ import Cookies from 'js-cookie';
 import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 
-import { validateToken, validateFromTokenResponse, fetchCustomerCount, resetCustomer } from './actions/customers';
+import { validateToken, validateFromTokenResponse, fetchCustomerCount, customerTokenError, resetCustomer } from './actions/customers';
 import App from './app/App';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -45,6 +45,7 @@ function validateSession(store, replacePath, callback) {
         }
       }
     });
+    store.dispatch(customerTokenError());
     browserHistory.push('/login');
   } else {
     store.dispatch(validateToken())
@@ -54,6 +55,7 @@ function validateSession(store, replacePath, callback) {
           switch (status) {
             case 403:
               store.dispatch(resetCustomer());
+              store.dispatch(customerTokenError());
               clearCredentials();
               break;
             default:

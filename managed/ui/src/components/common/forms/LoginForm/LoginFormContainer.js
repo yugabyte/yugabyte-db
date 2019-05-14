@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import LoginForm from './LoginForm';
-import { login, loginResponse } from '../../../../actions/customers';
+import { login, loginResponse, resetCustomerError } from '../../../../actions/customers';
 import { connect } from 'react-redux';
 
 const mapDispatchToProps = (dispatch) => {
@@ -14,7 +14,8 @@ const mapDispatchToProps = (dispatch) => {
         }
         dispatch(loginResponse(response.payload));
       });
-    }
+    },
+    resetCustomerError: () => dispatch(resetCustomerError()),
   };
 };
 
