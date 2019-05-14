@@ -25,6 +25,7 @@
 #include "postgres.h"
 
 #include "miscadmin.h"
+#include "access/nbtree.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "access/ybcam.h"
@@ -42,6 +43,58 @@ typedef struct
 	bool	isprimary;
 	double	index_tuples;
 } YBCBuildState;
+
+/*
+ * LSM handler function: return IndexAmRoutine with access method parameters
+ * and callbacks.
+ */
+Datum
+ybcinhandler(PG_FUNCTION_ARGS)
+{
+	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
+
+	amroutine->amstrategies = BTMaxStrategyNumber;
+	amroutine->amsupport = BTNProcs;
+	amroutine->amcanorder = false; /* TODO: support ordering with range-based index */
+	amroutine->amcanorderbyop = false;
+	amroutine->amcanbackward = true;
+	amroutine->amcanunique = true;
+	amroutine->amcanmulticol = true;
+	amroutine->amoptionalkey = true;
+	amroutine->amsearcharray = true;
+	amroutine->amsearchnulls = true;
+	amroutine->amstorage = false;
+	amroutine->amclusterable = true;
+	amroutine->ampredlocks = true;
+	amroutine->amcanparallel = false; /* TODO: support parallel scan */
+	amroutine->amcaninclude = true;
+	amroutine->amkeytype = InvalidOid;
+
+	amroutine->ambuild = ybcinbuild;
+	amroutine->ambuildempty = ybcinbuildempty;
+	amroutine->aminsert = NULL; /* use yb_aminsert below instead */
+	amroutine->ambulkdelete = ybcinbulkdelete;
+	amroutine->amvacuumcleanup = ybcinvacuumcleanup;
+	amroutine->amcanreturn = ybcincanreturn;
+	amroutine->amcostestimate = ybcincostestimate;
+	amroutine->amoptions = ybcinoptions;
+	amroutine->amproperty = ybcinproperty;
+	amroutine->amvalidate = ybcinvalidate;
+	amroutine->ambeginscan = ybcinbeginscan;
+	amroutine->amrescan = ybcinrescan;
+	amroutine->amgettuple = ybcingettuple;
+	amroutine->amgetbitmap = NULL; /* TODO: support bitmap scan */
+	amroutine->amendscan = ybcinendscan;
+	amroutine->ammarkpos = NULL; /* TODO: support mark/restore pos with ordering */
+	amroutine->amrestrpos = NULL;
+	amroutine->amestimateparallelscan = NULL; /* TODO: support parallel scan */
+	amroutine->aminitparallelscan = NULL;
+	amroutine->amparallelrescan = NULL;
+	amroutine->yb_aminsert = ybcininsert;
+	amroutine->yb_amdelete = ybcindelete;
+
+	PG_RETURN_POINTER(amroutine);
+}
 
 static void
 ybcinbuildCallback(Relation index, HeapTuple heapTuple, Datum *values, bool *isnull,

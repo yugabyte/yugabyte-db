@@ -307,9 +307,9 @@ SELECT max(col) FROM enumtest WHERE col < 'green';
 SET enable_seqscan = off;
 SET enable_bitmapscan = off;
 --
--- Btree index / opclass with the various operators
+-- LSM index / opclass with the various operators
 --
-CREATE UNIQUE INDEX enumtest_btree ON enumtest USING btree (col);
+CREATE UNIQUE INDEX enumtest_lsm ON enumtest USING lsm (col);
 SELECT * FROM enumtest WHERE col = 'orange';
   col   
 --------
@@ -378,7 +378,7 @@ SELECT max(col) FROM enumtest WHERE col < 'green';
  yellow
 (1 row)
 
-DROP INDEX enumtest_btree;
+DROP INDEX enumtest_lsm;
 --
 -- Hash index / opclass with the = operator
 --

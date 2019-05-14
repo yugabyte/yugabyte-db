@@ -563,6 +563,29 @@ DefineIndex(Oid relationId,
 	 * look up the access method, verify it can handle the requested features
 	 */
 	accessMethodName = stmt->accessMethod;
+
+	/*
+	 * In YugaByte mode, switch index method from "btree" to "lsm" depending on whether the
+	 * table is stored in YugaByte storage or not (such as temporary tables).
+	 */
+	if (IsYugaByteEnabled())
+	{
+		if (accessMethodName == NULL)
+		{
+			accessMethodName = IsYBRelation(rel) ? "lsm" : DEFAULT_INDEX_TYPE;
+		}
+		else if (IsYBRelation(rel))
+		{
+			if (strcmp(accessMethodName, "btree") == 0)
+			{
+				ereport(NOTICE,
+						(errmsg("index method \"%s\" was replaced with \"lsm\" in YugaByte DB",
+								accessMethodName)));
+				accessMethodName = "lsm";
+			}
+		}
+	}
+
 	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethodName));
 	if (!HeapTupleIsValid(tuple))
 	{
@@ -585,6 +608,14 @@ DefineIndex(Oid relationId,
 							accessMethodName)));
 	}
 	accessMethodId = HeapTupleGetOid(tuple);
+
+	if (IsYBRelation(rel) && accessMethodId != LSM_AM_OID)
+		ereport(ERROR,
+				(errmsg("index method \"%s\" not supported yet",
+						accessMethodName),
+				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1337. "
+						 "Click '+' on the description to raise its priority")));
+
 	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
 	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
 
@@ -1695,15 +1726,15 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		{
 			/* index AM does not support ordering */
 			if (attribute->ordering != SORTBY_DEFAULT)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("access method \"%s\" does not support ASC/DESC options",
-								accessMethodName)));
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("access method \"%s\" does not support ASC/DESC options",
+									accessMethodName)));
 			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("access method \"%s\" does not support NULLS FIRST/LAST options",
-								accessMethodName)));
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("access method \"%s\" does not support NULLS FIRST/LAST options",
+									accessMethodName)));
 		}
 
 		attn++;

@@ -71,6 +71,8 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+/*  YB includes. */
+#include "pg_yb_utils.h"
 
 /* The main type cache hashtable searched by lookup_type_cache */
 static HTAB *TypeCacheHash = NULL;
@@ -411,7 +413,7 @@ lookup_type_cache(Oid type_id, int flags)
 	{
 		Oid			opclass;
 
-		opclass = GetDefaultOpClass(type_id, BTREE_AM_OID);
+		opclass = GetDefaultOpClass(type_id, IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID);
 		if (OidIsValid(opclass))
 		{
 			typentry->btree_opf = get_opclass_family(opclass);

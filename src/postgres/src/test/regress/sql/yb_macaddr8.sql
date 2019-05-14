@@ -60,7 +60,7 @@ INSERT INTO macaddr8_data VALUES (21, '08002b0102030405');
 SELECT * FROM macaddr8_data ORDER BY 1;
 
 -- TODO(neil) INDEX non-empty table.
--- CREATE INDEX macaddr8_data_btree ON macaddr8_data USING btree (b);
+-- CREATE INDEX macaddr8_data_lsm ON macaddr8_data USING lsm (b);
 -- CREATE INDEX macaddr8_data_hash ON macaddr8_data USING hash (b);
 
 SELECT a, b, trunc(b) FROM macaddr8_data ORDER BY 2, 1;

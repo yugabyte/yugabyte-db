@@ -53,6 +53,8 @@
 #include "utils/syscache.h"
 #include "utils/rel.h"
 
+/*  YB includes. */
+#include "pg_yb_utils.h"
 
 /* Convenience macro for the most common makeNamespaceItem() case */
 #define makeDefaultNSItem(rte)	makeNamespaceItem(rte, true, true, false, true)
@@ -3135,7 +3137,7 @@ resolve_unique_index_expr(ParseState *pstate, InferClause *infer,
 		if (!ielem->opclass)
 			pInfer->inferopclass = InvalidOid;
 		else
-			pInfer->inferopclass = get_opclass_oid(BTREE_AM_OID,
+			pInfer->inferopclass = get_opclass_oid(IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID,
 												   ielem->opclass, false);
 
 		result = lappend(result, pInfer);

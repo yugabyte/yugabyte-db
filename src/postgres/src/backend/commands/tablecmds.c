@@ -7646,8 +7646,8 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 * strategy number is equality.  (Is it reasonable to insist that
 		 * every such index AM use btree's number for equality?)
 		 */
-		if (amid != BTREE_AM_OID)
-			elog(ERROR, "only b-tree indexes are supported for foreign keys");
+		if (amid != BTREE_AM_OID && amid != LSM_AM_OID)
+			elog(ERROR, "only b-tree and lsm indexes are supported for foreign keys");
 		eqstrategy = BTEqualStrategyNumber;
 
 		/*
@@ -14509,7 +14509,7 @@ ComputePartitionAttrs(Relation rel, List *partParams, AttrNumber *partattrs,
 		if (strategy == PARTITION_STRATEGY_HASH)
 			am_oid = HASH_AM_OID;
 		else
-			am_oid = BTREE_AM_OID;
+			am_oid = IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID;
 
 		if (!pelem->opclass)
 		{

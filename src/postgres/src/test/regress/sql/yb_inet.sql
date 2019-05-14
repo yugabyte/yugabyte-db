@@ -63,7 +63,7 @@ SELECT max(c) AS max, min(c) AS min FROM INET_TBL;
 -- check the conversion to/from text and set_netmask
 SELECT '' AS ten, set_masklen(inet(text(i)), 24) FROM INET_TBL ORDER BY c, i;
 
--- check that btree index works correctly
+-- check that lsm index works correctly
 -- TODO(neil) Turn on INDEX when indexing non-empty table is allowed.
 -- CREATE INDEX inet_idx1 ON inet_tbl(i);
 SET enable_seqscan TO off;
