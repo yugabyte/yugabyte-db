@@ -2128,7 +2128,9 @@ LookupOpclassInfo(Oid operatorClassOid,
 	 */
 	indexOK = criticalRelcachesBuilt ||
 		(operatorClassOid != OID_BTREE_OPS_OID &&
-		 operatorClassOid != INT2_BTREE_OPS_OID);
+		 operatorClassOid != OID_LSM_OPS_OID &&
+		 operatorClassOid != INT2_BTREE_OPS_OID &&
+		 operatorClassOid != INT2_LSM_OPS_OID);
 
 	/*
 	 * We have to fetch the pg_opclass row to determine its opfamily and
@@ -4816,7 +4818,8 @@ RelationGetIndexList(Relation relation)
 		/* Check to see if is a usable btree index on OID */
 		if (index->indnatts == 1 &&
 			index->indkey.values[0] == ObjectIdAttributeNumber &&
-			indclass->values[0] == OID_BTREE_OPS_OID)
+			(indclass->values[0] == OID_BTREE_OPS_OID ||
+			 indclass->values[0] == OID_LSM_OPS_OID))
 			oidIndex = index->indexrelid;
 
 		/* remember primary key index if any */

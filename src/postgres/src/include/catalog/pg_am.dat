@@ -30,5 +30,8 @@
 { oid => '3580', oid_symbol => 'BRIN_AM_OID',
   descr => 'block range index (BRIN) access method',
   amname => 'brin', amhandler => 'brinhandler', amtype => 'i' },
+{ oid => '9900', oid_symbol => 'LSM_AM_OID',
+  descr => 'YugaByte log-structured merge-tree index access method',
+  amname => 'lsm', amhandler => 'ybcinhandler', amtype => 'i' },
 
 ]

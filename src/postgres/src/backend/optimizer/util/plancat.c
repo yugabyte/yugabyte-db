@@ -279,9 +279,8 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 
 			/*
 			 * Fetch the ordering information for the index, if any.
-			 * TODO: support ordering with range-based index in YugaByte.
 			 */
-			if (info->relam == BTREE_AM_OID && !IsYugaByteEnabled())
+			if (info->relam == BTREE_AM_OID)
 			{
 				/*
 				 * If it's a btree index, we can use its opfamily OIDs
@@ -393,7 +392,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			 * a table, except we can be sure that the index is not larger
 			 * than the table.
 			 */
-			if (info->indpred == NIL && !IsYugaByteEnabled())
+			if (info->indpred == NIL && !IsYBRelation(indexRelation))
 			{
 				info->pages = RelationGetNumberOfBlocks(indexRelation);
 				info->tuples = rel->tuples;
@@ -410,18 +409,8 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 
 			if (info->relam == BTREE_AM_OID)
 			{
-				/*
-				 * For YugaByte-based index, set the tree height to "unknown".
-				 */
-				if (IsYugaByteEnabled())
-				{
-					info->tree_height = -1;
-				}
-				else
-				{
-					/* For btrees, get tree height while we have the index open */
-					info->tree_height = _bt_getrootheight(indexRelation);
-				}
+				/* For btrees, get tree height while we have the index open */
+				info->tree_height = _bt_getrootheight(indexRelation);
 			}
 			else
 			{

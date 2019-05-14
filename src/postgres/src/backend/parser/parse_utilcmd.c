@@ -1939,7 +1939,8 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 		index->idxname = NULL;	/* DefineIndex will choose name */
 
 	index->relation = cxt->relation;
-	index->accessMethod = constraint->access_method ? constraint->access_method : DEFAULT_INDEX_TYPE;
+	index->accessMethod = constraint->access_method ? constraint->access_method :
+			(IsYugaByteEnabled() ? NULL : DEFAULT_INDEX_TYPE);
 	index->options = constraint->options;
 	index->tableSpace = constraint->indexspace;
 	index->whereClause = constraint->where_clause;
@@ -2054,16 +2055,17 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 					 parser_errposition(cxt->pstate, constraint->location)));
 
 		/*
-		 * Insist on it being a btree.  That's the only kind that supports
+		 * Insist on it being a btree/lsm.  That's the only kind that supports
 		 * uniqueness at the moment anyway; but we must have an index that
 		 * exactly matches what you'd get from plain ADD CONSTRAINT syntax,
 		 * else dump and reload will produce a different index (breaking
 		 * pg_upgrade in particular).
 		 */
-		if (index_rel->rd_rel->relam != get_index_am_oid(DEFAULT_INDEX_TYPE, false))
+		if (index_rel->rd_rel->relam != BTREE_AM_OID &&
+			index_rel->rd_rel->relam != LSM_AM_OID)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("index \"%s\" is not a btree", index_name),
+					 errmsg("index \"%s\" is not a btree or lsm index", index_name),
 					 parser_errposition(cxt->pstate, constraint->location)));
 
 		/* Must get indclass the hard way */

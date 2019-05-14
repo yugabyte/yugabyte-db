@@ -221,7 +221,7 @@ index_insert(Relation indexRelation,
 	 * For YugaByte-based index, call the variant of aminsert that takes the full tuple instead of
 	 * the tuple id.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && IsYBRelation(indexRelation))
 	{
 		CHECK_REL_PROCEDURE(yb_aminsert);
 		return indexRelation->rd_amroutine->yb_aminsert(indexRelation, values, isnull,

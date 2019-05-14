@@ -1377,7 +1377,8 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				opno = lfirst_oid(opnos_cell);
 				opnos_cell = lnext(opnos_cell);
 
-				if (index->rd_rel->relam != BTREE_AM_OID ||
+				if ((index->rd_rel->relam != BTREE_AM_OID &&
+					 index->rd_rel->relam != LSM_AM_OID) ||
 					varattno < 1 || varattno > indnkeyatts)
 					elog(ERROR, "bogus RowCompare index qualification");
 				opfamily = index->rd_opfamily[varattno - 1];
