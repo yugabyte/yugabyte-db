@@ -51,6 +51,9 @@ export const DELETE_CUSTOMER_CONFIG_RESPONSE = 'DELETE_CUSTOMER_CONFIG_RESPONSE'
 export const FETCH_CUSTOMER_CONFIGS = 'FETCH_CUSTOMER_CONFIGS';
 export const FETCH_CUSTOMER_CONFIGS_RESPONSE = 'FETCH_CUSTOMER_CONFIGS_RESPONSE';
 
+export const INVALID_CUSTOMER_TOKEN = 'INVALID_CUSTOMER_TOKEN';
+export const RESET_TOKEN_ERROR = 'RESET_TOKEN_ERROR';
+
 export const GET_LOGS = 'GET_LOGS';
 export const GET_LOGS_SUCCESS = 'GET_LOGS_SUCCESS';
 export const GET_LOGS_FAILURE = 'GET_LOGS_FAILURE';
@@ -147,6 +150,18 @@ export function logoutFailure(error) {
 export function resetCustomer() {
   return {
     type: RESET_CUSTOMER
+  };
+}
+
+export function customerTokenError() {
+  return {
+    type: INVALID_CUSTOMER_TOKEN
+  };
+}
+
+export function resetCustomerError() {
+  return {
+    type: RESET_TOKEN_ERROR
   };
 }
 
