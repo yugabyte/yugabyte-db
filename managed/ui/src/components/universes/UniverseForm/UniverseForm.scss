@@ -221,6 +221,21 @@
   }
 }
 
+.mobile-view-btn-container {
+  display: none;
+  padding: 10px;
+
+  @media (max-width: 991px) {
+    display: block;
+  }
+}
+
+@media (max-width: 991px) {
+  .universe-resource-btn-container {
+    display: none;
+  }
+}
+
 .universe-form-submit-btn {
   margin-bottom: 10px !important;
 }

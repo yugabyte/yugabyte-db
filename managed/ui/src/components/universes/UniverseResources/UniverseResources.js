@@ -68,7 +68,7 @@ export default class UniverseResources extends Component {
                 <YBResourceCount className="hidden-costs" size={costPerMonth} kind="/month" />
               </div>
             </FlexGrow>
-            <FlexShrink>
+            <FlexShrink className="universe-resource-btn-container">
               {this.props.children}
             </FlexShrink>
           </FlexContainer>
