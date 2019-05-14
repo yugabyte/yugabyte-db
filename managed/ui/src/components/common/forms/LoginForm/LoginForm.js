@@ -8,6 +8,7 @@ import YBLogo from '../../YBLogo/YBLogo';
 import { browserHistory } from 'react-router';
 import { Field, Form, Formik } from 'formik';
 import * as Yup from "yup";
+import _ from 'lodash';
 
 class LoginForm extends Component {
   submitLogin = formValues => {
@@ -16,9 +17,15 @@ class LoginForm extends Component {
   };
 
   componentWillReceiveProps(nextProps) {
-    const {customer: {authToken}} =  nextProps;
-    if (getPromiseState(authToken).isSuccess()) {
-      browserHistory.push('/');
+    const {customer: { authToken, error }} =  nextProps;
+    const currentAuth = this.props.customer.authToken;
+    if (getPromiseState(authToken).isSuccess() && !_.isEqual(authToken, currentAuth)) {
+      if (error === 'Invalid') {
+        this.props.resetCustomerError();
+        browserHistory.goBack();
+      } else {
+        browserHistory.push('/');
+      }
     }
   }
 

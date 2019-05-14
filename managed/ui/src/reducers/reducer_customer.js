@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
-         REGISTER, REGISTER_RESPONSE, LOGIN, LOGIN_RESPONSE, RESET_CUSTOMER,
+         REGISTER, REGISTER_RESPONSE, LOGIN, LOGIN_RESPONSE, INVALID_CUSTOMER_TOKEN, RESET_TOKEN_ERROR, RESET_CUSTOMER,
          LOGOUT, LOGOUT_SUCCESS, LOGOUT_FAILURE, FETCH_SOFTWARE_VERSIONS_FAILURE, FETCH_SOFTWARE_VERSIONS_SUCCESS,
          FETCH_SOFTWARE_VERSIONS, FETCH_HOST_INFO, FETCH_HOST_INFO_SUCCESS, FETCH_HOST_INFO_FAILURE,
          FETCH_CUSTOMER_COUNT, FETCH_YUGAWARE_VERSION, FETCH_YUGAWARE_VERSION_RESPONSE,
@@ -58,6 +58,10 @@ export default function(state = INITIAL_STATE, action) {
       return {...state, currentCustomer: getInitialState({}), authToken: getInitialState({})};
     case LOGOUT_FAILURE:
       return {...state};
+    case INVALID_CUSTOMER_TOKEN:
+      return {...state, error: 'Invalid'};
+    case RESET_TOKEN_ERROR:
+      return {...state, error: null};  
     case RESET_CUSTOMER:
       return {...state, currentCustomer: getInitialState({}), authToken: getInitialState({})};
     case FETCH_SOFTWARE_VERSIONS:

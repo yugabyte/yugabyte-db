@@ -15,7 +15,7 @@ export default class TasksList extends Component {
     showOrRedirect(currentCustomer.data.features, "menu.tasks");
 
     return (
-      <TaskListTable taskList={customerTaskList}/>
+      <TaskListTable taskList={customerTaskList || []}/>
     );
   }
 }
