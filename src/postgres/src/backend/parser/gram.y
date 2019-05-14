@@ -7825,13 +7825,9 @@ opt_index_name:
 		;
 
 access_method_clause:
-			USING access_method						{
-				if (strcmp($2, "btree") != 0)
-				{
-					parser_ybc_not_support(@1, "CREATE INDEX USING access_method");
-				}
-                                                      $$ = $2; }
-			| /*EMPTY*/								{ $$ = DEFAULT_INDEX_TYPE; }
+			USING access_method						{ $$ = $2; }
+			| /*EMPTY*/								{ $$ = IsYugaByteEnabled() ?
+															 NULL : DEFAULT_INDEX_TYPE;	}
 		;
 
 index_params:	index_elem							{ $$ = list_make1($1); }
@@ -16977,47 +16973,54 @@ parser_init(base_yy_extra_type *yyext)
 	yyext->parsetree = NIL;		/* in case grammar forgets to set it */
 }
 
-void
+static void
 raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
 	int signal_level = YBUnsupportedFeatureSignalLevel();
-	if (issue > 0) {
+	if (issue > 0)
+	{
 		ereport(signal_level,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("%s", msg),
-			errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-				"Click '+' on the description to raise its priority", issue),
-			parser_errposition(pos)));
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s", msg),
+				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
+						 "Click '+' on the description to raise its priority", issue),
+				 parser_errposition(pos)));
 
-	} else {
+	}
+	else
+	{
 		ereport(signal_level,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("%s", msg),
-			errhint("Please report the issue on "
-				"https://github.com/YugaByte/yugabyte-db/issues"),
-			parser_errposition(pos)));
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s", msg),
+				 errhint("Please report the issue on "
+						 "https://github.com/YugaByte/yugabyte-db/issues"),
+				 parser_errposition(pos)));
 	}
 }
 
-void
+static void
 ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
 	static int use_yb_parser = -1;
-	if (use_yb_parser == -1) {
+	if (use_yb_parser == -1)
+	{
 		use_yb_parser = YBIsUsingYBParser();
 	}
 
-	if (use_yb_parser) {
+	if (use_yb_parser)
+	{
 		raise_feature_not_supported(pos, yyscanner, msg, issue);
 	}
 }
 
-void
+static void
 ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg) {
 	static int restricted = -1;
-	if (restricted == -1) {
+	if (restricted == -1)
+	{
 		restricted = YBIsUsingYBParser() && YBIsPreparingTemplates();
 	}
 
-	if (restricted) {
+	if (restricted)
+	{
 		raise_feature_not_supported(pos, yyscanner, msg, -1);
 	}
 }

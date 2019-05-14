@@ -158,10 +158,10 @@ SET enable_seqscan = off;
 SET enable_bitmapscan = off;
 
 --
--- Btree index / opclass with the various operators
+-- LSM index / opclass with the various operators
 --
 -- TODO(neil) Index Support
--- CREATE UNIQUE INDEX enumtest_btree ON enumtest USING btree (col);
+-- CREATE UNIQUE INDEX enumtest_lsm ON enumtest USING lsm (col);
 SELECT * FROM enumtest WHERE col = 'orange';
 SELECT * FROM enumtest WHERE col <> 'orange' ORDER BY col;
 SELECT * FROM enumtest WHERE col > 'yellow' ORDER BY col;
@@ -172,7 +172,7 @@ SELECT min(col) FROM enumtest;
 SELECT max(col) FROM enumtest;
 SELECT max(col) FROM enumtest WHERE col < 'green';
 -- TODO(neil) Index Support
--- DROP INDEX enumtest_btree;
+-- DROP INDEX enumtest_lsm;
 
 --
 -- Hash index / opclass with the = operator

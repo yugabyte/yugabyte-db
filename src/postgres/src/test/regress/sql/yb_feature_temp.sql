@@ -260,3 +260,24 @@ CREATE VIEW tempview AS SELECT * FROM temptest;
 SELECT * FROM tempview;
 
 SELECT * FROM temptest;
+
+-- test temp table with indexes
+CREATE TEMP TABLE temptest (k int PRIMARY KEY, v1 int, v2 int);
+CREATE UNIQUE INDEX ON temptest (v1);
+CREATE INDEX ON temptest USING hash (v2);
+\d temptest
+
+INSERT INTO temptest VALUES (1, 2, 3), (4, 5, 6);
+INSERT INTO temptest VALUES (2, 2, 3);
+
+SELECT * FROM temptest WHERE k IN (1, 4) ORDER BY k;
+
+UPDATE temptest SET v1 = 0 WHERE k = 1;
+
+SELECT * FROM temptest ORDER BY k;
+
+DELETE FROM temptest WHERE k = 4;
+
+SELECT * FROM temptest WHERE k IN (1, 4) ORDER BY k;
+
+DROP TABLE temptest;

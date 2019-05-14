@@ -3,35 +3,35 @@
 -- Create ancillary data structures (i.e. indices)
 --
 --
--- BTREE
+-- LSM
 --
-CREATE INDEX onek_unique1 ON onek USING btree(unique1 int4_ops);
-CREATE INDEX IF NOT EXISTS onek_unique1 ON onek USING btree(unique1 int4_ops);
+CREATE INDEX onek_unique1 ON onek USING lsm(unique1 int4_ops);
+CREATE INDEX IF NOT EXISTS onek_unique1 ON onek USING lsm(unique1 int4_ops);
 NOTICE:  relation "onek_unique1" already exists, skipping
-CREATE INDEX IF NOT EXISTS ON onek USING btree(unique1 int4_ops);
+CREATE INDEX IF NOT EXISTS ON onek USING lsm(unique1 int4_ops);
 ERROR:  syntax error at or near "ON"
-LINE 1: CREATE INDEX IF NOT EXISTS ON onek USING btree(unique1 int4_...
+LINE 1: CREATE INDEX IF NOT EXISTS ON onek USING lsm(unique1 int4_op...
                                    ^
-CREATE INDEX onek_unique2 ON onek USING btree(unique2 int4_ops);
-CREATE INDEX onek_hundred ON onek USING btree(hundred int4_ops);
-CREATE INDEX onek_stringu1 ON onek USING btree(stringu1 name_ops);
-CREATE INDEX tenk1_unique1 ON tenk1 USING btree(unique1 int4_ops);
+CREATE INDEX onek_unique2 ON onek USING lsm(unique2 int4_ops);
+CREATE INDEX onek_hundred ON onek USING lsm(hundred int4_ops);
+CREATE INDEX onek_stringu1 ON onek USING lsm(stringu1 name_ops);
+CREATE INDEX tenk1_unique1 ON tenk1 USING lsm(unique1 int4_ops);
 ERROR:  relation "tenk1" does not exist
-CREATE INDEX tenk1_unique2 ON tenk1 USING btree(unique2 int4_ops);
+CREATE INDEX tenk1_unique2 ON tenk1 USING lsm(unique2 int4_ops);
 ERROR:  relation "tenk1" does not exist
-CREATE INDEX tenk1_hundred ON tenk1 USING btree(hundred int4_ops);
+CREATE INDEX tenk1_hundred ON tenk1 USING lsm(hundred int4_ops);
 ERROR:  relation "tenk1" does not exist
 CREATE INDEX tenk1_thous_tenthous ON tenk1 (thousand, tenthous);
 ERROR:  relation "tenk1" does not exist
-CREATE INDEX tenk2_unique1 ON tenk2 USING btree(unique1 int4_ops);
-CREATE INDEX tenk2_unique2 ON tenk2 USING btree(unique2 int4_ops);
-CREATE INDEX tenk2_hundred ON tenk2 USING btree(hundred int4_ops);
-CREATE INDEX rix ON road USING btree (name text_ops);
-CREATE INDEX iix ON ihighway USING btree (name text_ops);
+CREATE INDEX tenk2_unique1 ON tenk2 USING lsm(unique1 int4_ops);
+CREATE INDEX tenk2_unique2 ON tenk2 USING lsm(unique2 int4_ops);
+CREATE INDEX tenk2_hundred ON tenk2 USING lsm(hundred int4_ops);
+CREATE INDEX rix ON road USING lsm (name text_ops);
+CREATE INDEX iix ON ihighway USING lsm (name text_ops);
 ERROR:  relation "ihighway" does not exist
-CREATE INDEX six ON shighway USING btree (name text_ops);
+CREATE INDEX six ON shighway USING lsm (name text_ops);
 ERROR:  relation "shighway" does not exist
-CREATE INDEX onek_two_idx ON onek USING btree(two);
+CREATE INDEX onek_two_idx ON onek USING lsm(two);
 DROP INDEX onek_two_idx;
 DROP INDEX onek_two_idx;
 ERROR:  index "onek_two_idx" does not exist
@@ -183,9 +183,9 @@ CREATE TABLE t2 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r));
  v1     | integer |           |          |
  v2     | integer |           |          |
 Indexes:
-    "t1_pkey" PRIMARY KEY, btree (h, r)
-    "t1_v1_v2_idx" UNIQUE, btree (v1, v2)
-    "t1_v1_idx" btree (v1)
+    "t1_pkey" PRIMARY KEY, lsm (h, r)
+    "t1_v1_v2_idx" UNIQUE, lsm (v1, v2)
+    "t1_v1_idx" lsm (v1)
 
 \d t2
                  Table "public.t2"
@@ -196,7 +196,7 @@ Indexes:
  v1     | integer |           |          |
  v2     | integer |           |          |
 Indexes:
-    "t2_pkey" PRIMARY KEY, btree (h, r)
+    "t2_pkey" PRIMARY KEY, lsm (h, r)
 
 INSERT INTO t1 VALUES (1, 1, 11, 11), (1, 2, 11, 12);
 INSERT INTO t2 VALUES (1, 1, 21, 21);
@@ -447,3 +447,23 @@ INSERT INTO test_truncate VALUES (2, 2);
 INSERT INTO test_truncate VALUES (1, 2);
 ERROR:  duplicate key value violates unique constraint "test_truncate_index"
 DROP TABLE test_truncate;
+-- Test index methods
+CREATE TABLE test_method (k int PRIMARY KEY, v int);
+CREATE INDEX ON test_method USING btree (v);
+NOTICE:  index method "btree" was replaced with "lsm" in YugaByte DB
+CREATE INDEX ON test_method USING hash (v);
+ERROR:  index method "hash" not supported yet
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1337. Click '+' on the description to raise its priority
+CREATE INDEX ON test_method USING foo (v);
+ERROR:  access method "foo" does not exist
+\d test_method
+            Table "public.test_method"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ k      | integer |           | not null |
+ v      | integer |           |          |
+Indexes:
+    "test_method_pkey" PRIMARY KEY, lsm (k)
+    "test_method_v_idx" lsm (v)
+
+DROP TABLE test_method;

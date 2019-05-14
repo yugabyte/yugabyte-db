@@ -655,7 +655,7 @@ ERROR:  cache lookup failed for type 0
 ;
 DROP TABLE dropcol;
 -- TODO(neil) UNIQUE column not supported yet.
--- check handling of regular btree constraint along with gist constraint
+-- check handling of regular lsm constraint along with gist constraint
 -- create table twoconstraints (f1 int unique, f2 box,
 --                             exclude using gist(f2 with &&));
 -- insert into twoconstraints values(1, '((0,0),(1,1))');

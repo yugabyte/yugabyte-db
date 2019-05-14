@@ -434,7 +434,7 @@ insert into dropcol(key, keep1, keep2) values(1, '5', 5) on conflict(key)
 DROP TABLE dropcol;
 
 -- TODO(neil) UNIQUE column not supported yet.
--- check handling of regular btree constraint along with gist constraint
+-- check handling of regular lsm constraint along with gist constraint
 
 -- create table twoconstraints (f1 int unique, f2 box,
 --                             exclude using gist(f2 with &&));
