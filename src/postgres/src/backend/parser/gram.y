@@ -841,6 +841,7 @@ stmt :
 			| AlterDatabaseSetStmt
 			| AlterDatabaseStmt
 			| AlterTableStmt
+			| CommentStmt
 			| ConstraintsSetStmt
 			| CopyStmt
 			| CreateSchemaStmt
@@ -906,7 +907,6 @@ stmt :
 			| CallStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClosePortalStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CommentStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateCastStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -6792,7 +6792,6 @@ opt_restart_seqs:
 CommentStmt:
 			COMMENT ON comment_type_any_name any_name IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = $3;
 					n->object = (Node *) $4;
@@ -6801,7 +6800,6 @@ CommentStmt:
 				}
 			| COMMENT ON comment_type_name name IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = $3;
 					n->object = (Node *) makeString($4);
@@ -6810,7 +6808,6 @@ CommentStmt:
 				}
 			| COMMENT ON TYPE_P Typename IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_TYPE;
 					n->object = (Node *) $4;
@@ -6819,7 +6816,6 @@ CommentStmt:
 				}
 			| COMMENT ON DOMAIN_P Typename IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_DOMAIN;
 					n->object = (Node *) $4;
@@ -6828,7 +6824,6 @@ CommentStmt:
 				}
 			| COMMENT ON AGGREGATE aggregate_with_argtypes IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_AGGREGATE;
 					n->object = (Node *) $4;
@@ -6837,7 +6832,6 @@ CommentStmt:
 				}
 			| COMMENT ON FUNCTION function_with_argtypes IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_FUNCTION;
 					n->object = (Node *) $4;
@@ -6846,7 +6840,6 @@ CommentStmt:
 				}
 			| COMMENT ON OPERATOR operator_with_argtypes IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_OPERATOR;
 					n->object = (Node *) $4;
@@ -6855,7 +6848,6 @@ CommentStmt:
 				}
 			| COMMENT ON CONSTRAINT name ON any_name IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_TABCONSTRAINT;
 					n->object = (Node *) lappend($6, makeString($4));
@@ -6864,7 +6856,6 @@ CommentStmt:
 				}
 			| COMMENT ON CONSTRAINT name ON DOMAIN_P any_name IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_DOMCONSTRAINT;
 					/*
@@ -6878,7 +6869,6 @@ CommentStmt:
 				}
 			| COMMENT ON POLICY name ON any_name IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_POLICY;
 					n->object = (Node *) lappend($6, makeString($4));
@@ -6887,7 +6877,6 @@ CommentStmt:
 				}
 			| COMMENT ON PROCEDURE function_with_argtypes IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_PROCEDURE;
 					n->object = (Node *) $4;
@@ -6904,7 +6893,6 @@ CommentStmt:
 				}
 			| COMMENT ON RULE name ON any_name IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_RULE;
 					n->object = (Node *) lappend($6, makeString($4));
@@ -6913,7 +6901,6 @@ CommentStmt:
 				}
 			| COMMENT ON TRANSFORM FOR Typename LANGUAGE name IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_TRANSFORM;
 					n->object = (Node *) list_make2($5, makeString($7));
@@ -6922,7 +6909,6 @@ CommentStmt:
 				}
 			| COMMENT ON TRIGGER name ON any_name IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_TRIGGER;
 					n->object = (Node *) lappend($6, makeString($4));
@@ -6931,7 +6917,6 @@ CommentStmt:
 				}
 			| COMMENT ON OPERATOR CLASS any_name USING access_method IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_OPCLASS;
 					n->object = (Node *) lcons(makeString($7), $5);
@@ -6940,7 +6925,6 @@ CommentStmt:
 				}
 			| COMMENT ON OPERATOR FAMILY any_name USING access_method IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_OPFAMILY;
 					n->object = (Node *) lcons(makeString($7), $5);
@@ -6949,7 +6933,6 @@ CommentStmt:
 				}
 			| COMMENT ON LARGE_P OBJECT_P NumericOnly IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_LARGEOBJECT;
 					n->object = (Node *) $5;
@@ -6958,7 +6941,6 @@ CommentStmt:
 				}
 			| COMMENT ON CAST '(' Typename AS Typename ')' IS comment_text
 				{
-					parser_ybc_not_support(@1, "COMMENT");
 					CommentStmt *n = makeNode(CommentStmt);
 					n->objtype = OBJECT_CAST;
 					n->object = (Node *) list_make2($5, $7);
@@ -6984,7 +6966,6 @@ comment_type_any_name:
 			| TEXT_P SEARCH PARSER				{ $$ = OBJECT_TSPARSER; }
 			| TEXT_P SEARCH TEMPLATE			{ $$ = OBJECT_TSTEMPLATE; }
 		;
-
 /* object types taking name */
 comment_type_name:
 			ACCESS METHOD						{ $$ = OBJECT_ACCESS_METHOD; }
