@@ -163,6 +163,10 @@ class IntentAwareIterator {
       DocHybridTime* max_overwrite_time,
       Slice* result_value = nullptr);
 
+  void SetUpperbound(const Slice& upperbound) {
+    upperbound_ = upperbound;
+  }
+
   void DebugDump();
 
  private:
@@ -245,6 +249,8 @@ class IntentAwareIterator {
 
   void SeekIntentIterIfNeeded();
 
+  bool SatisfyBounds(const Slice& slice);
+
   const ReadHybridTime read_time_;
   const string encoded_read_time_local_limit_;
   const string encoded_read_time_global_limit_;
@@ -256,6 +262,9 @@ class IntentAwareIterator {
   bool iter_valid_ = false;
   Status status_;
   HybridTime max_seen_ht_ = HybridTime::kMin;
+
+  // Upperbound for seek. If we see regular or intent record past this bound, it will be ignored.
+  Slice upperbound_;
 
   // Exclusive upperbound of the intent key.
   KeyBytes intent_upperbound_keybytes_;
