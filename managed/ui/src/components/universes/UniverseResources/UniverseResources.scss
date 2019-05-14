@@ -4,7 +4,7 @@
   text-align: center;
   display: flex;
   flex-flow: row wrap;
-  padding: 8px 0;
+  padding: 8px;
   justify-content: space-evenly;
   @media (min-width: 768px) {
     flex-wrap: nowrap;
@@ -18,5 +18,6 @@
   .yb-resource-count {
     min-width: 70px;
     text-align: left;
+    margin-right: 30px;
   }
 }
