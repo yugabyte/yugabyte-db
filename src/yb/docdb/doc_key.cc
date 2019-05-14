@@ -628,8 +628,8 @@ Status SubDocKey::FullyDecodeFrom(const rocksdb::Slice& slice,
   Status status = DecodeFrom(&mutable_slice, require_hybrid_time);
   if (!mutable_slice.empty()) {
     return STATUS_SUBSTITUTE(InvalidArgument,
-        "Expected all bytes of the slice to be decoded into DocKey, found $0 extra bytes: $1",
-        mutable_slice.size(), ToShortDebugStr(mutable_slice));
+        "Expected all bytes of the slice to be decoded into SubDocKey, found $0 extra bytes: $1",
+        mutable_slice.size(), mutable_slice.ToDebugHexString());
   }
   return status;
 }

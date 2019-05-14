@@ -614,6 +614,10 @@ void IntentAwareIterator::SeekForwardRegular(const Slice& slice) {
   skip_future_records_needed_ = true;
 }
 
+bool IntentAwareIterator::SatisfyBounds(const Slice& slice) {
+  return upperbound_.empty() || slice.compare(upperbound_) <= 0;
+}
+
 void IntentAwareIterator::ProcessIntent() {
   auto decode_result = DecodeStrongWriteIntent(
       txn_op_context_.get(), intent_iter_.get(), &transaction_status_cache_);
@@ -646,9 +650,13 @@ void IntentAwareIterator::ProcessIntent() {
   if (resolved_intent_state_ == ResolvedIntentState::kNoIntent) {
     resolved_intent_key_prefix_.Reset(decode_result->intent_prefix);
     auto prefix = prefix_stack_.empty() ? Slice() : prefix_stack_.back();
-    resolved_intent_state_ =
-        decode_result->intent_prefix.starts_with(prefix) ? ResolvedIntentState::kValid
-        : ResolvedIntentState::kInvalidPrefix;
+    if (!decode_result->intent_prefix.starts_with(prefix)) {
+      resolved_intent_state_ = ResolvedIntentState::kInvalidPrefix;
+    } else if (!SatisfyBounds(decode_result->intent_prefix)) {
+      resolved_intent_state_ = ResolvedIntentState::kNoIntent;
+    } else {
+      resolved_intent_state_ = ResolvedIntentState::kValid;
+    }
   }
   if (decode_result->same_transaction) {
     intent_dht_from_same_txn_ = decode_result->value_time;
@@ -703,7 +711,7 @@ void IntentAwareIterator::SeekToSuitableIntent() {
         !IsIntentForTheSameKey(intent_key, resolved_intent_key_prefix_)) {
       break;
     }
-    if (!intent_key.starts_with(prefix)) {
+    if (!intent_key.starts_with(prefix) || !SatisfyBounds(intent_key)) {
       break;
     }
     ProcessIntent();
@@ -874,6 +882,12 @@ void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
       iter_valid_ = false;
       return;
     }
+    if (!SatisfyBounds(iter_->key())) {
+      VLOG(4) << "Out of bounds: " << SubDocKey::DebugSliceToString(iter_->key())
+              << ", upperbound: " << SubDocKey::DebugSliceToString(upperbound_);
+      iter_valid_ = false;
+      return;
+    }
     Slice encoded_doc_ht = iter_->key();
     int doc_ht_size = 0;
     auto decode_status = DocHybridTime::CheckAndGetEncodedSize(encoded_doc_ht, &doc_ht_size);
@@ -929,7 +943,11 @@ void IntentAwareIterator::SkipFutureIntents() {
             << ", against new prefix: " << prefix.ToDebugHexString();
     auto compare_result = resolved_intent_key_prefix_.AsSlice().compare_prefix(prefix);
     if (compare_result == 0) {
-      resolved_intent_state_ = ResolvedIntentState::kValid;
+      if (!SatisfyBounds(resolved_intent_key_prefix_.AsSlice())) {
+        resolved_intent_state_ = ResolvedIntentState::kNoIntent;
+      } else {
+        resolved_intent_state_ = ResolvedIntentState::kValid;
+      }
       return;
     } else if (compare_result > 0) {
       resolved_intent_state_ = ResolvedIntentState::kInvalidPrefix;
