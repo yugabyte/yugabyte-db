@@ -1,0 +1,5 @@
+--
+-- COPY large file
+--
+
+COPY airports FROM '@abs_builddir@/data/airport-codes.csv' CSV HEADER;
