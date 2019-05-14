@@ -385,6 +385,12 @@ class UniverseForm extends Component {
               {asyncReplicaBtn}
               <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={submitTextLabel} btnType={"submit"} />
             </UniverseResources>
+            <div className="mobile-view-btn-container">
+              {primaryReplicaBtn}
+              <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText="Cancel" onClick={this.handleCancelButtonClick}/>
+              {asyncReplicaBtn}
+              <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={submitTextLabel} btnType={"submit"} />
+            </div>
           </div>
         </form>
       </Grid>
