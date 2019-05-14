@@ -294,5 +294,47 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
   ASSERT_GE(last_written.load(std::memory_order_acquire), 100);
 }
 
+// Concurrently insert records to table with index.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(Execute(
+      conn.get(),
+      "CREATE TABLE IF NOT EXISTS users(id text, ename text, age int, PRIMARY KEY(id))"));
+
+  ASSERT_OK(Execute(
+      conn.get(), "CREATE INDEX IF NOT EXISTS name_idx ON users(ename)"));
+
+  constexpr auto kWriteThreads = 4;
+
+  std::atomic<bool> stop(false);
+  std::vector<std::thread> write_threads;
+
+  while (write_threads.size() != kWriteThreads) {
+    write_threads.emplace_back([this, &stop] {
+      auto write_conn = ASSERT_RESULT(Connect());
+      auto this_thread_id = std::this_thread::get_id();
+      auto tid = std::hash<decltype(this_thread_id)>()(this_thread_id);
+      int idx = 0;
+      while (!stop.load(std::memory_order_acquire)) {
+        ASSERT_OK(Execute(
+            write_conn.get(),
+            Format("INSERT INTO users (id, ename, age) VALUES ('user-$0-$1', 'name-$1', $2)",
+                   tid, idx, 20 + (idx % 50))));
+        ++idx;
+      }
+    });
+  }
+
+  BOOST_SCOPE_EXIT(&stop, &write_threads) {
+    stop.store(true, std::memory_order_release);
+    for (auto& thread : write_threads) {
+      thread.join();
+    }
+  } BOOST_SCOPE_EXIT_END;
+
+  std::this_thread::sleep_for(30s);
+}
+
 } // namespace pgwrapper
 } // namespace yb

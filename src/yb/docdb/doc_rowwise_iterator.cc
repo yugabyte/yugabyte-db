@@ -506,6 +506,19 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
 
   row_ready_ = false;
 
+  if (is_forward_scan_) {
+    has_bound_key_ = !upper_doc_key.empty();
+    if (has_bound_key_) {
+      bound_key_ = std::move(upper_doc_key);
+      db_iter_->SetUpperbound(bound_key_);
+    }
+  } else {
+    has_bound_key_ = !lower_doc_key.empty();
+    if (has_bound_key_) {
+      bound_key_ = std::move(lower_doc_key);
+    }
+  }
+
   if (!VERIFY_RESULT(InitScanChoices(doc_spec, lower_doc_key, upper_doc_key))) {
     if (is_forward_scan_) {
       VLOG(3) << __PRETTY_FUNCTION__ << " Seeking to " << DocKey::DebugSliceToString(lower_doc_key);
@@ -517,18 +530,6 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
       } else {
         db_iter_->SeekToLastDocKey();
       }
-    }
-  }
-
-  if (is_forward_scan_) {
-    has_bound_key_ = !upper_doc_key.empty();
-    if (has_bound_key_) {
-      bound_key_ = std::move(upper_doc_key);
-    }
-  } else {
-    has_bound_key_ = !lower_doc_key.empty();
-    if (has_bound_key_) {
-      bound_key_ = std::move(lower_doc_key);
     }
   }
 
