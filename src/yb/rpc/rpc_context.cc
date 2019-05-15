@@ -128,7 +128,8 @@ RpcContext::RpcContext(std::shared_ptr<LocalYBInboundCall> call,
 
 void RpcContext::RespondSuccess() {
   if (response_pb_->ByteSize() > FLAGS_rpc_max_message_size) {
-    RespondFailure(STATUS(InvalidArgument, "RPC message too long"));
+    RespondFailure(STATUS_FORMAT(InvalidArgument, "RPC message too long: $0 vs $1",
+                                 response_pb_->ByteSize(), FLAGS_rpc_max_message_size));
     return;
   }
   call_->RecordHandlingCompleted(metrics_.handler_latency);

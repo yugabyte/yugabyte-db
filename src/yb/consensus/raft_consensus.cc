@@ -872,7 +872,7 @@ Status RaftConsensus::BecomeReplicaUnlocked(const std::string& new_leader_uuid,
                                             MonoDelta initial_fd_wait) {
   LOG_WITH_PREFIX(INFO)
       << "Becoming Follower/Learner. State: " << state_->ToStringUnlocked()
-      << ", new leader: " << new_leader_uuid;
+      << ", new leader: " << new_leader_uuid << ", initial_fd_wait: " << initial_fd_wait;
 
   if (state_->GetActiveRoleUnlocked() == RaftPeerPB::LEADER) {
     WithholdElectionAfterStepDown(new_leader_uuid);

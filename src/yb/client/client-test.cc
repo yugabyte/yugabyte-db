@@ -920,7 +920,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
 
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
     Status s = session->Flush();
-    ASSERT_TRUE(s.IsIOError());
+    ASSERT_TRUE(s.IsIOError()) << s;
     auto error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(), "timed out");
