@@ -196,7 +196,7 @@ set(ROCKSDB_SRCS
 )
 
 set(CMAKE_CXX_FLAGS
-  "${CMAKE_CXX_FLAGS} -DROCKSDB_LIB_IO_POSIX -DBZIP2 -DSNAPPY -DZLIB \
+  "${CMAKE_CXX_FLAGS} \
    -Wextra -Wsign-compare -Wshadow -Woverloaded-virtual \
    -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-variable")
 
