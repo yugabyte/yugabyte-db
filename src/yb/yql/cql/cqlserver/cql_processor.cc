@@ -257,9 +257,9 @@ CQLResponse* CQLProcessor::ProcessRequest(const StartupRequest& req) {
     if (name == CQLMessage::kCompressionOption) {
       auto& context = static_cast<CQLConnectionContext&>(call_->connection()->context());
       if (value == CQLMessage::kLZ4Compression) {
-        context.set_compression_scheme(CQLMessage::CompressionScheme::LZ4);
+        context.set_compression_scheme(CQLMessage::CompressionScheme::kLz4);
       } else if (value == CQLMessage::kSnappyCompression) {
-        context.set_compression_scheme(CQLMessage::CompressionScheme::SNAPPY);
+        context.set_compression_scheme(CQLMessage::CompressionScheme::kSnappy);
       } else {
         return new ErrorResponse(
             req, ErrorResponse::Code::PROTOCOL_ERROR,

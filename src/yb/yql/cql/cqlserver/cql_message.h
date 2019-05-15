@@ -116,9 +116,9 @@ class CQLMessage {
 
   // Message body compression schemes.
   enum class CompressionScheme {
-    NONE = 0,
-    LZ4,
-    SNAPPY
+    kNone = 0,
+    kLz4,
+    kSnappy
   };
   static constexpr char kLZ4Compression[] = "lz4";
   static constexpr char kSnappyCompression[] = "snappy";

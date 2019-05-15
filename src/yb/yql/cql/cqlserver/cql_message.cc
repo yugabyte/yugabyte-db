@@ -239,7 +239,7 @@ bool CQLRequest::ParseRequest(
       return false;
     }
     switch (compression_scheme) {
-      case CompressionScheme::LZ4: {
+      case CompressionScheme::kLz4: {
         if (body_size < sizeof(uint32_t)) {
           error_response->reset(
               new ErrorResponse(
@@ -265,7 +265,7 @@ bool CQLRequest::ParseRequest(
         body_size = uncomp_size;
         break;
       }
-      case CompressionScheme::SNAPPY: {
+      case CompressionScheme::kSnappy: {
         size_t uncomp_size = 0;
         if (GetUncompressedLength(to_char_ptr(body_data), body_size, &uncomp_size)) {
           buffer = std::make_unique<uint8_t[]>(uncomp_size);
@@ -281,7 +281,7 @@ bool CQLRequest::ParseRequest(
                 "Error occurred when uncompressing CQL message"));
         break;
       }
-      case CompressionScheme::NONE:
+      case CompressionScheme::kNone:
         error_response->reset(
             new ErrorResponse(
                 header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
@@ -915,13 +915,13 @@ CQLResponse::~CQLResponse() {
 
 void CQLResponse::Serialize(const CompressionScheme compression_scheme, faststring* mesg) const {
   const size_t start_pos = mesg->size(); // save the start position
-  const bool compress = (compression_scheme != CQLMessage::CompressionScheme::NONE);
+  const bool compress = (compression_scheme != CQLMessage::CompressionScheme::kNone);
   SerializeHeader(compress, mesg);
   if (compress) {
     faststring body;
     SerializeBody(&body);
     switch (compression_scheme) {
-      case CQLMessage::CompressionScheme::LZ4: {
+      case CQLMessage::CompressionScheme::kLz4: {
         SerializeInt(static_cast<int32_t>(body.size()), mesg);
         const size_t curr_size = mesg->size();
         const int max_comp_size = LZ4_compressBound(body.size());
@@ -934,7 +934,7 @@ void CQLResponse::Serialize(const CompressionScheme compression_scheme, faststri
         mesg->resize(curr_size + comp_size);
         break;
       }
-      case CQLMessage::CompressionScheme::SNAPPY: {
+      case CQLMessage::CompressionScheme::kSnappy: {
         const size_t curr_size = mesg->size();
         const size_t max_comp_size = MaxCompressedLength(body.size());
         size_t comp_size = 0;
@@ -944,7 +944,7 @@ void CQLResponse::Serialize(const CompressionScheme compression_scheme, faststri
         mesg->resize(curr_size + comp_size);
         break;
       }
-      case CQLMessage::CompressionScheme::NONE:
+      case CQLMessage::CompressionScheme::kNone:
         LOG(FATAL) << "No compression scheme";
         break;
     }
@@ -1739,7 +1739,7 @@ CQLServerEvent::CQLServerEvent(std::unique_ptr<EventResponse> event_response)
     : event_response_(std::move(event_response)) {
   CHECK_NOTNULL(event_response_.get());
   faststring temp;
-  event_response_->Serialize(CQLMessage::CompressionScheme::NONE, &temp);
+  event_response_->Serialize(CQLMessage::CompressionScheme::kNone, &temp);
   serialized_response_ = RefCntBuffer(temp);
 }
 
