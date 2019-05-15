@@ -458,7 +458,7 @@ TEST_F(QLTabletTest, GCLogWithRestartWithoutWrites) {
 }
 
 TEST_F(QLTabletTest, LeaderLease) {
-  FLAGS_enable_lease_revocation = false;
+  SetAtomicFlag(false, &FLAGS_enable_lease_revocation);
 
   TableHandle table;
   CreateTable(kTable1Name, &table);

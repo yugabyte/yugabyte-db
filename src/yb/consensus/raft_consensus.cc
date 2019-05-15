@@ -1017,7 +1017,7 @@ void RaftConsensus::UpdateMajorityReplicated(
   }
 
   EnumBitSet<SetMajorityReplicatedLeaseExpirationFlag> flags;
-  if (FLAGS_enable_lease_revocation) {
+  if (GetAtomicFlag(&FLAGS_enable_lease_revocation)) {
     if (!state_->old_leader_lease().holder_uuid.empty() &&
         queue_->PeerAcceptedOurLease(state_->old_leader_lease().holder_uuid)) {
       flags.Set(SetMajorityReplicatedLeaseExpirationFlag::kResetOldLeaderLease);
