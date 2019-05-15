@@ -168,10 +168,10 @@ Endpoint RpcServerBase::first_rpc_address() const {
 const std::string RpcServerBase::get_hostname() const {
   auto hostname = GetHostname();
   if (hostname.ok()) {
-    LOG(INFO) << "Running on host " << *hostname;
+    YB_LOG_FIRST_N(INFO, 1) << "Running on host: " << *hostname;
     return *hostname;
   } else {
-    LOG(WARNING) << "Failed to get current host name: " << hostname.status();
+    YB_LOG_FIRST_N(WARNING, 1) << "Failed to get current host name: " << hostname.status();
     return "unknown_hostname";
   }
 }
@@ -180,10 +180,10 @@ const std::string RpcServerBase::get_current_user() const {
   string user_name;
   auto s = GetLoggedInUser(&user_name);
   if (s.ok()) {
-    LOG(INFO) << "Logged In User  " << user_name;
+    YB_LOG_FIRST_N(INFO, 1) << "Logged in user: " << user_name;
     return user_name;
   } else {
-    LOG(WARNING) << "Failed to get current user: " << user_name;
+    YB_LOG_FIRST_N(WARNING, 1) << "Failed to get current user";
     return "unknown_user";
   }
 }
