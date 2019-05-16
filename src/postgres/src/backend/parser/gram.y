@@ -840,10 +840,12 @@ stmt :
 				{ $$ = NULL; }
 			| AlterDatabaseSetStmt
 			| AlterDatabaseStmt
+			| AlterDomainStmt
 			| AlterTableStmt
 			| CommentStmt
 			| ConstraintsSetStmt
 			| CopyStmt
+			| CreateDomainStmt
 			| CreateSchemaStmt
 			| CreateUserStmt
 			| CreatedbStmt
@@ -877,7 +879,6 @@ stmt :
 			| AlterEventTrigStmt { parser_ybc_signal_unsupported(@1, "This statement", 1156); }
 			| AlterCollationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterDefaultPrivilegesStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterDomainStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterEnumStmt { parser_ybc_signal_unsupported(@1, "This statement", 1152); }
 			| AlterExtensionStmt { parser_ybc_signal_unsupported(@1, "This statement", 1154); }
 			| AlterExtensionContentsStmt { parser_ybc_signal_unsupported(@1, "This statement", 1154); }
@@ -911,7 +912,6 @@ stmt :
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateCastStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateDomainStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateExtensionStmt { parser_ybc_signal_unsupported(@1, "This statement", 1154); }
 			| CreateFdwStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateForeignServerStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -6602,7 +6602,6 @@ DropStmt:	DROP drop_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 				}
 			| DROP DOMAIN_P type_name_list opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP DOMAIN");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_DOMAIN;
 					n->missing_ok = false;
@@ -6613,7 +6612,6 @@ DropStmt:	DROP drop_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 				}
 			| DROP DOMAIN_P IF_P EXISTS type_name_list opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP DOMAIN");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_DOMAIN;
 					n->missing_ok = true;
@@ -8903,7 +8901,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER DOMAIN_P any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER DOMAIN");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_DOMAIN;
 					n->object = (Node *) $3;
@@ -8913,7 +8910,7 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER DOMAIN_P any_name RENAME CONSTRAINT name TO name
 				{
-					parser_ybc_not_support(@1, "ALTER DOMAIN");
+					parser_ybc_not_support(@1, "ALTER DOMAIN RENAME CONSTRAINT");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_DOMCONSTRAINT;
 					n->object = (Node *) $3;
@@ -10842,7 +10839,6 @@ AlterSystemStmt:
 CreateDomainStmt:
 			CREATE DOMAIN_P any_name opt_as Typename ColQualList
 				{
-					parser_ybc_not_support(@1, "CREATE DOMAIN");
 					CreateDomainStmt *n = makeNode(CreateDomainStmt);
 					n->domainname = $3;
 					n->typeName = $5;
@@ -10856,7 +10852,6 @@ AlterDomainStmt:
 			/* ALTER DOMAIN <domain> {SET DEFAULT <expr>|DROP DEFAULT} */
 			ALTER DOMAIN_P any_name alter_column_default
 				{
-					parser_ybc_not_support(@1, "ALTER DOMAIN DEFAULT");
 					AlterDomainStmt *n = makeNode(AlterDomainStmt);
 					n->subtype = 'T';
 					n->typeName = $3;
