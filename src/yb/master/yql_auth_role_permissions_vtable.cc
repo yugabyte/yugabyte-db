@@ -12,6 +12,7 @@
 //
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/permissions_manager.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/yql_auth_role_permissions_vtable.h"
 #include "yb/common/common.pb.h"
@@ -29,7 +30,7 @@ Status YQLAuthRolePermissionsVTable::RetrieveData(const QLReadRequestPB& request
                                                   std::unique_ptr<QLRowBlock>* vtable) const {
   vtable->reset(new QLRowBlock(schema_));
   std::vector<scoped_refptr<RoleInfo>> roles;
-  master_->catalog_manager()->GetAllRoles(&roles);
+  master_->catalog_manager()->permissions_manager()->GetAllRoles(&roles);
   for (const auto& rp : roles) {
     auto l = rp->LockForRead();
     const auto& pb = l->data().pb;

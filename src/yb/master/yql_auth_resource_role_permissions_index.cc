@@ -29,7 +29,7 @@ Status YQLAuthResourceRolePermissionsIndexVTable::RetrieveData(
 
   vtable->reset(new QLRowBlock(schema_));
   std::vector<scoped_refptr<RoleInfo>> roles;
-  master_->catalog_manager()->GetAllRoles(&roles);
+  master_->catalog_manager()->permissions_manager()->GetAllRoles(&roles);
   for (const auto& rp : roles) {
     auto l = rp->LockForRead();
     const auto& pb = l->data().pb;
