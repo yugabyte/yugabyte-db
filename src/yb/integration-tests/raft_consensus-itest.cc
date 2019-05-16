@@ -265,6 +265,8 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     session->SetTimeout(60s);
 
     for (int i = 0; i < num_batches; i++) {
+      SCOPED_TRACE(Format("Batch: $0", i));
+
       uint64_t first_row_in_batch = first_row + (i * count / num_batches);
       uint64_t last_row_in_batch = first_row_in_batch + count / num_batches;
 
@@ -288,7 +290,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       if (PREDICT_FALSE(!s.ok())) {
         client::CollectedErrors errors = session->GetPendingErrors();
         for (const auto& e : errors) {
-          CHECK(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status().ToString();
+          ASSERT_TRUE(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status();
         }
         inserted -= errors.size();
       }
@@ -501,10 +503,11 @@ TEST_F(RaftConsensusITest, TestInsertAndMutateThroughConsensus) {
   int num_iters = AllowSlowTests() ? 10 : 1;
 
   for (int i = 0; i < num_iters; i++) {
-    InsertTestRowsRemoteThread(i * FLAGS_client_inserts_per_thread,
-                               FLAGS_client_inserts_per_thread,
-                               FLAGS_client_num_batches_per_thread,
-                               vector<CountDownLatch*>());
+    ASSERT_NO_FATALS(InsertTestRowsRemoteThread(
+        i * FLAGS_client_inserts_per_thread,
+        FLAGS_client_inserts_per_thread,
+        FLAGS_client_num_batches_per_thread,
+        vector<CountDownLatch*>()));
   }
   ASSERT_ALL_REPLICAS_AGREE(FLAGS_client_inserts_per_thread * num_iters);
 }
@@ -655,10 +658,11 @@ TEST_F(RaftConsensusITest, TestRunLeaderElection) {
 
   int num_iters = AllowSlowTests() ? 10 : 1;
 
-  InsertTestRowsRemoteThread(0,
-                             FLAGS_client_inserts_per_thread * num_iters,
-                             FLAGS_client_num_batches_per_thread,
-                             vector<CountDownLatch*>());
+  ASSERT_NO_FATALS(InsertTestRowsRemoteThread(
+      0,
+      FLAGS_client_inserts_per_thread * num_iters,
+      FLAGS_client_num_batches_per_thread,
+      vector<CountDownLatch*>()));
 
   ASSERT_ALL_REPLICAS_AGREE(FLAGS_client_inserts_per_thread * num_iters);
 
@@ -678,10 +682,11 @@ TEST_F(RaftConsensusITest, TestRunLeaderElection) {
   ASSERT_OK(StartElection(replica, tablet_id_, MonoDelta::FromSeconds(10)));
 
   // Insert a bunch more rows.
-  InsertTestRowsRemoteThread(FLAGS_client_inserts_per_thread * num_iters,
-                             FLAGS_client_inserts_per_thread * num_iters,
-                             FLAGS_client_num_batches_per_thread,
-                             vector<CountDownLatch*>());
+  ASSERT_NO_FATALS(InsertTestRowsRemoteThread(
+      FLAGS_client_inserts_per_thread * num_iters,
+      FLAGS_client_inserts_per_thread * num_iters,
+      FLAGS_client_num_batches_per_thread,
+      vector<CountDownLatch*>()));
 
   // Restart the original replica and make sure they all agree.
   ASSERT_OK(leader_ets->Restart());
@@ -1454,10 +1459,11 @@ TEST_F(RaftConsensusITest, TestAutomaticLeaderElection) {
     LOG(INFO) << Substitute("Writing data to leader of $0-node config ($1 alive)...",
                             FLAGS_num_replicas, FLAGS_num_replicas - leaders_killed);
 
-    InsertTestRowsRemoteThread(leaders_killed * FLAGS_client_inserts_per_thread,
-                               FLAGS_client_inserts_per_thread,
-                               FLAGS_client_num_batches_per_thread,
-                               vector<CountDownLatch*>());
+    ASSERT_NO_FATALS(InsertTestRowsRemoteThread(
+        leaders_killed * FLAGS_client_inserts_per_thread,
+        FLAGS_client_inserts_per_thread,
+        FLAGS_client_num_batches_per_thread,
+        vector<CountDownLatch*>()));
 
     // At this point, the writes are flushed but the commit index may not be
     // propagated to all replicas. We kill the leader anyway.
@@ -1969,8 +1975,9 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
-  LOG(INFO) << "Elect server 0 as leader and wait for log index 1 to propagate to all servers.";
   TServerDetails* leader_tserver = tservers[0];
+  LOG(INFO) << "Elect server 0 (" << leader_tserver->uuid()
+            << ") as leader and wait for log index 1 to propagate to all servers.";
 
   auto original_followers = CreateTabletServerMapUnowned(tablet_servers_);
   ASSERT_EQ(1, original_followers.erase(leader_tserver->uuid()));
@@ -1980,7 +1987,7 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
   ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, timeout));
 
-  LOG(INFO) << "Shut down servers 1 and 2, so that server 1 can't replicate anything.";
+  LOG(INFO) << "Shut down servers 1 and 2, so that server 0 can't replicate anything.";
   cluster_->tablet_server_by_uuid(tservers[1]->uuid())->Shutdown();
   cluster_->tablet_server_by_uuid(tservers[2]->uuid())->Shutdown();
 
@@ -1999,9 +2006,9 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
 
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), original_followers, tablet_id_, 1));
 
-  LOG(INFO) << "Elect one of the other servers.";
+  LOG(INFO) << "Elect one of the other servers: " << tservers[1]->uuid();
   ASSERT_OK(StartElection(tservers[1], tablet_id_, MonoDelta::FromSeconds(10)));
-  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), original_followers, tablet_id_, 1));
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), original_followers, tablet_id_, 2));
 
   LOG(INFO) << "Resume the original leader. Its change-config operation will now be aborted "
                "since it was never replicated to the majority, and the new leader will have "
