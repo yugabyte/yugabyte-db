@@ -1435,6 +1435,8 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       return PrimitiveValue::Int32(value.int32_value(), sort_order);
     case QLValuePB::kInt64Value:
       return PrimitiveValue(value.int64_value(), sort_order);
+    case QLValuePB::kUint32Value:
+      return PrimitiveValue::UInt32(value.uint32_value(), sort_order);
     case QLValuePB::kFloatValue: {
       float f = value.float_value();
       return PrimitiveValue::Float(util::CanonicalizeFloat(f), sort_order);
@@ -1525,13 +1527,16 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
       ql_value->set_int16_value(static_cast<int16_t>(primitive_value.GetInt32()));
       return;
     case INT32:
-      ql_value->set_int32_value(static_cast<int32_t>(primitive_value.GetInt32()));
+      ql_value->set_int32_value(primitive_value.GetInt32());
       return;
     case INT64:
-      ql_value->set_int64_value(static_cast<int64_t>(primitive_value.GetInt64()));
+      ql_value->set_int64_value(primitive_value.GetInt64());
+      return;
+    case UINT32:
+      ql_value->set_uint32_value(primitive_value.GetUInt32());
       return;
     case FLOAT:
-      ql_value->set_float_value(static_cast<float>(primitive_value.GetFloat()));
+      ql_value->set_float_value(primitive_value.GetFloat());
       return;
     case DOUBLE:
       ql_value->set_double_value(primitive_value.GetDouble());
@@ -1637,7 +1642,6 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
 
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
-    case UINT32: FALLTHROUGH_INTENDED;
     case UINT64: FALLTHROUGH_INTENDED;
     case UNKNOWN_DATA:
       break;

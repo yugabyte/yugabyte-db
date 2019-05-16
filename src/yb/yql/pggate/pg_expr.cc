@@ -287,6 +287,15 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
       translate_data_ = TranslateNumber<int64_t>;
       break;
 
+    case YB_YQL_DATA_TYPE_UINT32:
+      if (!is_null) {
+        uint32_t value;
+        type_entity_->datum_to_yb(datum, &value, nullptr);
+        ql_value_.set_uint32_value(value);
+      }
+      translate_data_ = TranslateNumber<uint32_t>;
+      break;
+
     case YB_YQL_DATA_TYPE_STRING:
       if (!is_null) {
         char *value;
@@ -370,7 +379,6 @@ PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool 
     case YB_YQL_DATA_TYPE_JSONB:
     case YB_YQL_DATA_TYPE_UINT8:
     case YB_YQL_DATA_TYPE_UINT16:
-    case YB_YQL_DATA_TYPE_UINT32:
     case YB_YQL_DATA_TYPE_UINT64:
     default:
       LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;
@@ -507,6 +515,10 @@ PgColumnRef::PgColumnRef(int attr_num,
         translate_data_ = TranslateNumber<int64_t>;
         break;
 
+      case YB_YQL_DATA_TYPE_UINT32:
+        translate_data_ = TranslateNumber<uint32_t>;
+        break;
+
       case YB_YQL_DATA_TYPE_STRING:
         translate_data_ = TranslateText;
         break;
@@ -551,7 +563,6 @@ PgColumnRef::PgColumnRef(int attr_num,
       case YB_YQL_DATA_TYPE_JSONB:
       case YB_YQL_DATA_TYPE_UINT8:
       case YB_YQL_DATA_TYPE_UINT16:
-      case YB_YQL_DATA_TYPE_UINT32:
       case YB_YQL_DATA_TYPE_UINT64:
       default:
         LOG(DFATAL) << "Internal error: unsupported type " << type_entity_->yb_type;

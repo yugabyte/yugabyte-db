@@ -79,6 +79,8 @@ DataType QLValue::FromInternalDataType(const InternalType& internal_type) {
       return DataType::INT32;
     case QLValue::InternalType::kInt64Value:
       return DataType::INT64;
+    case QLValue::InternalType::kUint32Value:
+      return DataType::UINT32;
     case QLValue::InternalType::kFloatValue:
       return DataType::FLOAT;
     case QLValue::InternalType::kDoubleValue:
@@ -128,6 +130,7 @@ const string QLValue::ToCQLString(const InternalType& internal_type) {
     case InternalType::kInt16Value: return "smallint";
     case InternalType::kInt32Value: return "int";
     case InternalType::kInt64Value: return "bigint";
+    case InternalType::kUint32Value: return "unknown"; // No such type in YCQL
     case InternalType::kStringValue: return "text";
     case InternalType::kBoolValue: return "boolean";
     case InternalType::kFloatValue: return "float";
@@ -160,6 +163,7 @@ int QLValue::CompareTo(const QLValue& other) const {
     case InternalType::kInt16Value:  return GenericCompare(int16_value(), other.int16_value());
     case InternalType::kInt32Value:  return GenericCompare(int32_value(), other.int32_value());
     case InternalType::kInt64Value:  return GenericCompare(int64_value(), other.int64_value());
+    case InternalType::kUint32Value:  return GenericCompare(uint32_value(), other.uint32_value());
     case InternalType::kFloatValue:  {
       bool is_nan_0 = util::IsNanFloat(float_value());
       bool is_nan_1 = util::IsNanFloat(other.float_value());
@@ -237,6 +241,10 @@ void AppendToKey(const QLValuePB &value_pb, string *bytes) {
     }
     case QLValue::InternalType::kInt64Value: {
       YBPartition::AppendIntToKey<int64, uint64>(value_pb.int64_value(), bytes);
+      break;
+    }
+    case QLValue::InternalType::kUint32Value: {
+      YBPartition::AppendIntToKey<uint32, uint32>(value_pb.uint32_value(), bytes);
       break;
     }
     case QLValue::InternalType::kTimestampValue: {
@@ -777,6 +785,7 @@ string QLValue::ToString() const {
     case InternalType::kInt16Value: return "int16:" + to_string(int16_value());
     case InternalType::kInt32Value: return "int32:" + to_string(int32_value());
     case InternalType::kInt64Value: return "int64:" + to_string(int64_value());
+    case InternalType::kUint32Value: return "uint32:" + to_string(uint32_value());
     case InternalType::kFloatValue: return "float:" + to_string(float_value());
     case InternalType::kDoubleValue: return "double:" + to_string(double_value());
     case InternalType::kDecimalValue:
@@ -903,6 +912,7 @@ int Compare(const QLValuePB& lhs, const QLValuePB& rhs) {
     case QLValuePB::kInt16Value:  return GenericCompare(lhs.int16_value(), rhs.int16_value());
     case QLValuePB::kInt32Value:  return GenericCompare(lhs.int32_value(), rhs.int32_value());
     case QLValuePB::kInt64Value:  return GenericCompare(lhs.int64_value(), rhs.int64_value());
+    case QLValuePB::kUint32Value:  return GenericCompare(lhs.uint32_value(), rhs.uint32_value());
     case QLValuePB::kFloatValue:  {
       bool is_nan_0 = util::IsNanFloat(lhs.float_value());
       bool is_nan_1 = util::IsNanFloat(rhs.float_value());
@@ -965,6 +975,7 @@ int Compare(const QLValuePB& lhs, const QLValue& rhs) {
       return GenericCompare(static_cast<int16_t>(lhs.int16_value()), rhs.int16_value());
     case QLValuePB::kInt32Value:  return GenericCompare(lhs.int32_value(), rhs.int32_value());
     case QLValuePB::kInt64Value:  return GenericCompare(lhs.int64_value(), rhs.int64_value());
+    case QLValuePB::kUint32Value:  return GenericCompare(lhs.uint32_value(), rhs.uint32_value());
     case QLValuePB::kFloatValue:  {
       bool is_nan_0 = util::IsNanFloat(lhs.float_value());
       bool is_nan_1 = util::IsNanFloat(rhs.float_value());
