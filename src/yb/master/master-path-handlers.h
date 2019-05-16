@@ -87,6 +87,25 @@ class MasterPathHandlers {
     uint32_t user_tablet_followers = 0;
     uint32_t system_tablet_leaders = 0;
     uint32_t system_tablet_followers = 0;
+
+    void operator+=(const TabletCounts& other);
+  };
+
+  // Struct used to store the number of nodes and tablets in an availability zone.
+  struct ZoneTabletCounts {
+    TabletCounts tablet_counts;
+    uint32_t node_count;
+
+    ZoneTabletCounts();
+
+    // Create a ZoneTabletCounts object from the TabletCounts of a TServer (one node).
+    explicit ZoneTabletCounts(const TabletCounts& tablet_counts);
+
+    void operator+=(const ZoneTabletCounts& other);
+
+    typedef std::map<std::string, ZoneTabletCounts> ZoneTree;
+    typedef std::map<std::string, ZoneTree> RegionTree;
+    typedef std::map<std::string, RegionTree> CloudTree;
   };
 
   // Map of tserver UUID -> TabletCounts
@@ -102,6 +121,20 @@ class MasterPathHandlers {
                       std::vector<std::shared_ptr<TSDescriptor>>* descs,
                       TabletCountMap* tmap,
                       std::stringstream* output);
+
+  // Outputs a ZoneTabletCounts::CloudTree as an html table with a heading.
+  static void DisplayTabletZonesTable(
+    const ZoneTabletCounts::CloudTree& counts,
+    std::stringstream* output
+  );
+
+  // Builds a "cloud -> region -> zone" tree of tablet and node counts.
+  // Each leaf of the tree is a ZoneTabletCounts struct corresponding to the
+  // unique availability zone identified by the path from the root to the leaf.
+  ZoneTabletCounts::CloudTree CalculateTabletCountsTree(
+    const std::vector<std::shared_ptr<TSDescriptor>>& descriptors,
+    const TabletCountMap& tablet_count_map
+  );
 
   void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, std::stringstream* output,
                                    const Webserver::PathHandlerCallback& callback);
