@@ -93,6 +93,25 @@ string MasterPathHandlers::BytesToHumanReadable(uint64_t bytes) {
   return op_stream.str();
 }
 
+void MasterPathHandlers::TabletCounts::operator+=(const TabletCounts& other) {
+  user_tablet_leaders += other.user_tablet_leaders;
+  user_tablet_followers += other.user_tablet_followers;
+  system_tablet_leaders += other.system_tablet_leaders;
+  system_tablet_followers += other.system_tablet_followers;
+}
+
+MasterPathHandlers::ZoneTabletCounts::ZoneTabletCounts(): tablet_counts(), node_count(1) {
+}
+
+MasterPathHandlers::ZoneTabletCounts::ZoneTabletCounts(const TabletCounts& tablet_counts)
+  : tablet_counts(tablet_counts), node_count(1) {
+}
+
+void MasterPathHandlers::ZoneTabletCounts::operator+=(const ZoneTabletCounts& other) {
+  tablet_counts += other.tablet_counts;
+  node_count += other.node_count;
+}
+
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
     const Webserver::WebRequest& req, stringstream* output,
     const Webserver::PathHandlerCallback& callback) {
@@ -161,7 +180,7 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
           << "      <th>Server</th>\n"
           << "      <th>Time since </br>heartbeat</th>\n"
           << "      <th>Status & Uptime</th>\n"
-          << "      <th>User Tablets</br>Total / Leaders</th>\n"
+          << "      <th>User Tablet-Peers / Leaders</th>\n"
           << "      <th>RAM Used</th>\n"
           << "      <th>SST Files Size</th>\n"
           << "      <th>Uncompressed SST </br>Files Size</th>\n"
@@ -170,8 +189,8 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
           << "      <th>Cloud</th>\n"
           << "      <th>Region</th>\n"
           << "      <th>Zone</th>\n"
-          << "      <th>System Tablets</br>Total / Leaders</th>\n"
-          << "      <th>Total Active Tablets</th>\n"
+          << "      <th>System Tablet-Peers / Leaders</th>\n"
+          << "      <th>Total Tablet-Peers</th>\n"
           << "    </tr>\n";
 }
 
@@ -247,6 +266,123 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
   *output << "</table>\n";
 }
 
+void MasterPathHandlers::DisplayTabletZonesTable(
+  const ZoneTabletCounts::CloudTree& cloud_tree,
+  std::stringstream* output
+) {
+  *output << "<h3>Tablet-Peers by Availability Zone</h3>\n"
+          << "<table class='table table-striped'>\n"
+          << "  <tr>\n"
+          << "    <th>Cloud</th>\n"
+          << "    <th>Region</th>\n"
+          << "    <th>Zone</th>\n"
+          << "    <th>Total Nodes</th>\n"
+          << "    <th>User Tablet-Peers / Leaders</th>\n"
+          << "    <th>System Tablet-Peers / Leaders</th>\n"
+          << "    <th>Total Tablet-Peers</th>\n"
+          << "  </tr>\n";
+
+  for (const auto& cloud_iter : cloud_tree) {
+    const auto& region_tree = cloud_iter.second;
+    bool needs_new_row = false;
+
+    int total_size_rows = 0;
+    for (const auto& region_iter : region_tree) {
+      total_size_rows += region_iter.second.size();
+    }
+
+    *output << "<tr>\n"
+            << "  <td rowspan=\"" << total_size_rows <<"\">" << cloud_iter.first << "</td>\n";
+
+    for (const auto& region_iter : region_tree) {
+      const auto& zone_tree = region_iter.second;
+
+      if (needs_new_row) {
+        *output << "<tr>\n";
+        needs_new_row = false;
+      }
+
+      *output << "  <td rowspan=\"" << zone_tree.size() <<"\">" << region_iter.first
+              << "</td>\n";
+
+      for (const auto& zone_iter : zone_tree) {
+        const auto& counts = zone_iter.second;
+
+        if (needs_new_row) {
+          *output << "<tr>\n";
+        }
+
+        *output << "  <td>" << zone_iter.first << "</td>\n";
+
+        uint32_t user_leaders = counts.tablet_counts.user_tablet_leaders;
+        uint32_t user_total = user_leaders + counts.tablet_counts.user_tablet_followers;
+        uint32_t system_leaders = counts.tablet_counts.system_tablet_leaders;
+        uint32_t system_total = system_leaders + counts.tablet_counts.system_tablet_followers;
+
+        *output << "  <td>" << counts.node_count << "</td>\n"
+                << "  <td>" << user_total << " / " << user_leaders << "</td>\n"
+                << "  <td>" << system_total << " / " << system_leaders << "</td>\n"
+                << "  <td>" << user_total + system_total << "</td>\n"
+                << "</tr>\n";
+
+        needs_new_row = true;
+      }
+    }
+  }
+
+  *output << "</table>\n";
+}
+
+MasterPathHandlers::ZoneTabletCounts::CloudTree MasterPathHandlers::CalculateTabletCountsTree(
+  const std::vector<std::shared_ptr<TSDescriptor>>& descriptors,
+  const TabletCountMap& tablet_count_map
+) {
+  ZoneTabletCounts::CloudTree cloud_tree;
+
+  for (const auto& descriptor : descriptors) {
+    CloudInfoPB cloud_info = descriptor->GetRegistration().common().cloud_info();
+    std::string cloud = cloud_info.placement_cloud();
+    std::string region = cloud_info.placement_region();
+    std::string zone = cloud_info.placement_zone();
+
+    auto tablet_count_search = tablet_count_map.find(descriptor->permanent_uuid());
+    ZoneTabletCounts counts = tablet_count_search == tablet_count_map.end()
+        ? ZoneTabletCounts()
+        : ZoneTabletCounts(tablet_count_search->second);
+
+    auto cloud_iter = cloud_tree.find(cloud);
+    if (cloud_iter == cloud_tree.end()) {
+      ZoneTabletCounts::RegionTree region_tree;
+      ZoneTabletCounts::ZoneTree zone_tree;
+
+      zone_tree.emplace(zone, std::move(counts));
+      region_tree.emplace(region, std::move(zone_tree));
+      cloud_tree.emplace(cloud, std::move(region_tree));
+    } else {
+      ZoneTabletCounts::RegionTree& region_tree = cloud_iter->second;
+
+      auto region_iter = region_tree.find(region);
+      if (region_iter == region_tree.end()) {
+        ZoneTabletCounts::ZoneTree zone_tree;
+
+        zone_tree.emplace(zone, std::move(counts));
+        region_tree.emplace(region, std::move(zone_tree));
+      } else {
+        ZoneTabletCounts::ZoneTree& zone_tree = region_iter->second;
+
+        auto zone_iter = zone_tree.find(zone);
+        if (zone_iter == zone_tree.end()) {
+          zone_tree.emplace(zone, std::move(counts));
+        } else {
+          zone_iter->second += counts;
+        }
+      }
+    }
+  }
+
+  return cloud_tree;
+}
+
 void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
                                              stringstream* output) {
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
@@ -292,6 +428,9 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
     TServerTable(output);
     TServerDisplay(read_replica_uuid, &descs, &tablet_map, output);
   }
+
+  ZoneTabletCounts::CloudTree counts_tree = CalculateTabletCountsTree(descs, tablet_map);
+  DisplayTabletZonesTable(counts_tree, output);
 }
 
 void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req,
