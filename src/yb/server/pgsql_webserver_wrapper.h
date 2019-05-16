@@ -15,7 +15,7 @@
 
 #ifdef __cplusplus
 #include <atomic>
-using std::atomic_ulong;
+using std::atomic_ullong;
 #else
 #include <stdatomic.h>
 #endif
@@ -30,8 +30,8 @@ struct WebserverWrapper;
 
 typedef struct ybpgmEntry {
     char name[100];
-    atomic_ulong calls;
-    atomic_ulong total_time;
+    atomic_ullong calls;
+    atomic_ullong total_time;
 } ybpgmEntry;
 
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
