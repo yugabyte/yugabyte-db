@@ -84,6 +84,10 @@ class QLValue {
     CHECK(pb_.has_int64_value()) << "Value: " << pb_.ShortDebugString();
     return pb_.int64_value();
   }
+  virtual uint32_t uint32_value() const {
+    CHECK(pb_.has_uint32_value()) << "Value: " << pb_.ShortDebugString();
+    return pb_.uint32_value();
+  }
   virtual float float_value() const {
     CHECK(pb_.has_float_value()) << "Value: " << pb_.ShortDebugString();
     return pb_.float_value();
@@ -204,6 +208,9 @@ class QLValue {
   }
   virtual void set_int64_value(int64_t val) {
     pb_.set_int64_value(val);
+  }
+  virtual void set_uint32_value(uint32_t val) {
+    pb_.set_uint32_value(val);
   }
   virtual void set_float_value(float val) {
     pb_.set_float_value(val);
