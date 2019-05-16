@@ -443,6 +443,7 @@ message QLValuePB {
     // Number of nano-seconds, from 0 to (24 * 60 * 60 * 1,000,000,000 - 1)
     // (see DateTime::kMaxTime)
     int64 time_value = 22;
+    uint32 uint32_value = 23;
   }
 }
 

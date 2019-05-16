@@ -99,6 +99,8 @@ class YBColumnSchema {
         return InternalType::kInt32Value;
       case INT64:
         return InternalType::kInt64Value;
+      case UINT32:
+        return InternalType::kUint32Value;
       case FLOAT:
         return InternalType::kFloatValue;
       case DOUBLE:
@@ -145,7 +147,6 @@ class YBColumnSchema {
       case TYPEARGS: FALLTHROUGH_INTENDED;
       case UINT8: FALLTHROUGH_INTENDED;
       case UINT16: FALLTHROUGH_INTENDED;
-      case UINT32: FALLTHROUGH_INTENDED;
       case UINT64:
         break;
     }

@@ -92,15 +92,31 @@ YBCDataTypeFromOidMod(int attnum, Oid type_id)
 {
 	/* Find type for system column */
 	if (attnum < InvalidAttrNumber) {
-		if (attnum < FirstLowInvalidHeapAttributeNumber) {
-			/* YugaByte system columns */
-			type_id = BYTEAOID;
-		} else if (attnum == SelfItemPointerAttributeNumber) {
-			/* ctid column */
-			type_id = INT8OID;
-		} else  {
-			/* Other postgres system columns */
-			type_id = INT4OID;
+		switch (attnum) {
+			case SelfItemPointerAttributeNumber: /* ctid */
+				type_id = TIDOID;
+				break;
+			case ObjectIdAttributeNumber: /* oid */
+			case TableOidAttributeNumber: /* tableoid */
+				type_id = OIDOID;
+				break;
+			case MinCommandIdAttributeNumber: /* cmin */
+			case MaxCommandIdAttributeNumber: /* cmax */
+				type_id = CIDOID;
+				break;
+			case MinTransactionIdAttributeNumber: /* xmin */
+			case MaxTransactionIdAttributeNumber: /* xmax */
+				type_id = XIDOID;
+				break;
+			case YBTupleIdAttributeNumber: /* ybctid */
+			case YBBaseTupleIdAttributeNumber: /* ybbasectid */
+				type_id = BYTEAOID;
+				break;
+			default:
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("System column not yet supported in YugaByte: %d", attnum)));
+				break;
 		}
 	}
 
@@ -172,10 +188,10 @@ void YBCDatumToBinary(Datum datum, void **data, int64 *bytes) {
 }
 
 Datum YBCBinaryToDatum(const void *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
-  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+	/* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+	if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
 		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-										errmsg("Invalid data size")));
+						errmsg("Invalid data size")));
 	}
 	return PointerGetDatum(cstring_to_text_with_len(data, bytes));
 }
@@ -213,10 +229,10 @@ void YBCDatumToBPChar(Datum datum, char **data, int64 *bytes) {
 }
 
 Datum YBCBPCharToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
-  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+	/* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+	if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
 		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-										errmsg("Invalid data size")));
+						errmsg("Invalid data size")));
 	}
 
 	/* Convert YugaByte cstring to Postgres internal representation */
@@ -233,10 +249,10 @@ void YBCDatumToVarchar(Datum datum, char **data, int64 *bytes) {
 }
 
 Datum YBCVarcharToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
-  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+	/* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+	if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
 		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-										errmsg("Invalid data size")));
+						errmsg("Invalid data size")));
 	}
 
 	/* Convert YugaByte cstring to Postgres internal representation */
@@ -256,8 +272,8 @@ void YBCDatumToName(Datum datum, char **data, int64 *bytes) {
 }
 
 Datum YBCNameToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
-  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+	/* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+	if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
 		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 						errmsg("Invalid data size")));
 	}
@@ -282,8 +298,8 @@ void YBCDatumToCStr(Datum datum, char **data, int64 *bytes) {
 }
 
 Datum YBCCStrToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-  /* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
-  if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
+	/* PostgreSQL can represent text strings up to 1 GB minus a four-byte header. */
+	if (bytes > kYBCMaxPostgresTextSizeBytes || bytes < 0) {
 		ereport(ERROR, (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
 						errmsg("Invalid data size")));
 	}
@@ -323,6 +339,31 @@ Datum YBCInt64ToDatum(const int64 *data, int64 bytes, const YBCPgTypeAttrs *type
 	return Int64GetDatum(*data);
 }
 
+void YBCDatumToOid(Datum datum, Oid *data, int64 *bytes) {
+	*data = DatumGetObjectId(datum);
+}
+
+Datum YBCOidToDatum(const Oid *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+	return ObjectIdGetDatum(*data);
+}
+
+void YBCDatumToCommandId(Datum datum, CommandId *data, int64 *bytes) {
+	*data = DatumGetCommandId(datum);
+}
+
+Datum YBCCommandIdToDatum(const CommandId *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
+	return CommandIdGetDatum(*data);
+}
+
+void YBCDatumToTransactionId(Datum datum, TransactionId *data, int64 *bytes) {
+	*data = DatumGetTransactionId(datum);
+}
+
+Datum YBCTransactionIdToDatum(const TransactionId *data, int64 bytes,
+							  const YBCPgTypeAttrs *type_attrs) {
+	return TransactionIdGetDatum(*data);
+}
+
 /*
  * FLOATs conversion.
  * Fixed size: Ignore the "bytes" data size.
@@ -353,7 +394,7 @@ void YBCDatumToDecimalText(Datum datum, char *plaintext[], int64 *bytes) {
 	// NaN support will be added in ENG-4645
 	if (strncmp(*plaintext, "NaN", 3) == 0) {
 		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg("DECIMAL does not support NaN yet")));
+						errmsg("DECIMAL does not support NaN yet")));
 	}
 }
 
@@ -392,7 +433,7 @@ Datum YBCUuidToDatum(const unsigned char *data, int64 bytes, const YBCPgTypeAttr
 	pg_uuid_t *uuid;
 	if (bytes != UUID_LEN) {
 		ereport(ERROR, (errcode(ERRCODE_DATA_CORRUPTED),
-										errmsg("Unexpected size for UUID (%ld)", bytes)));
+						errmsg("Unexpected size for UUID (%ld)", bytes)));
 	}
 
 	uuid = (pg_uuid_t *)palloc(sizeof(pg_uuid_t));
@@ -431,19 +472,19 @@ Datum YBCTimeToDatum(const int64 *data, int64 bytes, const YBCPgTypeAttrs *type_
  * PG represents INTERVAL as 128 bit structure, store it as binary
  */
 void YBCDatumToInterval(Datum datum, void **data, int64 *bytes) {
-  *data = DatumGetIntervalP(datum);
-  *bytes = sizeof(Interval);
+	*data = DatumGetIntervalP(datum);
+	*bytes = sizeof(Interval);
 }
 
 Datum YBCIntervalToDatum(const void *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-  const size_t sz = sizeof(Interval);
-  if (bytes != sz) {
-    ereport(ERROR, (errcode(ERRCODE_DATA_CORRUPTED),
-        errmsg("Unexpected size for Interval (%ld)", bytes)));
-  }
-  Interval* result = palloc(sz);
-  memcpy(result, data, sz);
-  return IntervalPGetDatum(result);
+	const size_t sz = sizeof(Interval);
+	if (bytes != sz) {
+		ereport(ERROR, (errcode(ERRCODE_DATA_CORRUPTED),
+						errmsg("Unexpected size for Interval (%ld)", bytes)));
+	}
+	Interval* result = palloc(sz);
+	memcpy(result, data, sz);
+	return IntervalPGetDatum(result);
 }
 
 /*
@@ -518,9 +559,9 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToInt32,
 		(YBCPgDatumFromData)YBCInt32ToDatum },
 
-	{ REGPROCOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ REGPROCOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
 	/*
 	 * TODO(neil) We need to change TEXT to char-based datatype to be the same with PostgreSQL.
@@ -529,21 +570,21 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToBinary,
 		(YBCPgDatumFromData)YBCBinaryToDatum },
 
-	{ OIDOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ OIDOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
 	{ TIDOID, YB_YQL_DATA_TYPE_BINARY, false, sizeof(ItemPointerData),
 		(YBCPgDatumToData)YBCDatumToDocdb,
 		(YBCPgDatumFromData)YBCDocdbToDatum },
 
-	{ XIDOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ XIDOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(TransactionId),
+		(YBCPgDatumToData)YBCDatumToTransactionId,
+		(YBCPgDatumFromData)YBCTransactionIdToDatum },
 
-	{ CIDOID, YB_YQL_DATA_TYPE_INT32, false, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ CIDOID, YB_YQL_DATA_TYPE_UINT32, false, sizeof(CommandId),
+		(YBCPgDatumToData)YBCDatumToCommandId,
+		(YBCPgDatumFromData)YBCCommandIdToDatum },
 
 	{ OIDVECTOROID, YB_YQL_DATA_TYPE_BINARY, true, -1,
 		(YBCPgDatumToData)YBCDatumToBinary,
@@ -890,33 +931,33 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToDocdb,
 		(YBCPgDatumFromData)YBCDocdbToDatum },
 
-	{ REGPROCEDUREOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ REGPROCEDUREOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ REGOPEROID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ REGOPEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ REGOPERATOROID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ REGOPERATOROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ REGCLASSOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ REGCLASSOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ REGTYPEOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ REGTYPEOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ REGROLEOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ REGROLEOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ REGNAMESPACEOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ REGNAMESPACEOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
 	{ REGPROCEDUREARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1,
 		(YBCPgDatumToData)YBCDatumToBinary,
@@ -974,13 +1015,13 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToDocdb,
 		(YBCPgDatumFromData)YBCDocdbToDatum },
 
-	{ REGCONFIGOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ REGCONFIGOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ REGDICTIONARYOID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ REGDICTIONARYOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
 	{ TSVECTORARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1,
 		(YBCPgDatumToData)YBCDatumToBinary,
@@ -1091,17 +1132,17 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToInt64,
 		(YBCPgDatumFromData)YBCInt64ToDatum },
 
-	{ TRIGGEROID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ TRIGGEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ EVTTRIGGEROID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ EVTTRIGGEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ LANGUAGE_HANDLEROID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ LANGUAGE_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
 	{ INTERNALOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64),
 		(YBCPgDatumToData)YBCDatumToInt64,
@@ -1123,17 +1164,17 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToInt32,
 		(YBCPgDatumFromData)YBCInt32ToDatum },
 
-	{ FDW_HANDLEROID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ FDW_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ INDEX_AM_HANDLEROID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ INDEX_AM_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ TSM_HANDLEROID, YB_YQL_DATA_TYPE_INT32, true, sizeof(int32),
-		(YBCPgDatumToData)YBCDatumToInt32,
-		(YBCPgDatumFromData)YBCInt32ToDatum },
+	{ TSM_HANDLEROID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
+		(YBCPgDatumToData)YBCDatumToOid,
+		(YBCPgDatumFromData)YBCOidToDatum },
 
 	{ ANYRANGEOID, YB_YQL_DATA_TYPE_BINARY, false, -1,
 		(YBCPgDatumToData)YBCDatumToDocdb,
