@@ -887,7 +887,7 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToBinary,
 		(YBCPgDatumFromData)YBCBinaryToDatum },
 
-	{ INTERVALOID, YB_YQL_DATA_TYPE_BINARY, true, sizeof(Interval),
+	{ INTERVALOID, YB_YQL_DATA_TYPE_BINARY, false, sizeof(Interval),
 		(YBCPgDatumToData)YBCDatumToInterval,
 		(YBCPgDatumFromData)YBCIntervalToDatum },
 
