@@ -271,7 +271,7 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 
   if (isTopLevelStatement()) {
     InstrEndLoop(queryDesc->totaltime);
-    ybpgm_Store(type, queryDesc->totaltime->total * 1000.0);
+    ybpgm_Store(type, (uint64_t) (queryDesc->totaltime->total * 1000000.0));
   }
 
   if (prev_ExecutorEnd)
@@ -331,7 +331,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
     INSTR_TIME_SET_CURRENT(end);
     INSTR_TIME_SUBTRACT(end, start);
-    ybpgm_Store(Other, INSTR_TIME_GET_MILLISEC(end));
+    ybpgm_Store(Other, INSTR_TIME_GET_MICROSEC(end));
   }
   else
   {
@@ -347,7 +347,7 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 }
 
 static void
-ybpgm_Store(statementType type, double time){
+ybpgm_Store(statementType type, uint64_t time){
   ybpgm_table[type].calls++;
   ybpgm_table[type].total_time += time;
 }
