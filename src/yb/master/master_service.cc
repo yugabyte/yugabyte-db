@@ -46,7 +46,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/server/webserver.h"
-  #include "yb/util/flag_tags.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
@@ -345,41 +345,49 @@ void MasterServiceImpl::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB
   HandleIn(req, resp, &rpc, &CatalogManager::GetYsqlCatalogConfig);
 }
 
+// ------------------------------------------------------------------------------------------------
+// Permissions
+// ------------------------------------------------------------------------------------------------
+
 void MasterServiceImpl::CreateRole(const CreateRoleRequestPB* req,
                                    CreateRoleResponsePB* resp,
                                    rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::CreateRole);
+  HandleIn(req, resp, &rpc, &PermissionsManager::CreateRole);
 }
 
 void MasterServiceImpl::AlterRole(const AlterRoleRequestPB* req,
                                   AlterRoleResponsePB* resp,
                                   rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::AlterRole);
+  HandleIn(req, resp, &rpc, &PermissionsManager::AlterRole);
 }
 
 void MasterServiceImpl::DeleteRole(const DeleteRoleRequestPB* req,
                                    DeleteRoleResponsePB* resp,
                                    rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::DeleteRole);
+  HandleIn(req, resp, &rpc, &PermissionsManager::DeleteRole);
 }
 
 void MasterServiceImpl::GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
                                         GrantRevokeRoleResponsePB* resp,
                                         rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GrantRevokeRole);
+  HandleIn(req, resp, &rpc, &PermissionsManager::GrantRevokeRole);
 }
 
 void MasterServiceImpl::GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
                                               GrantRevokePermissionResponsePB* resp,
                                               rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GrantRevokePermission);
+  HandleIn(req, resp, &rpc, &PermissionsManager::GrantRevokePermission);
 }
 
 void MasterServiceImpl::GetPermissions(const GetPermissionsRequestPB* req,
                                        GetPermissionsResponsePB* resp,
                                        rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GetPermissions);
+  HandleIn(req, resp, &rpc, &PermissionsManager::GetPermissions);
 }
+
+// ------------------------------------------------------------------------------------------------
+// Redis
+// ------------------------------------------------------------------------------------------------
 
 void MasterServiceImpl::RedisConfigSet(
     const RedisConfigSetRequestPB* req, RedisConfigSetResponsePB* resp, rpc::RpcContext rpc) {
@@ -396,6 +404,10 @@ void MasterServiceImpl::CreateUDType(const CreateUDTypeRequestPB* req,
                                      rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::CreateUDType);
 }
+
+// ------------------------------------------------------------------------------------------------
+// YCQL user-defined types
+// ------------------------------------------------------------------------------------------------
 
 void MasterServiceImpl::DeleteUDType(const DeleteUDTypeRequestPB* req,
                                      DeleteUDTypeResponsePB* resp,
@@ -414,6 +426,10 @@ void MasterServiceImpl::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
                                       rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::GetUDTypeInfo);
 }
+
+// ------------------------------------------------------------------------------------------------
+// Miscellaneous
+// ------------------------------------------------------------------------------------------------
 
 void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
                                           ListTabletServersResponsePB* resp,

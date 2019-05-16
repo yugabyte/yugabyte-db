@@ -42,6 +42,9 @@ static const char* const kSysCatalogTableColType = "entry_type";
 static const char* const kSysCatalogTableColId = "entry_id";
 static const char* const kSysCatalogTableColMetadata = "metadata";
 
+static const char* const kDefaultCassandraUsername = "cassandra";
+static const char* const kDefaultCassandraPassword = "cassandra";
+
 }  // namespace master
 }  // namespace yb
 

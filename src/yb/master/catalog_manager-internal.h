@@ -153,6 +153,14 @@ bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrResp
       (resp, rpc);
 }
 
+inline std::string RequestorString(yb::rpc::RpcContext* rpc) {
+  if (rpc) {
+    return rpc->requestor_string();
+  } else {
+    return "internal request";
+  }
+}
+
 }  // namespace master
 }  // namespace yb
 #endif // YB_MASTER_CATALOG_MANAGER_INTERNAL_H

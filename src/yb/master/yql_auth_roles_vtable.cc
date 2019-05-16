@@ -26,7 +26,7 @@ Status YQLAuthRolesVTable::RetrieveData(const QLReadRequestPB& request,
                                         std::unique_ptr<QLRowBlock>* vtable) const {
   vtable->reset(new QLRowBlock(schema_));
   std::vector<scoped_refptr<RoleInfo>> roles;
-  master_->catalog_manager()->GetAllRoles(&roles);
+  master_->catalog_manager()->permissions_manager()->GetAllRoles(&roles);
   for (const auto& role : roles) {
     auto l = role->LockForRead();
     const auto& pb = l->data().pb;

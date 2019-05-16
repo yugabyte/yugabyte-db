@@ -29,6 +29,7 @@ namespace master {
 class Master;
 class CatalogManager;
 class FlushManager;
+class PermissionsManager;
 
 // Tells HandleIn/HandleOnLeader to either acquire the lock briefly to check leadership (kFalse)
 // or to hold it throughout the handler invocation (kTrue).
@@ -67,6 +68,7 @@ class MasterServiceBase {
 
   YB_EDITION_NS_PREFIX CatalogManager* handler(CatalogManager*);
   FlushManager* handler(FlushManager*);
+  PermissionsManager* handler(PermissionsManager*);
 
   Master* server_;
 
