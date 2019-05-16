@@ -69,6 +69,7 @@
 #include "yb/gutil/thread_annotations.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/permissions_manager.h"
 
 namespace yb {
 
@@ -281,54 +282,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
                                 ListNamespacesResponsePB* resp);
 
-  // Create a new role for authentication/authorization.
-  //
-  // The RPC context is provided for logging/tracing purposes.
-  // but this function does not itself respond to the RPC.
-  CHECKED_STATUS CreateRole(const CreateRoleRequestPB* req,
-                            CreateRoleResponsePB* resp,
-                            rpc::RpcContext* rpc);
-
-  // Alter an existing role for authentication/authorization.
-  //
-  // The RPC context is provided for logging/tracing purposes,
-  // but this function does not itself respond to the RPC.
-  CHECKED_STATUS AlterRole(const AlterRoleRequestPB* req,
-                           AlterRoleResponsePB* resp,
-                           rpc::RpcContext* rpc);
-
-  // Delete the role.
-  //
-  // The RPC context is provided for logging/tracing purposes,
-  // but this function does not itself respond to the RPC.
-  CHECKED_STATUS DeleteRole(const DeleteRoleRequestPB* req,
-                            DeleteRoleResponsePB* resp,
-                            rpc::RpcContext* rpc);
-
-  // Generic Create Role function for both default roles and user defined roles.
-  CHECKED_STATUS CreateRoleUnlocked(const std::string& role_name,
-                                    const std::string& salted_hash,
-                                    const bool login, const bool superuser,
-                                    int64_t term,
-                                    // This value is only set to false during the creation of the
-                                    // default role when it doesn't exist.
-                                    const bool increment_roles_version = true);
-
-  // Grant one role to another role.
-  CHECKED_STATUS GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
-                                 GrantRevokeRoleResponsePB* resp,
-                                 rpc::RpcContext* rpc);
-
-    // Grant/Revoke a permission to a role.
-  CHECKED_STATUS GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
-                                       GrantRevokePermissionResponsePB* resp,
-                                       rpc::RpcContext* rpc);
-
-  // Get all the permissions granted to resources.
-  CHECKED_STATUS GetPermissions(const GetPermissionsRequestPB* req,
-                                GetPermissionsResponsePB* resp,
-                                rpc::RpcContext* rpc);
-
   // Set Redis Config
   CHECKED_STATUS RedisConfigSet(const RedisConfigSetRequestPB* req,
                                 RedisConfigSetResponsePB* resp,
@@ -408,23 +361,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   NamespaceName GetNamespaceNameUnlocked(const scoped_refptr<TableInfo>& table) const;
   NamespaceName GetNamespaceName(const scoped_refptr<TableInfo>& table) const;
-
-  void GetAllRoles(std::vector<scoped_refptr<RoleInfo>>* roles);
-
-  // Find all the roles for which 'role' is a member of the list 'member_of'.
-  std::vector<std::string> DirectMemberOf(const RoleName& role);
-
-  void TraverseRole(const string& role_name, std::unordered_set<RoleName>* granted_roles);
-
-  // Build the recursive map of roles (recursive_granted_roles_). If r1 is granted to r2, and r2
-  // is granted to r3, then recursive_granted_roles_["r3"] will contain roles r2, and r1.
-  void BuildRecursiveRoles();
-
-  void BuildRecursiveRolesUnlocked();
-
-  void BuildResourcePermissionsUnlocked();
-
-  bool IsMemberOf(const RoleName& granted_role, const RoleName& role);
 
   // Is the table a system table?
   bool IsSystemTable(const TableInfo& table) const;
@@ -585,7 +521,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   ThreadPool* WorkerPool() { return worker_pool_.get(); }
 
+  PermissionsManager* permissions_manager() {
+    return permissions_manager_.get();
+  }
+
  protected:
+  // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
   friend class TabletLoader;
   friend class NamespaceLoader;
@@ -595,6 +536,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class RedisConfigLoader;
   friend class SysConfigLoader;
   friend class ::yb::master::ScopedLeaderSharedLock;
+  friend class PermissionsManager;
 
   FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
 
@@ -641,8 +583,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS PrepareSystemTables(int64_t term);
 
   CHECKED_STATUS PrepareSysCatalogTable(int64_t term);
-
-  CHECKED_STATUS PrepareDefaultRoles(int64_t term);
 
   template <class T>
   CHECKED_STATUS PrepareSystemTableTemplate(const TableName& table_name,
@@ -786,7 +726,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // This method is called by "SelectReplicasForTablet".
   void SelectReplicas(
-      const TSDescriptorVector& ts_descs, int nreplicas, consensus::RaftConfigPB* config,
+      const TSDescriptorVector& ts_descs,
+      int nreplicas, consensus::RaftConfigPB* config,
       std::set<std::shared_ptr<TSDescriptor>>* already_selected_ts,
       consensus::RaftPeerPB::MemberType member_type);
 
@@ -926,11 +867,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // for the blacklist.
   CHECKED_STATUS SetBlackList(const BlacklistPB& blacklist);
 
-  // Given a tablet, find the leader uuid among its peers. If false is returned,
-  // caller should not use the 'leader_uuid'.
-  bool getLeaderUUID(const scoped_refptr<TabletInfo>& tablet,
-                     TabletServerId* leader_uuid);
-
   // Calculate the total number of replicas which are being handled by blacklisted servers.
   int64_t GetNumBlacklistReplicas();
 
@@ -945,32 +881,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Updated table state from DELETING to DELETED, if it has no more tablets.
   void MarkTableDeletedIfNoTablets(scoped_refptr<DeletedTableInfo> deleted_table,
                                    TableInfo* table_info = nullptr);
-
-  // Increment the version stored in roles_version_ if it exists. Otherwise, creates a
-  // SysVersionInfo object with version equal to 0 to track the roles versions.
-  CHECKED_STATUS IncrementRolesVersionUnlocked();
-
-  // Grant the specified permissions.
-  template<class RespClass>
-  CHECKED_STATUS GrantPermissions(const RoleName& role_name,
-                                  const std::string& canonical_resource,
-                                  const std::string& resource_name,
-                                  const NamespaceName& keyspace,
-                                  const std::vector<PermissionType>& permissions,
-                                  const ResourceType resource_type,
-                                  RespClass* resp);
-
-  // For each role in roles_map_ traverse all of its resources and delete any resource that matches
-  // the given canonical resource. This is used when a table/keyspace/role is deleted so that we
-  // don't leave old permissions alive. This is specially dangerous when a resource with the same
-  // canonical name is created again.
-  template<class RespClass>
-  CHECKED_STATUS RemoveAllPermissionsForResourceUnlocked(const std::string& canonical_resource,
-                                                         RespClass* resp);
-
-  template<class RespClass>
-  CHECKED_STATUS RemoveAllPermissionsForResource(const std::string& canonical_resource,
-                                                 RespClass* resp);
 
   // Checks if the pg_proc table exists, which indicates that initdb has at least started running.
   bool DoesPgProcExistUnlocked() SHARED_LOCKS_REQUIRED(lock_);
@@ -1006,32 +916,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // User-Defined type maps: udtype-id -> UDTypeInfo and udtype-name -> UDTypeInfo
   UDTypeInfoMap udtype_ids_map_;
   UDTypeInfoByNameMap udtype_names_map_;
-
-  // Role map: RoleName -> RoleInfo
-  typedef std::unordered_map<RoleName, scoped_refptr<RoleInfo> > RoleInfoMap;
-  RoleInfoMap roles_map_;
-
-  typedef std::unordered_map<RoleName, std::unordered_set<RoleName>> RoleMemberMap;
-
-  typedef std::string ResourceName;
-
-  // Resource permissions map: resource -> permissions.
-  typedef std::unordered_map<ResourceName, Permissions> ResourcePermissionsMap;
-
-  // Role permissions map: role name -> map of resource permissions.
-  typedef std::unordered_map<RoleName, ResourcePermissionsMap> RolePermissionsMap;
-
-  // role_name -> set of granted roles (including those acquired transitively).
-  RoleMemberMap recursive_granted_roles_;
-
-  RolePermissionsMap recursive_granted_permissions_;
-
-  // Permissions cache. Kept in a protobuf to avoid rebuilding it every time we receive a request
-  // from a client.
-  std::shared_ptr<GetPermissionsResponsePB> permissions_cache_;
-
-  // Cluster security config.
-  scoped_refptr<SysConfigInfo> security_config_ = nullptr;
 
   // RedisConfig map: RedisConfigKey -> RedisConfigInfo
   typedef std::unordered_map<RedisConfigKey, scoped_refptr<RedisConfigInfo>> RedisConfigInfoMap;
@@ -1127,14 +1011,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Tablets of system tables on the master indexed by the tablet id.
   std::unordered_map<std::string, std::shared_ptr<tablet::AbstractTablet>> system_tablets_;
 
-  std::vector<PermissionType> all_permissions_ = {
-      PermissionType::ALTER_PERMISSION, PermissionType::AUTHORIZE_PERMISSION,
-      PermissionType::CREATE_PERMISSION, PermissionType::DESCRIBE_PERMISSION,
-      PermissionType::DROP_PERMISSION, PermissionType::MODIFY_PERMISSION,
-      PermissionType::SELECT_PERMISSION
-  };
-
   boost::optional<std::future<Status>> initdb_future_;
+
+  std::unique_ptr<PermissionsManager> permissions_manager_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);

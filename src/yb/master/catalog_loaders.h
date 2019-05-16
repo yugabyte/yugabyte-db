@@ -36,109 +36,61 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/sys_catalog-internal.h"
 
+#include <boost/preprocessor/cat.hpp>
+
 namespace yb {
 namespace master {
 
-// TODO: deduplicate the boilerplate below.
+#define DECLARE_LOADER_CLASS(name, key_type, entry_pb_name) \
+  class BOOST_PP_CAT(name, Loader) : \
+      public Visitor<BOOST_PP_CAT(BOOST_PP_CAT(Persistent, name), Info)> { \
+  public: \
+    explicit BOOST_PP_CAT(name, Loader)( \
+        CatalogManager* catalog_manager) \
+        : catalog_manager_(catalog_manager) {} \
+    \
+  protected: \
+    CHECKED_STATUS Visit( \
+        const key_type& key, \
+        const entry_pb_name& metadata) override; \
+    \
+  private: \
+    CatalogManager *catalog_manager_; \
+    \
+    DISALLOW_COPY_AND_ASSIGN(BOOST_PP_CAT(name, Loader)); \
+  };
 
-class TableLoader : public Visitor<PersistentTableInfo> {
- public:
-  explicit TableLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
+// We have two naming schemes for Sys...EntryPB classes (plural vs. singluar), hence we need the
+// "entry_pb_suffix" argument to the macro.
+//
+// SysTablesEntryPB
+// SysTabletsEntryPB
+//
+// vs.
+//
+// SysNamespaceEntryPB
+// SysUDTypeEntryPB
+// SysClusterConfigEntryPB
+// SysRedisConfigEntryPB
+// SysRoleEntryPB
+// SysConfigEntryPB
 
-  CHECKED_STATUS Visit(const TableId& table_id, const SysTablesEntryPB& metadata) override;
+// These config PBs don't have associated loaders here:
+//
+// SysSecurityConfigEntryPB
+// SysSnapshotEntryPB
+// SysYSQLCatalogConfigEntryPB
 
- private:
-  CatalogManager *catalog_manager_;
+DECLARE_LOADER_CLASS(Table,         TableId,     SysTablesEntryPB);
+DECLARE_LOADER_CLASS(Tablet,        TabletId,    SysTabletsEntryPB);
+DECLARE_LOADER_CLASS(Namespace,     NamespaceId, SysNamespaceEntryPB);
+DECLARE_LOADER_CLASS(UDType,        UDTypeId,    SysUDTypeEntryPB);
+DECLARE_LOADER_CLASS(ClusterConfig, std::string, SysClusterConfigEntryPB);
+DECLARE_LOADER_CLASS(RedisConfig,   std::string, SysRedisConfigEntryPB);
+DECLARE_LOADER_CLASS(Role,          RoleName,    SysRoleEntryPB);
+DECLARE_LOADER_CLASS(SysConfig,     std::string, SysConfigEntryPB);
 
-  DISALLOW_COPY_AND_ASSIGN(TableLoader);
-};
-
-class TabletLoader : public Visitor<PersistentTabletInfo> {
- public:
-  explicit TabletLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
-
-  CHECKED_STATUS Visit(const TabletId& tablet_id, const SysTabletsEntryPB& metadata) override;
-
- private:
-  CatalogManager *catalog_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(TabletLoader);
-};
-
-class NamespaceLoader : public Visitor<PersistentNamespaceInfo> {
- public:
-  explicit NamespaceLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
-
-  CHECKED_STATUS Visit(const NamespaceId& ns_id, const SysNamespaceEntryPB& metadata) override;
-
- private:
-  CatalogManager *catalog_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(NamespaceLoader);
-};
-
-class UDTypeLoader : public Visitor<PersistentUDTypeInfo> {
- public:
-  explicit UDTypeLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
-
-  CHECKED_STATUS Visit(const UDTypeId& udtype_id, const SysUDTypeEntryPB& metadata) override;
-
- private:
-  CatalogManager *catalog_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(UDTypeLoader);
-};
-
-class ClusterConfigLoader : public Visitor<PersistentClusterConfigInfo> {
- public:
-  explicit ClusterConfigLoader(CatalogManager* catalog_manager)
-      : catalog_manager_(catalog_manager) {}
-
-  CHECKED_STATUS Visit(
-      const std::string& unused_id, const SysClusterConfigEntryPB& metadata) override;
-
- private:
-  CatalogManager* catalog_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(ClusterConfigLoader);
-};
-
-class RedisConfigLoader : public Visitor<PersistentRedisConfigInfo> {
- public:
-  explicit RedisConfigLoader(CatalogManager* catalog_manager)
-      : catalog_manager_(catalog_manager) {}
-
-  CHECKED_STATUS Visit(const std::string& key, const SysRedisConfigEntryPB& metadata) override;
-
- private:
-  CatalogManager* catalog_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(RedisConfigLoader);
-};
-
-class RoleLoader : public Visitor<PersistentRoleInfo> {
- public:
-  explicit RoleLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
-
-  CHECKED_STATUS Visit(const RoleName& role_name, const SysRoleEntryPB& metadata) override;
-
- private:
-  CatalogManager *catalog_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(RoleLoader);
-};
-
-class SysConfigLoader : public Visitor<PersistentSysConfigInfo> {
- public:
-  explicit SysConfigLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
-
-  CHECKED_STATUS Visit(const string& config_type, const SysConfigEntryPB& metadata) override;
-
- private:
-  CatalogManager *catalog_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(SysConfigLoader);
-};
+#undef DECLARE_LOADER_CLASS
 
 }  // namespace master
 }  // namespace yb
