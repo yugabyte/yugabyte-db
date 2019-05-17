@@ -486,13 +486,13 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     // Backward compatibility for tablet=KV-store=raft-group.
     RaftGroupReplicaSuperBlockPB superblock_migrated(superblock);
     RETURN_NOT_OK(MigrateSuperblock(&superblock_migrated));
-    return LoadFromSuperBlock(superblock_migrated);
+    RETURN_NOT_OK(LoadFromSuperBlock(superblock_migrated));
+    return Flush();
   }
 
   VLOG(2) << "Loading RaftGroupMetadata from SuperBlockPB:" << std::endl
           << superblock.DebugString();
 
-  bool need_flush = false;
   {
     std::lock_guard<LockType> l(data_lock_);
 
@@ -515,10 +515,6 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     } else {
       tombstone_last_logged_opid_ = OpId();
     }
-  }
-
-  if (need_flush) {
-    RETURN_NOT_OK(Flush());
   }
 
   return Status::OK();
