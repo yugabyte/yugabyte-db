@@ -433,7 +433,7 @@ insert into dropcol(key, keep1, keep2) values(1, '5', 5) on conflict(key)
 
 DROP TABLE dropcol;
 
--- TODO(neil) UNIQUE column not supported yet.
+-- TODO(neil) EXCLUDE constraint not supported yet - see #997
 -- check handling of regular lsm constraint along with gist constraint
 
 -- create table twoconstraints (f1 int unique, f2 box,
