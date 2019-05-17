@@ -159,7 +159,9 @@ def main():
 
     build_cmd_list += [
         # This will build the exact set of targets that are needed for the release.
-        "packaged_targets"
+        "packaged_targets",
+        # We do not need java code built for a release package
+        "--skip-java"
     ]
     if args.skip_build:
         build_cmd_list += ["--skip-build"]
