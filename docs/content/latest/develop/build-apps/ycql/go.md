@@ -10,7 +10,7 @@ This tutorial assumes that you have:
 To install the driver locally run:
 
 ```sh
-$ go get github.com/gocql/gocql
+$ go get github.com/yugabyte/gocql
 ```
 
 ## Writing a HelloWorld CQL app
@@ -25,7 +25,7 @@ import (
     "log"
     "time"
 
-    "github.com/gocql/gocql"
+    "github.com/yugabyte/gocql"
 )
 
 func main() {
