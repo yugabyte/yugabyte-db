@@ -1385,7 +1385,7 @@ ysql_sql_latency:
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Others"
-      ticksuffix: "&nbsp;ms"
+      ticksuffix: "&nbsp;\u00B5s"
 
 #Cassandra Metrics
 cql_server_rpc_per_second:
