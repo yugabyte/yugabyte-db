@@ -223,6 +223,33 @@ static const char *const subdirs[] = {
 	"pg_logical/mappings"
 };
 
+static const char *const local_node_subdirs[] = {
+  "global",
+  "pg_wal/archive_status",
+  "pg_commit_ts",
+  "pg_notify",
+  "pg_subtrans",
+  "pg_twophase",
+  "pg_multixact",
+  "pg_multixact/members",
+  "pg_multixact/offsets",
+  "base",
+  "base/1",
+  "pg_replslot",
+  "pg_tblspc",
+  "pg_stat",
+  "pg_stat_tmp",
+  "pg_xact",
+  "pg_logical",
+  "pg_logical/snapshots",
+  "pg_logical/mappings"
+};
+
+struct char_container
+{
+  int len;
+  const char *const *data;
+};
 
 /* path to 'initdb' binary directory */
 static char bin_path[MAXPGPATH];
@@ -325,10 +352,20 @@ do { \
 		output_failed = true, output_errno = errno; \
 } while (0)
 
-static bool IsYugaByteEnabledInInitdb()
+static bool IsEnvSet(const char* name)
 {
-	const char* env_var_value = getenv("YB_ENABLED_IN_POSTGRES");
+	const char* env_var_value = getenv(name);
 	return env_var_value != NULL && strcmp(env_var_value, "1") == 0;
+}
+
+static bool IsYugaByteGlobalClusterInitdb()
+{
+	return IsEnvSet("YB_ENABLED_IN_POSTGRES");
+}
+
+static bool IsYugaByteLocalNodeInitdb()
+{
+	return IsEnvSet("YB_PG_LOCAL_NODE_INITDB");
 }
 
 /*
@@ -1412,34 +1449,41 @@ bootstrap_template1(void)
 		exit_nicely();
 	}
 
-	/* Substitute for various symbols used in the BKI file */
+  /*
+   * Lines from BKI file are not actually used in initdb on local node.
+   * No need to substitute anything
+   */
+	if (!IsYugaByteLocalNodeInitdb())
+  {
+    /* Substitute for various symbols used in the BKI file */
 
-	sprintf(buf, "%d", NAMEDATALEN);
-	bki_lines = replace_token(bki_lines, "NAMEDATALEN", buf);
+    sprintf(buf, "%d", NAMEDATALEN);
+    bki_lines = replace_token(bki_lines, "NAMEDATALEN", buf);
 
-	sprintf(buf, "%d", (int) sizeof(Pointer));
-	bki_lines = replace_token(bki_lines, "SIZEOF_POINTER", buf);
+    sprintf(buf, "%d", (int) sizeof(Pointer));
+    bki_lines = replace_token(bki_lines, "SIZEOF_POINTER", buf);
 
-	bki_lines = replace_token(bki_lines, "ALIGNOF_POINTER",
-							  (sizeof(Pointer) == 4) ? "i" : "d");
+    bki_lines = replace_token(bki_lines, "ALIGNOF_POINTER",
+                  (sizeof(Pointer) == 4) ? "i" : "d");
 
-	bki_lines = replace_token(bki_lines, "FLOAT4PASSBYVAL",
-							  FLOAT4PASSBYVAL ? "true" : "false");
+    bki_lines = replace_token(bki_lines, "FLOAT4PASSBYVAL",
+                  FLOAT4PASSBYVAL ? "true" : "false");
 
-	bki_lines = replace_token(bki_lines, "FLOAT8PASSBYVAL",
-							  FLOAT8PASSBYVAL ? "true" : "false");
+    bki_lines = replace_token(bki_lines, "FLOAT8PASSBYVAL",
+                  FLOAT8PASSBYVAL ? "true" : "false");
 
-	bki_lines = replace_token(bki_lines, "POSTGRES",
-							  escape_quotes_bki(username));
+    bki_lines = replace_token(bki_lines, "POSTGRES",
+                  escape_quotes_bki(username));
 
-	bki_lines = replace_token(bki_lines, "ENCODING",
-							  encodingid_to_string(encodingid));
+    bki_lines = replace_token(bki_lines, "ENCODING",
+                  encodingid_to_string(encodingid));
 
-	bki_lines = replace_token(bki_lines, "LC_COLLATE",
-							  escape_quotes_bki(lc_collate));
+    bki_lines = replace_token(bki_lines, "LC_COLLATE",
+                  escape_quotes_bki(lc_collate));
 
-	bki_lines = replace_token(bki_lines, "LC_CTYPE",
-							  escape_quotes_bki(lc_ctype));
+    bki_lines = replace_token(bki_lines, "LC_CTYPE",
+                  escape_quotes_bki(lc_ctype));
+  }
 
 	/*
 	 * Pass correct LC_xxx environment to bootstrap.
@@ -1469,11 +1513,12 @@ bootstrap_template1(void)
 
 	PG_CMD_OPEN;
 
-	for (line = bki_lines; *line != NULL; line++)
-	{
-		PG_CMD_PUTS(*line);
-		free(*line);
-	}
+  for (line = bki_lines; *line != NULL; line++)
+  {
+    if (!IsYugaByteLocalNodeInitdb())
+      PG_CMD_PUTS(*line);
+    free(*line);
+  }
 
 	PG_CMD_CLOSE;
 
@@ -1754,7 +1799,7 @@ setup_collation(FILE *cmdfd)
 				   BOOTSTRAP_SUPERUSERID, COLLPROVIDER_LIBC, PG_UTF8);
 
 	/* Now import all collations we can find in the operating system */
-	if (!IsYugaByteEnabledInInitdb())
+	if (!IsYugaByteGlobalClusterInitdb())
 		PG_CMD_PUTS("SELECT pg_import_system_collations('pg_catalog');\n\n");
 }
 
@@ -2084,7 +2129,7 @@ make_template0(FILE *cmdfd)
 	 * 14/12/2018.
 	 * TODO revert this change when we do support it.
 	 */
-	if (IsYugaByteEnabledInInitdb())
+	if (IsYugaByteGlobalClusterInitdb())
 	{
 		PG_CMD_PUTS(template0_setup[0]);
 		PG_CMD_PUTS(template0_setup[2]);
@@ -2672,10 +2717,10 @@ setup_locale_encoding(void)
 void
 setup_data_file_paths(void)
 {
-	if (IsYugaByteEnabledInInitdb())
-		set_input(&bki_file, "yb_postgres.bki");
-	else
-		set_input(&bki_file, "postgres.bki");
+  if (IsYugaByteGlobalClusterInitdb())
+    set_input(&bki_file, "yb_postgres.bki");
+  else
+    set_input(&bki_file, "postgres.bki");
 	set_input(&desc_file, "postgres.description");
 	set_input(&shdesc_file, "postgres.shdescription");
 	set_input(&hba_file, "pg_hba.conf.sample");
@@ -2685,7 +2730,7 @@ setup_data_file_paths(void)
 	set_input(&dictionary_file, "snowball_create.sql");
 	set_input(&info_schema_file, "information_schema.sql");
 	set_input(&features_file, "sql_features.txt");
-	if (IsYugaByteEnabledInInitdb())
+	if (IsYugaByteGlobalClusterInitdb())
 		set_input(&system_views_file, "yb_system_views.sql");
 	else
 		set_input(&system_views_file, "system_views.sql");
@@ -2986,6 +3031,9 @@ initialize_data_directory(void)
 {
 	PG_CMD_DECL;
 	int      i;
+  const struct char_container subdirs_info = IsYugaByteLocalNodeInitdb()
+      ? (struct char_container) {lengthof(local_node_subdirs), local_node_subdirs}
+      : (struct char_container) {lengthof(subdirs), subdirs};
 
 	setup_signals();
 
@@ -2999,33 +3047,33 @@ initialize_data_directory(void)
 
 	create_data_directory();
 
-	create_xlog_or_symlink();
+  create_xlog_or_symlink();
 
-	/* Create required subdirectories (other than pg_wal) */
-	printf(_("creating subdirectories ... "));
-	fflush(stdout);
+  /* Create required subdirectories (other than pg_wal) */
+  printf(_("creating subdirectories ... "));
+  fflush(stdout);
 
-	for (i = 0; i < lengthof(subdirs); i++)
-	{
-		char     *path;
+  for (i = 0; i < subdirs_info.len; i++)
+  {
+    char     *path;
 
-		path = psprintf("%s/%s", pg_data, subdirs[i]);
+    path = psprintf("%s/%s", pg_data, subdirs_info.data[i]);
 
-		/*
-		 * The parent directory already exists, so we only need mkdir() not
-		 * pg_mkdir_p() here, which avoids some failure modes; cf bug #13853.
-		 */
-		if (mkdir(path, pg_dir_create_mode) < 0)
-		{
-			fprintf(stderr, _("%s: could not create directory \"%s\": %s\n"),
-			        progname, path, strerror(errno));
-			exit_nicely();
-		}
+    /*
+     * The parent directory already exists, so we only need mkdir() not
+     * pg_mkdir_p() here, which avoids some failure modes; cf bug #13853.
+     */
+    if (mkdir(path, pg_dir_create_mode) < 0)
+    {
+      fprintf(stderr, _("%s: could not create directory \"%s\": %s\n"),
+              progname, path, strerror(errno));
+      exit_nicely();
+    }
 
-		free(path);
-	}
+    free(path);
+  }
 
-	check_ok();
+  check_ok();
 
 	/* Top level PG_VERSION is checked by bootstrapper, so make it first */
 	write_version_file(NULL);
@@ -3038,7 +3086,10 @@ initialize_data_directory(void)
 	setup_config();
 
 	/* Bootstrap template1 */
-	bootstrap_template1();
+  bootstrap_template1();
+
+  if (IsYugaByteLocalNodeInitdb())
+    return;
 
 	/*
 	 * Make the per-database PG_VERSION for template1 only after init'ing it
@@ -3061,7 +3112,7 @@ initialize_data_directory(void)
 
 	setup_auth(cmdfd);
 
-	if (!IsYugaByteEnabledInInitdb())
+	if (!IsYugaByteGlobalClusterInitdb())
 		setup_depend(cmdfd);
 
 	/*
@@ -3072,12 +3123,12 @@ initialize_data_directory(void)
 	setup_sysviews(cmdfd);
 
 	/* Do not support copy in YB yet */
-	if (!IsYugaByteEnabledInInitdb())
+	if (!IsYugaByteGlobalClusterInitdb())
 		setup_description(cmdfd);
 
 	setup_collation(cmdfd);
 
-	if (!IsYugaByteEnabledInInitdb())
+	if (!IsYugaByteGlobalClusterInitdb())
 	{
 		setup_conversion(cmdfd);
 
@@ -3088,7 +3139,7 @@ initialize_data_directory(void)
 
 	setup_schema(cmdfd);
 
-  if (!IsYugaByteEnabledInInitdb())
+  if (!IsYugaByteGlobalClusterInitdb())
   {
 		load_plpgsql(cmdfd);
 
@@ -3109,9 +3160,9 @@ initialize_data_directory(void)
 int
 main(int argc, char *argv[])
 {
-	if (IsYugaByteEnabledInInitdb()) {
+	if (IsYugaByteGlobalClusterInitdb() || IsYugaByteLocalNodeInitdb())
 		YBSetInitDbModeEnvVar();
-	}
+
 	static struct option long_options[] = {
 		{"pgdata", required_argument, NULL, 'D'},
 		{"encoding", required_argument, NULL, 'E'},
@@ -3423,11 +3474,15 @@ main(int argc, char *argv[])
 	else
 		printf(_("\nSync to disk skipped.\nThe data directory might become corrupt if the operating system crashes.\n"));
 
-	if (authwarning != NULL && !IsYugaByteEnabledInInitdb())
+	if (IsYugaByteLocalNodeInitdb())
+		return 0;
+
+	if (authwarning != NULL && !IsYugaByteGlobalClusterInitdb())
 		fprintf(stderr, "%s", authwarning);
 
 	/* In YugaByte mode we only call this indirectly and manage starting the server automatically */
-	if (!IsYugaByteEnabledInInitdb()) {
+	if (!IsYugaByteGlobalClusterInitdb())
+	{
 
 		/*
      * Build up a shell command to tell the user how to start the server
