@@ -258,6 +258,8 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
         proc->SetEnv(env_var_name, flag_info.current_value);
       }
     }
+  } else {
+    proc->SetEnv("YB_PG_LOCAL_NODE_INITDB", "1");
   }
 }
 
