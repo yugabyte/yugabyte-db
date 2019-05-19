@@ -33,10 +33,11 @@
 #include "yb/util/mem_tracker.h"
 
 using namespace std::placeholders;
+using namespace yb::size_literals;
 
 DECLARE_bool(use_cassandra_authentication);
 
-DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 0,
+DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 128_MB,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
              "statements. 0 or negative means unlimited.");
 DEFINE_int32(cql_ybclient_reactor_threads, 24,
