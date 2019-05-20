@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { PureComponent } from 'react';
-import {Button} from 'react-bootstrap';
+import { Button } from 'react-bootstrap';
 export default class YBButton extends PureComponent {
 
   render() {

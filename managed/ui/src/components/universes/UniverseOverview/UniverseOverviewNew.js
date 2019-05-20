@@ -16,6 +16,7 @@ import { getUniverseEndpoint } from 'actions/common';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
+import { YBButton, YBModal } from '../../common/forms/fields';
 import { NodeConnectModal } from '../../universes';
 import moment from 'moment';
 import pluralize from 'pluralize';
@@ -375,12 +376,26 @@ export default class UniverseOverviewNew extends Component {
   getRegionMapWidget = (universeInfo) => {
 
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
-
+    const {
+      modal: { showModal, visibleModal },
+      showUniverseOverviewMapModal,
+      closeModal
+    } = this.props;
     const mapWidget = (
       <YBWidget
         numNode
         noMargin
         size={2}
+        headerRight={
+          <Fragment>
+            <YBButton btnClass={"btn-clear"} btnIcon={"fa fa-expand"} onClick={showUniverseOverviewMapModal}/>
+            <YBModal onHide={closeModal} className={"modal-map-overview"} title={"Map"} visible={showModal && visibleModal === "universeOverviewMapModal"}>
+              <YBButton btnIcon={"fa fa-times"} btnClass={"btn btn-default btn-round button-close-map"} onClick={closeModal} />
+              <RegionMap universe={universeInfo} type={"Universe"} setBounds={false} />
+              <YBMapLegend title="Data Placement (In AZs)" clusters={universeInfo.universeDetails.clusters} type="Universe"/>
+            </YBModal>
+          </Fragment>
+        }
         headerLeft={
           isItKubernetesUniverse ? "Universe Pods" : "Universe Nodes"
         }
