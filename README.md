@@ -8,7 +8,7 @@
 [![Slack chat](https://img.shields.io/badge/chat-Slack-brightgreen.svg)](https://www.yugabyte.com/slack)
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
 
-YugaByte Database is the high-performance SQL database for building internet-scale, globally-distributed applications.  This repository contains the Community Edition of the YugaByte Database.
+YugaByte Database is the high-performance distributed SQL database for building global, internet-scale applications.  This repository contains the Community Edition of the YugaByte Database.
 
 ## Table of Contents
 
@@ -67,12 +67,12 @@ Cannot find what you are looking for? Have a question? We love to hear from you 
 ## Developing Apps
 
 Here is a tutorial on implementing a simple Hello World application on YugaByte DB in different languages:
-* [Java](https://docs.yugabyte.com/latest/develop/client-drivers/java/) using Maven
-* [NodeJS](https://docs.yugabyte.com/latest/develop/client-drivers/nodejs/)
-* [Python](https://docs.yugabyte.com/latest/develop/client-drivers/python/)
-* [Go](https://docs.yugabyte.com/latest/develop/client-drivers/go/)
-* [C#](https://docs.yugabyte.com/latest/develop/client-drivers/csharp/)
-* [C/C++](https://docs.yugabyte.com/latest/develop/client-drivers/cpp/)
+* [Java](https://docs.yugabyte.com/latest/develop/build-apps/java/) using JDBC, Spring Data & Maven
+* [NodeJS](https://docs.yugabyte.com/latest/develop/build-apps/nodejs/)
+* [Python](https://docs.yugabyte.com/latest/develop/build-apps/python/)
+* [Go](https://docs.yugabyte.com/latest/develop/build-apps/go/)
+* [C#](https://docs.yugabyte.com/latest/develop/build-apps/csharp/)
+* [C/C++](https://docs.yugabyte.com/latest/develop/build-apps/cpp/)
 
 We are constantly adding documentation on how to build apps using the client drivers in various languages, as well as the ecosystem integrations we support. Please see [our app-development docs](https://docs.yugabyte.com/latest/develop/) for the latest information.
 
