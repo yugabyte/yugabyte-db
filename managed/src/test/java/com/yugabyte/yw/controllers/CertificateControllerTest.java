@@ -3,15 +3,20 @@
 package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import org.apache.commons.io.FileUtils;
+import org.mockito.Mock;
+import org.mockito.runners.MockitoJUnitRunner;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -25,28 +30,28 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Date;
 import java.util.UUID;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
+import static org.mockito.Mockito.when;
+import static com.yugabyte.yw.common.AssertHelper.*;
 
-public class CertificateControllerTest extends WithApplication {
+@RunWith(MockitoJUnitRunner.class)
+public class CertificateControllerTest extends FakeDBApplication {
+  @Mock
+  play.Configuration mockAppConfig;
 
   private Customer customer;
   private List<String> test_certs = Arrays.asList("test_cert1", "test_cert2", "test_cert3");
   private List<UUID> test_certs_uuids = new ArrayList<>();
 
-  @Override
-  protected Application provideApplication() {
-
-    return new GuiceApplicationBuilder()
-      .configure((Map) Helpers.inMemoryDatabase())
-      .build();
-  }
-
   @Before
   public void setUp() {
+    when(mockAppConfig.getString("yb.storage.path")).thenReturn("/tmp");
     customer = ModelFactory.testCustomer();
     for (String cert: test_certs) {
       test_certs_uuids.add(CertificateHelper.createRootCA(cert, customer.uuid, "/tmp/certs"));
@@ -61,6 +66,11 @@ public class CertificateControllerTest extends WithApplication {
   private Result listCertificates(UUID customerUUID) {
     String uri = "/api/customers/" + customerUUID + "/certificates";
     return FakeApiHelper.doRequestWithAuthToken("GET", uri, customer.createAuthToken());
+  }
+
+  private Result uploadCertificate(UUID customerUUID, ObjectNode bodyJson) {
+    String uri = "/api/customers/" + customerUUID + "/certificates";
+    return FakeApiHelper.doRequestWithAuthTokenAndBody("POST", uri, customer.createAuthToken(), bodyJson);
   }
 
   private Result getCertificate(UUID customerUUID, String label) {
@@ -84,6 +94,36 @@ public class CertificateControllerTest extends WithApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(cert_uuid, UUID.fromString(json.asText()));
+  }
+
+  @Test
+  public void testUploadCertificate() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("label", "test");
+    bodyJson.put("certContent", "cert_test");
+    bodyJson.put("keyContent", "key_test");
+    Date date = new Date();
+    bodyJson.put("certStart", date.getTime());
+    bodyJson.put("certExpiry", date.getTime());
+    Result result = uploadCertificate(customer.uuid, bodyJson);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(OK, result.status());
+    UUID certUUID = UUID.fromString(json.asText());
+    CertificateInfo ci = CertificateInfo.get(certUUID);
+    assertEquals(ci.label, "test");
+    assertTrue(ci.certificate.contains("/tmp"));
+  }
+
+  @Test
+  public void testUploadCertificateFail() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("label", "test");
+    bodyJson.put("certContent", "cert_test");
+    Date date = new Date();
+    bodyJson.put("certStart", date.getTime());
+    bodyJson.put("certExpiry", date.getTime());
+    Result result = uploadCertificate(customer.uuid, bodyJson);
+    assertBadRequest(result, "{\"keyContent\":[\"This field is required\"]}");
   }
 
 }

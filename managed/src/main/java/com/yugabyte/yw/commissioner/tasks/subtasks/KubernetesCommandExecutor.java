@@ -445,6 +445,12 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       }
     }
 
+    // Storage class needs to be updated if it is overriden in the zone config.
+    if (azConfig.containsKey("STORAGE_CLASS")) {
+        tserverDiskSpecs.put("storageClass", azConfig.get("STORAGE_CLASS"));
+        masterDiskSpecs.put("storageClass", azConfig.get("STORAGE_CLASS"));
+    }
+
     if (isMultiAz) {
       overrides.put("masterAddresses", taskParams().masterAddresses);
       overrides.put("AZ", placementZone);
@@ -452,11 +458,6 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       
       overrides.put("replicas", ImmutableMap.of("tserver", numNodes,
           "master", replicationFactorZone, "totalMasters", replicationFactor));
-      
-      if (azConfig.containsKey("STORAGE_CLASS")) {
-        tserverDiskSpecs.put("storageClass", azConfig.get("STORAGE_CLASS"));
-        masterDiskSpecs.put("storageClass", azConfig.get("STORAGE_CLASS"));
-      }
     } else {
       overrides.put("replicas", ImmutableMap.of("tserver", numNodes,
           "master", replicationFactor));

@@ -56,6 +56,7 @@ POST    /customers/:cUUID/releases                com.yugabyte.yw.controllers.Re
 PUT     /customers/:cUUID/releases/:name          com.yugabyte.yw.controllers.ReleaseController.update(cUUID: java.util.UUID, name: String)
 
 # Certificate API
+POST	/customers/:cUUID/certificates			  com.yugabyte.yw.controllers.CertificateController.upload(cUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates            com.yugabyte.yw.controllers.CertificateController.list(cUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates/:name      com.yugabyte.yw.controllers.CertificateController.get(cUUID: java.util.UUID, name: String)
 
