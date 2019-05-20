@@ -4,8 +4,7 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Marker, Popup, Tooltip } from 'react-leaflet';
 import { Icon, divIcon }  from 'leaflet';
-import { DefaultMarkerIcon, DefaultMarkerShadowIcon,
-  RootMarkerIcon, RootMarkerShadowIcon, ReadReplicaMarkerIcon } from './images';
+import { DefaultMarkerIcon, DefaultMarkerShadowIcon, RootMarkerIconBig, RootMarkerShadowIcon, ReadReplicaMarkerIconBig } from './images';
 
 export default class MapMarker extends Component {
   static propTypes = {
@@ -43,32 +42,32 @@ export default class MapMarker extends Component {
     }
     else if (type === "AZMarker") {
       opts['icon'] = new Icon({
-        iconUrl: RootMarkerIcon,
+        iconUrl: RootMarkerIconBig,
         shadowUrl: RootMarkerShadowIcon,
-        iconSize: [30, 32],
+        iconSize: [35, 35],
         shadowSize: [40, 42],
         popupAnchor: [10, -4],
         iconAnchor: [12, 20],
-        shadowAnchor: [10, 30]
+        shadowAnchor: [5, 25]
       });
     } else if (type === "ReadReplica") {
       opts['icon'] = new Icon({
-        iconUrl: ReadReplicaMarkerIcon,
+        iconUrl: ReadReplicaMarkerIconBig,
         shadowUrl: RootMarkerShadowIcon,
-        iconSize: [30, 32],
+        iconSize: [35, 35],
         shadowSize: [40, 42],
         popupAnchor: [10, -4],
         iconAnchor: [12, 20],
-        shadowAnchor: [10, 30]
+        shadowAnchor: [5, 25]
       });
     } else if (type === "Region") {
       opts['icon'] = divIcon({className: 'marker-cluster-small provider-marker-cluster', html: numChildren});
     } else {
-      const markerData = RootMarkerIcon;
+      const markerData = RootMarkerIconBig;
       opts['icon'] = new Icon({
         iconUrl: markerData,
         shadowUrl: "",
-        iconSize: [27, 27],
+        iconSize: [35, 35],
         popupAnchor: [10, 10],
         iconAnchor: [10, 30],
         shadowAnchor: [12, 46]

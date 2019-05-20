@@ -1,6 +1,7 @@
 /* Copyright (c) YugaByte, Inc. */
 
 @import "_style/colors.scss";
+@import "_style/mixins.scss";
 
 .modal-content {
   border-radius: 0px;
@@ -60,4 +61,73 @@
   right: 15px;
   z-index: 100;
   background-color: #f5f4f0;
+}
+
+.modal-map-overview {
+  .modal-dialog {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+
+    .modal-content {
+      border: none;
+      height: 100%;
+
+      form {
+        height: 100%;
+        width: 100%;
+
+        .modal-header {
+          display: none;
+        }
+
+        .modal-body {
+          height: 100%;
+          width: 100%;
+          max-height: 100%;
+          padding: 0;
+
+          .yb-region-map {
+            height: 100% !important;
+            min-height: 100% !important;
+            border: none;
+          }
+          .yb-map-legend {
+            margin: 20px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+          }
+          .button-close-map {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000 !important;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+            text-align: center;
+            @include transition(0.125s);
+
+            i.fa {
+              margin-right: 0;
+              font-size: 22px;
+              line-height: 25px;
+              padding-right: 0;
+              color: $YB_ORANGE;
+              @include transition(0.125s);
+            }
+
+            &:hover{
+              box-shadow: 0 2px 5px rgba(0, 0, 0, 0);
+              @include transition(0.35s);
+
+              i.fa {
+                @include transition(0.35s);
+                transform: rotate(90deg);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }

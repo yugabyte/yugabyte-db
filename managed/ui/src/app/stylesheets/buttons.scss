@@ -15,9 +15,27 @@
     border-color: transparent;
   }
 }
+
 .btn-default {
   &, &:hover, &:focus, &:active {
     border-color: transparent;
+  }
+}
+
+.btn-clear{
+  &, &:hover, &:focus, &:active {
+    display: inline-block;
+    height: auto;
+    width: auto;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background-color: transparent;
+
+    * {
+      padding: 0 !important;
+      margin: 0 !important;
+    }
   }
 }
 
@@ -77,6 +95,16 @@
     border-color: darken($YB_GRAY, 2%);
     background-color: darken($YB_GRAY, 2%);
     box-shadow: none;
+  }
+}
+
+.btn-round {
+  width: 53px;
+  height: 53px;
+  border-radius: 50%;
+
+  &, &:hover, &:active:focus, &:focus, &:active, &.active {
+    border: none;
   }
 }
 
