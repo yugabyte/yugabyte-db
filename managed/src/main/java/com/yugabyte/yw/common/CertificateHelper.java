@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.math.BigInteger;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -103,6 +104,31 @@ public class CertificateHelper {
         LOG.error("Unable to create RootCA for universe " + nodePrefix, e);
         return null;
       }
+  }
+
+  public static UUID uploadRootCA(String label, UUID customerUUID, String storagePath, String certContent,
+                                  String keyContent, Date certStart, Date certExpiry) throws IOException {
+    if (certContent == null || keyContent == null) {
+      throw new RuntimeException("Keyfile or certfile can't be null");
+    }
+    UUID rootCA_UUID = UUID.randomUUID();
+    String keyPath = String.format("%s/certs/%s/%s/ca.key.pem", storagePath, customerUUID.toString(), rootCA_UUID.toString());
+    String certPath = String.format("%s/certs/%s/%s/ca.root.crt", storagePath, customerUUID.toString(), rootCA_UUID.toString());
+    
+    File certfile = new File(certPath);
+    File keyfile = new File(keyPath);
+
+    // Create directory to store the keys.
+    certfile.getParentFile().mkdirs();
+
+    Files.write(certfile.toPath(), certContent.getBytes());
+    Files.write(keyfile.toPath(), keyContent.getBytes());
+    
+    CertificateInfo cert = CertificateInfo.create(rootCA_UUID, customerUUID, label, certStart,
+        certExpiry, keyPath, certPath);
+    
+    return cert.uuid;
+
   }
 
   public static String getCertPEM(UUID rootCA){

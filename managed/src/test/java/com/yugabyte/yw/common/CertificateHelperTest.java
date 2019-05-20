@@ -21,6 +21,8 @@ import java.io.InputStream;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.UUID;
+import java.util.Calendar;
+import java.util.Date;
 import static org.junit.Assert.*;
 
 
@@ -43,7 +45,7 @@ public class CertificateHelperTest extends FakeDBApplication{
   }
 
   @Test
-  public void testCreateRootCA(){
+  public void testCreateRootCA() {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "test-universe";
     UUID rootCA = CertificateHelper.createRootCA(taskParams.nodePrefix, c.uuid, "/tmp");
@@ -56,6 +58,22 @@ public class CertificateHelperTest extends FakeDBApplication{
     } catch (Exception e){
       fail(e.getMessage());
     }
+  }
+
+  @Test
+  public void testUploadRootCA() {
+    Calendar cal = Calendar.getInstance();
+    Date certStart = cal.getTime();
+    cal.add(Calendar.YEAR, 1);
+    Date certExpiry = cal.getTime();
+    UUID rootCA = null;
+    try {
+      rootCA = CertificateHelper.uploadRootCA("test", c.uuid, "/tmp", "test_cert", "test_key",
+          certStart, certExpiry);
+    } catch (Exception e) {
+      fail(e.getMessage());
+    }
+    assertNotNull(CertificateInfo.get(rootCA));
   }
 
 }
