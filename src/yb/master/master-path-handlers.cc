@@ -1176,7 +1176,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
       is_on_nav_bar, "fa fa-server");
   cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
   server->RegisterPathHandler(
-    "/api/tablet-servers", "Tserver Statuses",
+    "/api/v1/tablet-servers", "Tserver Statuses",
     std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
                  this, _1, _2, false /* skip_system_tables */);
