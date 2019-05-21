@@ -20,11 +20,13 @@ The following table lists the commands in YSQL.
 | Statement | Description |
 |-----------|-------------|
 | [`ABORT`](txn_abort) | Rollback a transaction |
+| [`ALTER DOMAIN`](ddl_alter_domain) | Alter a domain |
 | [`ALTER TABLE`](ddl_alter_table) | Change table definition |
 | [`BEGIN TRANSACTION`](txn_begin) | Start a transaction |
 | [`COMMIT`](txn_commit) | Commit a transaction |
 | [`COPY`](cmd_copy) | Copy data between tables and files |
 | [`CREATE DATABASE`](ddl_create_database) | Create a new database |
+| [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |
 | [`CREATE SCHEMA`](ddl_create_schema) | Create a new schema (namespace) |
 | [`CREATE SEQUENCE`](ddl_create_sequence) | Create a new sequence generator |
@@ -34,6 +36,7 @@ The following table lists the commands in YSQL.
 | [`CREATE VIEW`](ddl_create_view) | Create a new view |
 | [`DEALLOCATE`](perf_deallocate) | Deallocate a prepared statement |
 | [`DELETE`](dml_delete) | Delete rows from a table |
+| [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
 | [`END TRANSACTION`](txn_end) | Commit a transaction |
