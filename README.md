@@ -179,13 +179,12 @@ Assuming this repository is checked out in `~/code/yugabyte-db`, do the followin
 
 ```
 cd ~/code/yugabyte-db
-./yb_build.sh release --with-assembly
+./yb_build.sh release
 ```
 
 The above command will build the release configuration, put the C++ binaries in
 `build/release-gcc-dynamic-community`, and will also create the `build/latest` symlink to that
-directory. Then it will build the Java code as well. The `--with-assembly` flag tells the build
-script to build the `yb-sample-apps.jar` file containing sample Java apps.
+directory.
 
 For Linux it will first make sure our custom Linuxbrew distribution is installed into
 `~/.linuxbrew-yb-build/linuxbrew-<version>`.
