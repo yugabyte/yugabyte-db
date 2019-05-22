@@ -644,6 +644,9 @@ Status CatalogManager::RunLoaders() {
   // Clear redis config mapping.
   redis_config_map_.clear();
 
+  // Clear ysql catalog config.
+  ysql_catalog_config_.reset();
+
   // Clear recent tasks.
   tasks_tracker_->Reset();
 
@@ -4384,6 +4387,9 @@ Result<uint64_t> CatalogManager::IncrementYsqlCatalogVersion() {
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForWrite();
   uint64_t new_version = l->data().pb.ysql_catalog_config().version() + 1;
   l->mutable_data()->pb.mutable_ysql_catalog_config()->set_version(new_version);
+
+  // Write to sys_catalog and in memory.
+  RETURN_NOT_OK(sys_catalog_->UpdateItem(ysql_catalog_config_.get(), leader_ready_term_));
   l->Commit();
 
   return new_version;
@@ -4406,7 +4412,6 @@ Status CatalogManager::InitDbFinished(Status initdb_status, int64_t term) {
   }
 
   RETURN_NOT_OK(sys_catalog_->AddItem(ysql_catalog_config_.get(), term));
-
   l->Commit();
   return Status::OK();
 }
