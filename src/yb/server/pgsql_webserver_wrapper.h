@@ -34,8 +34,25 @@ typedef struct ybpgmEntry {
     atomic_ullong total_time;
 } ybpgmEntry;
 
+typedef struct rpczEntry {
+    char *query;
+    char *application_name;
+    int proc_id;
+    unsigned int db_oid;
+    char *db_name;
+    char *process_start_timestamp;
+    char *transaction_start_timestamp;
+    char *query_start_timestamp;
+    char *backend_type;
+    char *backend_status;
+    char *host;
+    char *port;
+} rpczEntry;
+
 struct WebserverWrapper *CreateWebserver(char *listen_addresses, int port);
 void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name);
+void RegisterRpczEntries(void (*rpczFunction)(), void (*freerpczFunction)(), int *num_backends_ptr,
+                         rpczEntry **rpczEntriesPointer);
 YBCStatus StartWebserver(struct WebserverWrapper *webserver);
 
 #ifdef __cplusplus
