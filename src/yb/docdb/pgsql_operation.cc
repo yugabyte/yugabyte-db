@@ -85,9 +85,9 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
     // The following code assumes that ybctid is the key of exactly one row, so the hash_doc_key_
     // is set to NULL. If this assumption is no longer true, hash_doc_key_ should be assigned with
     // appropriate values.
-    range_doc_key_.emplace();
-    RETURN_NOT_OK(range_doc_key_->DecodeFrom(key_value));
-    encoded_range_doc_key_ = range_doc_key_->EncodeAsRefCntPrefix();
+    doc_key_.emplace();
+    RETURN_NOT_OK(doc_key_->DecodeFrom(key_value));
+    encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
   } else {
     vector<PrimitiveValue> hashed_components;
     RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.partition_column_values(),
@@ -95,23 +95,17 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
                                                0,
                                                &hashed_components));
 
-    // We only need the hash key if the range key is not specified.
-    if (request_.range_column_values().size() == 0) {
-      hashed_doc_key_.emplace(schema_, request_.hash_code(), hashed_components);
-      encoded_hashed_doc_key_ = hashed_doc_key_->EncodeAsRefCntPrefix();
-    }
-
     vector<PrimitiveValue> range_components;
     RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.range_column_values(),
                                                schema_,
                                                schema_.num_hash_key_columns(),
                                                &range_components));
     if (hashed_components.empty()) {
-      range_doc_key_.emplace(schema_, range_components);
+      doc_key_.emplace(schema_, range_components);
     } else {
-      range_doc_key_.emplace(schema_, request_.hash_code(), hashed_components, range_components);
+      doc_key_.emplace(schema_, request_.hash_code(), hashed_components, range_components);
     }
-    encoded_range_doc_key_ = range_doc_key_->EncodeAsRefCntPrefix();
+    encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
   }
 
   return Status::OK();
@@ -136,9 +130,9 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = std::make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row,
-      index_info_ && index_info_->is_unique() && !HasNullValue(*range_doc_key_)
-          ? UniqueIndexSearchKey(schema_, *range_doc_key_)
-          : *range_doc_key_));
+      index_info_ && index_info_->is_unique() && !HasNullValue(*doc_key_)
+          ? UniqueIndexSearchKey(schema_, *doc_key_)
+          : *doc_key_));
   if (!table_row->IsEmpty()) {
     // Primary key or unique index value found.
     response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
@@ -150,8 +144,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
   const UserTimeMicros user_timestamp = Value::kInvalidUserTimestamp;
 
   // Add the appropriate liveness column.
-  if (encoded_range_doc_key_) {
-    const DocPath sub_path(encoded_range_doc_key_.as_slice(),
+  if (encoded_doc_key_) {
+    const DocPath sub_path(encoded_doc_key_.as_slice(),
                            PrimitiveValue::SystemColumnId(SystemColumnIds::kLivenessColumn));
     const auto value = Value(PrimitiveValue(), ttl, user_timestamp);
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
@@ -179,7 +173,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
         SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
 
     // Inserting into specified column.
-    DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
+    DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
     RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
         sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id(), ttl, user_timestamp));
   }
@@ -223,7 +217,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       if (expr_result != old_value) {
         const SubDocument sub_doc =
           SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
-        DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
+        DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
         RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
             sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
         skipped = false;
@@ -265,7 +259,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
             SubDocument::FromQLValuePB(expr_result.value(), column->sorting_type());
 
         // Inserting into specified column.
-        DocPath sub_path(encoded_range_doc_key_.as_slice(), PrimitiveValue(column_id));
+        DocPath sub_path(encoded_doc_key_.as_slice(), PrimitiveValue(column_id));
         RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
             sub_path, sub_doc, data.read_time, data.deadline, request_.stmt_id()));
         skipped = false;
@@ -292,7 +286,7 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
 
   // Otherwise, delete the referenced row (all columns).
   RETURN_NOT_OK(data.doc_write_batch->DeleteSubDoc(DocPath(
-      encoded_range_doc_key_.as_slice()), data.read_time, data.deadline));
+      encoded_doc_key_.as_slice()), data.read_time, data.deadline));
 
   RETURN_NOT_OK(PopulateResultSet(table_row));
 
@@ -328,8 +322,8 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow::SharedPtr& table
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     if (expr.has_column_id()) {
       if (expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-        rsrow->rscol(rscol_index)->set_binary_value(encoded_range_doc_key_.data(),
-                                                    encoded_range_doc_key_.size());
+        rsrow->rscol(rscol_index)->set_binary_value(encoded_doc_key_.data(),
+                                                    encoded_doc_key_.size());
       } else {
         RETURN_NOT_OK(EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
       }
@@ -341,11 +335,8 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow::SharedPtr& table
 
 Status PgsqlWriteOperation::GetDocPaths(
     GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const {
-  if (encoded_hashed_doc_key_) {
-    paths->push_back(encoded_hashed_doc_key_);
-  }
-  if (encoded_range_doc_key_) {
-    paths->push_back(encoded_range_doc_key_);
+  if (encoded_doc_key_) {
+    paths->push_back(encoded_doc_key_);
   }
   // When this write operation requires a read, it requires a read snapshot so paths will be locked
   // in snapshot isolation for consistency. Otherwise, pure writes will happen in serializable
