@@ -5826,12 +5826,21 @@ ConstraintAttributeSpec:
 		;
 
 ConstraintAttributeElem:
-			NOT DEFERRABLE					{ $$ = CAS_NOT_DEFERRABLE; }
-			| DEFERRABLE					{ $$ = CAS_DEFERRABLE; }
-			| INITIALLY IMMEDIATE			{ $$ = CAS_INITIALLY_IMMEDIATE; }
-			| INITIALLY DEFERRED			{ $$ = CAS_INITIALLY_DEFERRED; }
-			| NOT VALID						{ $$ = CAS_NOT_VALID; }
-			| NO INHERIT					{ $$ = CAS_NO_INHERIT; }
+			NOT DEFERRABLE				{ $$ = CAS_NOT_DEFERRABLE; }
+			| DEFERRABLE				{
+				parser_ybc_signal_unsupported(@1, "DEFERRABLE constraint", 1129);
+				$$ = CAS_DEFERRABLE;
+			  }
+			| INITIALLY IMMEDIATE		{
+				parser_ybc_signal_unsupported(@1, "INITIALLY IMMEDIATE constraint", 1129);
+				$$ = CAS_INITIALLY_IMMEDIATE;
+			}
+			| INITIALLY DEFERRED		{
+				parser_ybc_signal_unsupported(@1, "INITIALLY DEFERRED constraint", 1129);
+				$$ = CAS_INITIALLY_DEFERRED;
+			}
+			| NOT VALID					{ $$ = CAS_NOT_VALID; }
+			| NO INHERIT				{ $$ = CAS_NO_INHERIT; }
 		;
 
 
