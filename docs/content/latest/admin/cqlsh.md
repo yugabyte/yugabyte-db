@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Overview
 
-`cqlsh` is a command-line shell for interacting with YugaByte DB through [YCQL](../../api/ycql/). 
+`cqlsh` is a command line shell for interacting with YugaByte DB through [YCQL](../../api/ycql/). 
 
 ## Download 
 
@@ -36,7 +36,7 @@ $ ./bin/cqlsh --execute "select cluster_name, data_center, rack from system.loca
 
 ## Command Line Options
 
-Use the **-\-help** option to see all the command-line options supported.
+Use the **-\-help** option to see all the command line options supported.
 
 ```
 cqlsh [options] [host [port]]

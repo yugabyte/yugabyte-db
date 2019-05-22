@@ -45,16 +45,16 @@ $ ls data/
 orders.sql	products.sql	reviews.sql	users.sql
 ```
 
-### Connect to YugaByte DB using psql
+### Connect to YugaByte DB using ysqlsh
 
 You can do this as shown below.
 
 ```sh
-$ ./bin/psql -p 5433 -U postgres
+$ ./bin/ysqlsh
 ```
 
 ```
-psql (10.3, server 10.4)
+ysqlsh (11.2)
 Type "help" for help.
 
 postgres=#
@@ -112,7 +112,7 @@ $ wget http://downloads.metabase.com/v0.30.4/metabase.jar
 $ java -jar metabase.jar
 ```
 
-Go to http://localhost:3000 to configure your Metabase server and point it to the YugaByte DB PostgreSQL API endpoint at `localhost:5433`.
+Go to http://localhost:3000 to configure your Metabase server and point it to the YSQL API endpoint at `localhost:5433`.
 
 ## 4. Run Complex Queries with Metabase
 

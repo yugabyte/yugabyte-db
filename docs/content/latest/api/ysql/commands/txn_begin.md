@@ -50,7 +50,7 @@ postgres=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (1, 3.0, 4, 'b');
 ```
 
-Start a new shell  with `psql` and begin another transaction to insert some more rows.
+Start a new shell  with `ysqlsh` and begin another transaction to insert some more rows.
 
 ```sql
 postgres=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 

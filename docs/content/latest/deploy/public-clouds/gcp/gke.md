@@ -6,7 +6,7 @@
 
 - Install `kubectl`
 
-After installing Cloud SDK, install the kubectl command-line tool by running the following command:
+After installing Cloud SDK, install the kubectl command line tool by running the following command:
 
 ```sh
 $ gcloud components install kubectl

@@ -41,7 +41,7 @@ $ ./bin/yb-ctl status
 | Node Count: 3 | Replication Factor: 1                                                            |
 ----------------------------------------------------------------------------------------------------
 | JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
-| YSQL                : ./bin/psql -U postgres -h 127.0.0.1 -p 5433                                |
+| YSQL                : ./bin/ysqlsh                                                               |
 | YCQL                : ./bin/cqlsh 127.0.0.1 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
 | Web UI              : http://127.0.0.1:7000/                                                     |
@@ -51,7 +51,7 @@ $ ./bin/yb-ctl status
 | Node 1: yb-tserver (pid 72053), yb-master (pid 72050)                                            |
 ----------------------------------------------------------------------------------------------------
 | JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
-| YSQL                : ./bin/psql -U postgres -h 127.0.0.1 -p 5433                                |
+| YSQL                : ./bin/ysqlsh                                                               |
 | YCQL                : ./bin/cqlsh 127.0.0.1 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
 | data-dir[0]         : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data                      |
@@ -62,7 +62,7 @@ $ ./bin/yb-ctl status
 | Node 2: yb-tserver (pid 72128)                                                                   |
 ----------------------------------------------------------------------------------------------------
 | JDBC                : postgresql://postgres@127.0.0.2:5433                                       |
-| YSQL                : ./bin/psql -U postgres -h 127.0.0.2 -p 5433                                |
+| YSQL                : ./bin/ysqlsh                                                               |
 | YCQL                : ./bin/cqlsh 127.0.0.2 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.2 -p 6379                                       |
 | data-dir[0]         : /Users/schoudhury/yugabyte-data/node-2/disk-1/yb-data                      |
@@ -72,7 +72,7 @@ $ ./bin/yb-ctl status
 | Node 3: yb-tserver (pid 72166)                                                                   |
 ----------------------------------------------------------------------------------------------------
 | JDBC                : postgresql://postgres@127.0.0.3:5433                                       |
-| YSQL                : ./bin/psql -U postgres -h 127.0.0.3 -p 5433                                |
+| YSQL                : ./bin/ysqlsh -U postgres -h 127.0.0.3 -p 5433                                |
 | YCQL                : ./bin/cqlsh 127.0.0.3 9042                                                 |
 | YEDIS               : ./bin/redis-cli -h 127.0.0.3 -p 6379                                       |
 | data-dir[0]         : /Users/schoudhury/yugabyte-data/node-3/disk-1/yb-data                      |

@@ -300,20 +300,18 @@ I0515 19:54:48.953572    39 yb-admin_client.cc:440] Table 'system_redis.redis' c
 $ docker exec -it <ybtserver_container_id> yum install postgresql
 ```
 
-- Connect to the psql client in yb-tserver.
+- Connect to the ysqlsh client in yb-tserver.
 
 ```sh
-$ docker exec -it <ybtserver_container_id> psql -h localhost --port 5433
+$ docker exec -it <ybtserver_container_id> ysqlsh
 ```
 
 ```
 ...
-psql (9.2.23, server 0.0.0)
-WARNING: psql version 9.2, server version 0.0.
-         Some psql features might not work.
+ysqlsh (11.2)
 Type "help" for help.
 
-root=> 
+postgres=#
 ```
 
 - Follow the test instructions as noted in [Quick Start](../quick-start/test-postgresql/).

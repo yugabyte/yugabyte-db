@@ -36,7 +36,7 @@ set ::= SET TRANSACTION { ISOLATION LEVEL { READ UNCOMMITTED
 ## Semantics
 
 - The `SERIALIZABLE` isolation level not yet supported. (This is currently in progress).
-- Currently YugaByte will always use the snapshot isolation level internally. See more [here](../../../architecture/transactions/isolation-levels/).
+- Currently YugaByte DB will always use the snapshot isolation level internally. See more [here](../../../architecture/transactions/isolation-levels/).
 
 ## Examples
 
@@ -57,7 +57,7 @@ postgres=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (1, 3.0, 4, 'b');
 ```
 
-Start a new shell  with `psql` and begin another transaction to insert some more rows.
+Start a new shell  with `ysqlsh` and begin another transaction to insert some more rows.
 
 ```sql
 postgres=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 

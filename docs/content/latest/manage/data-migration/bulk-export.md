@@ -15,7 +15,7 @@ This page documents the options for export data out of YugaByte DB.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#cassandra" class="nav-link active" id="cassandra-tab" data-toggle="tab" role="tab" aria-controls="cassandra" aria-selected="true">
+    <a href="#ycql" class="nav-link active" id="ycql-tab" data-toggle="tab" role="tab" aria-controls="ycql" aria-selected="true">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -23,7 +23,7 @@ This page documents the options for export data out of YugaByte DB.
 </ul>
 
 <div class="tab-content">
-  <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "cassandra/bulk-export.md" /%}}
+  <div id="ycql" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ycql-tab">
+    {{% includeMarkdown "ycql/bulk-export.md" /%}}
   </div>
 </div>

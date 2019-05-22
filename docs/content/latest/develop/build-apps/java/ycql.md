@@ -2,10 +2,6 @@
 title: Build a Java App
 linkTitle: Build a Java App
 description: Build a Java App
-aliases:
-  - /develop/client-drivers/java/
-  - /latest/develop/client-drivers/java/
-  - /latest/develop/build-apps/java/
 menu:
   latest:
     parent: build-apps

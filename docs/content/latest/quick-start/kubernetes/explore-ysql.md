@@ -23,7 +23,7 @@ kubectl cp ./data/reviews.sql yb-tserver-n1:/home/yugabyte/data/.
 kubectl cp ./data/users.sql yb-tserver-n1:/home/yugabyte/data/.
 ```
 
-Run psql to connect to the service.
+Run ysqlsh to connect to the service.
 
 ```sh
 $ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -U postgres -d postgres -h yb-tserver-0 -p 5433  --echo-queries

@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-In this tutorial, we are going to use the [Kafka Connect-based Sink Connector for YugaByte DB](https://github.com/YugaByte/yb-kafka-connector) to store events from Apache Kafka into YugaByte DB using YugaByte DB's Cassandra-compatible [YCQL](../../../api/ycql) API.
+In this tutorial, we are going to use the [Kafka Connect-based Sink Connector for YugaByte DB](https://github.com/YugaByte/yb-kafka-connector) to store events from Apache Kafka into YugaByte DB using YugaByte DB's [YCQL](../../../api/ycql) API.
 
 ## 1. Start Local Cluster
 
@@ -69,7 +69,7 @@ The connector jar `yb-kafka-connnector-1.0.0.jar` is now placed in the `./target
 $ cp ./target/yb-kafka-connnector-1.0.0.jar ~/yb-kafka/kafka_2.11-2.0.0/libs/
 ```
 
-Go to the Kafka libs directory and get the additional jars that the connector depends on (including the driver for the Cassandra-compatible YCQL API)
+Go to the Kafka libs directory and get the additional jars that the connector depends on (including the driver for the YCQL API)
 
 ```sh
 $ cd ~/yb-kafka/kafka_2.11-2.0.0/libs/

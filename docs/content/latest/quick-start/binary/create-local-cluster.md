@@ -30,7 +30,7 @@ $ ./bin/yb-ctl status
 | Node Count: 1 | Replication Factor: 1                                                            |
 ----------------------------------------------------------------------------------------------------
 | JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
-| YSQL Shell          : ./bin/ysqlsh -U postgres -h 127.0.0.1 -p 5433                              |
+| YSQL Shell          : ./bin/ysqlsh                                                               |
 | YCQL Shell          : ./bin/cqlsh 127.0.0.1 9042                                                 |
 | YEDIS Shell         : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
 | Web UI              : http://127.0.0.1:7000/                                                     |
@@ -40,7 +40,7 @@ $ ./bin/yb-ctl status
 | Node 1: yb-tserver (pid 68412), yb-master (pid 68409)                                            |
 ----------------------------------------------------------------------------------------------------
 | JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
-| YSQL Shell          : ./bin/ysqlsh -U postgres -h 127.0.0.1 -p 5433                              |
+| YSQL Shell          : ./bin/ysqlsh                                                               |
 | YCQL Shell          : ./bin/cqlsh 127.0.0.1 9042                                                 |
 | YEDIS Shell         : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
 | data-dir[0]         : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data                      |
