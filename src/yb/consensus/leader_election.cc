@@ -330,7 +330,7 @@ void LeaderElection::RecordVoteUnlocked(const std::string& voter_uuid, ElectionV
 
 void LeaderElection::HandleHigherTermUnlocked(const string& voter_uuid, const VoterState& state) {
   DCHECK(lock_.is_locked());
-  DCHECK_GT(state.response.responder_term(), election_term());
+  DCHECK_GT(state.response.responder_term(), consensus_term());
 
   string msg = Substitute("Vote denied by peer $0 with higher term. Message: $1",
                           state.response.responder_uuid(),
@@ -372,7 +372,7 @@ void LeaderElection::HandleVoteDeniedUnlocked(const string& voter_uuid, const Vo
 
   // If one of the voters responds with a greater term than our own, and we
   // have not yet triggered the decision callback, it cancels the election.
-  if (state.response.responder_term() > election_term()) {
+  if (state.response.responder_term() > consensus_term()) {
     return HandleHigherTermUnlocked(voter_uuid, state);
   }
 
