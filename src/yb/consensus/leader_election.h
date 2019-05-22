@@ -231,6 +231,12 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
   // Helper to reference the term we are running the election for.
   ConsensusTerm election_term() const { return request_.candidate_term(); }
 
+  // Helper to reference the term we are running the election for.
+  ConsensusTerm consensus_term() const {
+    // If we execute preelection with term X, then our term is X - 1.
+    return request_.candidate_term() - (result_.preelection ? 1 : 0);
+  }
+
   // All non-const fields are protected by 'lock_'.
   Lock lock_;
 
