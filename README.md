@@ -118,7 +118,7 @@ In addition to (corresponding) steps required for CentOS 7, the following steps 
 
 ```bash
 sudo apt-get update
-sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven
+sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build
 ```
 
 ### Prerequisites for Mac OS X
