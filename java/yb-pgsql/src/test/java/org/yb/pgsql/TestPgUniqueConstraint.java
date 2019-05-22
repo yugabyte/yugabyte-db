@@ -13,8 +13,6 @@
 
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.*;
-
 import java.sql.Statement;
 
 import org.junit.Ignore;
@@ -188,7 +186,7 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
     }
   }
 
-  @Ignore // TODO: Enable after #1124
+  @Test
   public void addConstraint() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE test("
@@ -213,7 +211,7 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
 
       // Index should only be dropped when dropping constraint
       runInvalidQuery(stmt, "DROP INDEX test_constr", "cannot drop index");
-      stmt.execute("ALTER TABLE test DROP CONSTRAINT my_constraint_name_2");
+      stmt.execute("ALTER TABLE test DROP CONSTRAINT test_constr");
       assertNoRows(stmt, "SELECT indexname FROM pg_indexes WHERE tablename='test'");
 
       // Uniqueness is no longer enforced
@@ -226,7 +224,7 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
     }
   }
 
-  @Ignore // TODO: Enable after #1124
+  @Test
   public void addConstraintUsingExistingIndex() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE test("
@@ -253,7 +251,7 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
 
       // Index should only be dropped when dropping constraint
       runInvalidQuery(stmt, "DROP INDEX test_constr", "cannot drop index");
-      stmt.execute("ALTER TABLE test DROP CONSTRAINT my_constraint_name_2");
+      stmt.execute("ALTER TABLE test DROP CONSTRAINT test_constr");
       assertNoRows(stmt, "SELECT indexname FROM pg_indexes WHERE tablename='test'");
 
       // Uniqueness is no longer enforced
@@ -263,6 +261,106 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
           new Row(1, 1),
           new Row(1, 1),
           new Row(2, 2));
+    }
+  }
+
+  @Test
+  public void addUniqueWithInclude() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test(i1 int, i2 int)");
+      stmt.execute("ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE (i1) INCLUDE (i2)");
+
+      // Check that index is created properly
+      assertQuery(
+          stmt,
+          "SELECT pg_get_indexdef(i.indexrelid)\n" +
+              "FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid\n" +
+              "WHERE i.indrelid = 'test'::regclass",
+          new Row("CREATE UNIQUE INDEX test_constr ON public.test USING lsm (i1) INCLUDE (i2)")
+      );
+
+      // Valid insertions
+      stmt.execute("INSERT INTO test(i1, i2) VALUES (1, 3), (2, 4), (3, 3)");
+
+      // Invalid insertion
+      runInvalidQuery(stmt, "INSERT INTO test(i1, i2) VALUES (1, 3)", "duplicate");
+
+      // Selection containing i2 is an index-only scan, since i2 was imported
+      assertQuery(
+          stmt,
+          "EXPLAIN (COSTS OFF) SELECT * FROM test WHERE (i1, i2) < (4, 4)",
+          new Row("Index Only Scan using test_constr on test"),
+          new Row("  Index Cond: (i1 <= 4)"),
+          new Row("  Filter: (ROW(i1, i2) < ROW(4, 4))")
+      );
+
+      // Switch to a unique index without importing i2
+      stmt.execute("ALTER TABLE test DROP CONSTRAINT test_constr");
+      stmt.execute("ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE (i1)");
+
+      // Now the same select is not an index-only scan
+      assertQuery(
+          stmt,
+          "EXPLAIN (COSTS OFF) SELECT * FROM test WHERE (i1, i2) < (4, 4)",
+          new Row("Index Scan using test_constr on test"),
+          new Row("  Index Cond: (i1 <= 4)"),
+          new Row("  Filter: (ROW(i1, i2) < ROW(4, 4))")
+      );
+    }
+  }
+
+  @Test
+  public void addUniqueWithExistingDuplicateFails() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test(i1 int, i2 int)");
+
+      // Add duplicate values for i1
+      stmt.execute("INSERT INTO test(i1, i2) VALUES (1, 1), (1, 2)");
+
+      // Constraint cannot be added
+      runInvalidQuery(stmt, "ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE (i1)", "duplicate");
+    }
+  }
+
+  @Test
+  public void addUniqueConstraintAttributes() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test(i1 int, i2 int)");
+      stmt.execute("CREATE UNIQUE INDEX test_idx ON test (i2)");
+
+      runInvalidQuery(
+          stmt,
+          "ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE " +
+              "USING INDEX test_idx DEFERRABLE INITIALLY DEFERRED",
+          "DEFERRABLE constraint not supported yet"
+      );
+      runInvalidQuery(
+          stmt,
+          "ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE " +
+              "USING INDEX test_idx DEFERRABLE INITIALLY IMMEDIATE",
+          "DEFERRABLE constraint not supported yet"
+      );
+      runInvalidQuery(
+          stmt,
+          "ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE " +
+              "USING INDEX test_idx INITIALLY DEFERRED",
+          "INITIALLY DEFERRED constraint not supported yet"
+      );
+      runInvalidQuery(
+          stmt,
+          "ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE " +
+              "USING INDEX test_idx INITIALLY IMMEDIATE",
+          "INITIALLY IMMEDIATE constraint not supported yet"
+      );
+      stmt.execute("ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE " +
+          "USING INDEX test_idx NOT DEFERRABLE");
+
+      stmt.execute("INSERT INTO test(i1, i2) VALUES (1, 1)");
+
+      stmt.execute("BEGIN");
+      // Insert fails immediately
+      runInvalidQuery(stmt, "INSERT INTO test(i1, i2) VALUES (2, 1)", "duplicate");
+      stmt.execute("COMMIT");
     }
   }
 }

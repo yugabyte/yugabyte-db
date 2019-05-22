@@ -389,6 +389,19 @@ YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 				break;
 
 			}
+
+			case AT_AddIndex:
+			case AT_AddIndexConstraint: {
+				IndexStmt *index = (IndexStmt *) cmd->def;
+				// Only allow adding indexes when it is a unique non-primary-key constraint
+				if (!index->unique || index->primary || !index->isconstraint) {
+					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("This ALTER TABLE command is not yet supported.")));
+				}
+
+				break;
+			}
+
 			case AT_AddConstraint:
 			case AT_DropConstraint:
 				/* For these cases a YugaByte alter isn't required, so we do nothing. */
