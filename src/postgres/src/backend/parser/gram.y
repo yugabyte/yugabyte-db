@@ -841,6 +841,7 @@ stmt :
 			| AlterDatabaseSetStmt
 			| AlterDatabaseStmt
 			| AlterDomainStmt
+			| AlterSeqStmt
 			| AlterTableStmt
 			| CommentStmt
 			| ConstraintsSetStmt
@@ -892,7 +893,6 @@ stmt :
 			| AlterOwnerStmt { parser_ybc_signal_unsupported(@1, "This statement", 869); }
 			| AlterOperatorStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterPolicyStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterSeqStmt { parser_ybc_signal_unsupported(@1, "This statement", 1002); }
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -4374,7 +4374,6 @@ CreateSeqStmt:
 AlterSeqStmt:
 			ALTER SEQUENCE qualified_name SeqOptList
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER SEQUENCE", 1002);
 					AlterSeqStmt *n = makeNode(AlterSeqStmt);
 					n->sequence = $3;
 					n->options = $4;
@@ -4383,7 +4382,6 @@ AlterSeqStmt:
 				}
 			| ALTER SEQUENCE IF_P EXISTS qualified_name SeqOptList
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER SEQUENCE", 1002);
 					AlterSeqStmt *n = makeNode(AlterSeqStmt);
 					n->sequence = $5;
 					n->options = $6;

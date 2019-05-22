@@ -25,6 +25,8 @@ import org.yb.client.TestUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 import static org.yb.AssertionWrappers.fail;
 
@@ -54,6 +56,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   protected static List<String> masterArgs = new ArrayList<String>();
   protected static List<String> tserverArgs = new ArrayList<String>();
+
+  protected static Map<String, String> tserverEnvVars = new TreeMap<>();
+
   protected boolean useIpWithCertificate = MiniYBCluster.DEFAULT_USE_IP_WITH_CERTIFICATE;
 
   // Comma separate describing the master addresses and ports.
@@ -142,10 +147,15 @@ public class BaseMiniClusterTest extends BaseYBTest {
     if (!miniClusterEnabled()) {
       return;
     }
-    createMiniCluster(numMasters, Collections.nCopies(numTservers, tserverArgs));
+    createMiniCluster(numMasters, Collections.nCopies(numTservers, tserverArgs), tserverEnvVars);
   }
 
-  public void createMiniCluster(int numMasters, List<List<String>> tserverArgs)
+  public void createMiniCluster(int numMasters, List<List<String>> tserverArgs) throws Exception {
+    createMiniCluster(numMasters, tserverArgs, null);
+  }
+
+  public void createMiniCluster(int numMasters, List<List<String>> tserverArgs,
+                                Map<String, String> tserverEnvVars)
       throws Exception {
     if (!miniClusterEnabled()) {
       return;
@@ -162,6 +172,10 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .numShardsPerTServer(overridableNumShardsPerTServer())
                       .useIpWithCertificate(useIpWithCertificate)
                       .replicationFactor(getReplicationFactor());
+
+    if (tserverEnvVars != null) {
+      clusterBuilder.addEnvironmentVariables(tserverEnvVars);
+    }
 
     customizeMiniClusterBuilder(clusterBuilder);
     miniCluster = clusterBuilder.build();

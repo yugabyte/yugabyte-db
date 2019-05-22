@@ -233,7 +233,6 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
     // This UPDATE is calling PGGATE directly without going thru PosgreSQL layer.
     // Keep it here as we might need it.
 
-
     // Very limited support for where expressions. Only used for updates to the sequences data
     // table.
     bool is_match = true;
