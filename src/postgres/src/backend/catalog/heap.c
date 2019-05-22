@@ -1630,7 +1630,8 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 		* Change the column name to something that isn't likely to conflict
 		*/
 
-		if (IsYugaByteEnabled()) {
+		if (IsYugaByteEnabled())
+		{
 			/* TODO: Should be changed to CatalogTupleUpdate() when we are able to update a row's primary key */
 
 			CatalogTupleDelete(attr_rel, tuple);

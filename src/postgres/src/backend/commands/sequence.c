@@ -225,6 +225,7 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 		HandleYBStatus(YBCInsertSequenceTuple(ybc_pg_session,
 											  MyDatabaseId,
 											  seqoid,
+											  yb_catalog_cache_version,
 											  seqdataform.last_value,
 											  false /* is_called */));
 	}
@@ -441,6 +442,8 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 	Relation	rel;
 	HeapTuple	seqtuple;
 	HeapTuple	newdatatuple;
+	int64_t last_val = 0;
+	bool is_called = false;
 
 	/* Open and lock sequence, and check for ownership along the way. */
 	relid = RangeVarGetRelidExtended(stmt->sequence,
@@ -469,13 +472,15 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 
 	if (IsYugaByteEnabled())
 	{
-		int64_t last_val = 0;
 		HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
 											MyDatabaseId,
 											relid,
-											&last_val, &seq_data.is_called));
+											yb_catalog_cache_version,
+											&last_val,
+											&is_called));
 
 		seq_data.last_value = last_val;
+		seq_data.is_called = is_called;
 		seq_data.log_cnt = 0;
 		newdataform = &seq_data;
 	}
@@ -503,6 +508,34 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 	/* If needed, rewrite the sequence relation itself */
 	if (need_seq_rewrite)
 	{
+		if (IsYugaByteEnabled())
+		{
+			if (last_val != newdataform->last_value || is_called != newdataform->is_called)
+			{
+				bool skipped = false;
+				HandleYBStatus(YBCUpdateSequenceTuple(ybc_pg_session,
+													  MyDatabaseId,
+													  ObjectIdGetDatum(relid),
+													  yb_catalog_cache_version,
+													  newdataform->last_value /* last_val */,
+													  newdataform->is_called /* is_called */,
+													  &skipped));
+				if (skipped)
+				{
+					heap_close(rel, RowExclusiveLock);
+					relation_close(seqrel, NoLock);
+					/*
+					 * The only reason a conditional update could have failed is if the sequence
+					 * got deleted while we were processing this alter statement.
+					 */
+					ereport(NOTICE,
+							(errmsg("sequence \"%s\" does not exist, skipping",
+									stmt->sequence->relname)));
+					return InvalidObjectAddress;
+				}
+			}
+			goto done_updating;
+		}
 		/* check the comment above nextval_internal()'s equivalent call. */
 		if (RelationNeedsWAL(seqrel))
 			GetTopTransactionId();
@@ -521,6 +554,7 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 		 */
 		fill_seq_with_data(seqrel, newdatatuple);
 	}
+done_updating:
 
 	/* process OWNED BY if given */
 	if (owned_by)
@@ -673,6 +707,7 @@ retry:
 		HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
 											MyDatabaseId,
 											relid,
+											yb_catalog_cache_version,
 											&last_val,
 											&is_called));
 		seq_data.last_value = last_val;
@@ -697,7 +732,6 @@ retry:
 		rescnt++;				/* return last_value if not is_called */
 		fetch--;
 	}
-
 
 	/*
 	 * We don't use the WAL log record. The value has already been updated and there is no way
@@ -820,14 +854,15 @@ check_bounds:
 		 * update fails, we retry again by reading the last_val and is_called values and going
 		 * through the whole process again.
 		 */
-		HandleYBStatus(YBCUpdateSequenceTuple(ybc_pg_session,
-											  MyDatabaseId,
-											  relid,
-											  last /* last_val */,
-											  true /* is_called */,
-											  seq->last_value /* expected_last_val */,
-											  seq->is_called /* expected_is_called */,
-											  &skipped));
+		HandleYBStatus(YBCUpdateSequenceTupleConditionally(ybc_pg_session,
+														   MyDatabaseId,
+														   relid,
+														   yb_catalog_cache_version,
+														   last /* last_val */,
+														   true /* is_called */,
+														   seq->last_value /* expected_last_val */,
+														   seq->is_called /* expected_is_called */,
+														   &skipped));
 		if (skipped)
 		{
 			goto retry;

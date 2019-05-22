@@ -14,6 +14,8 @@
 #ifndef YB_YQL_PGGATE_PG_SESSION_H_
 #define YB_YQL_PGGATE_PG_SESSION_H_
 
+#include <boost/optional.hpp>
+
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/schema.h"
@@ -82,21 +84,24 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS CreateSequencesDataTable();
 
   CHECKED_STATUS InsertSequenceTuple(int64_t db_oid,
-      int64_t seq_oid,
-      int64_t last_val,
-      bool is_called);
+                                     int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
+                                     int64_t last_val,
+                                     bool is_called);
 
 
   CHECKED_STATUS UpdateSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
                                      int64_t last_val,
                                      bool is_called,
-                                     int64_t expected_last_val,
-                                     bool expected_is_called,
+                                     boost::optional<int64_t> expected_last_val,
+                                     boost::optional<bool> expected_is_called,
                                      bool* skipped);
 
   CHECKED_STATUS ReadSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
+                                   uint64_t ysql_catalog_version,
                                    int64_t *last_val,
                                    bool *is_called);
 

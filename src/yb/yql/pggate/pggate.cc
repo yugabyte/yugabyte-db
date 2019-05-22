@@ -12,6 +12,8 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
+#include <boost/optional.hpp>
+
 #include "yb/client/yb_table_name.h"
 
 #include "yb/yql/pggate/pggate.h"
@@ -141,29 +143,44 @@ Status PgApiImpl::CreateSequencesDataTable(PgSession *pg_session) {
 Status PgApiImpl::InsertSequenceTuple(PgSession *pg_session,
                                       int64_t db_oid,
                                       int64_t seq_oid,
+                                      uint64_t ysql_catalog_version,
                                       int64_t last_val,
                                       bool is_called) {
-  return pg_session->InsertSequenceTuple(db_oid, seq_oid, last_val, is_called);
+  return pg_session->InsertSequenceTuple(db_oid, seq_oid, ysql_catalog_version, last_val,
+      is_called);
+}
+
+Status PgApiImpl::UpdateSequenceTupleConditionally(PgSession *pg_session,
+                                                   int64_t db_oid,
+                                                   int64_t seq_oid,
+                                                   uint64_t ysql_catalog_version,
+                                                   int64_t last_val,
+                                                   bool is_called,
+                                                   int64_t expected_last_val,
+                                                   bool expected_is_called,
+                                                   bool *skipped) {
+  return pg_session->UpdateSequenceTuple(db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
+      expected_last_val, expected_is_called, skipped);
 }
 
 Status PgApiImpl::UpdateSequenceTuple(PgSession *pg_session,
                                       int64_t db_oid,
                                       int64_t seq_oid,
+                                      uint64_t ysql_catalog_version,
                                       int64_t last_val,
                                       bool is_called,
-                                      int64_t expected_last_val,
-                                      bool expected_is_called,
                                       bool* skipped) {
-  return pg_session->UpdateSequenceTuple(db_oid, seq_oid, last_val, is_called, expected_last_val,
-      expected_is_called, skipped);
+  return pg_session->UpdateSequenceTuple(db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
+      boost::none, boost::none, skipped);
 }
 
 Status PgApiImpl::ReadSequenceTuple(PgSession *pg_session,
                                     int64_t db_oid,
                                     int64_t seq_oid,
+                                    uint64_t ysql_catalog_version,
                                     int64_t *last_val,
                                     bool *is_called) {
-  return pg_session->ReadSequenceTuple(db_oid, seq_oid, last_val, is_called);
+  return pg_session->ReadSequenceTuple(db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
 }
 
 Status PgApiImpl::DeleteSequenceTuple(PgSession *pg_session, int64_t db_oid, int64_t seq_oid) {

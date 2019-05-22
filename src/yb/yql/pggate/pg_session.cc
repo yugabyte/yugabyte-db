@@ -191,6 +191,7 @@ Status PgSession::CreateSequencesDataTable() {
 
 Status PgSession::InsertSequenceTuple(int64_t db_oid,
                                       int64_t seq_oid,
+                                      uint64_t ysql_catalog_version,
                                       int64_t last_val,
                                       bool is_called) {
   pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
@@ -206,6 +207,7 @@ Status PgSession::InsertSequenceTuple(int64_t db_oid,
   psql_write.reset(t->NewPgsqlInsert());
 
   auto write_request = psql_write->mutable_request();
+  write_request->set_ysql_catalog_version(ysql_catalog_version);
 
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
@@ -223,10 +225,11 @@ Status PgSession::InsertSequenceTuple(int64_t db_oid,
 
 Status PgSession::UpdateSequenceTuple(int64_t db_oid,
                                       int64_t seq_oid,
+                                      uint64_t ysql_catalog_version,
                                       int64_t last_val,
                                       bool is_called,
-                                      int64_t expected_last_val,
-                                      bool expected_is_called,
+                                      boost::optional<int64_t> expected_last_val,
+                                      boost::optional<bool> expected_is_called,
                                       bool* skipped) {
   pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
   PgTableDesc::ScopedRefPtr t = VERIFY_RESULT(LoadTable(oid));
@@ -235,6 +238,7 @@ Status PgSession::UpdateSequenceTuple(int64_t db_oid,
   psql_write.reset(t->NewPgsqlUpdate());
 
   auto write_request = psql_write->mutable_request();
+  write_request->set_ysql_catalog_version(ysql_catalog_version);
 
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
   write_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
@@ -247,18 +251,21 @@ Status PgSession::UpdateSequenceTuple(int64_t db_oid,
   column_value->set_column_id(t->table()->schema().ColumnId(kPgSequenceIsCalledColIdx));
   column_value->mutable_expr()->mutable_value()->set_bool_value(is_called);
 
-  // WHERE clause => WHERE last_val == expected_last_val AND is_called == expected_is_called.
   auto where_pb = write_request->mutable_where_expr()->mutable_condition();
-  where_pb->set_op(QL_OP_AND);
-  auto cond = where_pb->add_operands()->mutable_condition();
-  cond->set_op(QL_OP_EQUAL);
-  cond->add_operands()->set_column_id(t->table()->schema().ColumnId(kPgSequenceLastValueColIdx));
-  cond->add_operands()->mutable_value()->set_int64_value(expected_last_val);
+  where_pb->set_op(QL_OP_EXISTS);
 
-  cond = where_pb->add_operands()->mutable_condition();
-  cond->set_op(QL_OP_EQUAL);
-  cond->add_operands()->set_column_id(t->table()->schema().ColumnId(kPgSequenceIsCalledColIdx));
-  cond->add_operands()->mutable_value()->set_bool_value(expected_is_called);
+  if (expected_last_val && expected_is_called) {
+    // WHERE clause => WHERE last_val == expected_last_val AND is_called == expected_is_called.
+    auto cond = where_pb->add_operands()->mutable_condition();
+    cond->set_op(QL_OP_EQUAL);
+    cond->add_operands()->set_column_id(t->table()->schema().ColumnId(kPgSequenceLastValueColIdx));
+    cond->add_operands()->mutable_value()->set_int64_value(*expected_last_val);
+
+    cond = where_pb->add_operands()->mutable_condition();
+    cond->set_op(QL_OP_EQUAL);
+    cond->add_operands()->set_column_id(t->table()->schema().ColumnId(kPgSequenceIsCalledColIdx));
+    cond->add_operands()->mutable_value()->set_bool_value(*expected_is_called);
+  }
 
   write_request->mutable_column_refs()->add_ids(
       t->table()->schema().ColumnId(kPgSequenceLastValueColIdx));
@@ -274,6 +281,7 @@ Status PgSession::UpdateSequenceTuple(int64_t db_oid,
 
 Status PgSession::ReadSequenceTuple(int64_t db_oid,
                                     int64_t seq_oid,
+                                    uint64_t ysql_catalog_version,
                                     int64_t *last_val,
                                     bool *is_called) {
   pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
@@ -282,6 +290,7 @@ Status PgSession::ReadSequenceTuple(int64_t db_oid,
   std::shared_ptr<client::YBPgsqlReadOp> psql_read(t->NewPgsqlSelect());
 
   auto read_request = psql_read->mutable_request();
+  read_request->set_ysql_catalog_version(ysql_catalog_version);
 
   read_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
   read_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
@@ -514,7 +523,9 @@ Status PgSession::CombineErrorsToStatus(client::CollectedErrors errors, Status s
       errors.size() == 1) {
     return errors.front()->status();
   }
-
+  if (status.ok()) {
+    return STATUS(InternalError, GetStatusStringSet(errors));
+  }
   return status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
 }
 
