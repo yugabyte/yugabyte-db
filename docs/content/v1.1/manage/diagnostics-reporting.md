@@ -17,7 +17,7 @@ showAsideToc: true
 
 The data collected depends on the collection level set. See the [section](#configuration-flags) below on how to change the collection level.
 
-### Collection level: low [Default]
+### Collection level: low
 
 ```
 Collection time
@@ -31,7 +31,7 @@ Number of tablets
 Cluster configuration (gflags)
 ```
 
-### Collection level: medium
+### Collection level: medium [Default]
 
 ```
 Everything we collect for level “low” plus:
@@ -80,7 +80,7 @@ Same as `medium` level. In other words, no extra information is collected for th
          ]
     }
 }
-```         
+```
 
 #### Example of RPCs being collected
 
@@ -105,9 +105,9 @@ Same as `medium` level. In other words, no extra information is collected for th
 
 ## Configuration flags
 
-You can add the following flags while starting the [yb-master](../../admin/yb-master/) and [yb-tserver](../../admin/yb-tserver/) binaries to configure the diagnostics reporting behavior of YugaByte DB. 
+You can add the following flags while starting the [yb-master](../../admin/yb-master/) and [yb-tserver](../../admin/yb-tserver/) binaries to configure the diagnostics reporting behavior of YugaByte DB.
 
-Flag | Default | Description 
+Flag | Default | Description
 ----------------------|---------|------------------------
 `--callhome_collection_level` |  `low` | Collection level with possible values of `low`, `medium`, or `high`
 `--callhome_interval_secs` | 3600 | Collection interval in seconds
