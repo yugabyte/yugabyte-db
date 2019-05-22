@@ -1,6 +1,9 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2016  Orafce Global Development Group
 
+Version 3.8.0 - 22. May 2019
+* PostgreSQL 12 support
+
 Version 3.7.0 - 7. Dec 2018
 * possibility to better emulate || operator for varchar2 and nvarchar2 types
 * few bugfixes
