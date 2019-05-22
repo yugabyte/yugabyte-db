@@ -16,24 +16,32 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "access/htup_details.h"
 #include "executor/instrument.h"
+#include "catalog/pg_authid.h"
+#include "catalog/pg_database.h"
+#include "common/ip.h"
+#include "datatype/timestamp.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/parsetree.h"
 #include "pgstat.h"
+#include "postmaster/bgworker.h"
+#include "postmaster/postmaster.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/proc.h"
 #include "storage/shmem.h"
 #include "tcop/utility.h"
+#include "utils/builtins.h"
+#include "utils/datetime.h"
+#include "utils/syscache.h"
 #include "yb/server/pgsql_webserver_wrapper.h"
-#include "postmaster/bgworker.h"
-#include "postmaster/postmaster.h"
-
 
 #include "pg_yb_utils.h"
 
 #define YSQL_METRIC_PREFIX "handler_latency_yb_ysqlserver_SQLProcessor_"
+#define NumBackendStatSlots (MaxBackends + NUM_AUXPROCTYPES)
 
 PG_MODULE_MAGIC;
 
@@ -44,6 +52,10 @@ static int statement_nesting_level = 0;
 char *metric_node_name;
 struct WebserverWrapper *webserver;
 int port;
+static int num_backends;
+static rpczEntry *rpcz;
+static MemoryContext ybrpczMemoryContext = NULL;
+PgBackendStatus **backendStatusArrayPointer;
 
 void		_PG_init(void);
 /*
@@ -90,6 +102,145 @@ set_metric_names(void)
   strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
 }
 
+void
+pullRpczEntries(void)
+{
+  if (!(*backendStatusArrayPointer))
+    elog(LOG, "Backend Status Array hasn't been initialized yet.");
+
+  ybrpczMemoryContext = AllocSetContextCreate(TopMemoryContext,
+                                             "YB RPCz memory context",
+                                             ALLOCSET_SMALL_SIZES);
+
+  MemoryContext oldcontext = MemoryContextSwitchTo(ybrpczMemoryContext);
+  rpcz = (rpczEntry *) palloc(sizeof(rpczEntry) * NumBackendStatSlots);
+
+  num_backends = NumBackendStatSlots;
+  volatile PgBackendStatus *beentry;
+
+  beentry = *backendStatusArrayPointer;
+
+  for (int i = 0; i < NumBackendStatSlots; i++)
+  {
+    /* To prevent locking overhead, the BackendStatusArray in postgres maintains a st_changecount
+     * field for each entry. This field is incremented once before a backend starts modifying the
+     * entry, and once after it is done modifying the entry. So, we check if st_changecount changes
+     * while we're copying the entry or if its odd. The check for odd is needed for when a backend
+     * has begun changing the entry but hasn't finished.
+     */
+    for (;;)
+    {
+      int			before_changecount;
+      int			after_changecount;
+
+      before_changecount = beentry->st_changecount;
+
+      rpcz[i].proc_id = beentry->st_procpid;
+      rpcz[i].db_oid = beentry->st_databaseid;
+
+      rpcz[i].query = (char *) palloc(pgstat_track_activity_query_size);
+      strcpy(rpcz[i].query, (char *) beentry->st_activity_raw);
+
+      rpcz[i].application_name = (char *) palloc(NAMEDATALEN);
+      strcpy(rpcz[i].application_name, (char *) beentry->st_appname);
+
+      rpcz[i].db_name = (char *) palloc(NAMEDATALEN);
+      strcpy(rpcz[i].db_name, beentry->st_databasename);
+
+      rpcz[i].process_start_timestamp = (char *) palloc(MAXDATELEN + 1);
+      strcpy(rpcz[i].process_start_timestamp, timestamptz_to_str(beentry->st_proc_start_timestamp));
+
+      if (beentry->st_xact_start_timestamp)
+      {
+        rpcz[i].transaction_start_timestamp = (char *) palloc(MAXDATELEN + 1);
+        strcpy(rpcz[i].transaction_start_timestamp,
+               timestamptz_to_str(beentry->st_xact_start_timestamp));
+      }
+      else
+      {
+        rpcz[i].transaction_start_timestamp = NULL;
+      }
+
+      if (beentry->st_activity_start_timestamp)
+      {
+        rpcz[i].query_start_timestamp = (char *) palloc(MAXDATELEN + 1);
+        strcpy(rpcz[i].query_start_timestamp,
+               timestamptz_to_str(beentry->st_activity_start_timestamp));
+      }
+      else
+      {
+        rpcz[i].query_start_timestamp = NULL;
+      }
+
+      rpcz[i].backend_type = (char *) palloc(40);
+      strcpy(rpcz[i].backend_type, pgstat_get_backend_desc(beentry->st_backendType));
+
+      rpcz[i].backend_status = (char *) palloc(30);
+      switch (beentry->st_state) {
+        case STATE_IDLE:
+          strcpy(rpcz[i].backend_status, "idle");
+          break;
+        case STATE_RUNNING:
+          strcpy(rpcz[i].backend_status, "active");
+          break;
+        case STATE_IDLEINTRANSACTION:
+          strcpy(rpcz[i].backend_status, "idle in transaction");
+          break;
+        case STATE_FASTPATH:
+          strcpy(rpcz[i].backend_status, "fastpath function call");
+          break;
+        case STATE_IDLEINTRANSACTION_ABORTED:
+          strcpy(rpcz[i].backend_status, "idle in transaction (aborted)");
+          break;
+        case STATE_DISABLED:
+          strcpy(rpcz[i].backend_status, "disabled");
+          break;
+        case STATE_UNDEFINED:
+          strcpy(rpcz[i].backend_status, "");
+          break;
+      }
+
+      char remote_host[NI_MAXHOST];
+      char remote_port[NI_MAXSERV];
+      int ret;
+
+      remote_host[0] = '\0';
+      remote_port[0] = '\0';
+      ret = pg_getnameinfo_all((struct sockaddr_storage *) &beentry->st_clientaddr.addr,
+                               beentry->st_clientaddr.salen,
+                               remote_host, sizeof(remote_host),
+                               remote_port, sizeof(remote_port),
+                               NI_NUMERICHOST | NI_NUMERICSERV);
+      if (ret == 0)
+      {
+        rpcz[i].host = (char *) palloc(NI_MAXHOST);
+        rpcz[i].port = (char *) palloc(NI_MAXSERV);
+        clean_ipv6_addr(beentry->st_clientaddr.addr.ss_family, remote_host);
+        strcpy(rpcz[i].host, remote_host);
+        strcpy(rpcz[i].port, remote_port);
+      }
+      else
+      {
+        rpcz[i].host = NULL;
+        rpcz[i].port = NULL;
+      }
+      after_changecount = beentry->st_changecount;
+
+      if (before_changecount == after_changecount &&
+          (before_changecount & 1) == 0)
+        break;
+    }
+    beentry++;
+  }
+  MemoryContextSwitchTo(oldcontext);
+}
+
+void
+freeRpczEntries(void)
+{
+  MemoryContextDelete(ybrpczMemoryContext);
+}
+
 /*
  * Function that is executed when the YSQL webserver process is started.
  * We don't use the argument "unused", however, a postgres background worker's function
@@ -98,15 +249,26 @@ set_metric_names(void)
 void
 webserver_worker_main(Datum unused)
 {
+  /*
+   * We need to use a pointer to a pointer here because the shared memory for BackendStatusArray
+   * is not allocated when we enter this function. The memory is allocated after the background
+   * works are registered.
+   */
+  backendStatusArrayPointer = getBackendStatusArrayPointer();
+
   BackgroundWorkerUnblockSignals();
 
   webserver = CreateWebserver(ListenAddresses, port);
 
   RegisterMetrics(ybpgm_table, num_entries, metric_node_name);
 
+  RegisterRpczEntries(&pullRpczEntries, &freeRpczEntries, &num_backends, &rpcz);
+
   HandleYBStatus(StartWebserver(webserver));
 
   WaitLatch(&MyProc->procLatch, WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
+
+  pfree(rpcz);
 
   proc_exit(0);
 }
@@ -152,7 +314,6 @@ _PG_init(void)
   strcpy(worker.bgw_function_name, "webserver_worker_main");
   worker.bgw_notify_pid = 0;
   RegisterBackgroundWorker(&worker);
-
   /*
    * Set the value of the hooks.
    */

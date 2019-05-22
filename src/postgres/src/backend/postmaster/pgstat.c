@@ -69,6 +69,9 @@
 #include "utils/timestamp.h"
 #include "utils/tqual.h"
 
+#include "catalog/pg_database.h"
+#include "pg_yb_utils.h"
+#include "utils/syscache.h"
 
 /* ----------
  * Timer definitions.
@@ -2591,6 +2594,7 @@ static PgBackendStatus *MyBEEntry = NULL;
 static char *BackendAppnameBuffer = NULL;
 static char *BackendClientHostnameBuffer = NULL;
 static char *BackendActivityBuffer = NULL;
+static char *DatabaseNameBuffer = NULL;
 static Size BackendActivityBufferSize = 0;
 #ifdef USE_SSL
 static PgBackendSSLStatus *BackendSslStatusBuffer = NULL;
@@ -2621,6 +2625,7 @@ BackendStatusShmemSize(void)
 	size = add_size(size,
 					mul_size(sizeof(PgBackendSSLStatus), NumBackendStatSlots));
 #endif
+	size = add_size(size, mul_size(NAMEDATALEN, NumBackendStatSlots));
 	return size;
 }
 
@@ -2703,6 +2708,26 @@ CreateSharedBackendStatus(void)
 		{
 			BackendStatusArray[i].st_activity_raw = buffer;
 			buffer += pgstat_track_activity_query_size;
+		}
+	}
+
+	if (YBIsEnabledInPostgresEnvVar()) {
+		Size DatabaseNameBufferSize;
+		DatabaseNameBufferSize = mul_size(NAMEDATALEN, NumBackendStatSlots);
+		DatabaseNameBuffer = (char *)
+			ShmemInitStruct("Database Name Buffer", DatabaseNameBufferSize, &found);
+
+		if (!found)
+		{
+			MemSet(DatabaseNameBuffer, 0, DatabaseNameBufferSize);
+
+			/* Initialize st_databasename pointers. */
+			buffer = DatabaseNameBuffer;
+			for (i = 0; i < NumBackendStatSlots; i++)
+			{
+				BackendStatusArray[i].st_databasename = buffer;
+				buffer += NAMEDATALEN;
+			}
 		}
 	}
 
@@ -2888,6 +2913,15 @@ pgstat_bestart(void)
 	beentry->st_state_start_timestamp = 0;
 	beentry->st_xact_start_timestamp = 0;
 	beentry->st_databaseid = MyDatabaseId;
+
+	if (YBIsEnabledInPostgresEnvVar() && beentry->st_databaseid > 0) {
+		HeapTuple tuple;
+		tuple = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(beentry->st_databaseid));
+		Form_pg_database dbForm;
+		dbForm = (Form_pg_database) GETSTRUCT(tuple);
+		strcpy(beentry->st_databasename, dbForm->datname.data);
+		ReleaseSysCache(tuple);
+	}
 
 	/* We have userid for client-backends, wal-sender and bgworker processes */
 	if (beentry->st_backendType == B_BACKEND
@@ -6376,4 +6410,10 @@ pgstat_clip_activity(const char *raw_activity)
 	activity[cliplen] = '\0';
 
 	return activity;
+}
+
+PgBackendStatus **
+getBackendStatusArrayPointer(void)
+{
+	return &BackendStatusArray;
 }
