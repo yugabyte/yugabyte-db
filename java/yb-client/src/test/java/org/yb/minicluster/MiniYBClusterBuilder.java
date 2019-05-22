@@ -17,6 +17,8 @@ package org.yb.minicluster;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 public class MiniYBClusterBuilder {
 
@@ -37,6 +39,8 @@ public class MiniYBClusterBuilder {
   private int replicationFactor = -1;
   private boolean startPgSqlProxy = false;
   private boolean pgTransactionsEnabled = false;
+
+  private Map<String, String> tserverEnvVars = new TreeMap<String, String>();
 
   public MiniYBClusterBuilder numMasters(int numMasters) {
     this.numMasters = numMasters;
@@ -148,6 +152,14 @@ public class MiniYBClusterBuilder {
     return this;
   }
 
+  /**
+   * Add environment variables.
+   */
+  public MiniYBClusterBuilder addEnvironmentVariables(Map<String, String> tserverEnvVars) {
+    this.tserverEnvVars.putAll(tserverEnvVars);
+    return this;
+  }
+
   public MiniYBCluster build() throws Exception {
     if (perTServerArgs != null && perTServerArgs.size() != numTservers) {
       throw new AssertionError(
@@ -162,6 +174,7 @@ public class MiniYBClusterBuilder {
         masterArgs,
         perTServerArgs,
         commonTServerArgs,
+        tserverEnvVars,
         numShardsPerTServer,
         testClassName,
         useIpWithCertificate,

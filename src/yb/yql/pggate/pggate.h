@@ -92,21 +92,32 @@ class PgApiImpl {
   CHECKED_STATUS InsertSequenceTuple(PgSession *pg_session,
                                      int64_t db_oid,
                                      int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
                                      int64_t last_val,
                                      bool is_called);
+
+  CHECKED_STATUS UpdateSequenceTupleConditionally(PgSession *pg_session,
+                                                  int64_t db_oid,
+                                                  int64_t seq_oid,
+                                                  uint64_t ysql_catalog_version,
+                                                  int64_t last_val,
+                                                  bool is_called,
+                                                  int64_t expected_last_val,
+                                                  bool expected_is_called,
+                                                  bool *skipped);
 
   CHECKED_STATUS UpdateSequenceTuple(PgSession *pg_session,
                                      int64_t db_oid,
                                      int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
                                      int64_t last_val,
                                      bool is_called,
-                                     int64_t expected_last_val,
-                                     bool expected_is_called,
                                      bool* skipped);
 
   CHECKED_STATUS ReadSequenceTuple(PgSession *pg_session,
                                    int64_t db_oid,
                                    int64_t seq_oid,
+                                   uint64_t ysql_catalog_version,
                                    int64_t *last_val,
                                    bool *is_called);
 

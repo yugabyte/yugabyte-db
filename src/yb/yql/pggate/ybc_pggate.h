@@ -63,21 +63,32 @@ YBCStatus YBCPgConnectDatabase(YBCPgSession pg_session, const char *database_nam
 YBCStatus YBCInsertSequenceTuple(YBCPgSession pg_session,
                                  int64_t db_oid,
                                  int64_t seq_oid,
+                                 uint64_t ysql_catalog_version,
                                  int64_t last_val,
                                  bool is_called);
+
+YBCStatus YBCUpdateSequenceTupleConditionally(YBCPgSession pg_session,
+                                              int64_t db_oid,
+                                              int64_t seq_oid,
+                                              uint64_t ysql_catalog_version,
+                                              int64_t last_val,
+                                              bool is_called,
+                                              int64_t expected_last_val,
+                                              bool expected_is_called,
+                                              bool *skipped);
 
 YBCStatus YBCUpdateSequenceTuple(YBCPgSession pg_session,
                                  int64_t db_oid,
                                  int64_t seq_oid,
+                                 uint64_t ysql_catalog_version,
                                  int64_t last_val,
                                  bool is_called,
-                                 int64_t expected_last_val,
-                                 bool expected_is_called,
                                  bool* skipped);
 
 YBCStatus YBCReadSequenceTuple(YBCPgSession pg_session,
                                int64_t db_oid,
                                int64_t seq_oid,
+                               uint64_t ysql_catalog_version,
                                int64_t *last_val,
                                bool *is_called);
 

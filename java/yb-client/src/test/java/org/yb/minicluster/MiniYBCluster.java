@@ -163,6 +163,7 @@ public class MiniYBCluster implements AutoCloseable {
                 List<String> masterArgs,
                 List<List<String>> tserverArgs,
                 List<String> commonTServerArgs,
+                Map<String, String> tserverEnvVars,
                 int numShardsPerTserver,
                 String testClassName,
                 boolean useIpWithCertificate,
@@ -181,7 +182,8 @@ public class MiniYBCluster implements AutoCloseable {
           "Attempting to enable PostgreSQL transactions without enabling PostgreSQL API");
     }
 
-    startCluster(numMasters, numTservers, masterArgs, tserverArgs, commonTServerArgs);
+    startCluster(numMasters, numTservers, masterArgs, tserverArgs, commonTServerArgs,
+        tserverEnvVars);
     startSyncClient();
   }
 
@@ -407,7 +409,8 @@ public class MiniYBCluster implements AutoCloseable {
                             int numTservers,
                             List<String> masterArgs,
                             List<List<String>> perTServerArgs,
-                            List<String> commonTServerArgs) throws Exception {
+                            List<String> commonTServerArgs,
+                            Map<String, String> tserverEnvVars) throws Exception {
     Preconditions.checkArgument(numMasters > 0, "Need at least one master");
     Preconditions.checkArgument(numTservers > 0, "Need at least one tablet server");
     Preconditions.checkNotNull(perTServerArgs);
@@ -429,13 +432,14 @@ public class MiniYBCluster implements AutoCloseable {
     startMasters(numMasters, baseDirPath, masterArgs);
 
     LOG.info("Starting {} tablet servers...", numTservers);
-    startTabletServers(numTservers, perTServerArgs, commonTServerArgs);
+    startTabletServers(numTservers, perTServerArgs, commonTServerArgs, tserverEnvVars);
   }
 
   private void startTabletServers(
       int numTservers,
       List<List<String>> tserverArgs,
-      List<String> commonTServerArgs) throws Exception {
+      List<String> commonTServerArgs,
+      Map<String, String> tserverEnvVars) throws Exception {
     LOG.info("startTabletServers: numTServers=" + numTservers +
         ", tserverArgs=" + tserverArgs +
         ", commonTServerArgs=" + commonTServerArgs);
@@ -446,7 +450,7 @@ public class MiniYBCluster implements AutoCloseable {
         concatenatedArgs.addAll(tserverArgs.get(i));
       }
       concatenatedArgs.addAll(commonTServerArgs);
-      startTServer(concatenatedArgs);
+      startTServer(concatenatedArgs, tserverEnvVars);
     }
 
     long tserverStartupDeadlineMs = System.currentTimeMillis() + 60000;
@@ -476,11 +480,22 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   public void startTServer(List<String> tserverArgs) throws Exception {
-    startTServer(tserverArgs, null, null);
+    startTServer(tserverArgs, null, null, null);
+  }
+
+  public void startTServer(List<String> tserverArgs,
+                           Map<String, String> tserverEnvVars) throws Exception {
+    startTServer(tserverArgs, null, null, tserverEnvVars);
   }
 
   public void startTServer(List<String> tserverArgs, String tserverBindAddress,
                            Integer tserverRpcPort) throws Exception {
+    startTServer(tserverArgs, tserverBindAddress, tserverRpcPort, null);
+  }
+
+  public void startTServer(List<String> tserverArgs, String tserverBindAddress,
+                           Integer tserverRpcPort,
+                           Map<String, String> tserverEnvVars) throws Exception {
     LOG.info("Starting a tablet server: " +
         "tserverArgs=" + tserverArgs +
         ", tserverBindAddress=" + tserverBindAddress +
@@ -543,7 +558,7 @@ public class MiniYBCluster implements AutoCloseable {
     final MiniYBDaemon daemon = configureAndStartProcess(MiniYBDaemonType.TSERVER,
         tsCmdLine.toArray(new String[tsCmdLine.size()]),
         tserverBindAddress, rpcPort, webPort, pgsqlWebPort,
-        cqlWebPort, redisWebPort, dataDirPath);
+        cqlWebPort, redisWebPort, dataDirPath, tserverEnvVars);
     tserverProcesses.put(HostAndPort.fromParts(tserverBindAddress, rpcPort), daemon);
     cqlContactPoints.add(new InetSocketAddress(tserverBindAddress, CQL_PORT));
     redisContactPoints.add(new InetSocketAddress(tserverBindAddress, redisPort));
@@ -602,7 +617,7 @@ public class MiniYBCluster implements AutoCloseable {
 
     final MiniYBDaemon daemon = configureAndStartProcess(
         MiniYBDaemonType.MASTER, masterCmdLine.toArray(new String[masterCmdLine.size()]),
-        masterBindAddress, rpcPort, webPort, -1, -1, -1, dataDirPath);
+        masterBindAddress, rpcPort, webPort, -1, -1, -1, dataDirPath, null);
 
     final HostAndPort masterHostPort = HostAndPort.fromParts(masterBindAddress, rpcPort);
     masterHostPorts.add(masterHostPort);
@@ -684,7 +699,7 @@ public class MiniYBCluster implements AutoCloseable {
           configureAndStartProcess(
               MiniYBDaemonType.MASTER,
               masterCmdLine.toArray(new String[masterCmdLine.size()]),
-              masterBindAddress, masterRpcPort, masterWebPort, -1, -1, -1, dataDirPath));
+              masterBindAddress, masterRpcPort, masterWebPort, -1, -1, -1, dataDirPath, null));
 
       if (flagsPath.startsWith(baseDirPath)) {
         // We made a temporary copy of the flags; delete them later.
@@ -719,7 +734,8 @@ public class MiniYBCluster implements AutoCloseable {
                                                 int pgsqlWebPort,
                                                 int cqlWebPort,
                                                 int redisWebPort,
-                                                String dataDirPath) throws Exception {
+                                                String dataDirPath,
+                                                Map<String, String> environment) throws Exception {
     command[0] = FileSystems.getDefault().getPath(command[0]).normalize().toString();
     final int indexForLog =
         type == MiniYBDaemonType.MASTER ? nextMasterIndex.incrementAndGet()
@@ -740,8 +756,14 @@ public class MiniYBCluster implements AutoCloseable {
       command = args.toArray(command);
     }
 
-    LOG.info("Starting process: {}", Joiner.on(" ").join(command));
-    Process proc = new ProcessBuilder(command).redirectErrorStream(true).start();
+    ProcessBuilder procBuilder = new ProcessBuilder(command).redirectErrorStream(true);
+    String envString = "{}";
+    if (environment != null) {
+      procBuilder.environment().putAll(environment);
+      envString = environment.toString();
+    }
+    LOG.info("Starting process: {} with environment {}", Joiner.on(" ").join(command), envString);
+    Process proc = procBuilder.start();
     final MiniYBDaemon daemon =
         new MiniYBDaemon(type, indexForLog, command, proc, bindIp, rpcPort, webPort,
                          pgsqlWebPort, cqlWebPort, redisWebPort, dataDirPath);

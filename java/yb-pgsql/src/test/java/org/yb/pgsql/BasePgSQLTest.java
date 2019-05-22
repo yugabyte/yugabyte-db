@@ -49,6 +49,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final String PG_DATA_FLAG = "PGDATA";
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
 
+  // Extra Postgres flags.
+  protected static Map<String, String> extraPostgresEnvVars;
+
   // CQL and Redis settings.
   protected static boolean startCqlProxy = false;
   protected static boolean startRedisProxy = false;
@@ -64,7 +67,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static ConcurrentSkipListSet<Integer> stuckBackendPidsConcMap =
       new ConcurrentSkipListSet<>();
 
-  private static boolean pgInitialized = false;
+  protected static boolean pgInitialized = false;
 
   public void runPgRegressTest(String schedule) throws Exception {
     final int tserverIndex = 0;
