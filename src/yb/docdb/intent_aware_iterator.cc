@@ -913,7 +913,8 @@ void IntentAwareIterator::SkipFutureRecords(const Direction direction) {
       iter_valid_ = true;
       return;
     }
-    VLOG(4) << "Skipping because of time: " << SubDocKey::DebugSliceToString(iter_->key());
+    VLOG(4) << "Skipping because of time: " << SubDocKey::DebugSliceToString(iter_->key())
+            << ", read time: " << read_time_;
     switch (direction) {
       case Direction::kForward:
         iter_->Next(); // TODO(dtxn) use seek with the same key, but read limit as doc hybrid time.
