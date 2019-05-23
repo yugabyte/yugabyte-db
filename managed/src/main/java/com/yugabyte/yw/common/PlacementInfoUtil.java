@@ -1562,21 +1562,22 @@ public class PlacementInfoUtil {
   // Get the zones with the kubeconfig for that zone.
   public static Map<UUID, Map<String, String>> getConfigPerAZ(PlacementInfo pi) {
     Map<UUID, Map<String, String>> azToConfig = new HashMap<UUID, Map<String, String>>();
+    Map<String, String> config = new HashMap<String, String>();
     for (PlacementCloud pc : pi.cloudList) {
-      Map<String, String> config = Provider.get(pc.uuid).getConfig();
+      Map<String, String> cloudConfig = Provider.get(pc.uuid).getConfig();
       for (PlacementRegion pr : pc.regionList) {
-        if (!config.containsKey("KUBECONFIG")) {
-            config = Region.get(pr.uuid).getConfig();
-        }
+        Map<String, String> regionConfig = Region.get(pr.uuid).getConfig();
         for (PlacementAZ pa : pr.azList) {
-          if (!config.containsKey("KUBECONFIG")) {
-            config = AvailabilityZone.get(pa.uuid).getConfig();
+          Map<String, String> zoneConfig = AvailabilityZone.get(pa.uuid).getConfig();
+          if (cloudConfig.containsKey("KUBECONFIG")) {
+            azToConfig.put(pa.uuid, cloudConfig);
+          } else if (regionConfig.containsKey("KUBECONFIG")) {
+            azToConfig.put(pa.uuid, regionConfig);
+          } else if (zoneConfig.containsKey("KUBECONFIG")) {
+            azToConfig.put(pa.uuid, zoneConfig);
+          } else {
+            throw new RuntimeException("No config found at any level");
           }
-          if (!config.containsKey("KUBECONFIG")) {
-            throw new RuntimeException("No Kubeconfig found");
-          }
-          azToConfig.put(pa.uuid, config);
-          System.out.println("ADDING CONFIG TO AZ: " + pa.uuid);
         }
       }
     }
