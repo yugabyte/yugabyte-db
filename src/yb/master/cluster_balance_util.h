@@ -398,7 +398,6 @@ class ClusterLoadState {
     }
 
     if (ts_desc->HasTabletDeletePending()) {
-      LOG(INFO) << "tablet server " << ts_uuid << " has a pending delete";
       servers_with_pending_deletes_.insert(ts_uuid);
     }
   }

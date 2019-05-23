@@ -281,6 +281,9 @@ class ClusterLoadBalancer {
   // Dump the sorted load on tservers (it is usually per table).
   void DumpSortedLoad() const;
 
+  // Report unusual state at the beginning of an LB run which may prevent LB from making moves.
+  void ReportUnusualLoadBalancerState() const;
+
   // Random number generator for picking items at random from sets, using ReservoirSample.
   ThreadSafeRandom random_;
 
