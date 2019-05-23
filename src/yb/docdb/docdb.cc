@@ -24,6 +24,7 @@
 
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/cql_operation.h"
+#include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"

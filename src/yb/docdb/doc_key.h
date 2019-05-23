@@ -146,6 +146,9 @@ class DocKey {
   static CHECKED_STATUS PartiallyDecode(Slice* slice,
                                         boost::container::small_vector_base<Slice>* out);
 
+  // Decode just the hash code of a DocKey.
+  static Result<DocKeyHash> DecodeHash(const Slice& slice);
+
   static Result<size_t> EncodedSize(
       Slice slice, DocKeyPart part, AllowSpecial allow_special = AllowSpecial::kFalse);
 
@@ -304,7 +307,7 @@ class DocKeyDecoder {
  public:
   explicit DocKeyDecoder(const Slice& input) : input_(input) {}
 
-  Result<bool> DecodeCotable(Uuid* uuid = nullptr);
+  Result<bool> DecodeCotableId(Uuid* uuid = nullptr);
   Result<bool> HasPrimitiveValue();
 
   Result<bool> DecodeHashCode(

@@ -25,20 +25,6 @@
 
 namespace yb {
 namespace docdb {
-
-// Add primary key column values to the component group. Verify that they are in the same order
-// as in the table schema.
-CHECKED_STATUS QLKeyColumnValuesToPrimitiveValues(
-    const google::protobuf::RepeatedPtrField<QLExpressionPB> &column_values,
-    const Schema &schema, size_t column_idx, const size_t column_count,
-    vector<PrimitiveValue> *components);
-
-CHECKED_STATUS InitKeyColumnPrimitiveValues(
-    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
-    const Schema &schema,
-    size_t start_idx,
-    vector<PrimitiveValue> *components);
-
 // A wrapper around a RocksDB instance and provides utility functions on top of it, such as
 // compacting the history until a certain point. This is used in the builk load tool. This is also
 // convenient base class for GTest test classes, because it exposes member functions such as
@@ -193,7 +179,6 @@ class DocDBRocksDBUtil {
   std::unique_ptr<rocksdb::DB> intents_db_;
   rocksdb::Options rocksdb_options_;
   std::string rocksdb_dir_;
-
 
   // This is used for auto-assigning op ids to RocksDB write batches to emulate what a tablet would
   // do in production.

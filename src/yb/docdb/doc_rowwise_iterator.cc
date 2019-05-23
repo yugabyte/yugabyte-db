@@ -16,11 +16,12 @@
 #include "yb/common/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/common/ql_scanspec.h"
+#include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/gutil/strings/substitute.h"
@@ -731,7 +732,7 @@ Status DocRowwiseIterator::DoNextRow(const Schema& projection, QLTableRow* table
   }
 
   DocKeyDecoder decoder(row_key_);
-  RETURN_NOT_OK(decoder.DecodeCotable());
+  RETURN_NOT_OK(decoder.DecodeCotableId());
   bool has_hash_components = VERIFY_RESULT(decoder.DecodeHashCode());
 
   // Populate the key column values from the doc key. The key column values in doc key were

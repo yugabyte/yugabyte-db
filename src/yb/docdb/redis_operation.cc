@@ -13,6 +13,7 @@
 
 #include "yb/docdb/redis_operation.h"
 
+#include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/docdb.h"

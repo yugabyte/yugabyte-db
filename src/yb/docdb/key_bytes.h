@@ -30,7 +30,7 @@ namespace yb {
 namespace docdb {
 
 // Represents part (usually a prefix) of a RocksDB key. Has convenience methods for composing keys
-// used in our document DB layer -> RocksDB mapping.
+// used in our DocDB layer -> RocksDB mapping.
 class KeyBytes {
  public:
 

@@ -118,7 +118,7 @@ PgsqlExpressionPB *PgSelect::AllocIndexTargetPB() {
 
 Status PgSelect::DeleteEmptyPrimaryBinds() {
   // Either ybctid or hash/primary key must be present.
-  if (ybctid_bind_.empty()) {
+  if (!ybctid_bind_) {
     PgTableDesc::ScopedRefPtr table_desc = index_desc_ ? index_desc_ : table_desc_;
     PgsqlReadRequestPB *read_req = index_desc_ ? index_req_ : read_req_;
 
@@ -165,9 +165,6 @@ Status PgSelect::DeleteEmptyPrimaryBinds() {
     range_column_values->DeleteSubrange(num_bound_range_columns,
                                         range_column_values->size() - num_bound_range_columns);
   } else {
-    uint16_t hash_value;
-    RETURN_NOT_OK(PgExpr::ReadHashValue(ybctid_bind_.data(), ybctid_bind_.size(), &hash_value));
-    read_req_->set_hash_code(hash_value);
     read_req_->clear_partition_column_values();
     read_req_->clear_range_column_values();
   }
