@@ -5,5 +5,5 @@ set -euo pipefail
 
 YW_REPO="$( dirname "${BASH_SOURCE[0]}" )"
 . "$YW_REPO"/common_itest
-echo "Done installing cassandra-driver, running integration test now..."
-"$YW_REPO"/src/itest/itest.py "$@"
+echo "Done installing cassandra-driver, releasing code now..."
+"$YW_REPO"/src/itest/release_repos.py "$@"
