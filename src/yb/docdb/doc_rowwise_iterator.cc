@@ -791,15 +791,38 @@ CHECKED_STATUS DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) 
   return Status::OK();
 }
 
-Result<string> DocRowwiseIterator::GetRowKey() const {
-  return row_key_.ToBuffer();
+Result<Slice> DocRowwiseIterator::GetTupleId() const {
+  // Return tuple id without cotable id if any.
+  Slice tuple_id = row_key_;
+  if (tuple_id.starts_with(ValueTypeAsChar::kTableId)) {
+    tuple_id.remove_prefix(1 + kUuidSize);
+  }
+  return tuple_id;
 }
 
-Status DocRowwiseIterator::Seek(const std::string& row_key) {
-  db_iter_->Seek(row_key);
+Result<bool> DocRowwiseIterator::SeekTuple(const Slice& tuple_id) {
+  // If cotable id is present in the table schema, we need to prepend it in the tuple key to seek.
+  if (!schema_.cotable_id().IsNil()) {
+    if (!tuple_key_) {
+      std::string bytes;
+      schema_.cotable_id().EncodeToComparable(&bytes);
+      tuple_key_.emplace();
+      tuple_key_->Reserve(1 + kUuidSize + tuple_id.size());
+      tuple_key_->AppendValueType(ValueType::kTableId);
+      tuple_key_->AppendRawBytes(bytes);
+    } else {
+      tuple_key_->Truncate(1 + kUuidSize);
+    }
+    tuple_key_->AppendRawBytes(tuple_id);
+    db_iter_->Seek(*tuple_key_);
+  } else {
+    db_iter_->Seek(tuple_id);
+  }
+
   iter_key_.Clear();
   row_ready_ = false;
-  return Status::OK();
+
+  return VERIFY_RESULT(HasNext()) && VERIFY_RESULT(GetTupleId()) == tuple_id;
 }
 
 }  // namespace docdb

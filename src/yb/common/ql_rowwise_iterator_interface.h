@@ -70,12 +70,14 @@ class YQLRowwiseIteratorIf {
     return Status::OK();
   }
 
-  virtual Result<std::string> GetRowKey() const {
-    return STATUS(NotSupported, "This iterator does not provide row key");
+  // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
+  virtual Result<Slice> GetTupleId() const {
+    return STATUS(NotSupported, "This iterator does not provide tuple id");
   }
 
-  virtual CHECKED_STATUS Seek(const std::string& row_key) {
-    return STATUS(NotSupported, "This iterator cannot seek by row key");
+  // Seeks to the given tuple by its id. See DocRowwiseIterator for details.
+  virtual Result<bool> SeekTuple(const Slice& tuple_id) {
+    return STATUS(NotSupported, "This iterator cannot seek by tuple id");
   }
 
   //------------------------------------------------------------------------------------------------

@@ -99,10 +99,13 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   HybridTime RestartReadHt() override;
 
-  virtual Result<std::string> GetRowKey() const override;
+  // Returns the tuple id of the current tuple. The tuple id returned is the serialized DocKey
+  // and without the cotable id.
+  Result<Slice> GetTupleId() const override;
 
-  // Seek to the given key.
-  virtual CHECKED_STATUS Seek(const std::string& row_key) override;
+  // Seeks to the given tuple by its id. The tuple id should be the serialized DocKey and without
+  // the cotable id.
+  Result<bool> SeekTuple(const Slice& tuple_id) override;
 
   // Retrieves the next key to read after the iterator finishes for the given page.
   CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const override;
@@ -214,7 +217,8 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   mutable boost::optional<DeadlineInfo> deadline_info_;
 
-  std::string prefix_;
+  // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
+  boost::optional<KeyBytes> tuple_key_;
 };
 
 }  // namespace docdb
