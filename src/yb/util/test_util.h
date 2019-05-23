@@ -46,6 +46,7 @@
 #include "yb/util/result.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
 #define ASSERT_EVENTUALLY(expr) do { \
@@ -273,6 +274,7 @@ class TestThreadHolder {
   template <class Functor>
   void AddThreadFunctor(const Functor& functor) {
     AddThread([&stop = stop_flag_, functor] {
+      CDSAttacher attacher;
       SetFlagOnExit set_stop_on_exit(&stop);
       functor();
     });
