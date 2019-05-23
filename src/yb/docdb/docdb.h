@@ -43,7 +43,7 @@
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 
-// Document DB mapping on top of the key-value map in RocksDB:
+// DocDB mapping on top of the key-value map in RocksDB:
 // <document_key> <hybrid_time> -> <doc_type>
 // <document_key> <hybrid_time> <key_a> <gen_ts_a> -> <subdoc_a_type_or_value>
 //

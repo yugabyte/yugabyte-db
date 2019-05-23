@@ -13,10 +13,11 @@
 
 #include "yb/docdb/doc_write_batch.h"
 
+#include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/value_type.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/value_type.h"
 #include "yb/rocksdb/db.h"
 #include "yb/server/hybrid_clock.h"
 

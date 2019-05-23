@@ -168,9 +168,6 @@ class PgExpr {
                                   const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
                                   PgTuple *pg_tuple);
 
-  // Read hash_value.
-  static CHECKED_STATUS ReadHashValue(const char *doc_key, int key_size, uint16_t *hash_value);
-
   // Get expression type.
   InternalType internal_type() const;
 

@@ -12,6 +12,7 @@
 //
 
 #include "yb/docdb/doc_kv_util.h"
+#include "yb/docdb/doc_ttl_util.h"
 
 #include <string>
 

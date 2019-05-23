@@ -14,95 +14,105 @@
 # docdb_proto
 
 PROTOBUF_GENERATE_CPP(
-  DOCDB_PROTO_SRCS DOCDB_PROTO_HDRS DOCDB_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES docdb.proto)
+        DOCDB_PROTO_SRCS DOCDB_PROTO_HDRS DOCDB_PROTO_TGTS
+        SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+        BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+        PROTO_FILES docdb.proto)
 
 ADD_YB_LIBRARY(docdb_proto
-  SRCS ${DOCDB_PROTO_SRCS}
-  DEPS protobuf yb_common_proto opid_proto
-  NONLINK_DEPS ${DOCDB_PROTO_TGTS})
+        SRCS ${DOCDB_PROTO_SRCS}
+        DEPS protobuf yb_common_proto opid_proto
+        NONLINK_DEPS ${DOCDB_PROTO_TGTS})
+
+set(DOCDB_ENCODING_SRCS
+        doc_key.cc
+        doc_kv_util.cc
+        key_bytes.cc
+        primitive_value.cc
+        primitive_value_util.cc
+        intent.cc
+        )
+
+set(DOCDB_ENCODING_DEPS
+        docdb_proto
+        server_common
+        yb_common
+        yb_rocksutil
+        yb_util
+        )
+
+ADD_YB_LIBRARY(yb_docdb_encoding
+        SRCS ${DOCDB_ENCODING_SRCS}
+        DEPS ${DOCDB_ENCODING_DEPS}
+        )
 
 set(DOCDB_SRCS
-    conflict_resolution.cc
-    consensus_frontier.cc
-    cql_operation.cc
-    deadline_info.cc
-    doc_boundary_values_extractor.cc
-    docdb.cc
-    docdb_compaction_filter.cc
-    docdb_compaction_filter_intents.cc
-    docdb-internal.cc
-    docdb_rocksdb_util.cc
-    docdb_util.cc
-    doc_expr.cc
-    doc_key.cc
-    doc_kv_util.cc
-    doc_pgsql_scanspec.cc
-    doc_ql_scanspec.cc
-    doc_rowwise_iterator.cc
-    doc_write_batch_cache.cc
-    doc_write_batch.cc
-    intent_aware_iterator.cc
-    intent.cc
-    key_bytes.cc
-    lock_batch.cc
-    pgsql_operation.cc
-    primitive_value.cc
-    ql_rocksdb_storage.cc
-    redis_operation.cc
-    shared_lock_manager.cc
-    subdocument.cc
-    value.cc
-)
+        conflict_resolution.cc
+        consensus_frontier.cc
+        cql_operation.cc
+        deadline_info.cc
+        doc_boundary_values_extractor.cc
+        docdb.cc
+        docdb_util.cc
+        doc_ttl_util.cc
+        docdb_compaction_filter.cc
+        docdb_compaction_filter_intents.cc
+        docdb-internal.cc
+        docdb_rocksdb_util.cc
+        doc_expr.cc
+        doc_pgsql_scanspec.cc
+        doc_ql_scanspec.cc
+        doc_rowwise_iterator.cc
+        doc_write_batch_cache.cc
+        doc_write_batch.cc
+        intent_aware_iterator.cc
+        lock_batch.cc
+        pgsql_operation.cc
+        ql_rocksdb_storage.cc
+        redis_operation.cc
+        shared_lock_manager.cc
+        subdocument.cc
+        value.cc
+        )
 
 set(DOCDB_DEPS
-    rocksdb
-    yb_util
-    yb_rocksutil
-    yb_common
-    docdb_proto
-    server_common
-    rpc_introspection_proto
-    yb_pggate_util)
+        yb_docdb_encoding
+        rocksdb
+        yb_util
+        yb_rocksutil
+        yb_common
+        docdb_proto
+        server_common
+        rpc_introspection_proto
+        yb_pggate_util)
 
 ADD_YB_LIBRARY(yb_docdb
-               SRCS ${DOCDB_SRCS}
-               DEPS ${DOCDB_DEPS})
+        SRCS ${DOCDB_SRCS}
+        DEPS ${DOCDB_DEPS})
 
 # Ensure protobuf headers we depend on are generated prior to building DocDB.
 add_dependencies(
-    yb_docdb
-    gen_src_yb_master_master_proto
-    gen_src_yb_rpc_rpc_header_proto
-    gen_src_yb_tablet_metadata_proto
-    gen_src_yb_tablet_tablet_proto
-    gen_src_yb_tserver_tserver_proto
-    )
+        yb_docdb_encoding
+        gen_src_yb_master_master_proto
+        gen_src_yb_rpc_rpc_header_proto
+        gen_src_yb_tablet_metadata_proto
+        gen_src_yb_tablet_tablet_proto
+        gen_src_yb_tserver_tserver_proto
+)
 
+cotire(yb_docdb_encoding)
 cotire(yb_docdb)
-
-# Ensure protobuf headers we depend on are generated prior to building DocDB.
-add_dependencies(
-    yb_docdb
-    gen_src_yb_master_master_proto
-    gen_src_yb_rpc_rpc_header_proto
-    gen_src_yb_tablet_metadata_proto
-    gen_src_yb_tablet_tablet_proto
-    gen_src_yb_tserver_tserver_proto
-    )
 
 # A library with common code shared between DocDB tests.
 set(DOCDB_TEST_COMMON_SRCS
-    docdb_test_util.cc
-    docdb_test_base.cc
-    in_mem_docdb.cc)
+        docdb_test_util.cc
+        docdb_test_base.cc
+        in_mem_docdb.cc)
 
 add_library(yb_docdb_test_common ${DOCDB_TEST_COMMON_SRCS})
 target_link_libraries(yb_docdb_test_common
-                      yb_docdb
-                      yb_test_util)
+        yb_docdb
+        yb_test_util)
 
 set(YB_TEST_LINK_LIBS yb_common_test_util yb_docdb_test_common ${YB_MIN_TEST_LIBS})
 

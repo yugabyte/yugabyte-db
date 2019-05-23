@@ -291,6 +291,14 @@ yb::Status DocKey::PartiallyDecode(Slice *slice,
   return Status::OK();
 }
 
+Result<DocKeyHash> DocKey::DecodeHash(const Slice& slice) {
+  DocKeyDecoder decoder(slice);
+  RETURN_NOT_OK(decoder.DecodeCotableId());
+  uint16_t hash;
+  RETURN_NOT_OK(decoder.DecodeHashCode(&hash));
+  return hash;
+}
+
 Result<size_t> DocKey::EncodedSize(Slice slice, DocKeyPart part, AllowSpecial allow_special) {
   auto initial_begin = slice.cdata();
   DocKeyDecoder decoder(slice);
@@ -356,7 +364,7 @@ yb::Status DocKey::DoDecode(DocKeyDecoder* decoder,
                             AllowSpecial allow_special,
                             const Callback& callback) {
   Uuid cotable_id;
-  if (VERIFY_RESULT(decoder->DecodeCotable(&cotable_id))) {
+  if (VERIFY_RESULT(decoder->DecodeCotableId(&cotable_id))) {
     callback.SetCoTableId(cotable_id);
   }
 
@@ -886,7 +894,7 @@ DocKeyEncoderAfterCotableIdStep DocKeyEncoder::CotableId(const Uuid& cotable_id)
   return DocKeyEncoderAfterCotableIdStep(out_);
 }
 
-Result<bool> DocKeyDecoder::DecodeCotable(Uuid* uuid) {
+Result<bool> DocKeyDecoder::DecodeCotableId(Uuid* uuid) {
   if (input_.empty() || input_[0] != ValueTypeAsChar::kTableId) {
     return false;
   }
@@ -969,7 +977,7 @@ Result<bool> DocKeyDecoder::HasPrimitiveValue() {
 }
 
 Status DocKeyDecoder::DecodeToRangeGroup() {
-  RETURN_NOT_OK(DecodeCotable());
+  RETURN_NOT_OK(DecodeCotableId());
   if (VERIFY_RESULT(DecodeHashCode())) {
     while (VERIFY_RESULT(HasPrimitiveValue())) {
       RETURN_NOT_OK(DecodePrimitiveValue());
@@ -998,8 +1006,8 @@ Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special) {
 Result<bool> HashedComponentsEqual(const Slice& lhs, const Slice& rhs) {
   DocKeyDecoder lhs_decoder(lhs);
   DocKeyDecoder rhs_decoder(rhs);
-  RETURN_NOT_OK(lhs_decoder.DecodeCotable());
-  RETURN_NOT_OK(rhs_decoder.DecodeCotable());
+  RETURN_NOT_OK(lhs_decoder.DecodeCotableId());
+  RETURN_NOT_OK(rhs_decoder.DecodeCotableId());
 
   bool hash_present = VERIFY_RESULT(lhs_decoder.DecodeHashCode(AllowSpecial::kTrue));
   RETURN_NOT_OK(rhs_decoder.DecodeHashCode(AllowSpecial::kTrue));
