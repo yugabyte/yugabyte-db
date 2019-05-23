@@ -1032,4 +1032,36 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     expectedDomains.put(az3.uuid, "svc.test");
     assertEquals(expectedDomains, PlacementInfoUtil.getDomainPerAZ(pi));
   }
+
+  @Test
+  public void testK8sGetConfigPerAZ() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
+            String.format("%s@customer.com", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.create(r1, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    AvailabilityZone az3 = AvailabilityZone.create(r2, "PlacementAZ " + 3, "az-" + 3, "subnet-" + 3);
+    
+    Map<String, String> config = new HashMap();
+    Map<UUID, Map<String, String>> expectedConfigs = new HashMap<>();
+    config.put("KUBECONFIG", "az1");
+    az1.setConfig(config);
+    expectedConfigs.put(az1.uuid, az1.getConfig());
+    config.put("KUBECONFIG", "az2");
+    az2.setConfig(config);
+    expectedConfigs.put(az2.uuid, az2.getConfig());
+    config.put("KUBECONFIG", "az3");
+    az3.setConfig(config);
+    expectedConfigs.put(az3.uuid, az3.getConfig());
+
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZoneHelper(az1.uuid, pi);
+    PlacementInfoUtil.addPlacementZoneHelper(az2.uuid, pi);
+    PlacementInfoUtil.addPlacementZoneHelper(az3.uuid, pi);
+
+    assertEquals(expectedConfigs, PlacementInfoUtil.getConfigPerAZ(pi));
+  }
 }
