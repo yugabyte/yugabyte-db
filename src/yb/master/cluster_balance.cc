@@ -180,6 +180,9 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
   set_remaining(pending_remove_replica_tasks, &remaining_removals);
   set_remaining(pending_stepdown_leader_tasks, &remaining_leader_moves);
 
+  // At the start of the run, report LB state that might prevent it from running smoothly.
+  ReportUnusualLoadBalancerState();
+
   // Loop over all tables.
   for (const auto& table : GetTableMap()) {
 
@@ -242,6 +245,18 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
 
     if (remaining_adds == 0 && remaining_removals == 0 && remaining_leader_moves == 0) {
       break;
+    }
+  }
+}
+
+void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
+  TSDescriptorVector ts_descs;
+  GetAllReportedDescriptors(&ts_descs);
+  for (const auto& ts_desc : ts_descs) {
+    // Report if any ts has a pending delete.
+    if (ts_desc->HasTabletDeletePending()) {
+      LOG(INFO) << Format("tablet server $0 has a pending delete for tablets $1",
+                          ts_desc->permanent_uuid(), ts_desc->PendingTabletDeleteToString());
     }
   }
 }
