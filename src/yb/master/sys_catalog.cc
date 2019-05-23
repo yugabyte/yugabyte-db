@@ -659,7 +659,6 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
 
 Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
                                        const TableId& target_table_id,
-                                       const TableId& target_indexed_table_id,
                                        const int64_t leader_term) {
   TRACE_EVENT0("master", "CopyPgsqlTable");
 
@@ -668,20 +667,6 @@ Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
   const tablet::TableInfo* source_table_info = VERIFY_RESULT(meta->GetTableInfo(source_table_id));
   const tablet::TableInfo* target_table_info = VERIFY_RESULT(meta->GetTableInfo(target_table_id));
 
-  // Explicitly initializng optional to workaround gcc maybe-uninitialized false-positive warning.
-  boost::optional<ColumnId> source_ybbasectid = boost::make_optional(false, ColumnId());
-  boost::optional<const Schema&> target_indexed_schema;
-  if (!target_indexed_table_id.empty()) {
-    const Schema& source_schema = source_table_info->schema;
-    CHECK_GT(source_schema.num_columns(), 0);
-    CHECK_EQ(source_schema.columns().back().name(), "ybbasectid");
-    source_ybbasectid = source_schema.column_id(source_schema.num_columns() - 1);
-
-    const tablet::TableInfo* target_indexed_table_info =
-        VERIFY_RESULT(meta->GetTableInfo(target_indexed_table_id));
-    target_indexed_schema = target_indexed_table_info->schema;
-  }
-
   const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
   std::unique_ptr<common::YQLRowwiseIteratorIf> iter =
       VERIFY_RESULT(tablet->NewRowIterator(source_projection, boost::none, source_table_id));
@@ -689,16 +674,6 @@ Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
   std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
   while (VERIFY_RESULT(iter->HasNext())) {
     RETURN_NOT_OK(iter->NextRow(&source_row));
-    if (source_ybbasectid) {
-      QLValue value;
-      docdb::DocKey doc_key;
-      RETURN_NOT_OK(source_row.GetValue(*source_ybbasectid, &value));
-      RETURN_NOT_OK(doc_key.DecodeFrom(Slice(value.binary_value())));
-      doc_key.SwitchTo(*target_indexed_schema);
-      RefCntPrefix encoded_key = doc_key.EncodeAsRefCntPrefix();
-      value.set_binary_value(encoded_key.data(), encoded_key.size());
-      source_row.AllocColumn(*source_ybbasectid, value);
-    }
     RETURN_NOT_OK(writer->InsertPgsqlTableRow(source_table_info->schema, source_row,
                                               target_table_id, target_table_info->schema,
                                               target_table_info->schema_version));

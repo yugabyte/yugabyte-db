@@ -1544,11 +1544,10 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
     table_req.set_is_pg_catalog_table(true);
     table_req.set_table_id(table_id);
 
-    TableId indexed_table_id;
     if (!l->data().pb.indexed_table_id().empty()) {
       const uint32_t indexed_table_oid =
           VERIFY_RESULT(GetPgsqlTableOid(l->data().pb.indexed_table_id()));
-      indexed_table_id = GetPgsqlTableId(database_oid, indexed_table_oid);
+      const TableId indexed_table_id = GetPgsqlTableId(database_oid, indexed_table_oid);
       table_req.set_indexed_table_id(indexed_table_id);
       table_req.set_is_local_index(l->data().pb.is_local_index());
       table_req.set_is_unique_index(l->data().pb.is_unique_index());
@@ -1559,8 +1558,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
       return SetupError(resp->mutable_error(), table_resp.error().code(), s);
     }
 
-    RETURN_NOT_OK(sys_catalog_->CopyPgsqlTable(table->id(), table_id, indexed_table_id,
-                                               leader_ready_term_));
+    RETURN_NOT_OK(sys_catalog_->CopyPgsqlTable(table->id(), table_id, leader_ready_term_));
   }
   return Status::OK();
 }
