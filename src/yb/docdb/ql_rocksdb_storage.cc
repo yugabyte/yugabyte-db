@@ -118,10 +118,8 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
 
   if (request.has_ybctid_column_value()) {
     CHECK(!request.has_paging_state()) << "Optimization failure due to wrong assumption";
-    const string& ybctid_value = request.ybctid_column_value().value().binary_value();
-    Slice key_value(ybctid_value.data(), ybctid_value.size());
-    DocKey range_doc_key;
-    RETURN_NOT_OK(range_doc_key.DecodeFrom(key_value));
+    DocKey range_doc_key(schema);
+    RETURN_NOT_OK(range_doc_key.DecodeFrom(request.ybctid_column_value().value().binary_value()));
     doc_iter = std::make_unique<DocRowwiseIterator>(
         projection, schema, txn_op_context, doc_db_, deadline, read_time);
     RETURN_NOT_OK(doc_iter->Init(DocPgsqlScanSpec(schema,

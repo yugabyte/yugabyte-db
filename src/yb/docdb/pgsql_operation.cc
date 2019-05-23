@@ -72,30 +72,21 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
   request_.Swap(request);
   response_ = response;
 
-  // Init DocDB keys using partition and range values.
-  // - Collect partition and range values into hashed_components and range_components.
-  // - Setup the keys.
+  // Init DocDB key using either ybctid or partition and range values.
   if (request_.has_ybctid_column_value()) {
     CHECK(request_.ybctid_column_value().has_value() &&
           request_.ybctid_column_value().value().has_binary_value())
-      << "ERROR: Unexpected value for ybctid column";
-    const string& ybctid_value = request_.ybctid_column_value().value().binary_value();
-    Slice key_value(ybctid_value.data(), ybctid_value.size());
+        << "ERROR: Unexpected value for ybctid column";
 
-    // The following code assumes that ybctid is the key of exactly one row, so the hash_doc_key_
-    // is set to NULL. If this assumption is no longer true, hash_doc_key_ should be assigned with
-    // appropriate values.
-    doc_key_.emplace();
-    RETURN_NOT_OK(doc_key_->DecodeFrom(key_value));
-    encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
+    doc_key_.emplace(schema_);
+    RETURN_NOT_OK(doc_key_->DecodeFrom(request_.ybctid_column_value().value().binary_value()));
   } else {
     vector<PrimitiveValue> hashed_components;
+    vector<PrimitiveValue> range_components;
     RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.partition_column_values(),
                                                schema_,
                                                0,
                                                &hashed_components));
-
-    vector<PrimitiveValue> range_components;
     RETURN_NOT_OK(InitKeyColumnPrimitiveValues(request_.range_column_values(),
                                                schema_,
                                                schema_.num_hash_key_columns(),
@@ -105,8 +96,8 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
     } else {
       doc_key_.emplace(schema_, request_.hash_code(), hashed_components, range_components);
     }
-    encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
   }
+  encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
 
   return Status::OK();
 }
@@ -322,8 +313,12 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow::SharedPtr& table
   for (const PgsqlExpressionPB& expr : request_.targets()) {
     if (expr.has_column_id()) {
       if (expr.column_id() == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
-        rsrow->rscol(rscol_index)->set_binary_value(encoded_doc_key_.data(),
-                                                    encoded_doc_key_.size());
+        // Strip cotable id from the serialized DocKey before returning it as ybctid.
+        Slice tuple_id = encoded_doc_key_.as_slice();
+        if (tuple_id.starts_with(ValueTypeAsChar::kTableId)) {
+          tuple_id.remove_prefix(1 + kUuidSize);
+        }
+        rsrow->rscol(rscol_index)->set_binary_value(tuple_id.data(), tuple_id.size());
       } else {
         RETURN_NOT_OK(EvalExpr(expr, table_row, rsrow->rscol(rscol_index)));
       }
@@ -388,9 +383,7 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
                                          txn_op_context_, deadline, read_time, &index_iter_));
     iter = index_iter_.get();
     const size_t idx = index_schema->find_column("ybbasectid");
-    if (idx == Schema::kColumnNotFound) {
-      return STATUS(Corruption, "Column ybbasectid not found in index");
-    }
+    SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybbasectid not found in index schema");
     ybbasectid_id = index_schema->column_id(idx);
   } else {
     iter = table_iter_.get();
@@ -404,21 +397,19 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
   int match_count = 0;
   QLTableRow::SharedPtr row = std::make_shared<QLTableRow>();
   while (resultset->rsrow_count() < row_count_limit && VERIFY_RESULT(iter->HasNext())) {
-    // The filtering process runs in the following order.
-    // <hash_code><hash_components><range_components><regular_column_id> -> value;
+
     row->Clear();
 
+    // If there is an index request, fetch ybbasectid from the index and use it as ybctid
+    // to fetch from the base table. Otherwise, fetch from the base table directly.
     if (request_.has_index_request()) {
-      QLValue row_key;
       RETURN_NOT_OK(iter->NextRow(row.get()));
-      RETURN_NOT_OK(row->GetValue(ybbasectid_id, &row_key));
-      RETURN_NOT_OK(table_iter_->Seek(row_key.binary_value()));
-      if (!VERIFY_RESULT(table_iter_->HasNext()) ||
-          VERIFY_RESULT(table_iter_->GetRowKey()) != row_key.binary_value()) {
+      const auto& tuple_id = row->GetValue(ybbasectid_id);
+      SCHECK_NE(tuple_id, boost::none, Corruption, "ybbasectid not found in index row");
+      if (!VERIFY_RESULT(table_iter_->SeekTuple(tuple_id->binary_value()))) {
         DocKey doc_key;
-        RETURN_NOT_OK(doc_key.DecodeFrom(Slice(row_key.binary_value())));
-        LOG(WARNING) << "Row key " << doc_key << " missing in indexed table";
-        continue;
+        RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
+        return STATUS_FORMAT(Corruption, "ybctid $0 not found in indexed table", doc_key);
       }
       row->Clear();
       RETURN_NOT_OK(table_iter_->NextRow(projection, row.get()));
@@ -494,7 +485,8 @@ Status PgsqlReadOperation::GetTupleId(QLValue *result) const {
   // TODO(neil) Check if we need to append a table_id and other info to TupleID. For example, we
   // might need info to make sure the TupleId by itself is a valid reference to a specific row of
   // a valid table.
-  result->set_binary_value(VERIFY_RESULT(table_iter_->GetRowKey()));
+  const Slice tuple_id = VERIFY_RESULT(table_iter_->GetTupleId());
+  result->set_binary_value(tuple_id.data(), tuple_id.size());
   return Status::OK();
 }
 

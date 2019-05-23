@@ -203,10 +203,6 @@ class DocKey {
     return cotable_id_ == schema.cotable_id();
   }
 
-  void SwitchTo(const Schema& schema) {
-    cotable_id_ = schema.cotable_id();
-  }
-
   // Converts a redis string key to a doc key
   static DocKey FromRedisKey(uint16_t hash, const string& key);
   static KeyBytes EncodedFromRedisKey(uint16_t hash, const std::string &key);
