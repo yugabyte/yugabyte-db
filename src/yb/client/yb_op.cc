@@ -44,6 +44,8 @@
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
 
+#include "yb/docdb/doc_key.h"
+
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
@@ -97,7 +99,6 @@ RedisResponsePB* YBRedisOp::mutable_response() {
   }
   return redis_response_.get();
 }
-
 
 const RedisResponsePB& YBRedisOp::response() const {
   return *DCHECK_NOTNULL(redis_response_.get());
@@ -505,8 +506,11 @@ std::string YBPgsqlWriteOp::ToString() const {
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
-  if (write_request_->has_hash_code() && write_request_->partition_column_values_size() == 0) {
-    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(write_request_->hash_code());
+  const auto& ybctid = write_request_->ybctid_column_value().value();
+  if (!IsNull(ybctid)) {
+    const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
+    write_request_->set_hash_code(hash_code);
+    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
     return Status::OK();
   }
 
@@ -518,7 +522,6 @@ Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
 void YBPgsqlWriteOp::SetHashCode(const uint16_t hash_code) {
   write_request_->set_hash_code(hash_code);
 }
-
 
 bool YBPgsqlWriteOp::IsTransactional() const {
   return !is_single_row_txn_ && table_->schema().table_properties().is_transactional();
@@ -584,8 +587,10 @@ Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
     } // else we are using no-hash scheme (e.g. for postgres syscatalog tables) -- nothing to do.
   } else {
     // Otherwise, set the partition key to the hash_code (lower bound of the token range).
-    if (read_request_->has_hash_code()) {
-      uint16 hash_code = static_cast<uint16>(read_request_->hash_code());
+    const auto& ybctid = read_request_->ybctid_column_value().value();
+    if (!IsNull(ybctid)) {
+      const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
+      read_request_->set_hash_code(hash_code);
       *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
     } else {
       // Default to empty key, this will start a scan from the beginning.

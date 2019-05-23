@@ -16,6 +16,7 @@
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_expr.h"
+#include "yb/docdb/primitive_value_util.h"
 
 namespace yb {
 namespace docdb {

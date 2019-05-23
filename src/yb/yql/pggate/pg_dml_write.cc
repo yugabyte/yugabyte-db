@@ -69,7 +69,7 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
   bool missing_primary_key = false;
 
   // Either ybctid or primary key must be present.
-  if (ybctid_bind_.empty()) {
+  if (!ybctid_bind_) {
     // Remove empty binds from partition list.
     auto partition_iter = write_req_->mutable_partition_column_values()->begin();
     while (partition_iter != write_req_->mutable_partition_column_values()->end()) {
@@ -92,9 +92,6 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
       }
     }
   } else {
-    uint16_t hash_value;
-    RETURN_NOT_OK(PgExpr::ReadHashValue(ybctid_bind_.data(), ybctid_bind_.size(), &hash_value));
-    write_req_->set_hash_code(hash_value);
     write_req_->clear_partition_column_values();
     write_req_->clear_range_column_values();
   }

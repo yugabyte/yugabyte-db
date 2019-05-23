@@ -113,7 +113,7 @@ class PgDml : public PgStatement {
   //
   // * Bind values are used to identify the selected rows to be operated on.
   // * Set values are used to hold columns' new values in the selected rows.
-  string ybctid_bind_;
+  bool ybctid_bind_ = false;
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_assigns_;
 

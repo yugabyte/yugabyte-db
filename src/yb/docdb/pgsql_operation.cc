@@ -21,7 +21,7 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
-#include "yb/docdb/docdb_util.h"
+#include "yb/docdb/primitive_value_util.h"
 
 #include "yb/util/trace.h"
 

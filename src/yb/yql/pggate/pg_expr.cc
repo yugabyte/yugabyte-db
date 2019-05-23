@@ -230,15 +230,6 @@ void PgExpr::TranslateYBBasectid(Slice *yb_cursor, const PgWireDataHeader& heade
   TranslateSysCol(yb_cursor, header, pg_tuple, &pg_tuple->syscols()->ybbasectid);
 }
 
-Status PgExpr::ReadHashValue(const char *doc_key, int key_size, uint16_t *hash_value) {
-  // Because DocDB is using its own encoding for the key, we hack the system to read hash_value.
-  if (doc_key == NULL || key_size < sizeof(hash_value) + 1) {
-    return STATUS(InvalidArgument, "Key has unexpected size");
-  }
-  *hash_value = BigEndian::Load16(doc_key + 1);
-  return Status::OK();
-}
-
 InternalType PgExpr::internal_type() const {
   DCHECK(type_entity_) << "Type entity is not set up";
   return client::YBColumnSchema::ToInternalDataType(

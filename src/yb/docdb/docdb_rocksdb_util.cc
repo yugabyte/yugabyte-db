@@ -22,6 +22,7 @@
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/compression.h"
 
+#include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"

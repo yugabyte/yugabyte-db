@@ -148,7 +148,7 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   expr_binds_[bind_pb] = attr_value;
   if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
     CHECK(attr_value->is_constant()) << "Column ybctid must be bound to constant";
-    ybctid_bind_ = static_cast<PgConstant*>(attr_value)->binary_value();
+    ybctid_bind_ = true;
   }
   return Status::OK();
 }

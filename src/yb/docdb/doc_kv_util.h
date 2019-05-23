@@ -11,7 +11,7 @@
 // under the License.
 //
 
-// Utilities for encoding and decoding key/value pairs that are used in the document DB code.
+// Utilities for encoding and decoding key/value pairs that are used in the DocDB code.
 
 #ifndef YB_DOCDB_DOC_KV_UTIL_H_
 #define YB_DOCDB_DOC_KV_UTIL_H_
@@ -129,7 +129,6 @@ std::string DecodeZeroEncodedStr(std::string encoded_str);
 //   result - the resulting decoded string
 yb::Status DecodeComplementZeroEncodedStr(rocksdb::Slice* slice, std::string* result);
 
-
 // We try to use up to this number of characters when converting raw bytes to strings for debug
 // purposes.
 constexpr int kShortDebugStringLength = 40;
@@ -142,23 +141,6 @@ std::string ToShortDebugStr(rocksdb::Slice slice);
 inline std::string ToShortDebugStr(const std::string& raw_str) {
   return ToShortDebugStr(rocksdb::Slice(raw_str));
 }
-
-// Determines whether or not the TTL for a key has expired, given the ttl for the key, its hybrid
-// time and the hybrid_time we're reading at. The result is stored in has_expired.
-CHECKED_STATUS HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta& ttl,
-                             const HybridTime& read_hybrid_time, bool* has_expired);
-
-// Computes the table level TTL, given a schema.
-const MonoDelta TableTTL(const Schema& schema);
-
-// Computes the effective TTL by combining the column level TTL with the default table level TTL.
-const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const MonoDelta& default_ttl);
-
-// Utility function that computes the effective TTL directly given a schema
-const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const Schema& schema);
-
-// Cassandra considers a TTL of zero as resetting the TTL.
-static const uint64_t kResetTTL = 0;
 
 }  // namespace docdb
 }  // namespace yb
