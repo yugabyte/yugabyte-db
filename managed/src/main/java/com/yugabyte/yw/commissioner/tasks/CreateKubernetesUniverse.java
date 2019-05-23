@@ -105,8 +105,8 @@ public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
             KubernetesCommandExecutor.CommandType.APPLY_SECRET, azName, config));
         
         // Create the helm deployments.
-        helmInstalls.addTask(createKubernetesExecutorTask
-            (KubernetesCommandExecutor.CommandType.HELM_INSTALL, tempPI, azName, masterAddresses, config));
+        helmInstalls.addTask(createKubernetesExecutorTask(
+            KubernetesCommandExecutor.CommandType.HELM_INSTALL, tempPI, azName, masterAddresses, config));
       }
 
       subTaskGroupQueue.add(createNamespaces);
