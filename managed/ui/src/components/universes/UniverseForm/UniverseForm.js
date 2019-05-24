@@ -314,9 +314,7 @@ class UniverseForm extends Component {
           <FlexShrink className={this.state.currentView === "Primary" ? 'stepper-cell active-stepper-cell' : 'stepper-cell'}>
             1. Primary Cluster
           </FlexShrink>
-          <FlexShrink className={this.state.currentView === "Primary" ? 'stepper-cell' : 'stepper-cell active-stepper-cell'}
-            data-yb-beta
-          >
+          <FlexShrink className={this.state.currentView === "Primary" ? 'stepper-cell' : 'stepper-cell active-stepper-cell'}>
             2. Read Replica (Beta)
           </FlexShrink>
         </FlexContainer>
@@ -348,7 +346,7 @@ class UniverseForm extends Component {
     }
 
     if (this.state.currentView === "Primary" && type !== "Edit" && type !== "Async") {
-      asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" data-yb-beta btnText={"Configure Read Replica (Beta)"} onClick={this.configureReadOnlyCluster}/>;
+      asyncReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Configure Read Replica (Beta)"} onClick={this.configureReadOnlyCluster}/>;
     }
 
     const {universe: {currentUniverse: {data: {universeDetails}}}, modal } = this.props;
