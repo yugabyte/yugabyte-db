@@ -34,7 +34,8 @@ export default class YBLabel extends Component {
       hasError = touched && isNonEmptyString(errorMsg);
     }
     return (
-      <div className={`form-group ${ hasError ? 'has-error' : ''} ${ this.props.type === "hidden" ? 'form-group-hidden' : ''}`} onClick={onLabelClick}>
+      <div className={`form-group ${ hasError ? 'has-error' : ''} ${ this.props.type === "hidden" ? 'form-group-hidden' : ''}`}
+        data-yb-label={label} onClick={onLabelClick}>
         {label &&
           <label className="form-item-label">
             {label}
