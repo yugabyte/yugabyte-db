@@ -325,7 +325,7 @@ Status MemTableList::InstallMemtableFlushResults(
     ColumnFamilyData* cfd, const MutableCFOptions& mutable_cf_options,
     const autovector<MemTable*>& mems, VersionSet* vset, InstrumentedMutex* mu,
     uint64_t file_number, autovector<MemTable*>* to_delete,
-    Directory* db_directory, LogBuffer* log_buffer) {
+    Directory* db_directory, LogBuffer* log_buffer, const FileNumbersHolder& file_number_holder) {
   AutoThreadOperationStageUpdater stage_updater(
       ThreadStatus::STAGE_MEMTABLE_INSTALL_FLUSH_RESULTS);
   mu->AssertHeld();
@@ -345,6 +345,7 @@ Status MemTableList::InstallMemtableFlushResults(
         frontiers = temp_range->Clone();
       }
     }
+    mems[i]->file_number_holder_ = file_number_holder;
     mems[i]->file_number_ = file_number;
   }
   if (frontiers) {
@@ -400,6 +401,7 @@ Status MemTableList::InstallMemtableFlushResults(
         m->edit_.Clear();
         num_flush_not_started_++;
         m->file_number_ = 0;
+        m->file_number_holder_.Reset();
         imm_flush_needed.store(true, std::memory_order_release);
       }
       ++mem_id;

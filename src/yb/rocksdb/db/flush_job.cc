@@ -195,7 +195,7 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
     Status s = cfd_->imm()->InstallMemtableFlushResults(
         cfd_, mutable_cf_options_, mems, versions_, db_mutex_,
         meta.fd.GetNumber(), &job_context_->memtables_to_free, db_directory_,
-        log_buffer_);
+        log_buffer_, *fnum);
     if (!s.ok()) {
       fnum = s;
     }
