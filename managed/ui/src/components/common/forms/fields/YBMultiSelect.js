@@ -31,9 +31,8 @@ export class YBNewMultiSelect extends Component {
   }
 
   render() {
-    const { input, options, isMulti, isReadOnly, selectValChanged } = this.props;
+    const { input, options, isMulti, isReadOnly, selectValChanged, ...otherProps } = this.props;
     const self = this;
-
     function onChange(val) {
       val = isMulti ? val: val.slice(-1);
       if (isFunction(self.props.input.onChange)) {
@@ -92,7 +91,9 @@ export class YBNewMultiSelect extends Component {
         options={options} 
         disabled={isReadOnly} 
         isMulti={true} 
-        onBlur={() => {}} onChange={onChange} />
+        onBlur={() => {}}
+        onChange={onChange}
+        {...otherProps} />
     );
   }
 }
