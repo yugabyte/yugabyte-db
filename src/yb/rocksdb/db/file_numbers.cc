@@ -24,10 +24,7 @@ std::string FileNumbersHolder::ToString() const {
 FileNumbersHolder FileNumbersProvider::NewFileNumber() {
   // No need to lock because VersionSet::next_file_number_ is atomic.
   auto file_number = versions_->NewFileNumber();
-  {
-    std::lock_guard<SpinMutex> l(mutex_);
-    fset_.insert(file_number);
-  }
+  AddFileNumber(file_number);
   auto holder = FileNumbersHolder(this);
   holder.Add(file_number);
   return holder;
@@ -56,9 +53,17 @@ std::string FileNumbersProvider::ToString() const {
   return yb::ToString(fset_);
 }
 
+void FileNumbersProvider::AddFileNumber(FileNumber file_number) {
+  std::lock_guard<SpinMutex> l(mutex_);
+  fset_.insert(file_number);
+}
+
 void FileNumbersProvider::RemoveFileNumber(FileNumber file_number) {
   std::lock_guard<SpinMutex> l(mutex_);
-  fset_.erase(file_number);
+  auto iter = fset_.find(file_number);
+  if (iter != fset_.end()) {
+    fset_.erase(iter);
+  }
 }
 
 }  // namespace rocksdb

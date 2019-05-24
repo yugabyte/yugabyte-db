@@ -34,6 +34,7 @@
 #include <vector>
 
 #include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/skiplist.h"
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/db.h"
@@ -371,9 +372,12 @@ class MemTable {
   std::atomic<uint64_t> num_deletes_;
 
   // These are used to manage memtable flushes to storage
-  bool flush_in_progress_; // started the flush
-  bool flush_completed_;   // finished the flush
-  uint64_t file_number_;    // filled up after flush is complete
+  bool flush_in_progress_;        // started the flush
+  bool flush_completed_;          // finished the flush
+  uint64_t file_number_;          // filled up after flush is complete
+  // Filled up after flush is complete to prevent file from being deleted util it is added into the
+  // VersionSet.
+  FileNumbersHolder file_number_holder_;
 
   // The updates to be applied to the transaction log when this
   // memtable is flushed to storage.
