@@ -1492,8 +1492,7 @@ public class PlacementInfoUtil {
         int mastersAdded = 0;
         int saturated = 0;
         int count = 0;
-        
-        while (mastersInRegion == mastersAdded || saturated == numAzsInRegion ) {
+        while (mastersInRegion != mastersAdded && saturated != numAzsInRegion ) {
           saturated = 0;
           for (PlacementAZ pa : pr.azList) {
             // The number of masters in an AZ cannot exceed the number of tservers.
@@ -1552,7 +1551,7 @@ public class PlacementInfoUtil {
     for (PlacementCloud pc : pi.cloudList) {
       for (PlacementRegion pr : pc.regionList) {
         for (PlacementAZ pa : pr.azList) {
-          azToNumTservers.put(pa.uuid, pa.replicationFactor);
+          azToNumTservers.put(pa.uuid, pa.numNodesInAZ);
         }
       }
     }
