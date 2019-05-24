@@ -6720,6 +6720,53 @@ TEST_F(DBTest, DontDeletePendingOutputs) {
   Compact("a", "b");
 }
 
+TEST_F(DBTest, DontDeletePendingOutputsDuringConcurrentFlushes) {
+  const auto kConcurrentFlushes = 4;
+  const auto kFlushIterationsPerThread = 300;
+
+  Options options;
+  options.env = env_;
+  options.create_if_missing = true;
+  options.max_background_flushes = kConcurrentFlushes;
+
+  DestroyAndReopen(options);
+
+  std::atomic<bool> stop_requested(false);
+
+  std::vector<std::thread> flush_threads;
+
+  auto purge_thread = std::thread([this, &stop_requested] {
+    LOG(INFO) << "Started purge thread";
+    while (!stop_requested) {
+      JobContext job_context(0);
+      dbfull()->TEST_LockMutex();
+      dbfull()->FindObsoleteFiles(&job_context, true /*force*/);
+      dbfull()->TEST_UnlockMutex();
+      if (job_context.HaveSomethingToDelete()) {
+        dbfull()->PurgeObsoleteFiles(job_context);
+      }
+      job_context.Clean();
+    }
+  });
+
+  for (int i = 0; i < kConcurrentFlushes; ++i) {
+    flush_threads.emplace_back([this] {
+      for (int iter = 0; iter < kFlushIterationsPerThread; ++iter) {
+        ASSERT_OK(Put("a", "begin"));
+        ASSERT_OK(Put("z", "end"));
+        ASSERT_OK(Flush());
+      }
+    });
+  }
+
+  for (auto& thread : flush_threads) {
+    thread.join();
+  }
+
+  stop_requested = true;
+  purge_thread.join();
+}
+
 #ifndef ROCKSDB_LITE
 TEST_F(DBTest, DontDeleteMovedFile) {
   // This test triggers move compaction and verifies that the file is not

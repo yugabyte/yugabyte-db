@@ -24,45 +24,66 @@
 namespace rocksdb {
 
 typedef uint64_t FileNumber;
-typedef std::unordered_set<FileNumber> FileNumberSet;
+typedef std::unordered_multiset<FileNumber> FileNumberSet;
 
 class VersionSet;
 
 // Utility interface used by FileNumbersHolder and FileNumbersProvider (see below).
-class FileNumberRemover {
+class FileNumberAdderRemover {
  public:
+  virtual void AddFileNumber(FileNumber file_number) = 0;
   virtual void RemoveFileNumber(FileNumber file_number) = 0;
-  virtual ~FileNumberRemover() {}
+  virtual ~FileNumberAdderRemover() {}
 };
 
-// RAII wrapper which holds file numbers and passes them to remover_->RemoveFileNumber
-// when destroyed.
+// RAII wrapper which holds file numbers and passes them to adder_remover_->RemoveFileNumber
+// when destroyed. Also calls adder_remover_->AddFileNumber on copy.
 class FileNumbersHolder {
  public:
-  FileNumbersHolder(const FileNumbersHolder&) = delete;
-  FileNumbersHolder& operator=(const FileNumbersHolder&) = delete;
+  FileNumbersHolder(const FileNumbersHolder& rhs) :
+    adder_remover_(rhs.adder_remover_), file_numbers_(rhs.file_numbers_) {
+    HoldFileNumbers();
+  }
+
+  FileNumbersHolder& operator=(const FileNumbersHolder& rhs) {
+    if (&rhs != this) {
+      Reset();
+      adder_remover_ = rhs.adder_remover_;
+      file_numbers_ = rhs.file_numbers_;
+      HoldFileNumbers();
+    }
+    return *this;
+  }
 
   // Default constructor creates empty holder which is not intended to add any file numbers.
   FileNumbersHolder() {}
   // Creates holder which can be used to add file numbers.
-  explicit FileNumbersHolder(FileNumberRemover* remover) : remover_(remover) {}
+  explicit FileNumbersHolder(FileNumberAdderRemover* remover) : adder_remover_(remover) {}
 
   FileNumbersHolder(FileNumbersHolder&& rhs)
-      : remover_(std::move(rhs.remover_)), file_numbers_(std::move(rhs.file_numbers_)) {
+      : adder_remover_(std::move(rhs.adder_remover_)), file_numbers_(std::move(rhs.file_numbers_)) {
     rhs.file_numbers_.clear();
   }
 
   FileNumbersHolder& operator=(FileNumbersHolder&& rhs) {
-    remover_ = std::move(rhs.remover_);
-    file_numbers_ = std::move(rhs.file_numbers_);
-    rhs.file_numbers_.clear();
+    if (&rhs != this) {
+      Reset();
+      adder_remover_ = std::move(rhs.adder_remover_);
+      file_numbers_ = std::move(rhs.file_numbers_);
+      rhs.file_numbers_.clear();
+    }
     return *this;
   }
 
   ~FileNumbersHolder() {
+    Reset();
+  }
+
+  void Reset() {
     for (auto file_number : file_numbers_) {
-      remover_->RemoveFileNumber(file_number);
+      adder_remover_->RemoveFileNumber(file_number);
     }
+    file_numbers_.clear();
   }
 
   // Returns last number added.
@@ -80,7 +101,13 @@ class FileNumbersHolder {
   std::string ToString() const;
 
  private:
-  FileNumberRemover* remover_;
+  void HoldFileNumbers() {
+    for (auto file_number : file_numbers_) {
+      adder_remover_->AddFileNumber(file_number);
+    }
+  }
+
+  FileNumberAdderRemover* adder_remover_;
   boost::container::small_vector<FileNumber, 1> file_numbers_;
 };
 
@@ -89,7 +116,7 @@ class FileNumbersHolder {
 // destroyed, corresponding file numbers will be removed from internal storage. Also provides a
 // function to check whether specific file number is contained in internal storage.
 // See DBImpl::pending_outputs_ description for more details on usage and application.
-class FileNumbersProvider : public FileNumberRemover {
+class FileNumbersProvider : public FileNumberAdderRemover {
  public:
   explicit FileNumbersProvider(VersionSet* versions)
       : versions_(versions) {}
@@ -105,6 +132,9 @@ class FileNumbersProvider : public FileNumberRemover {
 
   // Check whether we have have file_number in internal storage.
   bool HasFileNumber(FileNumber file_number) const;
+
+  // Add file_number to internal storage.
+  void AddFileNumber(FileNumber file_number) override;
 
   // Remove file_number from internal storage.
   void RemoveFileNumber(FileNumber file_number) override;
