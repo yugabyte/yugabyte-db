@@ -1034,6 +1034,104 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
   }
 
   @Test
+  public void testK8sSelectMastersSingleZone() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
+            String.format("%s@customer.com", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZoneHelper(az1.uuid, pi);
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 3;
+    PlacementInfoUtil.selectNumMastersAZ(pi, 3);
+    assertEquals(3, pi.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor);
+  }
+
+  @Test
+  public void testK8sSelectMastersMultiRegion() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
+            String.format("%s@customer.com", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.create(r2, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZoneHelper(az1.uuid, pi);
+    PlacementInfoUtil.addPlacementZoneHelper(az2.uuid, pi);
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 1;
+    pi.cloudList.get(0).regionList.get(1).azList.get(0).numNodesInAZ = 2;
+    PlacementInfoUtil.selectNumMastersAZ(pi, 3);
+    assertEquals(1, pi.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor);
+    assertEquals(2, pi.cloudList.get(0).regionList.get(1).azList.get(0).replicationFactor);
+  }
+
+  @Test
+  public void testK8sSelectMastersMultiZone() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
+            String.format("%s@customer.com", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.create(r1, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZoneHelper(az1.uuid, pi);
+    PlacementInfoUtil.addPlacementZoneHelper(az2.uuid, pi);
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 1;
+    pi.cloudList.get(0).regionList.get(0).azList.get(1).numNodesInAZ = 2;
+    PlacementInfoUtil.selectNumMastersAZ(pi, 3);
+    assertEquals(1, pi.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor);
+    assertEquals(2, pi.cloudList.get(0).regionList.get(0).azList.get(1).replicationFactor);
+  }
+
+  @Test
+  public void testK8sGetMastersPerAZ() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
+            String.format("%s@customer.com", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.create(r1, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZoneHelper(az1.uuid, pi);
+    PlacementInfoUtil.addPlacementZoneHelper(az2.uuid, pi);
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 1;
+    pi.cloudList.get(0).regionList.get(0).azList.get(1).numNodesInAZ = 2;
+    Map<UUID, Integer> expectedMastersPerAZ = new HashMap();
+    expectedMastersPerAZ.put(az1.uuid, 1);
+    expectedMastersPerAZ.put(az2.uuid, 2);
+    PlacementInfoUtil.selectNumMastersAZ(pi, 3);
+    Map<UUID, Integer> mastersPerAZ = PlacementInfoUtil.getNumMasterPerAZ(pi);
+    assertEquals(expectedMastersPerAZ, mastersPerAZ);
+  }
+
+  @Test
+  public void testK8sGetTServersPerAZ() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
+            String.format("%s@customer.com", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.create(r1, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZoneHelper(az1.uuid, pi);
+    PlacementInfoUtil.addPlacementZoneHelper(az2.uuid, pi);
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 1;
+    pi.cloudList.get(0).regionList.get(0).azList.get(1).numNodesInAZ = 2;
+    Map<UUID, Integer> expectedTServersPerAZ = new HashMap();
+    expectedTServersPerAZ.put(az1.uuid, 1);
+    expectedTServersPerAZ.put(az2.uuid, 2);
+    PlacementInfoUtil.selectNumMastersAZ(pi, 3);
+    Map<UUID, Integer> tServersPerAZ = PlacementInfoUtil.getNumTServerPerAZ(pi);
+    assertEquals(expectedTServersPerAZ, tServersPerAZ);
+  }
+
+  @Test
   public void testK8sGetConfigPerAZ() {
     String customerCode = String.valueOf(customerIdx.nextInt(99999));
     Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
