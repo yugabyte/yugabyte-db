@@ -1104,7 +1104,7 @@ export default class ClusterFields extends Component {
 
     return (
       <div>
-        <div className="form-section" data-yb-section="cloud-config">
+        <div className="form-section">
           <Row>
             <Col md={6}>
               <h4 style={{marginBottom: 40}}>Cloud Configuration</h4>
@@ -1113,13 +1113,10 @@ export default class ClusterFields extends Component {
                 {universeNameField}
                 {providerNameField}
                 <Field name={`${clusterType}.regionList`} component={YBMultiSelectWithLabel} options={universeRegionList}
-                  label="Regions" input={{'data-yb-field': "regions"}} isMulti={true} selectValChanged={this.regionListChanged}
-                  providerSelected={currentProviderUUID}/>
+                  label="Regions" isMulti={true} selectValChanged={this.regionListChanged} providerSelected={currentProviderUUID}/>
                 { clusterType === "async"
-                  ? [<Field key="numNodes" name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}
-                      className={getPromiseState(this.props.universe.universeConfigTemplate).isLoading() ? "readonly" : ""}
-                      data-yb-field="nodes" label={this.state.isKubernetesUniverse ? "Pods" : "Nodes"}
-                      onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
+                  ? [<Field key="numNodes" name={`${clusterType}.numNodes`} type="text" component={YBControlledNumericInputWithLabel}  className={getPromiseState(this.props.universe.universeConfigTemplate).isLoading() ? "readonly" : ""}
+                      label={this.state.isKubernetesUniverse ? "Pods" : "Nodes"} onInputChanged={this.numNodesChanged} onLabelClick={this.numNodesClicked} val={this.state.numNodes}
                       minVal={Number(this.state.replicationFactor)} />,
                     <Field key="replicationFactor" name={`${clusterType}.replicationFactor`} type="text" component={YBRadioButtonBarWithLabel} options={[1, 2, 3, 4, 5, 6, 7]}
                       label="Replication Factor" initialValue={this.state.replicationFactor} onSelect={this.replicationFactorChanged} isReadOnly={isFieldReadOnly}/>]
@@ -1149,7 +1146,7 @@ export default class ClusterFields extends Component {
             </Col>
           </Row>
         </div>
-        <div className="form-section" data-yb-section="instance-config">
+        <div className="form-section">
           <Row>
             <Col md={12}>
               <h4>Instance Configuration</h4>
@@ -1166,7 +1163,7 @@ export default class ClusterFields extends Component {
               {deviceDetail &&
                 <div className="form-right-aligned-labels">
                   <div className="form-inline-controls">
-                    <div className="form-group universe-form-instance-info" data-yb-field="volumn-info">
+                    <div className="form-group universe-form-instance-info">
                       <label className="form-item-label form-item-label-shrink">Volume Info</label>
                       {deviceDetail}
                     </div>
@@ -1197,7 +1194,7 @@ export default class ClusterFields extends Component {
             </Col>
           </Row>
         </div>
-        <div className="form-section" data-yb-section="advanced">
+        <div className="form-section">
           <Row>
             <Col md={12}>
               <h4>Advanced</h4>
@@ -1218,7 +1215,7 @@ export default class ClusterFields extends Component {
             }
           </Row>
         </div>
-        <div className="form-section" data-yb-section="g-flags">
+        <div className="form-section">
           {gflagArray}
         </div>
         {currentProviderCode === "aws" && clusterType === "primary" && <div className="form-section no-border">
