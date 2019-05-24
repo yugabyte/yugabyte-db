@@ -5,10 +5,13 @@ import {Button} from 'react-bootstrap';
 export default class YBButton extends PureComponent {
 
   render() {
-    const {btnClass, btnText, btnIcon, btnSize, btnType, btnStyle, disabled} = this.props;
+    const {btnClass, btnText, btnIcon, btnSize, btnType, btnStyle, disabled, ...otherProps} = this.props;
     return (
       <Button bsClass={btnClass} type={btnType}
-              onClick={this.props.onClick} bsSize={btnSize} bsStyle={btnStyle} disabled={disabled}>
+              onClick={this.props.onClick} bsSize={btnSize} 
+              bsStyle={btnStyle} disabled={disabled}
+              {...otherProps}
+      >
         <i className={btnIcon}></i>
         {btnText}
       </Button>
