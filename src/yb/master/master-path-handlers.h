@@ -94,12 +94,13 @@ class MasterPathHandlers {
   // Struct used to store the number of nodes and tablets in an availability zone.
   struct ZoneTabletCounts {
     TabletCounts tablet_counts;
-    uint32_t node_count;
+    uint32_t node_count = 1;
+    uint32_t active_tablets_count;
 
-    ZoneTabletCounts();
+    ZoneTabletCounts() = default;
 
     // Create a ZoneTabletCounts object from the TabletCounts of a TServer (one node).
-    explicit ZoneTabletCounts(const TabletCounts& tablet_counts);
+    ZoneTabletCounts(const TabletCounts& tablet_counts, uint32_t active_tablets_count);
 
     void operator+=(const ZoneTabletCounts& other);
 

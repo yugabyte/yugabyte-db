@@ -100,16 +100,17 @@ void MasterPathHandlers::TabletCounts::operator+=(const TabletCounts& other) {
   system_tablet_followers += other.system_tablet_followers;
 }
 
-MasterPathHandlers::ZoneTabletCounts::ZoneTabletCounts(): tablet_counts(), node_count(1) {
-}
-
-MasterPathHandlers::ZoneTabletCounts::ZoneTabletCounts(const TabletCounts& tablet_counts)
-  : tablet_counts(tablet_counts), node_count(1) {
+MasterPathHandlers::ZoneTabletCounts::ZoneTabletCounts(
+  const TabletCounts& tablet_counts,
+  uint32_t active_tablets_count
+  ) : tablet_counts(tablet_counts),
+      active_tablets_count(active_tablets_count) {
 }
 
 void MasterPathHandlers::ZoneTabletCounts::operator+=(const ZoneTabletCounts& other) {
   tablet_counts += other.tablet_counts;
   node_count += other.node_count;
+  active_tablets_count += other.active_tablets_count;
 }
 
 void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
@@ -190,7 +191,7 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
           << "      <th>Region</th>\n"
           << "      <th>Zone</th>\n"
           << "      <th>System Tablet-Peers / Leaders</th>\n"
-          << "      <th>Total Tablet-Peers</th>\n"
+          << "      <th>Active Tablet-Peers</th>\n"
           << "    </tr>\n";
 }
 
@@ -279,7 +280,7 @@ void MasterPathHandlers::DisplayTabletZonesTable(
           << "    <th>Total Nodes</th>\n"
           << "    <th>User Tablet-Peers / Leaders</th>\n"
           << "    <th>System Tablet-Peers / Leaders</th>\n"
-          << "    <th>Total Tablet-Peers</th>\n"
+          << "    <th>Active Tablet-Peers</th>\n"
           << "  </tr>\n";
 
   for (const auto& cloud_iter : cloud_tree) {
@@ -322,7 +323,7 @@ void MasterPathHandlers::DisplayTabletZonesTable(
         *output << "  <td>" << counts.node_count << "</td>\n"
                 << "  <td>" << user_total << " / " << user_leaders << "</td>\n"
                 << "  <td>" << system_total << " / " << system_leaders << "</td>\n"
-                << "  <td>" << user_total + system_total << "</td>\n"
+                << "  <td>" << counts.active_tablets_count << "</td>\n"
                 << "</tr>\n";
 
         needs_new_row = true;
@@ -348,7 +349,7 @@ MasterPathHandlers::ZoneTabletCounts::CloudTree MasterPathHandlers::CalculateTab
     auto tablet_count_search = tablet_count_map.find(descriptor->permanent_uuid());
     ZoneTabletCounts counts = tablet_count_search == tablet_count_map.end()
         ? ZoneTabletCounts()
-        : ZoneTabletCounts(tablet_count_search->second);
+        : ZoneTabletCounts(tablet_count_search->second, descriptor->num_live_replicas());
 
     auto cloud_iter = cloud_tree.find(cloud);
     if (cloud_iter == cloud_tree.end()) {
