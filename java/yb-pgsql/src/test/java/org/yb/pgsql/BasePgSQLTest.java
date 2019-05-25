@@ -639,12 +639,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected void createSimpleTable(String tableName) throws SQLException {
     try (Statement statement = connection.createStatement()) {
-      String sql =
-          "CREATE TABLE " + tableName + "(h bigint, r float, vi int, vs text, PRIMARY KEY (h, r))";
-      LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
-      statement.execute(sql);
-      LOG.info("Table creation finished: " + tableName);
+      createSimpleTable(statement, tableName);
     }
+  }
+
+  protected void createSimpleTable(Statement statement, String tableName) throws SQLException {
+    String sql =
+        "CREATE TABLE " + tableName + "(h bigint, r float, vi int, vs text, PRIMARY KEY (h, r))";
+    LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
+    statement.execute(sql);
+    LOG.info("Table creation finished: " + tableName);
   }
 
   /**

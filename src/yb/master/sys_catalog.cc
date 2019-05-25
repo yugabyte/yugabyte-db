@@ -685,5 +685,10 @@ Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
   return !writer->req().pgsql_write_batch().empty() ? SyncWrite(writer.get()) : Status::OK();
 }
 
+Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
+  tablet_peer()->tablet_metadata()->RemoveTable(table_id);
+  return Status::OK();
+}
+
 } // namespace master
 } // namespace yb

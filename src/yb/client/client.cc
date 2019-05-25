@@ -548,10 +548,14 @@ Status YBClient::CreateNamespaceIfNotExists(const std::string& namespace_name,
 }
 
 Status YBClient::DeleteNamespace(const std::string& namespace_name,
-                                 const boost::optional<YQLDatabase>& database_type) {
+                                 const boost::optional<YQLDatabase>& database_type,
+                                 const std::string& namespace_id) {
   DeleteNamespaceRequestPB req;
   DeleteNamespaceResponsePB resp;
   req.mutable_namespace_()->set_name(namespace_name);
+  if (!namespace_id.empty()) {
+    req.mutable_namespace_()->set_id(namespace_id);
+  }
   if (database_type) {
     req.set_database_type(*database_type);
   }

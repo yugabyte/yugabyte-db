@@ -142,7 +142,7 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
-using namespace std::literals;
+using namespace std::literals; // NOLINT
 
 DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
              "Timeout used for the Master->TS async rpc calls.");
@@ -3646,18 +3646,20 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
 
   RETURN_NOT_OK(CheckOnline());
 
+  if (req->has_database_type() && req->database_type() == YQL_DATABASE_PGSQL) {
+    return DeleteYsqlDatabase(req, resp, rpc);
+  }
+
   scoped_refptr<NamespaceInfo> ns;
 
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
   RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &ns), resp);
 
-  // Check for PostgreSQL database.
   if (ns->database_type() == YQL_DATABASE_PGSQL) {
-    if (!req->has_database_type() || req->database_type() != YQL_DATABASE_PGSQL) {
-      Status s = STATUS(NotFound, "PostgreSQL database not found", ns->name());
-      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
-    }
+    // A YSQL database is found, but this rpc requests to delete a non-PostgreSQL keyspace.
+    Status s = STATUS(NotFound, "Namespace not found", ns->name());
+    return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
   }
 
   TRACE("Locking namespace");
@@ -3712,6 +3714,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   // Remove it from the maps.
   {
     TRACE("Removing from maps");
+
     std::lock_guard<LockType> l_map(lock_);
     if (namespace_names_map_.erase(ns->name()) < 1) {
       PANIC_RPC(rpc, "Could not remove namespace from map, name=" + l->data().name());
@@ -3732,6 +3735,133 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
 
   LOG(INFO) << "Successfully deleted namespace " << ns->ToString()
             << " per request from " << RequestorString(rpc);
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
+                                          DeleteNamespaceResponsePB* resp,
+                                          rpc::RpcContext* rpc) {
+  // Lookup database.
+  scoped_refptr<NamespaceInfo> database;
+  RETURN_NAMESPACE_NOT_FOUND(FindNamespace(req->namespace_(), &database), resp);
+
+  // Make sure this is a YSQL database.
+  if (database->database_type() != YQL_DATABASE_PGSQL) {
+    // A non-YSQL namespace is found, but the rpc requests to drop a YSQL database.
+    Status s = STATUS(NotFound, "YSQL database not found", database->name());
+    return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
+  }
+
+  // Lock database before removing content.
+  TRACE("Locking database");
+  auto l = database->LockForWrite();
+
+  // Delete all user tables in the database.
+  TRACE("Delete all tables in YSQL database");
+  RETURN_NOT_OK(DeleteYsqlDBTables(database, rpc));
+
+  // Dropping database.
+  TRACE("Updating metadata on disk");
+  // Update sys-catalog.
+  Status s = sys_catalog_->DeleteItem(database.get(), leader_ready_term_);
+  if (!s.ok()) {
+    // The mutation will be aborted when 'l' exits the scope on early return.
+    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys-catalog: $0",
+                                     s.ToString()));
+    LOG(WARNING) << s.ToString();
+    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+  }
+
+  // Remove it from the maps.
+  {
+    CHECK(FindPtrOrNull(namespace_names_map_, database->name()) == nullptr)
+      << "YSQL database name should not be included in namespace_names_map_. "
+      << "If included, its name must be removed from map here when dropping";
+
+    TRACE("Removing from maps");
+    std::lock_guard<LockType> l_map(lock_);
+    if (namespace_ids_map_.erase(database->id()) < 1) {
+      PANIC_RPC(rpc, "Could not remove namespace from map, name=" + l->data().name());
+    }
+  }
+
+  // Update the in-memory state.
+  TRACE("Committing in-memory state");
+  l->Commit();
+
+  // DROP completed. Return status.
+  LOG(INFO) << "Successfully deleted namespace " << database->ToString()
+            << " per request from " << RequestorString(rpc);
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
+                                          rpc::RpcContext* rpc) {
+  vector<scoped_refptr<TableInfo>> tables;
+  vector<scoped_refptr<DeletedTableInfo>> deleted_tables;
+
+  // First, delete all tablets of user tables in the database.
+  {
+    // Lock the catalog.
+    boost::shared_lock<LockType> catalog_lock(lock_);
+
+    // Delete tablets for each of user tables.
+    for (const TableInfoMap::value_type& entry : table_ids_map_) {
+      scoped_refptr<TableInfo> table = entry.second;
+      auto l = table->LockForWrite();
+      if (l->data().namespace_id() != database->id() || l->data().started_deleting()) {
+        continue;
+      }
+
+      if (IsSystemTable(*table)) {
+        RETURN_NOT_OK(sys_catalog_->DeleteYsqlSystemTable(table->id()));
+        continue;
+      }
+
+      TRACE("Updating metadata on disk");
+      // Update the metadata for the on-disk state.
+      l->mutable_data()->set_state(SysTablesEntryPB::DELETING,
+                                   Substitute("Started deleting at $0", LocalTimeAsString()));
+
+      // Update sys-catalog with the removed table state.
+      Status s = sys_catalog_->UpdateItem(table.get(), leader_ready_term_);
+      if (!s.ok()) {
+        // The mutation will be aborted when 'l' exits the scope on early return.
+        s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
+                                         s.ToString()));
+        LOG(WARNING) << s.ToString();
+      }
+
+      table->AbortTasks();
+      scoped_refptr<DeletedTableInfo> deleted_table(new DeletedTableInfo(table.get()));
+
+      TRACE("Add deleted table tablets into tablet wait list");
+      deleted_table->AddTabletsToMap(&deleted_tablet_map_);
+
+      // For regular (indexed) table, insert table info and lock in the front of the list. Else for
+      // index table, append them to the end. We do so so that we will commit and delete the indexed
+      // table first before its indexes.
+      if (l->data().pb.indexed_table_id().empty()) {
+        tables.insert(tables.begin(), table);
+        deleted_tables.insert(deleted_tables.begin(), deleted_table);
+      } else {
+        tables.push_back(table);
+        deleted_tables.push_back(deleted_table);
+      }
+    }
+  }
+
+  // Now, delete all tables.
+  for (int i = 0; i < deleted_tables.size(); i++) {
+    // The table lock (l) and the global lock (lock_) must be released for the next call.
+    MarkTableDeletedIfNoTablets(deleted_tables[i], tables[i].get());
+
+    // Send a DeleteTablet() request to each tablet replica in the table.
+    DeleteTabletsAndSendRequests(tables[i]);
+  }
+
+  // Invoke the tasks and return.
+  background_tasks_->Wake();
   return Status::OK();
 }
 

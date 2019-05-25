@@ -278,6 +278,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                  DeleteNamespaceResponsePB* resp,
                                  rpc::RpcContext* rpc);
 
+  // Delete YSQL database tables.
+  CHECKED_STATUS DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
+                                    DeleteNamespaceResponsePB* resp,
+                                    rpc::RpcContext* rpc);
+
+  // Delete all user tables in YSQL database.
+  CHECKED_STATUS DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
+                                    rpc::RpcContext* rpc);
+
   // List all the current namespaces.
   CHECKED_STATUS ListNamespaces(const ListNamespacesRequestPB* req,
                                 ListNamespacesResponsePB* resp);

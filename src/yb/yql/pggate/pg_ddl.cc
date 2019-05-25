@@ -62,17 +62,17 @@ Status PgCreateDatabase::Exec() {
 
 PgDropDatabase::PgDropDatabase(PgSession::ScopedRefPtr pg_session,
                                const char *database_name,
-                               bool if_exist)
+                               PgOid database_oid)
     : PgDdl(pg_session),
       database_name_(database_name),
-      if_exist_(if_exist) {
+      database_oid_(database_oid) {
 }
 
 PgDropDatabase::~PgDropDatabase() {
 }
 
 Status PgDropDatabase::Exec() {
-  return pg_session_->DropDatabase(database_name_, if_exist_);
+  return pg_session_->DropDatabase(database_name_, database_oid_);
 }
 
 //--------------------------------------------------------------------------------------------------

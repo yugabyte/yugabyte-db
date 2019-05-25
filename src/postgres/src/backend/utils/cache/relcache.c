@@ -64,6 +64,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/schemapg.h"
 #include "catalog/storage.h"
+#include "commands/dbcommands.h"
 #include "commands/policy.h"
 #include "commands/trigger.h"
 #include "miscadmin.h"
@@ -1121,6 +1122,25 @@ void YBPreloadRelCache()
 	Oid           relid;
 	HeapTuple     pg_class_tuple;
 	Form_pg_class relp;
+
+	/*
+	 * Make sure that the connection is still valid.
+	 * - If the name is already dropped from the cache, raise error.
+	 * - If the name is still in the cache, we look for the associated OID in the system.
+	 *   Raise error if that OID is not MyDatabaseId, which must be either invalid or new DB.
+	 */
+	Oid dboid = InvalidOid;
+	const char *dbname = get_database_name(MyDatabaseId);
+	if (dbname != NULL)
+	{
+		dboid = get_database_oid(dbname, true);
+	}
+	if (dboid != MyDatabaseId) {
+		ereport(FATAL,
+						(errcode(ERRCODE_CONNECTION_FAILURE),
+						 errmsg("Could not reconnect to database"),
+						 errhint("Database might have been dropped by another user")));
+	}
 
 	/*
 	 * 1. Load up the (partial) relation info from pg_class.
