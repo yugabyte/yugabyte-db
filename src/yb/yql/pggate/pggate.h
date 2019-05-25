@@ -148,7 +148,7 @@ class PgApiImpl {
   // Drop database.
   CHECKED_STATUS NewDropDatabase(PgSession *pg_session,
                                  const char *database_name,
-                                 bool if_exist,
+                                 PgOid database_oid,
                                  PgStatement **handle);
   CHECKED_STATUS ExecDropDatabase(PgStatement *handle);
 

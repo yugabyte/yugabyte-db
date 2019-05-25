@@ -136,9 +136,9 @@ YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle) {
 
 YBCStatus YBCPgNewDropDatabase(YBCPgSession pg_session,
                                const char *database_name,
-                               bool if_exist,
+                               const YBCPgOid database_oid,
                                YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->NewDropDatabase(pg_session, database_name, if_exist, handle));
+  return ToYBCStatus(pgapi->NewDropDatabase(pg_session, database_name, database_oid, handle));
 }
 
 YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle) {

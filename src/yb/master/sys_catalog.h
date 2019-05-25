@@ -157,6 +157,9 @@ class SysCatalogTable {
                                 const TableId& target_table_id,
                                 int64_t leader_term);
 
+  // Drop YSQL table by removing the table metadata in sys-catalog.
+  CHECKED_STATUS DeleteYsqlSystemTable(const string& table_id);
+
  private:
   friend class CatalogManager;
 

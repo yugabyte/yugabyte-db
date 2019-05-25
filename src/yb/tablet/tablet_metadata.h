@@ -318,6 +318,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
                 const boost::optional<IndexInfo>& index_info,
                 const uint32_t schema_version);
 
+  void RemoveTable(const std::string& table_id);
+
   // Set / get the remote bootstrap / tablet data state.
   void set_tablet_data_state(TabletDataState state);
   TabletDataState tablet_data_state() const;

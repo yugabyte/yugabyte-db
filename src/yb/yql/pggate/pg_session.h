@@ -70,7 +70,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                 PgOid database_oid,
                                 PgOid source_database_oid,
                                 PgOid nexte_oid);
-  CHECKED_STATUS DropDatabase(const std::string& database_name, bool if_exist);
+  CHECKED_STATUS DropDatabase(const std::string& database_name, PgOid database_oid);
 
   CHECKED_STATUS ReserveOids(PgOid database_oid,
                              PgOid nexte_oid,
@@ -89,7 +89,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                      int64_t last_val,
                                      bool is_called);
 
-
   CHECKED_STATUS UpdateSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
                                      uint64_t ysql_catalog_version,
@@ -106,6 +105,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                    bool *is_called);
 
   CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
+
+  CHECKED_STATUS DeleteDBSequences(int64_t db_oid);
 
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.

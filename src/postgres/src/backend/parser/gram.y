@@ -853,6 +853,7 @@ stmt :
 			| DeallocateStmt
 			| DeleteStmt
 			| DropStmt
+			| DropdbStmt
 			| ExecuteStmt
 			| ExplainStmt
 			| GrantStmt
@@ -939,7 +940,6 @@ stmt :
 			| DoStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropCastStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropdbStmt { parser_ybc_signal_unsupported(@1, "This statement", 717); }
 			| DropOpClassStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropOpFamilyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropOwnedStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -10779,7 +10779,6 @@ AlterDatabaseSetStmt:
 
 DropdbStmt: DROP DATABASE database_name
 				{
-					parser_ybc_signal_unsupported(@1, "DROP DATABASE", 717);
 					DropdbStmt *n = makeNode(DropdbStmt);
 					n->dbname = $3;
 					n->missing_ok = false;
@@ -10787,7 +10786,6 @@ DropdbStmt: DROP DATABASE database_name
 				}
 			| DROP DATABASE IF_P EXISTS database_name
 				{
-					parser_ybc_signal_unsupported(@1, "DROP DATABASE", 717);
 					DropdbStmt *n = makeNode(DropdbStmt);
 					n->dbname = $5;
 					n->missing_ok = true;

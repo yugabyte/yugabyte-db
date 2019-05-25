@@ -59,3 +59,18 @@ HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 -- Test case for ALTER DATABASE supported options
 --
 ALTER DATABASE test_1 ALLOW_CONNECTIONS = FALSE CONNECTION LIMIT = 10;
+--
+-- DROPPING DATABASE cannot be done within a transaction
+--
+BEGIN TRANSACTION;
+DROP DATABASE test_1;
+ERROR:  DROP DATABASE cannot run inside a transaction block
+END TRANSACTION;
+--
+-- DROPPING DATABASE IF EXISTS
+--
+DROP DATABASE test_1;
+DROP DATABASE IF EXISTS test_1;
+NOTICE:  database "test_1" does not exist, skipping
+DROP DATABASE test_1;
+ERROR:  database "test_1" does not exist

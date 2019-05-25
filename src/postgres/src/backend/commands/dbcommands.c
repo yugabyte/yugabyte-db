@@ -590,6 +590,9 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	new_record[Anum_pg_database_datminmxid - 1] = TransactionIdGetDatum(src_minmxid);
 	new_record[Anum_pg_database_dattablespace - 1] = ObjectIdGetDatum(dst_deftablespace);
 
+	if (IsYugaByteEnabled())
+		YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid);
+
 	/*
 	 * We deliberately set datacl to default (NULL), rather than copying it
 	 * from the template database.  Copying it would be a bad idea when the
@@ -642,12 +645,7 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	PG_ENSURE_ERROR_CLEANUP(createdb_failure_callback,
 	                        PointerGetDatum(&fparms));
 	{
-
-		if (IsYugaByteEnabled())
-		{
-			YBCCreateDatabase(dboid, dbname, src_dboid, InvalidOid);
-		}
-		else
+		if (!IsYugaByteEnabled())
 		{
 			/*
 			 * Iterate through all tablespaces of the template database, and copy
@@ -911,6 +909,13 @@ dropdb(const char *dbname, bool missing_ok)
 				 errmsg("cannot drop the currently open database")));
 
 	/*
+	 * YugaByte allows dropping a database even when multiple sessions are dependent on that database.
+	 * Skip the following checks.
+	 */
+	if (IsYugaByteEnabled())
+		goto removing_database_from_system;
+
+	/*
 	 * Check whether there are active logical slots that refer to the
 	 * to-be-dropped database. The database lock we are holding prevents the
 	 * creation of new slots using the database or existing slots becoming
@@ -956,6 +961,7 @@ dropdb(const char *dbname, bool missing_ok)
 								  "There are %d subscriptions.",
 								  nsubscriptions, nsubscriptions)));
 
+removing_database_from_system:
 	/*
 	 * Remove the database's tuple from pg_database.
 	 */
@@ -1026,11 +1032,6 @@ dropdb(const char *dbname, bool missing_ok)
 	 */
 	heap_close(pgdbrel, NoLock);
 
-	if (IsYugaByteEnabled())
-	{
-		YBCDropDatabase(db_id, dbname);
-	}
-
 	/*
 	 * Force synchronous commit, thus minimizing the window between removal of
 	 * the database files and committal of the transaction. If we crash before
@@ -1038,6 +1039,14 @@ dropdb(const char *dbname, bool missing_ok)
 	 * according to pg_database, which is not good.
 	 */
 	ForceSyncCommit();
+
+	/*
+	 * Call YugaByte to delete the entries ourselves.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		YBCDropDatabase(db_id, dbname);
+	}
 }
 
 
