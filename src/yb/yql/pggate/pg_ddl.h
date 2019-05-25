@@ -73,7 +73,7 @@ class PgDropDatabase : public PgDdl {
   typedef std::unique_ptr<const PgDropDatabase> UniPtrConst;
 
   // Constructors.
-  PgDropDatabase(PgSession::ScopedRefPtr pg_session, const char *database_name, bool if_exist);
+  PgDropDatabase(PgSession::ScopedRefPtr pg_session, const char *database_name, PgOid database_oid);
   virtual ~PgDropDatabase();
 
   virtual StmtOp stmt_op() const override { return StmtOp::STMT_DROP_DATABASE; }
@@ -83,7 +83,7 @@ class PgDropDatabase : public PgDdl {
 
  private:
   const char *database_name_;
-  bool if_exist_;
+  const PgOid database_oid_;
 };
 
 //--------------------------------------------------------------------------------------------------

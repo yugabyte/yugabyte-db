@@ -74,7 +74,7 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 
 	HandleYBStatus(YBCPgNewDropDatabase(ybc_pg_session,
 	                                    dbname,
-	                                    false,    /* if_exists */
+																			dboid,
 	                                    &handle));
 	HandleYBStmtStatus(YBCPgExecDropDatabase(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));

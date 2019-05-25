@@ -659,6 +659,12 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
   DCHECK(!new_table_info) << "table " << table_id << " already exists";
 }
 
+void RaftGroupMetadata::RemoveTable(const std::string& table_id) {
+  std::lock_guard<LockType> l(data_lock_);
+  auto& tables = kv_store_.tables;
+  tables.erase(table_id);
+}
+
 string RaftGroupMetadata::data_root_dir() const {
   const auto& rocksdb_dir = kv_store_.rocksdb_dir;
   if (rocksdb_dir.empty()) {

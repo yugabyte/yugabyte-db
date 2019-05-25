@@ -126,8 +126,12 @@ Status PgSession::CreateDatabase(const string& database_name,
                                   next_oid);
 }
 
-Status PgSession::DropDatabase(const string& database_name, bool if_exist) {
-  return client_->DeleteNamespace(database_name, YQL_DATABASE_PGSQL);
+Status PgSession::DropDatabase(const string& database_name, PgOid database_oid) {
+  RETURN_NOT_OK(client_->DeleteNamespace(database_name,
+                                         YQL_DATABASE_PGSQL,
+                                         GetPgsqlNamespaceId(database_oid)));
+  RETURN_NOT_OK(DeleteDBSequences(database_oid));
+  return Status::OK();
 }
 
 Status PgSession::ReserveOids(const PgOid database_oid,
@@ -339,6 +343,26 @@ Status PgSession::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
   delete_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
   delete_request->add_partition_column_values()->mutable_value()->set_int64_value(seq_oid);
 
+  return session_->ApplyAndFlush(psql_delete);
+}
+
+Status PgSession::DeleteDBSequences(int64_t db_oid) {
+  pggate::PgObjectId oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
+  Result<PgTableDesc::ScopedRefPtr> r = LoadTable(oid);
+  if (!r.ok()) {
+    // Sequence table is not yet created.
+    return Status::OK();
+  }
+
+  PgTableDesc::ScopedRefPtr t = CHECK_RESULT(r);
+  if (t == nullptr) {
+    return Status::OK();
+  }
+
+  std::shared_ptr<client::YBPgsqlWriteOp> psql_delete(t->NewPgsqlDelete());
+  auto delete_request = psql_delete->mutable_request();
+
+  delete_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
   return session_->ApplyAndFlush(psql_delete);
 }
 

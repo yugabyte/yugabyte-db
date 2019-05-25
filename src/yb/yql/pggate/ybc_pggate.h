@@ -106,7 +106,7 @@ YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle);
 // Drop database.
 YBCStatus YBCPgNewDropDatabase(YBCPgSession pg_session,
                                const char *database_name,
-                               bool if_exist,
+                               YBCPgOid database_oid,
                                YBCPgStatement *handle);
 YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle);
 

@@ -230,9 +230,9 @@ Status PgApiImpl::ExecCreateDatabase(PgStatement *handle) {
 
 Status PgApiImpl::NewDropDatabase(PgSession *pg_session,
                                   const char *database_name,
-                                  bool if_exist,
+                                  PgOid database_oid,
                                   PgStatement **handle) {
-  auto stmt = make_scoped_refptr<PgDropDatabase>(pg_session, database_name, if_exist);
+  auto stmt = make_scoped_refptr<PgDropDatabase>(pg_session, database_name, database_oid);
   *handle = stmt.detach();
   return Status::OK();
 }

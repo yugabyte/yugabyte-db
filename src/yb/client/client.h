@@ -315,7 +315,8 @@ class YBClient {
 
   // Delete namespace with the given name.
   CHECKED_STATUS DeleteNamespace(const std::string& namespace_name,
-                                 const boost::optional<YQLDatabase>& database_type = boost::none);
+                                 const boost::optional<YQLDatabase>& database_type = boost::none,
+                                 const std::string& namespace_id = "");
 
   // For Postgres: reserve oids for a Postgres database.
   CHECKED_STATUS ReservePgsqlOids(const std::string& namespace_id,
