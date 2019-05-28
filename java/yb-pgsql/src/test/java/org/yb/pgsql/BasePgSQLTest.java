@@ -206,9 +206,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     TestUtils.waitFor(
         () -> {
           IsInitDbDoneResponse initdbStatusResp = miniCluster.getClient().getIsInitDbDone();
-          if (initdbStatusResp.isDone()) {
-            return true;
-          }
           if (initdbStatusResp.hasError()) {
             throw new RuntimeException(
                 "Could not request initdb status: " + initdbStatusResp.getServerError());
@@ -217,7 +214,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           if (initdbError != null && !initdbError.isEmpty()) {
             throw new RuntimeException("initdb failed: " + initdbError);
           }
-          return false;
+          return initdbStatusResp.isDone();
         },
         600000);
     LOG.info("initdb has completed successfully on master");
