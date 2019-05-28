@@ -28,7 +28,7 @@ showAsideToc: true
   <li >
     <a href="/latest/develop/build-apps/java/ysql-spring-data" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data with JPA/Hibernate
+      YSQL - Spring Data JPA with Hibernate
     </a>
   </li>
   <li>

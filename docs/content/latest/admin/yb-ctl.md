@@ -20,6 +20,52 @@ Use the **-\-help** option to see all the commands supported.
 ```sh
 $ ./bin/yb-ctl --help
 ```
+```sh
+usage: yb-ctl [-h] [--binary_dir BINARY_DIR] [--data_dir DATA_DIR]
+              [--replication_factor REPLICATION_FACTOR]
+              [--num_shards_per_tserver NUM_SHARDS_PER_TSERVER]
+              [--timeout TIMEOUT] [--verbose] [--install-if-needed]
+              {create,start,stop,destroy,restart,wipe_restart,add_node,remove_node,start_node,stop_node,restart_node,status,setup_redis}
+              ...
+
+positional arguments:
+  {create,start,stop,destroy,restart,wipe_restart,add_node,remove_node,start_node,stop_node,restart_node,status,setup_redis}
+    create              Create a new cluster
+    start               Create a new cluster, or start existing cluster if it
+                        already exists.
+    stop                Stops the cluster
+    destroy             Destroy the current cluster
+    restart             Restart the current cluster all at once
+    wipe_restart        Stop the cluster, wipe all data files and start the
+                        cluster asbefore. Will lose all the flags though.
+    add_node            Add a new node to the current cluster
+    remove_node         Stop a particular node in the cluster.
+    start_node          Start a particular node with flags.
+    stop_node           Stop a particular node in the cluster
+    restart_node        Restart the node specified.
+    status              Get info on the current cluster processes
+    setup_redis         Setup YugaByte to support Redis API
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --binary_dir BINARY_DIR
+                        Specify a custom directory in which to find the
+                        yugabyte binaries.
+  --data_dir DATA_DIR   Specify a custom directory where to store data.
+  --replication_factor REPLICATION_FACTOR, --rf REPLICATION_FACTOR
+                        Replication factor for the cluster as well as default
+                        number of masters.
+  --num_shards_per_tserver NUM_SHARDS_PER_TSERVER
+                        Number of shards (tablets) to start per tablet server
+                        for each table.
+  --timeout TIMEOUT     Timeout in seconds for operations that wait on the
+                        cluster
+  --verbose             If specified, will log internal debug messages to
+                        stderr.
+  --install-if-needed   With this option, if YugaByte DB is not yet installed
+                        on the system, the latest version will be downloaded
+                        and installed automatically.
+```
 
 Here are the default values for all the optional arguments.
 
@@ -31,11 +77,12 @@ Optional Argument | Default | Description
 `--require_clock_sync`| `false` | Tells YugaByte DB whether to depend on clock synchronization between the nodes in the cluster
 `--num_shards_per_tserver`| `2` | Number of shards (tablets) per tablet server for each table
 
-## Creating a cluster
+
+## Create a cluster
 
 The `create` cluster command is used to create a cluster.
 
-The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. Use the [add_node](#adding-nodes) and [remove_node](#stopping-removing-nodes) commands to expand or shrink the cluster.
+The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. Use the [add_node](#add-nodes) and [remove_node](#stop-remove-nodes) commands to expand or shrink the cluster.
 
 Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal the replication factor for the cluster to be considered operating normally.
 
@@ -61,15 +108,70 @@ Add a node to make it a 4 node cluster.
 $ ./bin/yb-ctl add_node
 ```
 
-
 - Creating a 5 node cluster with replication factor 5.
 
 ```sh
 $ ./bin/yb-ctl --rf 5 create
 ```
 
+## Default cluster configuration
 
-## Checking cluster status
+### Data directory
+
+Cluster data is installed in `$HOME/yugabyte-data/`.
+
+#### Node directories
+
+`yugabyte-data/node-#/` directory created for node #.
+
+This directory contains the following.
+
+```sh
+yugabyte-data/node-#/disk-#/
+initdb.log
+cluster_config.json
+```
+
+#### Disk directories
+
+`yugabyte-data/node-#/disk-#/` directory created for each disk.
+
+This directory contains the following.
+
+```sh
+yugabyte-data/node-#/disk-#/pg_data/
+yugabyte-data/node-#/disk-#/yb-data/ 
+```
+
+### Logs
+
+yb-master logs are located at
+
+```sh
+yugabyte-data/node-#/disk-#/yb-data/master.out
+yugabyte-data/node-#/disk-#/yb-data/master/logs
+```
+
+yb-tserver logs are located at
+
+```sh
+yugabyte-data/node-#/disk-#/yb-data/tserver.out
+yugabyte-data/node-#/disk-#/yb-data/tserver/logs
+```
+
+## Start and stop an existing cluster
+
+Create a new cluster, or start an existing cluster if it already exists.
+```sh
+$ ./bin/yb-ctl start
+```
+
+Stop a cluster so that you can start it later.
+```sh
+$ ./bin/yb-ctl stop
+```
+
+## Check cluster status
 
 You can get the status of the local cluster including the URLs for the admin UIs for the YB-Master and YB-TServer using the `status` command.
 
@@ -77,19 +179,17 @@ You can get the status of the local cluster including the URLs for the admin UIs
 $ ./bin/yb-ctl status
 ```
 
+## Initialize the YEDIS API
 
-## Initializing the YEDIS API
-
-The `setup_redis` command to initialize YugaByte's Redis-compatible YEDIS API.
+The `setup_redis` command to initialize YugaByte DB's Redis-compatible YEDIS API.
 
 ```sh
 $ ./bin/yb-ctl setup_redis
 ```
 
+## Add and remove nodes
 
-## Adding and removing nodes
-
-### Adding nodes
+### Add nodes
 
 - Adding a new node to the cluster. This will start a new yb-tserver process and give it a new `node_id` for tracking purposes.
 
@@ -97,22 +197,19 @@ $ ./bin/yb-ctl setup_redis
 $ ./bin/yb-ctl add_node
 ```
 
+### Stop/remove nodes
 
-### Stopping/removing nodes
-
-We can Stop a cluster node by executing the `stop` command. The command takes the node id of the node
-that has to be removed as input. Stop node command expects a node id which denotes the index of the server that
-needs to be stopped. It also takes an optional flag `--master` which denotes that the server is a
+We can stop a node by executing the `stop` command. The command takes the node id of the node
+that has to be removed as input. Stop node command expects a node id which denotes the index of the server that needs to be stopped. It also takes an optional flag `--master` which denotes that the server is a
 master.
 
 ```sh
 $ ./bin/yb-ctl stop_node 4
 ```
 
-
 At this point of time `remove_node` and `stop_node` do the same thing. So they can be used interchangeably.
 
-## Destroying a cluster
+## Destroy a cluster
 
 You can use the `destroy` command to destroy a cluster. This command stops all the nodes and 
 deletes the data directory of the cluster.
@@ -121,9 +218,11 @@ deletes the data directory of the cluster.
 $ ./bin/yb-ctl destroy
 ```
 
+
+
 ## Advanced commands
 
-### Creating a local cluster across multiple zones, regions and clouds
+### Create a cluster across multiple zones, regions and clouds
 
 You can pass the placement information for nodes in a cluster from the command line. The placement information is provided as a set of (cloud, region, zone) tuples separated by commas. Each cloud, region and zone entry is separated by dots.
 
@@ -139,7 +238,7 @@ To add a node:
 $ ./bin/yb-ctl add_node --placement_info "cloud1.region1.zone1"
 ```
 
-### Creating a local cluster with custom flags
+### Create a cluster with custom flags
 
 You can also pass custom flags to the masters and tservers.
 ```sh
@@ -158,7 +257,7 @@ To add a node with custom master flags:
 $ ./bin/yb-ctl add_node --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20"
 ```
 
-### Restarting a cluster
+### Restart a cluster
 
 The `restart` command can be used to restart a cluster. Please note that if you restart the cluster,
 all custom defined flags and placement information will be lost. Nevertheless, you can pass the
@@ -168,43 +267,39 @@ placement information and custom flags in the same way as they are passed in the
 $ ./bin/yb-ctl restart
 ```
 
-Restarting with cloud, region and zone flags:
+- Restart with cloud, region and zone flags
 
 ```sh
-$ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1" 
+$ ./bin/yb-ctl restart --placement_info "cloud1.region1.zone1" 
 ```
 
-Restarting with custom flags:
+- Restart with custom flags
 
 ```sh
-$ ./bin/yb-ctl wipe_restart --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
+$ ./bin/yb-ctl restart --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
 ```
 
-### Restarting a node
+### Restart a node
 
-The `restart` first stops the node and then starts it again(essentially restarting it). At this point of time the node is not decommissioned from the cluster.
-Thus one of the primary advantages of this command is that it can be used to wipe out old flags and pass in new ones. Just like 
-create, you can pass the cloud/region/zone and custom flags in the `restart` command.
+The `restart` first stops the node and then starts it again. At this point of time the node is not decommissioned from the cluster. Thus one of the primary advantages of this command is that it can be used to wipe out old flags and pass in new ones. Just like  create, you can pass the cloud/region/zone and custom flags in the `restart` command.
 
 ```sh
 $ ./bin/yb-ctl restart_node 2
 ```
 
-- Restarting node with placement info:
+- Restart node with placement info
 
 ```sh
 $ ./bin/yb-ctl restart_node 2 --placement_info "cloud1.region1.zone1"
 ```
 
-
-- Restarting master node:
+- Restart master node
 
 ```sh
 $ ./bin/yb-ctl restart_node 2 --master
 ```
 
-
-- Restarting node with flags:
+- Restart node with flags
 
 ```sh
 $ ./bin/yb-ctl restart_node 2 --master --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20"
@@ -212,25 +307,24 @@ $ ./bin/yb-ctl restart_node 2 --master --master_flags "log_cache_size_limit_mb=1
 
 ### Wipe and restart a cluster
 
-We can use the `wipe_restart` command for this. This command stops all the nodes, removes the underlying data directort, then starts back the same
-number of nodes that you had in your previous configuration.
+This command stops all the nodes, removes the underlying data directories, then starts back the same number of nodes that you had in your previous configuration.
 
-Just like the `restart` command the custom defined flags and placement information will be lost during `wipe_restart`,
-though you can pass placement information and custom flags in the same way as they are passed in the
-`create` command.
+Just like the `restart` command the custom defined flags and placement information will be lost during `wipe_restart`, though you can pass placement information and custom flags in the same way as they are passed in the `create` command.
 
 ```sh
 $ ./bin/yb-ctl wipe_restart
 ```
 
-Wipe and restart with placement info flags:
+- Wipe and restart with placement info flags
 
 ```sh
 $ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1" 
 ```
 
-Wipe and restart with custom flags:
+- Wipe and restart with custom flags
 
 ```sh
 $ ./bin/yb-ctl wipe_restart --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
 ```
+
+

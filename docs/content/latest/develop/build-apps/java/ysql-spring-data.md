@@ -24,7 +24,7 @@ showAsideToc: true
   <li >
     <a href="/latest/develop/build-apps/java/ysql-spring-data" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data with JPA/Hibernate
+      YSQL - Spring Data JPA with Hibernate
     </a>
   </li>
   <li>
@@ -120,7 +120,7 @@ $ curl \
 ### Using the YSQL shell
 
 ```sh
-$ ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U postgres  --echo-queries
+$ ./bin/ysqlsh 
 ```
 ```
 ysqlsh (11.2)
@@ -132,7 +132,6 @@ postgres=#
 postgres=> SELECT count(*) FROM users;
 ```
 ```
-SELECT count(*) FROM users;
  count 
 -------
      2
@@ -143,7 +142,6 @@ SELECT count(*) FROM users;
 postgres=> SELECT count(*) FROM products;
 ```
 ```
-SELECT count(*) FROM products;
  count 
 -------
      2
@@ -154,14 +152,13 @@ SELECT count(*) FROM products;
 postgres=> SELECT count(*) FROM orders;
 ```
 ```
-SELECT count(*) FROM orders;
  count 
 -------
      2
 (1 row)
 ```
 
-### Using the REST API endpoint
+### Using the REST API
 
 ```sh
 $ curl http://localhost:8080/users
@@ -170,13 +167,13 @@ $ curl http://localhost:8080/users
 {
   "content": [
     {
-      "userId": 3,
+      "userId": 2,
       "firstName": "Tom",
       "lastName": "Stewart",
       "email": "tstewart@yb.com"
     },
     {
-      "userId": 2,
+      "userId": 1,
       "firstName": "John",
       "lastName": "Smith",
       "email": "jsmith@yb.com"
@@ -221,9 +218,9 @@ $ curl http://localhost:8080/orders
       "orderId": "999ae272-f2f4-46a1-bede-5ab765bb27fe",
       "user": {
         "userId": 2,
-        "firstName": "John",
-        "lastName": "Smith",
-        "email": "jsmith@yb.com"
+        "firstName": "Tom",
+        "lastName": "Stewart",
+        "email": "tstewart@yb.com"
       },
       "userId": null,
       "orderTotal": 25,
@@ -234,9 +231,9 @@ $ curl http://localhost:8080/orders
       "orderId": "1598c8d4-1857-4725-a9ab-14deb089ab4e",
       "user": {
         "userId": 2,
-        "firstName": "John",
-        "lastName": "Smith",
-        "email": "jsmith@yb.com"
+        "firstName": "Tom",
+        "lastName": "Stewart",
+        "email": "tstewart@yb.com"
       },
       "userId": null,
       "orderTotal": 15,

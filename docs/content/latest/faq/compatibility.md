@@ -13,11 +13,18 @@ isTocNested: true
 showAsideToc: true
 ---
 
+## What does API compatibility exactly mean?
+
+API compatibility refers to the fact that the database APIs offered by YugaByte DB servers implement the same wire protocol and modeling/query language as that of an existing database. Since client drivers, command line shells, IDE integrations and other ecosystem integrations of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugaByte DB without major modifications. 
+
+For example, the [YSQL](../../api/ysql) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBWeaver and more can be used with YugaByte DB. The same concept applies to [YCQL](../../api/ycql) in the context of the Apache Cassandra Query Language.
+
 ## Why are YugaByte DB APIs compatible with popular DB languages?
 
 - YugaByte DB's API compatibility is aimed at accelerating developer onboarding. By integrating well with the existing ecosystem, YugaByte DB ensures that developers can get started easily using a language they are already comfortable with. 
 
-- YugaByte DB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are most likely not written to take advantage of the distributed SQL APIs provided by YugaByte DB. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugaByte DB.
+- YugaByte DB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed SQL APIs provided by YugaByte DB. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugaByte DB.
+
 
 ## YSQL Compatibility with PostgreSQL
 
@@ -34,7 +41,7 @@ As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Q
 
 YugaByte DB's goal is to remain as compatible with PostgreSQL as possible. If you see a feature currently missing, please file a [GitHub issue](https://github.com/YugaByte/yugabyte-db/issues) for us.
 
-## YCQL Compatibility with Apache Cassandra
+## YCQL Compatibility with Apache Cassandra QL
 
 ### Do INSERTs do “upserts” by default? How do I insert data only if it is absent?
 

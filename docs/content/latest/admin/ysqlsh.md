@@ -25,7 +25,7 @@ ysqlsh is installed as part of YugaByte DB and is located in the bin directory o
 ## Example
 
 ```sh
-$ ./bin/ysqlsh  --echo-queries
+$ ./bin/ysqlsh
 ```
 
 ```

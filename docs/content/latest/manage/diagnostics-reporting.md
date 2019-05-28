@@ -113,7 +113,7 @@ You can add the following flags while starting the [yb-master](../../admin/yb-ma
 
 Flag | Default | Description
 ----------------------|---------|------------------------
-`--callhome_collection_level` |  `low` | Collection level with possible values of `low`, `medium`, or `high`
+`--callhome_collection_level` |  `medium` | Collection level with possible values of `low`, `medium`, or `high`
 `--callhome_interval_secs` | 3600 | Collection interval in seconds
 `--callhome_url ` | `http://diagnostics.yugabyte.com` | Endpoint where diagnostics information is reported
 `--callhome_enabled` | `true` | Controls whether diagnostics information is collected and reported. Set to `false` to disable collection.
