@@ -37,10 +37,10 @@ class PgDelete : public PgDmlWrite {
   PgDelete(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgDelete();
 
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_DELETE; }
+  StmtOp stmt_op() const override { return StmtOp::STMT_DELETE; }
 
  private:
-  virtual void AllocWriteRequest() override;
+  void AllocWriteRequest() override;
 };
 
 }  // namespace pggate

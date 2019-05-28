@@ -222,3 +222,28 @@ CREATE INDEX ON test_method USING hash (v);
 CREATE INDEX ON test_method USING foo (v);
 \d test_method
 DROP TABLE test_method;
+
+-- Test include columns
+CREATE TABLE test_include (c1 int, c2 int, c3 int);
+INSERT INTO test_include VALUES (1, 1, 1), (1, 2, 2), (2, 2, 2), (3, 3, 3);
+-- Expect duplicate key error
+CREATE UNIQUE INDEX ON test_include (c1) include (c2);
+DROP INDEX test_include_c1_c2_idx;
+DELETE FROM test_include WHERE c1 = 1 AND c2 = 2;
+CREATE UNIQUE INDEX ON test_include (c1) include (c2);
+EXPLAIN SELECT c1, c2 FROM test_include WHERE c1 = 1;
+SELECT c1, c2 FROM test_include WHERE c1 = 1;
+\d test_include
+-- Verify the included column is updated in both the base table and the index. Use WHERE condition
+-- on c1 below to force the scan on the index vs. base table. Select the non-included column c3 in
+-- the other case to force the use of sequential scan on the base table.
+UPDATE test_include SET c2 = 22 WHERE c1 = 2;
+EXPLAIN SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
+EXPLAIN SELECT * FROM test_include ORDER BY c2;
+SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
+SELECT * FROM test_include ORDER BY c2;
+UPDATE test_include SET c2 = NULL WHERE c1 = 1;
+UPDATE test_include SET c2 = 33 WHERE c2 = 3;
+DELETE FROM test_include WHERE c1 = 2;
+SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
+SELECT * FROM test_include ORDER BY c2;

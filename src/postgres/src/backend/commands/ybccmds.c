@@ -319,21 +319,33 @@ YBCCreateIndex(const char *indexName,
 		char			  *attname = NameStr(att->attname);
 		AttrNumber		  attnum   = att->attnum;			
 		const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum, att->atttypid);
+		bool			  is_key = (i < indexInfo->ii_NumIndexKeyAttrs);
 
-		if (!YBCDataTypeIsValidForKey(att->atttypid)) {
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("INDEX on column of type '%s' not yet supported",
-											YBPgTypeOidToStr(att->atttypid))));
+		if (is_key)
+		{
+			if (!YBCDataTypeIsValidForKey(att->atttypid))
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("INDEX on column of type '%s' not yet supported",
+								YBPgTypeOidToStr(att->atttypid))));
+
+			HandleYBStmtStatus(YBCPgCreateIndexAddColumn(handle,
+														 attname,
+														 attnum,
+														 col_type,
+														 is_hash,
+														 true /* is_range */), handle);
+			is_hash = false;
 		}
-		HandleYBStmtStatus(YBCPgCreateIndexAddColumn(handle,
-													 attname,
-													 attnum,
-													 col_type,
-													 is_hash,
-													 true /* is_range */), handle);
-
-		is_hash = false;
+		else
+		{
+			HandleYBStmtStatus(YBCPgCreateIndexAddColumn(handle,
+														 attname,
+														 attnum,
+														 col_type,
+														 false /* is_hash */,
+														 false /* is_range */), handle);
+		}
 	}
 
 	/* Create the index. */

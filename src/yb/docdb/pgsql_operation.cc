@@ -49,7 +49,8 @@ CHECKED_STATUS CreateProjection(const Schema& schema,
 }
 
 DocKey UniqueIndexSearchKey(const Schema& schema, const DocKey& key) {
-  DCHECK(schema.columns().back().order() == static_cast<int>(PgSystemAttrNum::kYBBaseTupleId));
+  DCHECK_EQ(schema.column(schema.num_key_columns() - 1).order(),
+            static_cast<int>(PgSystemAttrNum::kYBBaseTupleId));
   auto range_components = key.range_group();
   range_components.pop_back();
   return DocKey(schema, key.hash(), key.hashed_group(), range_components);
