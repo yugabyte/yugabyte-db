@@ -5,9 +5,9 @@
 - [Types of pages](#types-of-pages)
 - [Widgets](#widgets)
     - [Information boxes](#information-boxes)
-        - [Note box](note-box)
-        - [Tip box](tip-box)
-        - [Warning box](warning-box)
+        - [Note box](#note-box)
+        - [Tip box](#tip-box)
+        - [Warning box](#warning-box)
     - [Inline section switcher](#inline-section-switcher)
 
 
