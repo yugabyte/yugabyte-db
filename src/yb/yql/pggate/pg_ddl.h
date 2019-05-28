@@ -51,7 +51,7 @@ class PgCreateDatabase : public PgDdl {
                    PgOid next_oid);
   virtual ~PgCreateDatabase();
 
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_DATABASE; }
+  StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_DATABASE; }
 
   // Execute.
   CHECKED_STATUS Exec();
@@ -76,7 +76,7 @@ class PgDropDatabase : public PgDdl {
   PgDropDatabase(PgSession::ScopedRefPtr pg_session, const char *database_name, PgOid database_oid);
   virtual ~PgDropDatabase();
 
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_DROP_DATABASE; }
+  StmtOp stmt_op() const override { return StmtOp::STMT_DROP_DATABASE; }
 
   // Execute.
   CHECKED_STATUS Exec();
@@ -110,16 +110,22 @@ class PgCreateTable : public PgDdl {
                 bool add_primary_key);
   virtual ~PgCreateTable();
 
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLE; }
+  StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_TABLE; }
 
   // For PgCreateIndex: the indexed (base) table id and if this is a unique index.
   virtual boost::optional<const PgObjectId&> indexed_table_id() const { return boost::none; }
   virtual bool is_unique_index() const { return false; }
 
-  CHECKED_STATUS AddColumn(const char *attr_name, int attr_num, int attr_ybtype,
-                           bool is_hash, bool is_range);
-  CHECKED_STATUS AddColumn(const char *attr_name, int attr_num, const YBCPgTypeEntity *attr_type,
-                           bool is_hash, bool is_range) {
+  virtual CHECKED_STATUS AddColumn(const char *attr_name,
+                                   int attr_num,
+                                   int attr_ybtype,
+                                   bool is_hash,
+                                   bool is_range);
+  virtual CHECKED_STATUS AddColumn(const char *attr_name,
+                                   int attr_num,
+                                   const YBCPgTypeEntity *attr_type,
+                                   bool is_hash,
+                                   bool is_range) {
     return AddColumn(attr_name, attr_num, attr_type->yb_type, is_hash, is_range);
   }
 
@@ -148,7 +154,7 @@ class PgDropTable : public PgDdl {
   PgDropTable(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool if_exist);
   virtual ~PgDropTable();
 
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_DROP_TABLE; }
+  StmtOp stmt_op() const override { return StmtOp::STMT_DROP_TABLE; }
 
   // Execute.
   CHECKED_STATUS Exec();
@@ -171,7 +177,7 @@ class PgTruncateTable : public PgDdl {
   PgTruncateTable(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
   virtual ~PgTruncateTable();
 
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_TRUNCATE_TABLE; }
+  StmtOp stmt_op() const override { return StmtOp::STMT_TRUNCATE_TABLE; }
 
   // Execute.
   CHECKED_STATUS Exec();
@@ -205,22 +211,31 @@ class PgCreateIndex : public PgCreateTable {
                 bool if_not_exist);
   virtual ~PgCreateIndex();
 
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_INDEX; }
+  StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_INDEX; }
 
-  virtual boost::optional<const PgObjectId&> indexed_table_id() const override {
+  boost::optional<const PgObjectId&> indexed_table_id() const override {
     return base_table_id_;
   }
 
-  virtual bool is_unique_index() const override {
+  bool is_unique_index() const override {
     return is_unique_index_;
   }
 
+  CHECKED_STATUS AddColumn(const char *attr_name,
+                           int attr_num,
+                           const YBCPgTypeEntity *attr_type,
+                           bool is_hash,
+                           bool is_range) override;
+
   // Execute.
-  virtual CHECKED_STATUS Exec() override;
+  CHECKED_STATUS Exec() override;
 
  private:
+  CHECKED_STATUS AddYBbasectidColumn();
+
   const PgObjectId base_table_id_;
-  bool is_unique_index_;
+  bool is_unique_index_ = false;
+  bool ybbasectid_added_ = false;
 };
 
 class PgDropIndex : public PgDropTable {
@@ -236,7 +251,7 @@ class PgDropIndex : public PgDropTable {
   PgDropIndex(PgSession::ScopedRefPtr pg_session, const PgObjectId& index_id, bool if_exist);
   virtual ~PgDropIndex();
 
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_DROP_INDEX; }
+  StmtOp stmt_op() const override { return StmtOp::STMT_DROP_INDEX; }
 
   // Execute.
   CHECKED_STATUS Exec();
@@ -258,8 +273,10 @@ class PgAlterTable : public PgDdl {
   PgAlterTable(PgSession::ScopedRefPtr pg_session,
                const PgObjectId& table_id);
 
-  CHECKED_STATUS AddColumn(const char *name, const YBCPgTypeEntity *attr_type,
-                           int order, bool is_not_null);
+  CHECKED_STATUS AddColumn(const char *name,
+                           const YBCPgTypeEntity *attr_type,
+                           int order,
+                           bool is_not_null);
 
   CHECKED_STATUS RenameColumn(const char *oldname, const char *newname);
 
@@ -271,7 +288,7 @@ class PgAlterTable : public PgDdl {
 
   virtual ~PgAlterTable();
 
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_TABLE; }
+  StmtOp stmt_op() const override { return StmtOp::STMT_ALTER_TABLE; }
 
  private:
   const client::YBTableName table_name_;
