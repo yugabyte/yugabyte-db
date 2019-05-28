@@ -483,8 +483,18 @@ errfinish(int dummy,...)
 	 * what we want for NOTICE messages, but not for fatal exits.) This hack
 	 * is necessary because of poor design of old-style copy protocol.
 	 */
-	if (elevel >= FATAL && whereToSendOutput == DestRemote)
-		pq_endcopyout(true);
+	if (elevel >= FATAL)
+	{
+		if (whereToSendOutput == DestRemote)
+			pq_endcopyout(true);
+
+		if (IsYugaByteEnabled())
+			/* When it's FATAL, the memory context that "debug_query_string" points to might have been
+			 * deleted or even corrupted. Set "debug_query_string" to NULL before emitting error.
+			 * The variable "debug_query_string" contains the user statement that is currently executed.
+			 */
+			debug_query_string = NULL;
+	}
 
 	/* Emit the message to the right places */
 	EmitErrorReport();
