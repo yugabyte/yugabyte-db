@@ -55,8 +55,8 @@ class PggateTest : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Test start and cleanup functions.
-  virtual void SetUp() override;
-  virtual void TearDown() override;
+  void SetUp() override;
+  void TearDown() override;
 
   // Init cluster for each test case.
   CHECKED_STATUS Init(const char *test_name, int num_tablet_servers = kNumOfTablets);

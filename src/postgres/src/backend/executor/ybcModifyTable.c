@@ -483,14 +483,14 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	Oid            dboid    = YBCGetDatabaseOid(index);
 	Oid            relid    = RelationGetRelid(index);
 	TupleDesc      tupdesc  = RelationGetDescr(index);
-	int            natts    = RelationGetNumberOfAttributes(index);
+	int            nkeys    = IndexRelationGetNumberOfKeyAttributes(index);
 	YBCPgStatement ybc_stmt = NULL;
 
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 
 	/* Create the DELETE request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewDelete(ybc_pg_session, dboid, relid, &ybc_stmt));
-	for (AttrNumber attnum = 1; attnum <= natts; attnum++)
+	for (AttrNumber attnum = 1; attnum <= nkeys; attnum++)
 	{
 		Oid   type_id = GetTypeId(attnum, tupdesc);
 		Datum value   = values[attnum - 1];
@@ -514,7 +514,7 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 
 	YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, BYTEAOID, ybctid, false /* is_null */);
 	HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, YBBaseTupleIdAttributeNumber, ybc_expr),
-			ybc_stmt);
+					   ybc_stmt);
 
 	/* Execute the delete and clean up. */
 	HandleYBStmtStatus(YBCExecWriteStmt(ybc_stmt, index), ybc_stmt);

@@ -37,13 +37,13 @@ class PgInsert : public PgDmlWrite {
   PgInsert(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_single_op_txn);
   virtual ~PgInsert();
 
-  virtual StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }
+  StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }
 
   // Prepare write operations.
-  virtual CHECKED_STATUS Prepare() override;
+  CHECKED_STATUS Prepare() override;
 
  private:
-  virtual void AllocWriteRequest() override;
+  void AllocWriteRequest() override;
 
   std::unique_ptr<PgGenerateRowId> generate_rowid_;
 };

@@ -283,7 +283,7 @@ class PgGenerateRowId : public PgExpr {
   virtual ~PgGenerateRowId();
 
   // Convert this expression structure to PB format.
-  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
+  CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
 
  private:
 };

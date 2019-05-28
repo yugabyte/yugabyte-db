@@ -104,8 +104,11 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
 PgCreateTable::~PgCreateTable() {
 }
 
-Status PgCreateTable::AddColumn(const char *attr_name, int attr_num, int attr_ybtype,
-                                bool is_hash, bool is_range) {
+Status PgCreateTable::AddColumn(const char *attr_name,
+                                int attr_num,
+                                int attr_ybtype,
+                                bool is_hash,
+                                bool is_range) {
   shared_ptr<QLType> yb_type = QLType::Create(static_cast<DataType>(attr_ybtype));
   client::YBColumnSpec* col = schema_builder_.AddColumn(attr_name)->Type(yb_type)->Order(attr_num);
 
@@ -240,13 +243,34 @@ PgCreateIndex::PgCreateIndex(PgSession::ScopedRefPtr pg_session,
 PgCreateIndex::~PgCreateIndex() {
 }
 
+Status PgCreateIndex::AddYBbasectidColumn() {
+  // Add ybbasectid column to store the ybctid of the rows in the indexed table. It should be added
+  // at the end of the primary key of the index, i.e. either before any non-primary-key column if
+  // any or before exec() below.
+  RETURN_NOT_OK(PgCreateTable::AddColumn("ybbasectid",
+                                         static_cast<int32_t>(PgSystemAttrNum::kYBBaseTupleId),
+                                         YB_YQL_DATA_TYPE_BINARY,
+                                         false /* is_hash */,
+                                         true /* is_range */));
+  ybbasectid_added_ = true;
+  return Status::OK();
+}
+
+Status PgCreateIndex::AddColumn(const char *attr_name,
+                                int attr_num,
+                                const YBCPgTypeEntity *attr_type,
+                                bool is_hash,
+                                bool is_range) {
+  if (!is_hash && !is_range && !ybbasectid_added_) {
+    RETURN_NOT_OK(AddYBbasectidColumn());
+  }
+  return PgCreateTable::AddColumn(attr_name, attr_num, attr_type, is_hash, is_range);
+}
+
 Status PgCreateIndex::Exec() {
-  // Add ybbasectid column to store the ybctid of the rows in the indexed table.
-  RETURN_NOT_OK(AddColumn("ybbasectid",
-                          static_cast<int32_t>(PgSystemAttrNum::kYBBaseTupleId),
-                          YB_YQL_DATA_TYPE_BINARY,
-                          false /* is_hash */,
-                          true /* is_range */));
+  if (!ybbasectid_added_) {
+    RETURN_NOT_OK(AddYBbasectidColumn());
+  }
   return PgCreateTable::Exec();
 }
 
@@ -282,8 +306,10 @@ PgAlterTable::PgAlterTable(PgSession::ScopedRefPtr pg_session,
       table_alterer(pg_session_->NewTableAlterer(table_id.GetYBTableId())) {
 }
 
-Status PgAlterTable::AddColumn(const char *name, const YBCPgTypeEntity *attr_type,
-                               int order, bool is_not_null) {
+Status PgAlterTable::AddColumn(const char *name,
+                               const YBCPgTypeEntity *attr_type,
+                               int order,
+                               bool is_not_null) {
   shared_ptr<QLType> yb_type = QLType::Create(static_cast<DataType>(attr_type->yb_type));
 
   client::YBColumnSpec* column = table_alterer->AddColumn(name)->Type(yb_type)->Order(order);

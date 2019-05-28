@@ -26,13 +26,11 @@ SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_unique1'::regclass ORDER BY c.relname;
 
--- TODO Enable after #1412
--- -- Unique index and unique constraint. Both must fail.
--- CREATE TABLE tbl_include_unique2 (c1 int, c2 int, c3 int, c4 int);
--- INSERT INTO tbl_include_unique2 SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
--- CREATE UNIQUE INDEX tbl_include_unique2_idx_unique ON tbl_include_unique2 using lsm (c1, c2) INCLUDE (c3, c4);
--- ALTER TABLE tbl_include_unique2 add UNIQUE (c1, c2) INCLUDE (c3, c4);
---
+-- Unique index and unique constraint. Both must fail.
+CREATE TABLE tbl_include_unique2 (c1 int, c2 int, c3 int, c4 int);
+INSERT INTO tbl_include_unique2 SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
+CREATE UNIQUE INDEX tbl_include_unique2_idx_unique ON tbl_include_unique2 using lsm (c1, c2) INCLUDE (c3, c4);
+ALTER TABLE tbl_include_unique2 add UNIQUE (c1, c2) INCLUDE (c3, c4);
 
 -- NOT SUPPORTED
 --
@@ -66,10 +64,7 @@ CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int,
 				CONSTRAINT covering UNIQUE(c1,c2) INCLUDE(c3,c4));
 SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
 SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'tbl'::regclass::oid;
--- TODO Enable after #1412
--- -- ensure that constraint works
--- INSERT INTO tbl SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
---
+INSERT INTO tbl SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
 DROP TABLE tbl;
 
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int,
@@ -89,10 +84,8 @@ CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int,
 				UNIQUE(c1,c2) INCLUDE(c3,c4));
 SELECT indexrelid::regclass, indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass FROM pg_index WHERE indrelid = 'tbl'::regclass::oid;
 SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conrelid = 'tbl'::regclass::oid;
--- TODO Enable after #1412
--- -- ensure that constraint works
--- INSERT INTO tbl SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
---
+-- ensure that constraint works
+INSERT INTO tbl SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
 DROP TABLE tbl;
 
 CREATE TABLE tbl (c1 int,c2 int, c3 int, c4 int,
@@ -211,11 +204,10 @@ INSERT INTO tbl SELECT x, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
 CREATE UNIQUE INDEX tbl_idx_unique ON tbl using lsm(c1, c2) INCLUDE (c3,c4);
 UPDATE tbl SET c1 = 100 WHERE c1 = 2;
 UPDATE tbl SET c1 = 1 WHERE c1 = 3;
--- TODO Enable after #1412
--- -- should fail
--- UPDATE tbl SET c2 = 2 WHERE c1 = 1;
+UPDATE tbl SET c2 = 2 WHERE c1 = 1;
+-- Disabled due to issue https://github.com/YugaByte/yugabyte-db/issues/1448:
+-- UPDATE tbl SET c3 = 1;
 --
-UPDATE tbl SET c3 = 1;
 DELETE FROM tbl WHERE c1 = 5 OR c3 = 12;
 DROP TABLE tbl;
 
