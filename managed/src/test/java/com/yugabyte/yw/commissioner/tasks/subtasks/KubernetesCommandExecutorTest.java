@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -16,6 +17,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -653,14 +655,70 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       NodeDetails node = defaultUniverse.getNode(podName);
       assertNotNull(node);
       String serviceName = podName.contains("master") ? "yb-masters" : "yb-tservers";
-      if (serviceName.equals("yb-masters")) {
-        assertTrue(node.isMaster);
-      }
-      else {
-        assertTrue(node.isTserver);
-      }
+      assertTrue(podName.contains("master") ? node.isMaster: node.isTserver);
       assertEquals(node.cloudInfo.private_ip, String.format("%s.%s.%s.%s", podName,
           serviceName, defaultUniverse.getUniverseDetails().nodePrefix, "svc.cluster.local"));
+    }
+  }
+
+  @Test
+  public void testPodInfoMultiAZ() {
+
+    ShellProcessHandler.ShellResponse shellResponse = new ShellProcessHandler.ShellResponse();
+    shellResponse.message =
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\"," +
+            " \"podIP\": \"123.456.78.90\"}, \"spec\": {\"hostname\": \"yb-master-0\"}}," +
+        "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", " +
+            "\"podIP\": \"123.456.78.91\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"}}]}";
+    when(kubernetesManager.getPodInfos(any(), any())).thenReturn(shellResponse);
+
+    Region r1 = Region.create(defaultProvider, "region-1", "region-1", "yb-image-1");
+    Region r2 = Region.create(defaultProvider, "region-2", "region-2", "yb-image-1");
+    AvailabilityZone az1 = AvailabilityZone.create(r1, "az-" + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.create(r1, "az-" + 2, "az-" + 2, "subnet-" + 2);
+    AvailabilityZone az3 = AvailabilityZone.create(r2, "az-" + 3, "az-" + 3, "subnet-" + 3);
+    PlacementInfo pi = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZoneHelper(az1.uuid, pi);
+    PlacementInfoUtil.addPlacementZoneHelper(az2.uuid, pi);
+    PlacementInfoUtil.addPlacementZoneHelper(az3.uuid, pi);
+
+    KubernetesCommandExecutor kubernetesCommandExecutor =
+        createExecutor(KubernetesCommandExecutor.CommandType.POD_INFO, pi);
+    kubernetesCommandExecutor.run();
+
+    verify(kubernetesManager, times(1)).getPodInfos(config,
+        String.format("%s-%s", defaultUniverse.getUniverseDetails().nodePrefix, "az-1"));
+    verify(kubernetesManager, times(1)).getPodInfos(config,
+        String.format("%s-%s", defaultUniverse.getUniverseDetails().nodePrefix, "az-2"));
+    verify(kubernetesManager, times(1)).getPodInfos(config,
+        String.format("%s-%s", defaultUniverse.getUniverseDetails().nodePrefix, "az-3"));
+    defaultUniverse = Universe.get(defaultUniverse.universeUUID);
+    ImmutableList<String> pods = ImmutableList.of(
+        "yb-master-0_az-1",
+        "yb-master-0_az-2",
+        "yb-master-0_az-3",
+        "yb-tserver-0_az-1",
+        "yb-tserver-0_az-2",
+        "yb-tserver-0_az-3"
+    );
+    Map<String, String> azToRegion = new HashMap();
+    azToRegion.put("az-1", "region-1");
+    azToRegion.put("az-2", "region-1");
+    azToRegion.put("az-3", "region-2");
+    for (String podName : pods) {
+      NodeDetails node = defaultUniverse.getNode(podName);
+      assertNotNull(node);
+      String serviceName = podName.contains("master") ? "yb-masters" : "yb-tservers";
+      
+      assertTrue(podName.contains("master") ? node.isMaster: node.isTserver);
+      
+      String az = podName.split("_")[1];
+      String podK8sName = podName.split("_")[0];
+      assertEquals(node.cloudInfo.private_ip, String.format("%s.%s.%s.%s", podK8sName, serviceName,
+          String.format("%s-%s", defaultUniverse.getUniverseDetails().nodePrefix, az),
+          "svc.cluster.local"));
+      assertEquals(node.cloudInfo.az, az);
+      assertEquals(node.cloudInfo.region, azToRegion.get(az));
     }
   }
 }
