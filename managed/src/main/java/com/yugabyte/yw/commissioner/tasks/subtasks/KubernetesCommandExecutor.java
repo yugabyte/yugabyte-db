@@ -262,7 +262,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUUID = entry.getKey();
-      String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
+      String azName = AvailabilityZone.get(azUUID).code;
+      String regionName = AvailabilityZone.get(azUUID).region.name;
       Map<String, String> config = entry.getValue();
 
       String namespace = isMultiAz ?
@@ -279,7 +280,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         pod.put("startTime", statusNode.path("startTime").asText());
         pod.put("status", statusNode.path("phase").asText());
         pod.put("az_uuid", azUUID.toString());
-
+        pod.put("az_name", azName);
+        pod.put("region_name", regionName);
         // Pod name is differentiated by the zone of deployment appended to
         // the hostname of the pod in case of multi-az.
         String podName = isMultiAz ?
@@ -319,6 +321,10 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
           nodeDetail.isTserver = true;
           nodeDetail.cloudInfo.private_ip = String.format("%s.%s.%s.%s", hostname.split("_")[0],
               "yb-tservers", namespace, domain);
+        }
+        if (isMultiAz) {
+          nodeDetail.cloudInfo.az = podVals.get("az_name").asText();
+          nodeDetail.cloudInfo.region = podVals.get("region_name").asText();
         }
         nodeDetail.azUuid = azUUID;
         nodeDetail.placementUuid = placementUuid;
