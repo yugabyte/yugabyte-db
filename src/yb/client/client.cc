@@ -159,7 +159,7 @@ using std::shared_ptr;
 
 #define CALL_SYNC_LEADER_MASTER_RPC(req, resp, method) \
   do { \
-    MonoTime deadline = MonoTime::Now() + default_admin_operation_timeout(); \
+    auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout(); \
     CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(req, resp, deadline, method); \
   } while(0);
 
@@ -340,8 +340,7 @@ Status YBClientBuilder::DoBuild(rpc::Messenger* messenger, std::unique_ptr<YBCli
 
   // Let's allow for plenty of time for discovering the master the first
   // time around.
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(c->default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + c->default_admin_operation_timeout();
   RETURN_NOT_OK_PREPEND(
       c->data_->SetMasterServerProxy(c.get(), deadline, data_->skip_master_leader_resolution_),
       "Could not locate the leader master");
@@ -402,8 +401,7 @@ YBTableCreator* YBClient::NewTableCreator() {
 
 Status YBClient::IsCreateTableInProgress(const YBTableName& table_name,
                                          bool *create_in_progress) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->IsCreateTableInProgress(this, table_name, "" /* table_id */, deadline,
                                         create_in_progress);
 }
@@ -413,13 +411,12 @@ Status YBClient::TruncateTable(const string& table_id, bool wait) {
 }
 
 Status YBClient::TruncateTables(const vector<string>& table_ids, bool wait) {
-  MonoTime deadline = MonoTime::Now() + default_admin_operation_timeout();
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->TruncateTables(this, table_ids, deadline, wait);
 }
 
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
                             table_name,
                             "" /* table_id */,
@@ -430,8 +427,7 @@ Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
 }
 
 Status YBClient::DeleteTable(const string& table_id, bool wait) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
                             YBTableName(),
                             table_id,
@@ -444,8 +440,7 @@ Status YBClient::DeleteTable(const string& table_id, bool wait) {
 Status YBClient::DeleteIndexTable(const YBTableName& table_name,
                                   YBTableName* indexed_table_name,
                                   bool wait) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
                             table_name,
                             "" /* table_id */,
@@ -458,8 +453,7 @@ Status YBClient::DeleteIndexTable(const YBTableName& table_name,
 Status YBClient::DeleteIndexTable(const string& table_id,
                                   YBTableName* indexed_table_name,
                                   bool wait) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
                             YBTableName(),
                             table_id,
@@ -480,16 +474,14 @@ YBTableAlterer* YBClient::NewTableAlterer(const string id) {
 Status YBClient::IsAlterTableInProgress(const YBTableName& table_name,
                                         const string& table_id,
                                         bool *alter_in_progress) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->IsAlterTableInProgress(this, table_name, table_id, deadline, alter_in_progress);
 }
 
 Status YBClient::GetTableSchema(const YBTableName& table_name,
                                 YBSchema* schema,
                                 PartitionSchema* partition_schema) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   YBTableInfo info;
   RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
 
@@ -1015,13 +1007,13 @@ void YBClient::RequestFinished(const TabletId& tablet_id, RetryableRequestId req
 
 void YBClient::LookupTabletByKey(const YBTable* table,
                                  const std::string& partition_key,
-                                 const MonoTime& deadline,
+                                 CoarseTimePoint deadline,
                                  LookupTabletCallback callback) {
   data_->meta_cache_->LookupTabletByKey(table, partition_key, deadline, std::move(callback));
 }
 
 void YBClient::LookupTabletById(const std::string& tablet_id,
-                                const MonoTime& deadline,
+                                CoarseTimePoint deadline,
                                 LookupTabletCallback callback,
                                 UseCache use_cache) {
   data_->meta_cache_->LookupTabletById(
@@ -1032,9 +1024,7 @@ HostPort YBClient::GetMasterLeaderAddress() {
   return data_->leader_master_hostport();
 }
 
-Status YBClient::ListMasters(
-    MonoTime deadline,
-    std::vector<std::string>* master_uuids) {
+Status YBClient::ListMasters(CoarseTimePoint deadline, std::vector<std::string>* master_uuids) {
   ListMastersRequestPB req;
   ListMastersResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(req, resp, deadline, ListMasters);
@@ -1052,8 +1042,7 @@ Status YBClient::ListMasters(
 }
 
 Result<HostPort> YBClient::RefreshMasterLeaderAddress() {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   RETURN_NOT_OK(data_->SetMasterServerProxy(this, deadline));
 
   return GetMasterLeaderAddress();
@@ -1087,8 +1076,7 @@ Status YBClient::GetMasterUUID(const string& host,
 }
 
 Status YBClient::SetReplicationInfo(const ReplicationInfoPB& replication_info) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->SetReplicationInfo(this, replication_info, deadline);
 }
 
@@ -1139,8 +1127,7 @@ Result<bool> YBClient::TableExists(const YBTableName& table_name) {
 
 Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* table) {
   YBTableInfo info;
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
 
   // In the future, probably will look up the table in some map to reuse YBTable
@@ -1153,8 +1140,7 @@ Status YBClient::OpenTable(const YBTableName& table_name, shared_ptr<YBTable>* t
 
 Status YBClient::OpenTable(const TableId& table_id, shared_ptr<YBTable>* table) {
   YBTableInfo info;
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   RETURN_NOT_OK(data_->GetTableSchema(this, table_id, deadline, &info));
 
   // In the future, probably will look up the table in some map to reuse YBTable

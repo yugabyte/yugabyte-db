@@ -33,7 +33,7 @@ namespace {
 
 class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
  public:
-  TransactionRpcBase(const MonoTime& deadline,
+  TransactionRpcBase(CoarseTimePoint deadline,
                      internal::RemoteTablet* tablet,
                      YBClient* client)
       : rpc::Rpc(deadline, client->messenger(), &client->proxy_cache()),
@@ -90,7 +90,7 @@ class TransactionRpcBase : public rpc::Rpc, public internal::TabletRpc {
 template <class Traits>
 class TransactionRpc : public TransactionRpcBase {
  public:
-  TransactionRpc(const MonoTime& deadline,
+  TransactionRpc(CoarseTimePoint deadline,
                  internal::RemoteTablet* tablet,
                  YBClient* client,
                  typename Traits::Request* req,
@@ -202,7 +202,7 @@ constexpr const char* AbortTransactionTraits::kName;
 } // namespace
 
 rpc::RpcCommandPtr UpdateTransaction(
-    const MonoTime& deadline,
+    CoarseTimePoint deadline,
     internal::RemoteTablet* tablet,
     YBClient* client,
     tserver::UpdateTransactionRequestPB* req,
@@ -212,7 +212,7 @@ rpc::RpcCommandPtr UpdateTransaction(
 }
 
 rpc::RpcCommandPtr GetTransactionStatus(
-    const MonoTime& deadline,
+    CoarseTimePoint deadline,
     internal::RemoteTablet* tablet,
     YBClient* client,
     tserver::GetTransactionStatusRequestPB* req,
@@ -222,7 +222,7 @@ rpc::RpcCommandPtr GetTransactionStatus(
 }
 
 rpc::RpcCommandPtr AbortTransaction(
-    const MonoTime& deadline,
+    CoarseTimePoint deadline,
     internal::RemoteTablet* tablet,
     YBClient* client,
     tserver::AbortTransactionRequestPB* req,

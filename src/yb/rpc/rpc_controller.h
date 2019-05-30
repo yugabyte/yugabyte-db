@@ -130,6 +130,8 @@ class RpcController {
   // Using an uninitialized deadline means the call won't time out.
   void set_deadline(const MonoTime& deadline);
 
+  void set_deadline(CoarseTimePoint deadline);
+
   void set_allow_local_calls_in_curr_thread(bool al) { allow_local_calls_in_curr_thread_ = al; }
   bool allow_local_calls_in_curr_thread() const { return allow_local_calls_in_curr_thread_; }
 

@@ -194,7 +194,7 @@ void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
       while (std::chrono::steady_clock::now() < stop_time) {
         rpc::Rpcs rpcs;
         Synchronizer sync;
-        auto deadline = MonoTime::Now() + 20s;
+        auto deadline = CoarseMonoClock::Now() + 20s;
         auto rpc = rpc::StartRpc<master::GetLeaderMasterRpc>(
             Bind(&LeaderMasterCallback, &sync),
             master_addrs,

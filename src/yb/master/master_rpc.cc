@@ -80,7 +80,7 @@ class GetMasterRegistrationRpc: public rpc::Rpc {
   // Invokes 'user_cb' upon failure or success of the RPC call.
   GetMasterRegistrationRpc(StatusFunctor user_cb,
                            const HostPort& addr,
-                           const MonoTime& deadline,
+                           CoarseTimePoint deadline,
                            rpc::Messenger* messenger,
                            rpc::ProxyCache* proxy_cache,
                            ServerEntryPB* out)
@@ -151,7 +151,7 @@ void GetMasterRegistrationRpc::Finished(const Status& status) {
 
 GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
                                        const server::MasterAddresses& addrs,
-                                       MonoTime deadline,
+                                       CoarseTimePoint deadline,
                                        Messenger* messenger,
                                        rpc::ProxyCache* proxy_cache,
                                        rpc::Rpcs* rpcs,
@@ -160,7 +160,7 @@ GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
       user_cb_(std::move(user_cb)),
       rpcs_(*rpcs),
       should_timeout_to_follower_(should_timeout_to_follower) {
-  DCHECK(deadline.Initialized());
+  DCHECK(deadline != CoarseTimePoint::max());
 
   for (const auto& list : addrs) {
     addrs_.insert(addrs_.end(), list.begin(), list.end());

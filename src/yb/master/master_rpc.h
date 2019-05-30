@@ -83,7 +83,7 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   // found until 'deadline' passes.
   GetLeaderMasterRpc(LeaderCallback user_cb,
                      const server::MasterAddresses& addrs,
-                     MonoTime deadline,
+                     CoarseTimePoint deadline,
                      rpc::Messenger* messenger,
                      rpc::ProxyCache* proxy_cache,
                      rpc::Rpcs* rpcs,

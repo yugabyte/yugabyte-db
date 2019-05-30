@@ -1179,8 +1179,7 @@ Status ExternalMiniCluster::GetPeerMasterIndex(int* idx, bool is_leader) {
   Synchronizer sync;
   server::MasterAddresses addrs;
   HostPort leader_master_hp;
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(MonoDelta::FromSeconds(5));
+  auto deadline = CoarseMonoClock::Now() + 5s;
 
   *idx = 0;  // default to 0'th index, even in case of errors.
 

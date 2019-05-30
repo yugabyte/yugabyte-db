@@ -50,7 +50,7 @@ typedef std::function<void(const Status&, HybridTime)> UpdateTransactionCallback
 
 // Updates specified transaction.
 MUST_USE_RESULT rpc::RpcCommandPtr UpdateTransaction(
-    const MonoTime& deadline,
+    CoarseTimePoint deadline,
     internal::RemoteTablet* tablet,
     YBClient* client,
     tserver::UpdateTransactionRequestPB* req,
@@ -61,7 +61,7 @@ typedef std::function<void(const Status&, const tserver::GetTransactionStatusRes
 
 // Gets status of specified transaction.
 MUST_USE_RESULT rpc::RpcCommandPtr GetTransactionStatus(
-    const MonoTime& deadline,
+    CoarseTimePoint deadline,
     internal::RemoteTablet* tablet,
     YBClient* client,
     tserver::GetTransactionStatusRequestPB* req,
@@ -72,7 +72,7 @@ typedef std::function<void(const Status&, const tserver::AbortTransactionRespons
 
 // Aborts specified transaction.
 MUST_USE_RESULT rpc::RpcCommandPtr AbortTransaction(
-    const MonoTime& deadline,
+    CoarseTimePoint deadline,
     internal::RemoteTablet* tablet,
     YBClient* client,
     tserver::AbortTransactionRequestPB* req,

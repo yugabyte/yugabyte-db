@@ -263,7 +263,7 @@ bool TabletInvoker::Done(Status* status) {
   if (status->IsIllegalState() || status->IsServiceUnavailable() || status->IsAborted() ||
       status->IsLeaderNotReadyToServe() || status->IsLeaderHasNoLease() ||
       TabletNotFoundOnTServer(rpc_->response_error(), *status) ||
-      (status->IsTimedOut() && MonoTime::Now() < retrier_->deadline())) {
+      (status->IsTimedOut() && CoarseMonoClock::Now() < retrier_->deadline())) {
     VLOG(4) << "Retryable failure: " << *status
             << ", response: " << yb::ToString(rpc_->response_error());
 

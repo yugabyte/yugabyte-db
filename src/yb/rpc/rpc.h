@@ -72,7 +72,7 @@ class RpcCommand : public std::enable_shared_from_this<RpcCommand> {
 
   virtual void Abort() = 0;
 
-  virtual MonoTime deadline() const = 0;
+  virtual CoarseTimePoint deadline() const = 0;
 
  protected:
   ~RpcCommand() {}
@@ -87,12 +87,7 @@ YB_STRONGLY_TYPED_BOOL(RetryWhenBusy);
 // All RPCs should use HandleResponse() to retry certain generic errors.
 class RpcRetrier {
  public:
-  RpcRetrier(MonoTime deadline, Messenger* messenger, ProxyCache *proxy_cache)
-      : deadline_(std::move(deadline)),
-        messenger_(messenger),
-        proxy_cache_(*proxy_cache) {
-    controller_.Reset();
-  }
+  RpcRetrier(CoarseTimePoint deadline, Messenger* messenger, ProxyCache *proxy_cache);
 
   ~RpcRetrier();
 
@@ -128,7 +123,7 @@ class RpcRetrier {
   // Do not forget that setting deadline in RpcController is NOT thread safe.
   RpcController* PrepareController(MonoDelta single_call_timeout);
 
-  MonoTime deadline() const { return deadline_; }
+  CoarseTimePoint deadline() const { return deadline_; }
 
   rpc::Messenger* messenger() const {
     return messenger_;
@@ -155,11 +150,13 @@ class RpcRetrier {
   // The next sent rpc will be the nth attempt (indexed from 1).
   int attempt_num_ = 1;
 
+  const CoarseTimePoint start_;
+
   // If the remote end is busy, the RPC will be retried (with a small
   // delay) until this deadline is reached.
   //
   // May be uninitialized.
-  const MonoTime deadline_;
+  const CoarseTimePoint deadline_;
 
   // Messenger to use when sending the RPC.
   Messenger* messenger_ = nullptr;
@@ -183,9 +180,7 @@ class RpcRetrier {
 // An in-flight remote procedure call to some server.
 class Rpc : public RpcCommand {
  public:
-  Rpc(const MonoTime& deadline,
-      Messenger* messenger,
-      ProxyCache* proxy_cache)
+  Rpc(CoarseTimePoint deadline, Messenger* messenger, ProxyCache* proxy_cache)
       : retrier_(deadline, messenger, proxy_cache) {
   }
 
@@ -194,7 +189,7 @@ class Rpc : public RpcCommand {
   // Returns the number of times this RPC has been sent. Will always be at
   // least one.
   int num_attempts() const { return retrier().attempt_num(); }
-  MonoTime deadline() const override { return retrier_.deadline(); }
+  CoarseTimePoint deadline() const override { return retrier_.deadline(); }
 
   void Abort() override {
     retrier_.Abort();
@@ -247,7 +242,7 @@ class Rpcs {
  private:
   // Requests all active calls to abort. Returns deadline for waiting on abort completion.
   // If shutdown is true - switches Rpcs to shutting down state.
-  MonoTime DoRequestAbortAll(RequestShutdown shutdown);
+  CoarseTimePoint DoRequestAbortAll(RequestShutdown shutdown);
 
   boost::optional<std::mutex> mutex_holder_;
   std::mutex* mutex_;

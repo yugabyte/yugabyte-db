@@ -445,7 +445,7 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
 class LookupRpc : public Rpc {
  public:
   LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
-            const MonoTime& deadline,
+            CoarseTimePoint deadline,
             Messenger* messenger,
             rpc::ProxyCache* proxy_cache);
 
@@ -487,13 +487,13 @@ class LookupRpc : public Rpc {
 };
 
 LookupRpc::LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
-                     const MonoTime& deadline,
+                     CoarseTimePoint deadline,
                      Messenger* messenger,
                      rpc::ProxyCache* proxy_cache)
     : Rpc(deadline, messenger, proxy_cache),
       meta_cache_(meta_cache),
       retained_self_(meta_cache_->rpcs_.InvalidHandle()) {
-  DCHECK(deadline.Initialized());
+  DCHECK(deadline != CoarseTimePoint());
 }
 
 LookupRpc::~LookupRpc() {
@@ -515,15 +515,14 @@ void LookupRpc::SendRpc() {
   }
 
   // See YBClient::Data::SyncLeaderMasterRpc().
-  MonoTime now = MonoTime::Now();
-  if (retrier().deadline().ComesBefore(now)) {
+  auto now = CoarseMonoClock::Now();
+  if (retrier().deadline() < now) {
     Finished(STATUS(TimedOut, "timed out after deadline expired"));
     return;
   }
-  MonoTime rpc_deadline = now;
-  rpc_deadline.AddDelta(meta_cache_->client_->default_rpc_timeout());
+  auto rpc_deadline = now + meta_cache_->client_->default_rpc_timeout();
   mutable_retrier()->mutable_controller()->set_deadline(
-      MonoTime::Earliest(rpc_deadline, retrier().deadline()));
+      std::min(rpc_deadline, retrier().deadline()));
 
   DoSendRpc();
 }
@@ -574,7 +573,7 @@ void LookupRpc::DoFinished(
   }
 
   if (new_status.IsTimedOut()) {
-    if (MonoTime::Now().ComesBefore(retrier().deadline())) {
+    if (CoarseMonoClock::Now() < retrier().deadline()) {
       if (client()->IsMultiMaster()) {
         YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master timed out, re-trying...";
         ResetMasterLeaderAndRetry();
@@ -696,7 +695,7 @@ void MetaCache::LookupFailed(
           << Slice(partition_group_start).ToDebugHexString() << ", failed with: " << status;
 
   std::vector<LookupTabletCallback> to_notify;
-  MonoTime max_deadline;
+  CoarseTimePoint max_deadline;
   {
     std::lock_guard<decltype(mutex_)> l(mutex_);
     auto it = tables_.find(table->id());
@@ -718,14 +717,14 @@ void MetaCache::LookupFailed(
       }
       it->second.tablet_lookups_by_group.erase(gi);
     } else {
-      auto now = MonoTime::Now();
+      auto now = CoarseMonoClock::Now();
       for (auto j = lookups.begin(); j != lookups.end();) {
         auto w = j->second.begin();
         for (auto i = j->second.begin(); i != j->second.end(); ++i) {
           if (i->deadline <= now) {
             to_notify.push_back(std::move(i->callback));
           } else {
-            max_deadline.MakeAtLeast(i->deadline);
+            max_deadline = std::max(max_deadline, i->deadline);
             if (i != w) {
               *w = std::move(*i);
             }
@@ -739,7 +738,7 @@ void MetaCache::LookupFailed(
           j = lookups.erase(j);
         }
       }
-      if (!max_deadline) {
+      if (max_deadline == CoarseTimePoint()) {
         it->second.tablet_lookups_by_group.erase(gi);
       }
     }
@@ -749,7 +748,7 @@ void MetaCache::LookupFailed(
     callback(status);
   }
 
-  if (max_deadline) {
+  if (max_deadline != CoarseTimePoint()) {
     rpc::StartRpc<LookupByKeyRpc>(
         this, table, partition_group_start, max_deadline, client_->data_->messenger_,
         client_->data_->proxy_cache_.get());
@@ -761,7 +760,7 @@ class LookupByIdRpc : public LookupRpc {
   LookupByIdRpc(const scoped_refptr<MetaCache>& meta_cache,
                 LookupTabletCallback user_cb,
                 TabletId tablet_id,
-                const MonoTime& deadline,
+                CoarseTimePoint deadline,
                 Messenger* messenger,
                 rpc::ProxyCache* proxy_cache)
       : LookupRpc(meta_cache, deadline, messenger, proxy_cache),
@@ -815,7 +814,7 @@ class LookupByKeyRpc : public LookupRpc {
   LookupByKeyRpc(const scoped_refptr<MetaCache>& meta_cache,
                  const YBTable* table,
                  MetaCache::PartitionGroupKey partition_group_start,
-                 const MonoTime& deadline,
+                 CoarseTimePoint deadline,
                  Messenger* messenger,
                  rpc::ProxyCache* proxy_cache)
       : LookupRpc(meta_cache, deadline, messenger, proxy_cache),
@@ -924,7 +923,7 @@ bool MetaCache::FastLookupTabletByKeyUnlocked(
 
 void MetaCache::LookupTabletByKey(const YBTable* table,
                                   const string& partition_key,
-                                  const MonoTime& deadline,
+                                  CoarseTimePoint deadline,
                                   LookupTabletCallback callback) {
   const auto& partition_start = table->FindPartitionStart(partition_key);
 
@@ -968,7 +967,7 @@ RemoteTabletPtr MetaCache::LookupTabletByIdFastPath(const TabletId& tablet_id) {
 }
 
 void MetaCache::LookupTabletById(const TabletId& tablet_id,
-                                 const MonoTime& deadline,
+                                 CoarseTimePoint deadline,
                                  LookupTabletCallback callback,
                                  UseCache use_cache) {
   if (use_cache) {
