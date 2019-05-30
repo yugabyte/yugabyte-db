@@ -17,7 +17,9 @@ showAsideToc: true
 
 API compatibility refers to the fact that the database APIs offered by YugaByte DB servers implement the same wire protocol and modeling/query language as that of an existing database. Since client drivers, command line shells, IDE integrations and other ecosystem integrations of the existing database rely on this wire protocol and modeling/query language, they are expected to work with YugaByte DB without major modifications. 
 
-For example, the [YSQL](../../api/ysql) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBWeaver and more can be used with YugaByte DB. The same concept applies to [YCQL](../../api/ycql) in the context of the Apache Cassandra Query Language.
+{{< note title="Note" >}}
+The [YSQL](../../api/ysql) API is compatible with PostgreSQL. This means PostgreSQL client drivers, psql command line shell, IDE integrations such as TablePlus and DBWeaver and more can be used with YugaByte DB. The same concept applies to [YCQL](../../api/ycql) in the context of the Apache Cassandra Query Language.
+{{< /note >}}
 
 ## Why are YugaByte DB APIs compatible with popular DB languages?
 
@@ -43,6 +45,24 @@ YugaByte DB's goal is to remain as compatible with PostgreSQL as possible. If yo
 
 ## YCQL Compatibility with Apache Cassandra QL
 
+### List the features where YCQL goes beyond Apache Cassandra QL.
+
+- Following are the features that are present in YCQL but not present in Apache Cassandra QL.
+
+1. [JSONB](../../develop/learn/data-types/) column type for modeling document data
+2. [Distributed transactions](../../develop/learn/acid-transactions/) for multi-row ACID transactions
+3. [Official Jepsen tests](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/) to prove correctness under extreme failure conditions
+
+- Following are the features that are present in both YCQL and Apache Cassandra QL but YCQL provides stricter guarantees.
+
+1. [Secondary indexes](../../develop/learn/data-modeling/) are by default strongly consistent since internally they use distributed transactions.
+2. [INTEGER](../../api/ycql/type_int/) and [COUNTER](../../api/ycql/type_int/) datatypes are equivalent and both can be incremented without any lightweight transactions.
+
+- Following are the features that are either unnecessary or disallowed in YCQL.
+
+1. Lightweight transactions for compare-and-swap operations (such as increment) are unnecessary because YCQL achieves single row linearizability by default.
+2. Tunable write consistency is disallowed in YCQL because writes are committed at quorum using Raft replication protocol.
+
 ### Do INSERTs do “upserts” by default? How do I insert data only if it is absent?
 
 By default, inserts overwrite data on primary key collisions. So INSERTs do an upsert. This an intended CQL feature. In order to insert data only if the primary key is not already present,  add a clause "IF NOT EXISTS" to the INSERT statement. This will cause the INSERT fail if the row exists.
@@ -63,7 +83,7 @@ Yes, you can have collection data types as primary keys as long as they are mark
 
 Unlike Apache Cassandra, YugaByte COUNTER type is almost the same as INTEGER types. There is no need of lightweight transactions requiring 4 round trips to perform increments in YugaByte - these are efficiently performed with just one round trip.
 
-### How is 'USING TIMESTAMP' different in YugaByte?
+### How is 'USING TIMESTAMP' different in YugaByte DB?
 
 In Apache Cassandra, the highest timestamp provided always wins. Example:
 

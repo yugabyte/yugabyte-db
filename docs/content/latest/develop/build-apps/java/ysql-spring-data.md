@@ -57,7 +57,7 @@ This repository has a Spring Boot example that implements a simple REST API serv
 
 The source for the above application can be found in the [repo](https://github.com/YugaByte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo).
 
-There are a number of options that can be customized in the properties file located at `src/main/resources/application.properties`. Note that the `spring.datasource.url` defaults to the YSQL JDBC url `jdbc:postgresql://localhost:5433/postgres`.
+There are a number of options that can be customized in the properties file located at `src/main/resources/application.properties`. Given YSQL's compatibility with the PostgreSQL language, the `spring.jpa.database` property is set to `POSTGRESQL` and the `spring.datasource.url` is set to the YSQL JDBC url `jdbc:postgresql://localhost:5433/postgres`.
 
 
 ## Build the app
@@ -243,3 +243,7 @@ $ curl http://localhost:8080/orders
   ...
 }  
 ```
+
+## Explore the source
+
+As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/YugaByte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo) repo.
