@@ -61,12 +61,10 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
+#include "access/ybcam.h"
 #include "executor/ybcExpr.h"
 
 #include "utils/resowner_private.h"
-
-/* Number of rows assumed for a YB table if no size estimates exist */
-static const int DEFAULT_YB_NUM_ROWS = 1000;
 
 /* -------------------------------------------------------------------------- */
 /*  Planner/Optimizer functions */
@@ -92,7 +90,7 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
 	/* Save the output-rows estimate for the planner */
-	baserel->rows = DEFAULT_YB_NUM_ROWS;
+	baserel->rows = YBC_DEFAULT_NUM_ROWS;
 	baserel->fdw_private = ybc_plan;
 
 	/*
@@ -103,11 +101,9 @@ ybcGetForeignRelSize(PlannerInfo *root,
 
 /*
  * ybcGetForeignPaths
- *		Create possible access paths for a scan on the foreign table
- *
- *		Currently we don't support any push-down feature, so there is only one
- *		possible access path, which simply returns all records in the order in
- *		the data file.
+ *		Create possible access paths for a scan on the foreign table, which is
+ *      the full table scan plus available index paths (including the  primary key
+ *      scan path if any).
  */
 static void
 ybcGetForeignPaths(PlannerInfo *root,
@@ -116,13 +112,9 @@ ybcGetForeignPaths(PlannerInfo *root,
 {
 	Cost startup_cost;
 	Cost total_cost;
-	Cost cpu_per_tuple;
 
 	/* Estimate costs */
-	startup_cost  = baserel->baserestrictcost.startup;
-	cpu_per_tuple = cpu_tuple_cost * 10 + baserel->baserestrictcost.per_tuple;
-	total_cost    = startup_cost + seq_page_cost * baserel->pages +
-	                cpu_per_tuple * baserel->rows;
+	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY, &startup_cost, &total_cost);
 
 	/* Create a ForeignPath node and it as the scan path */
 	add_path(baserel,

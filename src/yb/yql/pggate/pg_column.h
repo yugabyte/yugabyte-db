@@ -41,7 +41,6 @@ class PgColumn {
 
   // Bindings for read requests.
   PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlReadRequestPB *write_req);
-  PgsqlExpressionPB *AllocPartitionBindPB(PgsqlReadRequestPB *read_req);
   PgsqlExpressionPB *AllocBindPB(PgsqlReadRequestPB *read_req);
 
   // Assign values for write requests.
@@ -84,16 +83,16 @@ class PgColumn {
     return read_requested_;
   }
 
-  bool set_read_requested(bool value) {
-    return read_requested_ = value;
+  void set_read_requested(const bool value) {
+    read_requested_ = value;
   }
 
   bool write_requested() const {
     return write_requested_;
   }
 
-  bool set_write_requested(bool value) {
-    return write_requested_ = value;
+  void set_write_requested(const bool value) {
+    write_requested_ = value;
   }
 
   bool is_system_column() {

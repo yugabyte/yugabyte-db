@@ -565,8 +565,8 @@ DefineIndex(Oid relationId,
 	accessMethodName = stmt->accessMethod;
 
 	/*
-	 * In YugaByte mode, switch index method from "btree" to "lsm" depending on whether the
-	 * table is stored in YugaByte storage or not (such as temporary tables).
+	 * In YugaByte mode, switch index method from "btree" or "hash" to "lsm" depending on whether
+	 * the table is stored in YugaByte storage or not (such as temporary tables).
 	 */
 	if (IsYugaByteEnabled())
 	{
@@ -576,7 +576,7 @@ DefineIndex(Oid relationId,
 		}
 		else if (IsYBRelation(rel))
 		{
-			if (strcmp(accessMethodName, "btree") == 0)
+			if (strcmp(accessMethodName, "btree") == 0 || strcmp(accessMethodName, "hash") == 0)
 			{
 				ereport(NOTICE,
 						(errmsg("index method \"%s\" was replaced with \"lsm\" in YugaByte DB",
@@ -1473,12 +1473,37 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	/*
 	 * process attributeList
 	 */
+	bool	range_index = false;
+
 	attn = 0;
 	foreach(lc, attList)
 	{
 		IndexElem  *attribute = (IndexElem *) lfirst(lc);
 		Oid			atttype;
 		Oid			attcollation;
+
+		if (IsYugaByteEnabled())
+		{
+			switch (attribute->ordering)
+			{
+				case SORTBY_ASC:
+				case SORTBY_DESC:
+				case SORTBY_DEFAULT:
+					range_index = true;
+					break;
+				case SORTBY_HASH:
+					if (range_index)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								 errmsg("hash column not allowed after an ASC/DESC column")));
+					break;
+				default:
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+							 errmsg("unsupported column sort order")));
+					break;
+			}
+		}
 
 		/*
 		 * Process the column-or-expression to be indexed.
@@ -1713,6 +1738,10 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			/* default ordering is ASC */
 			if (attribute->ordering == SORTBY_DESC)
 				colOptionP[attn] |= INDOPTION_DESC;
+			if (IsYugaByteEnabled() &&
+				attribute->ordering == SORTBY_HASH)
+				colOptionP[attn] |= INDOPTION_HASH;
+
 			/* default null ordering is LAST for ASC, FIRST for DESC */
 			if (attribute->nulls_ordering == SORTBY_NULLS_DEFAULT)
 			{

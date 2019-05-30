@@ -41,3 +41,6 @@ DEFINE_string(pggate_master_addresses, "",
 
 DEFINE_int32(ysql_prefetch_limit, 4096,
              "Maximum number of rows to prefetch");
+
+DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
+              "Scale factor to reduce ysql_prefetch_limit for backward scan");

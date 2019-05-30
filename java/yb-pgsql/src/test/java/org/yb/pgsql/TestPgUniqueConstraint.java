@@ -285,12 +285,12 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
       // Invalid insertion
       runInvalidQuery(stmt, "INSERT INTO test(i1, i2) VALUES (1, 3)", "duplicate");
 
-      // Selection containing i2 is an index-only scan, since i2 was imported
+      // Selection containing inequality (<) on i1 is a full table scan until we support proper
+      // range scan on index.
       assertQuery(
           stmt,
           "EXPLAIN (COSTS OFF) SELECT * FROM test WHERE (i1, i2) < (4, 4)",
-          new Row("Index Only Scan using test_constr on test"),
-          new Row("  Index Cond: (i1 <= 4)"),
+          new Row("Foreign Scan on test"),
           new Row("  Filter: (ROW(i1, i2) < ROW(4, 4))")
       );
 
@@ -298,12 +298,12 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
       stmt.execute("ALTER TABLE test DROP CONSTRAINT test_constr");
       stmt.execute("ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE (i1)");
 
-      // Now the same select is not an index-only scan
+      // Selection containing inequality (<) on i1 is a full table scan until we support proper
+      // range scan on index.
       assertQuery(
           stmt,
           "EXPLAIN (COSTS OFF) SELECT * FROM test WHERE (i1, i2) < (4, 4)",
-          new Row("Index Scan using test_constr on test"),
-          new Row("  Index Cond: (i1 <= 4)"),
+          new Row("Foreign Scan on test"),
           new Row("  Filter: (ROW(i1, i2) < ROW(4, 4))")
       );
     }

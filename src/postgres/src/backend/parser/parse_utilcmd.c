@@ -747,6 +747,21 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 												constraint->location)));
 				if (constraint->keys == NIL)
 					constraint->keys = list_make1(makeString(column->colname));
+				if (IsYugaByteEnabled())
+				{
+					if (constraint->yb_index_params == NIL)
+					{
+						IndexElem *index_elem = makeNode(IndexElem);
+						index_elem->name = pstrdup(column->colname);
+						index_elem->expr = NULL;
+						index_elem->indexcolname = NULL;
+						index_elem->collation = NIL;
+						index_elem->opclass = NIL;
+						index_elem->ordering = SORTBY_DEFAULT;
+						index_elem->nulls_ordering = SORTBY_NULLS_DEFAULT;
+						constraint->yb_index_params = list_make1(index_elem);
+					}
+				}
 				cxt->ixconstraints = lappend(cxt->ixconstraints, constraint);
 				break;
 
@@ -2115,6 +2130,18 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 							 errdetail("Cannot create a primary key or unique constraint using such an index."),
 							 parser_errposition(cxt->pstate, constraint->location)));
 
+				if (IsYugaByteEnabled())
+				{
+					IndexElem *index_elem = makeNode(IndexElem);
+					index_elem->name = attname;
+					index_elem->expr = NULL;
+					index_elem->indexcolname = NULL;
+					index_elem->collation = NIL;
+					index_elem->opclass = NIL;
+					index_elem->ordering = SORTBY_DEFAULT;
+					index_elem->nulls_ordering = SORTBY_NULLS_DEFAULT;
+					constraint->yb_index_params = lappend(constraint->yb_index_params, index_elem);
+				}
 				constraint->keys = lappend(constraint->keys, makeString(attname));
 			}
 			else
@@ -2159,9 +2186,10 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 	 */
 	else
 	{
-		foreach(lc, constraint->keys)
+		foreach(lc, constraint->yb_index_params)
 		{
-			char	   *key = strVal(lfirst(lc));
+			IndexElem  *index_elem = (IndexElem *)lfirst(lc);
+			char	   *key = index_elem->name;
 			bool		found = false;
 			ColumnDef  *column = NULL;
 			ListCell   *columns;
@@ -2277,10 +2305,10 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 			iparam->name = pstrdup(key);
 			iparam->expr = NULL;
 			iparam->indexcolname = NULL;
-			iparam->collation = NIL;
-			iparam->opclass = NIL;
-			iparam->ordering = SORTBY_DEFAULT;
-			iparam->nulls_ordering = SORTBY_NULLS_DEFAULT;
+			iparam->collation = list_copy(index_elem->collation);
+			iparam->opclass = list_copy(index_elem->opclass);
+			iparam->ordering = index_elem->ordering;
+			iparam->nulls_ordering = index_elem->nulls_ordering;
 			index->indexParams = lappend(index->indexParams, iparam);
 		}
 	}

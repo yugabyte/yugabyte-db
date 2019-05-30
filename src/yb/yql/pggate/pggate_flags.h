@@ -22,5 +22,6 @@ DECLARE_int32(pggate_ybclient_reactor_threads);
 DECLARE_string(pggate_proxy_bind_address);
 DECLARE_string(pggate_master_addresses);
 DECLARE_int32(ysql_prefetch_limit);
+DECLARE_double(ysql_backward_prefetch_scale_factor);
 
 #endif  // YB_YQL_PGGATE_PGGATE_FLAGS_H

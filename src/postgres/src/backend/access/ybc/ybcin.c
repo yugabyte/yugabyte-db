@@ -55,7 +55,7 @@ ybcinhandler(PG_FUNCTION_ARGS)
 
 	amroutine->amstrategies = BTMaxStrategyNumber;
 	amroutine->amsupport = BTNProcs;
-	amroutine->amcanorder = false; /* TODO: support ordering with range-based index */
+	amroutine->amcanorder = true;
 	amroutine->amcanorderbyop = false;
 	amroutine->amcanbackward = true;
 	amroutine->amcanunique = true;
@@ -205,6 +205,7 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 				  Cost *indexStartupCost, Cost *indexTotalCost, Selectivity *indexSelectivity,
 				  double *indexCorrelation, double *indexPages)
 {
+	ybcIndexCostEstimate(path, indexSelectivity, indexStartupCost, indexTotalCost);
 }
 
 bytea *
@@ -255,6 +256,9 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 bool
 ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 {
+	Assert(dir == ForwardScanDirection || dir == BackwardScanDirection);
+	const bool is_forward_scan = (dir == ForwardScanDirection);
+
 	scan->xs_ctup.t_ybctid = 0;
 
 	/* 
@@ -263,7 +267,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	 */
 	if (scan->xs_want_itup || !scan->indexRelation->rd_index->indisprimary)
 	{
-		IndexTuple tuple = ybc_index_getnext(scan);
+		IndexTuple tuple = ybc_index_getnext(scan, is_forward_scan);
 
 		if (tuple)
 		{
@@ -274,7 +278,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 	else
 	{
-		HeapTuple tuple = ybc_pkey_getnext(scan);
+		HeapTuple tuple = ybc_pkey_getnext(scan, is_forward_scan);
 
 		if (tuple)
 		{

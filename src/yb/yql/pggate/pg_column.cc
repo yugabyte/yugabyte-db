@@ -103,13 +103,6 @@ PgsqlExpressionPB *PgColumn::AllocPrimaryBindPB(PgsqlReadRequestPB *read_req) {
   return bind_pb_;
 }
 
-PgsqlExpressionPB *PgColumn::AllocPartitionBindPB(PgsqlReadRequestPB *read_req) {
-  if (desc_.is_partition()) {
-    bind_pb_ = read_req->add_partition_column_values();
-  }
-  return bind_pb_;
-}
-
 PgsqlExpressionPB *PgColumn::AllocBindPB(PgsqlReadRequestPB *read_req) {
   if (bind_pb_ == nullptr) {
     DCHECK(!desc_.is_partition() && !desc_.is_primary())

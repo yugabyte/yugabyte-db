@@ -28,6 +28,7 @@
 #include "skey.h"
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "nodes/relation.h"
 #include "utils/catcache.h"
 #include "utils/resowner.h"
 #include "utils/snapshot.h"
@@ -50,6 +51,7 @@ typedef struct YbScanDescData
 	/* The handle for the internal YB Select statement. */
 	YBCPgStatement  handle;
 	ResourceOwner   stmt_owner;
+	bool			is_exec_done;
 
 	Relation index;
 } YbScanDescData;
@@ -92,15 +94,27 @@ extern void ybc_pkey_beginscan(Relation relation,
 							   IndexScanDesc scan_desc,
 							   int nkeys,
 							   ScanKey key);
-extern HeapTuple ybc_pkey_getnext(IndexScanDesc scan_desc);
+extern HeapTuple ybc_pkey_getnext(IndexScanDesc scan_desc, bool is_forward_scan);
 extern void ybc_pkey_endscan(IndexScanDesc scan_desc);
 
 extern void ybc_index_beginscan(Relation index,
 								IndexScanDesc scan_desc,
 								int nkeys,
 								ScanKey key);
-extern IndexTuple ybc_index_getnext(IndexScanDesc scan_desc);
+extern IndexTuple ybc_index_getnext(IndexScanDesc scan_desc, bool is_forward_scan);
 extern void ybc_index_endscan(IndexScanDesc scan_desc);
+
+/* Number of rows assumed for a YB table if no size estimates exist */
+#define YBC_DEFAULT_NUM_ROWS  1000
+
+#define YBC_SINGLE_KEY_SELECTIVITY	(1.0 / YBC_DEFAULT_NUM_ROWS)
+#define YBC_HASH_SCAN_SELECTIVITY	(10.0 / YBC_DEFAULT_NUM_ROWS)
+#define YBC_FULL_SCAN_SELECTIVITY	1.0
+
+extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
+							Cost *startup_cost, Cost *total_cost);
+extern void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
+								 Cost *startup_cost, Cost *total_cost);
 
 /*
  * Fetch a single tuple by the ybctid.

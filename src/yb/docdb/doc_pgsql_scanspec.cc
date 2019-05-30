@@ -173,15 +173,20 @@ Result<KeyBytes> DocPgsqlScanSpec::Bound(const bool lower_bound) const {
     return std::move(result);
   }
 
-  // If start doc_key is set, that is the lower bound for the scan range.
-  if (lower_bound) {
-    if (!start_doc_key_.empty()) {
-      return start_doc_key_;
+  // If start doc_key is set, that is the lower or upper bound depending if it is forward or
+  // backward scan.
+  if (is_forward_scan_) {
+    if (lower_bound) {
+      return !start_doc_key_.empty() ? start_doc_key_ : lower_doc_key_;
     } else {
-      return lower_doc_key_;
+      return upper_doc_key_;
     }
   } else {
-    return upper_doc_key_;
+    if (lower_bound) {
+      return lower_doc_key_;
+    } else {
+      return !start_doc_key_.empty() ? start_doc_key_ : upper_doc_key_;
+    }
   }
 }
 

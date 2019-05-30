@@ -53,7 +53,9 @@ DocKey UniqueIndexSearchKey(const Schema& schema, const DocKey& key) {
             static_cast<int>(PgSystemAttrNum::kYBBaseTupleId));
   auto range_components = key.range_group();
   range_components.pop_back();
-  return DocKey(schema, key.hash(), key.hashed_group(), range_components);
+  return key.hashed_group().empty()
+          ? DocKey(schema, range_components)
+          : DocKey(schema, key.hash(), key.hashed_group(), range_components);
 }
 
 bool HasNullValue(const std::vector<PrimitiveValue>& items) {

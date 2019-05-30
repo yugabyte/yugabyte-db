@@ -466,6 +466,10 @@ YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
   return ToYBCStatus(pgapi->NewSelect(pg_session, table_id, index_id, handle, read_time));
 }
 
+YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
+  return ToYBCStatus(pgapi->SetForwardScan(handle, is_forward_scan));
+}
+
 YBCStatus YBCPgExecSelect(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecSelect(handle));
 }
