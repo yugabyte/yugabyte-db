@@ -33,6 +33,10 @@
 #ifndef YB_MASTER_CATALOG_ENTITY_INFO_H
 #define YB_MASTER_CATALOG_ENTITY_INFO_H
 
+#include <shared_mutex>
+
+#include <mutex>
+
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/master.pb.h"
 #include "yb/util/cow_object.h"
@@ -370,7 +374,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   TabletInfoMap tablet_map_;
 
   // Protects tablet_map_ and pending_tasks_.
-  mutable simple_spinlock lock_;
+  mutable rw_spinlock lock_;
 
   // If closing, requests to AddTask will be promptly aborted.
   bool closing_ = false;
