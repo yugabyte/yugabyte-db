@@ -966,6 +966,7 @@ index_create(Relation heapRelation,
 		YBCCreateIndex(indexRelationName,
 					   indexInfo,
 					   indexTupDesc,
+					   coloptions,
 					   indexRelationId,
 					   heapRelation);
 	}

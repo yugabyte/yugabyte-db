@@ -35,6 +35,7 @@
 #include "catalog/ybctype.h"
 
 #include "catalog/catalog.h"
+#include "catalog/index.h"
 #include "access/htup_details.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
@@ -101,38 +102,31 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 								  bool include_hash,
 								  bool include_primary)
 {
-	int      i;
-
-	for (i = 0; i < desc->natts; i++)
+	for (int i = 0; i < desc->natts; i++)
 	{
 		Form_pg_attribute att = TupleDescAttr(desc, i);
 		char              *attname = NameStr(att->attname);
-		AttrNumber        attnum = att->attnum;			
+		AttrNumber        attnum = att->attnum;
+		bool              is_hash    = false;
 		bool              is_primary = false;
-		bool              is_first   = true;
 
 		if (primary_key != NULL)
 		{
 			ListCell *cell;
 
-			foreach(cell, primary_key->keys)
+			foreach(cell, primary_key->yb_index_params)
 			{
-				char *kattname = strVal(lfirst(cell));
+				IndexElem *index_elem = (IndexElem *)lfirst(cell);
 
-				if (strcmp(attname, kattname) == 0)
+				if (strcmp(attname, index_elem->name) == 0)
 				{
+					is_hash = (index_elem->ordering == SORTBY_HASH);
 					is_primary = true;
 					break;
-				}
-				if (is_first)
-				{
-					is_first = false;
 				}
 			}
 		}
 
-		/* TODO For now, assume the first primary key column is the hash. */
-		bool is_hash = is_primary && is_first;
 		if (include_hash == is_hash && include_primary == is_primary)
 		{
 			if (is_primary && !YBCDataTypeIsValidForKey(att->atttypid)) {
@@ -208,7 +202,8 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 	 * columns, then rest of primary key columns, then regular columns. If
 	 * no primary key is specified, an internal primary key is added above.
 	 */
-	if (primary_key != NULL) {
+	if (primary_key != NULL)
+	{
 		CreateTableAddColumns(handle,
 							  desc,
 							  primary_key,
@@ -284,6 +279,7 @@ void
 YBCCreateIndex(const char *indexName,
 			   IndexInfo *indexInfo,			   
 			   TupleDesc indexTupleDesc,
+			   int16 *coloptions,
 			   Oid indexId,
 			   Relation rel)
 {
@@ -310,16 +306,14 @@ YBCCreateIndex(const char *indexName,
 									   false, /* if_not_exists */
 									   &handle));
 
-	int	 i;
-	bool is_hash = true;
-
-	for (i = 0; i < indexTupleDesc->natts; i++)
+	for (int i = 0; i < indexTupleDesc->natts; i++)
 	{
 		Form_pg_attribute att	   = TupleDescAttr(indexTupleDesc, i);
 		char			  *attname = NameStr(att->attname);
 		AttrNumber		  attnum   = att->attnum;			
 		const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum, att->atttypid);
-		bool			  is_key = (i < indexInfo->ii_NumIndexKeyAttrs);
+		bool			  is_key   = (i < indexInfo->ii_NumIndexKeyAttrs);
+		bool			  is_hash  = (coloptions[i] & INDOPTION_HASH) != 0;
 
 		if (is_key)
 		{
@@ -367,11 +361,13 @@ YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 	int col = 1;
 	bool needsYBAlter = false;
 
-	foreach(lcmd, stmt->cmds){
+	foreach(lcmd, stmt->cmds)
+	{
 		AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
-		switch (cmd->subtype) {
-			case AT_AddColumn: {
-
+		switch (cmd->subtype)
+		{
+			case AT_AddColumn:
+			{
 				ColumnDef* colDef = (ColumnDef *) cmd->def;
 				Oid			typeOid;
 				int32		typmod;
@@ -393,7 +389,8 @@ YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 
 				break;
 			}
-			case AT_DropColumn: {
+			case AT_DropColumn:
+			{
 
 				HandleYBStmtStatus(YBCPgAlterTableDropColumn(handle, cmd->name), handle);
 				needsYBAlter = true;
@@ -426,7 +423,8 @@ YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 		}
 	}
 
-	if (needsYBAlter) {
+	if (needsYBAlter)
+	{
 		HandleYBStmtStatus(YBCPgExecAlterTable(handle), handle);
 		HandleYBStatus(YBCPgDeleteStatement(handle));
 	}

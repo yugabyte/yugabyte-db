@@ -138,6 +138,8 @@ class PgCreateTable : public PgDdl {
   bool is_pg_catalog_table_;
   bool is_shared_table_;
   bool if_not_exist_;
+  boost::optional<YBHashSchema> hash_schema_;
+  std::vector<std::string> range_columns_;
   client::YBSchemaBuilder schema_builder_;
 };
 

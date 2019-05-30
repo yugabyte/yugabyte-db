@@ -300,7 +300,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				simple_select values_clause
 
 %type <node>	alter_column_default opclass_item opclass_drop alter_using
-%type <ival>	add_drop opt_asc_desc opt_nulls_order
+%type <ival>	add_drop opt_asc_desc opt_yb_index_sort_order opt_nulls_order
 
 %type <node>	alter_table_cmd alter_type_cmd opt_collate_clause
 	   replica_identity partition_cmd index_partition_cmd
@@ -392,7 +392,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				old_aggr_definition old_aggr_list
 				oper_argtypes RuleActionList RuleActionMulti
 				opt_column_list columnList opt_name_list
-				sort_clause opt_sort_clause sortby_list index_params
+				sort_clause opt_sort_clause sortby_list yb_index_params
 				opt_include opt_c_include index_including_params
 				name_list role_list from_clause from_list opt_array_bounds
 				qualified_name_list any_name any_name_list type_name_list
@@ -498,7 +498,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <alias>	alias_clause opt_alias_clause
 %type <list>	func_alias_clause
 %type <sortby>	sortby
-%type <ielem>	index_elem
+%type <ielem>	index_elem yb_index_elem
 %type <node>	table_ref
 %type <jexpr>	joined_table
 %type <range>	relation_expr
@@ -650,7 +650,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	GENERATED GLOBAL GRANT GRANTED GREATEST GROUP_P GROUPING GROUPS
 
-	HANDLER HAVING HEADER_P HOLD HOUR_P
+	HANDLER HASH HAVING HEADER_P HOLD HOUR_P
 
 	IDENTITY_P IF_P ILIKE IMMEDIATE IMMUTABLE IMPLICIT_P IMPORT_P IN_P INCLUDE
 	INCLUDING INCREMENT INDEX INDEXES INHERIT INHERITS INITIALLY INLINE_P
@@ -766,6 +766,17 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  */
 %nonassoc	UNBOUNDED		/* ideally should have same precedence as IDENT */
 %nonassoc	IDENT GENERATED NULL_P PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP
+ /*
+  * Break shift/reduce conflict in hash column declaration "col HASH" by
+  * giving a higher precedence to HASH as a sort order over operator class.
+  */
+%nonassoc   HASH
+%nonassoc   NO_OPCLASS
+ /*
+  * Break shift/reduce conflict in hash column declaration "(col) HASH" by
+  * giving a higher precedence to col as an expression list over a single expression.
+  */
+%nonassoc   EXPR_LIST
 %left		Op OPERATOR		/* multi-character ops and user-defined operators */
 %left		'+' '-'
 %left		'*' '/' '%'
@@ -3861,6 +3872,22 @@ ConstraintElem:
 					processCASbits($8, @8, "UNIQUE",
 								   &n->deferrable, &n->initdeferred, NULL,
 								   NULL, yyscanner);
+
+					/* Make column list available as index params also */
+					ListCell *lc;
+					foreach(lc, $3)
+					{
+						IndexElem *index_elem = makeNode(IndexElem);
+						index_elem->name = pstrdup(strVal(lfirst(lc)));
+						index_elem->expr = NULL;
+						index_elem->indexcolname = NULL;
+						index_elem->collation = NIL;
+						index_elem->opclass = NIL;
+						index_elem->ordering = SORTBY_DEFAULT;
+						index_elem->nulls_ordering = SORTBY_NULLS_DEFAULT;
+						n->yb_index_params = lappend(n->yb_index_params, index_elem);
+					}
+
 					$$ = (Node *)n;
 				}
 			| UNIQUE ExistingIndex ConstraintAttributeSpec
@@ -3878,13 +3905,19 @@ ConstraintElem:
 								   NULL, yyscanner);
 					$$ = (Node *)n;
 				}
-			| PRIMARY KEY '(' columnList ')' opt_c_include opt_definition OptConsTableSpace
+			| PRIMARY KEY '(' yb_index_params ')' opt_c_include opt_definition OptConsTableSpace
 				ConstraintAttributeSpec
 				{
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_PRIMARY;
 					n->location = @1;
-					n->keys = $4;
+					/* For Postgres' purpose, make index params available as a column list also */
+					ListCell *lc;
+					foreach(lc, $4)
+					{
+						IndexElem *index_elem = (IndexElem *)lfirst(lc);
+						n->keys = lappend(n->keys, makeString(index_elem->name));
+					}
 					n->including = $6;
 					n->options = $7;
 					n->indexname = NULL;
@@ -3892,6 +3925,9 @@ ConstraintElem:
 					processCASbits($9, @9, "PRIMARY KEY",
 								   &n->deferrable, &n->initdeferred, NULL,
 								   NULL, yyscanner);
+
+					n->yb_index_params = $4;
+
 					$$ = (Node *)n;
 				}
 			| PRIMARY KEY ExistingIndex ConstraintAttributeSpec
@@ -7753,7 +7789,7 @@ defacl_privilege_target:
  *****************************************************************************/
 
 IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
-			ON relation_expr access_method_clause '(' index_params ')'
+			ON relation_expr access_method_clause '(' yb_index_params ')'
 			opt_include opt_reloptions OptTableSpace where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
@@ -7781,7 +7817,7 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 					$$ = (Node *)n;
 				}
 			| CREATE opt_unique INDEX opt_concurrently IF_P NOT EXISTS index_name
-			ON relation_expr access_method_clause '(' index_params ')'
+			ON relation_expr access_method_clause '(' yb_index_params ')'
 			opt_include opt_reloptions OptTableSpace where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
@@ -7833,8 +7869,55 @@ access_method_clause:
 															 NULL : DEFAULT_INDEX_TYPE;	}
 		;
 
-index_params:	index_elem							{ $$ = list_make1($1); }
-			| index_params ',' index_elem			{ $$ = lappend($1, $3); }
+yb_index_params: yb_index_elem
+				{
+					if ($1->yb_name_list == NULL)
+					{
+						$$ = list_make1($1);
+					}
+					else
+					{
+						if ($1->ordering != SORTBY_HASH)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+									 errmsg("only hash column group is allowed"),
+									 parser_errposition(@1)));
+
+						/* Flatten the hash column group */
+						$$ = NULL;
+						ListCell *lc;
+						foreach (lc, $1->yb_name_list)
+						{
+							IndexElem *index_elem = makeNode(IndexElem);
+							index_elem->name = strVal(lfirst(lc));
+							index_elem->indexcolname = NULL;
+							index_elem->collation = list_copy($1->collation);
+							index_elem->opclass = list_copy($1->opclass);
+							index_elem->ordering = $1->ordering;
+							index_elem->nulls_ordering = $1->nulls_ordering;
+							$$ = lappend($$, index_elem);
+						}
+					}
+				}
+			| yb_index_params ',' index_elem
+				{
+					if ($3->ordering == SORTBY_HASH)
+					{
+						IndexElem *last_elem = (IndexElem *)llast($1);
+						if (last_elem->ordering == SORTBY_HASH)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+									 errmsg("multiple hash columns must be defined as a "
+											"single hash column group"),
+									 parser_errposition(@3)));
+						else
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+									 errmsg("hash column not allowed after an ASC/DESC column"),
+									 parser_errposition(@3)));
+					}
+					$$ = lappend($1, $3);
+				}
 		;
 
 /*
@@ -7842,7 +7925,7 @@ index_params:	index_elem							{ $$ = list_make1($1); }
  * expressions in parens.  For backwards-compatibility reasons, we allow
  * an expression that's just a function call to be written without parens.
  */
-index_elem:	ColId opt_collate opt_class opt_asc_desc opt_nulls_order
+index_elem:	ColId opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
 				{
 					$$ = makeNode(IndexElem);
 					$$->name = $1;
@@ -7853,7 +7936,7 @@ index_elem:	ColId opt_collate opt_class opt_asc_desc opt_nulls_order
 					$$->ordering = $4;
 					$$->nulls_ordering = $5;
 				}
-			| func_expr_windowless opt_collate opt_class opt_asc_desc opt_nulls_order
+			| func_expr_windowless opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
 				{
 					$$ = makeNode(IndexElem);
 					$$->name = NULL;
@@ -7864,11 +7947,40 @@ index_elem:	ColId opt_collate opt_class opt_asc_desc opt_nulls_order
 					$$->ordering = $4;
 					$$->nulls_ordering = $5;
 				}
-			| '(' a_expr ')' opt_collate opt_class opt_asc_desc opt_nulls_order
+			| '(' a_expr ')' opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
 				{
 					$$ = makeNode(IndexElem);
 					$$->name = NULL;
 					$$->expr = $2;
+					$$->indexcolname = NULL;
+					$$->collation = $4;
+					$$->opclass = $5;
+					$$->ordering = $6;
+					$$->nulls_ordering = $7;
+				}
+		;
+
+/*
+ * For YugaByte DB, index column can be grouped and hashed together. Unfortunately, we cannot
+ * use "columnList" below due to reduce/reduce conflict.
+ */
+yb_index_elem:	index_elem							{ $$ = $1; }
+			| '(' expr_list ')' opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
+				{
+					$$ = makeNode(IndexElem);
+					$$->name = NULL;
+					ListCell *lc;
+					foreach(lc, $2)
+					{
+						ColumnRef *col = (ColumnRef *)lfirst(lc);
+						if (col->type != T_ColumnRef || list_length(col->fields) != 1)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+									 errmsg("only column list is allowed"),
+									 parser_errposition(@2)));
+						char *colname = strVal(linitial(col->fields));
+						$$->yb_name_list = lappend($$->yb_name_list, makeString(colname));
+					}
 					$$->indexcolname = NULL;
 					$$->collation = $4;
 					$$->opclass = $5;
@@ -7892,12 +8004,19 @@ opt_collate: COLLATE any_name						{
 		;
 
 opt_class:	any_name								{ $$ = $1; }
-			| /*EMPTY*/								{ $$ = NIL; }
+			| /*EMPTY*/	%prec NO_OPCLASS			{ $$ = NIL; }
 		;
 
 opt_asc_desc: ASC							{ $$ = SORTBY_ASC; }
 			| DESC							{ $$ = SORTBY_DESC; }
 			| /*EMPTY*/						{ $$ = SORTBY_DEFAULT; }
+		;
+
+/*
+ * For YugaByte DB, index column can be hash-distributed also.
+ */
+opt_yb_index_sort_order: opt_asc_desc			{ $$ = $1; }
+			| HASH							{ $$ = SORTBY_HASH; }
 		;
 
 opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }
@@ -11530,7 +11649,7 @@ opt_on_conflict:
 		;
 
 opt_conf_expr:
-			'(' index_params ')' where_clause
+			'(' yb_index_params ')' where_clause
 				{
 					$$ = makeNode(InferClause);
 					$$->indexElems = $2;
@@ -14948,7 +15067,7 @@ subquery_Op:
  */
 			;
 
-expr_list:	a_expr
+expr_list:	a_expr %prec EXPR_LIST
 				{
 					$$ = list_make1($1);
 				}
@@ -15732,6 +15851,7 @@ unreserved_keyword:
 			| GRANTED
 			| GROUPS
 			| HANDLER
+			| HASH
 			| HEADER_P
 			| HOLD
 			| HOUR_P

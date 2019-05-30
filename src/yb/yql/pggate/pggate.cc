@@ -643,6 +643,15 @@ Status PgApiImpl::NewSelect(PgSession *pg_session,
   return Status::OK();
 }
 
+Status PgApiImpl::SetForwardScan(PgStatement *handle, bool is_forward_scan) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgSelect*>(handle)->SetForwardScan(is_forward_scan);
+  return Status::OK();
+}
+
 Status PgApiImpl::ExecSelect(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.

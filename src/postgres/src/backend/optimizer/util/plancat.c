@@ -300,8 +300,13 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 					info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 				}
 			}
-			else if (amroutine->amcanorder)
+			else if (amroutine->amcanorder && !IsYBRelation(relation))
 			{
+				/*
+				 * TODO: enable ordering for YugaByte relations after DocDB supports
+				 * null-last.
+				 */
+
 				/*
 				 * Otherwise, identify the corresponding btree opfamilies by
 				 * trying to map this index's "<" operators into btree.  Since
@@ -327,6 +332,24 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 					Oid			btopfamily;
 					Oid			btopcintype;
 					int16		btstrategy;
+
+					/*
+					 * If there is a hash column in the key, the key is not
+					 * end-to-end sorted.
+					 *
+					 * TODO: instead of treating the whole index as unordered,
+					 * we can try to examine the WHERE and JOIN predicates and
+					 * make use of the ordering of other range columns if the
+					 * predicate condition picks a specific hash column value.
+					 *
+					 */
+					if (IsYBRelation(relation) && (opt & INDOPTION_HASH) != 0)
+					{
+						info->sortopfamily = NULL;
+						info->reverse_sort = NULL;
+						info->nulls_first = NULL;
+						break;
+					}
 
 					info->reverse_sort[i] = (opt & INDOPTION_DESC) != 0;
 					info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;

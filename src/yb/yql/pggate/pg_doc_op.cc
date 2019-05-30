@@ -165,13 +165,15 @@ PgDocReadOp::~PgDocReadOp() {
 void PgDocReadOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
   PgDocOp::InitUnlocked(lock);
 
-  PgsqlReadRequestPB *req = read_op_->mutable_request();
-  req->set_limit(FLAGS_ysql_prefetch_limit);
-  req->set_return_paging_state(true);
+  read_op_->mutable_request()->set_return_paging_state(true);
 }
 
 Status PgDocReadOp::SendRequestUnlocked() {
   CHECK(!waiting_for_response_);
+
+  PgsqlReadRequestPB *req = read_op_->mutable_request();
+  req->set_limit(FLAGS_ysql_prefetch_limit *
+                 (req->is_forward_scan() ? 1.0 : FLAGS_ysql_backward_prefetch_scale_factor));
 
   SCHECK_EQ(VERIFY_RESULT(pg_session_->PgApplyAsync(read_op_, read_time_)), OpBuffered::kFalse,
             IllegalState, "YSQL read operation should not be buffered");
@@ -210,7 +212,7 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
 
     // Setup request for the next batch of data.
     const PgsqlResponsePB& res = read_op_->response();
-     if (res.has_paging_state()) {
+    if (res.has_paging_state()) {
        PgsqlReadRequestPB *req = read_op_->mutable_request();
        // Set up paging state for next request.
        *req->mutable_paging_state() = res.paging_state();
