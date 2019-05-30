@@ -76,7 +76,7 @@ Status TSDescriptor::Register(const NodeInstancePB& instance,
                               const TSRegistrationPB& registration,
                               CloudInfoPB local_cloud_info,
                               rpc::ProxyCache* proxy_cache) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> l(lock_);
   return RegisterUnlocked(instance, registration, std::move(local_cloud_info), proxy_cache);
 }
 
@@ -120,7 +120,7 @@ Status TSDescriptor::RegisterUnlocked(
 }
 
 std::string TSDescriptor::placement_uuid() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   return placement_uuid_;
 }
 
@@ -130,33 +130,33 @@ std::string TSDescriptor::generate_placement_id(const CloudInfoPB& ci) {
 }
 
 std::string TSDescriptor::placement_id() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   return placement_id_;
 }
 
 void TSDescriptor::UpdateHeartbeatTime() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> l(lock_);
   last_heartbeat_ = MonoTime::Now();
 }
 
 MonoDelta TSDescriptor::TimeSinceHeartbeat() const {
   MonoTime now(MonoTime::Now());
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   return now.GetDeltaSince(last_heartbeat_);
 }
 
 int64_t TSDescriptor::latest_seqno() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   return latest_seqno_;
 }
 
 bool TSDescriptor::has_tablet_report() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   return has_tablet_report_;
 }
 
 void TSDescriptor::set_has_tablet_report(bool has_report) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> l(lock_);
   has_tablet_report_ = has_report;
 }
 
@@ -178,24 +178,24 @@ void TSDescriptor::DecayRecentReplicaCreationsUnlocked() {
 }
 
 void TSDescriptor::IncrementRecentReplicaCreations() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> l(lock_);
   DecayRecentReplicaCreationsUnlocked();
   recent_replica_creations_ += 1;
 }
 
 double TSDescriptor::RecentReplicaCreations() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> l(lock_);
   DecayRecentReplicaCreationsUnlocked();
   return recent_replica_creations_;
 }
 
 TSRegistrationPB TSDescriptor::GetRegistration() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   return *registration_;
 }
 
 TSInformationPB TSDescriptor::GetTSInformationPB() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   CHECK(registration_) << "No registration";
   TSInformationPB result;
   *result.mutable_registration() = *registration_;
@@ -205,7 +205,7 @@ TSInformationPB TSDescriptor::GetTSInformationPB() const {
 }
 
 bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   const auto& ci = registration_->common().cloud_info();
 
   return cloud_info.placement_cloud() == ci.placement_cloud() &&
@@ -246,42 +246,42 @@ bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_in
 }
 
 void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
-  std::lock_guard<simple_spinlock> l(lock_);
-  tsMetrics_.total_memory_usage = metrics.total_ram_usage();
-  tsMetrics_.total_sst_file_size = metrics.total_sst_file_size();
-  tsMetrics_.uncompressed_sst_file_size = metrics.uncompressed_sst_file_size();
-  tsMetrics_.read_ops_per_sec = metrics.read_ops_per_sec();
-  tsMetrics_.write_ops_per_sec = metrics.write_ops_per_sec();
-  tsMetrics_.uptime_seconds = metrics.uptime_seconds();
+  std::lock_guard<rw_spinlock> l(lock_);
+  ts_metrics_.total_memory_usage = metrics.total_ram_usage();
+  ts_metrics_.total_sst_file_size = metrics.total_sst_file_size();
+  ts_metrics_.uncompressed_sst_file_size = metrics.uncompressed_sst_file_size();
+  ts_metrics_.read_ops_per_sec = metrics.read_ops_per_sec();
+  ts_metrics_.write_ops_per_sec = metrics.write_ops_per_sec();
+  ts_metrics_.uptime_seconds = metrics.uptime_seconds();
 }
 
 bool TSDescriptor::HasTabletDeletePending() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   return !tablets_pending_delete_.empty();
 }
 
 bool TSDescriptor::IsTabletDeletePending(const std::string& tablet_id) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   return tablets_pending_delete_.count(tablet_id);
 }
 
 std::string TSDescriptor::PendingTabletDeleteToString() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   return yb::ToString(tablets_pending_delete_);
 }
 
 void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> l(lock_);
   tablets_pending_delete_.insert(tablet_id);
 }
 
 void TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> l(lock_);
   tablets_pending_delete_.erase(tablet_id);
 }
 
 std::string TSDescriptor::ToString() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> l(lock_);
   return Format("{ permanent_uuid: $0 registration: $1 placement_id: $2 }",
                 permanent_uuid_, registration_, placement_id_);
 }
