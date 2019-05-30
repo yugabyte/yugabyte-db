@@ -52,6 +52,8 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
+using namespace std::literals;
+
 namespace yb {
 namespace client {
 
@@ -666,8 +668,7 @@ YBNoOp::~YBNoOp() {
 Status YBNoOp::Execute(const YBPartialRow& key) {
   string encoded_key;
   RETURN_NOT_OK(table_->partition_schema().EncodeKey(key, &encoded_key));
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(MonoDelta::FromMilliseconds(5000));
+  CoarseTimePoint deadline = CoarseMonoClock::Now() + 5s;
 
   tserver::NoOpRequestPB noop_req;
   tserver::NoOpResponsePB noop_resp;
@@ -692,8 +693,7 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
     // currently have any known leader. We should sleep and retry, since
     // it's likely that the tablet is undergoing a leader election and will
     // soon have one.
-    if (lookup_status.IsServiceUnavailable() &&
-        MonoTime::Now().ComesBefore(deadline)) {
+    if (lookup_status.IsServiceUnavailable() && CoarseMonoClock::Now() < deadline) {
       const int sleep_ms = attempt * 100;
       VLOG(1) << "Tablet " << remote_->tablet_id() << " current unavailable: "
               << lookup_status.ToString() << ". Sleeping for " << sleep_ms << "ms "
@@ -703,8 +703,8 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
     }
     RETURN_NOT_OK(lookup_status);
 
-    MonoTime now = MonoTime::Now();
-    if (deadline.ComesBefore(now)) {
+    auto now = CoarseMonoClock::Now();
+    if (deadline < now) {
       return STATUS(TimedOut, "Op timed out, deadline expired");
     }
 
@@ -712,11 +712,10 @@ Status YBNoOp::Execute(const YBPartialRow& key) {
     // If we have other replicas beyond this one to try, then we'll use the default RPC timeout.
     // That gives us time to try other replicas later. Otherwise, use the full remaining deadline
     // for the user's call.
-    MonoTime rpc_deadline;
+    CoarseTimePoint rpc_deadline;
     if (static_cast<int>(candidates.size()) - blacklist.size() > 1) {
-      rpc_deadline = now;
-      rpc_deadline.AddDelta(table_->client()->default_rpc_timeout());
-      rpc_deadline = MonoTime::Earliest(deadline, rpc_deadline);
+      rpc_deadline = now + table_->client()->default_rpc_timeout();
+      rpc_deadline = std::min(deadline, rpc_deadline);
     } else {
       rpc_deadline = deadline;
     }

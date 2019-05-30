@@ -115,6 +115,10 @@ void RpcController::set_deadline(const MonoTime& deadline) {
   set_timeout(deadline.GetDeltaSince(MonoTime::Now()));
 }
 
+void RpcController::set_deadline(CoarseTimePoint deadline) {
+  set_timeout(deadline - CoarseMonoClock::now());
+}
+
 MonoDelta RpcController::timeout() const {
   std::lock_guard<simple_spinlock> l(lock_);
   return timeout_;

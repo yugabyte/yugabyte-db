@@ -42,6 +42,7 @@
 #include <vector>
 #include <fstream>
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/client/meta_cache.h"
@@ -73,7 +74,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/thread_restrictions.h"
 
-#include <boost/algorithm/string/predicate.hpp>
+using namespace std::literals;
 
 DEFINE_test_flag(bool, assert_local_tablet_server_selected, false, "Verify that SelectTServer "
                  "selected the local tablet server. Also verify that ReplicaSelection is equal "
@@ -109,46 +110,35 @@ using internal::RemoteTabletServer;
 using internal::UpdateLocalTsState;
 
 Status RetryFunc(
-    const MonoTime& deadline, const string& retry_msg, const string& timeout_msg,
-    const std::function<Status(const MonoTime&, bool*)>& func) {
-  DCHECK(deadline.Initialized());
+    CoarseTimePoint deadline, const string& retry_msg, const string& timeout_msg,
+    const std::function<Status(CoarseTimePoint, bool*)>& func) {
+  DCHECK(deadline != CoarseTimePoint());
 
-  MonoTime now = MonoTime::Now();
-  if (deadline.ComesBefore(now)) {
+  if (deadline < CoarseMonoClock::Now()) {
     return STATUS(TimedOut, timeout_msg);
   }
 
-  double wait_secs = 0.001;
-  const double kMaxSleepSecs = 2;
-  while (1) {
-    MonoTime func_stime = now;
+  MonoDelta wait_time = 1ms;
+  MonoDelta kMaxSleep = 2s;
+  for (;;) {
     bool retry = true;
     Status s = func(deadline, &retry);
     if (!retry) {
       return s;
     }
-    now = MonoTime::Now();
-    MonoDelta func_time = now.GetDeltaSince(func_stime);
 
     VLOG(1) << retry_msg << " status=" << s.ToString();
-    double secs_remaining = std::numeric_limits<double>::max();
-    if (deadline.Initialized()) {
-      secs_remaining = deadline.GetDeltaSince(now).ToSeconds();
-    }
-    wait_secs = std::min(wait_secs * 1.25, kMaxSleepSecs);
+    wait_time = std::min(wait_time * 5 / 4, kMaxSleep);
 
     // We assume that the function will take the same amount of time to run
     // as it did in the previous attempt. If we don't have enough time left
     // to sleep and run it again, we don't bother sleeping and retrying.
-    if (wait_secs + func_time.ToSeconds() > secs_remaining) {
+    if (CoarseMonoClock::Now() + wait_time > deadline) {
       break;
     }
 
-    VLOG(1) << "Waiting for " << HumanReadableElapsedTime::ToShortString(wait_secs)
-            << " before retrying...";
-    SleepFor(MonoDelta::FromSeconds(wait_secs));
-    now = MonoTime::Now();
-
+    VLOG(1) << "Waiting for " << wait_time << " before retrying...";
+    SleepFor(wait_time);
   }
 
   return STATUS(TimedOut, timeout_msg);
@@ -156,22 +146,22 @@ Status RetryFunc(
 
 template <class ReqClass, class RespClass>
 Status YBClient::Data::SyncLeaderMasterRpc(
-    const MonoTime& deadline, YBClient* client, const ReqClass& req, RespClass* resp,
+    CoarseTimePoint deadline, YBClient* client, const ReqClass& req, RespClass* resp,
     int* num_attempts, const char* func_name,
     const std::function<Status(MasterServiceProxy*, const ReqClass&, RespClass*, RpcController*)>&
         func) {
-  DSCHECK(deadline.Initialized(), InvalidArgument, "Deadline is not set");
-  MonoTime start_time;
+  DSCHECK(deadline != CoarseTimePoint(), InvalidArgument, "Deadline is not set");
+  CoarseTimePoint start_time;
 
   while (true) {
     RpcController rpc;
 
     // Have we already exceeded our deadline?
-    MonoTime now = MonoTime::Now();
-    if (!start_time) {
+    auto now = CoarseMonoClock::Now();
+    if (start_time == CoarseTimePoint()) {
       start_time = now;
     }
-    if (deadline.ComesBefore(now)) {
+    if (deadline < now) {
       return STATUS_FORMAT(TimedOut,
           "$0 timed out after deadline expired. Time elapsed: $1, allowed: $2",
           func_name, now - start_time, deadline - start_time);
@@ -182,9 +172,8 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     // leader master and retry before the overall deadline expires.
     //
     // TODO: KUDU-683 tracks cleanup for this.
-    MonoTime rpc_deadline = now;
-    rpc_deadline.AddDelta(client->default_rpc_timeout());
-    rpc.set_deadline(MonoTime::Earliest(rpc_deadline, deadline));
+    auto rpc_deadline = now + client->default_rpc_timeout();
+    rpc.set_deadline(std::min(rpc_deadline, deadline));
 
     if (num_attempts != nullptr) {
       ++*num_attempts;
@@ -210,8 +199,8 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     }
 
     if (s.IsTimedOut()) {
-      now = MonoTime::Now();
-      if (now.ComesBefore(deadline)) {
+      now = CoarseMonoClock::Now();
+      if (now < deadline) {
         YB_LOG_EVERY_N_SECS(WARNING, 1)
             << "Unable to send the request (" << req.ShortDebugString()
             << ") to leader Master (" << leader_master_hostport().ToString()
@@ -251,7 +240,7 @@ Status YBClient::Data::SyncLeaderMasterRpc(
     using yb::master::RequestTypePB; \
     using yb::master::ResponseTypePB; \
     template Status YBClient::Data::SyncLeaderMasterRpc( \
-        const MonoTime& deadline, YBClient* client, const RequestTypePB& req, \
+        CoarseTimePoint deadline, YBClient* client, const RequestTypePB& req, \
         ResponseTypePB* resp, int* num_attempts, const char* func_name, \
         const std::function<Status( \
             MasterServiceProxy*, const RequestTypePB&, ResponseTypePB*, RpcController*)>& \
@@ -432,7 +421,7 @@ Status YBClient::Data::GetTabletServer(YBClient* client,
 Status YBClient::Data::CreateTable(YBClient* client,
                                    const CreateTableRequestPB& req,
                                    const YBSchema& schema,
-                                   const MonoTime& deadline,
+                                   CoarseTimePoint deadline,
                                    string* table_id) {
   CreateTableResponsePB resp;
 
@@ -504,7 +493,7 @@ Status YBClient::Data::CreateTable(YBClient* client,
 Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
                                                const YBTableName& table_name,
                                                const string& table_id,
-                                               const MonoTime& deadline,
+                                               CoarseTimePoint deadline,
                                                bool* create_in_progress) {
   DCHECK_ONLY_NOTNULL(create_in_progress);
   IsCreateTableDoneRequestPB req;
@@ -540,7 +529,7 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
 Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
                                                   const YBTableName& table_name,
                                                   const string& table_id,
-                                                  const MonoTime& deadline) {
+                                                  CoarseTimePoint deadline) {
   return RetryFunc(
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
       std::bind(&YBClient::Data::IsCreateTableInProgress, this, client,
@@ -551,7 +540,7 @@ Status YBClient::Data::DeleteTable(YBClient* client,
                                    const YBTableName& table_name,
                                    const string& table_id,
                                    const bool is_index_table,
-                                   const MonoTime& deadline,
+                                   CoarseTimePoint deadline,
                                    YBTableName* indexed_table_name,
                                    bool wait) {
   DeleteTableRequestPB req;
@@ -597,7 +586,7 @@ Status YBClient::Data::DeleteTable(YBClient* client,
 
 Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
                                                const std::string& table_id,
-                                               const MonoTime& deadline,
+                                               CoarseTimePoint deadline,
                                                bool* delete_in_progress) {
   DCHECK_ONLY_NOTNULL(delete_in_progress);
   IsDeleteTableDoneRequestPB req;
@@ -631,7 +620,7 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
 
 Status YBClient::Data::WaitForDeleteTableToFinish(YBClient* client,
                                                   const std::string& table_id,
-                                                  const MonoTime& deadline) {
+                                                  CoarseTimePoint deadline) {
   return RetryFunc(
       deadline, "Waiting on Delete Table to be completed", "Timed out waiting for Table Deletion",
       std::bind(&YBClient::Data::IsDeleteTableInProgress, this, client, table_id, _1, _2));
@@ -639,7 +628,7 @@ Status YBClient::Data::WaitForDeleteTableToFinish(YBClient* client,
 
 Status YBClient::Data::TruncateTables(YBClient* client,
                                      const vector<string>& table_ids,
-                                     const MonoTime& deadline,
+                                     CoarseTimePoint deadline,
                                      bool wait) {
   TruncateTableRequestPB req;
   TruncateTableResponsePB resp;
@@ -667,7 +656,7 @@ Status YBClient::Data::TruncateTables(YBClient* client,
 
 Status YBClient::Data::IsTruncateTableInProgress(YBClient* client,
                                                  const std::string& table_id,
-                                                 const MonoTime& deadline,
+                                                 CoarseTimePoint deadline,
                                                  bool* truncate_in_progress) {
   DCHECK_ONLY_NOTNULL(truncate_in_progress);
   IsTruncateTableDoneRequestPB req;
@@ -687,7 +676,7 @@ Status YBClient::Data::IsTruncateTableInProgress(YBClient* client,
 
 Status YBClient::Data::WaitForTruncateTableToFinish(YBClient* client,
                                                     const std::string& table_id,
-                                                    const MonoTime& deadline) {
+                                                    CoarseTimePoint deadline) {
   return RetryFunc(
       deadline, "Waiting on Truncate Table to be completed",
       "Timed out waiting for Table Truncation",
@@ -696,7 +685,7 @@ Status YBClient::Data::WaitForTruncateTableToFinish(YBClient* client,
 
 Status YBClient::Data::AlterTable(YBClient* client,
                                   const AlterTableRequestPB& req,
-                                  const MonoTime& deadline) {
+                                  CoarseTimePoint deadline) {
   AlterTableResponsePB resp;
   Status s =
       SyncLeaderMasterRpc<AlterTableRequestPB, AlterTableResponsePB>(
@@ -722,7 +711,7 @@ Status YBClient::Data::AlterTable(YBClient* client,
 Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
                                               const YBTableName& table_name,
                                               string table_id,
-                                              const MonoTime& deadline,
+                                              CoarseTimePoint deadline,
                                               bool *alter_in_progress) {
   IsAlterTableDoneRequestPB req;
   IsAlterTableDoneResponsePB resp;
@@ -756,7 +745,7 @@ Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
 Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
                                                  const YBTableName& alter_name,
                                                  const string table_id,
-                                                 const MonoTime& deadline) {
+                                                 CoarseTimePoint deadline) {
   return RetryFunc(
       deadline, "Waiting on Alter Table to be completed", "Timed out waiting for AlterTable",
       std::bind(&YBClient::Data::IsAlterTableInProgress, this, client,
@@ -842,14 +831,14 @@ class GetTableSchemaRpc : public Rpc {
                     StatusCallback user_cb,
                     const YBTableName& table_name,
                     YBTableInfo* info,
-                    const MonoTime& deadline,
+                    CoarseTimePoint deadline,
                     rpc::Messenger* messenger,
                     rpc::ProxyCache* proxy_cache);
   GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
                     const TableId& table_id,
                     YBTableInfo* info,
-                    const MonoTime& deadline,
+                    CoarseTimePoint deadline,
                     rpc::Messenger* messenger,
                     rpc::ProxyCache* proxy_cache);
 
@@ -893,7 +882,7 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
                                      const YBTableName& table_name,
                                      YBTableInfo* info,
-                                     const MonoTime& deadline,
+                                     CoarseTimePoint deadline,
                                      rpc::Messenger* messenger,
                                      rpc::ProxyCache* proxy_cache)
     : Rpc(deadline, messenger, proxy_cache),
@@ -907,7 +896,7 @@ GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
                                      const TableId& table_id,
                                      YBTableInfo* info,
-                                     const MonoTime& deadline,
+                                     CoarseTimePoint deadline,
                                      rpc::Messenger* messenger,
                                      rpc::ProxyCache* proxy_cache)
     : Rpc(deadline, messenger, proxy_cache),
@@ -921,17 +910,16 @@ GetTableSchemaRpc::~GetTableSchemaRpc() {
 }
 
 void GetTableSchemaRpc::SendRpc() {
-  MonoTime now = MonoTime::Now();
-  if (retrier().deadline().ComesBefore(now)) {
+  auto now = CoarseMonoClock::Now();
+  if (retrier().deadline() < now) {
     Finished(STATUS(TimedOut, "GetTableSchema timed out after deadline expired"));
     return;
   }
 
   // See YBClient::Data::SyncLeaderMasterRpc().
-  MonoTime rpc_deadline = now;
-  rpc_deadline.AddDelta(client_->default_rpc_timeout());
+  auto rpc_deadline = now + client_->default_rpc_timeout();
   mutable_retrier()->mutable_controller()->set_deadline(
-      MonoTime::Earliest(rpc_deadline, retrier().deadline()));
+      std::min(rpc_deadline, retrier().deadline()));
 
   GetTableSchemaRequestPB req;
   req.mutable_table()->CopyFrom(table_identifier_);
@@ -994,7 +982,7 @@ void GetTableSchemaRpc::Finished(const Status& status) {
   }
 
   if (new_status.IsTimedOut()) {
-    if (MonoTime::Now().ComesBefore(retrier().deadline())) {
+    if (CoarseMonoClock::Now() < retrier().deadline()) {
       if (client_->IsMultiMaster()) {
         LOG(WARNING) << "Leader Master ("
             << client_->data_->leader_master_hostport().ToString()
@@ -1048,7 +1036,7 @@ void GetTableSchemaRpc::Finished(const Status& status) {
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
                                       const YBTableName& table_name,
-                                      const MonoTime& deadline,
+                                      CoarseTimePoint deadline,
                                       YBTableInfo* info) {
   Synchronizer sync;
   auto rpc = rpc::StartRpc<GetTableSchemaRpc>(
@@ -1064,7 +1052,7 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
 
 Status YBClient::Data::GetTableSchema(YBClient* client,
                                       const TableId& table_id,
-                                      const MonoTime& deadline,
+                                      CoarseTimePoint deadline,
                                       YBTableInfo* info) {
   Synchronizer sync;
   auto rpc = rpc::StartRpc<GetTableSchemaRpc>(
@@ -1101,7 +1089,7 @@ void YBClient::Data::LeaderMasterDetermined(const Status& status,
 }
 
 Status YBClient::Data::SetMasterServerProxy(YBClient* client,
-                                            const MonoTime& deadline,
+                                            CoarseTimePoint deadline,
                                             bool skip_resolution) {
   Synchronizer sync;
   SetMasterServerProxyAsync(client, deadline, skip_resolution, sync.AsStatusCallback());
@@ -1109,10 +1097,10 @@ Status YBClient::Data::SetMasterServerProxy(YBClient* client,
 }
 
 void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
-                                               const MonoTime& deadline,
+                                               CoarseTimePoint deadline,
                                                bool skip_resolution,
                                                const StatusCallback& cb) {
-  DCHECK(deadline.Initialized());
+  DCHECK(deadline != CoarseTimePoint::max());
 
   server::MasterAddresses master_addrs;
   // Refresh the value of 'master_server_addrs_' if needed.
@@ -1146,9 +1134,8 @@ void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
   // Finding a new master involves a fan-out RPC to each master. A single
   // RPC timeout's worth of time should be sufficient, though we'll use
   // the provided deadline if it's sooner.
-  MonoTime leader_master_deadline = MonoTime::Now();
-  leader_master_deadline.AddDelta(client->default_rpc_timeout());
-  MonoTime actual_deadline = MonoTime::Earliest(deadline, leader_master_deadline);
+  auto leader_master_deadline = CoarseMonoClock::Now() + client->default_rpc_timeout();
+  auto actual_deadline = std::min(deadline, leader_master_deadline);
 
   // This ensures that no more than one GetLeaderMasterRpc is in
   // flight at a time -- there isn't much sense in requesting this information
@@ -1289,7 +1276,7 @@ Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
 }
 
 Status YBClient::Data::SetReplicationInfo(
-    YBClient* client, const master::ReplicationInfoPB& replication_info, const MonoTime& deadline,
+    YBClient* client, const master::ReplicationInfoPB& replication_info, CoarseTimePoint deadline,
     bool* retry) {
   // If retry was not set, we'll wrap around in a retryable function.
   if (!retry) {

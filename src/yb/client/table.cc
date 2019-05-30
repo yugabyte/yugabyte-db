@@ -155,14 +155,13 @@ Status YBTable::Open() {
   req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
   master::GetTableLocationsResponsePB resp;
 
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(client_->default_admin_operation_timeout());
+  auto deadline = CoarseMonoClock::Now() + client_->default_admin_operation_timeout();
 
   req.mutable_table()->set_table_id(info_.table_id);
   req.set_require_tablets_running(true);
   Status s;
 
-  BackoffWaiter waiter(deadline.ToSteadyTimePoint(), std::chrono::seconds(1) /* max_wait */);
+  CoarseBackoffWaiter waiter(deadline, std::chrono::seconds(1) /* max_wait */);
   // TODO: replace this with Async RPC-retrier based RPC in the next revision,
   // adding exponential backoff and allowing this to be used safely in a
   // a reactor thread.
@@ -170,12 +169,11 @@ Status YBTable::Open() {
     rpc::RpcController rpc;
 
     // Have we already exceeded our deadline?
-    MonoTime now = MonoTime::Now();
+    auto now = CoarseMonoClock::Now();
 
     // See YBClient::Data::SyncLeaderMasterRpc().
-    MonoTime rpc_deadline = now;
-    rpc_deadline.AddDelta(client_->default_rpc_timeout());
-    rpc.set_deadline(MonoTime::Earliest(rpc_deadline, deadline));
+    auto rpc_deadline = now + client_->default_rpc_timeout();
+    rpc.set_deadline(std::min(rpc_deadline, deadline));
 
     s = client_->data_->master_proxy()->GetTableLocations(req, &resp, &rpc);
     if (!s.ok()) {
@@ -195,8 +193,7 @@ Status YBTable::Open() {
         }
       }
 
-      if (s.IsTimedOut()
-          && MonoTime::Now().ComesBefore(deadline)) {
+      if (s.IsTimedOut() && CoarseMonoClock::Now() < deadline) {
         // If the RPC timed out and the operation deadline expired, we'll loop
         // again and time out for good above.
         LOG(WARNING) << "Timed out talking to the leader master ("

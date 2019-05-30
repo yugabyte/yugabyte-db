@@ -332,20 +332,20 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // is invoked.
   void LookupTabletByKey(const YBTable* table,
                          const std::string& partition_key,
-                         const MonoTime& deadline,
+                         CoarseTimePoint deadline,
                          LookupTabletCallback callback);
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
       const YBTable* table,
       const std::string& partition_key,
-      const MonoTime& deadline) {
+      CoarseTimePoint deadline) {
     return MakeFuture<Result<internal::RemoteTabletPtr>>([&](auto callback) {
       this->LookupTabletByKey(table, partition_key, deadline, std::move(callback));
     });
   }
 
   void LookupTabletById(const TabletId& tablet_id,
-                        const MonoTime& deadline,
+                        CoarseTimePoint deadline,
                         LookupTabletCallback callback,
                         UseCache use_cache);
 
@@ -426,7 +426,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // Protected by mutex_.
   struct LookupData {
     LookupTabletCallback callback;
-    MonoTime deadline;
+    CoarseTimePoint deadline;
 
     std::string ToString() const {
       return Format("{ deadline: $1 }", deadline);

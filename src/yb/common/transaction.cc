@@ -103,8 +103,8 @@ MonoDelta TransactionRpcTimeout() {
 }
 
 // TODO(dtxn) correct deadline should be calculated and propagated.
-MonoTime TransactionRpcDeadline() {
-  return MonoTime::Now() + TransactionRpcTimeout();
+CoarseTimePoint TransactionRpcDeadline() {
+  return CoarseMonoClock::Now() + TransactionRpcTimeout();
 }
 
 bool TransactionOperationContext::transactional() const {

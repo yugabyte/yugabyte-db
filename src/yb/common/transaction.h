@@ -225,7 +225,7 @@ inline bool operator!=(const TransactionMetadata& lhs, const TransactionMetadata
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata);
 
 MonoDelta TransactionRpcTimeout();
-MonoTime TransactionRpcDeadline();
+CoarseTimePoint TransactionRpcDeadline();
 
 extern const std::string kTransactionsTableName;
 

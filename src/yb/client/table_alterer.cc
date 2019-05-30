@@ -76,8 +76,7 @@ Status YBTableAlterer::Alter() {
   MonoDelta timeout = timeout_.Initialized() ?
     timeout_ :
     client_->default_admin_operation_timeout();
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(timeout);
+  auto deadline = CoarseMonoClock::Now() + timeout;
   RETURN_NOT_OK(client_->data_->AlterTable(client_, req, deadline));
   if (wait_) {
     YBTableName alter_name = rename_to_.get_value_or(table_name_);

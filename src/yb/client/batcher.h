@@ -127,7 +127,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // information on which operations failed.
   void FlushAsync(StatusFunctor callback);
 
-  MonoTime deadline() const {
+  CoarseTimePoint deadline() const {
     return deadline_;
   }
 
@@ -226,7 +226,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // Compute a new deadline based on timeout_. If no timeout_ has been set,
   // uses a hard-coded default and issues periodic warnings.
-  MonoTime ComputeDeadlineUnlocked() const;
+  CoarseTimePoint ComputeDeadlineUnlocked() const;
 
   void TransactionReady(const Status& status, const BatcherPtr& self);
 
@@ -274,7 +274,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   MonoDelta timeout_;
 
   // After flushing, the absolute deadline for all in-flight ops.
-  MonoTime deadline_;
+  CoarseTimePoint deadline_;
 
   // Number of outstanding lookups across all in-flight ops.
   int outstanding_lookups_ = 0;
