@@ -229,16 +229,14 @@ void Batcher::RunCallback(const Status& status) {
   }
 }
 
-MonoTime Batcher::ComputeDeadlineUnlocked() const {
+CoarseTimePoint Batcher::ComputeDeadlineUnlocked() const {
   MonoDelta timeout = timeout_;
   if (PREDICT_FALSE(!timeout.Initialized())) {
     YB_LOG_EVERY_N(WARNING, 100000) << "Client writing with no timeout set, using 60 seconds.\n"
                                     << GetStackTrace();
     timeout = MonoDelta::FromSeconds(60);
   }
-  MonoTime ret = MonoTime::Now();
-  ret.AddDelta(timeout);
-  return ret;
+  return CoarseMonoClock::now() + timeout;
 }
 
 void Batcher::FlushAsync(StatusFunctor callback) {
@@ -313,7 +311,7 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
   } else {
     // deadline_ is set in FlushAsync(), after all Add() calls are done, so
     // here we're forced to create a new deadline.
-    MonoTime deadline = ComputeDeadlineUnlocked();
+    auto deadline = ComputeDeadlineUnlocked();
     client_->data_->meta_cache_->LookupTabletByKey(
         in_flight_op->yb_op->table(), in_flight_op->partition_key, deadline,
         std::bind(&Batcher::TabletLookupFinished, BatcherPtr(this), in_flight_op, _1));
@@ -375,7 +373,8 @@ void Batcher::TabletLookupFinished(
       return;
     }
 
-    VLOG(3) << "TabletLookupFinished for " << op->yb_op->ToString() << ": " << lookup_result;
+    VLOG(3) << "TabletLookupFinished for " << op->yb_op->ToString() << ": " << lookup_result
+            << ", outstanding lookups: " << outstanding_lookups_;
 
     if (lookup_result.ok()) {
       std::lock_guard<simple_spinlock> l2(op->lock_);

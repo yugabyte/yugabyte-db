@@ -440,7 +440,7 @@ class YBClient {
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   CHECKED_STATUS ListMasters(
-    MonoTime deadline,
+    CoarseTimePoint deadline,
     std::vector<std::string>* master_uuids);
 
   // Check if the table given by 'table_name' exists.
@@ -515,11 +515,11 @@ class YBClient {
 
   void LookupTabletByKey(const YBTable* table,
                          const std::string& partition_key,
-                         const MonoTime& deadline,
+                        CoarseTimePoint deadline,
                          LookupTabletCallback callback);
 
   void LookupTabletById(const std::string& tablet_id,
-                        const MonoTime& deadline,
+                        CoarseTimePoint deadline,
                         LookupTabletCallback callback,
                         UseCache use_cache);
 

@@ -46,6 +46,7 @@ namespace client {
 using std::string;
 using std::vector;
 
+using namespace std::literals;
 using namespace std::placeholders;
 
 TEST(ClientUnitTest, TestSchemaBuilder_EmptySchema) {
@@ -153,16 +154,17 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_BadColumnName) {
 }
 
 namespace {
-Status TestFunc(const MonoTime& deadline, bool* retry, int* counter) {
-  (*counter)++;
+
+Status TestFunc(CoarseTimePoint deadline, bool* retry, int* counter) {
+  ++*counter;
   *retry = true;
   return STATUS(RuntimeError, "x");
 }
+
 } // anonymous namespace
 
 TEST(ClientUnitTest, TestRetryFunc) {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(MonoDelta::FromMilliseconds(100));
+  auto deadline = CoarseMonoClock::Now() + 100ms;
   int counter = 0;
   Status s =
       RetryFunc(deadline, "retrying test func", "timed out", std::bind(TestFunc, _1, _2, &counter));

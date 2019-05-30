@@ -876,8 +876,7 @@ class BatchContextImpl : public BatchContext {
         operation.Respond(table.status());
       }
     }
-    MonoTime deadline = MonoTime::Now() +
-                        MonoDelta::FromMilliseconds(FLAGS_redis_service_yb_client_timeout_millis);
+    auto deadline = CoarseMonoClock::Now() + FLAGS_redis_service_yb_client_timeout_millis * 1ms;
     lookups_left_.store(operations_.size(), std::memory_order_release);
     retry_lookups_.store(false, std::memory_order_release);
     for (auto& operation : operations_) {

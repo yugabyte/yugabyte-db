@@ -115,8 +115,7 @@ class Heartbeater::Thread {
 
  private:
   void RunThread();
-  Status FindLeaderMaster(const MonoTime& deadline,
-                          HostPort* leader_hostport);
+  Status FindLeaderMaster(CoarseTimePoint deadline, HostPort* leader_hostport);
   Status ConnectToMaster();
   int GetMinimumHeartbeatMillis() const;
   int GetMillisUntilNextHeartbeat() const;
@@ -250,8 +249,7 @@ void LeaderMasterCallback(HostPort* dst_hostport,
 
 } // anonymous namespace
 
-Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
-                                             HostPort* leader_hostport) {
+Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline, HostPort* leader_hostport) {
   Status s = Status::OK();
   const auto master_addresses = get_master_addresses();
   if (master_addresses->size() == 1 && (*master_addresses)[0].size() == 1) {
@@ -278,8 +276,7 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
 }
 
 Status Heartbeater::Thread::ConnectToMaster() {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
+  auto deadline = CoarseMonoClock::Now() + FLAGS_heartbeat_rpc_timeout_ms * 1ms;
   // TODO send heartbeats without tablet reports to non-leader masters.
   Status s = FindLeaderMaster(deadline, &leader_master_hostport_);
   if (!s.ok()) {

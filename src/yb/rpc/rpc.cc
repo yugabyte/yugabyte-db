@@ -77,6 +77,15 @@ using strings::SubstituteAndAppend;
 
 namespace rpc {
 
+RpcRetrier::RpcRetrier(CoarseTimePoint deadline, Messenger* messenger, ProxyCache *proxy_cache)
+    : start_(CoarseMonoClock::now()),
+      deadline_(deadline),
+      messenger_(messenger),
+      proxy_cache_(*proxy_cache) {
+  DCHECK(deadline != CoarseTimePoint());
+}
+
+
 bool RpcRetrier::HandleResponse(
     RpcCommand* rpc, Status* out_status, RetryWhenBusy retry_when_busy) {
   ignore_result(DCHECK_NOTNULL(rpc));
@@ -179,12 +188,11 @@ void RpcRetrier::DoRetry(RpcCommand* rpc, const Status& status) {
   Status new_status = status;
   if (new_status.ok()) {
     // Has this RPC timed out?
-    if (deadline_.Initialized()) {
-      MonoTime now = MonoTime::Now();
-      if (deadline_.ComesBefore(now)) {
-        string err_str = Substitute(
-          "$0 passed its deadline $1 (now: $2)", rpc->ToString(),
-          deadline_.ToString(), now.ToString());
+    if (deadline_ != CoarseTimePoint::max()) {
+      auto now = CoarseMonoClock::Now();
+      if (deadline_ < now) {
+        string err_str = Format(
+          "$0 passed its deadline $1 (passed: $2)", *rpc, deadline_, now - start_);
         if (!last_error_.ok()) {
           SubstituteAndAppend(&err_str, ": $0", last_error_.ToString());
         }
@@ -250,7 +258,8 @@ RpcController* RpcRetrier::PrepareController(MonoDelta single_call_timeout) {
   if (!single_call_timeout) {
     single_call_timeout = MonoDelta::FromMilliseconds(FLAGS_retryable_rpc_single_call_timeout_ms);
   }
-  controller_.set_deadline(std::min(deadline_, MonoTime::Now() + single_call_timeout));
+  controller_.set_timeout(std::min<MonoDelta>(
+      deadline_ - CoarseMonoClock::now(), single_call_timeout));
   return &controller_;
 }
 
@@ -271,7 +280,7 @@ Rpcs::Rpcs(std::mutex* mutex) {
   }
 }
 
-MonoTime Rpcs::DoRequestAbortAll(RequestShutdown shutdown) {
+CoarseTimePoint Rpcs::DoRequestAbortAll(RequestShutdown shutdown) {
   std::vector<Calls::value_type> calls;
   {
     std::lock_guard<std::mutex> lock(*mutex_);
@@ -281,7 +290,7 @@ MonoTime Rpcs::DoRequestAbortAll(RequestShutdown shutdown) {
       calls.assign(calls_.begin(), calls_.end());
     }
   }
-  auto deadline = MonoTime::Now() + std::chrono::milliseconds(FLAGS_rpcs_shutdown_timeout_ms);
+  auto deadline = CoarseMonoClock::now() + FLAGS_rpcs_shutdown_timeout_ms * 1ms;
   // It takes some time to complete rpc command after its deadline has passed.
   // So we add extra time for it.
   auto single_call_extra_delay = std::chrono::milliseconds(FLAGS_rpcs_shutdown_extra_delay_ms);
@@ -300,7 +309,7 @@ void Rpcs::Shutdown() {
     std::unique_lock<std::mutex> lock(*mutex_);
     while (!calls_.empty()) {
       LOG(INFO) << "Waiting calls: " << calls_.size();
-      if (cond_.wait_until(lock, deadline.ToSteadyTimePoint()) == std::cv_status::timeout) {
+      if (cond_.wait_until(lock, deadline) == std::cv_status::timeout) {
         break;
       }
     }

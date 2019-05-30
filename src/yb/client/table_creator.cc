@@ -259,12 +259,8 @@ Status YBTableCreator::Create() {
     req.set_is_unique_index(is_unique_index_);
   }
 
-  MonoTime deadline = MonoTime::Now();
-  if (timeout_.Initialized()) {
-    deadline.AddDelta(timeout_);
-  } else {
-    deadline.AddDelta(client_->default_admin_operation_timeout());
-  }
+  auto deadline = CoarseMonoClock::Now() +
+                  (timeout_.Initialized() ? timeout_ : client_->default_admin_operation_timeout());
 
   auto s = client_->data_->CreateTable(
       client_, req, *schema_, deadline, &table_id_);
