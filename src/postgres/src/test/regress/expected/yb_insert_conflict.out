@@ -39,8 +39,8 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
 ERROR:  there is no unique or exclusion constraint matching the ON CONFLICT specification
 explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on conflict (key, fruit) do update set fruit = excluded.fruit
   where exists (select 1 from insertconflicttest ii where ii.key = excluded.key);
-                              QUERY PLAN
------------------------------------------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Insert on insertconflicttest
    Conflict Resolution: UPDATE
    Conflict Arbiter Indexes: op_index_key
@@ -50,7 +50,7 @@ explain (costs off) insert into insertconflicttest values(0, 'Crowberry') on con
      ->  Index Only Scan using op_index_key on insertconflicttest ii
            Index Cond: (key = excluded.key)
    SubPlan 2
-     ->  Index Only Scan using op_index_key on insertconflicttest ii_1
+     ->  Foreign Scan on insertconflicttest ii_1
 (10 rows)
 
 -- Neither collation nor operator class specifications are required --

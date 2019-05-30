@@ -2541,6 +2541,7 @@ _equalIndexElem(const IndexElem *a, const IndexElem *b)
 	COMPARE_NODE_FIELD(opclass);
 	COMPARE_SCALAR_FIELD(ordering);
 	COMPARE_SCALAR_FIELD(nulls_ordering);
+	COMPARE_NODE_FIELD(yb_name_list);
 
 	return true;
 }
@@ -2598,6 +2599,7 @@ _equalConstraint(const Constraint *a, const Constraint *b)
 	COMPARE_SCALAR_FIELD(old_pktable_oid);
 	COMPARE_SCALAR_FIELD(skip_validation);
 	COMPARE_SCALAR_FIELD(initially_valid);
+	COMPARE_NODE_FIELD(yb_index_params);
 
 	return true;
 }

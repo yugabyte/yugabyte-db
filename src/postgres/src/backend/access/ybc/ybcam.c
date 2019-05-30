@@ -38,11 +38,13 @@
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "nodes/relation.h"
+#include "optimizer/cost.h"
 #include "utils/datum.h"
 #include "utils/rel.h"
 #include "utils/lsyscache.h"
 #include "utils/resowner_private.h"
 #include "utils/syscache.h"
+#include "utils/selfuncs.h"
 #include "utils/snapmgr.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -168,7 +170,7 @@ static void ybcAddTargetColumn(YbScanDesc ybScan, AttrNumber attnum)
 								ybScan->stmt_owner);
 }
 
-static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan)
+static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 {
 	HeapTuple tuple    = NULL;
 	bool      has_data = false;
@@ -177,6 +179,18 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan)
 	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
 	bool            *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
 	YBCPgSysColumns syscols;
+
+	/* Execute the select statement. */
+	if (!ybScan->is_exec_done)
+	{
+		HandleYBStmtStatusWithOwner(YBCPgSetForwardScan(ybScan->handle, is_forward_scan),
+									ybScan->handle,
+									ybScan->stmt_owner);
+		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybScan->handle),
+									ybScan->handle,
+									ybScan->stmt_owner);
+		ybScan->is_exec_done = true;
+	}
 
 	/* Fetch one row. */
 	HandleYBStmtStatusWithOwner(YBCPgDmlFetch(ybScan->handle,
@@ -207,7 +221,7 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan)
 	return tuple;
 }
 
-static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index)
+static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool is_forward_scan)
 {
 	IndexTuple tuple    = NULL;
 	bool       has_data = false;
@@ -216,6 +230,18 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index)
 	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
 	bool            *nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
 	YBCPgSysColumns syscols;
+
+	/* Execute the select statement. */
+	if (!ybScan->is_exec_done)
+	{
+		HandleYBStmtStatusWithOwner(YBCPgSetForwardScan(ybScan->handle, is_forward_scan),
+									ybScan->handle,
+									ybScan->stmt_owner);
+		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybScan->handle),
+									ybScan->handle,
+									ybScan->stmt_owner);
+		ybScan->is_exec_done = true;
+	}
 
 	/* Fetch one row. */
 	HandleYBStmtStatusWithOwner(YBCPgDmlFetch(ybScan->handle,
@@ -484,11 +510,6 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 		                            ybScan->stmt_owner);
 	}
 
-	/* Execute the select statement. */
-	HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybScan->handle),
-	                            ybScan->handle,
-	                            ybScan->stmt_owner);
-
 	bms_free(scan_plan.hash_key);
 	bms_free(scan_plan.primary_key);
 	bms_free(scan_plan.sk_cols);
@@ -728,7 +749,7 @@ void ybc_index_beginscan(Relation index,
 	scan_desc->opaque = ybScan;
 }
 
-static HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool *recheck)
+static HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 {
 	int         nkeys    = ybScan->nkeys;
 	ScanKey     key      = ybScan->key;
@@ -739,7 +760,7 @@ static HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool *recheck)
 	 * YB Scan may not be able to push down the scan key condition so we may
 	 * need additional filtering here.
 	 */
-	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan)))
+	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, is_forward_scan)))
 	{
 		if (heaptuple_matches_key(tup, ybScan->tupdesc, nkeys, key, sk_attno, recheck))
 			return tup;
@@ -750,7 +771,7 @@ static HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool *recheck)
 	return NULL;
 }
 
-static IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool *recheck)
+static IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 {
 	int         nkeys    = ybScan->nkeys;
 	ScanKey     key      = ybScan->key;
@@ -762,7 +783,7 @@ static IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool *recheck)
 	 * YB Scan may not be able to push down the scan key condition so we may
 	 * need additional filtering here.
 	 */
-	while (PointerIsValid(tup = ybcFetchNextIndexTuple(ybScan, index)))
+	while (PointerIsValid(tup = ybcFetchNextIndexTuple(ybScan, index, is_forward_scan)))
 	{
 		if (indextuple_matches_key(tup, RelationGetDescr(index), nkeys, key, sk_attno, recheck))
 			return tup;
@@ -779,7 +800,8 @@ HeapTuple ybc_heap_getnext(HeapScanDesc scan_desc)
 
 	Assert(PointerIsValid(scan_desc->ybscan));
 
-	HeapTuple tuple = ybc_getnext_heaptuple(scan_desc->ybscan, &recheck);
+	HeapTuple tuple = ybc_getnext_heaptuple(scan_desc->ybscan, true /* is_forward_scan */,
+											&recheck);
 	
 	Assert(!recheck);
 
@@ -792,27 +814,28 @@ HeapTuple ybc_systable_getnext(SysScanDesc scan_desc)
 
 	Assert(PointerIsValid(scan_desc->ybscan));
 
-	HeapTuple tuple = ybc_getnext_heaptuple(scan_desc->ybscan, &recheck);
+	HeapTuple tuple = ybc_getnext_heaptuple(scan_desc->ybscan, true /* is_forward_scan */,
+											&recheck);
 	
 	Assert(!recheck);
 
 	return tuple;
 }
 
-HeapTuple ybc_pkey_getnext(IndexScanDesc scan_desc)
+HeapTuple ybc_pkey_getnext(IndexScanDesc scan_desc, bool is_forward_scan)
 {
 	YbScanDesc ybscan = (YbScanDesc) scan_desc->opaque;
 	Assert(PointerIsValid(ybscan));
 
-	return ybc_getnext_heaptuple(ybscan, &scan_desc->xs_recheck);
+	return ybc_getnext_heaptuple(ybscan, is_forward_scan, &scan_desc->xs_recheck);
 }
 
-IndexTuple ybc_index_getnext(IndexScanDesc scan_desc)
+IndexTuple ybc_index_getnext(IndexScanDesc scan_desc, bool is_forward_scan)
 {
 	YbScanDesc ybscan = (YbScanDesc) scan_desc->opaque;
 	Assert(PointerIsValid(ybscan));
 
-	return ybc_getnext_indextuple(ybscan, &scan_desc->xs_recheck);
+	return ybc_getnext_indextuple(ybscan, is_forward_scan, &scan_desc->xs_recheck);
 }
 
 void ybc_heap_endscan(HeapScanDesc scan_desc)
@@ -845,6 +868,92 @@ void ybc_index_endscan(IndexScanDesc scan_desc)
 }
 
 /* --------------------------------------------------------------------------------------------- */
+
+void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
+					 Cost *startup_cost, Cost *total_cost)
+{
+	Cost cpu_per_tuple = cpu_tuple_cost * 10 + baserel->baserestrictcost.per_tuple;
+
+	*startup_cost = baserel->baserestrictcost.startup;
+	*total_cost   = *startup_cost + cpu_per_tuple * baserel->rows * selectivity;
+}
+
+void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
+						  Cost *startup_cost, Cost *total_cost)
+{
+	Relation	index = RelationIdGetRelation(path->indexinfo->indexoid);
+	bool		isprimary = index->rd_index->indisprimary;
+	Relation	relation = isprimary ? RelationIdGetRelation(index->rd_index->indrelid) : NULL;
+	RelOptInfo *baserel = path->path.parent;
+	List	   *qinfos;
+	ListCell   *lc;
+
+	YbScanPlanData	scan_plan;
+	memset(&scan_plan, 0, sizeof(scan_plan));
+	ybcLoadTableInfo(isprimary ? relation : index, &scan_plan);
+
+	/* Do preliminary analysis of indexquals */
+	qinfos = deconstruct_indexquals(path);
+
+	/* Find out the search conditions on the primary key columns */
+	foreach(lc, qinfos)
+	{
+		IndexQualInfo *qinfo = (IndexQualInfo *) lfirst(lc);
+		RestrictInfo *rinfo = qinfo->rinfo;
+		AttrNumber	 attnum = isprimary ? index->rd_index->indkey.values[qinfo->indexcol]
+										: (qinfo->indexcol + 1);
+		Expr	   *clause = rinfo->clause;
+		Oid			clause_op;
+		int			op_strategy;
+
+		/* TODO: support array and null search conditions */
+		if (IsA(clause, ScalarArrayOpExpr) || IsA(clause, NullTest))
+			continue;
+
+		clause_op = qinfo->clause_op;
+
+		if (OidIsValid(clause_op))
+		{
+			op_strategy = get_op_opfamily_strategy(clause_op,
+												   path->indexinfo->opfamily[qinfo->indexcol]);
+			Assert(op_strategy != 0);	/* not a member of opfamily?? */
+
+			/* TODO: support other logical operators than equality */
+			if (op_strategy == BTEqualStrategyNumber)
+			{
+				int idx = attnum - FirstLowInvalidHeapAttributeNumber;
+		
+				if (bms_is_member(idx, scan_plan.hash_key) ||
+					bms_is_member(idx, scan_plan.primary_key))
+					scan_plan.sk_cols = bms_add_member(scan_plan.sk_cols, idx);
+			}
+		}
+	}
+
+	/*
+	 * If there is no search condition, or not all of the hash columns have search conditions, it
+	 * will be a full-table scan. Otherwise, it will be either a primary key lookup or range scan
+	 * on a hash key.
+	 */
+	if (bms_is_empty(scan_plan.sk_cols) || !bms_is_subset(scan_plan.hash_key, scan_plan.sk_cols))
+	{
+		*selectivity = YBC_FULL_SCAN_SELECTIVITY;
+	}
+	else
+	{
+		*selectivity = bms_is_subset(scan_plan.primary_key, scan_plan.sk_cols)
+						? YBC_SINGLE_KEY_SELECTIVITY
+						: YBC_HASH_SCAN_SELECTIVITY;
+	}
+	path->path.rows = baserel->rows * (*selectivity);
+
+	ybcCostEstimate(baserel, *selectivity, startup_cost, total_cost);
+
+	if (relation)
+		RelationClose(relation);
+
+	RelationClose(index);
+}
 
 HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 {

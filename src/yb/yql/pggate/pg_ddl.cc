@@ -96,8 +96,12 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
       if_not_exist_(if_not_exist) {
   // Add internal primary key column to a Postgres table without a user-specified primary key.
   if (add_primary_key) {
+    // For regular user table, ybrowid should be a hash key because ybrowid is a random uuid.
+    // For sys catalog table, it should be a range key because sys catalog table is an
+    // unpartitioned table in a single tablet.
+    bool is_hash = is_pg_catalog_table_ ? false : true;
     CHECK_OK(AddColumn("ybrowid", static_cast<int32_t>(PgSystemAttrNum::kYBRowId),
-                       YB_YQL_DATA_TYPE_BINARY, true /* is_hash */, true /* is_range */));
+                       YB_YQL_DATA_TYPE_BINARY, is_hash, true /* is_range */));
   }
 }
 
@@ -112,15 +116,17 @@ Status PgCreateTable::AddColumn(const char *attr_name,
   shared_ptr<QLType> yb_type = QLType::Create(static_cast<DataType>(attr_ybtype));
   client::YBColumnSpec* col = schema_builder_.AddColumn(attr_name)->Type(yb_type)->Order(attr_num);
 
-  if (is_hash || is_range) {
-    // If this is a catalog table, coerce hash column to range column since the table is
-    // non-partitioned.
-    if (is_hash && !is_pg_catalog_table_) {
-      col->HashPrimaryKey();
-    } else {
-      col->PrimaryKey();
+  if (is_hash) {
+    if (!range_columns_.empty()) {
+      return STATUS(InvalidArgument, "Hash column not allowed after an ASC/DESC column");
     }
+    col->HashPrimaryKey();
+    hash_schema_ = YBHashSchema::kPgsqlHash;
+  } else if (is_range) {
+    col->PrimaryKey();
+    range_columns_.emplace_back(attr_name);
   }
+
   return Status::OK();
 }
 
@@ -149,11 +155,14 @@ Status PgCreateTable::Exec() {
                 .schema(&schema);
   if (is_pg_catalog_table_) {
     table_creator->is_pg_catalog_table();
-  } else {
-    table_creator->hash_schema(YBHashSchema::kPgsqlHash);
   }
   if (is_shared_table_) {
     table_creator->is_pg_shared_table();
+  }
+  if (hash_schema_) {
+    table_creator->hash_schema(*hash_schema_);
+  } else if (!is_pg_catalog_table_) {
+    table_creator->set_range_partition_columns(range_columns_);
   }
 
   // For index, set indexed (base) table id.

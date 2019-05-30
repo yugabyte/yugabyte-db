@@ -40,7 +40,7 @@
 #include "catalog/ybctype.h"
 
 YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num, int attr_typid,
-													const YBCPgTypeAttrs *type_attrs) {
+						  const YBCPgTypeAttrs *type_attrs) {
 	YBCPgExpr expr = NULL;
 	const YBCPgTypeEntity *type_entity = YBCDataTypeFromOidMod(attr_num, attr_typid);
 	HandleYBStatus(YBCPgNewColumnRef(ybc_stmt, attr_num, type_entity, type_attrs, &expr));

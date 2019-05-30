@@ -268,7 +268,8 @@ webserver_worker_main(Datum unused)
 
   WaitLatch(&MyProc->procLatch, WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
 
-  pfree(rpcz);
+  if (rpcz != NULL)
+    pfree(rpcz);
 
   proc_exit(0);
 }

@@ -55,11 +55,16 @@ class PgSelect : public PgDml {
   // Bind an index column with an expression.
   CHECKED_STATUS BindIndexColumn(int attnum, PgExpr *attr_value);
 
+  // Set forward (or backward) scan.
+  void SetForwardScan(const bool is_forward_scan) {
+    DCHECK_NOTNULL(read_req_)->set_is_forward_scan(is_forward_scan);
+  }
+
   // Execute.
   CHECKED_STATUS Exec();
 
   void SetCatalogCacheVersion(const uint64_t catalog_cache_version) override {
-    read_req_->set_ysql_catalog_version(catalog_cache_version);
+    DCHECK_NOTNULL(read_req_)->set_ysql_catalog_version(catalog_cache_version);
   }
 
  private:

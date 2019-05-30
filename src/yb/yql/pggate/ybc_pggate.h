@@ -310,6 +310,9 @@ YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
                          YBCPgStatement *handle,
                          uint64_t* read_time);
 
+// Set forward/backward scan direction.
+YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
+
 YBCStatus YBCPgExecSelect(YBCPgStatement handle);
 
 // Transaction control -----------------------------------------------------------------------------

@@ -56,6 +56,7 @@ extern void YBCTruncateTable(Relation rel);
 extern void YBCCreateIndex(const char *indexName,
 						   IndexInfo *indexInfo,
 						   TupleDesc indexTupleDesc,
+						   int16 *coloptions,
 						   Oid indexId,
 						   Relation rel);
 

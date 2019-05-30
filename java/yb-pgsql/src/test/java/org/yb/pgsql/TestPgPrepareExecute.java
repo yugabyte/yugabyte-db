@@ -116,14 +116,14 @@ public class TestPgPrepareExecute extends BasePgSQLTest {
     }
 
     // Test bind variable pushdown:
-    // Inequality on hash key -- expect index is used also with index condition. We do not support
-    // hash inequality in DocDB yet and the filtering is done inside the YB's index access method.
+    // Inequality on hash key -- until index range scan is supported, foreign scan is still the best
+    // path.
     query = "EXPLAIN SELECT * FROM test WHERE h > ?";
     try (PreparedStatement sel = connection.prepareStatement(query)) {
       sel.setLong(1, 2);
       ResultSet rs = sel.executeQuery();
       List<Row> rows = getRowList(rs);
-      assertTrue(rows.toString().contains("Index Cond: "));
+      assertTrue(rows.toString().contains("Foreign Scan"));
     }
   }
 

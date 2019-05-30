@@ -74,7 +74,7 @@ SELECT * FROM test_index ORDER BY v1;
 
 -- Verify different WHERE conditions are supported.
 SELECT * FROM test_index WHERE v1 IS NULL;
-SELECT * FROM test_index WHERE v1 IS NOT NULL;
+SELECT * FROM test_index WHERE v1 IS NOT NULL ORDER BY v1;
 SELECT * FROM test_index WHERE v1 IN (1, 2, 3);
 
 
@@ -103,10 +103,10 @@ SELECT typname FROM pg_type WHERE typname = 'test_sys_catalog_update_new';
 SELECT attname, atttypid FROM pg_attribute WHERE attname = 'w';
 
 -- Test primary key as index
-CREATE TABLE t1 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r));
+CREATE TABLE t1 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h hash, r));
 CREATE INDEX ON t1 (v1);
 CREATE UNIQUE INDEX ON t1 (v1, v2);
-CREATE TABLE t2 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h, r));
+CREATE TABLE t2 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h hash, r));
 
 \d t1
 \d t2
@@ -247,3 +247,56 @@ UPDATE test_include SET c2 = 33 WHERE c2 = 3;
 DELETE FROM test_include WHERE c1 = 2;
 SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
 SELECT * FROM test_include ORDER BY c2;
+
+-- Test hash methods
+CREATE TABLE test_method (
+  h1 int, h2 int, r1 int, r2 int, v1 int, v2 int,
+  PRIMARY KEY ((h1, h2) HASH, r1, r2));
+CREATE INDEX ON test_method (h2 HASH, r2, r1);
+CREATE INDEX ON test_method (r1, r2);
+CREATE UNIQUE INDEX ON test_method (v1, v2);
+\d test_method
+
+-- These should fail
+CREATE INDEX ON test_method (h1 HASH, h2 HASH, r2, r1);
+CREATE INDEX ON test_method (r1, h1 HASH);
+
+INSERT INTO test_method VALUES
+  (1, 1, 1, 1, 1, 11),
+  (1, 1, 1, 2, 2, 12),
+  (1, 1, 2, 1, 3, 13),
+  (1, 1, 2, 2, 4, 14),
+  (1, 2, 1, 1, 5, 15),
+  (1, 2, 1, 2, 6, 16),
+  (1, 2, 2, 1, 7, 17),
+  (1, 2, 2, 2, 8, 18),
+  (2, 0, 1, 1, 9, 19),
+  (2, 1, 1, 2, 10, 20);
+
+-- Test scans using different indexes. Verify order by.
+EXPLAIN SELECT * FROM test_method ORDER BY h1, h2;
+SELECT * FROM test_method ORDER BY h1, h2;
+EXPLAIN SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
+SELECT * FROM test_method WHERE h1 = 1 AND h2 = 1 ORDER BY r1, r2;
+EXPLAIN SELECT * FROM test_method ORDER BY r1, r2;
+SELECT * FROM test_method ORDER BY r1, r2;
+EXPLAIN SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
+SELECT * FROM test_method WHERE v1 > 5ORDER BY v1, v2;
+EXPLAIN SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
+SELECT * FROM test_method WHERE h2 = 2 ORDER BY r1, r2;
+EXPLAIN UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
+
+-- Test update using a hash index
+UPDATE test_method SET v2 = v2 + 10 WHERE h2 = 2;
+SELECT * FROM test_method ORDER BY h1, h2;
+SELECT * FROM test_method ORDER BY r1, r2;
+
+-- Test delete using a unique index
+EXPLAIN DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
+DELETE FROM test_method WHERE v1 = 5 AND v2 = 25;
+
+-- Test delete using the primary key
+EXPLAIN DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
+DELETE FROM test_method WHERE h1 = 2 AND h2 = 0;
+
+SELECT * FROM test_method ORDER BY h1, h2;
