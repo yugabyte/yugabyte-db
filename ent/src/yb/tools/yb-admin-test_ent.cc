@@ -98,7 +98,7 @@ TEST_F(AdminCliTest, TestCreateSnapshot) {
 
   // There is custom table.
   vector<YBTableName> tables;
-  ASSERT_OK(client->ListTables(&tables));
+  ASSERT_OK(client->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables + 1, tables.size());
 
   ListSnapshotsRequestPB req;
