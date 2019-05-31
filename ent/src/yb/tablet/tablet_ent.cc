@@ -26,12 +26,6 @@ using strings::Substitute;
 using yb::util::ScopedPendingOperation;
 using yb::util::PendingOperationCounter;
 
-Status Tablet::PrepareForSnapshotOp(SnapshotOperationState* tx_state) {
-  tx_state->AcquireSchemaLock(&schema_lock_);
-
-  return Status::OK();
-}
-
 Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
@@ -134,107 +128,6 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
                         << " in folder " << snapshot_dir;
 
   exit_on_failure = false;
-  return Status::OK();
-}
-
-Status Tablet::RestoreSnapshot(SnapshotOperationState* tx_state) {
-  const string top_snapshots_dir = Tablet::SnapshotsDirName(metadata_->rocksdb_dir());
-  const string snapshot_dir = JoinPathSegments(top_snapshots_dir,
-                                               tx_state->request()->snapshot_id());
-
-  docdb::ConsensusFrontier frontier;
-  frontier.set_op_id(tx_state->op_id());
-  frontier.set_hybrid_time(tx_state->hybrid_time());
-  const Status s = RestoreCheckpoint(snapshot_dir, frontier);
-  VLOG(1) << "Complete checkpoint restoring for tablet " << tablet_id()
-          << " with result " << s << " in folder " << metadata_->rocksdb_dir();
-  return s;
-}
-
-Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusFrontier& frontier) {
-  auto op_pause = PauseReadWriteOperations();
-  RETURN_NOT_OK(op_pause);
-
-  // Check if tablet is in shutdown mode.
-  if (IsShutdownRequested()) {
-    return STATUS(IllegalState, "Tablet was shut down");
-  }
-
-  std::lock_guard<std::mutex> lock(create_checkpoint_lock_);
-
-  const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
-  const string db_dir = regular_db_->GetName();
-  const std::string intents_db_dir = intents_db_ ? intents_db_->GetName() : std::string();
-
-  // Destroy DB object.
-  // TODO: snapshot current DB and try to restore it in case of failure.
-  intents_db_.reset();
-  regular_db_.reset();
-
-  rocksdb::Options rocksdb_options;
-  docdb::InitRocksDBOptions(&rocksdb_options, LogPrefix(), rocksdb_statistics_, tablet_options_);
-
-  Status s = rocksdb::DestroyDB(db_dir, rocksdb_options);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Cannot cleanup db files in directory " << db_dir << ": " << s;
-    return STATUS(IllegalState, "Cannot cleanup db files", s.ToString());
-  }
-
-  if (!intents_db_dir.empty()) {
-    s = rocksdb::DestroyDB(intents_db_dir, rocksdb_options);
-    if (PREDICT_FALSE(!s.ok())) {
-      LOG_WITH_PREFIX(WARNING) << "Cannot cleanup db files in directory " << intents_db_dir << ": "
-                               << s;
-      return STATUS(IllegalState, "Cannot cleanup intents db files", s.ToString());
-    }
-  }
-
-  s = rocksdb::CopyDirectory(rocksdb_options.env, dir, db_dir, rocksdb::CreateIfMissing::kTrue);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
-    return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
-  }
-
-  if (!intents_db_dir.empty()) {
-    auto intents_tmp_dir = JoinPathSegments(dir, tablet::kIntentsSubdir);
-    rocksdb_options.env->RenameFile(intents_db_dir, intents_db_dir);
-  }
-
-  // Reopen database from copied checkpoint.
-  // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
-  s = OpenKeyValueTablet();
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Failed tablet db opening from checkpoint: " << s;
-    return s;
-  }
-
-  docdb::ConsensusFrontier final_frontier = frontier;
-  rocksdb::UserFrontierPtr checkpoint_flushed_frontier = regular_db_->GetFlushedFrontier();
-
-  // The history cutoff we are setting after restoring to this snapshot is determined by the
-  // compactions that were done in the checkpoint, not in the old state of RocksDB in this replica.
-  if (checkpoint_flushed_frontier) {
-    final_frontier.set_history_cutoff(
-        down_cast<docdb::ConsensusFrontier&>(*checkpoint_flushed_frontier).history_cutoff());
-  }
-
-  s = ModifyFlushedFrontier(final_frontier, rocksdb::FrontierModificationMode::kForce);
-  if (PREDICT_FALSE(!s.ok())) {
-    LOG_WITH_PREFIX(WARNING) << "Failed tablet DB setting flushed op id: " << s;
-    return s;
-  }
-
-  LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << dir;
-  LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
-            << ", restored=" << regular_db_->GetLatestSequenceNumber();
-
-  LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
-  s = EnableCompactions();
-  if (!s.ok()) {
-    LOG_WITH_PREFIX(WARNING) << "Failed to enable compactions after restoring a checkpoint";
-    return s;
-  }
-
   return Status::OK();
 }
 
