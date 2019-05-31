@@ -194,9 +194,9 @@ Status PgWrapper::InitDbForYSQL(const string& master_addresses, const string& tm
           LOG(WARNING) << "Failed to delete directory " << conf.data_dir;
         }
       }
-    } else {
-      LOG(INFO) << "Failed to check directory existence for " << conf.data_dir << ": "
-                << is_dir.status();
+    } else if (!is_dir.status().IsNotFound()) {
+      LOG(WARNING) << "Failed to check directory existence for " << conf.data_dir << ": "
+                   << is_dir.status();
     }
   } BOOST_SCOPE_EXIT_END;
   PgWrapper pg_wrapper(conf);

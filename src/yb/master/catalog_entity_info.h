@@ -105,7 +105,7 @@ class MetadataCowWrapper {
   }
 
   // Access the persistent metadata. Typically you should use
-  // RaftGroupMetadataLock to gain access to this data.
+  // MetadataLock to gain access to this data.
   const CowObject<PersistentDataEntryPB>& metadata() const { return metadata_; }
   CowObject<PersistentDataEntryPB>* mutable_metadata() { return &metadata_; }
 
@@ -151,11 +151,11 @@ typedef std::unordered_map<TabletServerId, MonoTime> LeaderStepDownFailureTimes;
 // This object uses copy-on-write for the portions of data which are persisted
 // on disk. This allows the mutated data to be staged and written to disk
 // while readers continue to access the previous version. These portions
-// of data are in PersistentTableInfo above, and typically accessed using
-// RaftGroupMetadataLock. For example:
+// of data are in PersistentTabletInfo above, and typically accessed using
+// MetadataLock. For example:
 //
-//   TabletInfo* table = ...;
-//   RaftGroupMetadataLock l(tablet, TableMetadataLock::READ);
+//   TabletInfo* tablet = ...;
+//   MetadataLock l = tablet->LockForRead();
 //   if (l.data().is_running()) { ... }
 //
 // The non-persistent information about the tablet is protected by an internal

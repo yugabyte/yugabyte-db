@@ -256,7 +256,7 @@ TEST_F(AdminCliTest, TestDeleteTable) {
       exe_path, "-master_addresses", master_address, "delete_table", keyspace, table_name)));
 
   vector<YBTableName> tables;
-  ASSERT_OK(client->ListTables(&tables));
+  ASSERT_OK(client->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables, tables.size());
 }
 

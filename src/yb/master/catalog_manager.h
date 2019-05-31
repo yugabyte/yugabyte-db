@@ -70,6 +70,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/permissions_manager.h"
+#include "yb/master/initial_sys_catalog_snapshot.h"
 
 namespace yb {
 
@@ -156,6 +157,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS CreatePgsqlSysTable(const CreateTableRequestPB* req,
                                      CreateTableResponsePB* resp,
                                      rpc::RpcContext* rpc);
+
+  CHECKED_STATUS ReplicatePgMetadataChange(const tserver::ChangeMetadataRequestPB* req);
 
   // Reserve Postgres oids for a Postgres database.
   CHECKED_STATUS ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
@@ -329,7 +332,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   Result<uint64_t> IncrementYsqlCatalogVersion();
 
   // Records the fact that initdb has succesfully completed.
-  void InitDbFinished(Status initdb_status);
+  CHECKED_STATUS InitDbFinished(Status initdb_status, int64_t term);
 
   // Check if the initdb operation has been completed. This is intended for use by whoever wants
   // to wait for the cluster to be fully initialized, e.g. minicluster, YugaWare, etc.
@@ -585,7 +588,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS PrepareDefaultSysConfig(int64_t term);
 
   // Starts an asynchronous run of initdb. Errors are handled in the callback.
-  void StartRunningInitDbIfNeeded() SHARED_LOCKS_REQUIRED(lock_);
+  CHECKED_STATUS StartRunningInitDbIfNeeded(int64_t term) SHARED_LOCKS_REQUIRED(lock_);
 
   CHECKED_STATUS PrepareDefaultNamespaces(int64_t term);
 
@@ -891,8 +894,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void MarkTableDeletedIfNoTablets(scoped_refptr<DeletedTableInfo> deleted_table,
                                    TableInfo* table_info = nullptr);
 
-  // Checks if the pg_proc table exists, which indicates that initdb has at least started running.
-  bool DoesPgProcExistUnlocked() SHARED_LOCKS_REQUIRED(lock_);
+  // Called when a new table id is added to table_ids_map_.
+  void HandleNewTableId(const TableId& id);
+
+  // ----------------------------------------------------------------------------------------------
+  // Private member fields
+  // ----------------------------------------------------------------------------------------------
 
   // TODO: the maps are a little wasteful of RAM, since the TableInfo/TabletInfo
   // objects have a copy of the string key. But STL doesn't make it
@@ -1021,8 +1028,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   std::unordered_map<std::string, std::shared_ptr<tablet::AbstractTablet>> system_tablets_;
 
   boost::optional<std::future<Status>> initdb_future_;
+  boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
 
   std::unique_ptr<PermissionsManager> permissions_manager_;
+
+  // This is used for tracking that initdb has started running previously.
+  std::atomic<bool> pg_proc_exists_{false};
 
  private:
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);

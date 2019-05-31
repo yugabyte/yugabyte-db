@@ -25,6 +25,9 @@
           "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof"],
   "lib"      : ["thirdparty/installed/common/cqlsh/lib/*"],
   "pylib"    : ["thirdparty/installed/common/cqlsh/pylib/*"],
+  "share": [
+    "$BUILD_ROOT/share/initial_sys_catalog_snapshot"
+  ],
   "%symlinks%": {
     "bin/ysqlsh": "../postgres/bin/ysqlsh",
     "bin/psql": "../postgres/bin/ysqlsh"

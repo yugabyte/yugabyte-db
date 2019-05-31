@@ -49,8 +49,7 @@ class IsInitDbDoneRequest extends YRpc<IsInitDbDoneResponse> {
         new IsInitDbDoneResponse(
             deadlineTracker.getElapsedMillis(),
             masterUUID,
-            hasErr ? false : respBuilder.getStarted(),
-            hasErr ? false : respBuilder.getStartedByMaster(),
+            hasErr ? false : respBuilder.getPgProcExists(),
             hasErr ? false : respBuilder.getDone(),
             hasErr ? "" : respBuilder.getInitdbError(),
             hasErr ? respBuilder.getErrorBuilder().build() : null);

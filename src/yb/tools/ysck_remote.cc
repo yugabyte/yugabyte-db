@@ -230,20 +230,21 @@ Status RemoteYsckMaster::RetrieveTablesList(vector<shared_ptr<YsckTable> >* tabl
   for (const master::ListTablesResponsePB_TableInfo& info : resp.tables()) {
     Schema schema;
     int num_replicas = 0;
-    DCHECK(info.has_namespace_());
-    DCHECK(info.namespace_().has_name());
+    CHECK(info.has_namespace_());
+    CHECK(info.namespace_().has_name());
     YBTableName name(info.namespace_().name(), info.name());
-    RETURN_NOT_OK(GetTableInfo(name, &schema, &num_replicas));
-    if (name.table_name().find("pg_") == 0 ||
-        name.namespace_name() == "template0" ||
-        name.namespace_name() == "template1") {
-      // This looks like a PostgreSQL system table, skip it.
+    bool is_pg_table = false;
+    RETURN_NOT_OK(GetTableInfo(info.id(), &schema, &num_replicas, &is_pg_table));
+    if (is_pg_table) {
+      // Skip PostgreSQL tables in ysck for now. If we enable this, we'll have to fix lots of unit
+      // tests that expect a certain number of system tables.
       continue;
     }
-    shared_ptr<YsckTable> table(new YsckTable(name, schema, num_replicas, info.table_type()));
+    auto table = std::make_shared<YsckTable>(
+        info.id(), name, schema, num_replicas, info.table_type());
     tables_temp.push_back(table);
   }
-  tables->assign(tables_temp.begin(), tables_temp.end());
+  *tables = std::move(tables_temp);
   return Status::OK();
 }
 
@@ -252,22 +253,24 @@ Status RemoteYsckMaster::RetrieveTabletsList(const shared_ptr<YsckTable>& table)
   bool more_tablets = true;
   string last_key;
   while (more_tablets) {
-    RETURN_NOT_OK(GetTabletsBatch(table->name(), &last_key, &tablets, &more_tablets));
+    RETURN_NOT_OK(GetTabletsBatch(table->id(), table->name(), &last_key, &tablets, &more_tablets));
   }
 
   table->set_tablets(tablets);
   return Status::OK();
 }
 
-Status RemoteYsckMaster::GetTabletsBatch(const YBTableName& table_name,
-                                         string* last_partition_key,
-                                         vector<shared_ptr<YsckTablet> >* tablets,
-                                         bool* more_tablets) {
+Status RemoteYsckMaster::GetTabletsBatch(
+    const TableId& table_id,
+    const YBTableName& table_name,
+    string* last_partition_key,
+    vector<shared_ptr<YsckTablet> >* tablets,
+    bool* more_tablets) {
   master::GetTableLocationsRequestPB req;
   master::GetTableLocationsResponsePB resp;
   RpcController rpc;
 
-  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  req.mutable_table()->set_table_id(table_id);
   req.set_max_returned_locations(FLAGS_tablets_batch_size_max);
   req.set_partition_key_start(*last_partition_key);
 
@@ -288,9 +291,10 @@ Status RemoteYsckMaster::GetTabletsBatch(const YBTableName& table_name,
   if (resp.tablet_locations_size() != 0) {
     *last_partition_key = (resp.tablet_locations().end() - 1)->partition().partition_key_end();
   } else {
-    return STATUS(NotFound, Substitute(
-      "The Master returned 0 tablets for GetTableLocations of table $0 at start key $1",
-      table_name.ToString(), *(last_partition_key)));
+    return STATUS_FORMAT(
+        NotFound,
+        "The Master returned 0 tablets for GetTableLocations of table $0 at start key $1",
+        table_name.ToString(), *(last_partition_key));
   }
   if (last_partition_key->empty()) {
     *more_tablets = false;
@@ -298,20 +302,26 @@ Status RemoteYsckMaster::GetTabletsBatch(const YBTableName& table_name,
   return Status::OK();
 }
 
-Status RemoteYsckMaster::GetTableInfo(const YBTableName& table_name,
+Status RemoteYsckMaster::GetTableInfo(const TableId& table_id,
                                       Schema* schema,
-                                      int* num_replicas) {
+                                      int* num_replicas,
+                                      bool* is_pg_table) {
   master::GetTableSchemaRequestPB req;
   master::GetTableSchemaResponsePB resp;
   RpcController rpc;
 
-  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  req.mutable_table()->set_table_id(table_id);
 
   rpc.set_timeout(GetDefaultTimeout());
   RETURN_NOT_OK(proxy_->GetTableSchema(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
 
   RETURN_NOT_OK(SchemaFromPB(resp.schema(), schema));
   *num_replicas = resp.replication_info().live_replicas().num_replicas();
+
+  *is_pg_table = resp.table_type() == yb::TableType::PGSQL_TABLE_TYPE;
   return Status::OK();
 }
 

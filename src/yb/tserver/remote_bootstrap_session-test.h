@@ -83,7 +83,6 @@ using rpc::MessengerBuilder;
 using strings::Substitute;
 using tablet::YBTabletTest;
 using tablet::TabletPeer;
-using tablet::TabletPeerClass;
 using tablet::RaftGroupReplicaSuperBlockPB;
 using tablet::WriteOperationState;
 
@@ -136,13 +135,15 @@ class RemoteBootstrapTest : public YBTabletTest {
     hp->set_port(0);
 
     tablet_peer_.reset(
-        new TabletPeerClass(tablet()->metadata(),
-                            config_peer,
-                            clock(),
-                            fs_manager()->uuid(),
-                            Bind(&RemoteBootstrapTest::TabletPeerStateChangedCallback,
-                                 Unretained(this),
-                                 tablet()->tablet_id())));
+        new TabletPeer(
+            tablet()->metadata(),
+            config_peer,
+            clock(),
+            fs_manager()->uuid(),
+            Bind(
+                &RemoteBootstrapTest::TabletPeerStateChangedCallback,
+                Unretained(this),
+                tablet()->tablet_id())));
 
     // TODO similar to code in tablet_peer-test, consider refactor.
     RaftConfigPB config;

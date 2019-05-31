@@ -105,6 +105,12 @@ static int MasterMain(int argc, char** argv) {
         FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
   }
 
+  SetDefaultInitialSysCatalogSnapshotFlags();
+
+  // ==============================================================================================
+  // End of setting master flags
+  // ==============================================================================================
+
   LOG(INFO) << "Initializing master server...";
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Init());
 

@@ -625,3 +625,11 @@ YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
 	appendStringInfoChar(&buf, ')');
 	return buf.data;
 }
+
+bool
+YBIsInitDbAlreadyDone()
+{
+	bool done = false;
+	HandleYBStatus(YBCPgIsInitDbDone(ybc_pg_session, &done));
+	return done;
+}

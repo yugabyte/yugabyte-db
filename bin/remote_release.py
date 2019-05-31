@@ -17,6 +17,7 @@
 import argparse
 import os
 import sys
+import shlex
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'python'))  # noqa
@@ -94,7 +95,8 @@ def main():
     remote_args.append("--edition {}".format(args.edition))
     remote_args.append("--force")
     if args.build_args is not None:
-        remote_args.append("--build_args=\"{}\"".format(args.build_args))
+        build_args_str = ' '.join([shlex.quote(arg) for arg in args.build_args])
+        remote_args.append("--build_args=\"{}\"".format(build_args_str))
 
     remote.exec_command(args.host, escaped_remote_path, 'yb_release', remote_args, False)
 

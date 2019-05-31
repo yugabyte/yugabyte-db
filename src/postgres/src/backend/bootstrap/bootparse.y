@@ -132,6 +132,7 @@ static int num_columns_read = 0;
 %token <kw> XDECLARE YBDECLARE INDEX ON USING XBUILD INDICES PRIMARY UNIQUE XTOAST
 %token <kw> OBJ_ID XBOOTSTRAP XSHARED_RELATION XWITHOUT_OIDS XROWTYPE_OID
 %token <kw> XFORCE XNOT XNULL
+%token <kw> YBCHECKINITDBDONE
 
 %start TopLevel
 
@@ -157,6 +158,7 @@ Boot_Query :
 		| Boot_DeclarePrimaryIndexStmt
 		| Boot_DeclareToastStmt
 		| Boot_BuildIndsStmt
+    | Boot_CheckInitDbDone
 		;
 
 Boot_OpenStmt:
@@ -601,6 +603,13 @@ boot_column_val:
 			{ InsertOneNull(num_columns_read++); }
 		;
 
+Boot_CheckInitDbDone:
+      YBCHECKINITDBDONE
+      {
+				if (YBIsInitDbAlreadyDone())
+					exit(YB_INITDB_ALREADY_DONE_EXIT_CODE);
+			}
+
 boot_ident:
 		  ID			{ $$ = $1; }
 		| OPEN			{ $$ = pstrdup($1); }
@@ -624,6 +633,7 @@ boot_ident:
 		| XFORCE		{ $$ = pstrdup($1); }
 		| XNOT			{ $$ = pstrdup($1); }
 		| XNULL			{ $$ = pstrdup($1); }
+		| YBCHECKINITDBDONE { $$ = pstrdup($1); }
 		;
 %%
 

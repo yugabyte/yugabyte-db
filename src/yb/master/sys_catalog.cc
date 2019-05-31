@@ -85,7 +85,6 @@ using yb::log::Log;
 using yb::log::LogAnchorRegistry;
 using yb::tablet::LatchOperationCompletionCallback;
 using yb::tablet::TabletClass;
-using yb::tablet::TabletPeerClass;
 using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
 using strings::Substitute;
@@ -459,7 +458,7 @@ void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetad
 
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
-  std::shared_ptr<tablet::TabletPeer> tablet_peer = std::make_shared<TabletPeerClass>(
+  auto tablet_peer = std::make_shared<tablet::TabletPeer>(
       metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
       Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()));

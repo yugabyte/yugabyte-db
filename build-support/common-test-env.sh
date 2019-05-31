@@ -277,7 +277,6 @@ collect_gtest_tests() {
   YB_SANITIZER_EXTRA_OPTIONS=$old_sanitizer_extra_options
   set_sanitizer_runtime_options
 
-
   set_expected_core_dir "$gtest_list_tests_tmp_dir"
   test_log_path="$gtest_list_stderr_path"
   process_core_file
@@ -692,8 +691,14 @@ stop_process_tree_supervisor() {
   fi
 
   if [[ -f $process_supervisor_log_path ]]; then
-    log "Process supervisor log dump ($process_supervisor_log_path):"
-    cat "$process_supervisor_log_path" >&2
+    if is_jenkins || [[ $process_supervisor_success != "true" ]] || \
+       grep -q YB_STRAY_PROCESS "$process_supervisor_log_path"; then
+      log "Process supervisor log dump ($process_supervisor_log_path):"
+      cat "$process_supervisor_log_path" >&2
+    else
+      log "Omitting process supervisor log, nothing interesting there"
+    fi
+
     # TODO: Re-enable the logic below for treating stray processes as test failures, when the
     # following tests are fixed:
     # - org.yb.pgsql.TestPgRegressFeature.testPgRegressFeature

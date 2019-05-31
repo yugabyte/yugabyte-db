@@ -252,7 +252,6 @@ using tablet::TabletDataState;
 using tablet::RaftGroupMetadata;
 using tablet::TabletClass;
 using tablet::TabletPeer;
-using tablet::TabletPeerClass;
 using tablet::TabletPeerPtr;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
@@ -779,7 +778,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 // Create and register a new TabletPeer, given tablet metadata.
 Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
     const scoped_refptr<RaftGroupMetadata>& meta, RegisterTabletPeerMode mode) {
-  TabletPeerPtr tablet_peer(new TabletPeerClass(
+  TabletPeerPtr tablet_peer(new tablet::TabletPeer(
       meta, local_peer_pb_, scoped_refptr<server::Clock>(server_->clock()), fs_manager_->uuid(),
       Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->raft_group_id())));
   RETURN_NOT_OK(RegisterTablet(meta->raft_group_id(), tablet_peer, mode));

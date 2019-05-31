@@ -43,6 +43,7 @@
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
+#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/opid.h"
@@ -51,6 +52,7 @@
 #include "yb/util/env_util.h"
 #include "yb/consensus/log_index.h"
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/tserver/backup.pb.h"
 
 DEFINE_bool(skip_remove_old_recovery_dir, false,
             "Skip removing WAL recovery dir after startup. (useful for debugging)");
@@ -100,6 +102,7 @@ using strings::Substitute;
 using tserver::ChangeMetadataRequestPB;
 using tserver::TruncateRequestPB;
 using tserver::WriteRequestPB;
+using tserver::TabletSnapshotOpRequestPB;
 
 static string DebugInfo(const string& tablet_id,
                         int segment_seqno,
@@ -690,16 +693,50 @@ Status TabletBootstrap::HandleOperation(consensus::OperationType op_type,
     case consensus::UPDATE_TRANSACTION_OP:
       return PlayUpdateTransactionRequest(replicate, AlreadyApplied::kFalse);
 
-    // Unexpected cases:
     case consensus::SNAPSHOT_OP:
-      return STATUS(IllegalState, Substitute(
-          "The operation is not supported in the community edition: $0", op_type));
+      return PlayTabletSnapshotOpRequest(replicate);
 
+    // Unexpected cases:
     case consensus::UNKNOWN_OP:
       return STATUS(IllegalState, Substitute("Unsupported operation type: $0", op_type));
   }
 
   FATAL_INVALID_ENUM_VALUE(consensus::OperationType, op_type);
+}
+
+Status TabletBootstrap::PlayTabletSnapshotOpRequest(ReplicateMsg* replicate_msg) {
+  TabletSnapshotOpRequestPB* const snapshot = replicate_msg->mutable_snapshot_request();
+
+  SnapshotOperationState tx_state(/* tablet */ nullptr, snapshot);
+
+  RETURN_NOT_OK(tablet_->PrepareForSnapshotOp(&tx_state));
+  bool handled = false;
+
+  // Apply the snapshot operation to the tablet.
+  switch (snapshot->operation()) {
+    case TabletSnapshotOpRequestPB::CREATE: {
+      handled = true;
+      RETURN_NOT_OK_PREPEND(tablet_->CreateSnapshot(&tx_state), "Failed to CreateSnapshot:");
+      break;
+    }
+    case TabletSnapshotOpRequestPB::RESTORE: {
+      handled = true;
+      RETURN_NOT_OK_PREPEND(tablet_->RestoreSnapshot(&tx_state), "Failed to RestoreSnapshot:");
+      break;
+    }
+    case TabletSnapshotOpRequestPB::DELETE: {
+      handled = true;
+      RETURN_NOT_OK_PREPEND(tablet_->DeleteSnapshot(&tx_state), "Failed to DeleteSnapshot:");
+      break;
+    }
+    case TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
+  }
+
+  if (!handled) {
+    FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation,
+                             snapshot->operation());
+  }
+  return Status::OK();
 }
 
 // Never deletes 'replicate_entry' or 'commit_entry'.

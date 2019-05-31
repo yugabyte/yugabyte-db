@@ -121,7 +121,7 @@ toast			{ yylval.kw = "toast"; return XTOAST; }
 FORCE			{ yylval.kw = "FORCE"; return XFORCE; }
 NOT				{ yylval.kw = "NOT"; return XNOT; }
 NULL			{ yylval.kw = "NULL"; return XNULL; }
-
+yb_check_if_initdb_is_already_done { yylval.kw = "yb_check_if_initdb_is_already_done"; return YBCHECKINITDBDONE; }
 {id}			{
 					yylval.str = scanstr(yytext);
 					return ID;

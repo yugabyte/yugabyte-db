@@ -292,7 +292,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
 
   // 1) Should not list it in ListTables.
   vector<YBTableName> table_names;
-  ASSERT_OK(client_->ListTables(&table_names));
+  ASSERT_OK(client_->ListTables(&table_names, /* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables, table_names.size());
 
   // 2) Should respond to GetTableSchema with a NotFound error.

@@ -129,6 +129,13 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return flagMap;
   }
 
+  private Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = new TreeMap<>();
+    flagMap.put("client_read_write_timeout_ms", "120000");
+    flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
+    return flagMap;
+  }
+
   @Override
   protected int overridableNumShardsPerTServer() {
     return 1;
@@ -145,6 +152,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     for (Map.Entry<String, String> entry : getTServerFlags().entrySet()) {
       builder.addCommonTServerArgs("--" + entry.getKey() + "=" + entry.getValue());
     }
+    for (Map.Entry<String, String> entry : getMasterFlags().entrySet()) {
+      builder.addMasterArgs("--" + entry.getKey() + "=" + entry.getValue());
+    }
+
     for (Map.Entry<String, String> entry : getMasterAndTServerFlags().entrySet()) {
       String flagStr = "--" + entry.getKey() + "=" + entry.getValue();
       builder.addCommonTServerArgs(flagStr);
