@@ -22,6 +22,7 @@ import Help from './pages/Help';
 import Profile from './pages/Profile';
 import YugawareLogs from './pages/YugawareLogs';
 import Importer from './pages/Importer';
+import Certificates from './pages/Certificates';
 import Releases from './pages/Releases';
 
 const clearCredentials = () => {
@@ -115,6 +116,7 @@ export default (store) => {
         <Route path="/logs" component={YugawareLogs}/>
         <Route path="/importer" component={Importer} />
         <Route path="/releases" component={Releases}/>
+        <Route path="/certificates" component={Certificates}/>
       </Route>
     </Route>
   );
