@@ -19,7 +19,7 @@ WHERE i.indrelid = 'tbl_include_reg'::regclass ORDER BY c.relname;
 -- Unique index and unique constraint
 CREATE TABLE tbl_include_unique1 (c1 int, c2 int, c3 int, c4 int);
 INSERT INTO tbl_include_unique1 SELECT x, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
-CREATE UNIQUE INDEX tbl_include_unique1_idx_unique ON tbl_include_unique1 using lsm (c1, c2) INCLUDE (c3, c4);
+CREATE UNIQUE INDEX tbl_include_unique1_idx_unique ON tbl_include_unique1 using lsm (c1 ASC, c2) INCLUDE (c3, c4);
 ALTER TABLE tbl_include_unique1 add UNIQUE USING INDEX tbl_include_unique1_idx_unique;
 ALTER TABLE tbl_include_unique1 add UNIQUE (c1, c2) INCLUDE (c3, c4);
 SELECT pg_get_indexdef(i.indexrelid)
