@@ -272,5 +272,9 @@ extern const char* YBDatumToString(Datum datum, Oid typid);
  */
 extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
 
+/*
+ * Checks if the master thinks initdb has already been done.
+ */
+bool YBIsInitDbAlreadyDone();
 
 #endif /* PG_YB_UTILS_H */

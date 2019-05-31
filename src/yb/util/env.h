@@ -414,6 +414,19 @@ class Env {
     return result;
   }
 
+  // Like IsDirectory, but non-existence of the given path is not considered an error.
+  Result<bool> DoesDirectoryExist(const std::string& path) {
+    bool result = false;
+    Status status = IsDirectory(path, &result);
+    if (status.IsNotFound()) {
+      return false;
+    }
+    if (!status.ok()) {
+      return status;
+    }
+    return result;
+  }
+
   // Checks if the given path is an executable file. If the file does not exist
   // we simply return false rather than consider that an error.
   virtual Result<bool> IsExecutableFile(const std::string& path) = 0;

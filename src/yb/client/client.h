@@ -415,12 +415,15 @@ class YBClient {
   // List only those tables whose names pass a substring match on 'filter'.
   //
   // 'tables' is appended to only on success.
-  CHECKED_STATUS ListTables(std::vector<YBTableName>* tables,
-                            const std::string& filter = "");
+  CHECKED_STATUS ListTables(
+      std::vector<YBTableName>* tables,
+      const std::string& filter = "",
+      bool exclude_ysql = false);
 
   CHECKED_STATUS ListTablesWithIds(
       std::vector<std::pair<std::string, YBTableName>>* tables,
-      const std::string& filter = "");
+      const std::string& filter = "",
+      bool exclude_ysql = false);
 
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.

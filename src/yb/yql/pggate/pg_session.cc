@@ -32,6 +32,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/random_util.h"
 
+#include "yb/master/master.proxy.h"
+
 namespace yb {
 namespace pggate {
 
@@ -49,6 +51,10 @@ using client::YBOperation;
 using client::YBTable;
 using client::YBTableName;
 using client::YBTableType;
+
+using yb::master::IsInitDbDoneRequestPB;
+using yb::master::IsInitDbDoneResponsePB;
+using yb::master::MasterServiceProxy;
 
 #if defined(__APPLE__) && !defined(NDEBUG)
 // We are experiencing more slowness in tests on macOS in debug mode.
@@ -572,6 +578,31 @@ int PgSession::CountPendingErrors() const {
 
 std::vector<std::unique_ptr<client::YBError>> PgSession::GetPendingErrors() {
   return session_->GetPendingErrors();
+}
+
+Status PgSession::IsInitDbDone(bool* initdb_done) {
+  HostPort master_leader_host_port = client_->GetMasterLeaderAddress();
+  auto proxy  = std::make_shared<MasterServiceProxy>(
+      &client_->proxy_cache(), master_leader_host_port);
+  *initdb_done = false;
+  rpc::RpcController rpc;
+  IsInitDbDoneRequestPB req;
+  IsInitDbDoneResponsePB resp;
+  RETURN_NOT_OK(proxy->IsInitDbDone(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return STATUS_FORMAT(
+        RuntimeError,
+        "IsInitDbDone RPC response hit error: $0",
+        resp.error().ShortDebugString());
+  }
+  if (resp.done() && resp.has_initdb_error() && !resp.initdb_error().empty()) {
+    return STATUS_FORMAT(RuntimeError, "initdb failed: $0", resp.initdb_error());
+  }
+  VLOG(1) << "IsInitDbDone response: " << resp.ShortDebugString();
+  // We return true if initdb finished running, as well as if we know that it created the first
+  // table (pg_proc) to make initdb idempotent on upgrades.
+  *initdb_done = resp.done() || resp.pg_proc_exists();
+  return Status::OK();
 }
 
 }  // namespace pggate

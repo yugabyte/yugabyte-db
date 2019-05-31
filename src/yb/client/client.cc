@@ -1080,10 +1080,12 @@ Status YBClient::SetReplicationInfo(const ReplicationInfoPB& replication_info) {
   return data_->SetReplicationInfo(this, replication_info, deadline);
 }
 
-Status YBClient::ListTables(vector<YBTableName>* tables,
-                            const string& filter) {
+Status YBClient::ListTables(
+    vector<YBTableName>* tables,
+    const string& filter,
+    bool exclude_ysql) {
   std::vector<std::pair<std::string, YBTableName>> tables_with_ids;
-  RETURN_NOT_OK(ListTablesWithIds(&tables_with_ids, filter));
+  RETURN_NOT_OK(ListTablesWithIds(&tables_with_ids, filter, exclude_ysql));
   tables->clear();
   tables->reserve(tables_with_ids.size());
   for (const auto& table_with_id : tables_with_ids) {
@@ -1094,7 +1096,8 @@ Status YBClient::ListTables(vector<YBTableName>* tables,
 
 Status YBClient::ListTablesWithIds(
     std::vector<std::pair<std::string, YBTableName>>* tables_with_ids,
-    const std::string& filter) {
+    const std::string& filter,
+    bool exclude_ysql) {
   tables_with_ids->clear();
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
@@ -1107,6 +1110,9 @@ Status YBClient::ListTablesWithIds(
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
     DCHECK(table_info.has_namespace_());
     DCHECK(table_info.namespace_().has_name());
+    if (exclude_ysql && table_info.table_type() == TableType::PGSQL_TABLE_TYPE) {
+      continue;
+    }
     tables_with_ids->emplace_back(
         table_info.id(),
         YBTableName(table_info.namespace_().name(), table_info.name()));

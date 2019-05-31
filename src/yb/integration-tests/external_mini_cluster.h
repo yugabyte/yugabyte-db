@@ -158,6 +158,9 @@ struct ExternalMiniClusterOptions {
 
   CHECKED_STATUS RemovePort(const uint16_t port);
   CHECKED_STATUS AddPort(const uint16_t port);
+
+  // Make sure we have the correct number of master RPC ports specified.
+  void AdjustMasterRpcPorts();
 };
 
 // A mini-cluster made up of subprocesses running each of the daemons separately. This is useful for

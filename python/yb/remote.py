@@ -137,6 +137,8 @@ def load_profile(arg_names_to_load, args_map, profile_name="default_profile"):
         for arg_name in arg_names_to_load:
             if getattr(args_map, arg_name) is None:
                 setattr(args_map, arg_name, profile.get(arg_name))
+        if args_map.build_args is None:
+            args_map.build_args = []
         args_map.build_args += profile.get('extra_args', [])
 
 

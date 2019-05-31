@@ -20,38 +20,31 @@ import org.yb.master.Master;
 @InterfaceStability.Evolving
 public class IsInitDbDoneResponse extends YRpcResponse {
 
-  private final boolean started;
+  private final boolean pgProcExists;
   private final boolean done;
-  private final boolean startedByMaster;
   private final String initDbError;
   private final Master.MasterErrorPB serverError;
 
   public IsInitDbDoneResponse(
       long elapsedMillis,
       String masterUUID,
-      boolean started,
-      boolean startedByMaster,
+      boolean pgProcExists,
       boolean done,
       String initDbError,
       Master.MasterErrorPB serverError) {
     super(elapsedMillis, masterUUID);
-    this.started = started;
-    this.startedByMaster = startedByMaster;
+    this.pgProcExists = pgProcExists;
     this.done = done;
     this.initDbError = initDbError;
     this.serverError = serverError;
   }
 
+  public boolean doesPgProcExist() {
+    return pgProcExists;
+  }
+
   public boolean isDone() {
     return done;
-  }
-
-  public boolean isStarted() {
-    return started;
-  }
-
-  public boolean isStartedByMaster() {
-    return startedByMaster;
   }
 
   public String getInitDbError() {

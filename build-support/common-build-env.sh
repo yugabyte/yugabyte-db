@@ -2045,8 +2045,14 @@ activate_virtualenv() {
   fi
 
   if ! "$yb_readonly_virtualenv"; then
-    run_with_retries 10 0.5 pip2 install -r "$YB_SRC_ROOT/python_requirements_frozen.txt" \
-      $pip_no_cache
+    local requirements_file_path="$YB_SRC_ROOT/python_requirements_frozen.txt"
+    local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
+    if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
+      run_with_retries 10 0.5 pip2 install -r "$requirements_file_path" \
+        $pip_no_cache
+    fi
+    # To avoid re-running pip install, save the requirements that we've installed in the virtualenv.
+    cp "$requirements_file_path" "$installed_requirements_file_path"
   fi
 
   if [[ ${YB_DEBUG_VIRTUALENV:-0} == "1" ]]; then

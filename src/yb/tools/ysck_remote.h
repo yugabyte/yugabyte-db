@@ -108,13 +108,15 @@ class RemoteYsckMaster : public YsckMaster {
       const HostPort& address, std::unique_ptr<rpc::Messenger>&& messenger);
 
   CHECKED_STATUS GetTableInfo(
-      const client::YBTableName& table_name, Schema* schema, int* num_replicas);
+      const TableId& table_id, Schema* schema, int* num_replicas, bool* is_pg_table);
 
   // Used to get a batch of tablets from the master, passing a pointer to the
   // seen last key that will be used as the new start key. The
   // last_partition_key is updated to point at the new last key that came in
   // the batch.
-  CHECKED_STATUS GetTabletsBatch(const client::YBTableName& table_name,
+  CHECKED_STATUS GetTabletsBatch(
+      const TableId& table_id,
+      const client::YBTableName& table_name,
       std::string* last_partition_key, std::vector<std::shared_ptr<YsckTablet> >* tablets,
       bool* more_tablets);
 

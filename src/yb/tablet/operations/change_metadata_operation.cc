@@ -179,5 +179,23 @@ string ChangeMetadataOperation::ToString() const {
   return Format("ChangeMetadataOperation { state: $0 }", state());
 }
 
+CHECKED_STATUS SyncReplicateChangeMetadataOperation(
+    const tserver::ChangeMetadataRequestPB* req,
+    tablet::TabletPeer* tablet_peer,
+    int64_t term) {
+  auto operation_state = std::make_unique<ChangeMetadataOperationState>(
+      tablet_peer->tablet(), tablet_peer->log(), req);
+
+  Synchronizer synchronizer;
+
+  operation_state->set_completion_callback(
+      std::make_unique<tablet::SynchronizerOperationCompletionCallback>(&synchronizer));
+
+  tablet_peer->Submit(std::make_unique<tablet::ChangeMetadataOperation>(
+      std::move(operation_state)), term);
+
+  return synchronizer.Wait();
+}
+
 }  // namespace tablet
 }  // namespace yb

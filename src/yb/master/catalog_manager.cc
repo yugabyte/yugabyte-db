@@ -116,11 +116,15 @@
 #include "yb/master/yql_size_estimates_vtable.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_loaders.h"
+#include "yb/master/initial_sys_catalog_snapshot.h"
+
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
+
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 
@@ -142,7 +146,7 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
-using namespace std::literals; // NOLINT
+using namespace std::literals;
 
 DEFINE_int32(master_ts_rpc_timeout_ms, 30 * 1000,  // 30 sec
              "Timeout used for the Master->TS async rpc calls.");
@@ -524,6 +528,42 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   // Prepare various default system configurations.
   RETURN_NOT_OK(PrepareDefaultSysConfig(term));
 
+  if (FLAGS_use_initial_sys_catalog_snapshot &&
+      !FLAGS_initial_sys_catalog_snapshot_path.empty() &&
+      !FLAGS_create_initial_sys_catalog_snapshot) {
+    Result<bool> dir_exists =
+        Env::Default()->DoesDirectoryExist(FLAGS_initial_sys_catalog_snapshot_path);
+    if (dir_exists.ok() && *dir_exists) {
+      bool initdb_was_already_done = false;
+      {
+        auto l = ysql_catalog_config_->LockForRead();
+        initdb_was_already_done = l->data().pb.ysql_catalog_config().initdb_done();
+      }
+      if (initdb_was_already_done) {
+        LOG(INFO) << "initdb has been run before, no need to restore sys catalog from a snapshot";
+      } else {
+        LOG(INFO) << "Restoring snapshot in sys catalog";
+        Status restore_status = RestoreInitialSysCatalogSnapshot(
+            FLAGS_initial_sys_catalog_snapshot_path,
+            sys_catalog_->tablet_peer().get(),
+            term);
+        if (!restore_status.ok()) {
+          LOG(ERROR) << "Failed restoring snapshot in sys catalog";
+          return restore_status;
+        }
+
+        LOG(INFO) << "Restoring snapshot completed, considering initdb finished";
+        RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
+        RETURN_NOT_OK(RunLoaders());
+      }
+
+    } else {
+      LOG(WARNING) << "Initial sys catalog snapshot directory does not exist: "
+                   << FLAGS_initial_sys_catalog_snapshot_path
+                   << (dir_exists.ok() ? "" : ", status: " + dir_exists.status().ToString());
+    }
+  }
+
   // Create the system namespaces (created only if they don't already exist).
   RETURN_NOT_OK(PrepareDefaultNamespaces(term));
 
@@ -539,10 +579,9 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
 
   permissions_manager_->BuildRecursiveRolesUnlocked();
 
-  // No error handling here -- this does not wait for initdb to finish, that is done asynchronously.
-  StartRunningInitDbIfNeeded();
-
-  return Status::OK();
+  // The error handling here is not for the initdb result -- that handling is done asynchronously.
+  // This just starts initdb in the background and returns.
+  return StartRunningInitDbIfNeeded(term);
 }
 
 Status CatalogManager::RunLoaders() {
@@ -688,50 +727,54 @@ Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
   return Status::OK();
 }
 
-void CatalogManager::StartRunningInitDbIfNeeded() {
+Status CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
   CHECK(lock_.is_locked());
   if (!FLAGS_master_auto_run_initdb) {
-    return;
+    return Status::OK();
   }
 
   {
     auto l = ysql_catalog_config_->LockForRead();
     if (l->data().pb.ysql_catalog_config().initdb_done()) {
       LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
-      return;
+      return Status::OK();
     }
   }
 
-  const bool pg_proc_exists = DoesPgProcExistUnlocked();
-
-  {
-    auto l = ysql_catalog_config_->LockForWrite();
-    auto* mutable_ysql_catalog_config = l->mutable_data()->pb.mutable_ysql_catalog_config();
-
-    // If pg_proc_exists is set, we're not actually planning to run initdb (see the logic below
-    // this locking block), but we are still setting the initdb_started flag to indicate that
-    // someone else has started running initdb previously.
-    mutable_ysql_catalog_config->set_initdb_started(true);
-    if (!pg_proc_exists) {
-      mutable_ysql_catalog_config->set_initdb_started_by_master(true);
-    }
-    l->Commit();
-  }
-
-  if (pg_proc_exists) {
+  if (pg_proc_exists_) {
     LOG(INFO) << "Table pg_proc exists, assuming initdb has already been run";
-    return;
+    return Status::OK();
   }
 
   LOG(INFO) << "initdb has never been run on this cluster, running it";
   string master_addresses_str = MasterAddressesToString(
       *master_->opts().GetMasterAddresses());
 
-  initdb_future_ = std::async(std::launch::async, [this, master_addresses_str] {
-    Status initdb_status = PgWrapper::InitDbForYSQL(master_addresses_str, "/tmp");
-    InitDbFinished(initdb_status);
-    return initdb_status;
+  initdb_future_ = std::async(std::launch::async, [this, master_addresses_str, term] {
+    if (FLAGS_create_initial_sys_catalog_snapshot) {
+      initial_snapshot_writer_.emplace();
+    }
+
+    Status status = PgWrapper::InitDbForYSQL(master_addresses_str, "/tmp");
+
+    if (FLAGS_create_initial_sys_catalog_snapshot && status.ok()) {
+      Status write_snasphot_status = initial_snapshot_writer_->WriteSnapshot(
+          sys_catalog_->tablet_peer()->tablet(),
+          FLAGS_initial_sys_catalog_snapshot_path);
+      if (!write_snasphot_status.ok()) {
+        status = write_snasphot_status;
+      }
+    }
+    Status finish_status = InitDbFinished(status, term);
+    if (!finish_status.ok()) {
+      if (status.ok()) {
+        status = finish_status;
+      }
+      LOG(WARNING) << "Failed to set initdb as finished in sys catalog: " << finish_status;
+    }
+    return status;
   });
+  return Status::OK();
 }
 
 Status CatalogManager::PrepareDefaultNamespaces(int64_t term) {
@@ -1376,6 +1419,16 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
                              "PostgreSQL system catalog tables are non-partitioned"));
   }
 
+  if (req->table_type() != TableType::PGSQL_TABLE_TYPE) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA,
+                      STATUS_FORMAT(
+                          InvalidArgument,
+                          "Expected table type to be PGSQL_TABLE_TYPE ($0), got $1 ($2)",
+                          PGSQL_TABLE_TYPE,
+                          TableType_Name(req->table_type())));
+
+  }
+
   // Create partition schema and one partition.
   PartitionSchema partition_schema;
   vector<Partition> partitions;
@@ -1437,18 +1490,13 @@ Status CatalogManager::CreatePgsqlSysTable(const CreateTableRequestPB* req,
 
   partition_schema.ToPB(add_table.mutable_partition_schema());
 
-  auto operation_state = std::make_unique<tablet::ChangeMetadataOperationState>(
-      sys_catalog_->tablet_peer_->tablet(), sys_catalog_->tablet_peer_->log(), &change_req);
+  RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
+      &change_req, sys_catalog_->tablet_peer().get(), leader_ready_term_));
 
-  Synchronizer synchronizer;
-
-  operation_state->set_completion_callback(
-      std::make_unique<tablet::SynchronizerOperationCompletionCallback>(&synchronizer));
-
-  sys_catalog_->tablet_peer_->Submit(std::make_unique<tablet::ChangeMetadataOperation>(
-      std::move(operation_state)), sys_catalog_->tablet_peer_->LeaderTerm());
-
-  return synchronizer.Wait();
+  if (initial_snapshot_writer_) {
+    initial_snapshot_writer_->AddMetadataChange(change_req);
+  }
+  return Status::OK();
 }
 
 Status CatalogManager::ReservePgsqlOids(const ReservePgsqlOidsRequestPB* req,
@@ -1933,7 +1981,8 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
 
   // Add the new table in "preparing" state.
   table->reset(CreateTableInfo(req, schema, partition_schema, namespace_id, index_info));
-  table_ids_map_[(*table)->id()] = *table;
+  const TableId& table_id = (*table)->id();
+  table_ids_map_[table_id] = *table;
   // Do not add Postgres tables to the name map as the table name is not unique in a namespace.
   if (req.table_type() != PGSQL_TABLE_TYPE) {
     table_names_map_[{namespace_id, req.name()}] = *table;
@@ -1944,8 +1993,10 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   }
 
   if (resp != nullptr) {
-    resp->set_table_id((*table)->id());
+    resp->set_table_id(table_id);
   }
+
+  HandleNewTableId(table_id);
 
   return Status::OK();
 }
@@ -3065,6 +3116,7 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
   boost::shared_lock<LockType> l(lock_);
   return FindPtrOrNull(table_ids_map_, table_id);
 }
+
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableName(
     const NamespaceName& namespace_name, const TableName& table_name) {
 
@@ -4196,7 +4248,7 @@ Result<uint64_t> CatalogManager::IncrementYsqlCatalogVersion() {
   return new_version;
 }
 
-void CatalogManager::InitDbFinished(Status initdb_status) {
+Status CatalogManager::InitDbFinished(Status initdb_status, int64_t term) {
   if (initdb_status.ok()) {
     LOG(INFO) << "initdb completed successfully";
   } else {
@@ -4212,7 +4264,10 @@ void CatalogManager::InitDbFinished(Status initdb_status) {
     mutable_ysql_catalog_config->clear_initdb_error();
   }
 
+  RETURN_NOT_OK(sys_catalog_->AddItem(ysql_catalog_config_.get(), term));
+
   l->Commit();
+  return Status::OK();
 }
 
 CHECKED_STATUS CatalogManager::IsInitDbDone(
@@ -4222,8 +4277,7 @@ CHECKED_STATUS CatalogManager::IsInitDbDone(
 
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForRead();
   const auto& ysql_catalog_config = l->data().pb.ysql_catalog_config();
-  resp->set_started(ysql_catalog_config.initdb_started());
-  resp->set_started_by_master(ysql_catalog_config.initdb_started_by_master());
+  resp->set_pg_proc_exists(pg_proc_exists_.load(std::memory_order_acquire));
   resp->set_done(ysql_catalog_config.initdb_done());
   if (ysql_catalog_config.has_initdb_error() &&
       !ysql_catalog_config.initdb_error().empty()) {
@@ -5376,7 +5430,6 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   }
 
   resp->set_table_type(table->metadata().state().pb.table_type());
-
   return Status::OK();
 }
 
@@ -5814,15 +5867,11 @@ void CatalogManager::AbortAndWaitForAllTasks(const vector<scoped_refptr<TableInf
   VLOG(1) << "Waiting on Aborting tasks done";
 }
 
-bool CatalogManager::DoesPgProcExistUnlocked() {
-  // Checking if the pg_proc table from template1 database exists.
-  // There will be a pg_proc table in each user database (e.g. the "postgres" database for the
-  // "postgres" user) too.
-
-  const uint32_t kTemplate1Oid = 1;  // Hardcoded for template1. (in initdb.c)
-  const uint32_t kPgProcTableOid = 1255;  // Hardcoded for pg_proc. (in pg_proc.h)
-  static string kPgProcTableMap = GetPgsqlTableId(kTemplate1Oid, kPgProcTableOid);
-  return table_ids_map_.count(kPgProcTableMap);
+void CatalogManager::HandleNewTableId(const TableId& table_id) {
+  if (table_id == kPgProcTableId) {
+    // Needed to track whether initdb has started running.
+    pg_proc_exists_.store(true, std::memory_order_release);
+  }
 }
 
 }  // namespace master

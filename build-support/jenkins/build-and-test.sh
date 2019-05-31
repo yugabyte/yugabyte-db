@@ -77,6 +77,11 @@ echo "Build script $BASH_SOURCE is running"
 
 . "${BASH_SOURCE%/*}/../common-test-env.sh"
 
+readonly COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD=(
+  --no-rebuild-thirdparty
+  --skip-java
+)
+
 # -------------------------------------------------------------------------------------------------
 # Functions
 
@@ -103,8 +108,7 @@ build_cpp_code() {
   # dependencies (or downloaded them, or picked an existing third-party directory) above.
 
   local yb_build_args=(
-    --no-rebuild-thirdparty
-    --skip-java
+    "${COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD[@]}"
     "$BUILD_TYPE"
   )
 
@@ -419,7 +423,8 @@ fi
 
 heading "Building C++ code"
 
-if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then
+YB_TRACK_REGRESSIONS=${YB_TRACK_REGRESSIONS:-0}
+if [[ $YB_TRACK_REGRESSIONS == "1" ]]; then
 
   cd "$YB_SRC_ROOT"
   if ! git diff-index --quiet HEAD --; then
@@ -480,7 +485,7 @@ fi
 
 build_cpp_code "$YB_SRC_ROOT"
 
-if [[ ${YB_TRACK_REGRESSIONS:-} == "1" ]]; then
+if [[ $YB_TRACK_REGRESSIONS == "1" ]]; then
   log "Waiting for building C++ code one commit behind (at $git_commit_after_rollback)" \
       "in $YB_SRC_ROOT_REGR"
   wait "$build_cpp_code_regr_pid"
@@ -493,6 +498,27 @@ show_disk_usage
 log "ALL OF YUGABYTE C++ BUILD FINISHED"
 
 # End of the C++ code build.
+# -------------------------------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------------------------------
+# Running initdb
+# -------------------------------------------------------------------------------------------------
+
+if [[ $BUILD_TYPE != "tsan" ]]; then
+  log "Creating initial system catalog snapshot"
+  if ! time "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" initdb --skip-java; then
+    # We will still continue with the test suite.
+    initdb_err_msg="Failed to create initial sys catalog snapshot"
+    log "$initdb_err_msg. PostgreSQL tests may take longer."
+    FAILURES+="$initdb_err_msg"$'\n'
+    EXIT_STATUS=1
+  else
+    log "Successfully created initial system catalog snapshot"
+  fi
+fi
+
+# -------------------------------------------------------------------------------------------------
+# Dependency graph analysis allowing to determine what tests to run.
 # -------------------------------------------------------------------------------------------------
 
 if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then

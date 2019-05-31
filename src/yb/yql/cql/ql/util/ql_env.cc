@@ -22,7 +22,6 @@
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 

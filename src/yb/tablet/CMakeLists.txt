@@ -50,6 +50,7 @@ set(TABLET_SRCS
   operations/truncate_operation.cc
   operations/update_txn_operation.cc
   operations/write_operation.cc
+  operations/snapshot_operation.cc
   lock_manager.cc
   maintenance_manager.cc
   mvcc.cc

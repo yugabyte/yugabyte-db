@@ -265,6 +265,7 @@ static char **readfile(const char *path);
 static void writefile(char *path, char **lines);
 static FILE *popen_check(const char *command, const char *mode);
 static void exit_nicely(void) pg_attribute_noreturn();
+static void exit_nicely_with_code(int) pg_attribute_noreturn();
 static char *get_id(void);
 static int	get_encoding_id(const char *encoding_name);
 static void set_input(char **dest, const char *filename);
@@ -299,6 +300,7 @@ static void check_locale_name(int category, const char *locale,
 static bool check_locale_encoding(const char *locale, int encoding);
 static void setlocales(void);
 static void usage(const char *progname);
+static int yb_pclose_check(FILE *stream);
 void		setup_pgdata(void);
 void		setup_bin_paths(const char *argv0);
 void		setup_data_file_paths(void);
@@ -324,8 +326,10 @@ do { \
 
 #define PG_CMD_CLOSE \
 do { \
-	if (pclose_check(cmdfd)) \
-		exit_nicely(); /* message already printed by pclose_check */ \
+  int exit_code = yb_pclose_check(cmdfd); \
+	/* message already printed by yb_pclose_check */ \
+	if (exit_code) \
+		exit_nicely_with_code(exit_code == YB_INITDB_ALREADY_DONE_EXIT_CODE ? 0 : 1); \
 } while (0)
 
 #define PG_CMD_PUTS(line) \
@@ -367,6 +371,44 @@ static bool IsYugaByteLocalNodeInitdb()
 {
 	return IsEnvSet("YB_PG_LOCAL_NODE_INITDB");
 }
+
+/*
+ * pclose() plus useful error reporting
+ *
+ * YugaByte-specific version recognizes a special status indicating that initdb
+ * has already been run, or the cluster has been initialized from a sys catalog
+ * snapshot.
+ */
+static int
+yb_pclose_check(FILE *stream)
+{
+	int			exitstatus;
+	char	   *reason;
+
+	exitstatus = pclose(stream);
+
+	if (exitstatus == 0)
+		return 0;				/* all is well */
+
+	if (exitstatus == -1)
+	{
+		/* pclose() itself failed, and hopefully set errno */
+		fprintf(stderr, _("pclose failed: %s"), strerror(errno));
+		return 1;
+	}
+	else
+	{
+		if (WEXITSTATUS(exitstatus) == YB_INITDB_ALREADY_DONE_EXIT_CODE) {
+			fprintf(stderr, "initdb has already been run previously, nothing to do\n");
+		} else {
+			reason = wait_result_to_str(exitstatus);
+			fprintf(stderr, "%s", reason);
+			free(reason);
+		}
+	}
+	return WEXITSTATUS(exitstatus);
+}
+
 
 /*
  * Escape single quotes and backslashes, suitably for insertions into
@@ -636,7 +678,12 @@ popen_check(const char *command, const char *mode)
  * if we created the data directory remove it too
  */
 static void
-exit_nicely(void)
+exit_nicely(void) {
+	exit_nicely_with_code(1);
+}
+
+static void
+exit_nicely_with_code(int final_exit_code)
 {
 	if (!noclean)
 	{
@@ -690,7 +737,7 @@ exit_nicely(void)
 					progname, xlog_dir);
 	}
 
-	exit(1);
+	exit(final_exit_code);
 }
 
 /*
@@ -1415,7 +1462,6 @@ setup_config(void)
 
 	check_ok();
 }
-
 
 /*
  * run the BKI script in bootstrap mode to create template1

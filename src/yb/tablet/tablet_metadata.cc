@@ -315,9 +315,9 @@ CHECKED_STATUS MakeTableNotFound(const TableId& table_id, const RaftGroupId& raf
 #ifndef NDEBUG
   // This very large message should be logged instead of being appended to STATUS.
   std::string suffix = Format(". Tables: $0.", tables);
-  VLOG(1) << "Table " << table_id << " not found in raft " << raft_group_id << suffix;
+  VLOG(1) << "Table " << table_id << " not found in Raft group " << raft_group_id << suffix;
 #endif
-  return STATUS_FORMAT(NotFound, "Table $0 not found in raft group $1", table_id, raft_group_id);
+  return STATUS_FORMAT(NotFound, "Table $0 not found in Raft group $1", table_id, raft_group_id);
 }
 
 Result<const TableInfo*> RaftGroupMetadata::GetTableInfo(const std::string& table_id) const {

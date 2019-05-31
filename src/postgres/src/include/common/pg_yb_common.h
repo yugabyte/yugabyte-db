@@ -25,6 +25,8 @@
 #ifndef PG_YB_COMMON_H
 #define PG_YB_COMMON_H
 
+#define YB_INITDB_ALREADY_DONE_EXIT_CODE 125
+
 /**
  * Checks if the given environment variable is set to a "true" value (e.g. "1").
  */

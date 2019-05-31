@@ -176,7 +176,7 @@ class YsckTest : public YBTest {
 
   void CreateAndAddTable(vector<shared_ptr<YsckTablet>> tablets,
                          const YBTableName& name, int num_replicas) {
-    shared_ptr<YsckTable> table(new YsckTable(name, Schema(), num_replicas,
+    shared_ptr<YsckTable> table(new YsckTable(/* id */ "", name, Schema(), num_replicas,
         TableType::YQL_TABLE_TYPE));
     table->set_tablets(tablets);
 

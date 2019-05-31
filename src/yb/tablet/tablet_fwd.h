@@ -13,6 +13,9 @@
 #ifndef YB_TABLET_TABLET_FWD_H
 #define YB_TABLET_TABLET_FWD_H
 
+#include <memory>
+
+#include "yb/gutil/ref_counted.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -35,7 +38,6 @@ class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
 typedef YB_EDITION_NS_PREFIX Tablet TabletClass;
-typedef YB_EDITION_NS_PREFIX TabletPeer TabletPeerClass;
 
 YB_STRONGLY_TYPED_BOOL(RequireLease);
 
