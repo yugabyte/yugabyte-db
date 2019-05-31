@@ -68,6 +68,8 @@ Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
 
   size_t index = 0;
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
+    ++index;
+
     // This is thread safe since all operations are reads.
     TSInformationPB ts_info = desc->GetTSInformationPB();
 
@@ -81,9 +83,8 @@ Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
       continue;
     }
 
-    entries.push_back({index, std::move(ts_info)});
+    entries.push_back({index - 1, std::move(ts_info)});
     entries.back().ips = util::GetPublicPrivateIPFutures(entries.back().ts_info, resolver_.get());
-    ++index;
   }
 
   for (const auto& entry : entries) {
@@ -99,6 +100,9 @@ Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
     RETURN_NOT_OK(SetColumnValue(kSystemLocalDataCenterColumn, cloud_info.placement_region(),
                                  &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalGossipGenerationColumn, 0, &row));
+    Uuid host_id;
+    RETURN_NOT_OK(host_id.FromHexString(entry.ts_info.tserver_instance().permanent_uuid()));
+    RETURN_NOT_OK(SetColumnValue(kSystemLocalHostIdColumn, host_id, &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalListenAddressColumn, private_ip, &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalNativeProtocolVersionColumn, "4", &row));
     RETURN_NOT_OK(SetColumnValue(kSystemLocalPartitionerColumn,
