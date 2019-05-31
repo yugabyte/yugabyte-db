@@ -14,7 +14,6 @@ class SnapshotOperationState;
 
 namespace enterprise {
 
-static const std::string kSnapshotsDirSuffix = ".snapshots";
 static const std::string kTempSnapshotDirSuffix = ".tmp";
 
 class Tablet : public yb::tablet::Tablet {
@@ -25,26 +24,11 @@ class Tablet : public yb::tablet::Tablet {
   explicit Tablet(Args&&... args)
       : super(std::forward<Args>(args)...) {}
 
-  // Prepares the transaction context for a snapshot operation.
-  CHECKED_STATUS PrepareForSnapshotOp(SnapshotOperationState* tx_state);
-
   // Create snapshot for this tablet.
-  CHECKED_STATUS CreateSnapshot(SnapshotOperationState* tx_state);
-
-  // Restore snapshot for this tablet.
-  CHECKED_STATUS RestoreSnapshot(SnapshotOperationState* tx_state);
+  CHECKED_STATUS CreateSnapshot(SnapshotOperationState* tx_state) override;
 
   // Delete snapshot for this tablet.
-  CHECKED_STATUS DeleteSnapshot(SnapshotOperationState* tx_state);
-
-  // Restore the RocksDB checkpoint from the provided directory.
-  // Only used when table_type_ == YQL_TABLE_TYPE.
-  CHECKED_STATUS RestoreCheckpoint(
-      const std::string& dir, const docdb::ConsensusFrontier& frontier);
-
-  static std::string SnapshotsDirName(const std::string& rocksdb_dir) {
-    return rocksdb_dir + kSnapshotsDirSuffix;
-  }
+  CHECKED_STATUS DeleteSnapshot(SnapshotOperationState* tx_state) override;
 
   static bool IsTempSnapshotDir(const std::string& dir) {
     return StringEndsWith(dir, kTempSnapshotDirSuffix);
