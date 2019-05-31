@@ -31,7 +31,7 @@ export default class ListBackups extends Component {
   }
 
   render() {
-    const { universeBackupList, title } = this.props;
+    const { universeBackupList, universeTableTypes, title } = this.props;
     if (getPromiseState(universeBackupList).isLoading() ||
         getPromiseState(universeBackupList).isInit()) {
       return <YBLoadingIcon size="medium" />;
@@ -42,6 +42,7 @@ export default class ListBackups extends Component {
         backupInfo.backupUUID = b.backupUUID;
         backupInfo.status = b.state;
         backupInfo.createTime = b.createTime;
+        backupInfo.tableType = universeTableTypes[b.backupInfo.tableUUID];
         // Show action button to restore/delete only when the backup is
         // create and which has completed successfully.
         backupInfo.showActions = (backupInfo.actionType === "CREATE" &&
@@ -88,6 +89,10 @@ export default class ListBackups extends Component {
             <TableHeaderColumn dataField="tableName" dataSort
                               columnClassName="no-border name-column" className="no-border">
               Table Name
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="tableType" dataSort
+                              columnClassName="no-border name-column" className="no-border">
+              Table Type
             </TableHeaderColumn>
             <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter} dataSort
                               columnClassName="no-border " className="no-border"
