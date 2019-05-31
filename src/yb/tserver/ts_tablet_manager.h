@@ -474,6 +474,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   TabletPeers shutting_down_peers_;
 
+  std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
+
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };
 

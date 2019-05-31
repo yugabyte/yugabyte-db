@@ -350,6 +350,10 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
 
     block_cache_size_bytes = total_ram_avail * FLAGS_db_block_cache_size_percentage / 100;
   }
+
+  block_based_table_mem_tracker_ = MemTracker::FindOrCreateTracker(
+      block_cache_size_bytes, "BlockBasedTable", server_->mem_tracker());
+
   if (FLAGS_db_block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
     tablet_options_.block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
                                                        FLAGS_db_block_cache_num_shard_bits);
@@ -942,7 +946,6 @@ void TSTabletManager::OpenTablet(const scoped_refptr<RaftGroupMetadata>& meta,
   TRACE("Bootstrapping tablet");
 
   consensus::ConsensusBootstrapInfo bootstrap_info;
-  Status s;
   consensus::RetryableRequests retryable_requests(kLogPrefix);
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
@@ -953,11 +956,13 @@ void TSTabletManager::OpenTablet(const scoped_refptr<RaftGroupMetadata>& meta,
       tablet_peer->SetFailed(s);
       return;
     }
+
     tablet::BootstrapTabletData data = {
         meta,
         async_client_init_->get_client_future(),
         scoped_refptr<server::Clock>(server_->clock()),
-        server_->mem_tracker(),
+        MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
+        block_based_table_mem_tracker_,
         metric_registry_,
         tablet_peer->status_listener(),
         tablet_peer->log_anchor_registry(),
@@ -980,15 +985,16 @@ void TSTabletManager::OpenTablet(const scoped_refptr<RaftGroupMetadata>& meta,
   MonoTime start(MonoTime::Now());
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "starting tablet") {
     TRACE("Initializing tablet peer");
-    s = tablet_peer->InitTabletPeer(tablet,
-                                    async_client_init_->get_client_future(),
-                                    server_->messenger(),
-                                    &server_->proxy_cache(),
-                                    log,
-                                    tablet->GetMetricEntity(),
-                                    raft_pool(),
-                                    tablet_prepare_pool(),
-                                    &retryable_requests);
+    auto s = tablet_peer->InitTabletPeer(tablet,
+                                         async_client_init_->get_client_future(),
+                                         server_->mem_tracker(),
+                                         server_->messenger(),
+                                         &server_->proxy_cache(),
+                                         log,
+                                         tablet->GetMetricEntity(),
+                                         raft_pool(),
+                                         tablet_prepare_pool(),
+                                         &retryable_requests);
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "

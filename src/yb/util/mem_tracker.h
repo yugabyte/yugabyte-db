@@ -554,6 +554,20 @@ int64_t AbsRelMemLimit(int64_t value, const F& f) {
   return value;
 }
 
+struct MemTrackerData {
+  MemTrackerPtr tracker;
+  // Depth of this tracker in hierarchy, i.e. root have depth = 0, his children 1 and so on.
+  int depth;
+  // Some mem trackers does not report their consumption to parent, so their consumption does not
+  // participate in limit calculation or parent. We accumulate such consumption in field below.
+  size_t consumption_excluded_from_ancestors = 0;
+};
+
+const MemTrackerData& CollectMemTrackerData(const MemTrackerPtr& tracker, int depth,
+                                            std::vector<MemTrackerData>* output);
+
+std::string DumpMemTrackers();
+
 } // namespace yb
 
 #endif // YB_UTIL_MEM_TRACKER_H

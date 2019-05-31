@@ -91,7 +91,8 @@ ImmutableCFOptions::ImmutableCFOptions(const Options& options)
       optimize_filters_for_hits(options.optimize_filters_for_hits),
       listeners(options.listeners),
       row_cache(options.row_cache),
-      mem_tracker(options.mem_tracker) {}
+      mem_tracker(options.mem_tracker),
+      block_based_table_mem_tracker(options.block_based_table_mem_tracker) {}
 
 ColumnFamilyOptions::ColumnFamilyOptions()
     : comparator(BytewiseComparator()),

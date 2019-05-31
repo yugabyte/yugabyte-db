@@ -162,14 +162,15 @@ class RemoteBootstrapTest : public YBTabletTest {
     log_anchor_registry_.reset(new LogAnchorRegistry());
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
-                                          std::shared_future<client::YBClient*>(),
-                                          messenger_.get(),
-                                          proxy_cache_.get(),
-                                          log,
-                                          metric_entity,
-                                          raft_pool_.get(),
-                                          tablet_prepare_pool_.get(),
-                                          nullptr /* retryable_requests */));
+                                           std::shared_future<client::YBClient*>(),
+                                           nullptr /* server_mem_tracker */,
+                                           messenger_.get(),
+                                           proxy_cache_.get(),
+                                           log,
+                                           metric_entity,
+                                           raft_pool_.get(),
+                                           tablet_prepare_pool_.get(),
+                                           nullptr /* retryable_requests */));
     consensus::ConsensusBootstrapInfo boot_info;
     ASSERT_OK(tablet_peer_->Start(boot_info));
 

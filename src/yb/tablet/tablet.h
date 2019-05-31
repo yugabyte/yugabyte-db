@@ -214,6 +214,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const std::shared_future<client::YBClient*> &client_future,
       const scoped_refptr<server::Clock>& clock,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
+      std::shared_ptr<MemTracker> block_based_table_mem_tracker,
       MetricRegistry* metric_registry,
       const scoped_refptr<log::LogAnchorRegistry>& log_anchor_registry,
       const TabletOptions& tablet_options,
@@ -630,6 +631,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
   std::shared_ptr<MemTracker> mem_tracker_;
+  std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
 
   MetricEntityPtr metric_entity_;
   gscoped_ptr<TabletMetrics> metrics_;

@@ -1927,6 +1927,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, mem_table_flush_filter_factory),
       BLACKLIST_ENTRY(DBOptions, log_prefix),
       BLACKLIST_ENTRY(DBOptions, mem_tracker),
+      BLACKLIST_ENTRY(DBOptions, block_based_table_mem_tracker),
   };
 
   TestAllFieldsSettable<DBOptions>(kDBOptionsBlacklist);
