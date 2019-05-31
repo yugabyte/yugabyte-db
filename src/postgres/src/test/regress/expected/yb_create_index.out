@@ -184,8 +184,8 @@ CREATE TABLE t2 (h INT, r INT, v1 INT, v2 INT, PRIMARY KEY (h hash, r));
  v2     | integer |           |          |
 Indexes:
     "t1_pkey" PRIMARY KEY, lsm (h HASH, r)
-    "t1_v1_v2_idx" UNIQUE, lsm (v1, v2)
-    "t1_v1_idx" lsm (v1)
+    "t1_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2)
+    "t1_v1_idx" lsm (v1 HASH)
 
 \d t2
                  Table "public.t2"
@@ -462,9 +462,9 @@ ERROR:  access method "foo" does not exist
  k      | integer |           | not null |
  v      | integer |           |          |
 Indexes:
-    "test_method_pkey" PRIMARY KEY, lsm (k)
-    "test_method_v_idx" lsm (v)
-    "test_method_v_idx1" lsm (v)
+    "test_method_pkey" PRIMARY KEY, lsm (k HASH)
+    "test_method_v_idx" lsm (v HASH)
+    "test_method_v_idx1" lsm (v HASH)
 
 DROP TABLE test_method;
 -- Test include columns
@@ -497,7 +497,7 @@ SELECT c1, c2 FROM test_include WHERE c1 = 1;
  c2     | integer |           |          |
  c3     | integer |           |          |
 Indexes:
-    "test_include_c1_c2_idx" UNIQUE, lsm (c1) INCLUDE (c2)
+    "test_include_c1_c2_idx" UNIQUE, lsm (c1 HASH) INCLUDE (c2)
 
 -- Verify the included column is updated in both the base table and the index. Use WHERE condition
 -- on c1 below to force the scan on the index vs. base table. Select the non-included column c3 in
@@ -572,9 +572,9 @@ CREATE UNIQUE INDEX ON test_method (v1, v2);
  v2     | integer |           |          |
 Indexes:
     "test_method_pkey" PRIMARY KEY, lsm ((h1, h2) HASH, r1, r2)
-    "test_method_v1_v2_idx" UNIQUE, lsm (v1, v2)
+    "test_method_v1_v2_idx" UNIQUE, lsm (v1 HASH, v2)
     "test_method_h2_r2_r1_idx" lsm (h2 HASH, r2, r1)
-    "test_method_r1_r2_idx" lsm (r1, r2)
+    "test_method_r1_r2_idx" lsm (r1 HASH, r2)
 
 -- These should fail
 CREATE INDEX ON test_method (h1 HASH, h2 HASH, r2, r1);
@@ -770,4 +770,3 @@ SELECT * FROM test_method ORDER BY h1, h2;
   1 |  2 |  2 |  1 |  7 | 27
   2 |  1 |  1 |  2 | 10 | 20
 (8 rows)
-

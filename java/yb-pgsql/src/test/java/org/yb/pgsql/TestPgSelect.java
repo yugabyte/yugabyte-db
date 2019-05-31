@@ -76,7 +76,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(10, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(useIndex(query, PRIMARY_KEY));
+      assertFalse(useIndex(query, PRIMARY_KEY));
 
       // Test range scan.
       query = "SELECT * FROM test_where WHERE h = 2 AND r >= 3.5 AND r < 8.5";

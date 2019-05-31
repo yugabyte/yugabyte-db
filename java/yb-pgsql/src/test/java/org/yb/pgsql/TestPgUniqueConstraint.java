@@ -231,7 +231,7 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
           + "i1 int, "
           + "i2 int"
           + ")");
-      stmt.execute("CREATE UNIQUE INDEX test_idx ON test (i1, i2)");
+      stmt.execute("CREATE UNIQUE INDEX test_idx ON test (i1 ASC, i2)");
       // This will also rename index "test_idx" to "test_constr"
       stmt.execute("ALTER TABLE test ADD CONSTRAINT test_constr UNIQUE USING INDEX test_idx");
 
@@ -276,7 +276,8 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
           "SELECT pg_get_indexdef(i.indexrelid)\n" +
               "FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid\n" +
               "WHERE i.indrelid = 'test'::regclass",
-          new Row("CREATE UNIQUE INDEX test_constr ON public.test USING lsm (i1) INCLUDE (i2)")
+          new Row("CREATE UNIQUE INDEX test_constr ON public.test " +
+                      "USING lsm (i1 HASH) INCLUDE (i2)")
       );
 
       // Valid insertions
@@ -326,7 +327,7 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
   public void addUniqueConstraintAttributes() throws Exception {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("CREATE TABLE test(i1 int, i2 int)");
-      stmt.execute("CREATE UNIQUE INDEX test_idx ON test (i2)");
+      stmt.execute("CREATE UNIQUE INDEX test_idx ON test (i2 ASC)");
 
       runInvalidQuery(
           stmt,
