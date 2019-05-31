@@ -176,6 +176,7 @@ std::string CreateMetricName(const MemTracker& mem_tracker) {
   std::string id = mem_tracker.id();
   std::replace(id.begin(), id.end(), ' ', '_');
   std::replace(id.begin(), id.end(), '.', '_');
+  std::replace(id.begin(), id.end(), '-', '_');
   if (mem_tracker.parent()) {
     return CreateMetricName(*mem_tracker.parent()) + "_" + id;
   } else {
@@ -629,7 +630,7 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
   }
 
   {
-    size_t current_consumption = GetUpdatedConsumption();
+    int64_t current_consumption = GetUpdatedConsumption();
     // Check if someone gc'd before us
     if (current_consumption <= max_consumption) {
       return false;
@@ -657,7 +658,7 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
 
     // Try to free up some memory
     for (const auto& gc : collectors) {
-      gc->CollectGarbage(max_consumption - current_consumption);
+      gc->CollectGarbage(current_consumption - max_consumption);
       current_consumption = GetUpdatedConsumption();
       if (current_consumption <= max_consumption) {
         break;
@@ -665,7 +666,8 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
     }
   }
 
-  if (consumption() > max_consumption) {
+  int64_t current_consumption = GetUpdatedConsumption();
+  if (current_consumption > max_consumption) {
     std::vector<MemTrackerPtr> children;
     {
       std::lock_guard<std::mutex> lock(child_trackers_mutex_);
@@ -681,8 +683,12 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
     }
 
     for (const auto& child : children) {
-      if (child->GcMemory(max_consumption) && GetUpdatedConsumption() <= max_consumption) {
-        return true;
+      bool did_gc = child->GcMemory(max_consumption - current_consumption + child->consumption());
+      if (did_gc) {
+        current_consumption = GetUpdatedConsumption();
+        if (current_consumption <= max_consumption) {
+          return true;
+        }
       }
     }
   }
@@ -772,5 +778,47 @@ scoped_refptr<MetricEntity> MemTracker::metric_entity() const {
   return metrics_ ? metrics_->metric_entity_ : nullptr;
 }
 
+const MemTrackerData& CollectMemTrackerData(const MemTrackerPtr& tracker, int depth,
+                                            std::vector<MemTrackerData>* output) {
+  size_t idx = output->size();
+  output->push_back({tracker, depth, 0});
+
+  auto children = tracker->ListChildren();
+  std::sort(children.begin(), children.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs->id() < rhs->id();
+  });
+
+  for (const auto& child : children) {
+    const auto& child_data = CollectMemTrackerData(child, depth + 1, output);
+    (*output)[idx].consumption_excluded_from_ancestors +=
+        child_data.consumption_excluded_from_ancestors;
+    if (!child_data.tracker->add_to_parent()) {
+      (*output)[idx].consumption_excluded_from_ancestors += child_data.tracker->consumption();
+    }
+  }
+
+  return (*output)[idx];
+}
+
+std::string DumpMemTrackers() {
+  std::ostringstream out;
+  std::vector<MemTrackerData> trackers;
+  CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
+  for (const auto& data : trackers) {
+    const auto& tracker = data.tracker;
+    const std::string current_consumption_str =
+        HumanReadableNumBytes::ToString(tracker->consumption());
+    out << std::string(data.depth, ' ') << tracker->id() << ": ";
+    if (!data.consumption_excluded_from_ancestors || data.tracker->UpdateConsumption()) {
+      out << current_consumption_str;
+    } else {
+      auto full_consumption_str = HumanReadableNumBytes::ToString(
+          tracker->consumption() + data.consumption_excluded_from_ancestors);
+      out << current_consumption_str << " (" << full_consumption_str << ")";
+    }
+    out << std::endl;
+  }
+  return out.str();
+}
 
 } // namespace yb

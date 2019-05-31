@@ -193,7 +193,9 @@ struct BlockBasedTable::Rep {
         whole_key_filtering(_table_opt.whole_key_filtering),
         prefix_filtering(true),
         data_index_load_mode(data_index_load_mode_) {
-    if (ioptions.mem_tracker) {
+    if (ioptions.block_based_table_mem_tracker) {
+      mem_tracker = ioptions.block_based_table_mem_tracker;
+    } else if (ioptions.mem_tracker) {
       mem_tracker = yb::MemTracker::FindOrCreateTracker("BlockBasedTable", ioptions.mem_tracker);
     }
   }

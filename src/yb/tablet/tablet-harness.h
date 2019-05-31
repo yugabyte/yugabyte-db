@@ -131,6 +131,7 @@ class TabletHarness {
                                   std::shared_future<client::YBClient*>(),
                                   clock_,
                                   std::shared_ptr<MemTracker>(),
+                                  std::shared_ptr<MemTracker>(),
                                   metrics_registry_.get(),
                                   new log::LogAnchorRegistry(),
                                   tablet_options,

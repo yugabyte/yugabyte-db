@@ -51,6 +51,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/human_readable.h"
 #include "yb/rpc/periodic.h"
 #include "yb/server/clock.h"
 #include "yb/server/metadata.h"
@@ -218,6 +219,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
     rpc::Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
     const scoped_refptr<log::Log>& log,
+    const shared_ptr<MemTracker>& server_mem_tracker,
     const shared_ptr<MemTracker>& parent_mem_tracker,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
@@ -231,7 +233,7 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
   gscoped_ptr<PeerMessageQueue> queue(
       new PeerMessageQueue(metric_entity,
                            log,
-                           parent_mem_tracker->parent(),
+                           server_mem_tracker,
                            local_peer_pb,
                            options.tablet_id,
                            clock,
@@ -1177,6 +1179,23 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
   RETURN_NOT_OK(ExecuteHook(PRE_UPDATE));
   response->set_responder_uuid(state_->GetPeerUuid());
 
+  double capacity_pct;
+  if (parent_mem_tracker_->AnySoftLimitExceeded(&capacity_pct)) {
+    follower_memory_pressure_rejections_->Increment();
+    string msg = StringPrintf(
+        "Soft memory limit exceeded (at %.2f%% of capacity)",
+        capacity_pct);
+    if (capacity_pct >= FLAGS_memory_limit_warn_threshold_percentage) {
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting consensus request: " << msg
+                                    << THROTTLE_MSG;
+    } else {
+      YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting consensus request: " << msg
+                                 << THROTTLE_MSG;
+    }
+    YB_LOG_EVERY_N_SECS(INFO, 600) << "Mem trackers:\n" << DumpMemTrackers();
+    return STATUS(ServiceUnavailable, msg);
+  }
+
   VLOG_WITH_PREFIX(2) << "Replica received request: " << request->ShortDebugString();
 
   UpdateReplicaResult result;
@@ -1688,24 +1707,6 @@ Result<bool> RaftConsensus::EnqueuePreparesUnlocked(const ConsensusRequestPB& re
     // TODO Temporary until the leader explicitly propagates the safe hybrid_time.
     // TODO: what if there is a failure here because the updated time is too far in the future?
     clock_->Update(HybridTime(deduped_req.messages.back()->hybrid_time()));
-
-    // This request contains at least one message, and is likely to increase
-    // our memory pressure.
-    double capacity_pct;
-    if (parent_mem_tracker_->AnySoftLimitExceeded(&capacity_pct)) {
-      follower_memory_pressure_rejections_->Increment();
-      string msg = StringPrintf(
-          "Soft memory limit exceeded (at %.2f%% of capacity)",
-          capacity_pct);
-      if (capacity_pct >= FLAGS_memory_limit_warn_threshold_percentage) {
-        YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting consensus request: " << msg
-                                      << THROTTLE_MSG;
-      } else {
-        YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting consensus request: " << msg
-                                   << THROTTLE_MSG;
-      }
-      return STATUS(ServiceUnavailable, msg);
-    }
   }
 
   HybridTime propagated_safe_time;

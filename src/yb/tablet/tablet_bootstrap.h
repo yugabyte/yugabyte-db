@@ -156,6 +156,7 @@ class TabletBootstrap {
   BootstrapTabletData data_;
   scoped_refptr<RaftGroupMetadata> meta_;
   std::shared_ptr<MemTracker> mem_tracker_;
+  std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
   MetricRegistry* metric_registry_;
   TabletStatusListener* listener_;
   std::unique_ptr<TabletClass> tablet_;

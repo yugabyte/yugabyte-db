@@ -169,6 +169,7 @@ class TabletPeerTest : public YBTabletTest,
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            std::shared_future<client::YBClient*>(),
+                                           nullptr /* server_mem_tracker */,
                                            messenger_.get(),
                                            proxy_cache_.get(),
                                            log,

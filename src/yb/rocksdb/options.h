@@ -1330,6 +1330,9 @@ struct DBOptions {
 
   // This RocksDB instance root mem tracker.
   std::shared_ptr<yb::MemTracker> mem_tracker;
+
+  // Specific mem tracker for block based tables created by this RocksDB instance.
+  std::shared_ptr<yb::MemTracker> block_based_table_mem_tracker;
 };
 
 // Options to control the behavior of a database (passed to DB::Open)

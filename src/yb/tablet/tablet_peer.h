@@ -111,6 +111,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Consensus.
   CHECKED_STATUS InitTabletPeer(const std::shared_ptr<TabletClass> &tablet,
                                 const std::shared_future<client::YBClient*> &client_future,
+                                const std::shared_ptr<MemTracker>& server_mem_tracker,
                                 rpc::Messenger* messenger,
                                 rpc::ProxyCache* proxy_cache,
                                 const scoped_refptr<log::Log> &log,

@@ -311,6 +311,7 @@ Tablet::Tablet(
     const std::shared_future<client::YBClient*> &client_future,
     const server::ClockPtr& clock,
     const shared_ptr<MemTracker>& parent_mem_tracker,
+    std::shared_ptr<MemTracker> block_based_table_mem_tracker,
     MetricRegistry* metric_registry,
     const scoped_refptr<LogAnchorRegistry>& log_anchor_registry,
     const TabletOptions& tablet_options,
@@ -325,6 +326,7 @@ Tablet::Tablet(
       mem_tracker_(MemTracker::CreateTracker(
           Format("tablet-$0", tablet_id()), parent_mem_tracker, AddToParent::kTrue,
           CreateMetrics::kFalse)),
+      block_based_table_mem_tracker_(std::move(block_based_table_mem_tracker)),
       clock_(clock),
       mvcc_(Format("T $0$1: ", metadata_->raft_group_id(), log_prefix_suffix), clock),
       tablet_options_(tablet_options),
@@ -491,9 +493,14 @@ std::string Tablet::LogPrefix() const {
 }
 
 Status Tablet::OpenKeyValueTablet() {
+  static const std::string kRegularDB = "RegularDB"s;
+  static const std::string kIntentsDB = "IntentsDB"s;
+
   rocksdb::Options rocksdb_options;
   docdb::InitRocksDBOptions(&rocksdb_options, LogPrefix(), rocksdb_statistics_, tablet_options_);
-  rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker("RegularDB", mem_tracker_);
+  rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kRegularDB, mem_tracker_);
+  rocksdb_options.block_based_table_mem_tracker = MemTracker::FindOrCreateTracker(
+      Format("$0-$1", kRegularDB, tablet_id()), block_based_table_mem_tracker_);
 
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
@@ -538,7 +545,9 @@ Status Tablet::OpenKeyValueTablet() {
         FLAGS_tablet_do_compaction_cleanup_for_intents ?
         std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this) : nullptr;
 
-    rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker("IntentsDB", mem_tracker_);
+    rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kIntentsDB, mem_tracker_);
+    rocksdb_options.block_based_table_mem_tracker = MemTracker::FindOrCreateTracker(
+      Format("$0-$1", kIntentsDB, tablet_id()), block_based_table_mem_tracker_);
 
     rocksdb::DB* intents_db = nullptr;
     RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
