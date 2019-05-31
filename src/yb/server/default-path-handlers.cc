@@ -172,34 +172,6 @@ static void MemUsageHandler(const Webserver::WebRequest& req, std::stringstream*
 #endif
 }
 
-struct MemTrackerData {
-  MemTrackerPtr tracker;
-  // Depth of this tracker in hierarchy, i.e. root have depth = 0, his children 1 and so on.
-  int depth;
-  // Some mem trackers does not report their consumption to parent, so their consumption does not
-  // participate in limit calculation or parent. We accumulate such consumption in field below.
-  size_t consumption_excluded_from_ancestors = 0;
-};
-
-const MemTrackerData& ProcessMemTracker(const MemTrackerPtr& tracker, int depth,
-                                        std::vector<MemTrackerData>* output) {
-  size_t idx = output->size();
-  output->push_back({tracker, depth, 0});
-
-  auto children = tracker->ListChildren();
-
-  for (const auto& child : children) {
-    const auto& child_data = ProcessMemTracker(child, depth + 1, output);
-    (*output)[idx].consumption_excluded_from_ancestors +=
-        child_data.consumption_excluded_from_ancestors;
-    if (!child_data.tracker->add_to_parent()) {
-      (*output)[idx].consumption_excluded_from_ancestors += child_data.tracker->consumption();
-    }
-  }
-
-  return (*output)[idx];
-}
-
 // Registered to handle "/mem-trackers", and prints out to handle memory tracker information.
 static void MemTrackersHandler(const Webserver::WebRequest& req, std::stringstream* output) {
   *output << "<h1>Memory usage by subsystem</h1>\n";
@@ -208,7 +180,7 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, std::stringstre
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
 
   std::vector<MemTrackerData> trackers;
-  ProcessMemTracker(MemTracker::GetRootTracker(), 0, &trackers);
+  CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
   for (const auto& data : trackers) {
     const auto& tracker = data.tracker;
     const std::string limit_str =

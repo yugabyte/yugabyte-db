@@ -116,6 +116,7 @@ struct BootstrapTabletData {
   std::shared_future<client::YBClient*> client_future;
   scoped_refptr<server::Clock> clock;
   std::shared_ptr<MemTracker> mem_tracker;
+  std::shared_ptr<MemTracker> block_based_table_mem_tracker;
   MetricRegistry* metric_registry;
   TabletStatusListener* listener;
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;

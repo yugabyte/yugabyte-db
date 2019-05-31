@@ -130,6 +130,8 @@ struct ImmutableCFOptions {
   std::shared_ptr<Cache> row_cache;
 
   std::shared_ptr<yb::MemTracker> mem_tracker;
+
+  std::shared_ptr<yb::MemTracker> block_based_table_mem_tracker;
 };
 
 }  // namespace rocksdb

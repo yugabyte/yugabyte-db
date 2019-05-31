@@ -482,19 +482,21 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   consensus::ConsensusBootstrapInfo consensus_info;
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
-  tablet::BootstrapTabletData data = { metadata,
-                                       std::shared_future<client::YBClient*>(),
-                                       scoped_refptr<server::Clock>(master_->clock()),
-                                       master_->mem_tracker(),
-                                       metric_registry_,
-                                       tablet_peer()->status_listener(),
-                                       tablet_peer()->log_anchor_registry(),
-                                       tablet_options,
-                                       " P " + tablet_peer()->permanent_uuid(),
-                                       nullptr, // transaction_participant_context
-                                       client::LocalTabletFilter(),
-                                       nullptr, // transaction_coordinator_context
-                                       append_pool()};
+  tablet::BootstrapTabletData data = {
+      metadata,
+      std::shared_future<client::YBClient*>(),
+      scoped_refptr<server::Clock>(master_->clock()),
+      master_->mem_tracker(),
+      MemTracker::FindOrCreateTracker("BlockBasedTable", master_->mem_tracker()),
+      metric_registry_,
+      tablet_peer()->status_listener(),
+      tablet_peer()->log_anchor_registry(),
+      tablet_options,
+      " P " + tablet_peer()->permanent_uuid(),
+      nullptr, // transaction_participant_context
+      client::LocalTabletFilter(),
+      nullptr, // transaction_coordinator_context
+      append_pool()};
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
 
   // TODO: Do we have a setSplittable(false) or something from the outside is
@@ -502,6 +504,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->InitTabletPeer(tablet,
                                                      std::shared_future<client::YBClient*>(),
+                                                     master_->mem_tracker(),
                                                      master_->messenger(),
                                                      &master_->proxy_cache(),
                                                      log,

@@ -299,6 +299,7 @@ TabletBootstrap::TabletBootstrap(const BootstrapTabletData& data)
     : data_(data),
       meta_(data.meta),
       mem_tracker_(data.mem_tracker),
+      block_based_table_mem_tracker_(data.block_based_table_mem_tracker),
       metric_registry_(data.metric_registry),
       listener_(data.listener),
       log_anchor_registry_(data.log_anchor_registry),
@@ -405,9 +406,10 @@ Status TabletBootstrap::FinishBootstrap(const string& message,
 
 Result<bool> TabletBootstrap::OpenTablet() {
   auto tablet = std::make_unique<TabletClass>(
-      meta_, data_.client_future, data_.clock, mem_tracker_, metric_registry_, log_anchor_registry_,
-      tablet_options_, data_.log_prefix_suffix, data_.transaction_participant_context,
-      data_.local_tablet_filter, data_.transaction_coordinator_context);
+      meta_, data_.client_future, data_.clock, mem_tracker_, block_based_table_mem_tracker_,
+      metric_registry_, log_anchor_registry_, tablet_options_, data_.log_prefix_suffix,
+      data_.transaction_participant_context, data_.local_tablet_filter,
+      data_.transaction_coordinator_context);
   // Doing nothing for now except opening a tablet locally.
   LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
     RETURN_NOT_OK(tablet->Open());
