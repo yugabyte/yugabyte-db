@@ -74,11 +74,23 @@ import org.jboss.netty.channel.socket.SocketChannel;
 import org.jboss.netty.channel.socket.SocketChannelConfig;
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.jboss.netty.handler.timeout.ReadTimeoutHandler;
+import org.jboss.netty.handler.ssl.SslHandler;
 import org.jboss.netty.util.HashedWheelTimer;
 import org.jboss.netty.util.Timeout;
 import org.jboss.netty.util.TimerTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.KeyStore;
+
+import java.io.FileInputStream;
 
 import javax.annotation.concurrent.GuardedBy;
 import java.net.InetAddress;
@@ -248,6 +260,8 @@ public class AsyncYBClient implements AutoCloseable {
 
   private final long defaultSocketReadTimeoutMs;
 
+  private final String certFile;
+
   private volatile boolean closed;
 
   private AsyncYBClient(AsyncYBClientBuilder b) {
@@ -257,6 +271,7 @@ public class AsyncYBClient implements AutoCloseable {
         MASTER_TABLE_NAME_PLACEHOLDER, null, null);
     this.defaultOperationTimeoutMs = b.defaultOperationTimeoutMs;
     this.defaultAdminOperationTimeoutMs = b.defaultAdminOperationTimeoutMs;
+    this.certFile = b.certFile;
     this.defaultSocketReadTimeoutMs = b.defaultSocketReadTimeoutMs;
   }
 
@@ -1900,6 +1915,13 @@ public class AsyncYBClient implements AutoCloseable {
 
     TabletClient init(String uuid) {
       final TabletClient client = new TabletClient(AsyncYBClient.this, uuid);
+      if (certFile != null) {
+        SslHandler sslHandler = this.createSslHandler(certFile);
+        if (sslHandler != null) {
+          sslHandler.setIssueHandshake(true);
+          super.addFirst("ssl", sslHandler);
+        }
+      }
       if (defaultSocketReadTimeoutMs > 0) {
         super.addLast("timeout-handler",
             new ReadTimeoutHandler(timer,
@@ -1925,6 +1947,42 @@ public class AsyncYBClient implements AutoCloseable {
         handleDisconnect((ChannelStateEvent) event);
       }
       super.sendUpstream(event);
+    }
+
+    private SslHandler createSslHandler(String certfile) {
+      try {
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        FileInputStream fis = new FileInputStream(certFile);
+        X509Certificate ca;
+        try {
+          ca = (X509Certificate) cf.generateCertificate(fis);
+        } catch (Exception e) {
+          log.error("Exception generating certificate from input file: ", e);
+          return null;
+        } finally {
+          fis.close();
+        }
+
+        // Create a KeyStore containing our trusted CAs
+        String keyStoreType = KeyStore.getDefaultType();
+        KeyStore keyStore = KeyStore.getInstance(keyStoreType);
+        keyStore.load(null, null);
+        keyStore.setCertificateEntry("ca", ca);
+
+        // Create a TrustManager that trusts the CAs in our KeyStore
+        String tmfAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmfAlgorithm);
+        tmf.init(keyStore);
+
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(null, tmf.getTrustManagers(), null);
+        SSLEngine sslEngine = sslContext.createSSLEngine();
+        sslEngine.setUseClientMode(true);
+        return new SslHandler(sslEngine);
+      } catch (Exception e) {
+        log.error("Exception creating sslContext: ", e);
+        return null;
+      }
     }
 
     private void handleDisconnect(final ChannelStateEvent state_event) {
@@ -2272,6 +2330,8 @@ public class AsyncYBClient implements AutoCloseable {
     private long defaultOperationTimeoutMs = DEFAULT_OPERATION_TIMEOUT_MS;
     private long defaultSocketReadTimeoutMs = DEFAULT_SOCKET_READ_TIMEOUT_MS;
 
+    private String certFile = null;
+
     private Executor bossExecutor;
     private Executor workerExecutor;
     private int bossCount = DEFAULT_BOSS_COUNT;
@@ -2348,6 +2408,19 @@ public class AsyncYBClient implements AutoCloseable {
      */
     public AsyncYBClientBuilder defaultSocketReadTimeoutMs(long timeoutMs) {
       this.defaultSocketReadTimeoutMs = timeoutMs;
+      return this;
+    }
+
+    /**
+     * Sets the certificate file in case SSL is enabled.
+     * Optional.
+     * If not provided, defaults to null.
+     * A value of null disables an SSL connection.
+     * @param certFile the path to the certificate.
+     * @return this builder
+     */
+    public AsyncYBClientBuilder sslCertFile(String certFile) {
+      this.certFile = certFile;
       return this;
     }
 

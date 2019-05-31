@@ -1171,6 +1171,19 @@ public class YBClient implements AutoCloseable {
     }
 
     /**
+     * Sets the certificate file in case SSL is enabled.
+     * Optional.
+     * If not provided, defaults to null.
+     * A value of null disables an SSL connection.
+     * @param certFile the path to the certificate.
+     * @return this builder
+     */
+    public YBClientBuilder sslCertFile(String certFile) {
+      clientBuilder.sslCertFile(certFile);
+      return this;
+    }
+
+    /**
      * Set the executors which will be used for the embedded Netty boss and workers.
      * Optional.
      * If not provided, uses a simple cached threadpool. If either argument is null,

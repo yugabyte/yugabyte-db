@@ -151,6 +151,8 @@ public class MiniYBCluster implements AutoCloseable {
 
   private int replicationFactor = -1;
 
+  private String certFile = null;
+
   private boolean startPgSqlProxy = false;
   private boolean pgTransactionsEnabled = false;
 
@@ -169,6 +171,7 @@ public class MiniYBCluster implements AutoCloseable {
                 boolean useIpWithCertificate,
                 int replicationFactor,
                 boolean startPgSqlProxy,
+                String certFile,
                 boolean pgTransactionsEnabled) throws Exception {
     this.defaultTimeoutMs = defaultTimeoutMs;
     this.testClassName = testClassName;
@@ -176,6 +179,7 @@ public class MiniYBCluster implements AutoCloseable {
     this.useIpWithCertificate = useIpWithCertificate;
     this.replicationFactor = replicationFactor;
     this.startPgSqlProxy = startPgSqlProxy;
+    this.certFile = certFile;
     this.pgTransactionsEnabled = pgTransactionsEnabled;
     if (pgTransactionsEnabled && !startPgSqlProxy) {
       throw new AssertionError(
@@ -195,6 +199,7 @@ public class MiniYBCluster implements AutoCloseable {
     syncClient = new YBClient.YBClientBuilder(getMasterAddresses())
         .defaultAdminOperationTimeoutMs(defaultTimeoutMs)
         .defaultOperationTimeoutMs(defaultTimeoutMs)
+        .sslCertFile(certFile)
         .build();
 
     if (waitForMasterLeader) {
