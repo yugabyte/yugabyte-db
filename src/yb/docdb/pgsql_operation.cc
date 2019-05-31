@@ -17,7 +17,6 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/ql_storage_interface.h"
-#include "yb/common/index.h"
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -46,24 +45,6 @@ CHECKED_STATUS CreateProjection(const Schema& schema,
     }
   }
   return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
-}
-
-DocKey UniqueIndexSearchKey(const Schema& schema, const DocKey& key) {
-  DCHECK_EQ(schema.column(schema.num_key_columns() - 1).order(),
-            static_cast<int>(PgSystemAttrNum::kYBBaseTupleId));
-  auto range_components = key.range_group();
-  range_components.pop_back();
-  return key.hashed_group().empty()
-          ? DocKey(schema, range_components)
-          : DocKey(schema, key.hash(), key.hashed_group(), range_components);
-}
-
-bool HasNullValue(const std::vector<PrimitiveValue>& items) {
-  return std::find(items.begin(), items.end(), PrimitiveValue()) != items.end();
-}
-
-bool HasNullValue(const DocKey& key) {
-  return HasNullValue(key.hashed_group()) || HasNullValue(key.range_group());
 }
 
 } // namespace
@@ -123,10 +104,7 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
 Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = std::make_shared<QLTableRow>();
-  RETURN_NOT_OK(ReadColumns(data, table_row,
-      index_info_ && index_info_->is_unique() && !HasNullValue(*doc_key_)
-          ? UniqueIndexSearchKey(schema_, *doc_key_)
-          : *doc_key_));
+  RETURN_NOT_OK(ReadColumns(data, table_row));
   if (!table_row->IsEmpty()) {
     // Primary key or unique index value found.
     response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
@@ -289,24 +267,27 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
 }
 
 Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
-                                        const QLTableRow::SharedPtr& table_row,
-                                        const DocKey& key) {
-  Schema projection;
-  RETURN_NOT_OK(CreateProjection(schema_, request_.column_refs(), &projection));
-  DocPgsqlScanSpec spec(projection, request_.stmt_id(), key);
-  DocRowwiseIterator iterator(projection,
-                              schema_,
-                              txn_op_context_,
-                              data.doc_write_batch->doc_db(),
-                              data.deadline,
-                              data.read_time);
-  RETURN_NOT_OK(iterator.Init(spec));
-  if (VERIFY_RESULT(iterator.HasNext())) {
-    RETURN_NOT_OK(iterator.NextRow(table_row.get()));
-  } else {
-    table_row->Clear();
+                                        const QLTableRow::SharedPtr& table_row) {
+  // Filter the columns using primary key.
+  if (doc_key_) {
+    Schema projection;
+    RETURN_NOT_OK(CreateProjection(schema_, request_.column_refs(), &projection));
+    DocPgsqlScanSpec spec(projection, request_.stmt_id(), *doc_key_);
+    DocRowwiseIterator iterator(projection,
+                                schema_,
+                                txn_op_context_,
+                                data.doc_write_batch->doc_db(),
+                                data.deadline,
+                                data.read_time);
+    RETURN_NOT_OK(iterator.Init(spec));
+    if (VERIFY_RESULT(iterator.HasNext())) {
+      RETURN_NOT_OK(iterator.NextRow(table_row.get()));
+    } else {
+      table_row->Clear();
+    }
+    data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
   }
-  data.restart_read_ht->MakeAtLeast(iterator.RestartReadHt());
+
   return Status::OK();
 }
 
