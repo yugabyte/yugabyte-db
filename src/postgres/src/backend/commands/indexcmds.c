@@ -1457,6 +1457,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	ListCell   *lc;
 	int			attn;
 	int			nkeycols = indexInfo->ii_NumIndexKeyAttrs;
+	bool use_yb_ordering = false;
 
 	/* Allocate space for exclusion operator info, if needed */
 	if (exclusionOpNames)
@@ -1469,6 +1470,15 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	}
 	else
 		nextExclOp = NULL;
+
+	if (IsYugaByteEnabled() &&
+		!IsBootstrapProcessingMode() &&
+		!YBIsPreparingTemplates())
+	{
+		Relation rel = RelationIdGetRelation(relId);
+		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
+		RelationClose(rel);
+	}
 
 	/*
 	 * process attributeList
@@ -1484,24 +1494,43 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 
 		if (IsYugaByteEnabled())
 		{
-			switch (attribute->ordering)
+			if (use_yb_ordering)
 			{
-				case SORTBY_ASC:
-				case SORTBY_DESC:
-				case SORTBY_DEFAULT:
-					range_index = true;
-					break;
-				case SORTBY_HASH:
-					if (range_index)
+				switch (attribute->ordering)
+				{
+					case SORTBY_ASC:
+					case SORTBY_DESC:
+						range_index = true;
+						break;
+					case SORTBY_DEFAULT:
+						/* In YB mode first attr defaults to HASH others to ASC */
+						if (attn > 0)
+						{
+							range_index = true;
+							break;
+						}
+						/* Fallthrough */
+					case SORTBY_HASH:
+						if (range_index)
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+									errmsg("hash column not allowed after an ASC/DESC column")));
+						break;
+					default:
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-								 errmsg("hash column not allowed after an ASC/DESC column")));
-					break;
-				default:
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							 errmsg("unsupported column sort order")));
-					break;
+								errmsg("unsupported column sort order")));
+						break;
+				}
+			}
+			else
+			{
+				if (attribute->ordering == SORTBY_HASH)
+				{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("unsupported column sort order")));
+				}
 			}
 		}
 
@@ -1740,6 +1769,12 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 				colOptionP[attn] |= INDOPTION_DESC;
 			if (IsYugaByteEnabled() &&
 				attribute->ordering == SORTBY_HASH)
+				colOptionP[attn] |= INDOPTION_HASH;
+
+			/* In YugaByte use HASH as the default for the first column only */
+			if (use_yb_ordering &&
+				attn == 0 &&
+				attribute->ordering == SORTBY_DEFAULT)
 				colOptionP[attn] |= INDOPTION_HASH;
 
 			/* default null ordering is LAST for ASC, FIRST for DESC */

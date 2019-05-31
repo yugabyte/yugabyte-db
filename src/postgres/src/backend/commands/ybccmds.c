@@ -114,16 +114,21 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 		{
 			ListCell *cell;
 
+			int key_col_idx = 0;
 			foreach(cell, primary_key->yb_index_params)
 			{
 				IndexElem *index_elem = (IndexElem *)lfirst(cell);
 
 				if (strcmp(attname, index_elem->name) == 0)
 				{
-					is_hash = (index_elem->ordering == SORTBY_HASH);
+					SortByDir order = index_elem->ordering;
+					/* In YB mode first column defaults to HASH if not set */
+					is_hash = (order == SORTBY_HASH) ||
+					          (key_col_idx == 0 && order == SORTBY_DEFAULT);
 					is_primary = true;
 					break;
 				}
+				key_col_idx++;
 			}
 		}
 
