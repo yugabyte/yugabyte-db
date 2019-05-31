@@ -19,8 +19,13 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 function mapStateToProps(state, ownProps) {
+  const tableTypes = {};
+  state.tables.universeTablesList.forEach((t) => {
+    tableTypes[t.tableUUID] = t.tableType;
+  });
   return {
-    universeBackupList: state.universe.universeBackupList
+    universeBackupList: state.universe.universeBackupList,
+    universeTableTypes: tableTypes,
   };
 }
 
