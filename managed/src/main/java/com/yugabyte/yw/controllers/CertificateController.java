@@ -57,14 +57,7 @@ public class CertificateController extends AuthenticatedController {
     if (certs == null) {
       return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
     }
-    try {
-      List<String> cert_labels = CertificateInfo.getAll(customerUUID)
-                                                .stream().map(cert->cert.label)
-                                                .collect(Collectors.toList());
-      return ApiResponse.success(cert_labels);
-    } catch (RuntimeException re) {
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, re.getMessage());
-    }
+    return ApiResponse.success(certs);
   }
 
   public Result get(UUID customerUUID, String label) {
