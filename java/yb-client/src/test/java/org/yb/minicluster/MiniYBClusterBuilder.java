@@ -40,6 +40,8 @@ public class MiniYBClusterBuilder {
   private boolean startPgSqlProxy = false;
   private boolean pgTransactionsEnabled = false;
 
+  private String certFile = null;
+
   private Map<String, String> tserverEnvVars = new TreeMap<String, String>();
 
   public MiniYBClusterBuilder numMasters(int numMasters) {
@@ -59,6 +61,11 @@ public class MiniYBClusterBuilder {
 
   public MiniYBClusterBuilder useIpWithCertificate(boolean value) {
     this.useIpWithCertificate = value;
+    return this;
+  }
+
+  public MiniYBClusterBuilder sslCertFile(String certFile) {
+    this.certFile = certFile;
     return this;
   }
 
@@ -180,6 +187,7 @@ public class MiniYBClusterBuilder {
         useIpWithCertificate,
         replicationFactor,
         startPgSqlProxy,
+        certFile,
         pgTransactionsEnabled);
   }
 }
