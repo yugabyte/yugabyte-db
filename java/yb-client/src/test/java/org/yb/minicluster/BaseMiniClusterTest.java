@@ -61,6 +61,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
 
   protected boolean useIpWithCertificate = MiniYBCluster.DEFAULT_USE_IP_WITH_CERTIFICATE;
 
+  protected String certFile = null;
+
   // Comma separate describing the master addresses and ports.
   protected static String masterAddresses;
   protected static List<HostAndPort> masterHostPorts;
@@ -206,7 +208,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
                       .defaultTimeoutMs(DEFAULT_SLEEP)
                       .testClassName(getClass().getName())
                       .masterArgs(masterArgs)
+                      .useIpWithCertificate(useIpWithCertificate)
                       .perTServerArgs(tserverArgs)
+                      .sslCertFile(certFile)
                       .build();
     masterAddresses = miniCluster.getMasterAddresses();
     masterHostPorts = miniCluster.getMasterHostPorts();
