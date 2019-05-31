@@ -14,7 +14,8 @@ import { fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure }
   from '../../actions/tables';
 import { fetchSoftwareVersions, fetchSoftwareVersionsSuccess,
   fetchSoftwareVersionsFailure, fetchYugaWareVersion, fetchYugaWareVersionResponse,
-  fetchCustomerConfigs, fetchCustomerConfigsResponse }
+  fetchCustomerConfigs, fetchCustomerConfigsResponse, getTlsCertificates,
+  getTlsCertificatesResponse }
   from 'actions/customers';
 import {fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure} from '../../actions/tasks';
 import {setUniverseMetrics} from '../../actions/universe';
@@ -70,6 +71,12 @@ const mapDispatchToProps = (dispatch) => {
             });
           dispatch(fetchUniverseListResponse(response.payload));
         });
+    },
+
+    fetchCustomerCertificates: () => {
+      dispatch(getTlsCertificates()).then((response) => {
+        dispatch(getTlsCertificatesResponse(response.payload));
+      });
     },
 
     getEBSListItems: () => {

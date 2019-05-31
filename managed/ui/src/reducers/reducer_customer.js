@@ -3,7 +3,7 @@
 import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          REGISTER, REGISTER_RESPONSE, LOGIN, LOGIN_RESPONSE, INVALID_CUSTOMER_TOKEN, RESET_TOKEN_ERROR, RESET_CUSTOMER,
          LOGOUT, LOGOUT_SUCCESS, LOGOUT_FAILURE, FETCH_SOFTWARE_VERSIONS_FAILURE, FETCH_SOFTWARE_VERSIONS_SUCCESS,
-         FETCH_SOFTWARE_VERSIONS, FETCH_HOST_INFO, FETCH_HOST_INFO_SUCCESS, FETCH_HOST_INFO_FAILURE,
+         FETCH_SOFTWARE_VERSIONS, FETCH_TLS_CERTS, FETCH_TLS_CERTS_RESPONSE, FETCH_HOST_INFO, FETCH_HOST_INFO_SUCCESS, FETCH_HOST_INFO_FAILURE,
          FETCH_CUSTOMER_COUNT, FETCH_YUGAWARE_VERSION, FETCH_YUGAWARE_VERSION_RESPONSE,
          UPDATE_PROFILE, UPDATE_PROFILE_SUCCESS, UPDATE_PROFILE_FAILURE, ADD_CUSTOMER_CONFIG,
          ADD_CUSTOMER_CONFIG_RESPONSE, FETCH_CUSTOMER_CONFIGS, FETCH_CUSTOMER_CONFIGS_RESPONSE,
@@ -32,7 +32,8 @@ const INITIAL_STATE = {
   releases: getInitialState([]),
   refreshReleases: getInitialState({}),
   importRelease: getInitialState({}),
-  updateRelease: getInitialState({})
+  updateRelease: getInitialState({}),
+  userCertificates: getInitialState({}),
 };
 
 export default function(state = INITIAL_STATE, action) {
@@ -70,6 +71,10 @@ export default function(state = INITIAL_STATE, action) {
       return {...state, softwareVersions: sortVersionStrings(action.payload.data)};
     case FETCH_SOFTWARE_VERSIONS_FAILURE:
       return {...state};
+    case FETCH_TLS_CERTS:
+      return setLoadingState(state, "userCertificates", []);
+    case FETCH_TLS_CERTS_RESPONSE:
+      return setPromiseResponse(state, "userCertificates", action);
     case FETCH_HOST_INFO:
       return {...state, hostInfo: null};
     case FETCH_HOST_INFO_SUCCESS:

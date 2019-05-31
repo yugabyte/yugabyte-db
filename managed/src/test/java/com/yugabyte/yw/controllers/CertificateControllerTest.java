@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Date;
 import java.util.UUID;
+import java.util.LinkedHashMap;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -83,8 +84,15 @@ public class CertificateControllerTest extends FakeDBApplication {
     Result result = listCertificates(customer.uuid);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
-    List<String> certs = Json.fromJson(json, List.class);
-    assertEquals(test_certs, certs);
+    List<LinkedHashMap> certs = Json.fromJson(json, List.class);
+    List<UUID> result_uuids = new ArrayList<>();
+    List<String> result_labels = new ArrayList<>();
+    for (LinkedHashMap e : certs) {
+      result_uuids.add(UUID.fromString(e.get("uuid").toString()));
+      result_labels.add(e.get("label").toString());
+    }
+    assertEquals(test_certs, result_labels);
+    assertEquals(test_certs_uuids, result_uuids);
   }
 
   @Test

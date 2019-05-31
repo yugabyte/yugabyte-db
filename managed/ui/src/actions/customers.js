@@ -61,6 +61,9 @@ export const GET_LOGS_FAILURE = 'GET_LOGS_FAILURE';
 export const GET_RELEASES = 'GET_RELEASES';
 export const GET_RELEASES_RESPONSE = 'GET_RELEASES_RESPONSE';
 
+export const FETCH_TLS_CERTS = 'FETCH_TLS_CERTS';
+export const FETCH_TLS_CERTS_RESPONSE = 'FETCH_TLS_CERTS_RESPONSE';
+
 export const REFRESH_RELEASES = 'REFRESH_RELEASES';
 export const REFRESH_RELEASES_RESPONSE = 'REFRESH_RELEASES_RESPONSE';
 
@@ -208,6 +211,22 @@ export function fetchSoftwareVersionsFailure(error) {
   return {
     type: FETCH_SOFTWARE_VERSIONS_FAILURE,
     payload: error
+  };
+}
+
+export function getTlsCertificates() {
+  const cUUID = localStorage.getItem('customer_id');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/certificates`);
+  return {
+    type: FETCH_TLS_CERTS,
+    payload: request
+  };
+}
+
+export function getTlsCertificatesResponse(result) {
+  return {
+    type: FETCH_TLS_CERTS_RESPONSE,
+    payload: result
   };
 }
 
