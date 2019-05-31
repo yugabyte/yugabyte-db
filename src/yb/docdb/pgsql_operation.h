@@ -73,13 +73,7 @@ class PgsqlWriteOperation :
 
   // Reading current row before operating on it.
   CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
-                             const QLTableRow::SharedPtr& table_row) {
-    return ReadColumns(data, table_row, *doc_key_);
-  }
-
-  CHECKED_STATUS ReadColumns(const DocOperationApplyData& data,
-                             const QLTableRow::SharedPtr& table_row,
-                             const DocKey& key);
+                             const QLTableRow::SharedPtr& table_row);
 
   CHECKED_STATUS PopulateResultSet(const QLTableRow::SharedPtr& table_row);
 

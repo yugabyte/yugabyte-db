@@ -501,20 +501,23 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 		HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, attnum, ybc_expr), ybc_stmt);
 	}
 
-	/*
-	 * Bind the ybctid from the base table to the ybbasectid column.
-	 */
-	if (ybctid == 0)
+	if (!index->rd_index->indisunique)
 	{
-		YBC_LOG_WARNING("Skipping index deletion in %s", RelationGetRelationName(index));
+    /*
+     * Bind the ybctid from the base table to the ybbasectid column.
+     */
+    if (ybctid == 0)
+    {
+      YBC_LOG_WARNING("Skipping index deletion in %s", RelationGetRelationName(index));
 
-		HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
-		return;
-	}
+      HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
+      return;
+    }
 
-	YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, BYTEAOID, ybctid, false /* is_null */);
-	HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, YBBaseTupleIdAttributeNumber, ybc_expr),
-					   ybc_stmt);
+    YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, BYTEAOID, ybctid, false /* is_null */);
+    HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, YBBaseTupleIdAttributeNumber, ybc_expr),
+                                          ybc_stmt);
+  }
 
 	/* Execute the delete and clean up. */
 	HandleYBStmtStatus(YBCExecWriteStmt(ybc_stmt, index), ybc_stmt);

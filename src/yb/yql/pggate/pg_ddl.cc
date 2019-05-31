@@ -260,7 +260,7 @@ Status PgCreateIndex::AddYBbasectidColumn() {
                                          static_cast<int32_t>(PgSystemAttrNum::kYBBaseTupleId),
                                          YB_YQL_DATA_TYPE_BINARY,
                                          false /* is_hash */,
-                                         true /* is_range */));
+                                         !is_unique_index_ /* is_range */));
   ybbasectid_added_ = true;
   return Status::OK();
 }
