@@ -193,6 +193,8 @@ Supported target keywords:
   [yb-]tserver       - tablet server executable
   daemons            - yb-master, yb-tserver, and the postgres server
   packaged[-targets] - targets that are required for a release package
+  initdb             - Initialize the initial system catalog snapshot for fast cluster startup
+  reinitdb           - Reinitialize the initial system catalog snapshot for fast cluster startup
 
 Setting YB environment variables on the command line (for environment variables starting with YB_):
   YB_SOME_VARIABLE1=some_value1 YB_SOME_VARIABLE2=some_value2
@@ -533,6 +535,12 @@ register_file_to_rebuild() {
   )
 }
 
+# This is used for "initdb" and "reinitdb" target keywords.
+set_initdb_target() {
+  make_targets+=( "initial_sys_catalog_snapshot" )
+  build_java=false
+}
+
 cleanup() {
   local YB_BUILD_EXIT_CODE=$?
   print_report
@@ -589,6 +597,8 @@ export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
 export YB_EXTRA_GTEST_FLAGS=""
 unset BUILD_ROOT
+
+export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=0
 
 while [[ $# -gt 0 ]]; do
   if is_valid_build_type "$1"; then
@@ -782,6 +792,13 @@ while [[ $# -gt 0 ]]; do
     ;;
     tserver|yb-tserver)
       make_targets+=( "yb-tserver" )
+    ;;
+    initdb)
+      set_initdb_target
+    ;;
+    reinitdb)
+      export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=1
+      set_initdb_target
     ;;
     postgres)
       make_targets+=( "postgres ")
@@ -1151,9 +1168,11 @@ fi
 if "$clean_before_build"; then
   log "Removing '$BUILD_ROOT' (--clean specified)"
   ( set -x; rm -rf "$BUILD_ROOT" )
-elif "$clean_postgres"; then
-  log "Removing contents of 'postgres_build' and 'postgres' subdirectories of '$BUILD_ROOT'"
-  ( set -x; rm -rf "$BUILD_ROOT/postgres_build"/* "$BUILD_ROOT/postgres"/* )
+else
+  if "$clean_postgres"; then
+    log "Removing contents of 'postgres_build' and 'postgres' subdirectories of '$BUILD_ROOT'"
+    ( set -x; rm -rf "$BUILD_ROOT/postgres_build"/* "$BUILD_ROOT/postgres"/* )
+  fi
 fi
 
 mkdir_safe "$BUILD_ROOT"

@@ -58,6 +58,9 @@ class MasterChangeConfigTest : public YBTest {
     opts.num_masters = num_masters_ = static_cast<int>(opts.master_rpc_ports.size());
     opts.num_tablet_servers = 0;
     opts.timeout = MonoDelta::FromSeconds(30);
+    // Master failovers should not be happening concurrently with us trying to load an initial sys
+    // catalog snapshot. At least this is not supported as of 05/27/2019.
+    opts.extra_master_flags.push_back("--use_initial_sys_catalog_snapshot=false");
     cluster_.reset(new ExternalMiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 

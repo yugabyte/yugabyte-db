@@ -18,11 +18,17 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/cast.h"
 
+using boost::uuids::uuid;
+
 namespace yb {
 
 static constexpr int kUuidVersion = 3; // Repurpose old name-based UUID v3 to embed Postgres oids.
 
-using boost::uuids::uuid;
+const uint32_t kTemplate1Oid = 1;  // Hardcoded for template1. (in initdb.c)
+const uint32_t kPgProcTableOid = 1255;  // Hardcoded for pg_proc. (in pg_proc.h)
+
+// Static initialization is OK because this won't be used in another static initialization.
+const TableId kPgProcTableId = GetPgsqlTableId(kTemplate1Oid, kPgProcTableOid);
 
 //-------------------------------------------------------------------------------------------------
 

@@ -550,6 +550,10 @@ void YBCInitFlags() {
   // Currently, it is initialized for every CREATE statement.
 }
 
+YBCStatus YBCPgIsInitDbDone(YBCPgSession pg_session, bool* initdb_done) {
+  return ToYBCStatus(pg_session->IsInitDbDone(initdb_done));
+}
+
 } // extern "C"
 
 } // namespace pggate

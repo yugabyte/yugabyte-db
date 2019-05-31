@@ -49,13 +49,13 @@ typedef enum statementType{Select, Insert, Delete, Update, Other} statementType;
 ybpgmEntry *ybpgm_table = NULL;
 int num_entries = 5;
 static int statement_nesting_level = 0;
-char *metric_node_name;
-struct WebserverWrapper *webserver;
-int port;
-static int num_backends;
-static rpczEntry *rpcz;
+char *metric_node_name = NULL;
+struct WebserverWrapper *webserver = NULL;
+int port = 0;
+static int num_backends = 0;
+static rpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
-PgBackendStatus **backendStatusArrayPointer;
+PgBackendStatus **backendStatusArrayPointer = NULL;
 
 void		_PG_init(void);
 /*
@@ -239,6 +239,7 @@ void
 freeRpczEntries(void)
 {
   MemoryContextDelete(ybrpczMemoryContext);
+  ybrpczMemoryContext = NULL;
 }
 
 /*
@@ -268,8 +269,12 @@ webserver_worker_main(Datum unused)
 
   WaitLatch(&MyProc->procLatch, WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
 
-  if (rpcz != NULL)
+  if (rpcz != NULL && ybrpczMemoryContext != NULL)
+  {
+    MemoryContext oldcontext = MemoryContextSwitchTo(ybrpczMemoryContext);
     pfree(rpcz);
+    MemoryContextSwitchTo(oldcontext);
+  }
 
   proc_exit(0);
 }
@@ -320,14 +325,19 @@ _PG_init(void)
    */
   prev_shmem_startup_hook = shmem_startup_hook;
   shmem_startup_hook = ybpgm_startup_hook;
+
   prev_ExecutorStart = ExecutorStart_hook;
   ExecutorStart_hook = ybpgm_ExecutorStart;
+
   prev_ExecutorRun = ExecutorRun_hook;
   ExecutorRun_hook = ybpgm_ExecutorRun;
+
   prev_ExecutorFinish = ExecutorFinish_hook;
   ExecutorFinish_hook = ybpgm_ExecutorFinish;
+
   prev_ExecutorEnd = ExecutorEnd_hook;
   ExecutorEnd_hook = ybpgm_ExecutorEnd;
+
   prev_ProcessUtility = ProcessUtility_hook;
   ProcessUtility_hook = ybpgm_ProcessUtility;
 }

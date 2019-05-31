@@ -52,6 +52,9 @@ YBCStatus YBCPgDeleteStatement(YBCPgStatement handle);
 // Clear all values and expressions that were bound to the given statement.
 YBCStatus YBCPgClearBinds(YBCPgStatement handle);
 
+// Check if initdb has been already run.
+YBCStatus YBCPgIsInitDbDone(YBCPgSession pg_session, bool* initdb_done);
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
 //--------------------------------------------------------------------------------------------------

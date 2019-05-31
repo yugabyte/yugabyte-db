@@ -300,7 +300,7 @@ endfunction()
 
 function(YB_INCLUDE_EXTENSIONS)
   if ("${YB_EDITION}" STREQUAL "enterprise")
-    file(RELATIVE_PATH CUR_REL_LIST_FILE  "${YB_SRC_ROOT}" "${CMAKE_CURRENT_LIST_FILE}")
+    file(RELATIVE_PATH CUR_REL_LIST_FILE "${YB_SRC_ROOT}" "${CMAKE_CURRENT_LIST_FILE}")
     get_filename_component(CUR_REL_LIST_NAME_NO_EXT "${CUR_REL_LIST_FILE}" NAME_WE)
     get_filename_component(CUR_REL_LIST_DIR "${CUR_REL_LIST_FILE}" DIRECTORY)
 
@@ -478,6 +478,7 @@ endif()
 message("YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR}")
 
 set(YB_BUILD_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
+set(ENV{YB_BUILD_ROOT} "${YB_BUILD_ROOT}")
 get_filename_component(YB_BUILD_ROOT_PARENT "${YB_BUILD_ROOT}" DIRECTORY)
 message("YB_BUILD_ROOT: ${YB_BUILD_ROOT}")
 
@@ -1213,11 +1214,14 @@ function(ADD_YB_TEST REL_TEST_NAME)
   endif()
 
   set(TEST_PATH "${TEST_BINARY_DIR}/${TEST_BINARY_NAME}")
+  set(LAST_ADDED_TEST_BINARY_PATH "${TEST_PATH}" PARENT_SCOPE)
+  set(LAST_ADDED_TEST_BINARY_NAME "${TEST_BINARY_NAME}" PARENT_SCOPE)
 
   # We need the ${CMAKE_CURRENT_LIST_DIR} prefix, because in case of including a CMakeLists.txt
   # file from a different directory, the test's source might not be in
   # ${CMAKE_CURRENT_SOURCE_DIR}.
 
+  # This is used to let add_executable know whether we're adding a test.
   set(YB_ADDING_TEST_EXECUTABLE "TRUE" CACHE INTERNAL "" FORCE)
 
   add_executable("${TEST_BINARY_NAME}" "${TEST_SOURCE_PATH}")
@@ -1231,6 +1235,11 @@ function(ADD_YB_TEST REL_TEST_NAME)
   ADD_COMMON_YB_TEST_DEPENDENCIES(${REL_TEST_NAME})
   add_custom_target("${CTEST_TEST_NAME}" DEPENDS "${TEST_BINARY_NAME}")
   add_test("${CTEST_TEST_NAME}" "${BUILD_SUPPORT_DIR}/run-test.sh" "${TEST_PATH}")
+  set_target_properties(
+    ${CTEST_TEST_NAME}
+    PROPERTIES
+    TEST_BINARY_PATH "${TEST_PATH}"
+  )
 
   if(ARGN)
     set_tests_properties(${TEST_NAME} PROPERTIES ${ARGN})

@@ -51,6 +51,8 @@ class Log;
 
 namespace tablet {
 
+class TabletPeer;
+
 // Operation Context for the AlterSchema operation.
 // Keeps track of the Operation states (request, result, ...)
 class ChangeMetadataOperationState : public OperationState {
@@ -127,7 +129,7 @@ class ChangeMetadataOperationState : public OperationState {
   DISALLOW_COPY_AND_ASSIGN(ChangeMetadataOperationState);
 };
 
-// Executes the alter schema transaction,.
+// Executes the metadata change operation.
 class ChangeMetadataOperation : public Operation {
  public:
   explicit ChangeMetadataOperation(std::unique_ptr<ChangeMetadataOperationState> operation_state);
@@ -142,13 +144,13 @@ class ChangeMetadataOperation : public Operation {
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
 
-  // Executes a Prepare for the alter schema transaction.
+  // Executes a Prepare for the metadata change operation.
   //
   // TODO: need a schema lock?
 
   CHECKED_STATUS Prepare() override;
 
-  // Executes an Apply for the alter schema transaction
+  // Executes an Apply for the metadata change operation.
   CHECKED_STATUS Apply(int64_t leader_term) override;
 
   // Actually commits the transaction.
@@ -157,11 +159,16 @@ class ChangeMetadataOperation : public Operation {
   std::string ToString() const override;
 
  private:
-  // Starts the AlterSchemaOperation by assigning it a timestamp.
+  // Starts the ChangeMetadataOperation by assigning it a timestamp.
   void DoStart() override;
 
   DISALLOW_COPY_AND_ASSIGN(ChangeMetadataOperation);
 };
+
+CHECKED_STATUS SyncReplicateChangeMetadataOperation(
+    const tserver::ChangeMetadataRequestPB* req,
+    tablet::TabletPeer* tablet_peer,
+    int64_t term);
 
 }  // namespace tablet
 }  // namespace yb

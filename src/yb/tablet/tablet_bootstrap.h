@@ -124,6 +124,8 @@ class TabletBootstrap {
 
   CHECKED_STATUS PlayTruncateRequest(consensus::ReplicateMsg* replicate_msg);
 
+  CHECKED_STATUS PlayTabletSnapshotOpRequest(consensus::ReplicateMsg* replicate_msg);
+
   void DumpReplayStateToLog(const ReplayState& state);
 
   // Handlers for each type of message seen in the log during replay.
@@ -135,6 +137,7 @@ class TabletBootstrap {
       std::unique_ptr<log::LogEntryPB>* replicate_entry);
   CHECKED_STATUS HandleEntryPair(
       ReplayState* state, log::LogEntryPB* replicate_entry, RestartSafeCoarseTimePoint entry_time);
+
   virtual CHECKED_STATUS HandleOperation(consensus::OperationType op_type,
                                          consensus::ReplicateMsg* replicate);
 

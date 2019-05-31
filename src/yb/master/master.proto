@@ -407,13 +407,6 @@ message SysYSQLCatalogConfigEntryPB {
   // This is true if the master ran initdb and it finished, succesfully or not.
   optional bool initdb_done = 2;
 
-  // A master leader started running initdb.
-  optional bool initdb_started_by_master = 3;
-
-  // Someone (a previous failed master leader, or a previous external invocation) started running
-  // initdb. Determined based on the existence of template1.pg_proc;
-  optional bool initdb_started = 4;
-
   // If this is set, initdb has failed.
   optional string initdb_error = 5;
 }
@@ -1368,10 +1361,7 @@ message IsInitDbDoneResponsePB {
   optional MasterErrorPB error = 1;
 
   // Someone started running initdb, as indicated by the existence of template1.pg_proc.
-  optional bool started = 2;
-
-  // A master leader started running initdb.
-  optional bool started_by_master = 3;
+  optional bool pg_proc_exists = 2;
 
   // This is true if the master ran initdb and it finished, succesfully or not.
   optional bool done = 4;

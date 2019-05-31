@@ -61,6 +61,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
   }
 
   l->Commit();
+  catalog_manager_->HandleNewTableId(table->id());
 
   LOG(INFO) << "Loaded metadata for table " << table->ToString();
   VLOG(1) << "Metadata for table " << table->ToString() << ": " << metadata.ShortDebugString();
@@ -283,7 +284,7 @@ Status SysConfigLoader::Visit(const string& config_type, const SysConfigEntryPB&
   auto l = config->LockForWrite();
   l->mutable_data()->pb.CopyFrom(metadata);
 
-  // For now we are only using this to store (ycql) security configor ysql catalog config.
+  // For now we are only using this to store (ycql) security config or ysql catalog config.
   if (config_type == kSecurityConfigType) {
     catalog_manager_->permissions_manager()->SetSecurityConfigOnLoadUnlocked(config);
   } else if (config_type == kYsqlCatalogConfigType) {

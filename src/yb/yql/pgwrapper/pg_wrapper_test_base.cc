@@ -13,6 +13,11 @@
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+#include "yb/util/size_literals.h"
+#include "yb/util/format.h"
+
+using namespace yb::size_literals;
+
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
@@ -49,13 +54,21 @@ void PgWrapperTestBase::SetUp() {
 
   opts.extra_master_flags.emplace_back("--hide_pg_catalog_table_creation_logs");
 
-  // Test that we can start PostgreSQL servers on non-colliding ports within each tablet server.
-  opts.num_tablet_servers = 3;
+  opts.num_masters = GetNumMasters();
+
+  opts.num_tablet_servers = GetNumTabletServers();
+
+  opts.extra_master_flags.emplace_back("--client_read_write_timeout_ms=120000");
+  opts.extra_master_flags.emplace_back(Format("--memory_limit_hard_bytes=$0", 2_GB));
+
+  UpdateMiniClusterOptions(&opts);
 
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
 
-  pg_ts = cluster_->tablet_server(0);
+  if (cluster_->num_tablet_servers() > 0) {
+    pg_ts = cluster_->tablet_server(0);
+  }
 
   // TODO: fix cluster verification for PostgreSQL tables.
   DontVerifyClusterBeforeNextTearDown();

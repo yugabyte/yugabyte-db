@@ -60,6 +60,12 @@ message ChangeMetadataRequestPB {
   optional tablet.TableInfoPB add_table = 8;
 }
 
+// This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
+// startup to avoid running initdb.
+message ExportedTabletMetadataChanges {
+  repeated ChangeMetadataRequestPB metadata_changes = 1;
+}
+
 message ChangeMetadataResponsePB {
   optional TabletServerErrorPB error = 1;
 

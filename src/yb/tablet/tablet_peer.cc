@@ -773,7 +773,12 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
       return std::make_unique<TruncateOperation>(
           std::make_unique<TruncateOperationState>(tablet()));
 
-    case consensus::SNAPSHOT_OP: FALLTHROUGH_INTENDED;
+    case consensus::SNAPSHOT_OP:
+       DCHECK(replicate_msg->has_snapshot_request()) << "SNAPSHOT_OP replica"
+          " transaction must receive an TabletSnapshotOpRequestPB";
+      return std::make_unique<SnapshotOperation>(
+          std::make_unique<SnapshotOperationState>(tablet()));
+
     case consensus::UNKNOWN_OP: FALLTHROUGH_INTENDED;
     case consensus::NO_OP: FALLTHROUGH_INTENDED;
     case consensus::CHANGE_CONFIG_OP:

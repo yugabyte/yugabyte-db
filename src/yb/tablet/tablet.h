@@ -82,6 +82,8 @@
 
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/tablet/operations/snapshot_operation.h"
+
 namespace rocksdb {
 class DB;
 }
@@ -434,7 +436,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Result<HybridTime> MaxPersistentHybridTime() const;
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
-  std::string GetLastRocksDBCheckpointDirForTest() { return last_rocksdb_checkpoint_dir_; }
+  std::string TEST_LastRocksDBCheckpointDir() { return last_rocksdb_checkpoint_dir_; }
 
   // For non-kudu table type fills key-value batch in transaction state request and updates
   // request in state. Due to acquiring locks it can block the thread.
@@ -532,6 +534,26 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS ModifyFlushedFrontier(
       const docdb::ConsensusFrontier& value,
       rocksdb::FrontierModificationMode mode);
+
+  // Prepares the operation context for a snapshot operation.
+  CHECKED_STATUS PrepareForSnapshotOp(SnapshotOperationState* tx_state);
+
+  // Restore the RocksDB checkpoint from the provided directory.
+  // Only used when table_type_ == YQL_TABLE_TYPE.
+  CHECKED_STATUS RestoreCheckpoint(
+      const std::string& dir, const docdb::ConsensusFrontier& frontier);
+
+  // Create snapshot for this tablet.
+  virtual CHECKED_STATUS CreateSnapshot(SnapshotOperationState* tx_state);
+
+  // Delete snapshot for this tablet.
+  virtual CHECKED_STATUS DeleteSnapshot(SnapshotOperationState* tx_state);
+
+  // Restore snapshot for this tablet. In addition to backup/restore, this is used for initial
+  // syscatalog RocksDB creation without the initdb overhead.
+  CHECKED_STATUS RestoreSnapshot(SnapshotOperationState* tx_state);
+
+  static std::string SnapshotsDirName(const std::string& rocksdb_dir);
 
  protected:
   friend class Iterator;
