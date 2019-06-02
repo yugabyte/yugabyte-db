@@ -133,6 +133,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Map<String, String> flagMap = new TreeMap<>();
     flagMap.put("client_read_write_timeout_ms", "120000");
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
+    flagMap.put("use_initial_sys_catalog_snapshot", "true");
     return flagMap;
   }
 
