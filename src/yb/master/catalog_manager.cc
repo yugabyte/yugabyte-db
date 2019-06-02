@@ -531,36 +531,40 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   if (FLAGS_use_initial_sys_catalog_snapshot &&
       !FLAGS_initial_sys_catalog_snapshot_path.empty() &&
       !FLAGS_create_initial_sys_catalog_snapshot) {
-    Result<bool> dir_exists =
-        Env::Default()->DoesDirectoryExist(FLAGS_initial_sys_catalog_snapshot_path);
-    if (dir_exists.ok() && *dir_exists) {
-      bool initdb_was_already_done = false;
-      {
-        auto l = ysql_catalog_config_->LockForRead();
-        initdb_was_already_done = l->data().pb.ysql_catalog_config().initdb_done();
-      }
-      if (initdb_was_already_done) {
-        LOG(INFO) << "initdb has been run before, no need to restore sys catalog from a snapshot";
-      } else {
-        LOG(INFO) << "Restoring snapshot in sys catalog";
-        Status restore_status = RestoreInitialSysCatalogSnapshot(
-            FLAGS_initial_sys_catalog_snapshot_path,
-            sys_catalog_->tablet_peer().get(),
-            term);
-        if (!restore_status.ok()) {
-          LOG(ERROR) << "Failed restoring snapshot in sys catalog";
-          return restore_status;
-        }
-
-        LOG(INFO) << "Restoring snapshot completed, considering initdb finished";
-        RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
-        RETURN_NOT_OK(RunLoaders());
-      }
-
+    if (!namespace_ids_map_.empty() || !system_tablets_.empty()) {
+      LOG(INFO) << "This is an existing cluster, not initializing from a sys catalog snapshot.";
     } else {
-      LOG(WARNING) << "Initial sys catalog snapshot directory does not exist: "
-                   << FLAGS_initial_sys_catalog_snapshot_path
-                   << (dir_exists.ok() ? "" : ", status: " + dir_exists.status().ToString());
+      Result<bool> dir_exists =
+          Env::Default()->DoesDirectoryExist(FLAGS_initial_sys_catalog_snapshot_path);
+      if (dir_exists.ok() && *dir_exists) {
+        bool initdb_was_already_done = false;
+        {
+          auto l = ysql_catalog_config_->LockForRead();
+          initdb_was_already_done = l->data().pb.ysql_catalog_config().initdb_done();
+        }
+        if (initdb_was_already_done) {
+          LOG(INFO) << "initdb has been run before, no need to restore sys catalog from "
+                    << "the initial snapshot";
+        } else {
+          LOG(INFO) << "Restoring snapshot in sys catalog";
+          Status restore_status = RestoreInitialSysCatalogSnapshot(
+              FLAGS_initial_sys_catalog_snapshot_path,
+              sys_catalog_->tablet_peer().get(),
+              term);
+          if (!restore_status.ok()) {
+            LOG(ERROR) << "Failed restoring snapshot in sys catalog";
+            return restore_status;
+          }
+
+          LOG(INFO) << "Restoring snapshot completed, considering initdb finished";
+          RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
+          RETURN_NOT_OK(RunLoaders());
+        }
+      } else {
+        LOG(WARNING) << "Initial sys catalog snapshot directory does not exist: "
+                    << FLAGS_initial_sys_catalog_snapshot_path
+                    << (dir_exists.ok() ? "" : ", status: " + dir_exists.status().ToString());
+      }
     }
   }
 

@@ -32,7 +32,7 @@ DEFINE_string(
     "is done.");
 
 DEFINE_bool(
-    use_initial_sys_catalog_snapshot, true,
+    use_initial_sys_catalog_snapshot, false,
     "Initialize sys catalog tablet from a pre-existing snapshot instead of running initdb. "
     "Only takes effect if --initial_sys_catalog_snapshot_path is specified or can be "
     "auto-detected.");
@@ -178,9 +178,8 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
     VLOG(1) << "candidate_metadata_changes_path=" << candidate_metadata_changes_path;
 
     if (Env::Default()->FileExists(candidate_metadata_changes_path)) {
-      LOG(INFO) << "Found initial sys catalog snapshot directory: " << candidate_dir;
+      VLOG(1) << "Found initial sys catalog snapshot directory: " << candidate_dir;
       FLAGS_initial_sys_catalog_snapshot_path = candidate_dir;
-      FLAGS_use_initial_sys_catalog_snapshot = true;
       return;
     } else {
       VLOG(1) << "File " << candidate_metadata_changes_path << " does not exist";
