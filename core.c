@@ -35,7 +35,6 @@
  *     make_rels_by_clauseless_joins()
  *     join_is_legal()
  *     has_join_restriction()
- *     is_dummy_rel()
  *     restriction_is_constant_false()
  *
  *
@@ -940,15 +939,6 @@ has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
 	return false;
 }
 
-
-/*
- * is_dummy_rel --- has relation been proven empty?
- */
-static bool
-is_dummy_rel(RelOptInfo *rel)
-{
-	return IS_DUMMY_REL(rel);
-}
 
 /*
  * Mark a relation as proven empty.
