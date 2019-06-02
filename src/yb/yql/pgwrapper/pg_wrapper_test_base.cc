@@ -61,6 +61,8 @@ void PgWrapperTestBase::SetUp() {
   opts.extra_master_flags.emplace_back("--client_read_write_timeout_ms=120000");
   opts.extra_master_flags.emplace_back(Format("--memory_limit_hard_bytes=$0", 2_GB));
 
+  opts.extra_master_flags.emplace_back("--use_initial_sys_catalog_snapshot");
+
   UpdateMiniClusterOptions(&opts);
 
   cluster_.reset(new ExternalMiniCluster(opts));
