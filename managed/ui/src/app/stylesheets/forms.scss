@@ -207,6 +207,7 @@
 
 .fade.in.yb-popover {
   opacity: 0.85;
+  z-index: 5000;
 }
 .yb-field-group {
   .Select {

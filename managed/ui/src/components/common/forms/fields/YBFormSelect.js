@@ -74,6 +74,7 @@ export default class YBFormSelect extends Component {
           {...this.props}
           onChange={this.handleChange}
           onBlur={this.handleBlur}
+          isOptionDisabled={(option) => !!option.disabled}
         />
       </YBLabel>
     );

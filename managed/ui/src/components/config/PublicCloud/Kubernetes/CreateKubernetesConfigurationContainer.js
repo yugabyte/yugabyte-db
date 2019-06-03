@@ -3,12 +3,14 @@
 import { connect } from 'react-redux';
 import CreateKubernetesConfiguration from './CreateKubernetesConfiguration';
 
-import { createProvider, createProviderResponse,
-         createRegion, createRegionResponse, fetchCloudMetadata,
-         createZones, createZonesResponse } from 'actions/cloud';
+import { createProviderResponse,
+         createMultiRegionKubernetesProvider,
+         fetchCloudMetadata } from 'actions/cloud';
+import { openDialog, closeDialog } from '../../../../actions/modal';
 
 const mapStateToProps = (state) => {
   return {
+    modal: state.modal,
     customer: state.customer,
     providers: state.cloud.providers
   };
@@ -16,24 +18,21 @@ const mapStateToProps = (state) => {
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    createKubernetesProvider: (providerName, providerConfig, regionData, zoneData) => {
-      dispatch(createProvider("kubernetes", providerName, providerConfig)).then((response) => {
+    createKubernetesProvider: (providerName, providerConfig, regionData) => {
+      dispatch(createMultiRegionKubernetesProvider(providerName, providerConfig, regionData)).then((response) => {
         dispatch(createProviderResponse(response.payload));
         if (response.payload.status === 200) {
-          const providerUUID = response.payload.data.uuid;
-          dispatch(createRegion(providerUUID, regionData)).then((response) => {
-            dispatch(createRegionResponse(response.payload));
-            if (response.payload.status === 200) {
-              const region = response.payload.data;
-              dispatch(createZones(providerUUID, region.uuid, zoneData)).then((response) => {
-                dispatch(fetchCloudMetadata());
-                dispatch(createZonesResponse(response.payload));
-              });
-            }
-          });
+          dispatch(fetchCloudMetadata());
         }
       });
-    }
+    },
+
+    showModal: (modalName) => {
+      dispatch(openDialog(modalName));
+    },
+    closeModal: () => {
+      dispatch(closeDialog());
+    },
   };
 };
 
