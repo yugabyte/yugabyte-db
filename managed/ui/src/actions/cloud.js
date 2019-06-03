@@ -197,6 +197,25 @@ export function createProvider(type, name, config) {
   };
 }
 
+/** 
+ *  New create provider API for multi-region and multi-zone configurations.
+ *  Currently, only supports Kubernetes.
+ */
+export function createMultiRegionKubernetesProvider(name, config, regions) {
+  const customerUUID = localStorage.getItem("customer_id");
+  const formValues = {
+    code: 'kubernetes',
+    name: name,
+    config: config,
+    regionList: regions,
+  };
+  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/providers/kubernetes`, formValues);
+  return {
+    type: CREATE_PROVIDER,
+    payload: request
+  };
+}
+
 export function createProviderResponse(result) {
   return {
     type: CREATE_PROVIDER_RESPONSE,

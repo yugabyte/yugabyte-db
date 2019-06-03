@@ -4,13 +4,18 @@ import React, {Component} from 'react';
 import { Row, Col } from 'react-bootstrap';
 import { YBButton } from '../../../common/forms/fields';
 import { YBFormSelect, YBFormInput, YBFormDropZone } from '../../../common/forms/fields';
-import { isNonEmptyObject, isDefinedNotNull, isNonEmptyString } from 'utils/ObjectUtils';
-import { REGION_METADATA, KUBERNETES_PROVIDERS } from 'config';
+import YBInfoTip from '../../../common/descriptors/YBInfoTip';
+import { isNonEmptyObject, isDefinedNotNull } from 'utils/ObjectUtils';
+import { KUBERNETES_PROVIDERS } from 'config';
 import { withRouter } from 'react-router';
 import { Formik, Field } from 'formik';
+import AddRegionList from './AddRegionList';
 import * as Yup from "yup";
 import JsYaml from "js-yaml";
+import _ from 'lodash';
+import { REGION_DICT } from 'config';
 
+const convertStrToCode = s => s.trim().toLowerCase().replace(/\s/g, '-');
 
 class CreateKubernetesConfiguration extends Component {
   readUploadedFileAsText = (inputFile, isRequired) => {
@@ -30,45 +35,86 @@ class CreateKubernetesConfiguration extends Component {
   };
 
   createProviderConfig = (vals, setSubmitting) => {
+    const { type } = this.props;
+
     const self = this;
-    const kubeConfigFile = vals.kubeConfig;
     const pullSecretFile = vals.pullSecret;
     const providerName = vals.accountName;
-    const readerConfig = this.readUploadedFileAsText(kubeConfigFile, true);
     const readerSecret = this.readUploadedFileAsText(pullSecretFile, false);
-    // Catch all onload events for configs
-    Promise.all([readerConfig, readerSecret]).then(configs => {
-      const providerConfig = {
-        "KUBECONFIG_CONTENT": configs[0],
-        "KUBECONFIG_NAME": kubeConfigFile.name,
-        "KUBECONFIG_PROVIDER": vals.providerType,
-        "KUBECONFIG_SERVICE_ACCOUNT": vals.serviceAccount,
-        "KUBECONFIG_STORAGE_CLASSES": vals.storageClasses,
-        "KUBECONFIG_IMAGE_REGISTRY": vals.imageRegistry
+    const fileConfigArray = [readerSecret]; // Pull secret file is required
+    // Record which regions and zones have configs with tuple of (region, zone)
+    const configIndexRecord = [];
+    const providerTypeMetadata = KUBERNETES_PROVIDERS.find(
+      (providerType) => providerType.code === type
+    );
+
+    const providerKubeConfig = vals.kubeConfig ?
+      this.readUploadedFileAsText(pullSecretFile, false)
+      : {};
+    // Loop thru regions and check for config files
+    vals.regionList.forEach((region, rIndex) => {
+      region.zoneList.forEach((zone, zIndex) => {
+        const content = zone.zoneKubeConfig;
+        if (content) {
+          if (!_.isEqual(content, vals.kubeConfig)){
+            const zoneConfig = self.readUploadedFileAsText(content, true);
+            fileConfigArray.push(zoneConfig);
+            configIndexRecord.push([rIndex, zIndex]);
+          } else {
+            fileConfigArray.push(providerKubeConfig);
+            configIndexRecord.push([rIndex, zIndex]);
+          }
+        }
+      });
+    });
+
+    // Loop thru regions to add location information
+    const regionsLocInfo = vals.regionList.map(region => {
+      const { code, latitude, longitude, name } = REGION_DICT[region.regionCode.value];
+      return {
+        name,
+        code,
+        latitude,
+        longitude,
+        zoneList: region.zoneList.map(zone => (
+          {
+            code: convertStrToCode(zone.zoneLabel),
+            name: zone.zoneLabel,
+            config: {
+              STORAGE_CLASS: zone.storageClasses || 'standard',
+              OVERRIDES: zone.zoneOverrides,
+              KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined,
+            },
+          }
+        )),
       };
+    });
+
+    // Catch all onload events for configs
+    Promise.all(fileConfigArray).then(configs => {
+      const providerConfig = {              
+        KUBECONFIG_PROVIDER: vals.providerType ? vals.providerType.value :
+            (providerTypeMetadata ? providerTypeMetadata.code : "gke"),
+        KUBECONFIG_SERVICE_ACCOUNT: vals.serviceAccount,
+        KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || 'quay.io/yugabyte/yugabyte',
+      };
+
+      configIndexRecord.forEach(([regionIdx, zoneIdx], i) => {
+        const currentZone = regionsLocInfo[regionIdx].zoneList[zoneIdx];
+        currentZone.config.KUBECONFIG_CONTENT = configs[1 + i];
+      });
       // TODO: fetch the service account name from the kubeconfig.
 
       if (isNonEmptyObject(pullSecretFile)) {
-        const pullSecretYaml = JsYaml.safeLoad(configs[1]);
+        const pullSecretYaml = JsYaml.safeLoad(configs[0]);
         Object.assign(providerConfig, {
-          "KUBECONFIG_IMAGE_PULL_SECRET_NAME": pullSecretYaml.metadata.name,
+          "KUBECONFIG_IMAGE_PULL_SECRET_NAME": pullSecretYaml.metadata && pullSecretYaml.metadata.name,
           "KUBECONFIG_PULL_SECRET_NAME": pullSecretFile.name,
-          "KUBECONFIG_PULL_SECRET_CONTENT": configs[1]
+          "KUBECONFIG_PULL_SECRET_CONTENT": configs[0]
         });
       }
 
-      if (isNonEmptyString(vals.annotations)) {
-        Object.assign(providerConfig, {
-          "KUBECONFIG_ANNOTATIONS": vals.annotations
-        });
-      }
-      const regionData = REGION_METADATA.find((region) => region.code === vals.regionCode);
-      const zoneData = [vals.zoneLabel.replace(" ", "-")];
-
-      Object.keys(providerConfig).forEach((key) => { if (typeof providerConfig[key] === 'string' || providerConfig[key] instanceof String) providerConfig[key] = providerConfig[key].trim(); });
-      Object.keys(regionData).forEach((key) =>     { if (typeof regionData[key] === 'string' ||     regionData[key] instanceof String)     regionData[key] =     regionData[key].trim(); });
-      Object.keys(zoneData).forEach((key) =>       { if (typeof zoneData[key] === 'string' ||       providerConfig[key] instanceof String) zoneData[key] =       zoneData[key].trim(); });
-      self.props.createKubernetesProvider(providerName.trim(), providerConfig, regionData, zoneData);
+      self.props.createKubernetesProvider(providerName.trim(), providerConfig, regionsLocInfo);
     }, reason => {
       console.warn("File Upload gone wrong. "+reason);
     });
@@ -77,10 +123,7 @@ class CreateKubernetesConfiguration extends Component {
   }
 
   render() {
-    const { type } = this.props;
-    const regionOptions = REGION_METADATA.map((region) => {
-      return {value: region.code, label: region.name};
-    });
+    const { type, modal, showModal, closeModal } = this.props;
 
     const providerTypeMetadata = KUBERNETES_PROVIDERS.find(
       (providerType) => providerType.code === type
@@ -99,32 +142,54 @@ class CreateKubernetesConfiguration extends Component {
     }
 
     const initialValues = {
-      providerType: (providerTypeMetadata ? providerTypeMetadata.code : "gke"),
+      providerType: null,
       accountName: "",
       serviceAccount: "",
+      pullSecret: null,
       regionCode: "",
       zoneLabel: "",
+      kubeConfig: null,
       imageRegistry: "",
       storageClasses: "",
-      annotations: ""
+      regionList: [],
+      zoneOverrides: "",
     };
+
+    Yup.addMethod(Yup.array, 'unique', function (message, mapper = a => a) {
+      return this.test('unique', message, function (list) {
+        return list.length === new Set(list.map(mapper)).size;
+      });
+    });
 
     const validationSchema = Yup.object().shape({
       accountName: Yup.string()
       .required('Config name is Required'),
 
-      kubeConfig: Yup.string()
-      .required('Kube Config is Required'),
-
       serviceAccount: Yup.string()
       .required('Service Account name is Required'),
 
-      regionCode: Yup.string()
-      .required('Region name is Required'),
+      kubeConfig: Yup.mixed().nullable(),
 
-      zoneLabel: Yup.string()
-      .required('Zone name is Required'),
+      pullSecret: Yup.mixed().required('Pull Secret file is required'),
 
+      regionCode: Yup.string(),
+
+      regionList: Yup.array()      
+        .of(
+          Yup.object().shape({
+            regionCode: Yup.object()
+              .nullable()
+              .required('Region is required'),
+
+            zoneList: Yup.array()
+              .of(
+                Yup.object().shape({
+                  zoneLabel: Yup.string().required('Zone label is required'),
+                }).required()
+              )
+              .unique('Duplicate zone label', a => a.zoneLabel),
+          })
+        ),
     });
 
     return (
@@ -137,8 +202,6 @@ class CreateKubernetesConfiguration extends Component {
             onSubmit={(values, { setSubmitting }) => {
               const payload = {
                 ...values,
-                providerType: values.providerType.value,
-                regionCode: values.regionCode.value,
               };
               this.createProviderConfig(payload, setSubmitting);
             }}
@@ -169,12 +232,16 @@ class CreateKubernetesConfiguration extends Component {
                       </Row>
                       <Row className="config-provider-row">
                         <Col lg={3}>
-                          <div className="form-item-custom-label">Kube Config</div>
+                          <div className="form-item-custom-label">Kube Config</div><div className={`help-block`}></div>
                         </Col>
-                        <Col lg={7}>
+                        <Col lg={7}>                         
                           <Field name="kubeConfig" component={YBFormDropZone}
                             className="upload-file-button"
                             title={"Upload Kube Config file"}/>
+                        </Col>
+                        <Col lg={1} className="config-provider-tooltip">
+                          <YBInfoTip title="Kube Config" 
+                            content={"Use this setting to set a kube config for all regions and zones."} />  
                         </Col>
                       </Row>
                       <Row className="config-provider-row">
@@ -187,36 +254,15 @@ class CreateKubernetesConfiguration extends Component {
                                  className={"kube-provider-input-field"}/>
                         </Col>
                       </Row>
-
-                      <Row className="config-provider-row">
-                        <Col lg={3}>
-                          <div className="form-item-custom-label">Region</div>
-                        </Col>
-                        <Col lg={7}>
-                          <Field name={"regionCode"} component={YBFormSelect}
-                                 options={regionOptions} />
-                        </Col>
-                      </Row>
-                      <Row className="config-provider-row">
-                        <Col lg={3}>
-                          <div className="form-item-custom-label">Zone</div>
-                        </Col>
-                        <Col lg={7}>
-                          <Field name="zoneLabel" placeholder="Zone Label"
-                                 component={YBFormInput}
-                                 className={"kube-provider-input-field"}/>
-                        </Col>
-                      </Row>
-
                       <Row className="config-provider-row">
                         <Col lg={3}>
                           <div className="form-item-custom-label">Image Registry</div>
                         </Col>
                         <Col lg={7}>
-                          <Field name="imageRegistry" placeholder="Optional Image Registry"
+                          <Field name="imageRegistry" placeholder="quay.io/yugabyte/yugabyte"
                                  component={YBFormInput}
                                  className={"kube-provider-input-field"}/>
-                        </Col>
+                        </Col>                       
                       </Row>
                       <Row className="config-provider-row">
                         <Col lg={3}>
@@ -228,30 +274,9 @@ class CreateKubernetesConfiguration extends Component {
                             title={"Upload Pull Secret file"}/>
                         </Col>
                       </Row>
-                      <Row className="config-provider-row">
-                        <Col lg={3}>
-                          <div className="form-item-custom-label">Storage Classes</div>
-                        </Col>
-                        <Col lg={7}>
-                          <Field name="storageClasses" placeholder="Storage Class Names (default Standard)"
-                                 component={YBFormInput}
-                                 className={"kube-provider-input-field"}/>
-                        </Col>
-                      </Row>
-                      <Row className="config-provider-row">
-                        <Col lg={3}>
-                          <div className="form-item-custom-label">Annotations</div>
-                        </Col>
-                        <Col lg={7}>
-                          <Field name="annotations" placeholder="Optional Annotation for Internal Load Balancer"
-                                 component={YBFormInput}
-                                 componentClass="textarea"
-                                 className={"kube-provider-input-field"}/>
-                        </Col>
-                      </Row>
-
                     </Col>
                   </Row>
+                  <AddRegionList modal={modal} showModal={showModal} closeModal={closeModal} />  
                 </div>
                 <div className="form-action-button-container">
                   <YBButton btnText={"Save"} btnDisabled={props.isSubmitting}

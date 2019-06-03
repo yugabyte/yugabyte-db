@@ -34,6 +34,14 @@ export const REGION_METADATA = [
   { code: "australia", name: "Australia", latitude: -29, longitude: 148}
 ];
 
+export const REGION_DICT = {};
+REGION_METADATA.forEach((region, index) => {
+  REGION_DICT[region.code] = {
+    ...region,
+    index, // Track position in array for ease of access
+  };
+});
+
 export const KUBERNETES_PROVIDERS = [
   { code: "pks", name: "Pivotal Container Service", enabled: true, logo: "pks.png" },
   { code: "gke", name: "Google Container Engine", enabled: true, logo: "gke.png"},

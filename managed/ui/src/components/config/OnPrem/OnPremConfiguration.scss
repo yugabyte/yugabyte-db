@@ -47,6 +47,17 @@
 
 .config-provider-row {
   margin-top: 10px;
+
+  .config-provider-tooltip {
+    margin-left: -10px;
+    padding: 10px 10px 0 0;
+    font-size: 1.2em;
+  }
+}
+
+.config-zone-tooltip {
+  margin-top: 8px;
+  font-size: 1.2em;
 }
 
 .provider-task-progress-container .progressbar {
@@ -86,6 +97,16 @@
   display: inline-block;
   font-weight: 300;
   margin-right: 8px;
+}
+
+.zone-bs-table {
+  height: 30px;
+  padding-top: 3px;
+  padding-bottom: 4px;
+}
+
+.zone-form-wrapper {
+  margin-top: 15px;
 }
 
 .provider-task-progress-container {
