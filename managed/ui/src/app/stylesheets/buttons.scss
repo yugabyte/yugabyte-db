@@ -154,19 +154,22 @@
   text-transform: uppercase;
   vertical-align: baseline;
   width: 40px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 16px;
-  height: 17px;
+  height: 18px;
   border: none;
   overflow: hidden;
   position: relative;
-  font-weight: 500;
+  font-weight: 600;
   top: -1px;
   margin-left: 5px;
+  box-shadow: 0 1px 2px rgba($YB_DARK_GRAY_2, 0.05);
+
   &, &:active, &:hover, &:focus {
-    background-color: $YB_SUCCESS_COLOR !important;
+    background-color: $YB_SUCCESS_COLOR;
     color: $YB_ORANGE;
   }
+
   &:after {
     position: absolute;
     top: 0;
@@ -177,10 +180,20 @@
     text-align: center;
     border-radius: 2px;
     width: 40px;
-    height: 17px;
+    height: 18px;
     line-height: 16px;
     opacity: 1;
-    background-color: $YB_SUCCESS_COLOR !important;
+    background-color: $YB_SUCCESS_COLOR;
+  }
+}
+pre {
+  .btn-copy {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    &, &:focus {
+      background-color: #ffffff;
+    }
   }
 }
 
@@ -215,14 +228,16 @@
 
 .btn-copy-inactive {
   &, &:focus {
-    background-color: $YB_BACKGROUND !important;
+    background-color: $YB_BACKGROUND;
     color: $YB_ORANGE;
   }
   &:active, &:hover {
-    @include transition-property(0s, background-color, 0s);
-    @include transition-property(0s, color, 0s);
-    background-color: $YB_ORANGE !important;
-    color: #fff;
+    &, &:focus {
+      @include transition-property(0s, background-color, 0s);
+      @include transition-property(0s, color, 0s);
+      background-color: $YB_ORANGE;
+      color: #fff;
+    }
   }
   &:after {
     content: '';

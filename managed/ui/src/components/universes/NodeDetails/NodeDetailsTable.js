@@ -5,9 +5,8 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBLoadingIcon } from '../../common/indicators';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
-import { isDefinedNotNull } from 'utils/ObjectUtils';
 import { YBPanelItem } from '../../panels';
-import { NodeAction, NodeConnectModal } from '../../universes';
+import { NodeAction } from '../../universes';
 
 
 export default class NodeDetailsTable extends Component {
@@ -17,10 +16,6 @@ export default class NodeDetailsTable extends Component {
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
     const sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
-
-    const nodeIPs = nodeDetails
-      .filter((node) => isDefinedNotNull(node.privateIP) && isDefinedNotNull(node.publicIP))
-      .map((node) => ({ privateIP: node.privateIP, publicIP: node.publicIP }));
 
     const formatIpPort = function(cell, row, type) {
       if (cell === "-") {
@@ -58,7 +53,7 @@ export default class NodeDetailsTable extends Component {
 
     const getNodeAction = function(cell, row, type) {
       return (
-        <NodeAction currentRow={row} />
+        <NodeAction currentRow={row} providerUUID={providerUUID} />
       );
     };
 
@@ -67,12 +62,7 @@ export default class NodeDetailsTable extends Component {
       <YBPanelItem
         className={`${clusterType}-node-details`}
         header={
-          <div>
-            <div className='pull-right'>
-              <NodeConnectModal nodeIPs={nodeIPs} providerUUID={providerUUID} />
-            </div>
-            <h2 className='content-title'>{panelTitle}</h2>
-          </div>
+          <h2 className='content-title'>{panelTitle}</h2>
         }
         body={
           <BootstrapTable ref='nodeDetailTable' data={sortedNodeDetails}>

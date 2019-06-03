@@ -1,24 +1,28 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import { YBModal, YBButton } from '../../common/forms/fields';
-import { isEmptyArray } from 'utils/ObjectUtils';
+import { YBModal } from '../../common/forms/fields';
 import {getPromiseState} from 'utils/PromiseUtils';
 import { connect } from 'react-redux';
-import { isNonEmptyObject } from "../../../utils/ObjectUtils";
+import { isEmptyObject } from "../../../utils/ObjectUtils";
+import { YBCopyButton } from 'components/common/descriptors';
+import { MenuItem } from 'react-bootstrap';
 
 import './NodeConnectModal.scss';
 
+import _ from 'lodash';
+
 class NodeConnectModal extends Component {
   static propTypes = {
-    nodeIPs: PropTypes.array,
+    currentRow: PropTypes.object,
+    label: PropTypes.element,
     providerUUID: PropTypes.string.isRequired
   };
 
   static defaultProps = {
-    nodeIPs: []
+    currentRow: {}
   };
 
   constructor(props) {
@@ -31,61 +35,38 @@ class NodeConnectModal extends Component {
   };
 
   render() {
-    const { nodeIPs, hostInfo, accessKeys, providerUUID } = this.props;
-    if (isEmptyArray(nodeIPs) || !getPromiseState(accessKeys).isSuccess()) {
-      return <YBButton btnText={"Connect"} disabled={true} btnClass={"btn btn-disabled"}/>;
-    }
-
-    let fromAdminMsg = "From Admin host: ";
-    let hostPrivateIP = "";
-    if (hostInfo) {
-      Object.keys(hostInfo).forEach(function(hostProviderKey){
-        if (!hostInfo[hostProviderKey].error) {
-          hostPrivateIP = hostInfo[hostProviderKey].privateIp;
-        }
-      });
-    }
-    if (hostInfo && !hostInfo.error) {
-      fromAdminMsg += hostPrivateIP;
+    const { currentRow, label, accessKeys, providerUUID } = this.props;
+    const nodeIPs = { privateIP: currentRow.privateIP, publicIP: currentRow.publicIP };
+    if (isEmptyObject(nodeIPs) || !getPromiseState(accessKeys).isSuccess()) {
+      return (
+        <MenuItem>
+          {label}
+        </MenuItem>
+      );
     }
 
     const accessKey = accessKeys.data.filter((key) => key.idKey.providerUUID === providerUUID)[0];
-    if (!isNonEmptyObject(accessKey)) {
-      return <span/>;
+    if (isEmptyObject(accessKey)) {
+      return <span/>; 
     }
-    const accessKeyCode = accessKey.idKey.keyCode;
     const accessKeyInfo = accessKey.keyInfo;
-    const privateSSHCommand = nodeIPs.map(function(nodeIP, idx) {
-      return(
-        <p key={'private-node-details-' + idx}>
-          sudo ssh -i { accessKeyInfo.privateKey } -ostricthostkeychecking=no yugabyte@{nodeIP.privateIP} -p 54422
-        </p>
-      );
-    });
-
-    const publicSSHCommand = nodeIPs.map(function(nodeIP, idx) {
-      return(
-        <p key={'public-node-details-' + idx}>
-          sudo ssh -i {accessKeyCode}.pem -ostricthostkeychecking=no yugabyte@{nodeIP.publicIP} -p 54422
-        </p>
-      );
-    });
+    const privateSSHCommand = `sudo ssh -i ${ accessKeyInfo.privateKey } -ostricthostkeychecking=no yugabyte@${nodeIPs.privateIP} -p 54422`;
+    const btnId = _.uniqueId('node_action_btn_');
     return (
-      <div className="node-connect-modal">
-        <YBButton btnText={"Connect"} btnClass={"btn btn-orange"} onClick={this.toggleConnectModal}/>
-        <YBModal title={"Access your Cluster"}
+      <Fragment>
+        <MenuItem eventKey={btnId} onClick={this.toggleConnectModal}>
+          {label}
+        </MenuItem>
+        <YBModal title={"Access your node"}
                  visible={this.state.showConnectModal}
                  onHide={this.toggleConnectModal}
-                 showCancelButton={true} cancelLabel={"Ok"}>
-          <h4>{ fromAdminMsg }</h4>
-          Connect to your cluster using Private IP:
-          <pre className={"node-command"}>{ privateSSHCommand }</pre>
-          <h4>From localhost: (<i>Not recommended for production</i>)</h4>
-          <br />
-          Connect to your cluster using Public IP:
-          <pre className={"node-command"}>{ publicSSHCommand }</pre>
+                 showCancelButton={true} cancelLabel={"OK"}>
+          <pre className={"node-command"}>
+            <code>{privateSSHCommand}</code>
+            <YBCopyButton text={privateSSHCommand}></YBCopyButton>
+          </pre>
         </YBModal>
-      </div>
+      </Fragment>
     );
   }
 }
