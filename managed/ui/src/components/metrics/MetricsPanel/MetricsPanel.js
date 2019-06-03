@@ -9,7 +9,8 @@ import { METRIC_FONT } from '../MetricsConfig';
 
 const Plotly = require('plotly.js/lib/core');
 
-const WIDTH_OFFSET = 0;
+const WIDTH_OFFSET = 23;
+const CONTAINER_PADDING = 60;
 const MAX_GRAPH_WIDTH_PX = 600;
 const GRAPH_GUTTER_WIDTH_PX = 15;
 
@@ -100,7 +101,7 @@ export default class MetricsPanel extends Component {
   }
 
   getGraphWidth(containerWidth) {
-    const width = containerWidth - WIDTH_OFFSET;
+    const width = containerWidth - CONTAINER_PADDING - WIDTH_OFFSET;
     const columnCount = Math.ceil(width / MAX_GRAPH_WIDTH_PX);
     return Math.floor(width / columnCount) - GRAPH_GUTTER_WIDTH_PX;
   }
