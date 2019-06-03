@@ -25,6 +25,7 @@ export default class YBCopyButton extends PureComponent {
       options
     } = this.props;
 
+    event.preventDefault();
     copy(text, options);
     this.setState({clicked: true});
     setTimeout(

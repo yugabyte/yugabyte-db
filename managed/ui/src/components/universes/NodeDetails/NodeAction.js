@@ -2,8 +2,8 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { NodeActionModalContainer } from '../../universes';
-import {  DropdownButton, MenuItem } from 'react-bootstrap';
+import { NodeActionModalContainer, NodeConnectModal } from '../../universes';
+import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { isNonEmptyArray } from 'utils/ObjectUtils';
 
@@ -63,6 +63,9 @@ export default class NodeAction extends Component {
     } else if (actionType === "ADD") {
       btnLabel = "Add Node";
       btnIcon = "fa fa-plus-circle";
+    } else if (actionType === "CONNECT") {
+      btnLabel = "Connect";
+      btnIcon = "fa fa-link";
     }
 
     return (
@@ -73,7 +76,7 @@ export default class NodeAction extends Component {
   }
 
   render() {
-    const { currentRow } = this.props;
+    const { currentRow, providerUUID } = this.props;
     if (!isNonEmptyArray(currentRow.allowedActions)) {
       return <span />;
     }
@@ -88,6 +91,7 @@ export default class NodeAction extends Component {
 
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
+        <NodeConnectModal currentRow={currentRow} providerUUID={providerUUID} label={this.getLabel("CONNECT")}/>
         {actionButtons}
         <NodeActionModalContainer
           visible = {this.state.showModal}
