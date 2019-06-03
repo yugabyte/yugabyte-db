@@ -25,9 +25,17 @@ DROP TABLE temptest;
 
 CREATE TEMPORARY TABLE a (z int);
 
+DROP TABLE a;
+
 CREATE LOCAL TEMPORARY TABLE b (z int);
 
+DROP TABLE b;
+
 CREATE LOCAL TEMP TABLE c (z int);
+
+DROP TABLE c;
+
+-- GLOBAL temp table is not supported.
 
 CREATE GLOBAL TEMP TABLE d (z int);
 
@@ -243,13 +251,17 @@ DROP TABLE x;
 
 -- test temp table deletion
 
-CREATE TEMP TABLE temptest(col int);
+CREATE TEMP TABLE temptest (col int);
 
 \c
 
 SELECT * FROM temptest;
 
--- test temp table with view deletion
+-- Sleep a second as a wokaround due to bug github #1469.
+
+SELECT pg_sleep(1);
+
+-- test temp table deletion
 
 CREATE TEMP TABLE temptest (col int);
 
@@ -260,6 +272,10 @@ CREATE VIEW tempview AS SELECT * FROM temptest;
 SELECT * FROM tempview;
 
 SELECT * FROM temptest;
+
+-- Sleep a second as a wokaround due to bug github #1469.
+
+SELECT pg_sleep(1);
 
 -- test temp table with indexes
 CREATE TEMP TABLE temptest (k int PRIMARY KEY, v1 int, v2 int);
