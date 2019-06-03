@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import {isNonEmptyObject , isNonEmptyString} from "../../../utils/ObjectUtils";
 import YBInfoTip from "./YBInfoTip";
+import _ from 'lodash';
 
 export default class YBLabel extends Component {
   static propTypes = {
@@ -29,8 +30,9 @@ export default class YBLabel extends Component {
     } else if (isNonEmptyObject(form)) {
       // In case for Formik field, touched might be undefined but when
       // form validation happens it can have errors.
-      errorMsg = form.errors[field.name];
-      touched = (form.touched[field.name] || form.submitCount > 0);
+      // Using lodash to get in case of nested arrays and objects
+      errorMsg = _.get(form.errors, field.name); 
+      touched = (_.get(form.touched, field.name) || form.submitCount > 0);
       hasError = touched && isNonEmptyString(errorMsg);
     }
     return (
