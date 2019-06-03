@@ -21,8 +21,12 @@ SELECT * FROM temptest;
 DROP TABLE temptest;
 -- test different syntaxes for temp table creation
 CREATE TEMPORARY TABLE a (z int);
+DROP TABLE a;
 CREATE LOCAL TEMPORARY TABLE b (z int);
+DROP TABLE b;
 CREATE LOCAL TEMP TABLE c (z int);
+DROP TABLE c;
+-- GLOBAL temp table is not supported.
 CREATE GLOBAL TEMP TABLE d (z int);
 WARNING:  GLOBAL is deprecated in temporary table creation
 LINE 1: CREATE GLOBAL TEMP TABLE d (z int);
@@ -283,13 +287,20 @@ SELECT * FROM test;
 DROP TABLE test;
 DROP TABLE x;
 -- test temp table deletion
-CREATE TEMP TABLE temptest(col int);
+CREATE TEMP TABLE temptest (col int);
 \c
 SELECT * FROM temptest;
 ERROR:  relation "temptest" does not exist
 LINE 1: SELECT * FROM temptest;
                       ^
--- test temp table with view deletion
+-- Sleep a second as a wokaround due to bug github #1469.
+SELECT pg_sleep(1);
+ pg_sleep
+----------
+
+(1 row)
+
+-- test temp table deletion
 CREATE TEMP TABLE temptest (col int);
 CREATE VIEW tempview AS SELECT * FROM temptest;
 NOTICE:  view "tempview" will be a temporary view
@@ -302,12 +313,19 @@ SELECT * FROM temptest;
 ERROR:  relation "temptest" does not exist
 LINE 1: SELECT * FROM temptest;
                       ^
+-- Sleep a second as a wokaround due to bug github #1469.
+SELECT pg_sleep(1);
+ pg_sleep
+----------
+
+(1 row)
+
 -- test temp table with indexes
 CREATE TEMP TABLE temptest (k int PRIMARY KEY, v1 int, v2 int);
 CREATE UNIQUE INDEX ON temptest (v1);
 CREATE INDEX ON temptest USING hash (v2);
 \d temptest
-            Table "pg_temp_4.temptest"
+            Table "pg_temp_2.temptest"
  Column |  Type   | Collation | Nullable | Default
 --------+---------+-----------+----------+---------
  k      | integer |           | not null |
