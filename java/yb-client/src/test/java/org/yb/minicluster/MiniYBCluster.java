@@ -773,7 +773,8 @@ public class MiniYBCluster implements AutoCloseable {
     try {
       int ev = proc.exitValue();
       throw new Exception("We tried starting a process (" + command[0] + ") but it exited with " +
-          "value=" + ev);
+          "value=" + ev + (daemon.getLogPrinter().getError() == null ?
+                           "" : ", error: " + daemon.getLogPrinter().getError()));
     } catch (IllegalThreadStateException ex) {
       // This means the process is still alive, it's like reverse psychology.
     }

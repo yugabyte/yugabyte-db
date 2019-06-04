@@ -43,13 +43,15 @@ public class LogPrinter {
   private static final AtomicBoolean logSizeExceededThrown = new AtomicBoolean(false);
 
   private boolean stopped = false;
+  private String errorMessage;
 
   private static final boolean LOG_PRINTER_DEBUG = false;
 
   private static final long MAX_ALLOWED_LOGGED_BYTES =
       EnvAndSysPropertyUtil.getLongEnvVarOrSystemProperty(
           "YB_JAVA_TEST_MAX_ALLOWED_LOG_BYTES",
-          50 * 1024 * 1024);
+          (EnvAndSysPropertyUtil.getLongEnvVarOrSystemProperty(
+              "YB_RUN_JAVA_TEST_METHODS_SEPARATELY", 0) != 0 ? 50 : 256) * 1024 * 1024);
 
   // A mechanism to wait for a line in the log that says that the server is starting.
   private LogErrorListener errorListener;
@@ -79,7 +81,9 @@ public class LogPrinter {
       BufferedReader in = new BufferedReader(new InputStreamReader(stream));
       try {
         if (LOG_PRINTER_DEBUG) {
-          LOG.info("Starting log printer with prefix " + logPrefix);
+          LOG.info("Starting log printer with prefix '" + logPrefix +
+                   "', total log size limit: " + MAX_ALLOWED_LOGGED_BYTES +
+                   ", used log size: " + totalLoggedSize.get());
         }
         try {
           while (!stopRequested.get()) {
@@ -89,10 +93,15 @@ public class LogPrinter {
               }
               System.out.println(logPrefix + line);
               if (totalLoggedSize.addAndGet(line.length() + 1) > MAX_ALLOWED_LOGGED_BYTES) {
+                if (errorMessage == null) {
+                  errorMessage = "Max total log size exceeded: " + MAX_ALLOWED_LOGGED_BYTES;
+                  // Show the error once per LogPrinter instance.
+                  LOG.warn(errorMessage + " in log printer with prefix " + logPrefix);
+                }
+
                 if (logSizeExceededThrown.compareAndSet(false, true)) {
-                  String errMsg = "Max total log size exceeded: " + MAX_ALLOWED_LOGGED_BYTES;
-                  LOG.warn(errMsg);
-                  throw new AssertionError(errMsg);
+                  LOG.warn(errorMessage);
+                  throw new AssertionError(errorMessage);
                 }
                 return;
               }
@@ -108,6 +117,10 @@ public class LogPrinter {
           LOG.info("Finished log printer with prefix " + logPrefix);
         }
       } finally {
+        if (LOG_PRINTER_DEBUG) {
+          LOG.info("Closing input stream for log printer with prefix " + logPrefix);
+        }
+
         in.close();
       }
     } catch (Exception e) {
@@ -116,6 +129,10 @@ public class LogPrinter {
         LOG.error("Caught error while reading a process's output", e);
       }
     } finally {
+      if (LOG_PRINTER_DEBUG) {
+        LOG.info("Closing process output stream with prefix " + logPrefix);
+      }
+
       try {
         stream.close();
       } catch (IOException ex) {
@@ -141,4 +158,7 @@ public class LogPrinter {
     }
   }
 
+  public String getError() {
+    return errorMessage;
+  }
 }
