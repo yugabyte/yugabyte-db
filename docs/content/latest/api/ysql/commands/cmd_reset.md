@@ -20,7 +20,7 @@ showAsideToc: true
 ## Syntax
 
 ### Diagrams
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="174" height="63" viewbox="0 0 174 63"><path class="connector" d="M0 21h5m59 0h30m55 0h20m-90 0q5 0 5 5v19q0 5 5 5h5m40 0h20q5 0 5-5v-19q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="59" height="24" rx="7"/><text class="text" x="15" y="21">RESET</text><a xlink:href="../grammar_diagrams#name"><rect class="rule" x="94" y="5" width="55" height="24"/><text class="text" x="104" y="21">name</text></a><rect class="literal" x="94" y="34" width="40" height="24" rx="7"/><text class="text" x="104" y="50">ALL</text></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="174" height="63" viewbox="0 0 174 63"><path class="connector" d="M0 21h5m59 0h30m55 0h20m-90 0q5 0 5 5v19q0 5 5 5h5m40 0h20q5 0 5-5v-19q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="59" height="24" rx="7"/><text class="text" x="15" y="21">RESET</text><a xlink:href="../../grammar_diagrams#name"><rect class="rule" x="94" y="5" width="55" height="24"/><text class="text" x="104" y="21">name</text></a><rect class="literal" x="94" y="34" width="40" height="24" rx="7"/><text class="text" x="104" y="50">ALL</text></svg>
 
 ### Grammar
 ```
