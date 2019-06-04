@@ -86,7 +86,7 @@ class RegisterForm extends Component {
                   <Field name="confirmPassword" type="password" component={YBFormInput} label="Confirm Password"/>
                 </div>
                 <div className="clearfix">
-                  <YBButton btnType="submit" btnDisabled={isSubmitting || getPromiseState(authToken).isLoading()}
+                  <YBButton btnType="submit" disabled={isSubmitting || getPromiseState(authToken).isLoading()}
                             btnClass="btn btn-orange pull-right" btnText="Register"/>
                 </div>
               </Form>
