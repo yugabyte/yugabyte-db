@@ -1,11 +1,10 @@
 ---
-title: Building the source code
-linkTitle: Building the source
-description: Building the source code
+title: Building the Source Code
+linkTitle: Building the Source
+description: Building the Source Code
 image: /images/section_icons/index/quick_start.png
 headcontent: Building the source code.
 type: page
-section: CONTRIBUTE
 menu:
   latest:
     identifier: contribute-db-core-build

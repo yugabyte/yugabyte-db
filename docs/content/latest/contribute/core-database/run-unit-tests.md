@@ -1,11 +1,10 @@
 ---
 title: Testing the source code
-linkTitle: Running the tests
-description: Building the source code
+linkTitle: Running the Tests
+description: Running the Tests
 image: /images/section_icons/index/quick_start.png
-headcontent: Building the source code.
+headcontent: Running the tests.
 type: page
-section: CONTRIBUTE
 menu:
   latest:
     identifier: contribute-db-core-test

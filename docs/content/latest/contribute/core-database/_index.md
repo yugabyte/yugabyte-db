@@ -1,11 +1,11 @@
 ---
-title: Contributing to the core database
-linkTitle: Database Core
-description: Contributing to the core database
+title: Contributing to the Core Database
+linkTitle: Core Database
+description: Contributing to the Core Database
 image: /images/section_icons/index/quick_start.png
-headcontent: Contributing to the core database.
+headcontent: How to contribute code to the core database?
 type: page
-section: CONTRIBUTE
+section: CONTRIBUTOR GUIDES
 menu:
   latest:
     identifier: contribute-db-core
@@ -20,7 +20,7 @@ menu:
         <div class="title">Checklist</div>
       </div>
       <div class="body">
-        Checklist for contributing to the core YugaByte DB codebase.
+        Checklist to review before starting your contribution.
       </div>
     </a>
   </div>
@@ -32,7 +32,7 @@ menu:
         <div class="title">Build from source</div>
       </div>
       <div class="body">
-        Building YugaByte DB binaries from source.
+        Building binaries from source.
       </div>
     </a>
   </div>
@@ -44,7 +44,7 @@ menu:
         <div class="title">Run tests</div>
       </div>
       <div class="body">
-        Running the various tests in YugaByte DB.
+        Running the various tests.
       </div>
     </a>
   </div>

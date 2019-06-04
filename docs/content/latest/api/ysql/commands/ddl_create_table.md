@@ -65,6 +65,10 @@ Where
 - Primary key can be defined in either `column_constraint` or `table_constraint` but not in both of them.
 - Each row in a table is uniquely identified by its primary key. 
 
+### FOREIGN KEY
+
+Foreign keys are supported starting v1.2.10.
+
 ## Examples
 
 Table with primary key

@@ -1,11 +1,10 @@
 ---
-title: Checklist - core database
+title: Checklist
 linkTitle: Checklist
-description: Checklist - core database
+description: Checklist
 image: /images/section_icons/index/quick_start.png
 headcontent: Checklist for contributing to the core database.
 type: page
-section: CONTRIBUTE
 menu:
   latest:
     identifier: contribute-db-core-checklist

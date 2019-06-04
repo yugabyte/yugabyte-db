@@ -60,7 +60,7 @@ YugaByte DB's goal is to remain as compatible with PostgreSQL as possible. If yo
 
 - Following are the features that are either unnecessary or disallowed in YCQL.
 
-1. Lightweight transactions for compare-and-swap operations (such as increment) are unnecessary because YCQL achieves single row linearizability by default.
+1. Lightweight transactions for compare-and-swap operations (such as incrementing integers) are unnecessary because YCQL achieves single row linearizability by default.
 2. Tunable write consistency is disallowed in YCQL because writes are committed at quorum using Raft replication protocol.
 
 ### Do INSERTs do “upserts” by default? How do I insert data only if it is absent?

@@ -51,7 +51,7 @@ alter_table_constraint ::= [ CONSTRAINT constraint_name ]
 - An error is raised if specified table does not exist.
 - `ADD COLUMN` adds new column.
 - `DROP COLUMN` drops existing column.
-- `ADD table_constraint` adds new table_constraint.
+- `ADD table_constraint` adds new table_constraint such as a FOREIGN KEY (starting v1.2.10).
 - `DROP table_constraint` drops existing table_constraint.
 - Other `ALTER TABLE` options are not yet supported.
 
