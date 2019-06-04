@@ -185,7 +185,7 @@ class GCPProviderInitView extends Component {
             </Row>
           </div>
           <div className="form-action-button-container">
-            <YBButton btnText={"Save"} btnDisabled={submitting} btnClass={"btn btn-default save-btn"} btnType="submit"/>
+            <YBButton btnText={"Save"} disabled={submitting} btnClass={"btn btn-default save-btn"} btnType="submit"/>
           </div>
         </form>
       </div>

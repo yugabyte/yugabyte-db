@@ -279,10 +279,10 @@ class CreateKubernetesConfiguration extends Component {
                   <AddRegionList modal={modal} showModal={showModal} closeModal={closeModal} />  
                 </div>
                 <div className="form-action-button-container">
-                  <YBButton btnText={"Save"} btnDisabled={props.isSubmitting}
+                  <YBButton btnText={"Save"} disabled={props.isSubmitting}
                             btnClass={"btn btn-default save-btn"}
                             btnType="submit" />
-                  {this.props.hasConfigs && <YBButton btnText={"Cancel"} btnDisabled={props.isSubmitting}
+                  {this.props.hasConfigs && <YBButton btnText={"Cancel"} disabled={props.isSubmitting}
                             btnClass={"btn btn-default cancel-btn"}
                             btnType="button" onClick={this.props.toggleListView} />}
                 </div>

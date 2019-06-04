@@ -74,7 +74,7 @@ class LoginForm extends Component {
                   <Field name="password" placeholder="Password" type="password" component={YBFormInput} />
                 </div>
                 <div className="clearfix">
-                  <YBButton btnType="submit" btnDisabled={isSubmitting || getPromiseState(authToken).isLoading()}
+                  <YBButton btnType="submit" disabled={isSubmitting || getPromiseState(authToken).isLoading()}
                             btnClass="btn btn-orange" btnText="Login"/>
                 </div>
               </Form>
