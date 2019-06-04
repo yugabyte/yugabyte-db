@@ -228,6 +228,7 @@ MonoDelta TransactionRpcTimeout();
 CoarseTimePoint TransactionRpcDeadline();
 
 extern const std::string kTransactionsTableName;
+extern const std::string kMetricsSnapshotsTableName;
 
 } // namespace yb
 

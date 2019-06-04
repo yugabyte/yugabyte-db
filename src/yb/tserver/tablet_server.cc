@@ -46,6 +46,7 @@
 #include "yb/server/webserver.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tserver/heartbeater.h"
+#include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
@@ -119,6 +120,8 @@ DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
 DEFINE_bool(start_pgsql_proxy, false,
             "Whether to run a PostgreSQL server as a child process of the tablet server");
+
+DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 
 namespace yb {
 namespace tserver {
@@ -226,6 +229,10 @@ Status TabletServer::Init() {
 
   heartbeater_.reset(new Heartbeater(opts_, this));
 
+  if (FLAGS_tserver_enable_metrics_snapshotter) {
+    metrics_snapshotter_.reset(new MetricsSnapshotter(opts_, this));
+  }
+
   RETURN_NOT_OK_PREPEND(tablet_manager_->Init(),
                         "Could not init Tablet Manager");
 
@@ -299,6 +306,11 @@ Status TabletServer::Start() {
   }
 
   RETURN_NOT_OK(heartbeater_->Start());
+
+  if (FLAGS_tserver_enable_metrics_snapshotter) {
+    RETURN_NOT_OK(metrics_snapshotter_->Start());
+  }
+
   RETURN_NOT_OK(maintenance_manager_->Init());
 
   google::FlushLogFiles(google::INFO); // Flush the startup messages.
@@ -313,6 +325,11 @@ void TabletServer::Shutdown() {
   if (initted_.compare_exchange_strong(expected, false, std::memory_order_acq_rel)) {
     maintenance_manager_->Shutdown();
     WARN_NOT_OK(heartbeater_->Stop(), "Failed to stop TS Heartbeat thread");
+
+    if (FLAGS_tserver_enable_metrics_snapshotter) {
+      WARN_NOT_OK(metrics_snapshotter_->Stop(), "Failed to stop TS Metrics Snapshotter thread");
+    }
+
     {
       std::lock_guard<simple_spinlock> l(lock_);
       tablet_server_service_ = nullptr;
