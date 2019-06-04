@@ -66,6 +66,7 @@ namespace tserver {
 constexpr const char* const kTcMallocMaxThreadCacheBytes = "tcmalloc.max_total_thread_cache_bytes";
 
 class Heartbeater;
+class MetricsSnapshotter;
 class TabletServerPathHandlers;
 class TSTabletManager;
 
@@ -101,6 +102,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   TabletPeerLookupIf* tablet_peer_lookup() override { return tablet_manager_.get(); }
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
+
+  MetricsSnapshotter* metrics_snapshotter() { return metrics_snapshotter_.get(); }
 
   void set_fail_heartbeats_for_tests(bool fail_heartbeats_for_tests) {
     base::subtle::NoBarrier_Store(&fail_heartbeats_for_tests_, 1);
@@ -216,6 +219,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   // Thread responsible for heartbeating to the master.
   gscoped_ptr<Heartbeater> heartbeater_;
+
+  // Thread responsible for collecting metrics snapshots for native storage.
+  gscoped_ptr<MetricsSnapshotter> metrics_snapshotter_;
 
   // Webserver path handlers
   gscoped_ptr<TabletServerPathHandlers> path_handlers_;
