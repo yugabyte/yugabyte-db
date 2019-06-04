@@ -191,6 +191,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // This is called at the end of CreateTable if the table has transactions enabled.
   CHECKED_STATUS CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rpc);
 
+  // Create the metrics snapshots table if needed (i.e. if it does not exist already).
+  //
+  // This is called at the end of CreateTable.
+  CHECKED_STATUS CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc);
+
   // Get the information about an in-progress create operation.
   CHECKED_STATUS IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                    IsCreateTableDoneResponsePB* resp);
@@ -199,6 +204,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   //
   // This is called at the end of IsCreateTableDone if the table has transactions enabled.
   CHECKED_STATUS IsTransactionStatusTableCreated(IsCreateTableDoneResponsePB* resp);
+
+  // Check if the metrics snapshots table creation is done.
+  //
+  // This is called at the end of IsCreateTableDone.
+  CHECKED_STATUS IsMetricsSnapshotsTableCreated(IsCreateTableDoneResponsePB* resp);
 
   // Truncate the specified table.
   //

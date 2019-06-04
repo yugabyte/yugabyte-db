@@ -144,6 +144,12 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
 
+#include "yb/client/client.h"
+#include "yb/client/meta_cache.h"
+#include "yb/client/table_creator.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/tserver/remote_bootstrap_client.h"
 
 using namespace std::literals;
@@ -213,6 +219,12 @@ DEFINE_uint64(transaction_table_num_tablets, 0,
     "Number of tablets to use when creating the transaction status table."
     "0 to use the same default num tablets as for regular tables.");
 
+DEFINE_bool(master_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
+
+DEFINE_uint64(metrics_snapshots_table_num_tablets, 0,
+    "Number of tablets to use when creating the metrics snapshots table."
+    "0 to use the same default num tablets as for regular tables.");
+
 DEFINE_bool(
     hide_pg_catalog_table_creation_logs, false,
     "Whether to hide detailed log messages for PostgreSQL catalog table creation. "
@@ -274,6 +286,15 @@ using tserver::TabletServerErrorPB;
 using master::MasterServiceProxy;
 using yb::pgwrapper::PgWrapper;
 using yb::server::MasterAddressesToString;
+
+using yb::client::YBClient;
+using yb::client::YBClientBuilder;
+using yb::client::YBColumnSchema;
+using yb::client::YBSchema;
+using yb::client::YBSchemaBuilder;
+using yb::client::YBTable;
+using yb::client::YBTableCreator;
+using yb::client::YBTableName;
 
 namespace {
 
@@ -1882,6 +1903,17 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       return s.CloneAndPrepend("Error while creating transaction status table");
     }
   }
+
+  if (FLAGS_master_enable_metrics_snapshotter &&
+      !(req.table_type() == TableType::YQL_TABLE_TYPE &&
+        namespace_id == kSystemNamespaceId &&
+        req.name() == kMetricsSnapshotsTableName)) {
+    Status s = CreateMetricsSnapshotsTableIfNeeded(rpc);
+    if (!s.ok()) {
+      return s.CloneAndPrepend("Error while creating metrics snapshots table");
+    }
+  }
+
   return Status::OK();
 }
 
@@ -2053,6 +2085,67 @@ Status CatalogManager::CreateTransactionsStatusTableIfNeeded(rpc::RpcContext *rp
   return Status::OK();
 }
 
+Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc) {
+  TableIdentifierPB table_indentifier;
+  table_indentifier.set_table_name(kMetricsSnapshotsTableName);
+  table_indentifier.mutable_namespace_()->set_name(kSystemNamespaceName);
+
+  // Check that the namespace exists.
+  scoped_refptr<NamespaceInfo> ns_info;
+  RETURN_NOT_OK(FindNamespace(table_indentifier.namespace_(), &ns_info));
+  if (!ns_info) {
+    return STATUS(NotFound, "Namespace does not exist", kSystemNamespaceName);
+  }
+
+  // If status table exists do nothing, otherwise create it.
+  scoped_refptr<TableInfo> table_info;
+  RETURN_NOT_OK(FindTable(table_indentifier, &table_info));
+
+  if (!table_info) {
+    // Set up a CreateTable request internally.
+    CreateTableRequestPB req;
+    CreateTableResponsePB resp;
+    req.set_name(kMetricsSnapshotsTableName);
+    req.mutable_namespace_()->set_name(kSystemNamespaceName);
+    req.set_table_type(TableType::YQL_TABLE_TYPE);
+
+    // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
+    // will use the same defaults as for regular tables.
+    if (FLAGS_metrics_snapshots_table_num_tablets > 0) {
+      req.set_num_tablets(FLAGS_metrics_snapshots_table_num_tablets);
+    }
+
+    // Schema description: "node" refers to tserver uuid. "entity_type" can be either
+    // "tserver" or "table". "entity_id" is uuid of corresponding tserver or table.
+    // "metric" is the name of the metric and "value" is its val. "ts" is time at
+    // which the snapshot was recorded. "details" is a json column for future extensibility.
+
+    YBSchemaBuilder schemaBuilder;
+    schemaBuilder.AddColumn("node")->Type(STRING)->HashPrimaryKey()->NotNull();
+    schemaBuilder.AddColumn("entity_type")->Type(STRING)->PrimaryKey()->NotNull();
+    schemaBuilder.AddColumn("entity_id")->Type(STRING)->PrimaryKey()->NotNull();
+    schemaBuilder.AddColumn("metric")->Type(STRING)->PrimaryKey()->NotNull();
+    schemaBuilder.AddColumn("ts")->Type(TIMESTAMP)->PrimaryKey()->NotNull()->
+      SetSortingType(ColumnSchema::SortingType::kDescending);
+    schemaBuilder.AddColumn("value")->Type(INT64);
+    schemaBuilder.AddColumn("details")->Type(JSONB);
+
+    YBSchema ybschema;
+    CHECK_OK(schemaBuilder.Build(&ybschema));
+
+    auto schema = yb::client::internal::GetSchema(ybschema);
+    SchemaToPB(schema, req.mutable_schema());
+
+    Status s = CreateTable(&req, &resp, rpc);
+    // We do not lock here so it is technically possible that the table was already created.
+    // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
+    if (!s.ok() && !s.IsAlreadyPresent()) {
+      return s;
+    }
+  }
+  return Status::OK();
+}
+
 Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
                                          IsCreateTableDoneResponsePB* resp) {
   RETURN_NOT_OK(CheckOnline());
@@ -2098,7 +2191,15 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
 
   // If this is a transactional table we are not done until the transaction status table is created.
   if (resp->done() && l->data().pb.schema().table_properties().is_transactional()) {
-    return IsTransactionStatusTableCreated(resp);
+    RETURN_NOT_OK(IsTransactionStatusTableCreated(resp));
+  }
+
+  // We are not done until the metrics snapshots table is created.
+  if (FLAGS_master_enable_metrics_snapshotter && resp->done() &&
+      !(table->GetTableType() == TableType::YQL_TABLE_TYPE &&
+        table->namespace_id() == kSystemNamespaceId &&
+        table->name() == kMetricsSnapshotsTableName)) {
+    RETURN_NOT_OK(IsMetricsSnapshotsTableCreated(resp));
   }
 
   return Status::OK();
@@ -2109,6 +2210,16 @@ Status CatalogManager::IsTransactionStatusTableCreated(IsCreateTableDoneResponse
 
   req.mutable_table()->set_table_name(kTransactionsTableName);
   req.mutable_table()->mutable_namespace_()->set_name(kSystemNamespaceName);
+
+  return IsCreateTableDone(&req, resp);
+}
+
+Status CatalogManager::IsMetricsSnapshotsTableCreated(IsCreateTableDoneResponsePB* resp) {
+  IsCreateTableDoneRequestPB req;
+
+  req.mutable_table()->set_table_name(kMetricsSnapshotsTableName);
+  req.mutable_table()->mutable_namespace_()->set_name(kSystemNamespaceName);
+  req.mutable_table()->mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_CQL);
 
   return IsCreateTableDone(&req, resp);
 }

@@ -373,6 +373,7 @@ class HistogramSnapshotPB;
 
 class MetricEntity;
 class PrometheusWriter;
+class NMSWriter;
 } // namespace yb
 
 // Forward-declare the generic 'server' entity type.
@@ -588,6 +589,8 @@ class PrometheusWriter {
       timestamp_(std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch()).count()) {}
 
+  virtual ~PrometheusWriter() {}
+
   template<typename T>
   CHECKED_STATUS WriteSingleEntry(
       const MetricEntity::AttributeMap& attr, const std::string& name, const T& value) {
@@ -619,9 +622,11 @@ class PrometheusWriter {
   }
 
  private:
-  template<typename T>
-  CHECKED_STATUS FlushSingleEntry(
-      const MetricEntity::AttributeMap& attr, const std::string& name, const T& value) {
+  // FlushSingleEntry() was a function template with type of "value" as template
+  // var T. To allow NMSWriter to override FlushSingleEntry(), the type of "value"
+  // has been instantiated to int64_t.
+  virtual CHECKED_STATUS FlushSingleEntry(const MetricEntity::AttributeMap& attr,
+      const std::string& name, const int64_t& value) {
     *output_ << name;
     size_t total_elements = attr.size();
     if (total_elements > 0) {
@@ -650,6 +655,43 @@ class PrometheusWriter {
   int64_t timestamp_;
 };
 
+// Native Metrics Storage Writer - writes prometheus metrics into system table.
+class NMSWriter : public PrometheusWriter {
+ public:
+  typedef std::unordered_map<std::string, int64_t> MetricsMap;
+  typedef std::unordered_map<std::string, MetricsMap> EntityMetricsMap;
+
+  explicit NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics)
+    : PrometheusWriter(nullptr), table_metrics_(table_metrics),
+    server_metrics_(server_metrics) {}
+
+ private:
+  CHECKED_STATUS FlushSingleEntry(
+      const MetricEntity::AttributeMap& attr, const std::string& name,
+      const int64_t& value) override {
+
+    auto it = attr.find("metric_type");
+    if (it == attr.end()) {
+      // ignore.
+    } else if (it->second == "server") {
+      (*server_metrics_)[name] = (int64_t)value;
+    } else if (it->second == "tablet") {
+      auto it2 = attr.find("table_id");
+      if (it2 == attr.end()) {
+        // ignore.
+      } else {
+        (*table_metrics_)[it2->second][name] = (int64_t)value;
+      }
+    }
+    return Status::OK();
+  }
+
+  // Output
+  // Map from table_id to map of metric_name to value
+  EntityMetricsMap* table_metrics_;
+  // Map from metric_name to value
+  MetricsMap* server_metrics_;
+};
 
 
 // Base class to allow for putting all metrics into a single container.

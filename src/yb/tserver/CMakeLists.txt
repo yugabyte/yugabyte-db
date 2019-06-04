@@ -152,6 +152,7 @@ ADD_YB_LIBRARY(tserver_util
 
 set(TSERVER_SRCS
   heartbeater.cc
+  metrics_snapshotter.cc
   mini_tablet_server.cc
   remote_bootstrap_client.cc
   remote_bootstrap_service.cc
