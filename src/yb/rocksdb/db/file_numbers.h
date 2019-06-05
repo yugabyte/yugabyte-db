@@ -61,7 +61,8 @@ class FileNumbersHolder {
   explicit FileNumbersHolder(FileNumberAdderRemover* remover) : adder_remover_(remover) {}
 
   FileNumbersHolder(FileNumbersHolder&& rhs)
-      : adder_remover_(std::move(rhs.adder_remover_)), file_numbers_(std::move(rhs.file_numbers_)) {
+      : adder_remover_(rhs.adder_remover_),
+        file_numbers_(std::move(rhs.file_numbers_)) {
     rhs.file_numbers_.clear();
   }
 
@@ -107,7 +108,7 @@ class FileNumbersHolder {
     }
   }
 
-  FileNumberAdderRemover* adder_remover_;
+  FileNumberAdderRemover* adder_remover_ = nullptr;
   boost::container::small_vector<FileNumber, 1> file_numbers_;
 };
 
