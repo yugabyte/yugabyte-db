@@ -9,10 +9,6 @@ menu:
 type: page
 ---
 
-{{< note title="Note" >}}
-Click <a href="/latest/quick-start/install/">here</a> to go to documentation for the latest version of YugaByte DB.
-{{< /note >}}
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

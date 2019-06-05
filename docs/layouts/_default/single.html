@@ -28,8 +28,19 @@
 						{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}
 
 						<h1>{{ .Description }} {{ if .IsDraft }} (Draft){{ end }}{{ if .Page.Params.beta }}<a class="tag-beta" href="{{ .Page.Params.beta }}">Beta</a>{{ end }}</h1>
+						
+						{{ $urlArray := split (urls.Parse .Permalink).Path "/" }}
+						{{ $latestUrl := path.Join "latest" (after 2 $urlArray) }}
+						{{ $latestUrl = add (add "/" $latestUrl) "/" }}
+						{{ if ne (index $urlArray 1) "latest" }}
+						<div class="admonition note">
+							<p class="admonition-title">Note</p>
+							Click <a href="{{ $latestUrl }}">here</a> to go to documentation for the latest version of YugaByte DB.
+						</div>
+						{{ end }}
+						<br />
 
-						{{if (.Params.showAsideToc) }}
+						{{if (.Params.showAsideToc) }}						
 						<div id="toc-static">{{ .TableOfContents }}</div>
 						{{ else }}
 						{{ .TableOfContents }}

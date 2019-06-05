@@ -23,14 +23,23 @@
 		<article class="article">
 			<div class="wrapper">
 				<div class="image">
-					<img alt="{{ .Description }}" title="{{ .Description }}" src="{{ .Page.Params.image }}">
-					</div>
+					<img alt="{{ .Description }}" title="{{ .Description }}" src="{{ .Page.Params.image }}" />
+				</div>
 				{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
 
 				<h1>{{ .Description }}  {{ if .IsDraft }} (Draft){{ end }}</h1>
 
-				<div class="head-content clearfix">{{ .Page.Params.headcontent }} </div>
-
+				<div class="head-content clearfix">{{ .Page.Params.headcontent }}</div>
+				
+				{{ $urlArray := split (urls.Parse .Permalink).Path "/" }}
+				{{ $latestUrl := path.Join "latest" (after 2 $urlArray) }}
+				{{ $latestUrl = add (add "/" $latestUrl) "/" }}
+				{{ if ne (index $urlArray 1) "latest" }}
+				<div class="admonition note">
+					<p class="admonition-title">Note</p>
+					Click <a href="{{ $latestUrl }}">here</a> to go to documentation for the latest version of YugaByte DB.
+				</div>
+				{{ end }}
 
 				{{ .Content }}
 
