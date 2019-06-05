@@ -473,7 +473,7 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
 }
 
 string RpcAndWebServerBase::GetEasterEggMessage() const {
-  return "Congratulations on installing YugaByte DB Community Edition. "
+  return "Congratulations on installing YugaByte DB. "
          "We'd like to welcome you to the community with a free t-shirt and pack of stickers! "
          "Please claim your reward here: <a href='https://www.yugabyte.com/community-rewards/'>"
          "https://www.yugabyte.com/community-rewards/</a>";
