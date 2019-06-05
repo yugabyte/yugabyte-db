@@ -1220,6 +1220,18 @@ if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
   make_targets+=( yb-master yb-tserver postgres )
 fi
 
+if [[ $build_type == "compilecmds" ]]; then
+  if [[ ${#make_targets[@]} -gt 0 ]]; then
+    fatal "Cannot specify custom Make targets for the 'compilecmds' build type, got: " \
+          "${make_targets[*]}"
+  fi
+  # We need to add anything that generates header files, and also the postgres build because it goes
+  # through the build_postgres.py script and that's also where we create the overall
+  # compile_commands.json file.
+  make_targets+=( gen_proto postgres yb_bfpg yb_bfql )
+  build_java=false
+fi
+
 if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
   run_cxx_build
 fi

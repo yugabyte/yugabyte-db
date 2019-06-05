@@ -26,19 +26,19 @@ add_custom_target(
         postgres
         COMMAND "${BUILD_SUPPORT_DIR}/build_postgres"
         --build_root "${YB_BUILD_ROOT}"
-
         --cflags     " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_C_FLAGS}"
         --cxxflags   " ${POSTGRES_EXTRA_C_CXX_FLAGS} ${CMAKE_CXX_FLAGS}"
         --ldflags    " ${CMAKE_SHARED_LINKER_FLAGS}"
         --ldflags_ex " ${CMAKE_EXE_LINKER_FLAGS}"
-
-        --compiler_type "$ENV{YB_COMPILER_TYPE}"
-        DEPENDS yb_util yb_pggate server_process)
+        --compiler_type "$ENV{YB_COMPILER_TYPE}")
 
 # Make sure we rebuild postgres before the master/tserver libraries.
 add_dependencies(master postgres)
 add_dependencies(tserver postgres)
 
-# PostgreSQL server links with the pggate library.
-add_dependencies(postgres yb_pggate)
-add_dependencies(postgres server_process)
+if(${YB_BUILD_TYPE} STREQUAL "compilecmds")
+  message("Not making postgres depend on other libraries in the compilecmds build type.")
+else()
+  # Libraries that we link into the postgres binary.
+  add_dependencies(postgres yb_pggate server_process)
+endif()

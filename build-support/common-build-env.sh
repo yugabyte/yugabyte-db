@@ -255,6 +255,7 @@ readonly VALID_BUILD_TYPES=(
   release
   tsan
   tsan_slow
+  compilecmds
 )
 
 # Valid values of CMAKE_BUILD_TYPE passed to the top-level CMake build. This is the same as the
@@ -690,6 +691,11 @@ set_cmake_build_type_and_compiler_type() {
       cmake_build_type=${build_type:1}
       cmake_opts+=( -DYB_INSTRUMENT_FUNCTIONS=1 )
     ;;
+    compilecmds)
+      cmake_build_type=debug
+      export CMAKE_EXPORT_COMPILE_COMMANDS=1
+      export YB_EXPORT_COMPILE_COMMANDS=1
+    ;;
     *)
       cmake_build_type=$build_type
   esac
@@ -727,6 +733,7 @@ set_cmake_build_type_and_compiler_type() {
   # use the default compiler in CLion-triggered builds.
 
   cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
+  cmake_opts+=( "-DYB_BUILD_TYPE=$build_type" )
   cmake_opts+=( "${YB_DEFAULT_CMAKE_OPTS[@]}" )
 
   if using_ninja; then
