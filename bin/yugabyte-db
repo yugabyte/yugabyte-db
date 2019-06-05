@@ -2,10 +2,13 @@
 
 import argparse
 import atexit
+import json
 import logging
 import os
 import sys
 import time
+import re
+import shutil
 import subprocess
 from signal import SIGABRT, SIGINT, SIGTERM, SIG_DFL, signal
 
@@ -14,36 +17,121 @@ Run `yugabyte-db` to start a single-node YugaByte DB process. If no options are 
 `yugabyte-db` will assume the following default directory tree:
 
 yugabyte
++-- yugabyte-db
++-- conf
+|   |   +-- yugabyte-db.conf
+|   |   +-- yb-master.conf
+|   |   +-- yb-tserver.conf
 +-- bin
-|   |   +-- yugabyte-db
 |   |   +-- yb-master
 |   |   +-- yb-tserver
 +-- logs
-|   |   +-- master & tserver logfiles
-+-- data
-|   |   +-- yb-data
+|   |   +-- master & tserver logfiles, unify these if possible
++-- yugabyte-data
 """
+
+YUGABYTE_DIR = os.path.dirname(os.path.realpath(__file__))
+CONF_DIR = os.path.join(YUGABYTE_DIR, "conf")
+BIN_DIR = os.path.join(YUGABYTE_DIR, "bin")
+DEFAULT_DATA_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-data")
+DEFAULT_LOG_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-logs")
+DEFAULT_CONF = os.path.join(CONF_DIR, "yugabyte-db.conf")
+DEFAULT_MASTER_PORT = 7100
+DEFAULT_YSQL_PORT = 5433
+DEFAULT_YCQL_PORT = 9042
+DEFAULT_YEDIS_PORT = 6379
+VERSION_METADATA_PATH = os.path.join(YUGABYTE_DIR, "version_metadata.json")
+YUGABYTE_APIS = {
+    "ysql": "psql",
+    "ycql": "cqlsh",
+    "yedis": "redis-cli"
+}
 
 
 class YugaByteProcessManager(object):
     def __init__(self):
+        self.configs = Configs()
         self.processes = []
 
-    def start(self, args):
+    def start(self):
         logging.info("Starting YugaByte DB...")
         self.set_signals(self.kill_yugabyte)
         atexit.register(self.kill_yugabyte)
-        self.start_processes(args)
+
+        initialized = self.is_initalized()
+        if not initialized and os.path.exists(self.configs.data_dir):
+            logging.info(
+                "Found data from failed initialization in {}. Removing...".format(
+                    self.configs.data_dir))
+            shutil.rmtree(self.configs.data_dir)
+
+        if not os.path.exists(self.configs.data_dir):
+            logging.info("Creating data directory %s.", self.configs.data_dir)
+            os.makedirs(self.configs.data_dir)
+            initialized = False
+        if not os.path.exists(self.configs.log_dir):
+            logging.info("Creating log directory %s.", self.configs.log_dir)
+            os.makedirs(self.configs.log_dir)
+
+        self.start_processes(initialized)
+
+    def status(self):
+        if os.path.isdir(self.configs.data_dir):
+            title = "YugaByte DB Ports and Data"
+            info_kv_list = [
+                ("Web UI", "http://127.0.0.1:7000"),
+                ("Cluster Data", self.configs.data_dir),
+                ("YCQL", "yugabyte-db connect ycql"),
+                ("YEDIS", "yugabyte-db connect yedis")]
+            if self.get_failed_processes():
+                print("YugaByte DB is not running.")
+            print(self.get_status_string(title, info_kv_list))
+        else:
+            logging.info("YugaByte DB is not running.")
+
+    def version(self):
+        title = "YugaByte DB Information"
+        with open(VERSION_METADATA_PATH) as metadata:
+            data = json.load(metadata)
+            info_kv_list = [
+                ("Version", "{}-b{}".format(data.get("version_number"), data.get("build_number"))),
+                ("Build Time", data.get("build_timestamp")),
+                ("Build Hash", data.get("git_hash"))]
+            print(self.get_status_string(title, info_kv_list))
+
+    def connect_ysql(self):
+        log_error_and_exit("Connecting to YSQL is a work in progress. Use bin/psql instead.")
+
+    def connect_ycql(self):
+        if self.get_failed_processes():
+            log_error_and_exit("YugaByte DB is not running. Cannot connect to YCQL.")
+        path = os.path.join(BIN_DIR, YUGABYTE_APIS["ycql"])
+        cmd = "{} 127.0.0.1 {}".format(path, self.configs.ycql_port)
+        os.execv(path, cmd.split())
+
+    def connect_yedis(self):
+        if self.get_failed_processes():
+            log_error_and_exit("YugaByte DB is not running. Cannot connect to YEDIS.")
+        path = os.path.join(BIN_DIR, YUGABYTE_APIS["yedis"])
+        cmd = "{} -h 127.0.0.1 -p {}".format(path, self.configs.yedis_port)
+        os.execv(path, cmd.split())
+
+    # TODO: Check postmaster.pid when ysql is enabled.
+    def get_failed_processes(self):
+        failed_processes = []
+        for process in ("master", "tserver"):
+            if not ProcessManager.is_process_running(process, self.configs.data_dir):
+                failed_processes.append("yb-{}".format(process))
+        return failed_processes
 
     # Called after receiving certain signals or on exit.
     def kill_yugabyte(self, signum=None, frame=None):
-        logging.info("Killing YugaByte DB processes...")
+        logging.info("Shutting down...")
         cur_pid = os.getpid()
         pgid = os.getpgid(cur_pid)
         if not pgid:
-            logging.error(
-                "PGID could not be found for PID %d. Is YugaByte DB running?", cur_pid)
-            sys.exit(1)
+            log_error_and_exit(
+                "PGID could not be found for PID {}. Is YugaByte DB running?".format(cur_pid))
 
         self.set_signals(SIG_DFL)
 
@@ -54,79 +142,240 @@ class YugaByteProcessManager(object):
             # Kill process group instead of self.processes to ensure
             # any spawned child processes are killed
             os.killpg(pgid, SIGTERM)
-            logging.error(
-                "YugaByte DB may not have terminated properly... Please check PGID %d.", pgid)
-            sys.exit(1)
+            log_error_and_exit(
+                "YugaByte DB may not have terminated properly... "
+                "Please check PGID {}.".format(pgid))
         except OSError as err:
-            logging.error(
-                "Failed to kill PGID %d... Is YugaByte DB running?\n%s", pgid, str(err))
-            sys.exit(1)
+            log_error_and_exit(
+                "Failed to kill PGID {}... Is YugaByte DB running?\n{}".format(pgid, str(err)))
 
-    def start_processes(self, args):
+    def start_processes(self, initialized):
         common_args = [
             "--stop_on_parent_termination",
             "--undefok=stop_on_parent_termination",
-            "--fs_data_dirs={}".format(args.data_dir)]
-        yb_master_cmd = [os.path.join(args.install_dir, "bin/yb-master")] + common_args
-        yb_tserver_cmd = [os.path.join(args.install_dir, "bin/yb-tserver")] + common_args
+            "--fs_data_dirs={}".format(self.configs.data_dir),
+            "--rpc_bind_addresses", "127.0.0.1"]
+        master_address = "127.0.0.1:{}".format(self.configs.master_port)
+        yb_master_cmd = [os.path.join(BIN_DIR, "yb-master")] + common_args + \
+            ["--master_addresses={}".format(master_address)]
+        yb_tserver_cmd = [os.path.join(BIN_DIR, "yb-tserver")] + common_args + \
+            ["--tserver_master_addrs={}".format(master_address),
+             "--cql_proxy_bind_address", "127.0.0.1:{}".format(self.configs.ycql_port),
+             "--redis_proxy_bind_address", "127.0.0.1:{}".format(self.configs.yedis_port),
+             "--server_dump_info_path", os.path.join(self.configs.data_dir, "tserver-info")]
         self.processes = [
-            ProcessManager("master", yb_master_cmd, args.log_dir, args.data_dir),
-            ProcessManager("tserver", yb_tserver_cmd, args.log_dir, args.data_dir)
+            ProcessManager("master", yb_master_cmd, self.configs.log_dir, self.configs.data_dir),
+            ProcessManager("tserver", yb_tserver_cmd, self.configs.log_dir, self.configs.data_dir)
         ]
 
         for p in self.processes:
             pid = p.get_pid()
             if pid:
                 logging.error(
-                    "%s was already running with PID %d.", p.name, pid)
+                    "YugaByte DB is already running! "
+                    "yb-%s is running with PID %d.", p.name, pid)
+                # Clear self.processes so kill_yugabyte() doesn't kill existing processes.
+                self.processes = []
                 return
-            else:
+
+        should_print_startup = True
+        if not initialized:
+            yb_master_cmd.extend(
+                ["--server_dump_info_path", os.path.join(self.configs.data_dir, "master-info")])
+            yb_tserver_cmd.extend(
+                ["--server_dump_info_path", os.path.join(self.configs.data_dir, "tserver-info")])
+            self.initalize()
+        else:
+            # TODO: Still need to check READY status
+            for p in self.processes:
                 p.start()
 
         while True:
+            restarted = False
             for p in self.processes:
-                if not p.get_pid() or (p.process and p.process.poll() is not None):
-                    p.check_errors()
+                if not p.is_running():
                     logging.error("%s died unexpectedly. Restarting...", p.name)
                     p.start()
-            time.sleep(int(args.polling_interval))
+                    restarted = True
+            if should_print_startup and not restarted:
+                title = "YugaByte DB Ports and Data"
+                info_kv_list = [
+                    ("Web UI", "http://127.0.0.1:7000"),
+                    ("Cluster Data", self.configs.data_dir),
+                    ("YCQL", "yugabyte-db connect ycql"),
+                    ("YEDIS", "yugabyte-db connect yedis")]
+                startup_info = self.get_status_string(title, info_kv_list) + \
+                    "YugaByte DB started successfully!\n" \
+                    "For help, please check out our docs at https://docs.yugabyte.com or " \
+                    "join us on Slack at https://yugabyte-db.slack.com.\n"
+                print(startup_info)
+                should_print_startup = False
+
+            time.sleep(int(self.configs.polling_interval))
+
+    def initalize(self):
+        logging.info("Initializing YugaByte DB...")
+        for p in self.processes:
+            p.start()
+
+        for i in range(60):
+            for p in self.processes:
+                if not p.is_running():
+                    return False
+            if self.is_initalized():
+                return True
+            time.sleep(0.5)
+        return False
+
+    def is_initalized(self):
+        for info_file in ("master-info", "tserver-info", "tserver-info-redis", "tserver-info-cql"):
+            if not os.path.exists(os.path.join(self.configs.data_dir, info_file)):
+                return False
+        return True
+
+    def get_status_string(self, title, body_kv_list):
+        status = "\n" + "-" * 100 + "\n"
+        status += "| {:<96} |\n".format(title)
+        status += "-" * 100 + "\n"
+        for k, v in body_kv_list:
+            status += "| {:20}: {:<74} |\n".format(k, v)
+        status += "-" * 100 + "\n"
+        return status
 
     def set_signals(self, func):
         for sig in (SIGABRT, SIGINT, SIGTERM):
             signal(sig, func)
 
+    def validate_and_set_configs(self, args):
+        has_errors = False
+        self.configs = Configs.parse_config_file(args.config)
+
+        for path_args in ("data_dir", "config", "log_dir"):
+            path = getattr(args, path_args, None)
+            if path:
+                setattr(args, path_args, os.path.realpath(path))
+
+        if args.parser == "start":
+            if args.data_dir:
+                config_data_dir = self.configs.data_dir
+                if (config_data_dir and os.path.exists(config_data_dir) and
+                        config_data_dir != args.data_dir):
+                    has_errors = True
+                    logging.error(
+                        "Data directory already exits at %s."
+                        "Delete it manually or with --destroy.",
+                        config_data_dir)
+            if args.log_dir:
+                config_log_dir = self.configs.log_dir
+                if (config_log_dir and os.path.exists(config_log_dir) and
+                        config_data_dir != args.log_dir):
+                    logging.warning(
+                        "Old log directory already exists at %s. New logs will go to %s",
+                        config_log_dir, args.log_dir)
+
+        if has_errors:
+            sys.exit(1)
+
+        # Override configs and defaults with user specified variables
+        update_config_file = False
+        for k, v in args.__dict__.iteritems():
+            if v and hasattr(self.configs, k) and v != getattr(self.configs, k):
+                setattr(self.configs, k, v)
+                update_config_file = True
+
+        if update_config_file:
+            self.configs.save_configs(args.config)
+
     def run(self):
-        logging.basicConfig(
-            level=logging.INFO,
-            format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
+        # Parent subparser for common args
+        common_parser = argparse.ArgumentParser(add_help=False)
+        common_parser.add_argument(
+            "--config", default=DEFAULT_CONF, help="Yugabyte DB configuration file")
+        common_parser.add_argument(
+            "--data_dir", help="Directory where YugaByte DB will store data.", action="append")
+
         parser = argparse.ArgumentParser()
-        parser.add_argument(
-            "--install_dir", help="Directory where YugaByte DB is installed.")
-        parser.add_argument(
-            "--polling_interval", default=5,
-            help="Interval in seconds in which YugaByte DB will poll"
-            "and ensure yb-master and yb-tserver are running.")
-        parser.add_argument(
-            "--log_dir", help="Directory to store YugaByte DB logs.")
+        all_parsers = {"default": parser}
+        subparsers = parser.add_subparsers(dest="parser")
+        for cmd, description in (
+                ("status", "Print status of YugaByte DB."),
+                ("version", "Version of YugaByte DB."),
+                ("start", "Start YugaByte DB.")):
+            subparser = subparsers.add_parser(cmd, help=description, parents=[common_parser])
+            func = getattr(self, cmd, None)
+            subparser.set_defaults(func=func)
+            all_parsers[cmd] = subparser
+
+        # Add ysql, ycql, and yedis CLI options
+        connect = subparsers.add_parser("connect", help="Connect to an API through the CLI.")
+        all_parsers["connect"] = connect
+        connect_subparser = connect.add_subparsers()
+        for api in YUGABYTE_APIS:
+            cur_parser = connect_subparser.add_parser(
+                api, help="Use {} through the CLI.".format(api.upper()), parents=[common_parser])
+            func = getattr(self, "connect_{}".format(api), None)
+            cur_parser.set_defaults(func=func)
+            all_parsers[api] = cur_parser
+
+        # Commands that can alter configuration file.
+        for cmd in ("start",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--log_dir", help="Directory to store YugaByte DB logs.")
+            cur_parser.add_argument(
+                "--yedis_port", help="Port to interact with YEDIS API.")
+            cur_parser.add_argument(
+                "--ycql_port", help="Port to interact with YCQL API.")
+            # Hidden commands for development/advanced users
+            cur_parser.add_argument(
+                "--polling_interval", default=5, help=argparse.SUPPRESS)
+
+        for _, cur_parser in all_parsers.iteritems():
+            cur_parser._positionals.title = "Commands"
+            cur_parser._optionals.title = "Flags"
+
+        if not sys.argv[1:]:
+            parser.print_help()
+            return
+
         args = parser.parse_args()
+        self.validate_and_set_configs(args)
 
-        if args.install_dir:
-            args.install_dir = os.path.realpath(args.install_dir)
-        else:
-            args.install_dir = os.path.dirname(os.path.dirname(__file__))
+        args.func()
 
-        if args.log_dir:
-            args.log_dir = os.path.realpath(args.log_dir)
-        else:
-            args.log_dir = os.path.join(args.install_dir, "logs")
-        args.data_dir = os.path.join(args.install_dir, "data")
-        if not os.path.exists(args.data_dir):
-            os.makedirs(args.data_dir)
-        if not os.path.exists(args.log_dir):
-            os.makedirs(args.log_dir)
+class Configs(object):
+    def __init__(self):
+        self.data_dir = DEFAULT_DATA_DIR
+        self.log_dir = DEFAULT_LOG_DIR
+        self.master_port = DEFAULT_MASTER_PORT
+        self.ysql_port = DEFAULT_YSQL_PORT
+        self.ycql_port = DEFAULT_YCQL_PORT
+        self.yedis_port = DEFAULT_YEDIS_PORT
+        self.polling_interval = "5"
 
-        self.start(args)
+    def save_configs(self, config_file):
+        formatted_configs = ""
+        for k in self.__dict__:
+            formatted_configs += "{}: {}\n".format(k, getattr(self, k))
+        with open(config_file, "w+") as f:
+            f.write(formatted_configs)
 
+    @staticmethod
+    def parse_config_file(config_file):
+        configs = Configs()
+        if os.path.isfile(config_file):
+            try:
+                with open(config_file) as f:
+                    config_regex = r"\w+: [\w\/\.-]+$"
+                    for line in f:
+                        if not re.match(config_regex, line):
+                            log_error_and_exit(
+                                "Failed to parse config file {}: {}".format(config_file, line))
+                        k, v = line.split(": ")
+                        setattr(configs, k, v.strip())
+            except Exception as e:
+                log_error_and_exit("Failed to read config file {}: {}".format(config_file, str(e)))
+        return configs
 
 class ProcessManager(object):
     def __init__(self, name, cmd, log_dir, data_dir):
@@ -137,8 +386,13 @@ class ProcessManager(object):
         self.data_dir = data_dir
         self.data_log_path = "{}/yb-data/{}/logs".format(data_dir, self.name)
         self.process = None
+        self.error_log = "{}/yb-{}.ERROR".format(self.data_log_path, self.name)
 
     def start(self):
+        # Remove old logs as timestamped logs should have already been created.
+        if os.path.isfile(self.error_log):
+            os.remove(self.error_log)
+
         out_log = os.path.join(self.log_dir, "{}.out".format(self.name))
         err_log = os.path.join(self.log_dir, "{}.err".format(self.name))
         with open(out_log, "a") as out_log, open(err_log, "a") as err_log:
@@ -180,24 +434,33 @@ class ProcessManager(object):
                 os.remove(self.pidfile)
             except OSError as e:
                 if os.path.exists(self.pidfile):
-                    logging.error("Failed to delete %s.", self.pidfile)
-                    sys.exit(1)
+                    log_error_and_exit("Failed to delete {}.".format(self.pidfile))
 
-    def check_errors(self):
-        fatal_log = "{}/yb-{}.FATAL".format(self.data_log_path, self.name)
-        socket_error = "Could not start on address"
-        if os.path.isfile(fatal_log):
-            with open(fatal_log) as log:
+    def check_fatals(self):
+        # Error logs contain port information, but fatal logs don't.
+        address_error_1 = "Could not start on address"
+        address_error_2 = "Error binding socket to "
+        if os.path.isfile(self.error_log):
+            with open(self.error_log) as log:
                 for line in log.readlines():
-                    if socket_error in line:
-                        err_msg = line.split(socket_error)
-                        # Try to find address, otherwise print entire error message.
+                    if address_error_1 in line:
+                        err_msg = line.split(address_error_1)
+                        # Try to find address, otherwise log entire error message.
                         if len(err_msg) == 2:
                             err_msg = err_msg[1]
                         else:
                             err_msg = line
-                        logging.error("Failed to bind to address: %s. Is port open?", err_msg)
-                        sys.exit(1)
+                        log_error_and_exit(
+                            "Failed to bind to address: {}. Is port open?".format(err_msg))
+                    elif address_error_2 in line:
+                        err_msg = line.split(address_error_2)[1]
+                        address = err_msg.split(" ")[0]
+                        log_error_and_exit(
+                            "Failed to bind to address: {}. Is port open?".format(address))
+
+    def is_running(self):
+        self.check_fatals()
+        return self.get_pid() and self.process and self.process.poll() is None
 
     @staticmethod
     def get_command(pid):
@@ -206,6 +469,17 @@ class ProcessManager(object):
         except subprocess.CalledProcessError as e:
             return ""
 
+    @staticmethod
+    def is_process_running(name, pid_dir):
+        return ProcessManager(name, cmd="", log_dir="", data_dir=pid_dir).get_pid() is not None
+
+
+def log_error_and_exit(msg):
+    logging.error(msg)
+    sys.exit(1)
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
     YugaByteProcessManager().run()
