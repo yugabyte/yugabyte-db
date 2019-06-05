@@ -181,6 +181,7 @@ class PostgresBuilder:
                 "Compiler type not specified using either --compiler_type or YB_COMPILER_TYPE")
 
         self.export_compile_commands = os.environ.get('YB_EXPORT_COMPILE_COMMANDS') == '1'
+
         # This allows to skip the time-consuming compile commands file generation if it already
         # exists during debugging of this script.
         self.export_compile_commands_lazily = \
@@ -322,6 +323,12 @@ class PostgresBuilder:
 
         # Do not try to make rpaths relative during the configure step, as that may slow it down.
         self.set_env_var('YB_DISABLE_RELATIVE_RPATH', '1' if step == 'configure' else '0')
+        if self.build_type == 'compilecmds':
+            os.environ['YB_SKIP_LINKING'] = '1'
+
+        # This could be set to False to skip build and just perform additional tasks such as
+        # exporting the compilation database.
+        self.should_build = True
 
     def sync_postgres_source(self):
         logging.info("Syncing postgres source code")
@@ -483,31 +490,41 @@ class PostgresBuilder:
 
         compile_commands_files = []
 
-        for work_dir in [self.pg_build_root, os.path.join(self.pg_build_root, 'contrib')]:
+        work_dirs = [self.pg_build_root]
+        if self.build_type != 'compilecmds':
+            work_dirs.append(os.path.join(self.pg_build_root, 'contrib'))
+
+        for work_dir in work_dirs:
             with WorkDirContext(work_dir):
                 # Create a script to run Make easily with the right environment.
-                make_script_path = 'make.sh'
-                with open(make_script_path, 'w') as out_f:
-                    out_f.write(
-                        '#!/usr/bin/env bash\n'
-                        '. "${BASH_SOURCE%/*}"/env.sh\n'
-                        'make "$@"\n')
-                with open('env.sh', 'w') as out_f:
-                    out_f.write(env_script_content)
+                if self.should_build:
+                    make_script_path = 'make.sh'
+                    with open(make_script_path, 'w') as out_f:
+                        out_f.write(
+                            '#!/usr/bin/env bash\n'
+                            '. "${BASH_SOURCE%/*}"/env.sh\n'
+                            'make "$@"\n')
+                    with open('env.sh', 'w') as out_f:
+                        out_f.write(env_script_content)
 
-                run_program(['chmod', 'u+x', make_script_path])
+                    run_program(['chmod', 'u+x', make_script_path])
 
-                # Actually run Make.
-                if is_verbose_mode():
-                    logging.info("Running make in the %s directory", work_dir)
-                run_program(
-                    make_cmd, stdout_stderr_prefix='make', cwd=work_dir, shell=True,
-                    error_ok=True).print_output_and_raise_error_if_failed()
-                run_program(
-                        'make install', stdout_stderr_prefix='make_install',
-                        cwd=work_dir, shell=True, error_ok=True
-                    ).print_output_and_raise_error_if_failed()
-                logging.info("Successfully ran make in the %s directory", work_dir)
+                    # Actually run Make.
+                    if is_verbose_mode():
+                        logging.info("Running make in the %s directory", work_dir)
+                    run_program(
+                        make_cmd, stdout_stderr_prefix='make', cwd=work_dir, shell=True,
+                        error_ok=True).print_output_and_raise_error_if_failed()
+                if self.build_type == 'compilecmds':
+                    logging.info(
+                            "Not running make install in the %s directory since we are only "
+                            "generating the compilation database", work_dir)
+                else:
+                    run_program(
+                            'make install', stdout_stderr_prefix='make_install',
+                            cwd=work_dir, shell=True, error_ok=True
+                        ).print_output_and_raise_error_if_failed()
+                    logging.info("Successfully ran make in the %s directory", work_dir)
 
                 if self.export_compile_commands:
                     logging.info("Generating the compilation database in directory '%s'", work_dir)
@@ -534,7 +551,10 @@ class PostgresBuilder:
         compilation commands file.
         """
         new_compile_commands = []
-        for compile_commands_path in compile_commands_files:
+        for compile_commands_path in (
+                compile_commands_files + [
+                    os.path.join(self.build_root, 'compile_commands.json')
+                ]):
             with open(compile_commands_path) as compile_commands_file:
                 new_compile_commands += json.load(compile_commands_file)
 
@@ -543,21 +563,37 @@ class PostgresBuilder:
             for item in new_compile_commands
         ]
 
-        # Add the top-level compile commands file without any changes.
-        with open(os.path.join(self.build_root, 'compile_commands.json')) as compile_commands_file:
-            new_compile_commands += json.load(compile_commands_file)
-
         output_path = os.path.join(self.build_root, 'combined_compile_commands.json')
         with open(output_path, 'w') as compile_commands_output_file:
             json.dump(new_compile_commands, compile_commands_output_file, indent=2)
         logging.info("Wrote the compilation commands file to: %s", output_path)
 
+        dest_link_path = os.path.join(YB_SRC_ROOT, 'compile_commands.json')
+        if (not os.path.exists(dest_link_path) or
+                os.path.realpath(dest_link_path) != os.path.realpath(output_path)):
+            if os.path.exists(dest_link_path):
+                logging.info("Removing the old file/link at %s", dest_link_path)
+                os.remove(dest_link_path)
+            os.symlink(
+                os.path.relpath(
+                    os.path.realpath(output_path),
+                    os.path.realpath(YB_SRC_ROOT)),
+                dest_link_path)
+            logging.info("Created symlink at %s", dest_link_path)
+
     def postprocess_pg_compile_command(self, compile_command_item):
         directory = compile_command_item['directory']
+        if 'catalog_manager.cc' in str(compile_command_item):
+            logging.info(json.dumps(compile_command_item))
         if 'command' not in compile_command_item and 'arguments' not in compile_command_item:
-            logging.error(
-                "Invalid compile command item: %s (neither 'command' nor 'arguments' are present)",
-                repr(compile_command_item))
+            raise ValueError(
+                "Invalid compile command item: %s (neither 'command' nor 'arguments' are present)" %
+                json.dumps(compile_command_item))
+        if 'command' in compile_command_item and 'arguments' in compile_command_item:
+            raise ValueError(
+                "Invalid compile command item: %s (both 'command' and 'arguments' are present)" %
+                json.dumps(compile_command_item))
+
         file_path = compile_command_item['file']
 
         new_directory = directory
@@ -571,43 +607,76 @@ class PostgresBuilder:
                 new_directory = directory
 
         if 'arguments' in compile_command_item:
-            had_arguments = True
+            assert 'command' not in compile_command_item
             arguments = compile_command_item['arguments']
         else:
-            had_arguments = False
+            assert 'arguments' not in compile_command_item
             arguments = compile_command_item['command'].split()
 
         new_args = []
+        already_added_include_paths = set()
+        original_include_paths = []
+
+        def add_original_include_path(original_include_path):
+            if (original_include_path not in already_added_include_paths and
+                    original_include_path not in original_include_paths):
+                original_include_paths.append(original_include_path)
+
         for arg in arguments:
             added = False
             if arg.startswith('-I'):
                 include_path = arg[2:]
-                if not os.path.isabs(include_path):
+                if os.path.isabs(include_path):
+                    # This is already an absolute path, append it as is.
+                    new_args.append(arg)
+                else:
+                    # This is a relative path. Try to rewrite it relative to the new directory
+                    # where we are running the compiler.
                     new_include_path = os.path.join(new_directory, include_path)
                     if os.path.isdir(new_include_path):
                         new_args.append('-I' + new_include_path)
-                        added = True
+                        # This is to avoid adding duplicate paths.
+                        already_added_include_paths.add(new_include_path)
+                        already_added_include_paths.add(os.path.abspath(new_include_path))
+                    else:
+                        # Append the path as is -- maybe the directory will get created later.
+                        new_args.append(arg)
 
-            if not added:
+                    # In any case, for relative paths, add the absolute path in the original
+                    # directory at the end of the compiler command line.
+                    add_original_include_path(
+                        os.path.abspath(os.path.join(directory, include_path))
+                    )
+            else:
                 new_args.append(arg)
 
+            # Replace the compiler path in compile_commands.json according to user preferences.
+            compiler_basename = os.path.basename(new_args[0])
+            new_compiler_path = None
+            if compiler_basename in ['cc', 'gcc', 'clang']:
+                new_compiler_path = os.environ.get('YB_CC_FOR_COMPILE_COMMANDS')
+            elif compiler_basename in ['c++', 'g++', 'clang++']:
+                new_compiler_path = os.environ.get('YB_CXX_FOR_COMPILE_COMMANDS')
+            else:
+                logging.warning(
+                    "Unexpected compiler path: %s. Compile command: %s",
+                    new_args[0], json.dumps(compile_command_item))
+            if new_compiler_path:
+                new_args[0] = new_compiler_path
+
+        new_args += ['-I%s' % include_path for include_path in original_include_paths]
+
+        new_file_path = file_path
         if not os.path.isabs(file_path):
             new_file_path = os.path.join(new_directory, file_path)
             if not os.path.isfile(new_file_path):
                 new_file_path = file_path
 
-        result = {
+        return {
             'directory': new_directory,
-            'file': new_file_path
+            'file': new_file_path,
+            'arguments': new_args
         }
-
-        # Preserve the existing format with either "command" or "arguments".
-        if had_arguments:
-            result['arguments'] = new_args
-        else:
-            result['command'] = ' '.join(new_args)
-
-        return result
 
     def run(self):
         if get_bool_env_var('YB_SKIP_POSTGRES_BUILD'):
@@ -632,11 +701,16 @@ class PostgresBuilder:
             logging.info(
                 "PostgreSQL is already up-to-date in directory %s, not rebuilding.",
                 self.pg_build_root)
-            return
+            if self.export_compile_commands:
+                self.should_build = False
+                logging.info("Still need to create compile_commands.json, proceeding.")
+            else:
+                return
         with WorkDirContext(self.pg_build_root):
-            self.sync_postgres_source()
-            if os.environ.get('YB_PG_SKIP_CONFIGURE', '0') != '1':
-                self.configure_postgres()
+            if self.should_build:
+                self.sync_postgres_source()
+                if os.environ.get('YB_PG_SKIP_CONFIGURE', '0') != '1':
+                    self.configure_postgres()
             self.make_postgres()
 
         final_build_stamp_no_env = self.get_build_stamp(include_env_vars=False)
