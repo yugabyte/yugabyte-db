@@ -22,6 +22,10 @@ There are a number of resources to get started, here is a recommended reading li
 * Go through the [architecture section of the docs](../architecture/). It will give an overview of the high level components in the database.
 
 
+## Sign the CLA
+
+Before your first contribution is accepted, you should complete the online form [YugaByte CLA (contributor license agreement)](https://docs.google.com/forms/d/11hn-vBGhOZRunclC3NKmSX1cvQVrU--r0ldDLqasRIo/edit).
+
 ## Pick an area
 
 There are a few areas you can get involved in depending on your interests.
@@ -39,13 +43,15 @@ This is the C++ code and the unit tests that comprise the core of YugaByte DB. Y
 
 Issues are tagged with other useful labels as described below.
 
-| Key Labels     |  Comments      |
-| -------------- | -------------- |
-| `bug`          | Bugs can have a small or large scope, so make sure to understand the bug. |
-| `docs`         | An issue related to the docs infrastructure, or content that needs to be added to the docs. |
-| `enhancement`  | An enhancement is often done to an existing feature, and is usually limited in scope. |
-| `new feature`  | An new feature does not exist. New features can be complex additions to the existing system, or standalone pieces. |
-| `question`     | A question that needs to be answered. |
+| Key Labels         |  Comments      |
+| ------------------ | -------------- |
+| `bug`              | Bugs can have a small or large scope, so make sure to understand the bug. |
+| `docs`             | An issue related to the docs infrastructure, or content that needs to be added to the docs. |
+| `enhancement`      | An enhancement is often done to an existing feature, and is usually limited in scope. |
+| `good first issue` | A great first issue to work on as your initial contribution to YugaByte DB. |
+| `help wanted`      | Issues that are very useful and relatively standalone, but not actively being worked on. |
+| `new feature`      | An new feature does not exist. New features can be complex additions to the existing system, or standalone pieces. |
+| `question`         | A question that needs to be answered. |
 
 * If you are just starting out contributing to YugaByte DB, first off welcome and thanks! Look for issues labelled [good first issue](https://github.com/YugaByte/yugabyte-db/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
 
