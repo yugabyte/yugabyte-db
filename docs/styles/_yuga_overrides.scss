@@ -953,6 +953,80 @@ a {
       }
     }
   }
+
+  .help-footer-btn {
+    position: fixed;
+    bottom: 0; 
+    right: 60px;
+    height: 36px;
+    width: 140px;
+    padding: 5px 10px;
+    color: white;
+    border-radius: 4px 4px 0 0;
+    font-size: 11px;
+    background-color: #f75821;
+    cursor: pointer;
+    z-index: 9999;
+
+    -moz-transition: bottom 300ms ease;
+    -webkit-transition: bottom 300ms ease;
+    -ms-transition: bottom 300ms ease;
+    -o-transition: bottom 300ms ease;
+    transition: bottom 300ms ease;
+  
+    &:hover {
+      background-color: #d24818;
+    }
+  
+    i {
+      color: white;
+      margin-right: 5px;
+    }
+  }
+
+  .help-footer-btn.shown {
+    bottom: 150px;
+  }
+  
+  .help-footer-menu {
+    position: fixed;
+    background-color: #fcfcfc;
+    border-left: 1px solid #f2f2f2;
+    border-right: 1px solid #f2f2f2;
+    padding: 5px 20px 10px 20px;
+    bottom: -150px;
+    right: 60px;
+    z-index: 500;
+    width: 140px;
+    font-size: 11px;
+    margin-top: 0;
+    transition: bottom 300ms ease;
+    -moz-transition: bottom 300ms ease;
+    -webkit-transition: bottom 300ms ease;
+    -ms-transition: bottom 300ms ease;
+    -o-transition: bottom 300ms ease;
+
+    li {
+      margin-left: 0;
+    }
+
+    a {
+      border: none;
+      text-decoration: none;
+
+      i {
+        margin-right: 4px;
+      }
+    }
+
+    li:before {
+      content: unset;
+    }
+  }
+
+  .help-footer-menu.shown {
+    bottom: 0;
+  }
 }
 .pagination a .button,
 .pagination a .title {

@@ -119,6 +119,9 @@
               $('#toc-aside').trigger('sticky_kit:recalc');
             }, 300);
           });
+          $('.help-footer-btn').click(() => {
+            $('.help-footer-btn, .help-footer-menu').toggleClass('shown');
+          });
         });
       })(jQuery);
     </script>
