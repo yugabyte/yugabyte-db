@@ -96,7 +96,7 @@ installdirs-tests: installdirs
 
 
 # Get some extra C modules from contrib/spi
-
+ifneq ($(YB_BUILD_TYPE), compilecmds)
 all: refint$(DLSUFFIX) autoinc$(DLSUFFIX)
 
 refint$(DLSUFFIX): $(top_builddir)/contrib/spi/refint$(DLSUFFIX)
@@ -113,6 +113,7 @@ submake-contrib-spi: | submake-libpgport submake-generated-headers
 	$(MAKE) -C $(top_builddir)/contrib/spi
 
 .PHONY: submake-contrib-spi
+endif
 
 # Tablespace setup
 
