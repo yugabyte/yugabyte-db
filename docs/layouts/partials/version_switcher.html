@@ -14,13 +14,16 @@
   {{ $currentVersion := (.Scratch.Get "currentVersionTitle") }}
 {{ end }} 
 {{ if gt (len (where (readDir (relURL "content/")) ".IsDir" "ne" false)) 1 }}
+  {{ $versions := where (readDir (relURL "content/")) ".IsDir" "ne" false }}
 <div class="dropdown" id="version-switcher">
     <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
         {{ $currentVersion }}
     </button>
+    
     <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-        {{ range where (readDir (relURL "content/")) ".IsDir" "ne" false}}
-            <a class="dropdown-item" href="/{{.Name}}/">{{ .Name }}</a>
+        <a class="dropdown-item" href="/latest/">{{ (index $versions 0).Name }}</a>
+        {{ range sort (after 1 $versions) "Name" "desc" }}
+            <a class="dropdown-item" href="/{{.Name}}/">{{ .Name }} (earlier version)</a>
         {{ end }}
     </div>
   </div>
