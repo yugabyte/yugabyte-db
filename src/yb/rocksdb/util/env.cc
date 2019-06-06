@@ -78,6 +78,12 @@ Status Env::GetChildrenFileAttributes(const std::string& dir,
   return Status::OK();
 }
 
+yb::Result<uint64_t> Env::GetFileSize(const std::string& fname) {
+  uint64_t result;
+  RETURN_NOT_OK(GetFileSize(fname, &result));
+  return result;
+}
+
 SequentialFile::~SequentialFile() {
 }
 

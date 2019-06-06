@@ -2314,7 +2314,8 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
 
     if (s.ok()) {
       // find offset in manifest file where this version is stored.
-      new_manifest_file_size = descriptor_log_->file()->GetFileSize();
+      s = db_options_->get_checkpoint_env()->GetFileSize(
+          descriptor_log_file_name_, &new_manifest_file_size);
     }
 
     if (edit->is_column_family_drop_) {

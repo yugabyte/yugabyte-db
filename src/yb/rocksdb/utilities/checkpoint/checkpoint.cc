@@ -62,7 +62,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
 
   Status s = db->GetCheckpointEnv()->FileExists(checkpoint_dir);
   if (s.ok()) {
-    return STATUS(InvalidArgument, "Directory exists");
+    return STATUS_FORMAT(InvalidArgument, "Directory exists: $0", checkpoint_dir);
   } else if (!s.IsNotFound()) {
     assert(s.IsIOError());
     return s;
@@ -124,7 +124,8 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
     if (!is_table_file || !same_fs) {
       RLOG(db->GetOptions().info_log, "Copying %s", src_fname.c_str());
       std::string dest_name = full_private_path + src_fname;
-      s = CopyFile(db->GetCheckpointEnv(), db->GetName() + src_fname, dest_name, 0);
+      s = CopyFile(db->GetCheckpointEnv(), db->GetName() + src_fname, dest_name,
+                   type == kDescriptorFile ? manifest_file_size : 0);
     }
   }
   RLOG(db->GetOptions().info_log, "Number of log files %" ROCKSDB_PRIszt,
