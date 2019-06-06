@@ -860,6 +860,10 @@ struct DBOptions {
   // Default: Env::Default()
   Env* env;
 
+  Env* get_checkpoint_env() const {
+    return checkpoint_env ? checkpoint_env : env;
+  }
+
   // Env used to create checkpoints. Default: Env::Default()
   Env* checkpoint_env;
 
