@@ -86,17 +86,18 @@ the one-byte prefix that puts these records before all regular records in RocksD
 
 #### 2. Transaction metadata records
 
-`TxnId -> StatusTabletId, IsolationLevel, Priority`
+- `TxnId -> StatusTabletId, IsolationLevel, Priority`
+
     - `StatusTabletId` is the id of the tablet that keeps track of this transaction's status.
       Unlike the case of tables/tablets holding user data, where we are using a [hash-based
       mapping](../../concepts/sharding/) from keys to tablets, there is no deterministic way
       to compute the transaction status tablet id by transaction id, so this information must be
       explicitly passed to all components handling a particular transaction.
-    - `Isolation Level` ([Snapshot Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) or
-      [Serializable Isolation](https://en.wikipedia.org/wiki/Serializability)). The current
-      implementation supports snapshot isolation only, and we are working on supporting serializable
-      isolation as well.
-    - `Priority`. This priority is assigned randomly during transaction creation. When a conflict
+
+    - `Isolation Level` [Snapshot Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) or
+      [Serializable Isolation](https://en.wikipedia.org/wiki/Serializability). 
+
+    - `Priority` This priority is assigned randomly during transaction creation. When a conflict
       is detected between two transactions, the transaction with lower priority is
       aborted and restarted.
 

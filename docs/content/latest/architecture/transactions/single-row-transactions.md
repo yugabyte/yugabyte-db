@@ -13,7 +13,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-YugaByte DB currently offers ACID semantics for mutations involving a single row or rows that fall
+YugaByte DB offers ACID semantics for mutations involving a single row or rows that fall
 within the same shard (partition, tablet). These mutations incur only one network roundtrip between
 the distributed consensus peers.
 
@@ -26,7 +26,7 @@ only one round trip in YugaByte DB.
    UPDATE ... IF EXISTS
 ```
 
-This is unlike Apache Cassandra, which uses a concept called lightweight transactions to achieve
+Note that this is unlike Apache Cassandra, which uses a concept called lightweight transactions to achieve
 correctness for these read-modify-write operations and incurs [4-network round trip
 latency](https://docs.datastax.com/en/cassandra/3.0/cassandra/dml/dmlLtwtTransactions.html).
 
@@ -38,12 +38,7 @@ corresponding to the same key, e.g. of a particular column in a particular row. 
 multiple versions of the same key are stored in each replica's DocDB are described in [here](../../concepts/docdb/persistence/#mapping-docdb-documents-to-rocksdb). The last part of each key is a timestamp, which allows to quickly navigate to a particular version of a key in the RocksDB
 key-value store.
 
-The timestamp that we are using for MVCC comes from the [Hybrid Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local realtime (physical) clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal
-chain of the form "A happens before B on the same server" or "A happens on one server, which then
-sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an
-increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and
-always updating the hybrid time on the receiving server to the highest value seen, including the
-current physical time on the server.  Multiple aspects of YugaByte DB's transaction model rely on
+The timestamp that we are using for MVCC comes from the [Hybrid Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local realtime (physical) clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value seen, including the current physical time on the server.  Multiple aspects of YugaByte DB's transaction model rely on
 these properties of Hybrid Time, e.g.:
 
 * Hybrid timestamps assigned to committed Raft log entries in the same tablet always keep

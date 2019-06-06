@@ -33,8 +33,10 @@ YugaByte DB supports single-key linearizable writes. Linearizability is one of t
 
 ### Multi-Key ACID Transactions
 
-YugaByte DB supports multi-key transactions with Snapshot Isolation, note that the Serializable Isolation level is nearing completion as of this writing (Feb 2019).
+YugaByte DB supports multi-key transactions with both Serializable and Snapshot Isolation. 
 
+- The [YSQL](../../api/ysql/) API supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Note that YSQL Serializable support was added in [v1.2.6](../../releases/v1.2.6/).
+- The [YCQL](../../api/ycql/dml_transaction/) API supports only Snapshot Isolation using the `BEGIN TRANSACTION` syntax.
 
 {{< tip title="Read More about Consistency" >}}
 * Achieving [consistency with Raft consensus](../docdb/replication/).
@@ -42,7 +44,6 @@ YugaByte DB supports multi-key transactions with Snapshot Isolation, note that t
 * [Single-key linearizable transactions](../transactions/single-row-transactions/) in YugaByte DB.
 * The architecture of [distributed transactions](../transactions/single-row-transactions/).
 {{< /tip >}}
-
 
 ## Query APIs
 

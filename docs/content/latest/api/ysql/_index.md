@@ -77,6 +77,9 @@ TCL commands manage transactions of operations on the database.
 | [`SET TRANSACTION`](commands/txn_set) | Set transaction behaviors |
 | [`SHOW TRANSACTION`](commands/txn_show) | Show properties of a transaction |
 
+
+Note that Serializable isolation level for multi-key transactions was added in [v1.2.6](../../releases/v1.2.6/).
+
 ## Session and System Control
 
 | Statement | Description |
