@@ -2220,7 +2220,7 @@ ExecModifyTable(PlanState *pstate)
 		slot = planSlot;
 
 		if (IsYugaByteEnabled() && resultRelInfo->ri_RelationDesc->trigdesc &&
-		    !IsolationIsYBSerializable()) 
+		    !IsolationIsSerializable())
 		{
 			YBRaiseNotSupported("Operation only supported in SERIALIZABLE"
 			                    "isolation level", 1199);
@@ -2251,7 +2251,7 @@ ExecModifyTable(PlanState *pstate)
 				 */
 				if (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
 					(YBCRelInfoHasSecondaryIndices(resultRelInfo) ||
-					YBRelHasOldRowTriggers(resultRelInfo->ri_RelationDesc, 
+					YBRelHasOldRowTriggers(resultRelInfo->ri_RelationDesc,
 					                       operation)))
 				{
 					resno = ExecFindJunkAttribute(junkfilter, "wholerow");
@@ -2278,7 +2278,7 @@ ExecModifyTable(PlanState *pstate)
 						elog(ERROR, "ybctid is NULL");
 
 					oldtupdata.t_ybctid = datum;
-					
+
 					oldtuple = &oldtupdata;
 				}
 				else if (relkind == RELKIND_RELATION || relkind == RELKIND_MATVIEW)
