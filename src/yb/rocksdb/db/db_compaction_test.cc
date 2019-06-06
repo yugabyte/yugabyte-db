@@ -30,9 +30,13 @@
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/util/random_util.h"
+#include "yb/util/test_util.h"
+
 DECLARE_bool(flush_rocksdb_on_shutdown);
 
 using std::atomic;
+using namespace std::literals;
 
 namespace rocksdb {
 
@@ -266,6 +270,51 @@ TEST_F(DBCompactionTest, LastFlushedOpId) {
 
 TEST_F(DBCompactionTest, LastFlushedOpIdWithCompaction) {
   TestFlushedOpId(true /* compact */, this);
+}
+
+TEST_F(DBCompactionTest, Checkpoint) {
+  std::atomic<int> checkpoints(0);
+
+  yb::TestThreadHolder thread_holder;
+
+  thread_holder.AddThread([this, &stop = thread_holder.stop_flag()] {
+    yb::SetFlagOnExit set_flag(&stop);
+
+    int key = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      WriteBatch batch;
+      ++key;
+      batch.Put(std::to_string(key), std::to_string(-key));
+
+      WriteOptions write_options;
+      write_options.disableWAL = true;
+      dbfull()->Write(write_options, &batch);
+      dbfull()->TEST_FlushMemTable(true);
+    }
+  });
+
+  thread_holder.AddThread([this, &stop = thread_holder.stop_flag(), &checkpoints] {
+    yb::SetFlagOnExit set_flag(&stop);
+
+    auto checkpoint_dir = test::TmpDir(env_) + "/checkpoint_" + yb::RandomHumanReadableString(10);
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(checkpoint::CreateCheckpoint(dbfull(), checkpoint_dir));
+
+      auto options = CurrentOptions();
+      DB* checkpoint_db_raw_ptr = nullptr;
+      options.create_if_missing = false;
+      ASSERT_OK(rocksdb::DB::Open(options, checkpoint_dir, &checkpoint_db_raw_ptr));
+      std::unique_ptr<rocksdb::DB> checkpoint_db(checkpoint_db_raw_ptr);
+      checkpoint_db.reset();
+
+      ASSERT_OK(DestroyDB(checkpoint_dir, options));
+      ++checkpoints;
+    }
+  });
+
+  thread_holder.WaitAndStop(5s);
+
+  LOG(INFO) << "Total checkpoints: " << checkpoints.load(std::memory_order_acquire);
 }
 
 TEST_F(DBCompactionTest, SkipStatsUpdateTest) {

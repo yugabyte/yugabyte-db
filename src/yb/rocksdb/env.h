@@ -317,6 +317,8 @@ class Env {
   // Store the size of fname in *file_size.
   virtual Status GetFileSize(const std::string& fname, uint64_t* file_size) = 0;
 
+  yb::Result<uint64_t> GetFileSize(const std::string& fname);
+
   // Store the last modification time of fname in *file_mtime.
   virtual Status GetFileModificationTime(const std::string& fname,
                                          uint64_t* file_mtime) = 0;
