@@ -89,7 +89,7 @@
             a.setAttribute("class", "headerlink");
             a.setAttribute("href", "#" + headers[i].id);
             a.setAttribute("title", "Permanent link")
-            a.innerHTML = {{ or .Site.Params.permalink "#" }};
+            a.innerHTML = '<i class="fa fa-link"></i>';
             headers[i].appendChild(a);
             //let b = document.createElement("a");
             //b.setAttribute("class", "issuelink");

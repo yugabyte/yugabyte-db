@@ -182,11 +182,8 @@ a {
   }
 
   .links {
-    margin-top: 105px;
-    position: absolute;
     z-index: 2;
-    top: 0;
-    right: 0;
+    display: inline;
   }
 
   a {
@@ -198,30 +195,24 @@ a {
       text-decoration: none !important;
     }
     
-    &.headerlink:hover {
-      background-color: $YB_ORANGE;
-    }
     &.issuelink:hover, &.issuelink.active {
       background-color: $YB_VIOLET;
       color: #fff;
     }
     &.headerlink, &.issuelink {
-      float: right;
-      margin-left: 5px;
-      font-size: 14px;
+      margin-left: 20px;
+      font-size: 16px;
       color: rgba($YB_DARK_BLUE, 0.5);
-      
-      &, &:hover, &:focus, &:active {
-        border: none !important;
-      }
+      float: unset;
+
       &:hover {
         color: #fff;
+        border-bottom: 1px dotted $YB_DARK_BLUE;
       }
       width: 24px; 
       height: 24px;
       text-align: center;
       line-height: 24px;
-      border-radius: 50%;
     }
   }
 
@@ -387,6 +378,15 @@ a {
 }
 .drawer h3 .headerlink {
   display: none;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  .headerlink {
+    display: none;
+  }
+  &:hover .headerlink {
+    display: inline;
+  }
 }
 
 #drawerMenu {
