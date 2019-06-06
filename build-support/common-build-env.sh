@@ -733,7 +733,6 @@ set_cmake_build_type_and_compiler_type() {
   # use the default compiler in CLion-triggered builds.
 
   cmake_opts+=( "-DCMAKE_BUILD_TYPE=$cmake_build_type" )
-  cmake_opts+=( "-DYB_BUILD_TYPE=$build_type" )
   cmake_opts+=( "${YB_DEFAULT_CMAKE_OPTS[@]}" )
 
   if using_ninja; then
