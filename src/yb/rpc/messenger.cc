@@ -355,7 +355,7 @@ bool Messenger::TEST_ShouldArtificiallyRejectOutgoingCallsTo(const IpAddress &re
 }
 
 Status Messenger::TEST_GetReactorMetrics(size_t reactor_idx, ReactorMetrics* metrics) {
-  if (reactor_idx < 0 || reactor_idx >= reactors_.size()) {
+  if (reactor_idx >= reactors_.size()) {
     return STATUS_FORMAT(
         InvalidArgument, "Invalid reactor index $0, should be >=0 and <$1", reactor_idx,
         reactors_.size());
