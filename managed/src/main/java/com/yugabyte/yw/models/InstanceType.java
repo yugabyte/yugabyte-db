@@ -163,7 +163,9 @@ public class InstanceType extends Model {
    * Query Helper to find supported instance types for a given cloud provider.
    */
   public static List<InstanceType> findByProvider(Provider provider) {
-    List<InstanceType> entries = InstanceType.find.where().eq("provider_code", provider.code)
+    List<InstanceType> entries = InstanceType.find.where()
+        .eq("provider_code", provider.code)
+        .eq("active", true)
         .findList();
     if (provider.code.equals("aws")) {
       // For AWS, we would filter and show only supported instance prefixes

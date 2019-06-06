@@ -10,6 +10,8 @@ import static org.junit.Assert.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -80,12 +82,21 @@ public class InstanceTypeTest extends FakeDBApplication {
   public void testFindByProvider() {
     Provider newProvider = ModelFactory.gcpProvider(defaultCustomer);
     InstanceType.upsert(defaultProvider.code, "c3.medium", 3, 10.0, defaultDetails);
+    InstanceType.upsert(defaultProvider.code, "c3.large", 3, 10.0, defaultDetails);
+    InstanceType.upsert(defaultProvider.code, "c3.xlarge", 3, 10.0, defaultDetails);
+    InstanceType instanceType = InstanceType.get(defaultProvider.code, "c3.xlarge");
+    instanceType.setActive(false);
+    instanceType.save();
     InstanceType.upsert(newProvider.code, "bar", 2, 10.0, defaultDetails);
     List<InstanceType> instanceTypeList = InstanceType.findByProvider(defaultProvider);
     assertNotNull(instanceTypeList);
-    assertEquals(1, instanceTypeList.size());
-    assertThat(instanceTypeList.get(0).getInstanceTypeCode(),
-               allOf(notNullValue(), equalTo("c3.medium")));
+    assertEquals(2, instanceTypeList.size());
+    Set<String> possibleTypes = new HashSet<>();
+    possibleTypes.add("c3.medium");
+    possibleTypes.add("c3.large");
+    for (InstanceType it : instanceTypeList) {
+      assertTrue(possibleTypes.contains(it.getInstanceTypeCode()));
+    }
   }
 
   @Test
