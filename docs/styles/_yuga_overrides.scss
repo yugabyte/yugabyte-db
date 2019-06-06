@@ -225,6 +225,37 @@ a {
     }
   }
 
+  .download-binary-link {
+    border-bottom: none;
+    &:hover {
+      border-bottom-style: none;
+    }
+
+    button {
+      cursor: pointer;
+      border: 1px solid $YB_DARK_BLUE;
+      color: $YB_DARK_BLUE;
+      padding: 10px 15px 5px 15px;
+
+      &:hover {
+        color: #ffffff !important;
+        background: $YB_ORANGE;
+        border-color: $YB_ORANGE;
+        transition: all 0.4s ease 0s;
+      }
+
+      .download-text {
+        font-size: 18px;
+        margin-left: 8px;
+      }
+
+      i {
+        color: inherit;
+        font-size: 1.75em;
+      }
+    }
+  }  
+
   svg {
     max-width: 100%;
   }
@@ -236,14 +267,6 @@ a {
 
   i {
     color: $YB_VIOLET;
-  }
-
-  table {
-    tr {
-      td {
-        
-      }
-    }
   }
 
   ul {
@@ -274,6 +297,12 @@ a {
       }
     }
   }
+}
+
+.release-os {
+  font-size: 11px;
+  color: $YB_DARK_BLUE;
+  margin-left: 2px;
 }
 
 @media only screen and (max-width: 959px) {
@@ -1056,6 +1085,10 @@ a {
 .pagination .icon {
   padding: 8px 0;
   margin: 4px 0;
+}
+
+.download-binary-link {
+  border-bottom: none;
 }
 
 @media screen and (max-width: 559px) {
