@@ -223,34 +223,6 @@ static const char *const subdirs[] = {
 	"pg_logical/mappings"
 };
 
-static const char *const local_node_subdirs[] = {
-  "global",
-  "pg_wal/archive_status",
-  "pg_commit_ts",
-  "pg_notify",
-  "pg_subtrans",
-  "pg_twophase",
-  "pg_multixact",
-  "pg_multixact/members",
-  "pg_multixact/offsets",
-  "base",
-  "base/1",
-  "pg_replslot",
-  "pg_tblspc",
-  "pg_stat",
-  "pg_stat_tmp",
-  "pg_xact",
-  "pg_logical",
-  "pg_logical/snapshots",
-  "pg_logical/mappings"
-};
-
-struct char_container
-{
-  int len;
-  const char *const *data;
-};
-
 /* path to 'initdb' binary directory */
 static char bin_path[MAXPGPATH];
 static char backend_exec[MAXPGPATH];
@@ -3077,9 +3049,6 @@ initialize_data_directory(void)
 {
 	PG_CMD_DECL;
 	int      i;
-  const struct char_container subdirs_info = IsYugaByteLocalNodeInitdb()
-      ? (struct char_container) {lengthof(local_node_subdirs), local_node_subdirs}
-      : (struct char_container) {lengthof(subdirs), subdirs};
 
 	setup_signals();
 
@@ -3099,11 +3068,11 @@ initialize_data_directory(void)
   printf(_("creating subdirectories ... "));
   fflush(stdout);
 
-  for (i = 0; i < subdirs_info.len; i++)
+  for (i = 0; i < lengthof(subdirs); i++)
   {
     char     *path;
 
-    path = psprintf("%s/%s", pg_data, subdirs_info.data[i]);
+    path = psprintf("%s/%s", pg_data, subdirs[i]);
 
     /*
      * The parent directory already exists, so we only need mkdir() not
