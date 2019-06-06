@@ -30,8 +30,7 @@ using client::YBSession;
 using client::YBSessionPtr;
 using client::LocalTabletFilter;
 
-// Transaction isolation levels from xact.h
-constexpr int kRepeatableRead = 2;
+// This should match XACT_SERIALIZABLE from xact.h.
 constexpr int kSerializable = 3;
 
 PgTxnManager::PgTxnManager(
@@ -76,7 +75,7 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
   VLOG(2) << "BeginWriteTransactionIfNecessary: txn_in_progress_="
           << txn_in_progress_;
 
-  auto isolation = isolation_level_ == kRepeatableRead || isolation_level_ == kSerializable
+  auto isolation = isolation_level_ == kSerializable
       ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
   // Sanity check, query layer should ensure this does not happen.
   if (txn_ && txn_->isolation() != isolation) {

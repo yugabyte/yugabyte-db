@@ -58,7 +58,10 @@ public class TestPgWrapper extends BasePgSQLTest {
       statement.execute("CREATE TABLE test2(v text, r float, h bigint, PRIMARY KEY (h, r))");
 
       // Table already exists.
-      runInvalidQuery(statement, getSimpleTableCreationStatement("test", "v"));
+      runInvalidQuery(
+          statement,
+          getSimpleTableCreationStatement("test", "v", PartitioningMode.HASH),
+          "already exists");
 
       // Drop tables.
       statement.execute("DROP TABLE test");

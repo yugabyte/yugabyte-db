@@ -27,7 +27,6 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
 import static org.yb.AssertionWrappers.*;
@@ -45,12 +44,13 @@ public class TestPgTransactions extends BasePgSQLTest {
   @Test
   public void testBasicTransaction() throws Exception {
     createSimpleTable("test", "v");
-    Connection connection1 = createConnectionNoAutoCommit();
+    final IsolationLevel isolation = IsolationLevel.REPEATABLE_READ;
+    Connection connection1 = createConnection(isolation, AutoCommit.DISABLED);
     Statement statement = connection1.createStatement();
 
     // For the second connection we still enable auto-commit, so that every new SELECT will see
     // a new snapshot of the database.
-    Connection connection2 = createConnectionWithAutoCommit();
+    Connection connection2 = createConnection(isolation, AutoCommit.ENABLED);
     Statement statement2 = connection2.createStatement();
 
     for (int i = 0; i < 100; ++i) {
@@ -99,10 +99,14 @@ public class TestPgTransactions extends BasePgSQLTest {
   @Test
   public void testTransactionConflicts() throws Exception {
     createSimpleTable("test", "v");
-    Connection connection1 = createConnectionNoAutoCommit();
+    final IsolationLevel isolation = IsolationLevel.REPEATABLE_READ;
+
+    Connection connection1 = createConnection(isolation, AutoCommit.DISABLED);
     Statement statement1 = connection1.createStatement();
-    Connection connection2 = createConnectionNoAutoCommit();
+
+    Connection connection2 = createConnection(isolation, AutoCommit.DISABLED);
     Statement statement2 = connection2.createStatement();
+
     int numFirstWinners = 0;
     int numSecondWinners = 0;
     final int totalIterations = SanitizerUtil.nonTsanVsTsan(300, 100);
@@ -202,10 +206,11 @@ public class TestPgTransactions extends BasePgSQLTest {
   @Test
   public void testFailedTransactions() throws Exception {
     createSimpleTable("test", "v");
+    final IsolationLevel isolation = IsolationLevel.REPEATABLE_READ;
     try (
-         Connection connection1 = createConnectionWithAutoCommit();
+         Connection connection1 = createConnection(isolation, AutoCommit.ENABLED);
          Statement statement1 = connection1.createStatement();
-         Connection connection2 = createConnectionNoAutoCommit();
+         Connection connection2 = createConnection(isolation, AutoCommit.DISABLED);
          Statement statement2 = connection2.createStatement()) {
       Set<Row> expectedRows = new HashSet<>();
       String scanQuery = "SELECT * FROM test";

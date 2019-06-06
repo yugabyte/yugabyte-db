@@ -2154,10 +2154,14 @@ log_file_existence() {
   fi
 }
 
+is_valid_git_sha1() {
+  [[ $1 =~ ^[0-9a-f]{40} ]]
+}
+
 # Returns current git SHA1 in the variable current_git_sha1.
 get_current_git_sha1() {
   current_git_sha1=$( git rev-parse HEAD )
-  if [[ ! $current_git_sha1 =~ ^[0-9a-f]{40}$ ]]; then
+  if ! is_valid_git_sha1 "$current_git_sha1"; then
     fatal "Could not get current git SHA1 in $PWD, got: $current_git_sha1"
   fi
 }
