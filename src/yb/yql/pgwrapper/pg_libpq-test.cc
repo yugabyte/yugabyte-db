@@ -10,10 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/util/random_util.h"
-
 #include <boost/scope_exit.hpp>
 
+#include "yb/util/random_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
@@ -106,7 +105,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
         auto conn = ASSERT_RESULT(Connect());
 
         ASSERT_OK(Execute(conn.get(), "BEGIN"));
-        ASSERT_OK(Execute(conn.get(), "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+        ASSERT_OK(Execute(conn.get(), "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
 
         auto res = Fetch(conn.get(), "SELECT * FROM t");
         if (!res.ok()) {
@@ -192,12 +191,12 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableReadWriteConflict)) {
   size_t reads_won = 0, writes_won = 0;
   for (int i = 0; i != kKeys; ++i) {
     auto read_conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(Execute(read_conn.get(), "BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(Execute(read_conn.get(), "BEGIN ISOLATION LEVEL SERIALIZABLE"));
     auto res = Fetch(read_conn.get(), Format("SELECT * FROM t WHERE key = $0", i));
     auto read_status = ResultToStatus(res);
 
     auto write_conn = ASSERT_RESULT(Connect());
-    ASSERT_OK(Execute(write_conn.get(), "BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    ASSERT_OK(Execute(write_conn.get(), "BEGIN ISOLATION LEVEL SERIALIZABLE"));
     auto write_status = Execute(write_conn.get(), Format("INSERT INTO t (key) VALUES ($0)", i));
 
     std::thread read_commit_thread([&read_conn, &read_status] {

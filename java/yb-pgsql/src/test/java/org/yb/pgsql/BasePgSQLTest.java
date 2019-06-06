@@ -22,6 +22,7 @@ import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.IsInitDbDoneResponse;
+import org.yb.client.Partition;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBClusterBuilder;
@@ -205,26 +206,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     pgInitialized = true;
   }
 
-  protected void configureConnection(Connection connection) throws Exception {
-    connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+  private void configureDefaultConnectionOptions(Connection conn) throws Exception {
+    conn.setTransactionIsolation(IsolationLevel.DEFAULT.pgIsolationLevel);
+    conn.setAutoCommit(AutoCommit.DEFAULT.enabled);
   }
 
-  protected Connection createConnectionNoAutoCommit() throws Exception {
+  protected Connection createConnection(
+      IsolationLevel isolationLevel,
+      AutoCommit autoCommit) throws Exception {
     Connection conn = createConnection();
-    conn.setAutoCommit(false);
+    conn.setTransactionIsolation(isolationLevel.pgIsolationLevel);
+    conn.setAutoCommit(autoCommit.enabled);
     return conn;
   }
 
   protected Connection createConnectionSerializableNoAutoCommit() throws Exception {
-    Connection conn = createConnectionNoAutoCommit();
-    conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
-    return conn;
-  }
-
-  protected Connection createConnectionWithAutoCommit() throws Exception {
-    Connection conn = createConnection();
-    conn.setAutoCommit(true);
-    return conn;
+    return createConnection(
+        IsolationLevel.SERIALIZABLE,
+        AutoCommit.DISABLED
+    );
   }
 
   public String getPgHost(int tserverIndex) {
@@ -261,7 +261,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
           throw new NullPointerException("getConnection returned null");
         }
         connectionsToClose.add(connection);
-        configureConnection(connection);
+        configureDefaultConnectionOptions(connection);
         // JDBC does not specify a default for auto-commit, let's set it to true here for
         // determinism.
         connection.setAutoCommit(true);
@@ -796,17 +796,33 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
-  protected String getSimpleTableCreationStatement(String tableName, String valueColumnName) {
+  protected String getSimpleTableCreationStatement(
+      String tableName,
+      String valueColumnName,
+      PartitioningMode partitioningMode) {
+    String firstColumnIndexMode;
+    if (partitioningMode == PartitioningMode.HASH) {
+      firstColumnIndexMode = "HASH";
+    } else {
+      firstColumnIndexMode = "ASC";
+    }
     return "CREATE TABLE " + tableName + "(h int, r int, " + valueColumnName + " int, " +
-        "PRIMARY KEY (h, r))";
+        "PRIMARY KEY (h " + firstColumnIndexMode + ", r))";
   }
 
-  protected void createSimpleTable(String tableName, String valueColumnName) throws SQLException {
+  protected void createSimpleTable(
+      String tableName,
+      String valueColumnName,
+      PartitioningMode partitioningMode) throws SQLException {
     Statement statement = connection.createStatement();
-    String sql = getSimpleTableCreationStatement(tableName, valueColumnName);
+    String sql = getSimpleTableCreationStatement(tableName, valueColumnName, partitioningMode);
     LOG.info("Creating table " + tableName + ", SQL statement: " + sql);
     statement.execute(sql);
     LOG.info("Table creation finished: " + tableName);
+  }
+
+  protected void createSimpleTable(String tableName, String valueColumnName) throws SQLException {
+    createSimpleTable(tableName, valueColumnName, PartitioningMode.HASH);
   }
 
   protected List<Row> setupSimpleTable(String tableName) throws SQLException {

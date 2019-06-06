@@ -169,6 +169,9 @@ class PostgresBuilder:
             raise RuntimeError("Neither BUILD_ROOT or --build-root specified")
 
         self.build_root = os.path.abspath(self.args.build_root)
+        self.build_root_realpath = os.path.realpath(self.build_root)
+        self.postgres_install_dir_include_realpath = \
+            os.path.join(self.build_root_realpath, 'postgres', 'include')
         self.build_type = get_build_type_from_build_root(self.build_root)
         self.pg_build_root = os.path.join(self.build_root, 'postgres_build')
         self.build_stamp_path = os.path.join(self.pg_build_root, 'build_stamp')
@@ -616,11 +619,23 @@ class PostgresBuilder:
         new_args = []
         already_added_include_paths = set()
         original_include_paths = []
+        additional_postgres_include_paths = []
 
         def add_original_include_path(original_include_path):
             if (original_include_path not in already_added_include_paths and
                     original_include_path not in original_include_paths):
                 original_include_paths.append(original_include_path)
+
+        def handle_original_include_path(include_path):
+            if (os.path.realpath(include_path) == self.postgres_install_dir_include_realpath and
+                    not additional_postgres_include_paths):
+                additional_postgres_include_paths.extend([
+                    os.path.join(YB_SRC_ROOT, 'src', 'postgres', 'src', 'interfaces', 'libpq'),
+                    os.path.join(
+                        self.build_root_realpath, 'postgres_build', 'src', 'include'),
+                    os.path.join(
+                        self.build_root_realpath, 'postgres_build', 'interfaces', 'libpq')
+                ])
 
         for arg in arguments:
             added = False
@@ -629,7 +644,9 @@ class PostgresBuilder:
                 if os.path.isabs(include_path):
                     # This is already an absolute path, append it as is.
                     new_args.append(arg)
+                    handle_original_include_path(arg)
                 else:
+                    original_include_path = os.path.realpath(os.path.join(directory, include_path))
                     # This is a relative path. Try to rewrite it relative to the new directory
                     # where we are running the compiler.
                     new_include_path = os.path.join(new_directory, include_path)
@@ -644,9 +661,9 @@ class PostgresBuilder:
 
                     # In any case, for relative paths, add the absolute path in the original
                     # directory at the end of the compiler command line.
-                    add_original_include_path(
-                        os.path.abspath(os.path.join(directory, include_path))
-                    )
+                    add_original_include_path(original_include_path)
+                    handle_original_include_path(original_include_path)
+
             else:
                 new_args.append(arg)
 
@@ -664,7 +681,9 @@ class PostgresBuilder:
             if new_compiler_path:
                 new_args[0] = new_compiler_path
 
-        new_args += ['-I%s' % include_path for include_path in original_include_paths]
+        new_args += [
+            '-I%s' % include_path
+            for include_path in additional_postgres_include_paths + original_include_paths]
 
         new_file_path = file_path
         if not os.path.isabs(file_path):
