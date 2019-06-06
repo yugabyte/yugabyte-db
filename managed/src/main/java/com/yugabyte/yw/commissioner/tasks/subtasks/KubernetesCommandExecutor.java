@@ -597,6 +597,13 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       overrides.put("gflags", gflagOverrides);
     }
 
+    if (azConfig.containsKey("KUBE_DOMAIN")) {
+      overrides.put("domainName", azConfig.get("KUBE_DOMAIN"));
+    }
+    if (!userIntent.enableYSQL) {
+      overrides.put("disableYsql", true);
+    }
+
     // For now the assumption is the all deployments will have the same kind of
     // loadbalancers, so the annotations will be at the provider level.
     // TODO (Arnav): Update this to use overrides created at the provider, region or
@@ -620,13 +627,6 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
       if (annotations != null ) {
         overrides.putAll(annotations);
       }
-    }
-
-    if (azConfig.containsKey("KUBE_DOMAIN")) {
-      overrides.put("domainName", azConfig.get("KUBE_DOMAIN"));
-    }
-    if (!userIntent.enableYSQL) {
-      overrides.put("disableYsql", true);
     }
 
     try {
