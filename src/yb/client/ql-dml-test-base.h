@@ -44,9 +44,6 @@ class QLDmlTestBase : public MiniClusterTestWithClient<MiniCluster> {
   void DoTearDown() override;
 
   virtual ~QLDmlTestBase() {}
-
- protected:
-  MiniClusterOptions mini_cluster_opt_ = MiniClusterOptions(1, 3);
 };
 
 YB_STRONGLY_TYPED_BOOL(Transactional);

@@ -25,7 +25,6 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 
-#include "yb/util/async_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/logging.h"
