@@ -21,10 +21,8 @@ set(UTIL_LIBS_EXTENSIONS
   PARENT_SCOPE)
 
 add_library(encryption_test_util  ${YB_ENT_CURRENT_SOURCE_DIR}/encryption_test_util.cc)
-add_library(cdc_test_util ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_test_util.cc)
 target_link_libraries(encryption_test_util yb_test_util)
-target_link_libraries(cdc_test_util yb_test_util cdc_service_proto)
-set(YB_TEST_LINK_LIBS_EXTENSIONS encryption_test_util cdc_test_util PARENT_SCOPE)
+set(YB_TEST_LINK_LIBS_EXTENSIONS encryption_test_util PARENT_SCOPE)
 
 ADD_YB_TEST(edition-test)
 set(UTIL_TESTS_EXTENSIONS encrypted_env-test PARENT_SCOPE)
