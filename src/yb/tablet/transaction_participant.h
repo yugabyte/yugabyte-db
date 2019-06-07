@@ -34,7 +34,6 @@
 
 #include "yb/server/server_fwd.h"
 
-#include "yb/util/async_util.h"
 #include "yb/util/opid.pb.h"
 #include "yb/util/result.h"
 

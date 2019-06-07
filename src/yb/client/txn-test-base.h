@@ -96,8 +96,6 @@ class TransactionTestBase : public KeyValueTableTest {
   server::ClockPtr clock_{new server::HybridClock(skewed_clock_)};
   boost::optional<TransactionManager> transaction_manager_;
   boost::optional<TransactionManager> transaction_manager2_;
-
-  bool create_table_ = true;
 };
 
 } // namespace client
