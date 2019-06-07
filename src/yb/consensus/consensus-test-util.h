@@ -50,7 +50,6 @@
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
-#include "yb/consensus/opid_util.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
@@ -78,8 +77,6 @@ namespace consensus {
 using log::Log;
 using rpc::Messenger;
 using strings::Substitute;
-
-constexpr int kTermDivisor = 7;
 
 inline CoarseTimePoint CoarseBigDeadline() {
   return CoarseMonoClock::now() + 600s;
@@ -127,14 +124,6 @@ static inline void AppendReplicateMessagesToQueue(
     CHECK_OK(queue->TEST_AppendOperation(
         CreateDummyReplicate(term, index, clock->Now(), payload_size)));
   }
-}
-
-OpId MakeOpIdForIndex(int index) {
-  return MakeOpId(index / kTermDivisor, index);
-}
-
-std::string OpIdStrForIndex(int index) {
-  return OpIdToString(MakeOpIdForIndex(index));
 }
 
 // Builds a configuration of 'num' voters.

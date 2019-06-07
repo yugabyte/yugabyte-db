@@ -294,16 +294,6 @@ Status LogCache::ReadOps(int64_t after_op_index,
                          ReplicateMsgs* messages,
                          OpId* preceding_op,
                          bool* have_more_messages) {
-  return ReadOps(after_op_index, 0 /* to_op_index */, max_size_bytes,
-                 messages, preceding_op, have_more_messages);
-}
-
-Status LogCache::ReadOps(int64_t after_op_index,
-                         int64_t to_op_index,
-                         int max_size_bytes,
-                         ReplicateMsgs* messages,
-                         OpId* preceding_op,
-                         bool* have_more_messages) {
   DCHECK_ONLY_NOTNULL(messages);
   DCHECK_ONLY_NOTNULL(preceding_op);
   DCHECK_GE(after_op_index, 0);
@@ -314,11 +304,10 @@ Status LogCache::ReadOps(int64_t after_op_index,
 
   std::unique_lock<simple_spinlock> l(lock_);
   int64_t next_index = after_op_index + 1;
-  int64_t to_index = to_op_index > 0 ? to_op_index + 1 : next_sequential_op_index_;
 
-  // Return as many operations as we can, up to the limit.
+  // Return as many operations as we can, up to the limit
   int64_t remaining_space = max_size_bytes;
-  while (remaining_space > 0 && next_index < to_index) {
+  while (remaining_space > 0 && next_index < next_sequential_op_index_) {
 
     // If the messages the peer needs haven't been loaded into the queue yet, load them.
     MessageCache::const_iterator iter = cache_.lower_bound(next_index);
@@ -326,10 +315,10 @@ Status LogCache::ReadOps(int64_t after_op_index,
       int64_t up_to;
       if (iter == cache_.end()) {
         // Read all the way to the current op.
-        up_to = to_index - 1;
+        up_to = next_sequential_op_index_ - 1;
       } else {
-        // Read up to the next entry that's in the cache or to_index whichever is lesser.
-        up_to = std::min(iter->first - 1, static_cast<uint64_t>(to_index - 1));
+        // Read up to the next entry that's in the cache.
+        up_to = iter->first - 1;
       }
 
       l.unlock();
@@ -358,9 +347,6 @@ Status LogCache::ReadOps(int64_t after_op_index,
     } else {
       // Pull contiguous messages from the cache until the size limit is achieved.
       for (; iter != cache_.end(); ++iter) {
-        if (to_op_index > 0 && next_index > to_op_index) {
-          break;
-        }
         const ReplicateMsgPtr& msg = iter->second.msg;
         int64_t index = msg->id().index();
         if (index != next_index) {
@@ -382,6 +368,7 @@ Status LogCache::ReadOps(int64_t after_op_index,
   }
   return Status::OK();
 }
+
 
 void LogCache::EvictThroughOp(int64_t index) {
   std::lock_guard<simple_spinlock> lock(lock_);

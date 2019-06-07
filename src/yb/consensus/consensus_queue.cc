@@ -428,21 +428,41 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   // status-only request. Otherwise, we grab requests from the log starting at the last_received
   // point.
   if (!is_new) {
+    DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
     // The batch of messages to send to the peer.
     ReplicateMsgs messages;
-    bool have_more_messages = false;
     int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
+    bool have_more_messages = false;
 
-    Status s = ReadFromLogCache(next_index - 1, 0 /* to_index */, max_batch_size, uuid,
-                                &messages, &preceding_id, &have_more_messages);
+    // We try to get the follower's next_index from our log.
+    Status s = log_cache_.ReadOps(next_index - 1,
+                                  max_batch_size,
+                                  &messages,
+                                  &preceding_id,
+                                  &have_more_messages);
     if (PREDICT_FALSE(!s.ok())) {
       if (PREDICT_TRUE(s.IsNotFound())) {
+        // It's normal to have a NotFound() here if a follower falls behind where the leader has
+        // GCed its logs.
         string msg = Substitute("The logs necessary to catch up peer $0 have been "
                                 "garbage collected. The follower will never be able "
                                 "to catch up ($1)", uuid, s.ToString());
         NotifyObserversOfFailedFollower(uuid, queue_state_.current_term, msg);
+        return s;
+      } else if (s.IsIncomplete()) {
+        // IsIncomplete() means that we tried to read beyond the head of the log (in the future).
+        // KUDU-1078 points to a fix of this log spew issue that we've ported. This should not
+        // happen under normal circumstances.
+        LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Error trying to read ahead of the log "
+                                        << "while preparing peer request: "
+                                        << s.ToString() << ". Destination peer: "
+                                        << uuid;
+        return s;
+      } else {
+        LOG_WITH_PREFIX_UNLOCKED(FATAL) << "Error reading the log while preparing peer request: "
+                                        << s.ToString() << ". Destination peer: "
+                                        << uuid;
       }
-      return s;
     }
 
     // We use AddAllocated rather than copy, because we pin the log cache at the "all replicated"
@@ -481,73 +501,6 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   }
 
   return Status::OK();
-}
-
-Status PeerMessageQueue::ReadFromLogCache(int64_t from_index,
-                                          int64_t to_index,
-                                          int max_batch_size,
-                                          const std::string& peer_uuid,
-                                          ReplicateMsgs* messages,
-                                          OpId* preceding_id,
-                                          bool* have_more_messages) {
-  DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
-  *have_more_messages = false;
-
-  // We try to get the follower's next_index from our log.
-  // Note this is not using "term" and needs to change
-  Status s = log_cache_.ReadOps(from_index,
-                                to_index,
-                                max_batch_size,
-                                messages,
-                                preceding_id,
-                                have_more_messages);
-  if (PREDICT_FALSE(!s.ok())) {
-    if (PREDICT_TRUE(s.IsNotFound())) {
-      return s;
-    } else if (s.IsIncomplete()) {
-      // IsIncomplete() means that we tried to read beyond the head of the log (in the future).
-      // KUDU-1078 points to a fix of this log spew issue that we've ported. This should not
-      // happen under normal circumstances.
-      LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Error trying to read ahead of the log "
-                                      << "while preparing peer request: "
-                                      << s.ToString() << ". Destination peer: "
-                                      << peer_uuid;
-      return s;
-    } else {
-      LOG_WITH_PREFIX_UNLOCKED(FATAL) << "Error reading the log while preparing peer request: "
-                                      << s.ToString() << ". Destination peer: "
-                                      << peer_uuid;
-      return s;
-    }
-  }
-  return s;
-}
-
-Status PeerMessageQueue::ReadReplicatedMessages(const OpId& last_op_id, ReplicateMsgs *msgs) {
-  // The batch of messages read from cache.
-  ReplicateMsgs messages;
-  bool have_more_messages = false;
-  OpIdPB preceding_id;
-
-  if (last_op_id.index() >= local_peer_->last_known_committed_idx) {
-    // Nothing to read
-    return Status::OK();
-  }
-
-  Status s = ReadFromLogCache(last_op_id.index(), local_peer_->last_known_committed_idx,
-                              FLAGS_consensus_max_batch_size_bytes,
-                              local_peer_uuid_, &messages, &preceding_id, &have_more_messages);
-  if (PREDICT_FALSE(!s.ok())) {
-    if (PREDICT_TRUE(s.IsNotFound())) {
-      string msg = Format("The logs from index $0 have been garbage collected and cannot be read "
-                          "($1)", last_op_id.index(), s);
-      LOG_WITH_PREFIX_UNLOCKED(INFO) << msg;
-    }
-    return s;
-  }
-
-  msgs->swap(messages);
-  return s;
 }
 
 Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,

@@ -54,7 +54,9 @@ void QLDmlTestBase::SetUp() {
   YBMiniClusterTestBase::SetUp();
 
   // Start minicluster and wait for tablet servers to connect to master.
-  cluster_.reset(new MiniCluster(env_.get(), mini_cluster_opt_));
+  MiniClusterOptions opts;
+  opts.num_tablet_servers = 3;
+  cluster_.reset(new MiniCluster(env_.get(), opts));
   ASSERT_OK(cluster_->Start());
 
   ASSERT_OK(CreateClient());
