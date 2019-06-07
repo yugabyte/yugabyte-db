@@ -1,6 +1,5 @@
 // Copyright (c) YugaByte, Inc.
 
-#include "yb/cdc/cdc_service.h"
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -10,7 +9,6 @@
 #include "yb/tserver/backup_service.h"
 #include "yb/tserver/header_manager_impl.h"
 
-#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/ntp_clock.h"
 #include "yb/util/encrypted_file_factory.h"
@@ -26,13 +24,10 @@ DEFINE_int32(ts_backup_svc_queue_length, 50,
              "RPC queue length for the TS backup service");
 TAG_FLAG(ts_backup_svc_queue_length, advanced);
 
-DECLARE_int32(svc_queue_length_default);
-
 namespace yb {
 namespace tserver {
 namespace enterprise {
 
-using cdc::CDCServiceImpl;
 using yb::rpc::ServiceIf;
 
 TabletServer::TabletServer(const TabletServerOptions& opts) :
@@ -52,13 +47,10 @@ Status TabletServer::RegisterServices() {
   });
 #endif
 
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_ts_backup_svc_queue_length,
-      std::make_unique<TabletServiceBackupImpl>(tablet_manager_.get(), metric_entity())));
-
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_svc_queue_length_default,
-      std::make_unique<CDCServiceImpl>(tablet_manager_.get(), metric_entity())));
+  std::unique_ptr<ServiceIf> backup_service(
+      new TabletServiceBackupImpl(tablet_manager_.get(), metric_entity()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_backup_svc_queue_length,
+                                                     std::move(backup_service)));
 
   return super::RegisterServices();
 }
