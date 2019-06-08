@@ -221,7 +221,7 @@ class DBImpl : public DB {
       UserFrontierPtr frontier,
       FrontierModificationMode mode) override;
 
-  bool HasSomethingToFlush() override;
+  FlushAbility GetFlushAbility() override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
