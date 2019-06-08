@@ -103,6 +103,8 @@ struct Range {
   Range(const Slice& s, const Slice& l) : start(s), limit(l) { }
 };
 
+YB_DEFINE_ENUM(FlushAbility, (kNoNewData)(kHasNewData)(kAlreadyFlushing))
+
 // A collections of table properties objects, where
 //  key: is the table's file name.
 //  value: the table properties object of the given table.
@@ -809,7 +811,7 @@ class DB {
     return Status::OK();
   }
 
-  virtual bool HasSomethingToFlush() { return true; }
+  virtual FlushAbility GetFlushAbility() { return FlushAbility::kHasNewData; }
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have

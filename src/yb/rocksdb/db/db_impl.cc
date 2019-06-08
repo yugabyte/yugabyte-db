@@ -2544,10 +2544,13 @@ InternalIterator* DBImpl::NewInternalIterator(
   return NewInternalIterator(roptions, cfd, super_version, arena);
 }
 
-bool DBImpl::HasSomethingToFlush() {
+FlushAbility DBImpl::GetFlushAbility() {
   auto cfd = down_cast<ColumnFamilyHandleImpl*>(DefaultColumnFamily())->cfd();
   InstrumentedMutexLock guard_lock(&mutex_);
-  return cfd->imm()->NumNotFlushed() != 0 || !cfd->mem()->IsEmpty();
+  if (cfd->imm()->NumNotFlushed() != 0) {
+    return FlushAbility::kAlreadyFlushing;
+  }
+  return cfd->mem()->IsEmpty() ? FlushAbility::kNoNewData : FlushAbility::kHasNewData;
 }
 
 Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,

@@ -472,14 +472,16 @@ Result<bool> Tablet::IntentsDbFlushFilter(const rocksdb::MemTable& memtable) {
   }
 
   // If regular db does not have anything to flush, it means that we have just added intents,
-  // without apply, so it is ok to flush.
-  if (!regular_db_->HasSomethingToFlush()) {
+  // without apply, so it is OK to flush the intents RocksDB.
+  auto flush_intention = regular_db_->GetFlushAbility();
+  if (flush_intention == rocksdb::FlushAbility::kNoNewData) {
     return true;
   }
 
   // Force flush of regular DB if we were not able to flush for too long.
   auto timeout = std::chrono::milliseconds(FLAGS_intents_flush_max_delay_ms);
-  if (std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout) {
+  if (flush_intention != rocksdb::FlushAbility::kAlreadyFlushing &&
+      std::chrono::steady_clock::now() > memtable.FlushStartTime() + timeout) {
     rocksdb::FlushOptions options;
     options.wait = false;
     regular_db_->Flush(options);
