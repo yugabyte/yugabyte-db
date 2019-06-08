@@ -2,6 +2,7 @@
 
 -- predictability
 SET synchronous_commit = on;
+SET extra_float_digits = 0;
 
 DROP TABLE IF EXISTS table_with_pk;
 

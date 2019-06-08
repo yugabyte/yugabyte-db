@@ -5,6 +5,7 @@ LOAD 'test_decoding';
 
 -- predictability
 SET synchronous_commit = on;
+SET extra_float_digits = 0;
 
 CREATE TABLE table_with_pk (
 a	smallserial,

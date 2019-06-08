@@ -1,6 +1,7 @@
 \set VERBOSITY terse
 -- predictability
 SET synchronous_commit = on;
+SET extra_float_digits = 0;
 DROP TABLE IF EXISTS xpto;
 SELECT setseed(0);
  setseed 
