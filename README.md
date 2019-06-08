@@ -18,15 +18,15 @@
 
 YugaByte DB is a high-performance, cloud-native distributed SQL database. Here are the salient points about it:
 * Has a pluggable query layer, and supports two APIs:
-    * **[YSQL](https://docs.yugabyte.com/latest/api/ysql/)** (PostgreSQL-compatible)
-    * **[YCQL](https://docs.yugabyte.com/latest/api/ycql/)** (Apache Cassandra CQL roots with document and index support)
+    * **[YSQL](https://docs.yugabyte.com/latest/api/ysql/)** (PostgreSQL compatible)
+    * **[YCQL](https://docs.yugabyte.com/latest/api/ycql/)** (Apache Cassandra Query Language roots with document and indexing support)
 * Offers horizontal scalability, strong consistency, high availability
 * Fault tolerant - can tolerate disk, node, zone and region failures automatically
 * Supports geo-distributed deployments (multi-zone, multi-region, multi-cloud)
 * Can be deployed in public clouds and natively inside Kubernetes
 * Open source under the [Apache 2.0 license](https://github.com/YugaByte/yugabyte-db/blob/master/LICENSE.txt)
 
-Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/introduction/overview/).
+Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/introduction/).
 
 # Get Started
 
@@ -58,15 +58,15 @@ YugaByte DB supports a number of languages and client drivers. Below is a brief 
 
 # Need Help?
 
-* You can ask questions, find answers, help others on the [YugaByte Community Forum](http://forum.yugabyte.com) and [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db)
+* You can ask questions, find answers, help others on the [YugaByte Community Forum](https://forum.yugabyte.com) and [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db)
 
 * Please use [GitHub issues](https://github.com/YugaByte/yugabyte-db/issues) to report issues.
 
 # Contribute
 
-As an open-source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/latest/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of [our community forum](https://forum.yugabyte.com).
+As an open source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/latest/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of [our community forum](https://forum.yugabyte.com).
 
 # Read More
 
-* To see our updates, go to [the YugaByte DB Distributed SQL Blog](https://blog.yugabyte.com/).
-* See how YugaByte [compares with other databases](https://docs.yugabyte.com/comparisons/). 
+* To see our updates, go to [The Distributed SQL Blog](https://blog.yugabyte.com/).
+* See how YugaByte [compares with other databases](https://docs.yugabyte.com/latest/comparisons/). 
