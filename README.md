@@ -26,7 +26,7 @@ YugaByte DB is a high-performance, cloud-native distributed SQL database. Here a
 * Can be deployed in public clouds and natively inside Kubernetes
 * Open source under the [Apache 2.0 license](https://github.com/YugaByte/yugabyte-db/blob/master/LICENSE.txt)
 
-Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/introduction/).
+Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/latest/introduction/).
 
 # Get Started
 
