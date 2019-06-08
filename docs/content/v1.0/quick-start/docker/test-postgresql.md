@@ -1,13 +1,12 @@
----
----
 
--  Install the psql client inside docker
+
+* Install the psql client inside docker
 
 ```sh
 $ docker exec -it yb-tserver-n3 yum install postgresql -y
 ```
 
-- Run psql to connect to the service.
+* Run psql to connect to the service.
 
 You can do this as shown below.
 

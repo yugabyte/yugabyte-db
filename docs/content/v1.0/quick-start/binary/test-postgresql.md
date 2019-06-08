@@ -1,7 +1,6 @@
----
----
 
-- Run psql to connect to the service.
+
+* Run psql to connect to the service.
 
 You can do this as shown below.
 

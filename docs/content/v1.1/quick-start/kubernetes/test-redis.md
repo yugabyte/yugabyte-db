@@ -1,7 +1,6 @@
----
----
 
-- Run redis-cli to connect to the service.
+
+* Run redis-cli to connect to the service.
 
 You can do this as shown below.
 
@@ -13,7 +12,7 @@ $ kubectl exec -it yb-tserver-0 /home/yugabyte/bin/redis-cli
 127.0.0.1:6379> 
 ```
 
-- Run a Redis command to verify it is working.
+* Run a Redis command to verify it is working.
 
 ```sql
 127.0.0.1:6379> PING

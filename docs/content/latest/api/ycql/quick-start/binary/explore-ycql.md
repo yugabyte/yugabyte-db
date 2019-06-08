@@ -1,4 +1,5 @@
-• Run cqlsh to connect to the service.
+
+* Run cqlsh to connect to the service.
 
 You can do this as shown below.
 
@@ -13,7 +14,7 @@ Use HELP for help.
 cqlsh> 
 ```
 
-• Run a cql command to verify it is working.
+* Run a cql command to verify it is working.
 
 ```sql
 cqlsh> describe keyspaces;

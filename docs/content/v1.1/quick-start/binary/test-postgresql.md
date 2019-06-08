@@ -1,14 +1,12 @@
----
----
 
 
-- Destroy any existing cluster.
+* Destroy any existing cluster.
 
 ```sh
 $ ./bin/yb-ctl destroy
 ```
 
-- Create a new cluster with YSQL API enabled. Note the additional option `enable_postgres` passed to the create cluster command.
+* Create a new cluster with YSQL API enabled. Note the additional option `enable_postgres` passed to the create cluster command.
 
 You can do this as shown below.
 ```sh
@@ -16,7 +14,7 @@ $ ./bin/yb-ctl --rf 3 create --enable_postgres
 ```
 
 
-- Check status of the cluster and confirm that the special `postgres` node is now running. This is the node we will connect postgres clients to. Internally, this node will use the various tserver nodes to distribute the data across the entire cluster.
+* Check status of the cluster and confirm that the special `postgres` node is now running. This is the node we will connect postgres clients to. Internally, this node will use the various tserver nodes to distribute the data across the entire cluster.
 
 ```sh
 $ ./bin/yb-ctl status
@@ -31,7 +29,7 @@ $ ./bin/yb-ctl status
 2019-01-15 22:18:40,422 INFO: Server is running: type=tserver, node_id=3, PID=12833, admin service=http://127.0.0.3:9000, cql service=127.0.0.3:9042, redis service=127.0.0.3:6379, pgsql service=127.0.0.3:5433
 ```
 
-- Run psql to connect to the service.
+* Run psql to connect to the service.
 
 You can do this as shown below.
 

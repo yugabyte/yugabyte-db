@@ -1,6 +1,3 @@
----
----
-
 First copy the schema and data files into one of the containers.
 ```sh
 $ kubectl cp ./schema.sql yb-tserver-n1:/home/yugabyte/.

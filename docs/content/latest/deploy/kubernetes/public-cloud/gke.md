@@ -1,5 +1,3 @@
----
----
 
 ```sh
 $ helm install yugabyte -f expose-all.yaml --namespace yb-demo --name yb-demo \

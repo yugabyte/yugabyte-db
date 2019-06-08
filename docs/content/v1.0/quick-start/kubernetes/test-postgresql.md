@@ -1,13 +1,11 @@
----
----
 
--  Install the psql client inside the container
+* Install the psql client inside the container
 
 ```sh
 $ kubectl exec -it yb-tserver-2 yum install postgresql
 ```
 
-- Run psql to connect to the service.
+* Run psql to connect to the service.
 
 ```sh
 $ kubectl exec -it yb-tserver-2 bash 

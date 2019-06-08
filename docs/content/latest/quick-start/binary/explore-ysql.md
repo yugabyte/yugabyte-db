@@ -1,6 +1,3 @@
----
----
-
 Run ysqlsh to connect to the service.
 
 ```sh
