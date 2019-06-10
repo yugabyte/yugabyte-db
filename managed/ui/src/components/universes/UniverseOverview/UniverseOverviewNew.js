@@ -248,7 +248,7 @@ export default class UniverseOverviewNew extends Component {
   };
 
   getCostWidget = (currentUniverse) => {
-    if (isEmptyObject(currentUniverse.resources)) return;
+    if (currentUniverse.resources == null || isEmptyObject(currentUniverse.resources)) return;
     const costPerDay = <YBCost value={currentUniverse.resources.pricePerHour} multiplier={"day"} />;
     const costPerMonth = <YBCost value={currentUniverse.resources.pricePerHour} multiplier={"month"} />;
     return (<Col lg={2} md={4} sm={4} xs={6}>
