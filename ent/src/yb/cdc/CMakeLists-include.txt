@@ -1,0 +1,58 @@
+# Copyright (c) YugaByte, Inc.
+
+set(YB_SOURCE_DIR         ${CMAKE_SOURCE_DIR}/src)
+set(YB_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(YB_ENT_SOURCE_DIR     ${CMAKE_SOURCE_DIR}/ent/src)
+set(YB_BINARY_DIR         ${CMAKE_BINARY_DIR}/src)
+string(REPLACE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/ent
+    YB_ENT_CURRENT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+
+#########################################
+# cdc_service
+#########################################
+
+set(CDC_SRCS_EXTENSIONS
+  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_service.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_producer.cc)
+
+add_library(cdc ${CDC_SRCS_EXTENSIONS})
+target_link_libraries(cdc
+  protobuf
+  cdc_service_proto
+  master_proto
+  consensus_proto
+  log_proto
+  log
+  consensus
+  yrpc
+  server_common
+  server_process
+  tablet
+  yb_util
+  gutil)
+
+#########################################
+# cdc tests
+#########################################
+
+set(YB_ENT_CURRENT_SOURCE_DIR
+  ${YB_ENT_CURRENT_SOURCE_DIR}
+  PARENT_SCOPE)
+
+set(CDC_EXTENSIONS_TESTS
+  cdc_service-test)
+
+set(YB_TEST_LINK_LIBS
+  tserver
+  tserver_test_util
+  yb_client # yb::client::YBTableName
+  tablet_test_util
+  cdc_test_util
+  ${YB_MIN_TEST_LIBS})
+
+set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
+
+foreach(test ${CDC_EXTENSIONS_TESTS})
+  ADD_YB_TEST(${test})
+endforeach()
+
