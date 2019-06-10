@@ -73,6 +73,10 @@ class MiniTabletServer;
 struct MiniClusterOptions {
   MiniClusterOptions();
 
+  MiniClusterOptions(int num_masters, int num_tablet_servers)
+      : num_masters(num_masters), num_tablet_servers(num_tablet_servers) {
+  }
+
   // Number of master servers.
   // Default: 1
   int num_masters;

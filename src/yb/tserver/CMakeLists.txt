@@ -184,7 +184,8 @@ target_link_libraries(tserver
   server_process
   tablet
   yb_client
-  yb_pggate_flags)
+  yb_pggate_flags
+  ${TSERVER_LIB_EXTENSIONS})
 
 #########################################
 # yb-tserver

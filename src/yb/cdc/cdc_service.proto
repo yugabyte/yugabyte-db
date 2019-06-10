@@ -35,11 +35,10 @@ package yb.cdc;
 
 option java_package = "org.yb.cdc";
 
-import "google/protobuf/struct.proto";
-
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/master/master.proto";
+import "yb/tserver/tserver.proto";
 import "yb/util/opid.proto";
 
 service CDCService {
@@ -72,6 +71,12 @@ message CDCErrorPB {
 
     // Tablet not running
     TABLET_NOT_RUNNING = 6;
+
+    // Tablet server not the leader of requested tablet
+    NOT_LEADER = 7;
+
+    // Tablet server not running
+    NOT_RUNNING = 8;
   }
 
   // The error code.
@@ -125,7 +130,7 @@ message ListTabletsResponsePB {
 }
 
 message CDCTabletPB {
-  optional bytes tablet_uuid = 1;
+  optional bytes tablet_id = 1;
   // Tservers holding data for the tablet
   repeated HostPortPB tserver = 2;
 }
@@ -137,7 +142,7 @@ message CDCCheckpointPB {
 message GetChangesRequestPB {
   optional bytes subscriber_uuid = 1;
   // Tablet to get the changes for
-  optional bytes tablet_uuid = 2;
+  optional bytes tablet_id = 2;
 
   // Checkpoint to start reading from (exclusive)
   // Start reading from the first record after this checkpoint
@@ -151,6 +156,11 @@ message GetChangesRequestPB {
   optional uint32 max_records = 5;
 }
 
+message KeyValuePairPB {
+  optional bytes key = 1;
+  optional QLValuePB value = 2;
+}
+
 message CDCRecordPB {
   enum OperationType {
     WRITE = 1;
@@ -160,12 +170,14 @@ message CDCRecordPB {
   optional OperationType operation = 2;
 
   // Primary key of the record that changed
-  optional google.protobuf.Struct key = 3;
+  repeated KeyValuePairPB key = 3;
 
   // Key-value pairs (column_name : value) of changes / before record / after record
-  optional google.protobuf.Struct changes = 4;
-  optional google.protobuf.Struct before = 5;
-  optional google.protobuf.Struct after = 6;
+  repeated KeyValuePairPB changes = 4;
+  repeated KeyValuePairPB before = 5;
+  repeated KeyValuePairPB after = 6;
+
+  optional tserver.TransactionStatePB transaction_state = 7;
 }
 
 message GetChangesResponsePB {
@@ -184,7 +196,7 @@ message GetChangesResponsePB {
 
 message GetCheckpointRequestPB {
   optional bytes subscriber_uuid = 1;
-  optional bytes tablet_uuid = 2;
+  optional bytes tablet_id = 2;
 }
 
 message GetCheckpointResponsePB {
