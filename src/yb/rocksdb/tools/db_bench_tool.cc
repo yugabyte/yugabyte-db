@@ -1238,6 +1238,7 @@ class Stats {
 
   void Start(int id) {
     id_ = id;
+    start_ = FLAGS_env->NowMicros();
     next_report_ = FLAGS_stats_interval ? FLAGS_stats_interval : 100;
     last_op_finish_ = start_;
     hist_.clear();
@@ -1245,7 +1246,6 @@ class Stats {
     last_report_done_ = 0;
     bytes_ = 0;
     seconds_ = 0;
-    start_ = FLAGS_env->NowMicros();
     finish_ = start_;
     last_report_finish_ = start_;
     message_.clear();
