@@ -194,12 +194,8 @@ a {
       border-bottom-style: solid;
       text-decoration: none !important;
     }
-    
-    &.issuelink:hover, &.issuelink.active {
-      background-color: $YB_VIOLET;
-      color: #fff;
-    }
-    &.headerlink, &.issuelink {
+
+    &.headerlink {
       margin-left: 20px;
       font-size: 16px;
       color: rgba($YB_DARK_BLUE, 0.5);

@@ -91,12 +91,7 @@
             a.setAttribute("title", "Permanent link")
             a.innerHTML = '<i class="fa fa-link"></i>';
             headers[i].appendChild(a);
-            //let b = document.createElement("a");
-            //b.setAttribute("class", "issuelink");
-            //b.setAttribute("title", "I found an issue")
-            //b.innerHTML = "!";
             cnt.appendChild(a);
-            //cnt.appendChild(b);
             headers[i].appendChild(cnt);
           };
         }
@@ -157,8 +152,7 @@
   <script>
     document.addEventListener("DOMContentLoaded", function() {
       "use strict";
-      
-      const issuelinks = $('.article:not(#feedback) .issuelink');
+
       const feedback_widget = $('.feedback_widget');
       const feedback_widget_payload = $('.feedback_widget #action_payload_from');
       const feedback_widget_wrapper = $('.widget-wrapper');
@@ -166,32 +160,10 @@
       $(document).on('feedback:reset', function(e) {
         const headers = document.querySelector('.article:not(#feedback)').querySelectorAll("h1, h2, h3, h4, h5, h6");  
         $(headers).removeClass('expanded');
-        issuelinks.removeClass('active');
         feedback_widget.removeClass('active active_section').css('top', '');
         feedback_widget_payload.val('footer');
         // grammarly fallback
         $("[class^=gr-top-]").remove();
-      });
-      
-      issuelinks.on('click', function(e) {
-        const self = $(this);
-        const isActive = self.hasClass('active');
-        const coeff = parseInt(self.parent().parent()[0].tagName.substr(1,1));
-        $(document).trigger('feedback:reset');
-        if(!isActive) {
-          self.parent().parent().addClass('expanded');
-          self.addClass('active');
-          feedback_widget.addClass('active active_section').css('top', -$(feedback_widget_wrapper).offset().top + self.offset().top + 45 + 15*($(window).outerWidth()<992?0:1));
-          feedback_widget_payload.val(self.parent().parent()[0].innerText.slice(0, -2));
-
-          $(window).on('resize', function() {
-            if(feedback_widget.hasClass('active_section')){
-              feedback_widget.addClass('active active_section').css('top', -$(feedback_widget_wrapper).offset().top + self.offset().top + 45 + 15*($(window).outerWidth()<992?0:1));
-            } else {
-              $(window).off('resize', this);
-            }
-          });
-        }
       });
     });
   
