@@ -28,6 +28,8 @@ class StandaloneMetricsPanel extends Component {
       */
       const legendData = [];
       for(let idx=0; idx < metrics[type][metricKey].data.length; idx++){
+        metrics[type][metricKey].data[idx].fill = "tozeroy";
+        metrics[type][metricKey].data[idx].fillcolor = METRIC_COLORS[idx]+"10";
         metrics[type][metricKey].data[idx].line = {
           color: METRIC_COLORS[idx],
           width: 1.5
