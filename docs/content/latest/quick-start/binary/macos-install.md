@@ -12,7 +12,49 @@ $ python --version
 Python 2.7.10
 ```
 
-c) Make sure that your file limits for kern.maxfiles and kern.maxfilesperproc are 1048576. Edit `/etc/sysctl.conf` on High Sierra if necessary.
+c) Each tablet maps to its own file, so if you experiment with a few hundred tables
+and a few hundred tablets per table, you can soon end up
+creating a large number of files in the current shell.
+Make sure that this command:
+
+```sh
+$ launchctl limit maxfiles`
+```
+
+shows a big enough value. We recommend
+simply setting the soft and hard limits to 1MB (i.e. 2^20 = 1048576) by ensuring that the file
+`/Library/LaunchDaemons/limit.maxfiles.plist` has this content:
+
+```sh
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+  <plist version="1.0">
+    <dict>
+      <key>Label</key>
+        <string>limit.maxfiles</string>
+      <key>ProgramArguments</key>
+        <array>
+          <string>launchctl</string>
+          <string>limit</string>
+          <string>maxfiles</string>
+          <string>1048576</string>
+          <string>1048576</string>
+        </array>
+      <key>RunAtLoad</key>
+        <true/>
+      <key>ServiceIPC</key>
+        <false/>
+    </dict>
+  </plist>
+```
+
+Enure that the plist file is owned by `root:wheel` and has permissions `-rw-r--r--`.
+Reboot your computer for this to take effect. Or, to avoid this effort, enter this command:
+
+```sh
+$ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
+```
+You might have to `unload` the service before loading it.
 
 ## Download
 
