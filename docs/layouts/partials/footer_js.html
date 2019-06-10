@@ -80,20 +80,23 @@
 
         const initAnchorsAndFeedback = () => {
           {{ "/* Add permanent link next to the headers */" | safeJS }}
-          let headers = document.querySelector('.article:not(#feedback)').querySelectorAll("h1, h2, h3, h4, h5, h6");
+          const $headers = $('.article:not(#feedback) h1,h2,h3,h4,h5,h6').filter(function () {
+            return $(this).closest('ul.nav-tabs + .tab-content').length === 0;
+          });
 
-          for(let i = 0; i < headers.length; i++) {
+          // Now remove all nodes in the sections array
+          $.each($headers, function (i, value) {
             let cnt = document.createElement("div");
             cnt.setAttribute("class", "links");
             let a = document.createElement("a");
             a.setAttribute("class", "headerlink");
-            a.setAttribute("href", "#" + headers[i].id);
+            a.setAttribute("href", "#" + value.id);
             a.setAttribute("title", "Permanent link")
             a.innerHTML = '<i class="fa fa-link"></i>';
             headers[i].appendChild(a);
             cnt.appendChild(a);
             headers[i].appendChild(cnt);
-          };
+          });
         }
 
         $(document).ready(() => {
