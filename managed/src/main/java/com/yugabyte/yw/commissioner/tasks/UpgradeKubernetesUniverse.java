@@ -150,6 +150,10 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
 
         PlacementInfo tempPI = new PlacementInfo();
             PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
+        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
+            azToNumTservers.get(azUUID);
+        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
+            azToNumMasters.get(azUUID);
 
         Map<String, String> config = azToConfig.get(azUUID);
         
@@ -182,6 +186,10 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
 
         PlacementInfo tempPI = new PlacementInfo();
             PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
+        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
+            azToNumTservers.get(azUUID);
+        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
+            azToNumMasters.containsKey(azUUID) ? azToNumMasters.get(azUUID) : 0;
 
         Map<String, String> config = azToConfig.get(azUUID);
         

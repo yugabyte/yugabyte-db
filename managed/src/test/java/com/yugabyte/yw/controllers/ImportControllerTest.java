@@ -85,7 +85,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     }
   }
 
-  @Test
+  @Ignore
   public void testImportUniverse() {
     String url = "/api/customers/" + customer.uuid + "/universes/import";
     ObjectNode bodyJson = Json.newObject()
