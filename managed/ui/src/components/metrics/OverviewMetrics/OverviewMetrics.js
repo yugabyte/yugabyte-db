@@ -9,6 +9,10 @@ import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } fro
 import { YBPanelLegend } from '../../common/descriptors';
 import { YBWidget } from '../../panels';
 import { METRIC_COLORS } from '../MetricsConfig';
+const moment = require('moment');
+
+// TODO set predefined defaults another way not to share defaults this way
+const OVERVIEW_METRICS_INTERVAL_MS = 36000;
 
 const panelTypes = {
   overview: {title: "Overview",
@@ -28,8 +32,21 @@ class OverviewMetrics extends Component {
     nodePrefixes: []
   }
 
-  componentDidMount() {
-    this.queryMetricsType(this.props.graph.graphFilter);
+  componentDidMount(){
+    const self = this;
+    // set the polling for metrics but update start and end time interval boundaries
+    self.queryMetricsType({
+      ...self.props.graph.graphFilter,
+      startMoment: moment().subtract("1", "hours"), 
+      endMoment: moment()
+    });
+    this.timeout = setInterval(() => {
+      self.queryMetricsType({
+        ...self.props.graph.graphFilter,
+        startMoment: moment().subtract("1", "hours"), 
+        endMoment: moment()
+      });
+    }, OVERVIEW_METRICS_INTERVAL_MS);
   }
 
   queryMetricsType = graphFilter => {
@@ -59,6 +76,8 @@ class OverviewMetrics extends Component {
 
   componentWillUnmount() {
     this.props.resetMetrics();
+    clearInterval(this.timeout);
+    delete(this.timeout);
   }
 
   render() {
@@ -83,6 +102,8 @@ class OverviewMetrics extends Component {
         if(isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error && (metricKey !== "disk_usage" || !this.props.layout) && metricKey !== "cpu_usage") {
           const legendData = [];
           for(let idx=0; idx < metrics[type][metricKey].data.length; idx++){
+            metrics[type][metricKey].data[idx].fill = "tozeroy";
+            metrics[type][metricKey].data[idx].fillcolor = METRIC_COLORS[idx]+"10";
             metrics[type][metricKey].data[idx].line = {
               color: METRIC_COLORS[idx],
               width: 1.5
@@ -92,6 +113,7 @@ class OverviewMetrics extends Component {
               title: metrics[type][metricKey].data[idx].name
             });
           }
+          const measureUnit = isNonEmptyObject(metrics[type][metricKey].layout.yaxis) && metrics[type][metricKey].layout.yaxis.ticksuffix ? (" ("+metrics[type][metricKey].layout.yaxis.ticksuffix.replace('&nbsp;','')+")") : '';
           return (
             <YBWidget key={idx}
               noMargin
@@ -99,7 +121,7 @@ class OverviewMetrics extends Component {
                 metricKey === "disk_usage" ? null :
                 <YBPanelLegend data={legendData} />
               }
-              headerLeft={metrics[type][metricKey].layout.title}
+              headerLeft={metrics[type][metricKey].layout.title + measureUnit}
               body={metricKey === "disk_usage" ?
                 <DiskUsagePanel
                   metric={metrics[type][metricKey]}

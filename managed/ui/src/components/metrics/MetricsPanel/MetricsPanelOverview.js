@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
 import './MetricsPanel.scss';
 import Measure from 'react-measure';
 import _ from 'lodash';
@@ -24,6 +24,11 @@ export default class MetricsPanelOverview extends Component {
     };
   }
 
+  componentWillUnmount() {
+    const { metricKey } = this.props;
+    Plotly.purge(metricKey);
+  }
+
   componentDidMount() {
     const { metricKey } = this.props;
     const metric = _.cloneDeep(this.props.metric);
@@ -39,6 +44,7 @@ export default class MetricsPanelOverview extends Component {
           });
         }
       });
+      metric.layout.xaxis.hoverformat = '%H:%M:%S, %b %d, %Y';
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
       metric.layout.width = this.state.dimensions.width || 300;
@@ -46,18 +52,19 @@ export default class MetricsPanelOverview extends Component {
       metric.layout.title = "";
       metric.layout.showlegend = false;
       metric.layout.margin = {
-        l: 0,
+        l: 30,
         r: 0,
-        b: 0,
+        b: 16,
         t: 0,
         pad: 0,
       };
-      if (isNonEmptyObject(metric.layout.yaxis) && isNonEmptyString(metric.layout.yaxis.ticksuffix)) {
-        metric.layout.margin.l = 40;
+      
+      if (isNonEmptyObject(metric.layout.yaxis)) {
         metric.layout.yaxis.range = [0, max];
       } else {
         metric.layout.yaxis = {range: [0, max]};
       }
+      metric.layout.yaxis.ticksuffix = '&nbsp;';
       metric.layout.yaxis.fixedrange = true;
       metric.layout.xaxis.fixedrange = true;
       metric.layout.yaxis._offset = 10;
@@ -65,19 +72,13 @@ export default class MetricsPanelOverview extends Component {
         family: METRIC_FONT,
         weight: 300
       };
-      metric.layout.margin = {
-        l: 0,
-        r: 0,
-        b: 16,
-        t: 0,
-      };
       metric.layout.xaxis = {...metric.layout.xaxis, ...{ color: '#444444', zerolinecolor: '#000', gridcolor: '#eee' }};
       metric.layout.yaxis = {...metric.layout.yaxis, ...{ color: '#444444', zerolinecolor: '#000', gridcolor: '#eee'}};
 
       // Handle the case when the metric data is empty, we would show
       // graph with No Data annotation.
       if (!isNonEmptyArray(metric.data)) {
-        metric.layout["annotations"] = [{
+        metric.layout.annotations = [{
           visible: true,
           align: "top",
           text: "No Data",
@@ -90,23 +91,36 @@ export default class MetricsPanelOverview extends Component {
           x: 1,
           y: 1
         }];
-        metric.layout.margin = {
-          l: 0,
-          r: 0,
-          b: 0,
-          t: 0,
-        };
         metric.layout.xaxis = {range: [0, 2], color: '#444444', linecolor: '#eee'};
         metric.layout.yaxis = {range: [0, 2], color: '#444444', linecolor: '#eee'};
       }
 
-      this.setState({graphMounted: true});
+      this.setState({graphMounted: true, layout: metric.layout});
       Plotly.newPlot(metricKey, metric.data, metric.layout, {displayModeBar: false});
     }
   }
 
+  componentDidUpdate(prevProps, prevState) {
+    const { metricKey } = this.props;
+    const metric = _.cloneDeep(this.props.metric);
+    let max = 0;
+    if (isNonEmptyObject(metric)) {
+      // TODO: send this data from backend.
+      metric.data.forEach(function (data) {
+        if (data.y) {
+          data.y.forEach(function (y) {
+            y = parseFloat(y) * 1.25;
+            if (y > max) max = y;
+          });
+        }
+      });
+    }
+    if (max === 0) max = 1.01;
+    Plotly.react(metricKey, this.props.metric.data, {...this.state.layout, yaxis: { range: [0, max] }}, {displayModeBar: false});
+  }
+
   onResize(dimensions) {
-    this.setState({dimensions});
+    this.setState({layout: {...this.state.layout, width: dimensions.width}});
     if (this.state.graphMounted) Plotly.relayout(this.props.metricKey, {width: dimensions.width});
   }
 
