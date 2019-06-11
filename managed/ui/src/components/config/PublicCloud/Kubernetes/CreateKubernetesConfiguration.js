@@ -49,7 +49,7 @@ class CreateKubernetesConfiguration extends Component {
     );
 
     const providerKubeConfig = vals.kubeConfig ?
-      this.readUploadedFileAsText(pullSecretFile, false)
+      this.readUploadedFileAsText(vals.kubeConfig, false)
       : {};
     // Loop thru regions and check for config files
     vals.regionList.forEach((region, rIndex) => {
