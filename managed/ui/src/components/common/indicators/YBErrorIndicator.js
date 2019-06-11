@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import frown from './images/frown_img.png';
 import './stylesheets/YBErrorIndicator.scss';
-import {Link} from 'react-router';
+import { Link } from 'react-router';
 
 export default class YBErrorIndicator extends Component {
   render() {

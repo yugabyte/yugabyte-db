@@ -21,6 +21,7 @@ export { default as UniverseStatusContainer } from './UniverseStatus/UniverseSta
 export { default as UniverseTable } from './UniverseTable/UniverseTable';
 export { default as UniverseTableContainer } from './UniverseTable/UniverseTableContainer';
 export { default as UniverseAppsModal } from './UniverseAppsModal/UniverseAppsModal';
+export { default as UniverseConnectModal } from './UniverseConnectModal/UniverseConnectModal';
 export { default as UniverseOverview } from './UniverseOverview/UniverseOverview';
 export { default as UniverseOverviewNew } from './UniverseOverview/UniverseOverviewNew';
 export { default as UniverseOverviewContainerNew } from './UniverseOverview/UniverseOverviewContainerNew';

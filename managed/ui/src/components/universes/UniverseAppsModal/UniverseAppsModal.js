@@ -1,11 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBModal, YBButton } from '../../common/forms/fields';
 import { YBCodeBlock } from '../../common/descriptors';
-import { isValidObject } from 'utils/ObjectUtils';
+import { isValidObject, isEmptyObject } from 'utils/ObjectUtils';
 import { Tab, Tabs } from 'react-bootstrap';
 import { isKubernetesUniverse } from 'utils/UniverseUtils';
 
@@ -38,19 +38,13 @@ const appTypes = [
 
 export default class UniverseAppsModal extends Component {
   static propTypes = {
-    currentUniverse: PropTypes.object.isRequired
-  };
-  constructor(props) {
-    super(props);
-    this.state = { showAppsModal: false };
-  }
-
-  toggleAppsModal = () => {
-    this.setState({showAppsModal: !this.state.showAppsModal});
+    currentUniverse: PropTypes.object.isRequired,
+    button: PropTypes.node.isRequired,
+    modal: PropTypes.object.isRequired
   };
 
   render() {
-    const { currentUniverse: {universeDetails} } = this.props;
+    const { currentUniverse: {universeDetails}, button, closeModal, modal: { showModal, visibleModal } } = this.props;
     const enableYSQL = universeDetails.clusters[0].userIntent.enableYSQL;
     const isItKubernetesUniverse = isKubernetesUniverse(this.props.currentUniverse);
     const nodeDetails = universeDetails.nodeDetailsSet.filter((nodeDetails) => nodeDetails.isTserver);
@@ -117,15 +111,18 @@ export default class UniverseAppsModal extends Component {
     });
 
     return (
-      <div className="universe-apps-modal">
-        <YBButton btnText={"Run Sample Apps"} btnClass={"btn btn-default open-modal-btn"} onClick={this.toggleAppsModal}/>
-        <YBModal title={"Run Sample Apps"} visible={this.state.showAppsModal}
-                 onHide={this.toggleAppsModal} className={"universe-apps-modal"}>
+      <Fragment>
+        {isEmptyObject(button)
+          ? <YBButton btnText={"Run Sample Apps"} btnClass={"btn btn-default open-modal-btn"} onClick={this.toggleAppsModal}/>
+          : button
+        }
+        <YBModal className="universe-apps-modal" title={"Run Sample Apps"} visible={showModal && visibleModal === "runSampleAppsModal"}
+                onHide={closeModal}>
           <Tabs defaultActiveKey={0} id="apps-modal">
             {appTabs}
           </Tabs>
         </YBModal>
-      </div>
+      </Fragment>
     );
   }
 }

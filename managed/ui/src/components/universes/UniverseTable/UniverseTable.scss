@@ -12,7 +12,7 @@
   background-color: white;
   border-radius: 7px !important;
   border: none;
-  box-shadow: 0 1px 1px rgba(35, 35, 39, 0.05);
+  box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
   color: $YB_TEXT_COLOR;
   @include transition(0.125s);
   .list-group-item {

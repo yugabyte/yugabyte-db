@@ -1,0 +1,20 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.btn-group-cnt {
+  margin-right: -5px;
+  margin-left: -5px;
+
+  [class^=flex] {
+    padding: 0px 5px;
+  }
+}
+
+.endpoint-buttons {
+  a {
+    display: block;
+   
+    button {
+      width: 100%;
+    }
+  }
+}
