@@ -17,12 +17,12 @@
 .graph-panel .metrics-container {
   margin: 0px;
   border: none !important;
-  box-shadow: 0 1px 1px rgba($YB_DARK_GRAY_2, 0.25);
   border-top: none;
   background-color: #fff;
-  border-radius: 0;
-  overflow: hidden;
+  border-radius: 7px;
   margin-bottom: 20px;
+  box-shadow: none;
+
   &:last-child {
     margin-bottom: 0;
   }
@@ -35,9 +35,12 @@
     a {
       background-color: $YB_VIOLET_TEXT;
       color: #fff;
+      border-radius: 7px 7px 0 0;
+
       &.collapsed {
         background-color: $YB_GRAY_HOVER;
         color: $YB_VIOLET_TEXT;
+        border-radius: 5px;
 
         &:after {
           top: 12px;
@@ -74,6 +77,8 @@
 
   .panel-collapse {
     padding: 0 7.5px;
+    border-radius: 0 0 7px 7px;
+    box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
   }
   .panel-body {
     border: none !important;

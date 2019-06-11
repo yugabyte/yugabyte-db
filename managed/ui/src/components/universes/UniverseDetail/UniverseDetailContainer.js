@@ -51,6 +51,9 @@ const mapDispatchToProps = (dispatch) => {
     showSoftwareUpgradesModal: () => {
       dispatch(openDialog("softwareUpgradesModal"));
     },
+    showRunSampleAppsModal: () => {
+      dispatch(openDialog("runSampleAppsModal"));
+    },
     closeModal: () => {
       dispatch(closeDialog());
       dispatch(closeUniverseDialog());

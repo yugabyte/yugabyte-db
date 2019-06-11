@@ -5,7 +5,7 @@
 .widget-panel {
   margin: 0;
   padding: 0;
-  box-shadow: 0 1px 1px rgba($YB_DARK_GRAY_2, 0.05);
+  box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
   border: none;
   background-color: #fff;
   border-radius: 7px;
@@ -52,6 +52,10 @@
 
     &.body-no-margin {
       padding: 0;
+    }
+
+    .flex-cnt {
+      height: 116px;
     }
   }
   

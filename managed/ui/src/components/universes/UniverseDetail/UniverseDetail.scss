@@ -97,16 +97,16 @@
   }
   .nav-tabs {
     background: white;
-    z-index: 1001;
+    z-index: 1020;
     height: 57px;
     right: 0;
-    left: 90px;
+    position: relative;
     padding: 0 20px;
     @media (max-width: 1120px) {
       height: fit-content;
       padding-top: 57px;
     }
-    box-shadow: inset 0 0px 1px rgba($YB_DARK_GRAY_2, 0.1);
+    box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 7px rgba($YB_DARK_GRAY_2, 0.02);
     border: none;
     li > a {
       padding: 0 2px;
@@ -168,7 +168,7 @@
 }
 .page-action-buttons {
   position: absolute;
-  z-index: 1002;
+  z-index: 1021;
   top: 60px;
   right: 30px;
   padding: 0;
@@ -443,15 +443,31 @@ h2 {
 }
 
 .health-check-legend {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 
   .fa {
     margin-right: 5px;
   }
 }
 
+.health-heart-cnt {
+  .flex-grow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .flex-shrink {
+    min-height: 40px;
+  }
+}
+
 #health-heart {
   position: relative;
   margin-top: 5px;
+  transform: scale(1.2, 1.2);
 
   .fa-heart {
     font-size: 48px;
