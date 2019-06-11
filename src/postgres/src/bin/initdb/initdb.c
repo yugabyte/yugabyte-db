@@ -2417,6 +2417,10 @@ setlocales(void)
 {
 	char	   *canonname;
 
+	/* set "C" as default locale in YB mode */
+  if (!locale && (IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb()))
+    locale = "C";
+
 	/* set empty lc_* values to locale config if set */
 
 	if (locale)
