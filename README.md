@@ -5,7 +5,8 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Documentation Status](https://readthedocs.org/projects/ansicolortags/badge/?version=latest)](https://docs.yugabyte.com/)
 [![Ask in forum](https://img.shields.io/badge/ask%20us-forum-orange.svg)](https://forum.yugabyte.com/)
-[![Gitter chat](https://badges.gitter.im/gitlabhq/gitlabhq.svg)](https://gitter.im/YugaByte/Lobby)
+[![Slack chat](https://img.shields.io/badge/chat-on%20Slack-blueviolet.svg)](https://www.yugabyte.com/slack)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
 
 - [What is YugaByte DB?](#what-is-yugabyte-db)
 - [Get Started](#get-started)
