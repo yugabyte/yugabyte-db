@@ -165,7 +165,7 @@ a {
     background-color: #fff;
     border-radius: 7px;
     margin-bottom: 25px;
-    box-shadow: 0 1px 2px rgba(#202951, 0.16);
+    box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
     z-index: 2;
     position: relative;
 
@@ -793,7 +793,7 @@ h1, h2, h3, h4, h5, h6 {
         background-color: #fff;
         padding: 0 32px;
         border-radius: 7px;
-        box-shadow: 0 1px 2px rgba(#202951, 0.16);
+        box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
 
         @media only screen and (max-width: 991px) {
           padding: 0 25px;
