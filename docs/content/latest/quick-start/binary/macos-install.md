@@ -15,15 +15,24 @@ Python 2.7.10
 c) Each tablet maps to its own file, so if you experiment with a few hundred tables
 and a few hundred tablets per table, you can soon end up
 creating a large number of files in the current shell.
-Make sure that this command:
+Make sure that this command shows a big enough value.
 
 ```sh
-$ launchctl limit maxfiles`
+$ launchctl limit maxfiles
 ```
 
-shows a big enough value. We recommend
-simply setting the soft and hard limits to 1MB (i.e. 2^20 = 1048576) by ensuring that the file
-`/Library/LaunchDaemons/limit.maxfiles.plist` has this content:
+We recommend simply setting the soft and hard limits to 1MB (i.e. 2^20 = 1048576).
+
+- Edit `/etc/sysctl.conf` with the following contents.
+
+```sh
+kern.maxfiles=1048576                                                                                
+kern.maxproc=2500                                                                                    
+kern.maxprocperuid=2500                                                                              
+kern.maxfilesperproc=1048576
+```
+
+- If your macOS version does not have the `/etc/sysctl.conf` file, then ensure that the file `/Library/LaunchDaemons/limit.maxfiles.plist` has the following content.
 
 ```sh
 <?xml version="1.0" encoding="UTF-8"?>
@@ -48,8 +57,7 @@ simply setting the soft and hard limits to 1MB (i.e. 2^20 = 1048576) by ensuring
   </plist>
 ```
 
-Enure that the plist file is owned by `root:wheel` and has permissions `-rw-r--r--`.
-Reboot your computer for this to take effect. Or, to avoid this effort, enter this command:
+Enure that the plist file is owned by `root:wheel` and has permissions `-rw-r--r--`. Reboot your computer for this to take effect. Or, to avoid this effort, enter this command:
 
 ```sh
 $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist

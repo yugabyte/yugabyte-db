@@ -30,8 +30,9 @@ commit_transaction ::= COMMIT [ TRANSACTION | WORK ] ;
 
 ## Semantics
 
-- The `SERIALIZABLE` isolation level not yet supported. (This is currently in progress).
-- Currently YugaByte will always use the snapshot isolation level internally. See more [here](../../../architecture/transactions/isolation-levels/).
+Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
+
+Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
 
 ## Examples
 
