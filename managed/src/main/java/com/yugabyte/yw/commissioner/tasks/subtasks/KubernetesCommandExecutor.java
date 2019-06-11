@@ -263,7 +263,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUUID = entry.getKey();
       String azName = AvailabilityZone.get(azUUID).code;
-      String regionName = AvailabilityZone.get(azUUID).region.name;
+      String regionName = AvailabilityZone.get(azUUID).region.code;
       Map<String, String> config = entry.getValue();
 
       String namespace = isMultiAz ?
