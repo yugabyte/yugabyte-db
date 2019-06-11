@@ -8,16 +8,14 @@ import PropTypes from 'prop-types';
 import { FormattedDate, FormattedRelative } from 'react-intl';
 import { ClusterInfoPanelContainer, YBWidget } from '../../panels';
 import { OverviewMetricsContainer, StandaloneMetricsPanelContainer, DiskUsagePanel, CpuUsagePanel } from '../../metrics';
-import { YBResourceCount, YBCost, DescriptionList, YBCopyButton } from 'components/common/descriptors';
+import { YBResourceCount, YBCost, DescriptionList } from 'components/common/descriptors';
 import { RegionMap, YBMapLegend} from '../../maps';
-import { isNonEmptyObject, isEmptyObject, isNonEmptyArray } from 'utils/ObjectUtils';
-import { isKubernetesUniverse, getPrimaryCluster, nodeComparisonFunction } from '../../../utils/UniverseUtils';
-import { getUniverseEndpoint } from 'actions/common';
+import { isNonEmptyObject, isEmptyObject, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+import { isKubernetesUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
-import { NodeConnectModal } from '../../universes';
 import moment from 'moment';
 import pluralize from 'pluralize';
 import { isEnabled } from 'utils/LayoutUtils';
@@ -27,68 +25,28 @@ class DatabasePanel extends PureComponent {
     universeInfo: PropTypes.object.isRequired
   };
 
-  renderEndpointUrl = (endpointUrl, endpointName) => {
-    return (
-      <a href={endpointUrl} target="_blank" rel="noopener noreferrer">{endpointName}</a>
-    );
-  }
-
   render() {
     const {
-      universeInfo,
       universeInfo: {
-        universeDetails,
         universeDetails: {
           clusters
         }
-      }
+      },
     } = this.props;
     const primaryCluster = getPrimaryCluster(clusters);
     const userIntent = primaryCluster && primaryCluster.userIntent;
-    const universeId = universeInfo.universeUUID;
 
-    const formattedCreationDate = (
-      <FormattedDate value={universeInfo.creationDate} year='numeric' month='long' day='2-digit'
-                     hour='2-digit' minute='2-digit' second='2-digit' timeZoneName='short' />
-    );
-
-    const nodeDetails = universeDetails.nodeDetailsSet.sort((a, b) => nodeComparisonFunction(a, b, universeDetails.clusters));
-    const primaryNodeDetails = nodeDetails
-      .filter((node) => node.placementUuid === primaryCluster.uuid);
-
-    const primaryNodeIPs = primaryNodeDetails
-      .filter((node) => isDefinedNotNull(node.cloudInfo.private_ip) && isDefinedNotNull(node.cloudInfo.public_ip))
-      .map((node) => ({ privateIP: node.cloudInfo.private_ip, publicIP: node.cloudInfo.public_ip }));
-
-    const ycqlServiceUrl = getUniverseEndpoint(universeId) + "/yqlservers";
-    const ysqlServiceUrl = getUniverseEndpoint(universeId) + "/ysqlservers";
-    const yedisServiceUrl = getUniverseEndpoint(universeId) + "/redisservers";
-    const universeInfoItems = [
-      {name: "Service endpoints", data: <span>{this.renderEndpointUrl(ycqlServiceUrl,"YCQL")} &nbsp;/&nbsp; {userIntent.enableYSQL && this.renderEndpointUrl(ysqlServiceUrl,"YSQL")} { userIntent.enableYSQL && '\u00A0/\u00A0' } {this.renderEndpointUrl(yedisServiceUrl,"YEDIS")}</span>},
-      {name: "Launch Time", data: formattedCreationDate},
-    ];
-
-    if (userIntent.providerType === "aws" && universeInfo.dnsName) {
-      const dnsNameData = (
-        <FlexContainer>
-          <FlexGrow style={{overflow: 'hidden', textOverflow: 'ellipsis', flexShrink: 1, minWidth: 0 }}>
-            {universeInfo.dnsName}
-          </FlexGrow>
-          <FlexGrow power={100} style={{position: "relative", flexShrink: 0, minWidth: "24px", flexBasis: "24px" }}>
-            <YBCopyButton className={"btn-copy-round"} text={universeInfo.dnsName} ><span className={"fa fa-clone"}></span></YBCopyButton>
-          </FlexGrow>
-        </FlexContainer>);
-      universeInfoItems.push({name: "Hosted Zone Name", data: dnsNameData });
-    }
-
+    const optimizeVersion = (version) => {
+      if (parseInt(version[version.length - 1], 10) === 0) {
+        return optimizeVersion(version.slice(0, version.length - 1));
+      } else {
+        return version.join(".");
+      }
+    };
     return (
       <Row className={"overview-widget-database"}>
-        <Col xs={6} className="centered" >
-          <YBResourceCount size={userIntent.ybSoftwareVersion} inline={true}/>
-          <NodeConnectModal nodeIPs={primaryNodeIPs} providerUUID={primaryCluster.userIntent.provider} />
-        </Col>
-        <Col xs={6}>
-          <DescriptionList type={"stack"} listItems={universeInfoItems} />
+        <Col xs={12} className="centered" >
+          <YBResourceCount className="hidden-costs" size={optimizeVersion(userIntent.ybSoftwareVersion.split("-")[0].split("."))} kind={'Version'} />
         </Col>
       </Row>
     );
@@ -172,15 +130,15 @@ class HealthInfoPanel extends PureComponent {
         headerLeft={
           "Health Check"
         }
-        headerRight={errorNodesCounter ? errorHeader : null}
+        headerRight={errorNodesCounter ? errorHeader : <Link to={`/universes/${universeInfo.universeUUID}?tab=health`}>Details</Link>}
         body={
-          <FlexContainer className={"centered"} direction={"column"}>
+          <FlexContainer className={"centered health-heart-cnt"} direction={"row"}>
             <FlexGrow>
               <HealthHeart status={errorNodesCounter ? "error" : "success"} />
             </FlexGrow>
-            <FlexShrink >
+            <FlexGrow >
               <DescriptionList type={"inline"} className={"health-check-legend"} listItems={healthCheckInfoItems} />
-            </FlexShrink>
+            </FlexGrow>
           </FlexContainer>
         }
       />);
@@ -206,13 +164,13 @@ class HealthInfoPanel extends PureComponent {
         "Health Check"
       }
       body={
-        <FlexContainer className={"centered"} direction={"column"}>
+        <FlexContainer className={"centered health-heart-cnt"} direction={"column"}>
           <FlexGrow>
             <HealthHeart status={errorContent.heartClassName} />
           </FlexGrow>
-          <FlexShrink>
+          {isNonEmptyString(errorContent.body) && <FlexShrink className={errorContent.heartStatus === "empty" ? "text-light text-lightgray" : ""}>
             {errorContent.body}
-          </FlexShrink>
+          </FlexShrink>}
         </FlexContainer>
       }
     />);
@@ -324,7 +282,7 @@ export default class UniverseOverviewNew extends Component {
   }
 
   getHealthWidget = (healthCheck, universeInfo) => {
-    return (<Col lg={2} md={4} sm={4} xs={6}>
+    return (<Col lg={4} md={8} sm={8} xs={12}>
       <HealthInfoPanel healthCheck={healthCheck} universeInfo={universeInfo} />
     </Col>);
   }
@@ -424,22 +382,26 @@ export default class UniverseOverviewNew extends Component {
         }
         headerRight={
           updateAvailable ? (
-            <a onClick={this.props.showSoftwareUpgradesModal}>Upgrade Software <span className="badge badge-pill badge-orange">{updateAvailable}</span></a>
-           ) : (
-            lastUpdateDate
-            ? <div className="text-lightgray text-light"><span className={"fa fa-clock-o"}></span> Updated <span className={"text-dark text-normal"}><FormattedDate
-            value={lastUpdateDate}
-            year='numeric'
-            month='short'
-            day='2-digit' /></span></div>
-            : null)
+            <a onClick={this.props.showSoftwareUpgradesModal}>Upgrade <span className="badge badge-pill badge-orange">{updateAvailable}</span></a>
+           ) : null
         }
         body={
-          <DatabasePanel universeInfo={universeInfo} tasks={tasks}/>
+          <FlexContainer className={"centered"} direction={"column"}>
+            <FlexGrow>
+              <DatabasePanel universeInfo={universeInfo} tasks={tasks}/>
+            </FlexGrow>
+            <FlexShrink>
+              {lastUpdateDate && <div className="text-lightgray text-light"><span className={"fa fa-clock-o"}></span> Upgrated <span className={"text-dark text-normal"}><FormattedDate
+                value={lastUpdateDate}
+                year='numeric'
+                month='short'
+                day='2-digit' /></span></div>}
+            </FlexShrink>
+          </FlexContainer>
         }
     />);
     return (
-      <Col lg={4} md={8} sm={8} xs={12}>
+      <Col lg={2} md={4} sm={4} xs={6}>
         {infoWidget}
       </Col>
     );

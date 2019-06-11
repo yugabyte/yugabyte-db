@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
-import {isNonEmptyObject, isNonEmptyArray, isNonEmptyString} from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 import { reset } from 'redux-form';
 import  OnPremNodesList from './OnPremNodesList';
 import {
@@ -10,8 +10,8 @@ import {
   getNodesInstancesForProviderResponse, deleteInstance, deleteInstanceResponse
 } from '../../../actions/cloud';
 import { reduxForm } from 'redux-form';
-import {closeUniverseDialog} from '../../../actions/universe';
-import {openDialog, closeDialog} from '../../../actions/modal';
+import { closeUniverseDialog } from '../../../actions/universe';
+import { openDialog, closeDialog } from '../../../actions/modal';
 
 const mapStateToProps = (state) => {
   return {

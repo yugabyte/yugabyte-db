@@ -6,13 +6,12 @@ import { openDialog, closeDialog } from '../../../actions/modal';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    closeModal: () => {
-      dispatch(closeDialog());
-    },
-
     showUniverseOverviewMapModal: () => {
       dispatch(openDialog("universeOverviewMapModal"));
     },
+    closeModal: () => {
+      dispatch(closeDialog());
+    }
   };
 };
 

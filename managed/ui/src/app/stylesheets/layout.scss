@@ -17,11 +17,25 @@
 .navbar-default {
   background: #fff;    
   border-color: transparent;
-  box-shadow: 0 0px 1px rgba($YB_DARK_GRAY_2, 0.05);
 }
 
 .container-body {
   padding: 60px 0 80px 90px;
+
+  & > *:first-child {
+    &:before {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 90px;
+      right: 0;
+      height: 60px;
+      width: auto;
+      box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 7px rgba($YB_DARK_GRAY_2, 0.04);
+      background: white;
+      z-index: 1020;
+    }
+  }
 
   .dashboard-container {
     padding: 30px;

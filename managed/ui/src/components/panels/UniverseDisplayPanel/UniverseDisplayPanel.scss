@@ -6,7 +6,7 @@
 
 .universe-display-item-container {
   height: 178px;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
   padding: 12px 14px;
   color: $YB_TEXT_COLOR;
   position: relative;
@@ -22,7 +22,7 @@
     @include transition(0.125s);
     background-color: white;
     border-radius: 7px;
-    box-shadow: 0 1px 1px rgba(35, 35, 41, 0.1);
+    box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
   }
 
   * {
@@ -121,10 +121,10 @@ a:hover >  .universe-display-item-container, .create-universe-button:hover {
   }
 
   .row {
-    margin: 0 -8px;
+    margin: 0 -12px;
 
     .col-lg-2, .col-md-3 {
-      padding: 0 8px;
+      padding: 0 12px;
     }
   }
 }
