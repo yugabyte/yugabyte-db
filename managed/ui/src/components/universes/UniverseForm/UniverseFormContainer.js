@@ -6,6 +6,7 @@ import { fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailur
 import UniverseForm from './UniverseForm';
 import { getInstanceTypeList, getRegionList, getRegionListResponse, getInstanceTypeListResponse,
   getNodeInstancesForProvider, getNodesInstancesForProviderResponse } from '../../../actions/cloud';
+import { getTlsCertificates, getTlsCertificatesResponse } from '../../../actions/customers';
 import { createUniverse, createUniverseResponse, editUniverse, editUniverseResponse,
   configureUniverseTemplate, configureUniverseTemplateResponse, configureUniverseTemplateSuccess, configureUniverseTemplateLoading,
   configureUniverseResources, configureUniverseResourcesResponse,
@@ -39,6 +40,9 @@ const mapDispatchToProps = (dispatch) => {
     submitCreateUniverse: (values) => {
       dispatch(createUniverse(values)).then((response) => {
         dispatch(createUniverseResponse(response.payload));
+        dispatch(getTlsCertificates()).then((response) => {
+          dispatch(getTlsCertificatesResponse(response.payload));
+        });
       });
     },
 
@@ -236,6 +240,7 @@ function mapStateToProps(state, ownProps) {
     tasks: state.tasks,
     cloud: state.cloud,
     softwareVersions: state.customer.softwareVersions,
+    userCertificates: state.customer.userCertificates,
     accessKeys: state.cloud.accessKeys,
     initialValues: data,
     formValues: selector(state,
@@ -243,7 +248,7 @@ function mapStateToProps(state, ownProps) {
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
       'primary.diskIops', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL',
-      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.storageClass',
+      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.storageClass', 'primary.tlsCertificateId',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
       'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.ybSoftwareVersion', 'async.accessKeyCode',
       'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.storageType', 'async.assignPublicIP',

@@ -159,11 +159,13 @@ export default class ClusterFields extends Component {
     } else {
       // Repopulate the form fields when switching back to the view
       if (formValues && isNonEmptyObject(formValues[clusterType])) {
-        this.setState({providerType: formValues[clusterType].providerType});
-        this.setState({providerSelected: formValues[clusterType].provider});
-        this.setState({numNodes: formValues[clusterType].numNodes ? formValues[clusterType].numNodes : 3});
-        this.setState({replicationFactor: formValues[clusterType].replicationFactor ?
-          Number(formValues[clusterType].replicationFactor) : 3});
+        this.setState({
+          providerType: formValues[clusterType].providerType,
+          providerSelected: formValues[clusterType].provider,
+          numNodes: formValues[clusterType].numNodes ? formValues[clusterType].numNodes : 3,
+          replicationFactor: formValues[clusterType].replicationFactor ?
+            Number(formValues[clusterType].replicationFactor) : 3
+        });
         if (isNonEmptyString(formValues[clusterType].provider)) {
           this.props.getInstanceTypeListItems(formValues[clusterType].provider);
           this.props.getRegionListItems(formValues[clusterType].provider);
@@ -688,7 +690,7 @@ export default class ClusterFields extends Component {
   providerChanged = (value) => {
     const {updateFormField, clusterType, universe: {currentUniverse: {data}}} = this.props;
     const providerUUID = value;
-    const currentProviderData = this.getCurrentProvider(value);
+    const currentProviderData = this.getCurrentProvider(value) || {};
 
     const targetCluster = clusterType !== "primary" ? isNonEmptyObject(data) && getPrimaryCluster(data.universeDetails.clusters) : isNonEmptyObject(data) && getReadOnlyCluster(data.universeDetails.clusters);
     if (isEmptyObject(data) || isDefinedNotNull(targetCluster)) {
@@ -715,7 +717,7 @@ export default class ClusterFields extends Component {
       this.props.getInstanceTypeListItems(providerUUID);
     }
 
-    if (currentProviderData && currentProviderData.code === "onprem") {
+    if (currentProviderData.code === "onprem") {
       this.props.fetchNodeInstanceList(value);
     }
     this.setState({
@@ -914,6 +916,7 @@ export default class ClusterFields extends Component {
     let enableYSQL = <span />;
     let enableNodeToNodeEncrypt = <span />;
     let enableClientToNodeEncrypt = <span />;
+    let selectTlsCert = <span />;
     const currentProvider = this.getCurrentProvider(currentProviderUUID);
 
     if (isDefinedNotNull(currentProvider) &&
@@ -959,6 +962,33 @@ export default class ClusterFields extends Component {
           label="Enable Client-to-Node TLS"
           subLabel="Whether or not to enable TLS encryption for client to node communication."/>
       );
+    }
+
+    { // Block scope for state variables
+      const { enableClientToNodeEncrypt, enableNodeToNodeEncrypt } = this.state;
+      const tlsCertOptions = [
+        <option key={'cert-option-0'} value={''}>
+          Create new certificate
+        </option>
+      ];
+      if (!_.isEmpty(this.props.userCertificates.data)) {
+        this.props.userCertificates.data.forEach((cert, index) => {
+          tlsCertOptions.push(
+            <option key={`cert-option-${index + 1}`} value={cert.uuid}>
+              {cert.label}
+            </option>);
+        });
+      }
+      if (isDefinedNotNull(currentProvider) && (enableClientToNodeEncrypt || enableNodeToNodeEncrypt)) {
+        const isSelectReadOnly = this.props.type === 'Edit';
+        selectTlsCert = (
+          <Field name={`${clusterType}.tlsCertificateId`}
+            component={YBSelectWithLabel}
+            options={tlsCertOptions}
+            readOnlySelect={isSelectReadOnly}
+            label="Root Certificate"/>
+        );
+      }
     }
     
     if (isDefinedNotNull(currentProvider) &&
@@ -1187,6 +1217,7 @@ export default class ClusterFields extends Component {
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
                 {storageClassField}
+                {selectTlsCert}
                 {assignPublicIP}
                 {useTimeSync}
                 {enableYSQL}

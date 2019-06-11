@@ -85,7 +85,7 @@ class UniverseForm extends Component {
   }
 
   handleSubmitButtonClick = () => {
-    const {type } = this.props;
+    const { type } = this.props;
     if (type === "Create") {
       this.createUniverse();
     } else if (type === "Async") {
@@ -248,6 +248,10 @@ class UniverseForm extends Component {
       submitPayload.clusters.forEach(function (cluster, idx, arr) {
         if (cluster.clusterType === "PRIMARY") {
           submitPayload.clusters[idx].userIntent = getIntentValues("primary");
+          const tlsEnabled = formValues['primary'].enableClientToNodeEncrypt || formValues['primary'].enableNodeToNodeEncrypt;
+          if (formValues['primary'].tlsCertificateId && tlsEnabled) {
+            submitPayload.rootCA = formValues['primary'].tlsCertificateId;
+          }
         }
         if (cluster.clusterType === "ASYNC" && isNonEmptyObject(formValues.async)) {
           asyncClusterFound = true;
@@ -297,7 +301,8 @@ class UniverseForm extends Component {
       type,
       getRegionListItems, 
       resetConfig, 
-      formValues, 
+      formValues,
+      userCertificates,
       fetchUniverseResources, 
       fetchNodeInstanceList, 
       showDeleteReadReplicaModal, 
@@ -377,14 +382,25 @@ class UniverseForm extends Component {
     };
 
     const clusterProps = {
-      universe: universe, getRegionListItems: getRegionListItems,
-      getInstanceTypeListItems: getInstanceTypeListItems, cloud: cloud, resetConfig: resetConfig,
-      accessKeys: this.props.accessKeys, softwareVersions: softwareVersions, updateFormField: this.updateFormField,
-      formValues: formValues, submitConfigureUniverse: submitConfigureUniverse, setPlacementStatus: this.props.setPlacementStatus,
-      fetchUniverseResources: fetchUniverseResources, fetchUniverseTasks: this.props.fetchUniverseTasks,
-      fetchNodeInstanceList: fetchNodeInstanceList, handleHasFieldChanged: this.handleHasFieldChanged,
+      universe,
+      getRegionListItems,
+      getInstanceTypeListItems,
+      cloud,
+      formValues,
+      resetConfig,
+      softwareVersions,
+      fetchNodeInstanceList,
+      userCertificates,
+      submitConfigureUniverse,
+      type,
+      fetchUniverseResources,
+      accessKeys: this.props.accessKeys, updateFormField: this.updateFormField,
+      setPlacementStatus: this.props.setPlacementStatus,
+      fetchUniverseTasks: this.props.fetchUniverseTasks,
+      handleHasFieldChanged: this.handleHasFieldChanged,
       reset: this.props.reset, fetchUniverseMetadata: this.props.fetchUniverseMetadata,
-      fetchCustomerTasks: this.props.fetchCustomerTasks, type: type, getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
+      fetchCustomerTasks: this.props.fetchCustomerTasks,
+      getExistingUniverseConfiguration: this.props.getExistingUniverseConfiguration,
       fetchCurrentUniverse: this.props.fetchCurrentUniverse, location: this.props.location,
     };
 
