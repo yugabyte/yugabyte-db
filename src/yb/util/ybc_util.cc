@@ -30,11 +30,6 @@ namespace yb {
 namespace {
 
 Status InitInternal(const char* argv0) {
-  // Use InitGoogleLoggingSafeBasic() instead of InitGoogleLoggingSafe() to avoid calling
-  // google::InstallFailureSignalHandler(). This will prevent interference with PostgreSQL's
-  // own signal handling.
-  yb::InitGoogleLoggingSafeBasic(argv0);
-
   // Allow putting gflags into a file and specifying that file's path as an env variable.
   const char* pg_flagfile_path = getenv("YB_PG_FLAGFILE");
   if (pg_flagfile_path) {
@@ -55,15 +50,26 @@ Status InitInternal(const char* argv0) {
     string env_var_name = "FLAGS_" + flag_info.name;
     const char* env_var_value = getenv(env_var_name.c_str());
     if (env_var_value) {
-#ifndef NDEBUG
-      LOG(INFO) << "Setting flag " << flag_info.name << " to the value of the env var "
-                << env_var_name << ": " << env_var_value;
-#endif
       google::SetCommandLineOption(flag_info.name.c_str(), env_var_value);
     }
   }
 
   RETURN_NOT_OK(CheckCPUFlags());
+  // Use InitGoogleLoggingSafeBasic() instead of InitGoogleLoggingSafe() to avoid calling
+  // google::InstallFailureSignalHandler(). This will prevent interference with PostgreSQL's
+  // own signal handling.
+  yb::InitGoogleLoggingSafeBasic(argv0);
+
+#ifndef NDEBUG
+  for (auto& flag_info : flag_infos) {
+    string env_var_name = "FLAGS_" + flag_info.name;
+    const char* env_var_value = getenv(env_var_name.c_str());
+    if (env_var_value) {
+      LOG(INFO) << "Setting flag " << flag_info.name << " to the value of the env var "
+                << env_var_name << ": " << env_var_value;
+    }
+  }
+#endif
 
   return Status::OK();
 }
