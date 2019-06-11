@@ -584,19 +584,18 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
       table_cat = kSystemTable;
     }
 
-    const TableName long_table_name = TableLongName(
-        master_->catalog_manager()->GetNamespaceName(table->namespace_id()), l->data().name());
+    string table_uuid = table->id();
     string keyspace = master_->catalog_manager()->GetNamespaceName(table->namespace_id());
     string state = SysTablesEntryPB_State_Name(l->data().pb.state());
     Capitalize(&state);
-    (*ordered_tables[table_cat])[long_table_name] = Substitute(
+    (*ordered_tables[table_cat])[table_uuid] = Substitute(
         "<tr><td>$0</td><td><a href=\"/table?id=$4\">$1</a>"
             "</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
         EscapeForHtmlToString(keyspace),
         EscapeForHtmlToString(l->data().name()),
         state,
         EscapeForHtmlToString(l->data().pb.state_msg()),
-        EscapeForHtmlToString(table->id()));
+        EscapeForHtmlToString(table_uuid));
   }
 
   for (int i = 0; i < kNumTypes; ++i) {
