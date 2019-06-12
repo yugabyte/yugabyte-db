@@ -600,9 +600,8 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     if (azConfig.containsKey("KUBE_DOMAIN")) {
       overrides.put("domainName", azConfig.get("KUBE_DOMAIN"));
     }
-    if (!userIntent.enableYSQL) {
-      overrides.put("disableYsql", true);
-    }
+
+    overrides.put("disableYsql", !userIntent.enableYSQL);
 
     // For now the assumption is the all deployments will have the same kind of
     // loadbalancers, so the annotations will be at the provider level.
