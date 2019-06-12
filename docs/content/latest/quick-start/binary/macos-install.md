@@ -21,7 +21,7 @@ Make sure that this command shows a big enough value.
 $ launchctl limit maxfiles
 ```
 
-We recommend simply setting the soft and hard limits to 1MB (i.e. 2^20 = 1048576).
+We recommend simply setting the soft and hard limits to 1MB (i.e. 2<sup>20</sup> = 1048576).
 
 - Edit `/etc/sysctl.conf` with the following contents.
 

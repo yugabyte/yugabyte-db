@@ -62,7 +62,7 @@ Where
 - `sequence_name` is the name of the sequence.
 - `increment` is the difference between consecutive values in the sequence. Default is 1.
 - `minvalue` is the minimum value allowed in the sequence. If this value is reached (in a sequence with a negative increment), `nextval()` will return an error. If `NO MINVALUE` is specified, the default value will be used. Default is 1.
-- `maxvalue` is the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is 2^63 - 1.
+- `maxvalue` is the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is 2<sup>63</sup> - 1.
 - `start` is the first value in the sequence. `start` cannot be less than `minvalue`. Default is 1.
 - `cache` specifies how many numbers from the sequence to cache in the client. Default is 1.
 
