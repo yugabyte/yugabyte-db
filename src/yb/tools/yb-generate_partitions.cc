@@ -63,13 +63,22 @@ Status YBPartitionGenerator::BuildTabletMap(const RepeatedPtrField<TabletLocatio
   return Status::OK();
 }
 
-Status YBPartitionGenerator::LookupTabletId(const string& row, string* tablet_id,
+Status YBPartitionGenerator::LookupTabletId(const string& row,
+                                            string* tablet_id,
+                                            string* partition_key) {
+  return LookupTabletId(row, {}, tablet_id, partition_key);
+}
+
+Status YBPartitionGenerator::LookupTabletId(const string& row,
+                                            const std::set<int>& skipped_cols,
+                                            string* tablet_id,
                                             string* partition_key) {
   CsvTokenizer tokenizer = Tokenize(row);
-  return LookupTabletIdWithTokenizer(tokenizer, tablet_id, partition_key);
+  return LookupTabletIdWithTokenizer(tokenizer, skipped_cols, tablet_id, partition_key);
 }
 
 Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tokenizer,
+                                                         const std::set<int>& skipped_cols,
                                                          string* tablet_id, string* partition_key) {
   const Schema &schema = table_->InternalSchema();
   size_t ncolumns = std::distance(tokenizer.begin(), tokenizer.end());
@@ -83,7 +92,11 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
 
   // Set the hash column values to compute the partition key.
   auto it = tokenizer.begin();
-  for (int i = 0; i < schema.num_hash_key_columns(); i++, it++) {
+  int col_id = 0;
+  for (int i = 0; i < schema.num_hash_key_columns(); col_id++, it++) {
+    if (skipped_cols.find(col_id) != skipped_cols.end()) {
+      continue;
+    }
     if (IsNull(*it)) {
       return STATUS_SUBSTITUTE(IllegalState, "Primary key cannot be null: $0", *it);
     }
@@ -115,6 +128,7 @@ Status YBPartitionGenerator::LookupTabletIdWithTokenizer(const CsvTokenizer& tok
       default:
         FATAL_INVALID_ENUM_VALUE(DataType, column_type);
     }
+    i++;  // Avoid incrementing if we are skipping the column.
   }
 
   // Compute the hash function.

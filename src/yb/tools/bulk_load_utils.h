@@ -14,6 +14,7 @@
 #ifndef YB_TOOLS_BULK_LOAD_UTILS_H
 #define YB_TOOLS_BULK_LOAD_UTILS_H
 
+#include <set>
 #include <boost/tokenizer.hpp>
 
 #include "yb/util/date_time.h"
@@ -28,25 +29,15 @@ constexpr const char* kNullStringEscaped = "\\n";
 typedef boost::tokenizer< boost::escaped_list_separator<char> , std::string::const_iterator,
     std::string> CsvTokenizer;
 
-Result<Timestamp> TimestampFromString(const std::string& str) {
-  auto val = util::CheckedStoll(str);
-  if (val.ok()) {
-    return DateTime::TimestampFromInt(*val);
-  }
+Result<Timestamp> TimestampFromString(const std::string& str);
 
-  return DateTime::TimestampFromString(str);
-}
+bool IsNull(std::string str);
 
-bool IsNull(std::string str) {
-  boost::to_lower(str);
-  return str == kNullStringEscaped;
-}
+std::set<int> SkippedColumns();
+std::set<int> SkippedColumns(const std::string& cols_to_skip);
 
-CsvTokenizer Tokenize(const std::string& line) {
-  boost::escaped_list_separator<char> seps('\\', ',', '\"');
-  CsvTokenizer tokenizer(line, seps);
-  return tokenizer;
-}
+CsvTokenizer Tokenize(const std::string& line);
+CsvTokenizer Tokenize(const std::string& line, char delimiter, char quote_char);
 
 } // namespace tools
 } // namespace yb
