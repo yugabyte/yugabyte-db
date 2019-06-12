@@ -283,9 +283,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         expectedOverrides.putAll(annotations);
       }
     }
-    if (!defaultUserIntent.enableYSQL) {
-      expectedOverrides.put("disableYsql", true);
-    }
+    expectedOverrides.put("disableYsql", !defaultUserIntent.enableYSQL);
 
     return expectedOverrides;
   }
