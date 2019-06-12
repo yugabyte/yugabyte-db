@@ -21,6 +21,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/jsonb.h"
 #include "yb/common/partition.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/docdb/docdb_test_util.h"
@@ -59,6 +60,7 @@ using client::YBSchemaBuilder;
 using client::YBTableCreator;
 using client::YBTableName;
 using client::YBTable;
+using common::Jsonb;
 
 static const char* const kPartitionToolName = "yb-generate_partitions_main";
 static const char* const kBulkLoadToolName = "yb-bulk_load";
@@ -102,6 +104,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     b.AddColumn("v2")->Type(INT32)->NotNull();
     b.AddColumn("v3")->Type(FLOAT)->NotNull();
     b.AddColumn("v4")->Type(DOUBLE)->NotNull();
+    b.AddColumn("v5")->Type(JSONB)->Nullable();
     CHECK_OK(b.Build(&schema_));
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
@@ -169,8 +172,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     string tablet_id;
     string partition_key;
     CsvTokenizer tokenizer = Tokenize(row);
-    RETURN_NOT_OK(partition_generator_->LookupTabletIdWithTokenizer(tokenizer, &tablet_id,
-                                                                    &partition_key));
+    RETURN_NOT_OK(partition_generator_->LookupTabletIdWithTokenizer(
+        tokenizer, {}, &tablet_id, &partition_key));
     uint16_t hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
     req->set_hash_code(hash_code);
     req->set_max_hash_code(hash_code);
@@ -228,6 +231,14 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_EQ(std::stoi(*it++), ql_row.column(5).int32_value());
     ASSERT_FLOAT_EQ(std::stof(*it++), ql_row.column(6).float_value());
     ASSERT_DOUBLE_EQ(std::stold(*it++), ql_row.column(7).double_value());
+    string token_str = *it++;
+    if (IsNull(token_str)) {
+      ASSERT_TRUE(ql_row.column(8).IsNull());
+    } else {
+      Jsonb jsonb_from_token;
+      CHECK_OK(jsonb_from_token.FromString(token_str));
+      ASSERT_EQ(jsonb_from_token.SerializedJsonb(), ql_row.column(8).jsonb_value());
+    }
   }
 
  protected:
@@ -270,6 +281,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
       table_->AddInt32ColumnValue(ql_write, "v2", 0);
       table_->AddFloatColumnValue(ql_write, "v3", 0);
       table_->AddDoubleColumnValue(ql_write, "v4", 0);
+      table_->AddJsonbColumnValue(ql_write, "v5", "{ \"a\" : \"foo\" , \"b\" : \"bar\" }");
 
       auto status = tserver_proxy_->Write(req, &resp, &controller);
       ASSERT_TRUE(status.ok() || status.IsTimedOut()) << "Bad status: " << status;
@@ -288,6 +300,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   string GenerateRow(int index) {
     // Build the row and lookup table_id
     string timestamp_string;
+    string json;
     if (index % 2 == 0) {
       // Use string format.
       int year = 1970 + random_.Next32() % 2000;
@@ -298,13 +311,15 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
       int second = random_.Next32() % 60;
       timestamp_string = strings::Substitute("$0-$1-$2 $3:$4:$5", year, month, day, hour, minute,
                                              second);
+      json = "\"{\\\"a\\\":\\\"foo\\\",\\\"b\\\":\\\"bar\\\"}\"";
     } else {
       timestamp_string = std::to_string(static_cast<int64_t>(random_.Next32()));
+      json = "\\\\n"; // represents null value.
     }
 
     string row = strings::Substitute(
-        "$0,$1,$2,2017-06-17 14:47:00,\"abc,xyz\",$3,3.14,4.1",
-        static_cast<int64_t>(random_.Next32()), timestamp_string, random_.Next32(), kV2Value);
+        "$0,$1,$2,2017-06-17 14:47:00,\"abc,xyz\",$3,3.14,4.1,$4",
+        static_cast<int64_t>(random_.Next32()), timestamp_string, random_.Next32(), kV2Value, json);
     VLOG(1) << "Generated row: " << row;
     return row;
   }
@@ -389,6 +404,82 @@ TEST_F(YBBulkLoadTest, VerifyPartitions) {
   }
 }
 
+TEST_F(YBBulkLoadTest, VerifyPartitionsWithIgnoredColumns) {
+  const std::set<int> skipped_cols = tools::SkippedColumns("0,9");
+  for (int i = 0; i < kNumIterations; i++) {
+    string tablet_id;
+    string partition_key;
+    string row = GenerateRow(i);
+    ASSERT_OK(partition_generator_->LookupTabletId(row, &tablet_id, &partition_key));
+    VLOG(1) << "Got tablet id: " << tablet_id << ", partition key: " << partition_key;
+
+    VerifyTabletIdPartitionKey(tablet_id, partition_key);
+
+    string tablet_id2;
+    string partition_key2;
+    string row_with_extras = "foo," + row + ",bar";
+    ASSERT_OK(partition_generator_->LookupTabletId(
+        row_with_extras, skipped_cols, &tablet_id2, &partition_key2));
+    ASSERT_EQ(tablet_id, tablet_id2);
+    ASSERT_EQ(partition_key, partition_key2);
+  }
+}
+
+TEST_F(YBBulkLoadTest, TestTokenizer) {
+  {
+    // JSON needs to be enclosed in quotes, so that the internal commas are not treated as different
+    // columns. Need to escape the quotes within to ensure that they are not eaten up.
+    string str ="1,2017-06-17 14:47:00,\"abc,;xyz\","
+                 "\"{\\\"a\\\":\\\"foo\\\",\\\"b\\\":\\\"bar\\\"}\"";
+    CsvTokenizer tokenizer = Tokenize(str);
+    auto it = tokenizer.begin();
+    ASSERT_EQ(*it++, "1");
+    ASSERT_EQ(*it++, "2017-06-17 14:47:00");
+    ASSERT_EQ(*it++, "abc,;xyz");
+    ASSERT_EQ(*it++, "{\"a\":\"foo\",\"b\":\"bar\"}");
+    ASSERT_EQ(it, tokenizer.end());
+  }
+
+  {
+    // Separating fields with ';'. No need to enclose JSON in quotes. Internal quotes still need
+    // to be escapted to prevent being consumed.
+    string str ="1;2017-06-17 14:47:00;\"abc,;xyz\";"
+                "{\\\"a\\\":\\\"foo\\\",\\\"b\\\":\\\"bar\\\"}";
+    CsvTokenizer tokenizer = Tokenize(str, ';', '\"');
+    auto it = tokenizer.begin();
+    ASSERT_EQ(*it++, "1");
+    ASSERT_EQ(*it++, "2017-06-17 14:47:00");
+    ASSERT_EQ(*it++, "abc,;xyz");
+    ASSERT_EQ(*it++, "{\"a\":\"foo\",\"b\":\"bar\"}");
+    ASSERT_EQ(it, tokenizer.end());
+  }
+
+  {
+    string str ="1,2017-06-17 14:47:00,'abc,;xyz',"
+                 "'{\"a\":\"foo\",\"b\":\"bar\"}'";
+    // No need to escape quotes because the quote character is \'
+    CsvTokenizer tokenizer = Tokenize(str, ',', '\'');
+    auto it = tokenizer.begin();
+    ASSERT_EQ(*it++, "1");
+    ASSERT_EQ(*it++, "2017-06-17 14:47:00");
+    ASSERT_EQ(*it++, "abc,;xyz");
+    ASSERT_EQ(*it++, "{\"a\":\"foo\",\"b\":\"bar\"}");
+    ASSERT_EQ(it, tokenizer.end());
+  }
+  {
+    string str ="1,2017-06-17 14:47:00,'abc,;xyz',"
+                "\\\\n";
+    // No need to escape quotes because the quote character is \'
+    CsvTokenizer tokenizer = Tokenize(str, ',', '\'');
+    auto it = tokenizer.begin();
+    ASSERT_EQ(*it++, "1");
+    ASSERT_EQ(*it++, "2017-06-17 14:47:00");
+    ASSERT_EQ(*it++, "abc,;xyz");
+    ASSERT_EQ(*it++, "\\n");
+    ASSERT_EQ(it, tokenizer.end());
+  }
+}
+
 TEST_F(YBBulkLoadTest, InvalidLines) {
   string tablet_id;
   string partition_key;
@@ -437,6 +528,9 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
     boost::split(tokens, buf, boost::is_any_of("\t"));
     ASSERT_EQ(2, tokens.size());
     const string& tablet_id = tokens[0];
+    ASSERT_EQ(generated_rows[i], tokens[1]);
+    ASSERT_EQ(tokens[1][tokens[1].length() -1], '\n');
+    boost::trim_right(tokens[1]); // remove the trailing '\n'
     const string& line = tokens[1];
     auto it = tabletid_to_line.find(tablet_id);
     if (it != tabletid_to_line.end()) {
@@ -448,7 +542,6 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
     // Verify tablet id and original line.
     master::TabletLocationsPB tablet_location;
     VerifyTabletId(tablet_id, &tablet_location);
-    ASSERT_EQ(generated_rows[i], line);
   }
 
   CloseStreamsAndWaitForProcess(out, in, partition_process.get());
