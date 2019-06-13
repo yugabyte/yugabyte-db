@@ -93,6 +93,8 @@ class TabletStatusListener {
 
   const std::string table_name() const;
 
+  const std::string table_id() const;
+
   const Partition& partition() const;
 
   const Schema& schema() const;
