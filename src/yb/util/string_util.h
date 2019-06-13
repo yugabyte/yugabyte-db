@@ -159,6 +159,14 @@ vector<string> ToStringVector(Args&&... args) {
   return result;
 }
 
+static constexpr const char kSingleQuoteChar = '\'';
+static constexpr const char kDoubleQuoteChar = '\"';
+
+// Quote the string by replacing: ["] -> [\"], [\] -> [\\].
+// Use kSingleQuoteChar for the replacing: ['] -> [\'], [\] -> [\\].
+// For example: "one \"two\" three" -> "\"one \\\"two\\\" three\"".
+std::string QuoteString(const std::string& s, char quote_char = kDoubleQuoteChar);
+
 }  // namespace yb
 
 namespace rocksdb {

@@ -102,6 +102,7 @@ set(COMMON_SRCS
   schema.cc
   index.cc
   jsonb.cc
+  json_util.cc
   hybrid_time.cc
   doc_hybrid_time.cc
   consistent_read_point.cc

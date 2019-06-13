@@ -59,6 +59,34 @@ PTBcall::PTBcall(MemoryContext *memctx,
 PTBcall::~PTBcall() {
 }
 
+string PTBcall::QLName() const {
+  string arg_names;
+  string keyspace;
+
+  // cql_cast() is displayed as "cast(<col> as <type>)".
+  if (strcmp(name_->c_str(), bfql::kCqlCastFuncName) == 0) {
+    CHECK_GE(args_->size(), 2);
+    const string column_name = args_->element(0)->QLName();
+    const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type());
+    return strings::Substitute("cast($0 as $1)", column_name, type);
+  }
+
+  for (auto arg : args_->node_list()) {
+    if (!arg_names.empty()) {
+      arg_names += ", ";
+    }
+    arg_names += arg->QLName();
+  }
+  if (IsAggregateCall()) {
+    // count(*) is displayed as "count".
+    if (arg_names.empty()) {
+      return name_->c_str();
+    }
+    keyspace += "system.";
+  }
+  return strings::Substitute("$0$1($2)", keyspace, name_->c_str(), arg_names);
+}
+
 bool PTBcall::IsAggregateCall() const {
   return is_server_operator_ && BFDecl::is_aggregate_op(static_cast<TSOpcode>(bfopcode_));
 }
@@ -289,6 +317,22 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     ql_type_ = sem_context->expr_expected_ql_type();
   } else {
     ql_type_ = pt_result->ql_type();
+  }
+
+  // Check that ToJson() built-in function supports the parameter types.
+  if (bfopcode == bfql::BFOpcode::OPCODE_ToJson_144) {
+    for (const PTExpr::SharedPtr& param : params) {
+      // ToJson() does not support FROZEN & UDT now.
+      // https://github.com/YugaByte/yugabyte-db/issues/1675
+      for (DataType not_sup_type_id : {FROZEN, USER_DEFINED_TYPE}) {
+        if (param->ql_type()->Contains(not_sup_type_id)) {
+          string err_msg = Substitute("$0 type is not supported by $1 builtin function",
+                                      QLType::ToCQLString(not_sup_type_id),
+                                      bfdecl->cpp_name());
+          return sem_context->Error(this, err_msg.c_str(), ErrorCode::FEATURE_NOT_SUPPORTED);
+        }
+      }
+    }
   }
 
   internal_type_ = yb::client::YBColumnSchema::ToInternalDataType(ql_type_);

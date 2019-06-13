@@ -9,7 +9,8 @@
 
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-#include "yb/common/ql_bfunc.h"
+#include "yb/util/bfql/tserver_opcodes.h"
+#include "yb/util/bfpg/tserver_opcodes.h"
 
 namespace yb {
 

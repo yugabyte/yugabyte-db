@@ -27,7 +27,7 @@
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 
 #include "yb/common/ql_value.h"
-#include "yb/util/bfql/bfql.h"
+#include "yb/util/bfql/tserver_opcodes.h"
 
 namespace yb {
 namespace ql {

@@ -1903,4 +1903,185 @@ public class TestSelect extends BaseCQLTest {
     runInvalidQuery("select distinct h, s from test_distinct where r > 0;");
     runInvalidQuery("select distinct h, s from test_distinct where c < 0;");
   }
+
+  @Test
+  public void testToJson() throws Exception {
+    // Create test table.
+    session.execute("CREATE TABLE test_tojson (c1 int PRIMARY KEY, c2 float, c3 double, c4 " +
+        "smallint, c5 bigint, c6 text, c7 date, c8 time, c9 timestamp, c10 blob, " +
+        "c11 tinyint, c12 inet, c13 varint, c14 decimal, c15 boolean, c16 uuid);");
+    session.execute("INSERT INTO test_tojson " +
+        "(c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15, c16) values " +
+        "(1, 2.5, 3.25, 4, 5, 'value', '2018-2-14', '1:2:3.123456789', " +
+        "'2018-2-14 13:24:56.987+01:00', 0xDEADBEAF, -128, '1.2.3.4', -123456, " +
+        "-123456.125, true, 87654321-DEAD-BEAF-0000-deadbeaf0000)");
+
+    selectAndVerify("SELECT tojson(c1) FROM test_tojson", "1");
+    selectAndVerify("SELECT toJson(c2) FROM test_tojson", "2.5");
+    selectAndVerify("SELECT Tojson(c3) FROM test_tojson", "3.25");
+    selectAndVerify("SELECT ToJson(c4) FROM test_tojson", "4");
+    selectAndVerify("SELECT TOjson(c5) FROM test_tojson", "5");
+    selectAndVerify("SELECT toJSON(c6) FROM test_tojson", "\"value\"");
+    selectAndVerify("SELECT TOJSON(c7) FROM test_tojson", "\"2018-02-14\"");
+    selectAndVerify("SELECT ToJsOn(c8) FROM test_tojson", "\"01:02:03.123456789\"");
+    selectAndVerify("SELECT tOjSoN(c9) FROM test_tojson", "\"2018-02-14T12:24:56.987000+0000\"");
+    selectAndVerify("SELECT TojsoN(c10) FROM test_tojson", "\"0xdeadbeaf\"");
+    selectAndVerify("SELECT tOJSOn(c11) FROM test_tojson", "-128");
+    selectAndVerify("SELECT tOjson(c12) FROM test_tojson", "\"1.2.3.4\"");
+    selectAndVerify("SELECT toJson(c13) FROM test_tojson", "-123456");
+    selectAndVerify("SELECT tojSon(c14) FROM test_tojson", "-123456.125");
+    selectAndVerify("SELECT tojsOn(c15) FROM test_tojson", "true");
+    selectAndVerify("SELECT tojsoN(c16) FROM test_tojson",
+                    "\"87654321-dead-beaf-0000-deadbeaf0000\"");
+
+    // Test NaN/Infinity.
+    session.execute("INSERT INTO test_tojson (c1, c2, c3) values (2, NaN, nan)");
+    session.execute("INSERT INTO test_tojson (c1, c2, c3) values (3, +NaN, +nan)");
+    session.execute("INSERT INTO test_tojson (c1, c2, c3) values (4, -NaN, -nan)");
+    session.execute("INSERT INTO test_tojson (c1, c2, c3) values (5, Infinity, infinity)");
+    session.execute("INSERT INTO test_tojson (c1, c2, c3) values (6, +Infinity, +infinity)");
+    session.execute("INSERT INTO test_tojson (c1, c2, c3) values (7, -Infinity, -infinity)");
+
+    selectAndVerify("SELECT tojson(c2) FROM test_tojson where c1=2;", "null");
+    selectAndVerify("SELECT tojson(c3) FROM test_tojson where c1=2;", "null");
+    selectAndVerify("SELECT tojson(c2) FROM test_tojson where c1=3;", "null");
+    selectAndVerify("SELECT tojson(c3) FROM test_tojson where c1=3;", "null");
+    selectAndVerify("SELECT tojson(c2) FROM test_tojson where c1=4;", "null");
+    selectAndVerify("SELECT tojson(c3) FROM test_tojson where c1=4;", "null");
+    selectAndVerify("SELECT tojson(c2) FROM test_tojson where c1=5;", "null");
+    selectAndVerify("SELECT tojson(c3) FROM test_tojson where c1=5;", "null");
+    selectAndVerify("SELECT tojson(c2) FROM test_tojson where c1=6;", "null");
+    selectAndVerify("SELECT tojson(c3) FROM test_tojson where c1=6;", "null");
+    selectAndVerify("SELECT tojson(c2) FROM test_tojson where c1=7;", "null");
+    selectAndVerify("SELECT tojson(c3) FROM test_tojson where c1=7;", "null");
+
+    // No keyword 'Inf' (there is 'Infinity').
+    runInvalidQuery("INSERT INTO test_tojson (c1, c2, c3) values (8, Inf, Inf)");
+
+    // === TEST COLLECTIONS. ===
+    session.execute("CREATE TABLE test_coll (h int PRIMARY KEY, s SET<int>, " +
+                    "l list<int>, m map<int, int>)");
+    session.execute("INSERT INTO test_coll (h, s, l, m) values (1, " +
+                    "{11,22}, [33,44], {55:66,77:88})");
+    selectAndVerify("SELECT tojson(h) FROM test_coll;", "1");
+    selectAndVerify("SELECT tojson(s) FROM test_coll;", "[11,22]");
+    selectAndVerify("SELECT tojson(l) FROM test_coll;", "[33,44]");
+    selectAndVerify("SELECT tojson(m) FROM test_coll;", "{\"55\":66,\"77\":88}");
+
+    // === TEST FROZEN. ===
+    // Feature Not Supported: ToJson() does not support UDT, FROZEN.
+    // https://github.com/YugaByte/yugabyte-db/issues/1675
+    // Uncomment the following code if UDT & FROZEN are supported correctly.
+
+    // Test SET<FROZEN<SET>.
+    session.execute("CREATE TABLE test_frozen1 (h int PRIMARY KEY, " +
+                    "f FROZEN<set<int>>, sf SET<FROZEN<set<int>>>)");
+    session.execute("INSERT INTO test_frozen1 (h, f, sf) values (1, {33,44}, {{55,66}})");
+    selectAndVerify("SELECT tojson(h) FROM test_frozen1;", "1");
+    // Not supported yet.
+    runInvalidQuery("SELECT tojson(f) FROM test_frozen1");
+    runInvalidQuery("SELECT tojson(sf) FROM test_frozen1");
+/*
+    selectAndVerify("SELECT tojson(f) FROM test_frozen1", "[33,44]");
+    selectAndVerify("SELECT tojson(sf) FROM test_frozen1", "[[55,66]]");
+
+    // Test MAP<FROZEN<SET>:FROZEN<LIST>>.
+    session.execute("CREATE TABLE test_frozen2 (h int PRIMARY KEY, " +
+        "f map<frozen<set<text>>, frozen<list<int>>>)");
+    session.execute("INSERT INTO test_frozen2 (h, f) values (1, " +
+        "{{'a','b'}:[66,77,88]})");
+    selectAndVerify("SELECT tojson(f) FROM test_frozen2",
+        "{\"[\\\"a\\\",\\\"b\\\"]\":[66,77,88]}");
+*/
+    // === TEST USER DEFINED TYPE. ===
+    // Test UDT.
+    session.execute("CREATE TYPE udt(v1 int, v2 int)");
+    session.execute("CREATE TABLE test_udt (h int PRIMARY KEY, u udt, su SET<FROZEN<udt>>)");
+    session.execute("INSERT INTO test_udt (h, u, su) values (1, {v1:11,v2:22}, {{v1:33,v2:44}})");
+    selectAndVerify("SELECT tojson(h) FROM test_udt", "1");
+    // Feature Not Supported: ToJson() does not support UDT, FROZEN.
+    // https://github.com/YugaByte/yugabyte-db/issues/1675
+    runInvalidQuery("SELECT tojson(u) FROM test_frozen1");
+    runInvalidQuery("SELECT tojson(su) FROM test_frozen1");
+/*
+    selectAndVerify("SELECT tojson(u) FROM test_udt", "{\"v1\":11,\"v2\":22}");
+    selectAndVerify("SELECT tojson(su) FROM test_udt", "[{\"v1\":11,\"v2\":22}]");
+
+    // Test FROZEN<UDT>.
+    session.execute("CREATE TABLE test_udt2 (h int PRIMARY KEY, u frozen<udt>)");
+    session.execute("INSERT INTO test_udt2 (h, u) values (1, {v1:33,v2:44})");
+    selectAndVerify("SELECT tojson(u) FROM test_udt2", "{\"v1\":33,\"v2\":44}");
+
+    // Test LIST<FROZEN<UDT>>.
+    session.execute("CREATE TABLE test_udt3 (h int PRIMARY KEY, u list<frozen<udt>>)");
+    session.execute("INSERT INTO test_udt3 (h, u) values (1, [{v1:44,v2:55}, {v1:66,v2:77}])");
+    selectAndVerify("SELECT tojson(u) FROM test_udt3",
+        "[{\"v1\":44,\"v2\":55},{\"v1\":66,\"v2\":77}]");
+
+    // Test MAP<FROZEN<UDT>:FROZEN<UDT>>.
+    session.execute("CREATE TABLE test_udt4 (h int PRIMARY KEY, " +
+        "u map<frozen<udt>, frozen<udt>>)");
+    session.execute("INSERT INTO test_udt4 (h, u) values (1, " +
+        "{{v1:44,v2:55}:{v1:66,v2:77}, {v1:88,v2:99}:{v1:11,v2:22}})");
+    selectAndVerify("SELECT tojson(u) FROM test_udt4",
+        "{\"{\\\"v1\\\":44,\\\"v2\\\":55}\":{\"v1\":66,\"v2\":77}," +
+        "\"{\\\"v1\\\":88,\\\"v2\\\":99}\":{\"v1\":11,\"v2\":22}}");
+
+    // Test MAP<FROZEN<LIST<FROZEN<UDT>>>:FROZEN<SET<FROZEN<UDT>>>>.
+    session.execute("CREATE TABLE test_udt5 (h int PRIMARY KEY, " +
+        "u map<frozen<list<frozen<udt>>>, frozen<set<frozen<udt>>>>)");
+    session.execute("INSERT INTO test_udt5 (h, u) values (1, " +
+        "{[{v1:44,v2:55}, {v1:66,v2:77}]:{{v1:88,v2:99},{v1:11,v2:22}}})");
+    selectAndVerify("SELECT tojson(u) FROM test_udt5",
+        "{\"[{\\\"v1\\\":44,\\\"v2\\\":55},{\\\"v1\\\":66,\\\"v2\\\":77}]\":" +
+        "[{\"v1\":11,\"v2\":22},{\"v1\":88,\"v2\":99}]}");
+
+    // Test MAP<FROZEN<MAP<FROZEN<UDT>:TEXT>>:FROZEN<SET<FROZEN<UDT>>>>.
+    session.execute("CREATE TABLE test_udt6 (h int PRIMARY KEY, " +
+        "u map<frozen<map<frozen<udt>, text>>, frozen<set<frozen<udt>>>>)");
+    session.execute("INSERT INTO test_udt6 (h, u) values (1, " +
+        "{{{v1:11,v2:22}:'text'}:{{v1:55,v2:66},{v1:77,v2:88}}})");
+    selectAndVerify("SELECT tojson(u) FROM test_udt6",
+        "{\"{\\\"{\\\\\\\"v1\\\\\\\":11,\\\\\\\"v2\\\\\\\":22}\\\":\\\"text\\\"}\":" +
+        "[{\"v1\":55,\"v2\":66},{\"v1\":77,\"v2\":88}]}");
+
+    // Test UDT with case-sensitive field names and names with spaces.
+    session.execute("CREATE TYPE udt7(v1 int, \"V2\" int, \"v  3\" int, \"V  4\" int)");
+    session.execute("CREATE TABLE test_udt7 (h int PRIMARY KEY, u udt7)");
+    session.execute("INSERT INTO test_udt7 (h, u) values (1, " +
+        "{v1:11,\"V2\":22,\"v  3\":33,\"V  4\":44})");
+    selectAndVerify("SELECT tojson(h) FROM test_udt7", "1");
+    // Verify that the column names in upper case are double quoted (see the case in Cassandra).
+    selectAndVerify("SELECT tojson(u) FROM test_udt7",
+        "{\"v1\":11,\\\"V2\\\":22,\"v  3\":33,\\\"V  4\\\":44}");
+*/
+    // Test UDT2<int, UDT>.
+    // Feature Not Supported: UDT field types cannot refer to other user-defined types.
+    // https://github.com/YugaByte/yugabyte-db/issues/1630
+    runInvalidQuery("CREATE TYPE udt8(i1 int, u1 udt)");
+    // Uncomment the following block if we support UDT2<UDT1,..> types.
+    //    session.execute("CREATE TABLE test_udt8 (h int PRIMARY KEY, u udt8)");
+    //    session.execute("INSERT INTO test_udt8 (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
+    //    selectAndVerify("SELECT tojson(u) FROM test_udt8",
+    //        "{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}");
+
+    // Test SELECT JSON *.
+    // Feature Not Supported: Invalid SQL Statement. Syntax error.
+    runInvalidQuery("SELECT JSON * FROM test_tojson");
+
+    // Invalid test: FROZEN<int>.
+    // Error: Invalid Table Definition. Can only freeze collections or user defined types.
+    runInvalidQuery("CREATE TABLE invalid_frozen (h int PRIMARY KEY, u frozen<int>)");
+
+    // Select from system tables.
+    selectAndVerify("SELECT tojson(replication) from system_schema.keyspaces " +
+        "where keyspace_name='system_schema'",
+        "{\"class\":\"org.apache.cassandra.locator.SimpleStrategy\"," +
+        "\"replication_factor\":\"3\"}");
+
+    selectAndVerify("SELECT toJson(replication) as replication FROM system_schema.keyspaces " +
+        "where keyspace_name='system'",
+        "{\"class\":\"org.apache.cassandra.locator.SimpleStrategy\"," +
+        "\"replication_factor\":\"3\"}");
+  }
 }
