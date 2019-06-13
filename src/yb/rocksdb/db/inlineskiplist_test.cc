@@ -21,13 +21,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "yb/rocksdb/db/inlineskiplist.h"
 #include <set>
+
+#include "yb/rocksdb/db/inlineskiplist.h"
+#include "yb/rocksdb/db/skiplist.h"
+
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/concurrent_arena.h"
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
+
+#include "yb/util/countdown_latch.h"
+#include "yb/util/random_util.h"
+#include "yb/util/tsan_util.h"
 
 namespace rocksdb {
 
@@ -480,6 +487,62 @@ TEST_F(InlineSkipTest, ConcurrentRead5) { RunConcurrentRead(5); }
 TEST_F(InlineSkipTest, ConcurrentInsert1) { RunConcurrentInsert(1); }
 TEST_F(InlineSkipTest, ConcurrentInsert2) { RunConcurrentInsert(2); }
 TEST_F(InlineSkipTest, ConcurrentInsert3) { RunConcurrentInsert(3); }
+
+template <class List>
+void Benchmark() {
+  Arena arena;
+  TestComparator cmp;
+  List list(cmp, &arena);
+  constexpr int kWrites = yb::RegularBuildVsSanitizers(5000000, 50000);
+  constexpr int kReaders = 10;
+  yb::CountDownLatch latch(kReaders + 1);
+  std::atomic<bool> stop(false);
+  std::atomic<uint64_t> reads(0);
+
+  std::vector<std::thread> threads;
+  while (threads.size() != kReaders) {
+    threads.emplace_back([&list, &latch, &stop, &reads] {
+      latch.CountDown();
+      latch.Wait();
+      while (!stop.load(std::memory_order_acquire)) {
+        auto key = yb::RandomUniformInt<uint64_t>();
+        typename List::Iterator iter(&list);
+        iter.Seek(Encode(&key));
+        reads.fetch_add(1, std::memory_order_acq_rel);
+      }
+    });
+  }
+
+  latch.CountDown();
+  latch.Wait();
+
+  auto start = yb::MonoTime::Now();
+  for (int i = 0; i != kWrites; ++i) {
+    auto key = yb::RandomUniformInt<uint64_t>();
+    char* buf = list.AllocateKey(sizeof(Key));
+    memcpy(buf, &key, sizeof(Key));
+    list.Insert(buf);
+  }
+  auto finish = yb::MonoTime::Now();
+
+  stop.store(true, std::memory_order_release);
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  auto passed = finish - start;
+  auto reads_value = reads.load(std::memory_order_acquire) / 1000;
+  LOG(INFO) << "Passed: " << passed << ", reads: "
+            << reads_value / passed.ToSeconds() << "kops/sec";
+}
+
+TEST_F(InlineSkipTest, Benchmark) {
+  Benchmark<InlineSkipList<TestComparator>>();
+}
+
+TEST_F(InlineSkipTest, SWBenchmark) {
+  Benchmark<SingleWriterInlineSkipList<TestComparator>>();
+}
 
 }  // namespace rocksdb
 
