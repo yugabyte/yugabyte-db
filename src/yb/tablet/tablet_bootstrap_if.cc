@@ -56,6 +56,10 @@ const string TabletStatusListener::table_name() const {
   return meta_->table_name();
 }
 
+const string TabletStatusListener::table_id() const {
+  return meta_->table_id();
+}
+
 const Partition& TabletStatusListener::partition() const {
   return meta_->partition();
 }
