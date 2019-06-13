@@ -91,6 +91,39 @@ T* GetNext(const MPSCQueueEntry<T>* entry) {
   return entry->GetNext();
 }
 
+// Intrusive stack implementation based on linked list.
+// This implementation weak to ABA problem (https://en.wikipedia.org/wiki/ABA_problem), so should
+// be used with care.
+template <class T>
+class LockFreeStack {
+ public:
+  void Push(T* value) {
+    T* old_head = head_.load(std::memory_order_acquire);
+    for (;;) {
+      SetNext(value, old_head);
+      if (head_.compare_exchange_weak(old_head, value, std::memory_order_acq_rel)) {
+        break;
+      }
+    }
+  }
+
+  T* Pop() {
+    T* old_head = head_.load(std::memory_order_acquire);
+    for (;;) {
+      if (!old_head) {
+        break;
+      }
+      if (head_.compare_exchange_weak(old_head, GetNext(old_head), std::memory_order_acq_rel)) {
+        break;
+      }
+    }
+    return old_head;
+  }
+
+ private:
+  std::atomic<T*> head_{nullptr};
+};
+
 } // namespace yb
 
 #endif // YB_UTIL_LOCKFREE_H

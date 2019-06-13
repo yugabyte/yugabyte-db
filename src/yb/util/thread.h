@@ -53,6 +53,12 @@ class MetricEntity;
 class Thread;
 class WebCallbackRegistry;
 
+#if defined(__linux__)
+typedef int64_t ThreadIdForStack;
+#else
+typedef pthread_t ThreadIdForStack;
+#endif
+
 // Utility to join on a thread, printing warning messages if it
 // takes too long. For example:
 //
@@ -223,6 +229,14 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // Returns the thread's pthread ID.
   pthread_t pthread_id() const { return thread_; }
 
+  ThreadIdForStack tid_for_stack() {
+#if defined(__linux__)
+    return tid();
+#else
+    return pthread_id();
+#endif
+  }
+
   const std::string& name() const { return name_; }
   const std::string& category() const { return category_; }
 
@@ -274,6 +288,14 @@ class Thread : public RefCountedThreadSafe<Thread> {
     return syscall(SYS_gettid);
 #else
     return UniqueThreadId();
+#endif
+  }
+
+  static ThreadIdForStack CurrentThreadIdForStack() {
+#if defined(__linux__)
+    return CurrentThreadId();
+#else
+    return pthread_self();
 #endif
   }
 
