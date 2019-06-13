@@ -39,6 +39,7 @@
 
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/util/result.h"
+#include "yb/util/thread.h"
 
 namespace yb {
 
@@ -69,7 +70,7 @@ Status SetStackTraceSignal(int signum);
 //
 // This function is thread-safe but coarsely synchronized: only one "dumper" thread
 // may be active at a time.
-std::string DumpThreadStack(int64_t tid);
+std::string DumpThreadStack(ThreadIdForStack tid);
 
 // Return the current stack trace, stringified.
 std::string GetStackTrace(
@@ -206,7 +207,9 @@ class StackTrace {
   }
 };
 
-Result<StackTrace> ThreadStack(int64_t tid);
+Result<StackTrace> ThreadStack(ThreadIdForStack tid);
+// tids should be ordered
+std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>& tids);
 
 constexpr bool IsDebug() {
 #ifdef NDEBUG

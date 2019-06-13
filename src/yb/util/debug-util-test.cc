@@ -59,7 +59,7 @@ namespace yb {
 
 class DebugUtilTest : public YBTest {
  protected:
-  void WaitForSleeperThreadNameInStackTrace(int64_t thread_id) {
+  void WaitForSleeperThreadNameInStackTrace(ThreadIdForStack thread_id) {
     string stack;
     for (int i = 0; i < 10000; i++) {
       stack = DumpThreadStack(thread_id);
@@ -133,9 +133,33 @@ TEST_F(DebugUtilTest, TestGetStackTrace) {
 // on the tgkill syscall which is not portable.
 //
 // TODO: it might be possible to enable other tests in this section to work on macOS.
+
+TEST_F(DebugUtilTest, TestStackTraceInvalidTid) {
+#if defined(__linux__)
+  ThreadIdForStack bad_tid = 1;
+#else
+  ThreadIdForStack bad_tid = reinterpret_cast<ThreadIdForStack>(1);
+#endif
+  string s = DumpThreadStack(bad_tid);
+  ASSERT_STR_CONTAINS(s, "Unable to deliver signal");
+}
+
+TEST_F(DebugUtilTest, TestStackTraceSelf) {
+  string s = DumpThreadStack(Thread::CurrentThreadIdForStack());
+  ASSERT_STR_CONTAINS(s, "yb::DebugUtilTest_TestStackTraceSelf_Test::TestBody()");
+}
+
 #if defined(__linux__)
 
+TEST_F(DebugUtilTest, TestStackTraceMainThread) {
+  string s = DumpThreadStack(getpid());
+  ASSERT_STR_CONTAINS(s, "yb::DebugUtilTest_TestStackTraceMainThread_Test::TestBody()");
+}
+
+#endif
+
 namespace {
+
 void SleeperThread(CountDownLatch* l) {
   // We use an infinite loop around WaitFor() instead of a normal Wait()
   // so that this test passes in TSAN. Without this, we run into this TSAN
@@ -152,22 +176,8 @@ bool IsSignalHandlerRegistered(int signum) {
   CHECK_EQ(0, sigaction(signum, nullptr, &cur_action));
   return cur_action.sa_handler != SIG_DFL;
 }
+
 } // anonymous namespace
-
-TEST_F(DebugUtilTest, TestStackTraceInvalidTid) {
-  string s = DumpThreadStack(1);
-  ASSERT_STR_CONTAINS(s, "Unable to deliver signal");
-}
-
-TEST_F(DebugUtilTest, TestStackTraceSelf) {
-  string s = DumpThreadStack(Thread::CurrentThreadId());
-  ASSERT_STR_CONTAINS(s, "yb::DebugUtilTest_TestStackTraceSelf_Test::TestBody()");
-}
-
-TEST_F(DebugUtilTest, TestStackTraceMainThread) {
-  string s = DumpThreadStack(getpid());
-  ASSERT_STR_CONTAINS(s, "yb::DebugUtilTest_TestStackTraceMainThread_Test::TestBody()");
-}
 
 TEST_F(DebugUtilTest, TestSignalStackTrace) {
   CountDownLatch l(1);
@@ -176,7 +186,7 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
 
   // We have to loop a little bit because it takes a little while for the thread
   // to start up and actually call our function.
-  WaitForSleeperThreadNameInStackTrace(t->tid());
+  WaitForSleeperThreadNameInStackTrace(t->tid_for_stack());
 
   // Test that we can change the signal and that the stack traces still work,
   // on the new signal.
@@ -191,7 +201,7 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
 
   // Stack traces should work using the new handler. We've had a test failure here when we ust had
   // a one-time check, so we do the same waiting loop as in the beginning of the test.
-  WaitForSleeperThreadNameInStackTrace(t->tid());
+  WaitForSleeperThreadNameInStackTrace(t->tid_for_stack());
 
   // Switch back to SIGUSR2 and ensure it changes back.
   ASSERT_OK(SetStackTraceSignal(SIGUSR2));
@@ -200,7 +210,7 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
 
   // Stack traces should work using the new handler. Also has a test failure here, so using a retry
   // loop.
-  WaitForSleeperThreadNameInStackTrace(t->tid());
+  WaitForSleeperThreadNameInStackTrace(t->tid_for_stack());
 
   // Register our own signal handler on SIGUSR1, and ensure that
   // we get a bad Status if we try to use it.
@@ -210,7 +220,7 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
   signal(SIGUSR1, SIG_IGN);
 
   // Stack traces should be disabled
-  ASSERT_STR_CONTAINS(DumpThreadStack(t->tid()), "Unable to take thread stack");
+  ASSERT_STR_CONTAINS(DumpThreadStack(t->tid_for_stack()), "Unable to take thread stack");
 
   // Re-enable so that other tests pass.
   ASSERT_OK(SetStackTraceSignal(SIGUSR2));
@@ -220,16 +230,20 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
   t->Join();
 }
 
+#if defined(__linux__)
+
 // Test which dumps all known threads within this process.
 // We don't validate the results in any way -- but this verifies that we can
 // dump library threads such as the libc timer_thread and properly time out.
 TEST_F(DebugUtilTest, TestDumpAllThreads) {
-  vector<pid_t> tids;
+  std::vector<pid_t> tids;
   ASSERT_OK(ListThreads(&tids));
   for (pid_t tid : tids) {
     LOG(INFO) << DumpThreadStack(tid);
   }
 }
+
+#endif
 
 // This will probably be really slow on Mac OS X, so only enabling on Linux.
 TEST_F(DebugUtilTest, TestGetStackTraceInALoop) {
@@ -258,7 +272,6 @@ TEST_F(DebugUtilTest, TestConcurrentStackTrace) {
     thread.join();
   }
 }
-#endif
 
 TEST_F(DebugUtilTest, LongOperationTracker) {
   struct TestLogSink : public google::LogSink {

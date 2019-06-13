@@ -34,6 +34,7 @@
 
 #include <execinfo.h>
 #include <dirent.h>
+#include <libunwind.h>
 #include <signal.h>
 #include <sys/syscall.h>
 
@@ -57,14 +58,18 @@
 
 #include <glog/logging.h>
 
+#include "yb/gutil/linux_syscall_support.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/singleton.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strtoint.h"
+
+#include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
+#include "yb/util/lockfree.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
 #include "yb/util/thread.h"
@@ -105,16 +110,6 @@ extern void DumpStackTraceToString(std::string *s);
 // For some environments, add two extra bytes for the leading "0x".
 static const int kPrintfPointerFieldWidth = 2 + 2 * sizeof(void*);
 
-// The signal that we'll use to communicate with our other threads.
-// This can't be in used by other libraries in the process.
-static int g_stack_trace_signum = SIGUSR2;
-
-// We only allow a single dumper thread to run at a time. This simplifies the synchronization
-// between the dumper and the target thread.
-//
-// This lock also protects changes to the signal handler.
-static base::SpinLock g_dumper_thread_lock(base::LINKER_INITIALIZED);
-
 using std::string;
 
 namespace yb {
@@ -129,65 +124,159 @@ enum DemangleStatus : int {
 
 namespace {
 
+YB_DEFINE_ENUM(ThreadStackState, (kNone)(kSendFailed)(kReady));
+
+struct ThreadStackEntry : public MPSCQueueEntry<ThreadStackEntry> {
+  ThreadIdForStack tid;
+  StackTrace stack;
+};
+
+class CompletionFlag {
+ public:
+  void Signal() {
+    complete_.store(1, std::memory_order_release);
+#ifndef __APPLE__
+    sys_futex(reinterpret_cast<int32_t*>(&complete_),
+              FUTEX_WAKE | FUTEX_PRIVATE_FLAG,
+              INT_MAX, // wake all
+              0 /* ignored */);
+#endif
+  }
+
+  bool TimedWait(MonoDelta timeout) {
+    if (complete()) {
+      return true;
+    }
+
+    auto now = MonoTime::Now();
+    auto deadline = now + timeout;
+    while (now < deadline) {
+#ifndef __APPLE__
+      struct timespec ts;
+      (deadline - now).ToTimeSpec(&ts);
+      kernel_timespec kernel_ts;
+      ts.tv_sec = ts.tv_sec;
+      ts.tv_nsec = ts.tv_nsec;
+      sys_futex(reinterpret_cast<int32_t*>(&complete_),
+                FUTEX_WAIT | FUTEX_PRIVATE_FLAG,
+                0, // wait if value is still 0
+                &kernel_ts);
+#else
+      std::this_thread::sleep_for(10ms);
+#endif
+      if (complete()) {
+        return true;
+      }
+      now = MonoTime::Now();
+    }
+
+    return complete();
+  }
+
+  void Reset() {
+    complete_.store(0, std::memory_order_release);
+  }
+
+  bool complete() const {
+    return complete_.load(std::memory_order_acquire);
+  }
+ private:
+  std::atomic<int32_t> complete_ { 0 };
+};
+
 // Global structure used to communicate between the signal handler
 // and a dumping thread.
-struct SignalCommunication {
-  // The actual stack trace collected from the target thread.
-  StackTrace stack;
+struct ThreadStackHelper {
+  std::mutex mutex; // Locked by ThreadStacks, so only one could be executed in parallel.
 
-  // The current target. Signals can be delivered asynchronously, so the
-  // dumper thread sets this variable first before sending a signal. If
-  // a signal is received on a thread that doesn't match 'target_tid', it is
-  // ignored.
-  pid_t target_tid;
+  // We don't care about ABA problem here, because memory is maintained by allocated_chunks,
+  // so loosing some thread stacks would not cause memory leak. Also when stack is collected at
+  // bound of timeout it is ok to miss it.
+  LockFreeStack<ThreadStackEntry> collected;
+  // Reuse previously allocated memory. We expect this size to be merely small, near 152 bytes
+  // per application thread.
+  LockFreeStack<ThreadStackEntry> allocated;
+  CompletionFlag completion_flag;
 
-  // Set to 1 when the target thread has successfully collected its stack.
-  // The dumper thread spins waiting for this to become true.
-  Atomic32 result_ready;
+  // Could be modified only by ThreadStacks.
+  CoarseTimePoint deadline;
+  size_t allocated_entries = 0;
 
-  // Lock protecting the other members. We use a bare atomic here and a custom
-  // lock guard below instead of existing spinlock implementaitons because futex()
-  // is not signal-safe.
-  Atomic32 lock;
+  // Incremented by each signal handler.
+  std::atomic<int64_t> left_to_collect;
 
-  struct Lock;
-};
-SignalCommunication g_comm;
+  std::vector<std::unique_ptr<ThreadStackEntry[]>> allocated_chunks;
 
-// Pared-down SpinLock for SignalCommunication::lock. This doesn't rely on futex
-// so it is async-signal safe.
-struct SignalCommunication::Lock {
-  Lock() {
-    while (base::subtle::Acquire_CompareAndSwap(&g_comm.lock, 0, 1) != 0) {
-      sched_yield();
+  void SetNumEntries(size_t len) {
+    len += 5; // We reserve several entries, because threads from previous request could still be
+              // processing signal and write their results.
+    if (len <= allocated_entries) {
+      return;
+    }
+
+    size_t new_chunk_size = std::max<size_t>(len - allocated_entries, 0x10);
+    allocated_chunks.emplace_back(new ThreadStackEntry[new_chunk_size]);
+    allocated_entries += new_chunk_size;
+
+    for (auto entry = allocated_chunks.back().get(), end = entry + new_chunk_size; entry != end;
+         ++entry) {
+      allocated.Push(entry);
     }
   }
-  ~Lock() {
-    base::subtle::Release_Store(&g_comm.lock, 0);
+
+  void StoreResult(
+      const std::vector<ThreadIdForStack>& tids, std::vector<Result<StackTrace>>* out) {
+    // We give the thread ~1s to respond. In testing, threads typically respond within
+    // a few iterations of the loop, so this timeout is very conservative.
+    //
+    // The main reason that a thread would not respond is that it has blocked signals. For
+    // example, glibc's timer_thread doesn't respond to our signal, so we always time out
+    // on that one.
+    if (left_to_collect.load(std::memory_order_acquire) > 0) {
+      completion_flag.TimedWait(1s);
+    }
+
+    while (auto entry = collected.Pop()) {
+      auto it = std::lower_bound(tids.begin(), tids.end(), entry->tid);
+      if (it != tids.end() && *it == entry->tid) {
+        (*out)[it - tids.begin()] = entry->stack;
+      }
+      allocated.Push(entry);
+    }
+  }
+
+  void RecordStackTrace(const StackTrace& stack_trace) {
+    auto* entry = allocated.Pop();
+    if (!entry) { // Not enough allocated entries, don't write log since we are in signal handler.
+      return;
+    }
+    entry->tid = Thread::CurrentThreadIdForStack();
+    entry->stack = stack_trace;
+    collected.Push(entry);
+
+    if (left_to_collect.fetch_sub(1, std::memory_order_acq_rel) - 1 == 0) {
+      completion_flag.Signal();
+    }
   }
 };
+
+ThreadStackHelper thread_stack_helper;
 
 // Signal handler for our stack trace signal.
 // We expect that the signal is only sent from DumpThreadStack() -- not by a user.
+
 void HandleStackTraceSignal(int signum) {
   int old_errno = errno;
-  SignalCommunication::Lock l;
+  StackTrace stack_trace;
+  stack_trace.Collect(2);
 
-  // Check that the dumper thread is still interested in our stack trace.
-  // It's possible for signal delivery to be artificially delayed, in which
-  // case the dumper thread would have already timed out and moved on with
-  // its life. In that case, we don't want to race with some other thread's
-  // dump.
-  int64_t my_tid = Thread::CurrentThreadId();
-  if (g_comm.target_tid != my_tid) {
-    errno = old_errno;
-    return;
-  }
-
-  g_comm.stack.Collect(2);
-  base::subtle::Release_Store(&g_comm.result_ready, 1);
+  thread_stack_helper.RecordStackTrace(stack_trace);
   errno = old_errno;
 }
+
+// The signal that we'll use to communicate with our other threads.
+// This can't be in used by other libraries in the process.
+int g_stack_trace_signum = SIGUSR2;
 
 bool InitSignalHandlerUnlocked(int signum) {
   enum InitState {
@@ -447,92 +536,68 @@ int BacktraceFullCallback(void *const data, const uintptr_t pc,
 }  // anonymous namespace
 
 Status SetStackTraceSignal(int signum) {
-  base::SpinLockHolder h(&g_dumper_thread_lock);
+  std::lock_guard<decltype(thread_stack_helper.mutex)> lock(thread_stack_helper.mutex);
   if (!InitSignalHandlerUnlocked(signum)) {
     return STATUS(InvalidArgument, "Unable to install signal handler");
   }
   return Status::OK();
 }
 
-Result<StackTrace> ThreadStack(int64_t tid) {
-  StackTrace result;
-#if defined(__linux__)
-  base::SpinLockHolder h(&g_dumper_thread_lock);
+Result<StackTrace> ThreadStack(ThreadIdForStack tid) {
+  return ThreadStacks({tid}).front();
+}
+
+std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>& tids) {
+  static const Status status = STATUS(
+      RuntimeError, "Thread did not respond: maybe it is blocking signals");
+
+  std::vector<Result<StackTrace>> result(tids.size(), status);
+  std::lock_guard<std::mutex> execution_lock(thread_stack_helper.mutex);
 
   // Ensure that our signal handler is installed. We don't need any fancy GoogleOnce here
   // because of the mutex above.
   if (!InitSignalHandlerUnlocked(g_stack_trace_signum)) {
     static const Status status = STATUS(
         RuntimeError, "Unable to take thread stack: signal handler unavailable");
-    return status;
+    std::fill_n(result.begin(), tids.size(), status);
+    return result;
   }
 
-  // Set the target TID in our communication structure, so if we end up with any
-  // delayed signal reaching some other thread, it will know to ignore it.
-  {
-    SignalCommunication::Lock l;
-    CHECK_EQ(0, g_comm.target_tid);
-    g_comm.target_tid = tid;
-  }
+  thread_stack_helper.left_to_collect.store(tids.size(), std::memory_order_release);
+  thread_stack_helper.SetNumEntries(tids.size());
+  thread_stack_helper.completion_flag.Reset();
 
-  // We use the raw syscall here instead of kill() to ensure that we don't accidentally
-  // send a signal to some other process in the case that the thread has exited and
-  // the TID been recycled.
-  if (syscall(SYS_tgkill, getpid(), tid, g_stack_trace_signum) != 0) {
-    {
-      SignalCommunication::Lock l;
-      g_comm.target_tid = 0;
-    }
-    static const Status status = STATUS(
-        RuntimeError, "Unable to deliver signal: process may have exited");
-    return status;
-  }
-
-  // We give the thread ~1s to respond. In testing, threads typically respond within
-  // a few iterations of the loop, so this timeout is very conservative.
-  //
-  // The main reason that a thread would not respond is that it has blocked signals. For
-  // example, glibc's timer_thread doesn't respond to our signal, so we always time out
-  // on that one.
-  int i = 0;
-  while (!base::subtle::Acquire_Load(&g_comm.result_ready) &&
-         i++ < 100) {
-    SleepFor(MonoDelta::FromMilliseconds(10));
-  }
-
-  {
-    SignalCommunication::Lock l;
-    CHECK_EQ(tid, g_comm.target_tid);
-
-    if (g_comm.result_ready) {
-      result = g_comm.stack;
-    }
-
-    g_comm.target_tid = 0;
-    g_comm.result_ready = 0;
-
-    if (!result) {
-      static const Status status = STATUS(
-          RuntimeError, "Thread did not respond: maybe it is blocking signals");
-    }
-  }
+  for (size_t i = 0; i != tids.size(); ++i) {
+    // We use the raw syscall here instead of kill() to ensure that we don't accidentally
+    // send a signal to some other process in the case that the thread has exited and
+    // the TID been recycled.
+#if defined(__linux__)
+    int res = syscall(SYS_tgkill, getpid(), tids[i], g_stack_trace_signum);
+#else
+    int res = pthread_kill(tids[i], g_stack_trace_signum);
 #endif
+    if (res != 0) {
+      static const Status status = STATUS(
+          RuntimeError, "Unable to deliver signal: process may have exited");
+      result[i] = status;
+      thread_stack_helper.left_to_collect.fetch_sub(1, std::memory_order_acq_rel);
+    }
+  }
+
+  thread_stack_helper.StoreResult(tids, &result);
+
   return result;
 }
 
-std::string DumpThreadStack(int64_t tid) {
-#if defined(__linux__)
+std::string DumpThreadStack(ThreadIdForStack tid) {
   auto stack_trace = ThreadStack(tid);
   if (!stack_trace.ok()) {
     return stack_trace.status().message().ToBuffer();
   }
   return stack_trace->Symbolize();
-#else // defined(__linux__)
-  return "(unsupported platform)";
-#endif
 }
 
-Status ListThreads(vector<pid_t> *tids) {
+Status ListThreads(std::vector<pid_t> *tids) {
 #if defined(__linux__)
   DIR *dir = opendir("/proc/self/task/");
   if (dir == NULL) {
@@ -604,7 +669,32 @@ string GetLogFormatStackTraceHex() {
 }
 
 void StackTrace::Collect(int skip_frames) {
+#if THREAD_SANITIZER
   num_frames_ = google::GetStackTrace(frames_, arraysize(frames_), skip_frames);
+#elif defined(__linux_)
+  // Taken from libunwind docs and enhanced with skip_frames.
+  unw_context_t uc;
+  unw_getcontext(&uc);
+
+  unw_cursor_t cursor;
+  unw_init_local(&cursor, &uc);
+  num_frames_ = 0;
+  while (num_frames_ < arraysize(frames_) && unw_step(&cursor) > 0) {
+    if (skip_frames > 1) { // to be backward compatible we should skip less stack frames
+      --skip_frames;
+      continue;
+    }
+    unw_word_t ip;
+    unw_get_reg(&cursor, UNW_REG_IP, &ip);
+    frames_[num_frames_] = reinterpret_cast<void*>(ip);
+    ++num_frames_;
+  }
+#else
+  int max_frames = skip_frames + arraysize(frames_);
+  void** buffer = static_cast<void**>(alloca((max_frames) * sizeof(void*)));
+  num_frames_ = backtrace(buffer, max_frames) - skip_frames;
+  memcpy(frames_, buffer + skip_frames, num_frames_ * sizeof(void*));
+#endif
 }
 
 void StackTrace::StringifyToHex(char* buf, size_t size, int flags) const {
