@@ -35,6 +35,7 @@
 
 #include "plpgsql.h"
 
+#include "pg_yb_utils.h"
 
 /* ----------
  * Our own local and global variables
@@ -171,8 +172,11 @@ recheck:
 	if (function)
 	{
 		/* We have a compiled function, but is it still valid? */
-		if (function->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
-			ItemPointerEquals(&function->fn_tid, &procTup->t_self))
+		// TODO(dmitry) once ALTER FUNCTION will be supported in YB mode detect that function could be
+		// changed and recompile.
+		if (IsYugaByteEnabled() ? true :
+				(function->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
+				ItemPointerEquals(&function->fn_tid, &procTup->t_self)))
 			function_valid = true;
 		else
 		{

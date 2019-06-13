@@ -1,7 +1,7 @@
-# src/test/regress/yb_transactions_schedule
+# src/test/regress/yb_pg_beta_features_schedule
 #
 ####################################################################################################
-# YB Transaction Testsuite: Used for reporting supported/unsupported operations in context
-# of different transaction types.
+# BETA features Testsuites: Used to test features protected by FLAGS_ysql_beta_features flag.
 ####################################################################################################
-test: yb_transactions
+test: yb_pg_create_function_3
+test: yb_plpgsql
