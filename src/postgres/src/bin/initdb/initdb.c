@@ -3158,10 +3158,10 @@ initialize_data_directory(void)
 
 	setup_schema(cmdfd);
 
+  load_plpgsql(cmdfd);
+
   if (!IsYugaByteGlobalClusterInitdb())
   {
-		load_plpgsql(cmdfd);
-
 		/* Do not need to vacuum in YB */
 		vacuum_db(cmdfd);
 	}

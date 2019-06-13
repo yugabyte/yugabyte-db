@@ -51,7 +51,7 @@ YBCIsEnvVarTrueWithDefault(const char* env_var_name, bool default_value)
 	{
 		return default_value;
 	}
-	return strcmp(env_var_value, "1") == 0;
+	return strcmp(env_var_value, "1") == 0 || strcmp(env_var_value, "true") == 0;
 }
 
 bool

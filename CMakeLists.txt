@@ -701,6 +701,14 @@ if(USING_LINUXBREW AND IS_CLANG)
   ADD_LINKER_FLAGS("--gcc-toolchain=${LINUXBREW_DIR}")
 endif()
 
+if(IS_GCC)
+  # For now code relies on fact that all libraries will be linked to binary (for using FLAGS_*)
+  # This flag is enabled implicitly on centos but not on ubuntu
+  # TODO: Subtitute it with '-as-needed' instead to avoid linking with unused library (issue #1495)
+  # for reducing pocess start time
+  ADD_LINKER_FLAGS("-Wl,-no-as-needed")
+endif()
+
 if(USING_LINUXBREW)
   # This is needed for finding correct versions of Flex, Bison, and other tools.
   set(CMAKE_PREFIX_PATH "${LINUXBREW_DIR}" ${CMAKE_PREFIX_PATH})
