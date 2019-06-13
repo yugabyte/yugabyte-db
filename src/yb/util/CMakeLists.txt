@@ -273,7 +273,9 @@ if(NOT APPLE)
   set(UTIL_LIBS
     ${UTIL_LIBS}
     rt
-    libbacktrace)
+    libbacktrace
+    unwind
+    unwind-arch)
 endif()
 
 if(${YB_TCMALLOC_AVAILABLE})

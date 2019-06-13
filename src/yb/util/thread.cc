@@ -337,27 +337,48 @@ int Compare(const Result<StackTrace>& lhs, const Result<StackTrace>& rhs) {
 
 void ThreadMgr::PrintThreadCategoryRows(const ThreadCategory& category, stringstream* output) {
   struct ThreadData {
+    int64_t tid;
+    ThreadIdForStack tid_for_stack;
     const std::string* name;
     ThreadStats stats;
     Result<StackTrace> stack_trace = StackTrace();
     int rowspan = -1;
   };
   std::vector<ThreadData> threads;
+  std::vector<ThreadIdForStack> thread_ids;
   threads.resize(category.size());
-  auto* data = threads.data();
-  for (const ThreadCategory::value_type& thread : category) {
-    data->name = &thread.second.name();
-    Status status = GetThreadStats(thread.second.thread_id(), &data->stats);
-    if (!status.ok()) {
-      YB_LOG_EVERY_N(INFO, 100) << "Could not get per-thread statistics: "
-                              << status.ToString();
+  thread_ids.reserve(category.size());
+  {
+    auto* data = threads.data();
+    for (const ThreadCategory::value_type& thread : category) {
+      data->name = &thread.second.name();
+      data->tid = thread.second.thread_id();
+#if defined(__linux__)
+      data->tid_for_stack = data->tid;
+#else
+      data->tid_for_stack = thread.first;
+#endif
+      Status status = GetThreadStats(data->tid, &data->stats);
+      if (!status.ok()) {
+        YB_LOG_EVERY_N(INFO, 100) << "Could not get per-thread statistics: "
+                                  << status.ToString();
+      }
+      thread_ids.push_back(data->tid_for_stack);
+      ++data;
     }
-    data->stack_trace = ThreadStack(thread.second.thread_id());
-    ++data;
   }
 
   if (threads.empty()) {
     return;
+  }
+
+  std::sort(thread_ids.begin(), thread_ids.end());
+  auto stacks = ThreadStacks(thread_ids);
+
+  for (ThreadData& data : threads) {
+    auto it = std::lower_bound(thread_ids.begin(), thread_ids.end(), data.tid_for_stack);
+    DCHECK(it != thread_ids.end() && *it == data.tid_for_stack);
+    data.stack_trace = stacks[it - thread_ids.begin()];
   }
 
   std::sort(threads.begin(), threads.end(), [](const ThreadData& lhs, const ThreadData& rhs) {

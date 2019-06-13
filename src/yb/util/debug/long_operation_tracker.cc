@@ -23,7 +23,7 @@
 namespace yb {
 
 struct LongOperationTracker::TrackedOperation {
-  int64_t thread_id;
+  ThreadIdForStack thread_id;
   const char* message;
   CoarseTimePoint start;
   // time when we should log warning
@@ -31,7 +31,8 @@ struct LongOperationTracker::TrackedOperation {
   bool complete = false;
 
   TrackedOperation(
-      int64_t thread_id_, const char* message_, CoarseTimePoint start_, CoarseTimePoint time_)
+      ThreadIdForStack thread_id_, const char* message_, CoarseTimePoint start_,
+      CoarseTimePoint time_)
       : thread_id(thread_id_), message(message_), start(start_), time(time_) {
   }
 };
@@ -74,7 +75,7 @@ class LongOperationTrackerHelper {
   TrackedOperationPtr Register(const char* message, MonoDelta duration) {
     auto start = CoarseMonoClock::now();
     auto result = std::make_shared<LongOperationTracker::TrackedOperation>(
-        Thread::CurrentThreadId(), message, start, start + duration);
+        Thread::CurrentThreadIdForStack(), message, start, start + duration);
     {
       std::lock_guard<std::mutex> lock(mutex_);
       queue_.push(result);

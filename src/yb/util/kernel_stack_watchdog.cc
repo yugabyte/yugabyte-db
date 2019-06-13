@@ -32,10 +32,10 @@
 
 #include "yb/util/kernel_stack_watchdog.h"
 
-#include <boost/bind.hpp>
+#include <string>
+
 #include <glog/logging.h>
 #include <gflags/gflags.h>
-#include <string>
 
 #include "yb/util/debug-util.h"
 #include "yb/util/env.h"
@@ -85,18 +85,18 @@ vector<string> KernelStackWatchdog::LoggedMessagesForTests() const {
 }
 
 void KernelStackWatchdog::Register(TLS* tls) {
-  int64_t tid = Thread::CurrentThreadId();
+  auto tid = Thread::CurrentThreadIdForStack();
   MutexLock l(lock_);
   InsertOrDie(&tls_by_tid_, tid, tls);
 }
 
 void KernelStackWatchdog::Unregister(TLS* tls) {
-  int64_t tid = Thread::CurrentThreadId();
+  auto tid = Thread::CurrentThreadIdForStack();
   MutexLock l(lock_);
   CHECK(tls_by_tid_.erase(tid));
 }
 
-Status GetKernelStack(pid_t p, string* ret) {
+Status GetKernelStack(ThreadIdForStack p, string* ret) {
   faststring buf;
   RETURN_NOT_OK(ReadFileToString(Env::Default(), Substitute("/proc/$0/stack", p), &buf));
   *ret = buf.ToString();
@@ -116,7 +116,7 @@ void KernelStackWatchdog::RunThread() {
       MicrosecondsInt64 now = GetMonoTimeMicros();
 
       for (const TLSMap::value_type& map_entry : tls_by_tid_) {
-        pid_t p = map_entry.first;
+        auto p = map_entry.first;
         const TLS::Data* tls = &map_entry.second->data_;
 
         TLS::Data tls_copy;
