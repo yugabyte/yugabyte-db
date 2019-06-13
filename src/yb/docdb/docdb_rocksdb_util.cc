@@ -18,6 +18,7 @@
 
 #include "yb/common/transaction.h"
 
+#include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/compression.h"
@@ -531,6 +532,9 @@ void InitRocksDBOptions(
   if (max_file_size_for_compaction != 0) {
     options->max_file_size_for_compaction = max_file_size_for_compaction;
   }
+
+  options->memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
+      0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);
 }
 
 }  // namespace docdb
