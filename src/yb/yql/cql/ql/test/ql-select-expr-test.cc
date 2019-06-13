@@ -9,6 +9,7 @@
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/decimal.h"
+#include "yb/common/jsonb.h"
 
 DECLARE_bool(test_tserver_timeout);
 
@@ -731,6 +732,125 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToken) {
   CHECK_EQ(row2.column(0).int32_value(), 11);
   CHECK_EQ(row2.column(1).double_value(), 22.5);
   CHECK_EQ(row2.column(2).string_value(), "bc");
+}
+
+TEST_F(QLTestSelectedExpr, TestQLSelectToJson) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  std::shared_ptr<QLRowBlock> row_block;
+  LOG(INFO) << "Test selecting with ToJson() built-in.";
+
+  auto to_json_str = [](const QLValue& value) -> string {
+    common::Jsonb jsonb(value.jsonb_value());
+    string str;
+    CHECK_OK(jsonb.ToJsonString(&str));
+    return str;
+  };
+
+  // Test various selects.
+
+  // Create the user-defined-type, table with UDT & FROZEN and insert some value.
+  CHECK_VALID_STMT("CREATE TYPE udt(v1 int, v2 int)");
+  CHECK_VALID_STMT("CREATE TABLE test_udt (h int PRIMARY KEY, s SET<int>, u udt, "
+                   "f FROZEN<set<int>>, sf SET<FROZEN<set<int>>>, su SET<FROZEN<udt>>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt (h, s, u, f, sf, su) values (1, "
+                   "{1,2}, {v1:3,v2:4}, {5,6}, {{7,8}}, {{v1:9,v2:0}})");
+
+  // Apply ToJson() to the key column.
+  CHECK_VALID_STMT("SELECT tojson(h) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("1", to_json_str(row_block->row(0).column(0)));
+  // Apply ToJson() to the SET.
+  CHECK_VALID_STMT("SELECT tojson(s) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("[1,2]", to_json_str(row_block->row(0).column(0)));
+
+  // Feature Not Supported: ToJson() does not support UDT & FROZEN.
+  // https://github.com/YugaByte/yugabyte-db/issues/1675
+  CHECK_INVALID_STMT("SELECT tojson(u) FROM test_udt");
+  CHECK_INVALID_STMT("SELECT tojson(f) FROM test_udt");
+  CHECK_INVALID_STMT("SELECT tojson(sf) FROM test_udt");
+  CHECK_INVALID_STMT("SELECT tojson(su) FROM test_udt");
+
+  // Uncomment the following block if UDT & FROZEN are supported correctly.
+/*
+  // Apply ToJson() to the UDT column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"v1\":11,\"v2\":22}", to_json_str(row_block->row(0).column(0)));
+
+  CHECK_VALID_STMT("CREATE TABLE test_udt2 (h int PRIMARY KEY, u frozen<udt>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt2 (h, u) values (1, {v1:33,v2:44})");
+  // Apply ToJson() to the FROZEN<UDT> column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt2");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"v1\":33,\"v2\":44}", to_json_str(row_block->row(0).column(0)));
+
+  CHECK_VALID_STMT("CREATE TABLE test_udt3 (h int PRIMARY KEY, u list<frozen<udt>>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt3 (h, u) values (1, [{v1:44,v2:55}, {v1:66,v2:77}])");
+  // Apply ToJson() to the LIST<UDT> column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt3");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("[{\"v1\":44,\"v2\":55},{\"v1\":66,\"v2\":77}]",
+            to_json_str(row_block->row(0).column(0)));
+
+  CHECK_VALID_STMT("CREATE TABLE test_udt4 (h int PRIMARY KEY, "
+                   "u map<frozen<udt>, frozen<udt>>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt4 (h, u) values "
+                   "(1, {{v1:44,v2:55}:{v1:66,v2:77}, {v1:88,v2:99}:{v1:11,v2:22}})");
+  // Apply ToJson() to the MAP<FROZEN<UDT>:FROZEN<UDT>> column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt4");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(("{\"{\\\"v1\\\":44,\\\"v2\\\":55}\":{\"v1\":66,\"v2\":77},"
+             "\"{\\\"v1\\\":88,\\\"v2\\\":99}\":{\"v1\":11,\"v2\":22}}"),
+            to_json_str(row_block->row(0).column(0)));
+
+  CHECK_VALID_STMT("CREATE TABLE test_udt5 (h int PRIMARY KEY, "
+                   "u map<frozen<list<frozen<udt>>>, frozen<set<frozen<udt>>>>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt5 (h, u) values "
+                   "(1, {[{v1:44,v2:55}, {v1:66,v2:77}]:{{v1:88,v2:99},{v1:11,v2:22}}})");
+  // Apply ToJson() to the MAP<FROZEN<LIST<FROZEN<UDT>>>:FROZEN<SET<FROZEN<UDT>>>> column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt5");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(("{\"[{\\\"v1\\\":44,\\\"v2\\\":55},{\\\"v1\\\":66,\\\"v2\\\":77}]\":"
+             "[{\"v1\":11,\"v2\":22},{\"v1\":88,\"v2\":99}]}"),
+            to_json_str(row_block->row(0).column(0)));
+
+  CHECK_VALID_STMT("CREATE TABLE test_udt6 (h int PRIMARY KEY, "
+                   "u map<frozen<map<frozen<udt>, text>>, frozen<set<frozen<udt>>>>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt6 (h, u) values "
+                   "(1, {{{v1:11,v2:22}:'text'}:{{v1:55,v2:66},{v1:77,v2:88}}})");
+  // Apply ToJson() to the MAP<FROZEN<MAP<FROZEN<UDT>:TEXT>>:FROZEN<SET<FROZEN<UDT>>>>
+  // column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt6");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(("{\"{\\\"{\\\\\\\"v1\\\\\\\":11,\\\\\\\"v2\\\\\\\":22}\\\":\\\"text\\\"}\":"
+             "[{\"v1\":55,\"v2\":66},{\"v1\":77,\"v2\":88}]}"),
+            to_json_str(row_block->row(0).column(0)));
+*/
+
+  // Feature Not Supported: UDT field types cannot refer to other user-defined types.
+  // https://github.com/YugaByte/yugabyte-db/issues/1630
+  CHECK_INVALID_STMT("CREATE TYPE udt7(i1 int, u1 udt)");
+  // CHECK_VALID_STMT("CREATE TABLE test_udt7 (h int PRIMARY KEY, u udt7)");
+  // CHECK_VALID_STMT("INSERT INTO test_udt7 (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
+  // Apply ToJson() to the UDT<UDT> column.
+  // CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt7");
+  // row_block = processor->row_block();
+  // CHECK_EQ(row_block->row_count(), 1);
+  // EXPECT_EQ("{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}",
+  //           to_json_str(row_block->row(0).column(0)));
 }
 
 TEST_F(QLTestSelectedExpr, TestCastDecimal) {

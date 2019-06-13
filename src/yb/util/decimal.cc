@@ -207,6 +207,8 @@ Status Decimal::FromDouble(double double_val) {
   string str = StringFromDouble(double_val);
   if (str == "nan") {
     return STATUS(Corruption, "Cannot convert nan to Decimal");
+  } else if (str == "-nan") {
+    return STATUS(Corruption, "Cannot convert -nan to Decimal");
   } else if (str == "inf") {
     return STATUS(Corruption, "Cannot convert inf to Decimal");
   } else if (str == "-inf") {

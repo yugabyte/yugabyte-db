@@ -111,16 +111,17 @@ CHECKED_STATUS QLExprExecutor::EvalBFCall(const QLBCallPB& bfcall,
   //   "AddListList"
   //   "SubListList"
 
+  const bfql::BFOpcode bf_opcode = static_cast<bfql::BFOpcode>(bfcall.opcode());
   // First evaluate the arguments.
   vector<QLValue> args(bfcall.operands().size());
   int arg_index = 0;
   for (auto operand : bfcall.operands()) {
-    RETURN_NOT_OK(EvalExpr(operand, table_row, &args[arg_index]));
-    arg_index++;
+    QLValue* arg = &args[arg_index++];
+    RETURN_NOT_OK(EvalExpr(operand, table_row, arg));
   }
 
   // Execute the builtin call associated with the given opcode.
-  return QLBfunc::Exec(static_cast<bfql::BFOpcode>(bfcall.opcode()), &args, result);
+  return QLBfunc::Exec(bf_opcode, &args, result);
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -20,6 +20,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/subdocument.h"
 
+#include "yb/util/stol_utils.h"
 #include "yb/util/redis_util.h"
 
 DEFINE_bool(emulate_redis_responses,

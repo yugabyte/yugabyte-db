@@ -101,4 +101,25 @@ void AppendWithSeparator(const char* to_append, string* dest, const char* separa
   *dest += to_append;
 }
 
+std::string QuoteString(const std::string& s, char quote_char) {
+  static constexpr const char backslash_char = '\\';
+  string result;
+  result.push_back(quote_char);
+
+  for (const char& c : s) {
+    if (c == quote_char) {
+      result.push_back(backslash_char);
+      result.push_back(quote_char);
+    } else if (c == backslash_char) {
+      result.push_back(backslash_char);
+      result.push_back(backslash_char);
+    } else {
+      result.push_back(c);
+    }
+  }
+
+  result.push_back(quote_char);
+  return result;
+}
+
 }  // namespace yb

@@ -45,6 +45,7 @@ const DataType TUPLE = DataType::TUPLE;
 const DataType TYPEARGS = DataType::TYPEARGS;
 const DataType DATE = DataType::DATE;
 const DataType TIME = DataType::TIME;
+const DataType JSONB = DataType::JSONB;
 
 // IMPORTANT NOTES:
 // - If your cpp_function is defined in a different name space, you must "#include" its header file
@@ -273,6 +274,9 @@ const vector<BFDecl> kBFDirectory = {
 
   // uuid function.
   { "GetUuid", "uuid", "", UUID, {} },
+
+  // tojson function.
+  { "ToJson", "tojson", "", JSONB, {ANYTYPE} },
 };
 
 } // namespace bfql

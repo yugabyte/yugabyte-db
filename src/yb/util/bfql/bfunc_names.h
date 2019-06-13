@@ -10,24 +10,18 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-//
-//
-// This module defines C++ functions that are to support builtin functions.
-//
-// See the header of file "/util/bfql/bfql.h" for more general overall information.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_UTIL_BFQL_BFUNC_H_
-#define YB_UTIL_BFQL_BFUNC_H_
+#ifndef YB_UTIL_BFQL_BFUNC_NAMES_H_
+#define YB_UTIL_BFQL_BFUNC_NAMES_H_
 
-#include <iostream>
-#include <string>
+namespace yb {
+namespace bfql {
 
-#include "yb/util/status.h"
-#include "yb/util/logging.h"
+const char *const kCastFuncName = "cast";
+const char *const kCqlCastFuncName = "cql_cast";
 
-// Include all builtin function templates.
-#include "yb/util/bfql/bfunc_convert.h"
-#include "yb/util/bfql/bfunc_standard.h"
+} // namespace bfql
+} // namespace yb
 
-#endif  // YB_UTIL_BFQL_BFUNC_H_
+#endif  // YB_UTIL_BFQL_BFUNC_NAMES_H_

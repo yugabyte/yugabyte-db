@@ -23,6 +23,7 @@
 #include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/date_time.h"
 
 namespace yb {
 namespace ql {
