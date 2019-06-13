@@ -552,6 +552,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) const {
   DCHECK(status_listener_.get() != nullptr);
   status_pb_out->set_tablet_id(status_listener_->tablet_id());
   status_pb_out->set_table_name(status_listener_->table_name());
+  status_pb_out->set_table_id(status_listener_->table_id());
   status_pb_out->set_last_status(status_listener_->last_status());
   status_listener_->partition().ToPB(status_pb_out->mutable_partition());
   status_pb_out->set_state(state_);

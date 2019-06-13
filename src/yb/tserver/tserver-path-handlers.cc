@@ -200,7 +200,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
 
   *output << "<h1>Tablets</h1>\n";
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Table name</th><th>Tablet ID</th>"
+  *output << "  <tr><th>Table name</th><th>Table UUID</th><th>Tablet ID</th>"
       "<th>Partition</th>"
       "<th>State</th><th>On-disk size</th><th>RaftConfig</th><th>Last status</th></tr>\n";
   for (const std::shared_ptr<TabletPeer>& peer : peers) {
@@ -208,6 +208,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     peer->GetTabletStatusPB(&status);
     string id = status.tablet_id();
     string table_name = status.table_name();
+    string table_id = status.table_id();
     string tablet_id_or_link;
     if (peer->tablet() != nullptr) {
       tablet_id_or_link = TabletLink(id);
@@ -225,17 +226,18 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     // TODO: would be nice to include some other stuff like memory usage
     shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
     (*output) << Substitute(
-        // Table name, tablet id, partition
-        "<tr><td>$0</td><td>$1</td><td>$2</td>"
+        // Table name, UUID of table, tablet id, partition
+        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td>"
         // State, on-disk size, consensus configuration, last status
-        "<td>$3</td><td>$4</td><td>$5</td><td>$6</td></tr>\n",
+        "<td>$4</td><td>$5</td><td>$6</td><td>$7</td></tr>\n",
         EscapeForHtmlToString(table_name),  // $0
-        tablet_id_or_link,  // $1
-        EscapeForHtmlToString(partition),  // $2
-        EscapeForHtmlToString(peer->HumanReadableState()), n_bytes,  // $3, $4
+        EscapeForHtmlToString(table_id),  // $1
+        tablet_id_or_link,  // $2
+        EscapeForHtmlToString(partition),  // $3
+        EscapeForHtmlToString(peer->HumanReadableState()), n_bytes,  // $4, $5
         consensus ? ConsensusStatePBToHtml(consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
-                  : "",  // $5
-        EscapeForHtmlToString(status.last_status()));  // $6
+                  : "",  // $6
+        EscapeForHtmlToString(status.last_status()));  // $7
   }
   *output << "</table>\n";
 }
