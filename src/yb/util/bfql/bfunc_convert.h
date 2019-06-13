@@ -154,6 +154,21 @@ CHECKED_STATUS SetStringResult(PTypePtr source, RTypePtr target) {
     case QLValue::InternalType::kTimeValue:
       target->set_string_value(VERIFY_RESULT(DateTime::TimeToString(source->time_value())));
       break;
+    case QLValue::InternalType::kUuidValue:
+      target->set_string_value(source->uuid_value().ToString());
+      break;
+    case QLValue::InternalType::kTimeuuidValue:
+      target->set_string_value(source->timeuuid_value().ToString());
+      break;
+    case QLValue::InternalType::kBinaryValue:
+      target->set_string_value("0x" + b2a_hex(source->binary_value()));
+      break;
+    case QLValue::InternalType::kInetaddressValue: {
+        string strval;
+        RETURN_NOT_OK(source->inetaddress_value().ToString(&strval));
+        target->set_string_value(strval);
+      }
+      break;
     case QLValue::InternalType::kDecimalValue: {
         util::Decimal d;
         RETURN_NOT_OK(d.DecodeFromComparable(source->decimal_value()));

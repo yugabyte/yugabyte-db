@@ -19,6 +19,8 @@
 #define YB_YQL_CQL_QL_PTREE_PT_BCALL_H_
 
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/util/bfql/gen_opcodes.h"
+#include "yb/util/bfql/bfunc_names.h"
 
 namespace yb {
 namespace ql {
@@ -90,34 +92,7 @@ class PTBcall : public PTExpr {
 
   virtual CHECKED_STATUS CheckCounterUpdateSupport(SemContext *sem_context) const override;
 
-  virtual string QLName() const override {
-    string arg_names;
-    string keyspace;
-
-    // cql_cast() is displayed as "cast(<col> as <type>)".
-    if (strcmp(name_->c_str(), bfql::kCqlCastFuncName) == 0) {
-      CHECK_GE(args_->size(), 2);
-      const string column_name = args_->element(0)->QLName();
-      const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type());
-      return strings::Substitute("cast($0 as $1)", column_name, type);
-    }
-
-    for (auto arg : args_->node_list()) {
-      if (!arg_names.empty()) {
-        arg_names += ", ";
-      }
-      arg_names += arg->QLName();
-    }
-    if (IsAggregateCall()) {
-      // count(*) is displayed as "count".
-      if (arg_names.empty()) {
-        return name_->c_str();
-      }
-      keyspace += "system.";
-    }
-    return strings::Substitute("$0$1($2)", keyspace, name_->c_str(), arg_names);
-  }
-
+  virtual std::string QLName() const override;
   virtual bool IsAggregateCall() const override;
   virtual yb::bfql::TSOpcode aggregate_opcode() const override {
     return is_server_operator_ ? static_cast<yb::bfql::TSOpcode>(bfopcode_)

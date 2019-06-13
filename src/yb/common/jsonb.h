@@ -67,8 +67,12 @@ class Jsonb {
   // Creates a serialized jsonb string from plaintext json.
   CHECKED_STATUS FromString(const std::string& json);
 
-  // Creates a serialized jsonb string from rapidjson document.
+  // Creates a serialized jsonb string from rapidjson document or value.
   CHECKED_STATUS FromRapidJson(const rapidjson::Document& document);
+  CHECKED_STATUS FromRapidJson(const rapidjson::Value& value);
+
+  // Creates a serialized jsonb string from QLValuePB.
+  CHECKED_STATUS FromQLValuePB(const QLValuePB& value_pb);
 
   // Builds a json document from serialized jsonb.
   CHECKED_STATUS ToRapidJson(rapidjson::Document* document) const;
