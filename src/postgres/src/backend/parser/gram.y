@@ -149,10 +149,15 @@ typedef struct ImportQual
 #define parser_ybc_not_support_in_templates(pos, feature) \
 	ybc_not_support_in_templates(pos, yyscanner, feature " not supported yet in template0/template1")
 
+#define parser_ybc_beta_feature(pos, feature) \
+	check_beta_feature(pos, yyscanner, "FLAGS_ysql_beta_feature_" feature, feature)
+
 static void base_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner,
 						 const char *msg);
 static void ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue);
 static void ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg);
+static void check_beta_feature(int pos, core_yyscan_t yyscanner, const char* flag, const char* feature);
+
 static RawStmt *makeRawStmt(Node *stmt, int stmt_location);
 static void updateRawStmtEnd(RawStmt *rs, int end_location);
 static Node *makeColumnRef(char *colname, List *indirection,
@@ -854,6 +859,7 @@ stmt :
 			| AlterDomainStmt
 			| AlterSeqStmt
 			| AlterTableStmt
+			| CallStmt
 			| CommentStmt
 			| ConstraintsSetStmt
 			| CopyStmt
@@ -882,6 +888,10 @@ stmt :
 			| VariableSetStmt
 			| VariableShowStmt
 			| ViewStmt
+
+			/* BETA features */
+			| CreateFunctionStmt { parser_ybc_beta_feature(@1, "function"); }
+			| RemoveFuncStmt { parser_ybc_beta_feature(@1, "function"); }
 
 			/* Not supported in template0/template1 statements */
 			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
@@ -917,7 +927,6 @@ stmt :
 			| AlterUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AnalyzeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CheckPointStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CallStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClosePortalStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -928,7 +937,6 @@ stmt :
 			| CreateFdwStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateForeignServerStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateForeignTableStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateFunctionStmt { parser_ybc_signal_unsupported(@1, "This statement", 1155); }
 			| CreateGroupStmt { parser_ybc_signal_unsupported(@1, "This statement", 869); }
 			| CreateMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateOpClassStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -970,7 +978,6 @@ stmt :
 			| ReassignOwnedStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ReindexStmt { parser_ybc_not_support(@1, "This statement"); }
 			| RemoveAggrStmt { parser_ybc_not_support(@1, "This statement"); }
-			| RemoveFuncStmt { parser_ybc_signal_unsupported(@1, "This statement", 1155); }
 			| RemoveOperStmt { parser_ybc_not_support(@1, "This statement"); }
 			| RevokeRoleStmt { parser_ybc_signal_unsupported(@1, "This statement", 869); }
 			| RuleStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -8042,7 +8049,6 @@ CreateFunctionStmt:
 			CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
 			RETURNS func_return createfunc_opt_list
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE FUNCTION", 1155);
 					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
 					n->is_procedure = false;
 					n->replace = $2;
@@ -8055,7 +8061,6 @@ CreateFunctionStmt:
 			| CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
 			  RETURNS TABLE '(' table_func_column_list ')' createfunc_opt_list
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE FUNCTION", 1155);
 					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
 					n->is_procedure = false;
 					n->replace = $2;
@@ -8069,7 +8074,6 @@ CreateFunctionStmt:
 			| CREATE opt_or_replace FUNCTION func_name func_args_with_defaults
 			  createfunc_opt_list
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE FUNCTION", 1155);
 					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
 					n->is_procedure = false;
 					n->replace = $2;
@@ -8082,7 +8086,6 @@ CreateFunctionStmt:
 			| CREATE opt_or_replace PROCEDURE func_name func_args_with_defaults
 			  createfunc_opt_list
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE PROCEDURE", 1155);
 					CreateFunctionStmt *n = makeNode(CreateFunctionStmt);
 					n->is_procedure = true;
 					n->replace = $2;
@@ -8574,7 +8577,6 @@ opt_restrict:
 RemoveFuncStmt:
 			DROP FUNCTION function_with_argtypes_list opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "DROP FUNCTION", 1155);
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_FUNCTION;
 					n->objects = $3;
@@ -8585,7 +8587,6 @@ RemoveFuncStmt:
 				}
 			| DROP FUNCTION IF_P EXISTS function_with_argtypes_list opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "DROP FUNCTION", 1155);
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_FUNCTION;
 					n->objects = $5;
@@ -8596,7 +8597,6 @@ RemoveFuncStmt:
 				}
 			| DROP PROCEDURE function_with_argtypes_list opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "DROP PROCEDURE", 1155);
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_PROCEDURE;
 					n->objects = $3;
@@ -8607,7 +8607,6 @@ RemoveFuncStmt:
 				}
 			| DROP PROCEDURE IF_P EXISTS function_with_argtypes_list opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "DROP PROCEDURE", 1155);
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_PROCEDURE;
 					n->objects = $5;
@@ -8618,7 +8617,6 @@ RemoveFuncStmt:
 				}
 			| DROP ROUTINE function_with_argtypes_list opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "DROP ROUTINE", 1155);
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_ROUTINE;
 					n->objects = $3;
@@ -8629,7 +8627,6 @@ RemoveFuncStmt:
 				}
 			| DROP ROUTINE IF_P EXISTS function_with_argtypes_list opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "DROP ROUTINE", 1155);
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_ROUTINE;
 					n->objects = $5;
@@ -17091,7 +17088,8 @@ parser_init(base_yy_extra_type *yyext)
 }
 
 static void
-raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
+raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, int issue)
+{
 	int signal_level = YBUnsupportedFeatureSignalLevel();
 	if (issue > 0)
 	{
@@ -17115,7 +17113,8 @@ raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, i
 }
 
 static void
-ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
+ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue)
+{
 	static int use_yb_parser = -1;
 	if (use_yb_parser == -1)
 	{
@@ -17129,7 +17128,8 @@ ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue) {
 }
 
 static void
-ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg) {
+ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg)
+{
 	static int restricted = -1;
 	if (restricted == -1)
 	{
@@ -17138,6 +17138,28 @@ ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg) 
 
 	if (restricted)
 	{
+		raise_feature_not_supported(pos, yyscanner, msg, -1);
+	}
+}
+
+static bool
+beta_features_enabled()
+{
+	static int beta_enabled = -1;
+	if (beta_enabled == -1)
+	{
+		beta_enabled = YBCIsEnvVarTrue("FLAGS_ysql_beta_features");
+	}
+	return beta_enabled;
+}
+
+static void
+check_beta_feature(int pos, core_yyscan_t yyscanner, const char *flag, const char *feature)
+{
+	if (YBIsUsingYBParser() && !(beta_features_enabled() || YBCIsEnvVarTrue(flag)))
+	{
+		char msg[0xFF];
+		snprintf(msg, sizeof(msg), "'%s' BETA feature is disabled. Use '%s' or 'FLAGS_ysql_beta_features'", feature, flag);
 		raise_feature_not_supported(pos, yyscanner, msg, -1);
 	}
 }

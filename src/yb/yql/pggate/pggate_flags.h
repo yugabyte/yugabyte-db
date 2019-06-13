@@ -24,4 +24,7 @@ DECLARE_string(pggate_master_addresses);
 DECLARE_int32(ysql_prefetch_limit);
 DECLARE_double(ysql_backward_prefetch_scale_factor);
 
+DECLARE_bool(ysql_beta_features);
+DECLARE_bool(ysql_beta_feature_function);
+
 #endif  // YB_YQL_PGGATE_PGGATE_FLAGS_H

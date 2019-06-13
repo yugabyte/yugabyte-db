@@ -113,7 +113,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   /**
    * @return flags shared between tablet server and initdb
    */
-  private Map<String, String> getTServerFlags() {
+  protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = new TreeMap<>();
 
     if (isTSAN()) {
