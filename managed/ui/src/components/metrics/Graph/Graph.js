@@ -3,10 +3,12 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 
-import { Power2 } from "gsap/all";
-import TweenMax from 'gsap/TweenMax';
 import './Graph.scss';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
+
+const ProgressBar = require('progressbar.js');
+const GraphPath = ProgressBar.Path;
+const GraphLine = ProgressBar.Line;
 
 const colorObj = {
   green: {
@@ -83,41 +85,63 @@ export default class Graph extends Component {
   }
 
   componentDidMount = () => {
-    const counter = { var: 0 };
-    this.initTween = TweenMax.to(
-      counter, 
-      2, 
-      {
-        var: 1,
-        onUpdate: () => { 
-          this.values = {
-            width: Math.round(this.props.value * counter.var * 1000) / 10,
-            color: this.calcColor(counter.var * this.props.value),
-          };
-          if (this.props.type === "semicircle" && this.bar) {
-            TweenMax.set(this.bar, { css: { stroke: this.values.color, strokeDashoffset: 100 - this.values.width}});
-          }
-
-          if (this.props.type === "linear" && this.bar) {
-            TweenMax.set(this.bar, { css: { backgroundColor: this.values.color, width: this.values.width+"%"}});
-          }
-        },
-        ease: Power2.easeOut,
-        delay: 2
+    const { type, value } = this.props;
+    const color = this.calcColor(value);
+    const graph = ((type) => {
+      if (type === "semicircle") {
+        return new GraphPath(this.bar, {
+          easing: 'easeOut',
+          duration: 900
+        });
       }
-    );
+      
+      return new GraphLine(this.bar, {
+        easing: 'easeOut',
+        color: color,
+        duration: 900,
+        svgStyle: {width: '100%', height: '30px'}
+      });
+    })(type);
+    graph.set(0);
+    setTimeout(() => graph.animate(value,{
+      duration: 2000,
+      from: { color: '#289b42', width: 10 },
+      to: { color: color, width: 10 },
+      step: (state, shape) => {
+        shape.path.setAttribute("stroke", state.color);
+        shape.path.setAttribute("stroke-width", state.width);
+      },
+    }), 500);
+    this.setState({
+      graph: graph
+    });
+  }
+
+  componentDidUpdate = (prevProps, prevState) => {
+    if (prevProps.value !== this.props.value) {
+      const color = this.calcColor(this.props.value);
+      this.state.graph.animate(this.props.value,{
+        duration: 1000,
+        from: { color: '#289b42', width: 10 },
+        to: { color: color, width: 10 },
+        step: (state, shape) => {
+          shape.path.setAttribute("stroke", state.color);
+          shape.path.setAttribute("stroke-width", state.width);
+        },
+      });
+    }
   }
 
   getGraphByType = (type) => {
     if (type === "semicircle") {
       return (<svg x="0px" y="0px" className={`graph-body`} viewBox="0 0 79.2 46.1">
         <path className="graph-base" d="M7.8,38.8C7.8,21.2,22.1,7,39.6,7s31.8,14.2,31.8,31.8"/>
-        <path className="graph-bar" d="M7.8,38.8C7.8,21.2,22.1,7,39.6,7s31.8,14.2,31.8,31.8" ref={ elem => this.bar = elem } />
+        <path className="graph-bar" fill="none" stroke="blue" strokeWidth="10" id={'graph-'+type} d="M7.8,38.8C7.8,21.2,22.1,7,39.6,7s31.8,14.2,31.8,31.8" ref={ elem => this.bar = elem } />
       </svg>);
     }
 
     if (type === "linear") {
-      return (<div className={`graph-body`} ref={ elem => this.bar = elem } />);
+      return (<div id={'graph-'+type} ref={ elem => this.bar = elem } />);
     }
 
     return null;
@@ -129,7 +153,7 @@ export default class Graph extends Component {
       ? (this.props.unit === "percent" || this.props.unit === "%" ? "%" : " " + this.props.unit)
       : null;
     return (
-      <div id={this.props.metricKey} className={`graph-container graph-${this.props.type || "linear"}`}>
+      <div id={this.props.metricKey} className={`graph-container graph-${this.props.type || "linear"}`}>            
         {this.getGraphByType(this.props.type)}
 
         {unit && <label ref={ div => this.label = div } >{value}{unit}</label>}

@@ -116,7 +116,7 @@ export default class MetricsPanelOverview extends Component {
       });
     }
     if (max === 0) max = 1.01;
-    Plotly.react(metricKey, this.props.metric.data, {...this.state.layout, yaxis: { range: [0, max] }}, {displayModeBar: false});
+    Plotly.react(metricKey, metric.data, {...this.state.layout, yaxis: { range: [0, max] }}, {displayModeBar: false});
   }
 
   onResize(dimensions) {
