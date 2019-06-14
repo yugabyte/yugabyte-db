@@ -34,7 +34,7 @@ a table may therefore have at most 64K tablets. We expect this to be sufficient 
 very large data sets or cluster sizes.
 
 As an example, for a table with 16 tablets the overall hash space [0x0000 to 0xFFFF) is divided into
-16 sub-ranges, one for each tablet:  [0x0000, 0x1000), [0x1000, 0x2000), … , [0xF000, 0xFFFF).
+16 sub-ranges, one for each tablet:  [0x0000, 0x1000), [0x1000, 0x2000), … , [0xF000, 0xFFFF].
 
 ![tablet_overview](/images/architecture/tablet_overview.png)
 
