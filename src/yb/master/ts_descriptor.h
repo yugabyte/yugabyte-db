@@ -353,7 +353,7 @@ template <class TProxy>
 Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
                                       std::shared_ptr<TProxy>* result_cache) {
   {
-    std::shared_lock<rw_spinlock> l(lock_);
+    std::lock_guard<rw_spinlock> l(lock_);
     if (*result_cache) {
       *result = *result_cache;
       return Status::OK();
