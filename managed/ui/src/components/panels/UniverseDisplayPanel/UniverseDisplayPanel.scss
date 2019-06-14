@@ -150,6 +150,13 @@ a:hover >  .universe-display-item-container, .create-universe-button:hover {
     border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
   }
 
+  & > .btn-icon {
+    @include transition(0.125s);
+  }
+  & > .display-name {
+    @include transition(0.125s);
+  }
+
   & > .button-group {
     position: absolute;
     top: 0;
@@ -160,10 +167,11 @@ a:hover >  .universe-display-item-container, .create-universe-button:hover {
     transform: scale(1.03, 1.03);
     overflow: hidden;
     border-radius: 7px;
+
     &:hover:before {
       opacity: 1;
       transform: scale(1.03, 1);
-      @include transition-property (0.25s, all, 0.2);
+      @include transition-property (0.25s, all, 0.2s);
     }
 
     &:before {
@@ -178,15 +186,15 @@ a:hover >  .universe-display-item-container, .create-universe-button:hover {
     }
 
     a.btn {
-
       width: 100%;
       height: 50%;
       display: block;
       color: $YB_DARK_GRAY_2;
       line-height: 66px;
       font-size: 15px;
-
       border-radius: 0;
+      opacity: 0;
+
       &, &:hover {
         border: none;
         background: none;
@@ -194,8 +202,10 @@ a:hover >  .universe-display-item-container, .create-universe-button:hover {
 
       div {
         opacity: 0;
-        margin-left: -25px;
+        transform: translate(-50px, 0);
         visibility: hidden;
+        @include transition(0.125s);
+
         span {
           display: inline-block;
           color: $YB_ORANGE;
@@ -206,7 +216,6 @@ a:hover >  .universe-display-item-container, .create-universe-button:hover {
 
 
       &:hover {
-
         background-color: $YB_GRAY_HOVER;
         
         span {
@@ -223,7 +232,7 @@ a:hover >  .universe-display-item-container, .create-universe-button:hover {
     .fa-mail-forward {
       transform: rotate(90deg) translateX(3px);
     }
-}
+  }
 
   .display-name {
     font-weight: 500;
@@ -258,7 +267,34 @@ a:hover >  .universe-display-item-container, .create-universe-button:hover {
   }
 
   &:hover {
-    border: 0 solid #fff;
+    & > .btn-icon {
+      @include transition(0.35s);
+      transform: translate(0, -30px);
+      opacity: 0;
+    }
+    & > .display-name {
+      @include transition(0.35s);
+      transform: translate(0, 30px);
+      opacity: 0;
+    }
+
+    & > .button-group {
+      a.btn {
+        opacity: 1;
+        @include transition-property (0.35s, opacity, 0s);
+
+        div {
+          opacity: 1;
+          visibility: visible;
+          transform: translate(0, 0);
+          @include transition-property (0.25s, all, 0.07s);
+        }
+
+        &:last-child div {
+          @include transition-property (0.25s, all, 0.2s);
+        }
+      }
+    }
   }
 }
 
@@ -288,8 +324,6 @@ a:hover >  .universe-display-item-container, .create-universe-button:hover {
     max-width: 220px;
     margin: 50px auto;
     display: block;
-    .create-universe-button {
-    }
   }
   
 }

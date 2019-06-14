@@ -17,18 +17,18 @@
       height: 30px;
       width: 0;
       background-color: $YB_SUCCESS_COLOR;
+    }
 
-      & + label {
-        position: absolute;
-        top: 7px;
-        left: 10px;
-        line-height: 16px;
-        color: #ffffff;
-        padding: 0 3px;
-        border-radius: 2px;
-        width: auto;
-        background-color: rgba($YB_DARK_GRAY_2, 0.2);
-      }
+    & > label {
+      position: absolute;
+      top: 7px;
+      left: 10px;
+      line-height: 16px;
+      color: #ffffff;
+      padding: 0 3px;
+      border-radius: 2px;
+      width: auto;
+      background-color: rgba($YB_DARK_GRAY_2, 0.2);
     }
   }
   
@@ -48,7 +48,6 @@
       }
 
       .graph-bar {
-        stroke: $YB_SUCCESS_COLOR;
         stroke-dasharray: 100, 200;
         stroke-dashoffset: 100;
       }

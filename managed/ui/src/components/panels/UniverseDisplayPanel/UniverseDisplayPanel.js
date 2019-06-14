@@ -11,10 +11,7 @@ import { UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
 import { isNonEmptyObject } from "../../../utils/ObjectUtils";
 import { YBModal } from '../../common/forms/fields';
-import TimelineMax from 'gsap/TimelineMax';
-import { Power1 } from "gsap/all";
 import { getPrimaryCluster, getReadOnlyCluster, getClusterProviderUUIDs, getProviderMetadata } from "../../../utils/UniverseUtils";
-import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isNotHidden, isDisabled } from 'utils/LayoutUtils';
 
 const moment = require('moment');
@@ -45,11 +42,6 @@ class CTAButtonAnimated extends Component {
       hover: false
     };
 
-    //animations
-    this.plusTween = new TimelineMax();
-    this.addUniverseElemsTween = new TimelineMax();
-    this.mainTween = new TimelineMax({ paused: true });
-
     this.plusIcon = null;
     this.mainLabel = null;
     this.addUniverseElems = [];
@@ -58,31 +50,13 @@ class CTAButtonAnimated extends Component {
     this.icons = [];
   }
 
-  componentWillUnmount = () => {
-    if (isDefinedNotNull(this.mainTween)) this.mainTween.kill();
-    if (isDefinedNotNull(this.plusTween)) this.plusTween.kill();
-  }
-
-  componentDidMount = () => {
-    this.plusTween
-      .add("preview")
-      .to(this.plusIcon, 0.1, {y: -15, opacity: 0, ease: Power1.easeOut})
-      .to(this.mainLabel, 0.1, {y: 15, opacity: 0, ease: Power1.easeOut},"preview");
-    this.addUniverseElemsTween
-      .staggerTo(this.addUniverseElems, 0.1, { x: 10, autoAlpha: 1}, 0.1);
-    this.mainTween
-      .add(this.plusTween)
-      .add(this.addUniverseElemsTween, 0.1 );
-  }
 
   mouseEnter = () => {
     this.setState({hover: true});
-    this.mainTween.play();
   }
 
   mouseLeave = () => {
     this.setState({hover: false});
-    this.mainTween.reverse();
   }
 
   disableLink = (e) => {
