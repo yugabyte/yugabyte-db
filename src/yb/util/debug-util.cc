@@ -131,11 +131,17 @@ struct ThreadStackEntry : public MPSCQueueEntry<ThreadStackEntry> {
   StackTrace stack;
 };
 
+#if !defined(__APPLE__) && !THREAD_SANITIZER
+#define USE_FUTEX 1
+#else
+#define USE_FUTEX 0
+#endif
+
 class CompletionFlag {
  public:
   void Signal() {
     complete_.store(1, std::memory_order_release);
-#ifndef __APPLE__
+#if USE_FUTEX
     sys_futex(reinterpret_cast<int32_t*>(&complete_),
               FUTEX_WAKE | FUTEX_PRIVATE_FLAG,
               INT_MAX, // wake all
@@ -150,8 +156,11 @@ class CompletionFlag {
 
     auto now = MonoTime::Now();
     auto deadline = now + timeout;
+#if !USE_FUTEX
+    auto wait_time = 10ms;
+#endif
     while (now < deadline) {
-#ifndef __APPLE__
+#if USE_FUTEX
       struct timespec ts;
       (deadline - now).ToTimeSpec(&ts);
       kernel_timespec kernel_ts;
@@ -162,7 +171,8 @@ class CompletionFlag {
                 0, // wait if value is still 0
                 &kernel_ts);
 #else
-      std::this_thread::sleep_for(10ms);
+      std::this_thread::sleep_for(wait_time);
+      wait_time = std::min(wait_time * 2, 100ms);
 #endif
       if (complete()) {
         return true;
