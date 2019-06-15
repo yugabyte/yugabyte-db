@@ -549,14 +549,14 @@ struct SingleWriterInlineSkipListNode {
   // Accessors/mutators for links.  Wrapped in methods so we can add
   // the appropriate barriers as necessary, and perform the necessary
   // addressing trickery for storing links below the Node in memory.
-  SingleWriterInlineSkipListNode* Next(int n) {
+  ATTRIBUTE_NO_SANITIZE_UNDEFINED SingleWriterInlineSkipListNode* Next(int n) {
     DCHECK_GE(n, 0);
     // Use an 'acquire load' so that we observe a fully initialized
     // version of the returned Node.
     return (next_[-n].load(std::memory_order_acquire));
   }
 
-  void SetNext(int n, SingleWriterInlineSkipListNode* x) {
+  ATTRIBUTE_NO_SANITIZE_UNDEFINED void SetNext(int n, SingleWriterInlineSkipListNode* x) {
     DCHECK_GE(n, 0);
     // Use a 'release store' so that anybody who reads through this
     // pointer observes a fully initialized version of the inserted node.
@@ -564,12 +564,12 @@ struct SingleWriterInlineSkipListNode {
   }
 
   // No-barrier variants that can be safely used in a few locations.
-  SingleWriterInlineSkipListNode* NoBarrier_Next(int n) {
+  ATTRIBUTE_NO_SANITIZE_UNDEFINED SingleWriterInlineSkipListNode* NoBarrier_Next(int n) {
     DCHECK_GE(n, 0);
     return next_[-n].load(std::memory_order_relaxed);
   }
 
-  void NoBarrier_SetNext(int n, SingleWriterInlineSkipListNode* x) {
+  ATTRIBUTE_NO_SANITIZE_UNDEFINED void NoBarrier_SetNext(int n, SingleWriterInlineSkipListNode* x) {
     DCHECK_GE(n, 0);
     next_[-n].store(x, std::memory_order_relaxed);
   }
