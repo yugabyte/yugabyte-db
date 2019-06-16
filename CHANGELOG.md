@@ -6,6 +6,9 @@ WIP version 1.1.3:
 
   **Miscellaneous**
 
+  - Fix compatibility with PostgreSQL 12
+  - Don't leak client_encoding change after hypopg extension is created
+    (Michael Kröll)
   - Use a dedicated MemoryContext to store hypothetical objects
   - Fix compatibility on Windows (Godwottery)
 
