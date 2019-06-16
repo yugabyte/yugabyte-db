@@ -29,6 +29,10 @@ from yb.common_util import YB_SRC_ROOT
 
 
 def main():
+    if os.environ.get('YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT', '0') == '1':
+        logging.info('YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT is set, skipping initdb')
+        return
+
     build_root = os.environ['YB_BUILD_ROOT']
     tool_name = 'create_initial_sys_catalog_snapshot'
     tool_path = os.path.join(build_root, 'tests-pgwrapper', tool_name)

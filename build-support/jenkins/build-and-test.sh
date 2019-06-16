@@ -418,6 +418,8 @@ if [[ $YB_BUILD_CPP == "1" ]] && ! which ctest >/dev/null; then
   fatal "ctest not found, won't be able to run C++ tests"
 fi
 
+export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
+
 # -------------------------------------------------------------------------------------------------
 # Build C++ code regardless of YB_BUILD_CPP, because we'll also need it for Java tests.
 
@@ -504,16 +506,29 @@ log "ALL OF YUGABYTE C++ BUILD FINISHED"
 # Running initdb
 # -------------------------------------------------------------------------------------------------
 
+export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=0
+
 if [[ $BUILD_TYPE != "tsan" ]]; then
-  log "Creating initial system catalog snapshot"
-  if ! time "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" initdb --skip-java; then
-    # We will still continue with the test suite.
-    initdb_err_msg="Failed to create initial sys catalog snapshot"
-    log "$initdb_err_msg. PostgreSQL tests may take longer."
-    FAILURES+="$initdb_err_msg"$'\n'
-    EXIT_STATUS=1
-  else
-    log "Successfully created initial system catalog snapshot"
+  declare -i initdb_attempt_index=1
+  declare -i -r MAX_INITDB_ATTEMPTS=3
+
+  while [[ $initdb_attempt_index -le $MAX_INITDB_ATTEMPTS ]]; do
+    log "Creating initial system catalog snapshot (attempt $initdb_attempt_index)"
+    if ! time "$YB_SRC_ROOT/yb_build.sh" "$BUILD_TYPE" initdb --skip-java; then
+      initdb_err_msg="Failed to create initial sys catalog snapshot at "
+      initdb_err_msg+="attempt $initdb_attempt_index"
+      log "$initdb_err_msg. PostgreSQL tests may take longer."
+      FAILURES+="$initdb_err_msg"$'\n'
+      EXIT_STATUS=1
+    else
+      log "Successfully created initial system catalog snapshot at attempt $initdb_attempt_index"
+      break
+    fi
+    let initdb_attempt_index+=1
+  done
+  if [[ $initdb_attempt_index -gt $MAX_INITDB_ATTEMPTS ]]; then
+    log "Failed to run create initial sys catalog snapshot after $MAX_INITDB_ATTEMPTS attempts."
+    log "We will still run the tests. They will take longer because they will have to run initdb."
   fi
 fi
 
