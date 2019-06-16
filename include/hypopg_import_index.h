@@ -21,8 +21,10 @@
 
 extern List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation);
+#if PG_VERSION_NUM < 100000
 extern Oid GetIndexOpClass(List *opclass, Oid attrType,
 				char *accessMethodName, Oid accessMethodId);
+#endif
 
 extern void CheckPredicate(Expr *predicate);
 extern bool CheckMutability(Expr *expr);

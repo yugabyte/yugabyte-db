@@ -12,6 +12,9 @@
 #ifndef _HYPOPG_H_
 #define _HYPOPG_H_
 
+#if PG_VERSION_NUM >= 120000
+#include "access/table.h"
+#endif
 #include "catalog/catalog.h"
 #include "commands/explain.h"
 #include "nodes/nodeFuncs.h"

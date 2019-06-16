@@ -22,6 +22,9 @@
 #include "nodes/makefuncs.h"
 #include "nodes/pg_list.h"
 #include "optimizer/clauses.h"
+#if PG_VERSION_NUM >= 120000
+#include "optimizer/optimizer.h"
+#endif
 #include "optimizer/planner.h"
 #include "optimizer/pathnode.h"
 #if PG_VERSION_NUM >= 110000
@@ -63,8 +66,11 @@ build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 			const FormData_pg_attribute *att_tup;
 
 			if (indexkey < 0)
-				att_tup = SystemAttributeDefinition(indexkey,
-										   heapRelation->rd_rel->relhasoids);
+				att_tup = SystemAttributeDefinition(indexkey
+#if PG_VERSION_NUM < 120000
+										   , heapRelation->rd_rel->relhasoids
+#endif
+										   );
 			else
 #if PG_VERSION_NUM >= 110000
 				att_tup = TupleDescAttr(heapRelation->rd_att, indexkey - 1);
@@ -100,6 +106,7 @@ build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 	return tlist;
 }
 
+#if PG_VERSION_NUM < 100000
 /*
  * Copied from src/backend/commands/indexcmds.c, not exported.
  * Resolve possibly-defaulted operator class specification
@@ -214,6 +221,7 @@ GetIndexOpClass(List *opclass, Oid attrType,
 
 	return opClassId;
 }
+#endif
 
 /*
  * Copied from src/backend/commands/indexcmds.c, not exported.
