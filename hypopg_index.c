@@ -64,7 +64,7 @@
 
 #if PG_VERSION_NUM >= 90600
 /* this will be updated, when needed, by hypo_discover_am */
-static Oid BLOOM_AM_OID = InvalidOid;
+static Oid	BLOOM_AM_OID = InvalidOid;
 #endif
 
 /*--- Variables exported ---*/
@@ -82,21 +82,21 @@ PG_FUNCTION_INFO_V1(hypopg_get_indexdef);
 PG_FUNCTION_INFO_V1(hypopg_reset_index);
 
 
-static void hypo_addIndex(hypoIndex *entry);
-static bool hypo_can_return(hypoIndex *entry, Oid atttype, int i, char *amname);
+static void hypo_addIndex(hypoIndex * entry);
+static bool hypo_can_return(hypoIndex * entry, Oid atttype, int i, char *amname);
 static void hypo_discover_am(char *amname, Oid oid);
-static void hypo_estimate_index_simple(hypoIndex *entry,
-						   BlockNumber *pages, double *tuples);
-static void hypo_estimate_index(hypoIndex *entry, RelOptInfo *rel);
-static int hypo_estimate_index_colsize(hypoIndex *entry, int col);
-static void hypo_index_pfree(hypoIndex *entry);
+static void hypo_estimate_index_simple(hypoIndex * entry,
+									   BlockNumber *pages, double *tuples);
+static void hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel);
+static int	hypo_estimate_index_colsize(hypoIndex * entry, int col);
+static void hypo_index_pfree(hypoIndex * entry);
 static bool hypo_index_remove(Oid indexid);
 static const hypoIndex *hypo_index_store_parsetree(IndexStmt *node,
-						   const char *queryString);
-static hypoIndex *hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns,
-			  int ninccolumns,
-			  List *options);
-static void hypo_set_indexname(hypoIndex *entry, char *indexname);
+												   const char *queryString);
+static hypoIndex * hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns,
+								 int ninccolumns,
+								 List *options);
+static void hypo_set_indexname(hypoIndex * entry, char *indexname);
 
 
 /*
@@ -106,7 +106,7 @@ static void hypo_set_indexname(hypoIndex *entry, char *indexname);
  */
 static hypoIndex *
 hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
-		List *options)
+			  List *options)
 {
 	/* must be declared "volatile", because used in a PG_CATCH() */
 	hypoIndex  *volatile entry;
@@ -139,6 +139,7 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 	entry->relam = HeapTupleGetOid(tuple);
 
 #if PG_VERSION_NUM >= 90600
+
 	/*
 	 * Since 9.6, AM informations are available through an amhandler function,
 	 * returning an IndexAmRoutine containing what's needed.
@@ -236,15 +237,15 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 #if PG_VERSION_NUM >= 90600
 			&& entry->relam != BLOOM_AM_OID
 #endif
-		)
+			)
 		{
-				/*
-				 * do not store hypothetical indexes with access method not
-				 * supported
-				 */
-				elog(ERROR, "hypopg: access method \"%s\" is not supported",
-					 accessMethod);
-				break;
+			/*
+			 * do not store hypothetical indexes with access method not
+			 * supported
+			 */
+			elog(ERROR, "hypopg: access method \"%s\" is not supported",
+				 accessMethod);
+			break;
 		}
 
 		/* No more elog beyond this point. */
@@ -263,7 +264,7 @@ hypo_newIndex(Oid relid, char *accessMethod, int nkeycolumns, int ninccolumns,
 
 /* Add an hypoIndex to hypoIndexes */
 static void
-hypo_addIndex(hypoIndex *entry)
+hypo_addIndex(hypoIndex * entry)
 {
 	MemoryContext oldcontext;
 
@@ -364,13 +365,13 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 		if (node->unique && !entry->amcanunique)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				   errmsg("hypopg: access method \"%s\" does not support unique indexes",
-						  node->accessMethod)));
+					 errmsg("hypopg: access method \"%s\" does not support unique indexes",
+							node->accessMethod)));
 		if (nkeycolumns > 1 && !entry->amcanmulticol)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			  errmsg("hypopg: access method \"%s\" does not support multicolumn indexes",
-					 node->accessMethod)));
+					 errmsg("hypopg: access method \"%s\" does not support multicolumn indexes",
+							node->accessMethod)));
 
 		entry->unique = node->unique;
 		entry->ncolumns = nkeycolumns + ninccolumns;
@@ -446,8 +447,8 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 				 * they're only computed when a real index exists (selectivity
 				 * and average width).
 				 */
-				MemoryContext	oldcontext;
-				Node		   *expr = attribute->expr;
+				MemoryContext oldcontext;
+				Node	   *expr = attribute->expr;
 
 				Assert(expr != NULL);
 				entry->indexcollations[attn] = exprCollation(attribute->expr);
@@ -470,7 +471,9 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 					 * Treat it like simple attribute anyway.
 					 */
 					entry->indexkeys[attn] = ((Var *) expr)->varattno;
-					/* Generated index name will have _expr instead of attname
+
+					/*
+					 * Generated index name will have _expr instead of attname
 					 * in generated index name, and error message will also be
 					 * slighty different in case on unexisting column from a
 					 * simple attribute, but that's how ComputeIndexAttrs()
@@ -502,7 +505,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 
 					oldcontext = MemoryContextSwitchTo(HypoMemoryContext);
 					entry->indexprs = lappend(entry->indexprs,
-										(Node *) copyObject(attribute->expr));
+											  (Node *) copyObject(attribute->expr));
 					MemoryContextSwitchTo(oldcontext);
 				}
 			}
@@ -565,7 +568,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 						entry->nulls_first[attn] = true;
 				}
 				else if (attribute->nulls_ordering == SORTBY_NULLS_FIRST)
-						entry->nulls_first[attn] = true;
+					entry->nulls_first[attn] = true;
 			}
 
 			/* handle index-only scan info */
@@ -587,7 +590,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 #else
 			/* per-column IOS information */
 			entry->canreturn[attn] = hypo_can_return(entry, atttype, attn,
-												  node->accessMethod);
+													 node->accessMethod);
 #endif
 
 			attn++;
@@ -606,7 +609,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 			if (attno < 0 && attno != ObjectIdAttributeNumber)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				   errmsg("hypopg: index creation on system columns is not supported")));
+						 errmsg("hypopg: index creation on system columns is not supported")));
 		}
 
 
@@ -673,19 +676,20 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 
 			/* per-column IOS information */
 			entry->canreturn[attn] = hypo_can_return(entry, atttype, attn,
-												  node->accessMethod);
+													 node->accessMethod);
 
 			attn++;
 		}
 		Assert(attn == (nkeycolumns + ninccolumns));
 #endif
+
 		/*
 		 * Also check for system columns used in expressions or predicates.
 		 */
 		if (entry->indexprs || entry->indpred)
 		{
 			Bitmapset  *indexattrs = NULL;
-			int i;
+			int			i;
 
 			pull_varattnos((Node *) entry->indexprs, 1, &indexattrs);
 			pull_varattnos((Node *) entry->indpred, 1, &indexattrs);
@@ -697,7 +701,7 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 								  indexattrs))
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("hypopg: index creation on system columns is not supported")));
+							 errmsg("hypopg: index creation on system columns is not supported")));
 			}
 		}
 
@@ -711,9 +715,9 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 								"exceeds maximum %ld",
 								ind_avg_width, HYPO_BTMaxItemSize),
 						 errhint("Values larger than 1/3 of a buffer page "
-							 "cannot be indexed.\nConsider a function index "
-							" of an MD5 hash of the value, or use full text "
-						  "indexing\n(which is not yet supported by hypopg)."
+								 "cannot be indexed.\nConsider a function index "
+								 " of an MD5 hash of the value, or use full text "
+								 "indexing\n(which is not yet supported by hypopg)."
 								 )));
 			/* Warn about posssible error with a 80% avg size */
 			else if (ind_avg_width >= HYPO_BTMaxItemSize * .8)
@@ -723,9 +727,9 @@ hypo_index_store_parsetree(IndexStmt *node, const char *queryString)
 								"is close to maximum %ld",
 								ind_avg_width, HYPO_BTMaxItemSize),
 						 errhint("Values larger than 1/3 of a buffer page "
-							 "cannot be indexed.\nConsider a function index "
-							" of an MD5 hash of the value, or use full text "
-						  "indexing\n(which is not yet supported by hypopg)."
+								 "cannot be indexed.\nConsider a function index "
+								 " of an MD5 hash of the value, or use full text "
+								 "indexing\n(which is not yet supported by hypopg)."
 								 )));
 		}
 
@@ -829,7 +833,7 @@ hypo_index_remove(Oid indexid)
 
 /* pfree all allocated memory for within an hypoIndex and the entry itself. */
 static void
-hypo_index_pfree(hypoIndex *entry)
+hypo_index_pfree(hypoIndex * entry)
 {
 	/* pfree all memory that has been allocated */
 	pfree(entry->indexname);
@@ -873,15 +877,15 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 							 bool inhparent,
 							 RelOptInfo *rel,
 							 Relation relation,
-							 hypoIndex *entry)
+							 hypoIndex * entry)
 {
 	IndexOptInfo *index;
 	int			ncolumns,
-				/*
-				 * For convenience and readability, use nkeycolumns even for
-				 * pg10- version.  In this case, this var will be initialized
-				 * to ncolumns
-				 */
+
+	/*
+	 * For convenience and readability, use nkeycolumns even for pg10-
+	 * version.  In this case, this var will be initialized to ncolumns
+	 */
 				nkeycolumns,
 				i;
 
@@ -1112,7 +1116,7 @@ hypopg(PG_FUNCTION_ARGS)
 		Datum		values[HYPO_INDEX_NB_COLS];
 		bool		nulls[HYPO_INDEX_NB_COLS];
 		ListCell   *lc2;
-		StringInfoData	exprsString;
+		StringInfoData exprsString;
 		int			i = 0;
 
 		memset(values, 0, sizeof(values));
@@ -1133,7 +1137,7 @@ hypopg(PG_FUNCTION_ARGS)
 		initStringInfo(&exprsString);
 		foreach(lc2, entry->indexprs)
 		{
-			Node *expr = lfirst(lc2);
+			Node	   *expr = lfirst(lc2);
 
 			appendStringInfo(&exprsString, "%s", nodeToString(expr));
 		}
@@ -1219,7 +1223,7 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 		Node	   *parsetree = (Node *) lfirst(parsetree_item);
 		Datum		values[HYPO_INDEX_CREATE_COLS];
 		bool		nulls[HYPO_INDEX_CREATE_COLS];
-		const hypoIndex *entry;
+		const		hypoIndex *entry;
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
@@ -1300,13 +1304,14 @@ hypopg_relation_size(PG_FUNCTION_ARGS)
 Datum
 hypopg_get_indexdef(PG_FUNCTION_ARGS)
 {
-	Oid				indexid = PG_GETARG_OID(0);
-	ListCell	   *indexpr_item;
-	StringInfoData	buf;
-	hypoIndex	   *entry = NULL;
-	ListCell	   *lc;
-	List		   *context;
-	int				keyno, cpt = 0;
+	Oid			indexid = PG_GETARG_OID(0);
+	ListCell   *indexpr_item;
+	StringInfoData buf;
+	hypoIndex  *entry = NULL;
+	ListCell   *lc;
+	List	   *context;
+	int			keyno,
+				cpt = 0;
 
 	foreach(lc, hypoIndexes)
 	{
@@ -1321,16 +1326,16 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 
 	initStringInfo(&buf);
 	appendStringInfo(&buf, "CREATE %s ON %s.%s USING %s (",
-			(entry->unique ? "UNIQUE INDEX" : "INDEX"),
-			quote_identifier(get_namespace_name(get_rel_namespace(entry->relid))),
-			quote_identifier(get_rel_name(entry->relid)),
-			get_am_name(entry->relam));
+					 (entry->unique ? "UNIQUE INDEX" : "INDEX"),
+					 quote_identifier(get_namespace_name(get_rel_namespace(entry->relid))),
+					 quote_identifier(get_rel_name(entry->relid)),
+					 get_am_name(entry->relam));
 
 	indexpr_item = list_head(entry->indexprs);
 
 	context = deparse_context_for(get_rel_name(entry->relid), entry->relid);
 
-	for (keyno=0; keyno<entry->nkeycolumns; keyno++)
+	for (keyno = 0; keyno < entry->nkeycolumns; keyno++)
 	{
 		Oid			indcoll;
 		Oid			keycoltype;
@@ -1345,10 +1350,10 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 			int32		keycoltypmod;
 #if PG_VERSION_NUM >= 110000
 			appendStringInfo(&buf, "%s", get_attname(entry->relid,
-						entry->indexkeys[keyno], false));
+													 entry->indexkeys[keyno], false));
 #else
 			appendStringInfo(&buf, "%s", get_attname(entry->relid,
-						entry->indexkeys[keyno]));
+													 entry->indexkeys[keyno]));
 #endif
 
 			get_atttypetypmodcoll(entry->relid, entry->indexkeys[keyno],
@@ -1370,7 +1375,7 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 
 			/* Need parens if it's not a bare function call */
 			if (indexkey && IsA(indexkey, FuncExpr) &&
-			 ((FuncExpr *) indexkey)->funcformat == COERCE_EXPLICIT_CALL)
+				((FuncExpr *) indexkey)->funcformat == COERCE_EXPLICIT_CALL)
 				appendStringInfoString(&buf, str);
 			else
 				appendStringInfo(&buf, "(%s)", str);
@@ -1417,13 +1422,13 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 	if (entry->ncolumns > entry->nkeycolumns)
 	{
 		appendStringInfo(&buf, " INCLUDE (");
-		for (keyno=entry->nkeycolumns; keyno<entry->ncolumns; keyno++)
+		for (keyno = entry->nkeycolumns; keyno < entry->ncolumns; keyno++)
 		{
 			if (keyno != entry->nkeycolumns)
 				appendStringInfo(&buf, ", ");
 
 			appendStringInfo(&buf, "%s", get_attname(entry->relid,
-						entry->indexkeys[keyno], false));
+													 entry->indexkeys[keyno], false));
 		}
 		appendStringInfo(&buf, ")");
 	}
@@ -1435,7 +1440,7 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 
 		foreach(lc, entry->options)
 		{
-			DefElem *elem = (DefElem *) lfirst(lc);
+			DefElem    *elem = (DefElem *) lfirst(lc);
 
 			appendStringInfo(&buf, "%s = ", elem->defname);
 
@@ -1446,8 +1451,8 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 			else if (strcmp(elem->defname, "length") == 0)
 				appendStringInfo(&buf, "%d", (int32) intVal(elem->arg));
 			else
-				elog(WARNING," hypopg: option %s unhandled, please report the bug",
-						elem->defname);
+				elog(WARNING, " hypopg: option %s unhandled, please report the bug",
+					 elem->defname);
 		}
 		appendStringInfo(&buf, ")");
 	}
@@ -1455,7 +1460,7 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 	if (entry->indpred)
 	{
 		appendStringInfo(&buf, " WHERE %s", deparse_expression((Node *)
-					make_ands_explicit(entry->indpred), context, false, false));
+															   make_ands_explicit(entry->indpred), context, false, false));
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(buf.data));
@@ -1476,7 +1481,7 @@ hypopg_reset_index(PG_FUNCTION_ARGS)
  * ending \0
  */
 static void
-hypo_set_indexname(hypoIndex *entry, char *indexname)
+hypo_set_indexname(hypoIndex * entry, char *indexname)
 {
 	char		oid[12];		/* store <oid>, oid shouldn't be more than
 								 * 9999999999 */
@@ -1500,7 +1505,7 @@ hypo_set_indexname(hypoIndex *entry, char *indexname)
  * Fill the pages and tuples information for a given hypoIndex.
  */
 static void
-hypo_estimate_index_simple(hypoIndex *entry, BlockNumber *pages, double *tuples)
+hypo_estimate_index_simple(hypoIndex * entry, BlockNumber *pages, double *tuples)
 {
 	RelOptInfo *rel;
 	Relation	relation;
@@ -1547,7 +1552,7 @@ hypo_estimate_index_simple(hypoIndex *entry, BlockNumber *pages, double *tuples)
  * RelOptInfo
  */
 static void
-hypo_estimate_index(hypoIndex *entry, RelOptInfo *rel)
+hypo_estimate_index(hypoIndex * entry, RelOptInfo *rel)
 {
 	int			i,
 				ind_avg_width = 0;
@@ -1665,7 +1670,7 @@ hypo_estimate_index(hypoIndex *entry, RelOptInfo *rel)
 
 		usable_page_size = BLCKSZ - SizeOfPageHeaderData - sizeof(BTPageOpaqueData);
 		bloat_factor = (200.0
-			  - (fillfactor == 0 ? BTREE_DEFAULT_FILLFACTOR : fillfactor)
+						- (fillfactor == 0 ? BTREE_DEFAULT_FILLFACTOR : fillfactor)
 						+ additional_bloat) / 100;
 
 		entry->pages = (BlockNumber) (entry->tuples * line_size * bloat_factor / usable_page_size);
@@ -1697,8 +1702,8 @@ hypo_estimate_index(hypoIndex *entry, RelOptInfo *rel)
 		 * BRIN access method does not bloat, don't add any additional.
 		 */
 
-		entry->pages = 1	/* root page */
-			+ (ranges / REVMAP_PAGE_MAXITEMS) + 1;		/* revmap */
+		entry->pages = 1		/* root page */
+			+ (ranges / REVMAP_PAGE_MAXITEMS) + 1;	/* revmap */
 
 		/* get the operator class name */
 		ht_opc = SearchSysCache1(CLAOID,
@@ -1749,9 +1754,9 @@ hypo_estimate_index(hypoIndex *entry, RelOptInfo *rel)
 		line_size = BLOOMTUPLEHDRSZ +
 			sizeof_SignType * bloomLength;
 
-		entry->pages = 1; /* meta page */
+		entry->pages = 1;		/* meta page */
 		entry->pages += (BlockNumber) ceil(
-				((double) entry->tuples * line_size) / usable_page_size);
+										   ((double) entry->tuples * line_size) / usable_page_size);
 	}
 #endif
 	else
@@ -1770,10 +1775,11 @@ hypo_estimate_index(hypoIndex *entry, RelOptInfo *rel)
  * Estimate a single index's column of an hypothetical index.
  */
 static int
-hypo_estimate_index_colsize(hypoIndex *entry, int col)
+hypo_estimate_index_colsize(hypoIndex * entry, int col)
 {
-	int i, pos;
-	Node *expr;
+	int			i,
+				pos;
+	Node	   *expr;
 
 	/* If simple attribute, return avg width */
 	if (entry->indexkeys[col] != 0)
@@ -1782,7 +1788,7 @@ hypo_estimate_index_colsize(hypoIndex *entry, int col)
 	/* It's an expression */
 	pos = 0;
 
-	for (i=0; i<col; i++)
+	for (i = 0; i < col; i++)
 	{
 		/* get the position in the expression list */
 		if (entry->indexkeys[i] == 0)
@@ -1791,41 +1797,41 @@ hypo_estimate_index_colsize(hypoIndex *entry, int col)
 
 	expr = (Node *) list_nth(entry->indexprs, pos);
 
-	if (IsA(expr, Var) && ((Var *) expr)->varattno != InvalidAttrNumber)
+	if (IsA(expr, Var) &&((Var *) expr)->varattno != InvalidAttrNumber)
 		return get_attavgwidth(entry->relid, ((Var *) expr)->varattno);
 
 	if (IsA(expr, FuncExpr))
 	{
-		FuncExpr *funcexpr = (FuncExpr *) expr;
+		FuncExpr   *funcexpr = (FuncExpr *) expr;
 
 		switch (funcexpr->funcid)
 		{
 			case 2311:
 				/* md5 */
 				return 32;
-			break;
+				break;
 			case 870:
 			case 871:
-			{
-				/* lower and upper, detect if simple attr */
-				Var *var;
-
-				if (IsA(linitial(funcexpr->args), Var))
 				{
-					var = (Var *) linitial(funcexpr->args);
+					/* lower and upper, detect if simple attr */
+					Var		   *var;
 
-					if (var->varattno > 0)
-						return get_attavgwidth(entry->relid, var->varattno);
+					if (IsA(linitial(funcexpr->args), Var))
+					{
+						var = (Var *) linitial(funcexpr->args);
+
+						if (var->varattno > 0)
+							return get_attavgwidth(entry->relid, var->varattno);
+					}
+					break;
 				}
-				break;
-			}
 			default:
 				/* default fallback estimate will be used */
-			break;
+				break;
 		}
 	}
 
-	return 50; /* default fallback estimate */
+	return 50;					/* default fallback estimate */
 }
 
 /*
@@ -1833,7 +1839,7 @@ hypo_estimate_index_colsize(hypoIndex *entry, int col)
  * can't be done without a real Relation, so try to find it out
  */
 static bool
-hypo_can_return(hypoIndex *entry, Oid atttype, int i, char *amname)
+hypo_can_return(hypoIndex * entry, Oid atttype, int i, char *amname)
 {
 	/* no amcanreturn entry, am does not handle IOS */
 #if PG_VERSION_NUM >= 90600

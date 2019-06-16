@@ -1,6 +1,19 @@
 Changelog
 =========
 
+WIP version 1.1.3:
+------------------
+
+  **Miscellaneous**
+
+  - Use a dedicated MemoryContext to store hypothetical objects
+  - Fix compatibility on Windows (Godwottery)
+
+  **Bug fixed**
+
+  - Call previous explain_get_index_name_hook if it was setup
+  - add hypopg_reset_index() SQL function
+
 2018-05-30 version 1.1.2:
 -------------------------
 

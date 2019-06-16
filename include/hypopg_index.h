@@ -22,7 +22,8 @@
 #include "tcop/utility.h"
 
 #define HYPO_INDEX_NB_COLS		12	/* # of column hypopg() returns */
-#define HYPO_INDEX_CREATE_COLS	2	/* # of column hypopg_create_index() returns */
+#define HYPO_INDEX_CREATE_COLS	2	/* # of column hypopg_create_index()
+									 * returns */
 
 #if PG_VERSION_NUM >= 90600
 /* hardcode some bloom values, bloom.h is not exported */
@@ -95,37 +96,37 @@ typedef struct hypoIndex
 #if PG_VERSION_NUM >= 110000
 	bool		amcanparallel;	/* does AM support parallel scan? */
 #endif
-	bool		amcanunique; /* does AM support UNIQUE indexes? */
-	bool		amcanmulticol; /* does AM support multi-column indexes? */
+	bool		amcanunique;	/* does AM support UNIQUE indexes? */
+	bool		amcanmulticol;	/* does AM support multi-column indexes? */
 
 	/* store some informations usually saved in catalogs */
 	List	   *options;		/* WITH clause options: a list of DefElem */
 	bool		amcanorder;		/* does AM support order by column value? */
 
-} hypoIndex;
+}			hypoIndex;
 
 /* List of hypothetic indexes for current backend */
-extern List	   *hypoIndexes;
+extern List *hypoIndexes;
 
 /*--- Functions --- */
 
-void hypo_index_reset(void);
+void		hypo_index_reset(void);
 
-PGDLLEXPORT Datum		hypopg(PG_FUNCTION_ARGS);
-PGDLLEXPORT Datum		hypopg_create_index(PG_FUNCTION_ARGS);
-PGDLLEXPORT Datum		hypopg_drop_index(PG_FUNCTION_ARGS);
-PGDLLEXPORT Datum		hypopg_relation_size(PG_FUNCTION_ARGS);
-PGDLLEXPORT Datum		hypopg_get_indexdef(PG_FUNCTION_ARGS);
-PGDLLEXPORT Datum		hypopg_reset_index(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hypopg(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hypopg_create_index(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hypopg_drop_index(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hypopg_relation_size(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hypopg_get_indexdef(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hypopg_reset_index(PG_FUNCTION_ARGS);
 
 extern explain_get_index_name_hook_type prev_explain_get_index_name_hook;
 const char *hypo_explain_get_index_name_hook(Oid indexId);
 
-void hypo_injectHypotheticalIndex(PlannerInfo *root,
-							 Oid relationObjectId,
-							 bool inhparent,
-							 RelOptInfo *rel,
-							 Relation relation,
-							 hypoIndex *entry);
+void		hypo_injectHypotheticalIndex(PlannerInfo *root,
+										 Oid relationObjectId,
+										 bool inhparent,
+										 RelOptInfo *rel,
+										 Relation relation,
+										 hypoIndex * entry);
 
 #endif

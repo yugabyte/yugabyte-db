@@ -24,9 +24,9 @@
 				MAXALIGN(sizeof(BTPageOpaqueData))) / 3)
 
 extern List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
-				  Relation heapRelation);
-extern Oid GetIndexOpClass(List *opclass, Oid attrType,
-				char *accessMethodName, Oid accessMethodId);
+							   Relation heapRelation);
+extern Oid	GetIndexOpClass(List *opclass, Oid attrType,
+							char *accessMethodName, Oid accessMethodId);
 
 extern void CheckPredicate(Expr *predicate);
 extern bool CheckMutability(Expr *expr);

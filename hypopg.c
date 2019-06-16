@@ -25,39 +25,39 @@ PG_MODULE_MAGIC;
 
 /*--- Variables exported ---*/
 
-bool isExplain;
-bool hypo_is_enabled;
+bool		isExplain;
+bool		hypo_is_enabled;
 MemoryContext HypoMemoryContext;
 
 /*--- Functions --- */
 
-PGDLLEXPORT void		_PG_init(void);
-PGDLLEXPORT void		_PG_fini(void);
+PGDLLEXPORT void _PG_init(void);
+PGDLLEXPORT void _PG_fini(void);
 
-PGDLLEXPORT Datum		hypopg_reset(PG_FUNCTION_ARGS);
+PGDLLEXPORT Datum hypopg_reset(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(hypopg_reset);
 
 static void
-hypo_utility_hook(
+			hypo_utility_hook(
 #if PG_VERSION_NUM >= 100000
-				  PlannedStmt *pstmt,
+							  PlannedStmt *pstmt,
 #else
-				  Node *parsetree,
+							  Node *parsetree,
 #endif
-				  const char *queryString,
+							  const char *queryString,
 #if PG_VERSION_NUM >= 90300
-				  ProcessUtilityContext context,
+							  ProcessUtilityContext context,
 #endif
-				  ParamListInfo params,
+							  ParamListInfo params,
 #if PG_VERSION_NUM >= 100000
-				  QueryEnvironment *queryEnv,
+							  QueryEnvironment *queryEnv,
 #endif
 #if PG_VERSION_NUM < 90300
-				  bool isTopLevel,
+							  bool isTopLevel,
 #endif
-				  DestReceiver *dest,
-				  char *completionTag);
+							  DestReceiver *dest,
+							  char *completionTag);
 static ProcessUtility_hook_type prev_utility_hook = NULL;
 
 static void hypo_executorEnd_hook(QueryDesc *queryDesc);
@@ -65,9 +65,9 @@ static ExecutorEnd_hook_type prev_ExecutorEnd_hook = NULL;
 
 
 static void hypo_get_relation_info_hook(PlannerInfo *root,
-							Oid relationObjectId,
-							bool inhparent,
-							RelOptInfo *rel);
+										Oid relationObjectId,
+										bool inhparent,
+										RelOptInfo *rel);
 static get_relation_info_hook_type prev_get_relation_info_hook = NULL;
 
 static bool hypo_query_walker(Node *node);
@@ -92,15 +92,15 @@ _PG_init(void)
 	hypoIndexes = NIL;
 
 	HypoMemoryContext = AllocSetContextCreate(TopMemoryContext,
-			"HypoPG context",
+											  "HypoPG context",
 #if PG_VERSION_NUM >= 90600
-			ALLOCSET_DEFAULT_SIZES
+											  ALLOCSET_DEFAULT_SIZES
 #else
-			ALLOCSET_DEFAULT_MINSIZE,
-			ALLOCSET_DEFAULT_INITSIZE,
-			ALLOCSET_DEFAULT_MAXSIZE
+											  ALLOCSET_DEFAULT_MINSIZE,
+											  ALLOCSET_DEFAULT_INITSIZE,
+											  ALLOCSET_DEFAULT_MAXSIZE
 #endif
-			);
+		);
 
 	DefineCustomBoolVariable("hypopg.enabled",
 							 "Enable / Disable hypopg",
@@ -225,7 +225,7 @@ hypo_utility_hook(
 #endif
 								params,
 #if PG_VERSION_NUM >= 100000
-						  queryEnv,
+								queryEnv,
 #endif
 #if PG_VERSION_NUM < 90300
 								isTopLevel,
@@ -301,9 +301,9 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 
 		if (relation->rd_rel->relkind == RELKIND_RELATION
 #if PG_VERSION_NUM >= 90300
-				|| relation->rd_rel->relkind == RELKIND_MATVIEW
+			|| relation->rd_rel->relkind == RELKIND_MATVIEW
 #endif
-				)
+			)
 		{
 			ListCell   *lc;
 
@@ -318,7 +318,7 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 					 * indextlist
 					 */
 					hypo_injectHypotheticalIndex(root, relationObjectId,
-											inhparent, rel, relation, entry);
+												 inhparent, rel, relation, entry);
 				}
 			}
 		}
