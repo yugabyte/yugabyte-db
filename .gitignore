@@ -83,3 +83,7 @@ ent/java/yb-cqlent/bin/
 test_results.json
 test_failures.json
 *_test_report.json
+
+# Eclipse and Eclipse-compatible tools
+.classpath
+.metadata/
