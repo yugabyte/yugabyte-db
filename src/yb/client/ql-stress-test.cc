@@ -20,6 +20,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
 
+#include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replica_state.h"
 #include "yb/consensus/retryable_requests.h"
@@ -55,6 +56,11 @@ DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_universal_compaction_min_merge_width);
 DECLARE_int32(rocksdb_universal_compaction_size_ratio);
 DECLARE_int64(db_write_buffer_size);
+DECLARE_uint64(log_segment_size_bytes);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+DECLARE_int64(db_write_buffer_size);
+DECLARE_int32(log_cache_size_limit_mb);
 
 using namespace std::literals;
 
@@ -173,6 +179,10 @@ class QLStressTest : public QLDmlTestBase {
   void TestRetryWrites(bool restarts);
 
   bool CheckRetryableRequestsCounts(size_t* total_entries, size_t* total_leaders);
+
+  void AddWriter(
+      std::string value_prefix, std::atomic<int>* key, TestThreadHolder* thread_holder,
+      const std::chrono::nanoseconds& sleep_duration = std::chrono::nanoseconds());
 
   TableHandle table_;
 
@@ -587,18 +597,11 @@ void QLStressTest::VerifyFlushedFrontiers() {
 }
 
 TEST_F_EX(QLStressTest, FlushCompact, QLStressTestSingleTablet) {
+  std::atomic<int> key;
+
   TestThreadHolder thread_holder;
 
-  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
-    CDSAttacher attacher;
-    auto session = NewSession();
-    int key = 0;
-    std::string value = "value_";
-    while (!stop.load(std::memory_order_acquire)) {
-      ASSERT_OK(WriteRow(session, key, value + std::to_string(key)));
-      ++key;
-    }
-  });
+  AddWriter("value_", &key, &thread_holder);
 
   auto start_time = MonoTime::Now();
   const auto kTimeout = MonoDelta::FromSeconds(60);
@@ -627,22 +630,9 @@ TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingl
   tablet::TabletPeer* leader_peer = nullptr;
   std::atomic<int> key(0);
   {
-    std::atomic<bool> stop(false);
+    TestThreadHolder thread_holder;
 
-    std::thread writer([this, &stop, &key] {
-      CDSAttacher attacher;
-      auto session = NewSession();
-      std::string value_prefix = "value_";
-      while (!stop.load(std::memory_order_acquire)) {
-        ASSERT_OK(WriteRow(session, key, value_prefix + std::to_string(key)));
-        ++key;
-      }
-    });
-
-    BOOST_SCOPE_EXIT(&stop, &writer) {
-      stop.store(true);
-      writer.join();
-    } BOOST_SCOPE_EXIT_END;
+    AddWriter("value_", &key, &thread_holder);
 
     tserver::MiniTabletServer* leader = nullptr;
     for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
@@ -673,7 +663,8 @@ TEST_F_EX(QLStressTest, OldLeaderCatchUpAfterNetworkPartition, QLStressTestSingl
     ASSERT_GE(pre_restore_op_id.index, pre_isolate_op_id.index);
     ASSERT_LE(pre_restore_op_id.index, pre_isolate_op_id.index + 10);
     leader->SetIsolated(false);
-    std::this_thread::sleep_for(5s * yb::kTimeMultiplier);
+
+    thread_holder.WaitAndStop(5s * yb::kTimeMultiplier);
   }
 
   ASSERT_OK(WaitFor([leader_peer, &key] {
@@ -695,16 +686,7 @@ TEST_F_EX(QLStressTest, SlowUpdateConsensus, QLStressTestSingleTablet) {
   down_cast<consensus::RaftConsensus*>(peers[0]->consensus())->TEST_DelayUpdate(20s);
 
   TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &key] {
-    CDSAttacher attacher;
-    auto session = NewSession();
-    std::string value_prefix = std::string(100_KB, 'X');
-    while (!stop.load(std::memory_order_acquire)) {
-      ASSERT_OK(WriteRow(session, key, value_prefix + std::to_string(key)));
-      std::this_thread::sleep_for(100ms);
-      ++key;
-    }
-  });
+  AddWriter(std::string(100_KB, 'X'), &key, &thread_holder, 100ms);
 
   thread_holder.WaitAndStop(30s);
 
@@ -733,20 +715,30 @@ class QLStressTestDelayWrite : public QLStressTestSingleTablet {
   }
 };
 
+void QLStressTest::AddWriter(
+    std::string value_prefix, std::atomic<int>* key, TestThreadHolder* thread_holder,
+    const std::chrono::nanoseconds& sleep_duration) {
+  thread_holder->AddThreadFunctor([this, &stop = thread_holder->stop_flag(), key, sleep_duration,
+                                   value_prefix = std::move(value_prefix)] {
+    auto session = NewSession();
+    while (!stop.load(std::memory_order_acquire)) {
+      auto new_key = *key + 1;
+      ASSERT_OK(WriteRow(session, new_key, value_prefix + std::to_string(new_key)));
+      if (sleep_duration.count() > 0) {
+        std::this_thread::sleep_for(sleep_duration);
+      }
+      ++*key;
+    }
+  });
+}
+
 TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite) {
   std::atomic<int> key(0);
 
   const std::string value_prefix = std::string(1_KB, 'X');
 
   TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &key, &value_prefix] {
-    auto session = NewSession();
-    while (!stop.load(std::memory_order_acquire)) {
-      auto new_key = key + 1;
-      ASSERT_OK(WriteRow(session, new_key, value_prefix + std::to_string(new_key)));
-      ++key;
-    }
-  });
+  AddWriter(value_prefix, &key, &thread_holder);
 
   thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &key, &value_prefix] {
     auto session = NewSession();
@@ -784,6 +776,73 @@ TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite) {
     }
     return true;
   }, 30s, "Waiting tablets to sync up"));
+}
+
+class QLStressTestLongRemoteBootstrap : public QLStressTestSingleTablet {
+ public:
+  void SetUp() override {
+    FLAGS_log_cache_size_limit_mb = 1;
+    FLAGS_log_segment_size_bytes = 96_KB;
+    QLStressTestSingleTablet::SetUp();
+  }
+};
+
+TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
+  FLAGS_log_min_seconds_to_retain = 1;
+  FLAGS_remote_bootstrap_rate_limit_bytes_per_sec = 1_MB;
+
+  cluster_->mini_tablet_server(0)->Shutdown();
+
+  ASSERT_OK(WaitFor([this] {
+    auto leaders = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    if (leaders.empty()) {
+      return false;
+    }
+    LOG(INFO) << "Tablet id: " << leaders.front()->tablet_id();
+    return true;
+  }, 30s, "Leader elected"));
+
+  std::atomic<int> key(0);
+
+  TestThreadHolder thread_holder;
+  constexpr size_t kValueSize = 32_KB;
+  AddWriter(std::string(kValueSize, 'X'), &key, &thread_holder, 100ms);
+
+  std::this_thread::sleep_for(20s); // Wait some time to have logs.
+
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    RETURN_NOT_OK(cluster_->CleanTabletLogs());
+    auto leaders = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    if (leaders.empty()) {
+      return false;
+    }
+
+    RETURN_NOT_OK(leaders.front()->tablet()->Flush(tablet::FlushMode::kSync));
+    RETURN_NOT_OK(leaders.front()->RunLogGC());
+
+    // Check that first log was garbage collected, so remote bootstrap will be required.
+    consensus::ReplicateMsgs replicates;
+    return !leaders.front()->log()->GetLogReader()->ReadReplicatesInRange(
+        100, 101, 0, &replicates).ok();
+  }, 30s, "Logs cleaned"));
+
+  LOG(INFO) << "Bring replica back, keys written: " << key.load(std::memory_order_acquire);
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(cluster_->FlushTablets());
+      ASSERT_OK(cluster_->CleanTabletLogs());
+      std::this_thread::sleep_for(100ms);
+    }
+  });
+
+  ASSERT_OK(WaitAllReplicasHaveIndex(cluster_.get(), key.load(std::memory_order_acquire), 40s));
+  LOG(INFO) << "All replicas ready";
+
+  // Write some more values and check that replica still in touch.
+  std::this_thread::sleep_for(5s);
+  ASSERT_OK(WaitAllReplicasHaveIndex(cluster_.get(), key.load(std::memory_order_acquire), 1s));
 }
 
 } // namespace client

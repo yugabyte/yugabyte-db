@@ -29,8 +29,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_LOG_ANCHOR_REGISTRY_
-#define YB_CONSENSUS_LOG_ANCHOR_REGISTRY_
+#ifndef YB_CONSENSUS_LOG_ANCHOR_REGISTRY_H
+#define YB_CONSENSUS_LOG_ANCHOR_REGISTRY_H
 
 #include <map>
 #include <string>
@@ -67,9 +67,7 @@ class LogAnchorRegistry : public RefCountedThreadSafe<LogAnchorRegistry> {
   // Before: anchor must be registered with some log index.
   // After: anchor is now registered using index 'log_index'.
   // See Register().
-  CHECKED_STATUS UpdateRegistration(int64_t log_index,
-                            const std::string& owner,
-                            LogAnchor* anchor);
+  CHECKED_STATUS UpdateRegistration(int64_t log_index, LogAnchor* anchor);
 
   // Release the anchor on a log index.
   // Note: anchor must be the original pointer passed to Register().
@@ -173,4 +171,4 @@ class MinLogIndexAnchorer {
 } // namespace log
 } // namespace yb
 
-#endif // YB_CONSENSUS_LOG_ANCHOR_REGISTRY_
+#endif // YB_CONSENSUS_LOG_ANCHOR_REGISTRY_H

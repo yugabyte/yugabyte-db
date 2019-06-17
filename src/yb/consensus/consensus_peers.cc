@@ -238,7 +238,8 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
       status = queue_->GetRemoteBootstrapRequestForPeer(peer_pb_.permanent_uuid(), &rb_request_);
     }
     if (!status.ok()) {
-      LOG_WITH_PREFIX(WARNING) << "Unable to generate remote bootstrap request for peer: " << s;
+      LOG_WITH_PREFIX(WARNING) << "Unable to generate remote bootstrap request for peer: "
+                               << status;
       return;
     }
 

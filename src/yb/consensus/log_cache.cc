@@ -173,11 +173,12 @@ Result<LogCache::PrepareAppendResult> LogCache::PrepareAppendOperations(const Re
   if (!tracker_->TryConsume(result.mem_required)) {
     int spare = tracker_->SpareCapacity();
     int need_to_free = result.mem_required - spare;
-    VLOG_WITH_PREFIX_UNLOCKED(1) << "Memory limit would be exceeded trying to append "
-                        << HumanReadableNumBytes::ToString(result.mem_required)
-                        << " to log cache (available="
-                        << HumanReadableNumBytes::ToString(spare)
-                        << "): attempting to evict some operations...";
+    VLOG_WITH_PREFIX_UNLOCKED(1)
+        << "Memory limit would be exceeded trying to append "
+        << HumanReadableNumBytes::ToString(result.mem_required)
+        << " to log cache (available="
+        << HumanReadableNumBytes::ToString(spare)
+        << "): attempting to evict some operations...";
 
     // TODO: we should also try to evict from other tablets - probably better to evict really old
     // ops from another tablet than evict recent ops from this one.
@@ -340,8 +341,8 @@ Status LogCache::ReadOps(int64_t after_op_index,
             next_index, up_to, remaining_space, &raw_replicate_ptrs),
         Substitute("Failed to read ops $0..$1", next_index, up_to));
       l.lock();
-      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Successfully read " << raw_replicate_ptrs.size() << " ops "
-                            << "from disk.";
+      LOG_WITH_PREFIX_UNLOCKED(INFO)
+          << "Successfully read " << raw_replicate_ptrs.size() << " ops from disk.";
 
       for (auto& msg : raw_replicate_ptrs) {
         CHECK_EQ(next_index, msg->id().index());

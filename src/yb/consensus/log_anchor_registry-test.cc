@@ -58,7 +58,7 @@ TEST_F(LogAnchorRegistryTest, TestUpdateRegistration) {
   reg->Register(kInitialIndex, test_name, &anchor);
   ASSERT_TRUE(anchor.is_registered);
   ASSERT_TRUE(anchor.when_registered.Initialized());
-  ASSERT_OK(reg->UpdateRegistration(kInitialIndex + 1, test_name, &anchor));
+  ASSERT_OK(reg->UpdateRegistration(kInitialIndex + 1, &anchor));
   ASSERT_OK(reg->Unregister(&anchor));
 }
 
@@ -67,8 +67,8 @@ TEST_F(LogAnchorRegistryTest, TestDuplicateInserts) {
   scoped_refptr<LogAnchorRegistry> reg(new LogAnchorRegistry());
 
   // Register a bunch of anchors at log index 1.
-  const int num_anchors = 10;
-  LogAnchor anchors[num_anchors];
+  constexpr int kNumAnchors = 10;
+  LogAnchor anchors[kNumAnchors];
   for (auto& anchor : anchors) {
     reg->Register(1, test_name, &anchor);
   }
