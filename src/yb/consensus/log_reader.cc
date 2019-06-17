@@ -129,33 +129,34 @@ Status LogReader::Init(const string& tablet_wal_path) {
   }
 
   VLOG_WITH_PREFIX(1) << "Parsing segments from path: " << tablet_wal_path;
-  // list existing segment files
-  vector<string> log_files;
 
-  RETURN_NOT_OK_PREPEND(env_->GetChildren(tablet_wal_path, &log_files),
+  std::vector<string> files_from_log_directory;
+  RETURN_NOT_OK_PREPEND(env_->GetChildren(tablet_wal_path, &files_from_log_directory),
                         "Unable to read children from path");
 
   SegmentSequence read_segments;
 
-  // build a log segment from each file
-  for (const string &log_file : log_files) {
-    if (HasPrefixString(log_file, FsManager::kWalFileNamePrefix)) {
-      string fqp = JoinPathSegments(tablet_wal_path, log_file);
-      scoped_refptr<ReadableLogSegment> segment;
-      RETURN_NOT_OK_PREPEND(ReadableLogSegment::Open(env_, fqp, &segment),
-                            "Unable to open readable log segment");
-      DCHECK(segment);
-      CHECK(segment->IsInitialized()) << "Uninitialized segment at: " << segment->path();
-
-      if (!segment->HasFooter()) {
-        LOG_WITH_PREFIX(WARNING)
-            << "Log segment " << fqp << " was likely left in-progress "
-               "after a previous crash. Will try to rebuild footer by scanning data.";
-        RETURN_NOT_OK(segment->RebuildFooterByScanning());
-      }
-
-      read_segments.push_back(segment);
+  // Build a log segment from log files, ignoring non log files.
+  for (const string &potential_log_file : files_from_log_directory) {
+    if (!IsLogFileName(potential_log_file)) {
+      continue;
     }
+
+    string fqp = JoinPathSegments(tablet_wal_path, potential_log_file);
+    scoped_refptr<ReadableLogSegment> segment;
+    RETURN_NOT_OK_PREPEND(ReadableLogSegment::Open(env_, fqp, &segment),
+                          Format("Unable to open readable log segment: $0", fqp));
+    DCHECK(segment);
+    CHECK(segment->IsInitialized()) << "Uninitialized segment at: " << segment->path();
+
+    if (!segment->HasFooter()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Log segment " << fqp << " was likely left in-progress "
+             "after a previous crash. Will try to rebuild footer by scanning data.";
+      RETURN_NOT_OK(segment->RebuildFooterByScanning());
+    }
+
+    read_segments.push_back(segment);
   }
 
   // Sort the segments by sequence number.
@@ -405,17 +406,18 @@ Status LogReader::TrimSegmentsUpToAndIncluding(int64_t segment_sequence_number) 
   std::lock_guard<simple_spinlock> lock(lock_);
   CHECK_EQ(state_, kLogReaderReading);
   auto iter = segments_.begin();
-  int num_deleted_segments = 0;
+  std::vector<int64_t> deleted_segments;
 
   while (iter != segments_.end()) {
-    if ((*iter)->header().sequence_number() <= segment_sequence_number) {
-      iter = segments_.erase(iter);
-      num_deleted_segments++;
-      continue;
+    auto current_seq_no = (*iter)->header().sequence_number();
+    if (current_seq_no > segment_sequence_number) {
+      break;
     }
-    break;
+    deleted_segments.push_back(current_seq_no);
+    iter = segments_.erase(iter);
   }
-  LOG_WITH_PREFIX(INFO) << "Removed " << num_deleted_segments << " log segments from log reader";
+  LOG_WITH_PREFIX(INFO) << "Removed log segment sequence numbers from log reader: "
+                        << yb::ToString(deleted_segments);
   return Status::OK();
 }
 

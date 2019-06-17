@@ -256,6 +256,14 @@ CHECKED_STATUS StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
     ForceStepDown force_step_down);
 
+// Waits until all tablet peers of the specified cluster are in the Running state.
+// And total number of those peers equals to the number of tablet servers for each known tablet.
+CHECKED_STATUS WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout);
+
+// Waits until all tablet peers of specified cluster have the specified index in their log.
+// And total number of those peers equals to the number of tablet servers for each known tablet.
+CHECKED_STATUS WaitAllReplicasHaveIndex(MiniCluster* cluster, int64_t index, MonoDelta timeout);
+
 std::thread RestartsThread(
     MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag);
 

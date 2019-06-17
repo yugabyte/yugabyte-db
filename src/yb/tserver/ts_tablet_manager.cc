@@ -79,6 +79,7 @@
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/background_task.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -656,6 +657,8 @@ Status HandleReplacingStaleTablet(
 }
 
 Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
+  LongOperationTracker tracker("StartRemoteBootstrap", 5s);
+
   const string& tablet_id = req.tablet_id();
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
   HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(
@@ -762,7 +765,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
                                             tablet_peer,
                                             meta,
                                             fs_manager_->uuid(),
-                                            "Remote bootstrap: Failure calling OpenTablet()",
+                                            "Remote bootstrap: OpenTablet() failed",
                                             this);
 
   auto status = rb_client->VerifyChangeRoleSucceeded(tablet_peer->shared_consensus());
@@ -775,6 +778,8 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   } else {
     LOG(INFO) << kLogPrefix << "Remote bootstrap for tablet ended successfully";
   }
+
+  WARN_NOT_OK(rb_client->Remove(), "Remove remote bootstrap sessions failed");
 
   return Status::OK();
 }

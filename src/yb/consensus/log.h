@@ -240,6 +240,10 @@ class Log : public RefCountedThreadSafe<Log> {
   // On timeout returns default constructed OpId.
   yb::OpId WaitForSafeOpIdToApply(const yb::OpId& op_id, MonoDelta duration = MonoDelta());
 
+  // Return a readable segment with the given sequence number, or NULL if it
+  // cannot be found (e.g. if it has already been GCed).
+  scoped_refptr<ReadableLogSegment> GetSegmentBySequenceNumber(int64_t seq) const;
+
   void TEST_SetSleepDuration(const std::chrono::nanoseconds& duration) {
     sleep_duration_.store(duration, std::memory_order_release);
   }
@@ -247,6 +251,8 @@ class Log : public RefCountedThreadSafe<Log> {
   void TEST_SetAllOpIdsSafe(bool value) {
     all_op_ids_safe_ = value;
   }
+
+  uint64_t active_segment_sequence_number() const;
 
   CHECKED_STATUS TEST_SubmitFuncToAppendToken(const std::function<void()>& func);
 

@@ -62,21 +62,6 @@ namespace tserver {
 
 class TabletPeerLookupIf;
 
-// Caches file size and holds a shared_ptr reference to a RandomAccessFile.
-// Assumes that the file underlying the RandomAccessFile is immutable.
-struct ImmutableRandomAccessFileInfo {
-  std::shared_ptr<RandomAccessFile> readable;
-  int64_t size;
-
-  ImmutableRandomAccessFileInfo(std::shared_ptr<RandomAccessFile> readable,
-                                int64_t size)
-      : readable(std::move(readable)), size(size) {}
-
-  CHECKED_STATUS ReadFully(uint64_t offset, int64_t size, Slice* data, uint8_t* scratch) const {
-    return env_util::ReadFully(readable.get(), offset, size, data, scratch);
-  }
-};
-
 // A potential Learner must establish a RemoteBootstrapSession with the leader in order
 // to fetch the needed superblock, blocks, and log segments.
 // This class is refcounted to make it easy to remove it from the session map
@@ -122,7 +107,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // The behavior and params are very similar to GetLogSegmentPiece(), but this one
   // is only for sending rocksdb files.
   CHECKED_STATUS GetFilePiece(
-      const std::string path, const std::string file_name, uint64_t offset, int64_t client_maxlen,
+      const std::string& path, const std::string& file_name, uint64_t offset, int64_t client_maxlen,
       std::string* data, int64_t* log_file_size, RemoteBootstrapErrorPB::Code* error_code);
 
   MonoTime start_time() { return start_time_; }
@@ -156,17 +141,11 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   FRIEND_TEST(RemoteBootstrapRocksDBTest, CheckSuperBlockHasRocksDBFields);
   FRIEND_TEST(RemoteBootstrapRocksDBTest, CheckSuperBlockHasSnapshotFields);
 
-  typedef std::unordered_map<uint64_t, std::unique_ptr<ImmutableRandomAccessFileInfo>> LogMap;
-
   virtual ~RemoteBootstrapSession();
 
   // Snapshot the log segment's length and put it into segment map.
-  CHECKED_STATUS OpenLogSegmentUnlocked(uint64_t segment_seqno);
-
-  // Look up log segment in cache or log segment map.
-  CHECKED_STATUS FindLogSegment(uint64_t segment_seqno,
-                        ImmutableRandomAccessFileInfo** file_info,
-                        RemoteBootstrapErrorPB::Code* error_code);
+  CHECKED_STATUS OpenLogSegment(uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Unregister log anchor, if it's registered.
   CHECKED_STATUS UnregisterAnchorIfNeededUnlocked();
@@ -179,9 +158,12 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   const std::string requestor_uuid_;
   FsManager* const fs_manager_;
 
-  mutable simple_spinlock session_lock_;
+  mutable std::mutex mutex_;
 
-  LogMap logs_;     // Protected by session_lock_.
+  std::shared_ptr<RandomAccessFile> opened_log_segment_file_ GUARDED_BY(mutex_);
+  int64_t opened_log_segment_file_size_ GUARDED_BY(mutex_) = -1;
+  uint64_t opened_log_segment_seqno_ GUARDED_BY(mutex_) = 0;
+  bool opened_log_segment_active_ GUARDED_BY(mutex_) = false;
 
   tablet::RaftGroupReplicaSuperBlockPB tablet_superblock_;
 
@@ -192,10 +174,11 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   log::SegmentSequence log_segments_;
 
   log::LogAnchor log_anchor_;
+  int64_t log_anchor_index_ GUARDED_BY(mutex_) = 0;
 
   // We need to know whether this ended succesfully before changing the peer's member type from
   // PRE_VOTER to VOTER.
-  bool succeeded_;
+  bool succeeded_ GUARDED_BY(mutex_) = false;
 
   // Directory where the checkpoint files are stored for this session (only for rocksdb).
   std::string checkpoint_dir_;

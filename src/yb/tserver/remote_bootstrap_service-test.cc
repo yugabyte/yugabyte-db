@@ -102,7 +102,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
       string* session_id,
       tablet::RaftGroupReplicaSuperBlockPB* superblock = nullptr,
       uint64_t* idle_timeout_millis = nullptr,
-      vector<uint64_t>* sequence_numbers = nullptr) {
+      uint64_t* first_sequence_number = nullptr) {
     BeginRemoteBootstrapSessionResponsePB resp;
     RpcController controller;
     RETURN_NOT_OK(DoBeginRemoteBootstrapSession(GetTabletId(), GetLocalUUID(), &resp, &controller));
@@ -113,8 +113,8 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
     if (idle_timeout_millis) {
       *idle_timeout_millis = resp.session_idle_timeout_millis();
     }
-    if (sequence_numbers) {
-      sequence_numbers->assign(resp.wal_segment_seqnos().begin(), resp.wal_segment_seqnos().end());
+    if (first_sequence_number) {
+      *first_sequence_number = resp.first_wal_segment_seqno();
     }
     return Status::OK();
   }
@@ -209,17 +209,16 @@ TEST_F(RemoteBootstrapServiceTest, TestSimpleBeginEndSession) {
   string session_id;
   tablet::RaftGroupReplicaSuperBlockPB superblock;
   uint64_t idle_timeout_millis;
-  vector<uint64_t> segment_seqnos;
+  uint64_t first_segment_seqno;
   ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id,
                                                &superblock,
                                                &idle_timeout_millis,
-                                               &segment_seqnos));
+                                               &first_segment_seqno));
   // Basic validation of returned params.
   ASSERT_FALSE(session_id.empty());
   ASSERT_EQ(FLAGS_remote_bootstrap_idle_timeout_ms, idle_timeout_millis);
   ASSERT_TRUE(superblock.IsInitialized());
-  // We should have number of segments = number of rolls + 1 (due to the active segment).
-  ASSERT_EQ(kNumLogRolls + 1, segment_seqnos.size());
+  ASSERT_EQ(1, first_segment_seqno);
 
   EndRemoteBootstrapSessionResponsePB resp;
   RpcController controller;
@@ -337,21 +336,20 @@ TEST_F(RemoteBootstrapServiceTest, TestFetchLog) {
   string session_id;
   tablet::RaftGroupReplicaSuperBlockPB superblock;
   uint64_t idle_timeout_millis;
-  vector<uint64_t> segment_seqnos;
+  uint64_t segment_seqno;
   ASSERT_OK(DoBeginValidRemoteBootstrapSession(&session_id,
                                                &superblock,
                                                &idle_timeout_millis,
-                                               &segment_seqnos));
+                                               &segment_seqno));
 
-  ASSERT_EQ(kNumLogRolls + 1, segment_seqnos.size());
-  uint64_t seg_seqno = *segment_seqnos.begin();
+  ASSERT_EQ(1, segment_seqno);
 
   // Fetch the remote data.
   FetchDataResponsePB resp;
   RpcController controller;
   DataIdPB data_id;
   data_id.set_type(DataIdPB::LOG_SEGMENT);
-  data_id.set_wal_segment_seqno(seg_seqno);
+  data_id.set_wal_segment_seqno(segment_seqno);
   ASSERT_OK(DoFetchData(session_id, data_id, nullptr, nullptr, &resp, &controller));
 
   // Fetch the local data.
@@ -361,8 +359,8 @@ TEST_F(RemoteBootstrapServiceTest, TestFetchLog) {
   uint64_t first_seg_seqno = (*local_segments.begin())->header().sequence_number();
 
 
-  ASSERT_EQ(seg_seqno, first_seg_seqno)
-      << "Expected equal sequence numbers: " << seg_seqno
+  ASSERT_EQ(segment_seqno, first_seg_seqno)
+      << "Expected equal sequence numbers: " << segment_seqno
       << " and " << first_seg_seqno;
   const scoped_refptr<ReadableLogSegment>& segment = local_segments[0];
   faststring scratch;

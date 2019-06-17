@@ -714,19 +714,17 @@ class TestRedisService : public RedisTableTestBase {
   std::vector<uint8_t> resp_;
   boost::optional<rpc::IoThreadPool> io_thread_pool_;
   std::shared_ptr<RedisClient> test_client_;
-  boost::optional<google::FlagSaver> flag_saver_;
 };
 
 void TestRedisService::SetUp() {
+  FLAGS_redis_service_yb_client_timeout_millis = kDefaultTimeoutMs;
   if (IsTsan()) {
-    flag_saver_.emplace();
     FLAGS_redis_max_value_size = 1_MB;
     FLAGS_rpc_max_message_size = FLAGS_redis_max_value_size * 4 - 1;
     FLAGS_redis_max_command_size = FLAGS_rpc_max_message_size - 2_KB;
     FLAGS_consensus_max_batch_size_bytes = FLAGS_rpc_max_message_size - 2_KB;
   } else {
 #ifndef NDEBUG
-    flag_saver_.emplace();
     FLAGS_redis_max_value_size = 32_MB;
     FLAGS_rpc_max_message_size = FLAGS_redis_max_value_size * 4 - 1;
     FLAGS_redis_max_command_size = FLAGS_rpc_max_message_size - 2_KB;
@@ -813,8 +811,6 @@ void TestRedisService::TearDown() {
   CloseRedisClient();
   StopServer();
   RedisTableTestBase::TearDown();
-
-  flag_saver_.reset();
 }
 
 Status TestRedisService::Send(const std::string& cmd) {

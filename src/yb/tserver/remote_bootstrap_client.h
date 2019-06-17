@@ -131,23 +131,16 @@ class RemoteBootstrapClient {
   CHECKED_STATUS VerifyChangeRoleSucceeded(
       const std::shared_ptr<consensus::Consensus>& shared_consensus);
 
+  // Removes session at server.
+  CHECKED_STATUS Remove();
+
  protected:
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestBeginEndSession);
   FRIEND_TEST(RemoteBootstrapRocksDBClientTest, TestDownloadRocksDBFiles);
 
-  // Extract the embedded Status message from the given ErrorStatusPB.
-  // The given ErrorStatusPB must extend RemoteBootstrapErrorPB.
-  static CHECKED_STATUS ExtractRemoteError(const rpc::ErrorStatusPB& remote_error);
-
-  static CHECKED_STATUS UnwindRemoteError(const Status& status,
-                                          const rpc::RpcController& controller);
-
   // Update the bootstrap StatusListener with a message.
   // The string "RemoteBootstrap: " will be prepended to each message.
   void UpdateStatusMessage(const std::string& message);
-
-  // End the remote bootstrap session.
-  CHECKED_STATUS EndRemoteSession();
 
   // Download all WAL files sequentially.
   CHECKED_STATUS DownloadWALs();
@@ -180,8 +173,13 @@ class RemoteBootstrapClient {
   CHECKED_STATUS DownloadFile(
       const tablet::FilePB& file_pb, const std::string& dir, DataIdPB* data_id);
 
+  // End the remote bootstrap session.
+  CHECKED_STATUS EndRemoteSession();
+
   // Return standard log prefix.
-  std::string LogPrefix();
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
 
   // Set-once members.
   const std::string tablet_id_;
@@ -200,6 +198,8 @@ class RemoteBootstrapClient {
   // Session-specific data items.
   bool replace_tombstoned_tablet_;
 
+  bool remove_required_ = false;
+
   // Local tablet metadata file.
   scoped_refptr<tablet::RaftGroupMetadata> meta_;
 
@@ -216,11 +216,16 @@ class RemoteBootstrapClient {
   gscoped_ptr<consensus::ConsensusStatePB> remote_committed_cstate_;
   std::vector<uint64_t> wal_seqnos_;
 
+  // First available WAL segment.
+  uint64_t first_wal_seqno_ = 0;
+
   int64_t start_time_micros_;
 
   // We track whether this session succeeded and send this information as part of the
   // EndRemoteBootstrapSessionRequestPB request.
   bool succeeded_;
+
+  const std::string log_prefix_;
 
  private:
   std::unordered_map<uint64_t, std::string> inode2file_;

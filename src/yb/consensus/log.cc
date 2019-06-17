@@ -966,6 +966,15 @@ Status Log::Close() {
   }
 }
 
+scoped_refptr<ReadableLogSegment> Log::GetSegmentBySequenceNumber(int64_t seq) const {
+  boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+  if (!reader_) {
+    return nullptr;
+  }
+
+  return reader_->GetSegmentBySequenceNumber(seq);
+}
+
 Status Log::DeleteOnDiskData(Env* env,
                              const string& tablet_id,
                              const string& tablet_wal_path,
@@ -1103,6 +1112,11 @@ Status Log::CreatePlaceholderSegment(const WritableFileOptions& opts,
   VLOG_WITH_PREFIX(1) << "Created next WAL segment, placeholder path: " << *result_path;
   out->reset(segment_file.release());
   return Status::OK();
+}
+
+uint64_t Log::active_segment_sequence_number() const {
+  boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
+  return active_segment_sequence_number_;
 }
 
 Status Log::TEST_SubmitFuncToAppendToken(const std::function<void()>& func) {
