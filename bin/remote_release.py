@@ -95,8 +95,7 @@ def main():
     remote_args.append("--edition {}".format(args.edition))
     remote_args.append("--force")
     if args.build_args is not None:
-        build_args_str = ' '.join([shlex.quote(arg) for arg in args.build_args])
-        remote_args.append("--build_args=\"{}\"".format(build_args_str))
+        remote_args.append("--build_args=\"{}\"".format(args.build_args))
 
     remote.exec_command(args.host, escaped_remote_path, 'yb_release', remote_args, False)
 
