@@ -358,6 +358,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "get_is_load_balancer_idle", "",
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->GetIsLoadBalancerIdle(),
+                              "Unable to get is load balancer idle");
+        return Status::OK();
+      });
+
+  Register(
       "list_leader_counts", " <keyspace> <table_name>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 4) {

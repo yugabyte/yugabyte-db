@@ -96,6 +96,17 @@ public class TestYBClient extends BaseYBClientTest {
   }
 
   /**
+   * Test load balancer idle check.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testIsLoadBalancerIdle() throws Exception {
+    LOG.info("Starting testIsLoadBalancerIdle");
+    IsLoadBalancerIdleResponse resp = syncClient.getIsLoadBalancerIdle();
+    assertFalse(resp.hasError());
+  }
+
+  /**
    * Test that we can create and destroy client objects (to catch leaking resources).
    * @throws Exception
    */
@@ -121,6 +132,17 @@ public class TestYBClient extends BaseYBClientTest {
     syncClient.injectWaitError();
     boolean isBalanced = syncClient.waitForLoadBalance(Long.MAX_VALUE, 0);
     assertTrue(isBalanced);
+  }
+
+  /**
+   * Test Waiting for load balancer idle, with simulated errors.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testWaitForLoadBalancerIdle() throws Exception {
+    syncClient.injectWaitError();
+    boolean isIdle = syncClient.waitForLoadBalancerIdle(Long.MAX_VALUE);
+    assertTrue(isIdle);
   }
 
   private void testServerReady(HostAndPort hp, boolean isTserver) throws Exception {

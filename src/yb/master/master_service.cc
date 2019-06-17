@@ -631,6 +631,12 @@ void MasterServiceImpl::IsLoadBalanced(
   HandleIn(req, resp, &rpc, &CatalogManager::IsLoadBalanced);
 }
 
+void MasterServiceImpl::IsLoadBalancerIdle(
+    const IsLoadBalancerIdleRequestPB* req, IsLoadBalancerIdleResponsePB* resp,
+    RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::IsLoadBalancerIdle);
+}
+
 void MasterServiceImpl::AreLeadersOnPreferredOnly(
     const AreLeadersOnPreferredOnlyRequestPB* req, AreLeadersOnPreferredOnlyResponsePB* resp,
     RpcContext rpc) {

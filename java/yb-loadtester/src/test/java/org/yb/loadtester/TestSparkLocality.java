@@ -62,6 +62,9 @@ public class TestSparkLocality extends BaseCQLTest {
     // Wait for load-balancing to complete to reduce chance of load-balancing affecting locality.
     miniCluster.getClient().waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS);
 
+    // Wait for load-balancing to become idle.
+    miniCluster.getClient().waitForLoadBalancerIdle(LOADBALANCE_TIMEOUT_MS);
+
     // Get the initial metrics.
     Map<MiniYBDaemon, IOMetrics> initialMetrics = getTSMetrics();
 

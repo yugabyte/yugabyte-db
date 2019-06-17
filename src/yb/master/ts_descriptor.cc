@@ -280,6 +280,11 @@ void TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
   tablets_pending_delete_.erase(tablet_id);
 }
 
+std::size_t TSDescriptor::NumTasks() const {
+  std::shared_lock<rw_spinlock> l(lock_);
+  return tablets_pending_delete_.size();
+}
+
 std::string TSDescriptor::ToString() const {
   std::shared_lock<rw_spinlock> l(lock_);
   return Format("{ permanent_uuid: $0 registration: $1 placement_id: $2 }",
