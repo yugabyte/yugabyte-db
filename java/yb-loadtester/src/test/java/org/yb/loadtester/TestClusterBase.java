@@ -469,7 +469,7 @@ public class TestClusterBase extends BaseCQLTest {
     verifyClusterHealth(NUM_TABLET_SERVERS);
   }
 
-  private void verifyClusterHealth(int numTabletServers) throws Exception {
+  protected void verifyClusterHealth(int numTabletServers) throws Exception {
     // Wait for some ops.
     loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
 
@@ -501,6 +501,9 @@ public class TestClusterBase extends BaseCQLTest {
     if (!fullMove) {
       // Wait for the load to be balanced across the cluster.
       assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS * 2));
+
+      // Wait for the load balancer to become idle.
+      assertTrue(client.waitForLoadBalancerIdle(LOADBALANCE_TIMEOUT_MS));
 
       // Wait for the partition metadata to refresh.
       Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
@@ -549,6 +552,9 @@ public class TestClusterBase extends BaseCQLTest {
 
     // Wait for load to balance across the target number of tservers.
     assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, toRF));
+
+    // Wait for load to balancer to become idle.
+    assertTrue(client.waitForLoadBalancerIdle(LOADBALANCE_TIMEOUT_MS));
 
     // Verify all tservers have expected tablets.
     TestUtils.waitFor(() -> {

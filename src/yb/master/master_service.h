@@ -199,6 +199,10 @@ class MasterServiceImpl : public MasterServiceIf,
                               IsLoadBalancedResponsePB* resp,
                               rpc::RpcContext rpc) override;
 
+  virtual void IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
+                                  IsLoadBalancerIdleResponsePB* resp,
+                                  rpc::RpcContext rpc) override;
+
   virtual void AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
                                          AreLeadersOnPreferredOnlyResponsePB* resp,
                                          rpc::RpcContext rpc) override;

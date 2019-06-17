@@ -508,6 +508,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   CHECKED_STATUS IsLoadBalanced(const IsLoadBalancedRequestPB* req,
                                 IsLoadBalancedResponsePB* resp);
 
+  CHECKED_STATUS IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
+                                    IsLoadBalancerIdleResponsePB* resp);
+
   // API to check that all tservers that shouldn't have leader load do not.
   CHECKED_STATUS AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
                                            AreLeadersOnPreferredOnlyResponsePB* resp);

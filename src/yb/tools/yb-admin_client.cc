@@ -342,6 +342,16 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetIsLoadBalancerIdle() {
+  CHECK(initted_);
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &MasterServiceProxy::IsLoadBalancerIdle, master_proxy_.get(),
+      master::IsLoadBalancerIdleRequestPB()));
+
+  cout << "Idle = " << !resp.has_error() << endl;
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ListLeaderCounts(const YBTableName& table_name) {
   vector<string> tablet_ids, ranges;
   RETURN_NOT_OK(yb_client_->GetTablets(table_name, 0, &tablet_ids, &ranges));

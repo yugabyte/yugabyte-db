@@ -125,6 +125,8 @@ message MasterErrorPB {
 
     REDIS_CONFIG_NOT_FOUND = 31;
 
+    // Indicator to client that load balancer was recently active.
+    LOAD_BALANCER_RECENTLY_ACTIVE = 33;
   }
 
   // The error code.
@@ -1052,6 +1054,15 @@ message GetLoadMovePercentResponsePB {
   optional double percent = 2;
 }
 
+// Is load balancer idle.
+message IsLoadBalancerIdleRequestPB {
+}
+
+// When no errors, load balancer is active.
+message IsLoadBalancerIdleResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 // Get a master's notion being ready as the leader.
 // NOTE: Should be used only for unit testing purposes.
 message IsMasterLeaderReadyRequestPB {
@@ -1467,6 +1478,8 @@ service MasterService {
       returns (GetLoadMovePercentResponsePB);
   rpc IsLoadBalanced(IsLoadBalancedRequestPB)
       returns (IsLoadBalancedResponsePB);
+  rpc IsLoadBalancerIdle(IsLoadBalancerIdleRequestPB)
+      returns (IsLoadBalancerIdleResponsePB);
   rpc AreLeadersOnPreferredOnly(AreLeadersOnPreferredOnlyRequestPB)
       returns (AreLeadersOnPreferredOnlyResponsePB);
 

@@ -22,6 +22,8 @@
 #include "yb/master/master.h"
 #include "yb/util/random_util.h"
 
+#include "yb/master/catalog_entity_info.h"
+
 DEFINE_bool(enable_load_balancing,
             true,
             "Choose whether to enable the load balancing algorithm, to move tablets around.");
@@ -59,6 +61,10 @@ DEFINE_int32(load_balancer_max_concurrent_moves,
              1,
              "Maximum number of tablet leaders on tablet servers to move in any one run of the "
              "load balancer.");
+
+DEFINE_int32(load_balancer_num_idle_runs,
+             5,
+             "Number of idle runs of load balancer to deem it idle.");
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 
@@ -121,7 +127,8 @@ int ClusterLoadBalancer::get_total_running_tablets() const { return state_->tota
 // Load balancer class.
 ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
     : random_(GetRandomSeed32()),
-      is_enabled_(FLAGS_enable_load_balancing) {
+      is_enabled_(FLAGS_enable_load_balancing),
+      cbuf_activities_(FLAGS_load_balancer_num_idle_runs) {
   ResetState();
 
   catalog_manager_ = cm;
@@ -247,6 +254,50 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       break;
     }
   }
+
+  RecordActivity();
+}
+
+void ClusterLoadBalancer::RecordActivity() {
+  uint32_t table_tasks = 0;
+  for (const auto& table : GetTableMap()) {
+    table_tasks += table.second->NumTasks();
+  }
+
+  uint32_t tserver_tasks = 0;
+  TSDescriptorVector ts_descs;
+  GetAllReportedDescriptors(&ts_descs);
+  for (const auto& ts_desc : ts_descs) {
+    tserver_tasks += ts_desc->NumTasks();
+  }
+
+  // Update circular buffer summary.
+
+  if (table_tasks == 0 && tserver_tasks == 0) {
+    num_idle_runs_++;
+  } else {
+    VLOG(1) << Substitute("Load balancer has $0 table tasks and $1 tserver tasks",
+        table_tasks, tserver_tasks);
+  }
+
+  if (cbuf_activities_.full()) {
+    if (cbuf_activities_.front().table_tasks == 0 &&
+        cbuf_activities_.front().tserver_tasks == 0) {
+      num_idle_runs_--;
+    }
+  }
+
+  // Mutate circular buffer.
+  struct ActivityInfo ai {table_tasks, tserver_tasks};
+  cbuf_activities_.push_back(std::move(ai));
+
+  // Update state.
+  is_idle_.store(num_idle_runs_ == cbuf_activities_.size(), std::memory_order_release);
+}
+
+Status ClusterLoadBalancer::IsIdle() const {
+  return (is_enabled_ && !is_idle_.load(std::memory_order_acquire)) ?
+    STATUS(TryAgain, "Task encountered recently.") : Status::OK();
 }
 
 void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {

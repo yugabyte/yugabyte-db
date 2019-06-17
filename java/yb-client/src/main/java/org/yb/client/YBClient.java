@@ -348,6 +348,15 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Check if the load balancer is idle as per the master leader.
+   * @return a deferred object that yields if the load is balanced.
+   */
+  public IsLoadBalancerIdleResponse getIsLoadBalancerIdle() throws Exception {
+    Deferred<IsLoadBalancerIdleResponse> d = asyncClient.getIsLoadBalancerIdle();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Check if the tablet leader load is balanced as per the master leader.
    * @return a deferred object that yields if the load is balanced.
    */
@@ -738,6 +747,19 @@ public class YBClient implements AutoCloseable {
     }
   }
 
+  /**
+   * Checks whether the IsLoadBalancerIdleResponse has no error.
+   */
+  private class LoadBalancerIdleCondition implements Condition {
+    public LoadBalancerIdleCondition() {
+    }
+    @Override
+    public boolean get() throws Exception {
+      IsLoadBalancerIdleResponse resp = getIsLoadBalancerIdle();
+      return !resp.hasError();
+    }
+  }
+
   private class AreLeadersOnPreferredOnlyCondition implements Condition {
     @Override
     public boolean get() throws Exception {
@@ -855,6 +877,16 @@ public class YBClient implements AutoCloseable {
   public boolean waitForLoadBalance(final long timeoutMs, int numServers) {
     Condition loadBalanceCondition = new LoadBalanceCondition(numServers);
     return waitForCondition(loadBalanceCondition, timeoutMs);
+  }
+
+  /**
+  * Wait for the tablet load to be balanced by master leader.
+  * @param timeoutMs the amount of time, in MS, to wait
+  * @return true if the master leader does not return any error balance check.
+  */
+  public boolean waitForLoadBalancerIdle(final long timeoutMs) {
+    Condition loadBalancerIdleCondition = new LoadBalancerIdleCondition();
+    return waitForCondition(loadBalancerIdleCondition, timeoutMs);
   }
 
   /**

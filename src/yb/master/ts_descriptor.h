@@ -255,6 +255,8 @@ class TSDescriptor {
 
   explicit TSDescriptor(std::string perm_id);
 
+  std::size_t NumTasks() const;
+
  protected:
   virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration,
