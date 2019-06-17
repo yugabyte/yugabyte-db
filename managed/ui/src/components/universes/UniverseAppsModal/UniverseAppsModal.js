@@ -92,11 +92,10 @@ export default class UniverseAppsModal extends Component {
         const option_data = Array.shift(Object.entries(option));
         return <p key={idx}>--{ option_data[0] + " " + option_data[1]}</p>;
       });
-
+      
       const commandSyntax = isItKubernetesUniverse ?
-        "kubectl run --image=yugabytedb/yb-sample-apps yb-sample-apps -n "
-          + universeDetails.nodePrefix + " --":
-        "docker run -d yugabytedb/yb-sample-apps";
+        'kubectl run --image=yugabytedb/yb-sample-apps yb-sample-apps --':
+        'docker run -d yugabytedb/yb-sample-apps';
       return (
         <Tab eventKey={idx} title={appType.title} key={appType.code}>
           {betaFeature}
