@@ -129,6 +129,33 @@ DEFINE_double(fault_crash_after_rocksdb_flush, 0.0,
 
 namespace rocksdb {
 
+namespace {
+
+std::unique_ptr<Compaction> PopFirstFromCompactionQueue(
+    std::deque<std::unique_ptr<Compaction>>* queue) {
+  DCHECK(!queue->empty());
+  auto c = std::move(queue->front());
+  ColumnFamilyData* cfd = c->column_family_data();
+  queue->pop_front();
+  DCHECK(cfd->pending_compaction());
+  cfd->set_pending_compaction(false);
+  return c;
+}
+
+void ClearCompactionQueue(std::deque<std::unique_ptr<Compaction>>* queue) {
+  while (!queue->empty()) {
+    auto c = PopFirstFromCompactionQueue(queue);
+    c->ReleaseCompactionFiles(STATUS(Incomplete, "DBImpl destroyed before compaction scheduled"));
+    auto cfd = c->column_family_data();
+    c.reset();
+    if (cfd->Unref()) {
+      delete cfd;
+    }
+  }
+}
+
+} // namespace
+
 const char kDefaultColumnFamilyName[] = "default";
 
 struct DBImpl::WriteContext {
@@ -400,24 +427,9 @@ DBImpl::~DBImpl() {
       delete cfd;
     }
   }
-  while (!small_compaction_queue_.empty()) {
-    auto c = PopFirstFromSmallCompactionQueue();
-    c->ReleaseCompactionFiles(STATUS(Incomplete, "DBImpl destroyed before compaction scheduled"));
-    auto cfd = c->column_family_data();
-    delete c;
-    if (cfd->Unref()) {
-      delete cfd;
-    }
-  }
-  while (!large_compaction_queue_.empty()) {
-    auto c = PopFirstFromLargeCompactionQueue();
-    c->ReleaseCompactionFiles(STATUS(Incomplete, "DBImpl destroyed before compaction scheduled"));
-    auto cfd = c->column_family_data();
-    delete c;
-    if (cfd->Unref()) {
-      delete cfd;
-    }
-  }
+
+  ClearCompactionQueue(&small_compaction_queue_);
+  ClearCompactionQueue(&large_compaction_queue_);
 
   if (default_cf_handle_ != nullptr) {
     // we need to delete handle outside of lock because it does its own locking
@@ -2690,7 +2702,7 @@ bool DBImpl::AddToCompactionQueue(ColumnFamilyData* cfd) {
 
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
   const MutableCFOptions* mutable_cf_options = cfd->GetLatestMutableCFOptions();
-  Compaction* c;
+  std::unique_ptr<Compaction> c;
 
   if (!mutable_cf_options->disable_auto_compactions && !cfd->IsDropped()
         && !(HasExclusiveManualCompaction() || HaveManualCompaction(cfd))) {
@@ -2698,9 +2710,9 @@ bool DBImpl::AddToCompactionQueue(ColumnFamilyData* cfd) {
     if (c) {
       cfd->Ref();
       if (c->CalculateTotalInputSize() < db_options_.compaction_size_threshold_bytes) {
-        small_compaction_queue_.push_back(c);
+        small_compaction_queue_.push_back(std::move(c));
       } else {
-        large_compaction_queue_.push_back(c);
+        large_compaction_queue_.push_back(std::move(c));
       }
       cfd->set_pending_compaction(true);
       return true;
@@ -2710,24 +2722,12 @@ bool DBImpl::AddToCompactionQueue(ColumnFamilyData* cfd) {
   return false;
 }
 
-Compaction* DBImpl::PopFirstFromSmallCompactionQueue() {
-  assert(!small_compaction_queue_.empty());
-  Compaction* c = *small_compaction_queue_.begin();
-  ColumnFamilyData* cfd = c->column_family_data();
-  small_compaction_queue_.pop_front();
-  assert(cfd->pending_compaction());
-  cfd->set_pending_compaction(false);
-  return c;
+std::unique_ptr<Compaction> DBImpl::PopFirstFromSmallCompactionQueue() {
+  return PopFirstFromCompactionQueue(&small_compaction_queue_);
 }
 
-Compaction* DBImpl::PopFirstFromLargeCompactionQueue() {
-  assert(!large_compaction_queue_.empty());
-  Compaction* c = *large_compaction_queue_.begin();
-  ColumnFamilyData* cfd = c->column_family_data();
-  large_compaction_queue_.pop_front();
-  assert(cfd->pending_compaction());
-  cfd->set_pending_compaction(false);
-  return c;
+std::unique_ptr<Compaction> DBImpl::PopFirstFromLargeCompactionQueue() {
+  return PopFirstFromCompactionQueue(&large_compaction_queue_);
 }
 
 void DBImpl::AddToFlushQueue(ColumnFamilyData* cfd) {
@@ -2787,8 +2787,8 @@ void DBImpl::BGWorkCompaction(void* arg) {
 void DBImpl::UnscheduleCallback(void* arg) {
   CompactionArg ca = *(reinterpret_cast<CompactionArg*>(arg));
   delete reinterpret_cast<CompactionArg*>(arg);
-  if ((ca.m != nullptr) && (ca.m->compaction != nullptr)) {
-    delete ca.m->compaction;
+  if (ca.m != nullptr) {
+    ca.m->compaction.reset();
   }
   TEST_SYNC_POINT("DBImpl::UnscheduleCallback");
 }
@@ -2920,9 +2920,8 @@ void DBImpl::BackgroundCallFlush() {
   }
 }
 
-void DBImpl::BackgroundCallCompaction(void* arg) {
+void DBImpl::BackgroundCallCompaction(ManualCompaction* m) {
   bool made_progress = false;
-  ManualCompaction* m = reinterpret_cast<ManualCompaction*>(arg);
   JobContext job_context(next_job_id_.fetch_add(1), true);
   MaybeDumpStats();
   LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
@@ -3010,7 +3009,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
       manual_compaction->status = status;
       manual_compaction->done = true;
       manual_compaction->in_progress = false;
-      delete manual_compaction->compaction;
+      manual_compaction->compaction.reset();
       manual_compaction = nullptr;
     }
     return status;
@@ -3027,7 +3026,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
   if (is_manual) {
     ManualCompaction* m = manual_compaction;
     assert(m->in_progress);
-    c.reset(std::move(m->compaction));
+    c = std::move(m->compaction);
     if (!c) {
       m->done = true;
       m->manual_end = nullptr;
@@ -3052,10 +3051,10 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
     // cfd is referenced here
     if (!large_compaction_queue_.empty() && BGCompactionsAllowed() >
           num_running_large_compactions() + db_options_.num_reserved_small_compaction_threads) {
-      c.reset(PopFirstFromLargeCompactionQueue());
+      c = PopFirstFromLargeCompactionQueue();
       is_large_compaction = true;
     } else if (!small_compaction_queue_.empty()) {
-      c.reset(PopFirstFromSmallCompactionQueue());
+      c = PopFirstFromSmallCompactionQueue();
       is_large_compaction = false;
     } else {
       LOG_TO_BUFFER(log_buffer, "No small compactions in queue. Large compaction threads busy.");

@@ -263,22 +263,23 @@ class ColumnFamilyData {
   // REQUIRES: DB mutex held
   bool NeedsCompaction() const;
   // REQUIRES: DB mutex held
-  Compaction* PickCompaction(const MutableCFOptions& mutable_options,
-                             LogBuffer* log_buffer);
+  std::unique_ptr<Compaction> PickCompaction(
+      const MutableCFOptions& mutable_options, LogBuffer* log_buffer);
   // A flag to tell a manual compaction is to compact all levels together
   // instad of for specific level.
   static const int kCompactAllLevels;
   // A flag to tell a manual compaction's output is base level.
   static const int kCompactToBaseLevel;
   // REQUIRES: DB mutex held
-  Compaction* CompactRange(const MutableCFOptions& mutable_cf_options,
-                           int input_level,
-                           int output_level,
-                           uint32_t output_path_id,
-                           const InternalKey* begin,
-                           const InternalKey* end,
-                           InternalKey** compaction_end,
-                           bool* manual_conflict);
+  std::unique_ptr<Compaction> CompactRange(
+      const MutableCFOptions& mutable_cf_options,
+      int input_level,
+      int output_level,
+      uint32_t output_path_id,
+      const InternalKey* begin,
+      const InternalKey* end,
+      InternalKey** compaction_end,
+      bool* manual_conflict);
 
   CompactionPicker* compaction_picker() { return compaction_picker_.get(); }
   // thread-safe
