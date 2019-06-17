@@ -26,6 +26,7 @@ jobs:
               openjdk-8-jdk-headless
       - run: |
           export MAVEN_OPTS="--add-opens=java.base/java.nio=ALL-UNNAMED"
+          export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
           java -version && ./yb_build.sh --ninja -j 1
 workflows:
   # See https://circleci.com/docs/2.0/workflows/
