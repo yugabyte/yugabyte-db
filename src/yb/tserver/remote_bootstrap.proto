@@ -58,6 +58,8 @@ service RemoteBootstrapService {
   // End a remote bootstrap session, allow server to release resources.
   rpc EndRemoteBootstrapSession(EndRemoteBootstrapSessionRequestPB)
       returns (EndRemoteBootstrapSessionResponsePB);
+
+  rpc RemoveSession(RemoveSessionRequestPB) returns (RemoveSessionResponsePB);
 }
 
 // Remote bootstrap-specific errors use this protobuf.
@@ -128,7 +130,10 @@ message BeginRemoteBootstrapSessionResponsePB {
 
   // Identifiers for the WAL segments available for download.
   // Each WAL segment is keyed by its sequence number.
-  repeated uint64 wal_segment_seqnos = 4;
+  repeated uint64 DEPRECATED_wal_segment_seqnos = 4;
+
+  // Sequence number of first WAL segment available for download.
+  optional uint64 first_wal_segment_seqno = 6;
 
   // A snapshot of the committed Consensus state at the time that the
   // remote bootstrap session was started.
@@ -218,7 +223,19 @@ message EndRemoteBootstrapSessionRequestPB {
   // Client-provided error message. The server will log this error so that an
   // admin can identify when bad things are happening with remote bootstrap.
   optional AppStatusPB error = 3;
+
+  // True if we should not remove session on this request, and it will be removed by upcoming
+  // RemoveRemoteBootstrapSession.
+  optional bool keep_session = 4 [default = false];
 }
 
 message EndRemoteBootstrapSessionResponsePB {
+  optional bool session_kept = 1 [default = false];
+}
+
+message RemoveSessionRequestPB {
+  optional bytes session_id = 1;
+}
+
+message RemoveSessionResponsePB {
 }

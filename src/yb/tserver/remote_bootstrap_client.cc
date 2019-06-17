@@ -32,6 +32,8 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
+#include <boost/scope_exit.hpp>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -146,6 +148,34 @@ using tablet::RaftGroupReplicaSuperBlockPB;
 constexpr int kBytesReservedForMessageHeaders = 16384;
 std::atomic<int32_t> RemoteBootstrapClient::n_started_(0);
 
+
+namespace {
+
+// Decode the remote error into a human-readable Status object.
+CHECKED_STATUS ExtractRemoteError(
+    const rpc::ErrorStatusPB& remote_error, const Status& original_status) {
+  if (!remote_error.HasExtension(RemoteBootstrapErrorPB::remote_bootstrap_error_ext)) {
+    return original_status;
+  }
+
+  const RemoteBootstrapErrorPB& error =
+      remote_error.GetExtension(RemoteBootstrapErrorPB::remote_bootstrap_error_ext);
+  LOG(INFO) << "ExtractRemoteError: " << error.ShortDebugString();
+  return StatusFromPB(error.status()).CloneAndPrepend(
+      "Received error code " + RemoteBootstrapErrorPB::Code_Name(error.code()) +
+          " from remote service");
+}
+
+// Enhance a RemoteError Status message with additional details from the remote.
+CHECKED_STATUS UnwindRemoteError(const Status& status, const rpc::RpcController& controller) {
+  if (!status.IsRemoteError()) {
+    return status;
+  }
+  return ExtractRemoteError(*controller.error_response(), status);
+}
+
+} // namespace
+
 RemoteBootstrapClient::RemoteBootstrapClient(std::string tablet_id,
                                              FsManager* fs_manager,
                                              string client_permanent_uuid)
@@ -160,7 +190,8 @@ RemoteBootstrapClient::RemoteBootstrapClient(std::string tablet_id,
       status_listener_(nullptr),
       session_idle_timeout_millis_(0),
       start_time_micros_(0),
-      succeeded_(false) {}
+      succeeded_(false),
+      log_prefix_(Format("T $0 P$ 1: Remote bootstrap client: ", tablet_id_, permanent_uuid_)) {}
 
 RemoteBootstrapClient::~RemoteBootstrapClient() {
   // Note: Ending the remote bootstrap session releases anchors on the remote.
@@ -169,12 +200,13 @@ RemoteBootstrapClient::~RemoteBootstrapClient() {
   if (!succeeded_) {
     LOG_WITH_PREFIX(INFO) << "Closing remote bootstrap session " << session_id_
                           << " in RemoteBootstrapClient destructor.";
-    WARN_NOT_OK(EndRemoteSession(), "Unable to close remote bootstrap session " + session_id_);
+    WARN_NOT_OK(EndRemoteSession(),
+                LogPrefix() + "Unable to close remote bootstrap session " + session_id_);
   }
   if (started_) {
     auto old_count = n_started_.fetch_sub(1, std::memory_order_acq_rel);
     if (old_count < 1) {
-      LOG(DFATAL) << "Invalid number of remote bootstrap sessions: " << old_count;
+      LOG_WITH_PREFIX(DFATAL) << "Invalid number of remote bootstrap sessions: " << old_count;
     }
   }
 }
@@ -262,6 +294,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   auto* kv_store = resp.mutable_superblock()->mutable_kv_store();
   LOG_WITH_PREFIX(INFO) << "RocksDB files: " << yb::ToString(kv_store->rocksdb_files());
   LOG_WITH_PREFIX(INFO) << "Snapshot files: " << yb::ToString(kv_store->snapshot_files());
+  if (first_wal_seqno_) {
+    LOG_WITH_PREFIX(INFO) << "First WAL segment: " << first_wal_seqno_;
+  } else {
+    LOG_WITH_PREFIX(INFO) << "Log files: " << yb::ToString(resp.deprecated_wal_segment_seqnos());
+  }
 
   const TableId table_id = resp.superblock().primary_table_id();
   const tablet::TableInfoPB* table_ptr = nullptr;
@@ -290,7 +327,13 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   superblock_->clear_wal_dir();
 
   superblock_->set_tablet_data_state(tablet::TABLET_DATA_COPYING);
-  wal_seqnos_.assign(resp.wal_segment_seqnos().begin(), resp.wal_segment_seqnos().end());
+  wal_seqnos_.assign(resp.deprecated_wal_segment_seqnos().begin(),
+                     resp.deprecated_wal_segment_seqnos().end());
+  if (resp.has_first_wal_segment_seqno()) {
+    first_wal_seqno_ = resp.first_wal_segment_seqno();
+  } else {
+    first_wal_seqno_ = 0;
+  }
   remote_committed_cstate_.reset(resp.release_initial_committed_cstate());
 
   Schema schema;
@@ -398,7 +441,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   started_ = true;
   auto old_count = n_started_.fetch_add(1, std::memory_order_acq_rel);
   if (old_count < 0) {
-    LOG(DFATAL) << "Invalid number of remote bootstrap sessions: " << old_count;
+    LOG_WITH_PREFIX(DFATAL) << "Invalid number of remote bootstrap sessions: " << old_count;
     n_started_ = 0;
   }
 
@@ -456,6 +499,7 @@ Status RemoteBootstrapClient::Finish() {
 
   RETURN_NOT_OK_PREPEND(EndRemoteSession(), "Error closing remote bootstrap session " +
                         session_id_);
+
   return Status::OK();
 }
 
@@ -495,29 +539,6 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
                            committed_config.ShortDebugString()));
 }
 
-// Decode the remote error into a human-readable Status object.
-Status RemoteBootstrapClient::ExtractRemoteError(const rpc::ErrorStatusPB& remote_error) {
-  if (PREDICT_TRUE(remote_error.HasExtension(RemoteBootstrapErrorPB::remote_bootstrap_error_ext))) {
-    const RemoteBootstrapErrorPB& error =
-        remote_error.GetExtension(RemoteBootstrapErrorPB::remote_bootstrap_error_ext);
-    return StatusFromPB(error.status()).CloneAndPrepend("Received error code " +
-              RemoteBootstrapErrorPB::Code_Name(error.code()) + " from remote service");
-  } else {
-    return STATUS(InvalidArgument, "Unable to decode remote bootstrap RPC error message",
-                                   remote_error.ShortDebugString());
-  }
-}
-
-// Enhance a RemoteError Status message with additional details from the remote.
-Status RemoteBootstrapClient::UnwindRemoteError(const Status& status,
-                                                const rpc::RpcController& controller) {
-  if (!status.IsRemoteError()) {
-    return status;
-  }
-  Status extension_status = ExtractRemoteError(*controller.error_response());
-  return status.CloneAndAppend(extension_status.ToString());
-}
-
 void RemoteBootstrapClient::UpdateStatusMessage(const string& message) {
   if (status_listener_ != nullptr) {
     status_listener_->StatusMessage("RemoteBootstrap: " + message);
@@ -530,18 +551,18 @@ Status RemoteBootstrapClient::EndRemoteSession() {
   }
 
   rpc::RpcController controller;
-  controller.set_timeout(MonoDelta::FromMilliseconds(
-        FLAGS_remote_bootstrap_begin_session_timeout_ms));
+  controller.set_timeout(MonoDelta::FromSeconds(FLAGS_remote_bootstrap_end_session_timeout_sec));
 
   EndRemoteBootstrapSessionRequestPB req;
   req.set_session_id(session_id_);
   req.set_is_success(succeeded_);
+  req.set_keep_session(true);
   EndRemoteBootstrapSessionResponsePB resp;
 
   LOG_WITH_PREFIX(INFO) << "Ending remote bootstrap session " << session_id_;
-  controller.set_timeout(MonoDelta::FromSeconds(FLAGS_remote_bootstrap_end_session_timeout_sec));
   auto status = proxy_->EndRemoteBootstrapSession(req, &resp, &controller);
   if (status.ok()) {
+    remove_required_ = resp.session_kept();
     LOG_WITH_PREFIX(INFO) << "Remote bootstrap session " << session_id_ << " ended successfully";
     return Status::OK();
   }
@@ -557,6 +578,29 @@ Status RemoteBootstrapClient::EndRemoteSession() {
   status = UnwindRemoteError(status, controller);
   return status.CloneAndPrepend(Substitute("Failure ending remote bootstrap session $0",
                                            session_id_));
+}
+
+Status RemoteBootstrapClient::Remove() {
+  if (!remove_required_) {
+    return Status::OK();
+  }
+
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromSeconds(FLAGS_remote_bootstrap_end_session_timeout_sec));
+
+  RemoveSessionRequestPB req;
+  req.set_session_id(session_id_);
+  RemoveSessionResponsePB resp;
+
+  LOG_WITH_PREFIX(INFO) << "Removing remote bootstrap session " << session_id_;
+  const auto status = proxy_->RemoveSession(req, &resp, &controller);
+  if (status.ok()) {
+    LOG_WITH_PREFIX(INFO) << "Remote bootstrap session " << session_id_ << " removed successfully";
+    return Status::OK();
+  }
+
+  return UnwindRemoteError(status, controller).CloneAndPrepend(
+      Format("Failure removing remote bootstrap session $0", session_id_));
 }
 
 Status RemoteBootstrapClient::DownloadWALs() {
@@ -585,14 +629,43 @@ Status RemoteBootstrapClient::DownloadWALs() {
                         Substitute("Failed to sync WAL table directory $0", wal_table_top_dir));
 
   // Download the WAL segments.
-  int num_segments = wal_seqnos_.size();
-  LOG_WITH_PREFIX(INFO) << "Starting download of " << num_segments << " WAL segments...";
   uint64_t counter = 0;
-  for (uint64_t seg_seqno : wal_seqnos_) {
-    UpdateStatusMessage(Substitute("Downloading WAL segment with seq. number $0 ($1/$2)",
-                                   seg_seqno, counter + 1, num_segments));
-    RETURN_NOT_OK(DownloadWAL(seg_seqno));
-    ++counter;
+  if (first_wal_seqno_) {
+    LOG_WITH_PREFIX(INFO) << "Starting download of WAL segments starting from sequence number "
+                          << first_wal_seqno_;
+    for (;;) {
+      uint64_t segment_seqno = first_wal_seqno_ + counter;
+      UpdateStatusMessage(
+          Format("Downloading WAL segment with seq. number $0 (#$1 in this session)",
+                 segment_seqno, counter + 1));
+      auto download_status = DownloadWAL(segment_seqno);
+      if (!download_status.ok()) {
+        std::string message_suffix;
+        if (counter > 0) {
+          message_suffix = Format(", downloaded segments in range: $0..$1",
+                                      first_wal_seqno_, segment_seqno - 1);
+        } else {
+          message_suffix = ", no segments were downloaded";
+        }
+        if (download_status.IsNotFound()) {
+          LOG_WITH_PREFIX(INFO) << "Stopped downloading WAL segments" << message_suffix;
+          break;
+        }
+        LOG_WITH_PREFIX(WARNING) << "Downloading WAL segments failed: "
+                                 << download_status << message_suffix;
+        return download_status;
+      }
+      ++counter;
+    }
+  } else {
+    int num_segments = wal_seqnos_.size();
+    LOG_WITH_PREFIX(INFO) << "Starting download of " << num_segments << " WAL segments...";
+    for (uint64_t seg_seqno : wal_seqnos_) {
+      UpdateStatusMessage(Substitute("Downloading WAL segment with seq. number $0 ($1/$2)",
+                                     seg_seqno, counter + 1, num_segments));
+      RETURN_NOT_OK(DownloadWAL(seg_seqno));
+      ++counter;
+    }
   }
 
   if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
@@ -670,15 +743,16 @@ Status RemoteBootstrapClient::DownloadRocksDBFiles() {
     auto start = MonoTime::Now();
     RETURN_NOT_OK(DownloadFile(file_pb, rocksdb_dir, &data_id));
     auto elapsed = MonoTime::Now().GetDeltaSince(start);
-    LOG(INFO) << "Downloaded file " << file_pb.name() << " of size " << file_pb.size_bytes()
-              << " in " << elapsed.ToSeconds() << " seconds";
+    LOG_WITH_PREFIX(INFO)
+        << "Downloaded file " << file_pb.name() << " of size " << file_pb.size_bytes()
+        << " in " << elapsed.ToSeconds() << " seconds";
   }
 
   // To avoid adding new file type to remote bootstrap we move intents as subdir of regular DB.
   auto intents_tmp_dir = JoinPathSegments(rocksdb_dir, tablet::kIntentsSubdir);
   if (fs_manager_->env()->FileExists(intents_tmp_dir)) {
     auto intents_dir = rocksdb_dir + tablet::kIntentsDBSuffix;
-    LOG(INFO) << "Moving intents DB: " << intents_tmp_dir << " => " << intents_dir;
+    LOG_WITH_PREFIX(INFO) << "Moving intents DB: " << intents_tmp_dir << " => " << intents_dir;
     RETURN_NOT_OK(fs_manager_->env()->RenameFile(intents_tmp_dir, intents_dir));
   }
   if (FLAGS_bytes_remote_bootstrap_durable_write_mb != 0) {
@@ -696,21 +770,32 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   data_id.set_type(DataIdPB::LOG_SEGMENT);
   data_id.set_wal_segment_seqno(wal_segment_seqno);
   const string dest_path = fs_manager_->GetWalSegmentFileName(meta_->wal_dir(), wal_segment_seqno);
+  const auto temp_dest_path = dest_path + ".tmp";
+  bool ok = false;
+  BOOST_SCOPE_EXIT(this_, &temp_dest_path, &ok) {
+    if (!ok) {
+      WARN_NOT_OK(this_->fs_manager_->env()->DeleteFile(temp_dest_path),
+                  "Failed to delete temporary WAL segment");
+    }
+  } BOOST_SCOPE_EXIT_END;
 
   WritableFileOptions opts;
   opts.sync_on_close = true;
   gscoped_ptr<WritableFile> writer;
-  RETURN_NOT_OK_PREPEND(fs_manager_->env()->NewWritableFile(opts, dest_path, &writer),
+  RETURN_NOT_OK_PREPEND(fs_manager_->env()->NewWritableFile(opts, temp_dest_path, &writer),
                         "Unable to open file for writing");
 
   auto start = MonoTime::Now();
   RETURN_NOT_OK_PREPEND(DownloadFile(data_id, writer.get()),
                         Substitute("Unable to download WAL segment with seq. number $0",
                                    wal_segment_seqno));
+  RETURN_NOT_OK(fs_manager_->env()->RenameFile(temp_dest_path, dest_path));
   auto elapsed = MonoTime::Now().GetDeltaSince(start);
   LOG_WITH_PREFIX(INFO) << "Downloaded WAL segment with seq. number " << wal_segment_seqno
                         << " of size " << writer->Size() << " in " << elapsed.ToSeconds()
                         << " seconds";
+  ok = true;
+
   return Status::OK();
 }
 
@@ -798,8 +883,8 @@ Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
 
     // Write the data.
     RETURN_NOT_OK(appendable->Append(resp.chunk().data()));
-    VLOG(3) << "resp size: " << resp.ByteSize()
-            << ", chunk size: " << resp.chunk().data().size();
+    VLOG_WITH_PREFIX(3)
+        << "resp size: " << resp.ByteSize() << ", chunk size: " << resp.chunk().data().size();
 
     if (offset + resp.chunk().data().size() == resp.chunk().total_data_length()) {
       done = true;
@@ -814,7 +899,7 @@ Status RemoteBootstrapClient::DownloadFile(const DataIdPB& data_id,
     }
   }
 
-  VLOG(2) << "Transmission rate: " << rate_limiter->GetRate();
+  VLOG_WITH_PREFIX(2) << "Transmission rate: " << rate_limiter->GetRate();
 
   return Status::OK();
 }
@@ -834,10 +919,6 @@ Status RemoteBootstrapClient::VerifyData(uint64_t offset, const DataChunkPB& chu
           offset, chunk.data().size(), crc32, chunk.crc32()));
   }
   return Status::OK();
-}
-
-string RemoteBootstrapClient::LogPrefix() {
-  return Substitute("T $0 P $1: Remote bootstrap client: ", tablet_id_, permanent_uuid_);
 }
 
 } // namespace tserver

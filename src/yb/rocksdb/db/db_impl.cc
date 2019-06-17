@@ -5828,8 +5828,6 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
   }
 
   if (s.ok()) {
-    RLOG(InfoLogLevel::INFO_LEVEL, impl->db_options_.info_log, "DB pointer %p",
-        impl);
     LogFlush(impl->db_options_.info_log);
     if (!persist_options_status.ok()) {
       if (db_options.fail_if_options_file_error) {

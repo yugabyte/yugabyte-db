@@ -585,10 +585,14 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
 
   for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
     auto server = cluster->mini_tablet_server(i)->server();
+    if (!server) { // Server is shut down.
+      continue;
+    }
     auto peers = server->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
       WARN_NOT_OK(
-          WaitFor([peer] { return peer->consensus() != nullptr; }, 5s, "Waiting peer ready"),
+          WaitFor([peer] { return peer->consensus() != nullptr; }, 5s,
+          Format("Waiting peer T $0 P $1 ready", peer->tablet_id(), peer->permanent_uuid())),
           "List tablet peers failure");
       if (filter(peer)) {
         result.push_back(peer);
@@ -636,6 +640,36 @@ std::thread RestartsThread(
       ASSERT_OK(cluster->mini_tablet_server(++it % cluster->num_tablet_servers())->Restart());
     }
   });
+}
+
+Status WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout) {
+  return WaitFor([cluster] {
+    std::unordered_set<std::string> tablet_ids;
+    auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
+    for (const auto& peer : peers) {
+      if (peer->state() != tablet::RaftGroupStatePB::RUNNING) {
+        return false;
+      }
+      tablet_ids.insert(peer->tablet_id());
+    }
+    auto replication_factor = cluster->num_tablet_servers();
+    return tablet_ids.size() * replication_factor == peers.size();
+  }, timeout, "Wait all replicas to be ready");
+}
+
+Status WaitAllReplicasHaveIndex(MiniCluster* cluster, int64_t index, MonoDelta timeout) {
+  return WaitFor([cluster, index] {
+    std::unordered_set<std::string> tablet_ids;
+    auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
+    for (const auto& peer : peers) {
+      if (peer->GetLatestLogEntryOpId().index < index) {
+        return false;
+      }
+      tablet_ids.insert(peer->tablet_id());
+    }
+    auto replication_factor = cluster->num_tablet_servers();
+    return tablet_ids.size() * replication_factor == peers.size();
+  }, timeout, "Wait for all replicas to have a specific Raft index");
 }
 
 }  // namespace yb
