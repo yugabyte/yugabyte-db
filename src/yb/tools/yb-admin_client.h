@@ -126,6 +126,8 @@ class ClusterAdminClient {
 
   CHECKED_STATUS GetLoadMoveCompletion();
 
+  CHECKED_STATUS GetIsLoadBalancerIdle();
+
   CHECKED_STATUS ListLeaderCounts(const client::YBTableName& table_name);
 
   CHECKED_STATUS SetupRedisTable();
