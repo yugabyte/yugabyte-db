@@ -722,11 +722,11 @@ bool ColumnFamilyData::NeedsCompaction() const {
   return compaction_picker_->NeedsCompaction(current()->storage_info());
 }
 
-Compaction* ColumnFamilyData::PickCompaction(
+std::unique_ptr<Compaction> ColumnFamilyData::PickCompaction(
     const MutableCFOptions& mutable_options, LogBuffer* log_buffer) {
   // TODO: do we need to check if current() is not nullptr here?
   Version* const current_version = current();
-  auto* result = compaction_picker_->PickCompaction(
+  auto result = compaction_picker_->PickCompaction(
       GetName(), mutable_options, current_version->storage_info(), log_buffer);
   if (result != nullptr) {
     result->SetInputVersion(current_);
@@ -737,13 +737,13 @@ Compaction* ColumnFamilyData::PickCompaction(
 const int ColumnFamilyData::kCompactAllLevels = -1;
 const int ColumnFamilyData::kCompactToBaseLevel = -2;
 
-Compaction* ColumnFamilyData::CompactRange(
+std::unique_ptr<Compaction> ColumnFamilyData::CompactRange(
     const MutableCFOptions& mutable_cf_options, int input_level,
     int output_level, uint32_t output_path_id, const InternalKey* begin,
     const InternalKey* end, InternalKey** compaction_end, bool* conflict) {
   Version* const current_version = current();
   // TODO: do we need to check that current_version is not nullptr?
-  auto* result = compaction_picker_->CompactRange(
+  auto result = compaction_picker_->CompactRange(
       GetName(), mutable_cf_options, current_version->storage_info(), input_level,
       output_level, output_path_id, begin, end, compaction_end, conflict);
   if (result != nullptr) {

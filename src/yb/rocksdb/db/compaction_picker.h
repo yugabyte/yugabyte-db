@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_DB_COMPACTION_PICKER_H
-#define ROCKSDB_DB_COMPACTION_PICKER_H
+#ifndef YB_ROCKSDB_DB_COMPACTION_PICKER_H
+#define YB_ROCKSDB_DB_COMPACTION_PICKER_H
 
 #pragma once
 
@@ -57,10 +57,11 @@ class CompactionPicker {
   // Returns nullptr if there is no compaction to be done.
   // Otherwise returns a pointer to a heap-allocated object that
   // describes the compaction.  Caller should delete the result.
-  virtual Compaction* PickCompaction(const std::string& cf_name,
-                                     const MutableCFOptions& mutable_cf_options,
-                                     VersionStorageInfo* vstorage,
-                                     LogBuffer* log_buffer) = 0;
+  virtual std::unique_ptr<Compaction> PickCompaction(
+      const std::string& cf_name,
+      const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* vstorage,
+      LogBuffer* log_buffer) = 0;
 
   // Return a compaction object for compacting the range [begin,end] in
   // the specified level.  Returns nullptr if there is nothing in that
@@ -73,7 +74,7 @@ class CompactionPicker {
   // compaction_end will be set to nullptr.
   // Client is responsible for compaction_end storage -- when called,
   // *compaction_end should point to valid InternalKey!
-  virtual Compaction* CompactRange(
+  virtual std::unique_ptr<Compaction> CompactRange(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage, int input_level, int output_level,
       uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
@@ -208,10 +209,12 @@ class LevelCompactionPicker : public CompactionPicker {
   LevelCompactionPicker(const ImmutableCFOptions& ioptions,
                         const InternalKeyComparator* icmp)
       : CompactionPicker(ioptions, icmp) {}
-  virtual Compaction* PickCompaction(const std::string& cf_name,
-                                     const MutableCFOptions& mutable_cf_options,
-                                     VersionStorageInfo* vstorage,
-                                     LogBuffer* log_buffer) override;
+
+  std::unique_ptr<Compaction> PickCompaction(
+      const std::string& cf_name,
+      const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* vstorage,
+      LogBuffer* log_buffer) override;
 
   virtual bool NeedsCompaction(const VersionStorageInfo* vstorage) const
       override;
@@ -246,10 +249,12 @@ class UniversalCompactionPicker : public CompactionPicker {
   UniversalCompactionPicker(const ImmutableCFOptions& ioptions,
                             const InternalKeyComparator* icmp)
       : CompactionPicker(ioptions, icmp) {}
-  virtual Compaction* PickCompaction(const std::string& cf_name,
-                                     const MutableCFOptions& mutable_cf_options,
-                                     VersionStorageInfo* vstorage,
-                                     LogBuffer* log_buffer) override;
+
+  std::unique_ptr<Compaction> PickCompaction(
+      const std::string& cf_name,
+      const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* vstorage,
+      LogBuffer* log_buffer) override;
 
   virtual int MaxOutputLevel() const override { return NumberLevels() - 1; }
 
@@ -259,7 +264,7 @@ class UniversalCompactionPicker : public CompactionPicker {
  private:
   struct SortedRun;
 
-  Compaction* DoPickCompaction(
+  std::unique_ptr<Compaction> DoPickCompaction(
       const std::string& cf_name,
       const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage,
@@ -267,14 +272,14 @@ class UniversalCompactionPicker : public CompactionPicker {
       const std::vector<SortedRun>& sorted_runs);
 
   // Pick Universal compaction to limit read amplification
-  Compaction* PickCompactionUniversalReadAmp(
+  std::unique_ptr<Compaction> PickCompactionUniversalReadAmp(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage, double score, unsigned int ratio,
       unsigned int num_files, const std::vector<SortedRun>& sorted_runs,
       LogBuffer* log_buffer);
 
   // Pick Universal compaction to limit space amplification.
-  Compaction* PickCompactionUniversalSizeAmp(
+  std::unique_ptr<Compaction> PickCompactionUniversalSizeAmp(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage, double score,
       const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer);
@@ -302,12 +307,13 @@ class FIFOCompactionPicker : public CompactionPicker {
                        const InternalKeyComparator* icmp)
       : CompactionPicker(ioptions, icmp) {}
 
-  virtual Compaction* PickCompaction(const std::string& cf_name,
-                                     const MutableCFOptions& mutable_cf_options,
-                                     VersionStorageInfo* version,
-                                     LogBuffer* log_buffer) override;
+  std::unique_ptr<Compaction> PickCompaction(
+      const std::string& cf_name,
+      const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* version,
+      LogBuffer* log_buffer) override;
 
-  virtual Compaction* CompactRange(
+  std::unique_ptr<Compaction> CompactRange(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage, int input_level, int output_level,
       uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
@@ -330,21 +336,23 @@ class NullCompactionPicker : public CompactionPicker {
   virtual ~NullCompactionPicker() {}
 
   // Always return "nullptr"
-  Compaction* PickCompaction(const std::string& cf_name,
-                             const MutableCFOptions& mutable_cf_options,
-                             VersionStorageInfo* vstorage,
-                             LogBuffer* log_buffer) override {
+  std::unique_ptr<Compaction> PickCompaction(
+      const std::string& cf_name,
+      const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* vstorage,
+      LogBuffer* log_buffer) override {
     return nullptr;
   }
 
   // Always return "nullptr"
-  Compaction* CompactRange(const std::string& cf_name,
-                           const MutableCFOptions& mutable_cf_options,
-                           VersionStorageInfo* vstorage, int input_level,
-                           int output_level, uint32_t output_path_id,
-                           const InternalKey* begin, const InternalKey* end,
-                           InternalKey** compaction_end,
-                           bool* manual_conflict) override {
+  std::unique_ptr<Compaction> CompactRange(
+      const std::string& cf_name,
+      const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* vstorage, int input_level,
+      int output_level, uint32_t output_path_id,
+      const InternalKey* begin, const InternalKey* end,
+      InternalKey** compaction_end,
+      bool* manual_conflict) override {
     return nullptr;
   }
 
@@ -367,4 +375,4 @@ CompressionType GetCompressionType(const ImmutableCFOptions& ioptions,
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_DB_COMPACTION_PICKER_H
+#endif // YB_ROCKSDB_DB_COMPACTION_PICKER_H
