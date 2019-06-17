@@ -529,6 +529,8 @@ class DBImpl : public DB {
 #endif
   struct CompactionState;
 
+  struct ManualCompaction;
+
   struct WriteContext;
 
   Status NewDB();
@@ -598,7 +600,7 @@ class DBImpl : public DB {
   static void BGWorkFlush(void* db);
   static void UnscheduleCallback(void* arg);
   void WaitAfterBackgroundError(const Status& s, const char* job_name, LogBuffer* log_buffer);
-  void BackgroundCallCompaction(void* arg);
+  void BackgroundCallCompaction(ManualCompaction* manual);
   void BackgroundCallFlush();
   Result<FileNumbersHolder> BackgroundCompaction(
       bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, void* m = 0);
@@ -634,8 +636,8 @@ class DBImpl : public DB {
 
   // helper functions for adding and removing from flush & compaction queues
   bool AddToCompactionQueue(ColumnFamilyData* cfd);
-  Compaction* PopFirstFromSmallCompactionQueue();
-  Compaction* PopFirstFromLargeCompactionQueue();
+  std::unique_ptr<Compaction> PopFirstFromSmallCompactionQueue();
+  std::unique_ptr<Compaction> PopFirstFromLargeCompactionQueue();
   bool IsEmptyCompactionQueue();
   void AddToFlushQueue(ColumnFamilyData* cfd);
   ColumnFamilyData* PopFirstFromFlushQueue();
@@ -830,8 +832,8 @@ class DBImpl : public DB {
   std::deque<ColumnFamilyData*> flush_queue_;
   // invariant(column family present in compaction_queue_ <==>
   // ColumnFamilyData::pending_compaction_ == true)
-  std::deque<Compaction*> small_compaction_queue_;
-  std::deque<Compaction*> large_compaction_queue_;
+  std::deque<std::unique_ptr<Compaction>> small_compaction_queue_;
+  std::deque<std::unique_ptr<Compaction>> large_compaction_queue_;
   int unscheduled_flushes_;
   int unscheduled_compactions_;
 
@@ -867,7 +869,7 @@ class DBImpl : public DB {
     InternalKey* manual_end;      // how far we are compacting
     InternalKey tmp_storage;      // Used to keep track of compaction progress
     InternalKey tmp_storage1;     // Used to keep track of compaction progress
-    Compaction* compaction;
+    std::unique_ptr<Compaction> compaction;
   };
   std::deque<ManualCompaction*> manual_compaction_dequeue_;
 
