@@ -133,8 +133,10 @@ public class HealthCheckerTest extends FakeDBApplication {
     kubernetesProvider.setConfig(config);
     // Universe modifies customer, so we need to refresh our in-memory view of this reference.
     defaultCustomer = Customer.get(defaultCustomer.uuid);
-    universe = ModelFactory.createUniverse(name, UUID.randomUUID(), defaultCustomer.getCustomerId(),
-        Common.CloudType.kubernetes, pi);
+    universe = ModelFactory.createUniverse(name, UUID.randomUUID(),
+                                           defaultCustomer.getCustomerId(),
+                                           Common.CloudType.kubernetes, pi);
+    Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdaterWithActiveYSQLNode(true));
     return Universe.get(universe.universeUUID);
   }
 
@@ -169,6 +171,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         eq(true));
     HealthManager.ClusterInfo cluster = (HealthManager.ClusterInfo) expectedClusters.getValue().get(0);
     assertEquals(cluster.namespaceToConfig.get("univ1"), "foo");
+    assertEquals(cluster.ysqlPort, 5433);
     assertEquals(expectedClusters.getValue().size(), 1);
   }
 

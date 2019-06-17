@@ -199,6 +199,24 @@ public class ApiUtils {
     };
   }
 
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithActiveYSQLNode(final boolean enableYSQL) {
+    return new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+        PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
+        userIntent.enableYSQL = enableYSQL;
+        userIntent.numNodes = 1;
+        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        universeDetails.nodeDetailsSet.add(getDummyNodeDetailsWithPlacement(
+            universeDetails.getPrimaryCluster().uuid));
+        universeDetails.upsertPrimaryCluster(userIntent, pi);
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+  }
+
   public static UserIntent getDefaultUserIntent(Customer customer) {
     Provider p = ModelFactory.awsProvider(customer);
     return getDefaultUserIntent(p);
@@ -235,6 +253,16 @@ public class ApiUtils {
     ui.numNodes = numNodes;
     ui.instanceType = i.getInstanceTypeCode();
     return ui;
+  }
+
+  public static NodeDetails getDummyNodeDetailsWithPlacement(UUID placementUUID) {
+    NodeDetails node = new NodeDetails();
+    node.placementUuid = placementUUID;
+    node.isMaster = true;
+    node.isTserver = true;
+    node.cloudInfo = new CloudSpecificInfo();
+    node.cloudInfo.private_ip = "1.2.3.4";
+    return node;
   }
 
   public static NodeDetails getDummyNodeDetails(int idx, NodeDetails.NodeState state) {

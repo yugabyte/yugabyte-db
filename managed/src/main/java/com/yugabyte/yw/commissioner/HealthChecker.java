@@ -228,11 +228,12 @@ public class HealthChecker {
         if (!providerCode.equals(CloudType.kubernetes.toString())) {
           LOG.warn("Skipping universe " + u.name + " due to invalid access key...");
           invalidUniverseData = true;
+          break;
         }
-        break;
+      } else {
+        info.identityFile = accessKey.getKeyInfo().privateKey;
       }
       info.sshPort = sshPort;
-      info.identityFile = accessKey.getKeyInfo().privateKey;
       if (info.enableYSQL) {
         for (NodeDetails nd : details.nodeDetailsSet) {
           if (nd.isYsqlServer) {
