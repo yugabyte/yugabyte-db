@@ -44,6 +44,10 @@ class PgDocOp {
   explicit PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time);
   virtual ~PgDocOp();
 
+  // Set execution control parameters.
+  // When "exec_params" is null, the default setup in PgExecParameters are used.
+  void SetExecParams(const PgExecParameters *exec_params);
+
   // Execute the op. Return true if the request has been sent and is awaiting the result.
   virtual Result<RequestSent> Execute();
 
@@ -103,6 +107,9 @@ class PgDocOp {
 
   // Whether we can restart this operation.
   const bool can_restart_;
+
+  // Exec control parameters.
+  PgExecParameters exec_params_;
 };
 
 class PgDocReadOp : public PgDocOp {
@@ -131,6 +138,9 @@ class PgDocReadOp : public PgDocOp {
   void InitUnlocked(std::unique_lock<std::mutex>* lock) override;
   CHECKED_STATUS SendRequestUnlocked() override;
   virtual void ReceiveResponse(Status exec_status);
+
+  // Analyze options and pick the appropriate prefetch limit.
+  void SetRequestPrefetchLimit();
 
   // Operator.
   std::shared_ptr<client::YBPgsqlReadOp> read_op_;

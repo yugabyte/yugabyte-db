@@ -328,7 +328,7 @@ class PgApiImpl {
 
   CHECKED_STATUS SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
-  CHECKED_STATUS ExecSelect(PgStatement *handle);
+  CHECKED_STATUS ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.

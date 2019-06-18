@@ -112,8 +112,6 @@ CreateExecutorState(void)
 
 	estate->es_output_cid = (CommandId) 0;
 
-	estate->es_yb_read_ht = 0;
-
 	estate->es_result_relations = NULL;
 	estate->es_num_result_relations = 0;
 	estate->es_result_relation_info = NULL;
@@ -168,6 +166,16 @@ CreateExecutorState(void)
 	 * Return the executor state structure
 	 */
 	MemoryContextSwitchTo(oldcontext);
+
+	/* YugaByte-specific fields
+	 * TODO(neil) Rename "es_yb" to "yb_es".  Not sure why they are named this way in the past.
+	 */
+	estate->es_yb_read_ht = 0;
+	estate->es_yb_is_single_row_modify_txn = false;
+	estate->yb_conflict_slot = NULL;
+	estate->yb_exec_params.limit_count = -1;
+	estate->yb_exec_params.limit_offset = 0;
+	estate->yb_exec_params.limit_use_default = true;
 
 	return estate;
 }

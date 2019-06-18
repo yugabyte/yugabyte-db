@@ -175,7 +175,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Execute select statement.
-  YBCPgExecSelect(pg_stmt);
+  YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
 
   // Fetching rows and check their contents.
   uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));

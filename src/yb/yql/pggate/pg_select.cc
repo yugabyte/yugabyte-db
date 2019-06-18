@@ -217,12 +217,15 @@ Status PgSelect::BindIndexColumn(int attr_num, PgExpr *attr_value) {
   return Status::OK();
 }
 
-Status PgSelect::Exec() {
+Status PgSelect::Exec(const PgExecParameters *exec_params) {
   // Delete key columns that are not bound to any values.
   RETURN_NOT_OK(DeleteEmptyPrimaryBinds());
 
   // Update bind values for constants and placeholders.
   RETURN_NOT_OK(UpdateBindPBs());
+
+  // Set execution control parameters.
+  doc_op_->SetExecParams(exec_params);
 
   // Set column references in protobuf.
   SetColumnRefIds(table_desc_, read_req_->mutable_column_refs());

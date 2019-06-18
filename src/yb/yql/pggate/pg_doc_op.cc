@@ -21,6 +21,9 @@ namespace pggate {
 PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time)
     : pg_session_(std::move(pg_session)), read_time_(read_time),
       can_restart_(!pg_session_->HasAppliedOperations()) {
+  exec_params_.limit_count = FLAGS_ysql_prefetch_limit;
+  exec_params_.limit_offset = 0;
+  exec_params_.limit_use_default = true;
 }
 
 PgDocOp::~PgDocOp() {
@@ -39,6 +42,12 @@ Result<bool> PgDocOp::EndOfResult() const {
   std::lock_guard<std::mutex> lock(mtx_);
   RETURN_NOT_OK(exec_status_);
   return !has_cached_data_ && end_of_data_;
+}
+
+void PgDocOp::SetExecParams(const PgExecParameters *exec_params) {
+  if (exec_params) {
+    exec_params_ = *exec_params;
+  }
 }
 
 Result<RequestSent> PgDocOp::Execute() {
@@ -168,13 +177,27 @@ void PgDocReadOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
   read_op_->mutable_request()->set_return_paging_state(true);
 }
 
+void PgDocReadOp::SetRequestPrefetchLimit() {
+  // Predict the maximum prefetch-limit using the associated gflags.
+  PgsqlReadRequestPB *req = read_op_->mutable_request();
+  int predicted_limit = FLAGS_ysql_prefetch_limit;
+  if (!req->is_forward_scan()) {
+    // Backward scan is slower than forward scan, so predicted limit is a smaller number.
+    predicted_limit = predicted_limit * FLAGS_ysql_backward_prefetch_scale_factor;
+  }
+
+  // Use statement LIMIT(count + offset) if it is smaller than the predicted limit.
+  int64_t limit_count = exec_params_.limit_count + exec_params_.limit_offset;
+  if (exec_params_.limit_use_default || limit_count > predicted_limit) {
+    limit_count = predicted_limit;
+  }
+  req->set_limit(limit_count);
+}
+
 Status PgDocReadOp::SendRequestUnlocked() {
   CHECK(!waiting_for_response_);
 
-  PgsqlReadRequestPB *req = read_op_->mutable_request();
-  req->set_limit(FLAGS_ysql_prefetch_limit *
-                 (req->is_forward_scan() ? 1.0 : FLAGS_ysql_backward_prefetch_scale_factor));
-
+  SetRequestPrefetchLimit();
   SCHECK_EQ(VERIFY_RESULT(pg_session_->PgApplyAsync(read_op_, read_time_)), OpBuffered::kFalse,
             IllegalState, "YSQL read operation should not be buffered");
 
@@ -213,15 +236,15 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
     // Setup request for the next batch of data.
     const PgsqlResponsePB& res = read_op_->response();
     if (res.has_paging_state()) {
-       PgsqlReadRequestPB *req = read_op_->mutable_request();
-       // Set up paging state for next request.
-       *req->mutable_paging_state() = res.paging_state();
-       // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
-       // The docdb layer will check the target table's schema version is compatible.
-       // This allows long-running queries to continue in the presence of other DDL statements
-       // as long as they do not affect the table(s) being queried.
-       req->clear_ysql_catalog_version();
-     } else {
+      PgsqlReadRequestPB *req = read_op_->mutable_request();
+      // Set up paging state for next request.
+      *req->mutable_paging_state() = res.paging_state();
+      // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
+      // The docdb layer will check the target table's schema version is compatible.
+      // This allows long-running queries to continue in the presence of other DDL statements
+      // as long as they do not affect the table(s) being queried.
+      req->clear_ysql_catalog_version();
+    } else {
       end_of_data_ = true;
     }
   } else {

@@ -235,6 +235,8 @@ typedef struct YbFdwExecState
 	/* The handle for the internal YB Select statement. */
 	YBCPgStatement	handle;
 	ResourceOwner	stmt_owner;
+	YBCPgExecParameters *exec_params; /* execution control parameters for YugaByte */
+	bool is_exec_done; /* Each statement should be executed exactly one time */
 } YbFdwExecState;
 
 /*
@@ -272,6 +274,8 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;
+	ybc_state->exec_params = &estate->yb_exec_params;
+	ybc_state->is_exec_done = false;
 
 	/* Set scan targets. */
 	bool has_targets = false;
@@ -340,11 +344,6 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	                                                        yb_catalog_cache_version),
 	                            ybc_state->handle,
 	                            ybc_state->stmt_owner);
-
-	/* Execute the select statement. */
-	HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybc_state->handle),
-	                            ybc_state->handle,
-	                            ybc_state->stmt_owner);
 }
 
 /*
@@ -358,6 +357,19 @@ ybcIterateForeignScan(ForeignScanState *node)
 	TupleTableSlot *slot      = node->ss.ss_ScanTupleSlot;
 	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
 	bool           has_data   = false;
+
+	/* Execute the select statement one time.
+	 * TODO(neil) Check whether YugaByte PgGate should combine Exec() and Fetch() into one function.
+	 * - The first fetch from YugaByte PgGate requires a number of operations including allocating
+	 *   operators and protobufs. These operations are done by YBCPgExecSelect() function.
+	 * - The subsequent fetches don't need to setup the query with these operations again.
+	 */
+	if (!ybc_state->is_exec_done) {
+		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params),
+																ybc_state->handle,
+																ybc_state->stmt_owner);
+		ybc_state->is_exec_done = true;
+	}
 
 	/* Clear tuple slot before starting */
 	ExecClearTuple(slot);
@@ -406,6 +418,8 @@ ybcFreeStatementObject(YbFdwExecState* yb_fdw_exec_state)
 										yb_fdw_exec_state->handle);
 		yb_fdw_exec_state->handle = NULL;
 		yb_fdw_exec_state->stmt_owner = NULL;
+		yb_fdw_exec_state->exec_params = NULL;
+		yb_fdw_exec_state->is_exec_done = false;
 	}
 }
 
