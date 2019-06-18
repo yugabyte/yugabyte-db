@@ -98,6 +98,28 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  protected static int getPerfMaxRuntime(int releaseRuntime,
+                                         int debugRuntime,
+                                         int asanRuntime,
+                                         int tsanRuntime,
+                                         int macRuntime) {
+    if (TestUtils.isReleaseBuild()) {
+      return releaseRuntime;
+    } else if (TestUtils.IS_LINUX) {
+      if (SanitizerUtil.isASAN()) {
+        return asanRuntime;
+      } else if (SanitizerUtil.isTSAN()) {
+        return tsanRuntime;
+      } else {
+        // Linux debug builds.
+        return debugRuntime;
+      }
+    } else {
+      // We get a lot of timeouts in macOS debug builds.
+      return macRuntime;
+    }
+  }
+
   private Map<String, String> getMasterAndTServerFlags() {
     Map<String, String> flagMap = new TreeMap<>();
     flagMap.put(
@@ -852,5 +874,28 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   public int getTestMethodTimeoutSec() {
     // initdb takes a really long time on macOS in debug mode.
     return 1200;
+  }
+
+  // Time execution time of a statement.
+  protected void timeQueryWithRowCount(String stmt, int expectedRowCount, long maxRuntimeMillis)
+      throws Exception {
+    LOG.info(String.format("Exec query: %s", stmt));
+    final long runtimeMillis = System.currentTimeMillis();
+
+    // Query and check row count.
+    int rowCount = 0;
+    try (Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery(stmt)) {
+        while (rs.next()) {
+          rowCount++;
+        }
+      }
+    }
+    assertEquals(rowCount, expectedRowCount);
+
+    // Check the elapsed time.
+    long elapsedTimeMillis = System.currentTimeMillis() - runtimeMillis;
+    LOG.info(String.format("Complete query: %s. Elapsed time = %d msecs", stmt, elapsedTimeMillis));
+    assertTrue(elapsedTimeMillis < maxRuntimeMillis);
   }
 }

@@ -54,6 +54,15 @@ typedef struct YbScanDescData
 	bool			is_exec_done;
 
 	Relation index;
+
+	/* Kept execution control to pass it to PgGate.
+	 * - When YBC-index-scan layer is called by Postgres IndexScan functions, it will read the
+	 *   "yb_exec_params" from Postgres IndexScan and kept the info in this attribute.
+	 *
+	 * - YBC-index-scan in-turn will passes this attribute to PgGate to control the index-scan
+	 *   execution in YB tablet server.
+	 */
+	YBCPgExecParameters *exec_params;
 } YbScanDescData;
 
 typedef struct YbScanDescData *YbScanDesc;

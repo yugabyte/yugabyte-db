@@ -186,7 +186,7 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 		HandleYBStmtStatusWithOwner(YBCPgSetForwardScan(ybScan->handle, is_forward_scan),
 									ybScan->handle,
 									ybScan->stmt_owner);
-		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybScan->handle),
+		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybScan->handle, ybScan->exec_params),
 									ybScan->handle,
 									ybScan->stmt_owner);
 		ybScan->is_exec_done = true;
@@ -237,7 +237,7 @@ static IndexTuple ybcFetchNextIndexTuple(YbScanDesc ybScan, Relation index, bool
 		HandleYBStmtStatusWithOwner(YBCPgSetForwardScan(ybScan->handle, is_forward_scan),
 									ybScan->handle,
 									ybScan->stmt_owner);
-		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybScan->handle),
+		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybScan->handle, ybScan->exec_params),
 									ybScan->handle,
 									ybScan->stmt_owner);
 		ybScan->is_exec_done = true;
@@ -383,6 +383,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
 	ybScan->key   = key;
 	ybScan->nkeys = nkeys;
+	ybScan->exec_params = NULL;
 
 	/* Setup up the scan plan */
 	YbScanPlanData	scan_plan;
@@ -825,6 +826,7 @@ HeapTuple ybc_systable_getnext(SysScanDesc scan_desc)
 HeapTuple ybc_pkey_getnext(IndexScanDesc scan_desc, bool is_forward_scan)
 {
 	YbScanDesc ybscan = (YbScanDesc) scan_desc->opaque;
+	ybscan->exec_params = scan_desc->yb_exec_params;
 	Assert(PointerIsValid(ybscan));
 
 	return ybc_getnext_heaptuple(ybscan, is_forward_scan, &scan_desc->xs_recheck);
@@ -833,6 +835,7 @@ HeapTuple ybc_pkey_getnext(IndexScanDesc scan_desc, bool is_forward_scan)
 IndexTuple ybc_index_getnext(IndexScanDesc scan_desc, bool is_forward_scan)
 {
 	YbScanDesc ybscan = (YbScanDesc) scan_desc->opaque;
+	ybscan->exec_params = scan_desc->yb_exec_params;
 	Assert(PointerIsValid(ybscan));
 
 	return ybc_getnext_indextuple(ybscan, is_forward_scan, &scan_desc->xs_recheck);
@@ -998,8 +1001,10 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 									   &type_attrs);
 	HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, expr), ybc_stmt);
 
-	/* Execute the select statement. */
-	HandleYBStmtStatus(YBCPgExecSelect(ybc_stmt), ybc_stmt);
+	/* Execute the select statement.
+	 * This select statement fetch the row for a specific YBCTID, LIMIT setting is not needed.
+	 */
+	HandleYBStmtStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */), ybc_stmt);
 
 	HeapTuple tuple    = NULL;
 	bool      has_data = false;

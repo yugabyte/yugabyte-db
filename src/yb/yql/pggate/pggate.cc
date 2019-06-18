@@ -652,12 +652,12 @@ Status PgApiImpl::SetForwardScan(PgStatement *handle, bool is_forward_scan) {
   return Status::OK();
 }
 
-Status PgApiImpl::ExecSelect(PgStatement *handle) {
+Status PgApiImpl::ExecSelect(PgStatement *handle, const PgExecParameters *exec_params) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-  return down_cast<PgSelect*>(handle)->Exec();
+  return down_cast<PgSelect*>(handle)->Exec(exec_params);
 }
 
 //--------------------------------------------------------------------------------------------------

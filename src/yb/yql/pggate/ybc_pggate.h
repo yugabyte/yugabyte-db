@@ -316,7 +316,7 @@ YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
 // Set forward/backward scan direction.
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
 
-YBCStatus YBCPgExecSelect(YBCPgStatement handle);
+YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params);
 
 // Transaction control -----------------------------------------------------------------------------
 YBCPgTxnManager YBCGetPgTxnManager();
