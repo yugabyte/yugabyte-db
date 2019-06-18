@@ -116,11 +116,11 @@ INSERT INTO yb_charn_in_value(f1) VALUES ('abcd    ');
 SELECT * FROM yb_charn_in_value ORDER BY f1;
   f1
 ------
+  abc
  a
  ab
  abc
  abc
-  abc
  abcd
  abcd
 (7 rows)
@@ -154,10 +154,10 @@ ERROR:  duplicate key value violates unique constraint "yb_charn_in_key_pkey"
 SELECT * FROM yb_charn_in_key ORDER BY f1;
   f1
 ------
+  abc
  a
  ab
  abc
-  abc
  abcd
 (5 rows)
 

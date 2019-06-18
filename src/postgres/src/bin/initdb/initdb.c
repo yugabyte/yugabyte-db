@@ -2417,9 +2417,22 @@ setlocales(void)
 {
 	char	   *canonname;
 
-	/* set "C" as default locale in YB mode */
-  if (!locale && (IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb()))
-    locale = "C";
+	/* Use LC_COLLATE=C with everything else as en_US.UTF-8 as default locale in YB mode. */
+	/* This is because as of 06/15/2019 we don't support collation-aware string comparisons, */
+	/* but we still want to support storing UTF-8 strings. */
+	if (!locale && (IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb())) {
+		const char *kYBDefaultLocaleForSortOrder = "C";
+		const char *kYBDefaultLocaleForEncoding = "en_US.UTF-8";
+
+		locale = pg_strdup(kYBDefaultLocaleForEncoding);
+		lc_collate = pg_strdup(kYBDefaultLocaleForSortOrder);
+		fprintf(
+			stderr,
+			_("In YugaByte DB, setting LC_COLLATE to %s and all other locale settings to %s "
+			  "by default. Locale support will be enhanced as part of addressing "
+			  "https://github.com/YugaByte/yugabyte-db/issues/1557"),
+			lc_collate, locale);
+	}
 
 	/* set empty lc_* values to locale config if set */
 

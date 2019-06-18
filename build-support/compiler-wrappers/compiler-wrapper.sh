@@ -570,12 +570,12 @@ if [[ ${build_type:-} == "asan" &&
   compiler_args=( "${rewritten_args[@]}" -fno-sanitize=undefined )
 fi
 
-if "$is_linking" && [[
+if "$is_linking" && ! is_configure_mode_invocation && [[
       ${build_type:-} == "compilecmds" &&
       ${YB_SKIP_LINKING:-0} == "1" &&
-      $output_file != *libpq* &&
+      ( $output_file == *libpqwalreceiver* || $output_file != *libpq* ) &&
       $output_file != *libpgtypes*
-   ]] && ! is_configure_mode_invocation; then
+   ]]; then
   log "Skipping linking in compilecmds mode for output file $output_file"
   exit 0
 fi
