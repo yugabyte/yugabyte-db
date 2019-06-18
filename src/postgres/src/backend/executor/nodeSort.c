@@ -78,6 +78,15 @@ ExecSort(PlanState *pstate)
 		estate->es_direction = ForwardScanDirection;
 
 		/*
+		 * Use default prefetch limit when ORDER BY is present.
+		 * YugaByte doesn't sort the row, but Postgres layer does. YB has to do full scan and let
+		 * Postgres engine sort and limit the rows.
+		 */
+		if (IsYugaByteEnabled()) {
+			estate->yb_exec_params.limit_use_default = true;
+		}
+
+		/*
 		 * Initialize tuplesort module.
 		 */
 		SO1_printf("ExecSort: %s\n",

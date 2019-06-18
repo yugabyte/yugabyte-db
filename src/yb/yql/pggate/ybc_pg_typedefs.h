@@ -163,6 +163,29 @@ typedef struct PgSysColumns {
   uint8_t *ybbasectid;
 } YBCPgSysColumns;
 
+// Structure to hold the execution-control parameters.
+typedef struct PgExecParameters {
+  // TODO(neil) Move forward_scan flag here.
+  // Scan parameters.
+  // bool is_forward_scan;
+
+  // LIMIT parameters for executing DML read.
+  // - limit_count is the value of SELECT ... LIMIT
+  // - limit_offset is value of SELECT ... OFFSET
+  // - limit_use_default: Although count and offset are pushed down to YugaByte from Postgres,
+  //   they are not always being used to identify the number of rows to be read from DocDB.
+  //   Full-scan is needed when further operations on the rows are not done by YugaByte.
+  //
+  //   Examples:
+  //   o WHERE clause is not processed by YugaByte. All rows must be sent to Postgres code layer
+  //     for filtering before LIMIT is applied.
+  //   o ORDER BY clause is not processed by YugaByte. Similarly all rows must be fetched and sent
+  //     to Postgres code layer.
+  uint64_t limit_count;
+  uint64_t limit_offset;
+  bool limit_use_default;
+} YBCPgExecParameters;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

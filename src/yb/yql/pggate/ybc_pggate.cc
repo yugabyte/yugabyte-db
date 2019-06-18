@@ -470,8 +470,8 @@ YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
   return ToYBCStatus(pgapi->SetForwardScan(handle, is_forward_scan));
 }
 
-YBCStatus YBCPgExecSelect(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->ExecSelect(handle));
+YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params) {
+  return ToYBCStatus(pgapi->ExecSelect(handle, exec_params));
 }
 
 //--------------------------------------------------------------------------------------------------

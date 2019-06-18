@@ -61,7 +61,7 @@ class PgSelect : public PgDml {
   }
 
   // Execute.
-  CHECKED_STATUS Exec();
+  CHECKED_STATUS Exec(const PgExecParameters *exec_params);
 
   void SetCatalogCacheVersion(const uint64_t catalog_cache_version) override {
     DCHECK_NOTNULL(read_req_)->set_ysql_catalog_version(catalog_cache_version);

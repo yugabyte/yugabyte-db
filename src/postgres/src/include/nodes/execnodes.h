@@ -31,6 +31,7 @@
 #include "nodes/tidbitmap.h"
 #include "storage/condition_variable.h"
 
+#include "pg_yb_utils.h"
 
 struct PlanState;				/* forward references in this file */
 struct ParallelHashJoinState;
@@ -587,6 +588,7 @@ typedef struct EState
 	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
 																		 * we cache the conflict tuple here when processing and
 																		 * then free the slot after the conflict is resolved. */
+	YBCPgExecParameters yb_exec_params;
 } EState;
 
 

@@ -129,6 +129,13 @@ IndexNext(IndexScanState *node)
 	}
 
 	/*
+	 * Setup LIMIT and future execution parameter before calling YugaByte scanning rountines.
+	 */
+	if (IsYugaByteEnabled()) {
+		scandesc->yb_exec_params = &estate->yb_exec_params;
+	}
+
+	/*
 	 * ok, now that we have what we need, fetch the next tuple.
 	 */
 	while ((tuple = index_getnext(scandesc, direction)) != NULL)
