@@ -148,6 +148,8 @@ void set_remaining(int pending_tasks, int* remaining_tasks) {
 ClusterLoadBalancer::~ClusterLoadBalancer() = default;
 
 void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
+  uint32_t master_errors = 0;
+
   if (!is_enabled_) {
     LOG(INFO) << "Load balancing is not enabled.";
     return;
@@ -201,7 +203,12 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     state_->options_ = options;
 
     // Prepare the in-memory structures.
-    YB_WARN_NOT_OK(AnalyzeTablets(table.first), "Skipping load balancing " + table.first);
+    auto handle_analyze_tablets = AnalyzeTablets(table.first);
+    if (!handle_analyze_tablets.ok()) {
+      LOG(WARNING) << "Skipping load balancing " << table.first << ": "
+        << StatusToString(handle_analyze_tablets);
+      master_errors++;
+    }
 
     // Output parameters are unused in the load balancer, but useful in testing.
     TabletId out_tablet_id;
@@ -214,6 +221,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       if (!handle_add.ok()) {
         LOG(WARNING) << "Skipping add replicas for " << table.first << ": "
                      << StatusToString(handle_add);
+        master_errors++;
         break;
       }
       if (!*handle_add) {
@@ -228,6 +236,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       if (!handle_remove.ok()) {
         LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
                      << StatusToString(handle_remove);
+        master_errors++;
         break;
       }
       if (!*handle_remove) {
@@ -242,6 +251,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       if (!handle_leader.ok()) {
         LOG(WARNING) << "Skipping leader moves for " << table.first << ": "
                      << StatusToString(handle_leader);
+        master_errors++;
         break;
       }
       if (!*handle_leader) {
@@ -255,10 +265,10 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     }
   }
 
-  RecordActivity();
+  RecordActivity(master_errors);
 }
 
-void ClusterLoadBalancer::RecordActivity() {
+void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
   uint32_t table_tasks = 0;
   for (const auto& table : GetTableMap()) {
     table_tasks += table.second->NumTasks();
@@ -271,24 +281,25 @@ void ClusterLoadBalancer::RecordActivity() {
     tserver_tasks += ts_desc->NumTasks();
   }
 
+  struct ActivityInfo ai {table_tasks, tserver_tasks, master_errors};
+
   // Update circular buffer summary.
 
-  if (table_tasks == 0 && tserver_tasks == 0) {
+  if (ai.IsIdle()) {
     num_idle_runs_++;
   } else {
-    VLOG(1) << Substitute("Load balancer has $0 table tasks and $1 tserver tasks",
-        table_tasks, tserver_tasks);
+    VLOG(1) <<
+      Substitute("Load balancer has $0 table tasks, $1 tserver tasks, and $2 master errors",
+          table_tasks, tserver_tasks, master_errors);
   }
 
   if (cbuf_activities_.full()) {
-    if (cbuf_activities_.front().table_tasks == 0 &&
-        cbuf_activities_.front().tserver_tasks == 0) {
+    if (cbuf_activities_.front().IsIdle()) {
       num_idle_runs_--;
     }
   }
 
   // Mutate circular buffer.
-  struct ActivityInfo ai {table_tasks, tserver_tasks};
   cbuf_activities_.push_back(std::move(ai));
 
   // Update state.
@@ -297,7 +308,7 @@ void ClusterLoadBalancer::RecordActivity() {
 
 Status ClusterLoadBalancer::IsIdle() const {
   return (is_enabled_ && !is_idle_.load(std::memory_order_acquire)) ?
-    STATUS(TryAgain, "Task encountered recently.") : Status::OK();
+    STATUS(IllegalState, "Task or error encountered recently.") : Status::OK();
 }
 
 void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {

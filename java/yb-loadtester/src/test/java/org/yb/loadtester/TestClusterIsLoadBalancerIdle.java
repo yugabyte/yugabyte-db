@@ -66,8 +66,8 @@ public class TestClusterIsLoadBalancerIdle extends TestClusterBase {
 
     verifyClusterHealth(NUM_TABLET_SERVERS + 1);
 
-    // Load should NOT be balanced and load balancer should be idle.
-    assertFalse(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS + 1));
+    // Load should be balanced and load balancer should be idle.
+    assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS + 1));
     assertTrue(client.waitForLoadBalancerIdle(LOADBALANCE_TIMEOUT_MS));
   }
 }
