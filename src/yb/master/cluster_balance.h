@@ -297,6 +297,11 @@ class ClusterLoadBalancer {
   struct ActivityInfo {
     uint32_t table_tasks = 0;
     uint32_t tserver_tasks = 0;
+    uint32_t master_errors = 0;
+
+    bool IsIdle() const {
+      return table_tasks == 0 && tserver_tasks == 0 && master_errors == 0;
+    }
   };
 
   // Circular buffer of load balancer activity.
@@ -307,7 +312,7 @@ class ClusterLoadBalancer {
   std::atomic<bool> is_idle_ {true};
 
   // Record load balancer activity for tables and tservers.
-  void RecordActivity();
+  void RecordActivity(uint32_t master_errors);
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };
