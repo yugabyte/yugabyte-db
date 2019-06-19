@@ -201,7 +201,6 @@ class UniverseForm extends Component {
           diskIops: formValues[clusterType].diskIops,
           mountPoints: formValues[clusterType].mountPoints,
           storageType: formValues[clusterType].storageType,
-          storageClass: formValues[clusterType].storageClass
         },
       };
       const currentProvider = self.getCurrentProvider(formValues[clusterType].provider).code;
@@ -466,7 +465,7 @@ class PrimaryClusterFields extends Component {
         'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.ybSoftwareVersion',
         'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
         'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.enableNodeToNodeEncrypt',
-        'primary.enableClientToNodeEncrypt', 'primary.storageClass']} component={ClusterFields} {...this.props} clusterType={"primary"} />
+        'primary.enableClientToNodeEncrypt']} component={ClusterFields} {...this.props} clusterType={"primary"} />
     );
   }
 }
@@ -478,7 +477,7 @@ class ReadOnlyClusterFields extends Component {
         'async.numNodes', 'async.instanceType', 'async.ybSoftwareVersion', 'async.diskIops',
         'async.numVolumes','async.volumeSize',
         'async.storageType', 'async.assignPublicIP', 'async.useTimeSync', 'async.enableYSQL', 'async.enableNodeToNodeEncrypt',
-        'async.enableClientToNodeEncrypt', 'async.storageClass']}
+        'async.enableClientToNodeEncrypt']}
       component={ClusterFields} {...this.props} clusterType={"async"}/>
     );
   }
