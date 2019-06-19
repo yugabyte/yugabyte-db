@@ -6,8 +6,8 @@ import { Field, FieldArray } from 'redux-form';
 import {browserHistory} from 'react-router';
 import _ from 'lodash';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyString, areIntentsEqual, isEmptyObject,
-  isNonEmptyArray, isEmptyString, trimSpecialChars } from 'utils/ObjectUtils';
-import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBControlledSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
+  isNonEmptyArray, trimSpecialChars } from 'utils/ObjectUtils';
+import { YBTextInput, YBTextInputWithLabel, YBSelectWithLabel, YBMultiSelectWithLabel, YBRadioButtonBarWithLabel,
   YBToggle, YBUnControlledNumericInput, YBControlledNumericInputWithLabel } from 'components/common/forms/fields';
 import { getPromiseState } from 'utils/PromiseUtils';
 import AZSelectorTable from './AZSelectorTable';
@@ -58,8 +58,7 @@ const initialState = {
   useTimeSync: false,
   enableYSQL: false,
   enableNodeToNodeEncrypt: false,
-  enableClientToNodeEncrypt: false,
-  storageClass: ''
+  enableClientToNodeEncrypt: false
 };
 
 
@@ -142,7 +141,6 @@ export default class ClusterFields extends Component {
           enableClientToNodeEncrypt: userIntent.enableClientToNodeEncrypt,
           accessKeyCode: userIntent.accessKeyCode,
           deviceInfo: userIntent.deviceInfo,
-          storageClass: userIntent.deviceInfo.storageClass,
           storageType: storageType,
           regionList: userIntent.regionList,
           volumeType: (storageType === null) ? "SSD" : "EBS" //TODO(wesley): fixme - establish volumetype/storagetype relationship
@@ -252,11 +250,6 @@ export default class ClusterFields extends Component {
     if (isNonEmptyArray(nextProps.softwareVersions) && isNonEmptyObject(this.props.formValues[clusterType]) && !isNonEmptyString(this.props.formValues[clusterType].ybSoftwareVersion)) {
       this.setState({ybSoftwareVersion: nextProps.softwareVersions[0]});
       this.props.updateFormField(`${clusterType}.ybSoftwareVersion`, nextProps.softwareVersions[0]);
-    }
-
-    if (isNonEmptyArray(this.getStorageClasses()) && !isDefinedNotNull(this.state.storageClass)) {
-      this.setState({storageClass: this.getStorageClasses()[0]});
-      this.props.updateFormField(`${clusterType}.storageClass`, this.getStorageClasses()[0]);
     }
 
     // Form Actions on Create Universe Success
@@ -421,8 +414,7 @@ export default class ClusterFields extends Component {
           numVolumes: formValues[clusterType].numVolumes,
           diskIops: formValues[clusterType].diskIops,
           mountPoints: formValues[clusterType].mountPoints,
-          storageType: formValues[clusterType].storageType,
-          storageClass: formValues[clusterType].storageClass,
+          storageType: formValues[clusterType].storageType
         },
         accessKeyCode: formValues[clusterType].accessKeyCode,
         gflags: formValues[clusterType].gflags,
@@ -430,8 +422,7 @@ export default class ClusterFields extends Component {
         useTimeSync: formValues[clusterType].useTimeSync,
         enableYSQL: formValues[clusterType].enableYSQL,
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
-        enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
-        storageClass: formValues[clusterType].storageClass
+        enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt
       };
     }
   };
@@ -650,8 +641,7 @@ export default class ClusterFields extends Component {
         numVolumes: formValues[clusterType].numVolumes,
         mountPoints: formValues[clusterType].mountPoints,
         storageType: formValues[clusterType].storageType,
-        diskIops: formValues[clusterType].diskIops,
-        storageClass: formValues[clusterType].storageClass
+        diskIops: formValues[clusterType].diskIops
       },
       accessKeyCode: formValues[clusterType].accessKeyCode
     };
@@ -730,11 +720,6 @@ export default class ClusterFields extends Component {
     this.props.updateFormField(`${clusterType}.accessKeyCode`, event.target.value);
   }
 
-  storageClassChanged = (value) => {
-    const {clusterType} = this.props;
-    this.props.updateFormField(`${clusterType}.storageClass`, value);
-  }
-
   instanceTypeChanged(value) {
     const {updateFormField, clusterType} = this.props;
     const instanceTypeValue = value;
@@ -750,18 +735,6 @@ export default class ClusterFields extends Component {
     const currentProvider = providers.data.find((a)=>(a.uuid === formValues[clusterType].provider));
     if (!isNonEmptyString(formValues[clusterType].instanceType)) {
       updateFormField(`${clusterType}.instanceType`, DEFAULT_INSTANCE_TYPE_MAP[currentProvider.code]);
-    }
-  }
-
-  getStorageClasses() {
-    const currentProvider = this.getCurrentProvider(this.state.providerSelected);
-    if (!isDefinedNotNull(currentProvider) || currentProvider.code !== "kubernetes") {
-      return null;
-    }
-    if (!isDefinedNotNull(currentProvider.config.KUBECONFIG_STORAGE_CLASSES) || isEmptyString(currentProvider.config.KUBECONFIG_STORAGE_CLASSES)) {
-      return ['standard'];
-    } else {
-      return currentProvider.config.KUBECONFIG_STORAGE_CLASSES.split(",").map(val => val.trim());
     }
   }
 
@@ -796,7 +769,6 @@ export default class ClusterFields extends Component {
     let storageTypeSelector = <span/>;
     let deviceDetail = null;
     let iopsField = <span/>;
-    let storageClassField = <span/>;
     function volumeTypeFormat(num) {
       return num + ' GB';
     }
@@ -842,20 +814,6 @@ export default class ClusterFields extends Component {
           currentProvider.code !== 'kubernetes' && deviceInfo.storageType === "Scratch";
         const fixedNumVolumes = self.state.volumeType === 'SSD' &&
           currentProvider.code !== 'kubernetes' && currentProvider.code !== 'gcp';
-        if (currentProvider.code === 'kubernetes') {
-          const storageClassOptions = this.getStorageClasses().sort().map(function(storageClassName, idx) {
-            return (
-              <option key={"storageClass-" + idx} value={storageClassName}>
-                {storageClassName}
-              </option>
-            );
-          });
-
-          storageClassField = (<Field name={`${clusterType}.storageClass`} type="select"
-            component={YBControlledSelectWithLabel} label="Storage Class" readOnly={isFieldReadOnly}
-            options={storageClassOptions} onInputChanged={self.storageClassChanged} />);
-        }
-
         const isIoType = deviceInfo.storageType === 'IO1';
         if (isIoType) {
           iopsField = (
@@ -1216,7 +1174,6 @@ export default class ClusterFields extends Component {
             </Col>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
-                {storageClassField}
                 {selectTlsCert}
                 {assignPublicIP}
                 {useTimeSync}
