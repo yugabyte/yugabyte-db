@@ -178,7 +178,6 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].volumeSize = userIntent.deviceInfo.volumeSize;
     data[clusterType].storageType = userIntent.deviceInfo.storageType;
     data[clusterType].mountPoints = userIntent.deviceInfo.mountPoints;
-    data[clusterType].storageClass = userIntent.deviceInfo.storageClass;
 
     data[clusterType].regionList = cluster.regions.map((item) => {
       return {value: item.uuid, name: item.name, label: item.name};
@@ -248,11 +247,11 @@ function mapStateToProps(state, ownProps) {
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
       'primary.diskIops', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL',
-      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.storageClass', 'primary.tlsCertificateId',
+      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.tlsCertificateId',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
       'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.ybSoftwareVersion', 'async.accessKeyCode',
       'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.storageType', 'async.assignPublicIP',
-      'async.enableYSQL', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints', 'async.useTimeSync', 'async.storageClass', 'masterGFlags', 'tserverGFlags', 'instanceTags' )
+      'async.enableYSQL', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints', 'async.useTimeSync', 'masterGFlags', 'tserverGFlags', 'instanceTags' )
   };
 }
 
