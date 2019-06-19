@@ -847,8 +847,8 @@ tserver_remote_bootstraps:
   filters:
     export_type: "tserver_export"
     server_type: "yb_consensus"
-    service_type: "ConsensusService"
-    service_method: "StartRemoteBootstrap"
+    service_type: "RemoteBootstrapService"
+    service_method: "BeginRemoteBootstrapSession"
   layout:
     title: "Remote Bootstraps"
     xaxis:
