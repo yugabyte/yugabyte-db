@@ -1,0 +1,3 @@
+{{ with .Get "class"}}<div class="admonition hero {{.}}">{{ end }}
+<p class="admonition-title">{{ .Get "title" }}</p>
+{{ printf "%s" .Inner | markdownify }}</div>
