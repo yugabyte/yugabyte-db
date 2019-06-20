@@ -24,7 +24,6 @@
           "thirdparty/installed/common/cqlsh/bin/cqlsh.py",
           "thirdparty/installed/common/bin/redis-cli",
           "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof"],
-  "configs": [],
   "lib"      : ["thirdparty/installed/common/cqlsh/lib/*"],
   "pylib"    : ["thirdparty/installed/common/cqlsh/pylib/*"],
   "share": [

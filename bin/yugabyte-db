@@ -31,18 +31,18 @@ yugabyte
 """
 
 YUGABYTE_DIR = os.path.dirname(os.path.realpath(__file__))
-CONF_DIR = os.path.join(YUGABYTE_DIR, "conf")
+DEFAULT_CONF_DIR = os.path.join(YUGABYTE_DIR, "conf")
 BIN_DIR = os.path.join(YUGABYTE_DIR, "bin")
 DEFAULT_DATA_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-data")
 DEFAULT_LOG_DIR = os.path.join(YUGABYTE_DIR, "yugabyte-logs")
-DEFAULT_CONF = os.path.join(CONF_DIR, "yugabyte-db.conf")
+DEFAULT_CONF = os.path.join(DEFAULT_CONF_DIR, "yugabyte-db.conf")
 DEFAULT_MASTER_PORT = 7100
 DEFAULT_YSQL_PORT = 5433
 DEFAULT_YCQL_PORT = 9042
 DEFAULT_YEDIS_PORT = 6379
 VERSION_METADATA_PATH = os.path.join(YUGABYTE_DIR, "version_metadata.json")
-YUGABYTE_APIS = {
-    "ysql": "psql",
+YUGABYTE_API_CLIENT_PROGRAMS = {
+    "ysql": "ysqlsh",
     "ycql": "cqlsh",
     "yedis": "redis-cli"
 }
@@ -100,21 +100,25 @@ class YugaByteProcessManager(object):
             print(self.get_status_string(title, info_kv_list))
 
     def connect_ysql(self):
-        log_error_and_exit("Connecting to YSQL is a work in progress. Use bin/psql instead.")
+        if self.get_failed_processes():
+            log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
+        path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ysql"])
+        cmd = [path, "-p", self.configs.ysql_port]
+        os.execv(path, cmd)
 
     def connect_ycql(self):
         if self.get_failed_processes():
             log_error_and_exit("YugaByte DB is not running. Cannot connect to YCQL.")
-        path = os.path.join(BIN_DIR, YUGABYTE_APIS["ycql"])
-        cmd = "{} 127.0.0.1 {}".format(path, self.configs.ycql_port)
-        os.execv(path, cmd.split())
+        path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
+        cmd = [path, "127.0.0.1", self.configs.ycql_port]
+        os.execv(path, cmd)
 
     def connect_yedis(self):
         if self.get_failed_processes():
             log_error_and_exit("YugaByte DB is not running. Cannot connect to YEDIS.")
-        path = os.path.join(BIN_DIR, YUGABYTE_APIS["yedis"])
-        cmd = "{} -h 127.0.0.1 -p {}".format(path, self.configs.yedis_port)
-        os.execv(path, cmd.split())
+        path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["yedis"])
+        cmd = [path, "-h", "127.0.0.1", "-p", self.configs.yedis_port]
+        os.execv(path, cmd)
 
     # TODO: Check postmaster.pid when ysql is enabled.
     def get_failed_processes(self):
@@ -157,12 +161,16 @@ class YugaByteProcessManager(object):
             "--rpc_bind_addresses", "127.0.0.1"]
         master_address = "127.0.0.1:{}".format(self.configs.master_port)
         yb_master_cmd = [os.path.join(BIN_DIR, "yb-master")] + common_args + \
-            ["--master_addresses={}".format(master_address)]
+            ["--master_addresses={}".format(master_address),
+             "--replication_factor", "1",
+             "--use_initial_sys_catalog_snapshot"]
         yb_tserver_cmd = [os.path.join(BIN_DIR, "yb-tserver")] + common_args + \
             ["--tserver_master_addrs={}".format(master_address),
              "--cql_proxy_bind_address", "127.0.0.1:{}".format(self.configs.ycql_port),
              "--redis_proxy_bind_address", "127.0.0.1:{}".format(self.configs.yedis_port),
-             "--server_dump_info_path", os.path.join(self.configs.data_dir, "tserver-info")]
+             "--server_dump_info_path", os.path.join(self.configs.data_dir, "tserver-info"),
+             "--start_pgsql_proxy", "--pgsql_proxy_bind_address",
+             "127.0.0.1:{}".format(self.configs.ysql_port)]
         self.processes = [
             ProcessManager("master", yb_master_cmd, self.configs.log_dir, self.configs.data_dir),
             ProcessManager("tserver", yb_tserver_cmd, self.configs.log_dir, self.configs.data_dir)
@@ -179,6 +187,7 @@ class YugaByteProcessManager(object):
                 return
 
         should_print_startup = True
+        # TODO: Should yedis be initialized from the start?
         if not initialized:
             yb_master_cmd.extend(
                 ["--server_dump_info_path", os.path.join(self.configs.data_dir, "master-info")])
@@ -248,6 +257,10 @@ class YugaByteProcessManager(object):
 
     def validate_and_set_configs(self, args):
         has_errors = False
+        conf_dir = os.path.dirname(args.config)
+        if not os.path.isdir(conf_dir):
+            os.makedirs(conf_dir)
+
         self.configs = Configs.parse_config_file(args.config)
 
         for path_args in ("data_dir", "config", "log_dir"):
@@ -291,8 +304,9 @@ class YugaByteProcessManager(object):
         common_parser = argparse.ArgumentParser(add_help=False)
         common_parser.add_argument(
             "--config", default=DEFAULT_CONF, help="Yugabyte DB configuration file")
+        # TODO: Refactor data_dir to be a list for multi-node.
         common_parser.add_argument(
-            "--data_dir", help="Directory where YugaByte DB will store data.", action="append")
+            "--data_dir", help="Directory where YugaByte DB will store data.")
 
         parser = argparse.ArgumentParser()
         all_parsers = {"default": parser}
@@ -310,7 +324,7 @@ class YugaByteProcessManager(object):
         connect = subparsers.add_parser("connect", help="Connect to an API through the CLI.")
         all_parsers["connect"] = connect
         connect_subparser = connect.add_subparsers()
-        for api in YUGABYTE_APIS:
+        for api in YUGABYTE_API_CLIENT_PROGRAMS:
             cur_parser = connect_subparser.add_parser(
                 api, help="Use {} through the CLI.".format(api.upper()), parents=[common_parser])
             func = getattr(self, "connect_{}".format(api), None)
@@ -323,9 +337,11 @@ class YugaByteProcessManager(object):
             cur_parser.add_argument(
                 "--log_dir", help="Directory to store YugaByte DB logs.")
             cur_parser.add_argument(
-                "--yedis_port", help="Port to interact with YEDIS API.")
+                "--yedis_port", help="Port on which YEDIS will run.")
             cur_parser.add_argument(
-                "--ycql_port", help="Port to interact with YCQL API.")
+                "--ycql_port", help="Port on which YCQL will run.")
+            cur_parser.add_argument(
+                "--ysql_port", help="Port on which YSQL will run.")
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
                 "--polling_interval", default=5, help=argparse.SUPPRESS)
