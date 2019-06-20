@@ -633,12 +633,10 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
 
   TransactionStatusManagerMock txn_status_manager;
 
-  Result<TransactionId> txn1 = FullyDecodeTransactionId("0000000000000001");
-  ASSERT_OK(txn1);
-  Result<TransactionId> txn2 = FullyDecodeTransactionId("0000000000000002");
-  ASSERT_OK(txn2);
+  auto txn1 = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000001"));
+  auto txn2 = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000002"));
 
-  SetCurrentTransactionId(*txn1);
+  SetCurrentTransactionId(txn1);
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
       PrimitiveValue("row1_c_t1"), HybridTime::FromMicros(500)));
@@ -683,9 +681,9 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
       PrimitiveValue("row2_e_prime"), HybridTime::FromMicros(4000)));
 
-  txn_status_manager.Commit(*txn1, HybridTime::FromMicros(3500));
+  txn_status_manager.Commit(txn1, HybridTime::FromMicros(3500));
 
-  SetCurrentTransactionId(*txn2);
+  SetCurrentTransactionId(txn2);
   ASSERT_OK(DeleteSubDoc(
       DocPath(kEncodedDocKey1),
       HybridTime::FromMicros(4000)));
@@ -693,7 +691,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
       PrimitiveValue("row2_e_t2"), HybridTime::FromMicros(4000)));
   ResetCurrentTransactionId();
-  txn_status_manager.Commit(*txn2, HybridTime::FromMicros(6000));
+  txn_status_manager.Commit(txn2, HybridTime::FromMicros(6000));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
@@ -704,11 +702,15 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2500 }]) -> 
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2000 }]) -> 20000
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 4000 }]) -> "row2_e_prime"
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> "row2_e"
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 3 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
-SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
-SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
+SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
@@ -723,6 +725,10 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40)]) [kStrongRead, kStrongWrit
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
     HT{ physical: 500 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) WriteId(2) "row1_e_t1"
+SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
@@ -742,14 +748,18 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
+    SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 }
 TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
     HT{ physical: 4000 }
 TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 1 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 }
 TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 }
+    SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 3 }
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -907,7 +917,9 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> 
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(30); HT{ physical: 1000 }]) -> "row2_c"
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 1000 }]) -> 20000
-SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
@@ -920,8 +932,10 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
     SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
-      )#");
+    SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 }
+    )#");
 
   // Create a new IntentAwareIterator and seek to an empty DocKey. Verify that it returns the
   // first non-intent key.
@@ -954,7 +968,9 @@ TEST_F(DocRowwiseIteratorTest, SeekTwiceWithinTheSameTxn) {
 
   // Verify the content of RocksDB.
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
@@ -967,7 +983,9 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
     SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
+    SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 }
       )#");
 
   IntentAwareIterator iter(

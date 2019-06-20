@@ -284,6 +284,11 @@ class KeyBytes {
     data_.resize(new_size);
   }
 
+  void RemoveLastByte() {
+    DCHECK(!data_.empty());
+    data_.pop_back();
+  }
+
  private:
 
   std::string data_;
