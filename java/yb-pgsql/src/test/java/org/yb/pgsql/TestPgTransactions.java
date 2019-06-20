@@ -33,7 +33,31 @@ import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgTransactions extends BasePgSQLTest {
+
+  // A "skew" of 0.3 means that we expect the difference between the win percentage of the first
+  // and the second txn would be under 30% of the total number of attempts, i.e. if one transaction
+  // wins in 35% of cases and the other wins in 65% cases, we're still fine.
+  private static final double DEFAULT_SKEW_THRESHOLD = 0.3;
+
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
+
+  private static boolean isYBTransactionError(PSQLException ex) {
+    String msg = ex.getMessage();
+    // TODO: test for error codes here when we move to more PostgreSQL-friendly transaction errors.
+    return msg.contains("Conflicts with higher priority transaction") ||
+        msg.contains("Transaction expired");
+  }
+
+  private void checkTransactionFairness(
+      int numFirstWinners,
+      int numSecondWinners,
+      int totalIterations,
+      double skewThreshold) {
+    double skew = Math.abs(numFirstWinners - numSecondWinners) * 1.0 / totalIterations;
+    LOG.info("Skew between the number of wins by two connections: " + skew);
+    assertTrue("Expecting the skew to be below the threshold " + skewThreshold + ", got " + skew,
+        skew < skewThreshold);
+  }
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
@@ -42,15 +66,72 @@ public class TestPgTransactions extends BasePgSQLTest {
   }
 
   @Test
-  public void testBasicTransaction() throws Exception {
-    createSimpleTable("test", "v");
-    final IsolationLevel isolation = IsolationLevel.REPEATABLE_READ;
+  public void testSerializableWholeHashVsScanConflict() throws Exception {
+    createSimpleTable("test", "v", PartitioningMode.HASH);
+    final IsolationLevel isolation = IsolationLevel.SERIALIZABLE;
     Connection connection1 = createConnection(isolation, AutoCommit.DISABLED);
+    Statement statement1 = connection1.createStatement();
+
+    Connection connection2 = createConnection(isolation, AutoCommit.ENABLED);
+    Statement statement2 = connection2.createStatement();
+
+    int numSuccess1 = 0;
+    int numSuccess2 = 0;
+    final int TOTAL_ITERATIONS = 100;
+    for (int i = 0; i < TOTAL_ITERATIONS; ++i) {
+      int h1 = i;
+      LOG.debug("Inserting the first row within a transaction but not committing yet");
+      statement1.execute("INSERT INTO test(h, r, v) VALUES (" + h1 + ", 2, 3)");
+
+      LOG.debug("Trying to read the first row from another connection");
+
+      PSQLException ex2 = null;
+      try {
+        assertFalse(statement2.executeQuery("SELECT h, r, v FROM test WHERE h = " + h1).next());
+      } catch (PSQLException ex) {
+        ex2 = ex;
+      }
+
+      PSQLException ex1 = null;
+      try {
+        connection1.commit();
+      } catch (PSQLException ex) {
+        ex1 = ex;
+      }
+
+      final boolean succeeded1 = ex1 == null;
+      final boolean succeeded2 = ex2 == null;
+      assertNotEquals("Expecting exactly one transaction to succeed", succeeded1, succeeded2);
+      LOG.info("ex1=" + ex1);
+      LOG.info("ex2=" + ex2);
+      if (ex1 != null) {
+        assertTrue(isYBTransactionError(ex1));
+      }
+      if (ex2 != null) {
+        assertTrue(isYBTransactionError(ex2));
+      }
+      if (succeeded1) {
+        numSuccess1++;
+      }
+      if (succeeded2) {
+        numSuccess2++;
+      }
+    }
+    LOG.info("INSERT succeeded " + numSuccess1 + " times, " +
+             "SELECT succeeded " + numSuccess2 + " times");
+    checkTransactionFairness(numSuccess1, numSuccess2, TOTAL_ITERATIONS, DEFAULT_SKEW_THRESHOLD);
+  }
+
+  @Test
+  public void testBasicTransaction() throws Exception {
+    createSimpleTable("test", "v", PartitioningMode.HASH);
+    final IsolationLevel isolationLevel = IsolationLevel.REPEATABLE_READ;
+    Connection connection1 = createConnection(isolationLevel, AutoCommit.DISABLED);
     Statement statement = connection1.createStatement();
 
     // For the second connection we still enable auto-commit, so that every new SELECT will see
     // a new snapshot of the database.
-    Connection connection2 = createConnection(isolation, AutoCommit.ENABLED);
+    Connection connection2 = createConnection(isolationLevel, AutoCommit.ENABLED);
     Statement statement2 = connection2.createStatement();
 
     for (int i = 0; i < 100; ++i) {
@@ -196,11 +277,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     }
     LOG.info(String.format(
         "First txn won in %d cases, second won in %d cases", numFirstWinners, numSecondWinners));
-    double skew = Math.abs(numFirstWinners - numSecondWinners) * 1.0 / totalIterations;
-    LOG.info("Skew between the number of wins by two connections: " + skew);
-    final double SKEW_THRESHOLD = 0.3;
-    assertTrue("Expecting the skew to be below the threshold " + SKEW_THRESHOLD + ", got " + skew,
-        skew < SKEW_THRESHOLD);
+    checkTransactionFairness(numFirstWinners, numSecondWinners, totalIterations, 0.3);
   }
 
   @Test

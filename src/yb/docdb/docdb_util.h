@@ -71,11 +71,16 @@ class DocDBRocksDBUtil {
       rocksdb::WriteBatch *rocksdb_write_batch,
       HybridTime hybrid_time = HybridTime::kInvalid,
       bool decode_dockey = true,
-      bool increment_write_id = true) const;
+      bool increment_write_id = true,
+      PartialRangeKeyIntents partial_range_key_intents = PartialRangeKeyIntents::kTrue) const;
 
   // Writes the given DocWriteBatch to RocksDB. We substitue the hybrid time, if provided.
-  CHECKED_STATUS WriteToRocksDB(const DocWriteBatch& write_batch, const HybridTime& hybrid_time,
-                                bool decode_dockey = true, bool increment_write_id = true);
+  CHECKED_STATUS WriteToRocksDB(
+      const DocWriteBatch& write_batch,
+      const HybridTime& hybrid_time,
+      bool decode_dockey = true,
+      bool increment_write_id = true,
+      PartialRangeKeyIntents partial_range_key_intents = PartialRangeKeyIntents::kTrue);
 
   // The same as WriteToRocksDB but also clears the write batch afterwards.
   CHECKED_STATUS WriteToRocksDBAndClear(DocWriteBatch* dwb, const HybridTime& hybrid_time,

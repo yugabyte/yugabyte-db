@@ -65,8 +65,10 @@ class TransactionTestBase : public KeyValueTableTest {
 
   void WriteDataWithRepetition();
 
+  // Create a new transaction using transaction_manager_.
   YBTransactionPtr CreateTransaction(SetReadTime set_read_time = SetReadTime::kFalse);
 
+  // Create a new transaction using transaction_manager2_.
   YBTransactionPtr CreateTransaction2(SetReadTime set_read_time = SetReadTime::kFalse);
 
   void VerifyRows(const YBSessionPtr& session,

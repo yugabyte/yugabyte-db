@@ -606,7 +606,7 @@ Result<bool> DocRowwiseIterator::HasNext() const {
     iter_key_.Reset(*fetched_key);
     VLOG(4) << " Current iter_key_ is " << iter_key_;
 
-    const auto dockey_sizes = DocKey::EncodedSizes(iter_key_);
+    const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(iter_key_);
     if (!dockey_sizes.ok()) {
       has_next_status_ = dockey_sizes.status();
       return has_next_status_;

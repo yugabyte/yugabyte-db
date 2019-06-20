@@ -29,8 +29,11 @@ using std::unique_ptr;
 using strings::Substitute;
 using yb::util::ApplyEagerLineContinuation;
 using yb::util::FormatBytesAsStr;
+using yb::util::FormatSliceAsStr;
 using rocksdb::FilterBitsBuilder;
 using rocksdb::FilterBitsReader;
+
+using namespace std::placeholders;
 
 static constexpr int kNumDocOrSubDocKeysPerBatch = 1000;
 static constexpr int kNumTestDocOrSubDocKeyComparisons = 10000;
@@ -45,6 +48,57 @@ static_assert(kNumTestDocOrSubDocKeyComparisons <
 
 namespace yb {
 namespace docdb {
+
+// Note on the exact hash value we're using here: 0x4868 should show up as "Hh" in ASCII.
+const DocKeyHash kAsciiFriendlyHash = 0x4868;
+
+class DocKeyTest : public YBTest {
+ protected:
+  vector<SubDocKey> GetVariedSubDocKeys() {
+    const int kMaxNumHashKeys = 3;
+    const int kMaxNumRangeKeys = 3;
+    const int kMaxNumSubKeys = 3;
+    vector<SubDocKey> sub_doc_keys;
+    for (int num_hash_keys = 0; num_hash_keys <= kMaxNumHashKeys; ++num_hash_keys) {
+      for (int num_range_keys = 0; num_range_keys <= kMaxNumRangeKeys; ++num_range_keys) {
+        for (int num_sub_keys = 0; num_sub_keys <= kMaxNumSubKeys; ++num_sub_keys) {
+          for (int has_hybrid_time = 0; has_hybrid_time <= 1; ++has_hybrid_time) {
+            SubDocKey sub_doc_key;
+            if (num_hash_keys > 0) {
+              sub_doc_key.doc_key().set_hash(kAsciiFriendlyHash);
+            }
+            for (int hIndex = 0; hIndex < num_hash_keys; ++hIndex) {
+              sub_doc_key.doc_key().hashed_group().push_back(
+                  PrimitiveValue(Format("h$0_$1", hIndex, std::string(hIndex + 1, 'h'))));
+            }
+            for (int rIndex = 0; rIndex < num_range_keys; ++rIndex) {
+              sub_doc_key.doc_key().range_group().push_back(
+                  PrimitiveValue(Format("r$0_$1", rIndex, std::string(rIndex + 1, 'r'))));
+            }
+            for (int skIndex = 0; skIndex < num_sub_keys; ++skIndex) {
+              sub_doc_key.subkeys().push_back(
+                  PrimitiveValue(Format("sk$0_$1", skIndex, std::string(skIndex + 1, 's'))));
+            }
+            if (has_hybrid_time) {
+              sub_doc_key.set_hybrid_time(DocHybridTime(HybridTime::FromMicros(123456), 1));
+            }
+            sub_doc_keys.push_back(sub_doc_key);
+          }
+        }
+      }
+    }
+    return sub_doc_keys;
+  }
+
+  string GetTestDescriptionForSubDocKey(const SubDocKey& sub_doc_key) {
+    return yb::Format(
+        "Encoded SubDocKey: $0; encoded input binary data: $1",
+        sub_doc_key,
+        sub_doc_key.Encode()
+    );
+  }
+
+};
 
 namespace {
 
@@ -131,7 +185,7 @@ void TestDocOrSubDocKeyComparison() {
 
 }  // unnamed namespace
 
-TEST(DocKeyTest, TestDocKeyToString) {
+TEST_F(DocKeyTest, TestDocKeyToString) {
   ASSERT_EQ(
       "DocKey([], [10, \"foo\", 20, \"bar\"])",
       DocKey(PrimitiveValues(10, "foo", 20, "bar")).ToString());
@@ -143,7 +197,7 @@ TEST(DocKeyTest, TestDocKeyToString) {
              PrimitiveValues(10, "foo", 20, "bar")).ToString());
 }
 
-TEST(DocKeyTest, TestSubDocKeyToString) {
+TEST_F(DocKeyTest, TestSubDocKeyToString) {
   ASSERT_EQ(
       "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), [HT{ physical: 12345 }])",
       SubDocKey(DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
@@ -158,7 +212,7 @@ TEST(DocKeyTest, TestSubDocKeyToString) {
 
 }
 
-TEST(DocKeyTest, TestDocKeyEncoding) {
+TEST_F(DocKeyTest, TestDocKeyEncoding) {
   // A few points to make it easier to understand the expected binary representations here:
   // - Initial bytes such as 'S', 'I' correspond the ValueType enum.
   // - Strings are terminated with \x00\x00.
@@ -225,7 +279,7 @@ TEST(DocKeyTest, TestDocKeyEncoding) {
           PrimitiveValues("range1", 1000, "range2", 2000)).Encode().data()));
 }
 
-TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
+TEST_F(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
   const SubDocKey subdoc_key(DocKey({PrimitiveValue("some_doc_key")}),
                              PrimitiveValue("sk1"),
                              PrimitiveValue("sk2"),
@@ -269,23 +323,23 @@ TEST(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
   ASSERT_EQ(subdoc_key.doc_hybrid_time(), time);
 }
 
-TEST(DocKeyTest, TestRandomizedDocKeyRoundTripEncodingDecoding) {
+TEST_F(DocKeyTest, TestRandomizedDocKeyRoundTripEncodingDecoding) {
   TestRoundTripDocOrSubDocKeyEncodingDecoding<DocKey>();
 }
 
-TEST(DocKeyTest, TestRandomizedSubDocKeyRoundTripEncodingDecoding) {
+TEST_F(DocKeyTest, TestRandomizedSubDocKeyRoundTripEncodingDecoding) {
   TestRoundTripDocOrSubDocKeyEncodingDecoding<SubDocKey>();
 }
 
-TEST(DocKeyTest, TestDocKeyComparison) {
+TEST_F(DocKeyTest, TestDocKeyComparison) {
   TestDocOrSubDocKeyComparison<DocKey>();
 }
 
-TEST(DocKeyTest, TestSubDocKeyComparison) {
+TEST_F(DocKeyTest, TestSubDocKeyComparison) {
   TestDocOrSubDocKeyComparison<SubDocKey>();
 }
 
-TEST(DocKeyTest, TestSubDocKeyStartsWith) {
+TEST_F(DocKeyTest, TestSubDocKeyStartsWith) {
   RandomNumberGenerator rng;  // Use the default seed to keep it deterministic.
   auto subdoc_keys = GenRandomSubDocKeys(&rng, UseHash::kFalse, 1000);
   for (const auto& subdoc_key : subdoc_keys) {
@@ -320,7 +374,7 @@ std::string EncodeSimpleSubDocKeyWithDifferentNonHashPart(const std::string& has
   return EncodeSubDocKey(hash_key, "another_range_key", "another_sub_key", 55555L);
 }
 
-TEST(DocKeyTest, TestKeyMatching) {
+TEST_F(DocKeyTest, TestKeyMatching) {
   DocDbAwareFilterPolicy policy(rocksdb::FilterPolicy::kDefaultFixedSizeFilterBits, nullptr);
   std::string keys[] = { "foo", "bar", "test" };
   std::string absent_key = "fake";
@@ -348,10 +402,193 @@ TEST(DocKeyTest, TestKeyMatching) {
   ASSERT_FALSE(may_match(EncodeSimpleSubDocKey(absent_key))) << "Key: " << absent_key;
 }
 
-TEST(DocKeyTest, TestWriteId) {
+TEST_F(DocKeyTest, TestWriteId) {
   SubDocKey subdoc_key(DocKey({PrimitiveValue("a"), PrimitiveValue(135)}),
                        DocHybridTime(1000000, 4091, 135));
   TestRoundTripDocOrSubDocKeyEncodingDecoding(subdoc_key);
+}
+
+struct CollectedIntent {
+  IntentStrength strength;
+  KeyBytes intent_key;
+  Slice value;
+};
+
+class IntentCollector {
+ public:
+  explicit IntentCollector(std::vector<CollectedIntent>* out) : out_(out) {}
+
+  Status operator()(IntentStrength strength, Slice value, KeyBytes* key) {
+    out_->push_back({strength, *key, value});
+    return Status::OK();
+  }
+
+ private:
+  std::vector<CollectedIntent>* out_;
+};
+
+TEST_F(DocKeyTest, TestDecodePrefixLengths) {
+  for (const auto& sub_doc_key : GetVariedSubDocKeys()) {
+    std::vector<PrimitiveValue> subkeys;
+    const auto encoded_input = sub_doc_key.Encode();
+    const string test_description = GetTestDescriptionForSubDocKey(sub_doc_key);
+    SCOPED_TRACE(test_description);
+    const Slice subdockey_slice = encoded_input.AsSlice();
+    const auto encoded_sizes = ASSERT_RESULT(DocKey::EncodedHashPartAndDocKeySizes(
+        subdockey_slice, AllowSpecial::kFalse));
+    const size_t encoded_hash_key_size = encoded_sizes.first;
+    const size_t encoded_doc_key_size = encoded_sizes.second;
+
+    size_t expected_hash_enc_size = 0;
+    const DocKey& doc_key = sub_doc_key.doc_key();
+    if (!doc_key.hashed_group().empty()) {
+      // We subtract 1 because we don't want to include kGroupEnd in the expected hash key size.
+      expected_hash_enc_size = DocKey(doc_key.hash(), doc_key.hashed_group()).Encode().size() - 1;
+    }
+    EXPECT_EQ(expected_hash_enc_size, encoded_hash_key_size);
+    EXPECT_EQ(sub_doc_key.doc_key().Encode().size(), encoded_doc_key_size);
+
+    SubDocKey cur_key;
+    boost::container::small_vector<size_t, 8> prefix_lengths;
+    std::vector<size_t> expected_prefix_lengths;
+    if (doc_key.has_hash()) {
+      cur_key.doc_key() = DocKey(doc_key.hash(), doc_key.hashed_group());
+      // Subtract one to avoid counting the final kGroupEnd, unless this is the entire key.
+      if (doc_key.range_group().empty() && sub_doc_key.subkeys().empty()) {
+        expected_prefix_lengths.push_back(cur_key.Encode().size());
+      } else {
+        expected_prefix_lengths.push_back(cur_key.Encode().size() - 1);
+      }
+    }
+    const size_t num_range_keys = doc_key.range_group().size();
+    for (size_t i = 0; i < num_range_keys; ++i) {
+      cur_key.doc_key().range_group().push_back(doc_key.range_group()[i]);
+      if (i < num_range_keys - 1) {
+        expected_prefix_lengths.push_back(cur_key.Encode().size() - 1);
+      } else {
+        // Only cound the final kGroupEnd for the last range key.
+        expected_prefix_lengths.push_back(cur_key.Encode().size());
+      }
+    }
+
+    for (const auto& subkey : sub_doc_key.subkeys()) {
+      cur_key.subkeys().push_back(subkey);
+      expected_prefix_lengths.push_back(cur_key.Encode().size());
+    }
+
+    EXPECT_OK(SubDocKey::DecodePrefixLengths(subdockey_slice, &prefix_lengths));
+    EXPECT_EQ(yb::ToString(expected_prefix_lengths), yb::ToString(prefix_lengths));
+  }
+}
+
+TEST_F(DocKeyTest, TestEnumerateIntents) {
+  for (const auto& sub_doc_key : GetVariedSubDocKeys()) {
+    for (auto partial_range_key_intents : PartialRangeKeyIntents::kValues) {
+      const auto encoded_input = sub_doc_key.Encode();
+      const string test_description = Format(
+          "$0. Partial range key intents: $1",
+          GetTestDescriptionForSubDocKey(sub_doc_key),
+          partial_range_key_intents ? "yes" : "no");
+      SCOPED_TRACE(test_description);
+      const Slice subdockey_slice = encoded_input.AsSlice();
+
+      vector<CollectedIntent> collected_intents;
+      vector<CollectedIntent> collected_intents_old;
+      KeyBytes encoded_key_buffer;
+
+      VLOG(1) << "EnumerateIntents for: " << test_description;
+      EXPECT_OK(EnumerateIntents(
+          subdockey_slice,
+          /* value */ Slice("some_value"),
+          IntentCollector(&collected_intents),
+          &encoded_key_buffer,
+          partial_range_key_intents));
+
+      if (VLOG_IS_ON(1)) {
+        for (const auto& intent : collected_intents) {
+          auto intent_slice = intent.intent_key.AsSlice();
+
+          VLOG(1) << "Found intent: " << SubDocKey::DebugSliceToString(intent_slice)
+                  << ", raw bytes: " << FormatSliceAsStr(intent_slice)
+                  << ", strength: " << intent.strength;
+        }
+      }
+
+      std::vector<SubDocKey> expected_intents;
+      SubDocKey current_expected_intent;
+
+      expected_intents.push_back(SubDocKey());
+
+      if (!sub_doc_key.doc_key().hashed_group().empty()) {
+        current_expected_intent = SubDocKey(DocKey(
+            sub_doc_key.doc_key().hash(),
+            sub_doc_key.doc_key().hashed_group()));
+        expected_intents.push_back(current_expected_intent);
+      }
+
+      const auto& range_group = sub_doc_key.doc_key().range_group();
+      for (size_t range_idx = 0; range_idx < range_group.size(); ++range_idx) {
+        current_expected_intent.doc_key().range_group().push_back(range_group[range_idx]);
+        if (partial_range_key_intents || range_idx == range_group.size() - 1) {
+          expected_intents.push_back(current_expected_intent);
+        }
+      }
+
+      for (const auto& subkey : sub_doc_key.subkeys()) {
+        current_expected_intent.AppendSubKey(subkey);
+        expected_intents.push_back(current_expected_intent);
+      }
+
+      {
+        std::set<SubDocKey> expected_intents_set(expected_intents.begin(), expected_intents.end());
+        SCOPED_TRACE(Format("Expected intents: $0", yb::ToString(expected_intents_set)));
+
+        // There should be no duplicate intents in our set of expected intents.
+        EXPECT_EQ(expected_intents_set.size(), expected_intents.size());
+
+        const SubDocKey doc_key_only(sub_doc_key.doc_key());
+        EXPECT_TRUE(expected_intents_set.count(doc_key_only))
+            << "doc_key_only: " << doc_key_only;
+
+        SubDocKey hash_part_only(sub_doc_key);
+        hash_part_only.subkeys().clear();
+        hash_part_only.doc_key().range_group().clear();
+        hash_part_only.remove_hybrid_time();
+        EXPECT_TRUE(expected_intents_set.count(hash_part_only))
+            << "hash_part_only: " << hash_part_only;
+      }
+
+      EXPECT_EQ(expected_intents.size(), collected_intents.size());
+      const size_t num_intents = std::min(expected_intents.size(), collected_intents.size());
+      for (size_t i = 0; i < num_intents; ++i) {
+        SubDocKey decoded_intent_key;
+        const auto& intent = collected_intents[i];
+        Slice intent_key_slice = intent.intent_key.AsSlice();
+        EXPECT_OK(decoded_intent_key.DecodeFrom(&intent_key_slice, HybridTimeRequired::kFalse));
+        EXPECT_EQ(0, intent_key_slice.size());
+        EXPECT_FALSE(decoded_intent_key.has_hybrid_time());
+        EXPECT_EQ(expected_intents[i].ToString(), decoded_intent_key.ToString());
+
+        SubDocKey a = expected_intents[i];
+        SubDocKey b = decoded_intent_key;
+        VLOG(1) << "Doc key matches: " << (a.doc_key() == b.doc_key());
+        VLOG(1) << "has_hybrid_time matches: " << (a.has_hybrid_time() == b.has_hybrid_time());
+        if (a.has_hybrid_time() && b.has_hybrid_time()) {
+          VLOG(1) << "HT matches: " << (a.hybrid_time() == b.hybrid_time());
+        }
+        VLOG(1) << "Subkeys match: " << (a.subkeys() == b.subkeys());
+
+        EXPECT_EQ(expected_intents[i], decoded_intent_key);
+        if (i < num_intents - 1) {
+          EXPECT_EQ(IntentStrength::kWeak, intent.strength);
+          EXPECT_EQ(0, intent.value.size());
+        } else {
+          EXPECT_EQ(IntentStrength::kStrong, intent.strength);
+          EXPECT_GT(intent.value.size(), 0);
+        }
+      }
+    }
+  }
 }
 
 }  // namespace docdb
