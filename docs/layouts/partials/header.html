@@ -1,0 +1,96 @@
+<div class="yb-header">
+
+  <nav id="nav_bar" class="navbar navbar-expand-lg navbar-inverse d-print scrolled">
+    <div class="container-fluid" class="d-flex">
+      <a href="https://www.yugabyte.com/" class="navbar-brand">
+        <div alt="YugaByte" class="nav-logo scrolled"></div>
+      </a>
+
+      <div class="navbar-search-small">
+        {{ partial "search" . }}
+      </div>
+      <button type="button" class="navbar-toggler collapsed" data-toggle="collapse" data-target=".navbar-collapse">
+        
+        <i class="bar"></i>
+        <i class="bar"></i>
+        <i class="bar"></i>
+        <span class="sr-only">
+          Toggle navigation
+        </span>
+      </button>
+      <div class="navbar-collapse collapse">
+        <div class="navbar-page-links">
+          <div class="navbar-text">
+            <div class="dropdown">
+              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_product_dropdown" href="https://www.yugabyte.com/enterprise-edition/">
+                Enterprise
+              </a>
+            </div>
+          </div>
+          <div class="navbar-text">
+            <div class="dropdown">
+              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_solutions_dropdown" href="https://www.yugabyte.com/community-edition/">
+                Open Source
+              </a>
+            </div>
+          </div>
+          <div class="navbar-text">
+            <div class="dropdown">
+              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_docs_dropdown" href="https://www.yugabyte.com/all-resources/case-studies/">
+                Customers
+              </a>
+            </div>
+          </div>
+          <div class="navbar-text">
+            <div class="dropdown">
+              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_resources_dropdown" >
+                Use Cases
+              </a>
+              <div class="dropdown-menu" aria-labelledby="navbar_product_dropdown">
+                <a class="dropdown-item" href="https://www.yugabyte.com/globally-distributed-applications/">Globally Distributed Applications</a>
+                <a class="dropdown-item" href="https://www.yugabyte.com/real-time-streaming-and-analytics/">Real-Time Streaming & Analytics</a>           
+                <a class="dropdown-item" href="https://www.yugabyte.com/planet-scale-sql/">Planet-Scale SQL</a>
+                <a class="dropdown-item" href="https://www.yugabyte.com/transactional-nosql/">Transactional NoSQL</a> 
+                <a class="dropdown-item" href="https://www.yugabyte.com/distributed-transactional-key-value-database/">Distributed Transactional Key-Value DB</a>
+              </div>
+            </div>
+          </div>
+           <div class="navbar-text">
+            <div class="dropdown">
+              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_about_dropdown" >
+                Resources
+              </a>
+              <div class="dropdown-menu" aria-labelledby="navbar_product_dropdown">
+                <a class="dropdown-item" href="https://www.yugabyte.com/all-resources/">All Resources</a>
+                <a class="dropdown-item" href="/"> Docs</a>
+                <a class="dropdown-item" href="https://blog.yugabyte.com/">Blog</a>
+                <a class="dropdown-item" href="https://www.yugabyte.com/slack">Slack</a>              
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex-spacer"></div>
+
+        <div class="navbar-misc">
+          <div class="navbar-text github-star-button">
+            <iframe src="https://ghbtns.com/github-btn.html?user=YugaByte&repo=yugabyte-db&type=star" frameborder="0" scrolling="0" width="50px" height="20px"></iframe>
+          </div>
+
+          <div class="navbar-text navbar-search-main">
+            {{ partial "search" . }}
+          </div>
+
+          <div id="download-button">
+            <a href="/latest/quick-start/" class="btn cta-button">
+              Get Started
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+</div>
+
+<div id="root">
+  <div class="main-footer-layout">
