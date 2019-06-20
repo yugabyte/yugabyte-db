@@ -250,7 +250,7 @@ Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
   CDCRecordPB* record = nullptr;
   for (const auto& write_pair : batch.write_pairs()) {
     Slice key = write_pair.key();
-    const auto& key_sizes = VERIFY_RESULT(docdb::DocKey::EncodedSizes(key));
+    const auto& key_sizes = VERIFY_RESULT(docdb::DocKey::EncodedHashPartAndDocKeySizes(key));
 
     Slice value = write_pair.value();
     docdb::Value decoded_value;
