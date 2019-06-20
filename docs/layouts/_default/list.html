@@ -1,0 +1,64 @@
+{{ partial "head" . }}
+
+{{ if (eq (trim .Site.Params.provider " " | lower) "github") | and (isset .Site.Params "repo_url") }}
+	{{ $repo_id := replace .Site.Params.repo_url "https://github.com/" ""}}
+	{{ .Scratch.Set "repo_id" $repo_id }}
+{{ end }}
+
+<div class="backdrop">
+	<div class="backdrop-paper"></div>
+</div>
+
+<input class="toggle" type="checkbox" id="toggle-drawer">
+<input class="toggle" type="checkbox" id="toggle-search">
+<label class="toggle-button overlay" for="toggle-drawer"></label>
+
+{{ partial "header" . }}
+
+<div class="container-fluid listpage">
+	<main class="main">
+		<div class="drawer">
+			{{ partial "drawer" (dict "context" .) }}
+		</div>
+		<article class="article">
+			<div class="wrapper">
+				<div class="image">
+					<img alt="{{ .Description }}" title="{{ .Description }}" src="{{ .Page.Params.image }}" />
+				</div>
+				{{ partial "breadcrumbs" (dict "context" . "menu" (.Scratch.Get "currentVersionMenu")) }}	
+
+				<h1>{{ .Description }}  {{ if .IsDraft }} (Draft){{ end }}</h1>
+
+				<div class="head-content clearfix">{{ .Page.Params.headcontent }}</div>
+				
+				{{ $urlArray := split (urls.Parse .Permalink).Path "/" }}
+				{{ $latestUrl := path.Join "latest" (after 2 $urlArray) }}
+				{{ $latestUrl = add (add "/" $latestUrl) "/" }}
+				{{ if ne (index $urlArray 1) "latest" }}
+				<div class="admonition note">
+					<p class="admonition-title">Note</p>
+					Click <a href="{{ $latestUrl }}">here</a> to go to documentation for the latest version of YugaByte DB.
+				</div>
+				{{ end }}
+
+				{{ .Content }}
+
+				</div>
+				
+				{{ partial "footer_links" . }}
+
+			</article>
+
+		<div class="results" role="status" aria-live="polite">
+			<div class="scrollable">
+				<div class="wrapper">
+					<div class="meta"></div>
+					<div class="list"></div>
+				</div>
+			</div>
+		</div>
+	</main>
+</div>
+
+{{ partial "footer" . }}
+{{ partial "footer_js" . }}
