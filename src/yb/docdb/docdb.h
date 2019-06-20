@@ -20,6 +20,7 @@
 #include <vector>
 #include <boost/function.hpp>
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/rocksdb/db.h"
 
 #include "yb/common/doc_hybrid_time.h"
@@ -117,6 +118,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     OperationKind operation_kind,
     bool transactional_table,
     CoarseTimePoint deadline,
+    PartialRangeKeyIntents partial_range_key_intents,
     SharedLockManager *lock_manager);
 
 // This constructs a DocWriteBatch using the given list of DocOperations, reading the previous
@@ -160,11 +162,11 @@ typedef boost::function<Status(IntentStrength, Slice, KeyBytes*)> EnumerateInten
 
 CHECKED_STATUS EnumerateIntents(
     const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
-    const EnumerateIntentsCallback& functor);
+    const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents);
 
 CHECKED_STATUS EnumerateIntents(
-    Slice key, const Slice& value, const EnumerateIntentsCallback& functor,
-    KeyBytes* encoded_key_buffer);
+    Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
+    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents);
 
 void PrepareTransactionWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,
@@ -172,6 +174,7 @@ void PrepareTransactionWriteBatch(
     rocksdb::WriteBatch* rocksdb_write_batch,
     const TransactionId& transaction_id,
     IsolationLevel isolation_level,
+    PartialRangeKeyIntents partial_range_key_intents,
     IntraTxnWriteId* write_id);
 
 CHECKED_STATUS PrepareApplyIntentsBatch(

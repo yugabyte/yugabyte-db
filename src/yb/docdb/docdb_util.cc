@@ -91,7 +91,8 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     rocksdb::WriteBatch *rocksdb_write_batch,
     HybridTime hybrid_time,
     bool decode_dockey,
-    bool increment_write_id) const {
+    bool increment_write_id,
+    PartialRangeKeyIntents partial_range_key_intents) const {
   for (const auto& entry : dwb.key_value_pairs()) {
     if (decode_dockey) {
       SubDocKey subdoc_key;
@@ -111,7 +112,7 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     dwb.TEST_CopyToWriteBatchPB(&kv_write_batch);
     PrepareTransactionWriteBatch(
         kv_write_batch, hybrid_time, rocksdb_write_batch, *current_txn_id_, txn_isolation_level_,
-        &intra_txn_write_id_);
+        partial_range_key_intents, &intra_txn_write_id_);
   } else {
     // TODO: this block has common code with docdb::PrepareNonTransactionWriteBatch and probably
     // can be refactored, so common code is reused.
@@ -141,7 +142,8 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
     const DocWriteBatch& doc_write_batch,
     const HybridTime& hybrid_time,
     bool decode_dockey,
-    bool increment_write_id) {
+    bool increment_write_id,
+    PartialRangeKeyIntents partial_range_key_intents) {
   if (doc_write_batch.IsEmpty()) {
     return Status::OK();
   }
@@ -160,7 +162,8 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
   }
 
   RETURN_NOT_OK(PopulateRocksDBWriteBatch(
-      doc_write_batch, &rocksdb_write_batch, hybrid_time, decode_dockey, increment_write_id));
+      doc_write_batch, &rocksdb_write_batch, hybrid_time, decode_dockey, increment_write_id,
+      partial_range_key_intents));
 
   rocksdb::DB* db = current_txn_id_ ? intents_db_.get() : rocksdb_.get();
   rocksdb::Status rocksdb_write_status = db->Write(write_options(), &rocksdb_write_batch);

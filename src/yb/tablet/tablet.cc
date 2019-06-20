@@ -300,6 +300,10 @@ CHECKED_STATUS EmitRocksDbMetricsAsPrometheus(
   return Status::OK();
 }
 
+docdb::PartialRangeKeyIntents UsePartialRangeKeyIntents(RaftGroupMetadata* metadata) {
+  return docdb::PartialRangeKeyIntents(metadata->table_type() == TableType::PGSQL_TABLE_TYPE);
+}
+
 } // namespace
 
 string DocDbOpIds::ToString() const {
@@ -778,7 +782,8 @@ void Tablet::PrepareTransactionWriteBatch(
   auto isolation_level = metadata_with_write_id->first.isolation;
   auto write_id = metadata_with_write_id->second;
   yb::docdb::PrepareTransactionWriteBatch(
-      put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level, &write_id);
+      put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level,
+      UsePartialRangeKeyIntents(metadata_.get()), &write_id);
   transaction_participant()->UpdateLastWriteId(transaction_id, write_id);
 }
 
@@ -1756,11 +1761,12 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   auto isolation_level = VERIFY_RESULT(GetIsolationLevel(
       *write_batch, transaction_participant_.get()));
 
-  bool transactional_table = metadata_->schema().table_properties().is_transactional();
+  const bool transactional_table = metadata_->schema().table_properties().is_transactional();
+  const auto partial_range_key_intents = UsePartialRangeKeyIntents(metadata_.get());
   auto prepare_result = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       operation->doc_ops(), write_batch->read_pairs(), metrics_->write_lock_latency,
       isolation_level, operation->state()->kind(), transactional_table, operation->deadline(),
-      &shared_lock_manager_));
+      partial_range_key_intents, &shared_lock_manager_));
 
   RequestScope request_scope;
   if (transaction_participant_) {
@@ -1802,8 +1808,8 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
       RETURN_NOT_OK(docdb::ResolveTransactionConflicts(
           operation->doc_ops(), *write_batch, clock_->Now(),
           read_time ? read_time.read : HybridTime::kMax,
-          { regular_db_.get(), intents_db_.get() }, transaction_participant_.get(),
-          metrics_->transaction_conflicts.get()));
+          { regular_db_.get(), intents_db_.get() }, partial_range_key_intents,
+          transaction_participant_.get(), metrics_->transaction_conflicts.get()));
 
       if (!read_time) {
         auto safe_time = SafeTime(RequireLease::kTrue);

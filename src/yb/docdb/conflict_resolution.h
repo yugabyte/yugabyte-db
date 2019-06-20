@@ -51,6 +51,7 @@ CHECKED_STATUS ResolveTransactionConflicts(const DocOperations& doc_ops,
                                            HybridTime resolution_ht,
                                            HybridTime read_time,
                                            const DocDB& doc_db,
+                                           PartialRangeKeyIntents partial_range_key_intents,
                                            TransactionStatusManager* status_manager,
                                            Counter* conflicts_metric);
 

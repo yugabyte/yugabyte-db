@@ -829,6 +829,14 @@ try_set_ulimited_ulimit() {
   fi
 }
 
+# YB_CTEST_VERBOSE makes test output go to stderr, and then we separately make it show up on
+# the console by giving ctest the --verbose option. This is intended for development. When we
+# run tests on Jenkins or when running all tests using "ctest -j8" from the build root, one
+# should leave YB_CTEST_VERBOSE unset.
+is_ctest_verbose() {
+  [[ ${YB_CTEST_VERBOSE:-0} == "1" ]]
+}
+
 run_one_cxx_test() {
   expect_num_args 0 "$@"
   expect_vars_to_be_set \
@@ -867,11 +875,7 @@ run_one_cxx_test() {
     (
       try_set_ulimited_ulimit
 
-      # YB_CTEST_VERBOSE makes test output go to stderr, and then we separately make it show up on
-      # the console by giving ctest the --verbose option. This is intended for development. When we
-      # run tests on Jenkins or when running all tests using "ctest -j8" from the build root, one
-      # should leave YB_CTEST_VERBOSE unset.
-      if [[ -n ${YB_CTEST_VERBOSE:-} ]]; then
+      if is_ctest_verbose; then
         ( set -x; "${test_wrapper_cmd_line[@]}" 2>&1 ) | tee "$test_log_path"
         # Propagate the exit code of the test process, not any of the filters. This will only exit
         # this subshell, not the entire script calling this function.
@@ -939,11 +943,13 @@ handle_cxx_test_failure() {
         # https://jenkins.dev.yugabyte.com/job/yugabyte-with-custom-test-script/47/artifact/build/debug/yb-test-logs/bin__raft_consensus-itest/RaftConsensusITest_TestChurnyElections.log
         echo "Log URL: $test_log_url_prefix/$rel_test_log_path_prefix.log"
       fi
-      if [[ -f $test_log_path ]]; then
-        if egrep -q "$RELEVANT_LOG_LINES_RE" "$test_log_path"; then
-          echo "Relevant log lines:"
-          egrep -C 2 "$RELEVANT_LOG_LINES_RE" "$test_log_path"
-        fi
+
+      # Show some context from the test log, but only do so if we are not already showing the entire
+      # test log when invoking tests directly in yb_build.sh.
+      if ! is_ctest_verbose && [[ -f $test_log_path ]] &&
+         egrep -q "$RELEVANT_LOG_LINES_RE" "$test_log_path"; then
+        echo "Relevant log lines:"
+        egrep -C 3 "$RELEVANT_LOG_LINES_RE" "$test_log_path"
       fi
     ) >&2
     set_expected_core_dir "$TEST_TMPDIR"

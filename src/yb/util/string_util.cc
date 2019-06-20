@@ -101,7 +101,4 @@ void AppendWithSeparator(const char* to_append, string* dest, const char* separa
   *dest += to_append;
 }
 
-void FooBar() {
-}
-
 }  // namespace yb

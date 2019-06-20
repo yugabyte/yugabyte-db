@@ -82,7 +82,7 @@ Status ConsumePrimitiveValuesFromKey(Slice* slice, AllowSpecial allow_special,
                                      boost::container::small_vector_base<Slice>* result) {
   return ConsumePrimitiveValuesFromKey(slice, allow_special, [slice, result] {
     auto begin = slice->data();
-    RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, nullptr));
+    RETURN_NOT_OK(PrimitiveValue::DecodeKey(slice, /* out */ nullptr));
     if (result) {
       result->emplace_back(begin, slice->data());
     }
@@ -100,8 +100,6 @@ Status ConsumePrimitiveValuesFromKey(
 
 } // namespace
 
-// Consumes single primitive value from start of slice.
-// Returns true when value was consumed, false when group end is found.
 Result<bool> ConsumePrimitiveValueFromKey(Slice* slice) {
   if (!VERIFY_RESULT(HasPrimitiveValue(slice, AllowSpecial::kFalse))) {
     return false;
@@ -306,7 +304,9 @@ Result<size_t> DocKey::EncodedSize(Slice slice, DocKeyPart part, AllowSpecial al
   return decoder.left_input().cdata() - initial_begin;
 }
 
-Result<std::pair<size_t, size_t>> DocKey::EncodedSizes(Slice slice, AllowSpecial allow_special) {
+Result<std::pair<size_t, size_t>> DocKey::EncodedHashPartAndDocKeySizes(
+    Slice slice,
+    AllowSpecial allow_special) {
   auto initial_begin = slice.data();
   DocKeyDecoder decoder(slice);
   EncodedSizesCallback callback(&decoder);
@@ -449,17 +449,14 @@ int DocKey::CompareTo(const DocKey& other) const {
   int result = CompareUsingLessThan(cotable_id_, other.cotable_id_);
   if (result != 0) return result;
 
-  // Each table will only contain keys with hash present or absent, so we should never compare
-  // keys from both categories.
-  //
-  // TODO: see how we can prevent this from ever happening in production. This might change
-  //       if we decide to rethink DocDB's implementation of hash components as part of end-to-end
-  //       integration of CQL's hash partition keys in December 2016.
-  DCHECK_EQ(hash_present_, other.hash_present_);
+  result = CompareUsingLessThan(hash_present_, other.hash_present_);
+  if (result != 0) return result;
+
   if (hash_present_) {
     result = CompareUsingLessThan(hash_, other.hash_);
     if (result != 0) return result;
   }
+
   result = CompareVectors(hashed_group_, other.hashed_group_);
   if (result != 0) return result;
 
@@ -747,17 +744,47 @@ bool SubDocKey::StartsWith(const SubDocKey& prefix) const {
 }
 
 bool SubDocKey::operator==(const SubDocKey& other) const {
-  return doc_key_ == other.doc_key_ &&
-         doc_ht_ == other.doc_ht_&&
-         subkeys_ == other.subkeys_;
+  if (doc_key_ != other.doc_key_ ||
+      subkeys_ != other.subkeys_)
+    return false;
+
+  const bool ht_is_valid = doc_ht_.is_valid();
+  const bool other_ht_is_valid = other.doc_ht_.is_valid();
+  if (ht_is_valid != other_ht_is_valid)
+    return false;
+  if (ht_is_valid) {
+    return doc_ht_ == other.doc_ht_;
+  } else {
+    // Both keys don't have a hybrid time.
+    return true;
+  }
 }
 
 int SubDocKey::CompareTo(const SubDocKey& other) const {
   int result = CompareToIgnoreHt(other);
   if (result != 0) return result;
 
-  // HybridTimes are sorted in reverse order.
-  return -doc_ht_.CompareTo(other.doc_ht_);
+  const bool ht_is_valid = doc_ht_.is_valid();
+  const bool other_ht_is_valid = other.doc_ht_.is_valid();
+  if (ht_is_valid) {
+    if (other_ht_is_valid) {
+      // HybridTimes are sorted in reverse order.
+      return -doc_ht_.CompareTo(other.doc_ht_);
+    } else {
+      // This key has a hybrid time and the other one is identical but lacks the hybrid time, so
+      // this one is greater.
+      return 1;
+    }
+  } else {
+    if (other_ht_is_valid) {
+      // This key is a "prefix" of the other key, which has a hybrid time, so this one is less.
+      return -1;
+    } else {
+      // Neither key has a hybrid time.
+      return 0;
+    }
+  }
+
 }
 
 int SubDocKey::CompareToIgnoreHt(const SubDocKey& other) const {

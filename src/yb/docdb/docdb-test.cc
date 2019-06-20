@@ -58,13 +58,12 @@ using namespace std::chrono_literals;
 
 DECLARE_bool(use_docdb_aware_bloom_filter);
 DECLARE_int32(max_nexts_to_avoid_seek);
+DECLARE_bool(docdb_sort_weak_intents_in_tests);
 
 #define ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(str) ASSERT_NO_FATALS(AssertDocDbDebugDumpStrEq(str))
 
 namespace yb {
 namespace docdb {
-
-using PV = PrimitiveValue;
 
 CHECKED_STATUS GetPrimitiveValue(const rocksdb::UserBoundaryValues &values,
     size_t index,
@@ -1940,7 +1939,7 @@ TEST_F(DocDBTest, MinorCompactionNoDeletions) {
   KeyBytes encoded_doc_key(doc_key.Encode());
   for (int i = 1; i <= 6; ++i) {
     auto value_str = Format("v$0", i);
-    PV pv = PV(value_str);
+    PrimitiveValue pv(value_str);
     ASSERT_OK(SetPrimitive(
         DocPath(encoded_doc_key), Value(pv), HybridTime::FromMicros(i * 1000)));
     ASSERT_OK(FlushRocksDbAndWait());
@@ -2014,7 +2013,7 @@ TEST_F(DocDBTest, MinorCompactionWithDeletions) {
   KeyBytes encoded_doc_key(doc_key.Encode());
   for (int i = 1; i <= 6; ++i) {
     auto value_str = Format("v$0", i);
-    PV pv = i == 5 ? PV::kTombstone : PV(value_str);
+    PrimitiveValue pv = i == 5 ? PrimitiveValue::kTombstone : PrimitiveValue(value_str);
     ASSERT_OK(SetPrimitive(
         DocPath(encoded_doc_key), Value(pv), HybridTime::FromMicros(i * 1000)));
     ASSERT_OK(FlushRocksDbAndWait());
@@ -3082,6 +3081,7 @@ SubDocKey(DocKey([], ["c"]), ["k5"; HT{ physical: 1100 }]) -> "vv5"; ttl: 25.000
 }
 
 TEST_F(DocDBTest, CompactionWithTransactions) {
+  FLAGS_docdb_sort_weak_intents_in_tests = true;
 
   const DocKey doc_key(PrimitiveValues("mydockey", 123456));
   KeyBytes encoded_doc_key(doc_key.Encode());
@@ -3099,20 +3099,22 @@ TEST_F(DocDBTest, CompactionWithTransactions) {
   SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
 
   Result<TransactionId> txn1 = FullyDecodeTransactionId("0000000000000001");
+  const auto kTxn1HT = 5000_usec_ht;
   ASSERT_OK(txn1);
   SetCurrentTransactionId(*txn1);
   ASSERT_OK(SetPrimitive(
-      DocPath(encoded_doc_key), PrimitiveValue::kObject, 5000_usec_ht));
+      DocPath(encoded_doc_key), PrimitiveValue::kObject, kTxn1HT));
   ASSERT_OK(SetPrimitive(
-      DocPath(encoded_doc_key, "subkey1"), PrimitiveValue("value4"), 5000_usec_ht));
+      DocPath(encoded_doc_key, "subkey1"), PrimitiveValue("value4"), kTxn1HT));
 
   Result<TransactionId> txn2 = FullyDecodeTransactionId("0000000000000002");
+  const auto kTxn2HT = 6000_usec_ht;
   ASSERT_OK(txn2);
   SetCurrentTransactionId(*txn2);
   ASSERT_OK(SetPrimitive(
-      DocPath(encoded_doc_key), PrimitiveValue::kObject, 5000_usec_ht));
+      DocPath(encoded_doc_key), PrimitiveValue::kObject, kTxn2HT));
   ASSERT_OK(SetPrimitive(
-      DocPath(encoded_doc_key, "subkey2"), PrimitiveValue("value5"), 5000_usec_ht));
+      DocPath(encoded_doc_key, "subkey2"), PrimitiveValue("value5"), kTxn2HT));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
@@ -3120,74 +3122,94 @@ SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 2000 }]) -> "value2"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 1000 }]) -> "value1"
-SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 2 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["mydockey"]), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
-SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 1 } \
+SubDocKey(DocKey([], ["mydockey"]), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 2 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 3 } \
     -> TransactionId(30303030-3030-3030-3030-303030303032) none
-SubDocKey(DocKey([], ["mydockey", 123456]), []) [kStrongRead, kStrongWrite] HT{ physical: 5000 } \
+SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 3 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["mydockey", 123456]), []) [kStrongRead, kStrongWrite] HT{ physical: 6000 } \
     -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(2) {}
+SubDocKey(DocKey([], ["mydockey", 123456]), []) [kStrongRead, kStrongWrite] HT{ physical: 5000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303031) WriteId(0) {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) [kStrongRead, kStrongWrite] \
-    HT{ physical: 5000 } \
-    -> TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) "value4"
+    HT{ physical: 5000 } -> TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) "value4"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) [kStrongRead, kStrongWrite] \
-    HT{ physical: 5000 } \
-    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(3) "value5"
+    HT{ physical: 6000 } -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(3) "value5"
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 } -> \
-    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) \
-    [kStrongRead, kStrongWrite] HT{ physical: 5000 }
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 5000 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 1 } -> \
-    SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] \
-    HT{ physical: 5000 w: 1 }
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 1 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 2 }
-TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 } -> \
-    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) \
-    [kStrongRead, kStrongWrite] HT{ physical: 5000 }
-TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 w: 1 } -> \
+    SubDocKey(DocKey([], ["mydockey"]), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 3 } -> \
     SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] \
-    HT{ physical: 5000 w: 1 }
-TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 2 }
-      )#");
+    HT{ physical: 5000 w: 3 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 6000 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 6000 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 6000 w: 1 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 6000 w: 2 } -> \
+    SubDocKey(DocKey([], ["mydockey"]), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 6000 w: 3 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] \
+    HT{ physical: 6000 w: 3 }
+    )#");
   FullyCompactHistoryBefore(3500_usec_ht);
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
       R"#(
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 4000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -> "value3"
-SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 2 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 1 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["mydockey"]), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
-SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 1 } \
+SubDocKey(DocKey([], ["mydockey"]), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 2 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 3 } \
     -> TransactionId(30303030-3030-3030-3030-303030303032) none
-SubDocKey(DocKey([], ["mydockey", 123456]), []) [kStrongRead, kStrongWrite] HT{ physical: 5000 } \
+SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 3 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["mydockey", 123456]), []) [kStrongRead, kStrongWrite] HT{ physical: 6000 } \
     -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(2) {}
+SubDocKey(DocKey([], ["mydockey", 123456]), []) [kStrongRead, kStrongWrite] HT{ physical: 5000 } \
+    -> TransactionId(30303030-3030-3030-3030-303030303031) WriteId(0) {}
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) [kStrongRead, kStrongWrite] \
-    HT{ physical: 5000 } \
-    -> TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) "value4"
+    HT{ physical: 5000 } -> TransactionId(30303030-3030-3030-3030-303030303031) WriteId(1) "value4"
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) [kStrongRead, kStrongWrite] \
-    HT{ physical: 5000 } \
-    -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(3) "value5"
+    HT{ physical: 6000 } -> TransactionId(30303030-3030-3030-3030-303030303032) WriteId(3) "value5"
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 } -> \
-    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) \
-    [kStrongRead, kStrongWrite] HT{ physical: 5000 }
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 5000 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 1 } -> \
-    SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] \
-    HT{ physical: 5000 w: 1 }
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 1 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 2 }
-TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 } -> \
-    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) \
-    [kStrongRead, kStrongWrite] HT{ physical: 5000 }
-TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 w: 1 } -> \
+    SubDocKey(DocKey([], ["mydockey"]), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 5000 w: 3 } -> \
     SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] \
-    HT{ physical: 5000 w: 1 }
-TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 5000 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 5000 w: 2 }
-      )#");
+    HT{ physical: 5000 w: 3 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 6000 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey2"]) [kStrongRead, kStrongWrite] \
+    HT{ physical: 6000 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 6000 w: 1 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 1 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 6000 w: 2 } -> \
+    SubDocKey(DocKey([], ["mydockey"]), []) [kWeakRead, kWeakWrite] HT{ physical: 6000 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 6000 w: 3 } -> \
+    SubDocKey(DocKey([], ["mydockey", 123456]), []) [kWeakRead, kWeakWrite] \
+    HT{ physical: 6000 w: 3 }
+    )#");
 }
 
 TEST_F(DocDBTest, ForceFlushedFrontier) {
