@@ -131,3 +131,22 @@ CREATE TABLE real_city (
 	cname		text,
 	outline 	path
 );
+
+CREATE TABLE patient (
+	name		text,
+	age		    int4,
+	dob      	date
+) WITH (fillfactor=40);
+
+CREATE TABLE planetrip (
+	origin		text,
+	dest	    text,
+	day         date,
+	depart     	time
+) WITH (user_catalog_table=true);
+
+CREATE TABLE client (
+    name        text,
+    phonenum    int8,
+    deadline    date
+) WITH (oids=false);
