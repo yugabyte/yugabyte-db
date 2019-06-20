@@ -11,6 +11,7 @@ serviceEndpoints:
     ports:
       ycql-port: "9042"
       yedis-port: "6379"
+      ysql-port: "5433"
 
 storage:
   master:
