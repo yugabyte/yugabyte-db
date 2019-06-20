@@ -4164,15 +4164,13 @@ part_elem: ColId opt_collate opt_class
 		;
 /* WITH (options) is preferred, WITH OIDS and WITHOUT OIDS are legacy forms */
 OptWith:
-			WITH reloptions				{ parser_ybc_signal_unsupported(@1, "WITH clause", 1129); $$ = $2; }
+			WITH reloptions				{ $$ = $2; }
 			| WITH OIDS
 				{
-					parser_ybc_signal_unsupported(@1, "WITH OIDS", 1129);
 					$$ = list_make1(makeDefElem("oids", (Node *) makeInteger(true), @1));
 				}
 			| WITHOUT OIDS
 				{
-					parser_ybc_signal_unsupported(@1, "WITHOUT OIDS", 1129);
 					$$ = list_make1(makeDefElem("oids", (Node *) makeInteger(false), @1));
 				}
 			| /*EMPTY*/					{ $$ = NIL; }

@@ -48,10 +48,7 @@ CREATE TABLE tenk1 (
 	stringu2	name,
 	string4		name
 ) WITH OIDS;
-ERROR:  WITH OIDS not supported yet
-LINE 18: ) WITH OIDS;
-           ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1129. Click '+' on the description to raise its priority
+ERROR:  OIDs are not supported for user tables.
 CREATE TABLE tenk2 (
 	unique1 	int4,
 	unique2 	int4,
@@ -136,3 +133,21 @@ CREATE TABLE real_city (
 	cname		text,
 	outline 	path
 );
+CREATE TABLE patient (
+	name		text,
+	age		    int4,
+	dob      	date
+) WITH (fillfactor=40);
+WARNING:  Storage parameter fillfactor is unsupported, ignoring
+CREATE TABLE planetrip (
+	origin		text,
+	dest	    text,
+	day         date,
+	depart     	time
+) WITH (user_catalog_table=true);
+ERROR:  Users cannot create system catalog tables.
+CREATE TABLE client (
+    name        text,
+    phonenum    int8,
+    deadline    date
+) WITH (oids=false);
