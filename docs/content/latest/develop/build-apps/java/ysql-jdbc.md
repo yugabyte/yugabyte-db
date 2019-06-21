@@ -143,13 +143,13 @@ import java.sql.ResultSet;
 public class YBSqlHelloWorld {
   public static void main(String[] args) {
     try {
-      // Create the DB connection                                                                                
+      // Create the DB connection
       Class.forName("org.postgresql.Driver");
       Connection connection = null;
       connection = DriverManager.getConnection(
                  "jdbc:postgresql://127.0.0.1:5433/postgres","postgres", "postgres");
 
-      // Create table 'employee'                                                                                 
+      // Create table 'employee'
       String createStmt = "CREATE TABLE employee (id int PRIMARY KEY, " +
                                                  "name varchar, " +
                                                  "age int, " +
@@ -157,13 +157,13 @@ public class YBSqlHelloWorld {
       connection.createStatement().execute(createStmt);
       System.out.println("Created table employee");
 
-      // Insert a row.                                                                                           
+      // Insert a row.
       String insertStmt = "INSERT INTO employee (id, name, age, language)" +
                                                 " VALUES (1, 'John', 35, 'Java');";
       connection.createStatement().executeUpdate(insertStmt);
       System.out.println("Inserted data: " + insertStmt);
 
-      // Query the row and print out the result.                                                                 
+      // Query the row and print out the result.
       String selectStmt = "SELECT name, age, language FROM employee WHERE id = 1;";
       PreparedStatement pstmt = connection.prepareStatement(selectStmt);
       ResultSet rs = pstmt.executeQuery();
@@ -175,7 +175,7 @@ public class YBSqlHelloWorld {
                              "name=" + name + ", age=" + age + ", language: " + language);
       }
 
-      // Close the client.                                                                                       
+      // Close the client.
       connection.close();
     } catch (Exception e) {
         System.err.println("Error: " + e.getMessage());
