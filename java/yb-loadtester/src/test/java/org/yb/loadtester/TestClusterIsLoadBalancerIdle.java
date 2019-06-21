@@ -50,6 +50,9 @@ public class TestClusterIsLoadBalancerIdle extends TestClusterBase {
       setupTable("test_table_" + i, 2);
     }
 
+    // Wait for the partition metadata to refresh.
+    Thread.sleep(num_tables * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+
     // Wait for load to balance across the three tservers.
     assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS));
 
@@ -62,7 +65,7 @@ public class TestClusterIsLoadBalancerIdle extends TestClusterBase {
     addNewTServers(1);
 
     // Wait for the partition metadata to refresh.
-    Thread.sleep(MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+    Thread.sleep(num_tables * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
 
     verifyClusterHealth(NUM_TABLET_SERVERS + 1);
 
