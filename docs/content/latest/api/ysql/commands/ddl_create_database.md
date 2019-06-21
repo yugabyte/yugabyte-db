@@ -71,4 +71,5 @@ Where
 
 ## See Also
 [`ALTER DATABASE`](../ddl_alter_db)
+[`DROP DATABASE`](../ddl_drop_database)
 [Other YSQL Statements](..)
