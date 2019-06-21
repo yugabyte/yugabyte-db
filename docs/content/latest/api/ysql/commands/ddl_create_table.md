@@ -34,7 +34,7 @@ The `CREATE TABLE` command creates a new table in a database. It defines the tab
 
 ### Grammar
 ```
-create_table ::= CREATE TABLE [ IF NOT EXISTS ] table_name ( table_elem [, ...] )
+create_table ::= CREATE TABLE [ IF NOT EXISTS ] table_name ( table_elem [, ...] ) [ WITH ( storage_parameter [= value] [, ... ] ) | WITHOUT OIDS ]
 
 table_elem ::= column_name data_type [ column_constraint ...] | table_constraint
 
@@ -59,6 +59,7 @@ Where
 
 ## Semantics
 - An error is raised if `qualified_name` already exists in the specified database.
+- Storage parameters through the `WITH` clause are accepted [for PostgreSQL compatibility](https://www.postgresql.org/docs/9.1/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), but they will be ignored. The exceptions are `oids=true` and `user_catalog_table=true`, which are explicitly disallowed and will result in an error being thrown.
 
 ### PRIMARY KEY
 - Currently defining a primary key is required.
