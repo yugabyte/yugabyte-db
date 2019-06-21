@@ -991,7 +991,7 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 14px;
     background-color: #f75821;
     cursor: pointer;
-    z-index: 9999;
+    z-index: 4999;
 
     -moz-transition: bottom 300ms ease;
     -webkit-transition: bottom 300ms ease;
@@ -1168,6 +1168,24 @@ h1, h2, h3, h4, h5, h6 {
     display: none;
   }
 }
+
+/** Bootstrap Overrides **/
+.modal {
+  z-index: 6000;
+}
+.modal.show .modal-dialog {
+  -webkit-transform: translate(0, 0);
+  transform: translate(0, 0);
+  min-width: 1280px;
+
+  img {
+    width: 100%;
+  }
+}
+.modal-backdrop {
+  z-index: 5500;
+}
+/***********************/
 
 @media screen and (max-width: 959px) {
   .breadcrumbs {
