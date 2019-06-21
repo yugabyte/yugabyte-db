@@ -60,4 +60,5 @@ where
 
 ## See Also
 [`CREATE DATABASE`](../ddl_create_database)
+[`DROP DATABASE`](../ddl_drop_database)
 [Other YSQL Statements](..)
