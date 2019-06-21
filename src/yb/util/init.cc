@@ -97,7 +97,14 @@ Status SetupLogDir(const std::string& server_type) {
 
     bool created = false;
     std::string out_dir;
-    RETURN_NOT_OK(SetupRootDir(Env::Default(), data_paths[0], server_type, &out_dir, &created));
+    Status s = SetupRootDir(Env::Default(), data_paths[0], server_type, &out_dir, &created);
+    if (!s.ok()) {
+      return STATUS(
+          InvalidArgument, strings::Substitute(
+          "Cannot create directory for logging, please check the --fs_data_dirs parameter "
+          "(Passed: $0). Path does not exist: $1\nDetails: $2",
+          FLAGS_fs_data_dirs, data_paths[0], s.ToString()));
+    }
     // Create the actual log dir.
     out_dir = JoinPathSegments(out_dir, "logs");
     RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(Env::Default(), out_dir, &created),
