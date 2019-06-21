@@ -182,7 +182,14 @@ Status FsManager::Init() {
     // Strip the basename when canonicalizing, as it may not exist. The
     // dirname, however, must exist.
     string canonicalized;
-    RETURN_NOT_OK(env_->Canonicalize(DirName(root), &canonicalized));
+    Status s = env_->Canonicalize(DirName(root), &canonicalized);
+    if (!s.ok()) {
+      return STATUS(
+          InvalidArgument, strings::Substitute(
+          "Cannot create directory for YB data, please check the --fs_data_dirs parameter "
+          "(Passed: $0). Path does not exist: $1\nDetails: $2",
+          FLAGS_fs_data_dirs, root, s.ToString()));
+    }
     canonicalized = JoinPathSegments(canonicalized, BaseName(root));
     InsertOrDie(&canonicalized_roots, root, canonicalized);
   }
