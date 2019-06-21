@@ -232,8 +232,8 @@ public class HealthChecker {
         }
       } else {
         info.identityFile = accessKey.getKeyInfo().privateKey;
+        info.sshPort = sshPort;
       }
-      info.sshPort = sshPort;
       if (info.enableYSQL) {
         for (NodeDetails nd : details.nodeDetailsSet) {
           if (nd.isYsqlServer) {
