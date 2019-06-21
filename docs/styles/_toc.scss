@@ -88,8 +88,9 @@ pre code.copy + textarea + button.copy, .copy pre code + textarea + button.copy,
     position: absolute;
     top: 0;
     left: 0;    
-    font: normal normal normal 18px/1 FontAwesome;
-    content: '\F00C';
+    font: normal normal normal 18px/1 'Font Awesome 5 Free';
+    font-weight: 900;
+    content: '\f00c';
     color: #fff;
     text-align: center;
     border-radius: 2px;
