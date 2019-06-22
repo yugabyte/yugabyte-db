@@ -17,6 +17,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/flag_tags.h"
 
 #include "yb/master/sys_catalog_constants.h"
 
@@ -40,6 +41,8 @@ DEFINE_bool(
 DEFINE_bool(
     create_initial_sys_catalog_snapshot, false,
     "Run initdb and create an initial sys catalog data snapshot");
+TAG_FLAG(create_initial_sys_catalog_snapshot, advanced);
+TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
 
 using yb::CountDownLatch;
 using yb::tserver::TabletSnapshotOpRequestPB;
