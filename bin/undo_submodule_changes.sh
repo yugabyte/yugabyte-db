@@ -22,7 +22,7 @@ set -euo pipefail
 cd "$YB_SRC_ROOT"
 for submodule_dir in submodules/*; do
   submodule_commit_in_master=$(
-    git ls-tree origin/master "$submodule_dir" | awk '{print $3}'
+    git ls-tree HEAD "$submodule_dir" | awk '{print $3}'
   )
   if ! is_valid_git_sha1 "$submodule_commit_in_master"; then
     fatal "Failed to get SHA1 in master for submodule $submodule_dir"
