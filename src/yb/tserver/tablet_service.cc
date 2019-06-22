@@ -221,7 +221,7 @@ Status GetTabletRef(const TabletPeerPtr& tablet_peer,
 } // namespace
 
 template<class Resp>
-bool TabletServiceImpl::CheckMemoryPressure(
+bool TabletServiceImpl::CheckMemoryPressureOrRespond(
     tablet::Tablet* tablet, Resp* resp, rpc::RpcContext* context) {
   // Check for memory pressure; don't bother doing any additional work if we've
   // exceeded the limit.
@@ -465,7 +465,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
         server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
     tablet.leader_term = OpId::kUnknownTerm;
   }
-  if (!tablet || !CheckMemoryPressure(tablet.peer->tablet(), resp, &context)) {
+  if (!tablet || !CheckMemoryPressureOrRespond(tablet.peer->tablet(), resp, &context)) {
     return;
   }
 
@@ -733,7 +733,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   auto tablet = LookupLeaderTabletOrRespond(
       server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
-  if (!tablet || !CheckMemoryPressure(tablet.peer->tablet(), resp, &context)) {
+  if (!tablet || !CheckMemoryPressureOrRespond(tablet.peer->tablet(), resp, &context)) {
     return;
   }
 
@@ -820,24 +820,28 @@ Status TabletServiceImpl::CheckPeerIsLeaderAndReady(const TabletPeer& tablet_pee
   return CheckPeerIsLeader(tablet_peer);
 }
 
-bool TabletServiceImpl::GetTabletOrRespond(const ReadRequestPB* req,
-                                           ReadResponsePB* resp,
-                                           rpc::RpcContext* context,
-                                           std::shared_ptr<tablet::AbstractTablet>* tablet) {
-  return DoGetTabletOrRespond(req, resp, context, tablet);
+bool TabletServiceImpl::GetTabletOrRespond(
+    const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext* context,
+    std::shared_ptr<tablet::AbstractTablet>* tablet, TabletPeerPtr tablet_peer) {
+  return DoGetTabletOrRespond(req, resp, context, tablet, tablet_peer);
 }
 
 template <class Req, class Resp>
-bool TabletServiceImpl::DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::RpcContext* context,
-                                             std::shared_ptr<tablet::AbstractTablet>* tablet) {
-  auto tablet_peer_result = LookupTabletPeerOrRespond(
-      server_->tablet_peer_lookup(), req->tablet_id(), resp, context);
+bool TabletServiceImpl::DoGetTabletOrRespond(
+    const Req* req, Resp* resp, rpc::RpcContext* context,
+    std::shared_ptr<tablet::AbstractTablet>* tablet, TabletPeerPtr tablet_peer) {
+  if (tablet_peer) {
+    DCHECK_EQ(tablet_peer->tablet_id(), req->tablet_id());
+  } else {
+    auto tablet_peer_result = LookupTabletPeerOrRespond(
+        server_->tablet_peer_lookup(), req->tablet_id(), resp, context);
 
-  if (!tablet_peer_result.ok()) {
-    return false;
+    if (!tablet_peer_result.ok()) {
+      return false;
+    }
+
+    tablet_peer = std::move(*tablet_peer_result);
   }
-
-  auto tablet_peer = std::move(*tablet_peer_result);
 
   Status s = CheckPeerIsReady(*tablet_peer);
   if (PREDICT_FALSE(!s.ok())) {
@@ -1010,9 +1014,34 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       "tablet_id", req->tablet_id());
   DVLOG(3) << "Received Read RPC: " << req->DebugString();
 
-  const bool serializable_isolation =
-      req->has_transaction() &&
-          req->transaction().isolation() == IsolationLevel::SERIALIZABLE_ISOLATION;
+  // Unfortunately, determining the isolation level is not as straightforward as it seems. All but
+  // the first request to a given tablet by a particular transaction assume that the tablet already
+  // has the transaction metadata, including the isolation level, and those requests expect us to
+  // retrieve the isolation level from that metadata. Failure to do so was the cause of a
+  // serialization anomaly tested by TestOneOrTwoAdmins
+  // (https://github.com/YugaByte/yugabyte-db/issues/1572).
+
+  bool serializable_isolation = false;
+  TabletPeerPtr tablet_peer;
+  if (req->has_transaction()) {
+    IsolationLevel isolation_level;
+    if (req->transaction().has_isolation()) {
+      // This must be the first request to this tablet by this particular transaction.
+      isolation_level = req->transaction().isolation();
+    } else {
+      tablet_peer = VERIFY_RESULT_OR_RETURN(LookupTabletPeerOrRespond(
+          server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
+      auto isolation_level_result = tablet_peer->tablet()->GetIsolationLevelFromPB(*req);
+      if (!isolation_level_result.ok()) {
+        SetupErrorAndRespond(
+            resp->mutable_error(), isolation_level_result.status(),
+            TabletServerErrorPB::UNKNOWN_ERROR, &context);
+        return;
+      }
+      isolation_level = *isolation_level_result;
+    }
+    serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
+  }
 
   LeaderTabletPeer leader_peer;
   ReadContext read_context = {req, resp, &context};
@@ -1021,15 +1050,15 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     // At this point we expect that we don't have pure read serializable transactions, and
     // always write read intents to detect conflicts with other writes.
     leader_peer = LookupLeaderTabletOrRespond(
-        server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
+        server_->tablet_peer_lookup(), req->tablet_id(), resp, &context, std::move(tablet_peer));
     // Serialiable read adds intents, i.e. writes data.
     // We should check for memory pressure in this case.
-    if (!leader_peer || !CheckMemoryPressure(leader_peer.peer->tablet(), resp, &context)) {
+    if (!leader_peer || !CheckMemoryPressureOrRespond(leader_peer.peer->tablet(), resp, &context)) {
       return;
     }
     read_context.tablet = leader_peer.peer->shared_tablet();
   } else {
-    if (!GetTabletOrRespond(req, resp, &context, &read_context.tablet)) {
+    if (!GetTabletOrRespond(req, resp, &context, &read_context.tablet, std::move(tablet_peer))) {
       return;
     }
     leader_peer.leader_term = yb::OpId::kUnknownTerm;

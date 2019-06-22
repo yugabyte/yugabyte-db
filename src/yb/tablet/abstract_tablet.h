@@ -87,24 +87,33 @@ class AbstractTablet {
     return DoGetSafeTime(require_lease, min_allowed, deadline);
   }
 
- protected:
-  CHECKED_STATUS HandleQLReadRequest(
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
-      const QLReadRequestPB& ql_read_request,
-      const TransactionOperationContextOpt& txn_op_context,
-      QLReadRequestResult* result);
+  template <class PB>
+  Result<IsolationLevel> GetIsolationLevelFromPB(const PB& pb) {
+    if (!pb.has_transaction()) {
+      return IsolationLevel::NON_TRANSACTIONAL;
+    }
+    return GetIsolationLevel(pb.transaction());
+  }
 
-
-  //------------------------------------------------------------------------------------------------
-  // PGSQL support.
- public:
   virtual CHECKED_STATUS HandlePgsqlReadRequest(
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const PgsqlReadRequestPB& ql_read_request,
       const TransactionMetadataPB& transaction_metadata,
       PgsqlReadRequestResult* result) = 0;
+
+  virtual Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) = 0;
+
+  //-----------------------------------------------------------------------------------------------
+  // PGSQL support.
+  //-----------------------------------------------------------------------------------------------
+
+  CHECKED_STATUS HandleQLReadRequest(
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const QLReadRequestPB& ql_read_request,
+      const TransactionOperationContextOpt& txn_op_context,
+      QLReadRequestResult* result);
 
   virtual CHECKED_STATUS CreatePagingStateForRead(const PgsqlReadRequestPB& pgsql_read_request,
                                                   const size_t row_count,

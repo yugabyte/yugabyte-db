@@ -1728,26 +1728,6 @@ void Tablet::DocDBDebugDump(vector<string> *lines) {
   docdb::DocDBDebugDump(regular_db_.get(), LOG_STRING(INFO, lines), docdb::StorageDbType::kRegular);
 }
 
-namespace {
-
-Result<IsolationLevel> GetIsolationLevel(const KeyValueWriteBatchPB& write_batch,
-                                         TransactionParticipant* transaction_participant) {
-  if (!write_batch.has_transaction()) {
-    return IsolationLevel::NON_TRANSACTIONAL;
-  }
-  if (write_batch.transaction().has_isolation()) {
-    return write_batch.transaction().isolation();
-  }
-  auto id = VERIFY_RESULT(FullyDecodeTransactionId(write_batch.transaction().transaction_id()));
-  auto stored_metadata = transaction_participant->Metadata(id);
-  if (!stored_metadata) {
-    return STATUS_FORMAT(NotFound, "Missing metadata for transaction: $0", id);
-  }
-  return stored_metadata->isolation;
-}
-
-} // namespace
-
 Status Tablet::TEST_SwitchMemtable() {
   ScopedPendingOperation scoped_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_operation);
@@ -1758,8 +1738,7 @@ Status Tablet::TEST_SwitchMemtable() {
 
 Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   auto write_batch = operation->request()->mutable_write_batch();
-  auto isolation_level = VERIFY_RESULT(GetIsolationLevel(
-      *write_batch, transaction_participant_.get()));
+  auto isolation_level = VERIFY_RESULT(GetIsolationLevelFromPB(*write_batch));
 
   const bool transactional_table = metadata_->schema().table_properties().is_transactional();
   const auto partial_range_key_intents = UsePartialRangeKeyIntents(metadata_.get());
@@ -2211,6 +2190,18 @@ Status Tablet::RestoreSnapshot(SnapshotOperationState* tx_state) {
 
 std::string Tablet::SnapshotsDirName(const std::string& rocksdb_dir) {
   return rocksdb_dir + kSnapshotsDirSuffix;
+}
+
+Result<IsolationLevel> Tablet::GetIsolationLevel(const TransactionMetadataPB& transaction) {
+  if (transaction.has_isolation()) {
+    return transaction.isolation();
+  }
+  auto id = VERIFY_RESULT(FullyDecodeTransactionId(transaction.transaction_id()));
+  auto stored_metadata = transaction_participant_->Metadata(id);
+  if (!stored_metadata) {
+    return STATUS_FORMAT(NotFound, "Missing metadata for transaction: $0", id);
+  }
+  return stored_metadata->isolation;
 }
 
 // ------------------------------------------------------------------------------------------------

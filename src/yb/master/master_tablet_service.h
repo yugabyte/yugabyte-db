@@ -54,10 +54,12 @@ class MasterTabletServiceImpl : public yb::tserver::TabletServiceImpl {
                            rpc::RpcContext context) override;
 
  private:
-  bool GetTabletOrRespond(const tserver::ReadRequestPB* req,
-                          tserver::ReadResponsePB* resp,
-                          rpc::RpcContext* context,
-                          std::shared_ptr<tablet::AbstractTablet>* tablet) override;
+  bool GetTabletOrRespond(
+      const tserver::ReadRequestPB* req,
+      tserver::ReadResponsePB* resp,
+      rpc::RpcContext* context,
+      std::shared_ptr<tablet::AbstractTablet>* tablet,
+      tablet::TabletPeerPtr looked_up_tablet_peer) override;
 
   Master *const master_;
   DISALLOW_COPY_AND_ASSIGN(MasterTabletServiceImpl);
