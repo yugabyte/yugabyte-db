@@ -27,10 +27,14 @@ MasterTabletServiceImpl::MasterTabletServiceImpl(MasterTabletServer* server, Mas
     : TabletServiceImpl(server), master_(master) {
 }
 
-bool MasterTabletServiceImpl::GetTabletOrRespond(const tserver::ReadRequestPB* req,
-                                                 tserver::ReadResponsePB* resp,
-                                                 rpc::RpcContext* context,
-                                                 std::shared_ptr<tablet::AbstractTablet>* tablet) {
+bool MasterTabletServiceImpl::GetTabletOrRespond(
+    const tserver::ReadRequestPB* req,
+    tserver::ReadResponsePB* resp,
+    rpc::RpcContext* context,
+    std::shared_ptr<tablet::AbstractTablet>* tablet,
+    tablet::TabletPeerPtr looked_up_tablet_peer) {
+  // Ignore looked_up_tablet_peer.
+
   CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
   if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, context)) {
     return false;

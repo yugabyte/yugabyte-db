@@ -556,6 +556,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   static std::string SnapshotsDirName(const std::string& rocksdb_dir);
 
+  // Get the isolation level of the given transaction from the metadata stored in the provisional
+  // records RocksDB.
+  Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) override;
+
  protected:
   friend class Iterator;
   friend class TabletPeerTest;

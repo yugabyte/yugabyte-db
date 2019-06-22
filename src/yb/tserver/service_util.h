@@ -192,18 +192,26 @@ struct LeaderTabletPeer {
   bool FillTerm(TabletServerErrorPB* error, rpc::RpcContext* context);
 };
 
+// The "peer" argument could be provided by the caller in case the caller has already performed
+// the LookupTabletPeerOrRespond call, and we only need to fill the leader term.
 template<class RespClass>
 LeaderTabletPeer LookupLeaderTabletOrRespond(
     TabletPeerLookupIf* tablet_manager,
     const std::string& tablet_id,
     RespClass* resp,
-    rpc::RpcContext* context) {
-  auto peer = LookupTabletPeerOrRespond(tablet_manager, tablet_id, resp, context);
-  if (!peer.ok()) {
-    return LeaderTabletPeer();
+    rpc::RpcContext* context,
+    std::shared_ptr<tablet::TabletPeer> peer = nullptr) {
+  if (peer) {
+    DCHECK_EQ(peer->tablet_id(), tablet_id);
+  } else {
+    auto peer_result = LookupTabletPeerOrRespond(tablet_manager, tablet_id, resp, context);
+    if (!peer_result.ok()) {
+      return LeaderTabletPeer();
+    }
+    peer = std::move(*peer_result);
   }
   LeaderTabletPeer result;
-  result.peer = *peer;
+  result.peer = std::move(peer);
 
   if (!result.FillTerm(resp->mutable_error(), context)) {
     return LeaderTabletPeer();
