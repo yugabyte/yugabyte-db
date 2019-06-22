@@ -582,6 +582,10 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
             return restore_status;
           }
 
+          LOG(INFO) << "Re-initializing cluster config";
+          cluster_config_.reset();
+          RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
+
           LOG(INFO) << "Restoring snapshot completed, considering initdb finished";
           RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
           RETURN_NOT_OK(RunLoaders());
@@ -708,14 +712,18 @@ Status CatalogManager::PrepareDefaultClusterConfig(int64_t term) {
   SysClusterConfigEntryPB config;
   config.set_version(0);
 
+  std::string cluster_uuid_source;
   if (!FLAGS_cluster_uuid.empty()) {
     Uuid uuid;
     RETURN_NOT_OK(uuid.FromString(FLAGS_cluster_uuid));
     config.set_cluster_uuid(FLAGS_cluster_uuid);
+    cluster_uuid_source = "from the --cluster_uuid flag";
   } else {
     auto uuid = Uuid::Generate();
     config.set_cluster_uuid(to_string(uuid));
+    cluster_uuid_source = "(randomly generated)";
   }
+  LOG(INFO) << "Setting cluster UUID to " << config.cluster_uuid() << " " << cluster_uuid_source;
 
   // Create in memory object.
   cluster_config_ = new ClusterConfigInfo();
@@ -788,11 +796,11 @@ Status CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
     Status status = PgWrapper::InitDbForYSQL(master_addresses_str, "/tmp");
 
     if (FLAGS_create_initial_sys_catalog_snapshot && status.ok()) {
-      Status write_snasphot_status = initial_snapshot_writer_->WriteSnapshot(
+      Status write_snapshot_status = initial_snapshot_writer_->WriteSnapshot(
           sys_catalog_->tablet_peer()->tablet(),
           FLAGS_initial_sys_catalog_snapshot_path);
-      if (!write_snasphot_status.ok()) {
-        status = write_snasphot_status;
+      if (!write_snapshot_status.ok()) {
+        status = write_snapshot_status;
       }
     }
     Status finish_status = InitDbFinished(status, term);
