@@ -3,7 +3,7 @@
 Automatic tablet splitting enables changing the number of tablets (which are splits of data) at runtime. There are a number of scenarios where this is useful:
 
 ### 1. Range Scans
-In use-cases that scan a range of data, it is often impossible to predict a good split boundary. For example: 
+In use-cases that scan a range of data, the data is stored in the natural sort order (also known as *range-sharding*). In these usage patterns, it is often impossible to predict a good split boundary ahead of time. For example: 
 
 ```
 CREATE TABLE census_stats (
@@ -23,11 +23,11 @@ In use-cases with a low-cardinality of the primary keys (or the secondary index)
 This feature is also useful for use-cases where tables begin small, and thereby start with a few shards. If these tables grow very large, then nodes continuously get added to the cluster. We may reach a scenario where the number of nodes exceeds the number of tablets. Such cases require tablet splitting to effectively re-balance the cluster.
 
 
-# Design
+# Lifecycle of automatic re-sharding
 
-There are three steps in the lifecycle of tablet splitting - **check criteria splitting**, **initiate a split*, **perform the split** and **handle splits on client-drivers**. Each of these stages is described below.
+There are three steps in the lifecycle of tablet splitting - **identifying tablets to split**, **initiating a split**, **performing the split** and **handling splits on client drivers**. Each of these stages is described below.
 
-## Check criteria for splitting
+## Identifying tablets to split
 
 The YB-Master continuously monitors tablets and decides when to split a particular tablet. Currently, the data set size across the tablets is used to determine if any tablet needs to be split. This can be enhanced to take into account other factors such as:
 * The data set size on each tablet (current)
@@ -37,11 +37,20 @@ The YB-Master continuously monitors tablets and decides when to split a particul
 
 Currently, the YB-Master configuration parameter `tablet_size_split_threshold` is propagated to all YB-TServers by piggybacking it with the heartbeat responses. The YB-TServers in turn report a list of tablets whose sizes exceed the `tablet_size_split_threshold` parameter.
 
+Based on the heartbeats from all the YB-TServers, the YB-Master picks the set of tablets that need to be split. At this point, the split can be initiated.
+
+## Initiating a split
+
+The YB-Master sends a `SplitTablet()` RPC call to the approriate server(s) with a list of tablets to split. Note that a server can split a tablet only if it hosts the leader tablet-peer.
+
+## Performing the split
+
+## Handling splitting on client drivers
+
+
 
 
 ## Driving tablet splitting from master side
-- Tablet server reports list of tablets exceeding tablet_size_split_threshold in a `TSHeartbeatRequestPB`.
-- Master sends `TabletServerAdminService.SplitTablet` RPC to leader tablet server with a list of tablets to split.
 - Once tablet splitting is complete on a leader of source/old tablet - master will get info about new tablets in a 
 tablet report embedded into `TSHeartbeatRequestPB`. Also we can send this info back as a response to 
 `TabletServerAdminService.SplitTablet RPC`, so master knows faster about new tablets.
