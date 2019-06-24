@@ -199,9 +199,6 @@ class CompletionFlag {
 struct ThreadStackHelper {
   std::mutex mutex; // Locked by ThreadStacks, so only one could be executed in parallel.
 
-  // We don't care about ABA problem here, because memory is maintained by allocated_chunks,
-  // so loosing some thread stacks would not cause memory leak. Also when stack is collected at
-  // bound of timeout it is ok to miss it.
   LockFreeStack<ThreadStackEntry> collected;
   // Reuse previously allocated memory. We expect this size to be merely small, near 152 bytes
   // per application thread.

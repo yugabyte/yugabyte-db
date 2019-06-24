@@ -410,4 +410,68 @@ TEST(LockfreeTest, QueuePerformance) {
   helper.Perform(0x10, true);
 }
 
+TEST(LockfreeTest, Stack) {
+  constexpr int kNumEntries = 100;
+  constexpr int kNumThreads = 5;
+
+  struct Entry : public MPSCQueueEntry<Entry> {
+    int value;
+  };
+
+  LockFreeStack<Entry> stack;
+  std::vector<Entry> entries(kNumEntries);
+  for (int i = 0; i != kNumEntries; ++i) {
+    entries[i].value = i;
+    stack.Push(&entries[i]);
+  }
+
+  TestThreadHolder holder;
+  for (int i = 0; i != kNumThreads; ++i) {
+    // Each thread randomly does one of
+    // 1) pull items from shared stack and store it to local set.
+    // 2) push random item from local set to shared stack.
+    holder.AddThread([&stack, &stop = holder.stop_flag()] {
+      std::vector<Entry*> local;
+      while (!stop.load(std::memory_order_acquire)) {
+        bool push = !local.empty() && RandomUniformInt(0, 1);
+        if (push) {
+          size_t index = RandomUniformInt<size_t>(0, local.size() - 1);
+          stack.Push(local[index]);
+          local[index] = local.back();
+          local.pop_back();
+        } else {
+          auto entry = stack.Pop();
+          if (entry) {
+            local.push_back(entry);
+          }
+        }
+      }
+      while (!local.empty()) {
+        stack.Push(local.back());
+        local.pop_back();
+      }
+    });
+  }
+
+  holder.WaitAndStop(5s);
+
+  std::vector<int> content;
+  while (content.size() <= kNumEntries) {
+    auto entry = stack.Pop();
+    if (!entry) {
+      break;
+    }
+    content.push_back(entry->value);
+  }
+
+  LOG(INFO) << "Content: " << yb::ToString(content);
+
+  ASSERT_EQ(content.size(), kNumEntries);
+
+  std::sort(content.begin(), content.end());
+  for (int i = 0; i != kNumEntries; ++i) {
+    ASSERT_EQ(content[i], i);
+  }
+}
+
 } // namespace yb
