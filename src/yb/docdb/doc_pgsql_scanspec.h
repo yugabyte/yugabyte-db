@@ -30,6 +30,7 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
                    const DocKey& doc_key,
+                   const DocKey& start_doc_key = DocKey(),
                    bool is_forward_scan = true);
 
   // Scan for the given hash key, a condition, and optional doc_key.
@@ -89,11 +90,8 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   // hash values are positive int16_t.
   const boost::optional<int32_t> max_hash_code_;
 
-  // Specific doc key to scan if not empty.
-  const KeyBytes doc_key_;
-
   // Starting doc key when requested by the client.
-  KeyBytes start_doc_key_;
+  const KeyBytes start_doc_key_;
 
   // Lower and upper keys for range condition.
   KeyBytes lower_doc_key_;
