@@ -81,15 +81,20 @@ class PgsqlRangeBasedFileFilter : public rocksdb::ReadFileFilter {
 DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const rocksdb::QueryId query_id,
                                    const DocKey& doc_key,
+                                   const DocKey& start_doc_key,
                                    bool is_forward_scan)
     : PgsqlScanSpec(YQL_CLIENT_PGSQL, nullptr),
       query_id_(query_id),
       hashed_components_(nullptr),
-      doc_key_(doc_key.Encode()),
+      start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
+      lower_doc_key_(doc_key.Encode()),
       is_forward_scan_(is_forward_scan) {
-  DocKeyEncoder(&start_doc_key_).CotableId(schema.cotable_id());
-  lower_doc_key_ = start_doc_key_;
-  upper_doc_key_ = start_doc_key_;
+
+  // Compute lower and upper doc_key.
+  // We add +inf as an extra component to make sure this is greater than all keys in range.
+  // For lower bound, this is true already, because dockey + suffix is > dockey
+  upper_doc_key_ = lower_doc_key_;
+  upper_doc_key_.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
 }
 
 DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
@@ -160,34 +165,20 @@ std::vector<PrimitiveValue> DocPgsqlScanSpec::range_components(const bool lower_
 
 // Return inclusive lower/upper range doc key considering the start_doc_key.
 Result<KeyBytes> DocPgsqlScanSpec::Bound(const bool lower_bound) const {
-  // If a full doc key is specified, that is the exactly doc to scan. Otherwise, compute the
-  // lower/upper bound doc keys to scan from the range.
-  if (!doc_key_.empty()) {
-    if (lower_bound || doc_key_.empty()) {
-      return doc_key_;
-    }
-    KeyBytes result = doc_key_;
-    // We add +inf as an extra component to make sure this is greater than all keys in range.
-    // For lower bound, this is true already, because dockey + suffix is > dockey
-    result.AppendValueTypeBeforeGroupEnd(ValueType::kHighest);
-    return std::move(result);
+  if (start_doc_key_.empty()) {
+    return lower_bound ? lower_doc_key_ : upper_doc_key_;
   }
 
-  // If start doc_key is set, that is the lower or upper bound depending if it is forward or
-  // backward scan.
-  if (is_forward_scan_) {
-    if (lower_bound) {
-      return !start_doc_key_.empty() ? start_doc_key_ : lower_doc_key_;
-    } else {
-      return upper_doc_key_;
-    }
-  } else {
-    if (lower_bound) {
-      return lower_doc_key_;
-    } else {
-      return !start_doc_key_.empty() ? start_doc_key_ : upper_doc_key_;
-    }
+  // When paging state is present, start_doc_key_ should have been provided, and the scan starting
+  // point should be start_doc_key_ instead of the initial bounds.
+  if (start_doc_key_ < lower_doc_key_ || start_doc_key_ > upper_doc_key_) {
+    return STATUS_FORMAT(Corruption, "Invalid start_doc_key: $0. Range: $1, $2",
+                         start_doc_key_, lower_doc_key_, upper_doc_key_);
   }
+  if (is_forward_scan_) {
+    return lower_bound ? start_doc_key_ : upper_doc_key_;
+  }
+  return lower_bound ? lower_doc_key_ : start_doc_key_;
 }
 
 std::shared_ptr<rocksdb::ReadFileFilter> DocPgsqlScanSpec::CreateFileFilter() const {
