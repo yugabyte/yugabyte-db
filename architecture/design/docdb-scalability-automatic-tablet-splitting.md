@@ -1,8 +1,8 @@
-# Motivation
+# Feature Overview
 
 Automatic tablet splitting enables changing the number of tablets (which are splits of data) at runtime. There are a number of scenarios where this is useful:
 
-### Range Scans
+### 1. Range Scans
 In use-cases that scan a range of data, it is often impossible to predict a good split boundary. For example: 
 
 ```
@@ -15,20 +15,31 @@ CREATE TABLE census_stats (
 
 In the table above, it is not possible for the database to infer the range of values for age (typically in the `1` to `100` range). It is also impossible to predict the distribution of rows in the table, meaning how many `user_id` rows will be inserted for each value of age to make an evenly distributed data split. This makes it hard to pick good split points ahead of time.
 
-### Low-cardinality primary keys
+### 2. Low-cardinality primary keys
 In use-cases with a low-cardinality of the primary keys (or the secondary index), hashing is not very effective. For example, if we had a table where the primary key (or index) was the column `gender` which has only two values `Male` and `Female`, hash sharding would not be very effective. However, it is still desirable to use the entire cluster of machines to maximize serving throughput.
 
 
-### Small tables that become very large
+### 3. Small tables that become very large
 This feature is also useful for use-cases where tables begin small, and thereby start with a few shards. If these tables grow very large, then nodes continuously get added to the cluster. We may reach a scenario where the number of nodes exceeds the number of tablets. Such cases require tablet splitting to effectively re-balance the cluster.
 
 
-# High-level design
+# Design
+
+There are three steps in the lifecycle of tablet splitting - **check criteria splitting**, **initiate a split*, **perform the split** and **handle splits on client-drivers**. Each of these stages is described below.
+
+## Check criteria for splitting
+
+The YB-Master continuously monitors tablets and decides when to split a particular tablet. Currently, the data set size across the tablets is used to determine if any tablet needs to be split. This can be enhanced to take into account other factors such as:
+* The data set size on each tablet (current)
+* The IOPS on each tablet
+* The CPU used on each tablet
+* A combination of the above
+
+Currently, the YB-Master configuration parameter `tablet_size_split_threshold` is propagated to all YB-TServers by piggybacking it with the heartbeat responses. The YB-TServers in turn report a list of tablets whose sizes exceed the `tablet_size_split_threshold` parameter.
+
+
 
 ## Driving tablet splitting from master side
-Master is monitoring tablets and decides when to split particular tablet.
-- Master configuration parameter `tablet_size_split_threshold` is propagated to all tservers inside master configuration 
-data embedded into `TSHeartbeatResponsePB`.
 - Tablet server reports list of tablets exceeding tablet_size_split_threshold in a `TSHeartbeatRequestPB`.
 - Master sends `TabletServerAdminService.SplitTablet` RPC to leader tablet server with a list of tablets to split.
 - Once tablet splitting is complete on a leader of source/old tablet - master will get info about new tablets in a 
