@@ -9,10 +9,9 @@ export default class YBCodeBlock extends Component {
   }
 
   render() {
-    const { label } = this.props;
-
+    const { label, className } = this.props;
     return (
-      <div className="yb-code-block">
+      <div className={className ? "yb-code-block " + className : "yb-code-block"}>
         {label &&
           <label>
             {label}

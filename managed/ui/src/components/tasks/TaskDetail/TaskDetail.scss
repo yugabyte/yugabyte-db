@@ -135,6 +135,7 @@ pre {
     border: 1px solid #DEE0EA;
     word-wrap: normal;
     word-break: keep-all;
+    min-height: 46px;
     @include transition(0.3s);
   }
 }
