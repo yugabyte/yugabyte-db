@@ -99,48 +99,68 @@ class OverviewMetrics extends Component {
       const width = this.props.width;
       panelItem = panelTypes[type].metrics.map((metricKey, idx) => {
         // skip disk_usage and cpu_usage due to separate widget
-        if(isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error && (metricKey !== "disk_usage" || !this.props.layout) && metricKey !== "cpu_usage") {
-          const legendData = [];
-          for(let idx=0; idx < metrics[type][metricKey].data.length; idx++){
-            metrics[type][metricKey].data[idx].fill = "tozeroy";
-            metrics[type][metricKey].data[idx].fillcolor = METRIC_COLORS[idx]+"10";
-            metrics[type][metricKey].data[idx].line = {
-              color: METRIC_COLORS[idx],
-              width: 1.5
-            };
-            legendData.push({
-              color: METRIC_COLORS[idx],
-              title: metrics[type][metricKey].data[idx].name
-            });
+        if(metricKey !== "disk_usage" && metricKey !== "cpu_usage") {
+          if(isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error) {
+            const legendData = [];
+            for(let idx=0; idx < metrics[type][metricKey].data.length; idx++){
+              metrics[type][metricKey].data[idx].fill = "tozeroy";
+              metrics[type][metricKey].data[idx].fillcolor = METRIC_COLORS[idx]+"10";
+              metrics[type][metricKey].data[idx].line = {
+                color: METRIC_COLORS[idx],
+                width: 1.5
+              };
+              legendData.push({
+                color: METRIC_COLORS[idx],
+                title: metrics[type][metricKey].data[idx].name
+              });
+            }
+            const measureUnit = isNonEmptyObject(metrics[type][metricKey].layout.yaxis) && metrics[type][metricKey].layout.yaxis.ticksuffix ? (" ("+metrics[type][metricKey].layout.yaxis.ticksuffix.replace('&nbsp;','')+")") : '';
+            return (
+              <YBWidget key={idx}
+                noMargin
+                headerRight={
+                  metricKey === "disk_usage" ? null :
+                  <YBPanelLegend data={legendData} />
+                }
+                headerLeft={metrics[type][metricKey].layout.title + measureUnit}
+                body={metricKey === "disk_usage" ?
+                  <DiskUsagePanel
+                    metric={metrics[type][metricKey]}
+                    className={"disk-usage-container"}
+                  /> :
+                  <MetricsPanelOverview
+                    metricKey={metricKey}
+                    metric={metrics[type][metricKey]}
+                    className={"metrics-panel-container"}
+                    width={width}
+                  />
+                }
+              />
+            );
           }
-          const measureUnit = isNonEmptyObject(metrics[type][metricKey].layout.yaxis) && metrics[type][metricKey].layout.yaxis.ticksuffix ? (" ("+metrics[type][metricKey].layout.yaxis.ticksuffix.replace('&nbsp;','')+")") : '';
-          return (
-            <YBWidget key={idx}
-              noMargin
-              headerRight={
-                metricKey === "disk_usage" ? null :
-                <YBPanelLegend data={legendData} />
-              }
-              headerLeft={metrics[type][metricKey].layout.title + measureUnit}
-              body={metricKey === "disk_usage" ?
-                <DiskUsagePanel
-                  metric={metrics[type][metricKey]}
-                  className={"disk-usage-container"}
-                /> :
-                <MetricsPanelOverview
-                  metricKey={metricKey}
-                  metric={metrics[type][metricKey]}
-                  className={"metrics-panel-container"}
-                  width={width}
-                />
-              }
-            />
-          );
+          return (<YBWidget key={type+idx}
+            noMargin
+            headerLeft={metricKey.replace(/_/g, ' ').charAt(0).toUpperCase() + metricKey.replace(/_/g, ' ').slice(1)}
+            body={
+              <MetricsPanelOverview
+                metricKey={metricKey}
+                metric={{
+                  data: [],
+                  layout: {
+                    xaxis: {},
+                    yaxis: {}
+                  }
+                }}
+                className={"metrics-panel-container"}
+                width={width}
+              />
+            }
+          />);
         }
         return null;
       }).filter(Boolean);
     }
-    let panelData= panelItem;
+    let panelData = panelItem;
     if (isEmptyArray(panelItem)) {
       panelData = "Error receiving response from Graph Server";
     }

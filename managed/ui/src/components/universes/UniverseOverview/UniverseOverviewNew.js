@@ -433,7 +433,7 @@ export default class UniverseOverviewNew extends Component {
 
           <Col lg={4} xs={12} md={6} sm={6}>
             <OverviewMetricsContainer universeUuid={universeInfo.universeUUID} type={"overview"} origin={"universe"}
-              width={width} nodePrefixes={nodePrefixes} layout={"new"} />
+              width={width} nodePrefixes={nodePrefixes} />
           </Col>
           <Col lg={4} md={6} sm={6} xs={12}>
             {this.getDiskUsageWidget(universeInfo)}
