@@ -7,12 +7,11 @@ import { YBModal, YBButton } from '../../common/forms/fields';
 import { getUniverseEndpoint } from 'actions/common';
 import { connect } from 'react-redux';
 import { openDialog, closeDialog } from '../../../actions/modal';
-import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
-import { Link } from 'react-router';
+import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { isNonEmptyObject } from "../../../utils/ObjectUtils";
 import { YBLoading } from '../../common/indicators';
-import { YBCodeBlock } from '../../common/descriptors';
+import { YBCodeBlock, YBCopyButton } from '../../common/descriptors';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 
 import './UniverseConnectModal.scss';
@@ -21,16 +20,23 @@ class UniverseConnectModal extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      connectIp: null
+      connectIp: null,
+      endpointName: null,
+      endpointPayload: "",
+      endpointError: ""
     };
   }
 
   renderEndpointUrl = (endpointUrl, endpointName) => {
     return (
-      <Link to={endpointUrl} target="_blank" rel="noopener noreferrer">
-        <YBButton btnClass={"btn btn-default"} btnText={endpointName} btnIcon={"fa fa-external-link"} />
-      </Link>
+      <YBButton btnClass={`btn btn-default ${this.state.endpointName === endpointName && 'active'}`} onClick={this.handleEndpointCall.bind(this, endpointUrl, endpointName)} btnText={endpointName} />
     );
+  }
+
+  handleEndpointCall = (endpointUrl, endpointName) => {
+    axios.get(endpointUrl)
+      .then((response) => this.setState({endpointPayload: response.data, endpointName: endpointName, endpointError: ""}))
+      .catch(() => this.setState({endpointPayload: "", endpointName: endpointName, endpointError: endpointName + " endpoint is unavailable"}));
   }
 
   componentDidMount = () => {
@@ -45,14 +51,24 @@ class UniverseConnectModal extends Component {
       const primaryCluster = getPrimaryCluster(clusters);
       const userIntent = primaryCluster && primaryCluster.userIntent;
       
-      // check if there's a Hosted Zone 
+      const ycqlServiceUrl = getUniverseEndpoint(universeUUID) + "/yqlservers";
+      // check if there's a Hosted Zone
       if (userIntent.providerType === "aws" && universeInfo.dnsName) {
-        this.setState({connectIp: universeInfo.dnsName});
+        this.setState({connectIp: universeInfo.dnsName.lastIndexOf(".") === universeInfo.dnsName.length - 1 ? universeInfo.dnsName.substr(0, universeInfo.dnsName.length - 1) : universeInfo.dnsName});
+        axios.get(ycqlServiceUrl)
+          .then((response) => this.setState({
+            endpointName: "YCQL",
+            endpointPayload: response.data
+          }))
+          .catch(() => console.log("YCQL endpoint is unavailable"));
       } else {
         // if no go to YCQL endpoint and fetch IPs
-        const ycqlServiceUrl = getUniverseEndpoint(universeUUID) + "/yqlservers";
         axios.get(ycqlServiceUrl)
-          .then((response) => this.setState({connectIp: response.data.split(',')[0].trim().split(':')[0]}))
+          .then((response) => this.setState({
+            connectIp: response.data.split(',')[0].trim().split(':')[0],
+            endpointName: "YCQL",
+            endpointPayload: response.data
+          }))
           .catch(() => console.log("YCQL endpoint is unavailable"));
       }
     }
@@ -80,22 +96,30 @@ class UniverseConnectModal extends Component {
       const ycqlServiceUrl = getUniverseEndpoint(universeId) + "/yqlservers";
       const ysqlServiceUrl = getUniverseEndpoint(universeId) + "/ysqlservers";
       const yedisServiceUrl = getUniverseEndpoint(universeId) + "/redisservers";
-      const endpointsContent = (<FlexContainer className="btn-group-cnt endpoint-buttons">
-        <FlexGrow>{this.renderEndpointUrl(ycqlServiceUrl, "YCQL")}</FlexGrow>
-        {userIntent.enableYSQL && <FlexGrow>{this.renderEndpointUrl(ysqlServiceUrl, "YSQL")}</FlexGrow>}
-        <FlexGrow>{this.renderEndpointUrl(yedisServiceUrl, "YEDIS")}</FlexGrow>
-      </FlexContainer>); 
+      const endpointsContent = (
+        <Fragment>
+          <FlexContainer className="btn-group-cnt endpoint-buttons">
+            <FlexShrink>{this.renderEndpointUrl(ycqlServiceUrl, "YCQL")}</FlexShrink>
+            {userIntent.enableYSQL && <FlexShrink>{this.renderEndpointUrl(ysqlServiceUrl, "YSQL")}</FlexShrink>}
+            <FlexShrink>{this.renderEndpointUrl(yedisServiceUrl, "YEDIS")}</FlexShrink>
+          </FlexContainer>
+          <YBCodeBlock className={"endpoint-output" + (this.state.endpointPayload === "" ? " empty" : "")}>
+            <YBCopyButton text={this.state.endpointPayload}/>
+            {this.state.endpointPayload} {this.state.endpointError} 
+          </YBCodeBlock>
+        </Fragment>
+        ); 
       const connectIp = this.state.connectIp;
       content = (<Fragment>
         <h4>Services</h4>
         <YBCodeBlock>
           JDBC : postgresql://postgres@{connectIp}:5433<br/>
           YSQL : ./bin/psql -U postgres -h {connectIp} -p 5433<br/>
-          YCQL : ./bin/cqlsh {connectIp} 9042<br/>
+          {userIntent.enableYSQL && `YCQL : ./bin/cqlsh ${connectIp} 9042<br/>`}
           YEDIS : ./bin/redis-cli -h {connectIp} -p 6379<br/>
           Web UI : http://{connectIp}:7000/
         </YBCodeBlock>
-        <h4>Endpoints</h4>
+        <h4 className="endpoints-heading">Endpoints</h4>
         {endpointsContent}
       </Fragment>);
     }
