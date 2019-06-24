@@ -91,8 +91,8 @@ export default class MetricsPanelOverview extends Component {
           x: 1,
           y: 1
         }];
-        metric.layout.xaxis = {range: [0, 2], color: '#444444', linecolor: '#eee'};
-        metric.layout.yaxis = {range: [0, 2], color: '#444444', linecolor: '#eee'};
+        metric.layout.xaxis = {range: [0, 2], color: '#444', linecolor: '#eee', zerolinecolor: '#eee', gridcolor: '#eee'};
+        metric.layout.yaxis = {range: [0, 2], color: '#444', linecolor: '#eee', zerolinecolor: '#eee', gridcolor: '#eee'};
       }
 
       this.setState({graphMounted: true, layout: metric.layout});
@@ -116,6 +116,9 @@ export default class MetricsPanelOverview extends Component {
       });
     }
     if (max === 0) max = 1.01;
+    if (!isNonEmptyArray(metric.data)) {
+      max = 2;
+    }
     Plotly.react(metricKey, metric.data, {...this.state.layout, yaxis: { range: [0, max] }}, {displayModeBar: false});
   }
 
