@@ -16,6 +16,10 @@
 
 #include <atomic>
 
+#include <glog/logging.h>
+
+#include "yb/gutil/dynamic_annotations.h"
+
 namespace yb {
 
 // Multi producer - singe consumer queue.
@@ -92,36 +96,49 @@ T* GetNext(const MPSCQueueEntry<T>* entry) {
 }
 
 // Intrusive stack implementation based on linked list.
-// This implementation weak to ABA problem (https://en.wikipedia.org/wiki/ABA_problem), so should
-// be used with care.
 template <class T>
 class LockFreeStack {
  public:
+  LockFreeStack() {
+    CHECK(head_.is_lock_free());
+  }
+
   void Push(T* value) {
-    T* old_head = head_.load(std::memory_order_acquire);
+    Head old_head = head_.load(std::memory_order_acquire);
     for (;;) {
-      SetNext(value, old_head);
-      if (head_.compare_exchange_weak(old_head, value, std::memory_order_acq_rel)) {
+      ANNOTATE_IGNORE_WRITES_BEGIN();
+      SetNext(value, old_head.pointer);
+      ANNOTATE_IGNORE_WRITES_END();
+      Head new_head{value, old_head.version + 1};
+      if (head_.compare_exchange_weak(old_head, new_head, std::memory_order_acq_rel)) {
         break;
       }
     }
   }
 
   T* Pop() {
-    T* old_head = head_.load(std::memory_order_acquire);
+    Head old_head = head_.load(std::memory_order_acquire);
     for (;;) {
-      if (!old_head) {
+      if (!old_head.pointer) {
         break;
       }
-      if (head_.compare_exchange_weak(old_head, GetNext(old_head), std::memory_order_acq_rel)) {
+      ANNOTATE_IGNORE_READS_BEGIN();
+      Head new_head{GetNext(old_head.pointer), old_head.version + 1};
+      ANNOTATE_IGNORE_READS_END();
+      if (head_.compare_exchange_weak(old_head, new_head, std::memory_order_acq_rel)) {
         break;
       }
     }
-    return old_head;
+    return old_head.pointer;
   }
 
  private:
-  std::atomic<T*> head_{nullptr};
+  struct Head {
+    T* pointer;
+    size_t version;
+  };
+
+  std::atomic<Head> head_{Head{nullptr, 0}};
 };
 
 } // namespace yb
