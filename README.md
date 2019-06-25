@@ -20,10 +20,10 @@
 
 YugaByte DB is a high-performance, cloud-native distributed SQL database. Here are the salient points about it:
 * Has a pluggable query layer, and supports two APIs:
-    * **[YSQL](https://docs.yugabyte.com/latest/api/ysql/)** (PostgreSQL compatible)
-    * **[YCQL](https://docs.yugabyte.com/latest/api/ycql/)** (Apache Cassandra Query Language roots with document and indexing support)
+    * **[YugaByte SQL (YSQL)](https://docs.yugabyte.com/latest/api/ysql/)** - PostgreSQL-compatible fully relational API
+    * **[YugaByte Cloud QL (YCQL)](https://docs.yugabyte.com/latest/api/ycql/)** - Semi-relational SQL-like API with documents/indexing support and Apache Cassandra QL roots 
 * Offers horizontal scalability, strong consistency, high availability
-* Fault tolerant - can tolerate disk, node, zone and region failures automatically
+* Extremely resilient - can tolerate disk, node, zone and region failures automatically
 * Supports geo-distributed deployments (multi-zone, multi-region, multi-cloud)
 * Can be deployed in public clouds and natively inside Kubernetes
 * Open source under the [Apache 2.0 license](https://github.com/YugaByte/yugabyte-db/blob/master/LICENSE.txt)
