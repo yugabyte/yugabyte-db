@@ -135,7 +135,7 @@ void HybridClock::NowWithError(HybridTime *hybrid_time, uint64_t *max_error_usec
   }
 
   // If the current time surpasses the last update just return it
-  HybridClockComponents current_components = components_.load(std::memory_order_acquire);
+  HybridClockComponents current_components = components_.load(boost::memory_order_acquire);
   HybridClockComponents new_components = { now->time_point, 1 };
 
   // Loop over the check in case of concurrent updates making the CAS fail.
@@ -192,7 +192,7 @@ void HybridClock::Update(const HybridTime& to_update) {
     return;
   }
 
-  HybridClockComponents current_components = components_.load(std::memory_order_acquire);
+  HybridClockComponents current_components = components_.load(boost::memory_order_acquire);
   HybridClockComponents new_components = {
     GetPhysicalValueMicros(to_update), GetLogicalValue(to_update) + 1
   };

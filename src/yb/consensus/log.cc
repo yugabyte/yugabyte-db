@@ -694,7 +694,7 @@ Status Log::Sync() {
 
   {
     std::lock_guard<std::mutex> write_lock(last_synced_entry_op_id_mutex_);
-    last_synced_entry_op_id_.store(last_appended_entry_op_id_, std::memory_order_release);
+    last_synced_entry_op_id_.store(last_appended_entry_op_id_, boost::memory_order_release);
     last_synced_entry_op_id_cond_.notify_all();
   }
 
@@ -784,7 +784,7 @@ Status Log::WaitUntilAllFlushed() {
 }
 
 yb::OpId Log::GetLatestEntryOpId() const {
-  return last_synced_entry_op_id_.load(std::memory_order_acquire);
+  return last_synced_entry_op_id_.load(boost::memory_order_acquire);
 }
 
 yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta duration) {
@@ -792,7 +792,7 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta dura
     return min_allowed;
   }
 
-  auto result = last_synced_entry_op_id_.load(std::memory_order_acquire);
+  auto result = last_synced_entry_op_id_.load(boost::memory_order_acquire);
 
   if (result.index < min_allowed.index || result.term < min_allowed.term) {
     auto start = CoarseMonoClock::Now();
@@ -801,7 +801,7 @@ yb::OpId Log::WaitForSafeOpIdToApply(const yb::OpId& min_allowed, MonoDelta dura
     for (;;) {
       if (last_synced_entry_op_id_cond_.wait_for(
               lock, wait_time, [this, min_allowed, &result] {
-            result = last_synced_entry_op_id_.load(std::memory_order_acquire);
+            result = last_synced_entry_op_id_.load(boost::memory_order_acquire);
             return result.term > min_allowed.term ||
                    (result.term == min_allowed.term && result.index >= min_allowed.index);
       })) {
