@@ -332,8 +332,6 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context));
 
-  RETURN_NOT_OK(AnalyzeOrderByClause(sem_context));
-
   // Check if there is an index to use. If there is and it covers the query fully, we will query
   // just the index and that is it.
   if (index_id_.empty()) {
@@ -342,6 +340,10 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
       return Status::OK();
     }
   }
+
+  // Run error checking on order by for the chosen INDEX.
+  RETURN_NOT_OK(AnalyzeOrderByClause(sem_context));
+
   // Run error checking on the LIMIT clause.
   RETURN_NOT_OK(AnalyzeLimitClause(sem_context));
 
@@ -482,6 +484,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context) {
 
       // If an index will be used, the limit and offset clauses should be used by the select from
       // the index only.
+      order_by_clause_ = nullptr;
       limit_clause_ = nullptr;
       offset_clause_ = nullptr;
 
