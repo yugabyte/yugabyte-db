@@ -39,6 +39,8 @@
 #include <utility>
 #include <vector>
 
+#include <boost/atomic.hpp>
+
 #include "yb/common/hybrid_time.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
@@ -553,7 +555,7 @@ class ReplicaState {
     }
   };
 
-  mutable std::atomic<LeaderStateCache> leader_state_cache_;
+  mutable boost::atomic<LeaderStateCache> leader_state_cache_;
 };
 
 }  // namespace consensus

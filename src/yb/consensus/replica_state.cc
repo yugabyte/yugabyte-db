@@ -201,7 +201,7 @@ Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) cons
 }
 
 LeaderState ReplicaState::GetLeaderState() const {
-  auto cache = leader_state_cache_.load(std::memory_order_acquire);
+  auto cache = leader_state_cache_.load(boost::memory_order_acquire);
 
   CoarseTimePoint now = CoarseMonoClock::Now();
   if (now >= cache.expire_at) {
@@ -1282,7 +1282,7 @@ consensus::LeaderState ReplicaState::RefreshLeaderStateCacheUnlocked(CoarseTimeP
     cache.Set(result.status, 0 /* extra_value */, CoarseTimePoint::max());
   }
 
-  leader_state_cache_.store(cache, std::memory_order_release);
+  leader_state_cache_.store(cache, boost::memory_order_release);
 
   return result;
 }
