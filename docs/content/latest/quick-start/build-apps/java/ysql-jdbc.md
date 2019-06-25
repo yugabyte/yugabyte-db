@@ -6,6 +6,7 @@ aliases:
   - /develop/client-drivers/java/
   - /latest/develop/client-drivers/java/
   - /latest/develop/build-apps/java/
+  - /latest/quick-start/build-apps/java/
 menu:
   latest:
     parent: build-apps
@@ -20,19 +21,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/develop/build-apps/java/ysql-jdbc" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/java/ysql-jdbc" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
     </a>
   </li>
   <li >
-    <a href="/latest/develop/build-apps/java/ysql-spring-data" class="nav-link">
+    <a href="/latest/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA with Hibernate
     </a>
   </li>
   <li>
-    <a href="/latest/develop/build-apps/java/ycql" class="nav-link">
+    <a href="/latest/quick-start/build-apps/java/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

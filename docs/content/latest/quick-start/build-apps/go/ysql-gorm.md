@@ -1,34 +1,33 @@
 ---
-title: Build a Java App
-linkTitle: Build a Java App
-description: Build a Java App
+title: Build a Go App
+linkTitle: Build a Go App
+description: Build a Go App
 menu:
   latest:
     parent: build-apps
-    name: Java
-    identifier: java-2
-    weight: 550
+    name: Go
+    identifier: go-2
+    weight: 552
 type: page
 isTocNested: true
 showAsideToc: true
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/develop/build-apps/java/ysql-jdbc" class="nav-link">
+    <a href="/latest/quick-start/build-apps/go/ysql-pq" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - JDBC
+      YSQL - PQ
     </a>
   </li>
   <li >
-    <a href="/latest/develop/build-apps/java/ysql-spring-data" class="nav-link active">
+    <a href="/latest/quick-start/build-apps/go/ysql-gorm" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Spring Data JPA with Hibernate
+      YSQL - GORM
     </a>
   </li>
   <li>
-    <a href="/latest/develop/build-apps/java/ycql" class="nav-link">
+    <a href="/latest/quick-start/build-apps/go/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -40,46 +39,46 @@ showAsideToc: true
 This tutorial assumes that you have:
 
 - installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
-- installed JDK version 1.8+ and maven 3.3+
 
+- installed Go 1.8+ as well as the following dependencies.
+
+```sh
+go get github.com/jinzhu/gorm
+go get github.com/jinzhu/gorm/dialects/postgres
+go get github.com/google/uuid
+go get github.com/gorilla/mux
+go get github.com/lib/pq
+go get github.com/lib/pq/hstore
+```
 
 ## Clone the orm-examples repo
 
 ```sh
 $ git clone https://github.com/YugaByte/orm-examples.git
 ```
+```sh
+export GOPATH=$GOPATH:$HOME/orm-examples/golang/gorm
+```
 
-This repository has a Spring Boot example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through Spring Data JPA which internally uses Hibernate as the JPA provider. It consists of the following.
+This repository has a Golang example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through gorm ORM. It consists of the following.
 
 - The users of the e-commerce site are stored in the users table.
 - The products table contains a list of products the e-commerce site sells.
 - The orders placed by the users are populated in the orders table. An order can consist of multiple line items, each of these are inserted in the orderline table.
 
-The source for the above application can be found in the [repo](https://github.com/YugaByte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo).
+The source for the above application can be found in the [repo](https://github.com/YugaByte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`. 
 
-There are a number of options that can be customized in the properties file located at `src/main/resources/application.properties`. Given YSQL's compatibility with the PostgreSQL language, the `spring.jpa.database` property is set to `POSTGRESQL` and the `spring.datasource.url` is set to the YSQL JDBC url `jdbc:postgresql://localhost:5433/postgres`.
-
-
-## Build the app
+## Build & run the app
 
 ```sh
-$ cd ./java/spring
+$ cd ./golang/gorm
 ```
 
 ```sh
-$ mvn -DskipTests package
-```
-
-## Run the app
-
-Bring the Sprint Boot REST API server at  http://localhost:8080
-
-```sh
-$ mvn spring-boot:run
+$ ./build-and-run.sh
 ```
 
 ## Send requests to the app
-
 
 Create 2 users.
 ```sh
@@ -246,4 +245,5 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/YugaByte/orm-examples/tree/master/java/spring/src/main/java/com/yugabyte/springdemo) repo.
+As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/YugaByte/orm-examples/tree/master/golang/gorm) repo.
+

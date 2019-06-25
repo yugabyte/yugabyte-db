@@ -59,20 +59,14 @@ We do not recommend a local cluster setup on a single host for production deploy
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="run-sample-apps/">
+    <a class="section-link icon-offset" href="build-apps/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
-        <div class="title">4. Run Sample Apps</div>
+        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
+        <div class="title">4. Build an App</div>
       </div>
       <div class="body">
-        Run pre-packaged sample apps.
+        Build an app in the programming language of your choice.
       </div>
     </a>
   </div>
-</div>
-
-## Watch the Demo
-
-<div class="video-wrapper">
-{{< vimeo 297325701 >}}
 </div>
