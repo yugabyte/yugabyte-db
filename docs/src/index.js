@@ -128,6 +128,16 @@ $(document).ready(() => {
     },
   }).show();
 
+  $('.expandable-image').click(function () {
+    $('#imageModal').modal('show');
+    $('#imageModal .modal-body').html($(this).clone());
+  });
+
+  $('#imageModal').on('hide.bs.modal', () => {
+    $('#imageModal .modal-body').html('');
+    $('#imageModal').hide();
+  });
+
   ((document, Clipboard) => {
     const $codes = document.querySelectorAll('pre');
     // Check if there's a language class (mark of to-be-copied content)
