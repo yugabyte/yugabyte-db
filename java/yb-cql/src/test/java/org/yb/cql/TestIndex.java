@@ -977,4 +977,58 @@ public class TestIndex extends BaseCQLTest {
       }
     }
   }
+
+  @Test
+  public void testOrderBy() throws Exception {
+    session.execute("CREATE TABLE test_order (a text," +
+                    "                         b text," +
+                    "                         c int," +
+                    "                         PRIMARY KEY (a, b))" +
+                    "  WITH CLUSTERING ORDER BY (b ASC) AND default_time_to_live = 0;");
+
+    session.execute("CREATE INDEX test_order_index ON test_order (b, c)" +
+                    "  INCLUDE (a)" +
+                    "  WITH CLUSTERING ORDER BY (c DESC)" +
+                    "    AND transactions = { 'enabled' : FALSE, " +
+                    "                         'consistency_level' : 'user_enforced' };");
+
+    // rowDesc is the query result in descending order, rowAsc, ascending.
+    String rowDesc = "";
+    String rowAsc = "";
+
+    int rowCount = 10;
+    String a;
+    String b = "index_hash";
+    int cMax = 100;
+    int cDesc;
+    int cAsc = cMax - rowCount;
+
+    // INSERT rows to be selected with order by.
+    for (int i = 0; i < rowCount; i++) {
+      cDesc = cMax - i;
+      a = String.format("a_%d", cDesc);
+      rowDesc += String.format("Row[%s, %s, %d]", a, b, cDesc);
+      session.execute(String.format("INSERT INTO test_order (a, b, c) VALUES('%s', '%s', %d);",
+                                    a, b, cDesc));
+
+      cAsc++;
+      a = String.format("a_%d", cAsc);
+      rowAsc += String.format("Row[%s, %s, %d]", a, b, cAsc);
+    }
+
+    // INSERT dummy rows that shouldn't be filtered out by the query.
+    b = "dummy";
+    cDesc = 100;
+    for (int i = 0; i < rowCount; i++) {
+      cDesc = cMax - i;
+      a = String.format("a_%d", cDesc);
+      session.execute(String.format("INSERT INTO test_order (a, b, c) VALUES('%s', '%s', %d);",
+                                    a, b, cDesc));
+    }
+
+    // Asserting query result.
+    assertQuery("SELECT * FROM test_order WHERE b = 'index_hash';", rowDesc);
+    assertQuery("SELECT * FROM test_order WHERE b = 'index_hash' ORDER BY c DESC;", rowDesc);
+    assertQuery("SELECT * FROM test_order WHERE b = 'index_hash' ORDER BY c ASC;", rowAsc);
+  }
 }
