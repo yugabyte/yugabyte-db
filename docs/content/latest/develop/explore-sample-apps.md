@@ -1,20 +1,21 @@
 ---
-title: 4. Run Sample Apps
-linkTitle: 4. Run Sample Apps
-description: Run Sample Apps
+title: Explore Sample Apps
+linkTitle: Explore Sample Apps
+description: Explore Sample Apps
+headcontent: 
+image: /images/section_icons/index/develop.png
 aliases:
-  - /quick-start/run-sample-apps/
+  - /latest/quick-start/run-sample-apps/
 menu:
   latest:
-    parent: quick-start
-    weight: 150
-isTocNested: false
-showAsideToc: true
+    identifier: explore-sample-apps
+    parent: develop
+    weight: 581
 ---
 
-After [creating a local cluster](../create-local-cluster/), follow the instructions below to run the Yugastore app.
+After [creating a local cluster](../../quick-start/create-local-cluster/), follow the instructions below to run the Yugastore app.
 
-After running Yugastore, we recommend running the [IoT Fleet Management](../../develop/realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugaByte DB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
+After running Yugastore, we recommend running the [IoT Fleet Management](../realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugaByte DB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

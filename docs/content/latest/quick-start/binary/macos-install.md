@@ -7,21 +7,16 @@ b) Verify that you have python2 installed. Support for python3 is in the works.
 ```sh
 $ python --version
 ```
-
 ```
 Python 2.7.10
 ```
 
-c) Each tablet maps to its own file, so if you experiment with a few hundred tables
-and a few hundred tablets per table, you can soon end up
-creating a large number of files in the current shell.
-Make sure that this command shows a big enough value.
+c) Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
 
 ```sh
 $ launchctl limit maxfiles
 ```
-
-We recommend simply setting the soft and hard limits to 1MB (i.e. 2<sup>20</sup> = 1048576).
+We recommend simply setting the soft and hard limits to 1048576.
 
 - Edit `/etc/sysctl.conf` with the following contents.
 
@@ -66,7 +61,7 @@ You might have to `unload` the service before loading it.
 
 ## Download
 
-Download the YugaByte DB CE package as shown below.
+Download the YugaByte DB tar.gz as shown below.
 
 ```sh
 $ wget https://downloads.yugabyte.com/yugabyte-ce-1.2.11.0-darwin.tar.gz
