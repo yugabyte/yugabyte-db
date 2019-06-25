@@ -362,8 +362,13 @@ if [[ ${YB_ENABLE_STATIC_ANALYZER:-auto} == "auto" ]]; then
      [[ $build_type =~ ^(debug|release)$ ]] &&
      is_jenkins_master_build
   then
-    export YB_ENABLE_STATIC_ANALYZER=1
-    log "Enabling Clang static analyzer (this is a clang Linux $build_type build)"
+    if true; then
+      log "Not enabling Clang static analyzer. Will enable in clang/Linux builds in the future."
+    else
+      # TODO: re-enable this when we have time to sift through analyzer warnings.
+      export YB_ENABLE_STATIC_ANALYZER=1
+      log "Enabling Clang static analyzer (this is a clang Linux $build_type build)"
+    fi
   else
     log "Not enabling Clang static analyzer (this is not a clang Linux debug/release build):" \
         "OSTYPE=$OSTYPE, YB_COMPILER_TYPE=$YB_COMPILER_TYPE, build_type=$build_type"
