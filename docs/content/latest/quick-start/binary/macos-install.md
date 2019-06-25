@@ -69,11 +69,11 @@ You might have to `unload` the service before loading it.
 Download the YugaByte DB CE package as shown below.
 
 ```sh
-$ wget https://downloads.yugabyte.com/yugabyte-ce-1.2.10.0-darwin.tar.gz
+$ wget https://downloads.yugabyte.com/yugabyte-ce-1.2.11.0-darwin.tar.gz
 ```
 
 ```sh
-$ tar xvfz yugabyte-ce-1.2.10.0-darwin.tar.gz && cd yugabyte-1.2.10.0/
+$ tar xvfz yugabyte-ce-1.2.11.0-darwin.tar.gz && cd yugabyte-1.2.11.0/
 ```
 
 ## Configure
