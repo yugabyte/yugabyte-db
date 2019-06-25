@@ -199,7 +199,8 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
           entry.write_future = std::shared_future<Status>();
           if (!write_status.ok()) {
             ASSERT_TRUE(write_status.IsTryAgain() ||
-                        (write_status.IsTimedOut() && transactional)) << write_status;
+                        ((write_status.IsTimedOut() || write_status.IsServiceUnavailable())
+                            && transactional)) << write_status;
             entry.txn = transactional ? CreateTransaction() : nullptr;
             entry.op = nullptr;
           } else {

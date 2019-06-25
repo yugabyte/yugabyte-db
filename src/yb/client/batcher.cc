@@ -117,8 +117,7 @@ Batcher::Batcher(YBClient* client,
                  YBTransactionPtr transaction,
                  ConsistentReadPoint* read_point,
                  bool force_consistent_read)
-  : state_(kGatheringOps),
-    client_(client),
+  : client_(client),
     weak_session_(session),
     error_collector_(error_collector),
     next_op_sequence_number_(0),
@@ -133,8 +132,8 @@ Batcher::Batcher(YBClient* client,
 void Batcher::Abort(const Status& status) {
   bool run_callback;
   {
-    std::lock_guard<simple_spinlock> lock(mutex_);
-    state_ = kAborted;
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    state_ = BatcherState::kAborted;
 
     InFlightOps to_abort;
     for (auto& op : ops_) {
@@ -164,23 +163,24 @@ Batcher::~Batcher() {
     }
     LOG(FATAL) << "ops_ not empty";
   }
-  CHECK(state_ == kFlushed || state_ == kAborted) << "Bad state: " << state_;
+  CHECK(state_ == BatcherState::kComplete || state_ == BatcherState::kAborted)
+      << "Bad state: " << state_;
 }
 
 void Batcher::SetTimeout(MonoDelta timeout) {
   CHECK_GE(timeout, MonoDelta::kZero);
-  std::lock_guard<simple_spinlock> l(mutex_);
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
   timeout_ = timeout;
 }
 
 bool Batcher::HasPendingOperations() const {
-  std::lock_guard<simple_spinlock> l(mutex_);
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
   return !ops_.empty();
 }
 
 int Batcher::CountBufferedOperations() const {
-  std::lock_guard<simple_spinlock> l(mutex_);
-  if (state_ == kGatheringOps) {
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  if (state_ == BatcherState::kGatheringOps) {
     return ops_.size();
   } else {
     // If we've already started to flush, then the ops aren't
@@ -192,13 +192,28 @@ int Batcher::CountBufferedOperations() const {
 void Batcher::CheckForFinishedFlush() {
   YBSessionPtr session;
   {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    if (state_ != kFlushing || !ops_.empty()) {
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    if (!ops_.empty()) {
+      // Did not finish yet.
+      return;
+    }
+
+    // Possible cases when we should ignore this check:
+    // kComplete - because of race condition CheckForFinishedFlush could be invoked from 2 threads
+    //             and one of them just finished last operation.
+    // kGatheringOps - lookup failure happened while batcher is getting filled with operations.
+    if (state_ == BatcherState::kComplete || state_ == BatcherState::kGatheringOps) {
+      return;
+    }
+
+    if (state_ != BatcherState::kResolvingTablets &&
+        state_ != BatcherState::kTransactionReady) {
+      LOG(DFATAL) << "Batcher finished in a wrong state: " << state_;
       return;
     }
 
     session = weak_session_.lock();
-    state_ = kFlushed;
+    state_ = BatcherState::kComplete;
   }
 
   if (session) {
@@ -241,9 +256,9 @@ CoarseTimePoint Batcher::ComputeDeadlineUnlocked() const {
 
 void Batcher::FlushAsync(StatusFunctor callback) {
   {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    CHECK_EQ(state_, kGatheringOps);
-    state_ = kFlushing;
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    CHECK_EQ(state_, BatcherState::kGatheringOps);
+    state_ = BatcherState::kResolvingTablets;
     flush_callback_ = std::move(callback);
     deadline_ = ComputeDeadlineUnlocked();
   }
@@ -258,7 +273,7 @@ void Batcher::FlushAsync(StatusFunctor callback) {
   // to flush would just be a no-op.
   //
   // If some of the operations are still in-flight, then they'll get sent
-  // when they hit 'per_tablet_ops', since our state is now kFlushing.
+  // when they hit 'per_tablet_ops', since our state is now kResolvingTablets.
   FlushBuffersIfReady();
 }
 
@@ -320,17 +335,18 @@ Status Batcher::Add(shared_ptr<YBOperation> yb_op) {
 }
 
 void Batcher::AddInFlightOp(const InFlightOpPtr& op) {
-  DCHECK_EQ(op->state, InFlightOpState::kLookingUpTablet);
+  LOG_IF(DFATAL, op->state != InFlightOpState::kLookingUpTablet)
+      << "Adding in flight op in a wrong state: " << op->state;
 
-  std::lock_guard<simple_spinlock> l(mutex_);
-  CHECK_EQ(state_, kGatheringOps);
+  std::lock_guard<decltype(mutex_)> lock(mutex_);
+  CHECK_EQ(state_, BatcherState::kGatheringOps);
   CHECK(ops_.insert(op).second);
   op->sequence_number_ = next_op_sequence_number_++;
   ++outstanding_lookups_;
 }
 
 bool Batcher::IsAbortedUnlocked() const {
-  return state_ == kAborted;
+  return state_ == BatcherState::kAborted;
 }
 
 void Batcher::CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Status& status) {
@@ -357,14 +373,17 @@ void Batcher::TabletLookupFinished(
   // Acquire the batcher lock early to atomically:
   // 1. Test if the batcher was aborted, and
   // 2. Change the op state.
+
+  bool all_lookups_finished;
   {
-    std::lock_guard<simple_spinlock> l(mutex_);
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
 
     if (lookup_result.ok()) {
       op->tablet = *lookup_result;
     }
 
     --outstanding_lookups_;
+    all_lookups_finished = outstanding_lookups_ == 0;
 
     if (IsAbortedUnlocked()) {
       VLOG(1) << "Aborted batch: TabletLookupFinished for " << op->yb_op->ToString();
@@ -393,11 +412,23 @@ void Batcher::TabletLookupFinished(
     CheckForFinishedFlush();
   }
 
-  FlushBuffersIfReady();
+  if (all_lookups_finished) {
+    FlushBuffersIfReady();
+  }
 }
 
 void Batcher::TransactionReady(const Status& status, const BatcherPtr& self) {
   if (status.ok()) {
+    {
+      std::lock_guard<decltype(mutex_)> lock(mutex_);
+      if (state_ != BatcherState::kTransactionPrepare) {
+        // Batcher was aborted.
+        LOG_IF(DFATAL, state_ != BatcherState::kAborted)
+            << "Batcher in a wrong state when transaction get ready: " << state_;
+        return;
+      }
+      state_ = BatcherState::kTransactionReady;
+    }
     FlushBuffersIfReady();
   } else {
     Abort(status);
@@ -431,41 +462,53 @@ OpGroup GetOpGroup(const InFlightOpPtr& op) {
 }
 
 void Batcher::FlushBuffersIfReady() {
-  InFlightOps ops;
+  {
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    if (outstanding_lookups_ != 0) {
+      // FlushBuffersIfReady is also invoked when all lookups finished, so it ok to just return
+      // here.
+      VLOG(3) << "FlushBuffersIfReady: " << outstanding_lookups_ << " ops still in lookup";
+      return;
+    }
+
+    if (state_ == BatcherState::kResolvingTablets) {
+      state_ = BatcherState::kTransactionPrepare;
+    } else if (state_ != BatcherState::kTransactionReady) {
+      VLOG(3) << "FlushBuffersIfReady: batcher not yet in transaction ready state: " << state_;
+      return;
+    }
+
+  }
 
   bool force_consistent_read = force_consistent_read_;
+
+  auto transaction = this->transaction();
+  if (transaction) {
+    // If this Batcher is executed in context of transaction,
+    // then this transaction should initialize metadata used by RPC calls.
+    //
+    // If transaction is not yet ready to do it, then it will notify as via provided when
+    // it could be done.
+    if (!transaction->Prepare(ops_,
+                              force_consistent_read_,
+                              std::bind(&Batcher::TransactionReady, this, _1, BatcherPtr(this)),
+                              &transaction_metadata_,
+                              &may_have_metadata_)) {
+      return;
+    }
+
+    // Set force_consistent_read to true, so async rpc would use read time from batcher.
+    force_consistent_read = true;
+  }
+
+  InFlightOps ops;
   // We're only ready to flush if:
   // 1. The batcher is in the flushing state (i.e. FlushAsync was called).
   // 2. All outstanding ops have finished lookup. Why? To avoid a situation
   //    where ops are flushed one by one as they finish lookup.
   {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    if (state_ != kFlushing) {
-      VLOG(3) << "FlushBuffersIfReady: batcher not yet in flushing state";
-      return;
-    }
-
-    if (outstanding_lookups_ != 0) {
-      VLOG(3) << "FlushBuffersIfReady: " << outstanding_lookups_ << " ops still in lookup";
-      return;
-    }
-
-    auto transaction = this->transaction();
-    if (transaction) {
-      force_consistent_read = true;
-      // If this Batcher is executed in context of transaction,
-      // then this transaction should initialize metadata used by RPC calls.
-      //
-      // If transaction is not yet ready to do it, then it will notify as via provided when
-      // it could be done.
-      if (!transaction->Prepare(ops_,
-                                force_consistent_read_,
-                                std::bind(&Batcher::TransactionReady, this, _1, BatcherPtr(this)),
-                                &transaction_metadata_,
-                                &may_have_metadata_)) {
-        return;
-      }
-    }
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
+    state_ = BatcherState::kTransactionReady;
 
     ops.swap(ops_queue_);
   }
@@ -600,7 +643,7 @@ void Batcher::AddOpCountMismatchError() {
 void Batcher::RemoveInFlightOpsAfterFlushing(
     const InFlightOps& ops, const Status& status, FlushExtraResult flush_extra_result) {
   {
-    std::lock_guard<simple_spinlock> l(mutex_);
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
     for (auto& op : ops) {
       CHECK_EQ(1, ops_.erase(op))
         << "Could not remove op " << op->ToString() << " from in-flight list";
@@ -620,11 +663,11 @@ void Batcher::ProcessRpcStatus(const AsyncRpc &rpc, const Status &s) {
   // RPCs are in-flight, then accessing state_ will crash. We probably need to keep
   // track of the in-flight RPCs, and in the destructor, change each of them to an
   // "aborted" state.
-  CHECK_EQ(state_, kFlushing);
+  CHECK_EQ(state_, BatcherState::kTransactionReady);
 
   if (PREDICT_FALSE(!s.ok())) {
     // Mark each of the ops as failed, since the whole RPC failed.
-    std::lock_guard<simple_spinlock> lock(mutex_);
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
     for (auto& in_flight_op : rpc.ops()) {
       CombineErrorUnlocked(in_flight_op, s);
     }
@@ -657,7 +700,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
     }
     shared_ptr<YBOperation> yb_op = rpc.ops()[err_pb.row_index()]->yb_op;
     VLOG(1) << "Error on op " << yb_op->ToString() << ": " << err_pb.error().ShortDebugString();
-    std::lock_guard<simple_spinlock> lock(mutex_);
+    std::lock_guard<decltype(mutex_)> lock(mutex_);
     CombineErrorUnlocked(rpc.ops()[err_pb.row_index()], StatusFromPB(err_pb.error()));
   }
 }
