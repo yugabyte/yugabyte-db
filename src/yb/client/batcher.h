@@ -70,6 +70,25 @@ class ErrorCollector;
 class RemoteTablet;
 class AsyncRpc;
 
+// Batcher state changes sequentially in the order listed below, with the exception that kAborted
+// could be reached from any state.
+YB_DEFINE_ENUM(
+    BatcherState,
+    (kGatheringOps)       // Initial state, while we adding operations to the batcher.
+    (kResolvingTablets)   // Flush was invoked on batcher, waiting until tablets for all operations
+                          // are resolved and move to the next state.
+                          // Could change to kComplete in case of failure.
+    (kTransactionPrepare) // Preparing associated transaction for flushing operations of this
+                          // batcher, for instance it picks status tablet and fills
+                          // transaction metadata for this batcher.
+                          // When there is no associated transaction move to the next state
+                          // immediately.
+    (kTransactionReady)   // Transaction is ready, sending operations to appropriate tablets and
+                          // wait for response. When there is no transaction - we still sending
+                          // operations marking transaction as auto ready.
+    (kComplete)           // Batcher complete.
+    (kAborted));          // Batcher was aborted.
+
 // A Batcher is the class responsible for collecting row operations, routing them to the
 // correct tablet server, and possibly batching them together for better efficiency.
 //
@@ -187,9 +206,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   void RemoveInFlightOpsAfterFlushing(
       const InFlightOps& ops, const Status& status, FlushExtraResult flush_extra_result);
 
-    // Return true if the batch has been aborted, and any in-flight ops should stop
+  // Return true if the batch has been aborted, and any in-flight ops should stop
   // processing wherever they are.
-  bool IsAbortedUnlocked() const;
+  bool IsAbortedUnlocked() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Combines new error to existing ones. I.e. updates combined error with new status.
   void CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Status& status)
@@ -233,13 +252,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // See note about lock ordering in batcher.cc
   mutable simple_spinlock mutex_;
 
-  enum State {
-    kGatheringOps,
-    kFlushing,
-    kFlushed,
-    kAborted
-  };
-  State state_;
+  BatcherState state_ GUARDED_BY(mutex_) = BatcherState::kGatheringOps;
 
   YBClient* const client_;
   std::weak_ptr<YBSession> weak_session_;

@@ -896,7 +896,7 @@ CHECKED_STATUS ApplyDeleteToSession(YBSession* session,
 TEST_F(ClientTest, TestWriteTimeout) {
   auto session = CreateSession();
 
-  // First time out the lookup on the master side.
+  LOG(INFO) << "Time out the lookup on the master side";
   {
     google::FlagSaver saver;
     FLAGS_master_inject_latency_on_tablet_lookups_ms = 110;
@@ -911,7 +911,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
             "timed out after deadline expired", client_table_->name().ToString()));
   }
 
-  // Next time out the actual write on the tablet server.
+  LOG(INFO) << "Time out the actual write on the tablet server";
   {
     google::FlagSaver saver;
     SetAtomicFlag(true, &FLAGS_log_inject_latency);
