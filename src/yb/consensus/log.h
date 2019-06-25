@@ -39,6 +39,7 @@
 #include <string>
 #include <vector>
 
+#include <boost/atomic.hpp>
 #include <boost/thread/shared_mutex.hpp>
 
 #include "yb/common/schema.h"
@@ -399,7 +400,7 @@ class Log : public RefCountedThreadSafe<Log> {
 
   // The last known OpId for a REPLICATE message appended and synced to this log (any segment).
   // NOTE: this op is not necessarily durable unless gflag durable_wal_write is true.
-  std::atomic<yb::OpId> last_synced_entry_op_id_{yb::OpId()};
+  boost::atomic<yb::OpId> last_synced_entry_op_id_{yb::OpId()};
 
   // The last know OpId for a REPLICATE message appended to this log (any segment).
   // This variable is not accessed concurrently.

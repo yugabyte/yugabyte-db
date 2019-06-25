@@ -39,6 +39,8 @@
 #include <sys/timex.h>
 #endif // !defined(__APPLE__)
 
+#include <boost/atomic.hpp>
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/server/clock.h"
 #include "yb/util/locks.h"
@@ -148,7 +150,7 @@ class HybridClock : public Clock {
   uint64_t ErrorForMetrics();
 
   PhysicalClockPtr clock_;
-  std::atomic<HybridClockComponents> components_{HybridClockComponents(0, 0)};
+  boost::atomic<HybridClockComponents> components_{HybridClockComponents(0, 0)};
   State state_ = kNotInitialized;
 
   // Clock metrics are set to detach to their last value. This means
