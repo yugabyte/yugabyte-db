@@ -91,8 +91,8 @@ The above output is the Admin UI URL and visiting the Tablet Servers page there 
 
 ## 5. Review Yugastore architecture and code
 
-Details of Yugastore architecture are documented [here](../../develop/realworld-apps/ecommerce-app/). Source code is available in the [Yugastore GitHub repo](https://github.com/YugaByte/yugastore).
+Details of Yugastore architecture are documented [here](../realworld-apps/ecommerce-app/). Source code is available in the [Yugastore GitHub repo](https://github.com/YugaByte/yugastore).
 
 ## 6. Run IoT Fleet Management app
 
-After running Yugastore, we recommend running the [IoT Fleet Management](../../develop/realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugaByte DB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
+After running Yugastore, we recommend running the [IoT Fleet Management](../realworld-apps/iot-spark-kafka-ksql/) app. This app is built on top of YugaByte DB as the database (using the YCQL API), Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.

@@ -10,7 +10,7 @@ menu:
 aliases:
   - admin/yb-tserver
 isTocNested: false
-showAsideToc: true
+showAsideToc: false
 ---
 
 `yb-tserver`, located in the bin directory of YugaByte home, is the [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary.
@@ -65,9 +65,9 @@ Flag | Mandatory | Default | Description
 `--rocksdb_compact_flush_rate_limit_bytes_per_sec` | N | 256MB | Used to control rate of memstore flush and SSTable file compaction.
 `--remote_bootstrap_rate_limit_bytes_per_sec` | N | 256MB | Rate control across all tablets being remote bootstrapped from or to this process.
 `--yb_num_shards_per_tserver` | N | -1 | The number of shards per yb-tserver per table when a user table is created. Server automatically picks a valid default internally.
-`--durable_wal_write` | N | false | If set to `false`, the writes to the Raft log are synced to disk every `interval_durable_wal_write_ms` milliseconds or every `bytes_durable_wal_write_mb` MB, whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the zones/regions are independent failure domains and there isn't a risk of correlated power loss.
-`--interval_durable_wal_write_ms` | N | 1000 | When `durable_wal_write` is false, writes to the Raft log are synced to disk every `interval_durable_wal_write_ms` milliseconds. Also see `bytes_durable_wal_write_mb`.
-`--bytes_durable_wal_write_mb`` | N | 1 | When `durable_wal_write` is false, writes to the Raft log are synced to disk every `bytes_durable_wal_write_mb` MB. Also see `interval_durable_wal_write_ms`.
+`--durable_wal_write` | N | false | If set to `false`, the writes to the Raft log are synced to disk every `interval_durable_wal_write_ms` milliseconds or every `bytes_durable_wal_write_mb` MB, whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the zones/regions are independent failure domains and there isn't a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
+`--interval_durable_wal_write_ms` | N | 1000ms | When `durable_wal_write` is false, writes to the Raft log are synced to disk every `interval_durable_wal_write_ms` milliseconds or `bytes_durable_wal_write_mb` MB whichever comes first.
+`--bytes_durable_wal_write_mb` | N | 1MB | When `durable_wal_write` is false, writes to the Raft log are synced to disk every `bytes_durable_wal_write_mb` MB or `interval_durable_wal_write_ms` milliseconds whichever comes first.
 
 ## Admin UI
 
