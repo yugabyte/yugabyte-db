@@ -34,7 +34,6 @@
 
 #include <execinfo.h>
 #include <dirent.h>
-#include <libunwind.h>
 #include <signal.h>
 #include <sys/syscall.h>
 
@@ -678,29 +677,16 @@ string GetLogFormatStackTraceHex() {
 void StackTrace::Collect(int skip_frames) {
 #if THREAD_SANITIZER
   num_frames_ = google::GetStackTrace(frames_, arraysize(frames_), skip_frames);
-#elif defined(__linux_)
-  // Taken from libunwind docs and enhanced with skip_frames.
-  unw_context_t uc;
-  unw_getcontext(&uc);
-
-  unw_cursor_t cursor;
-  unw_init_local(&cursor, &uc);
-  num_frames_ = 0;
-  while (num_frames_ < arraysize(frames_) && unw_step(&cursor) > 0) {
-    if (skip_frames > 1) { // to be backward compatible we should skip less stack frames
-      --skip_frames;
-      continue;
-    }
-    unw_word_t ip;
-    unw_get_reg(&cursor, UNW_REG_IP, &ip);
-    frames_[num_frames_] = reinterpret_cast<void*>(ip);
-    ++num_frames_;
-  }
 #else
   int max_frames = skip_frames + arraysize(frames_);
   void** buffer = static_cast<void**>(alloca((max_frames) * sizeof(void*)));
-  num_frames_ = backtrace(buffer, max_frames) - skip_frames;
-  memcpy(frames_, buffer + skip_frames, num_frames_ * sizeof(void*));
+  num_frames_ = backtrace(buffer, max_frames);
+  if (num_frames_ > skip_frames) {
+    num_frames_ -= skip_frames;
+    memmove(frames_, buffer + skip_frames, num_frames_ * sizeof(void*));
+  } else {
+    num_frames_ = 0;
+  }
 #endif
 }
 
