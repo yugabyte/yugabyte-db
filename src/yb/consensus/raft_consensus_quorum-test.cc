@@ -872,6 +872,9 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   OpId* id = replicate->mutable_id();
   id->set_term(last_op_id.term());
   id->set_index(last_op_id.index() + 1);
+  // Make a copy of the OpId to be TSAN friendly.
+  auto req_copy = req;
+  auto id_copy = req_copy.mutable_ops(0)->mutable_id();
   replicate->set_op_type(NO_OP);
 
   // Appending this message to peer0 should work and update
@@ -881,11 +884,11 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
 
   // Now skip one message in the same term. The replica should
   // complain with the right error message.
-  req.mutable_preceding_id()->set_index(id->index() + 1);
-  id->set_index(id->index() + 2);
+  req_copy.mutable_preceding_id()->set_index(id_copy->index() + 1);
+  id_copy->set_index(id_copy->index() + 2);
   // Appending this message to peer0 should return a Status::OK
   // but should contain an error referring to the log matching property.
-  ASSERT_OK(follower->Update(&req, &resp, CoarseBigDeadline()));
+  ASSERT_OK(follower->Update(&req_copy, &resp, CoarseBigDeadline()));
   ASSERT_TRUE(resp.has_status());
   ASSERT_TRUE(resp.status().has_error());
   ASSERT_EQ(resp.status().error().code(), ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);
