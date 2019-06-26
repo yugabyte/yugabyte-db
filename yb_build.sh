@@ -14,6 +14,7 @@
 #
 set -euo pipefail
 
+
 script_name=${0##*/}
 script_name=${script_name%.*}
 
