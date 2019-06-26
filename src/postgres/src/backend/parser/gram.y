@@ -17145,7 +17145,7 @@ beta_features_enabled()
 	static int beta_enabled = -1;
 	if (beta_enabled == -1)
 	{
-		beta_enabled = YBCIsEnvVarTrue("FLAGS_ysql_beta_features");
+		beta_enabled = YBCIsEnvVarTrueWithDefault("FLAGS_ysql_beta_features", true);
 	}
 	return beta_enabled;
 }
@@ -17155,8 +17155,11 @@ check_beta_feature(int pos, core_yyscan_t yyscanner, const char *flag, const cha
 {
 	if (YBIsUsingYBParser() && !(beta_features_enabled() || YBCIsEnvVarTrue(flag)))
 	{
-		char msg[0xFF];
-		snprintf(msg, sizeof(msg), "'%s' BETA feature is disabled. Use '%s' or 'FLAGS_ysql_beta_features'", feature, flag);
-		raise_feature_not_supported(pos, yyscanner, msg, -1);
+		int signal_level = YBUnsupportedFeatureSignalLevel();
+		ereport(signal_level,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("'%s' is a beta feature and beta features are disabled.", feature),
+				 errhint("To enable beta features, set the 'ysql_beta_features' yb-tserver gflag to 'true'."),
+				 parser_errposition(pos)));
 	}
 }
