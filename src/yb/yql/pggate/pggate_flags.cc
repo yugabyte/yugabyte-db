@@ -45,8 +45,10 @@ DEFINE_int32(ysql_prefetch_limit, 1024,
 DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
               "Scale factor to reduce ysql_prefetch_limit for backward scan");
 
-DEFINE_bool(ysql_beta_features, false,
-            "Enable all ysql beta features");
+// Top-level flag to enable all YSQL beta features.
+DEFINE_bool(ysql_beta_features, true,
+            "Whether to enable all ysql beta features");
 
+// Per-feature flags -- only relevant if ysql_beta_features is false.
 DEFINE_bool(ysql_beta_feature_function, false,
-            "Enable 'function' ysql beta feature");
+            "Whether to enable 'function' ysql beta feature");
