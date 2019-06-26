@@ -1450,7 +1450,6 @@ if (NOT APPLE)
     STATIC_LIB "${UNWIND_STATIC_ARCH_LIB}"
     SHARED_LIB "${UNWIND_SHARED_ARCH_LIB}")
   list(APPEND YB_BASE_LIBS unwind)
-  list(APPEND YB_BASE_LIBS unwind-arch)
 endif()
 
 # libuuid
