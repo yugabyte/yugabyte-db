@@ -228,63 +228,67 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // Returns the name, type, schema, index map, schema, etc of the primary table.
   std::string table_name() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info()->table_name;
+    return primary_table_info_guarded().first->table_name;
   }
 
   TableType table_type() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info()->table_type;
+    return primary_table_info_guarded().first->table_type;
   }
 
   const Schema& schema() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info()->schema;
+    return primary_table_info_guarded().first->schema;
   }
 
   const IndexMap& index_map() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info()->index_map;
+    return primary_table_info_guarded().first->index_map;
   }
 
   uint32_t schema_version() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info()->schema_version;
+    return primary_table_info_guarded().first->schema_version;
   }
 
   const std::string& indexed_tablet_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
     static const std::string kEmptyString = "";
-    const auto* index_info = primary_table_info()->index_info.get();
+    std::lock_guard<MutexType> lock(data_mutex_);
+    const auto* index_info = primary_table_info_unlocked()->index_info.get();
     return index_info ? index_info->indexed_table_id() : kEmptyString;
   }
 
   bool is_local_index() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    const auto* index_info = primary_table_info()->index_info.get();
+    std::lock_guard<MutexType> lock(data_mutex_);
+    const auto* index_info = primary_table_info_unlocked()->index_info.get();
     return index_info && index_info->is_local();
   }
 
   bool is_unique_index() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    const auto* index_info = primary_table_info()->index_info.get();
+    std::lock_guard<MutexType> lock(data_mutex_);
+    const auto* index_info = primary_table_info_unlocked()->index_info.get();
     return index_info && index_info->is_unique();
   }
 
   std::vector<ColumnId> index_key_column_ids() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    const auto* index_info = primary_table_info()->index_info.get();
+    std::lock_guard<MutexType> lock(data_mutex_);
+    const auto* index_info = primary_table_info_unlocked()->index_info.get();
     return index_info ? index_info->index_key_column_ids() : std::vector<ColumnId>();
   }
 
   // Returns the partition schema of the Raft group's tables.
   const PartitionSchema& partition_schema() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info()->partition_schema;
+    return primary_table_info_guarded().first->partition_schema;
   }
 
   const std::vector<DeletedColumn>& deleted_cols() const {
     DCHECK_NE(state_, kNotLoadedYet);
-    return primary_table_info()->deleted_cols;
+    return primary_table_info_guarded().first->deleted_cols;
   }
 
   std::string rocksdb_dir() const { return kv_store_.rocksdb_dir; }
@@ -364,6 +368,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   CHECKED_STATUS ReplaceSuperBlock(const RaftGroupReplicaSuperBlockPB &pb);
 
  private:
+  typedef simple_spinlock MutexType;
+
   friend class RefCountedThreadSafe<RaftGroupMetadata>;
   friend class MetadataTest;
 
@@ -403,7 +409,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // Requires 'flush_lock_'.
   CHECKED_STATUS ReplaceSuperBlockUnlocked(const RaftGroupReplicaSuperBlockPB &pb);
 
-  // Requires 'data_lock_'.
+  // Requires 'data_mutex_'.
   void ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const;
 
   // Return standard "T xxx P yyy" log prefix.
@@ -411,12 +417,18 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   // Return a pointer to the primary table info. This pointer will be valid until the
   // RaftGroupMetadata is destructed, even if the schema is changed.
-  const TableInfo* primary_table_info() const {
-    std::lock_guard<LockType> l(data_lock_);
+  const TableInfo* primary_table_info_unlocked() const {
     const auto& tables = kv_store_.tables;
     const auto itr = tables.find(primary_table_id_);
     DCHECK(itr != tables.end());
     return itr->second.get();
+  }
+
+  // Return a pair of a pointer to the primary table info and lock guard. The pointer will be valid
+  // until the RaftGroupMetadata is destructed, even if the schema is changed.
+  std::pair<const TableInfo*, std::unique_lock<MutexType>> primary_table_info_guarded() const {
+    std::unique_lock<MutexType> lock(data_mutex_);
+    return { primary_table_info_unlocked(), std::move(lock) };
   }
 
   enum State {
@@ -427,11 +439,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   State state_;
 
   // Lock protecting the underlying data.
-  typedef simple_spinlock LockType;
-  mutable LockType data_lock_;
+  mutable MutexType data_mutex_;
 
   // Lock protecting flushing the data to disk.
-  // If taken together with 'data_lock_', must be acquired first.
+  // If taken together with 'data_mutex_', must be acquired first.
   mutable Mutex flush_lock_;
 
   const RaftGroupId raft_group_id_;

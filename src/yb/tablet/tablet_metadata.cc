@@ -321,7 +321,7 @@ CHECKED_STATUS MakeTableNotFound(const TableId& table_id, const RaftGroupId& raf
 }
 
 Result<const TableInfo*> RaftGroupMetadata::GetTableInfo(const std::string& table_id) const {
-  std::lock_guard<LockType> l(data_lock_);
+  std::lock_guard<MutexType> lock(data_mutex_);
   const auto& tables = kv_store_.tables;
   const auto id = !table_id.empty() ? table_id : primary_table_id_;
   const auto iter = tables.find(id);
@@ -332,7 +332,7 @@ Result<const TableInfo*> RaftGroupMetadata::GetTableInfo(const std::string& tabl
 }
 
 Result<TableInfo*> RaftGroupMetadata::GetTableInfo(const std::string& table_id) {
-  std::lock_guard<LockType> l(data_lock_);
+  std::lock_guard<MutexType> lock(data_mutex_);
   const auto& tables = kv_store_.tables;
   const auto id = !table_id.empty() ? table_id : primary_table_id_;
   const auto iter = tables.find(id);
@@ -356,7 +356,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
   // We also set the state in our persisted metadata to indicate that
   // we have been deleted.
   {
-    std::lock_guard<LockType> l(data_lock_);
+    std::lock_guard<MutexType> lock(data_mutex_);
     tablet_data_state_ = delete_type;
     if (last_logged_opid) {
       tombstone_last_logged_opid_ = last_logged_opid;
@@ -403,7 +403,7 @@ Status RaftGroupMetadata::DeleteTabletData(TabletDataState delete_type,
 }
 
 Status RaftGroupMetadata::DeleteSuperBlock() {
-  std::lock_guard<LockType> l(data_lock_);
+  std::lock_guard<MutexType> lock(data_mutex_);
   if (tablet_data_state_ != TABLET_DATA_DELETED) {
     return STATUS(IllegalState,
         Substitute("Tablet $0 is not in TABLET_DATA_DELETED state. "
@@ -494,7 +494,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
           << superblock.DebugString();
 
   {
-    std::lock_guard<LockType> l(data_lock_);
+    std::lock_guard<MutexType> lock(data_mutex_);
 
     // Verify that the Raft group id matches with the one in the protobuf.
     if (superblock.raft_group_id() != raft_group_id_) {
@@ -527,7 +527,7 @@ Status RaftGroupMetadata::Flush() {
   MutexLock l_flush(flush_lock_);
   RaftGroupReplicaSuperBlockPB pb;
   {
-    std::lock_guard<LockType> l(data_lock_);
+    std::lock_guard<MutexType> lock(data_mutex_);
     ToSuperBlockUnlocked(&pb);
   }
   RETURN_NOT_OK(ReplaceSuperBlockUnlocked(pb));
@@ -576,12 +576,12 @@ Status RaftGroupMetadata::ReadSuperBlockFromDisk(RaftGroupReplicaSuperBlockPB* s
 
 void RaftGroupMetadata::ToSuperBlock(RaftGroupReplicaSuperBlockPB* superblock) const {
   // acquire the lock so that rowsets_ doesn't get changed until we're finished.
-  std::lock_guard<LockType> l(data_lock_);
+  std::lock_guard<MutexType> lock(data_mutex_);
   ToSuperBlockUnlocked(superblock);
 }
 
 void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* superblock) const {
-  DCHECK(data_lock_.is_locked());
+  DCHECK(data_mutex_.is_locked());
   // Convert to protobuf.
   RaftGroupReplicaSuperBlockPB pb;
   pb.set_raft_group_id(raft_group_id_);
@@ -605,12 +605,12 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                   const std::vector<DeletedColumn>& deleted_cols,
                                   const uint32_t version) {
   DCHECK(schema.has_column_ids());
-  std::unique_ptr<TableInfo> new_table_info(new TableInfo(*primary_table_info(),
+  std::lock_guard<MutexType> lock(data_mutex_);
+  std::unique_ptr<TableInfo> new_table_info(new TableInfo(*primary_table_info_unlocked(),
                                                           schema,
                                                           index_map,
                                                           deleted_cols,
                                                           version));
-  std::lock_guard<LockType> l(data_lock_);
   kv_store_.tables[primary_table_id_].swap(new_table_info);
   if (new_table_info) {
     kv_store_.old_tables.push_back(std::move(new_table_info));
@@ -618,14 +618,14 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
 }
 
 void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_schema) {
-  std::lock_guard<LockType> l(data_lock_);
+  std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   DCHECK(tables.find(primary_table_id_) != tables.end());
   tables[primary_table_id_]->partition_schema = partition_schema;
 }
 
 void RaftGroupMetadata::SetTableName(const string& table_name) {
-  std::lock_guard<LockType> l(data_lock_);
+  std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   DCHECK(tables.find(primary_table_id_) != tables.end());
   tables[primary_table_id_]->table_name = table_name;
@@ -653,14 +653,14 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
     CHECK_OK(cotable_id.FromHexString(table_id));
     new_table_info->schema.set_cotable_id(cotable_id);
   }
-  std::lock_guard<LockType> l(data_lock_);
+  std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   tables[table_id].swap(new_table_info);
   DCHECK(!new_table_info) << "table " << table_id << " already exists";
 }
 
 void RaftGroupMetadata::RemoveTable(const std::string& table_id) {
-  std::lock_guard<LockType> l(data_lock_);
+  std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   tables.erase(table_id);
 }
@@ -691,7 +691,7 @@ string RaftGroupMetadata::wal_root_dir() const {
 }
 
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
-  std::lock_guard<LockType> l(data_lock_);
+  std::lock_guard<MutexType> lock(data_mutex_);
   tablet_data_state_ = state;
 }
 
@@ -700,7 +700,7 @@ string RaftGroupMetadata::LogPrefix() const {
 }
 
 TabletDataState RaftGroupMetadata::tablet_data_state() const {
-  std::lock_guard<LockType> l(data_lock_);
+  std::lock_guard<MutexType> lock(data_mutex_);
   return tablet_data_state_;
 }
 
