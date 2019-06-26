@@ -14,7 +14,7 @@
 #ifndef YB_UTIL_LOCKFREE_H
 #define YB_UTIL_LOCKFREE_H
 
-#include <atomic>
+#include <boost/atomic.hpp>
 
 #include <glog/logging.h>
 
@@ -104,20 +104,20 @@ class LockFreeStack {
   }
 
   void Push(T* value) {
-    Head old_head = head_.load(std::memory_order_acquire);
+    Head old_head = head_.load(boost::memory_order_acquire);
     for (;;) {
       ANNOTATE_IGNORE_WRITES_BEGIN();
       SetNext(value, old_head.pointer);
       ANNOTATE_IGNORE_WRITES_END();
       Head new_head{value, old_head.version + 1};
-      if (head_.compare_exchange_weak(old_head, new_head, std::memory_order_acq_rel)) {
+      if (head_.compare_exchange_weak(old_head, new_head, boost::memory_order_acq_rel)) {
         break;
       }
     }
   }
 
   T* Pop() {
-    Head old_head = head_.load(std::memory_order_acquire);
+    Head old_head = head_.load(boost::memory_order_acquire);
     for (;;) {
       if (!old_head.pointer) {
         break;
@@ -125,7 +125,7 @@ class LockFreeStack {
       ANNOTATE_IGNORE_READS_BEGIN();
       Head new_head{GetNext(old_head.pointer), old_head.version + 1};
       ANNOTATE_IGNORE_READS_END();
-      if (head_.compare_exchange_weak(old_head, new_head, std::memory_order_acq_rel)) {
+      if (head_.compare_exchange_weak(old_head, new_head, boost::memory_order_acq_rel)) {
         break;
       }
     }
@@ -138,7 +138,7 @@ class LockFreeStack {
     size_t version;
   };
 
-  std::atomic<Head> head_{Head{nullptr, 0}};
+  boost::atomic<Head> head_{Head{nullptr, 0}};
 };
 
 } // namespace yb
