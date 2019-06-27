@@ -1,19 +1,20 @@
 # Two Data Center Deployment Support with YugaByte DB
 
-This document outlines the 2-datacenter deployments that YugaByte DB is being enhanced to support, as well as the architecture that enables these.
+This document outlines the 2-datacenter deployments that YugaByte DB is being enhanced to support, as well as the architecture that enables these. This feature is built on top of [Change Data Capture (CDC)](https://github.com/YugaByte/yugabyte-db/blob/master/architecture/design/docdb-change-data-capture.md) support in DocDB, and that design may be of interest.
 
-## Functionality
+> Note that in this design, the terms "cluster" and "universe" will be used interchangeably. While not a requirement in the final design, we assume here that each YugaByte DB universe is deployed in a single data-center for simplicity purposes.
 
-Note the following functional aspects of this feature:
+## Features
+
+This feature will support the following:
 
 * This applies to **all** the APIs at the query layer - YSQL, YCQL and YEDIS.
 
-* The implementation will follow a phased approach:
-    * The first version will support single-key updates
-    * Next, support for multi-key/distributed transactions will be layered on top
-    * Finally, support for DDL operations getting replicated will be added
+* This design is general enough to support replication of single-key updates as well as multi-key/distributed transactions
 
-* This feature is built on top of [Change Data Capture (CDC)](https://github.com/YugaByte/yugabyte-db/blob/master/architecture/design/docdb-change-data-capture.md) support in DocDB, and that design may be of interest.
+* In the initial version, we assume that schema changes are run on both the universes independently. This will eventually be automated to the extent possible. Note that some types of schema changes are unsafe for some types of operations - these will have to be listed out and made safe by erroring out or through some other such mechanism.
+
+* Multiple slave clusters can be supported in this design 
 
 ## Supported Deployment Scenarios
 
