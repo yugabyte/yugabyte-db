@@ -4,13 +4,25 @@ import argparse
 import atexit
 import json
 import logging
+import multiprocessing
 import os
 import sys
 import time
 import re
 import shutil
 import subprocess
+import uuid
+from datetime import datetime
 from signal import SIGABRT, SIGINT, SIGTERM, SIG_DFL, signal
+from threading import Thread
+
+# Version-dependent imports
+PY_VERSION = sys.version_info[0]
+if sys.version_info[0] < 3:
+    from urllib2 import Request, urlopen, URLError
+else:
+    from urllib.request import Request, urlopen
+    from urllib.error import URLError
 
 """
 Run `yugabyte-db` to start a single-node YugaByte DB process. If no options are specified,
@@ -49,28 +61,17 @@ YUGABYTE_API_CLIENT_PROGRAMS = {
 class YugaByteProcessManager(object):
     def __init__(self):
         self.configs = None
-        self.processes = []
+        self.processes = {}
+        self.stop_callhome = False
 
+    # Starts YugaByte DB node.
     def start(self):
         print_and_log("Starting YugaByte DB...")
         self.set_signals(self.kill_yugabyte)
         atexit.register(self.kill_yugabyte)
+        self.start_processes()
 
-        initialized = self.is_initalized()
-        if not initialized and os.path.exists(self.configs.saved_data.get("data_dir")):
-            print_and_log(
-                "Found data from failed initialization in {}. Removing...".format(
-                    self.configs.saved_data.get("data_dir")))
-            shutil.rmtree(self.configs.saved_data.get("data_dir"))
-
-        if not os.path.exists(self.configs.saved_data.get("data_dir")):
-            print_and_log(
-                "Creating data directory {}.".format(self.configs.saved_data.get("data_dir")))
-            os.makedirs(self.configs.saved_data.get("data_dir"))
-            initialized = False
-
-        self.start_processes(initialized)
-
+    # Prints status of YugaByte DB.
     def status(self):
         if os.path.isdir(self.configs.saved_data.get("data_dir")):
             if self.get_failed_processes():
@@ -79,6 +80,7 @@ class YugaByteProcessManager(object):
         else:
             print("YugaByte DB is not running.")
 
+    # Prints YugaByte DB version.
     def version(self):
         title = "YugaByte DB Information"
         with open(VERSION_METADATA_PATH) as metadata:
@@ -89,6 +91,7 @@ class YugaByteProcessManager(object):
                 ("Build Hash", data.get("git_hash"))]
             print(self.get_status_string(title, info_kv_list))
 
+    # Starts an interactive YSQL shell.
     def connect_ysql(self):
         if self.get_failed_processes():
             log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
@@ -96,6 +99,7 @@ class YugaByteProcessManager(object):
         cmd = [path, "-p", self.configs.saved_data.get("ysql_port")]
         os.execv(path, cmd)
 
+    # Starts an interactive YCQL shell.
     def connect_ycql(self):
         if self.get_failed_processes():
             log_error_and_exit("YugaByte DB is not running. Cannot connect to YCQL.")
@@ -103,7 +107,8 @@ class YugaByteProcessManager(object):
         cmd = [path, "127.0.0.1", self.configs.saved_data.get("ycql_port")]
         os.execv(path, cmd)
 
-    # TODO: Check postmaster.pid when ysql is enabled.
+    # Checks yb-master and yb-tserver are running. Returns failed processes.
+    # TODO: Check postmaster.pid.
     def get_failed_processes(self):
         failed_processes = []
         for process in ("master", "tserver"):
@@ -112,7 +117,7 @@ class YugaByteProcessManager(object):
                 failed_processes.append("yb-{}".format(process))
         return failed_processes
 
-    # Called after receiving certain signals or on exit.
+    # Called after receiving certain signals or on exit. Kills all subprocesses.
     def kill_yugabyte(self, signum=None, frame=None):
         print_and_log("Shutting down...")
         cur_pid = os.getpid()
@@ -123,7 +128,7 @@ class YugaByteProcessManager(object):
 
         self.set_signals(SIG_DFL)
 
-        for p in self.processes:
+        for p in self.processes.values():
             p.delete_pidfile()
 
         try:
@@ -137,18 +142,23 @@ class YugaByteProcessManager(object):
             log_error_and_exit(
                 "Failed to kill PGID {}... Is YugaByte DB running?\n{}".format(pgid, str(err)))
 
-    def start_processes(self, initialized):
-        common_args = [
+    # Starts yb-master and yb-tserver processes.
+    # After initializing, creates a callhome thread.
+    def start_processes(self):
+        common_gflags = [
             "--stop_on_parent_termination",
             "--undefok=stop_on_parent_termination",
             "--fs_data_dirs={}".format(self.configs.saved_data.get("data_dir")),
             "--rpc_bind_addresses", "127.0.0.1"]
         master_address = "127.0.0.1:{}".format(self.configs.saved_data.get("master_port"))
-        yb_master_cmd = [os.path.join(BIN_DIR, "yb-master")] + common_args + \
+        yb_master_cmd = [os.path.join(BIN_DIR, "yb-master")] + common_gflags + \
             ["--master_addresses={}".format(master_address),
+            #  "--rpc_bind_addresses", "127.0.0.1:{}".format(self.configs.master_port),
              "--replication_factor", "1",
-             "--use_initial_sys_catalog_snapshot"]
-        yb_tserver_cmd = [os.path.join(BIN_DIR, "yb-tserver")] + common_args + \
+             "--use_initial_sys_catalog_snapshot",
+             "--server_dump_info_path",
+             os.path.join(self.configs.saved_data.get("data_dir"), "master-info"),]
+        yb_tserver_cmd = [os.path.join(BIN_DIR, "yb-tserver")] + common_gflags + \
             ["--tserver_master_addrs={}".format(master_address),
              "--cql_proxy_bind_address",
              "127.0.0.1:{}".format(self.configs.saved_data.get("ycql_port")),
@@ -156,71 +166,88 @@ class YugaByteProcessManager(object):
              os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info"),
              "--start_pgsql_proxy", "--pgsql_proxy_bind_address",
              "127.0.0.1:{}".format(self.configs.saved_data.get("ysql_port"))]
-        self.processes = [
-            ProcessManager(
+
+        self.processes = {
+            "master": YBProcessManager(
                 "master", yb_master_cmd, self.configs.saved_data.get("log_dir"),
                 self.configs.saved_data.get("data_dir")),
-            ProcessManager(
+            "tserver": YBProcessManager(
                 "tserver", yb_tserver_cmd, self.configs.saved_data.get("log_dir"),
                 self.configs.saved_data.get("data_dir"))
-        ]
+        }
 
-        for p in self.processes:
+        for p in self.processes.values():
             pid = p.get_pid()
             if pid:
                 print("YugaByte DB is already running!")
                 # Clear self.processes so kill_yugabyte() doesn't kill existing processes.
-                self.processes = []
+                self.processes = {}
                 return
 
-        should_print_startup = True
-        if not initialized:
-            yb_master_cmd.extend([
-                "--server_dump_info_path",
-                os.path.join(self.configs.saved_data.get("data_dir"), "master-info")])
-            yb_tserver_cmd.extend([
-                "--server_dump_info_path",
-                os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info")])
-            self.initalize()
-        else:
-            # TODO: Still need to check READY status
-            for p in self.processes:
-                p.start()
-
+        is_first_run = True
+        callhome_thread = None
+        self.stop_callhome = False
         while True:
-            restarted = False
-            for p in self.processes:
-                if not p.is_running():
-                    print_and_log(
-                        "{} died unexpectedly. Restarting...".format(p.name), logging.ERROR)
-                    p.start()
-                    restarted = True
-            if should_print_startup and not restarted:
-                startup_info = self.get_status_string() + \
-                    "YugaByte DB started successfully!\n" \
-                    "For help:\n" \
-                    "   - Docs at https://docs.yugabyte.com\n" \
-                    "   - Slack at https://yugabyte-db.slack.com.\n"
-                print(startup_info)
-                should_print_startup = False
+            should_callhome = False
+
+            # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
+            if not self.is_yb_initialized() and os.path.exists(self.configs.saved_data.get("data_dir")):
+                print_and_log(
+                    "Found data from failed initialization in {}. Removing...".format(
+                        self.configs.saved_data.get("data_dir")))
+                shutil.rmtree(self.configs.saved_data.get("data_dir"))
+
+            # Create data and log dirs.
+            if not os.path.exists(self.configs.saved_data.get("data_dir")):
+                logging.info("Creating data directory %s.", self.configs.saved_data.get("data_dir"))
+                os.makedirs(self.configs.saved_data.get("data_dir"))
+            if not os.path.exists(self.configs.saved_data.get("log_dir")):
+                logging.info("Creating log directory %s.", self.configs.saved_data.get("log_dir"))
+                os.makedirs(self.configs.saved_data.get("log_dir"))
+
+            # Start or initialize yb-master and yb-tserver.
+            for name in ("master", "tserver"):
+                process = self.processes.get(name)
+                if not process.is_running():
+                    process.start()
+                    trigger = "start_{},".format(name)
+                    if not is_first_run:
+                        trigger = "restart_{},".format(name)
+                        print_and_log(
+                            "{} died unexpectedly. Restarting...".format(p.name), logging.ERROR)
+                    should_callhome = True
+
+            self.wait_yb_master()
+            if should_callhome:
+                self.callhome()
+
+            # Print startup information and start callhome thread on first successful startup.
+            if is_first_run:
+                first_run_success = True
+                for p in self.processes.values():
+                    if not p.is_running():
+                        first_run_success = False
+                        break
+
+                if first_run_success and self.is_yb_initialized():
+                    startup_info = self.get_status_string() + \
+                        "YugaByte DB started successfully!\n" \
+                        "For help, please check out our docs at https://docs.yugabyte.com or " \
+                        "join us on Slack at https://yugabyte-db.slack.com.\n"
+                    print(startup_info)
+
+                callhome_thread = Thread(target=self.callhome_loop)
+                callhome_thread.start()
+                is_first_run = False
 
             time.sleep(int(self.configs.saved_data.get("polling_interval")))
 
-    def initalize(self):
-        print_and_log("Initializing YugaByte DB...")
-        for p in self.processes:
-            p.start()
+        # Stop callhome. Useful in future if we do anything after quitting.
+        self.stop_callhome = True
+        callhome_thread.join()
 
-        for i in range(60):
-            for p in self.processes:
-                if not p.is_running():
-                    return False
-            if self.is_initalized():
-                return True
-            time.sleep(0.5)
-        return False
-
-    def is_initalized(self):
+    # Returns if yb-master and yb-tserver were properly initialized before.
+    def is_yb_initialized(self):
         for info_file in ("master-info", "tserver-info", "tserver-info-redis", "tserver-info-cql"):
             if not os.path.exists(os.path.join(self.configs.saved_data.get("data_dir"), info_file)):
                 return False
@@ -244,6 +271,12 @@ class YugaByteProcessManager(object):
                     return univ_uuid
         return None
 
+    # TODO: Use yb-admin to wait for yb-master to be ready.
+    def wait_yb_master(self, timeout=5):
+        time.sleep(timeout)
+        return True
+
+    # Returns pretty output table.
     def get_status_string(self):
         title = "YugaByte DB"
         status_info = [
@@ -263,10 +296,37 @@ class YugaByteProcessManager(object):
         status += "-" * 100 + "\n"
         return status
 
+    # Callhome loop. Sends data every minute for the first hour, then every hour after.
+    def callhome_loop(self):
+        num_times_called = 0
+        initial_interval = 60
+        final_interval = 3600
+        while not self.stop_callhome:
+            try:
+                self.callhome()
+            except URLError as e:
+                logging.error("Failed to send callhome: %s", str(e))
+            num_times_called += 1
+            # Send callhome data more often in initial hour.
+            time.sleep(initial_interval if num_times_called < 60 else final_interval)
+
+    # Collects callhome data and sends it.
+    def callhome(self):
+        url = "http://diagnostics.yugabyte.com"
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla",
+        }
+        data = Diagnostics(self.configs).get_data(self.processes)
+        req = Request(url, headers=headers, data=data)
+        resp = urlopen(req)
+
+    # Calls func after receiving certain exit signals.
     def set_signals(self, func):
         for sig in (SIGABRT, SIGINT, SIGTERM):
             signal(sig, func)
 
+    # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
         has_errors = False
         conf_dir = os.path.dirname(args.config)
@@ -287,9 +347,9 @@ class YugaByteProcessManager(object):
                 if (config_data_dir and os.path.exists(config_data_dir) and
                         config_data_dir != args.data_dir):
                     has_errors = True
+                    # TODO: Gradefully handle this case... User should be able to override config.
                     print(
-                        "Data directory already exits at {}."
-                        "Delete it manually or with --destroy.".format(config_data_dir))
+                        "Data directory already exits at {}.".format(config_data_dir))
             if args.log_dir:
                 config_log_dir = self.configs.saved_data.get("log_dir")
                 if (config_log_dir and os.path.exists(config_log_dir) and
@@ -303,7 +363,7 @@ class YugaByteProcessManager(object):
 
         # Override configs and defaults with user specified variables
         update_config_file = False
-        for k, v in args.__dict__.iteritems():
+        for k, v in get_kv(args.__dict__):
             if v and k in self.configs.saved_data and v != self.configs.saved_data.get(k):
                 self.configs.saved_data[k] = v
                 update_config_file = True
@@ -356,7 +416,7 @@ class YugaByteProcessManager(object):
             cur_parser.add_argument(
                 "--polling_interval", default=5, help=argparse.SUPPRESS)
 
-        for _, cur_parser in all_parsers.iteritems():
+        for _, cur_parser in get_kv(all_parsers):
             cur_parser._positionals.title = "Commands"
             cur_parser._optionals.title = "Flags"
 
@@ -391,13 +451,15 @@ class Configs(object):
         }
         self.config_file = config_file
 
+    # Saves current configs to config file.
     def save_configs(self):
         formatted_configs = ""
-        for k, v in self.saved_data.iteritems():
+        for k, v in get_kv(self.saved_data):
             formatted_configs += "{}: {}\n".format(k, v)
         with open(self.config_file, "w+") as f:
             f.write(formatted_configs)
 
+    # Custom parser for reading config file.
     @staticmethod
     def parse_config_file(config_file):
         configs = Configs(config_file)
@@ -415,53 +477,48 @@ class Configs(object):
                 log_error_and_exit("Failed to read config file {}: {}".format(config_file, str(e)))
         return configs
 
+
 class ProcessManager(object):
     def __init__(self, name, cmd, log_dir, data_dir):
         self.name = name
         self.cmd = cmd
         self.log_dir = log_dir
-        self.pidfile = os.path.join(data_dir, "{}.pid".format(name))
         self.data_dir = data_dir
-        self.data_log_path = "{}/yb-data/{}/logs".format(data_dir, self.name)
+        self.pidfile = os.path.join(self.data_dir, "{}.pid".format(name))
         self.process = None
-        self.error_log = "{}/yb-{}.ERROR".format(self.data_log_path, self.name)
+        # TODO: Get uptime of process.
+        self.start_time = None
 
+    # Start process. Creates pidfile and corresponding output logs.
     def start(self):
-        # Remove old logs as timestamped logs should have already been created.
-        if os.path.isfile(self.error_log):
-            os.remove(self.error_log)
-
         out_log = os.path.join(self.log_dir, "{}.out".format(self.name))
         err_log = os.path.join(self.log_dir, "{}.err".format(self.name))
         with open(out_log, "a") as out_log, open(err_log, "a") as err_log:
             self.process = subprocess.Popen(self.cmd, stdout=out_log, stderr=err_log)
+            self.start_time = time.time()
+        # TODO: Redirect YW logs to yugabyte-logs
         with open(self.pidfile, "w+") as pid_file:
             pid_file.write(str(self.process.pid))
             print_and_log("{} running with PID {}.".format(self.name, self.process.pid))
-        log_path = os.path.join(self.log_dir, self.name)
-        if not os.path.islink(log_path):
-            try:
-                os.symlink(self.data_log_path, log_path)
-            except OSError as e:
-                print_and_log(
-                    "Failed to create symlink from {} to {}".format(self.data_log_path, log_path),
-                    logging.ERROR)
 
+    # Returns pid of this process if it's running.
     def get_pid(self):
         if os.path.exists(self.pidfile):
-            with open(self.pidfile, "r") as f:
-                try:
-                    pid = int(f.readline())
-                except ValueError as e:
-                    print_and_log(
-                        "Could not parse int PID from {}. Deleting file.".format(self.pidfile),
-                        logging.DEBUG)
-                    self.delete_pidfile()
-                    return None
-
-            command = ProcessManager.get_command(pid).split()
-            if command and self.name in command[0]:
-                return pid
+            if self.process:
+                return self.process.pid
+            else:
+                with open(self.pidfile, "r") as f:
+                    try:
+                        pid = int(f.readline())
+                    except ValueError as e:
+                        print_and_log(
+                            "Could not parse int PID from {}. Deleting file.".format(self.pidfile),
+                            logging.DEBUG)
+                        self.delete_pidfile()
+                        return None
+                command = ProcessManager.get_command(pid)
+                if command and self.name in command:
+                    return pid
 
             print_and_log(
                 "Pidfile {} was not properly deleted. Contained PID {}. Deleting file.".format(
@@ -470,6 +527,20 @@ class ProcessManager(object):
             self.delete_pidfile()
         return None
 
+    # Kills self.process if it exists.
+    def kill(self):
+        if self.process:
+            self.process.kill()
+        else:
+            pid = self.process.get_pid()
+            if pid:
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except OSError as e:
+                    pass
+        self.delete_pidfile()
+
+    # Delete corresponding pidfile for this process.
     def delete_pidfile(self):
         if os.path.exists(self.pidfile):
             try:
@@ -477,6 +548,53 @@ class ProcessManager(object):
             except OSError as e:
                 if os.path.exists(self.pidfile):
                     log_error_and_exit("Failed to delete {}.".format(self.pidfile))
+        self.start_time = None
+
+    # Check fatal errors in fatal/error logs, if any. Overwritten in YBProcessManager
+    def check_fatals(self):
+        pass
+
+    # Returns process status.
+    def is_running(self):
+        self.check_fatals()
+        return self.get_pid() and self.process and self.process.poll() is None
+
+    # Returns the command that was run with the input pid.
+    @staticmethod
+    def get_command(pid):
+        try:
+            return subprocess.check_output(["ps", "-p", str(pid), "-o", "command="])
+        except subprocess.CalledProcessError as e:
+            return ""
+
+    # Returns if process called name is running.
+    @staticmethod
+    def is_process_running(name, pid_dir):
+        return ProcessManager(name, cmd="", log_dir="", data_dir=pid_dir).get_pid() is not None
+
+
+class YBProcessManager(ProcessManager):
+    def __init__(self, name, cmd, log_dir, data_dir):
+        super(YBProcessManager, self).__init__(name, cmd, log_dir, data_dir)
+        self.data_log_path = "{}/yb-data/{}/logs".format(data_dir, self.name)
+        self.error_log = "{}/yb-{}.ERROR".format(self.data_log_path, self.name)
+
+
+    def start(self):
+        # Remove old logs as timestamped logs should have already been created.
+        if os.path.isfile(self.error_log):
+            os.remove(self.error_log)
+
+        super(YBProcessManager, self).start()
+
+        # Add symlink to the logs from log directory.
+        log_path = os.path.join(self.log_dir, self.name)
+        if not os.path.islink(log_path):
+            try:
+                os.symlink(self.data_log_path, log_path)
+            except OSError as e:
+                logging.error(
+                    "Failed to create symlink from {} to {}".format(self.data_log_path, log_path))
 
     def check_fatals(self):
         # Error logs contain port information, but fatal logs don't.
@@ -500,20 +618,69 @@ class ProcessManager(object):
                         log_error_and_exit(
                             "Failed to bind to address: {}. Is port open?".format(address))
 
-    def is_running(self):
-        self.check_fatals()
-        return self.get_pid() and self.process and self.process.poll() is None
 
-    @staticmethod
-    def get_command(pid):
-        try:
-            return subprocess.check_output(["ps", "-p", str(pid), "-o", "command="])
-        except subprocess.CalledProcessError as e:
-            return ""
+class Diagnostics(object):
+    def __init__(self, configs):
+        self.configs = configs
 
-    @staticmethod
-    def is_process_running(name, pid_dir):
-        return ProcessManager(name, cmd="", log_dir="", data_dir=pid_dir).get_pid() is not None
+    # Collects data.
+    def get_data(self, processes):
+        payload = {
+            "data_dir_size": self.get_dir_size(self.configs.saved_data.get("data_dir")),
+            "num_cpus": multiprocessing.cpu_count(),
+        }
+        for p in processes.values():
+            payload["{}_status".format(p.name)] = "UP" if p.is_running() else "DOWN"
+            if p.start_time:
+                payload["{}_start_time".format(p.name)] = p.start_time
+
+        data = {
+            "cluster_uuid": "312b7810-1752-4fe2-94f1-8d2f6fc25251",
+            "node_uuid": "312b7810-1752-4fe2-94f1-8d2f6fc25251",
+            "server_type": "yugabyte-db",
+            "timestamp": int(time.time()),
+            "payload": payload
+        }
+        return json.dumps(data)
+
+    def get_dir_size(self, dirname):
+        size = 0
+        for path, _, files in os.walk(dirname):
+            for f in files:
+                filepath = os.path.join(path, f)
+                # Check that the file is not a symlink
+                if os.path.isfile(filepath):
+                    size += os.path.getsize(filepath)
+        return size
+
+
+# Currently unused. Useful for getting diagnostics that are available only through logs.
+class LogAnalyzer(object):
+    unsupported_error = "not supported yet"
+    def __init__(self, logfile):
+        self.logfile = logfile
+        # Flag to stop tailing the logfile.
+        self.kill_thread = False
+        self.unsupported_commands = []
+
+    def analyze(self):
+        lines = self.tail()
+        for line in lines:
+            if LogAnalyzer.unsupported_error in line:
+                # Get the command logged right before error message
+                cmd = line.split("not supported yet")[0].split()[-1]
+                self.unsupported_commands.append(cmd)
+
+    # Generator that continually returns last line of logfile.
+    def tail(self):
+        with open(self.logfile) as open_file:
+            open_file.seek(0, 2)
+            while not self.kill_thread:
+                line = open_file.readline()
+                if not line:
+                    time.sleep(0.1)
+                    continue
+                yield line
 
 def print_and_log(msg, level=logging.INFO):
     print(msg)
@@ -531,6 +698,13 @@ def print_and_log(msg, level=logging.INFO):
 def log_error_and_exit(msg):
     print_and_log(msg, logging.ERROR)
     sys.exit(1)
+
+# Returns key-value pairs of input dict. Independent of python version.
+def get_kv(map):
+    if PY_VERSION < 3:
+        return map.iteritems()
+    else:
+        return map.items()
 
 if __name__ == '__main__':
     YugaByteProcessManager().run()
