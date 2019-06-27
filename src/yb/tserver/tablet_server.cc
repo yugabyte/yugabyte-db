@@ -395,22 +395,20 @@ string GetDynamicUrlTile(const string path, const string host, const int port) {
 void TabletServer::DisplayRpcIcons(std::stringstream* output) {
   // RPCs in Progress.
   DisplayIconTile(output, "fa-tasks", "TServer RPCs", "/rpcz");
-  // Cassandra RPCs in Progress.
+  // YCQL RPCs in Progress.
   string cass_url = GetDynamicUrlTile("/rpcz", FLAGS_cql_proxy_bind_address,
                                       FLAGS_cql_proxy_webserver_port);
-  DisplayIconTile(output, "fa-tasks", "Cassandra RPCs", cass_url);
+  DisplayIconTile(output, "fa-tasks", "YCQL RPCs", cass_url);
 
-  // Redis RPCs in Progress.
+  // YEDIS RPCs in Progress.
   string redis_url = GetDynamicUrlTile("/rpcz", FLAGS_redis_proxy_bind_address,
                                        FLAGS_redis_proxy_webserver_port);
-  DisplayIconTile(output, "fa-tasks", "Redis RPCs", redis_url);
+  DisplayIconTile(output, "fa-tasks", "YEDIS RPCs", redis_url);
 
-  // PGSQL RPCs in Progress.
-
-  // Commenting this out until we have an http port for YSQL set up. (See ENG-4891)
-  // string sql_url = GetDynamicUrlTile("/rpcz", FLAGS_pgsql_proxy_bind_address,
-  //                                    FLAGS_pgsql_proxy_webserver_port);
-  // DisplayIconTile(output, "fa-tasks", "SQL RPCs", sql_url);
+  // YSQL RPCs in Progress.
+  string sql_url = GetDynamicUrlTile("/rpcz", FLAGS_pgsql_proxy_bind_address,
+                                     FLAGS_pgsql_proxy_webserver_port);
+  DisplayIconTile(output, "fa-tasks", "YSQL RPCs", sql_url);
 
 }
 
