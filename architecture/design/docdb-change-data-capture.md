@@ -16,3 +16,5 @@ Two datacenter deployments in YugaByte DB leverage change data capture at the co
 
 > Note that in this design, the terms "data center", "cluster" and "universe" will be used interchangeably. We assume here that each YB universe is deployed in a single data-center.
 
+
+*Work in progress*
