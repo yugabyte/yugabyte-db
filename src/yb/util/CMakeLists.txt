@@ -207,6 +207,7 @@ set(UTIL_SRCS
   pending_op_counter.cc
   physical_time.cc
   port_picker.cc
+  priority_thread_pool.cc
   pstack_watcher.cc
   random_util.cc
   redis_util.cc
@@ -365,6 +366,7 @@ ADD_YB_TEST(object_pool-test)
 ADD_YB_TEST(once-test)
 ADD_YB_TEST(os-util-test)
 ADD_YB_TEST(path_util-test)
+ADD_YB_TEST(priority_queue-test)
 ADD_YB_TEST(pstack_watcher-test)
 ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(random-test)

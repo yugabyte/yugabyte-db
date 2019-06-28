@@ -469,6 +469,7 @@ class DBImpl : public DB {
   // And max seqno of imported database is less that active seqno of destination db.
   CHECKED_STATUS Import(const std::string& source_dir) override;
 
+  bool AreWritesStopped();
   bool NeedsDelay() override;
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
@@ -532,6 +533,14 @@ class DBImpl : public DB {
   struct ManualCompaction;
 
   struct WriteContext;
+
+  class ThreadPoolTask;
+
+  class CompactionTask;
+  friend class CompactionTask;
+
+  class FlushTask;
+  friend class FlushTask;
 
   Status NewDB();
 
@@ -600,12 +609,15 @@ class DBImpl : public DB {
   static void BGWorkFlush(void* db);
   static void UnscheduleCallback(void* arg);
   void WaitAfterBackgroundError(const Status& s, const char* job_name, LogBuffer* log_buffer);
-  void BackgroundCallCompaction(ManualCompaction* manual);
-  void BackgroundCallFlush();
+  void BackgroundCallCompaction(
+      ManualCompaction* manual_compaction, std::unique_ptr<Compaction> compaction = nullptr);
+  void BackgroundCallFlush(ColumnFamilyData* cfd);
   Result<FileNumbersHolder> BackgroundCompaction(
-      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, void* m = 0);
+      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer,
+      ManualCompaction* manual_compaction = nullptr,
+      std::unique_ptr<Compaction> compaction = nullptr);
   Result<FileNumbersHolder> BackgroundFlush(
-      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer);
+      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, ColumnFamilyData* cfd);
 
   // Yugabyte: This updates the stats object to show
   // total SST file size ticker.
@@ -642,12 +654,17 @@ class DBImpl : public DB {
   void AddToFlushQueue(ColumnFamilyData* cfd);
   ColumnFamilyData* PopFirstFromFlushQueue();
 
+  // Compaction is marked as large based on options, so cannot be static or free function.
+  bool IsLargeCompaction(const Compaction& compaction);
+
   // helper function to call after some of the logs_ were synced
   void MarkLogsSynced(uint64_t up_to, bool synced_dir, const Status& status);
 
   const Snapshot* GetSnapshotImpl(bool is_write_conflict_boundary);
 
   CHECKED_STATUS ApplyVersionEdit(VersionEdit* edit);
+
+  void SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task);
 
   // table_cache_ provides its own synchronization
   std::shared_ptr<Cache> table_cache_;
