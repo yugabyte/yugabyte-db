@@ -459,7 +459,10 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
     if (isMultiAz) {
       overrides.put("masterAddresses", taskParams().masterAddresses);
-      overrides.put("AZ", placementZone);
+      // Don't want to use the AZ tag on minikube since there are no AZ tags
+      if (!environment.isDev()) {
+         overrides.put("AZ", placementZone);
+      }
       overrides.put("isMultiAz", true);
       
       overrides.put("replicas", ImmutableMap.of("tserver", numNodes,
