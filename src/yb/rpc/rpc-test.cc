@@ -288,9 +288,13 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
     Proxy p(client_messenger.get(), server_addr);
 
     ASSERT_OK(DoTestSyncCall(&p, CalculatorServiceMethods::AddMethod()));
+    ASSERT_NO_FATALS(CheckServerMessengerConnections(1));
+    ASSERT_NO_FATALS(CheckClientMessengerConnections(client_messenger.get(), 1));
+    LOG(INFO) << "Connections are up";
 
     SleepFor(kGcTimeout / 2);
 
+    LOG(INFO) << "Checking connections";
     ASSERT_NO_FATALS(CheckServerMessengerConnections(1));
     ASSERT_NO_FATALS(CheckClientMessengerConnections(client_messenger.get(), 1));
 
