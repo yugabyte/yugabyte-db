@@ -863,22 +863,29 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
   return Status::OK();
 }
 
-void Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
-  CHECK_GE(min_op_idx, 0);
+Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
+  if (min_op_idx < 0) {
+    return STATUS_FORMAT(InvalidArgument, "Invalid min op index $0", min_op_idx);
+  }
+
   SegmentSequence segments_to_delete;
   *total_size = 0;
   {
     boost::shared_lock<rw_spinlock> read_lock(state_lock_.get_lock());
-    CHECK_EQ(kLogWriting, log_state_);
+    if (log_state_ != kLogWriting) {
+      return STATUS_FORMAT(IllegalState, "Invalid log state $0, expected $1",
+          log_state_, kLogWriting);
+    }
     Status s = GetSegmentsToGCUnlocked(min_op_idx, &segments_to_delete);
 
     if (!s.ok() || segments_to_delete.size() == 0) {
-      return;
+      return Status::OK();
     }
   }
   for (const scoped_refptr<ReadableLogSegment>& segment : segments_to_delete) {
     *total_size += segment->file_size();
   }
+  return Status::OK();
 }
 
 void Log::GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx,
