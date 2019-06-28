@@ -257,8 +257,13 @@ Status RemoteBootstrapSession::Init() {
   // The Log doesn't add the active segment to the log reader's list until
   // a header has been written to it (but it will not have a footer).
   RETURN_NOT_OK(tablet_peer_->log()->GetSegmentsSnapshot(&log_segments_));
-  log_anchor_index_ = log_segments_.empty() || !log_segments_.front()->HasFooter()
-      ? last_logged_opid.index : log_segments_.front()->footer().min_replicate_index();
+  log_anchor_index_ = last_logged_opid.index;
+  for (const auto& log_segment : log_segments_) {
+    if (log_segment->HasFooter() && log_segment->footer().has_min_replicate_index()) {
+      log_anchor_index_ = log_segment->footer().min_replicate_index();
+      break;
+    }
+  }
 
   // Re-anchor on the highest OpId that was in the log right before we
   // snapshotted the log segments. This helps ensure that we don't end up in a
