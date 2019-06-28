@@ -1912,6 +1912,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
   const OffsetGaps kDBOptionsBlacklist = {
       BLACKLIST_ENTRY(DBOptions, env),
       BLACKLIST_ENTRY(DBOptions, checkpoint_env),
+      BLACKLIST_ENTRY(DBOptions, compaction_thread_pool),
       BLACKLIST_ENTRY(DBOptions, rate_limiter),
       BLACKLIST_ENTRY(DBOptions, sst_file_manager),
       BLACKLIST_ENTRY(DBOptions, info_log),
