@@ -315,7 +315,7 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
   // Sleep to be sure that UpdateConsumption will take action.
   size_t value = 0;
   ASSERT_OK(WaitFor([root, &value] {
-    value = MemTracker::GetTCMallocCurrentAllocatedBytes();
+    value = MemTracker::GetTCMallocActualHeapSizeBytes();
     return root->GetUpdatedConsumption() == value;
   }, kWaitTimeout, "Consumption actualized"));
 

@@ -376,17 +376,10 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   if (prev_tserver_metrics_submission_ + tserver_metrics_interval_ < MonoTime::Now()) {
 
-#ifdef TCMALLOC_ENABLED
     // Get the total memory used.
-    size_t mem_usage;
-    if (MallocExtension::instance()->GetNumericProperty(
-        "generic.current_allocated_bytes", &mem_usage)) {
-      req.mutable_metrics()->set_total_ram_usage(static_cast<int64_t> (mem_usage));
-      VLOG_WITH_PREFIX(4) << "Total Memory Usage: " << mem_usage;
-    } else {
-      YB_LOG_WITH_PREFIX_EVERY_N(ERROR, 10) << "Getting memory usage from TCMalloc failed!";
-    }
-#endif
+    size_t mem_usage = MemTracker::GetRootTracker()->GetUpdatedConsumption(true /* force */);
+    req.mutable_metrics()->set_total_ram_usage(static_cast<int64_t>(mem_usage));
+    VLOG_WITH_PREFIX(4) << "Total Memory Usage: " << mem_usage;
 
     // Get the Total SST file sizes and set it in the proto buf
     std::vector<shared_ptr<yb::tablet::TabletPeer> > tablet_peers;
