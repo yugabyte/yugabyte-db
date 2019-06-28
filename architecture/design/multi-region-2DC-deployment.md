@@ -66,5 +66,3 @@ The parameters are described below:
 
 
 
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
-
