@@ -64,13 +64,14 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
 
+      String masterAddrs = universe.getMasterAddresses();
+
       // Update Node State to being removed.
       createSetNodeStateTask(currentNode, NodeState.Removing)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       boolean instanceAlive = instanceExists(taskParams());
       if (instanceAlive) {
-        String masterAddrs = universe.getMasterAddresses();
         // Remove the master on this node from master quorum and update its state from YW DB,
         // only if it reachable.
         boolean masterReachable = isMasterAliveOnNode(currentNode, masterAddrs);
@@ -90,13 +91,6 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
           }
         }
 
-        // Stop the tserver process only if it is reachable.
-        boolean tserverReachable = isTserverAliveOnNode(currentNode, masterAddrs);
-        LOG.info("Tserver {}, reachable = {}.", currentNode.cloudInfo.private_ip, tserverReachable);
-        if (tserverReachable) {
-          createTServerTaskForNode(currentNode, "stop")
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-        }
       } else {
         if (currentNode.isMaster) {
           createWaitForMasterLeaderTask()
@@ -113,8 +107,17 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       // if node is not reachable so as to avoid cases like 1 node in an 3 node cluster is being
       // removed and we know LoadBalancer will not be able to handle that.
       if (instanceAlive) {
+
         createWaitForDataMoveTask()
             .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+
+        // Stop the tserver process only if it is reachable.
+        boolean tserverReachable = isTserverAliveOnNode(currentNode, masterAddrs);
+        LOG.info("Tserver {}, reachable = {}.", currentNode.cloudInfo.private_ip, tserverReachable);
+        if (tserverReachable) {
+          createTServerTaskForNode(currentNode, "stop")
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
       }
 
       // Remove master status (even when it does not exists or is not reachable).
