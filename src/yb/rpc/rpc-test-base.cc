@@ -72,7 +72,7 @@ MessengerBuilder CreateMessengerBuilder(const std::string& name,
   }
   static constexpr std::chrono::milliseconds kMinCoarseTimeGranularity(1);
   static constexpr std::chrono::milliseconds kMaxCoarseTimeGranularity(100);
-  auto coarse_time_granularity = std::max(std::min(options.keep_alive_timeout,
+  auto coarse_time_granularity = std::max(std::min(options.keep_alive_timeout / 10,
                                                    kMaxCoarseTimeGranularity),
                                           kMinCoarseTimeGranularity);
   VLOG(1) << "Creating a messenger with connection keep alive time: "
