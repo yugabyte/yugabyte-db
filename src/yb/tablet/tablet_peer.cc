@@ -731,7 +731,7 @@ Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
   int64_t min_op_idx;
   RETURN_NOT_OK(GetEarliestNeededLogIndex(&min_op_idx));
-  log_->GetGCableDataSize(min_op_idx, retention_size);
+  RETURN_NOT_OK(log_->GetGCableDataSize(min_op_idx, retention_size));
   return Status::OK();
 }
 

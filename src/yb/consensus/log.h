@@ -201,7 +201,7 @@ class Log : public RefCountedThreadSafe<Log> {
   CHECKED_STATUS GC(int64_t min_op_idx, int* num_gced);
 
   // Computes the amount of bytes that would have been GC'd if Log::GC had been called.
-  void GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const;
+  CHECKED_STATUS GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const;
 
   // Returns a map of log index -> segment size, of all the segments that currently cannot be GCed
   // because in-memory structures have anchors in them.
