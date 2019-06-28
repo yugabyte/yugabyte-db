@@ -13,8 +13,6 @@ target
 *~
 core*
 
-perf.data
-perf.data.old
 oprofile_data
 .metadata/
 *.iml
@@ -36,13 +34,10 @@ conf/*
 src/main/public/*
 *.pyc
 docker/yugaware/*.yml
-src/itest/static/*.log
 
 ui/.env
 ui/public/map/
 
-src/itest/python_virtual_env
-src/itest/web_app/appllication.conf
 .session.vim*
 
 src/public/*
