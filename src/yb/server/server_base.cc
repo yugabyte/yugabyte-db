@@ -96,12 +96,13 @@ DEFINE_bool(TEST_check_broadcast_address, true, "Break connectivity in test mini
             "check broadcast address.");
 
 using namespace std::literals;
+using namespace std::placeholders;
+
 using std::shared_ptr;
 using std::string;
 using std::stringstream;
 using std::vector;
 using strings::Substitute;
-using namespace std::placeholders;
 
 namespace yb {
 namespace server {
@@ -113,16 +114,27 @@ namespace {
 // Disambiguates between servers when in a minicluster.
 AtomicInt<int32_t> mem_tracker_id_counter(-1);
 
+std::string kServerMemTrackerName = "server";
+
+std::vector<MemTrackerPtr> common_mem_trackers;
+
 } // anonymous namespace
 
 std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
   int32_t id = mem_tracker_id_counter.Increment();
-  string id_str = "server";
+  std::string id_str = kServerMemTrackerName;
   if (id != 0) {
     StrAppend(&id_str, " ", id);
   }
   return MemTracker::CreateTracker(id_str);
 }
+
+#if defined(TCMALLOC_ENABLED)
+void RegisterTCMallocTracker(const char* name, const char* prop) {
+  common_mem_trackers.push_back(MemTracker::CreateTracker(
+      -1, "TCMalloc "s + name, std::bind(&MemTracker::GetTCMallocProperty, prop)));
+}
+#endif
 
 RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
                              const string& metric_namespace,
@@ -137,6 +149,17 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       initialized_(false),
       stop_metrics_logging_latch_(1) {
   mem_tracker_->SetMetricEntity(metric_entity_);
+
+#if defined(TCMALLOC_ENABLED)
+  // When mem tracker for first server is created we register mem trackers that report tc malloc
+  // status.
+  if (mem_tracker_->id() == kServerMemTrackerName) {
+    RegisterTCMallocTracker("Thread Cache", "tcmalloc.thread_cache_free_bytes");
+    RegisterTCMallocTracker("Central Cache", "tcmalloc.central_cache_free_bytes");
+    RegisterTCMallocTracker("Transfer Cache", "tcmalloc.transfer_cache_free_bytes");
+    RegisterTCMallocTracker("PageHeap Free", "tcmalloc.pageheap_free_bytes");
+  }
+#endif
 
   if (FLAGS_use_hybrid_clock) {
     clock_ = new HybridClock();
