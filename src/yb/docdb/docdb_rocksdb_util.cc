@@ -28,6 +28,7 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/util/priority_thread_pool.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/trace.h"
 #include "yb/gutil/sysinfo.h"
@@ -454,6 +455,9 @@ void InitRocksDBOptions(
   }
   options->env = tablet_options.rocksdb_env;
   options->checkpoint_env = rocksdb::Env::Default();
+  static PriorityThreadPool compaction_thread_pool(
+      options->max_background_compactions + options->max_background_flushes);
+  options->compaction_thread_pool = &compaction_thread_pool;
 
   if (FLAGS_num_reserved_small_compaction_threads != -1) {
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;

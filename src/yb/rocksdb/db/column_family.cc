@@ -433,7 +433,7 @@ ColumnFamilyData::ColumnFamilyData(
 
 // DB mutex held
 ColumnFamilyData::~ColumnFamilyData() {
-  assert(refs_.load(std::memory_order_relaxed) == 0);
+  DCHECK_EQ(refs_.load(std::memory_order_relaxed), 0) << this;
   // remove from linked list
   auto prev = prev_;
   auto next = next_;

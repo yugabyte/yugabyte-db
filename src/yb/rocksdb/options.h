@@ -45,6 +45,7 @@
 namespace yb {
 
 class MemTracker;
+class PriorityThreadPool;
 
 }
 
@@ -866,6 +867,8 @@ struct DBOptions {
 
   // Env used to create checkpoints. Default: Env::Default()
   Env* checkpoint_env;
+
+  yb::PriorityThreadPool* compaction_thread_pool = nullptr;
 
   // Use to control write rate of flush and compaction. Flush has higher
   // priority than compaction. Rate limiting is disabled if nullptr.
