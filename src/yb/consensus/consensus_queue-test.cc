@@ -681,7 +681,9 @@ TEST_F(ConsensusQueueTest, TestQueueMovesWatermarksBackward) {
   log_->WaitForSafeOpIdToApply(yb::OpId(2, 6));
 
   // Now the all replicated watermark should have moved backward.
-  ASSERT_OPID_EQ(queue_->GetAllReplicatedIndexForTests(), MakeOpId(2, 6));
+  ASSERT_OK(WaitFor(
+        [this]() { return OpIdEquals(queue_->GetAllReplicatedIndexForTests(), MakeOpId(2, 6)); },
+        1s, "AllReplicatedOpIdForTests", 10ms));
 }
 
 // Tests that we're advancing the watermarks properly and only when the peer
