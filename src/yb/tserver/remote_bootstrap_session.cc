@@ -438,7 +438,7 @@ Status RemoteBootstrapSession::GetFilePiece(const std::string& path,
                                        file_name, path));
   }
 
-  gscoped_ptr<RandomAccessFile> readable_file;
+  std::unique_ptr<RandomAccessFile> readable_file;
 
   RETURN_NOT_OK(fs_manager_->env()->NewRandomAccessFile(file_path, &readable_file));
 

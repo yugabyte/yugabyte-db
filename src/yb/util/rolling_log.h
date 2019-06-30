@@ -112,7 +112,7 @@ class RollingLog {
 
   int64_t size_limit_bytes_;
 
-  gscoped_ptr<WritableFile> file_;
+  std::unique_ptr<WritableFile> file_;
   bool compress_after_close_;
 
   DISALLOW_COPY_AND_ASSIGN(RollingLog);

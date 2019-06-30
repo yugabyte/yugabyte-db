@@ -700,7 +700,7 @@ Status RemoteBootstrapClient::DownloadFile(
 
   WritableFileOptions opts;
   opts.sync_on_close = true;
-  gscoped_ptr<WritableFile> file;
+  std::unique_ptr<WritableFile> file;
   RETURN_NOT_OK(fs_manager_->env()->NewWritableFile(opts, file_path, &file));
 
   data_id->set_file_name(file_pb.name());
@@ -781,7 +781,7 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
 
   WritableFileOptions opts;
   opts.sync_on_close = true;
-  gscoped_ptr<WritableFile> writer;
+  std::unique_ptr<WritableFile> writer;
   RETURN_NOT_OK_PREPEND(fs_manager_->env()->NewWritableFile(opts, temp_dest_path, &writer),
                         "Unable to open file for writing");
 

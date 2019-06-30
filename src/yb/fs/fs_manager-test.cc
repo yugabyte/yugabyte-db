@@ -141,7 +141,7 @@ class FsManagerTestBase : public YBTest {
   const char* kServerType = "tserver_test";
 
  private:
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   string log_dir_ = "";
 };
 
@@ -191,7 +191,7 @@ TEST_F(FsManagerTestBase, TestListTablets) {
   ASSERT_EQ(0, tablet_ids.size());
 
   string path = fs_manager()->GetRaftGroupMetadataDir();
-  gscoped_ptr<WritableFile> writer;
+  std::unique_ptr<WritableFile> writer;
   ASSERT_OK(env_->NewWritableFile(
       JoinPathSegments(path, "foo.tmp"), &writer));
   ASSERT_OK(env_->NewWritableFile(
@@ -210,7 +210,7 @@ TEST_F(FsManagerTestBase, TestCannotUseNonEmptyFsRoot) {
   ReinitFsManager({ path }, { path });
   ASSERT_OK(fs_manager()->CreateInitialFileSystemLayout());
   {
-    gscoped_ptr<WritableFile> writer;
+    std::unique_ptr<WritableFile> writer;
     ASSERT_OK(env_->NewWritableFile(
         JoinPathSegments(GetServerTypeDataPath(path, kServerType), "some_file"), &writer));
   }

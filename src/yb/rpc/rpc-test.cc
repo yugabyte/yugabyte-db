@@ -250,7 +250,7 @@ TEST_F(TestRpc, TestHighFDs) {
   // Open a bunch of fds just to increase our fd count.
   std::vector<std::unique_ptr<RandomAccessFile>> fake_files;
   for (uint64_t i = 0; i < kNumFakeFiles; i++) {
-    gscoped_ptr<RandomAccessFile> f;
+    std::unique_ptr<RandomAccessFile> f;
     CHECK_OK(Env::Default()->NewRandomAccessFile("/dev/zero", &f));
     fake_files.emplace_back(f.release());
   }
