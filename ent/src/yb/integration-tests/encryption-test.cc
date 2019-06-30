@@ -77,7 +77,7 @@ class EncryptionTest : public YBTableTestBase {
     encryption_info_req.set_encryption_enabled(true);
 
     auto bytes = RandomBytes(32);
-    gscoped_ptr<WritableFile> key_file;
+    std::unique_ptr<WritableFile> key_file;
     std::string file_name;
     ASSERT_OK(Env::Default()->NewTempWritableFile(
         WritableFileOptions(), "key_file_XXXXXX", &file_name, &key_file));
