@@ -46,12 +46,12 @@ TEST_F(TestEncryptedEnv, FileOps) {
     down_cast<HeaderManagerMockImpl*>(hm_ptr)->SetFileEncryption(encrypted);
 
     string fname;
-    gscoped_ptr<WritableFile> writable_file;
+    std::unique_ptr<WritableFile> writable_file;
     ASSERT_OK(env->NewTempWritableFile(
         WritableFileOptions(), fname_template, &fname, &writable_file));
     TestWrites(writable_file.get(), data);
 
-    gscoped_ptr<RandomAccessFile> ra_file;
+    std::unique_ptr<RandomAccessFile> ra_file;
     ASSERT_OK(env->NewRandomAccessFile(RandomAccessFileOptions(), fname, &ra_file));
     TestRandomAccessReads<RandomAccessFile, uint8_t>(ra_file.get(), data);
 
