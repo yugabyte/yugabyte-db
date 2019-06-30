@@ -364,7 +364,7 @@ class InMemoryEnv : public EnvWrapper {
 
   // Partial implementation of the Env interface.
   virtual Status NewSequentialFile(const std::string& fname,
-                                   gscoped_ptr<SequentialFile>* result) override {
+                                   std::unique_ptr<SequentialFile>* result) override {
     MutexLock lock(mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
       return STATUS(IOError, fname, "File not found");
@@ -375,13 +375,13 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   virtual Status NewRandomAccessFile(const std::string& fname,
-                                     gscoped_ptr<RandomAccessFile>* result) override {
+                                     std::unique_ptr<RandomAccessFile>* result) override {
     return NewRandomAccessFile(RandomAccessFileOptions(), fname, result);
   }
 
   virtual Status NewRandomAccessFile(const RandomAccessFileOptions& opts,
                                      const std::string& fname,
-                                     gscoped_ptr<RandomAccessFile>* result) override {
+                                     std::unique_ptr<RandomAccessFile>* result) override {
     MutexLock lock(mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
       return STATUS(IOError, fname, "File not found");
@@ -393,36 +393,36 @@ class InMemoryEnv : public EnvWrapper {
 
   virtual Status NewWritableFile(const WritableFileOptions& opts,
                                  const std::string& fname,
-                                 gscoped_ptr<WritableFile>* result) override {
-    gscoped_ptr<WritableFileImpl> wf;
+                                 std::unique_ptr<WritableFile>* result) override {
+    std::unique_ptr<WritableFileImpl> wf;
     RETURN_NOT_OK(CreateAndRegisterNewFile(fname, opts.mode, &wf));
     result->reset(wf.release());
     return Status::OK();
   }
 
   virtual Status NewWritableFile(const std::string& fname,
-                                 gscoped_ptr<WritableFile>* result) override {
+                                 std::unique_ptr<WritableFile>* result) override {
     return NewWritableFile(WritableFileOptions(), fname, result);
   }
 
   virtual Status NewRWFile(const RWFileOptions& opts,
                            const string& fname,
-                           gscoped_ptr<RWFile>* result) override {
-    gscoped_ptr<RWFileImpl> rwf;
+                           std::unique_ptr<RWFile>* result) override {
+    std::unique_ptr<RWFileImpl> rwf;
     RETURN_NOT_OK(CreateAndRegisterNewFile(fname, opts.mode, &rwf));
     result->reset(rwf.release());
     return Status::OK();
   }
 
   virtual Status NewRWFile(const string& fname,
-                           gscoped_ptr<RWFile>* result) override {
+                           std::unique_ptr<RWFile>* result) override {
     return NewRWFile(RWFileOptions(), fname, result);
   }
 
   virtual Status NewTempWritableFile(const WritableFileOptions& opts,
                                      const std::string& name_template,
                                      std::string* created_filename,
-                                     gscoped_ptr<WritableFile>* result) override {
+                                     std::unique_ptr<WritableFile>* result) override {
     // Not very random, but InMemoryEnv is basically a test env.
     Random random(GetCurrentTimeMicros());
     while (true) {
@@ -478,7 +478,7 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   Status CreateDir(const std::string& dirname) override {
-    gscoped_ptr<WritableFile> file;
+    std::unique_ptr<WritableFile> file;
     return NewWritableFile(dirname, &file);
   }
 
@@ -590,7 +590,7 @@ class InMemoryEnv : public EnvWrapper {
   // Create new internal representation of a writable file.
   template <typename PtrType, typename ImplType>
   void CreateAndRegisterNewWritableFileUnlocked(const string& path,
-                                                gscoped_ptr<PtrType>* result) {
+                                                std::unique_ptr<PtrType>* result) {
     file_map_[path] = make_scoped_refptr(new FileState(path));
     result->reset(new ImplType(file_map_[path]));
   }
@@ -599,7 +599,7 @@ class InMemoryEnv : public EnvWrapper {
   template <typename Type>
   Status CreateAndRegisterNewFile(const string& fname,
                                   CreateMode mode,
-                                  gscoped_ptr<Type>* result) {
+                                  std::unique_ptr<Type>* result) {
     MutexLock lock(mutex_);
     if (ContainsKey(file_map_, fname)) {
       switch (mode) {

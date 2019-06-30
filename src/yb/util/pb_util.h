@@ -1,4 +1,5 @@
 // Licensed to the Apache Software Foundation (ASF) under one
+// Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
 // regarding copyright ownership.  The ASF licenses this file
@@ -197,7 +198,7 @@ class WritablePBContainerFile {
  public:
 
   // Initializes the class instance; writer must be open.
-  explicit WritablePBContainerFile(gscoped_ptr<WritableFile> writer);
+  explicit WritablePBContainerFile(std::unique_ptr<WritableFile> writer);
 
   // Closes the container if not already closed.
   ~WritablePBContainerFile();
@@ -243,7 +244,7 @@ class WritablePBContainerFile {
 
   bool closed_;
 
-  gscoped_ptr<WritableFile> writer_;
+  std::unique_ptr<WritableFile> writer_;
 };
 
 // Protobuf container file opened for reading.
@@ -254,7 +255,7 @@ class ReadablePBContainerFile {
  public:
 
   // Initializes the class instance; reader must be open.
-  explicit ReadablePBContainerFile(gscoped_ptr<RandomAccessFile> reader);
+  explicit ReadablePBContainerFile(std::unique_ptr<RandomAccessFile> reader);
 
   // Closes the file if not already closed.
   ~ReadablePBContainerFile();
@@ -296,7 +297,7 @@ class ReadablePBContainerFile {
   // If 'eofOK' is EOF_OK, an EOF is returned as-is. Otherwise, it is
   // considered to be an invalid short read and returned as an error.
   CHECKED_STATUS ValidateAndRead(size_t length, EofOK eofOK,
-                         Slice* result, gscoped_ptr<uint8_t[]>* scratch);
+                                 Slice* result, std::unique_ptr<uint8_t[]>* scratch);
 
   size_t offset_;
 
@@ -304,9 +305,9 @@ class ReadablePBContainerFile {
   std::string pb_type_;
 
   // Wrapped in a gscoped_ptr so that clients need not include PB headers.
-  gscoped_ptr<google::protobuf::FileDescriptorSet> protos_;
+  std::unique_ptr<google::protobuf::FileDescriptorSet> protos_;
 
-  gscoped_ptr<RandomAccessFile> reader_;
+  std::unique_ptr<RandomAccessFile> reader_;
 };
 
 // Convenience functions for protobuf containers holding just one record.
