@@ -26,14 +26,14 @@ namespace enterprise {
 class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
  public:
 
-  static Status Create(gscoped_ptr<RandomAccessFile>* result,
+  static Status Create(std::unique_ptr<RandomAccessFile>* result,
                        HeaderManager* header_manager,
-                       gscoped_ptr<RandomAccessFile> underlying) {
+                       std::unique_ptr<RandomAccessFile> underlying) {
     return CreateRandomAccessFile<EncryptedRandomAccessFile, uint8_t>(
         result, header_manager, std::move(underlying));
   }
 
-  EncryptedRandomAccessFile(gscoped_ptr<RandomAccessFile> file,
+  EncryptedRandomAccessFile(std::unique_ptr<RandomAccessFile> file,
                             std::unique_ptr<yb::enterprise::BlockAccessCipherStream> stream,
                             uint64_t header_size)
       : RandomAccessFileWrapper(std::move(file)), stream_(std::move(stream)),
@@ -74,15 +74,15 @@ class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
 class EncryptedWritableFile : public WritableFileWrapper {
  public:
 
-  static Status Create(gscoped_ptr<WritableFile>* result,
+  static Status Create(std::unique_ptr<WritableFile>* result,
                        HeaderManager* header_manager,
-                       gscoped_ptr<WritableFile> underlying) {
+                       std::unique_ptr<WritableFile> underlying) {
     return CreateWritableFile<EncryptedWritableFile>(
         result, header_manager, std::move(underlying));
   }
 
   // Default constructor.
-  EncryptedWritableFile(gscoped_ptr<WritableFile> file,
+  EncryptedWritableFile(std::unique_ptr<WritableFile> file,
                         std::unique_ptr<yb::enterprise::BlockAccessCipherStream> stream,
                         uint32_t header_size)
       : WritableFileWrapper(std::move(file)), stream_(std::move(stream)), header_size_(header_size)
@@ -118,15 +118,15 @@ class EncryptedFileFactory : public FileFactoryWrapper {
 
   // NewRandomAccessFile opens a file for random read access.
   Status NewRandomAccessFile(const std::string& fname,
-                                     gscoped_ptr<RandomAccessFile>* result) override {
+                                     std::unique_ptr<RandomAccessFile>* result) override {
 
     return NewRandomAccessFile(RandomAccessFileOptions(), fname, result);
   }
 
   Status NewRandomAccessFile(const yb::RandomAccessFileOptions& opts,
                              const std::string& fname,
-                             gscoped_ptr<RandomAccessFile>* result) override {
-    gscoped_ptr<RandomAccessFile> underlying;
+                             std::unique_ptr<RandomAccessFile>* result) override {
+    std::unique_ptr<RandomAccessFile> underlying;
     RETURN_NOT_OK(FileFactoryWrapper::NewRandomAccessFile(opts, fname, &underlying));
     return EncryptedRandomAccessFile::Create(result, header_manager_.get(), std::move(underlying));
   }
@@ -134,8 +134,8 @@ class EncryptedFileFactory : public FileFactoryWrapper {
   Status NewTempWritableFile(const WritableFileOptions& opts,
                              const std::string& name_template,
                              std::string* created_filename,
-                             gscoped_ptr<WritableFile>* result) override {
-    gscoped_ptr<WritableFile> underlying;
+                             std::unique_ptr<WritableFile>* result) override {
+    std::unique_ptr<WritableFile> underlying;
     RETURN_NOT_OK(FileFactoryWrapper::NewTempWritableFile(
         opts, name_template, created_filename, &underlying));
     return EncryptedWritableFile::Create(result, header_manager_.get(), std::move(underlying));

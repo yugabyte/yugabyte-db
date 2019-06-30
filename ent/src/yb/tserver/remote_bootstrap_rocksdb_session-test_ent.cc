@@ -40,7 +40,7 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
     const string extra_file = snapshot_dir + ".sha256";
     ASSERT_FALSE(env_->FileExists(extra_file));
     {
-      gscoped_ptr<WritableFile> writer;
+      std::unique_ptr<WritableFile> writer;
       ASSERT_OK(env_->NewWritableFile(extra_file, &writer));
       ASSERT_OK(writer->Append(Slice("012345")));
       ASSERT_OK(writer->Flush(WritableFile::FLUSH_SYNC));
