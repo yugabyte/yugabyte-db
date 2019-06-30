@@ -1038,7 +1038,7 @@ Status Log::SwitchToAllocatedSegment() {
   }
 
   // Create a new segment.
-  gscoped_ptr<WritableLogSegment> new_segment(
+  std::unique_ptr<WritableLogSegment> new_segment(
       new WritableLogSegment(new_segment_path, next_segment_file_));
 
   // Set up the new header and footer.
@@ -1070,7 +1070,7 @@ Status Log::SwitchToAllocatedSegment() {
   }
 
   // Open the segment we just created in readable form and add it to the reader.
-  gscoped_ptr<RandomAccessFile> readable_file;
+  std::unique_ptr<RandomAccessFile> readable_file;
   RETURN_NOT_OK(get_env()->NewRandomAccessFile(
       RandomAccessFileOptions(), new_segment_path, &readable_file));
 
@@ -1111,7 +1111,7 @@ Status Log::CreatePlaceholderSegment(const WritableFileOptions& opts,
                                      shared_ptr<WritableFile>* out) {
   string path_tmpl = JoinPathSegments(log_dir_, kSegmentPlaceholderFileTemplate);
   VLOG_WITH_PREFIX(2) << "Creating temp. file for place holder segment, template: " << path_tmpl;
-  gscoped_ptr<WritableFile> segment_file;
+  std::unique_ptr<WritableFile> segment_file;
   RETURN_NOT_OK(get_env()->NewTempWritableFile(opts,
                                                path_tmpl,
                                                result_path,

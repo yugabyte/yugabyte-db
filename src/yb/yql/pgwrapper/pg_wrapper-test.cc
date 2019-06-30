@@ -63,7 +63,7 @@ class PgWrapperTest : public PgWrapperTestBase {
     std::string tmp_dir;
     ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
-    gscoped_ptr<WritableFile> tmp_file;
+    std::unique_ptr<WritableFile> tmp_file;
     std::string tmp_file_name;
     ASSERT_OK(
         Env::Default()->NewTempWritableFile(
@@ -316,7 +316,7 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
 
   // Create empty postmaster.pid file and ensure that tserver can start up
   // Use sync_on_close flag to ensure that the file is flushed to disk when tserver tries to read it
-  gscoped_ptr<RWFile> file;
+  std::unique_ptr<RWFile> file;
   RWFileOptions opts;
   opts.sync_on_close = true;
   opts.mode = Env::CREATE_IF_NON_EXISTING_TRUNCATE;

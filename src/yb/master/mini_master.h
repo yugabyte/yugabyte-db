@@ -35,6 +35,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/util/env.h"
