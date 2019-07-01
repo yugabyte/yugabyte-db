@@ -56,7 +56,7 @@ TEST_F(TestRocksDBEncryptedEnv, FileOps) {
 
     std::unique_ptr<rocksdb::SequentialFile> s_file;
     ASSERT_OK(env->NewSequentialFile(fname, &s_file, rocksdb::EnvOptions()));
-    TestSequentialReads<rocksdb::SequentialFile, char>(s_file.get(), data);
+    TestSequentialReads<rocksdb::SequentialFile, uint8_t>(s_file.get(), data);
 
     ASSERT_OK(env->DeleteFile(fname));
   }

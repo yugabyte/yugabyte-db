@@ -112,7 +112,7 @@ Result<uint32_t> GetHeaderSize(rocksdb::SequentialFile* file, HeaderManager* hea
   }
   Slice encryption_info;
   auto metadata_start = header_manager->GetEncryptionMetadataStartIndex();
-  auto buf = static_cast<char*>(EncryptionBuffer::Get()->GetBuffer(metadata_start));
+  auto buf = static_cast<uint8_t*>(EncryptionBuffer::Get()->GetBuffer(metadata_start));
 
   RETURN_NOT_OK(file->Read(metadata_start, &encryption_info, buf));
   auto status = VERIFY_RESULT(header_manager->GetFileEncryptionStatusFromPrefix(encryption_info));
