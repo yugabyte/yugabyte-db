@@ -407,10 +407,10 @@ class YBClient {
 
   CHECKED_STATUS ListTabletServers(std::vector<std::unique_ptr<YBTabletServer>>* tablet_servers);
 
-  // Add a tserver's proxy, and optionally the tserver itself if it is local.
-  void AddTabletServer(const std::string& ts_uuid,
-                       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
-                       const tserver::LocalTabletServer* local_tserver = nullptr);
+  // Sets local tserver and its proxy.
+  void SetLocalTabletServer(const std::string& ts_uuid,
+                            const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
+                            const tserver::LocalTabletServer* local_tserver);
 
   // List only those tables whose names pass a substring match on 'filter'.
   //

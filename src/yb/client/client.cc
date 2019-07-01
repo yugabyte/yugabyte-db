@@ -891,10 +891,10 @@ Status YBClient::ListTabletServers(vector<std::unique_ptr<YBTabletServer>>* tabl
   return Status::OK();
 }
 
-void YBClient::AddTabletServer(const string& ts_uuid,
-                               const shared_ptr<tserver::TabletServerServiceProxy>& proxy,
-                               const tserver::LocalTabletServer* local_tserver) {
-  data_->meta_cache_->AddTabletServer(ts_uuid, proxy, local_tserver);
+void YBClient::SetLocalTabletServer(const string& ts_uuid,
+                                    const shared_ptr<tserver::TabletServerServiceProxy>& proxy,
+                                    const tserver::LocalTabletServer* local_tserver) {
+  data_->meta_cache_->SetLocalTabletServer(ts_uuid, proxy, local_tserver);
 }
 
 Status YBClient::GetTablets(const YBTableName& table_name,
