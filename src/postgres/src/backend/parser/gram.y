@@ -891,6 +891,7 @@ stmt :
 
 			/* BETA features */
 			| CreateFunctionStmt { parser_ybc_beta_feature(@1, "function"); }
+			| DoStmt { parser_ybc_beta_feature(@1, "function"); }
 			| RemoveFuncStmt { parser_ybc_beta_feature(@1, "function"); }
 
 			/* Not supported in template0/template1 statements */
@@ -956,7 +957,6 @@ stmt :
 			| DeclareCursorStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DefineStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DiscardStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DoStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropCastStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropOpClassStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -8736,7 +8736,6 @@ operator_with_argtypes:
 
 DoStmt: DO dostmt_opt_list
 				{
-					parser_ybc_not_support(@1, "DO");
 					DoStmt *n = makeNode(DoStmt);
 					n->args = $2;
 					$$ = (Node *)n;
