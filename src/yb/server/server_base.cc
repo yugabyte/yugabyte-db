@@ -525,17 +525,7 @@ void RpcAndWebServerBase::DisplayIconTile(std::stringstream* output, const strin
           << "  </div> <!-- col-sm-4 col-md-4 -->\n";
 }
 
-void RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
-  // RPCs in Progress.
-  DisplayIconTile(output, "fa-tasks", "Server RPCs", "/rpcz");
-}
-
-Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
-                                            stringstream* output) {
-  *output << "<h1>Debug Utilities</h1>\n";
-
-  *output << "<div class='row debug-tiles'>\n";
-  *output << "<h2> General Info </h2>";
+void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // Logs.
   DisplayIconTile(output, "fa-files-o", "Logs", "/logs");
   // GFlags.
@@ -548,6 +538,21 @@ Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
   DisplayIconTile(output, "fa-line-chart", "Metrics", "/metrics");
   // Threads.
   DisplayIconTile(output, "fa-list-ul", "Threads", "/threadz");
+}
+
+
+void RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
+  // RPCs in Progress.
+  DisplayIconTile(output, "fa-tasks", "Server RPCs", "/rpcz");
+}
+
+Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
+                                            stringstream* output) {
+  *output << "<h1>Debug Utilities</h1>\n";
+
+  *output << "<div class='row debug-tiles'>\n";
+  *output << "<h2> General Info </h2>";
+  DisplayGeneralInfoIcons(output);
   *output << "</div> <!-- row -->\n";
   *output << "<h2> RPCs In Progress </h2>";
   *output << "<div class='row debug-tiles'>\n";

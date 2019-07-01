@@ -144,7 +144,10 @@ void PersistentTabletInfo::set_state(SysTabletsEntryPB::State state, const strin
 // TableInfo
 // ================================================================================================
 
-TableInfo::TableInfo(TableId table_id) : table_id_(std::move(table_id)) {}
+TableInfo::TableInfo(TableId table_id, scoped_refptr<TasksTracker> tasks_tracker)
+    : table_id_(std::move(table_id)),
+      tasks_tracker_(tasks_tracker) {
+}
 
 TableInfo::~TableInfo() {
 }
@@ -308,7 +311,10 @@ void TableInfo::AddTask(std::shared_ptr<MonitoredTask> task) {
   {
     std::lock_guard<rw_spinlock> l(lock_);
     if (!closing_) {
-      pending_tasks_.insert(std::move(task));
+      pending_tasks_.insert(task);
+      if (tasks_tracker_) {
+        tasks_tracker_->AddTask(task);
+      }
     } else {
       abort_task = true;
     }

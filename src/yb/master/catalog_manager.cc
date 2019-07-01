@@ -117,6 +117,7 @@
 #include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/initial_sys_catalog_snapshot.h"
+#include "yb/master/tasks_tracker.h"
 
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
@@ -379,7 +380,8 @@ CatalogManager::CatalogManager(Master* master)
       leader_ready_term_(-1),
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
       load_balance_policy_(new YB_EDITION_NS_PREFIX ClusterLoadBalancer(this)),
-      permissions_manager_(std::make_unique<PermissionsManager>(this)) {
+      permissions_manager_(std::make_unique<PermissionsManager>(this)),
+      tasks_tracker_(new TasksTracker()) {
   yb::InitCommonFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
            .set_max_threads(1)
@@ -641,6 +643,9 @@ Status CatalogManager::RunLoaders() {
   // Clear redis config mapping.
   redis_config_map_.clear();
 
+  // Clear recent tasks.
+  tasks_tracker_->Reset();
+
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   master_->ts_manager()->GetAllDescriptors(&descs);
   for (const auto& ts_desc : descs) {
@@ -878,7 +883,7 @@ Status CatalogManager::PrepareSystemTables(int64_t term) {
 Status CatalogManager::PrepareSysCatalogTable(int64_t term) {
   // Prepare sys catalog table info.
   if (table_ids_map_.count(kSysCatalogTableId) == 0) {
-    scoped_refptr<TableInfo> table(new TableInfo(kSysCatalogTableId));
+    scoped_refptr<TableInfo> table = NewTableInfo(kSysCatalogTableId);
     table->mutable_metadata()->StartMutation();
     SysTablesEntryPB& metadata = table->mutable_metadata()->mutable_dirty()->pb;
     metadata.set_state(SysTablesEntryPB::RUNNING);
@@ -1220,6 +1225,9 @@ void CatalogManager::Shutdown() {
   if (sys_catalog_) {
     sys_catalog_->Shutdown();
   }
+
+  // Reset the tasks tracker.
+  tasks_tracker_->Reset();
 
   if (initdb_future_ && initdb_future_->wait_for(0s) != std::future_status::ready) {
     LOG(WARNING) << "initdb is still running, waiting for it to complete.";
@@ -2029,7 +2037,7 @@ Status CatalogManager::CreateTableInMemory(const CreateTableRequestPB& req,
   }
 
   // Add the new table in "preparing" state.
-  table->reset(CreateTableInfo(req, schema, partition_schema, namespace_id, index_info));
+  *table = CreateTableInfo(req, schema, partition_schema, namespace_id, index_info);
   const TableId& table_id = (*table)->id();
   table_ids_map_[table_id] = *table;
   // Do not add Postgres tables to the name map as the table name is not unique in a namespace.
@@ -2265,14 +2273,14 @@ std::string CatalogManager::GenerateId(boost::optional<const SysRowEntry::Type> 
   }
 }
 
-TableInfo *CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
-                                           const Schema& schema,
-                                           const PartitionSchema& partition_schema,
-                                           const NamespaceId& namespace_id,
-                                           IndexInfoPB* index_info) {
+scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableRequestPB& req,
+                                                         const Schema& schema,
+                                                         const PartitionSchema& partition_schema,
+                                                         const NamespaceId& namespace_id,
+                                                         IndexInfoPB* index_info) {
   DCHECK(schema.has_column_ids());
   TableId table_id = !req.table_id().empty() ? req.table_id() : GenerateId(SysRowEntry::TABLE);
-  TableInfo* table = new TableInfo(table_id);
+  scoped_refptr<TableInfo> table = NewTableInfo(table_id);
   table->mutable_metadata()->StartMutation();
   SysTablesEntryPB *metadata = &table->mutable_metadata()->mutable_dirty()->pb;
   metadata->set_state(SysTablesEntryPB::PREPARING);
@@ -3286,6 +3294,10 @@ void CatalogManager::GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types
   for (const UDTypeInfoMap::value_type& e : udtype_ids_map_) {
     types->push_back(e.second);
   }
+}
+
+std::vector<std::shared_ptr<MonitoredTask>> CatalogManager::GetRecentTasks() {
+  return tasks_tracker_->GetTasks();
 }
 
 NamespaceName CatalogManager::GetNamespaceNameUnlocked(const NamespaceId& id) const  {
@@ -6015,6 +6027,10 @@ void CatalogManager::HandleNewTableId(const TableId& table_id) {
     // Needed to track whether initdb has started running.
     pg_proc_exists_.store(true, std::memory_order_release);
   }
+}
+
+scoped_refptr<TableInfo> CatalogManager::NewTableInfo(TableId id) {
+  return make_scoped_refptr<TableInfo>(id, tasks_tracker_);
 }
 
 }  // namespace master

@@ -61,27 +61,31 @@ void HtmlOutputSchemaTable(const Schema& schema,
   *output << "</table>\n";
 }
 
+void HtmlOutputTask(const std::shared_ptr<MonitoredTask>& task,
+                    std::stringstream* output) {
+  double running_secs = 0;
+  if (task->completion_timestamp().Initialized()) {
+    running_secs = task->completion_timestamp().GetDeltaSince(
+        task->start_timestamp()).ToSeconds();
+  } else if (task->start_timestamp().Initialized()) {
+    running_secs = MonoTime::Now().GetDeltaSince(
+        task->start_timestamp()).ToSeconds();
+  }
+
+  *output << Substitute(
+      "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td></tr>\n",
+      EscapeForHtmlToString(task->type_name()),
+      EscapeForHtmlToString(ToString(task->state())),
+      EscapeForHtmlToString(HumanReadableElapsedTime::ToShortString(running_secs)),
+      EscapeForHtmlToString(task->description()));
+}
+
 void HtmlOutputTasks(const std::unordered_set<std::shared_ptr<MonitoredTask>>& tasks,
                         std::stringstream* output) {
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Task Name</th><th>State</th><th>Time</th><th>Description</th></tr>\n";
   for (const auto& task : tasks) {
-
-    double running_secs = 0;
-    if (task->completion_timestamp().Initialized()) {
-      running_secs = task->completion_timestamp().GetDeltaSince(
-        task->start_timestamp()).ToSeconds();
-    } else if (task->start_timestamp().Initialized()) {
-      running_secs = MonoTime::Now().GetDeltaSince(
-        task->start_timestamp()).ToSeconds();
-    }
-
-    *output << Substitute(
-        "<tr><th>$0</th><td>$1</td><td>$2</td><td>$3</td></tr>\n",
-        EscapeForHtmlToString(task->type_name()),
-        EscapeForHtmlToString(ToString(task->state())),
-        EscapeForHtmlToString(HumanReadableElapsedTime::ToShortString(running_secs)),
-        EscapeForHtmlToString(task->description()));
+    HtmlOutputTask(task, output);
   }
   *output << "</table>\n";
 }
