@@ -165,7 +165,7 @@ class TestEnv : public EnvWrapper {
   class DummySequentialFile : public SequentialFile {
    public:
     DummySequentialFile() : SequentialFile(), rnd_(5) {}
-    Status Read(size_t n, Slice* result, char* scratch) override {
+    Status Read(size_t n, Slice* result, uint8_t* scratch) override {
       size_t read_size = (n > size_left) ? size_left : n;
       for (size_t i = 0; i < read_size; ++i) {
         scratch[i] = rnd_.Next() & 255;
@@ -179,6 +179,12 @@ class TestEnv : public EnvWrapper {
       size_left = (n > size_left) ? size_left - n : 0;
       return Status::OK();
     }
+
+    const std::string& filename() const override {
+      static const std::string kFilename = "DummySequentialFile";
+      return kFilename;
+    }
+
    private:
     size_t size_left = 200;
     Random rnd_;

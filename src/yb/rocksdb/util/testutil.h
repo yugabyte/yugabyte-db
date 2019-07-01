@@ -46,7 +46,6 @@
 #include "yb/util/slice.h"
 
 namespace rocksdb {
-class SequentialFile;
 class SequentialFileReader;
 
 namespace test {
@@ -405,8 +404,10 @@ class StringEnv : public EnvWrapper {
    public:
     explicit SeqStringSource(const std::string& data)
         : data_(data), offset_(0) {}
+
     ~SeqStringSource() {}
-    Status Read(size_t n, Slice* result, char* scratch) override {
+
+    Status Read(size_t n, Slice* result, uint8_t* scratch) override {
       std::string output;
       if (offset_ < data_.size()) {
         n = std::min(data_.size() - offset_, n);
@@ -419,6 +420,7 @@ class StringEnv : public EnvWrapper {
       }
       return Status::OK();
     }
+
     Status Skip(uint64_t n) override {
       if (offset_ >= data_.size()) {
         return STATUS(InvalidArgument,
@@ -427,6 +429,11 @@ class StringEnv : public EnvWrapper {
       // TODO(yhchiang): Currently doesn't handle the overflow case.
       offset_ += n;
       return Status::OK();
+    }
+
+    const std::string& filename() const override {
+      static const std::string kFilename = "SeqStringSource";
+      return kFilename;
     }
 
    private:

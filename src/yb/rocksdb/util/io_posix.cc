@@ -41,12 +41,14 @@
 #include <sys/syscall.h>
 #endif
 #include "yb/rocksdb/port/port.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/iostats_context_imp.h"
 #include "yb/rocksdb/util/posix_logger.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
+
+#include "yb/util/file_system_posix.h"
+#include "yb/util/slice.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 
@@ -57,64 +59,6 @@ int Fadvise(int fd, off_t offset, size_t len, int advice) {
   return posix_fadvise(fd, offset, len, advice);
 #else
   return 0;  // simply do nothing.
-#endif
-}
-
-/*
- * PosixSequentialFile
- */
-PosixSequentialFile::PosixSequentialFile(const std::string& fname, FILE* f,
-                                         const EnvOptions& options)
-    : filename_(fname),
-      file_(f),
-      fd_(fileno(f)),
-      use_os_buffer_(options.use_os_buffer) {}
-
-PosixSequentialFile::~PosixSequentialFile() { fclose(file_); }
-
-Status PosixSequentialFile::Read(size_t n, Slice* result, char* scratch) {
-  Status s;
-  size_t r = 0;
-  do {
-    r = fread_unlocked(scratch, 1, n, file_);
-  } while (r == 0 && ferror(file_) && errno == EINTR);
-  *result = Slice(scratch, r);
-  if (r < n) {
-    if (feof(file_)) {
-      // We leave status as ok if we hit the end of the file
-      // We also clear the error so that the reads can continue
-      // if a new data is written to the file
-      clearerr(file_);
-    } else {
-      // A partial read with an error: return a non-ok status
-      s = STATUS_IO_ERROR(filename_, errno);
-    }
-  }
-  if (!use_os_buffer_) {
-    // we need to fadvise away the entire range of pages because
-    // we do not want readahead pages to be cached.
-    Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);  // free OS pages
-  }
-  return s;
-}
-
-Status PosixSequentialFile::Skip(uint64_t n) {
-  if (fseek(file_, static_cast<long>(n), SEEK_CUR)) { // NOLINT
-    return STATUS_IO_ERROR(filename_, errno);
-  }
-  return Status::OK();
-}
-
-Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef __linux__
-  return Status::OK();
-#else
-  // free OS pages
-  int ret = Fadvise(fd_, offset, length, POSIX_FADV_DONTNEED);
-  if (ret == 0) {
-    return Status::OK();
-  }
-  return STATUS_IO_ERROR(filename_, errno);
 #endif
 }
 

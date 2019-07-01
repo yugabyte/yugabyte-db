@@ -168,6 +168,9 @@ set(UTIL_SRCS
   fast_varint.cc
   faststring.cc
   fault_injection.cc
+  file_system.cc
+  file_system_mem.cc
+  file_system_posix.cc
   flag_tags.cc
   flags.cc
   hdr_histogram.cc

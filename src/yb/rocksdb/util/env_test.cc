@@ -797,7 +797,7 @@ TEST_F(EnvPosixTest, InvalidateCache) {
   // Sequential Read
   {
     unique_ptr<SequentialFile> file;
-    char scratch[100];
+    uint8_t scratch[100];
     Slice result;
     ASSERT_OK(env_->NewSequentialFile(fname, &file, soptions));
     ASSERT_OK(file.get()->Read(11, &result, scratch));

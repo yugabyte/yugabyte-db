@@ -211,7 +211,7 @@ namespace {
 bool ReadOneLine(std::istringstream* iss, SequentialFile* seq_file,
                  std::string* output, bool* has_data, Status* result) {
   const int kBufferSize = 4096;
-  char buffer[kBufferSize + 1];
+  uint8_t buffer[kBufferSize + 1];
   Slice input_slice;
 
   std::string line;

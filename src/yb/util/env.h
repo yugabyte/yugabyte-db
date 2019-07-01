@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "yb/gutil/callback_forward.h"
+#include "yb/util/file_system.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -42,7 +43,6 @@ namespace yb {
 class FileLock;
 class RandomAccessFile;
 class RWFile;
-class SequentialFile;
 class Slice;
 class WritableFile;
 
@@ -475,35 +475,6 @@ class Env {
   void operator=(const Env&);
 };
 
-// A file abstraction for reading sequentially through a file
-class SequentialFile {
- public:
-  SequentialFile() { }
-  virtual ~SequentialFile();
-
-  // Read up to "n" bytes from the file.  "scratch[0..n-1]" may be
-  // written by this routine.  Sets "*result" to the data that was
-  // read (including if fewer than "n" bytes were successfully read).
-  // May set "*result" to point at data in "scratch[0..n-1]", so
-  // "scratch[0..n-1]" must be live when "*result" is used.
-  // If an error was encountered, returns a non-OK status.
-  //
-  // REQUIRES: External synchronization
-  virtual CHECKED_STATUS Read(size_t n, Slice* result, uint8_t *scratch) = 0;
-
-  // Skip "n" bytes from the file. This is guaranteed to be no
-  // slower that reading the same data, but may be faster.
-  //
-  // If end of file is reached, skipping will stop at the end of the
-  // file, and Skip will return OK.
-  //
-  // REQUIRES: External synchronization
-  virtual CHECKED_STATUS Skip(uint64_t n) = 0;
-
-  // Returns the filename provided when the SequentialFile was constructed.
-  virtual const std::string& filename() const = 0;
-};
-
 // A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {
  public:
@@ -611,23 +582,6 @@ class WritableFile {
   // No copying allowed
   WritableFile(const WritableFile&);
   void operator=(const WritableFile&);
-};
-
-class SequentialFileWrapper : public SequentialFile {
- public:
-  explicit SequentialFileWrapper(std::unique_ptr<SequentialFile> t) : target_(std::move(t)) { }
-  virtual ~SequentialFileWrapper() { }
-
-  // Return the target to which this SequentialFile forwards all calls.
-  SequentialFile* target() const { return target_.get(); }
-
-  CHECKED_STATUS Read(size_t n, Slice* result, uint8_t *scratch) override {
-    return target_->Read(n, result, scratch);
-  }
-  CHECKED_STATUS Skip(uint64_t n) override { return target_->Skip(n); }
-  const std::string& filename() const override { return target_->filename(); }
- private:
-  std::unique_ptr<SequentialFile> target_;
 };
 
 // An implementation of WritableFile that forwards all calls to another

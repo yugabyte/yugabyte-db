@@ -96,7 +96,7 @@ class HdfsReadableFile : virtual public SequentialFile,
   }
 
   // sequential access, read data at current offset in file
-  virtual Status Read(size_t n, Slice* result, char* scratch) {
+  virtual Status Read(size_t n, Slice* result, uint8_t* scratch) {
     Status s;
     Log(InfoLogLevel::DEBUG_LEVEL, mylog,
         "[hdfs] HdfsReadableFile reading %s %ld\n",
@@ -626,7 +626,7 @@ Status NewHdfsEnv(Env** hdfs_env, const std::string& fsname) {
 // dummy placeholders used when HDFS is not available
 namespace rocksdb {
   Status HdfsEnv::NewSequentialFile(const std::string& fname,
-                                    unique_ptr<SequentialFile>* result,
+                                    std::unique_ptr<SequentialFile>* result,
                                     const EnvOptions& options) {
     return STATUS(NotSupported, "Not compiled with hdfs support");
   }
