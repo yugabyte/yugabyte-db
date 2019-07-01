@@ -22,7 +22,7 @@ namespace yb {
 namespace enterprise {
 
 // An encrypted file implementation for sequential reads.
-class RocksDBEncryptedSequentialFile : public rocksdb::SequentialFileWrapper {
+class EncryptedSequentialFile : public SequentialFileWrapper {
  public:
   static Status Create(std::unique_ptr<rocksdb::SequentialFile>* result,
                        HeaderManager* header_manager,
@@ -41,24 +41,24 @@ class RocksDBEncryptedSequentialFile : public rocksdb::SequentialFileWrapper {
       return Status::OK();
     }
 
-    underlying_seq->Skip(header_size);
-    *result = std::make_unique<RocksDBEncryptedSequentialFile>(
+    RETURN_NOT_OK(underlying_seq->Skip(header_size));
+    *result = std::make_unique<EncryptedSequentialFile>(
         std::move(underlying_seq), std::move(stream));
     return Status::OK();
   }
 
   // Default constructor.
-  RocksDBEncryptedSequentialFile(std::unique_ptr<rocksdb::SequentialFile> file,
-                                 std::unique_ptr<BlockAccessCipherStream> stream)
-      : rocksdb::SequentialFileWrapper(std::move(file)), stream_(std::move(stream)) {}
+  EncryptedSequentialFile(std::unique_ptr<rocksdb::SequentialFile> file,
+                          std::unique_ptr<BlockAccessCipherStream> stream)
+      : SequentialFileWrapper(std::move(file)), stream_(std::move(stream)) {}
 
-  ~RocksDBEncryptedSequentialFile() {}
+  ~EncryptedSequentialFile() {}
 
-  Status Read(size_t n, Slice* result, char* scratch) override {
+  Status Read(size_t n, Slice* result, uint8_t* scratch) override {
     if (!scratch) {
       return STATUS(InvalidArgument, "scratch argument is null.");
     }
-    char* buf = static_cast<char*>(EncryptionBuffer::Get()->GetBuffer(n));
+    uint8_t* buf = static_cast<uint8_t*>(EncryptionBuffer::Get()->GetBuffer(n));
     RETURN_NOT_OK(SequentialFileWrapper::Read(n, result, buf));
     RETURN_NOT_OK(stream_->Decrypt(offset_, *result, scratch));
     *result = Slice(scratch, result->size());
@@ -184,7 +184,7 @@ class RocksDBEncryptedFileFactory : public rocksdb::RocksDBFileFactoryWrapper {
     std::unique_ptr<rocksdb::SequentialFile> underlying_seq;
     RETURN_NOT_OK(RocksDBFileFactoryWrapper::NewSequentialFile(fname, &underlying_seq, options));
 
-    return RocksDBEncryptedSequentialFile::Create(
+    return EncryptedSequentialFile::Create(
         result, header_manager_.get(), std::move(underlying_seq), std::move(underlying_ra));
   }
 
