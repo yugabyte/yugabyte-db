@@ -100,9 +100,8 @@ client::YBClient* CQLServiceImpl::client() const {
     if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
       // Add local tserver if available.
       if (server_->tserver() != nullptr && server_->tserver()->proxy() != nullptr) {
-        client->AddTabletServer(server_->tserver()->permanent_uuid(),
-                                server_->tserver()->proxy(),
-                                server_->tserver());
+        client->SetLocalTabletServer(
+            server_->tserver()->permanent_uuid(), server_->tserver()->proxy(), server_->tserver());
       }
       // Create and save the metadata cache object.
       metadata_cache_ = std::make_shared<YBMetaDataCache>(client,
