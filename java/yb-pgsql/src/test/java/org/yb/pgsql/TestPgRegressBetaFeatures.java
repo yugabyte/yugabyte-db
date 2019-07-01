@@ -28,13 +28,6 @@ public class TestPgRegressBetaFeatures extends BasePgSQLTest {
     return 1800;
   }
 
-  @Override
-  protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("ysql_beta_features", "true");
-    return flagMap;
-  }
-
   @Test
   public void testPgRegressBetaFeatures() throws Exception {
     runPgRegressTest("yb_pg_beta_features_schedule");
