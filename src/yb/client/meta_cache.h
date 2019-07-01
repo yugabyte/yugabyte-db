@@ -150,14 +150,14 @@ class RemoteTabletServer {
   bool HasCapability(CapabilityId capability) const;
 
  private:
-  mutable simple_spinlock lock_;
+  mutable rw_spinlock mutex_;
   const std::string uuid_;
 
   google::protobuf::RepeatedPtrField<HostPortPB> public_rpc_hostports_;
   google::protobuf::RepeatedPtrField<HostPortPB> private_rpc_hostports_;
   yb::CloudInfoPB cloud_info_pb_;
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy_;
-  const tserver::LocalTabletServer* local_tserver_ = nullptr;
+  const tserver::LocalTabletServer* const local_tserver_ = nullptr;
   scoped_refptr<Histogram> dns_resolve_histogram_;
   std::vector<CapabilityId> capabilities_;
 
@@ -292,7 +292,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
   const Partition partition_;
 
   // All non-const members are protected by 'lock_'.
-  mutable simple_spinlock lock_;
+  mutable rw_spinlock mutex_;
   bool stale_;
   std::vector<RemoteReplica> replicas_;
 
@@ -317,9 +317,9 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void Shutdown();
 
   // Add a tablet server's proxy, and optionally the tserver itself it is local.
-  void AddTabletServer(const std::string& permanent_uuid,
-                       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
-                       const tserver::LocalTabletServer* local_tserver);
+  void SetLocalTabletServer(const std::string& permanent_uuid,
+                            const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
+                            const tserver::LocalTabletServer* local_tserver);
 
   // Look up which tablet hosts the given partition key for a table. When it is
   // available, the tablet is stored in 'remote_tablet' (if not NULL) and the

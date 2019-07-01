@@ -30,13 +30,15 @@
 // under the License.
 //
 
+#include "yb/client/meta_cache.h"
+
 #include <mutex>
+#include <shared_mutex>
 
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
-#include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
 
 #include "yb/common/schema.h"
@@ -121,11 +123,25 @@ RemoteTabletServer::RemoteTabletServer(const string& uuid,
     : uuid_(uuid),
       proxy_(proxy),
       local_tserver_(local_tserver) {
-  LOG_IF(DFATAL, local_tserver_ != nullptr && !IsLocal()) << "Local tserver has non-local proxy";
+  LOG_IF(DFATAL, proxy && !IsLocal()) << "Local tserver has non-local proxy";
 }
 
 Status RemoteTabletServer::InitProxy(YBClient* client) {
-  std::unique_lock<simple_spinlock> l(lock_);
+  {
+    std::shared_lock<rw_spinlock> lock(mutex_);
+
+    if (proxy_) {
+      // Already have a proxy created.
+      return Status::OK();
+    }
+  }
+
+  std::lock_guard<rw_spinlock> lock(mutex_);
+
+  if (proxy_) {
+    // Already have a proxy created.
+    return Status::OK();
+  }
 
   if (!dns_resolve_histogram_) {
     auto metric_entity = client->metric_entity();
@@ -133,11 +149,6 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
       dns_resolve_histogram_ = METRIC_dns_resolve_latency_during_init_proxy.Instantiate(
           metric_entity);
     }
-  }
-
-  if (proxy_) {
-    // Already have a proxy created.
-    return Status::OK();
   }
 
   // TODO: if the TS advertises multiple host/ports, pick the right one
@@ -155,8 +166,7 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
 void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
   CHECK_EQ(pb.permanent_uuid(), uuid_);
 
-  std::lock_guard<simple_spinlock> l(lock_);
-
+  std::lock_guard<rw_spinlock> lock(mutex_);
   private_rpc_hostports_ = pb.private_rpc_addresses();
   public_rpc_hostports_ = pb.broadcast_addresses();
   cloud_info_pb_ = pb.cloud_info();
@@ -165,8 +175,7 @@ void RemoteTabletServer::Update(const master::TSInfoPB& pb) {
 }
 
 bool RemoteTabletServer::IsLocal() const {
-  std::lock_guard<simple_spinlock> l(lock_);
-  return proxy_ != nullptr && proxy_->proxy().IsServiceLocal();
+  return local_tserver_ != nullptr;
 }
 
 const std::string& RemoteTabletServer::permanent_uuid() const {
@@ -178,13 +187,13 @@ const CloudInfoPB& RemoteTabletServer::cloud_info() const {
 }
 
 shared_ptr<TabletServerServiceProxy> RemoteTabletServer::proxy() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> lock(mutex_);
   return proxy_;
 }
 
 string RemoteTabletServer::ToString() const {
   string ret = "{ uuid: " + uuid_;
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> lock(mutex_);
   if (!private_rpc_hostports_.empty()) {
     ret += Format(" private: $0", private_rpc_hostports_);
   }
@@ -196,7 +205,7 @@ string RemoteTabletServer::ToString() const {
 }
 
 bool RemoteTabletServer::HasHostFrom(const std::unordered_set<std::string>& hosts) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> lock(mutex_);
   for (const auto& hp : private_rpc_hostports_) {
     if (hosts.count(hp.host())) {
       return true;
@@ -211,7 +220,7 @@ bool RemoteTabletServer::HasHostFrom(const std::unordered_set<std::string>& host
 }
 
 bool RemoteTabletServer::HasCapability(CapabilityId capability) const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> lock(mutex_);
   return std::binary_search(capabilities_.begin(), capabilities_.end(), capability);
 }
 
@@ -231,11 +240,11 @@ RemoteTablet::~RemoteTablet() {
   }
 }
 
-void RemoteTablet::Refresh(const TabletServerMap& tservers,
-                           const google::protobuf::RepeatedPtrField
-                           <TabletLocationsPB_ReplicaPB>& replicas) {
+void RemoteTablet::Refresh(
+    const TabletServerMap& tservers,
+    const google::protobuf::RepeatedPtrField<TabletLocationsPB_ReplicaPB>& replicas) {
   // Adopt the data from the successful response.
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> lock(mutex_);
   replicas_.clear();
   for (const TabletLocationsPB_ReplicaPB& r : replicas) {
     auto it = tservers.find(r.ts_info().permanent_uuid());
@@ -247,17 +256,17 @@ void RemoteTablet::Refresh(const TabletServerMap& tservers,
 }
 
 void RemoteTablet::MarkStale() {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> lock(mutex_);
   stale_ = true;
 }
 
 bool RemoteTablet::stale() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> lock(mutex_);
   return stale_;
 }
 
 bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts, const Status& status) {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> lock(mutex_);
   VLOG_WITH_PREFIX(2) << "Current remote replicas in meta cache: "
                       << ReplicasAsStringUnlocked() << ". Replica " << ts->ToString()
                       << " has failed: " << status.ToString();
@@ -272,7 +281,7 @@ bool RemoteTablet::MarkReplicaFailed(RemoteTabletServer *ts, const Status& statu
 
 int RemoteTablet::GetNumFailedReplicas() const {
   int failed = 0;
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> lock(mutex_);
   for (const RemoteReplica& rep : replicas_) {
     if (rep.Failed()) {
       failed++;
@@ -282,7 +291,7 @@ int RemoteTablet::GetNumFailedReplicas() const {
 }
 
 RemoteTabletServer* RemoteTablet::LeaderTServer() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> lock(mutex_);
   for (const RemoteReplica& replica : replicas_) {
     if (!replica.Failed() && replica.role == RaftPeerPB::LEADER) {
       return replica.ts;
@@ -297,7 +306,7 @@ bool RemoteTablet::HasLeader() const {
 
 void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) {
   DCHECK(servers->empty());
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> lock(mutex_);
   for (RemoteReplica& replica : replicas_) {
     if (replica.Failed()) {
       switch (replica.state) {
@@ -350,7 +359,7 @@ void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) 
 
 bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   bool found = false;
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> lock(mutex_);
   for (RemoteReplica& replica : replicas_) {
     if (replica.ts == server) {
       replica.role = RaftPeerPB::LEADER;
@@ -367,7 +376,7 @@ bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
 
 void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
   bool found = false;
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::lock_guard<rw_spinlock> lock(mutex_);
   for (RemoteReplica& replica : replicas_) {
     if (replica.ts == server) {
       replica.role = RaftPeerPB::FOLLOWER;
@@ -380,12 +389,12 @@ void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
 }
 
 std::string RemoteTablet::ReplicasAsString() const {
-  std::lock_guard<simple_spinlock> l(lock_);
+  std::shared_lock<rw_spinlock> lock(mutex_);
   return ReplicasAsStringUnlocked();
 }
 
 std::string RemoteTablet::ReplicasAsStringUnlocked() const {
-  DCHECK(lock_.is_locked());
+  DCHECK(mutex_.is_locked());
   string replicas_str;
   for (const RemoteReplica& rep : replicas_) {
     if (!replicas_str.empty()) replicas_str += ", ";
@@ -413,17 +422,15 @@ void MetaCache::Shutdown() {
   rpcs_.Shutdown();
 }
 
-void MetaCache::AddTabletServer(const string& permanent_uuid,
-                                const shared_ptr<TabletServerServiceProxy>& proxy,
-                                const LocalTabletServer* local_tserver) {
+void MetaCache::SetLocalTabletServer(const string& permanent_uuid,
+                                     const shared_ptr<TabletServerServiceProxy>& proxy,
+                                     const LocalTabletServer* local_tserver) {
   const auto entry = ts_cache_.emplace(permanent_uuid,
                                        std::make_unique<RemoteTabletServer>(permanent_uuid,
                                                                             proxy,
                                                                             local_tserver));
   CHECK(entry.second);
-  if (entry.first->second->IsLocal()) {
-    local_tserver_ = entry.first->second.get();
-  }
+  local_tserver_ = entry.first->second.get();
 }
 
 void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
@@ -929,7 +936,7 @@ void MetaCache::LookupTabletByKey(const YBTable* table,
 
   rpc::Rpcs::Handle rpc;
   {
-    boost::shared_lock<boost::shared_mutex> lock(mutex_);
+    std::shared_lock<boost::shared_mutex> lock(mutex_);
     if (FastLookupTabletByKeyUnlocked(table, partition_start, callback, &lock)) {
       return;
     }
@@ -958,7 +965,7 @@ void MetaCache::LookupTabletByKey(const YBTable* table,
 }
 
 RemoteTabletPtr MetaCache::LookupTabletByIdFastPath(const TabletId& tablet_id) {
-  boost::shared_lock<decltype(mutex_)> l(mutex_);
+  std::shared_lock<decltype(mutex_)> l(mutex_);
   auto it = tablets_by_id_.find(tablet_id);
   if (it != tablets_by_id_.end()) {
     return it->second;
@@ -988,7 +995,7 @@ void MetaCache::LookupTabletById(const TabletId& tablet_id,
 void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
                              const Status& status) {
   LOG(INFO) << "Marking tablet server " << ts->ToString() << " as failed.";
-  boost::shared_lock<decltype(mutex_)> lock(mutex_);
+  std::shared_lock<decltype(mutex_)> lock(mutex_);
 
   Status ts_status = status.CloneAndPrepend("TS failed");
 
