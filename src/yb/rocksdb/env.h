@@ -39,10 +39,12 @@
 #include <vector>
 
 #include "yb/rocksdb/file.h"
-#include "yb/util/result.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/thread_status.h"
+
+#include "yb/util/file_system.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 #ifdef _WIN32
 // Windows API macro interference
@@ -75,7 +77,6 @@ namespace rocksdb {
 class FileLock;
 class Logger;
 class RandomAccessFile;
-class SequentialFile;
 class WritableFile;
 class Directory;
 struct DBOptions;
@@ -83,21 +84,20 @@ class RateLimiter;
 class ThreadStatusUpdater;
 struct ThreadStatus;
 
+typedef yb::SequentialFile SequentialFile;
+
 using std::unique_ptr;
 using std::shared_ptr;
 
 
 // Options while opening a file to read/write
-struct EnvOptions {
+struct EnvOptions : public yb::FileSystemOptions {
 
   // construct with default Options
   EnvOptions();
 
   // construct from Options
   explicit EnvOptions(const DBOptions& options);
-
-  // If true, then allow caching of data in environment buffers
-  bool use_os_buffer = true;
 
   // If true, then use mmap to read data
   bool use_mmap_reads = false;
@@ -168,7 +168,7 @@ class RocksDBFileFactoryWrapper : public rocksdb::RocksDBFileFactory {
   virtual ~RocksDBFileFactoryWrapper() {}
 
   // The following text is boilerplate that forwards all methods to target()
-  Status NewSequentialFile(const std::string& f, unique_ptr <rocksdb::SequentialFile>* r,
+  Status NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
                            const rocksdb::EnvOptions& options) override {
     return target_->NewSequentialFile(f, r, options);
   }
@@ -234,7 +234,7 @@ class Env {
   //
   // The returned file will only be accessed by one thread at a time.
   virtual Status NewSequentialFile(const std::string& fname,
-                                   unique_ptr<SequentialFile>* result,
+                                   std::unique_ptr<SequentialFile>* result,
                                    const EnvOptions& options)
                                    = 0;
 
@@ -246,7 +246,7 @@ class Env {
   //
   // The returned file may be concurrently accessed by multiple threads.
   virtual Status NewRandomAccessFile(const std::string& fname,
-                                     unique_ptr<RandomAccessFile>* result,
+                                     std::unique_ptr<RandomAccessFile>* result,
                                      const EnvOptions& options)
                                      = 0;
 
@@ -492,39 +492,6 @@ class Env {
 // that supports GetThreadList() feature should call this function in its
 // constructor to initialize thread_status_updater_.
 ThreadStatusUpdater* CreateThreadStatusUpdater();
-
-// A file abstraction for reading sequentially through a file
-class SequentialFile {
- public:
-  SequentialFile() { }
-  virtual ~SequentialFile();
-
-  // Read up to "n" bytes from the file.  "scratch[0..n-1]" may be
-  // written by this routine.  Sets "*result" to the data that was
-  // read (including if fewer than "n" bytes were successfully read).
-  // May set "*result" to point at data in "scratch[0..n-1]", so
-  // "scratch[0..n-1]" must be live when "*result" is used.
-  // If an error was encountered, returns a non-OK status.
-  //
-  // REQUIRES: External synchronization
-  virtual Status Read(size_t n, Slice* result, char* scratch) = 0;
-
-  // Skip "n" bytes from the file. This is guaranteed to be no
-  // slower that reading the same data, but may be faster.
-  //
-  // If end of file is reached, skipping will stop at the end of the
-  // file, and Skip will return OK.
-  //
-  // REQUIRES: External synchronization
-  virtual Status Skip(uint64_t n) = 0;
-
-  // Remove any kind of caching of data from the offset to offset+length
-  // of this file. If the length is 0, then it refers to the end of file.
-  // If the system is not caching the file contents, then this is a noop.
-  virtual Status InvalidateCache(size_t offset, size_t length) {
-    return STATUS(NotSupported, "InvalidateCache not supported.");
-  }
-};
 
 // A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile : public File {
@@ -932,7 +899,7 @@ class EnvWrapper : public Env {
   Env* target() const { return target_; }
 
   // The following text is boilerplate that forwards all methods to target()
-  Status NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
+  Status NewSequentialFile(const std::string& f, std::unique_ptr<SequentialFile>* r,
                            const EnvOptions& options) override {
     return target_->NewSequentialFile(f, r, options);
   }
@@ -1102,20 +1069,6 @@ class RandomAccessFileWrapper : public RandomAccessFile {
  private:
   std::unique_ptr<RandomAccessFile> target_;
 
-};
-
-class SequentialFileWrapper : public SequentialFile {
- public:
-  explicit SequentialFileWrapper(std::unique_ptr<SequentialFile> t) : target_(std::move(t)) { }
-
-  Status Read(size_t n, Slice* result, char* scratch) override {
-    return target_->Read(n, result, scratch); }
-  Status Skip(uint64_t n) override { return target_->Skip(n); }
-  Status InvalidateCache(size_t offset, size_t length) override {
-    return target_->InvalidateCache(offset, length);
-  }
- private:
-  std::unique_ptr<SequentialFile> target_;
 };
 
 // An implementation of WritableFile that forwards all calls to another

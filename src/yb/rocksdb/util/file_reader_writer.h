@@ -21,8 +21,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_UTIL_FILE_READER_WRITER_H
-#define ROCKSDB_UTIL_FILE_READER_WRITER_H
+#ifndef YB_ROCKSDB_UTIL_FILE_READER_WRITER_H
+#define YB_ROCKSDB_UTIL_FILE_READER_WRITER_H
 
 #include <string>
 #include "yb/rocksdb/env.h"
@@ -58,7 +58,7 @@ class SequentialFileReader {
   SequentialFileReader(const SequentialFileReader&) = delete;
   SequentialFileReader& operator=(const SequentialFileReader&) = delete;
 
-  Status Read(size_t n, Slice* result, char* scratch);
+  Status Read(size_t n, Slice* result, uint8_t* scratch);
 
   Status Skip(uint64_t n);
 
@@ -190,4 +190,4 @@ extern Status NewWritableFile(Env* env, const std::string& fname,
                               const EnvOptions& options);
 }  // namespace rocksdb
 
-#endif // ROCKSDB_UTIL_FILE_READER_WRITER_H
+#endif // YB_ROCKSDB_UTIL_FILE_READER_WRITER_H

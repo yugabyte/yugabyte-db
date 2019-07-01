@@ -1022,7 +1022,7 @@ void DBTestBase::CopyFile(const std::string& source,
     ASSERT_OK(env_->GetFileSize(source, &size));
   }
 
-  char buffer[4096];
+  uint8_t buffer[4096];
   Slice slice;
   while (size > 0) {
     uint64_t one = std::min(uint64_t(sizeof(buffer)), size);

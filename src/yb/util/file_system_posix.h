@@ -1,0 +1,41 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#ifndef YB_UTIL_FILE_SYSTEM_POSIX_H
+#define YB_UTIL_FILE_SYSTEM_POSIX_H
+
+#include "yb/util/file_system.h"
+
+namespace yb {
+
+class PosixSequentialFile : public SequentialFile {
+ public:
+  PosixSequentialFile(const std::string& fname, FILE* f, const FileSystemOptions& options);
+  virtual ~PosixSequentialFile();
+
+  Status Read(size_t n, Slice* result, uint8_t* scratch) override;
+  Status Skip(uint64_t n) override;
+  Status InvalidateCache(size_t offset, size_t length) override;
+
+  const string& filename() const override { return filename_; }
+
+ private:
+  std::string filename_;
+  FILE* file_;
+  int fd_;
+  bool use_os_buffer_;
+};
+
+} // namespace yb
+
+#endif  // YB_UTIL_FILE_SYSTEM_POSIX_H

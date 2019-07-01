@@ -434,11 +434,12 @@ class SpecialEnv : public EnvWrapper {
       CountingFile(unique_ptr<SequentialFile>&& target,
                    anon::AtomicCounter* counter)
           : target_(std::move(target)), counter_(counter) {}
-      virtual Status Read(size_t n, Slice* result, char* scratch) override {
+      Status Read(size_t n, Slice* result, uint8_t* scratch) override {
         counter_->Increment();
         return target_->Read(n, result, scratch);
       }
-      virtual Status Skip(uint64_t n) override { return target_->Skip(n); }
+      Status Skip(uint64_t n) override { return target_->Skip(n); }
+      const std::string& filename() const override { return target_->filename(); }
 
      private:
       unique_ptr<SequentialFile> target_;

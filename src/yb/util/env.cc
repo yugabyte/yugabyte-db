@@ -35,9 +35,6 @@ CHECKED_STATUS Env::CreateDirs(const std::string& dirname) {
       Status::OK() : STATUS_FORMAT(IOError, "Not a directory: $0", dirname);
 }
 
-SequentialFile::~SequentialFile() {
-}
-
 RandomAccessFile::~RandomAccessFile() {
 }
 

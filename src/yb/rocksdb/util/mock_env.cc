@@ -112,7 +112,7 @@ class MemFile {
     }
   }
 
-  Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const {
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const {
     MutexLock lock(&mutex_);
     if (offset > Size()) {
       return STATUS(IOError, "Offset greater than file size.");
@@ -197,7 +197,7 @@ class MockSequentialFile : public SequentialFile {
     file_->Unref();
   }
 
-  Status Read(size_t n, Slice* result, char* scratch) override {
+  Status Read(size_t n, Slice* result, uint8_t* scratch) override {
     Status s = file_->Read(pos_, n, result, scratch);
     if (s.ok()) {
       pos_ += result->size();
@@ -217,6 +217,11 @@ class MockSequentialFile : public SequentialFile {
     return Status::OK();
   }
 
+  const std::string& filename() const override {
+    static const std::string kFilename = "MockSequentialFile";
+    return kFilename;
+  }
+
  private:
   MemFile* file_;
   size_t pos_;
@@ -234,7 +239,7 @@ class MockRandomAccessFile : public RandomAccessFile {
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
                       char* scratch) const override {
-    return file_->Read(offset, n, result, scratch);
+    return file_->Read(offset, n, result, reinterpret_cast<uint8_t*>(scratch));
   }
 
  private:
