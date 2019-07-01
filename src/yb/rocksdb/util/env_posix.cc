@@ -76,6 +76,8 @@
 #define EXT4_SUPER_MAGIC 0xEF53
 #endif
 
+#include "yb/util/file_system_posix.h"
+
 #define STATUS_IO_ERROR(context, err_number) STATUS(IOError, (context), strerror(err_number))
 
 namespace rocksdb {
@@ -597,7 +599,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
     } else {
       int fd = fileno(f);
       SetFD_CLOEXEC(fd, &options);
-      *result = std::make_unique<PosixSequentialFile>(fname, f, options);
+      *result = std::make_unique<yb::PosixSequentialFile>(fname, f, options);
       return Status::OK();
     }
   }

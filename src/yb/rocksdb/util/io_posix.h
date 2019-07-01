@@ -41,23 +41,6 @@ namespace rocksdb {
 
 #define STATUS_IO_ERROR(context, err_number) STATUS(IOError, (context), strerror(err_number))
 
-class PosixSequentialFile : public SequentialFile {
- private:
-  std::string filename_;
-  FILE* file_;
-  int fd_;
-  bool use_os_buffer_;
-
- public:
-  PosixSequentialFile(const std::string& fname, FILE* f,
-                      const EnvOptions& options);
-  virtual ~PosixSequentialFile();
-
-  virtual Status Read(size_t n, Slice* result, char* scratch) override;
-  virtual Status Skip(uint64_t n) override;
-  virtual Status InvalidateCache(size_t offset, size_t length) override;
-};
-
 class PosixRandomAccessFile : public RandomAccessFile {
  private:
   std::string filename_;

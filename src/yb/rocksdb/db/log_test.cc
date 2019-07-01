@@ -67,6 +67,7 @@ class LogTest : public ::testing::TestWithParam<int> {
     bool force_eof_;
     size_t force_eof_position_;
     bool returned_partial_;
+
     explicit StringSource(Slice& contents) : // NOLINT
       contents_(contents),
       force_error_(false),
@@ -75,7 +76,7 @@ class LogTest : public ::testing::TestWithParam<int> {
       force_eof_position_(0),
       returned_partial_(false) { }
 
-    Status Read(size_t n, Slice* result, char* scratch) override {
+    Status Read(size_t n, Slice* result, uint8_t* scratch) override {
       EXPECT_TRUE(!returned_partial_) << "must not Read() after eof/error";
 
       if (force_error_) {
@@ -123,6 +124,11 @@ class LogTest : public ::testing::TestWithParam<int> {
       contents_.remove_prefix(n);
 
       return Status::OK();
+    }
+
+    const std::string& filename() const override {
+      static const std::string kFilename = "StringSource";
+      return kFilename;
     }
   };
 

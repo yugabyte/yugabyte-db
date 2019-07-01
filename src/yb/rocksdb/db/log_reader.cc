@@ -45,7 +45,7 @@ Reader::Reader(std::shared_ptr<Logger> info_log,
       file_(std::move(_file)),
       reporter_(reporter),
       checksum_(checksum),
-      backing_store_(new char[kBlockSize]),
+      backing_store_(new uint8_t[kBlockSize]),
       buffer_(),
       eof_(false),
       read_error_(false),
@@ -251,15 +251,14 @@ void Reader::UnmarkEOF() {
   // backing_store_ is used to concatenate what is left in buffer_ and
   // the remainder of the block. If buffer_ already uses backing_store_,
   // we just append the new data.
-  if (buffer_.cdata() != backing_store_ + consumed_bytes) {
+  if (buffer_.data() != backing_store_ + consumed_bytes) {
     // Buffer_ does not use backing_store_ for storage.
     // Copy what is left in buffer_ to backing_store.
     memmove(backing_store_ + consumed_bytes, buffer_.data(), buffer_.size());
   }
 
   Slice read_buffer;
-  Status status = file_->Read(remaining, &read_buffer,
-    backing_store_ + eof_offset_);
+  Status status = file_->Read(remaining, &read_buffer, backing_store_ + eof_offset_);
 
   size_t added = read_buffer.size();
   end_of_buffer_offset_ += added;
@@ -273,7 +272,7 @@ void Reader::UnmarkEOF() {
     return;
   }
 
-  if (read_buffer.cdata() != backing_store_ + eof_offset_) {
+  if (read_buffer.data() != backing_store_ + eof_offset_) {
     // Read did not write to backing_store_
     memmove(backing_store_ + eof_offset_, read_buffer.data(),
       read_buffer.size());

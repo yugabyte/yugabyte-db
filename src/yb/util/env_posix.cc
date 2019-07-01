@@ -37,6 +37,14 @@
 #include <set>
 #include <vector>
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <sys/sysctl.h>
+#else
+#include <linux/falloc.h>
+#include <sys/sysinfo.h>
+#endif  // defined(__APPLE__)
+
 #include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
@@ -48,6 +56,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
+#include "yb/util/file_system_posix.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -57,14 +66,6 @@
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread_restrictions.h"
-
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#include <sys/sysctl.h>
-#else
-#include <linux/falloc.h>
-#include <sys/sysinfo.h>
-#endif  // defined(__APPLE__)
 
 // Copied from falloc.h. Useful for older kernels that lack support for
 // hole punching; fallocate(2) will return EOPNOTSUPP.
@@ -258,44 +259,6 @@ Result<uint64_t> GetFileStat(const std::string& fname, const char* event, Extrac
   }
   return extractor(sbuf);
 }
-
-class PosixSequentialFile: public SequentialFile {
- private:
-  std::string filename_;
-  FILE* file_;
-
- public:
-  PosixSequentialFile(std::string fname, FILE* f)
-      : filename_(std::move(fname)), file_(f) {}
-  virtual ~PosixSequentialFile() { fclose(file_); }
-
-  Status Read(size_t n, Slice* result, uint8_t* scratch) override {
-    ThreadRestrictions::AssertIOAllowed();
-    Status s;
-    size_t r = fread_unlocked(scratch, 1, n, file_);
-    *result = Slice(scratch, r);
-    if (r < n) {
-      if (feof(file_)) {
-        // We leave status as ok if we hit the end of the file
-      } else {
-        // A partial read with an error: return a non-ok status.
-        s = STATUS_IO_ERROR(filename_, errno);
-      }
-    }
-    return s;
-  }
-
-  Status Skip(uint64_t n) override {
-    TRACE_EVENT1("io", "PosixSequentialFile::Skip", "path", filename_);
-    ThreadRestrictions::AssertIOAllowed();
-    if (fseek(file_, n, SEEK_CUR)) {
-      return STATUS_IO_ERROR(filename_, errno);
-    }
-    return Status::OK();
-  }
-
-  const string& filename() const override { return filename_; }
-};
 
 // pread() based random-access
 class PosixRandomAccessFile: public RandomAccessFile {
@@ -1470,7 +1433,7 @@ class PosixFileFactory : public FileFactory {
     if (f == nullptr) {
       return STATUS_IO_ERROR(fname, errno);
     } else {
-      result->reset(new PosixSequentialFile(fname, f));
+      result->reset(new yb::PosixSequentialFile(fname, f, yb::FileSystemOptions::kDefault));
       return Status::OK();
     }
   }

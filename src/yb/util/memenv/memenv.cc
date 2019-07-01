@@ -35,6 +35,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/env.h"
+#include "yb/util/file_system_mem.h"
 #include "yb/util/malloc.h"
 #include "yb/util/mutex.h"
 #include "yb/util/memenv/memenv.h"
@@ -49,185 +50,16 @@ using std::string;
 using std::vector;
 using strings::Substitute;
 
-class FileState : public RefCountedThreadSafe<FileState> {
- public:
-  // FileStates are reference counted. The initial reference count is zero
-  // and the caller must call Ref() at least once.
-  explicit FileState(string filename)
-      : filename_(std::move(filename)), size_(0) {}
-
-  uint64_t Size() const { return size_; }
-
-  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const {
-    if (offset > size_) {
-      return STATUS(IOError, "Offset greater than file size.");
-    }
-    const uint64_t available = size_ - offset;
-    if (n > available) {
-      n = available;
-    }
-    if (n == 0) {
-      *result = Slice();
-      return Status::OK();
-    }
-
-    size_t block = offset / kBlockSize;
-    size_t block_offset = offset % kBlockSize;
-
-    if (n <= kBlockSize - block_offset) {
-      // The requested bytes are all in the first block.
-      *result = Slice(blocks_[block] + block_offset, n);
-      return Status::OK();
-    }
-
-    size_t bytes_to_copy = n;
-    uint8_t* dst = scratch;
-
-    while (bytes_to_copy > 0) {
-      size_t avail = kBlockSize - block_offset;
-      if (avail > bytes_to_copy) {
-        avail = bytes_to_copy;
-      }
-      memcpy(dst, blocks_[block] + block_offset, avail);
-
-      bytes_to_copy -= avail;
-      dst += avail;
-      block++;
-      block_offset = 0;
-    }
-
-    *result = Slice(scratch, n);
-    return Status::OK();
-  }
-
-  Status PreAllocate(uint64_t size) {
-    std::vector<uint8_t> padding(static_cast<size_t>(size), static_cast<uint8_t>(0));
-    // TODO optimize me
-    memset(padding.data(), 0, sizeof(uint8_t));
-    // Clang analyzer thinks the function below can thrown an exception and cause the "padding"
-    // memory to leak.
-    Status s = AppendRaw(padding.data(), size);
-    size_ -= size;
-    return s;
-  }
-
-  Status Append(const Slice& data) {
-    return AppendRaw(data.data(), data.size());
-  }
-
-  Status AppendRaw(const uint8_t *src, size_t src_len) {
-    while (src_len > 0) {
-      size_t avail;
-      size_t offset = size_ % kBlockSize;
-
-      if (offset != 0) {
-        // There is some room in the last block.
-        avail = kBlockSize - offset;
-      } else {
-        // No room in the last block; push new one.
-        blocks_.push_back(new uint8_t[kBlockSize]);
-        avail = kBlockSize;
-      }
-
-      if (avail > src_len) {
-        avail = src_len;
-      }
-      memcpy(blocks_.back() + offset, src, avail);
-      src_len -= avail;
-      src += avail;
-      size_ += avail;
-    }
-
-    return Status::OK();
-  }
-
-  const string& filename() const { return filename_; }
-
-  size_t memory_footprint() const {
-    size_t size = malloc_usable_size(this);
-    if (blocks_.capacity() > 0) {
-      size += malloc_usable_size(blocks_.data());
-    }
-    for (uint8_t* block : blocks_) {
-      size += malloc_usable_size(block);
-    }
-    size += filename_.capacity();
-    return size;
-  }
-
- private:
-  friend class RefCountedThreadSafe<FileState>;
-
-  enum { kBlockSize = 8 * 1024 };
-
-  // Private since only Release() should be used to delete it.
-  ~FileState() {
-    for (uint8_t* block : blocks_) {
-      delete[] block;
-    }
-  }
-
-  const string filename_;
-
-  // The following fields are not protected by any mutex. They are only mutable
-  // while the file is being written, and concurrent access is not allowed
-  // to writable files.
-  uint64_t size_;
-  vector<uint8_t*> blocks_;
-
-  DISALLOW_COPY_AND_ASSIGN(FileState);
-};
-
-class SequentialFileImpl : public SequentialFile {
- public:
-  explicit SequentialFileImpl(const scoped_refptr<FileState>& file)
-    : file_(file),
-      pos_(0) {
-  }
-
-  ~SequentialFileImpl() {
-  }
-
-  Status Read(size_t n, Slice* result, uint8_t* scratch) override {
-    Status s = file_->Read(pos_, n, result, scratch);
-    if (s.ok()) {
-      pos_ += result->size();
-    }
-    return s;
-  }
-
-  Status Skip(uint64_t n) override {
-    if (pos_ > file_->Size()) {
-      return STATUS(IOError, "pos_ > file_->Size()");
-    }
-    const size_t available = file_->Size() - pos_;
-    if (n > available) {
-      n = available;
-    }
-    pos_ += n;
-    return Status::OK();
-  }
-
-  const string& filename() const override {
-    return file_->filename();
-  }
-
- private:
-  const scoped_refptr<FileState> file_;
-  size_t pos_;
-};
-
 class RandomAccessFileImpl : public RandomAccessFile {
  public:
-  explicit RandomAccessFileImpl(const scoped_refptr<FileState>& file)
-    : file_(file) {
+  explicit RandomAccessFileImpl(const std::shared_ptr<InMemoryFileState>& file)
+    : file_(std::move(file)) {
   }
 
   ~RandomAccessFileImpl() {
   }
 
-  virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      uint8_t* scratch) const override {
+  virtual Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
     return file_->Read(offset, n, result, scratch);
   }
 
@@ -244,18 +76,18 @@ class RandomAccessFileImpl : public RandomAccessFile {
   }
 
   size_t memory_footprint() const override {
-    // The FileState is actually shared between multiple files, but the double
+    // The InMemoryFileState is actually shared between multiple files, but the double
     // counting doesn't matter much since MemEnv is only used in tests.
     return malloc_usable_size(this) + file_->memory_footprint();
   }
 
  private:
-  const scoped_refptr<FileState> file_;
+  const std::shared_ptr<InMemoryFileState> file_;
 };
 
 class WritableFileImpl : public WritableFile {
  public:
-  explicit WritableFileImpl(const scoped_refptr<FileState>& file)
+  explicit WritableFileImpl(const std::shared_ptr<InMemoryFileState>& file)
     : file_(file) {
   }
 
@@ -292,12 +124,12 @@ class WritableFileImpl : public WritableFile {
   }
 
  private:
-  const scoped_refptr<FileState> file_;
+  const std::shared_ptr<InMemoryFileState> file_;
 };
 
 class RWFileImpl : public RWFile {
  public:
-  explicit RWFileImpl(const scoped_refptr<FileState>& file)
+  explicit RWFileImpl(const std::shared_ptr<InMemoryFileState>& file)
     : file_(file) {
   }
 
@@ -311,7 +143,7 @@ class RWFileImpl : public RWFile {
 
   Status Write(uint64_t offset, const Slice& data) override {
     uint64_t file_size = file_->Size();
-    // TODO: Modify FileState to allow rewriting.
+    // TODO: Modify InMemoryFileState to allow rewriting.
     if (offset < file_size) {
       return STATUS(NotSupported, "In-memory RW file does not support random writing");
     } else if (offset > file_size) {
@@ -352,7 +184,7 @@ class RWFileImpl : public RWFile {
   }
 
  private:
-  const scoped_refptr<FileState> file_;
+  const std::shared_ptr<InMemoryFileState> file_;
 };
 
 class InMemoryEnv : public EnvWrapper {
@@ -370,7 +202,7 @@ class InMemoryEnv : public EnvWrapper {
       return STATUS(IOError, fname, "File not found");
     }
 
-    result->reset(new SequentialFileImpl(file_map_[fname]));
+    result->reset(new InMemorySequentialFile(file_map_[fname]));
     return Status::OK();
   }
 
@@ -591,7 +423,7 @@ class InMemoryEnv : public EnvWrapper {
   template <typename PtrType, typename ImplType>
   void CreateAndRegisterNewWritableFileUnlocked(const string& path,
                                                 std::unique_ptr<PtrType>* result) {
-    file_map_[path] = make_scoped_refptr(new FileState(path));
+    file_map_[path] = std::make_shared<InMemoryFileState>(path);
     result->reset(new ImplType(file_map_[path]));
   }
 
@@ -623,8 +455,8 @@ class InMemoryEnv : public EnvWrapper {
     return Status::OK();
   }
 
-  // Map from filenames to FileState objects, representing a simple file system.
-  typedef std::map<std::string, scoped_refptr<FileState> > FileSystem;
+  // Map from filenames to InMemoryFileState objects, representing a simple file system.
+  typedef std::map<std::string, std::shared_ptr<InMemoryFileState>> FileSystem;
   Mutex mutex_;
   FileSystem file_map_;  // Protected by mutex_.
 };

@@ -35,7 +35,7 @@
 
 namespace rocksdb {
 
-Status SequentialFileReader::Read(size_t n, Slice* result, char* scratch) {
+Status SequentialFileReader::Read(size_t n, Slice* result, uint8_t* scratch) {
   Status s = file_->Read(n, result, scratch);
   IOSTATS_ADD(bytes_read, result->size());
   return s;

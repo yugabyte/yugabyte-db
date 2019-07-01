@@ -155,7 +155,7 @@ bool DbUndumpTool::Run(const UndumpOptions& undump_options,
   rocksdb::Env* env;
   std::unique_ptr<rocksdb::SequentialFile> dumpfile;
   rocksdb::Slice slice;
-  char scratch8[8];
+  uint8_t scratch8[8];
 
   static const char* magicstr = "ROCKDUMP";
   static const char versionstr[8] = {0, 0, 0, 0, 0, 0, 0, 1};
@@ -210,8 +210,8 @@ bool DbUndumpTool::Run(const UndumpOptions& undump_options,
 
   uint32_t last_keysize = 64;
   size_t last_valsize = 1 << 20;
-  std::unique_ptr<char[]> keyscratch(new char[last_keysize]);
-  std::unique_ptr<char[]> valscratch(new char[last_valsize]);
+  std::unique_ptr<uint8_t[]> keyscratch(new uint8_t[last_keysize]);
+  std::unique_ptr<uint8_t[]> valscratch(new uint8_t[last_valsize]);
 
   while (1) {
     uint32_t keysize, valsize;
@@ -223,7 +223,7 @@ bool DbUndumpTool::Run(const UndumpOptions& undump_options,
     keysize = rocksdb::DecodeFixed32(slice.data());
     if (keysize > last_keysize) {
       while (keysize > last_keysize) last_keysize *= 2;
-      keyscratch = std::unique_ptr<char[]>(new char[last_keysize]);
+      keyscratch = std::unique_ptr<uint8_t[]>(new uint8_t[last_keysize]);
     }
 
     status = dumpfile->Read(keysize, &keyslice, keyscratch.get());
@@ -244,7 +244,7 @@ bool DbUndumpTool::Run(const UndumpOptions& undump_options,
     valsize = rocksdb::DecodeFixed32(slice.data());
     if (valsize > last_valsize) {
       while (valsize > last_valsize) last_valsize *= 2;
-      valscratch = std::unique_ptr<char[]>(new char[last_valsize]);
+      valscratch = std::unique_ptr<uint8_t[]>(new uint8_t[last_valsize]);
     }
 
     status = dumpfile->Read(valsize, &valslice, valscratch.get());
