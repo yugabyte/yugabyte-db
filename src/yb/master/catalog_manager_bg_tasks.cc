@@ -115,6 +115,9 @@ void CatalogManagerBgTasks::Run() {
       // Report metrics.
       catalog_manager_->ReportMetrics();
 
+      // Cleanup old tasks from tracker.
+      catalog_manager_->tasks_tracker_->CleanupOldTasks();
+
       TabletInfos to_delete;
       TabletInfos to_process;
 

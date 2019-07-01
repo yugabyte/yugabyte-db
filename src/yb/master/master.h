@@ -150,6 +150,8 @@ class Master : public server::RpcAndWebServerBase {
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
+  void DisplayGeneralInfoIcons(std::stringstream* output);
+
  private:
   friend class MasterTest;
 

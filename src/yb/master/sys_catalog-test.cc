@@ -38,6 +38,7 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/stl_util.h"
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
@@ -195,7 +196,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
   // Create new table.
   const std::string table_id = "abc";
-  scoped_refptr<TableInfo> table(new TableInfo(table_id));
+  scoped_refptr<TableInfo> table = master_->catalog_manager()->NewTableInfo(table_id);
   {
     auto l = table->LockForWrite();
     l->mutable_data()->pb.set_name("testtb");
@@ -239,7 +240,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
 // Verify that data mutations are not available from metadata() until commit.
 TEST_F(SysCatalogTest, TestTableInfoCommit) {
-  scoped_refptr<TableInfo> table(new TableInfo("123"));
+  scoped_refptr<TableInfo> table(master_->catalog_manager()->NewTableInfo("123"));
 
   // Mutate the table, under the write lock.
   auto writer_lock = table->LockForWrite();
@@ -319,7 +320,7 @@ static TabletInfo *CreateTablet(TableInfo *table,
 // Test the sys-catalog tablets basic operations (add, update, delete,
 // visit)
 TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
-  scoped_refptr<TableInfo> table(new TableInfo("abc"));
+  scoped_refptr<TableInfo> table(master_->catalog_manager()->NewTableInfo("abc"));
   scoped_refptr<TabletInfo> tablet1(CreateTablet(table.get(), "123", "a", "b"));
   scoped_refptr<TabletInfo> tablet2(CreateTablet(table.get(), "456", "b", "c"));
   scoped_refptr<TabletInfo> tablet3(CreateTablet(table.get(), "789", "c", "d"));
@@ -1049,6 +1050,71 @@ TEST_F(SysCatalogTest, TestSysCatalogUDTypeOperations) {
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_EQ(0, loader->udtypes.size());
+}
+
+// Test the tasks tracker in catalog manager.
+TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
+  // Configure number of tasks flag and keep time flag.
+  SetAtomicFlag(100, &FLAGS_tasks_tracker_num_tasks);
+  SetAtomicFlag(100, &FLAGS_tasks_tracker_keep_time_multiplier);
+
+  SysCatalogTable* sys_catalog = master_->catalog_manager()->sys_catalog();
+
+  unique_ptr<TestTableLoader> loader(new TestTableLoader());
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(kNumSystemTables, loader->tables.size());
+
+  // Create new table.
+  const std::string table_id = "abc";
+  scoped_refptr<TableInfo> table = master_->catalog_manager()->NewTableInfo(table_id);
+  {
+    auto l = table->LockForWrite();
+    l->mutable_data()->pb.set_name("testtb");
+    l->mutable_data()->pb.set_version(0);
+    l->mutable_data()->pb.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
+    l->mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
+    SchemaToPB(Schema(), l->mutable_data()->pb.mutable_schema());
+    // Add the table.
+    ASSERT_OK(sys_catalog->AddItem(table.get(), kLeaderTerm));
+
+    l->Commit();
+  }
+
+  // Verify it showed up.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+
+  ASSERT_EQ(1 + kNumSystemTables, loader->tables.size());
+  ASSERT_TRUE(MetadatasEqual(table.get(), loader->tables[table_id]));
+
+  // Add tasks to the table (more than can fit in the cbuf).
+  for (int task_id = 0; task_id < FLAGS_tasks_tracker_num_tasks + 10; ++task_id) {
+    scoped_refptr<TabletInfo> tablet(new TabletInfo(table, kSysCatalogTableId));
+    auto task = std::make_shared<AsyncTruncate>(master_, master_->catalog_manager()->WorkerPool(),
+                                                tablet);
+    table->AddTask(task);
+  }
+
+  // Verify initial cbuf size is correct.
+  ASSERT_EQ(master_->catalog_manager()->GetRecentTasks().size(), FLAGS_tasks_tracker_num_tasks);
+
+  // Wait for background task to run (length of two wait intervals).
+  usleep(2 * (1000 * FLAGS_catalog_manager_bg_task_wait_ms));
+
+  // Verify that tasks were not cleaned up.
+  ASSERT_EQ(master_->catalog_manager()->GetRecentTasks().size(), FLAGS_tasks_tracker_num_tasks);
+
+  // Set keep time flag to small multiple of the wait interval.
+  SetAtomicFlag(1, &FLAGS_tasks_tracker_keep_time_multiplier);
+
+  // Wait for background task to run (length of two wait intervals).
+  usleep(2 * (1000 * FLAGS_catalog_manager_bg_task_wait_ms));
+
+  // Verify that tasks were cleaned up.
+  ASSERT_EQ(master_->catalog_manager()->GetRecentTasks().size(), 0);
+
+  // Cleanup tasks.
+  table->AbortTasksAndClose();
 }
 
 } // namespace master

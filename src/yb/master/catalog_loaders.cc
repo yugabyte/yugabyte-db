@@ -44,7 +44,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
         << "Table already exists: " << table_id;
 
   // Setup the table info.
-  TableInfo *table = new TableInfo(table_id);
+  scoped_refptr<TableInfo> table = catalog_manager_->NewTableInfo(table_id);
   auto l = table->LockForWrite();
   auto& pb = l->mutable_data()->pb;
   pb.CopyFrom(metadata);

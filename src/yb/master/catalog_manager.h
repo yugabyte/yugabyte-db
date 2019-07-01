@@ -96,6 +96,7 @@ class TableInfo;
 class TSDescriptor;
 class ChangeEncryptionInfoRequestPB;
 class ChangeEncryptionInfoResponsePB;
+class TasksTracker;
 
 struct DeferredAssignmentActions;
 
@@ -386,6 +387,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Return all the available (user-defined) types.
   void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo> >* types);
 
+  // Return the recent tasks.
+  std::vector<std::shared_ptr<MonitoredTask>> GetRecentTasks();
+
   NamespaceName GetNamespaceNameUnlocked(const NamespaceId& id) const;
   NamespaceName GetNamespaceName(const NamespaceId& id) const;
 
@@ -571,7 +575,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   friend class ::yb::master::ScopedLeaderSharedLock;
   friend class PermissionsManager;
 
+  FRIEND_TEST(SysCatalogTest, TestCatalogManagerTasksTracker);
   FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
+  FRIEND_TEST(SysCatalogTest, TestSysCatalogTablesOperations);
+  FRIEND_TEST(SysCatalogTest, TestSysCatalogTabletsOperations);
+  FRIEND_TEST(SysCatalogTest, TestTableInfoCommit);
 
   // Called by SysCatalog::SysCatalogStateChanged when this node
   // becomes the leader of a consensus configuration.
@@ -675,11 +683,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Helper for creating the initial TableInfo state
   // Leaves the table "write locked" with the new info in the
   // "dirty" state field.
-  TableInfo* CreateTableInfo(const CreateTableRequestPB& req,
-                             const Schema& schema,
-                             const PartitionSchema& partition_schema,
-                             const NamespaceId& namespace_id,
-                             IndexInfoPB* index_info);
+  scoped_refptr<TableInfo> CreateTableInfo(const CreateTableRequestPB& req,
+                                           const Schema& schema,
+                                           const PartitionSchema& partition_schema,
+                                           const NamespaceId& namespace_id,
+                                           IndexInfoPB* index_info);
 
   // Helper for creating the initial TabletInfo state.
   // Leaves the tablet "write locked" with the new info in the
@@ -918,6 +926,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Called when a new table id is added to table_ids_map_.
   void HandleNewTableId(const TableId& id);
 
+  // Creates a new TableInfo object.
+  scoped_refptr<TableInfo> NewTableInfo(TableId id);
+
   // ----------------------------------------------------------------------------------------------
   // Private member fields
   // ----------------------------------------------------------------------------------------------
@@ -1055,6 +1066,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // This is used for tracking that initdb has started running previously.
   std::atomic<bool> pg_proc_exists_{false};
+
+  // Tracks most recent async tasks.
+  scoped_refptr<TasksTracker> tasks_tracker_;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);

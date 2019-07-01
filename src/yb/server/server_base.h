@@ -186,6 +186,8 @@ class RpcAndWebServerBase : public RpcServerBase {
 
   virtual Status HandleDebugPage(const Webserver::WebRequest& req, std::stringstream* output);
 
+  virtual void DisplayGeneralInfoIcons(std::stringstream* output);
+
   virtual void DisplayRpcIcons(std::stringstream* output);
 
   static void DisplayIconTile(std::stringstream* output, const string icon, const string caption,

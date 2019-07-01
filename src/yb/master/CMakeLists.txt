@@ -79,6 +79,7 @@ set(MASTER_SRCS
   sys_catalog.cc
   initial_sys_catalog_snapshot.cc
   system_tablet.cc
+  tasks_tracker.cc
   ts_descriptor.cc
   ts_manager.cc
   yql_virtual_table.cc

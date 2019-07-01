@@ -193,6 +193,12 @@ Status Master::RegisterServices() {
   return Status::OK();
 }
 
+void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
+  server::RpcAndWebServerBase::DisplayGeneralInfoIcons(output);
+  // Tasks.
+  DisplayIconTile(output, "fa-list-ul", "Tasks", "/tasks");
+}
+
 Status Master::StartAsync() {
   CHECK_EQ(kInitialized, state_);
 

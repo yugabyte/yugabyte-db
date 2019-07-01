@@ -148,7 +148,9 @@ class MasterPathHandlers {
                             std::stringstream* output,
                             bool skip_system_tables = false);
   void HandleTablePage(const Webserver::WebRequest& req,
-                       std::stringstream *output);
+                       std::stringstream* output);
+  void HandleTasksPage(const Webserver::WebRequest& req,
+                       std::stringstream* output);
   void HandleMasters(const Webserver::WebRequest& req,
                      std::stringstream* output);
   void HandleDumpEntities(const Webserver::WebRequest& req,

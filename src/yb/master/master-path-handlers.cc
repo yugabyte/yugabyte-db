@@ -638,7 +638,7 @@ bool CompareByRole(const TabletReplica& a, const TabletReplica& b) {
 
 
 void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
-                                         stringstream *output) {
+                                         stringstream* output) {
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
   // True if table_id, false if (keyspace, table).
@@ -739,6 +739,36 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   *output << "</table>\n";
 
   HtmlOutputTasks(table->GetTasks(), output);
+}
+
+void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
+                                         stringstream* output) {
+  vector<scoped_refptr<TableInfo> > tables;
+  master_->catalog_manager()->GetAllTables(&tables);
+  *output << "<h3>Active Tasks</h3>\n";
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Task Name</th><th>State</th><th>Time</th><th>Description</th></tr>\n";
+  for (const auto& table : tables) {
+    for (const auto& task : table->GetTasks()) {
+      HtmlOutputTask(task, output);
+    }
+  }
+  *output << "</table>\n";
+
+  std::vector<std::shared_ptr<MonitoredTask> > tasks =
+    master_->catalog_manager()->GetRecentTasks();
+  *output << Substitute("<h3>Last $0 tasks started in the past $1 seconds</h3>\n",
+                        FLAGS_tasks_tracker_num_tasks,
+                        FLAGS_tasks_tracker_keep_time_multiplier *
+                        MonoDelta::FromMilliseconds(
+                            FLAGS_catalog_manager_bg_task_wait_ms).ToSeconds());
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Task Name</th><th>State</th><th>Time</th><th>Description</th></tr>\n";
+  for (std::vector<std::shared_ptr<MonitoredTask>>::reverse_iterator iter = tasks.rbegin();
+       iter != tasks.rend(); ++iter) {
+    HtmlOutputTask(*iter, output);
+  }
+  *output << "</table>\n";
 }
 
 void MasterPathHandlers::RootHandler(const Webserver::WebRequest& req,
@@ -1199,6 +1229,11 @@ Status MasterPathHandlers::Register(Webserver* server) {
   cb = std::bind(&MasterPathHandlers::HandleGetClusterConfig, this, _1, _2);
   server->RegisterPathHandler(
       "/cluster-config", "Cluster Config",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
+      false);
+  cb = std::bind(&MasterPathHandlers::HandleTasksPage, this, _1, _2);
+  server->RegisterPathHandler(
+      "/tasks", "Tasks",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       false);
   return Status::OK();

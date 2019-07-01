@@ -39,6 +39,7 @@
 
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/tasks_tracker.h"
 #include "yb/util/cow_object.h"
 #include "yb/common/entity_ids.h"
 #include "yb/util/monotime.h"
@@ -288,7 +289,7 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntry::TA
 class TableInfo : public RefCountedThreadSafe<TableInfo>,
                   public MetadataCowWrapper<PersistentTableInfo> {
  public:
-  explicit TableInfo(TableId table_id);
+  explicit TableInfo(TableId table_id, scoped_refptr<TasksTracker> tasks_tracker = nullptr);
 
   const TableName name() const;
 
@@ -367,6 +368,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void AbortTasksAndCloseIfRequested(bool close);
 
   const TableId table_id_;
+
+  scoped_refptr<TasksTracker> tasks_tracker_;
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
