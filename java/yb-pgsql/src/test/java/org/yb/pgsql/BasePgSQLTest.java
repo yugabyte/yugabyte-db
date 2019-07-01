@@ -149,6 +149,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       flagMap.put("ysql_prefetch_limit", pgPrefetchLimit());
     }
 
+    flagMap.put("ysql_beta_features", "true");
+
     return flagMap;
   }
 
