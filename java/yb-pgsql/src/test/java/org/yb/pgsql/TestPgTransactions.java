@@ -28,6 +28,10 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -63,6 +67,91 @@ public class TestPgTransactions extends BasePgSQLTest {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enablePgTransactions(true);
+  }
+
+  @Test
+  public void testTableWithoutPrimaryKey() throws Exception {
+    Statement statement = connection.createStatement();
+    statement.execute("CREATE TABLE t (thread_id TEXT, attempt_id TEXT, k INT, v INT)");
+    final int NUM_THREADS = 4;
+    final int NUM_INCREMENTS_PER_THREAD = 100;
+    ExecutorService ecs = Executors.newFixedThreadPool(NUM_THREADS);
+    final AtomicBoolean hadErrors = new AtomicBoolean();
+    for (int i = 1; i <= NUM_THREADS; ++i) {
+      final int threadIndex = i;
+      ecs.submit(() -> {
+        LOG.info("Workload thread " + threadIndex + " starting");
+        int numIncrements = 0;
+        try (Connection conn =
+                createConnection(IsolationLevel.REPEATABLE_READ, AutoCommit.ENABLED)) {
+          Statement stmt = conn.createStatement();
+          int currentValue = 0x01010100 * threadIndex;
+          stmt.execute("INSERT INTO t (thread_id, attempt_id, k, v) VALUES (" +
+              "'thread_" + threadIndex + "', 'thread_" + threadIndex + "_attempt_0" +
+              "', " + threadIndex + ", " + currentValue + ")");
+          int attemptIndex = 1;
+          while (numIncrements < NUM_INCREMENTS_PER_THREAD && !hadErrors.get()) {
+            String attemptId = "thread_" + threadIndex + "_attempt_" + attemptIndex;
+            try {
+              LOG.info("Thread " + threadIndex + ": trying to update from " +
+                       numIncrements + " to " + (numIncrements + 1));
+              int rowsUpdated =
+                  stmt.executeUpdate("UPDATE t SET v = v + 1, attempt_id = '" + attemptId +
+                      "' WHERE k = " + threadIndex);
+              assertEquals(1, rowsUpdated);
+
+              numIncrements++;
+              currentValue++;
+              LOG.info("Thread " + threadIndex + " is verifying the value at attemptIndex=" +
+                       attemptIndex + ": attemptId=" + attemptId);
+
+              ResultSet res = stmt.executeQuery(
+                  "SELECT attempt_id, v FROM t WHERE k = " + threadIndex);
+              LOG.info(
+                  "Thread " + threadIndex + " finished reading the result after attemptIndex=" +
+                  attemptIndex);
+
+              assertTrue(res.next());
+              int value = res.getInt("v");
+              if (value != currentValue) {
+                assertEquals(
+                    "Invalid result in thread " + threadIndex + ", attempt index " + attemptIndex +
+                    ", num increments reported as successful: " + numIncrements +
+                    ", expected value (hex): " + String.format("0x%08X", currentValue) +
+                    ", actual value (hex): " + String.format("0x%08X", value) +
+                    ", attempt id: " + attemptId,
+                    currentValue, value);
+                hadErrors.set(true);
+              }
+            } catch (PSQLException ex) {
+              LOG.warn("Error updating/verifying in thread " + threadIndex);
+            }
+            attemptIndex++;
+          }
+        } catch (Exception ex) {
+          LOG.error("Exception in thread " + threadIndex, ex);
+          hadErrors.set(true);
+        } finally {
+          LOG.info("Workload thread " + threadIndex + " exiting, numIncrements=" + numIncrements);
+        }
+      });
+    }
+    ecs.shutdown();
+    ecs.awaitTermination(30, TimeUnit.SECONDS);
+    ResultSet rsAll = statement.executeQuery("SELECT k, v FROM t");
+    while (rsAll.next()) {
+      LOG.info("Row found at the end: k=" + rsAll.getInt("k") + ", v=" + rsAll.getInt("v"));
+    }
+
+    for (int i = 1; i <= NUM_THREADS; ++i) {
+      ResultSet rs = statement.executeQuery(
+          "SELECT v FROM t WHERE k = " + i);
+      assertTrue("Did not find any values with k=" + i, rs.next());
+      int v = rs.getInt("v");
+      LOG.info("Value for k=" + i + ": " + v);
+      assertEquals(0x01010100 * i + NUM_INCREMENTS_PER_THREAD, v);
+    }
+    assertFalse("Test had errors, look for 'Exception in thread' above", hadErrors.get());
   }
 
   @Test

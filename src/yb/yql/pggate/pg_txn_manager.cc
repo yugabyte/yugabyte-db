@@ -107,16 +107,12 @@ Status PgTxnManager::RestartTransaction() {
   if (!txn_->IsRestartRequired()) {
     return STATUS(IllegalState, "Attempted to restart when transaction does not require restart");
   }
-  auto new_txn = VERIFY_RESULT(txn_->CreateRestartedTransaction());
-  ResetTxnAndSession();
-  txn_ = std::move(new_txn);
-  StartNewSession();
+  txn_ = VERIFY_RESULT(txn_->CreateRestartedTransaction());
   session_->SetTransaction(txn_);
-  return Status::OK();
-}
 
-bool PgTxnManager::HasAppliedOperations() {
-  return txn_ && txn_->HasOperations();
+  DCHECK(can_restart_.load(std::memory_order_acquire));
+
+  return Status::OK();
 }
 
 Status PgTxnManager::CommitTransaction() {
@@ -178,6 +174,7 @@ void PgTxnManager::ResetTxnAndSession() {
   txn_in_progress_ = false;
   session_ = nullptr;
   txn_ = nullptr;
+  can_restart_.store(true, std::memory_order_release);
 }
 
 }  // namespace pggate
