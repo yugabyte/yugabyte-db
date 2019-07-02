@@ -218,6 +218,7 @@ set(UTIL_SRCS
   rolling_log.cc
   rw_mutex.cc
   rwc_lock.cc
+  shared_mem.cc
   slice.cc
   spinlock_profiling.cc
   split.cc
@@ -410,6 +411,7 @@ ADD_YB_TEST(decimal-test)
 ADD_YB_TEST(net/inetaddress-test)
 ADD_YB_TEST(uuid-test)
 ADD_YB_TEST(fast_varint-test)
+ADD_YB_TEST(shared_mem-test)
 
 #######################################
 # jsonwriter_test_proto

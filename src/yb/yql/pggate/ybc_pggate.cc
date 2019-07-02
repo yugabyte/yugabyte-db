@@ -535,9 +535,21 @@ YBCPgTxnManager YBCGetPgTxnManager() {
   return pgapi->GetPgTxnManager();
 }
 
+bool YBCIsInitDbModeEnvVarSet() {
+  static bool cached_value = false;
+  static bool cached = false;
+
+  if (!cached) {
+    const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
+    cached_value = initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0;
+    cached = true;
+  }
+
+  return cached_value;
+}
+
 void YBCInitFlags() {
-  const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
-  if (initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0) {
+  if (YBCIsInitDbModeEnvVarSet()) {
     // Suppress log spew during initdb.
     FLAGS_client_suppress_created_logs = true;
   }
@@ -552,6 +564,15 @@ void YBCInitFlags() {
 
 YBCStatus YBCPgIsInitDbDone(YBCPgSession pg_session, bool* initdb_done) {
   return ToYBCStatus(pg_session->IsInitDbDone(initdb_done));
+}
+
+YBCStatus YBCGetSharedCatalogVersion(YBCPgSession pg_session, uint64_t* catalog_version) {
+  auto result = pg_session->GetSharedCatalogVersion();
+  if (result.ok()) {
+    *catalog_version = *result;
+    return YBCStatusOK();
+  }
+  return ToYBCStatus(result.status());
 }
 
 } // extern "C"

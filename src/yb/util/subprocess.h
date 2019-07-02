@@ -38,6 +38,7 @@
 #include <vector>
 #include <mutex>
 #include <map>
+#include <unordered_set>
 
 #include <glog/logging.h>
 
@@ -78,6 +79,10 @@ class Subprocess {
   void ShareParentStdin(bool  share = true) { SetFdShared(STDIN_FILENO,  share); }
   void ShareParentStdout(bool share = true) { SetFdShared(STDOUT_FILENO, share); }
   void ShareParentStderr(bool share = true) { SetFdShared(STDERR_FILENO, share); }
+
+  // Marks a non-standard file descriptor which should not be closed after
+  // forking the child process.
+  void InheritNonstandardFd(int fd);
 
   // Start the subprocess. Can only be called once.
   //
@@ -194,6 +199,10 @@ class Subprocess {
 
   // Signal to send child process in case parent dies
   int pdeath_signal_ = SIGTERM;
+
+  // List of non-standard file descriptors which should be inherited by the
+  // child process.
+  std::unordered_set<int> ns_fds_inherited_;
 
   DISALLOW_COPY_AND_ASSIGN(Subprocess);
 };

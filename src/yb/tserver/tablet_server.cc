@@ -420,5 +420,22 @@ rocksdb::Env* TabletServer::GetRocksDBEnv() {
   return rocksdb::Env::Default();
 }
 
+int TabletServer::GetSharedMemoryFd() {
+  return shared_memory_.GetFd();
+}
+
+void TabletServer::SetYSQLCatalogVersion(uint64_t new_version) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  if (new_version > ysql_catalog_version_) {
+    ysql_catalog_version_ = new_version;
+    shared_memory_.SetYSQLCatalogVersion(new_version);
+  } else if (new_version < ysql_catalog_version_) {
+    // In theory this shouldn't happen, but it sometimes does in practice.
+    // Tracked here https://github.com/YugaByte/yugabyte-db/issues/1629.
+    LOG(WARNING) << "Ignoring ysql catalog version update: new version too old. "
+                 << "New: " << new_version << ", Old: " << ysql_catalog_version_;
+  }
+}
+
 }  // namespace tserver
 }  // namespace yb

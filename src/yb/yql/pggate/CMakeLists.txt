@@ -43,6 +43,7 @@ set(PGGATE_LIBS
     yb_util
     yb_common
     yb_client
+    tserver_util
     yb_pggate_util
     yb_pggate_flags)
 

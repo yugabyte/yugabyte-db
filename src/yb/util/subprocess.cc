@@ -127,7 +127,7 @@ void CloseProcFdDir(DIR* dir) {
 // This function is called after fork() and must not call malloc().
 // The rule of thumb is to only call async-signal-safe functions in such cases
 // if at all possible.
-void CloseNonStandardFDs(DIR* fd_dir) {
+void CloseNonStandardFDs(DIR* fd_dir, const std::unordered_set<int>& excluding) {
   // This is implemented by iterating over the open file descriptors
   // rather than using sysconf(SC_OPEN_MAX) -- the latter is error prone
   // since it may not represent the highest open fd if the fd soft limit
@@ -157,7 +157,8 @@ void CloseNonStandardFDs(DIR* fd_dir) {
     if (!(fd == STDIN_FILENO  ||
           fd == STDOUT_FILENO ||
           fd == STDERR_FILENO ||
-          fd == dir_fd))  {
+          fd == dir_fd ||
+          excluding.count(fd))) {
       close(fd);
     }
   }
@@ -207,6 +208,10 @@ void Subprocess::SetFdShared(int stdfd, bool share) {
   CHECK_EQ(state_, kNotStarted);
   CHECK_NE(fd_state_[stdfd], DISABLED);
   fd_state_[stdfd] = share? SHARED : PIPED;
+}
+
+void Subprocess::InheritNonstandardFd(int fd) {
+  ns_fds_inherited_.insert(fd);
 }
 
 void Subprocess::DisableStderr() {
@@ -339,7 +344,7 @@ Status Subprocess::Start() {
     default: break;
     }
 
-    CloseNonStandardFDs(fd_dir);
+    CloseNonStandardFDs(fd_dir, ns_fds_inherited_);
 
     for (const auto& env_kv : env_) {
       setenv(env_kv.first.c_str(), env_kv.second.c_str(), /* replace */ true);

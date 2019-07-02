@@ -495,7 +495,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
   if (last_hb_response_.has_ysql_catalog_version()) {
-    server_->set_ysql_catalog_version(last_hb_response_.ysql_catalog_version());
+    server_->SetYSQLCatalogVersion(last_hb_response_.ysql_catalog_version());
   }
 
   // Update the live tserver list.

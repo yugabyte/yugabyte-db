@@ -43,6 +43,7 @@
 #include "yb/master/master.h"
 #include "yb/server/server_base.h"
 #include "yb/server/webserver_options.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver.pb.h"
@@ -167,15 +168,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
     return publish_service_ptr_.get();
   }
 
-  void set_ysql_catalog_version(uint64_t new_version) {
-    std::lock_guard<simple_spinlock> l(lock_);
-    if (new_version > ysql_catalog_version_) {
-      ysql_catalog_version_ = new_version;
-    } else if (new_version < ysql_catalog_version_) {
-      LOG(WARNING) << "Ignoring ysql catalog version update: new version too old. "
-                      "New: " << new_version << ", Old: " << ysql_catalog_version_;
-    }
-  }
+  void SetYSQLCatalogVersion(uint64_t new_version);
 
   uint64_t ysql_catalog_version() const override {
     std::lock_guard<simple_spinlock> l(lock_);
@@ -189,14 +182,12 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   virtual CHECKED_STATUS SetUniverseKeyRegistry(
       const yb::UniverseKeyRegistryPB& universe_key_registry);
 
+  // Returns the file descriptor of this tablet server's shared memory segment.
+  int GetSharedMemoryFd();
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
- private:
-  // Auto initialize some of the service flags that are defaulted to -1.
-  void AutoInitServiceFlags();
-
- protected:
   friend class TabletServerTestBase;
 
   void DisplayRpcIcons(std::stringstream* output) override;
@@ -252,6 +243,12 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   TabletServiceImpl* tablet_server_service_;
 
  private:
+  // Auto initialize some of the service flags that are defaulted to -1.
+  void AutoInitServiceFlags();
+
+  // Shared memory owned by the tablet server.
+  TServerSharedMemory shared_memory_;
+
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };
 
