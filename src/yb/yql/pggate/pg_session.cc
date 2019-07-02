@@ -521,10 +521,6 @@ Status PgSession::RestartTransaction() {
   return pg_txn_manager_->RestartTransaction();
 }
 
-bool PgSession::HasAppliedOperations() const {
-  return pg_txn_manager_->HasAppliedOperations();
-}
-
 Result<client::YBSession*> PgSession::GetSessionForOp(
     const std::shared_ptr<client::YBPgsqlOp>& op) {
   return GetSession(op->IsTransactional(), op->read_only());

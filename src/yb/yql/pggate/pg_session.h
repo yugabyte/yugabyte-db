@@ -183,6 +183,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   CHECKED_STATUS IsInitDbDone(bool* initdb_done);
 
+  PgTxnManager* pg_txn_manager() { return pg_txn_manager_.get(); }
+
  private:
   // Returns the appropriate session to use, in most cases the one used by the current transaction.
   // read_only_op - whether this is being done in the context of a read-only operation. For
