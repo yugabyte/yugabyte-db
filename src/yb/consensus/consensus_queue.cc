@@ -75,12 +75,12 @@ using namespace yb::size_literals;
 
 DECLARE_int32(rpc_max_message_size);
 
-// Since we intend to support three strings of sizes of up to 64MB,
-// with the additional overhead we limit the consensus batch size to 254 MB.
-// This gives us room for overhead in the rpc layer
-DEFINE_int32(consensus_max_batch_size_bytes, 254_MB,
+// We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
+// Otherwise such batch would be rejected by RPC layer.
+DEFINE_int32(consensus_max_batch_size_bytes, 32_MB,
              "The maximum per-tablet RPC batch size when updating peers.");
 TAG_FLAG(consensus_max_batch_size_bytes, advanced);
+TAG_FLAG(consensus_max_batch_size_bytes, runtime);
 
 DEFINE_int32(follower_unavailable_considered_failed_sec, 300,
              "Seconds that a leader is unable to successfully heartbeat to a "
@@ -94,8 +94,6 @@ DEFINE_int32(consensus_inject_latency_ms_in_notifications, 0,
              "consensus implementation.");
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, hidden);
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, unsafe);
-
-DECLARE_int32(rpc_max_message_size);
 
 DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
 
@@ -459,8 +457,6 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     } else {
       request->clear_propagated_safe_time();
     }
-
-    DCHECK_LE(request->ByteSize(), FLAGS_consensus_max_batch_size_bytes);
   }
 
   DCHECK(preceding_id.IsInitialized());
