@@ -43,7 +43,7 @@ import java.util.UUID;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
 
-public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
+public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UpgradeKubernetesUniverse.class);
 
   public static class Params extends RollingRestartParams {}
@@ -135,88 +135,24 @@ public class UpgradeKubernetesUniverse extends UniverseDefinitionTaskBase {
     
     createSingleKubernetesExecutorTask(CommandType.POD_INFO, pi);
     
-    Map<UUID, Integer> azToNumMasters = PlacementInfoUtil.getNumMasterPerAZ(pi);
-    Map<UUID, Integer> azToNumTservers = PlacementInfoUtil.getNumTServerPerAZ(pi);
-    Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
+    KubernetesPlacement placement = new KubernetesPlacement(pi);
 
     Provider provider = Provider.get(UUID.fromString(
           taskParams().getPrimaryCluster().userIntent.provider));
 
-    String masterAddresses = PlacementInfoUtil.computeMasterAddresses(pi, azToNumMasters,
+    String masterAddresses = PlacementInfoUtil.computeMasterAddresses(pi, placement.masters,
         taskParams().nodePrefix, provider);
-    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(pi);
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
     if (!taskParams().masterGFlags.isEmpty() || !flag) {
-
       userIntent.masterGFlags = taskParams().masterGFlags;
-
-      // Iterate through all helm deployments with masters.
-      for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
-        
-        UUID azUUID = entry.getKey();
-        String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
-
-        PlacementInfo tempPI = new PlacementInfo();
-            PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
-        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
-            azToNumTservers.get(azUUID);
-        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
-            azToNumMasters.get(azUUID);
-
-        Map<String, String> config = azToConfig.get(azUUID);
-        
-        int replicationFactor = entry.getValue();
-
-        // Upgrade the master pods individually for each deployment.
-        for (int partition = replicationFactor - 1; partition >= 0; partition--) {
-          createSingleKubernetesExecutorTaskForServerType(CommandType.HELM_UPGRADE,
-              tempPI, azName, masterAddresses, version, ServerType.MASTER, partition, config);
-          String masterName = String.format("yb-master-%d", partition);
-          createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
-              masterName, azName, config);
-
-          NodeDetails node = new NodeDetails();
-          node.nodeName = isMultiAz ? String.format("%s_%s", masterName, azName) : masterName;
-          createWaitForServerReady(node, ServerType.MASTER, taskParams().sleepAfterTServerRestartMillis)
-              .setSubTaskGroupType(getTaskSubGroupType());
-        }     
-      }
+      upgradePodsTask(placement, masterAddresses, null, ServerType.MASTER,
+                      version, taskParams().sleepAfterMasterRestartMillis);
     }
     if (!taskParams().tserverGFlags.isEmpty() || !flag) {
-      
       userIntent.tserverGFlags = taskParams().tserverGFlags;
-
-      // Iterate through all helm deployments.
-      for (Entry<UUID, Integer> entry : azToNumTservers.entrySet()) {
-        
-        UUID azUUID = entry.getKey();
-        String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
-
-        PlacementInfo tempPI = new PlacementInfo();
-            PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
-        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
-            azToNumTservers.get(azUUID);
-        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
-            azToNumMasters.containsKey(azUUID) ? azToNumMasters.get(azUUID) : 0;
-
-        Map<String, String> config = azToConfig.get(azUUID);
-        
-        int replicationFactor = entry.getValue();
-
-        // Upgrade the tserver pods individually for each deployment.
-        for (int partition = replicationFactor - 1; partition >= 0; partition--) {
-          createSingleKubernetesExecutorTaskForServerType(CommandType.HELM_UPGRADE,
-              tempPI, azName, masterAddresses, version, ServerType.TSERVER, partition, config);
-          String tserverName = String.format("yb-tserver-%d", partition);
-          createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
-              tserverName, azName, config);
-          
-          NodeDetails node = new NodeDetails();
-          node.nodeName = isMultiAz ? String.format("%s_%s", tserverName, azName) : tserverName;
-          createWaitForServerReady(node, ServerType.TSERVER, taskParams().sleepAfterTServerRestartMillis)
-              .setSubTaskGroupType(getTaskSubGroupType());
-        }     
-      }
+      upgradePodsTask(placement, masterAddresses, null, ServerType.TSERVER,
+                      version, taskParams().sleepAfterTServerRestartMillis);
     }
   }
 }

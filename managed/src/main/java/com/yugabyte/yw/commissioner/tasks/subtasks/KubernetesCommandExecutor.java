@@ -266,7 +266,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
     Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
     Map<UUID, String> azToDomain = PlacementInfoUtil.getDomainPerAZ(pi);
-    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(pi);
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(Provider.get(taskParams().providerUUID));
 
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
       UUID azUUID = entry.getKey();
@@ -431,8 +431,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
             placementZone = AvailabilityZone.get(zone.uuid).code;
             numNodes = zone.numNodesInAZ;
             replicationFactorZone = zone.replicationFactor;
-            replicationFactor = isMultiAz ?
-                taskParams().masterAddresses.split(",").length : userIntent.replicationFactor;
+            replicationFactor = userIntent.replicationFactor;
             azConfig = AvailabilityZone.get(zone.uuid).getConfig();
             regionConfig = Region.get(region.uuid).getConfig();
           }
@@ -548,7 +547,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     Map<String, Object> partition = new HashMap<>();
     if (taskParams().serverType == ServerType.TSERVER) {
       partition.put("tserver", taskParams().rollingUpgradePartition);
-      partition.put("master", replicationFactor);
+      partition.put("master", replicationFactorZone);
     }
     else if (taskParams().serverType == ServerType.MASTER) {
       partition.put("tserver", numNodes);

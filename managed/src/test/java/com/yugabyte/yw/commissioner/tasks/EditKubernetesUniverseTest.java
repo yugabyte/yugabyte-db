@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import org.junit.Test;
 import org.junit.Ignore;
 import org.junit.runner.RunWith;
@@ -29,12 +31,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.Common;
-import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.ListTabletServersResponse;
 import org.yb.client.YBClient;
-import org.yb.client.YBTable;
-import org.yb.master.Master;
 import play.libs.Json;
 
 import java.util.HashMap;
@@ -62,9 +59,6 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 
 import static org.junit.Assert.*;
 import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyInt;
-import static org.mockito.Matchers.anyLong;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -90,9 +84,21 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   Map<String, String> config= new HashMap<String, String>();
 
-  ModifyMasterClusterConfigBlacklist modifyBL;
+  private void setup() {
+    ShellProcessHandler.ShellResponse responseEmpty = new ShellProcessHandler.ShellResponse();
+    ShellProcessHandler.ShellResponse responsePod = new ShellProcessHandler.ShellResponse();
+    when(mockKubernetesManager.helmUpgrade(any(), any(), any())).thenReturn(responseEmpty);
+    responsePod.message = 
+        "{\"status\": { \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}}";
+    when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
 
-  private void setupUniverse(boolean setMasters) {
+    mockClient = mock(YBClient.class);
+    when(mockYBClient.getClient(any())).thenReturn(mockClient);
+    mockWaits(mockClient);
+  }
+
+  private void setupUniverseSingleAZ(boolean setMasters) {
+    setup();
     config.put("KUBECONFIG", "test");
     defaultProvider.setConfig(config);
     defaultProvider.save();
@@ -110,93 +116,88 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, nodePrefix, setMasters /* setMasters */));
+    Universe.saveDetails(defaultUniverse.universeUUID,
+        ApiUtils.mockUniverseUpdaterWithActivePods(1, 3));
     defaultUniverse = Universe.get(defaultUniverse.universeUUID);
-
-    ShellProcessHandler.ShellResponse responseEmpty = new ShellProcessHandler.ShellResponse();
-    ShellProcessHandler.ShellResponse responsePod = new ShellProcessHandler.ShellResponse();
-    when(mockKubernetesManager.helmUpgrade(any(), any(), any())).thenReturn(responseEmpty);
-  
-    responsePod.message = 
-        "{\"status\": { \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}}";
-    when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
-
-    mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any())).thenReturn(mockClient);
-    when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
-    when(mockClient.waitForServer(any(), anyInt())).thenReturn(true);
-    dummyShellResponse = new ShellProcessHandler.ShellResponse();
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
-    modifyBL = mock(ModifyMasterClusterConfigBlacklist.class);
-    try {
-      doNothing().when(modifyBL).doCall();
-    } catch (Exception e) {}
   }
 
   List<TaskType> KUBERNETES_ADD_POD_TASKS = ImmutableList.of(
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
-      TaskType.KubernetesCommandExecutor,
       TaskType.WaitForServer,
+      TaskType.UpdatePlacementInfo,
       TaskType.WaitForLoadBalance,
+      TaskType.KubernetesCommandExecutor,
       TaskType.SwamperTargetsFileUpdate,
       TaskType.UniverseUpdateSucceeded);
 
   List<JsonNode> getExpectedAddPodTaskResults() {
     return ImmutableList.of(
-      Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
       Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of())
     );
   }
 
   List<TaskType> KUBERNETES_REMOVE_POD_TASKS = ImmutableList.of(
-      TaskType.KubernetesCommandExecutor,
-      TaskType.ModifyBlackList,
+      TaskType.UpdatePlacementInfo,
       TaskType.WaitForDataMove,
       TaskType.KubernetesCommandExecutor,
-      TaskType.KubernetesCommandExecutor,
       TaskType.ModifyBlackList,
+      TaskType.KubernetesCommandExecutor,
       TaskType.SwamperTargetsFileUpdate,
       TaskType.UniverseUpdateSucceeded);
 
   List<JsonNode> getExpectedRemovePodTaskResults() {
     return ImmutableList.of(
-      Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
-      Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
       Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of())
     );
   }
 
   List<TaskType> KUBERNETES_CHANGE_INSTANCE_TYPE_TASKS = ImmutableList.of(
-      TaskType.KubernetesCommandExecutor,
-      TaskType.KubernetesCommandExecutor,
-      TaskType.KubernetesWaitForPod,
-      TaskType.WaitForServer,
-      TaskType.WaitForLoadBalance,
+      TaskType.UpdatePlacementInfo,
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesWaitForPod,
       TaskType.WaitForServer,
-      TaskType.WaitForLoadBalance,
+      TaskType.WaitForServerReady,
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesWaitForPod,
       TaskType.WaitForServer,
-      TaskType.WaitForLoadBalance,
+      TaskType.WaitForServerReady,
+      TaskType.KubernetesCommandExecutor,
+      TaskType.KubernetesWaitForPod,
+      TaskType.WaitForServer,
+      TaskType.WaitForServerReady,
+      TaskType.KubernetesCommandExecutor,
+      TaskType.KubernetesWaitForPod,
+      TaskType.WaitForServer,
+      TaskType.WaitForServerReady,
       TaskType.KubernetesCommandExecutor,
       TaskType.SwamperTargetsFileUpdate,
       TaskType.UniverseUpdateSucceeded);
 
   List<JsonNode> getExpectedChangeInstaceTypeResults() {
     return ImmutableList.of(
-      Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
       Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
       Json.toJson(ImmutableMap.of()),
@@ -216,24 +217,36 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   }  
 
   private void assertTaskSequence(Map<Integer, List<TaskInfo>> subTasksByPosition,
-                                  boolean add) {
+                                  List<TaskType> taskList,
+                                  List<JsonNode> resultList,
+                                  String type) {
     int position = 0;
-    List<TaskType> taskList = add == true ? KUBERNETES_ADD_POD_TASKS : KUBERNETES_CHANGE_INSTANCE_TYPE_TASKS;
+    // Since we create two empty subGroupTasks for add (namespace create and apply secret)
+    // they need to skipped over.
+    if (type.equals("add")) {
+      position = 2;
+    }
     for (TaskType task: taskList) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
-      if (task == TaskType.WaitForServer && add) {
+      // In the case of adding and wait for server, we need to ensure that
+      // there are two waits queued (one for each added server).
+      if (task == TaskType.WaitForServer && type.equals("add")) {
         assertEquals(2, tasks.size());
       } else {
         assertEquals(1, tasks.size());
       }
       assertEquals(task, tasks.get(0).getTaskType());
-      JsonNode expectedResults = add == true ? 
-          getExpectedAddPodTaskResults().get(position) : getExpectedChangeInstaceTypeResults().get(position);
+      JsonNode expectedResults = resultList.get(position);
       List<JsonNode> taskDetails = tasks.stream()
           .map(t -> t.getTaskDetails())
           .collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
+
+      // Similar to add, we expect two empty subGroupTasks (namespace and volume delete).
+      if (position == 3 && type.equals("remove")) {
+        position += 2;
+      }
     }
   }
 
@@ -263,7 +276,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testAddNode() {
-    setupUniverse(/* Create Masters */ true);
+    setupUniverseSingleAZ(/* Create Masters */ true);
 
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
@@ -292,12 +305,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
-    taskParams.expectedUniverseVersion = 2;
+    taskParams.expectedUniverseVersion = 3;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet; 
     UniverseDefinitionTaskParams.UserIntent newUserIntent = 
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     newUserIntent.numNodes = 5;
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 5;
     TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
         
     verify(mockKubernetesManager, times(1)).helmUpgrade(expectedConfig.capture(),
@@ -311,17 +325,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertTaskSequence(subTasksByPosition, true);
+    assertTaskSequence(subTasksByPosition, KUBERNETES_ADD_POD_TASKS, getExpectedAddPodTaskResults(), "add");
     assertEquals(Success, taskInfo.getTaskState());
   }
 
-
-  /* Ignored for now till we figure out how to update the node detail set before the test call
-  Can potentially create/modify a function in the ApiUtils code to initialize the proper nodes
-  in a k8s universe setup */
-  @Ignore
+  @Test
   public void testRemoveNode() {
-    setupUniverse(/* Create Masters */ true);
+    setupUniverseSingleAZ(/* Create Masters */ true);
 
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
@@ -342,17 +352,18 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
-    taskParams.expectedUniverseVersion = 2;
+    taskParams.expectedUniverseVersion = 3;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     UniverseDefinitionTaskParams.UserIntent newUserIntent = 
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
     newUserIntent.numNodes = 2;
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 2;
     TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
         
     verify(mockKubernetesManager, times(1)).helmUpgrade(expectedConfig.capture(),
         expectedNodePrefix.capture(), expectedOverrideFile.capture());
-    verify(mockKubernetesManager, times(2)).getPodInfos(expectedConfig.capture(), expectedNodePrefix.capture());
+    verify(mockKubernetesManager, times(1)).getPodInfos(expectedConfig.capture(), expectedNodePrefix.capture());
 
     assertEquals(config, expectedConfig.getValue());
     assertEquals(nodePrefix, expectedNodePrefix.getValue());
@@ -361,13 +372,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertTaskSequence(subTasksByPosition, false);
+    assertTaskSequence(subTasksByPosition, KUBERNETES_REMOVE_POD_TASKS, getExpectedRemovePodTaskResults(), "remove");
     assertEquals(Success, taskInfo.getTaskState());
   }
 
   @Test
   public void testChangeInstanceType() {
-    setupUniverse(/* Create Masters */ true);
+    setupUniverseSingleAZ(/* Create Masters */ true);
 
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
@@ -390,7 +401,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
-    taskParams.expectedUniverseVersion = 2;
+    taskParams.expectedUniverseVersion = 3;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     InstanceType i = InstanceType.upsert(defaultProvider.code, "c5.xlarge",
         10, 5.5, new InstanceType.InstanceTypeDetails());
@@ -400,11 +411,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
     TaskInfo taskInfo = submitTask(taskParams, newUserIntent, pi);
         
-    verify(mockKubernetesManager, times(3)).helmUpgrade(expectedConfig.capture(),
+    verify(mockKubernetesManager, times(4)).helmUpgrade(expectedConfig.capture(),
         expectedNodePrefix.capture(), expectedOverrideFile.capture());
-    verify(mockKubernetesManager, times(3)).getPodStatus(expectedConfig.capture(),
+    verify(mockKubernetesManager, times(4)).getPodStatus(expectedConfig.capture(),
         expectedNodePrefix.capture(), expectedPodName.capture());
-    verify(mockKubernetesManager, times(2)).getPodInfos(expectedConfig.capture(), expectedNodePrefix.capture());
+    verify(mockKubernetesManager, times(1)).getPodInfos(expectedConfig.capture(), expectedNodePrefix.capture());
 
     assertEquals(config, expectedConfig.getValue());
     assertEquals(nodePrefix, expectedNodePrefix.getValue());
@@ -413,7 +424,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
-    assertTaskSequence(subTasksByPosition, false);
+    assertTaskSequence(subTasksByPosition, KUBERNETES_CHANGE_INSTANCE_TYPE_TASKS, getExpectedChangeInstaceTypeResults(), "change");
     assertEquals(Success, taskInfo.getTaskState());
   }
 }

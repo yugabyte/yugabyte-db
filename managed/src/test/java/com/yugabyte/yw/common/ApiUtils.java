@@ -4,6 +4,9 @@ package com.yugabyte.yw.common;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Set;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.UUID;
 
@@ -48,7 +51,7 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        UserIntent userIntent = new UserIntent();
+        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         userIntent.providerType = cloudType;
         userIntent.accessKeyCode = "yugabyte-default";
         // Add a desired number of nodes.
@@ -137,7 +140,7 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        UserIntent userIntent = new UserIntent();
+        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         // Add a desired number of nodes.
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         userIntent.numNodes = userIntent.replicationFactor;
@@ -162,7 +165,7 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        UserIntent userIntent = new UserIntent();
+        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         // Add a desired number of nodes.
         userIntent.enableYSQL = enableYSQL;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
@@ -188,7 +191,7 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        UserIntent userIntent = new UserIntent();
+        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         // Add a desired number of nodes.
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         universeDetails.nodeDetailsSet.add(getDummyNodeDetails(0, NodeDetails.NodeState.Live));
@@ -199,14 +202,14 @@ public class ApiUtils {
     };
   }
 
-  public static Universe.UniverseUpdater mockUniverseUpdaterWithActiveYSQLNode(final boolean enableYSQL) {
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithActiveYSQLNode() {
     return new Universe.UniverseUpdater() {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
-        userIntent.enableYSQL = enableYSQL;
+        userIntent.enableYSQL = true;
         userIntent.numNodes = 1;
         universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
         universeDetails.nodeDetailsSet.add(getDummyNodeDetailsWithPlacement(
@@ -216,6 +219,24 @@ public class ApiUtils {
       }
     };
   }
+
+  public static Universe.UniverseUpdater mockUniverseUpdaterWithActivePods(int numMasters, int numTservers) {
+    return new Universe.UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+        PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
+        userIntent.enableYSQL = true;
+        userIntent.numNodes = 1;
+        universeDetails.nodeDetailsSet = new HashSet<NodeDetails>();
+        universeDetails.nodeDetailsSet.addAll(getDummyNodeDetailSet(
+            universeDetails.getPrimaryCluster().uuid, numMasters, numTservers));
+        universeDetails.upsertPrimaryCluster(userIntent, pi);
+        universe.setUniverseDetails(universeDetails);
+      }
+    };
+  }  
 
   public static UserIntent getDefaultUserIntent(Customer customer) {
     Provider p = ModelFactory.awsProvider(customer);
@@ -257,12 +278,44 @@ public class ApiUtils {
 
   public static NodeDetails getDummyNodeDetailsWithPlacement(UUID placementUUID) {
     NodeDetails node = new NodeDetails();
+    node.nodeIdx = 1;
     node.placementUuid = placementUUID;
+    node.nodeName = "yb-tserver-2";
     node.isMaster = true;
     node.isTserver = true;
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.private_ip = "1.2.3.4";
     return node;
+  }
+
+  public static Set<NodeDetails> getDummyNodeDetailSet(UUID placementUUID, int numMasters, int numTservers) {
+    Set<NodeDetails> nodeDetailsSet = new HashSet<>();
+    int counter = 1;
+    for (int i = 0; i < numMasters; i++) {
+      NodeDetails node = new NodeDetails();
+      node.nodeIdx = counter;
+      node.placementUuid = placementUUID;
+      node.nodeName = "yb-master-" + i;
+      node.isMaster = true;
+      node.isTserver = false;
+      node.cloudInfo = new CloudSpecificInfo();
+      node.cloudInfo.private_ip = "1.2.3.4";
+      counter++;
+      nodeDetailsSet.add(node);
+    }
+    for (int i = 0; i < numTservers; i++) {
+      NodeDetails node = new NodeDetails();
+      node.nodeIdx = counter;
+      node.placementUuid = placementUUID;
+      node.nodeName = "yb-tserver-" + i;
+      node.isMaster = false;
+      node.isTserver = true;
+      node.cloudInfo = new CloudSpecificInfo();
+      node.cloudInfo.private_ip = "1.2.3.4";
+      counter++;
+      nodeDetailsSet.add(node);
+    }
+    return nodeDetailsSet;
   }
 
   public static NodeDetails getDummyNodeDetails(int idx, NodeDetails.NodeState state) {

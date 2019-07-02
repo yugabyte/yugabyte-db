@@ -25,14 +25,7 @@ import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.ModifyMasterClusterConfigBlacklist;
-import org.yb.client.ChangeMasterClusterConfigResponse;
-import org.yb.client.AbstractModifyMasterClusterConfig;
-import org.yb.client.GetLoadMovePercentResponse;
-import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
 
 import play.libs.Json;
 
@@ -78,29 +71,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
 
     when(mockYBClient.getClient(any())).thenReturn(mockClient);
-    when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
-    when(mockClient.waitForServer(any(), anyInt())).thenReturn(true);
-    IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
-    try {
-      when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
-    } catch (Exception ex) {}
-    dummyShellResponse = new ShellProcessHandler.ShellResponse();
-    dummyShellResponse.message = "true";
-    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
-    try {
-      // WaitForTServerHeartBeats mock.
-      doNothing().when(mockClient).waitForMasterLeader(anyLong());
-      // PlacementUtil mock.
-      Master.SysClusterConfigEntryPB.Builder configBuilder = Master.SysClusterConfigEntryPB.newBuilder();
-      GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
-      when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
-      ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
-      GetLoadMovePercentResponse gpr = new GetLoadMovePercentResponse(0, "", 100.0, null);
-      when(mockClient.getLoadMoveCompletion()).thenReturn(gpr);
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+    mockWaits(mockClient);
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
