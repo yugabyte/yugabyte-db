@@ -15,12 +15,14 @@
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
+// TODO: include a header for PgTxnManager specifically.
+#include "yb/yql/pggate/pggate_if_cxx_decl.h"
+
 namespace yb {
 namespace pggate {
 
 PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time)
-    : pg_session_(std::move(pg_session)), read_time_(read_time),
-      can_restart_(!pg_session_->HasAppliedOperations()) {
+    : pg_session_(std::move(pg_session)), read_time_(read_time) {
   exec_params_.limit_count = FLAGS_ysql_prefetch_limit;
   exec_params_.limit_offset = 0;
   exec_params_.limit_use_default = true;
@@ -111,6 +113,7 @@ Status PgDocOp::GetResult(string *result_set) {
   // rows.
   RETURN_NOT_OK(SendRequestIfNeededUnlocked());
 
+  pg_session_->pg_txn_manager()->PreventRestart();
   return Status::OK();
 }
 
@@ -143,7 +146,7 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
   }
 
   if (op->response().status() == PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR &&
-      can_restart_) {
+      pg_session_->pg_txn_manager()->CanRestart()) {
     exec_status_ = pg_session_->RestartTransaction();
     if (exec_status_.ok()) {
       exec_status_ = SendRequestUnlocked();

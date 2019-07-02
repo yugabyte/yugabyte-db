@@ -105,9 +105,6 @@ class PgDocOp {
   // Caching state variables.
   std::list<string> result_cache_;
 
-  // Whether we can restart this operation.
-  const bool can_restart_;
-
   // Exec control parameters.
   PgExecParameters exec_params_;
 };
