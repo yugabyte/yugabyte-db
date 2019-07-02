@@ -1162,4 +1162,22 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     assertEquals(expectedConfigs, PlacementInfoUtil.getConfigPerAZ(pi));
   }
+
+  @Test
+  public void testIsMultiAz() {
+    String customerCode = String.valueOf(customerIdx.nextInt(99999));
+    Customer k8sCustomer = ModelFactory.testCustomer(customerCode,
+            String.format("%s@customer.com", customerCode));
+    Provider k8sProvider = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Region r1 = Region.create(k8sProvider, "region-1", "Region 1", "yb-image-1");
+    Region r2 = Region.create(k8sProvider, "region-2", "Region 2", "yb-image-1");
+    AvailabilityZone az1 = AvailabilityZone.create(r1, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    AvailabilityZone az2 = AvailabilityZone.create(r1, "PlacementAZ " + 2, "az-" + 2, "subnet-" + 2);
+    AvailabilityZone az3 = AvailabilityZone.create(r2, "PlacementAZ " + 3, "az-" + 3, "subnet-" + 3);
+    Provider k8sProviderNotMultiAZ = ModelFactory.newProvider(k8sCustomer, CloudType.kubernetes);
+    Region r4 = Region.create(k8sProviderNotMultiAZ, "region-1", "Region 1", "yb-image-1");
+    AvailabilityZone az4 = AvailabilityZone.create(r4, "PlacementAZ " + 1, "az-" + 1, "subnet-" + 1);
+    assertTrue(PlacementInfoUtil.isMultiAZ(k8sProvider));
+    assertFalse(PlacementInfoUtil.isMultiAZ(k8sProviderNotMultiAZ));
+  }
 }

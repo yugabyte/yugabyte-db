@@ -40,7 +40,7 @@ import java.util.HashMap;
 import java.util.Set;
 import java.util.UUID;
 
-public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
+public class CreateKubernetesUniverse extends KubernetesTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(CreateKubernetesUniverse.class);
 
   @Override
@@ -57,80 +57,33 @@ public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
       // Set all the in-memory node names first.
       setNodeNames(UniverseOpType.CREATE, universe);
 
-      // Update the user intent.
-      writeUserIntentToUniverse();
-
       PlacementInfo pi = taskParams().getPrimaryCluster().placementInfo;
       
       selectNumMastersAZ(pi);
 
+      // Update the user intent.
+      writeUserIntentToUniverse();
+
       Provider provider = Provider.get(UUID.fromString(
           taskParams().getPrimaryCluster().userIntent.provider));
 
-      Map<UUID, Integer> azToNumMasters = PlacementInfoUtil.getNumMasterPerAZ(pi);
-      Map<UUID, Integer> azToNumTServers = PlacementInfoUtil.getNumTServerPerAZ(pi);
-      Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
-      String masterAddresses = PlacementInfoUtil.computeMasterAddresses(pi, azToNumMasters,
+      KubernetesPlacement placement = new KubernetesPlacement(pi);
+
+      String masterAddresses = PlacementInfoUtil.computeMasterAddresses(pi, placement.masters,
           taskParams().nodePrefix, provider);
 
-      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(pi);
+      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
-      SubTaskGroup createNamespaces = new SubTaskGroup(
-          KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE.getSubTaskGroupName(), executor);
-      createNamespaces.setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      SubTaskGroup applySecrets = new SubTaskGroup(
-          KubernetesCommandExecutor.CommandType.APPLY_SECRET.getSubTaskGroupName(), executor);
-      applySecrets.setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      SubTaskGroup helmInstalls = new SubTaskGroup(
-          KubernetesCommandExecutor.CommandType.HELM_INSTALL.getSubTaskGroupName(), executor);
-      helmInstalls.setSubTaskGroupType(SubTaskGroupType.Provisioning);
-      SubTaskGroup getPodInfo = new SubTaskGroup(
-        KubernetesCommandExecutor.CommandType.POD_INFO.getSubTaskGroupName(), executor);
-      getPodInfo.setSubTaskGroupType(SubTaskGroupType.Provisioning);
+      createPodsTask(placement, masterAddresses);
 
-      // Loop through the complete placement and create separate helm deployments
-      // for each availability zone.
-      for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
-        UUID azUUID = entry.getKey();
-        String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
-        
-        PlacementInfo tempPI = new PlacementInfo();
-        PlacementInfoUtil.addPlacementZoneHelper(azUUID, tempPI);
+      createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, pi);
 
-        Map<String, String> config = entry.getValue();
-
-        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
-            azToNumTServers.get(azUUID);
-        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
-            azToNumMasters.get(azUUID);
-
-        // Create the namespaces of the deployment.
-        createNamespaces.addTask(createKubernetesExecutorTask(
-            KubernetesCommandExecutor.CommandType.CREATE_NAMESPACE, azName, config));
-        
-        // Apply the necessary pull secret to each namespace.
-        applySecrets.addTask(createKubernetesExecutorTask(
-            KubernetesCommandExecutor.CommandType.APPLY_SECRET, azName, config));
-        
-        // Create the helm deployments.
-        helmInstalls.addTask(createKubernetesExecutorTask(
-            KubernetesCommandExecutor.CommandType.HELM_INSTALL, tempPI, azName, masterAddresses, config));
-      }
-
-      subTaskGroupQueue.add(createNamespaces);
-      subTaskGroupQueue.add(applySecrets);
-      subTaskGroupQueue.add(helmInstalls);
+      Set<NodeDetails> tserversAdded = getPodsToAdd(placement.tservers, null, ServerType.TSERVER,
+                                                    isMultiAz);
       
-      getPodInfo.addTask(createKubernetesExecutorTask(
-          KubernetesCommandExecutor.CommandType.POD_INFO, pi));
-      subTaskGroupQueue.add(getPodInfo);
-
-      /*
-       * TODO: node names do not match in k8s...
       // Wait for new tablet servers to be responsive.
-      createWaitForServersTasks(taskParams().nodeDetailsSet, ServerType.TSERVER)
+      createWaitForServersTasks(tserversAdded, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      */
 
       // Wait for a Master Leader to be elected.
       createWaitForMasterLeaderTask()
@@ -146,7 +99,7 @@ public class CreateKubernetesUniverse extends UniverseDefinitionTaskBase {
 
       // Initialize YSQL database if enabled by the user.
       if (taskParams().getPrimaryCluster().userIntent.enableYSQL) {
-        createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.INIT_YSQL);
+        createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.INIT_YSQL);
       }
 
       createSwamperTargetUpdateTask(false);

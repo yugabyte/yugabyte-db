@@ -136,7 +136,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     universe = ModelFactory.createUniverse(name, UUID.randomUUID(),
                                            defaultCustomer.getCustomerId(),
                                            Common.CloudType.kubernetes, pi);
-    Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdaterWithActiveYSQLNode(true));
+    Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdaterWithActiveYSQLNode());
     return Universe.get(universe.universeUUID);
   }
 

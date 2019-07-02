@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.net.HostAndPort;
+
 import com.yugabyte.yw.cloud.AWSInitializer;
 import com.yugabyte.yw.cloud.GCPInitializer;
 import com.yugabyte.yw.commissioner.CallHome;
@@ -16,6 +18,7 @@ import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TableManager;
+import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -26,10 +29,29 @@ import play.inject.guice.GuiceApplicationBuilder;
 import play.test.Helpers;
 import play.test.WithApplication;
 
+import org.yb.client.AbstractModifyMasterClusterConfig;
+import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
+import org.yb.client.ListTabletServersResponse;
+import org.yb.client.IsServerReadyResponse;
+import org.yb.client.YBClient;
+import org.yb.master.Master;
+
 import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyInt;
+import static org.mockito.Matchers.anyBoolean;
+import static org.mockito.Matchers.anyLong;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import static play.inject.Bindings.bind;
 
 public abstract class CommissionerBaseTest extends WithApplication {
@@ -91,6 +113,36 @@ public abstract class CommissionerBaseTest extends WithApplication {
         .overrides(bind(SwamperHelper.class).toInstance(mockSwamperHelper))
         .overrides(bind(CallHome.class).toInstance(mockCallHome))
         .build();
+  }
+
+  public void mockWaits(YBClient mockClient) {
+    when(mockClient.waitForLoadBalance(anyLong(), anyInt())).thenReturn(true);
+    when(mockClient.waitForServer(any(), anyInt())).thenReturn(true);
+    IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
+    try {
+      when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
+    } catch (Exception ex) {}
+    ShellProcessHandler.ShellResponse dummyShellResponse = new ShellProcessHandler.ShellResponse();
+    dummyShellResponse.message = "true";
+    when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
+    try {
+       // WaitForTServerHeartBeats mock.
+      ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
+      when(mockClient.listTabletServers()).thenReturn(mockResponse);
+      when(mockResponse.getTabletServersCount()).thenReturn(3);
+      // WaitForTServerHeartBeats mock.
+      doNothing().when(mockClient).waitForMasterLeader(anyLong());
+      // PlacementUtil mock.
+      Master.SysClusterConfigEntryPB.Builder configBuilder = Master.SysClusterConfigEntryPB.newBuilder();
+      GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
+      when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
+      ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
+      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
+      GetLoadMovePercentResponse gpr = new GetLoadMovePercentResponse(0, "", 100.0, null);
+      when(mockClient.getLoadMoveCompletion()).thenReturn(gpr);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
   }
 
   protected TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
