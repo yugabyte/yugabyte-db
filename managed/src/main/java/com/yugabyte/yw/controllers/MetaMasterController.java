@@ -135,12 +135,14 @@ public class MetaMasterController extends Controller {
     List<String> allIPs = new ArrayList<String>();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UniverseDefinitionTaskParams.Cluster primary = universeDetails.getPrimaryCluster();
+    Provider provider = Provider.get(UUID.fromString(primary.userIntent.provider));
+
     if (!primary.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       return null;
     } else {
       PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
 
-      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(pi);
+      boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
       Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
 
       for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {

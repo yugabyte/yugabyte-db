@@ -12,14 +12,21 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.UniverseOpType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLoadBalance;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -27,13 +34,22 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
+public class EditKubernetesUniverse extends KubernetesTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(EditKubernetesUniverse.class);
+
+  static final int DEFAULT_WAIT_TIME_MS = 10000;
+
+  PlacementInfo activeZones = new PlacementInfo();
+  boolean isMultiAz = false;
+
+  KubernetesPlacement newPlacement, currPlacement;
 
   @Override
   public void run() {
@@ -46,15 +62,53 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
+      Provider provider = Provider.get(UUID.fromString(
+          taskParams().getPrimaryCluster().userIntent.provider));
+
+      /* Steps for multi-cluster edit
+      1) Compute masters with the new placement info.
+      2) If the masters are different to the old one, continue with step 3, else go to step 6.
+      3) Check if the instance type has changed from xsmall/dev to something else. If so,
+         roll all the current masters.
+      4) Bring up the new master pods while ensuring nothing else changes in the old deployments.
+      5) Create change config task to update the new master addresses (adding one and removing one at a time).
+      6) Make changes to the tservers. Either adding new ones and/or updating the current ones.
+      7) Create the blacklist to remove unnecessary tservers from the universe.
+      8) Wait for the data to move.
+      9) Remove the old masters and tservers.
+      */
+
       // Get requested user intent.
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       UserIntent userIntent = primaryCluster.userIntent;
       PlacementInfo newPI = primaryCluster.placementInfo;
 
+      isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+
+      selectNumMastersAZ(newPI);
+
+      newPlacement = new KubernetesPlacement(newPI);
+
       // Get current universe's intent.
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       UserIntent currIntent = universeDetails.getPrimaryCluster().userIntent.clone();
       PlacementInfo currPI = universeDetails.getPrimaryCluster().placementInfo;
+
+      currPlacement = new KubernetesPlacement(currPI);
+
+      Set<NodeDetails> mastersToAdd = getPodsToAdd(newPlacement.masters, currPlacement.masters,
+                                                   ServerType.MASTER, isMultiAz);
+      Set<NodeDetails> mastersToRemove = getPodsToRemove(newPlacement.masters, currPlacement.masters,
+                                                         ServerType.MASTER, universe, isMultiAz);
+
+      Set<NodeDetails> tserversToAdd = getPodsToAdd(newPlacement.tservers, currPlacement.tservers,
+                                                    ServerType.TSERVER, isMultiAz);
+      Set<NodeDetails> tserversToRemove = getPodsToRemove(newPlacement.tservers, currPlacement.tservers,
+                                          ServerType.TSERVER, universe, isMultiAz);
+
+      for (UUID currAZs : currPlacement.configs.keySet()) {
+        PlacementInfoUtil.addPlacementZoneHelper(currAZs, activeZones);
+      }
 
       boolean userIntentChange = false;
       boolean isNumNodeChange = false;
@@ -66,81 +120,64 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
         currIntent.numNodes = userIntent.numNodes;
       }
 
-      // Check if the requested user intent differs from the universe's current
-      // user intent in any fields OTHER than numNodes.
-      if (!currIntent.equals(userIntent)) {
+      // Check if the instance type has changed. In that case, we still
+      // need to perform rolling upgrades.
+      if (!currIntent.instanceType.equals(userIntent.instanceType)) {
           userIntentChange = true;
       }
 
       // Update the user intent.
       writeUserIntentToUniverse();
-      
-      List<NodeDetails> currTServers = universe.getTServers();
-      int numTServers = currTServers.size();
 
-      Set<NodeDetails> tserversToRemove = getTServersToRemove(numTServers,
-          userIntent.numNodes, universe);
-      Set<NodeDetails> tserversToAdd = getTServersToAdd(numTServers,
-          userIntent.numNodes, universe);
+      // Bring up new masters and update the configs.
+      if (!mastersToAdd.isEmpty()) {
+        startNewPods(mastersToAdd, ServerType.MASTER, newPI, provider);
 
-      // Get node detail set at the start of edit.
-      createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, newPI);  
+        // Update master addresses to the latest required ones. 
+        createMoveMasterTasks(new ArrayList(mastersToAdd), new ArrayList(mastersToRemove));
+      }
 
+      // Bring up new tservers.
+      if (!tserversToAdd.isEmpty()) {
+        startNewPods(tserversToAdd, ServerType.TSERVER, newPI, provider);
+      }
+
+      // Update the blacklist servers on master leader.
+      createPlacementInfoTask(tserversToRemove)
+          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+
+      // If the tservers have been removed, move the data.
       if (!tserversToRemove.isEmpty()) {
-        createModifyBlackListTask(new ArrayList(tserversToRemove), true /* isAdd */)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
         createWaitForDataMoveTask()
             .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
-
-      // Check if rolling pods is not important to reduce tasks to run.
-      if (!userIntentChange) {
-        createKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
-      } else {
-        // In case user intent changes per pod, roll each pod.
-        for (int partition = userIntent.numNodes - 1; partition >= 0; partition--) {
-          createKubernetesExecutorTaskForServerType(KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
-              null, null, ServerType.TSERVER, partition);
-          createKubernetesWaitForPodTask(KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
-              String.format("yb-tserver-%d", partition), null, null);
-
-          // Update the node detail set with the current pods so that the wait tasks
-          // get the latest pods to wait for (required when new pods are added).
-          if (isNumNodeChange && isFirstIteration) {
-            createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, newPI);
-          }
-
-          // Get the tserver that has just been rolled.
-          Set<NodeDetails> tserverUpdated = getTServerToWaitFor(partition);
-
-          // TODO: Ideally should wait for tserver to have locally bootstrapped data.
-          createWaitForServersTasks(tserverUpdated, ServerType.TSERVER)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-          createWaitForLoadBalanceTask()
-              .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-
-          isFirstIteration = false;
-        }
-      }
-
-      // Final update for the node details.
-      createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, newPI);
-
-      // Waiting on all newly added tservers.
-      if (!tserversToAdd.isEmpty()) {
-        createWaitForServersTasks(tserversToAdd, ServerType.TSERVER)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
+      // If tservers have been added, we wait for the load to balance.
+      if (!tserversToAdd.isEmpty()){
         createWaitForLoadBalanceTask()
             .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
 
+      // Now roll all the old pods that haven't been removed and aren't newly added.
+      // This will update the master addresses as well as the instance type changes.
+      if (userIntentChange || !mastersToAdd.isEmpty()) {
+        updateRemainingPods(ServerType.MASTER, newPI, provider);
+        updateRemainingPods(ServerType.TSERVER, newPI, provider);
+      }
+
+      // If tservers have been removed, check if some deployments need to be completely
+      // removed. Also modify the blacklist to untrack deleted pods.
       if (!tserversToRemove.isEmpty()) {
+        removeDeployments(newPI, provider, userIntentChange);
         createModifyBlackListTask(new ArrayList(tserversToRemove), false /* isAdd */)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
-      createSwamperTargetUpdateTask(false);
+      // Update the universe to the new state.
+      createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO,
+                                         newPI);
+
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
@@ -157,36 +194,69 @@ public class EditKubernetesUniverse extends UniverseDefinitionTaskBase {
     LOG.info("Finished {} task.", getName());
   }
 
-  public Set<NodeDetails> getTServerToWaitFor(int partition) {
-    Set<NodeDetails> tservers = new HashSet<>();
-    String tserverName = String.format("yb-tserver-%d", partition);
-    NodeDetails node = new NodeDetails();
-    node.nodeName = tserverName;
-    tservers.add(node);
-    return tservers;
+  /*
+  Sends the RPC to update the master addresses in the config.
+  */
+  public void createMoveMasterTasks(List<NodeDetails> mastersToAdd,
+                                    List<NodeDetails> mastersToRemove) {
+
+    UserTaskDetails.SubTaskGroupType subTask = SubTaskGroupType.WaitForDataMigration;
+
+    // Perform adds.
+    for (int idx = 0; idx < mastersToAdd.size(); idx++) {
+      createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
+    }
+    // Perform removes.
+    for (int idx = 0; idx < mastersToRemove.size(); idx++) {
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
+    }
+    // Wait for master leader.
+    createWaitForMasterLeaderTask()
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
-  public Set<NodeDetails> getTServersToRemove(int numCurrTServers, int numIntendedTServers,
-      Universe universe) {
-    Set<NodeDetails> tservers = new HashSet<>();
-    for (int i = numIntendedTServers; i < numCurrTServers; i++) {
-      String tserverName = String.format("yb-tserver-%d", i);
-      tservers.add(universe.getNode(tserverName));
-    }
-    return tservers;
+  /*
+  Starts up the new pods as requested by the user.
+  */
+  public void startNewPods(Set<NodeDetails> podsToAdd, ServerType serverType,
+                           PlacementInfo newPI, Provider provider) {
+    // If starting new masters, we want them to come up in shell-mode.
+    String masterAddresses = serverType == ServerType.MASTER ? "" :
+        PlacementInfoUtil.computeMasterAddresses(newPI, newPlacement.masters,
+        taskParams().nodePrefix, provider);
+    
+    createPodsTask(newPlacement, masterAddresses, 
+                   currPlacement, serverType, activeZones);
+    
+    createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO,
+                                       activeZones);
+    
+    createWaitForServersTasks(podsToAdd, serverType)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
-  public Set<NodeDetails> getTServersToAdd(int numCurrTServers, int numIntendedTServers,
-      Universe universe) {
-    Set<NodeDetails> tservers = new HashSet<>();
-    for (int i = numCurrTServers; i < numIntendedTServers; i++) {
-      String tserverName = String.format("yb-tserver-%d", i);
-      // Creating a pseudo-NodeDetails object since ModifyBlacklist requires a NodeDetail object
-      // and the NodeDetails aren't updated till after the pods have been added.
-      NodeDetails node = new NodeDetails();
-      node.nodeName = tserverName;
-      tservers.add(node);
-    }
-    return tservers;
+  /*
+  Performs the updates to the helm charts to modify the master addresses as well as
+  update the instance type.
+  */
+  public void updateRemainingPods(ServerType serverType, PlacementInfo newPI, Provider provider) {
+    
+    String masterAddresses = PlacementInfoUtil.computeMasterAddresses(newPI, newPlacement.masters,
+        taskParams().nodePrefix, provider);
+
+    upgradePodsTask(newPlacement, masterAddresses, currPlacement,
+                    serverType, null, DEFAULT_WAIT_TIME_MS);
+  }
+
+  /*
+  Deletes/Scales down the helm deployments.
+  */
+  public void removeDeployments(PlacementInfo newPI, Provider provider,
+                                boolean userIntentChange) {
+    String masterAddresses = PlacementInfoUtil.computeMasterAddresses(newPI, newPlacement.masters,
+        taskParams().nodePrefix, provider);
+
+    // Need to unify with DestroyKubernetesUniverse.
+    deletePodsTask(currPlacement, masterAddresses, newPlacement, userIntentChange);
   }
 }

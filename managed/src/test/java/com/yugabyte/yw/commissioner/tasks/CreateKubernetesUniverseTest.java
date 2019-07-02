@@ -121,26 +121,11 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     YBTable mockTable = mock(YBTable.class);
     when(mockTable.getName()).thenReturn("redis");
     when(mockTable.getTableType()).thenReturn(Common.TableType.REDIS_TABLE_TYPE);
-    // WaitForServer mock.
-    when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     try {
-      // WaitForTServerHeartBeats mock.
-      ListTabletServersResponse mockResponse = mock(ListTabletServersResponse.class);
-      when(mockClient.listTabletServers()).thenReturn(mockResponse);
-      when(mockResponse.getTabletServersCount()).thenReturn(3);
-      // WaitForMasterLeader mock.
-      doNothing().when(mockClient).waitForMasterLeader(anyLong());
-      // PlacementUtil mock.
-      Master.SysClusterConfigEntryPB.Builder configBuilder = Master.SysClusterConfigEntryPB.newBuilder();
-      GetMasterClusterConfigResponse gcr = new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
-      when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
-      ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
-      when(mockClient.changeMasterClusterConfig(any())).thenReturn(ccr);
-      // CreateTable mock.
       when(mockClient.createRedisTable(any())).thenReturn(mockTable);
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+    } catch (Exception e) {}
+    // WaitForServer mock.
+    mockWaits(mockClient);
   }
 
   List<TaskType> KUBERNETES_CREATE_UNIVERSE_TASKS = ImmutableList.of(
@@ -148,6 +133,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
+      TaskType.WaitForServer,
       TaskType.WaitForMasterLeader,
       TaskType.UpdatePlacementInfo,
       TaskType.WaitForTServerHeartBeats,
@@ -162,6 +148,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of("commandType", APPLY_SECRET.name())),
       Json.toJson(ImmutableMap.of("commandType", HELM_INSTALL.name())),
       Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
@@ -187,6 +174,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of("commandType", HELM_INSTALL.name())));
       if (parallelTasks.contains(expectedResults)) {
         assertEquals(numTasks, tasks.size());  
+      } else if (taskType == TaskType.WaitForServer) {
+        assertEquals(3, tasks.size());
       } else {
         assertEquals(1, tasks.size());
       }

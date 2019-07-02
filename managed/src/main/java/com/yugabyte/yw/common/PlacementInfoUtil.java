@@ -1532,6 +1532,23 @@ public class PlacementInfoUtil {
     return false;
   }
 
+  // Check if there are multiple zones for deployment in the provider config.
+  public static boolean isMultiAZ(Provider provider) {
+    List<Region> regionList = Region.getByProvider(provider.uuid);
+    if (regionList.size() > 1) {
+      return true;
+    }
+    Region region = regionList.get(0);
+    if (region == null) {
+      throw new RuntimeException("No Regions found");
+    }
+    List<AvailabilityZone> azList = AvailabilityZone.getAZsForRegion(region.uuid);
+    if (azList.size() > 1) {
+      return true;
+    }
+    return false;
+  }
+
   // Get the zones with the number of masters for each zone.
   public static Map<UUID, Integer> getNumMasterPerAZ(PlacementInfo pi) {
     Map<UUID, Integer> azToNumMasters = new HashMap<UUID, Integer>();
@@ -1613,7 +1630,7 @@ public class PlacementInfoUtil {
                                               String nodePrefix, Provider provider) {
     List<String> masters = new ArrayList<String>();
     Map<UUID, String> azToDomain = getDomainPerAZ(pi);
-    if (azToNumMasters.size() == 1) {
+    if (!isMultiAZ(provider)) {
       return null;
     }
     for (Entry<UUID, Integer> entry : azToNumMasters.entrySet()) {
