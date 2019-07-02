@@ -89,15 +89,14 @@ class YugaByteProcessManager(object):
                 ("Version", "{}-b{}".format(data.get("version_number"), data.get("build_number"))),
                 ("Build Time", data.get("build_timestamp")),
                 ("Build Hash", data.get("git_hash"))]
-            print(self.get_status_string(title, info_kv_list))
+            print(self.get_status_string())
 
     # Starts an interactive YSQL shell.
     def connect_ysql(self):
         if self.get_failed_processes():
             log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
-        path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ysql"])
-        cmd = [path, "-p", self.configs.saved_data.get("ysql_port")]
-        os.execv(path, cmd)
+        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
+        ysql_proxy.connect()
 
     # Starts an interactive YCQL shell.
     def connect_ycql(self):
@@ -106,6 +105,88 @@ class YugaByteProcessManager(object):
         path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
         cmd = [path, "127.0.0.1", self.configs.saved_data.get("ycql_port")]
         os.execv(path, cmd)
+
+    # Create retail database if it does not exist.
+    def create_demo_retail(self):
+        if self.get_failed_processes():
+            log_error_and_exit("YugaByte DB is not running. Cannot create sample database.")
+
+        demo_db = "yb_demo_retail"
+        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
+        if not ysql_proxy.db_exists(demo_db):
+            # Create demo database.
+            print_and_log("Creating database {}...".format(demo_db))
+            _, err = ysql_proxy.create_db(demo_db)
+            if err:
+                log_error_and_exit("Failed to create {} database: {}".format(demo_db, err))
+
+            # Populate demo database.
+            print_and_log("Populating {} with sample data...".format(demo_db))
+            files = []
+            for name in ("schema.sql", "products.sql", "users.sql", "reviews.sql", "orders.sql"):
+                files.append(os.path.join(YUGABYTE_DIR, "share", name))
+            _, err = ysql_proxy.load_files(files, db=demo_db)
+            if err:
+                log_error_and_exit("Failed to populate data to {}: {}".format(demo_db, err))
+
+            print_and_log("Successfully loaded sample database!")
+            print(
+                "\n################################\n"
+                "# WELCOME TO THE retail DEMO\n"
+                "################################\n"
+                "    Database: yb_demo_retail\n"
+                "    |_ users\n"
+                "    |_ products\n"
+                "    |_ orders\n"
+                "    |_ reviews\n\n"
+                "################################\n"
+                "# NEXT STEP: RUN THE DEMO\n"
+                "################################\n"
+                "$ yugabyte-db demo run retail\n\n"
+            )
+        else:
+            print_and_log(
+                "Retail sample database has already been created. "
+                "Use `yugabyte-db demo run retail` to interact with it.")
+
+    # Run YSQL shell in retail database.
+    def run_demo_retail(self):
+        if self.get_failed_processes():
+            log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
+
+        demo_db = "yb_demo_retail"
+        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
+        if ysql_proxy.db_exists(demo_db):
+            # TODO: Add more commands.
+            print(
+                "\n################################\n"
+                "# SAMPLE QUERIES TO TRY\n"
+                "################################\n\n"
+                "# JOINS (find user details of orders):\n"
+                "    SELECT users.id, users.name, users.email, orders.id, orders.total\n"
+                "        FROM orders INNER JOIN users ON orders.user_id=users.id\n"
+                "        LIMIT 10;\n\n"
+                "For more, go to https://docs.yugabyte.com/latest/quick-start/explore-ysql/\n"
+            )
+            ysql_proxy.connect(db="yb_demo_retail")
+        else:
+            log_error_and_exit(
+                "Retail demo has not been created. Run `yugabyte-db demo create retail`.")
+
+    # Destroy retail database if it exists.
+    def destroy_demo_retail(self):
+        if self.get_failed_processes():
+            log_error_and_exit("YugaByte DB is not running. Cannot destroy sample database.")
+
+        demo_db = "yb_demo_retail"
+        ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
+        if not ysql_proxy.db_exists(demo_db):
+            log_error_and_exit("Failed to destroy database. Retail demo has not been created.")
+        else:
+            _, err = ysql_proxy.drop_db(demo_db)
+            if err:
+                log_error_and_exit("Failed to drop database {}: {}".format(demo_db, err))
+            print_and_log("Successfully destroyed demo database {}.".format(demo_db))
 
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
@@ -197,13 +278,11 @@ class YugaByteProcessManager(object):
                         self.configs.saved_data.get("data_dir")))
                 shutil.rmtree(self.configs.saved_data.get("data_dir"))
 
-            # Create data and log dirs.
+            # Create data directory.
             if not os.path.exists(self.configs.saved_data.get("data_dir")):
-                logging.info("Creating data directory %s.", self.configs.saved_data.get("data_dir"))
+                print_and_log(
+                    "Creating data directory {}.".format(self.configs.saved_data.get("data_dir")))
                 os.makedirs(self.configs.saved_data.get("data_dir"))
-            if not os.path.exists(self.configs.saved_data.get("log_dir")):
-                logging.info("Creating log directory %s.", self.configs.saved_data.get("log_dir"))
-                os.makedirs(self.configs.saved_data.get("log_dir"))
 
             # Start or initialize yb-master and yb-tserver.
             for name in ("master", "tserver"):
@@ -232,8 +311,7 @@ class YugaByteProcessManager(object):
                 if first_run_success and self.is_yb_initialized():
                     startup_info = self.get_status_string() + \
                         "YugaByte DB started successfully!\n" \
-                        "For help, please check out our docs at https://docs.yugabyte.com or " \
-                        "join us on Slack at https://yugabyte-db.slack.com.\n"
+                        "For help, join us on Slack at https://www.yugabyte.com/slack.\n"
                     print(startup_info)
 
                 callhome_thread = Thread(target=self.callhome_loop)
@@ -386,7 +464,7 @@ class YugaByteProcessManager(object):
         for cmd, description in (
                 ("status", "Print status of YugaByte DB."),
                 ("version", "Version of YugaByte DB."),
-                ("start", "Start YugaByte DB.")):
+                ("start", "Start YugaByte DB."),):
             subparser = subparsers.add_parser(cmd, help=description, parents=[common_parser])
             func = getattr(self, cmd, None)
             subparser.set_defaults(func=func)
@@ -402,6 +480,34 @@ class YugaByteProcessManager(object):
             func = getattr(self, "connect_{}".format(api), None)
             cur_parser.set_defaults(func=func)
             all_parsers[api] = cur_parser
+
+        # Add YSQL demo commands.
+        demo = subparsers.add_parser("demo", help="Load and interact with preset demo data.")
+        all_parsers["demo"] = demo
+        demo_subparser = demo.add_subparsers()
+
+        # TODO: Make below code readable...
+        create_help = "Create sample database if it does not exist yet."
+        create_demo = demo_subparser.add_parser("create", help=create_help)
+        create_demo_subparser = create_demo.add_subparsers()
+        run_help = "Open interactive shell in sample database."
+        run_demo = demo_subparser.add_parser("run", help=run_help)
+        run_demo_subparser = run_demo.add_subparsers()
+        destroy_help = "Destroy sample database."
+        destroy_demo = demo_subparser.add_parser("destroy", help=destroy_help)
+        destroy_demo_subparser = destroy_demo.add_subparsers()
+        for demo_type, demo_help in (
+                ("retail", "Retail is a database with products, users, orders, and reviews."),):
+            for action, action_help, cur_subparser in (
+                    ("create", create_help, create_demo_subparser),
+                    ("destroy", destroy_help, destroy_demo_subparser),
+                    ("run", run_help, run_demo_subparser)):
+                help_msg = "{} {}".format(action_help, demo_help)
+                cur_parser = cur_subparser.add_parser(
+                    demo_type, help=help_msg, parents=[common_parser])
+                func = getattr(self, "{}_demo_{}".format(action, demo_type), None)
+                cur_parser.set_defaults(func=func)
+                all_parsers["{}_{}".format(action, demo_type)] = cur_parser
 
         # Commands that can alter configuration file.
         for cmd in ("start",):
@@ -448,6 +554,7 @@ class Configs(object):
             "ycql_port": DEFAULT_YCQL_PORT,
             "universe_uuid": "",
             "polling_interval": "5",
+            "yb_demo_retail": False
         }
         self.config_file = config_file
 
@@ -654,6 +761,54 @@ class Diagnostics(object):
         return size
 
 
+# Proxy for ysqlsh commands.
+class YsqlProxy(object):
+    def __init__(self, port, path=os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ysql"])):
+        self.port = port
+        self.path = path
+
+    # Starts interactive YSQL shell.
+    def connect(self, db=None):
+        cmd = [self.path, "-p", self.port]
+        if db:
+            cmd.extend(["-d", db])
+        os.execv(self.path, cmd)
+
+    # Checks if db exists.
+    # Note that this will return false if ysqlsh can't connect, even if db exists.
+    def db_exists(self, db):
+        cmd = [self.path, "-p", self.port, "-q", "-c", "\\t", "-c",
+            "select datname from pg_catalog.pg_database where datname='{}'".format(db)]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        return out.strip() == db
+
+    # Creates specified db.
+    def create_db(self, db):
+        cmd = [self.path, "-p", self.port, "-c", "create database {}".format(db)]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        return out, err
+
+    # Deletes specified db.
+    def drop_db(self, db):
+        cmd = [self.path, "-p", self.port, "-c", "drop database {}".format(db)]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        return out, err
+
+    # Runs ysqlsh with specified files.
+    def load_files(self, filepaths, db=None):
+        cmd = [self.path, "-p", self.port]
+        if db:
+            cmd.extend(["-d", db])
+        for path in filepaths:
+            cmd.extend(["-f", path])
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        return out, err
+
+
 # Currently unused. Useful for getting diagnostics that are available only through logs.
 class LogAnalyzer(object):
     unsupported_error = "not supported yet"
@@ -682,6 +837,7 @@ class LogAnalyzer(object):
                     continue
                 yield line
 
+
 def print_and_log(msg, level=logging.INFO):
     print(msg)
     if level == logging.CRITICAL:
@@ -693,7 +849,7 @@ def print_and_log(msg, level=logging.INFO):
     elif level == logging.INFO:
         logging.info(msg)
     elif level == logging.DEBUG:
-        logging.debug(info)
+        logging.debug(msg)
 
 def log_error_and_exit(msg):
     print_and_log(msg, logging.ERROR)
