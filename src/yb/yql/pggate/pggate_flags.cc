@@ -39,6 +39,12 @@ DEFINE_string(pggate_proxy_bind_address, "",
 DEFINE_string(pggate_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
 
+DEFINE_int32(pggate_tserver_shm_fd, -1,
+              "File descriptor of the local tablet server's shared memory.");
+
+DEFINE_test_flag(bool, pggate_ignore_tserver_shm, false,
+              "Ignore the shared memory of the local tablet server.");
+
 DEFINE_int32(ysql_prefetch_limit, 1024,
              "Maximum number of rows to prefetch");
 

@@ -55,6 +55,10 @@ YBCStatus YBCPgClearBinds(YBCPgStatement handle);
 // Check if initdb has been already run.
 YBCStatus YBCPgIsInitDbDone(YBCPgSession pg_session, bool* initdb_done);
 
+// Sets catalog_version to the local tserver's catalog version stored in shared
+// memory, or an error if the shared memory has not been initialized (e.g. in initdb).
+YBCStatus YBCGetSharedCatalogVersion(YBCPgSession pg_session, uint64_t* catalog_version);
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
 //--------------------------------------------------------------------------------------------------

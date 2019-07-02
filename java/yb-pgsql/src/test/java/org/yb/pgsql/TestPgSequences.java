@@ -18,17 +18,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.minicluster.MiniYBDaemon;
-import org.yb.pgsql.BasePgSQLTest;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
-import java.io.InputStream;
-import java.io.Reader;
-import java.math.BigDecimal;
-import java.net.URL;
 import java.sql.*;
-import java.sql.Date;
 import java.util.*;
 
 import static org.yb.AssertionWrappers.*;
@@ -805,7 +797,7 @@ public class TestPgSequences extends BasePgSQLTest {
     // ysql_catalog_version gets propagated through the heartbeat. Wait at least one heartbeat
     // (500 ms set through flag raft_heartbeat_interval_ms) period to give TS2 enough time to
     // realize that its cache is invalid.
-    Thread.sleep(1000);
+    waitForTServerHeartbeat();
   }
 
   @Test

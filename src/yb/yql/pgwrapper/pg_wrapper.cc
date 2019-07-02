@@ -53,7 +53,8 @@ string GetPostgresInstallRoot() {
 
 Result<PgProcessConf> PgProcessConf::CreateValidateAndRunInitDb(
     const std::string& bind_addresses,
-    const std::string& data_dir) {
+    const std::string& data_dir,
+    const int tserver_shm_fd) {
   PgProcessConf conf;
   if (!bind_addresses.empty()) {
     auto pg_host_port = VERIFY_RESULT(HostPort::FromString(
@@ -62,6 +63,7 @@ Result<PgProcessConf> PgProcessConf::CreateValidateAndRunInitDb(
     conf.pg_port = pg_host_port.port();
   }
   conf.data_dir = data_dir;
+  conf.tserver_shm_fd = tserver_shm_fd;
   PgWrapper pg_wrapper(conf);
   RETURN_NOT_OK(pg_wrapper.PreflightCheck());
   RETURN_NOT_OK(pg_wrapper.InitDbLocalOnlyIfNeeded());
@@ -115,6 +117,7 @@ Status PgWrapper::Start() {
   pg_proc_->ShareParentStderr();
   pg_proc_->ShareParentStdout();
   pg_proc_->SetParentDeathSignal(SIGINT);
+  pg_proc_->InheritNonstandardFd(conf_.tserver_shm_fd);
   SetCommonEnv(&pg_proc_.get(), /* yb_enabled */ true);
   RETURN_NOT_OK(pg_proc_->Start());
   LOG(INFO) << "PostgreSQL server running as pid " << pg_proc_->pid();
@@ -234,6 +237,7 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
   if (yb_enabled) {
     proc->SetEnv("YB_ENABLED_IN_POSTGRES", "1");
     proc->SetEnv("FLAGS_pggate_master_addresses", conf_.master_addresses);
+    proc->SetEnv("FLAGS_pggate_tserver_shm_fd", std::to_string(conf_.tserver_shm_fd));
 
     proc->SetEnv("YB_PG_TRANSACTIONS_ENABLED", FLAGS_pg_transactions_enabled ? "1" : "0");
 
@@ -252,9 +256,10 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
     google::GetAllFlags(&flag_infos);
     for (const auto& flag_info : flag_infos) {
       string env_var_name = "FLAGS_" + flag_info.name;
-      // We already set FLAGS_pggate_master_addresses explicitly above, based on
-      // conf_.master_addresses and not based on FLAGS_pggate_masster_addresses, so skip it here.
-      if (flag_info.name != "pggate_master_addresses" && !flag_info.is_default) {
+      // Skip the flags that we set explicitly using conf_ above.
+      if (flag_info.name != "pggate_master_addresses"
+          && flag_info.name != "pggate_tserver_shm_fd"
+          && !flag_info.is_default) {
         proc->SetEnv(env_var_name, flag_info.current_value);
       }
     }

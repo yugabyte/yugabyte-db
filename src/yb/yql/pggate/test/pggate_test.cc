@@ -18,6 +18,7 @@
 #include <gflags/gflags.h>
 
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pggate_flags.h"
 
 DECLARE_string(pggate_master_addresses);
 DECLARE_string(test_leave_files);
@@ -98,6 +99,9 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   int count = 0;
   YBCTestGetTypeTable(&type_table, &count);
   YBCInitPgGate(type_table, count);
+
+  // Don't try to connect to tserver shared memory in pggate tests.
+  FLAGS_pggate_ignore_tserver_shm = true;
 
   // Setup session.
   CHECK_YBC_STATUS(YBCPgCreateSession(nullptr, "", &pg_session_));

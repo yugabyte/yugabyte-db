@@ -17,7 +17,9 @@
 
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_if_cxx_decl.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 #include "yb/client/batcher.h"
 #include "yb/client/error.h"
@@ -28,6 +30,8 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_protocol_util.h"
+
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/string_util.h"
 #include "yb/util/random_util.h"
@@ -55,6 +59,8 @@ using client::YBTableType;
 using yb::master::IsInitDbDoneRequestPB;
 using yb::master::IsInitDbDoneResponsePB;
 using yb::master::MasterServiceProxy;
+
+using yb::tserver::TServerSharedMemory;
 
 #if defined(__APPLE__) && !defined(NDEBUG)
 // We are experiencing more slowness in tests on macOS in debug mode.
@@ -85,6 +91,20 @@ static constexpr const size_t kPgSequenceLastValueColIdx = 2;
 static constexpr const char* const kPgSequenceIsCalledColName = "is_called";
 static constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 
+namespace {
+
+std::unique_ptr<TServerSharedMemory> InitTServerSharedMemory() {
+  // Do not use shared memory in initdb or if explicity set to be ignored.
+  if (YBCIsInitDbModeEnvVarSet() || FLAGS_pggate_ignore_tserver_shm) {
+    return nullptr;
+  }
+  return std::make_unique<TServerSharedMemory>(
+      FLAGS_pggate_tserver_shm_fd,
+      SharedMemorySegment::AccessMode::kReadOnly);
+}
+
+}  // namespace
+
 //--------------------------------------------------------------------------------------------------
 // Class PgSession
 //--------------------------------------------------------------------------------------------------
@@ -97,7 +117,8 @@ PgSession::PgSession(
     : client_(client),
       session_(client_->NewSession()),
       pg_txn_manager_(std::move(pg_txn_manager)),
-      clock_(std::move(clock)) {
+      clock_(std::move(clock)),
+      tserver_shared_memory_(InitTServerSharedMemory()) {
   session_->SetTimeout(MonoDelta::FromMilliseconds(FLAGS_pg_yb_session_timeout_ms));
   session_->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
 }
@@ -599,6 +620,14 @@ Status PgSession::IsInitDbDone(bool* initdb_done) {
   // table (pg_proc) to make initdb idempotent on upgrades.
   *initdb_done = resp.done() || resp.pg_proc_exists();
   return Status::OK();
+}
+
+Result<uint64_t> PgSession::GetSharedCatalogVersion() {
+  if (tserver_shared_memory_) {
+    return tserver_shared_memory_->GetYSQLCatalogVersion();
+  } else {
+    return STATUS(NotSupported, "Tablet server shared memory has not been opened");
+  }
 }
 
 }  // namespace pggate

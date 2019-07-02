@@ -36,7 +36,8 @@ struct PgProcessConf {
 
   static Result<PgProcessConf> CreateValidateAndRunInitDb(
       const std::string& bind_addresses,
-      const std::string& data_dir);
+      const std::string& data_dir,
+      const int tserver_shm_fd);
 
   std::string ToString();
 
@@ -44,6 +45,9 @@ struct PgProcessConf {
   uint16_t pg_port = kDefaultPort;
   std::string listen_addresses = "0.0.0.0";
   std::string master_addresses;
+
+  // File descriptor of the local tserver's shared memory.
+  int tserver_shm_fd = -1;
 };
 
 // Invokes a PostgreSQL child process once. Also allows invoking initdb. Not thread-safe.

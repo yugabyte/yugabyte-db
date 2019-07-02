@@ -3818,6 +3818,29 @@ static bool check_retry_allowed(const char *query_string)
   }
 }
 
+static void YBCheckSharedCatalogCacheVersion() {
+	/*
+	 * We cannot refresh the cache if we are already inside a transaction, so don't
+	 * bother checking shared memory.
+	 */
+	if (xact_started)
+		return;
+
+	/*
+	 * Don't check shared memory if we are in initdb. E.g. during initial system
+	 * catalog snapshot creation, tablet servers may not be running.
+	 */
+	if (YBCIsInitDbModeEnvVarSet())
+		return;
+
+	uint64_t shared_catalog_version;
+	HandleYBStatus(YBCGetSharedCatalogVersion(ybc_pg_session, &shared_catalog_version));
+
+	if (yb_catalog_cache_version < shared_catalog_version) {
+		YBRefreshCache();
+	}
+}
+
 /* ----------------------------------------------------------------
  * PostgresMain
  *	   postgres main loop -- all backends, interactive or otherwise start here
@@ -4362,7 +4385,11 @@ PostgresMain(int argc, char *argv[],
 		 */
 		if (ignore_till_sync && firstchar != EOF)
 			continue;
-		
+
+		if (IsYugaByteEnabled()) {
+			YBCheckSharedCatalogCacheVersion();
+		}
+
 		switch (firstchar)
 		{
 			case 'Q':			/* simple query */
