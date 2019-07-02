@@ -45,7 +45,7 @@ try:
         if not os.path.exists(args.destination):
             raise YBOpsRuntimeError("Destination {} not a directory.".format(args.destination))
         shutil.copy(release_file, args.destination)
-
 except (CalledProcessError, OSError, RuntimeError, TypeError, NameError) as e:
     log_message(logging.ERROR, e)
     log_message(logging.ERROR, output)
+    raise e
