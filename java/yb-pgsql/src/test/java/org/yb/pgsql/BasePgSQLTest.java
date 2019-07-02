@@ -25,6 +25,7 @@ import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.Partition;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.BaseMiniClusterTest;
+import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.*;
 
@@ -886,6 +887,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   public int getTestMethodTimeoutSec() {
     // initdb takes a really long time on macOS in debug mode.
     return 1200;
+  }
+
+  void waitForTServerHeartbeat() throws InterruptedException {
+    // Wait an extra heartbeat interval to avoid race conditions due to deviations
+    // in the real heartbeat frequency (due to latency, scheduling, etc.).
+    Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
   }
 
   // Time execution time of a statement.

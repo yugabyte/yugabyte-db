@@ -33,6 +33,13 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb {
+
+namespace tserver {
+
+class TServerSharedMemory;
+
+}  // namespace tserver
+
 namespace pggate {
 
 YB_STRONGLY_TYPED_BOOL(OpBuffered);
@@ -183,6 +190,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   CHECKED_STATUS IsInitDbDone(bool* initdb_done);
 
+  // Returns the local tserver's catalog version stored in shared memory, or an error if
+  // the shared memory has not been initialized (e.g. in initdb).
+  Result<uint64_t> GetSharedCatalogVersion();
+
   PgTxnManager* pg_txn_manager() { return pg_txn_manager_.get(); }
 
  private:
@@ -230,6 +241,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   bool has_txn_ops_ = false;
   bool has_non_txn_ops_ = false;
+
+  // Local tablet-server shared memory segment handle. This has a value of nullptr
+  // if the shared memory has not been initialized (e.g. during initdb).
+  std::unique_ptr<tserver::TServerSharedMemory> tserver_shared_memory_;
 };
 
 }  // namespace pggate

@@ -13,21 +13,29 @@
 
 package org.yb.pgsql;
 
+import org.hamcrest.CoreMatchers;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.minicluster.MiniYBCluster;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
-import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunnerNonTsanOnly.class)
 public class TestPgCacheConsistency extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgCacheConsistency.class);
 
@@ -87,7 +95,7 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
       // Check that we cannot still insert a float (but that bool will work).
       runInvalidQuery(statement2, "INSERT INTO cache_test2(a) VALUES (1.0)",
-                      "type boolean but expression is of type numeric");
+          "type boolean but expression is of type numeric");
       statement2.execute("INSERT INTO cache_test2(a) VALUES (true)");
       expectedRows.add(new Row(true));
       statement1.execute("INSERT INTO cache_test2(a) VALUES (false)");
@@ -104,18 +112,26 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       expectedRows.add(new Row(true, null));
       expectedRows.add(new Row(false, null));
 
-      // First query should fail because we cannot yet retry parsing errors within
-      // parse-bind-execute blocks (JDBC default execution). But it should refresh cache so
-      // second attempt should succeed.
-      runInvalidQuery(statement2,"INSERT INTO cache_test2(a,b) VALUES (true, 11)",
-                      "Catalog Version Mismatch");
-      statement2.execute("INSERT INTO cache_test2(a,b) VALUES (true, 11)");
-      expectedRows.add(new Row(true, 11));
-      statement1.execute("INSERT INTO cache_test2(a,b) VALUES (false, 12)");
+      // This may or may not fail, depending on whether the catalog version has been
+      // propagated to the associated tablet server. If so, we expect a refresh prior
+      // to execution, otherwise a failure will occur during execution.
+      try {
+        statement2.execute("INSERT INTO cache_test2(a,b) VALUES (true, 11)");
+        expectedRows.add(new Row(true, 11));
+      } catch (PSQLException psqle) {
+        // Any failure should be due to a catalog version mismatch.
+        assertThat(
+            psqle.getMessage(),
+            CoreMatchers.containsString("Catalog Version Mismatch")
+        );
+      }
+
+      // Second attempt should always succeed.
+      statement2.execute("INSERT INTO cache_test2(a,b) VALUES (false, 12)");
       expectedRows.add(new Row(false, 12));
 
       // Check values.
-      try (ResultSet rs = statement2.executeQuery("SELECT * FROM cache_test2")) {
+      try (ResultSet rs = statement1.executeQuery("SELECT * FROM cache_test2")) {
         assertEquals(expectedRows, getRowSet(rs));
       }
       expectedRows.clear();
@@ -133,7 +149,249 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
       // Create a table with connection 2 (should fail)
       runInvalidQuery(statement2, "CREATE TABLE b(id int primary key)",
-                      "Catalog Version Mismatch");
+          "Catalog Version Mismatch");
+    }
+  }
+
+  @Test
+  public void testVersionMismatchWithoutRetry() throws Exception {
+    try (Statement statement1 = createConnection(0).createStatement();
+         Statement statement2 = createConnection(1).createStatement()) {
+      statement1.execute("CREATE TABLE test_table(id int, PRIMARY KEY (id))");
+      statement1.execute("INSERT INTO test_table(id) VALUES (1), (2), (3)");
+
+      waitForTServerHeartbeat();
+
+      // Select refreshes cache and discovers new table.
+      assertQuery(
+          statement2,
+          "SELECT * FROM test_table",
+          new Row(1),
+          new Row(2),
+          new Row(3)
+      );
+
+      statement2.execute("ALTER TABLE test_table ADD COLUMN c1 int");
+
+      waitForTServerHeartbeat();
+
+      // Select refreshes cache and discovers new column.
+      assertQuery(
+          statement1,
+          "SELECT * FROM test_table",
+          new Row(1, null),
+          new Row(2, null),
+          new Row(3, null)
+      );
+
+      statement1.execute("ALTER TABLE test_table ADD COLUMN c2 int");
+
+      waitForTServerHeartbeat();
+
+      // Insert refreshes cache and discovers new column.
+      statement2.execute("INSERT INTO test_table(id, c1, c2) VALUES (4, 5, 6)");
+
+      assertQuery(
+          statement1,
+          "SELECT * FROM test_table WHERE id = 4",
+          new Row(4, 5, 6)
+      );
+
+      statement1.execute("DROP TABLE test_table");
+
+      waitForTServerHeartbeat();
+
+      // Create table refreshes cache and succeeds.
+      statement2.execute("CREATE TABLE test_table(id int, PRIMARY KEY (id))");
+    }
+  }
+
+  @Test
+  public void testVersionMismatchWithFailedRetry() throws Exception {
+    try (Statement statement1 = createConnection(0).createStatement();
+         Statement statement2 = createConnection(1).createStatement()) {
+      // Create table from connection 1.
+      statement1.execute("CREATE TABLE test_table(id int)");
+
+      waitForTServerHeartbeat();
+
+      // Force a cache refresh on connection 2.
+      statement2.execute("SELECT * FROM test_table");
+
+      final int attempts = 5;
+      List<Throwable> errors = IntStream.range(0, attempts)
+          .boxed()
+          .map((i) -> captureThrow(() -> {
+            // Add some artificial delay to space out attempts.
+            Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS / attempts);
+
+            // Add new row from connection 1.
+            statement1.execute("ALTER TABLE test_table ADD COLUMN x" + i + " int");
+
+            // Immediately try selecting row from connection 2.
+            statement2.execute("SELECT x" + i + " FROM test_table");
+          }))
+          .filter(Optional::isPresent)
+          .map(Optional::get)
+          .collect(Collectors.toList());
+
+      // At least half the select statements should fail.
+      assertGreaterThanOrEqualTo(
+          String.format(
+              "Expected at least %d failures out of %d attempts, got %d",
+              attempts / 2,
+              attempts,
+              errors.size()
+          ),
+          errors.size(),
+          attempts / 2
+      );
+
+      // All errors should be catalog version mismatches.
+      for (Throwable error : errors) {
+        assertThat(
+            error.getMessage(),
+            CoreMatchers.containsString("Catalog Version Mismatch")
+        );
+      }
+    }
+  }
+
+  @Ignore // TODO enable after #1502
+  public void testUndetectedSelectVersionMismatch() throws Exception {
+    try (Statement statement1 = createConnection(0).createStatement();
+         Statement statement2 = createConnection(1).createStatement()) {
+      // Create table from connection 1.
+      statement1.execute("CREATE TABLE test_table(id int, PRIMARY KEY (id))");
+
+      waitForTServerHeartbeat();
+
+      // Force a cache refresh on connection 2.
+      assertQuery(statement2, "SELECT * FROM test_table");
+
+      // Add a column and insert a row from connection 1.
+      statement1.execute("ALTER TABLE test_table ADD COLUMN b int");
+      statement1.execute("INSERT INTO test_table(id, b) VALUES (1, 2)");
+
+      // Select statement immediately observes the new column, without waiting for a heartbeat.
+      assertQuery(statement2, "SELECT * FROM test_table", new Row(1, 2));
+    }
+  }
+
+  @Test
+  public void testConsistentNonRetryableTransactions() throws Exception {
+    try (Statement statement1 = createConnection(0).createStatement();
+         Statement statement2 = createConnection(1).createStatement()) {
+      // Create table from connection 1.
+      statement1.execute("CREATE TABLE test_table(id int, PRIMARY KEY (id))");
+
+      waitForTServerHeartbeat();
+
+      statement2.execute("BEGIN");
+      // Perform a DDL operation, which cannot (as of 07/01/2019) be rolled back.
+      statement2.execute("CREATE TABLE other_table(id int)");
+
+      // Modify table from connection 2.
+      statement1.execute("ALTER TABLE test_table ADD COLUMN c int");
+
+      waitForTServerHeartbeat();
+
+      // Select does not fail, so rollback is not needed.
+      statement2.execute("SELECT * FROM test_table");
+      statement2.execute("COMMIT");
+
+      // Check that the table was created.
+      statement2.execute("SELECT * FROM other_table");
+    }
+  }
+
+  @Test
+  public void testConsistentPreparedStatements() throws Exception {
+    try (Statement statement1 = createConnection(0).createStatement();
+         Statement statement2 = createConnection(1).createStatement()) {
+      // Create table from connection 1.
+      statement1.execute("CREATE TABLE test_table(id int, PRIMARY KEY (id))");
+
+      waitForTServerHeartbeat();
+
+      // Force a cache refresh on connection 2.
+      statement2.execute("SELECT * FROM test_table");
+
+      // Alter table from connection 1.
+      statement1.execute("ALTER TABLE test_table ADD COLUMN b int");
+      statement1.execute("INSERT INTO test_table(id, b) VALUES (0, 0)");
+
+      waitForTServerHeartbeat();
+
+      // Preparing from connection 2 includes column added from connection 1.
+      statement2.execute("PREPARE plan (int) AS SELECT * FROM test_table where id=$1");
+      assertQuery(statement2, "EXECUTE plan(0)", new Row(0, 0));
+
+      // Alter table from connection 1.
+      statement1.execute("ALTER TABLE test_table ADD COLUMN c int");
+      statement1.execute("INSERT INTO test_table(id, b, c) VALUES (1, 2, 3), (2, 3, 4)");
+
+      waitForTServerHeartbeat();
+
+      // TODO enable after #1502
+      if (false) {
+        // Cache reload from connection 2 reveals prepared statement is no longer valid.
+        runInvalidQuery(statement2, "EXECUTE plan(1)", "cached plan");
+      }
+
+      // Re-create plan.
+      statement2.execute("PREPARE plan_new (int) AS SELECT * FROM test_table where id=$1");
+
+      // New execution is successful.
+      assertQuery(statement2, "EXECUTE plan_new(1)", new Row(1, 2, 3));
+    }
+  }
+
+  @Test
+  public void testConsistentExplain() throws Exception {
+    try (Statement statement1 = createConnection(0).createStatement();
+         Statement statement2 = createConnection(1).createStatement()) {
+      // Create table with unique column from connection 1.
+      statement1.execute("CREATE TABLE test_table(id int, u int)");
+      statement1.execute("ALTER TABLE test_table ADD CONSTRAINT unq UNIQUE (u)");
+
+      waitForTServerHeartbeat();
+
+      // Force a cache refresh on connection 2.
+      statement2.execute("SELECT * FROM test_table");
+
+      assertQuery(
+          statement2,
+          "EXPLAIN (COSTS OFF) SELECT u FROM test_table WHERE u = 1",
+          new Row("Index Only Scan using unq on test_table"),
+          new Row("  Index Cond: (u = 1)")
+      );
+
+      // Remove unique constraint from connection 1.
+      statement1.execute("ALTER TABLE test_table DROP CONSTRAINT unq");
+
+      waitForTServerHeartbeat();
+
+      // Cache is refreshed, so unique constraint is not used.
+      assertQuery(
+          statement2,
+          "EXPLAIN (COSTS OFF) SELECT u FROM test_table WHERE u = 1",
+          new Row("Foreign Scan on test_table"),
+          new Row("  Filter: (u = 1)")
+      );
+    }
+  }
+
+  private interface ThrowingRunnable {
+    void run() throws Throwable;
+  }
+
+  private static Optional<Throwable> captureThrow(ThrowingRunnable action) {
+    try {
+      action.run();
+      return Optional.empty();
+    } catch (Throwable t) {
+      return Optional.of(t);
     }
   }
 }

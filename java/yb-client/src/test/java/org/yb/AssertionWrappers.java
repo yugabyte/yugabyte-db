@@ -720,8 +720,107 @@ public class AssertionWrappers {
     wrapAssertion(() -> Assert.assertNotSame(unexpected, actual));
   }
 
-  public static void assertLess(String message, int x, int y) {
-    assertTrue("Expected that first value (" + x + ") is less than the second value (" + y + "): " +
-        message, x < y);
+  /**
+   * Asserts that the first parameter is greater than the second parameter. If not,
+   * an {@link AssertionError} is thrown.
+   *
+   * @param a the object to compare
+   * @param b the object being compared against
+   */
+  public static <T> void assertGreaterThan(Comparable<T> a, T b) {
+    assertGreaterThan(
+        String.format("Expected %s to be greater than %s", a, b),
+        a, b
+    );
+  }
+
+  /**
+   * Asserts that the first parameter is greater than or equal to the second parameter.
+   * If not, an {@link AssertionError} is thrown.
+   *
+   * @param a the object to compare
+   * @param b the object being compared against
+   */
+  public static <T> void assertGreaterThanOrEqualTo(Comparable<T> a, T b) {
+    assertGreaterThanOrEqualTo(
+        String.format("Expected %s to be greater than or equal to %s", a, b),
+        a, b
+    );
+  }
+
+  /**
+   * Asserts that the first parameter is less than the second parameter. If not,
+   * an {@link AssertionError} is thrown.
+   *
+   * @param a the object to compare
+   * @param b the object being compared against
+   */
+  public static <T> void assertLessThan(Comparable<T> a, T b) {
+    assertLessThan(
+        String.format("Expected %s to be less than %s", a, b),
+        a, b
+    );
+  }
+
+  /**
+   * Asserts that the first parameter is less than or equal to the second parameter.
+   * If not, an {@link AssertionError} is thrown.
+   *
+   * @param a the object to compare
+   * @param b the object being compared against
+   */
+  public static <T> void assertLessThanOrEqualTo(Comparable<T> a, T b) {
+    assertLessThanOrEqualTo(
+        String.format("Expected %s to be less than or equal to %s", a, b),
+        a, b
+    );
+  }
+
+  /**
+   * Asserts that the first parameter is greater than the second parameter. If not,
+   * an {@link AssertionError} with the passed message is thrown.
+   *
+   * @param message the message to use in the {@link AssertionError}
+   * @param a the object to compare
+   * @param b the object being compared against
+   */
+  public static <T> void assertGreaterThan(String message, Comparable<T> a, T b) {
+    wrapAssertion(() -> Assert.assertTrue(message, a.compareTo(b) > 0));
+  }
+
+  /**
+   * Asserts that the first parameter is greater than or equal to the second parameter.
+   * If not, an {@link AssertionError} with the passed message is thrown.
+   *
+   * @param message the message to use in the {@link AssertionError}
+   * @param a the object to compare
+   * @param b the object being compared against
+   */
+  public static <T> void assertGreaterThanOrEqualTo(String message, Comparable<T> a, T b) {
+    wrapAssertion(() -> Assert.assertTrue(message, a.compareTo(b) >= 0));
+  }
+
+  /**
+   * Asserts that the first parameter is less than the second parameter. If not,
+   * an {@link AssertionError} with the passed message is thrown.
+   *
+   * @param message the message to use in the {@link AssertionError}
+   * @param a the object to compare
+   * @param b the object being compared against
+   */
+  public static <T> void assertLessThan(String message, Comparable<T> a, T b) {
+    wrapAssertion(() -> Assert.assertTrue(message, a.compareTo(b) < 0));
+  }
+
+  /**
+   * Asserts that the first parameter is less than or equal to the second parameter.
+   * If not, an {@link AssertionError} with the passed message is thrown.
+   *
+   * @param message the message to use in the {@link AssertionError}
+   * @param a the object to compare
+   * @param b the object being compared against
+   */
+  public static <T> void assertLessThanOrEqualTo(String message, Comparable<T> a, T b) {
+    wrapAssertion(() -> Assert.assertTrue(message, a.compareTo(b) <= 0));
   }
 }
