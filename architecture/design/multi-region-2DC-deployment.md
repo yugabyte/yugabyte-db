@@ -2,6 +2,9 @@
 
 This document outlines the 2-datacenter deployments that YugaByte DB is being enhanced to support, as well as the architecture that enables these. This feature is built on top of [Change Data Capture (CDC)](https://github.com/YugaByte/yugabyte-db/blob/master/architecture/design/docdb-change-data-capture.md) support in DocDB, and that design may be of interest.
 
+[![YugaByte DB 2DC deployment](https://img.youtube.com/vi/2quaIAKBATk/0.jpg)](https://youtu.be/2quaIAKBATk)
+
+
 > **Note:** In this design document, the terms "cluster" and "universe" will be used interchangeably. While not a requirement in the final design, we assume here that each YugaByte DB universe is deployed in a single data-center for simplicity purposes.
 
 ## Features
