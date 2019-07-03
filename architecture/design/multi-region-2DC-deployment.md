@@ -7,10 +7,9 @@ This document outlines the 2-datacenter deployments that YugaByte DB is being en
   <img src="http://img.youtube.com/vi/2quaIAKBATk/0.jpg" alt="YugaByte DB 2DC deployment" width="240" height="180" border="10" />
 </a>
 
+## Features
 
 > **Note:** In this design document, the terms "cluster" and "universe" will be used interchangeably. While not a requirement in the final design, we assume here that each YugaByte DB universe is deployed in a single data-center for simplicity purposes.
-
-## Features
 
 This feature will support the following:
 
