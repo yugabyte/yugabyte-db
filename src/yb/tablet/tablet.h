@@ -126,38 +126,6 @@ using docdb::LockBatch;
 
 YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 
-class TabletFlushStats : public rocksdb::EventListener {
- public:
-
-  void OnFlushScheduled(rocksdb::DB* db) override {
-    oldest_write_in_memstore_.store(std::numeric_limits<uint64_t>::max(),
-                                    std::memory_order_release);
-    num_flushes_++;
-  }
-
-  void AboutToWriteToDb(HybridTime hybrid_time) {
-    // Atomically do oldest_write_in_memstore_ = min(oldest_write_in_memstore_, hybrid_time)
-    uint64_t curr_val = hybrid_time.ToUint64();
-    uint64_t prev_val = oldest_write_in_memstore_.load(std::memory_order_acquire);
-    while (curr_val < prev_val &&
-           !oldest_write_in_memstore_.compare_exchange_weak(prev_val, curr_val)) {}
-  }
-
-  // Return the hybrid time of the oldest write in the memstore, or HybridTime::kMax if empty
-  HybridTime oldest_write_in_memstore() const {
-    return HybridTime(oldest_write_in_memstore_.load(std::memory_order_acquire));
-  }
-
-  // Number of flushes scheduled. Updated atomically before scheduling.
-  size_t num_flushes() {
-    return num_flushes_.load(std::memory_order_acquire);
-  }
-
- private:
-  std::atomic<size_t> num_flushes_{0};
-  std::atomic<uint64_t> oldest_write_in_memstore_{std::numeric_limits<uint64_t>::max()};
-};
-
 YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
 
 enum class FlushFlags {
@@ -436,6 +404,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Returns the maximum persistent hybrid_time across all SSTables in RocksDB.
   Result<HybridTime> MaxPersistentHybridTime() const;
 
+  // Returns oldest mutable memtable write hybrid time in RocksDB or HybridTime::kMax if memtable
+  // is empty.
+  HybridTime OldestMutableMemtableWriteHybridTime() const;
+
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string TEST_LastRocksDBCheckpointDir() { return last_rocksdb_checkpoint_dir_; }
 
@@ -451,9 +423,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // (if it is still lower than the value about to be returned), so that new readers with timestamps
   // earlier than that will be rejected.
   HybridTime UpdateHistoryCutoff(HybridTime proposed_cutoff);
-
-  // The HybridTime of the oldest write that is still not scheduled to be flushed in RocksDB.
-  TabletFlushStats* flush_stats() const { return flush_stats_.get(); }
 
   const scoped_refptr<server::Clock> &clock() const {
     return clock_;
@@ -719,10 +688,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   boost::optional<Schema> unique_index_key_schema_;
 
   std::atomic<int64_t> last_committed_write_index_{0};
-
-  // Remembers he HybridTime of the oldest write that is still not scheduled to
-  // be flushed in RocksDB.
-  std::shared_ptr<TabletFlushStats> flush_stats_;
 
   HybridTimeLeaseProvider ht_lease_provider_;
 

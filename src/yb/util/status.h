@@ -96,6 +96,14 @@
     } \
   } while (0);
 
+// Emit a error if 'to_call' returns a bad status.
+#define ERROR_NOT_OK(to_call, error_prefix) do { \
+    ::yb::Status _s = (to_call); \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      YB_LOG(ERROR) << (error_prefix) << ": " << _s.ToString();  \
+    } \
+  } while (0);
+
 // Log the given status and return immediately.
 #define YB_LOG_AND_RETURN(level, status) do { \
     ::yb::Status _s = (status); \

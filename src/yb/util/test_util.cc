@@ -310,6 +310,19 @@ void AssertLoggedWaitFor(
   LOG(INFO) << description << " - DONE";
 }
 
+Status LoggedWaitFor(
+    std::function<Result<bool>()> condition,
+    MonoDelta timeout,
+    const string& description,
+    MonoDelta initial_delay,
+    double delay_multiplier,
+    MonoDelta max_delay) {
+  LOG(INFO) << description;
+  auto status = WaitFor(condition, timeout, description, initial_delay);
+  LOG(INFO) << description << " - completed: " << yb::ToString(status);
+  return status;
+}
+
 string GetToolPath(const string& tool_name) {
   string exe;
   CHECK_OK(Env::Default()->GetExecutablePath(&exe));

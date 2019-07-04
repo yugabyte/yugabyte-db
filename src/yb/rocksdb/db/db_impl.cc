@@ -2901,10 +2901,10 @@ ColumnFamilyData* DBImpl::PopFirstFromFlushQueue() {
 }
 
 void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd) {
-  for (auto listener : db_options_.listeners) {
-    listener->OnFlushScheduled(this);
-  }
   if (!cfd->pending_flush() && cfd->imm()->IsFlushPending()) {
+    for (auto listener : db_options_.listeners) {
+      listener->OnFlushScheduled(this);
+    }
     if (db_options_.compaction_thread_pool) {
       ++bg_flush_scheduled_;
       cfd->Ref();
@@ -5652,6 +5652,19 @@ UserFrontierPtr DBImpl::GetFlushedFrontier() {
     if (!file.imported) {
       UserFrontier::Update(
           file.largest.user_frontier.get(), UpdateUserValueType::kLargest, &accumulated);
+    }
+  }
+  return accumulated;
+}
+
+UserFrontierPtr DBImpl::GetMutableMemTableSmallestFrontier() {
+  InstrumentedMutexLock l(&mutex_);
+  UserFrontierPtr accumulated;
+  for (auto cfd : *versions_->GetColumnFamilySet()) {
+    const auto* mem = cfd->mem();
+    if (!cfd->IsDropped() && !mem->IsEmpty()) {
+      UserFrontier::Update(
+          mem->GetSmallestFrontierLocked().get(), UpdateUserValueType::kSmallest, &accumulated);
     }
   }
   return accumulated;

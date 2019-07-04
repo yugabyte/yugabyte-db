@@ -83,7 +83,11 @@ class TabletReportPB;
 
 namespace tserver {
 class TabletServer;
-class TSMemoryMonitorListener;
+class TsTabletManagerListener {
+ public:
+  virtual ~TsTabletManagerListener() {}
+  virtual void StartedFlush(const TabletId& tablet_id) {}
+};
 
 using rocksdb::MemoryMonitor;
 
@@ -296,6 +300,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Flush some tablet if the memstore memory limit is exceeded
   void MaybeFlushTablet();
+
+  tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
+
+  std::vector<std::shared_ptr<TsTabletManagerListener>> TEST_listeners;
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);

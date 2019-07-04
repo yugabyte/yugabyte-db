@@ -342,12 +342,19 @@ class MemTable {
   const MemTableOptions* GetMemTableOptions() const { return &moptions_; }
 
   void UpdateFrontiers(const UserFrontiers& value) {
+    std::lock_guard<SpinMutex> l(frontiers_mutex_);
     if (frontiers_) {
       frontiers_->MergeFrontiers(value);
     } else {
       frontiers_ = value.Clone();
     }
   }
+
+  UserFrontierPtr GetSmallestFrontierLocked() const {
+    std::lock_guard<SpinMutex> l(frontiers_mutex_);
+    return frontiers_->Smallest().Clone();
+  }
+
   const UserFrontiers* Frontiers() const { return frontiers_.get(); }
 
   std::string ToString() const;
@@ -405,6 +412,7 @@ class MemTable {
 
   Env* env_;
 
+  mutable SpinMutex frontiers_mutex_;
   std::unique_ptr<UserFrontiers> frontiers_;
 
   // Returns a heuristic flush decision

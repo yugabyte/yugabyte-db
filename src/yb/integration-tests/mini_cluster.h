@@ -68,6 +68,7 @@ class TabletPeer;
 
 namespace tserver {
 class MiniTabletServer;
+class TSTabletManager;
 }
 
 struct MiniClusterOptions {
@@ -174,6 +175,8 @@ class MiniCluster : public MiniClusterBase {
   std::string GetTabletServerFsRoot(int idx);
 
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(int idx);
+
+  tserver::TSTabletManager* GetTabletManager(int idx);
 
   // Wait for the given tablet to have 'expected_count' replicas
   // reported on the master. Returns the locations in '*locations'.

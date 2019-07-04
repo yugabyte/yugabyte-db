@@ -223,6 +223,8 @@ class DBImpl : public DB {
 
   FlushAbility GetFlushAbility() override;
 
+  UserFrontierPtr GetMutableMemTableSmallestFrontier() override;
+
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
   // any column family match the specified name.
@@ -315,7 +317,6 @@ class DBImpl : public DB {
   InternalIterator* NewInternalIterator(
       Arena* arena, ColumnFamilyHandle* column_family = nullptr);
 
-#ifndef NDEBUG
   // Extra methods (for testing) that are not in the public DB interface
   // Implemented in db_impl_debug.cc
 
@@ -381,8 +382,6 @@ class DBImpl : public DB {
   Cache* TEST_table_cache() { return table_cache_.get(); }
 
   WriteController& TEST_write_controler() { return write_controller_; }
-
-#endif  // NDEBUG
 
   // Return maximum background compaction alowed to be scheduled based on
   // compaction status.

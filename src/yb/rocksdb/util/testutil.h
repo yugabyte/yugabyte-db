@@ -750,6 +750,48 @@ class TestUserFrontiers : public rocksdb::UserFrontiersBase<TestUserFrontier> {
   }
 };
 
+// A class which remembers the name of each flushed file.
+class FlushedFileCollector : public EventListener {
+ public:
+  virtual void OnFlushCompleted(DB* db, const FlushJobInfo& info) override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    flushed_file_infos_.push_back(info);
+  }
+
+  std::vector<std::string> GetFlushedFiles() {
+    std::vector<std::string> flushed_files;
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& info : flushed_file_infos_) {
+      flushed_files.push_back(info.file_path);
+    }
+    return flushed_files;
+  }
+
+  std::vector<std::string> GetAndClearFlushedFiles() {
+    std::vector<std::string> flushed_files;
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& info : flushed_file_infos_) {
+      flushed_files.push_back(info.file_path);
+    }
+    flushed_file_infos_.clear();
+    return flushed_files;
+  }
+
+  std::vector<FlushJobInfo> GetFlushedFileInfos() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return flushed_file_infos_;
+  }
+
+  void Clear() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    flushed_file_infos_.clear();
+  }
+
+ private:
+  std::vector<FlushJobInfo> flushed_file_infos_;
+  std::mutex mutex_;
+};
+
 }  // namespace test
 }  // namespace rocksdb
 
