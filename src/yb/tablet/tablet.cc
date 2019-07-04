@@ -399,9 +399,6 @@ Tablet::Tablet(
         transaction_coordinator_context,
         metrics_->expired_transactions.get());
   }
-
-  flush_stats_ = make_shared<TabletFlushStats>();
-  tablet_options_.listeners.emplace_back(flush_stats_);
 }
 
 Tablet::~Tablet() {
@@ -820,7 +817,6 @@ void Tablet::WriteBatch(const rocksdb::UserFrontiers* frontiers,
   rocksdb::WriteOptions write_options;
   InitRocksDBWriteOptions(&write_options);
 
-  flush_stats_->AboutToWriteToDb(hybrid_time);
   auto rocksdb_write_status = dest_db->Write(write_options, write_batch);
   if (!rocksdb_write_status.ok()) {
     LOG_WITH_PREFIX(FATAL) << "Failed to write a batch with " << write_batch->Count()
@@ -1708,6 +1704,22 @@ Result<HybridTime> Tablet::MaxPersistentHybridTime() const {
   }
   return result;
 }
+
+HybridTime Tablet::OldestMutableMemtableWriteHybridTime() const {
+  HybridTime result = HybridTime::kMax;
+  for (auto* db : { regular_db_.get(), intents_db_.get() }) {
+    if (db) {
+      auto mem_frontier = db->GetMutableMemTableSmallestFrontier();
+      if (mem_frontier) {
+        const auto hybrid_time =
+            static_cast<const docdb::ConsensusFrontier&>(*mem_frontier).hybrid_time();
+        result = std::min(result, hybrid_time);
+      }
+    }
+  }
+  return result;
+}
+
 
 Status Tablet::DebugDump(vector<string> *lines) {
   switch (table_type_) {

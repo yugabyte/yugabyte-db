@@ -262,19 +262,27 @@ void TSTabletManager::MaybeFlushTablet() {
   int iteration = 0;
   while (memory_monitor()->Exceeded() ||
          (iteration++ == 0 && FLAGS_pretend_memory_exceeded_enforce_flush)) {
+    YB_LOG_EVERY_N_SECS(INFO, 5) << Format("Memstore global limit of $0 bytes reached, looking for "
+                                           "tablet to flush", memory_monitor()->limit());
     TabletPeerPtr tablet_to_flush = TabletToFlush();
     // TODO(bojanserafimov): If tablet_to_flush flushes now because of other reasons,
     // we will schedule a second flush, which will unnecessarily stall writes for a short time. This
     // will not happen often, but should be fixed.
     if (tablet_to_flush) {
+      LOG(INFO) << Format(
+          "Flushing tablet $0 with oldest memstore write at $1", tablet_to_flush->tablet_id(),
+          tablet_to_flush->tablet()->OldestMutableMemtableWriteHybridTime());
       WARN_NOT_OK(tablet_to_flush->tablet()->Flush(tablet::FlushMode::kAsync),
           Substitute("Flush failed on $0", tablet_to_flush->tablet_id()));
+      for (auto listener : TEST_listeners) {
+        listener->StartedFlush(tablet_to_flush->tablet_id());
+      }
     }
   }
 }
 
-// Return the tablet with the oldest write in memstore, or nullptr if all
-// tablet memstores are empty or about to flush.
+// Return the tablet with the oldest write in memstore, or nullptr if all tablet memstores are
+// empty or about to flush.
 TabletPeerPtr TSTabletManager::TabletToFlush() {
   boost::shared_lock<RWMutex> lock(lock_); // For using the tablet map
   HybridTime oldest_write_in_memstores = HybridTime::kMax;
@@ -282,9 +290,9 @@ TabletPeerPtr TSTabletManager::TabletToFlush() {
   for (const TabletMap::value_type& entry : tablet_map_) {
     const auto tablet = entry.second->shared_tablet();
     if (tablet) {
-      const HybridTime oldest_write_in_memstore = tablet->flush_stats()->oldest_write_in_memstore();
-      if (oldest_write_in_memstore < oldest_write_in_memstores) {
-        oldest_write_in_memstores = oldest_write_in_memstore;
+      const auto ht = tablet->OldestMutableMemtableWriteHybridTime();
+      if (ht < oldest_write_in_memstores) {
+        oldest_write_in_memstores = ht;
         tablet_to_flush = entry.second;
       }
     }
@@ -403,6 +411,7 @@ Status TSTabletManager::Init() {
 
   tablet_options_.env = server_->GetEnv();
   tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
+  tablet_options_.listeners = server_->options().listeners;
 
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
