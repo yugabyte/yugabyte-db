@@ -1711,7 +1711,7 @@ class Benchmark {
     }
   }
 
-// Current the following isn't equivalent to OS_LINUX.
+// Current the following isn't equivalent to __linux__.
 #if defined(__linux)
   static Slice TrimSpace(Slice s) {
     unsigned int start = 0;

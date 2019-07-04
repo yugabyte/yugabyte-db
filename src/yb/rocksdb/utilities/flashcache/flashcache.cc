@@ -22,7 +22,7 @@
 
 #include "yb/rocksdb/utilities/flashcache.h"
 
-#ifdef OS_LINUX
+#ifdef __linux__
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -34,7 +34,7 @@
 
 namespace rocksdb {
 
-#if !defined(ROCKSDB_LITE) && defined(OS_LINUX)
+#if !defined(ROCKSDB_LITE) && defined(__linux__)
 // Most of the code that handles flashcache is copied from websql's branch of
 // mysql-5.6
 class FlashcacheAwareEnv : public EnvWrapper {
@@ -138,7 +138,7 @@ int FlashcacheWhitelistCurrentThread(Env* flashcache_aware_env) {
   return FlashcacheAwareEnv::WhitelistCurrentThread(fd);
 }
 
-#else   // !defined(ROCKSDB_LITE) && defined(OS_LINUX)
+#else   // !defined(ROCKSDB_LITE) && defined(__linux__)
 std::unique_ptr<Env> NewFlashcacheAwareEnv(Env* base,
                                            const int cachedev_fd) {
   return nullptr;
@@ -146,6 +146,6 @@ std::unique_ptr<Env> NewFlashcacheAwareEnv(Env* base,
 int FlashcacheBlacklistCurrentThread(Env* flashcache_aware_env) { return -1; }
 int FlashcacheWhitelistCurrentThread(Env* flashcache_aware_env) { return -1; }
 
-#endif  // !defined(ROCKSDB_LITE) && defined(OS_LINUX)
+#endif  // !defined(ROCKSDB_LITE) && defined(__linux__)
 
 }  // namespace rocksdb
