@@ -212,6 +212,14 @@ void AssertLoggedWaitFor(
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
+CHECKED_STATUS LoggedWaitFor(
+    std::function<Result<bool>()> condition,
+    MonoDelta timeout,
+    const string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
+
 // Return the path of a yb-tool.
 std::string GetToolPath(const std::string& tool_name);
 

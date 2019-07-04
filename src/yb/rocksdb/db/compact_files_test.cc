@@ -30,6 +30,7 @@
 #include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
@@ -42,32 +43,6 @@ class CompactFilesTest : public testing::Test {
 
   std::string db_name_;
   Env* env_;
-};
-
-// A class which remembers the name of each flushed file.
-class FlushedFileCollector : public EventListener {
- public:
-  FlushedFileCollector() {}
-  ~FlushedFileCollector() {}
-
-  virtual void OnFlushCompleted(
-      DB* db, const FlushJobInfo& info) override {
-    std::lock_guard<std::mutex> lock(mutex_);
-    flushed_files_.push_back(info.file_path);
-  }
-
-  std::vector<std::string> GetFlushedFiles() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    std::vector<std::string> result;
-    for (auto fname : flushed_files_) {
-      result.push_back(fname);
-    }
-    return result;
-  }
-
- private:
-  std::vector<std::string> flushed_files_;
-  std::mutex mutex_;
 };
 
 TEST_F(CompactFilesTest, ObsoleteFiles) {
@@ -85,7 +60,7 @@ TEST_F(CompactFilesTest, ObsoleteFiles) {
   options.compression = kNoCompression;
 
   // Add listener
-  FlushedFileCollector* collector = new FlushedFileCollector();
+  auto* collector = new test::FlushedFileCollector();
   options.listeners.emplace_back(collector);
 
   DB* db = nullptr;
@@ -119,7 +94,7 @@ TEST_F(CompactFilesTest, CapturingPendingFiles) {
   options.delete_obsolete_files_period_micros = 0;
 
   // Add listener.
-  FlushedFileCollector* collector = new FlushedFileCollector();
+  auto* collector = new test::FlushedFileCollector();
   options.listeners.emplace_back(collector);
 
   DB* db = nullptr;

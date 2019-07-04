@@ -401,8 +401,12 @@ string MiniCluster::GetTabletServerFsRoot(int idx) {
   return JoinPathSegments(fs_root_, Substitute("ts-$0-root", idx));
 }
 
+tserver::TSTabletManager* MiniCluster::GetTabletManager(int idx) {
+  return mini_tablet_server(idx)->server()->tablet_manager();
+}
+
 std::vector<std::shared_ptr<tablet::TabletPeer>> MiniCluster::GetTabletPeers(int idx) {
-  return mini_tablet_server(idx)->server()->tablet_manager()->GetTabletPeers();
+  return GetTabletManager(idx)->GetTabletPeers();
 }
 
 Status MiniCluster::WaitForReplicaCount(const string& tablet_id,
@@ -538,9 +542,7 @@ std::vector<server::SkewedClockDeltaChanger> SkewClocks(
 
 void StepDownAllTablets(MiniCluster* cluster) {
   for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
-    std::vector<tablet::TabletPeerPtr> peers;
-    cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
-    for (const auto& peer : peers) {
+    for (const auto& peer : cluster->GetTabletPeers(i)) {
       consensus::LeaderStepDownRequestPB req;
       req.set_tablet_id(peer->tablet_id());
       consensus::LeaderStepDownResponsePB resp;
