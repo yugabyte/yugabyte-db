@@ -26,7 +26,7 @@
 #include "yb/rocksdb/util/io_posix.h"
 #include <errno.h>
 #include <fcntl.h>
-#if defined(OS_LINUX)
+#if defined(__linux__)
 #include <linux/fs.h>
 #endif
 #include <stdio.h>
@@ -36,7 +36,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#ifdef OS_LINUX
+#ifdef __linux__
 #include <sys/statfs.h>
 #include <sys/syscall.h>
 #endif
@@ -53,7 +53,7 @@ namespace rocksdb {
 // A wrapper for fadvise, if the platform doesn't support fadvise,
 // it will simply return Status::NotSupport.
 int Fadvise(int fd, off_t offset, size_t len, int advice) {
-#ifdef OS_LINUX
+#ifdef __linux__
   return posix_fadvise(fd, offset, len, advice);
 #else
   return 0;  // simply do nothing.
@@ -106,7 +106,7 @@ Status PosixSequentialFile::Skip(uint64_t n) {
 }
 
 Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef OS_LINUX
+#ifndef __linux__
   return Status::OK();
 #else
   // free OS pages
@@ -118,7 +118,7 @@ Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
 #endif
 }
 
-#if defined(OS_LINUX)
+#if defined(__linux__)
 namespace {
 static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
   if (max_size < kMaxVarint64Length * 3) {
@@ -194,7 +194,7 @@ Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
   return s;
 }
 
-#ifdef OS_LINUX
+#ifdef __linux__
 size_t PosixRandomAccessFile::GetUniqueId(char* id, size_t max_size) const {
   return GetUniqueIdFromFile(fd_, id, max_size);
 }
@@ -224,7 +224,7 @@ void PosixRandomAccessFile::Hint(AccessPattern pattern) {
 }
 
 Status PosixRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef OS_LINUX
+#ifndef __linux__
   return Status::OK();
 #else
   // free OS pages
@@ -274,7 +274,7 @@ Status PosixMmapReadableFile::Read(uint64_t offset, size_t n, Slice* result,
 }
 
 Status PosixMmapReadableFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef OS_LINUX
+#ifndef __linux__
   return Status::OK();
 #else
   // free OS pages
@@ -479,7 +479,7 @@ uint64_t PosixMmapFile::GetFileSize() {
 }
 
 Status PosixMmapFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef OS_LINUX
+#ifndef __linux__
   return Status::OK();
 #else
   // free OS pages
@@ -610,7 +610,7 @@ bool PosixWritableFile::IsSyncThreadSafe() const { return true; }
 uint64_t PosixWritableFile::GetFileSize() { return filesize_; }
 
 Status PosixWritableFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef OS_LINUX
+#ifndef __linux__
   return Status::OK();
 #else
   // free OS pages

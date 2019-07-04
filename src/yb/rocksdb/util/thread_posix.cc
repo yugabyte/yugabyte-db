@@ -24,7 +24,7 @@
 #include "yb/rocksdb/util/thread_posix.h"
 #include <unistd.h>
 #include <atomic>
-#ifdef OS_LINUX
+#ifdef __linux__
 #include <sys/syscall.h>
 #endif
 
@@ -59,7 +59,7 @@ void ThreadPool::JoinAllThreads() {
 }
 
 void ThreadPool::LowerIOPriority() {
-#ifdef OS_LINUX
+#ifdef __linux__
   PthreadCall("lock", pthread_mutex_lock(&mu_));
   low_io_priority_ = true;
   PthreadCall("unlock", pthread_mutex_unlock(&mu_));
@@ -101,7 +101,7 @@ void ThreadPool::BGThread(size_t thread_id) {
     bool decrease_io_priority = (low_io_priority != low_io_priority_);
     PthreadCall("unlock", pthread_mutex_unlock(&mu_));
 
-#ifdef OS_LINUX
+#ifdef __linux__
     if (decrease_io_priority) {
 #define IOPRIO_CLASS_SHIFT (13)
 #define IOPRIO_PRIO_VALUE(class, data) (((class) << IOPRIO_CLASS_SHIFT) | data)

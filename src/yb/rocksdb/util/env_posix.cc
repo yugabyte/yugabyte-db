@@ -23,7 +23,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
-#if defined(OS_LINUX)
+#if defined(__linux__)
 #include <linux/fs.h>
 #endif
 #include <pthread.h>
@@ -34,7 +34,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#ifdef OS_LINUX
+#ifdef __linux__
 #include <sys/statfs.h>
 #include <sys/syscall.h>
 #endif
@@ -43,7 +43,7 @@
 #include <time.h>
 #include <algorithm>
 // Get nano time includes
-#if defined(OS_LINUX) || defined(OS_FREEBSD)
+#if defined(__linux__) || defined(OS_FREEBSD)
 #elif defined(__MACH__)
 #include <mach/clock.h>
 #include <mach/mach.h>
@@ -420,7 +420,7 @@ class PosixEnv : public Env {
   }
 
   uint64_t NowNanos() override {
-#if defined(OS_LINUX) || defined(OS_FREEBSD)
+#if defined(__linux__) || defined(OS_FREEBSD)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return static_cast<uint64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec;
@@ -490,7 +490,7 @@ class PosixEnv : public Env {
 
   void LowerThreadPoolIOPriority(Priority pool = LOW) override {
     assert(pool >= Priority::LOW && pool <= Priority::HIGH);
-#ifdef OS_LINUX
+#ifdef __linux__
     thread_pools_[pool].LowerIOPriority();
 #endif
   }

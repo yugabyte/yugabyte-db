@@ -31,7 +31,7 @@
 #include <atomic>
 #include <list>
 
-#ifdef OS_LINUX
+#ifdef __linux__
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <stdlib.h>
@@ -457,7 +457,7 @@ TEST_F(EnvPosixTest, DecreaseNumBgThreads) {
   ASSERT_TRUE(!tasks[5].IsSleeping());
 }
 
-#ifdef OS_LINUX
+#ifdef __linux__
 // Travis doesn't support fallocate or getting unique ID from files for whatever
 // reason.
 #ifndef TRAVIS
@@ -809,7 +809,7 @@ TEST_F(EnvPosixTest, InvalidateCache) {
   ASSERT_OK(env_->DeleteFile(fname));
 }
 #endif  // not TRAVIS
-#endif  // OS_LINUX
+#endif  // __linux__
 
 class TestLogger : public Logger {
  public:
