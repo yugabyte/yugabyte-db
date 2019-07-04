@@ -182,6 +182,18 @@ class ConflictResolver {
     return Status::OK();
   }
 
+  void EnsureIntentIteratorCreated() {
+    if (!intent_iter_) {
+      intent_iter_ = CreateRocksDBIterator(
+          doc_db_.intents,
+          BloomFilterMode::DONT_USE_BLOOM_FILTER,
+          boost::none /* user_key_for_filter */,
+          rocksdb::kDefaultQueryId,
+          nullptr /* file_filter */,
+          &intent_key_upperbound_);
+    }
+  }
+
  private:
   CHECKED_STATUS ResolveConflicts() {
     if (!conflicts_.empty()) {
@@ -194,18 +206,6 @@ class ConflictResolver {
     }
 
     return Status::OK();
-  }
-
-  void EnsureIntentIteratorCreated() {
-    if (!intent_iter_) {
-      intent_iter_ = CreateRocksDBIterator(
-          doc_db_.intents,
-          BloomFilterMode::DONT_USE_BLOOM_FILTER,
-          boost::none /* user_key_for_filter */,
-          rocksdb::kDefaultQueryId,
-          nullptr /* file_filter */,
-          &intent_key_upperbound_);
-    }
   }
 
   CHECKED_STATUS DoResolveConflicts() {
@@ -437,11 +437,21 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     auto intent_type_set = strength == IntentStrength::kWeak
         ? StrongToWeak(strong_intent_types) : strong_intent_types;
 
+    VLOG(4) << "Resolve conflicts: " << transaction_id_
+            << ", key: " << SubDocKey::DebugSliceToString(intent_key_prefix->data())
+            << ", strength: " << strength << ", read time: " << read_time_;
+
     // read_time is HybridTime::kMax in case of serializable isolation or when read time not yet
     // picked for snapshot isolation.
     // I.e. if it the first operation in the transaction.
     if (strength == IntentStrength::kStrong && read_time_ != HybridTime::kMax) {
-      Slice key_slice(intent_key_prefix->data());
+      Slice key_slice = intent_key_prefix->AsSlice();
+
+      // Iterator on intents DB should be created before iterator on regular DB.
+      // This is to prevent the case when we create an iterator on the regular DB where a
+      // provisional record has not yet been applied, and then create an iterator the intents
+      // DB where the provisional record has already been removed.
+      resolver->EnsureIntentIteratorCreated();
 
       // TODO(dtxn) reuse iterator
       auto value_iter = CreateRocksDBIterator(
@@ -451,15 +461,23 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
           rocksdb::kDefaultQueryId);
 
       value_iter->Seek(key_slice);
-      if (value_iter->Valid() && value_iter->key().starts_with(key_slice)) {
+      KeyBytes buffer;
+      while (value_iter->Valid() && value_iter->key().starts_with(key_slice)) {
         auto existing_key = value_iter->key();
-        DocHybridTime doc_ht;
-        RETURN_NOT_OK(doc_ht.DecodeFromEnd(existing_key));
+        auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
+        VLOG(4) << "Check value overwrite: " << transaction_id_
+                << ", key: " << SubDocKey::DebugSliceToString(intent_key_prefix->data())
+                << ", read time: " << read_time_
+                << ", found key: " << SubDocKey::DebugSliceToString(value_iter->key());
         if (doc_ht.hybrid_time() >= read_time_) {
           conflicts_metric_->Increment();
           return STATUS_FORMAT(TryAgain, "Value write after transaction start: $0 >= $1",
                                doc_ht.hybrid_time(), read_time_);
         }
+        buffer.Reset(existing_key);
+        // Already have ValueType::kHybridTime at the end
+        buffer.AppendHybridTime(DocHybridTime::kMin);
+        ROCKSDB_SEEK(value_iter.get(), buffer.AsSlice());
       }
     }
 
