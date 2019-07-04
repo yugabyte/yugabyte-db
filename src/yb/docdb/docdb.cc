@@ -1339,6 +1339,18 @@ CHECKED_STATUS IntentToWriteRequest(
         intent.doc_ht,
         intent_value,
     }};
+
+    // Useful when debugging transaction failure.
+#if defined(DUMP_APPLY)
+    auto int_value = BigEndian::Load64(intent_value.data() + 1);
+    SubDocKey sub_doc_key;
+    CHECK_OK(sub_doc_key.FullyDecodeFrom(intent.doc_path, HybridTimeRequired::kFalse));
+    auto txn_id = FullyDecodeTransactionId(transaction_id_slice);
+    LOG(INFO) << "Apply: " << sub_doc_key.doc_key().hashed_group().front() << " = " << int_value
+              << ", time: " << commit_ht << ", txn: " << txn_id
+              << ", raw: " << intent_iter->key().ToDebugHexString();
+#endif
+
     regular_batch->Put(key_parts, value_parts);
     ++*write_id;
   }

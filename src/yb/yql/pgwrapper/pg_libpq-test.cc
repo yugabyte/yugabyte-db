@@ -35,7 +35,6 @@ class PgLibPqTest : public PgWrapperTestBase {
     }
     return result;
   }
-
 };
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
@@ -333,6 +332,128 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
   } BOOST_SCOPE_EXIT_END;
 
   std::this_thread::sleep_for(30s);
+}
+
+bool TransactionalFailure(const Status& status) {
+  auto message = status.ToString();
+  return message.find("Restart read required at") != std::string::npos ||
+         message.find("Transaction expired") != std::string::npos ||
+         message.find("Conflicts with committed transaction") != std::string::npos ||
+         message.find("Value write after transaction start") != std::string::npos ||
+         message.find("Conflicts with higher priority transaction") != std::string::npos;
+}
+
+Result<int64_t> ReadSumBalance(PGconn* conn, int accounts, std::atomic<int>* counter) {
+  RETURN_NOT_OK(Execute(conn, "START TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  BOOST_SCOPE_EXIT(conn) {
+    EXPECT_OK(Execute(conn, "ROLLBACK"));
+  } BOOST_SCOPE_EXIT_END;
+
+  RETURN_NOT_OK(Execute(conn, Format("INSERT INTO fake (id) VALUES ($0)", ++*counter)));
+  int64_t sum = 0;
+  for (int i = 1; i <= accounts; ++i) {
+    sum += VERIFY_RESULT(FetchValue<int64_t>(
+        conn, Format("SELECT balance FROM account_$0 WHERE id = $0", i)));
+  }
+  return sum;
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccount)) {
+  constexpr int kAccounts = RegularBuildVsSanitizers(30, 10);
+  constexpr int kThreads = RegularBuildVsSanitizers(20, 5);
+  constexpr int64_t kInitialBalance = 100;
+  PGConnPtr conn;
+  ASSERT_OK(WaitFor([this, &conn] {
+    auto res = Connect();
+    if (!res.ok()) {
+      return false;
+    }
+    conn = std::move(*res);
+    return true;
+  }, 5s, "Initial connect"));
+
+  for (int i = 1; i <= kAccounts; ++i) {
+    ASSERT_OK(Execute(
+        conn.get(),
+        Format("CREATE TABLE account_$0 (id int, balance bigint, PRIMARY KEY(id))", i)));
+    ASSERT_OK(Execute(
+        conn.get(),
+        Format("INSERT INTO account_$0 (id, balance) VALUES ($0, $1)", i, kInitialBalance)));
+  }
+
+  ASSERT_OK(Execute(conn.get(), "CREATE TABLE fake (id int, PRIMARY KEY(id))"));
+
+  std::atomic<int> writes(0);
+  std::atomic<int> reads(0);
+
+  // TODO(dtxn) Remove it.
+  // Currently using fake insert to force transaction start before actual statements.
+  std::atomic<int> counter(100000);
+  TestThreadHolder thread_holder;
+  for (int i = 1; i <= kThreads; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &counter, &writes, &stop_flag = thread_holder.stop_flag()]() {
+      auto conn = ASSERT_RESULT(Connect());
+      while (!stop_flag.load(std::memory_order_acquire)) {
+        int from = RandomUniformInt(1, kAccounts);
+        int to = RandomUniformInt(1, kAccounts - 1);
+        if (to >= from) {
+          ++to;
+        }
+        int64_t amount = RandomUniformInt(1, 10);
+        ASSERT_OK(Execute(conn.get(), "START TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+        ASSERT_OK(Execute(conn.get(), Format("INSERT INTO fake (id) VALUES ($0)", ++counter)));
+        auto status = Execute(conn.get(), Format(
+              "UPDATE account_$0 SET balance = balance - $1 WHERE id = $0", from, amount));
+        if (status.ok()) {
+          status = Execute(conn.get(), Format(
+              "UPDATE account_$0 SET balance = balance + $1 WHERE id = $0", to, amount));
+        }
+        if (status.ok()) {
+          status = Execute(conn.get(), "COMMIT;");
+        } else {
+          ASSERT_OK(Execute(conn.get(), "ROLLBACK;"));
+        }
+        if (!status.ok()) {
+          ASSERT_TRUE(TransactionalFailure(status)) << status;
+        } else {
+          LOG(INFO) << "Updated: " << from << " => " << to << " by " << amount;
+          ++writes;
+        }
+      }
+    });
+  }
+
+  thread_holder.AddThreadFunctor(
+      [this, &counter, &reads, &stop_flag = thread_holder.stop_flag()]() {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!stop_flag.load(std::memory_order_acquire)) {
+      auto sum = ReadSumBalance(conn.get(), kAccounts, &counter);
+      if (!sum.ok()) {
+        ASSERT_TRUE(TransactionalFailure(sum.status())) << sum.status();
+      } else {
+        ASSERT_EQ(*sum, kAccounts * kInitialBalance);
+        ++reads;
+      }
+    }
+  });
+
+  thread_holder.WaitAndStop(60s);
+
+  ASSERT_GE(writes.load(), 50);
+  ASSERT_GE(reads.load(), 2);
+
+  ASSERT_OK(WaitFor([&conn, &counter]() -> Result<bool> {
+    auto sum = ReadSumBalance(conn.get(), kAccounts, &counter);
+    if (!sum.ok()) {
+      if (!TransactionalFailure(sum.status())) {
+        return sum.status();
+      }
+      return false;
+    }
+    EXPECT_EQ(*sum, kAccounts * kInitialBalance);
+    return true;
+  }, 5s, "Final read"));
 }
 
 } // namespace pgwrapper
