@@ -61,7 +61,7 @@
 /* We use SIGPWR since that seems unlikely to be used for other reasons. */
 #define GOOGLE_OBSCURE_SIGNAL  SIGPWR
 
-#if defined OS_LINUX || defined OS_CYGWIN
+#if defined __linux__ || defined OS_CYGWIN
 
 // _BIG_ENDIAN
 #include <endian.h>
@@ -212,7 +212,7 @@ const char PATH_SEPARATOR = '/';
 
 // Windows has O_BINARY as a flag to open() (like "b" for fopen).
 // Linux doesn't need make this distinction.
-#if defined OS_LINUX && !defined O_BINARY
+#if defined __linux__ && !defined O_BINARY
 #define O_BINARY 0
 #endif
 

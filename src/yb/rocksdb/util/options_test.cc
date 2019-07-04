@@ -1507,7 +1507,7 @@ TEST_F(OptionsParserTest, EscapeOptionString) {
 
 // Only run the tests to verify new fields in options are settable through
 // string on limited platforms as it depends on behavior of compilers.
-#if defined(OS_LINUX) && !defined(__clang__)
+#if defined(__linux__) && !defined(__clang__)
 
 struct OffsetGap {
   size_t begin_offset;
@@ -1960,7 +1960,7 @@ TEST_F(OptionsParserTest, ColumnFamilyOptionsAllFieldsSettable) {
 
   TestAllFieldsSettable<ColumnFamilyOptions>(kColumnFamilyOptionsBlacklist);
 }
-#endif // OS_LINUX && !clang
+#endif // __linux__ && !clang
 #endif // !ROCKSDB_LITE
 
 }  // namespace rocksdb
