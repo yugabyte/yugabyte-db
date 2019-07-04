@@ -314,9 +314,6 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow::SharedPtr& table
 
 Status PgsqlWriteOperation::GetDocPaths(
     GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const {
-  if (encoded_doc_key_) {
-    paths->push_back(encoded_doc_key_);
-  }
   // When this write operation requires a read, it requires a read snapshot so paths will be locked
   // in snapshot isolation for consistency. Otherwise, pure writes will happen in serializable
   // isolation so that they will serialize but do not conflict with one another.
@@ -325,6 +322,34 @@ Status PgsqlWriteOperation::GetDocPaths(
   // snapshot isolation level.
   *level = RequireReadSnapshot() ? IsolationLevel::SNAPSHOT_ISOLATION
                                  : IsolationLevel::SERIALIZABLE_ISOLATION;
+
+  if (mode == GetDocPathsMode::kIntents) {
+    const google::protobuf::RepeatedPtrField<PgsqlColumnValuePB>* column_values = nullptr;
+    if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT) {
+      column_values = &request_.column_values();
+    } else if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
+      column_values = &request_.column_new_values();
+    }
+    if (column_values != nullptr && !column_values->empty()) {
+      KeyBytes buffer;
+      for (const auto& column_value : *column_values) {
+        ColumnId column_id(column_value.column_id());
+        Slice doc_key = encoded_doc_key_.as_slice();
+        buffer.Clear();
+        buffer.AppendValueType(ValueType::kColumnId);
+        buffer.AppendColumnId(column_id);
+        RefCntBuffer path(doc_key.size() + buffer.size());
+        memcpy(path.data(), doc_key.data(), doc_key.size());
+        memcpy(path.data() + doc_key.size(), buffer.data().c_str(), buffer.size());
+        paths->push_back(RefCntPrefix(path));
+      }
+      return Status::OK();
+    }
+  }
+  if (encoded_doc_key_) {
+    paths->push_back(encoded_doc_key_);
+  }
+
   return Status::OK();
 }
 

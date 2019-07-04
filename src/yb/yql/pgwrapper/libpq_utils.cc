@@ -46,14 +46,39 @@ Result<PGResultPtr> Fetch(PGconn* conn, const std::string& command) {
   return std::move(res);
 }
 
-Result<int32_t> GetInt32(PGresult* result, int row, int column) {
-  int32_t res;
-  auto len = PQgetlength(result, row, column);
-  if (len != sizeof(res)) {
-    return STATUS_FORMAT(Corruption, "Bad column length: $0, expected: $1, row: $2, column: $3",
-                         len, sizeof(res), row, column);
+Result<PGResultPtr> FetchMatrix(PGconn* conn, const std::string& command, int rows, int columns) {
+  auto res = VERIFY_RESULT(Fetch(conn, command));
+
+  auto fetched_columns = PQnfields(res.get());
+  if (fetched_columns != columns) {
+    return STATUS_FORMAT(
+        RuntimeError, "Fetched $0 columns, while $1 expected", fetched_columns, columns);
   }
-  return BigEndian::Load32(PQgetvalue(result, row, column));
+
+  auto fetched_rows = PQntuples(res.get());
+  if (fetched_rows != rows) {
+    return STATUS_FORMAT(
+        RuntimeError, "Fetched $0 rows, while $1 expected", fetched_rows, rows);
+  }
+
+  return res;
+}
+
+Result<char*> GetValueWithLength(PGresult* result, int row, int column, size_t size) {
+  auto len = PQgetlength(result, row, column);
+  if (len != size) {
+    return STATUS_FORMAT(Corruption, "Bad column length: $0, expected: $1, row: $2, column: $3",
+                         len, size, row, column);
+  }
+  return PQgetvalue(result, row, column);
+}
+
+Result<int32_t> GetInt32(PGresult* result, int row, int column) {
+  return BigEndian::Load32(VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(int32_t))));
+}
+
+Result<int64_t> GetInt64(PGresult* result, int row, int column) {
+  return BigEndian::Load64(VERIFY_RESULT(GetValueWithLength(result, row, column, sizeof(int64_t))));
 }
 
 Result<std::string> GetString(PGresult* result, int row, int column) {
