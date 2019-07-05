@@ -127,6 +127,26 @@ Type "help" for help.
 
 postgres=#
 ```
+
+List the tables created by the app.
+```sql
+postgres=> \d
+```
+```
+List of relations
+ Schema |          Name           |   Type   |  Owner   
+--------+-------------------------+----------+----------
+ public | orderline               | table    | postgres
+ public | orders                  | table    | postgres
+ public | orders_user_id_seq      | sequence | postgres
+ public | products                | table    | postgres
+ public | products_product_id_seq | sequence | postgres
+ public | users                   | table    | postgres
+ public | users_user_id_seq       | sequence | postgres
+(7 rows)
+```
+Note the 4 tables and 3 sequences in the list above.
+
 ```sql
 postgres=> SELECT count(*) FROM users;
 ```
@@ -156,6 +176,19 @@ postgres=> SELECT count(*) FROM orders;
      2
 (1 row)
 ```
+
+```sql
+postgres=> SELECT * FROM orderline;
+```
+```
+ order_id                             | product_id | units 
+--------------------------------------+------------+-------
+ 45659918-bbfd-4a75-a202-6feff13e186b |          1 |     2
+ f19b64ec-359a-47c2-9014-3c324510c52c |          1 |     2
+ f19b64ec-359a-47c2-9014-3c324510c52c |          2 |     4
+(3 rows)
+```
+Note that `orderline` is a child table of the parent `orders` table connected using a foreign key constraint.
 
 ### Using the REST API
 
