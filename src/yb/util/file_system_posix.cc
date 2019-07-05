@@ -13,7 +13,19 @@
 
 #include "yb/util/file_system_posix.h"
 
+#include <fcntl.h>
+#ifdef __linux__
+#include <linux/fs.h>
+#endif // __linux__
+#include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#ifdef __linux__
+#include <sys/statfs.h>
+#include <sys/syscall.h>
+#endif // __linux__
+#include <unistd.h>
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/errno.h"
@@ -34,7 +46,7 @@ DECLARE_bool(suicide_on_eio);
 
 // For non linux platform, the following macros are used only as place
 // holder.
-#if !(defined OS_LINUX) && !(defined CYGWIN)
+#if !(defined __linux__) && !(defined CYGWIN)
 #define POSIX_FADV_NORMAL 0     /* [MC1] no further special treatment */
 #define POSIX_FADV_RANDOM 1     /* [MC1] expect random page refs */
 #define POSIX_FADV_SEQUENTIAL 2 /* [MC1] expect sequential page refs */
@@ -49,7 +61,7 @@ namespace {
 // A wrapper for fadvise, if the platform doesn't support fadvise, it will simply return
 // Status::NotSupport.
 int Fadvise(int fd, off_t offset, size_t len, int advice) {
-#ifdef OS_LINUX
+#ifdef __linux__
   return posix_fadvise(fd, offset, len, advice);
 #else
   return 0;  // simply do nothing.
@@ -126,7 +138,7 @@ Status PosixSequentialFile::Skip(uint64_t n) {
 }
 
 Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef OS_LINUX
+#ifndef __linux__
   return Status::OK();
 #else
   // free OS pages
