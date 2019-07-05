@@ -171,7 +171,7 @@ BulkLoadTask::BulkLoadTask(vector<pair<TabletId, string>> rows,
 }
 
 void BulkLoadTask::Run() {
-  DocWriteBatch doc_write_batch(docdb::DocDB::FromRegular(db_fixture_->rocksdb()),
+  DocWriteBatch doc_write_batch(docdb::DocDB::FromRegularUnbounded(db_fixture_->rocksdb()),
                                 InitMarkerBehavior::kOptional);
 
   for (const auto &entry : rows_) {

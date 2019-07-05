@@ -52,6 +52,7 @@ namespace tserver {
 using consensus::GetRaftConfigLeader;
 using consensus::RaftPeerPB;
 using tablet::RaftGroupMetadata;
+using tablet::RaftGroupMetadataPtr;
 using tablet::TabletStatusListener;
 
 class RemoteBootstrapClientTest : public RemoteBootstrapTest {
@@ -97,7 +98,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   gscoped_ptr<RemoteBootstrapClientClass> client_;
-  scoped_refptr<RaftGroupMetadata> meta_;
+  RaftGroupMetadataPtr meta_;
   RaftPeerPB leader_;
 };
 

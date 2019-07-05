@@ -51,6 +51,7 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/mutex.h"
 #include "yb/util/opid.h"
@@ -134,6 +135,11 @@ struct KvStoreInfo {
   // `rocksdb_dir + kIntentsDBSuffix` path.
   std::string rocksdb_dir;
 
+  // Optional inclusive lower bound and exclusive upper bound for keys served by this KV-store.
+  // See docdb::KeyBounds.
+  std::string lower_bound_key;
+  std::string upper_bound_key;
+
   // Map of tables sharing this KV-store indexed by the table id.
   // If pieces of the same table live in the same Raft group they should be located in different
   // KV-stores.
@@ -177,14 +183,14 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
                                   const boost::optional<IndexInfo>& index_info,
                                   const uint32_t schema_version,
                                   const TabletDataState& initial_tablet_data_state,
-                                  scoped_refptr<RaftGroupMetadata>* metadata,
+                                  RaftGroupMetadataPtr* metadata,
                                   const std::string& data_root_dir = std::string(),
                                   const std::string& wal_root_dir = std::string());
 
   // Load existing metadata from disk.
   static CHECKED_STATUS Load(FsManager* fs_manager,
                              const RaftGroupId& raft_group_id,
-                             scoped_refptr<RaftGroupMetadata>* metadata);
+                             RaftGroupMetadataPtr* metadata);
 
   // Try to load an existing Raft group. If it does not exist, create it.
   // If it already existed, verifies that the schema of the Raft group matches the
@@ -201,7 +207,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
                                      const Partition& partition,
                                      const boost::optional<IndexInfo>& index_info,
                                      const TabletDataState& initial_tablet_data_state,
-                                     scoped_refptr<RaftGroupMetadata>* metadata);
+                                     RaftGroupMetadataPtr* metadata);
 
   Result<const TableInfo*> GetTableInfo(const TableId& table_id) const;
 
@@ -293,6 +299,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   std::string rocksdb_dir() const { return kv_store_.rocksdb_dir; }
 
+  std::string lower_bound_key() const { return kv_store_.lower_bound_key; }
+  std::string upper_bound_key() const { return kv_store_.upper_bound_key; }
+
   std::string wal_dir() const { return wal_dir_; }
 
   // Returns the data root dir for this Raft group, for example:
@@ -366,6 +375,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
 
   // Fully replace a superblock (used for bootstrap).
   CHECKED_STATUS ReplaceSuperBlock(const RaftGroupReplicaSuperBlockPB &pb);
+
+  // Creates a new Raft group metadata for the part of existing tablet contained in this Raft group.
+  // Assigns specified Raft group ID, partition and key bounds for a new tablet.
+  Result<RaftGroupMetadataPtr> CreateSubtabletMetadata(
+      const RaftGroupId& raft_group_id, const Partition& partition,
+      const std::string& lower_bound_key, const std::string& upper_bound_key) const;
 
  private:
   typedef simple_spinlock MutexType;
@@ -445,7 +460,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   // If taken together with 'data_mutex_', must be acquired first.
   mutable Mutex flush_lock_;
 
-  const RaftGroupId raft_group_id_;
+  RaftGroupId raft_group_id_;
   Partition partition_;
 
   // The primary table id. Primary table is the first table this Raft group is created for.

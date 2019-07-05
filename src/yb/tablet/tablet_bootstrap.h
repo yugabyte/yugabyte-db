@@ -154,7 +154,7 @@ class TabletBootstrap {
   Env* GetEnv();
 
   BootstrapTabletData data_;
-  scoped_refptr<RaftGroupMetadata> meta_;
+  RaftGroupMetadataPtr meta_;
   std::shared_ptr<MemTracker> mem_tracker_;
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
   MetricRegistry* metric_registry_;

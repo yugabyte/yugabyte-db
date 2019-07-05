@@ -85,7 +85,7 @@ class BootstrapTest : public LogTestBase {
     LogTestBase::SetUp();
   }
 
-  Status LoadTestRaftGroupMetadata(scoped_refptr<RaftGroupMetadata>* meta) {
+  Status LoadTestRaftGroupMetadata(RaftGroupMetadataPtr* meta) {
     Schema schema = SchemaBuilder(schema_).Build();
     std::pair<PartitionSchema, Partition> partition = CreateDefaultPartition(schema);
 
@@ -105,14 +105,14 @@ class BootstrapTest : public LogTestBase {
   }
 
   Status PersistTestRaftGroupMetadataState(TabletDataState state) {
-    scoped_refptr<RaftGroupMetadata> meta;
+    RaftGroupMetadataPtr meta;
     RETURN_NOT_OK(LoadTestRaftGroupMetadata(&meta));
     meta->set_tablet_data_state(state);
     RETURN_NOT_OK(meta->Flush());
     return Status::OK();
   }
 
-  Status RunBootstrapOnTestTablet(const scoped_refptr<RaftGroupMetadata>& meta,
+  Status RunBootstrapOnTestTablet(const RaftGroupMetadataPtr& meta,
                                   shared_ptr<TabletClass>* tablet,
                                   ConsensusBootstrapInfo* boot_info) {
     gscoped_ptr<TabletStatusListener> listener(new TabletStatusListener(meta));
@@ -140,7 +140,7 @@ class BootstrapTest : public LogTestBase {
 
   Status BootstrapTestTablet(shared_ptr<TabletClass>* tablet,
                              ConsensusBootstrapInfo* boot_info) {
-    scoped_refptr<RaftGroupMetadata> meta;
+    RaftGroupMetadataPtr meta;
     RETURN_NOT_OK_PREPEND(LoadTestRaftGroupMetadata(&meta),
                           "Unable to load test tablet metadata");
 
@@ -235,7 +235,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
 TEST_F(BootstrapTest, TestMissingConsensusMetadata) {
   BuildLog();
 
-  scoped_refptr<RaftGroupMetadata> meta;
+  RaftGroupMetadataPtr meta;
   ASSERT_OK(LoadTestRaftGroupMetadata(&meta));
 
   shared_ptr<TabletClass> tablet;

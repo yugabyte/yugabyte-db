@@ -67,6 +67,7 @@ using std::vector;
 using strings::Substitute;
 using tablet::Tablet;
 using tablet::RaftGroupMetadata;
+using tablet::RaftGroupMetadataPtr;
 
 namespace {
 string Indent(int indent) {
@@ -155,7 +156,7 @@ Status FsTool::ListAllLogSegments() {
 Status FsTool::ListLogSegmentsForTablet(const string& tablet_id) {
   DCHECK(initialized_);
 
-  scoped_refptr<RaftGroupMetadata> meta;
+  RaftGroupMetadataPtr meta;
   RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &meta));
 
   const string& tablet_wal_dir = meta->wal_dir();
@@ -236,7 +237,7 @@ Status FsTool::PrintLogSegmentHeader(const string& path,
 }
 
 Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
-  scoped_refptr<RaftGroupMetadata> meta;
+  RaftGroupMetadataPtr meta;
   RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &meta));
 
   const Schema& schema = meta->schema();
@@ -259,7 +260,7 @@ Status FsTool::PrintTabletMeta(const string& tablet_id, int indent) {
 Status FsTool::DumpTabletData(const std::string& tablet_id) {
   DCHECK(initialized_);
 
-  scoped_refptr<RaftGroupMetadata> meta;
+  RaftGroupMetadataPtr meta;
   RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &meta));
 
   scoped_refptr<log::LogAnchorRegistry> reg(new log::LogAnchorRegistry());

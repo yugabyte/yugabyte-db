@@ -142,6 +142,7 @@ using strings::Substitute;
 using tablet::TabletDataState;
 using tablet::TabletDataState_Name;
 using tablet::RaftGroupMetadata;
+using tablet::RaftGroupMetadataPtr;
 using tablet::TabletStatusListener;
 using tablet::RaftGroupReplicaSuperBlockPB;
 
@@ -211,7 +212,7 @@ RemoteBootstrapClient::~RemoteBootstrapClient() {
   }
 }
 
-Status RemoteBootstrapClient::SetTabletToReplace(const scoped_refptr<RaftGroupMetadata>& meta,
+Status RemoteBootstrapClient::SetTabletToReplace(const RaftGroupMetadataPtr& meta,
                                                  int64_t caller_term) {
   CHECK_EQ(tablet_id_, meta->raft_group_id());
   TabletDataState data_state = meta->tablet_data_state();
@@ -250,7 +251,7 @@ Status RemoteBootstrapClient::SetTabletToReplace(const scoped_refptr<RaftGroupMe
 Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                     rpc::ProxyCache* proxy_cache,
                                     const HostPort& bootstrap_peer_addr,
-                                    scoped_refptr<RaftGroupMetadata>* meta,
+                                    RaftGroupMetadataPtr* meta,
                                     TSTabletManager* ts_manager) {
   CHECK(!started_);
   start_time_micros_ = GetCurrentTimeMicros();

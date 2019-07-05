@@ -277,6 +277,7 @@ using tablet::TABLET_DATA_READY;
 using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
 using tablet::RaftGroupMetadata;
+using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
 using tablet::RaftGroupStatePB;
 using tablet::TabletStatusListener;
@@ -4594,7 +4595,7 @@ Status CatalogManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB&
   int64_t leader_term = req.caller_term();
 
   std::shared_ptr<TabletPeer> old_tablet_peer;
-  scoped_refptr<RaftGroupMetadata> meta;
+  RaftGroupMetadataPtr meta;
   bool replacing_tablet = false;
 
   if (tablet_exists_) {

@@ -19,6 +19,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/value.h"
 
@@ -108,8 +109,9 @@ enum class BloomFilterMode {
 // Note: bloom_filter_mode should be specified explicitly to avoid using it incorrectly by default.
 // user_key_for_filter is used with BloomFilterMode::USE_BLOOM_FILTER to exclude SST files which
 // have the same hashed components as (Sub)DocKey encoded in user_key_for_filter.
-std::unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
+BoundedRocksDbIterator CreateRocksDBIterator(
     rocksdb::DB* rocksdb,
+    const KeyBounds* docdb_key_bounds,
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,

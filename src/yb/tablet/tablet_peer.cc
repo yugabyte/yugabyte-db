@@ -139,7 +139,7 @@ using tserver::TabletServerErrorPB;
 //  Tablet Peer
 // ============================================================================
 TabletPeer::TabletPeer(
-    const scoped_refptr<RaftGroupMetadata>& meta,
+    const RaftGroupMetadataPtr& meta,
     const consensus::RaftPeerPB& local_peer_pb,
     const scoped_refptr<server::Clock> &clock,
     const std::string& permanent_uuid,

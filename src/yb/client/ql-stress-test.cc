@@ -226,7 +226,7 @@ bool QLStressTest::CheckRetryableRequestsCounts(size_t* total_entries, size_t* t
     if (!peer->tablet() || peer->tablet()->metadata()->table_id() != table_.table()->id()) {
       continue;
     }
-    size_t tablet_entries = peer->tablet()->TEST_CountRocksDBRecords();
+    size_t tablet_entries = peer->tablet()->TEST_CountRegularDBRecords();
     auto raft_consensus = down_cast<consensus::RaftConsensus*>(peer->consensus());
     auto request_counts = raft_consensus->TEST_CountRetryableRequests();
     LOG(INFO) << "T " << peer->tablet()->tablet_id() << " P " << peer->permanent_uuid()

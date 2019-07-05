@@ -32,13 +32,18 @@ namespace docdb {
 
 class DocDBIntentsCompactionFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  explicit DocDBIntentsCompactionFilterFactory(tablet::Tablet* tablet);
+  explicit DocDBIntentsCompactionFilterFactory(tablet::Tablet* tablet, const KeyBounds* key_bounds);
+
   ~DocDBIntentsCompactionFilterFactory() override;
+
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
       const rocksdb::CompactionFilter::Context& context) override;
+
   const char* Name() const override;
+
  private:
   tablet::Tablet* const tablet_;
+  const KeyBounds* key_bounds_;
 };
 
 }  // namespace docdb

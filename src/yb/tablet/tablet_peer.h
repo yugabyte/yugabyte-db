@@ -99,7 +99,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentSizeMap;
 
-  TabletPeer(const scoped_refptr<RaftGroupMetadata>& meta,
+  TabletPeer(const RaftGroupMetadataPtr& meta,
              const consensus::RaftPeerPB& local_peer_pb,
              const scoped_refptr<server::Clock> &clock,
              const std::string& permanent_uuid,
@@ -323,7 +323,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Return pointer to the transaction tracker for this peer.
   const OperationTracker* operation_tracker() const { return &operation_tracker_; }
 
-  const scoped_refptr<RaftGroupMetadata>& tablet_metadata() const {
+  const RaftGroupMetadataPtr& tablet_metadata() const {
     return meta_;
   }
 
@@ -354,7 +354,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   virtual std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg);
 
-  const scoped_refptr<RaftGroupMetadata> meta_;
+  const RaftGroupMetadataPtr meta_;
 
   const std::string tablet_id_;
 

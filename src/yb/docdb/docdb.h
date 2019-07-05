@@ -178,7 +178,7 @@ void PrepareTransactionWriteBatch(
     IntraTxnWriteId* write_id);
 
 CHECKED_STATUS PrepareApplyIntentsBatch(
-    const TransactionId& transaction_id, HybridTime commit_ht,
+    const TransactionId& transaction_id, HybridTime commit_ht, const KeyBounds* key_bounds,
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch);
 
@@ -480,6 +480,15 @@ std::string DocDBDebugDumpToStr(
     IncludeBinary include_binary = IncludeBinary::kFalse);
 
 std::string DocDBDebugDumpToStr(DocDB docdb, IncludeBinary include_binary = IncludeBinary::kFalse);
+
+template <class T>
+void DocDBDebugDumpToContainer(
+    rocksdb::DB* rocksdb, T* out, StorageDbType db_type = StorageDbType::kRegular,
+    IncludeBinary include_binary = IncludeBinary::kFalse);
+
+template <class T>
+void DocDBDebugDumpToContainer(
+    DocDB docdb, T* out, IncludeBinary include_binary = IncludeBinary::kFalse);
 
 void ConfigureDocDBRocksDBOptions(rocksdb::Options* options);
 

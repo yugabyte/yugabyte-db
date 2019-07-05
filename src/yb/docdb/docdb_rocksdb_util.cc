@@ -23,6 +23,7 @@
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/compression.h"
 
+#include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/rocksutil/yb_rocksdb.h"
@@ -357,8 +358,9 @@ rocksdb::ReadOptions PrepareReadOptions(
 
 } // namespace
 
-unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
+BoundedRocksDbIterator CreateRocksDBIterator(
     rocksdb::DB* rocksdb,
+    const KeyBounds* docdb_key_bounds,
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
@@ -366,7 +368,7 @@ unique_ptr<rocksdb::Iterator> CreateRocksDBIterator(
     const Slice* iterate_upper_bound) {
   rocksdb::ReadOptions read_opts = PrepareReadOptions(rocksdb, bloom_filter_mode,
       user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound);
-  return unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
+  return BoundedRocksDbIterator(rocksdb, read_opts, docdb_key_bounds);
 }
 
 unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
