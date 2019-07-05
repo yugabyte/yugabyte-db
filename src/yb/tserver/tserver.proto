@@ -169,9 +169,6 @@ message WriteRequestPB {
   // A batch of Pgsql operations (Although batching is not yet supported).
   repeated PgsqlWriteRequestPB pgsql_write_batch = 13;
 
-  // Contains information about the cross shard transaction
-  optional TransactionMetadataPB transaction_meta = 11;
-
   // Whether data blocks will be cached when read from the files or discarded after use.
   // Disable this to lower cache churn when doing large scans.
   optional bool cache_blocks = 9 [default = true];

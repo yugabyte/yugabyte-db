@@ -109,7 +109,7 @@ class TabletHarness {
     }
     RETURN_NOT_OK(fs_manager_->Open());
 
-    scoped_refptr<RaftGroupMetadata> metadata;
+    RaftGroupMetadataPtr metadata;
     RETURN_NOT_OK(RaftGroupMetadata::LoadOrCreate(fs_manager_.get(),
                                                "YBTableTest",
                                                options_.tablet_id,
@@ -148,6 +148,29 @@ class TabletHarness {
     return tablet_->EnableCompactions();
   }
 
+  Result<std::shared_ptr<TabletClass>> OpenTablet(const TabletId& tablet_id) {
+    RaftGroupMetadataPtr metadata;
+    RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &metadata));
+    TabletOptions tablet_options;
+    auto tablet = std::make_shared<TabletClass>(
+        metadata,
+        std::shared_future<client::YBClient*>(),
+        clock_,
+        std::shared_ptr<MemTracker>(),
+        std::shared_ptr<MemTracker>(),
+        metrics_registry_.get(),
+        new log::LogAnchorRegistry(),
+        tablet_options,
+        std::string() /* log_pefix_suffix */,
+        nullptr /* transaction_participant_context */,
+        client::LocalTabletFilter(),
+        nullptr /* transaction_coordinator_context */);
+    RETURN_NOT_OK(tablet->Open());
+    tablet->MarkFinishedBootstrapping();
+    RETURN_NOT_OK(tablet->EnableCompactions());
+    return tablet;
+  }
+
   server::Clock* clock() const {
     return clock_.get();
   }
@@ -163,6 +186,8 @@ class TabletHarness {
   MetricRegistry* metrics_registry() {
     return metrics_registry_.get();
   }
+
+  const Options& options() const { return options_; }
 
  private:
   Options options_;

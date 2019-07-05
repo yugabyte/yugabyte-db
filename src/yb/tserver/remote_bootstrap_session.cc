@@ -64,6 +64,7 @@ using log::LogAnchorRegistry;
 using log::ReadableLogSegment;
 using strings::Substitute;
 using tablet::RaftGroupMetadata;
+using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
 using tablet::RaftGroupReplicaSuperBlockPB;
 
@@ -218,7 +219,7 @@ Status RemoteBootstrapSession::Init() {
       MinimumOpId().index(), anchor_owner_token, &log_anchor_);
 
   // Read the SuperBlock from disk.
-  const scoped_refptr<RaftGroupMetadata>& metadata = tablet_peer_->tablet_metadata();
+  const RaftGroupMetadataPtr& metadata = tablet_peer_->tablet_metadata();
   RETURN_NOT_OK_PREPEND(metadata->ReadSuperBlockFromDisk(&tablet_superblock_),
                         Substitute("Unable to access superblock for tablet $0",
                                    tablet_id));

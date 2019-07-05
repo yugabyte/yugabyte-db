@@ -59,7 +59,8 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
  public:
   DocDBCompactionFilter(
       HistoryRetentionDirective retention,
-      IsMajorCompaction is_major_compaction);
+      IsMajorCompaction is_major_compaction,
+      const KeyBounds* key_bounds);
 
   ~DocDBCompactionFilter() override;
   rocksdb::FilterDecision Filter(
@@ -87,6 +88,7 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
       bool* value_changed);
 
   const HistoryRetentionDirective retention_;
+  const KeyBounds* key_bounds_;
   const IsMajorCompaction is_major_compaction_;
 
   std::vector<char> prev_subdoc_key_;
@@ -153,7 +155,8 @@ class HistoryRetentionPolicy {
 
 class DocDBCompactionFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  explicit DocDBCompactionFilterFactory(std::shared_ptr<HistoryRetentionPolicy> retention_policy);
+  explicit DocDBCompactionFilterFactory(
+      std::shared_ptr<HistoryRetentionPolicy> retention_policy, const KeyBounds* key_bounds);
   ~DocDBCompactionFilterFactory() override;
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
       const rocksdb::CompactionFilter::Context& context) override;
@@ -161,6 +164,7 @@ class DocDBCompactionFilterFactory : public rocksdb::CompactionFilterFactory {
 
  private:
   std::shared_ptr<HistoryRetentionPolicy> retention_policy_;
+  const KeyBounds* key_bounds_;
 };
 
 // A history retention policy that can be configured manually. Useful in tests. This class is

@@ -83,7 +83,7 @@ struct TabletOptions;
 // piping it into the web UI.
 class TabletStatusListener {
  public:
-  explicit TabletStatusListener(const scoped_refptr<RaftGroupMetadata>& meta);
+  explicit TabletStatusListener(const RaftGroupMetadataPtr& meta);
 
   ~TabletStatusListener();
 
@@ -107,14 +107,14 @@ class TabletStatusListener {
  private:
   mutable boost::shared_mutex lock_;
 
-  scoped_refptr<RaftGroupMetadata> meta_;
+  RaftGroupMetadataPtr meta_;
   std::string last_status_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletStatusListener);
 };
 
 struct BootstrapTabletData {
-  scoped_refptr<RaftGroupMetadata> meta;
+  RaftGroupMetadataPtr meta;
   std::shared_future<client::YBClient*> client_future;
   scoped_refptr<server::Clock> clock;
   std::shared_ptr<MemTracker> mem_tracker;

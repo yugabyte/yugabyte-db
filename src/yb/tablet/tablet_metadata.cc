@@ -186,12 +186,24 @@ Status KvStoreInfo::LoadTablesFromPB(
 Status KvStoreInfo::LoadFromPB(const KvStoreInfoPB& pb, TableId primary_table_id) {
   kv_store_id = KvStoreId(pb.kv_store_id());
   rocksdb_dir = pb.rocksdb_dir();
+  lower_bound_key = pb.lower_bound_key();
+  upper_bound_key = pb.upper_bound_key();
   return LoadTablesFromPB(pb.tables(), primary_table_id);
 }
 
 void KvStoreInfo::ToPB(TableId primary_table_id, KvStoreInfoPB* pb) const {
   pb->set_kv_store_id(kv_store_id.ToString());
   pb->set_rocksdb_dir(rocksdb_dir);
+  if (lower_bound_key.empty()) {
+    pb->clear_lower_bound_key();
+  } else {
+    pb->set_lower_bound_key(lower_bound_key);
+  }
+  if (upper_bound_key.empty()) {
+    pb->clear_upper_bound_key();
+  } else {
+    pb->set_upper_bound_key(upper_bound_key);
+  }
 
   // Putting primary table first, then all other tables.
   const auto& it = tables.find(primary_table_id);
@@ -219,7 +231,7 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
                                  const boost::optional<IndexInfo>& index_info,
                                  const uint32_t schema_version,
                                  const TabletDataState& initial_tablet_data_state,
-                                 scoped_refptr<RaftGroupMetadata>* metadata,
+                                 RaftGroupMetadataPtr* metadata,
                                  const string& data_root_dir,
                                  const string& wal_root_dir) {
 
@@ -253,7 +265,7 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
   auto rocksdb_dir = JoinPathSegments(
       data_top_dir, FsManager::kRocksDBDirName, table_dir, tablet_dir);
 
-  scoped_refptr<RaftGroupMetadata> ret(new RaftGroupMetadata(fs_manager,
+  RaftGroupMetadataPtr ret(new RaftGroupMetadata(fs_manager,
                                                        table_id,
                                                        raft_group_id,
                                                        table_name,
@@ -274,8 +286,8 @@ Status RaftGroupMetadata::CreateNew(FsManager* fs_manager,
 
 Status RaftGroupMetadata::Load(FsManager* fs_manager,
                             const RaftGroupId& raft_group_id,
-                            scoped_refptr<RaftGroupMetadata>* metadata) {
-  scoped_refptr<RaftGroupMetadata> ret(new RaftGroupMetadata(fs_manager, raft_group_id));
+                            RaftGroupMetadataPtr* metadata) {
+  RaftGroupMetadataPtr ret(new RaftGroupMetadata(fs_manager, raft_group_id));
   RETURN_NOT_OK(ret->LoadFromDisk());
   metadata->swap(ret);
   return Status::OK();
@@ -291,7 +303,7 @@ Status RaftGroupMetadata::LoadOrCreate(FsManager* fs_manager,
                                     const Partition& partition,
                                     const boost::optional<IndexInfo>& index_info,
                                     const TabletDataState& initial_tablet_data_state,
-                                    scoped_refptr<RaftGroupMetadata>* metadata) {
+                                    RaftGroupMetadataPtr* metadata) {
   Status s = Load(fs_manager, raft_group_id, metadata);
   if (s.ok()) {
     if (!(*metadata)->schema().Equals(schema)) {
@@ -703,6 +715,26 @@ TabletDataState RaftGroupMetadata::tablet_data_state() const {
   std::lock_guard<MutexType> lock(data_mutex_);
   return tablet_data_state_;
 }
+
+Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
+    const RaftGroupId& raft_group_id, const Partition& partition,
+    const std::string& lower_bound_key, const std::string& upper_bound_key) const {
+  RaftGroupReplicaSuperBlockPB superblock;
+  ToSuperBlock(&superblock);
+
+  RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
+  RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock));
+  metadata->raft_group_id_ = raft_group_id;
+  const auto tablet_dir = Substitute("tablet-$0", raft_group_id);
+  metadata->wal_dir_ = JoinPathSegments(DirName(wal_dir_), tablet_dir);
+  metadata->kv_store_.lower_bound_key = lower_bound_key;
+  metadata->kv_store_.upper_bound_key = upper_bound_key;
+  metadata->kv_store_.rocksdb_dir = JoinPathSegments(DirName(kv_store_.rocksdb_dir), tablet_dir);
+  metadata->partition_ = partition;
+  RETURN_NOT_OK(metadata->Flush());
+  return metadata;
+}
+
 
 namespace {
 // MigrateSuperblockForDXXXX functions are only needed for backward compatibility with

@@ -70,6 +70,7 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
@@ -311,7 +312,7 @@ string DocDbOpIds::ToString() const {
 }
 
 Tablet::Tablet(
-    const scoped_refptr<RaftGroupMetadata>& metadata,
+    const RaftGroupMetadataPtr& metadata,
     const std::shared_future<client::YBClient*> &client_future,
     const server::ClockPtr& clock,
     const shared_ptr<MemTracker>& parent_mem_tracker,
@@ -505,10 +506,12 @@ Status Tablet::OpenKeyValueTablet() {
   rocksdb_options.block_based_table_mem_tracker = MemTracker::FindOrCreateTracker(
       Format("$0-$1", kRegularDB, tablet_id()), block_based_table_mem_tracker_);
 
+  key_bounds_ = docdb::KeyBounds(metadata()->lower_bound_key(), metadata()->upper_bound_key());
+
   // Install the history cleanup handler. Note that TabletRetentionPolicy is going to hold a raw ptr
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
   rocksdb_options.compaction_filter_factory = make_shared<DocDBCompactionFilterFactory>(
-      make_shared<TabletRetentionPolicy>(this));
+      make_shared<TabletRetentionPolicy>(this), &key_bounds_);
 
   rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
     if (mem_table_flush_filter_factory_) {
@@ -546,7 +549,7 @@ Status Tablet::OpenKeyValueTablet() {
 
     rocksdb_options.compaction_filter_factory =
         FLAGS_tablet_do_compaction_cleanup_for_intents ?
-        std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this) : nullptr;
+        std::make_shared<docdb::DocDBIntentsCompactionFilterFactory>(this, &key_bounds_) : nullptr;
 
     rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kIntentsDB, mem_tracker_);
     rocksdb_options.block_based_table_mem_tracker = MemTracker::FindOrCreateTracker(
@@ -557,9 +560,9 @@ Status Tablet::OpenKeyValueTablet() {
     intents_db_.reset(intents_db);
   }
 
-  ql_storage_.reset(new docdb::QLRocksDBStorage({regular_db_.get(), intents_db_.get()}));
+  ql_storage_.reset(new docdb::QLRocksDBStorage(doc_db()));
   if (transaction_participant_) {
-    transaction_participant_->SetDB(intents_db_.get());
+    transaction_participant_->SetDB(intents_db_.get(), &key_bounds_);
   }
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
@@ -641,6 +644,7 @@ void Tablet::Shutdown() {
   // Also it makes sure that regular DB is alive during flush filter of intents db.
   intents_db_.reset();
   regular_db_.reset();
+  key_bounds_ = docdb::KeyBounds();
   state_ = kShutdown;
 
   // Release the mutex that prevents snapshot restore / truncate operations from running. Such
@@ -675,8 +679,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   auto txn_op_ctx = CreateTransactionOperationContext(transaction_id);
   auto read_time = ReadHybridTime::SingleTime(SafeTime(RequireLease::kFalse));
   auto result = std::make_unique<DocRowwiseIterator>(
-      std::move(mapped_projection), schema, txn_op_ctx,
-      docdb::DocDB{regular_db_.get(), intents_db_.get()},
+      std::move(mapped_projection), schema, txn_op_ctx, doc_db(),
       CoarseTimePoint::max() /* deadline */, read_time, &pending_op_counter_);
   RETURN_NOT_OK(result->Init());
   return std::move(result);
@@ -889,8 +892,7 @@ Status Tablet::HandleRedisReadRequest(CoarseTimePoint deadline,
 
   ScopedTabletMetricsTracker metrics_tracker(metrics_->redis_read_latency);
 
-  docdb::RedisReadOperation doc_op(
-      redis_read_request, {regular_db_.get(), intents_db_.get()}, deadline, read_time);
+  docdb::RedisReadOperation doc_op(redis_read_request, doc_db(), deadline, read_time);
   RETURN_NOT_OK(doc_op.Execute());
   *response = std::move(doc_op.response());
   return Status::OK();
@@ -1376,7 +1378,7 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
   rocksdb::WriteBatch regular_write_batch;
   rocksdb::WriteBatch intents_write_batch;
   RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
-      data.transaction_id, data.commit_ht,
+      data.transaction_id, data.commit_ht, &key_bounds_,
       &regular_write_batch, intents_db_.get(), &intents_write_batch));
 
   // data.hybrid_time contains transaction commit time.
@@ -1392,7 +1394,7 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
 CHECKED_STATUS Tablet::RemoveIntents(const TransactionId& id) {
   rocksdb::WriteBatch intents_write_batch;
   RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
-      id, HybridTime() /* commit_ht */, nullptr /* regular_write_batch */,
+      id, HybridTime() /* commit_ht */, &key_bounds_, nullptr /* regular_write_batch */,
       intents_db_.get(), &intents_write_batch));
 
   rocksdb::WriteOptions write_options;
@@ -1404,7 +1406,7 @@ CHECKED_STATUS Tablet::RemoveIntents(const TransactionIdSet& transactions) {
   rocksdb::WriteBatch intents_write_batch;
   for (const TransactionId& id : transactions) {
     RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
-        id, HybridTime() /* commit_ht */, nullptr /* regular_write_batch */,
+        id, HybridTime() /* commit_ht */, &key_bounds_, nullptr /* regular_write_batch */,
         intents_db_.get(), &intents_write_batch));
   }
 
@@ -1608,6 +1610,7 @@ Status Tablet::Truncate(TruncateOperationState *state) {
     LOG_WITH_PREFIX(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
     return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());
   }
+  key_bounds_ = docdb::KeyBounds::kNoBounds;
 
   // Create a new database.
   // Note: db_dir == metadata()->rocksdb_dir() is still valid db dir.
@@ -1771,8 +1774,7 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
     if (isolation_level == IsolationLevel::NON_TRANSACTIONAL) {
       auto now = clock_->Now();
       auto result = VERIFY_RESULT(docdb::ResolveOperationConflicts(
-          operation->doc_ops(), now, { regular_db_.get(), intents_db_.get() },
-          transaction_participant_.get()));
+          operation->doc_ops(), now, doc_db(), transaction_participant_.get()));
       if (now != result) {
         clock_->Update(result);
       }
@@ -1798,8 +1800,7 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
 
       RETURN_NOT_OK(docdb::ResolveTransactionConflicts(
           operation->doc_ops(), *write_batch, clock_->Now(),
-          read_time ? read_time.read : HybridTime::kMax,
-          { regular_db_.get(), intents_db_.get() }, partial_range_key_intents,
+          read_time ? read_time.read : HybridTime::kMax, doc_db(), partial_range_key_intents,
           transaction_participant_.get(), metrics_->transaction_conflicts.get()));
 
       if (!read_time) {
@@ -1832,13 +1833,11 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
   // In all other cases it is executed only once.
   for (;;) {
     RETURN_NOT_OK(docdb::ExecuteDocWriteOperation(
-        operation->doc_ops(), operation->deadline(), real_read_time,
-        { regular_db_.get(), intents_db_.get() }, write_batch,
+        operation->doc_ops(), operation->deadline(), real_read_time, doc_db(), write_batch,
         table_type_ == TableType::REDIS_TABLE_TYPE
             ? InitMarkerBehavior::kRequired
             : InitMarkerBehavior::kOptional,
-        &monotonic_counter_,
-        &restart_read_ht));
+        &monotonic_counter_, &restart_read_ht));
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
     // instead of failing whole transaction.
@@ -1977,20 +1976,37 @@ std::string Tablet::TEST_DocDBDumpStr(IncludeIntents include_intents) {
   if (!regular_db_) return "";
 
   if (!include_intents) {
-    return docdb::DocDBDebugDumpToStr(regular_db_.get());
+    return docdb::DocDBDebugDumpToStr(doc_db().WithoutIntents());
   }
 
-  return docdb::DocDBDebugDumpToStr(docdb::DocDB{regular_db_.get(), intents_db_.get()});
+  return docdb::DocDBDebugDumpToStr(doc_db());
 }
 
-size_t Tablet::TEST_CountRocksDBRecords() {
+template <class T>
+void Tablet::TEST_DocDBDumpToContainer(IncludeIntents include_intents, T* out) {
+  if (!regular_db_) return;
+
+  if (!include_intents) {
+    return docdb::DocDBDebugDumpToContainer(doc_db().WithoutIntents(), out);
+  }
+
+  return docdb::DocDBDebugDumpToContainer(doc_db(), out);
+}
+
+template void Tablet::TEST_DocDBDumpToContainer(
+    IncludeIntents include_intents, std::unordered_set<std::string>* out);
+
+template void Tablet::TEST_DocDBDumpToContainer(
+    IncludeIntents include_intents, std::vector<std::string>* out);
+
+size_t Tablet::TEST_CountRegularDBRecords() {
   if (!regular_db_) return 0;
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
-  std::unique_ptr<rocksdb::Iterator> iter(regular_db_->NewIterator(read_opts));
+  docdb::BoundedRocksDbIterator iter(regular_db_.get(), read_opts, &key_bounds_);
 
   size_t result = 0;
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter.SeekToFirst(); iter.Valid(); iter.Next()) {
     ++result;
   }
   return result;
@@ -2112,6 +2128,7 @@ Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusF
   // TODO: snapshot current DB and try to restore it in case of failure.
   intents_db_.reset();
   regular_db_.reset();
+  key_bounds_ = docdb::KeyBounds::kNoBounds;
 
   rocksdb::Options rocksdb_options;
   docdb::InitRocksDBOptions(&rocksdb_options, LogPrefix(), rocksdb_statistics_, tablet_options_);
@@ -2214,6 +2231,15 @@ Result<IsolationLevel> Tablet::GetIsolationLevel(const TransactionMetadataPB& tr
     return STATUS_FORMAT(NotFound, "Missing metadata for transaction: $0", id);
   }
   return stored_metadata->isolation;
+}
+
+
+Status Tablet::CreateSubtablet(
+    const TabletId& tablet_id, const Partition& partition,
+    const docdb::KeyBounds& key_bounds) {
+  auto metadata = VERIFY_RESULT(metadata_->CreateSubtabletMetadata(
+      tablet_id, partition, key_bounds.lower.data(), key_bounds.upper.data()));
+  return CreateCheckpoint(metadata->rocksdb_dir());
 }
 
 // ------------------------------------------------------------------------------------------------

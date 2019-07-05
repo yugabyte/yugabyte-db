@@ -26,7 +26,7 @@
 namespace yb {
 namespace docdb {
 // A wrapper around a RocksDB instance and provides utility functions on top of it, such as
-// compacting the history until a certain point. This is used in the builk load tool. This is also
+// compacting the history until a certain point. This is used in the bulk load tool. This is also
 // convenient base class for GTest test classes, because it exposes member functions such as
 // rocksdb() and write_options().
 class DocDBRocksDBUtil {
@@ -50,7 +50,7 @@ class DocDBRocksDBUtil {
 
   rocksdb::DB* rocksdb();
   rocksdb::DB* intents_db();
-  DocDB doc_db() { return {rocksdb(), intents_db()}; }
+  DocDB doc_db() { return { rocksdb(), intents_db(), &KeyBounds::kNoBounds }; }
 
   CHECKED_STATUS InitCommonRocksDBOptions();
 

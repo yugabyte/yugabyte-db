@@ -30,6 +30,8 @@
 
 #include "yb/consensus/opid_util.h"
 
+#include "yb/docdb/doc_key.h"
+
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_fwd.h"
@@ -143,7 +145,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
 
-  void SetDB(rocksdb::DB* db);
+  void SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds);
 
   TransactionParticipantContext* context() const;
 

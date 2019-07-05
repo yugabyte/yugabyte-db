@@ -630,6 +630,8 @@ class DBImpl : public DB {
 
   uint64_t GetUncompressedSSTFileSize() override;
 
+  uint64_t GetDataSSTFileSize() override;
+
   void PrintStatistics();
 
   // dump rocksdb.stats to LOG

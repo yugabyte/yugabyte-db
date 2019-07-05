@@ -52,9 +52,8 @@ namespace {
 
 class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
  public:
-  explicit DocDBIntentsCompactionFilter(tablet::Tablet* tablet)
-      : tablet_(tablet), compaction_start_time_(tablet->clock()->Now().GetPhysicalValueMicros()) {
-  }
+  explicit DocDBIntentsCompactionFilter(tablet::Tablet* tablet, const KeyBounds* key_bounds)
+      : tablet_(tablet), compaction_start_time_(tablet->clock()->Now().GetPhysicalValueMicros()) {}
 
   ~DocDBIntentsCompactionFilter() override;
 
@@ -126,6 +125,10 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
     AddToSet(*result);
   }
 
+  // TODO(dtxn): If/when we add processing of reverse index or intents here - we will need to
+  // respect key_bounds passed to constructor in order to ignore/delete non-relevant keys. As of
+  // 2019/06/19, intents and reverse indexes are being deleted by docdb::PrepareApplyIntentsBatch.
+
   return rocksdb::FilterDecision::kKeep;
 }
 
@@ -145,14 +148,15 @@ const char* DocDBIntentsCompactionFilter::Name() const {
 
 // ------------------------------------------------------------------------------------------------
 
-DocDBIntentsCompactionFilterFactory::DocDBIntentsCompactionFilterFactory(tablet::Tablet* tablet)
-    : tablet_(tablet) {}
+DocDBIntentsCompactionFilterFactory::DocDBIntentsCompactionFilterFactory(
+    tablet::Tablet* tablet, const KeyBounds* key_bounds)
+    : tablet_(tablet), key_bounds_(key_bounds) {}
 
 DocDBIntentsCompactionFilterFactory::~DocDBIntentsCompactionFilterFactory() {}
 
 std::unique_ptr<CompactionFilter> DocDBIntentsCompactionFilterFactory::CreateCompactionFilter(
     const CompactionFilter::Context& context) {
-  return std::make_unique<DocDBIntentsCompactionFilter>(tablet_);
+  return std::make_unique<DocDBIntentsCompactionFilter>(tablet_, key_bounds_);
 }
 
 const char* DocDBIntentsCompactionFilterFactory::Name() const {

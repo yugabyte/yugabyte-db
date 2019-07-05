@@ -251,6 +251,7 @@ using tablet::TABLET_DATA_READY;
 using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
 using tablet::RaftGroupMetadata;
+using tablet::RaftGroupMetadataPtr;
 using tablet::TabletClass;
 using tablet::TabletPeer;
 using tablet::TabletPeerPtr;
@@ -436,13 +437,13 @@ Status TSTabletManager::Init() {
 
   InitLocalRaftPeerPB();
 
-  vector<scoped_refptr<RaftGroupMetadata> > metas;
+  vector<RaftGroupMetadataPtr > metas;
 
   // First, load all of the tablet metadata. We do this before we start
   // submitting the actual OpenTablet() tasks so that we don't have to compete
   // for disk resources, etc, with bootstrap processes and running tablets.
   for (const string& tablet_id : tablet_ids) {
-    scoped_refptr<RaftGroupMetadata> meta;
+    RaftGroupMetadataPtr meta;
     RETURN_NOT_OK_PREPEND(OpenTabletMeta(tablet_id, &meta),
                           "Failed to open tablet metadata for tablet: " + tablet_id);
     if (PREDICT_FALSE(meta->tablet_data_state() != TABLET_DATA_READY)) {
@@ -461,7 +462,7 @@ Status TSTabletManager::Init() {
   }
 
   // Now submit the "Open" task for each.
-  for (const scoped_refptr<RaftGroupMetadata>& meta : metas) {
+  for (const RaftGroupMetadataPtr& meta : metas) {
     scoped_refptr<TransitionInProgressDeleter> deleter;
     {
       std::lock_guard<RWMutex> lock(lock_);
@@ -554,7 +555,7 @@ Status TSTabletManager::CreateNewTablet(
 
   // Create the metadata.
   TRACE("Creating new metadata...");
-  scoped_refptr<RaftGroupMetadata> meta;
+  RaftGroupMetadataPtr meta;
   string data_root_dir;
   string wal_root_dir;
   GetAndRegisterDataAndWalDir(fs_manager_, table_id, tablet_id, table_type,
@@ -619,7 +620,7 @@ Status CheckLeaderTermNotLower(
 }
 
 Status HandleReplacingStaleTablet(
-    scoped_refptr<RaftGroupMetadata> meta,
+    RaftGroupMetadataPtr meta,
     TabletPeerPtr old_tablet_peer,
     const string& tablet_id,
     const string& uuid,
@@ -678,7 +679,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   const string kLogPrefix = tserver::LogPrefix(tablet_id, fs_manager_->uuid());
 
   TabletPeerPtr old_tablet_peer;
-  scoped_refptr<RaftGroupMetadata> meta;
+  RaftGroupMetadataPtr meta;
   bool replacing_tablet = false;
   scoped_refptr<TransitionInProgressDeleter> deleter;
   {
@@ -795,7 +796,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
 // Create and register a new TabletPeer, given tablet metadata.
 Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
-    const scoped_refptr<RaftGroupMetadata>& meta, RegisterTabletPeerMode mode) {
+    const RaftGroupMetadataPtr& meta, RegisterTabletPeerMode mode) {
   TabletPeerPtr tablet_peer(new tablet::TabletPeer(
       meta, local_peer_pb_, scoped_refptr<server::Clock>(server_->clock()), fs_manager_->uuid(),
       Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->raft_group_id())));
@@ -865,7 +866,7 @@ Status TSTabletManager::DeleteTablet(
     }
   }
 
-  scoped_refptr<RaftGroupMetadata> meta = tablet_peer->tablet_metadata();
+  RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
   tablet_peer->Shutdown();
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
@@ -930,10 +931,10 @@ bool TSTabletManager::IsTabletInTransition(const std::string& tablet_id) const {
 }
 
 Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
-                                       scoped_refptr<RaftGroupMetadata>* metadata) {
+                                       RaftGroupMetadataPtr* metadata) {
   LOG(INFO) << "Loading metadata for tablet " << tablet_id;
   TRACE("Loading metadata...");
-  scoped_refptr<RaftGroupMetadata> meta;
+  RaftGroupMetadataPtr meta;
   RETURN_NOT_OK_PREPEND(RaftGroupMetadata::Load(fs_manager_, tablet_id, &meta),
                         strings::Substitute("Failed to load tablet metadata for tablet id $0",
                                             tablet_id));
@@ -942,7 +943,7 @@ Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
   return Status::OK();
 }
 
-void TSTabletManager::OpenTablet(const scoped_refptr<RaftGroupMetadata>& meta,
+void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
                                  const scoped_refptr<TransitionInProgressDeleter>& deleter) {
   string tablet_id = meta->raft_group_id();
   TRACE_EVENT1("tserver", "TSTabletManager::OpenTablet",
@@ -1139,7 +1140,7 @@ Status TSTabletManager::RegisterTablet(const std::string& tablet_id,
   if (!InsertIfNotPresent(&tablet_map_, tablet_id, tablet_peer)) {
     auto result = STATUS_FORMAT(
         AlreadyPresent, "Unable to register tablet peer $0: already registered", tablet_id);
-    scoped_refptr<RaftGroupMetadata> meta = tablet_peer->tablet_metadata();
+    RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
     LOG(WARNING) << result;
     return result;
   }
@@ -1414,7 +1415,7 @@ void TSTabletManager::MarkTabletReportAcknowledged(const TabletReportPB& report)
 }
 
 Status TSTabletManager::HandleNonReadyTabletOnStartup(
-    const scoped_refptr<RaftGroupMetadata>& meta) {
+    const RaftGroupMetadataPtr& meta) {
   const string& tablet_id = meta->raft_group_id();
   TabletDataState data_state = meta->tablet_data_state();
   CHECK(data_state == TABLET_DATA_DELETED ||
@@ -1613,7 +1614,7 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
   }
 }
 
-Status DeleteTabletData(const scoped_refptr<RaftGroupMetadata>& meta,
+Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
                         TabletDataState data_state,
                         const string& uuid,
                         const yb::OpId& last_logged_opid,
@@ -1652,7 +1653,7 @@ Status DeleteTabletData(const scoped_refptr<RaftGroupMetadata>& meta,
   return Status::OK();
 }
 
-void LogAndTombstone(const scoped_refptr<RaftGroupMetadata>& meta,
+void LogAndTombstone(const RaftGroupMetadataPtr& meta,
                      const std::string& msg,
                      const std::string& uuid,
                      const Status& s,

@@ -189,7 +189,8 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptions() {
                             tablet_options);
   InitRocksDBWriteOptions(&write_options_);
   rocksdb_options_.compaction_filter_factory =
-      std::make_shared<docdb::DocDBCompactionFilterFactory>(retention_policy_);
+      std::make_shared<docdb::DocDBCompactionFilterFactory>(
+          retention_policy_, &KeyBounds::kNoBounds);
   return Status::OK();
 }
 
@@ -312,12 +313,12 @@ Status DocDBRocksDBUtil::ReinitDBOptions() {
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch() {
   return DocWriteBatch(
-      {rocksdb_.get(), nullptr /* intents_db */}, init_marker_behavior_, &monotonic_counter_);
+      DocDB::FromRegularUnbounded(rocksdb_.get()), init_marker_behavior_, &monotonic_counter_);
 }
 
 DocWriteBatch DocDBRocksDBUtil::MakeDocWriteBatch(InitMarkerBehavior init_marker_behavior) {
   return DocWriteBatch(
-      {rocksdb_.get(), nullptr /* intents_db */}, init_marker_behavior, &monotonic_counter_);
+      DocDB::FromRegularUnbounded(rocksdb_.get()), init_marker_behavior, &monotonic_counter_);
 }
 
 void DocDBRocksDBUtil::SetInitMarkerBehavior(InitMarkerBehavior init_marker_behavior) {

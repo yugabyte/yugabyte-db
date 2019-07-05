@@ -178,7 +178,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // If 'metric_registry' is non-NULL, then this tablet will create a 'tablet' entity
   // within the provided registry. Otherwise, no metrics are collected.
   Tablet(
-      const scoped_refptr<RaftGroupMetadata>& metadata,
+      const RaftGroupMetadataPtr& metadata,
       const std::shared_future<client::YBClient*> &client_future,
       const scoped_refptr<server::Clock>& clock,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
@@ -451,9 +451,13 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   void ForceRocksDBCompactInTest();
 
+  docdb::DocDB doc_db() const { return { regular_db_.get(), intents_db_.get(), &key_bounds_ }; }
+
   std::string TEST_DocDBDumpStr(IncludeIntents include_intents = IncludeIntents::kFalse);
 
-  size_t TEST_CountRocksDBRecords();
+  template<class T> void TEST_DocDBDumpToContainer(IncludeIntents include_intents, T* out);
+
+  size_t TEST_CountRegularDBRecords();
 
   CHECKED_STATUS CreateReadIntents(
       const TransactionMetadataPB& transaction_metadata,
@@ -529,6 +533,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // records RocksDB.
   Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) override;
 
+  // Create an on-disk sub tablet of this tablet with specified ID, partition and key bounds.
+  CHECKED_STATUS CreateSubtablet(
+      const TabletId& tablet_id, const Partition& partition,
+      const docdb::KeyBounds& key_bounds);
+
  protected:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -578,7 +587,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   const Schema key_schema_;
 
-  scoped_refptr<RaftGroupMetadata> metadata_;
+  RaftGroupMetadataPtr metadata_;
   TableType table_type_;
 
   // Used for tests only.
@@ -644,6 +653,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::unique_ptr<rocksdb::DB> regular_db_;
 
   std::unique_ptr<rocksdb::DB> intents_db_;
+
+  // Optional key bounds (see docdb::KeyBounds) served by this tablet.
+  docdb::KeyBounds key_bounds_;
 
   std::unique_ptr<common::YQLStorageIf> ql_storage_;
 
