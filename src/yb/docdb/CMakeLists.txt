@@ -47,6 +47,7 @@ ADD_YB_LIBRARY(yb_docdb_encoding
         )
 
 set(DOCDB_SRCS
+        bounded_rocksdb_iterator.cc
         conflict_resolution.cc
         consensus_frontier.cc
         cql_operation.cc

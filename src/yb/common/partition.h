@@ -88,6 +88,14 @@ class Partition {
     return partition_key_end_;
   }
 
+  void TEST_set_partition_key_start(const std::string& partition_key_start) {
+    partition_key_start_ = partition_key_start;
+  }
+
+  void TEST_set_partition_key_end(const std::string& partition_key_end) {
+    partition_key_end_ = partition_key_end;
+  }
+
   // Serializes a partition into a protobuf message.
   void ToPB(PartitionPB* pb) const;
 

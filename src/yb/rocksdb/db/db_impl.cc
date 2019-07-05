@@ -1678,6 +1678,19 @@ uint64_t DBImpl::GetUncompressedSSTFileSize() {
   return total_uncompressed_file_size;
 }
 
+uint64_t DBImpl::GetDataSSTFileSize() {
+  std::vector<rocksdb::LiveFileMetaData> file_metadata;
+  GetLiveFilesMetaData(&file_metadata);
+  uint64_t data_sst_file_size = 0;
+  for (const auto& meta : file_metadata) {
+    // Each SST has base/metadata SST file (<number>.sst) and at least one data SST file
+    // (<number>.sst.sblock.0).
+    // We subtract SST metadata file size from total SST size to get the SST data file(s) size.
+    data_sst_file_size += meta.total_size - meta.base_size;
+  }
+  return data_sst_file_size;
+}
+
 void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
                                     FileMetaData* file_meta,
                                     const MutableCFOptions& mutable_cf_options,

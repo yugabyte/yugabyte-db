@@ -111,6 +111,11 @@ message KvStoreInfoPB {
 
   // List of tables sharing this KV-store. Primary table always goes first.
   repeated TableInfoPB tables = 5;
+
+  // Optional inclusive lower bound and exclusive upper bound for keys served by this KV-store.
+  // See docdb::KeyBounds.
+  optional bytes lower_bound_key = 6;
+  optional bytes upper_bound_key = 7;
 }
 
 // The super-block keeps track of the Raft group.

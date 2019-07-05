@@ -1090,5 +1090,7 @@ bool DocKeyBelongsTo(Slice doc_key, const Schema& schema) {
   return doc_key.starts_with(bytes);
 }
 
+const KeyBounds KeyBounds::kNoBounds;
+
 }  // namespace docdb
 }  // namespace yb

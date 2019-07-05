@@ -19,6 +19,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/util/trilean.h"
 
+#include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/key_bytes.h"
 
@@ -255,8 +256,8 @@ class IntentAwareIterator {
   const string encoded_read_time_local_limit_;
   const string encoded_read_time_global_limit_;
   const TransactionOperationContextOpt txn_op_context_;
-  std::unique_ptr<rocksdb::Iterator> intent_iter_;
-  std::unique_ptr<rocksdb::Iterator> iter_;
+  docdb::BoundedRocksDbIterator intent_iter_;
+  docdb::BoundedRocksDbIterator iter_;
   // iter_valid_ is true if and only if iter_ is positioned at key which matches top prefix from
   // the stack and record time satisfies read_time_ criteria.
   bool iter_valid_ = false;

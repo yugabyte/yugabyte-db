@@ -793,6 +793,9 @@ class DB {
   virtual uint64_t GetTotalSSTFileSize() { return 0; }
   virtual uint64_t GetUncompressedSSTFileSize() { return 0; }
 
+  // Returns the combined size of all the SST Files data blocks in the rocksdb instance.
+  virtual uint64_t GetDataSSTFileSize() { return 0; }
+
   // Returns a list of all table files with their level, start key
   // and end key
   virtual void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* /*metadata*/) {}

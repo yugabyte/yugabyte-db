@@ -757,13 +757,42 @@ class DocDbAwareFilterPolicy : public rocksdb::FilterPolicy {
   std::unique_ptr<const rocksdb::FilterPolicy> builtin_policy_;
 };
 
+// Optional inclusive lower bound and exclusive upper bound for keys served by DocDB.
+// Could be used to split tablet without doing actual splitting of RocksDB files.
+// DocDBCompactionFilter also respects these bounds, so it will filter out non-relevant keys
+// during compaction.
+// Both bounds should be encoded DocKey or its part to avoid splitting DocDB row.
+struct KeyBounds {
+  KeyBytes lower;
+  KeyBytes upper;
+
+  static const KeyBounds kNoBounds;
+
+  KeyBounds() = default;
+  KeyBounds(const Slice& _lower, const Slice& _upper) : lower(_lower), upper(_upper) {}
+
+  bool IsWithinBounds(const Slice& key) const {
+    return (lower.empty() || key.compare(lower) >= 0) &&
+           (upper.empty() || key.compare(upper) < 0);
+  }
+
+  std::string ToString() const {
+    return Format("{ lower: $0 upper: $1 }", lower, upper);
+  }
+};
+
 // Combined DB to store regular records and intents.
 struct DocDB {
   rocksdb::DB* regular;
   rocksdb::DB* intents;
+  const KeyBounds* key_bounds;
 
-  static DocDB FromRegular(rocksdb::DB* regular) {
-    return {regular, nullptr /* intents */};
+  static DocDB FromRegularUnbounded(rocksdb::DB* regular) {
+    return {regular, nullptr /* intents */, &KeyBounds::kNoBounds};
+  }
+
+  DocDB WithoutIntents() {
+    return {regular, nullptr /* intents */, key_bounds};
   }
 };
 

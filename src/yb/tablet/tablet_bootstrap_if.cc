@@ -44,7 +44,7 @@ using std::shared_ptr;
 
 using consensus::ConsensusBootstrapInfo;
 
-TabletStatusListener::TabletStatusListener(const scoped_refptr<RaftGroupMetadata>& meta)
+TabletStatusListener::TabletStatusListener(const RaftGroupMetadataPtr& meta)
     : meta_(meta) {
 }
 

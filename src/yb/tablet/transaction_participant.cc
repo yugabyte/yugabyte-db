@@ -718,12 +718,13 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   size_t TEST_CountIntents() {
     size_t count = 0;
     auto iter = docdb::CreateRocksDBIterator(db_,
+                                             key_bounds_,
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                              boost::none,
                                              rocksdb::kDefaultQueryId);
-    while (iter->Valid()) {
+    while (iter.Valid()) {
       count++;
-      iter->Next();
+      iter.Next();
     }
 
     return count;
@@ -963,8 +964,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return Status::OK();
   }
 
-  void SetDB(rocksdb::DB* db) {
+  void SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds) {
     db_ = db;
+    key_bounds_ = key_bounds;
   }
 
   TransactionParticipantContext* participant_context() const {
@@ -1046,12 +1048,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
     docdb::KeyBytes key;
     AppendTransactionKeyPrefix(id, &key);
-    auto iter = docdb::CreateRocksDBIterator(db_,
+    auto iter = docdb::CreateRocksDBIterator(db_, &docdb::KeyBounds::kNoBounds,
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                              boost::none,
                                              rocksdb::kDefaultQueryId);
-    iter->Seek(key.AsSlice());
-    if (!iter->Valid() || iter->key() != key.data()) {
+    iter.Seek(key.AsSlice());
+    if (!iter.Valid() || iter.key() != key.data()) {
       if (must_exist) {
         LOG_WITH_PREFIX(WARNING) << "Transaction not found: " << id << ", for: " << reason;
       } else {
@@ -1061,9 +1063,9 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
     TransactionMetadataPB metadata_pb;
 
-    if (!metadata_pb.ParseFromArray(iter->value().cdata(), iter->value().size())) {
+    if (!metadata_pb.ParseFromArray(iter.value().cdata(), iter.value().size())) {
       LOG_WITH_PREFIX(DFATAL) << "Unable to parse stored metadata: "
-                              << iter->value().ToDebugHexString();
+                              << iter.value().ToDebugHexString();
       return LockAndFindOrLoadResult{};
     }
 
@@ -1074,33 +1076,33 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
 
     key.AppendValueType(docdb::ValueType::kMaxByte);
-    iter->Seek(key.AsSlice());
-    if (iter->Valid()) {
-      iter->Prev();
+    iter.Seek(key.AsSlice());
+    if (iter.Valid()) {
+      iter.Prev();
     } else {
-      iter->SeekToLast();
+      iter.SeekToLast();
     }
     key.Truncate(key.size() - 1);
     IntraTxnWriteId next_write_id = 0;
-    while (iter->Valid() && iter->key().starts_with(key)) {
-      auto decoded_key = docdb::DecodeIntentKey(iter->value());
+    while (iter.Valid() && iter.key().starts_with(key)) {
+      auto decoded_key = docdb::DecodeIntentKey(iter.value());
       LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())
-          << "Failed to decode intent " << iter->value().ToDebugHexString() << ": "
+          << "Failed to decode intent " << iter.value().ToDebugHexString() << ": "
           << decoded_key.status();
       if (decoded_key.ok() && docdb::HasStrong(decoded_key->intent_types)) {
-        iter->Seek(iter->value());
-        if (iter->Valid()) {
+        iter.Seek(iter.value());
+        if (iter.Valid()) {
           VLOG_WITH_PREFIX(1)
-              << "Found latest record: " << docdb::SubDocKey::DebugSliceToString(iter->key())
-              << " => " << iter->value().ToDebugHexString();
+              << "Found latest record: " << docdb::SubDocKey::DebugSliceToString(iter.key())
+              << " => " << iter.value().ToDebugHexString();
           auto status = docdb::DecodeIntentValue(
-              iter->value(), Slice(id.data, id.size()), &next_write_id, nullptr /* body */);
+              iter.value(), Slice(id.data, id.size()), &next_write_id, nullptr /* body */);
           LOG_IF_WITH_PREFIX(DFATAL, !status.ok()) << "Failed to decode intent value: " << status;
           ++next_write_id;
         }
         break;
       }
-      iter->Prev();
+      iter.Prev();
     }
 
     std::unique_lock<std::mutex> lock(mutex_);
@@ -1126,6 +1128,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   std::string log_prefix_;
 
   rocksdb::DB* db_ = nullptr;
+  const docdb::KeyBounds* key_bounds_;
+
   Transactions transactions_;
   // Ids of running requests, stored in increasing order.
   std::deque<int64_t> running_requests_;
@@ -1207,8 +1211,8 @@ Status TransactionParticipant::ProcessReplicated(const ReplicatedData& data) {
   return impl_->ProcessReplicated(data);
 }
 
-void TransactionParticipant::SetDB(rocksdb::DB* db) {
-  impl_->SetDB(db);
+void TransactionParticipant::SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds) {
+  impl_->SetDB(db, key_bounds);
 }
 
 TransactionParticipantContext* TransactionParticipant::context() const {

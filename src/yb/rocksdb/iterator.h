@@ -30,8 +30,8 @@
 // non-const method, all threads accessing the same Iterator must use
 // external synchronization.
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_ITERATOR_H
-#define ROCKSDB_INCLUDE_ROCKSDB_ITERATOR_H
+#ifndef YB_ROCKSDB_ITERATOR_H
+#define YB_ROCKSDB_ITERATOR_H
 
 #include <string>
 #include "yb/util/slice.h"
@@ -65,6 +65,12 @@ class Iterator : public Cleanable {
  public:
   Iterator() {}
   virtual ~Iterator() {}
+
+  Iterator(const Iterator&) = delete;
+  void operator=(const Iterator&) = delete;
+
+  Iterator(Iterator&&) = default;
+  Iterator& operator=(Iterator&&) = default;
 
   // An iterator is either positioned at a key/value pair, or
   // not valid.  This method returns true iff the iterator is valid.
@@ -123,11 +129,6 @@ class Iterator : public Cleanable {
   //   LSM version used by the iterator. The same format as DB Property
   //   kCurrentSuperVersionNumber. See its comment for more information.
   virtual Status GetProperty(std::string prop_name, std::string* prop);
-
- private:
-  // No copying allowed
-  Iterator(const Iterator&);
-  void operator=(const Iterator&);
 };
 
 // Return an empty iterator (yields nothing).
@@ -138,4 +139,4 @@ extern Iterator* NewErrorIterator(const Status& status);
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_ITERATOR_H
+#endif // YB_ROCKSDB_ITERATOR_H

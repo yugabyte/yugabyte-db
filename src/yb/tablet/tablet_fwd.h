@@ -22,20 +22,22 @@ namespace yb {
 namespace tablet {
 
 class AbstractTablet;
-class RaftGroupMetadata;
-class TabletPeer;
-class TabletStatusPB;
-class TabletStatusListener;
-class WriteOperationState;
 
 class OperationDriver;
 typedef scoped_refptr<OperationDriver> OperationDriverPtr;
+
+class RaftGroupMetadata;
+typedef scoped_refptr<RaftGroupMetadata> RaftGroupMetadataPtr;
 
 class Tablet;
 typedef std::shared_ptr<Tablet> TabletPtr;
 
 class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
+
+class TabletStatusPB;
+class TabletStatusListener;
+class WriteOperationState;
 
 typedef YB_EDITION_NS_PREFIX Tablet TabletClass;
 

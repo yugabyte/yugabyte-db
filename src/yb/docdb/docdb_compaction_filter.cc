@@ -41,8 +41,10 @@ namespace docdb {
 
 DocDBCompactionFilter::DocDBCompactionFilter(
     HistoryRetentionDirective retention,
-    IsMajorCompaction is_major_compaction)
+    IsMajorCompaction is_major_compaction,
+    const KeyBounds* key_bounds)
     : retention_(std::move(retention)),
+      key_bounds_(key_bounds),
       is_major_compaction_(is_major_compaction) {
 }
 
@@ -73,6 +75,11 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
               << (is_major_compaction_ ? "major" : "minor") << " compaction"
               << ", history_cutoff=" << history_cutoff;
     filter_usage_logged_ = true;
+  }
+
+  // Remove regular keys which are not related to this RocksDB anymore (due to split of the tablet).
+  if (key_bounds_ && !key_bounds_->IsWithinBounds(key)) {
+    return FilterDecision::kDiscard;
   }
 
   // Just remove intent records from regular DB, because it was beta feature.
@@ -306,8 +313,8 @@ const char* DocDBCompactionFilter::Name() const {
 // ------------------------------------------------------------------------------------------------
 
 DocDBCompactionFilterFactory::DocDBCompactionFilterFactory(
-    std::shared_ptr<HistoryRetentionPolicy> retention_policy)
-    : retention_policy_(std::move(retention_policy)) {
+    std::shared_ptr<HistoryRetentionPolicy> retention_policy, const KeyBounds* key_bounds)
+    : retention_policy_(std::move(retention_policy)), key_bounds_(key_bounds) {
 }
 
 DocDBCompactionFilterFactory::~DocDBCompactionFilterFactory() {
@@ -317,7 +324,8 @@ unique_ptr<CompactionFilter> DocDBCompactionFilterFactory::CreateCompactionFilte
     const CompactionFilter::Context& context) {
   return std::make_unique<DocDBCompactionFilter>(
       retention_policy_->GetRetentionDirective(),
-      IsMajorCompaction(context.is_full_compaction));
+      IsMajorCompaction(context.is_full_compaction),
+      key_bounds_);
 }
 
 const char* DocDBCompactionFilterFactory::Name() const {

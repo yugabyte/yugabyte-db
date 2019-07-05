@@ -139,10 +139,10 @@ class ConflictResolver {
       intent_key_upperbound_.clear();
     } BOOST_SCOPE_EXIT_END;
     Slice prefix_slice(intent_key_prefix->AsSlice().data(), original_size);
-    intent_iter_->Seek(intent_key_prefix->AsSlice());
-    while (intent_iter_->Valid()) {
-      auto existing_key = intent_iter_->key();
-      auto existing_value = intent_iter_->value();
+    intent_iter_.Seek(intent_key_prefix->AsSlice());
+    while (intent_iter_.Valid()) {
+      auto existing_key = intent_iter_.key();
+      auto existing_value = intent_iter_.value();
       if (!existing_key.starts_with(prefix_slice)) {
         break;
       }
@@ -164,7 +164,7 @@ class ConflictResolver {
       }
       existing_value.consume_byte();
       auto existing_intent = VERIFY_RESULT(
-          docdb::ParseIntentKey(intent_iter_->key(), existing_value));
+          docdb::ParseIntentKey(intent_iter_.key(), existing_value));
 
       const auto intent_mask = kIntentTypeSetMask[existing_intent.types.ToUIntPtr()];
       if ((conflicting_intent_types & intent_mask) != 0) {
@@ -176,16 +176,17 @@ class ConflictResolver {
         }
       }
 
-      intent_iter_->Next();
+      intent_iter_.Next();
     }
 
     return Status::OK();
   }
 
   void EnsureIntentIteratorCreated() {
-    if (!intent_iter_) {
+    if (!intent_iter_.Initialized()) {
       intent_iter_ = CreateRocksDBIterator(
           doc_db_.intents,
+          doc_db_.key_bounds,
           BloomFilterMode::DONT_USE_BLOOM_FILTER,
           boost::none /* user_key_for_filter */,
           rocksdb::kDefaultQueryId,
@@ -340,7 +341,7 @@ class ConflictResolver {
   }
 
   DocDB doc_db_;
-  std::unique_ptr<rocksdb::Iterator> intent_iter_;
+  BoundedRocksDbIterator intent_iter_;
   Slice intent_key_upperbound_;
   TransactionStatusManager& status_manager_;
   RequestScope request_scope_;
@@ -456,19 +457,20 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
       // TODO(dtxn) reuse iterator
       auto value_iter = CreateRocksDBIterator(
           resolver->doc_db().regular,
+          resolver->doc_db().key_bounds,
           BloomFilterMode::USE_BLOOM_FILTER,
           key_slice,
           rocksdb::kDefaultQueryId);
 
-      value_iter->Seek(key_slice);
+      value_iter.Seek(key_slice);
       KeyBytes buffer;
-      while (value_iter->Valid() && value_iter->key().starts_with(key_slice)) {
-        auto existing_key = value_iter->key();
+      while (value_iter.Valid() && value_iter.key().starts_with(key_slice)) {
+        auto existing_key = value_iter.key();
         auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
         VLOG(4) << "Check value overwrite: " << transaction_id_
                 << ", key: " << SubDocKey::DebugSliceToString(intent_key_prefix->data())
                 << ", read time: " << read_time_
-                << ", found key: " << SubDocKey::DebugSliceToString(value_iter->key());
+                << ", found key: " << SubDocKey::DebugSliceToString(value_iter.key());
         if (doc_ht.hybrid_time() >= read_time_) {
           conflicts_metric_->Increment();
           return STATUS_FORMAT(TryAgain, "Value write after transaction start: $0 >= $1",
@@ -477,7 +479,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
         buffer.Reset(existing_key);
         // Already have ValueType::kHybridTime at the end
         buffer.AppendHybridTime(DocHybridTime::kMin);
-        ROCKSDB_SEEK(value_iter.get(), buffer.AsSlice());
+        ROCKSDB_SEEK(&value_iter, buffer.AsSlice());
       }
     }
 

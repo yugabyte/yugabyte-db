@@ -67,6 +67,8 @@ using yb::util::FormatBytesAsStr;
 using yb::FormatRocksDBSliceAsStr;
 using strings::Substitute;
 
+using namespace std::placeholders;
+
 DEFINE_test_flag(bool, docdb_sort_weak_intents_in_tests, false,
                 "Sort weak intents to make their order deterministic.");
 
@@ -1230,45 +1232,66 @@ Result<std::string> DocDBValueToDebugStr(
   FATAL_INVALID_ENUM_VALUE(KeyType, key_type);
 }
 
-void ProcessDumpEntry(Slice key, Slice value, IncludeBinary include_binary, StorageDbType db_type,
-                      std::ostream* out) {
+template <class DumpStringFunc>
+void ProcessDumpEntry(
+    Slice key, Slice value, IncludeBinary include_binary, StorageDbType db_type,
+    DumpStringFunc func) {
   KeyType key_type;
   Result<std::string> key_str = DocDBKeyToDebugStr(key, db_type, &key_type);
   if (!key_str.ok()) {
-    *out << key_str.status() << endl;
+    func(key_str.status().ToString());
     return;
   }
   Result<std::string> value_str = DocDBValueToDebugStr(key_type, *key_str, value);
   if (!value_str.ok()) {
-    *out << value_str.status().CloneAndAppend(Substitute(". Key: $0", *key_str)) << endl;
+    func(value_str.status().CloneAndAppend(Substitute(". Key: $0", *key_str)).ToString());
   } else {
-    *out << *key_str << " -> " << *value_str << endl;
+    func(Format("$0 -> $1", *key_str, *value_str));
   }
   if (include_binary) {
-    *out << FormatRocksDBSliceAsStr(key) << " -> "
-         << FormatRocksDBSliceAsStr(value) << endl << endl;
+    func(Format("$0 -> $1\n", FormatRocksDBSliceAsStr(key), FormatRocksDBSliceAsStr(value)));
   }
+}
+
+void AppendToStream(const std::string& s, ostream* out) {
+  *out << s << std::endl;
+}
+
+void AppendToContainer(const std::string& s, std::unordered_set<std::string>* out) {
+  out->insert(s);
+}
+
+void AppendToContainer(const std::string& s, std::vector<std::string>* out) {
+  out->push_back(s);
 }
 
 std::string EntryToString(const rocksdb::Iterator& iterator, StorageDbType db_type) {
   std::ostringstream out;
-  ProcessDumpEntry(iterator.key(), iterator.value(), IncludeBinary::kFalse, db_type, &out);
+  ProcessDumpEntry(
+      iterator.key(), iterator.value(), IncludeBinary::kFalse, db_type,
+      std::bind(&AppendToStream, _1, &out));
   return out.str();
 }
 
-}  // namespace
-
-void DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, StorageDbType db_type,
-                    IncludeBinary include_binary) {
+template <class DumpStringFunc>
+void DocDBDebugDump(rocksdb::DB* rocksdb, StorageDbType db_type, IncludeBinary include_binary,
+    DumpStringFunc dump_func) {
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
   iter->SeekToFirst();
 
   while (iter->Valid()) {
-    ProcessDumpEntry(iter->key(), iter->value(), include_binary, db_type, &out);
+    ProcessDumpEntry(iter->key(), iter->value(), include_binary, db_type, dump_func);
     iter->Next();
   }
+}
+
+}  // namespace
+
+void DocDBDebugDump(rocksdb::DB* rocksdb, ostream& out, StorageDbType db_type,
+                    IncludeBinary include_binary) {
+  DocDBDebugDump(rocksdb, db_type, include_binary, std::bind(&AppendToStream, _1, &out));
 }
 
 std::string DocDBDebugDumpToStr(DocDB docdb, IncludeBinary include_binary) {
@@ -1286,6 +1309,39 @@ std::string DocDBDebugDumpToStr(rocksdb::DB* rocksdb, StorageDbType db_type,
   DocDBDebugDump(rocksdb, ss, db_type, include_binary);
   return ss.str();
 }
+
+template <class T>
+void DocDBDebugDumpToContainer(rocksdb::DB* rocksdb, T* out, StorageDbType db_type,
+                               IncludeBinary include_binary) {
+  void (*f)(const std::string&, T*) = AppendToContainer;
+  DocDBDebugDump(rocksdb, db_type, include_binary, std::bind(f, _1, out));
+}
+
+template
+void DocDBDebugDumpToContainer(
+    rocksdb::DB* rocksdb, std::unordered_set<std::string>* out, StorageDbType db_type,
+    IncludeBinary include_binary);
+
+template
+void DocDBDebugDumpToContainer(
+    rocksdb::DB* rocksdb, std::vector<std::string>* out, StorageDbType db_type,
+    IncludeBinary include_binary);
+
+template <class T>
+void DocDBDebugDumpToContainer(DocDB docdb, T* out, IncludeBinary include_binary) {
+  DocDBDebugDumpToContainer(docdb.regular, out, StorageDbType::kRegular, include_binary);
+  if (docdb.intents) {
+    DocDBDebugDumpToContainer(docdb.intents, out, StorageDbType::kIntents, include_binary);
+  }
+}
+
+template
+void DocDBDebugDumpToContainer(
+    DocDB docdb, std::unordered_set<std::string>* out, IncludeBinary include_binary);
+
+template
+void DocDBDebugDumpToContainer(
+    DocDB docdb, std::vector<std::string>* out, IncludeBinary include_binary);
 
 void AppendTransactionKeyPrefix(const TransactionId& transaction_id, KeyBytes* out) {
   out->AppendValueType(ValueType::kTransactionId);
@@ -1359,20 +1415,21 @@ CHECKED_STATUS IntentToWriteRequest(
 }
 
 Status PrepareApplyIntentsBatch(
-    const TransactionId &transaction_id, HybridTime commit_ht,
-    rocksdb::WriteBatch *regular_batch,
-    rocksdb::DB *intents_db, rocksdb::WriteBatch *intents_batch) {
+    const TransactionId &transaction_id, HybridTime commit_ht, const KeyBounds* key_bounds,
+    rocksdb::WriteBatch* regular_batch,
+    rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch) {
   Slice reverse_index_upperbound;
   auto reverse_index_iter = CreateRocksDBIterator(
-      intents_db, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId,
-      nullptr /* read_filter */, &reverse_index_upperbound);
+      intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
+      rocksdb::kDefaultQueryId, nullptr /* read_filter */, &reverse_index_upperbound);
 
-  std::unique_ptr<rocksdb::Iterator> intent_iter;
+  BoundedRocksDbIterator intent_iter;
   // If we don't have regular_batch, it means that we just removing intents.
   // We don't need intent iterator, since reverse index iterator is enough in this case.
   if (regular_batch) {
     intent_iter = CreateRocksDBIterator(
-        intents_db, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none, rocksdb::kDefaultQueryId);
+        intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
+        rocksdb::kDefaultQueryId);
   }
 
   KeyBytes txn_reverse_index_prefix;
@@ -1383,37 +1440,38 @@ Status PrepareApplyIntentsBatch(
   txn_reverse_index_upperbound.AppendValueType(ValueType::kMaxByte);
   reverse_index_upperbound = txn_reverse_index_upperbound.AsSlice();
 
-  reverse_index_iter->Seek(txn_reverse_index_prefix.data());
+  reverse_index_iter.Seek(txn_reverse_index_prefix.data());
 
   DocHybridTimeBuffer doc_ht_buffer;
 
   IntraTxnWriteId write_id = 0;
-  while (reverse_index_iter->Valid()) {
-    rocksdb::Slice key_slice(reverse_index_iter->key());
+  while (reverse_index_iter.Valid()) {
+    rocksdb::Slice key_slice(reverse_index_iter.key());
 
     if (!key_slice.starts_with(txn_reverse_index_prefix.data())) {
       break;
     }
 
     VLOG(4) << "Apply reverse index record: "
-            << EntryToString(*reverse_index_iter, StorageDbType::kIntents);
+            << EntryToString(reverse_index_iter, StorageDbType::kIntents);
 
     // If the key ends at the transaction id then it is transaction metadata (status tablet,
     // isolation level etc.).
     if (key_slice.size() > txn_reverse_index_prefix.size()) {
       // Value of reverse index is a key of original intent record, so seek it and check match.
-      if (regular_batch) {
+      if (regular_batch &&
+          (!key_bounds || key_bounds->IsWithinBounds(reverse_index_iter.value()))) {
         RETURN_NOT_OK(IntentToWriteRequest(
-            transaction_id_slice, commit_ht, reverse_index_iter.get(), intent_iter.get(),
+            transaction_id_slice, commit_ht, &reverse_index_iter, &intent_iter,
             regular_batch, &write_id));
       }
 
-      intents_batch->Delete(reverse_index_iter->value());
+      intents_batch->Delete(reverse_index_iter.value());
     }
 
-    intents_batch->Delete(reverse_index_iter->key());
+    intents_batch->Delete(reverse_index_iter.key());
 
-    reverse_index_iter->Next();
+    reverse_index_iter.Next();
   }
 
   return Status::OK();
