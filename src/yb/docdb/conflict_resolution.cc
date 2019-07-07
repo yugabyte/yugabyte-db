@@ -88,6 +88,8 @@ class ConflictResolverContext {
 
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
 
+  virtual std::string ToString() const = 0;
+
  protected:
   ~ConflictResolverContext() {}
 };
@@ -197,6 +199,7 @@ class ConflictResolver {
 
  private:
   CHECKED_STATUS ResolveConflicts() {
+    VLOG(3) << context_.ToString() << ", conflicts: " << yb::ToString(conflicts_);
     if (!conflicts_.empty()) {
       transactions_.reserve(conflicts_.size());
       for (const auto& transaction_id : conflicts_) {
@@ -242,6 +245,7 @@ class ConflictResolver {
         continue;
       }
       RETURN_NOT_OK(context_.CheckConflictWithCommitted(transaction.id, commit_time));
+      VLOG(4) << context_.ToString() << ", locally committed: " << transaction.id;
     }
     transactions_.erase(write_iterator, transactions_.end());
 
@@ -257,11 +261,15 @@ class ConflictResolver {
       auto status = transaction.status;
       if (status == TransactionStatus::COMMITTED) {
         RETURN_NOT_OK(context_.CheckConflictWithCommitted(transaction.id, transaction.commit_time));
+        VLOG(4) << context_.ToString() << ", committed: " << transaction.id;
         continue;
       } else if (status == TransactionStatus::ABORTED) {
         auto commit_time = status_manager().LocalCommitTime(transaction.id);
         if (commit_time.is_valid()) {
           RETURN_NOT_OK(context_.CheckConflictWithCommitted(transaction.id, commit_time));
+          VLOG(4) << context_.ToString() << ", locally committed: " << transaction.id;
+        } else {
+          VLOG(4) << context_.ToString() << ", aborted: " << transaction.id;
         }
         continue;
       } else {
@@ -375,7 +383,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
   CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) override {
     RETURN_NOT_OK(transaction_id_);
 
-    VLOG(4) << "Resolve conflicts: " << transaction_id_;
+    VLOG(3) << "Resolve conflicts: " << transaction_id_;
 
     if (write_batch_.transaction().has_isolation()) {
       metadata_ = VERIFY_RESULT(TransactionMetadata::FromPB(write_batch_.transaction()));
@@ -542,6 +550,10 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     return other == *transaction_id_;
   }
 
+  std::string ToString() const override {
+    return yb::ToString(transaction_id_);
+  }
+
   const DocOperations& doc_ops_;
   const KeyValueWriteBatchPB& write_batch_;
 
@@ -613,6 +625,10 @@ class OperationConflictResolverContext : public ConflictResolverContext {
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
     return false;
+  }
+
+  std::string ToString() const override {
+    return "Operation Context";
   }
 
   CHECKED_STATUS CheckConflictWithCommitted(
