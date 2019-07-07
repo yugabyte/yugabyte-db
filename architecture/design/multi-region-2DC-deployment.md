@@ -120,20 +120,21 @@ The sync cluster maintains the state of replication in a separate `system.replic
 * The node in the sink cluster that is currently responsible for replicating the data
 * The last operation id that was successfully committed into the sink cluster
 
-### Step 3. Pull changes from source cluster
+### Step 3. Fetch and handle changes from source cluster
 
-The *sink replication consumer* continuously performs a `GetCDCRecords` RPC call to fetch updates (which are effectively a set of `ReplicateMsg`). The source cluster sends a response that includes a list of update messages that need to be replicated, if any. It may optionally also include a list of IP addresses of new nodes in the source cluster in case tablets have moved. An example of the response message is shown below.
+The *sink replication consumer* continuously performs a `GetCDCRecords()` RPC call to fetch updates (which returns a `GetCDCRecordsResponsePB`). The source cluster sends a response that includes a list of update messages that need to be replicated, if any. It may optionally also include a list of IP addresses of new nodes in the source cluster in case tablets have moved. An example of the response message is shown below.
 
 ```
-ReplicateMsg Format:
-╔════════════╦══════════════╦═══════════════════╦═════════════════════════════════════════════╗
-║            ║ Message id:  ║ Operation type    ║ <------ List of updates ----------------->  ║
-║    Raft    ║ (hybrid ts,  ║ (write, change    ║ ╔═════════════════════════════╦═══════════╗ ║
-║    op id   ║  counter id) ║  config, update   ║ ║ document key, update msg #1 ║    ...    ║ ║
-║            ║              ║  update txn, etc) ║ ╚═════════════════════════════╩═══════════╝ ║
-╚════════════╩══════════════╩═══════════════════╩═════════════════════════════════════════════╝
+GetCDCRecordsResponsePB Format:
+╔══════════╦══════════╦══════════════════╦═══════════╦═════════════════════════════════════════════╗
+║  Source  ║  Source  ║ CDC type: CHANGE ║  Source   ║ <---------- ReplicateMsg list ----------->  ║
+║ universe ║  tablet  ║ (send the final  ║  server   ║ ╔═══════════════════════════════╦═════════╗ ║
+║   uuid   ║   uuid   ║  changed values) ║ host:port ║ ║ document_key_1, update msg #1 ║   ...   ║ ║
+║          ║          ║                  ║           ║ ╚═══════════════════════════════╩═════════╝ ║
+╚══════════╩══════════╩══════════════════╩═══════════╩═════════════════════════════════════════════╝
 ```
-As shown in the figure above, each update has a document key which the *sink replication consumer* server uses to locate the appropriate sink tablet leader that owns the document key. The update message is routed to that tablet leader node to handle the update request. See the section below on transactional guarantees for details on how this update is handled.
+
+As shown in the figure above, each update message has a corresponding **document key** (denoted by the `document_key_1` field in the figure above) which the *sink replication consumer* uses to locate the owning tablet leader on the sink cluster. The update message is routed to that tablet leader, which handles the update request. See the section below on transactional guarantees for details on how this update is handled.
 
 > Note that the `GetCDCRecords()` RPC request can be routed to the appropriate node through an external load balancer in the case of a Kubernetes deployment.
 
@@ -149,17 +150,72 @@ Note that the CDC change stream generates updates (including provisoinal writes)
 * **Not globally ordered**: The transactions (especially those that do not involve overlapping rows) may not be applied in the same order as they occur in the source cluster.
 * **Last writer wins**: In case of active-active configurations, if there are conflicting writes to the same key, then the update with the larger timestamp is considered the latest update. Thus, the deployment is eventually consistent across the two data centers.
 
-The following sections outline how these transactional guarantees are achieved.
+The following sections outline how these transactional guarantees are achieved by looking at how a tablet leader handles a single `ReplicateMsg`, which has changes for a document key that it owns.
 
 
-### Single-row Transactions
+### Single-row transactions
+
+```
+ReplicateMsg received by the tablet leader of the sink cluster:
+╔══════════════╦═══════════╦════════════════════╦════════════════════════╗
+║ document_key ║ new value ║   OperationType:   ║  TransactionMetadata:  ║
+║              ║           ║       WRITE        ║         (none)         ║
+╚══════════════╩═══════════╩════════════════════╩════════════════════════╝
+```
+
+In the case of single-row transactions, the `TransactionMetadata` field would not have a `txn uuid` set since there are no provisional writes. Note that in this case, the only valid value for `OperationType` is `write`.
+
+On receiving a new single-row write `ReplicateMsg` for the key `document_key`, the tablet leader owning that key processes the `ReplicateMsg` according to the following rules:
+* **Ignore on later update**: If there is a committed write at a higher timestamp, then the replicated write update is ignored. This is safe because a more recent update already exists, which should be honored as the latest value according to a *last writer wins* policy based on the record timestamp.
+* **Abort conflicting transaction**: If there is a conflicting non-replicated transaction in progress, that transaction is aborted and the replicated message is applied.
+* **In all other cases, the update is applied.**
+
+Once the `ReplicateMsg` is processed by the tablet leader, the *sink replication consumer* marks the record as `consumed`
+
+> Note that all replicated records will be applied at the same hybrid timestamp at which they occurred on the producer universe.
 
 
- 
-On receiving the new write request, if the record is not part of any transaction, the tablet leader applies the record to its WAL file. If it finds a conflicting non-replicated transaction that’s in progress, the transaction is aborted. If it finds a committed write at a higher timestamp, then the replicated write is not applied (In this case, we’ll use a last writer wins policy based on record timestamp).
-Tablet leader sends RPC to followers to write the record to their WAL files, waits for an acknowledgement from majority and then acks the write request to replication leader.
-On receiving acknowledgement from tablet leader, replication leader marks the record as “consumed” by updating consumed_op_id. This consumed_op_id is checkpointed to master using CheckpointCDC RPC.
-Note that all replicated records will be applied at the same timestamp at which they occurred on the producer universe (similar to specifying USING timestamp in CQL).
+### Multi-row transactions
+
+```
+ReplicateMsg received by the tablet leader of the sink cluster:
+╔══════════════╦═══════════╦════════════════════╦═══════════════════════╗
+║              ║           ║   OperationType:   ║  TransactionMetadata: ║
+║ document_key ║ new value ║       WRITE        ║    - txn uuid         ║
+║              ║           ║         or         ║    - hybrid timestamp ║
+║              ║           ║  CREATE/UPDATE TXN ║    - isolation level  ║
+╚══════════════╩═══════════╩════════════════════╩═══════════════════════╝
+```
+
+In the case of single-row transactions, the `TransactionMetadata` field be set. Note that in this case, the `OperationType` can be `WRITE` or `CREATE/UPDATE TXN`.
+
+Upon receiving a `ReplicateMsg` that is a part of a multi-row transaction, the *sink replication consumer* handles it as follows:
+
+* `CREATE TXN` messages: Send the message to the transaction status tablet leader (based on the value of `txn uuid` in the `TransactionMetadata` field. The message eventually gets applied to the transaction status table on the sink cluster.
+* `WRITE` messages: Sends the record to tablet leader of the key, which ensures there is no conflict before writing a provisional write record. 
+    * If there is a conflicting provisional write as a part of a non-replicated transaction on the sink cluster, then this transaction is aborted.
+    * If there is another non-transactional write recorded at a higher timestamp, then the leader does not write the record into its WAL log but returns success to replication leader (The write is ignored but considered “success”).
+
+* `UPDATE TXN` messages: The following cases are possible:
+    * If record is a `Transaction Applying` record for a tablet involved in the transaction, then an RPC is sent to the transaction leader, indicating that the tablet involved has received all records for the transaction. The transaction leader will record this information in its WAL and transactions table (using field tablets_received_applying_record).
+    * If record is `Transaction Commit` record, then all tablets involved in the transaction are queried to see if they have received their `Transaction Applying` records.
+        * If not, then simply add a `WAITING_TO_COMMIT` message to its WAL and set the transaction status to `WAITING_TO_COMMIT`.
+        * If all involved tablets have received `Transaction Applying` message, then set the status to `COMMITTED`, and sends a new `Transaction Applying` wal message to all involved tablets, notifying them to commit the transaction.
+    * In applying record above, if the status is `WAITING_TO_COMMIT` and all involved tablets have received their applying message, then it applies a new `COMMITTED` message to WAL, changes transaction status to `COMMITTED` and sends a new applying message for all involved tablets, notifying them to commit the transaction.
+
+This combination of `WAITING_TO_COMMIT` status and `tablets_received_applying_record` field will be used to ensure that transaction records are applied atomically on the replicated universe.
 
 
-### Multi-row Transactions
+# Future Work
+
+* **Automatically bootstrapping sink clusters**:
+  * Currently: it is the responsibility of the end user to ensure that a sink cluster has sufficiently recent updates so that replication can safely resume.
+  * Future: bootstrapping the sink cluster can be automated.
+
+* **Replicating DDL changes**:
+  * Currently: DDL changes are not automatically replicated. Applying create table and alter table commands to the sync clusters is the responsibiity of the user.
+  * Future: Allow safe DDL changes to be propagated automatically.
+  
+* **Safety of DDL and DML in active-active**:
+  * Currently: Certain potentially unsafe combinations of DDL/DML are allowed. For example, in having a *unique key constraint* on a column in an active-active *last writer wins* mode is unsafe since a violation could easily be introduced by inserting different values on the two clusters - each of these operations is legal in itself. The ensuing replication can, however, violate the unique key constraint. This will cause the two clusters to permanently diverge and the replication to fail.
+  * Future: Detect such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default.
