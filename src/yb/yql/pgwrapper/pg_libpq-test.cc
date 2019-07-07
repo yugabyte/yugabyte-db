@@ -35,6 +35,8 @@ class PgLibPqTest : public PgWrapperTestBase {
     }
     return result;
   }
+
+  void TestMultiBankAccount(const std::string& isolation_level);
 };
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
@@ -343,25 +345,42 @@ bool TransactionalFailure(const Status& status) {
          message.find("Conflicts with higher priority transaction") != std::string::npos;
 }
 
-Result<int64_t> ReadSumBalance(PGconn* conn, int accounts, std::atomic<int>* counter) {
-  RETURN_NOT_OK(Execute(conn, "START TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  BOOST_SCOPE_EXIT(conn) {
-    EXPECT_OK(Execute(conn, "ROLLBACK"));
+Result<int64_t> ReadSumBalance(
+    PGconn* conn, int accounts, const std::string& begin_transaction_statement,
+    std::atomic<int>* counter) {
+  RETURN_NOT_OK(Execute(conn, begin_transaction_statement));
+  bool failed = true;
+  BOOST_SCOPE_EXIT(conn, &failed) {
+    if (failed) {
+      EXPECT_OK(Execute(conn, "ROLLBACK"));
+    }
   } BOOST_SCOPE_EXIT_END;
 
   RETURN_NOT_OK(Execute(conn, Format("INSERT INTO fake (id) VALUES ($0)", ++*counter)));
   int64_t sum = 0;
   for (int i = 1; i <= accounts; ++i) {
+    LOG(INFO) << "Reading: " << i;
     sum += VERIFY_RESULT(FetchValue<int64_t>(
         conn, Format("SELECT balance FROM account_$0 WHERE id = $0", i)));
   }
+
+  failed = false;
+  RETURN_NOT_OK(Execute(conn, "COMMIT"));
   return sum;
 }
 
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccount)) {
-  constexpr int kAccounts = RegularBuildVsSanitizers(30, 10);
-  constexpr int kThreads = RegularBuildVsSanitizers(20, 5);
+void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
+  constexpr int kAccounts = RegularBuildVsSanitizers(20, 10);
   constexpr int64_t kInitialBalance = 100;
+
+#ifndef NDEBUG
+  const auto kTimeout = 180s;
+  constexpr int kThreads = RegularBuildVsSanitizers(12, 5);
+#else
+  const auto kTimeout = 60s;
+  constexpr int kThreads = 5;
+#endif
+
   PGConnPtr conn;
   ASSERT_OK(WaitFor([this, &conn] {
     auto res = Connect();
@@ -371,6 +390,9 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccount)) {
     conn = std::move(*res);
     return true;
   }, 5s, "Initial connect"));
+
+  const std::string begin_transaction_statement =
+      "START TRANSACTION ISOLATION LEVEL " + isolation_level;
 
   for (int i = 1; i <= kAccounts; ++i) {
     ASSERT_OK(Execute(
@@ -392,7 +414,8 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccount)) {
   TestThreadHolder thread_holder;
   for (int i = 1; i <= kThreads; ++i) {
     thread_holder.AddThreadFunctor(
-        [this, &counter, &writes, &stop_flag = thread_holder.stop_flag()]() {
+        [this, &counter, &writes, &begin_transaction_statement,
+         &stop_flag = thread_holder.stop_flag()]() {
       auto conn = ASSERT_RESULT(Connect());
       while (!stop_flag.load(std::memory_order_acquire)) {
         int from = RandomUniformInt(1, kAccounts);
@@ -401,7 +424,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccount)) {
           ++to;
         }
         int64_t amount = RandomUniformInt(1, 10);
-        ASSERT_OK(Execute(conn.get(), "START TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+        ASSERT_OK(Execute(conn.get(), begin_transaction_statement));
         ASSERT_OK(Execute(conn.get(), Format("INSERT INTO fake (id) VALUES ($0)", ++counter)));
         auto status = Execute(conn.get(), Format(
               "UPDATE account_$0 SET balance = balance - $1 WHERE id = $0", from, amount));
@@ -425,10 +448,11 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccount)) {
   }
 
   thread_holder.AddThreadFunctor(
-      [this, &counter, &reads, &stop_flag = thread_holder.stop_flag()]() {
+      [this, &counter, &reads, &begin_transaction_statement,
+       &stop_flag = thread_holder.stop_flag()]() {
     auto conn = ASSERT_RESULT(Connect());
     while (!stop_flag.load(std::memory_order_acquire)) {
-      auto sum = ReadSumBalance(conn.get(), kAccounts, &counter);
+      auto sum = ReadSumBalance(conn.get(), kAccounts, begin_transaction_statement, &counter);
       if (!sum.ok()) {
         ASSERT_TRUE(TransactionalFailure(sum.status())) << sum.status();
       } else {
@@ -438,13 +462,20 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccount)) {
     }
   });
 
-  thread_holder.WaitAndStop(60s);
+  constexpr auto kRequiredReads = RegularBuildVsSanitizers(5, 2);
+  constexpr auto kRequiredWrites = RegularBuildVsSanitizers(1000, 500);
+  auto wait_status = WaitFor([&reads, &writes, &stop = thread_holder.stop_flag()] {
+    return stop.load() || (writes.load() >= kRequiredWrites && reads.load() >= kRequiredReads);
+  }, kTimeout, "Enough reads and writes");
 
-  ASSERT_GE(writes.load(), 50);
-  ASSERT_GE(reads.load(), 2);
+  LOG(INFO) << "Writes: " << writes.load() << ", reads: " << reads.load();
 
-  ASSERT_OK(WaitFor([&conn, &counter]() -> Result<bool> {
-    auto sum = ReadSumBalance(conn.get(), kAccounts, &counter);
+  ASSERT_OK(wait_status);
+
+  thread_holder.Stop();
+
+  ASSERT_OK(WaitFor([&conn, &begin_transaction_statement, &counter]() -> Result<bool> {
+    auto sum = ReadSumBalance(conn.get(), kAccounts, begin_transaction_statement, &counter);
     if (!sum.ok()) {
       if (!TransactionalFailure(sum.status())) {
         return sum.status();
@@ -453,7 +484,15 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccount)) {
     }
     EXPECT_EQ(*sum, kAccounts * kInitialBalance);
     return true;
-  }, 5s, "Final read"));
+  }, 10s, "Final read"));
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot)) {
+  TestMultiBankAccount("REPEATABLE READ");
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSerializable)) {
+  TestMultiBankAccount("SERIALIZABLE");
 }
 
 } // namespace pgwrapper

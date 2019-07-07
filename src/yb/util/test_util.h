@@ -302,6 +302,10 @@ class TestThreadHolder {
 
   void WaitAndStop(const CoarseDuration& duration) {
     yb::WaitStopped(duration, &stop_flag_);
+    Stop();
+  }
+
+  void Stop() {
     stop_flag_.store(true, std::memory_order_release);
     JoinAll();
   }
