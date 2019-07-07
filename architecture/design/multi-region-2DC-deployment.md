@@ -75,6 +75,8 @@ This instructs the sink cluster to perform the following two actions:
 * Initialize its **sink replication consumer** which prepares it to consume updates from the source.
 * Make an RPC call to the source universe to initialize the **source replication producer**, which prepares it to produce a stream of updates.
 
+The **sink replication consumer** and the **source replication producer** are distributed, scale-out services that run on each node of the sink and source clusters respectively. In the case of the *source replication producer*, each node is responsible for all the source tablet leaders it hosts (note that the tablets are restricted to only those that participate in replication). In the case of the *sink replication consumer*, the metadata about which sink node owns which source tablet is explicitly tracked in the system catalog.
+
 This is shown diagrammatically below.
 
 ![2DC initialize consumer and producer](https://github.com/YugaByte/yugabyte-db/raw/master/architecture/design/images/2DC-step1-initialize.png)
