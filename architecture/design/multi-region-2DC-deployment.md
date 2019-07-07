@@ -75,13 +75,13 @@ This instructs the sink cluster to perform the following two actions:
 * Initialize its **sink replication consumer** which prepares it to consume updates from the source.
 * Make an RPC call to the source universe to initialize the **source replication producer**, which prepares it to produce a stream of updates.
 
-The **sink replication consumer** and the **source replication producer** are distributed, scale-out services that run on each node of the sink and source clusters respectively. In the case of the *source replication producer*, each node is responsible for all the source tablet leaders it hosts (note that the tablets are restricted to only those that participate in replication). In the case of the *sink replication consumer*, the metadata about which sink node owns which source tablet is explicitly tracked in the system catalog.
-
 This is shown diagrammatically below.
 
 ![2DC initialize consumer and producer](https://github.com/YugaByte/yugabyte-db/raw/master/architecture/design/images/2DC-step1-initialize.png)
 
-Note that the following cases are possible:
+The **sink replication consumer** and the **source replication producer** are distributed, scale-out services that run on each node of the sink and source clusters respectively. In the case of the *source replication producer*, each node is responsible for all the source tablet leaders it hosts (note that the tablets are restricted to only those that participate in replication). In the case of the *sink replication consumer*, the metadata about which sink node owns which source tablet is explicitly tracked in the system catalog.
+
+Note that the sink clusters can fall behind the source clusters due to various failure scenarios (such as node outages or extended network partitions). Upon the failure conditions healing, it may not always be safe to continue replication. In such cases, the user would have to bootstrap the sink cluster to a point from which replication can safely resume. Some of the cases that arise are shown diagrammatically below:
 ```
                           ╔══════════════════════════════════╗
                           ║      New replication setup?      ║
