@@ -122,9 +122,18 @@ The sync cluster maintains the state of replication in a separate `system.replic
 
 ### Step 3. Pull changes from source cluster
 
-The sink cluster nodes keep pulling changes from the source cluster tablets continuously using `GetCDCRecords()` RPC calls. The source cluster sends a response that includes:
-* A list of update messages that need to be replicated, if any.
-* It may optionally also include a list of IP addresses of new nodes in the source cluster in case tablets have moved.
+The *sink replication consumer* continuously performs a `GetCDCRecords` RPC call to fetch updates (which are effectively a set of `ReplicateMsg`). The source cluster sends a response that includes a list of update messages that need to be replicated, if any. It may optionally also include a list of IP addresses of new nodes in the source cluster in case tablets have moved. An example of the response message is shown below.
+
+```
+ReplicateMsg Format:
+╔════════════╦══════════════╦═══════════════════╦═════════════════════════════════════════════╗
+║            ║ Message id:  ║ Operation type    ║ <------ List of updates ----------------->  ║
+║    Raft    ║ (hybrid ts,  ║ (write, change    ║ ╔═════════════════════════════╦═══════════╗ ║
+║    op id   ║  counter id) ║  config, update   ║ ║ document key, update msg #1 ║    ...    ║ ║
+║            ║              ║  update txn, etc) ║ ╚═════════════════════════════╩═══════════╝ ║
+╚════════════╩══════════════╩═══════════════════╩═════════════════════════════════════════════╝
+```
+As shown in the figure above, each update has a document key which the *sink replication consumer* server uses to locate the appropriate sink tablet leader that owns the document key. The update message is routed to that tablet leader node to handle the update request. See the section below on transactional guarantees for details on how this update is handled.
 
 > Note that the `GetCDCRecords()` RPC request can be routed to the appropriate node through an external load balancer in the case of a Kubernetes deployment.
 
@@ -132,3 +141,25 @@ The sink cluster nodes keep pulling changes from the source cluster tablets cont
 
 The sink cluster nodes will periodically write a *checkpoint* consisting of the last successfully applied operation id along with the source tablet information into its `system.replication` table. This allows the replication to continue from this point onwards.
 
+# Transactional Guarantees
+
+Note that the CDC change stream generates updates (including provisoinal writes) at the granularity of document attributes and not at the granularity of user-issued transactions. However, transactional guarantees are important for 2DC deployments. The *sink replication consumer* ensures the following:
+
+* **Atomicity of transactions**: This implies one can never read a partial result of a transaction on the sink cluster.
+* **Not globally ordered**: The transactions (especially those that do not involve overlapping rows) may not be applied in the same order as they occur in the source cluster.
+* **Last writer wins**: In case of active-active configurations, if there are conflicting writes to the same key, then the update with the larger timestamp is considered the latest update. Thus, the deployment is eventually consistent across the two data centers.
+
+The following sections outline how these transactional guarantees are achieved.
+
+
+### Single-row Transactions
+
+
+ 
+On receiving the new write request, if the record is not part of any transaction, the tablet leader applies the record to its WAL file. If it finds a conflicting non-replicated transaction that’s in progress, the transaction is aborted. If it finds a committed write at a higher timestamp, then the replicated write is not applied (In this case, we’ll use a last writer wins policy based on record timestamp).
+Tablet leader sends RPC to followers to write the record to their WAL files, waits for an acknowledgement from majority and then acks the write request to replication leader.
+On receiving acknowledgement from tablet leader, replication leader marks the record as “consumed” by updating consumed_op_id. This consumed_op_id is checkpointed to master using CheckpointCDC RPC.
+Note that all replicated records will be applied at the same timestamp at which they occurred on the producer universe (similar to specifying USING timestamp in CQL).
+
+
+### Multi-row Transactions
