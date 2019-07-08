@@ -91,6 +91,7 @@ const panelTypes = {
       "cql_yb_local_vs_remote",
       "cql_yb_latency",
       "cql_reactor_latency",
+      "cql_yb_rpc_connections",
       "response_sizes",
       "cql_yb_transaction"]},
 
