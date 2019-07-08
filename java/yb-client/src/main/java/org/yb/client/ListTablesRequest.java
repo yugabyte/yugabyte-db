@@ -33,6 +33,7 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import org.yb.annotations.InterfaceAudience;
+import org.yb.Common.YQLDatabase;
 import org.yb.master.Master;
 import org.yb.util.Pair;
 import org.jboss.netty.buffer.ChannelBuffer;
@@ -44,10 +45,15 @@ import java.util.List;
 class ListTablesRequest extends YRpc<ListTablesResponse> {
 
   private final String nameFilter;
+  private final String namespace;
+  private final boolean excludeSystemTables;
 
-  ListTablesRequest(YBTable masterTable, String nameFilter) {
+  ListTablesRequest(
+      YBTable masterTable, String nameFilter, boolean excludeSystemTables, String namespace) {
     super(masterTable);
     this.nameFilter = nameFilter;
+    this.excludeSystemTables = excludeSystemTables;
+    this.namespace = namespace;
   }
 
   @Override
@@ -57,6 +63,15 @@ class ListTablesRequest extends YRpc<ListTablesResponse> {
         Master.ListTablesRequestPB.newBuilder();
     if (nameFilter != null) {
       builder.setNameFilter(nameFilter);
+    }
+    if (excludeSystemTables) {
+      builder.setExcludeSystemTables(excludeSystemTables);
+    }
+    if (namespace != null) {
+      final Master.NamespaceIdentifierPB.Builder namespaceBuilder =
+          Master.NamespaceIdentifierPB.newBuilder();
+          namespaceBuilder.setName(namespace);
+          builder.setNamespace(namespaceBuilder.build());
     }
     return toChannelBuffer(header, builder.build());
   }

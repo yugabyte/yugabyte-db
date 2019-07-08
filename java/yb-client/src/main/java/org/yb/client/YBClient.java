@@ -929,11 +929,20 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
-   * Get the list of all the tables.
-   * @return a list of all the tables
+   * Get the list of all YSQL, YCQL, and YEDIS non-system tables.
+   * @return a list of all the non-system tables
    */
   public ListTablesResponse getTablesList() throws Exception {
-    return getTablesList(null);
+    // YEDIS tables are stored as system tables, so they have to be separated.
+    ListTablesResponse nonSystemTables = getTablesList(null, true, null);
+    ListTablesResponse yedisTables;
+    // If YEDIS is not enabled, getTablesList will error out on this call.
+    try {
+      yedisTables  = getTablesList(null, false, REDIS_KEYSPACE_NAME);
+    } catch (MasterErrorException e) {
+      yedisTables = null;
+    }
+    return nonSystemTables.mergeWith(yedisTables);
   }
 
   /**
@@ -943,7 +952,23 @@ public class YBClient implements AutoCloseable {
    * @return a deferred that contains the list of table names
    */
   public ListTablesResponse getTablesList(String nameFilter) throws Exception {
-    Deferred<ListTablesResponse> d = asyncClient.getTablesList(nameFilter);
+    return getTablesList(nameFilter, false, null);
+  }
+
+  /**
+   * Get a list of table names. Passing a null filter returns all the tables. When a filter is
+   * specified, it only returns tables that satisfy a substring match. Passing excludeSysfilters
+   * will return only non-system tables (index and user tables).
+   * @param nameFilter an optional table name filter
+   * @param excludeSystemTables an optional filter to search only non-system tables
+   * @param namespace an optional filter to search tables in specific namespace
+   * @return a deferred that contains the list of table names
+   */
+  public ListTablesResponse getTablesList(
+      String nameFilter, boolean excludeSystemTables, String namespace)
+  throws Exception {
+    Deferred<ListTablesResponse> d = asyncClient.getTablesList(
+        nameFilter, excludeSystemTables, namespace);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
