@@ -48,7 +48,7 @@ The architecture diagram is shown below:
 
 # Design - Lifecycle of Replication
 
-2DC on-way sync replication in YugaByte DB can be broken down into the following phases:
+2DC one-way sync replication in YugaByte DB can be broken down into the following phases:
 
 * Initialize the producer and the consumer
 * Set up a distributed CDC
@@ -66,7 +66,7 @@ yugabyte-db init-replication                         \
             --sink_universe <sink_ip_addresses>      \
             --source_universe <source_ip_addresses>  \
             --source_role <role>                     \
-            --source-password <password>
+            --source_password <password>
 ```
 
 > **NOTE:** The commands shown above are for illustration purposes, these are not the final commands. Please refer to the user documentation of this feature after it has landed for the final commands.
@@ -117,7 +117,7 @@ The following substeps happen as a part of this step:
 * The responsibility of replication from a subset of source tablets is assigned to each of the nodes in the sink cluster.
 * Each node in the sync cluster pulls the change stream from the source cluster for the tablets that have been assigned to it. These changes are then applied to the sink cluster.
 
-The sync cluster maintains the state of replication in a separate `system.replication` table. The following information is tracked for each tablet in the source cluster that needs to be replicated:
+The sync cluster maintains the state of replication in a separate `system.cdc_state` table. The following information is tracked for each tablet in the source cluster that needs to be replicated:
 * Details of the source tablet, along with which table it belongs to
 * The node in the sink cluster that is currently responsible for replicating the data
 * The last operation id that was successfully committed into the sink cluster
@@ -142,7 +142,7 @@ As shown in the figure above, each update message has a corresponding **document
 
 ### Step 4. Periodically checkpoint progress
 
-The sink cluster nodes will periodically write a *checkpoint* consisting of the last successfully applied operation id along with the source tablet information into its `system.replication` table. This allows the replication to continue from this point onwards.
+The sink cluster nodes will periodically write a *checkpoint* consisting of the last successfully applied operation id along with the source tablet information into its `system.cdc_state` table. This allows the replication to continue from this point onwards.
 
 # Transactional Guarantees
 
