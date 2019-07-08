@@ -67,7 +67,9 @@ import psycopg2
 # Create the database connection.                                                                 
 conn = psycopg2.connect("host=127.0.0.1 port=5433 dbname=postgres user=postgres password=postgres")
 
-# Open a cursor to perform database operations                                                    
+# Open a cursor to perform database operations
+# The default mode for psycopg2 is "autocommit=False".
+conn.set_session(autocommit=True)
 cur = conn.cursor()
 
 # Create the table.                                                                               
@@ -78,19 +80,25 @@ cur.execute(
                          age int,                                                                 
                          language varchar);                                                       
   """)
-print "Created table employee"
+print("Created table employee")
+cur.close()
+
+# Take advantage of ordinary, transactional behavior for DMLs.
+conn.set_session(autocommit=False)
+cur = conn.cursor()
 
 # Insert a row.                                                                                   
 cur.execute("INSERT INTO employee (id, name, age, language) VALUES (%s, %s, %s, %s)",
             (1, 'John', 35, 'Python'))
-print "Inserted (id, name, age, language) = (1, 'John', 35, 'Python')"
+print("Inserted (id, name, age, language) = (1, 'John', 35, 'Python')")
 
 # Query the row.                                                                                  
 cur.execute("SELECT name, age, language FROM employee WHERE id = 1;")
 row = cur.fetchone()
-print "Query returned: %s, %s, %s" % (row[0], row[1], row[2])
+print("Query returned: %s, %s, %s" % (row[0], row[1], row[2]))
 
-# Close the connection.                                                                           
+# Commit and close down. 
+conn.commit()                                                                         
 cur.close()
 conn.close()
 ```
