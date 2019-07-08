@@ -13,3 +13,4 @@ test: yb_copy
 test: yb_select
 test: yb_identity
 test: yb_index_including
+test: yb_sequence

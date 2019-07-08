@@ -238,8 +238,10 @@ initscan(HeapScanDesc scan, ScanKey key, bool keep_startblock)
 	 */
 	if (scan->rs_parallel != NULL)
 		scan->rs_nblocks = scan->rs_parallel->phs_nblocks;
+	else if (RelationGetForm(scan->rs_rd)->relkind == RELKIND_SEQUENCE)
+	  scan->rs_nblocks = 1;
 	else
-		scan->rs_nblocks = RelationGetNumberOfBlocks(scan->rs_rd);
+    scan->rs_nblocks = RelationGetNumberOfBlocks(scan->rs_rd);
 
 	/*
 	 * If the table is large relative to NBuffers, use a bulk-read access
@@ -432,9 +434,9 @@ heapgetpage(HeapScanDesc scan, BlockNumber page)
 		 lineoff <= lines;
 		 lineoff++, lpp++)
 	{
-		if (ItemIdIsNormal(lpp))
+    if (ItemIdIsNormal(lpp))
 		{
-			HeapTupleData loctup;
+      HeapTupleData loctup;
 			bool		valid;
 
 			loctup.t_tableOid = RelationGetRelid(scan->rs_rd);
@@ -1467,15 +1469,6 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 	{
 		return ybc_heap_beginscan(relation, snapshot, nkeys, key, temp_snap);
 	}
-
-	/* Give more specific error for sequence tables */
-	if (RelationGetForm(relation)->relkind == RELKIND_SEQUENCE)
-		ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-										 errmsg("\"%s\" is a sequence table",
-													  RelationGetRelationName(relation)),
-										 errdetail("Querying sequence tables is not supported yet."),
-										 errhint("Use lastval() and currval() instead.")));
 
 	/*
 	 * increment relation ref count while scanning relation

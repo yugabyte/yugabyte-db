@@ -596,6 +596,70 @@ DeleteSequenceTuple(Oid relid)
 	heap_close(rel, RowExclusiveLock);
 }
 
+HeapTuple
+ReadSequenceTuple(Relation seqrel, bool check_permissions)
+{
+  /* Get sequence OID */
+  Oid relid = seqrel->rd_id;
+
+  /* Verify we can access it */
+  if (check_permissions &&
+      pg_class_aclcheck(relid, GetUserId(),
+                        ACL_USAGE) != ACLCHECK_OK)
+    ereport(ERROR,
+            (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+                errmsg("permission denied for sequence %s",
+                       RelationGetRelationName(seqrel))));
+
+  /* Read our data from YB's table of all sequences */
+  FormData_pg_sequence_data seqdataform;
+  if (IsYugaByteEnabled())
+  {
+    int64_t last_val;
+    bool is_called;
+    HandleYBStatus(YBCReadSequenceTuple(ybc_pg_session,
+                                        MyDatabaseId,
+                                        relid,
+                                        yb_catalog_cache_version,
+                                        &last_val,
+                                        &is_called));
+    seqdataform.last_value = last_val;
+    seqdataform.is_called = is_called;
+    seqdataform.log_cnt = 0; /* not used by YugaByte, defaults to 0 */
+  }
+  else
+  {
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("Should never reach here")));
+  }
+
+  /* Set up the tuple */
+  Datum value[SEQ_COL_LASTCOL];
+  bool null[SEQ_COL_LASTCOL];
+
+  for (int i = SEQ_COL_FIRSTCOL; i <= SEQ_COL_LASTCOL; i++)
+  {
+    null[i - 1] = false;
+
+    switch (i)
+    {
+      case SEQ_COL_LASTVAL:
+        value[i - 1] = Int64GetDatumFast(seqdataform.last_value);
+        break;
+      case SEQ_COL_LOG:
+        value[i - 1] = Int64GetDatum(seqdataform.log_cnt);
+        break;
+      case SEQ_COL_CALLED:
+        value[i - 1] = BoolGetDatum(seqdataform.is_called);
+        break;
+    }
+  }
+
+  TupleDesc tupDesc = RelationGetDescr(seqrel);
+  return heap_form_tuple(tupDesc, value, null);
+}
+
 /*
  * Note: nextval with a text argument is no longer exported as a pg_proc
  * entry, but we keep it around to ease porting of C code that may have
