@@ -3791,6 +3791,33 @@ static void YBPrepareCacheRefreshIfNeeded(MemoryContext oldcontext,
 	}
 }
 
+/*
+ * Only retry DML commands: DELETE, INSERT, SELECT, UPDATE
+ * Do the minimum parsing to find out what the command is
+ */
+static bool check_retry_allowed(const char *query_string)
+{
+  if (!query_string)
+  {
+    return false;
+  }
+
+  List *parsetree_list = pg_parse_query(query_string);
+  RawStmt *raw_parse_tree = linitial_node(RawStmt, parsetree_list);
+  const char *commandTag = CreateCommandTag(raw_parse_tree->stmt);
+  if (strncmp(commandTag, "DELETE", 6) == 0 ||
+      strncmp(commandTag, "INSERT", 6) == 0 ||
+      strncmp(commandTag, "SELECT", 6) == 0 ||
+      strncmp(commandTag, "UPDATE", 6) == 0)
+  {
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
 /* ----------------------------------------------------------------
  * PostgresMain
  *	   postgres main loop -- all backends, interactive or otherwise start here
@@ -4335,7 +4362,7 @@ PostgresMain(int argc, char *argv[],
 		 */
 		if (ignore_till_sync && firstchar != EOF)
 			continue;
-
+		
 		switch (firstchar)
 		{
 			case 'Q':			/* simple query */
@@ -4361,10 +4388,11 @@ PostgresMain(int argc, char *argv[],
 				}
 				PG_CATCH();
 				{
-					bool need_retry = false;
-					YBPrepareCacheRefreshIfNeeded(oldcontext,
-					                              true /* consider_retry */,
-					                              &need_retry);
+          bool need_retry = false;
+          YBPrepareCacheRefreshIfNeeded(oldcontext,
+                                        check_retry_allowed(query_string),
+                                        &need_retry);
+
 					if (need_retry)
 					{
 						if (am_walsender)
@@ -4481,7 +4509,8 @@ PostgresMain(int argc, char *argv[],
 						bool can_retry = IsYugaByteEnabled() &&
 						                 old_portal &&
 						                 portal_name[0] == '\0' &&
-						                 !old_portal->portalParams;
+						                 !old_portal->portalParams &&
+						                 check_retry_allowed(unnamed_stmt_psrc->query_string);
 
 						/* Stuff we might need for retrying below */
 						char *query_string = NULL;
@@ -4522,7 +4551,7 @@ PostgresMain(int argc, char *argv[],
 						 * cleanup (and restart) the transaction.
 						 */
 						YBPrepareCacheRefreshIfNeeded(oldcontext,
-						                              true /* consider_retry */,
+						                              can_retry,
 						                              &need_retry);
 
 						if (need_retry && can_retry)

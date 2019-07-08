@@ -121,4 +121,19 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       expectedRows.clear();
     }
   }
+
+  @Test
+  public void testNoDDLRetry() throws Exception {
+    try (Connection connection1 = createConnection(0);
+         Connection connection2 = createConnection(1);
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
+      // Create a table with connection 1.
+      statement1.execute("CREATE TABLE a(id int primary key)");
+
+      // Create a table with connection 2 (should fail)
+      runInvalidQuery(statement2, "CREATE TABLE b(id int primary key)",
+                      "Catalog Version Mismatch");
+    }
+  }
 }
