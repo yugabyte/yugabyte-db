@@ -566,4 +566,25 @@ public class TestYBClient extends BaseYBClientTest {
     YBTable table = syncClient.openTable(DEFAULT_KEYSPACE_NAME, tableName);
     assertEquals(newSchema.getColumnCount(), table.getSchema().getColumnCount());
   }
+
+  /**
+   * Test proper number of tables is returned by YBClient.
+   */
+  @Test(timeout = 100000)
+  public void testGetTablesList() throws Exception {
+    LOG.info("Starting testGetTablesList");
+    assertTrue(syncClient.getTablesList().getTableInfoList().isEmpty());
+
+    // Check that YEDIS tables are created and retrieved properly.
+    String redisTableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
+    YBTable table = syncClient.createRedisTable(redisTableName);
+    assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
+    assertTrue(syncClient.getTablesList().getTablesList().contains(redisTableName));
+
+    // Check that non-YEDIS tables are created and retrieved properly.
+    syncClient.createTable(DEFAULT_KEYSPACE_NAME, tableName, hashKeySchema,
+                           new CreateTableOptions());
+    assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
+    assertTrue(syncClient.getTablesList().getTablesList().contains(tableName));
+  }
 }

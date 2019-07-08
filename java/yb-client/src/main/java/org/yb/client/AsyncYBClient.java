@@ -676,10 +676,24 @@ public class AsyncYBClient implements AutoCloseable {
    * Get a list of table names. Passing a null filter returns all the tables. When a filter is
    * specified, it only returns tables that satisfy a substring match.
    * @param nameFilter an optional table name filter
-   * @return a deferred that yields the list of table names
+   * @return a deferred that yields the list of non-system table names
    */
   public Deferred<ListTablesResponse> getTablesList(String nameFilter) {
-    ListTablesRequest rpc = new ListTablesRequest(this.masterTable, nameFilter);
+    return getTablesList(nameFilter, false, null);
+  }
+
+  /**
+   * Get a list of table names. Passing a null filter returns all the tables. When a filter is
+   * specified, it only returns tables that satisfy a substring match.
+   * @param nameFilter an optional table name filter
+   * @param excludeSystemTables an optional filter to search only non-system tables
+   * @param namespace an optional filter to search tables in specific namespace
+   * @return a deferred that yields the list of table names
+   */
+  public Deferred<ListTablesResponse> getTablesList(
+      String nameFilter, boolean excludeSystemTables, String namespace) {
+    ListTablesRequest rpc = new ListTablesRequest(
+      this.masterTable, nameFilter, excludeSystemTables, namespace);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
