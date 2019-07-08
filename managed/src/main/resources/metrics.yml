@@ -1456,6 +1456,17 @@ cql_sql_latency_breakdown:
         "ExecuteRequest": "Execute"
       ticksuffix: "&nbsp;\u00B5s"
 
+cql_yb_rpc_connections:
+  metric: "rpc_connections_alive"
+  function: "irate|avg"
+  range: "1m"
+  filters:
+    metric_id: "yb.cqlserver"
+  layout:
+    title: "YCQL Inbound Connections"
+    xaxis:
+      type: "date"
+
 cql_yb_local_vs_remote:
   metric: "rpc_latency_count"
   function: "rate|avg"
