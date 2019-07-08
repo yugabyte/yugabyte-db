@@ -1,6 +1,6 @@
 ## Change Data Capture in YugaByte DB
 
-**Change data capture** (or **CDC** for short) enables capturing changes performed to the data stored in YugaByte DB. This document provides an overview of the approach YugaByte DB uses for providing change capture stream on tables that can be consumed by third party applications. This featureis useful in a number of scenarios such as:
+**Change data capture** (or **CDC** for short) enables capturing changes performed to the data stored in YugaByte DB. This document provides an overview of the approach YugaByte DB uses for providing change capture stream on tables that can be consumed by third party applications. This feature is useful in a number of scenarios such as:
 
 ### Microservice-oriented architectures
 
