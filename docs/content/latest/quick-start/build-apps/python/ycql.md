@@ -65,7 +65,7 @@ session = cluster.connect()
 
 # Create the keyspace.
 session.execute('CREATE KEYSPACE IF NOT EXISTS ybdemo;')
-print "Created keyspace ybdemo"
+print("Created keyspace ybdemo")
 
 # Create the table.
 session.execute(
@@ -75,7 +75,7 @@ session.execute(
                                               age int,
                                               language varchar);
   """)
-print "Created table employee"
+print("Created table employee")
 
 # Insert a row.
 session.execute(
@@ -83,12 +83,12 @@ session.execute(
   INSERT INTO ybdemo.employee (id, name, age, language)
   VALUES (1, 'John', 35, 'NodeJS');
   """)
-print "Inserted (id, name, age, language) = (1, 'John', 35, 'Python')"
+print("Inserted (id, name, age, language) = (1, 'John', 35, 'Python')")
 
 # Query the row.
 rows = session.execute('SELECT name, age, language FROM ybdemo.employee WHERE id = 1;')
 for row in rows:
-  print row.name, row.age, row.language
+  print(row.name, row.age, row.language)
 
 # Close the connection.
 cluster.shutdown()
