@@ -181,11 +181,11 @@ body {
   .navbar-brand {
     height: 75px;
     padding: 0;
-    width: 180px;
+    width: 225px;
     margin-right: 0;
 
     @media screen and (max-width: 991px) {
-      max-width: 39px;
+      max-width: 45px;
       overflow: hidden;
     }
 
@@ -199,7 +199,7 @@ body {
       height: 75px;
 
       @media screen and (max-width: 991px) {
-        background-image: url('/images/yblogo_whitebg.3fea4ef9.png');
+        background-image: url('/images/ybdocs-color.png');
         background-size: auto 33px;
       }
     }
