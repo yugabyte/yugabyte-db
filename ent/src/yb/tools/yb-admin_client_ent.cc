@@ -123,7 +123,7 @@ Status ClusterAdminClient::CreateSnapshot(const vector<YBTableName>& tables,
   if (flush_timeout_secs > 0) {
     for (const YBTableName& table_name : tables) {
       // Flush table before the snapshot creation.
-      const Status s = FlushTable(table_name, flush_timeout_secs);
+      const Status s = FlushTable(table_name, flush_timeout_secs, false /* is_compaction */);
       // Expected statuses:
       //   OK - table was successfully flushed
       //   NotFound - flush request was finished & deleted
