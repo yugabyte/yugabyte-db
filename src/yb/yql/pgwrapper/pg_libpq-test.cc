@@ -16,6 +16,8 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+#include "yb/common/common.pb.h"
+
 using namespace std::literals;
 
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
@@ -37,6 +39,12 @@ class PgLibPqTest : public PgWrapperTestBase {
   }
 
   void TestMultiBankAccount(const std::string& isolation_level);
+
+  void DoIncrement(int key, int num_increments, IsolationLevel isolation);
+
+  void TestParallelCounter(IsolationLevel isolation);
+
+  void TestConcurrentCounter(IsolationLevel isolation);
 };
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
@@ -487,6 +495,114 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot)) {
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSerializable)) {
   TestMultiBankAccount("SERIALIZABLE");
+}
+
+void PgLibPqTest::DoIncrement(int key, int num_increments, IsolationLevel isolation) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Perform increments
+  int succeeded_incs = 0;
+  while (succeeded_incs < num_increments) {
+    ASSERT_OK(Execute(conn.get(), isolation == IsolationLevel::SERIALIZABLE_ISOLATION ?
+        "START TRANSACTION ISOLATION LEVEL SERIALIZABLE" :
+        "START TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+    bool committed = false;
+    auto exec_status = Execute(conn.get(),
+                               Format("UPDATE t SET value = value + 1 WHERE key = $0", key));
+    if (exec_status.ok()) {
+      auto commit_status = Execute(conn.get(), "COMMIT");
+      if (commit_status.ok()) {
+        succeeded_incs++;
+        committed = true;
+      }
+    }
+    if (!committed) {
+      ASSERT_OK(Execute(conn.get(), "ROLLBACK"));
+    }
+  }
+}
+
+void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (key INT, value INT)"));
+
+  const auto kThreads = RegularBuildVsSanitizers(3, 2);
+  const auto kIncrements = RegularBuildVsSanitizers(100, 20);
+
+  // Make a counter for each thread and have each thread increment it
+  std::vector<std::thread> threads;
+  while (threads.size() != kThreads) {
+    int key = threads.size();
+    ASSERT_OK(Execute(conn.get(),
+                      Format("INSERT INTO t (key, value) VALUES ($0, 0)", key)));
+
+    threads.emplace_back([this, key, isolation] {
+      DoIncrement(key, kIncrements, isolation);
+    });
+  }
+
+  // Wait for completion
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  // Check each counter
+  for (int i = 0; i < kThreads; i++) {
+    auto res = ASSERT_RESULT(Fetch(conn.get(),
+                                   Format("SELECT value FROM t WHERE key = $0", i)));
+
+    auto row_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    ASSERT_EQ(row_val, kIncrements);
+  }
+}
+
+TEST_F(PgLibPqTest, TestParallelCounterSerializable) {
+  TestParallelCounter(IsolationLevel::SERIALIZABLE_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, TestParallelCounterRepeatableRead) {
+  TestParallelCounter(IsolationLevel::SNAPSHOT_ISOLATION);
+}
+
+void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (key INT, value INT)"));
+
+  ASSERT_OK(Execute(conn.get(),
+                    "INSERT INTO t (key, value) VALUES (0, 0)"));
+
+  const auto kThreads = RegularBuildVsSanitizers(3, 2);
+  const auto kIncrements = RegularBuildVsSanitizers(100, 20);
+
+  // Have each thread increment the same already-created counter
+  std::vector<std::thread> threads;
+  while (threads.size() != kThreads) {
+    threads.emplace_back([this, isolation] {
+      DoIncrement(0, kIncrements, isolation);
+    });
+  }
+
+  // Wait for completion
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  // Check that we incremented exactly the desired number of times
+  auto res = ASSERT_RESULT(Fetch(conn.get(),
+                                 "SELECT value FROM t WHERE key = 0"));
+
+  auto row_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  ASSERT_EQ(row_val, kThreads * kIncrements);
+}
+
+TEST_F(PgLibPqTest, TestConcurrentCounterSerializable) {
+  TestConcurrentCounter(IsolationLevel::SERIALIZABLE_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, TestConcurrentCounterRepeatableRead) {
+  TestConcurrentCounter(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
 } // namespace pgwrapper
