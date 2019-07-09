@@ -88,7 +88,11 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
     return Status::OK();
   }
   txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
-  RETURN_NOT_OK(txn_->Init(isolation));
+  if (session_ && isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+    txn_->InitWithReadPoint(isolation, std::move(*session_->read_point()));
+  } else {
+    RETURN_NOT_OK(txn_->Init(isolation));
+  }
   if (!session_) {
     StartNewSession();
   }

@@ -267,6 +267,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return createConnection(tserverIndex, DEFAULT_PG_DATABASE);
   }
 
+  protected Connection createPgConnectionToTServer(
+      int tserverIndex,
+      IsolationLevel isolationLevel,
+      AutoCommit autoCommit) throws Exception {
+    Connection conn = createConnection(tserverIndex, DEFAULT_PG_DATABASE);
+    conn.setTransactionIsolation(isolationLevel.pgIsolationLevel);
+    conn.setAutoCommit(autoCommit.enabled);
+    return conn;
+  }
+
   protected Connection createConnection(int tserverIndex, String pgDB) throws Exception {
     final String pgHost = getPgHost(tserverIndex);
     final int pgPort = getPgPort(tserverIndex);

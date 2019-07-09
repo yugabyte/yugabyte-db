@@ -72,6 +72,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   CHECKED_STATUS Init(
       IsolationLevel isolation, const ReadHybridTime& read_time = ReadHybridTime());
 
+  // Allows starting a transaction that reuses an existing read point.
+  void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point);
+
   // This function is used to init metadata of Write/Read request.
   // If we don't have enough information, then the function returns false and stores
   // the waiter, which will be invoked when we obtain such information.
