@@ -63,6 +63,14 @@ typedef struct YbScanPlanData
 
 typedef YbScanPlanData *YbScanPlan;
 
+static void ybcAddAttributeColumn(YbScanPlan scan_plan, AttrNumber attnum)
+{
+  const int idx = attnum - FirstLowInvalidHeapAttributeNumber;
+
+  if (bms_is_member(idx, scan_plan->primary_key))
+    scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
+}
+
 /*
  * Checks if an attribute is a hash or primary key column and note it in
  * the scan plan.
@@ -909,28 +917,27 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
 		Oid			clause_op;
 		int			op_strategy;
 
-		/* TODO: support array and null search conditions */
-		if (IsA(clause, ScalarArrayOpExpr) || IsA(clause, NullTest))
+		/* TODO: support array search condition */
+		if (IsA(clause, ScalarArrayOpExpr))
 			continue;
 
-		clause_op = qinfo->clause_op;
+    if (IsA(clause, NullTest))
+      ybcAddAttributeColumn(&scan_plan, attnum);
+    else
+    {
+      clause_op = qinfo->clause_op;
 
-		if (OidIsValid(clause_op))
-		{
-			op_strategy = get_op_opfamily_strategy(clause_op,
-												   path->indexinfo->opfamily[qinfo->indexcol]);
-			Assert(op_strategy != 0);	/* not a member of opfamily?? */
+      if (OidIsValid(clause_op))
+      {
+        op_strategy = get_op_opfamily_strategy(clause_op,
+                                               path->indexinfo->opfamily[qinfo->indexcol]);
+        Assert(op_strategy != 0);  /* not a member of opfamily?? */
 
-			/* TODO: support other logical operators than equality */
-			if (op_strategy == BTEqualStrategyNumber)
-			{
-				int idx = attnum - FirstLowInvalidHeapAttributeNumber;
-		
-				if (bms_is_member(idx, scan_plan.hash_key) ||
-					bms_is_member(idx, scan_plan.primary_key))
-					scan_plan.sk_cols = bms_add_member(scan_plan.sk_cols, idx);
-			}
-		}
+        /* TODO: support other logical operators than equality */
+        if (op_strategy == BTEqualStrategyNumber)
+          ybcAddAttributeColumn(&scan_plan, attnum);
+      }
+    }
 	}
 
 	/*

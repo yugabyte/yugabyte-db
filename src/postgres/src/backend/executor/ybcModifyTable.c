@@ -353,6 +353,58 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	return HeapTupleGetOid(tuple);
 }
 
+/*
+ * Utility method to bind const to column
+ */
+static void BindColumn(YBCPgStatement stmt, int attr_num, Oid type_id, Datum datum, bool is_null)
+{
+  YBCPgExpr expr = YBCNewConstant(stmt, type_id, datum, is_null);
+  HandleYBStmtStatus(YBCPgDmlBindColumn(stmt, attr_num, expr), stmt);
+}
+
+/*
+ * Utility method to set keys and value to index write statement
+ */
+static bool PrepareIndexWriteStmt(YBCPgStatement stmt,
+                                  Relation index,
+                                  Datum *values,
+                                  bool *isnull,
+                                  int natts,
+                                  Datum ybctid,
+                                  bool ybctid_as_value)
+{
+  TupleDesc tupdesc = RelationGetDescr(index);
+
+  bool has_null_attr = false;
+  for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
+  {
+    Oid   type_id = GetTypeId(attnum, tupdesc);
+    Datum value   = values[attnum - 1];
+    bool  is_null = isnull[attnum - 1];
+    has_null_attr = has_null_attr || is_null;
+
+    BindColumn(stmt, attnum, type_id, value, is_null);
+  }
+
+  const bool unique_index = index->rd_index->indisunique;
+  const bool ybctid_required = !unique_index || has_null_attr || ybctid_as_value;
+  if (ybctid_required && ybctid == 0)
+    return false;
+
+  /*
+   * Index key suffix should be equal ybctid only in case index is unique
+   * and at least one key column is NULL.
+   * Index key suffix should be NULL in all other cases
+   */
+  const bool key_suffix_is_null = !(unique_index && has_null_attr);
+  BindColumn(stmt, YBIndexKeySuffixAttributeNumber, BYTEAOID, ybctid, key_suffix_is_null);
+
+  if (ybctid_as_value || !unique_index)
+    BindColumn(stmt, YBBaseTupleIdAttributeNumber, BYTEAOID, ybctid, false /* is_null */);
+
+  return true;
+}
+
 Oid YBCExecuteInsert(Relation rel,
                      TupleDesc tupleDesc,
                      HeapTuple tuple)
@@ -404,13 +456,12 @@ Oid YBCHeapInsert(TupleTableSlot *slot,
 
 void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum ybctid)
 {
+  Assert(index->rd_rel->relkind == RELKIND_INDEX);
+  Assert(ybctid != 0);
+
 	Oid            dboid    = YBCGetDatabaseOid(index);
 	Oid            relid    = RelationGetRelid(index);
-	TupleDesc      tupdesc  = RelationGetDescr(index);
-	int            natts    = RelationGetNumberOfAttributes(index);
 	YBCPgStatement insert_stmt = NULL;
-
-	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 
 	/* Create the INSERT request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewInsert(ybc_pg_session,
@@ -419,33 +470,13 @@ void YBCExecuteInsertIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	                              false /* is_single_row_txn */,
 	                              &insert_stmt));
 
-	for (AttrNumber attnum = 1; attnum <= natts; attnum++)
-	{
-		Oid   type_id = GetTypeId(attnum, tupdesc);
-		Datum value   = values[attnum - 1];
-		bool  is_null = isnull[attnum - 1];
-
-		/* Add the column value to the insert request */
-		YBCPgExpr ybc_expr = YBCNewConstant(insert_stmt,
-		                                    type_id,
-		                                    value,
-		                                    is_null);
-		HandleYBStmtStatus(YBCPgDmlBindColumn(insert_stmt, attnum, ybc_expr),
-		                   insert_stmt);
-	}
-
-	/*
-	 * Bind the ybctid from the base table to the ybbasectid column.
-	 */
-	Assert(ybctid != 0);
-	YBCPgExpr ybc_expr = YBCNewConstant(insert_stmt, BYTEAOID, ybctid, false /* is_null */);
-	HandleYBStmtStatus(YBCPgDmlBindColumn(insert_stmt, YBBaseTupleIdAttributeNumber, ybc_expr),
-					   insert_stmt);
+ 	PrepareIndexWriteStmt(insert_stmt, index, values, isnull,
+ 			                  RelationGetNumberOfAttributes(index),
+ 	                      ybctid, true /* ybctid_as_value */);
 
 	/* Execute the insert and clean up. */
 	YBCHandleInsertStatus(YBCExecWriteStmt(insert_stmt, index), index, insert_stmt);
 	HandleYBStatus(YBCPgDeleteStatement(insert_stmt));
-	insert_stmt = NULL;
 }
 
 void YBCExecuteDelete(Relation rel, TupleTableSlot *slot)
@@ -480,50 +511,23 @@ void YBCExecuteDelete(Relation rel, TupleTableSlot *slot)
 
 void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum ybctid)
 {
+  Assert(index->rd_rel->relkind == RELKIND_INDEX);
+
 	Oid            dboid    = YBCGetDatabaseOid(index);
 	Oid            relid    = RelationGetRelid(index);
-	TupleDesc      tupdesc  = RelationGetDescr(index);
-	int            nkeys    = IndexRelationGetNumberOfKeyAttributes(index);
 	YBCPgStatement ybc_stmt = NULL;
-
-	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 
 	/* Create the DELETE request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewDelete(ybc_pg_session, dboid, relid, &ybc_stmt));
-	for (AttrNumber attnum = 1; attnum <= nkeys; attnum++)
-	{
-		Oid   type_id = GetTypeId(attnum, tupdesc);
-		Datum value   = values[attnum - 1];
-		bool  is_null = isnull[attnum - 1];
 
-		/* Add the column value to the delete request */
-		YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, type_id, value, is_null);
-		HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, attnum, ybc_expr), ybc_stmt);
-	}
-
-	if (!index->rd_index->indisunique)
-	{
-    /*
-     * Bind the ybctid from the base table to the ybbasectid column.
-     */
-    if (ybctid == 0)
-    {
-      YBC_LOG_WARNING("Skipping index deletion in %s", RelationGetRelationName(index));
-
-      HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
-      return;
-    }
-
-    YBCPgExpr ybc_expr = YBCNewConstant(ybc_stmt, BYTEAOID, ybctid, false /* is_null */);
-    HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt, YBBaseTupleIdAttributeNumber, ybc_expr),
-                                          ybc_stmt);
-  }
-
-	/* Execute the delete and clean up. */
-	HandleYBStmtStatus(YBCExecWriteStmt(ybc_stmt, index), ybc_stmt);
+	if (PrepareIndexWriteStmt(ybc_stmt, index, values, isnull,
+	                          IndexRelationGetNumberOfKeyAttributes(index),
+	                          ybctid, false /* ybctid_as_value */))
+		HandleYBStmtStatus(YBCExecWriteStmt(ybc_stmt, index), ybc_stmt);
+	else
+		YBC_LOG_WARNING("Skipping index deletion in %s", RelationGetRelationName(index));
 
 	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
-	ybc_stmt = NULL;
 }
 
 void YBCExecuteUpdate(Relation rel, TupleTableSlot *slot, HeapTuple tuple)

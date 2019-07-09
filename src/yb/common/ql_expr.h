@@ -33,6 +33,7 @@ enum class PgSystemAttrNum : int {
   // they are chosen to avoid potential conflict with Postgres' own sys attributes now and future.
   kYBRowId          = -100, // ybrowid
   kYBBaseTupleId    = -101, // ybbasectid
+  kYBIndexKeySuffix = -102, // ybindexkeysuffix
 };
 
 // TODO(neil)

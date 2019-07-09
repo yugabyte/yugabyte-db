@@ -38,11 +38,9 @@ class PgsqlWriteOperation :
     public DocExprExecutor {
  public:
   PgsqlWriteOperation(const Schema& schema,
-                      const TransactionOperationContextOpt& txn_op_context,
-                      const IndexInfo* index_info)
+                      const TransactionOperationContextOpt& txn_op_context)
       : schema_(schema),
-        txn_op_context_(txn_op_context),
-        index_info_(index_info) {
+        txn_op_context_(txn_op_context) {
   }
 
   // Initialize PgsqlWriteOperation. Content of request will be swapped out by the constructor.
@@ -85,7 +83,6 @@ class PgsqlWriteOperation :
   // Context.
   const Schema& schema_;
   const TransactionOperationContextOpt txn_op_context_;
-  const IndexInfo* index_info_;
 
   // Input arguments.
   PgsqlResponsePB* response_ = nullptr;

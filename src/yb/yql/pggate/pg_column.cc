@@ -32,6 +32,7 @@ void PgColumn::Init(PgSystemAttrNum attr_num) {
     case PgSystemAttrNum::kTableOid:
     case PgSystemAttrNum::kYBRowId:
     case PgSystemAttrNum::kYBBaseTupleId:
+    case PgSystemAttrNum::kYBIndexKeySuffix:
       break;
 
     case PgSystemAttrNum::kYBTupleId: {
