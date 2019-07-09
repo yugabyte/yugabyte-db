@@ -869,6 +869,7 @@ stmt :
 			| CreatedbStmt
 			| DeallocateStmt
 			| DeleteStmt
+			| DiscardStmt
 			| DropStmt
 			| DropdbStmt
 			| ExecuteStmt
@@ -956,7 +957,6 @@ stmt :
 			| CreateUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DeclareCursorStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DefineStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DiscardStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropCastStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropOpClassStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1850,7 +1850,6 @@ DiscardStmt:
 				}
 			| DISCARD TEMP
 				{
-					parser_ybc_not_support(@1, "DISCARD TEMP");
 					DiscardStmt *n = makeNode(DiscardStmt);
 					n->target = DISCARD_TEMP;
 					$$ = (Node *) n;
