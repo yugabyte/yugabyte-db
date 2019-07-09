@@ -134,7 +134,9 @@ class ClusterAdminClient {
 
   CHECKED_STATUS DropRedisTable();
 
-  CHECKED_STATUS FlushTable(const client::YBTableName& table_name, int timeout_secs);
+  CHECKED_STATUS FlushTable(const client::YBTableName& table_name,
+                            int timeout_secs,
+                            bool is_compaction);
 
   CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos, int replication_factor);
 
