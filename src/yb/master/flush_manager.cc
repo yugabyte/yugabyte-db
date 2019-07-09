@@ -145,7 +145,7 @@ void FlushManager::HandleFlushTabletsResponse(const FlushRequestId& flush_id,
                                               const TabletServerId& ts_uuid,
                                               const Status& status) {
   LOG(INFO) << "Handling Flush Tablets Response from TS " << ts_uuid
-            << " Status:" << status << " Flush request id: " << flush_id;
+            << ". Status: " << status << ". Flush request id: " << flush_id;
 
   std::lock_guard<LockType> l(lock_);
   TRACE("Acquired flush manager lock");
