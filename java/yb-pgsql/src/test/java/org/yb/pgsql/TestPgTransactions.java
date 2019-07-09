@@ -14,24 +14,30 @@ package org.yb.pgsql;
 
 import org.apache.commons.lang3.RandomUtils;
 import org.junit.Test;
+import org.junit.Ignore;
 import org.junit.runner.RunWith;
 import org.postgresql.core.TransactionState;
 import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RandomNumberUtil;
 import org.yb.util.SanitizerUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.sql.PreparedStatement;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Random;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -48,8 +54,14 @@ public class TestPgTransactions extends BasePgSQLTest {
   private static boolean isYBTransactionError(PSQLException ex) {
     String msg = ex.getMessage();
     // TODO: test for error codes here when we move to more PostgreSQL-friendly transaction errors.
-    return msg.contains("Conflicts with higher priority transaction") ||
-        msg.contains("Transaction expired");
+    return (
+        msg.contains("Conflicts with higher priority transaction") ||
+        msg.contains("Transaction expired") ||
+        msg.contains("Restart read required") ||
+        msg.contains("Conflicts with committed transaction") ||
+        msg.contains(
+            "current transaction is aborted, commands ignored until end of transaction block")) ||
+        msg.contains("Value write after transaction start");
   }
 
   private void checkTransactionFairness(
@@ -152,6 +164,173 @@ public class TestPgTransactions extends BasePgSQLTest {
       assertEquals(0x01010100 * i + NUM_INCREMENTS_PER_THREAD, v);
     }
     assertFalse("Test had errors, look for 'Exception in thread' above", hadErrors.get());
+  }
+
+  @Test
+  public void testSnapshotReadDelayWrite() throws Exception {
+    runReadDelayWriteTest(IsolationLevel.REPEATABLE_READ);
+  }
+
+  @Test
+  public void testSerializableReadDelayWrite() throws Exception {
+    runReadDelayWriteTest(IsolationLevel.SERIALIZABLE);
+  }
+
+  private void runReadDelayWriteTest(final IsolationLevel isolationLevel) throws Exception {
+    Connection setupConn = createConnection(isolationLevel, AutoCommit.ENABLED);
+    Statement statement = connection.createStatement();
+    statement.execute("CREATE TABLE counters (k INT PRIMARY KEY, v INT)");
+
+    final int INCREMENTS_PER_THREAD = 250;
+    final int NUM_COUNTERS = 2;
+    final int numTServers = miniCluster.getNumTServers();
+    final int numThreads = 4;
+
+    // Initialize counters.
+    {
+      PreparedStatement insertStmt = connection.prepareStatement(
+          "INSERT INTO counters (k, v) VALUES (?, ?)");
+      for (int i = 0; i < NUM_COUNTERS; ++i) {
+        insertStmt.setInt(1, i);
+        insertStmt.setInt(2, 0);
+        insertStmt.executeUpdate();
+      }
+    }
+
+    List<Thread> threads = new ArrayList<Thread>();
+    AtomicBoolean hadErrors = new AtomicBoolean(false);
+
+    final Object lastValueLock = new Object();
+    final int[] numIncrementsByCounter = new int[NUM_COUNTERS];
+
+    for (int i = 1; i <= numThreads; ++i) {
+      final int threadIndex = i;
+      threads.add(new Thread(() -> {
+        LOG.info("Workload thread " + threadIndex + " is starting");
+        Random rand = new Random(System.currentTimeMillis() * 137 + threadIndex);
+        int numIncrementsDone = 0;
+        try (Connection conn = createPgConnectionToTServer(
+                threadIndex % numTServers,
+                isolationLevel,
+                AutoCommit.DISABLED)) {
+          PreparedStatement selectStmt = conn.prepareStatement(
+              "SELECT v FROM counters WHERE k = ?");
+          PreparedStatement updateStmt = conn.prepareStatement(
+              "UPDATE counters SET v = ? WHERE k = ?");
+          long attemptId =
+              1000 * 1000 * 1000L * threadIndex +
+              1000 * 1000L * Math.abs(RandomNumberUtil.getRandomGenerator().nextInt(1000));
+          while (numIncrementsDone < INCREMENTS_PER_THREAD && !hadErrors.get()) {
+            ++attemptId;
+            boolean committed = false;
+            try {
+              int counterIndex = rand.nextInt(NUM_COUNTERS);
+
+              selectStmt.setInt(1, counterIndex);
+
+              // The value of the counter that we'll read should be
+              int initialValueLowerBound;
+              synchronized (lastValueLock) {
+                initialValueLowerBound = numIncrementsByCounter[counterIndex];
+              }
+
+              ResultSet rs = selectStmt.executeQuery();
+              assertTrue(rs.next());
+              int currentValue = rs.getInt(1);
+              int delayMs = 2 + rand.nextInt(15);
+              LOG.info(
+                  "Thread " + threadIndex + " read counter " + counterIndex + ", got value " +
+                  currentValue +
+                  (currentValue == initialValueLowerBound
+                      ? " as expected"
+                      : " and expected to get at least " + initialValueLowerBound) +
+                  ", will sleep for " + delayMs + " ms. attemptId=" + attemptId);
+
+              Thread.sleep(delayMs);
+              LOG.info("Thread " + threadIndex + " finished sleeping for " + delayMs + " ms" +
+                       ", attemptId=" + attemptId);
+              if (hadErrors.get()) {
+                LOG.info("Thread " + threadIndex + " is exiting in the middle of an iteration " +
+                         "because errors happened in another thread.");
+                break;
+              }
+
+              int updatedValue = currentValue + 1;
+              updateStmt.setInt(1, updatedValue);
+              updateStmt.setInt(2, counterIndex);
+              assertEquals(1, updateStmt.executeUpdate());
+              LOG.info("Thread " + threadIndex + " successfully updated value of counter " +
+                       counterIndex + " to " + updatedValue +", attemptId=" + attemptId);
+
+              conn.commit();
+              committed = true;
+              LOG.info(
+                  "Thread " + threadIndex + " successfully committed value " + updatedValue +
+                  " to counter " + counterIndex + ". attemptId=" + attemptId);
+
+              synchronized (lastValueLock) {
+                numIncrementsByCounter[counterIndex]++;
+              }
+              numIncrementsDone++;
+
+              if (currentValue < initialValueLowerBound) {
+                assertTrue(
+                    "IMPORTANT ERROR. In thread " + threadIndex + ": " +
+                    "expected counter " + counterIndex + " to be at least at " +
+                        initialValueLowerBound + " at the beginning of a successful increment, " +
+                        "but got " + currentValue + ". attemptId=" + attemptId,
+                    false);
+                hadErrors.set(true);
+              }
+            } catch (PSQLException ex) {
+              if (!isYBTransactionError(ex)) {
+                throw ex;
+              }
+              LOG.info(
+                  "Got an exception in thread " + threadIndex + ", attemptId=" + attemptId, ex);
+            } finally {
+              if (!committed) {
+                LOG.info("Rolling back the transaction on thread " + threadIndex +
+                         ", attemptId=" + attemptId);
+                conn.rollback();
+              }
+            }
+          }
+        } catch (Exception ex) {
+          LOG.error("Unhandled exception in thread " + threadIndex, ex);
+          hadErrors.set(true);
+        } finally {
+          LOG.info("Workload thread " + threadIndex +
+                   " has finished, numIncrementsDone=" + numIncrementsDone);
+        }
+      }));
+    }
+
+    for (Thread thread : threads) {
+      thread.start();
+    }
+
+    for (Thread thread : threads) {
+      thread.join();
+    }
+
+    Statement checkStmt = connection.createStatement();
+    ResultSet finalResult = checkStmt.executeQuery("SELECT k, v FROM counters");
+    int total = 0;
+    while (finalResult.next()) {
+      int k = finalResult.getInt("k");
+      int v = finalResult.getInt("v");
+      LOG.info("Final row: k=" + k + " v=" + v);
+      total += v;
+    }
+
+    int expectedResult = 0;
+    for (int i = 0; i < NUM_COUNTERS; ++i) {
+      expectedResult += numIncrementsByCounter[i];
+    }
+    assertEquals(expectedResult, total);
+
+    assertFalse("Had errors", hadErrors.get());
   }
 
   @Test
