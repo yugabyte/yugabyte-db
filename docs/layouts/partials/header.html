@@ -19,7 +19,7 @@
         </span>
       </button>
       <div class="navbar-collapse collapse">
-        <div class="navbar-page-links">
+        <!-- <div class="navbar-page-links">
           <div class="navbar-text">
             <div class="dropdown">
               <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_solutions_dropdown" href="https://www.yugabyte.com/community-edition/">
@@ -47,17 +47,28 @@
               </a>
             </div>
           </div>
-        </div>
+        </div> -->
 
         <div class="flex-spacer"></div>
-
-        <div class="navbar-misc">
-          <div class="navbar-text github-star-button">
-            <iframe src="https://ghbtns.com/github-btn.html?user=YugaByte&repo=yugabyte-db&type=star" frameborder="0" scrolling="0" width="50px" height="20px"></iframe>
-          </div>
-
-          <div class="navbar-text navbar-search-main">
+        <div class="navbar-text navbar-search-main">
             {{ partial "search" . }}
+        </div>
+        <div class="navbar-misc">
+          <div>
+            Join us on
+          </div>
+          <span id="download-button">
+            <a href="https://www.yugabyte.com/slack" class="navbar-link-btn">
+              <img id="slack-logo" width="80" height="30" src="/images/slack-logo-full.svg" />
+            </a>
+          </span>
+          <div>
+            Star us on
+          </div>
+          <span style="margin-right: 15px">
+            <a href="https://github.com/YugaByte/yugabyte-db" style="padding: 5px; border-radius: 3px">
+              <img height="30" width="30" src="/images/github-light-small.png" />
+            </a>
           </div>
 
           <div id="download-button">

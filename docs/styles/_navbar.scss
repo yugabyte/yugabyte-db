@@ -252,6 +252,7 @@ body {
     line-height: 18px;
     font-size: 18px;
     font-weight: 700;
+    flex-grow: 1;
 
     &.github-star-button {
       margin-right: 10px;
@@ -447,6 +448,24 @@ body {
       justify-content: flex-start;
       flex-direction: row;
       align-items: center;
+    }
+
+    .navbar-link-btn {
+      border: 1px solid #cbcdd0;
+      padding: 5px;
+      border-radius: 4px;
+      margin-left: 6px;
+      margin-right: 15px;
+    }
+
+    .navbar-link-btn:hover {
+      background-color: #cbcbcb78;
+    }
+
+    #slack-logo {
+      margin-left: -7px;
+      margin-right: -8px;
+      margin-bottom: 2px;
     }
 
     @media screen and (max-width: 991px) {
