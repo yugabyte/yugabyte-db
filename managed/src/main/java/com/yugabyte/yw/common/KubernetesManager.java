@@ -18,6 +18,8 @@ import java.util.UUID;
 public class KubernetesManager {
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesManager.class);
 
+  private static final long DEFAULT_TIMEOUT_SECS = 300;
+
   @Inject
   ShellProcessHandler shellProcessHandler;
 
@@ -60,6 +62,14 @@ public class KubernetesManager {
     return execCommand(config, commandList);
   }
 
+  public String getTimeout() {
+    Long timeout = appConfig.getLong("yb.helm.timeout_secs");
+    if (timeout == null || timeout == 0) {
+      timeout = DEFAULT_TIMEOUT_SECS;
+    }
+    return String.valueOf(timeout);
+  }
+
   public ShellProcessHandler.ShellResponse helmInstall(Map<String, String> config, UUID providerUUID, String universePrefix, String overridesFile) {
     String helmPackagePath = appConfig.getString("yb.helm.package");
     if (helmPackagePath == null || helmPackagePath.isEmpty()) {
@@ -68,13 +78,14 @@ public class KubernetesManager {
     Provider provider = Provider.get(providerUUID);
     Map<String, String> configProvider = provider.getConfig();
     List<String> commandList = ImmutableList.of("helm",  "install",
-        helmPackagePath, "--namespace", universePrefix, "--name", universePrefix, "-f", overridesFile, "--wait");
+        helmPackagePath, "--namespace", universePrefix, "--name", universePrefix, "-f", overridesFile,
+        "--timeout", getTimeout(), "--wait");
     if (configProvider.containsKey("KUBECONFIG_NAMESPACE")) {
       if (configProvider.get("KUBECONFIG_NAMESPACE") != null) {
         String namespace = configProvider.get("KUBECONFIG_NAMESPACE");
         commandList = ImmutableList.of("helm",  "install",
             helmPackagePath, "--namespace", universePrefix, "--name", universePrefix, "-f", overridesFile,
-            "--tiller-namespace", namespace, "--wait");
+            "--tiller-namespace", namespace, "--timeout", getTimeout(), "--wait");
       }
     }
     LOG.info(String.join(" ", commandList));
@@ -106,7 +117,7 @@ public class KubernetesManager {
       throw new RuntimeException("Helm Package path not provided.");
     }
     List<String> commandList = ImmutableList.of("helm",  "upgrade",  "-f", overridesFile, "--namespace", universePrefix,
-        universePrefix, helmPackagePath,  "--wait");
+        universePrefix, helmPackagePath, "--timeout", getTimeout(), "--wait");
     LOG.info(String.join(" ", commandList));
     return execCommand(config, commandList);
   }
