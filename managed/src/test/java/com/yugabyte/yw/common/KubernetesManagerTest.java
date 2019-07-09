@@ -71,6 +71,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
         kubernetesManager.helmInstall(configProvider, defaultProvider.uuid, "demo-universe",
             "/tmp/override.yml");
         break;
+      case HELM_UPGRADE:
+        kubernetesManager.helmUpgrade(configProvider, "demo-universe", "/tmp/override.yml");
+        break;
       case POD_INFO:
         kubernetesManager.getPodInfos(configProvider, "demo-universe");
         break;
@@ -104,14 +107,55 @@ public class KubernetesManagerTest extends FakeDBApplication {
     }
   }
 
+  @Test
+  public void testHelmUpgrade() {
+    when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
+    when(mockAppConfig.getLong("yb.helm.timeout_secs")).thenReturn((long)600);
+    runCommand(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
+    assertEquals(ImmutableList.of("helm",  "upgrade",  "-f", "/tmp/override.yml", "--namespace", "demo-universe",
+        "demo-universe", "/my/helm.tgz", "--timeout", "600", "--wait"),
+        command.getValue());
+    assertEquals(config.getValue(), configProvider);
+  }
+
+  @Test
+  public void testHelmUpgradeNoTimeout() {
+    when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
+    runCommand(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
+    assertEquals(ImmutableList.of("helm",  "upgrade",  "-f", "/tmp/override.yml", "--namespace", "demo-universe",
+        "demo-universe", "/my/helm.tgz", "--timeout", "300", "--wait"),
+        command.getValue());
+    assertEquals(config.getValue(), configProvider);
+  }
+
+  @Test
+  public void testHelmUpgradeFailWithNoConfig() {
+    try {
+      runCommand(KubernetesCommandExecutor.CommandType.HELM_UPGRADE);
+    } catch (RuntimeException e) {
+      assertEquals("Helm Package path not provided.", e.getMessage());
+    }
+  }
 
   @Test
   public void helmInstallWithRequiredConfig() {
     when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
+    when(mockAppConfig.getLong("yb.helm.timeout_secs")).thenReturn((long)600);
     runCommand(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
     assertEquals(ImmutableList.of("helm", "install", "/my/helm.tgz",
         "--namespace", "demo-universe", "--name", "demo-universe", "-f",
-        "/tmp/override.yml", "--wait"),
+        "/tmp/override.yml", "--timeout", "600", "--wait"),
+        command.getValue());
+    assertEquals(config.getValue(), configProvider);
+  }
+
+  @Test
+  public void helmInstallWithNoTimeout() {
+    when(mockAppConfig.getString("yb.helm.package")).thenReturn("/my/helm.tgz");
+    runCommand(KubernetesCommandExecutor.CommandType.HELM_INSTALL);
+    assertEquals(ImmutableList.of("helm", "install", "/my/helm.tgz",
+        "--namespace", "demo-universe", "--name", "demo-universe", "-f",
+        "/tmp/override.yml", "--timeout", "300", "--wait"),
         command.getValue());
     assertEquals(config.getValue(), configProvider);
   }
