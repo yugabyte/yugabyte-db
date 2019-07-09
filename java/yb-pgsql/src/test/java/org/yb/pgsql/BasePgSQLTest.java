@@ -365,12 +365,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       String[] views = {"VIEW"};
       ResultSet rs = dbmd.getTables(null, null, "%", views);
       while (rs.next()) {
-        statement.execute("DROP VIEW " + rs.getString("TABLE_NAME"));
+        statement.execute("DROP VIEW " + rs.getString("TABLE_NAME") + " CASCADE");
       }
       String[] tables = {"TABLE"};
       rs = dbmd.getTables(null, null, "%", tables);
       while (rs.next()) {
-        statement.execute("DROP TABLE " + rs.getString("TABLE_NAME"));
+        statement.execute("DROP TABLE " + rs.getString("TABLE_NAME") + " CASCADE");
       }
     }
   }
