@@ -1252,9 +1252,7 @@ Status Tablet::KeyValueBatchFromPgsqlWriteBatch(WriteOperation* operation) {
     if (table_info->schema_version != req->schema_version()) {
       resp->set_status(PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
-      auto write_op = std::make_unique<PgsqlWriteOperation>(table_info->schema,
-                                                            *txn_op_ctx,
-                                                            table_info->index_info.get());
+      auto write_op = std::make_unique<PgsqlWriteOperation>(table_info->schema, *txn_op_ctx);
       RETURN_NOT_OK(write_op->Init(req, resp));
       doc_ops.emplace_back(std::move(write_op));
     }

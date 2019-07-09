@@ -335,6 +335,108 @@ SELECT * FROM null_index WHERE v IS NOT NULL ORDER BY k;
  3 | 3
 (1 row)
 
+--
+-- NULL value in unique index
+--
+CREATE TABLE null_unique_index(k int, v int);
+CREATE UNIQUE INDEX ON null_unique_index(k);
+INSERT INTO null_unique_index(v) values(1);
+INSERT INTO null_unique_index values (NULL, 2), (3, 3), (4, 4);
+INSERT INTO null_unique_index values(4, 5); -- fail
+ERROR:  duplicate key value violates unique constraint "null_unique_index_k_idx"
+EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k = 4;
+                          QUERY PLAN
+---------------------------------------------------------------
+ Index Scan using null_unique_index_k_idx on null_unique_index
+   Index Cond: (k = 4)
+(2 rows)
+
+EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY k;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Sort
+   Sort Key: k
+   ->  Index Scan using null_unique_index_k_idx on null_unique_index
+         Index Cond: (k IS NULL)
+(4 rows)
+
+EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY k;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Sort
+   Sort Key: k
+   ->  Index Scan using null_unique_index_k_idx on null_unique_index
+         Index Cond: (k IS NOT NULL)
+(4 rows)
+
+SELECT * FROM null_unique_index WHERE k = 4;
+ k | v
+---+---
+ 4 | 4
+(1 row)
+
+SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY v;
+ k | v
+---+---
+   | 1
+   | 2
+(2 rows)
+
+SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY v;
+ k | v
+---+---
+ 3 | 3
+ 4 | 4
+(2 rows)
+
+DELETE FROM null_unique_index WHERE k = 3;
+SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY v;
+ k | v
+---+---
+   | 1
+   | 2
+(2 rows)
+
+SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY v;
+ k | v
+---+---
+ 4 | 4
+(1 row)
+
+EXPLAIN(COSTS OFF) DELETE FROM null_unique_index WHERE k IS NULL;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Delete on null_unique_index
+   ->  Index Scan using null_unique_index_k_idx on null_unique_index
+         Index Cond: (k IS NULL)
+(3 rows)
+
+DELETE FROM null_unique_index WHERE k IS NULL;
+SELECT * FROM null_unique_index ORDER BY v;
+ k | v
+---+---
+ 4 | 4
+(1 row)
+
+INSERT INTO null_unique_index values (NULL, 2), (3, 3), (NULL, 5);
+EXPLAIN(COSTS OFF) UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Update on null_unique_index
+   ->  Index Scan using null_unique_index_k_idx on null_unique_index
+         Index Cond: (k IS NOT NULL)
+(3 rows)
+
+UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
+SELECT * FROM null_unique_index ORDER BY v;
+ k | v
+---+---
+   | 2
+   | 3
+   | 4
+   | 5
+(4 rows)
+
 -- Test index update with UPDATE and DELETE
 CREATE TABLE test_unique (k int PRIMARY KEY, v1 int, v2 int);
 CREATE UNIQUE INDEX ON test_unique (v1);
@@ -385,34 +487,18 @@ SELECT * FROM test_unique;
 (2 rows)
 
 -- Test cascade-truncate indexes
-CREATE TABLE test_truncate (a int PRIMARY KEY, b int);
-CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
-INSERT INTO test_truncate VALUES (1, 2);
-INSERT INTO test_truncate VALUES (2, 2);
-ERROR:  duplicate key value violates unique constraint "test_truncate_index"
-EXPLAIN SELECT b FROM test_truncate WHERE b = 2;
-                                          QUERY PLAN
-----------------------------------------------------------------------------------------------
- Index Only Scan using test_truncate_index on test_truncate  (cost=0.00..4.11 rows=1 width=4)
-   Index Cond: (b = 2)
-(2 rows)
-
-SELECT b FROM test_truncate WHERE b = 2;
- b
----
- 2
-(1 row)
-
-TRUNCATE test_truncate;
-SELECT b FROM test_truncate WHERE b = 2;
- b
----
-(0 rows)
-
-INSERT INTO test_truncate VALUES (2, 2);
-INSERT INTO test_truncate VALUES (1, 2);
-ERROR:  duplicate key value violates unique constraint "test_truncate_index"
-DROP TABLE test_truncate;
+-- TODO(dmitry) Temporary commented out due to issue #1632
+-- CREATE TABLE test_truncate (a int PRIMARY KEY, b int);
+-- CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
+-- INSERT INTO test_truncate VALUES (1, 2);
+-- INSERT INTO test_truncate VALUES (2, 2);
+-- EXPLAIN SELECT b FROM test_truncate WHERE b = 2;
+-- SELECT b FROM test_truncate WHERE b = 2;
+-- TRUNCATE test_truncate;
+-- SELECT b FROM test_truncate WHERE b = 2;
+-- INSERT INTO test_truncate VALUES (2, 2);
+-- INSERT INTO test_truncate VALUES (1, 2);
+-- DROP TABLE test_truncate;
 -- Test index methods
 CREATE TABLE test_method (k int PRIMARY KEY, v int);
 CREATE INDEX ON test_method USING btree (v);

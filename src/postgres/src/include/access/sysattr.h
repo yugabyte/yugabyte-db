@@ -30,6 +30,7 @@
 #define YBTupleIdAttributeNumber				(-8)
 #define YBFirstLowInvalidAttributeNumber		(-9)
 
-#define YBBaseTupleIdAttributeNumber			(-101)
+#define YBBaseTupleIdAttributeNumber      (-101)
+#define YBIndexKeySuffixAttributeNumber   (-102)
 
 #endif							/* SYSATTR_H */

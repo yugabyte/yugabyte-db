@@ -156,6 +156,31 @@ SELECT * FROM null_index ORDER BY k;
 SELECT * FROM null_index WHERE v IS NULL ORDER BY k;
 SELECT * FROM null_index WHERE v IS NOT NULL ORDER BY k;
 
+--
+-- NULL value in unique index
+--
+CREATE TABLE null_unique_index(k int, v int);
+CREATE UNIQUE INDEX ON null_unique_index(k);
+INSERT INTO null_unique_index(v) values(1);
+INSERT INTO null_unique_index values (NULL, 2), (3, 3), (4, 4);
+INSERT INTO null_unique_index values(4, 5); -- fail
+EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k = 4;
+EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY k;
+EXPLAIN(COSTS OFF) SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY k;
+SELECT * FROM null_unique_index WHERE k = 4;
+SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY v;
+SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY v;
+DELETE FROM null_unique_index WHERE k = 3;
+SELECT * FROM null_unique_index WHERE k IS NULL ORDER BY v;
+SELECT * FROM null_unique_index WHERE k IS NOT NULL ORDER BY v;
+EXPLAIN(COSTS OFF) DELETE FROM null_unique_index WHERE k IS NULL;
+DELETE FROM null_unique_index WHERE k IS NULL;
+SELECT * FROM null_unique_index ORDER BY v;
+INSERT INTO null_unique_index values (NULL, 2), (3, 3), (NULL, 5);
+EXPLAIN(COSTS OFF) UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
+UPDATE null_unique_index SET k = NULL WHERE k IS NOT NULL;
+SELECT * FROM null_unique_index ORDER BY v;
+
 -- Test index update with UPDATE and DELETE
 CREATE TABLE test_unique (k int PRIMARY KEY, v1 int, v2 int);
 CREATE UNIQUE INDEX ON test_unique (v1);
@@ -182,22 +207,23 @@ INSERT INTO test_unique VALUES (2, 2, 2);
 SELECT * FROM test_unique;
 
 -- Test cascade-truncate indexes
-CREATE TABLE test_truncate (a int PRIMARY KEY, b int);
-CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
+-- TODO(dmitry) Temporary commented out due to issue #1632
+-- CREATE TABLE test_truncate (a int PRIMARY KEY, b int);
+-- CREATE UNIQUE INDEX test_truncate_index ON test_truncate (b);
 
-INSERT INTO test_truncate VALUES (1, 2);
-INSERT INTO test_truncate VALUES (2, 2);
+-- INSERT INTO test_truncate VALUES (1, 2);
+-- INSERT INTO test_truncate VALUES (2, 2);
 
-EXPLAIN SELECT b FROM test_truncate WHERE b = 2;
-SELECT b FROM test_truncate WHERE b = 2;
+-- EXPLAIN SELECT b FROM test_truncate WHERE b = 2;
+-- SELECT b FROM test_truncate WHERE b = 2;
 
-TRUNCATE test_truncate;
-SELECT b FROM test_truncate WHERE b = 2;
+-- TRUNCATE test_truncate;
+-- SELECT b FROM test_truncate WHERE b = 2;
 
-INSERT INTO test_truncate VALUES (2, 2);
-INSERT INTO test_truncate VALUES (1, 2);
+-- INSERT INTO test_truncate VALUES (2, 2);
+-- INSERT INTO test_truncate VALUES (1, 2);
 
-DROP TABLE test_truncate;
+-- DROP TABLE test_truncate;
 
 -- Test index methods
 CREATE TABLE test_method (k int PRIMARY KEY, v int);
