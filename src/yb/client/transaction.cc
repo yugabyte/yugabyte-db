@@ -130,6 +130,11 @@ class YBTransaction::Impl final {
     return Status::OK();
   }
 
+  void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point) {
+    metadata_.isolation = isolation;
+    read_point_ = std::move(read_point);
+  }
+
   const IsolationLevel isolation() const {
     return metadata_.isolation;
   }
@@ -867,6 +872,12 @@ YBTransaction::~YBTransaction() {
 
 Status YBTransaction::Init(IsolationLevel isolation, const ReadHybridTime& read_time) {
   return impl_->Init(isolation, read_time);
+}
+
+void YBTransaction::InitWithReadPoint(
+    IsolationLevel isolation,
+    ConsistentReadPoint&& read_point) {
+  return impl_->InitWithReadPoint(isolation, std::move(read_point));
 }
 
 bool YBTransaction::Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,

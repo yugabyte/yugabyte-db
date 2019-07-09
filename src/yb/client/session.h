@@ -233,11 +233,11 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Called by Batcher when a flush has finished.
   void FlushFinished(internal::BatcherPtr b);
 
+  ConsistentReadPoint* read_point();
+
  private:
   friend class YBClient;
   friend class internal::Batcher;
-
-  ConsistentReadPoint* read_point();
 
   internal::Batcher& Batcher();
 

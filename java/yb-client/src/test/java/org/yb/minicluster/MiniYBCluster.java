@@ -1002,6 +1002,14 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
+   * Returns the current number of tablet servers.
+   * @return count of tablet servers
+   */
+  public int getNumTServers() {
+    return tserverProcesses.size();
+  }
+
+  /**
    * Returns the number of shards per tserver.
    * @return number of shards per tserver.
    */

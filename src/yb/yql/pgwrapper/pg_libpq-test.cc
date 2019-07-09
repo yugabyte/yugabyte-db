@@ -356,7 +356,6 @@ Result<int64_t> ReadSumBalance(
     }
   } BOOST_SCOPE_EXIT_END;
 
-  RETURN_NOT_OK(Execute(conn, Format("INSERT INTO fake (id) VALUES ($0)", ++*counter)));
   int64_t sum = 0;
   for (int i = 1; i <= accounts; ++i) {
     LOG(INFO) << "Reading: " << i;
@@ -403,18 +402,14 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
         Format("INSERT INTO account_$0 (id, balance) VALUES ($0, $1)", i, kInitialBalance)));
   }
 
-  ASSERT_OK(Execute(conn.get(), "CREATE TABLE fake (id int, PRIMARY KEY(id))"));
-
   std::atomic<int> writes(0);
   std::atomic<int> reads(0);
 
-  // TODO(dtxn) Remove it.
-  // Currently using fake insert to force transaction start before actual statements.
   std::atomic<int> counter(100000);
   TestThreadHolder thread_holder;
   for (int i = 1; i <= kThreads; ++i) {
     thread_holder.AddThreadFunctor(
-        [this, &counter, &writes, &begin_transaction_statement,
+        [this, &writes, &begin_transaction_statement,
          &stop_flag = thread_holder.stop_flag()]() {
       auto conn = ASSERT_RESULT(Connect());
       while (!stop_flag.load(std::memory_order_acquire)) {
@@ -425,7 +420,6 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
         }
         int64_t amount = RandomUniformInt(1, 10);
         ASSERT_OK(Execute(conn.get(), begin_transaction_statement));
-        ASSERT_OK(Execute(conn.get(), Format("INSERT INTO fake (id) VALUES ($0)", ++counter)));
         auto status = Execute(conn.get(), Format(
               "UPDATE account_$0 SET balance = balance - $1 WHERE id = $0", from, amount));
         if (status.ok()) {
@@ -466,7 +460,7 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
   constexpr auto kRequiredWrites = RegularBuildVsSanitizers(1000, 500);
   auto wait_status = WaitFor([&reads, &writes, &stop = thread_holder.stop_flag()] {
     return stop.load() || (writes.load() >= kRequiredWrites && reads.load() >= kRequiredReads);
-  }, kTimeout, "Enough reads and writes");
+  }, kTimeout, Format("At least $0 reads and $1 writes", kRequiredReads, kRequiredWrites));
 
   LOG(INFO) << "Writes: " << writes.load() << ", reads: " << reads.load();
 
