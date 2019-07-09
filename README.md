@@ -1,4 +1,4 @@
-<img src="https://camo.githubusercontent.com/ba1bb8c876e148273142e6c17542db24be13349f/68747470733a2f2f73332d75732d776573742d322e616d617a6f6e6177732e636f6d2f6173736574732e79756761627974652e636f6d2f79622d64622d6c6f676f2e706e67" align="center" height="56" alt="YugaByte DB"/>
+<img src="https://github.com/YugaByte/yugabyte-db/raw/master/architecture/images/ybDB_horizontal.jpg" align="center" height="100" alt="YugaByte DB"/>
 
 ---------------------------------------
 
