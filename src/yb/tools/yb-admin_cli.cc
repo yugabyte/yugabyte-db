@@ -259,8 +259,28 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
           timeout_secs = std::stoi(args[4].c_str());
         }
 
-        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name, timeout_secs),
+        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name, timeout_secs,
+                                                 false /* is_compaction */),
                               Substitute("Unable to flush table $0", table_name.ToString()));
+        return Status::OK();
+      });
+
+    Register(
+      "compact_table", " <keyspace> <table_name> [timeout_in_seconds] (default 20)",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4 && args.size() != 5) {
+          UsageAndExit(args[0]);
+        }
+        const YBTableName table_name(args[2], args[3]);
+        int timeout_secs = 20;
+        if (args.size() > 4) {
+          timeout_secs = std::stoi(args[4].c_str());
+        }
+
+        // We use the same FlushTables RPC to trigger compaction.
+        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name, timeout_secs,
+                                                 true /* is_compaction */),
+                              Substitute("Unable to compact table $0", table_name.ToString()));
         return Status::OK();
       });
 
