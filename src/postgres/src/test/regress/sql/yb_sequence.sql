@@ -34,6 +34,12 @@ SELECT * FROM serialTest2;
 
 SELECT * FROM serialTest2_id_seq;
 
+SELECT setval('serialTest2_id_seq', 99, true);
+INSERT INTO serialTest2 (val) VALUES (40);
+INSERT INTO serialTest2 (val) VALUES (41);
+INSERT INTO serialTest2 (val) VALUES (42);
+SELECT * FROM serialTest2;
+
 
 
 -- operations directly on sequences
@@ -50,6 +56,13 @@ SELECT last_value FROM sequence_test1;
 
 SELECT nextval('sequence_test1');
 SELECT lastval();
+
+SELECT setval('sequence_test1', 50);
+SELECT nextval('sequence_test1');
+SELECT nextval('sequence_test1');
+
+SELECT setval('sequence_test1', 50, false);
+SELECT nextval('sequence_test1');
 
 
 

@@ -56,6 +56,27 @@ SELECT * FROM serialTest2_id_seq;
           3 |       0 | t
 (1 row)
 
+SELECT setval('serialTest2_id_seq', 99, true);
+ setval
+--------
+     99
+(1 row)
+
+INSERT INTO serialTest2 (val) VALUES (40);
+INSERT INTO serialTest2 (val) VALUES (41);
+INSERT INTO serialTest2 (val) VALUES (42);
+SELECT * FROM serialTest2;
+ id  | val
+-----+-----
+   1 |  95
+   2 |  -3
+   3 |  18
+   1 |  19
+ 100 |  40
+ 101 |  41
+ 102 |  42
+(7 rows)
+
 -- operations directly on sequences
 CREATE SEQUENCE sequence_test1;
 SELECT * from sequence_test1;
@@ -98,6 +119,36 @@ SELECT lastval();
  lastval
 ---------
        4
+(1 row)
+
+SELECT setval('sequence_test1', 50);
+ setval
+--------
+     50
+(1 row)
+
+SELECT nextval('sequence_test1');
+ nextval
+---------
+      51
+(1 row)
+
+SELECT nextval('sequence_test1');
+ nextval
+---------
+      52
+(1 row)
+
+SELECT setval('sequence_test1', 50, false);
+ setval
+--------
+     50
+(1 row)
+
+SELECT nextval('sequence_test1');
+ nextval
+---------
+      50
 (1 row)
 
 -- similar to above but on TEMPORARY SEQUENCE

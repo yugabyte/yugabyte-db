@@ -640,16 +640,35 @@ public class TestPgSequences extends BasePgSQLTest {
   }
 
   //------------------------------------------------------------------------------------------------
-  // Unsupported features tests.
+  // Newly-supported features tests.
   //------------------------------------------------------------------------------------------------
   @Test
   public void testSelectDirectlyFromSequenceTable() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1");
 
-      thrown.expect(org.postgresql.util.PSQLException.class);
-      thrown.expectMessage("Querying sequence tables is not supported yet");
-      statement.execute("SELECT last_value FROM s1");
+      ResultSet rs = statement.executeQuery("SELECT last_value FROM s1");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getInt("last_value"));
+    }
+  }
+
+  @Test
+  public void testSetvalAndSelect() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1");
+
+      ResultSet rs = statement.executeQuery("SELECT setval('s1', 45, false)");
+      assertTrue(rs.next());
+      assertEquals(45, rs.getInt("setval"));
+    }
+
+    Connection connection2 = createConnection();
+    try (Statement statement = connection2.createStatement()) {
+      ResultSet rs = statement.executeQuery("SELECT * FROM s1");
+      assertTrue(rs.next());
+      assertEquals(45, rs.getInt("last_value"));
+      assertEquals(false, rs.getBoolean("is_called"));
     }
   }
 

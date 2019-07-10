@@ -1124,8 +1124,8 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	PreventCommandIfParallelMode("setval()");
 
 	/*
-	 * TODO(hector): Finish the implementation for setval(). For now, we only skip this part of the
-	 * code to avoid errors.
+	 * Only read the sequence from a disk page if we are in Postgres mode, since YugaByte stores it
+	 * elsewhere and this will cause an error
 	 */
 	if (!IsYugaByteEnabled())
 	{
@@ -1160,11 +1160,18 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	elm->cached = elm->last;
 
 	/*
-	 * TODO(hector): Finish the implementation for setval(). YugaByte doesn't use the WAL, and we
+	 * Update the sequence in the YugaByte backend. YugaByte doesn't use the WAL, and we
 	 * didn't allocate memory for buffer, so no need to free it.
 	 */
 	if (IsYugaByteEnabled())
 	{
+    HandleYBStatus(YBCUpdateSequenceTuple(ybc_pg_session,
+                                          MyDatabaseId,
+                                          relid,
+                                          yb_catalog_cache_version,
+                                          next,
+                                          iscalled,
+                                          NULL));
 		relation_close(seqrel, NoLock);
 		return;
 	}
