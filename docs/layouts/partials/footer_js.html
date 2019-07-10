@@ -146,11 +146,12 @@
           $('.nav-tabs li a[href="'+href+'"], .nav-tabs-alt li a[href="'+href+'"]').addClass('active');
 
           const hashValue = $.attr(this, 'href');
-          if(history.pushState) {
+          if (history.pushState) {
             history.pushState(null, null, hashValue);
           } else {
             window.location.hash = hashValue.substr(1);
           }
+
           //active tab
           $('.tab-pane').removeClass('active').removeClass('show');
           $('.tab-pane'+href).addClass('active').addClass('show');
