@@ -19,57 +19,23 @@
         </span>
       </button>
       <div class="navbar-collapse collapse">
-        <!-- <div class="navbar-page-links">
-          <div class="navbar-text">
-            <div class="dropdown">
-              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_solutions_dropdown" href="https://www.yugabyte.com/community-edition/">
-                Open Source
-              </a>
-            </div>
-          </div>
-          <div class="navbar-text">
-            <div class="dropdown">
-              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_resources_dropdown" >
-                Community
-              </a>
-              <div class="dropdown-menu" aria-labelledby="navbar_product_dropdown">
-                <a class="dropdown-item" href="https://github.com/yugabyte/yugabyte-db" target="_blank">GitHub</a>
-                <a class="dropdown-item" href="https://www.yugabyte.com/slack" target="_blank">Slack</a>           
-                <a class="dropdown-item" href="https://forum.yugabyte.com/" target="_blank">Forum</a>
-                <a class="dropdown-item" href="https://stackoverflow.com/questions/tagged/yugabyte-db" target="_blank">StackOverflow</a> 
-              </div>
-            </div>
-          </div>
-          <div class="navbar-text">
-            <div class="dropdown">
-              <a class="navbar-link" data-hover="dropdown" aria-haspopup="true" aria-expanded="false" id="navbar_solutions_dropdown" href="https://blog.yugabyte.com/">
-                Blog
-              </a>
-            </div>
-          </div>
-        </div> -->
-
         <div class="flex-spacer"></div>
         <div class="navbar-text navbar-search-main">
             {{ partial "search" . }}
         </div>
         <div class="navbar-misc">
-          <div>
-            Join us on
-          </div>
-          <span id="download-button">
-            <a href="https://www.yugabyte.com/slack" class="navbar-link-btn">
+          <a href="https://www.yugabyte.com/slack" class="navbar-link-btn">
+           <div id="download-button">  
+              Join us on
               <img id="slack-logo" width="80" height="30" src="/images/slack-logo-full.svg" />
-            </a>
-          </span>
-          <div>
-            Star us on
-          </div>
-          <span style="margin-right: 15px">
-            <a href="https://github.com/YugaByte/yugabyte-db" style="padding: 5px; border-radius: 3px">
-              <img height="30" width="30" src="/images/github-light-small.png" />
-            </a>
-          </div>
+           </div>
+          </a>
+          <a href="https://github.com/YugaByte/yugabyte-db" class="navbar-link-btn">
+            <div>
+              Star us on
+              <img class="social-link-icon" height="30" width="30" src="/images/github-light-small.png" />
+            </div>
+          </a>
 
           <div id="download-button">
             <a href="/latest/quick-start/" class="btn cta-button">

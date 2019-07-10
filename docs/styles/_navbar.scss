@@ -452,20 +452,27 @@ body {
 
     .navbar-link-btn {
       border: 1px solid #cbcdd0;
-      padding: 5px;
-      border-radius: 4px;
-      margin-left: 6px;
+      color: #202951;
+      text-decoration: none;
+      padding: 5px 15px;
+      height: 42px;
+      border-radius: 7px;
       margin-right: 15px;
     }
 
     .navbar-link-btn:hover {
       background-color: #cbcbcb78;
+      color: #000;
     }
 
     #slack-logo {
       margin-left: -7px;
       margin-right: -8px;
       margin-bottom: 2px;
+    }
+
+    .social-link-icon {
+      margin-left: 5px;
     }
 
     @media screen and (max-width: 991px) {
