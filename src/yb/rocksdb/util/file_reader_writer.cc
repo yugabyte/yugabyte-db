@@ -33,6 +33,12 @@
 #include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/util/priority_thread_pool.h"
+
+DEFINE_bool(allow_preempting_compactions, true,
+            "Whether a compaction may be preempted in favor of another compaction with higher "
+            "priority");
+
 namespace rocksdb {
 
 Status SequentialFileReader::Read(size_t n, Slice* result, uint8_t* scratch) {
@@ -269,6 +275,9 @@ Status WritableFileWriter::RangeSync(uint64_t offset, uint64_t nbytes) {
 }
 
 size_t WritableFileWriter::RequestToken(size_t bytes, bool align) {
+  if (suspender_ && FLAGS_allow_preempting_compactions) {
+    suspender_->PauseIfNecessary();
+  }
   Env::IOPriority io_priority;
   if (rate_limiter_ && (io_priority = writable_file_->GetIOPriority()) <
       Env::IO_TOTAL) {

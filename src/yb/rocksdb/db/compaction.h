@@ -34,6 +34,12 @@
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/util/result.h"
 
+namespace yb {
+
+class PriorityThreadPoolSuspender;
+
+}
+
 namespace rocksdb {
 
 using yb::Result;
@@ -291,6 +297,9 @@ class Compaction {
 
   CompactionReason compaction_reason() { return compaction_reason_; }
 
+  yb::PriorityThreadPoolSuspender* suspender() { return suspender_; }
+  void SetSuspender(yb::PriorityThreadPoolSuspender* value) { suspender_ = value; }
+
  private:
   // mark (or clear) all files that are being compacted
   void MarkFilesBeingCompacted(bool mark_as_compacted);
@@ -368,6 +377,8 @@ class Compaction {
 
   // Reason for compaction
   CompactionReason compaction_reason_;
+
+  yb::PriorityThreadPoolSuspender* suspender_ = nullptr;
 };
 
 // Utility function
