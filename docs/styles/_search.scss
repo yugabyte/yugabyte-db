@@ -70,12 +70,17 @@
   }
   .search-input {
     text-indent: 40px;
-    width: 200px;
+    width: 300px;
     padding: 0;
-    line-height: 42px;
+    line-height: 48px;
     border: none;
     font-weight: 300;
     font-size: 15.5px;
+  }
+  @media (min-width: 1440px) {
+    .search-input {
+      width: 600px;
+    }
   }
   .search-input::-webkit-input-placeholder {
      text-align: left;
