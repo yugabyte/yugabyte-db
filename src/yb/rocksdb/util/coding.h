@@ -25,8 +25,8 @@
 // * Fixed-length numbers are encoded with least-significant byte first
 // * In addition we support variable length "varint" encoding
 // * Strings are encoded prefixed by their length in varint format
-#ifndef ROCKSDB_UTIL_CODING_H
-#define ROCKSDB_UTIL_CODING_H
+#ifndef YB_ROCKSDB_UTIL_CODING_H
+#define YB_ROCKSDB_UTIL_CODING_H
 
 #pragma once
 #include <stdint.h>
@@ -38,11 +38,9 @@
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksdb/port/port.h"
 
-namespace rocksdb {
+#include "yb/util/coding_consts.h"
 
-// The maximum length of a varint in bytes for 32 and 64 bits respectively.
-constexpr const unsigned int kMaxVarint32Length = 5;
-constexpr const unsigned int kMaxVarint64Length = 10;
+namespace rocksdb {
 
 // Standard Put... routines append to a string
 extern void PutFixed32(std::string* dst, uint32_t value);
@@ -56,7 +54,7 @@ extern void PutLengthPrefixedSliceParts(std::string* dst,
 // Standard Get... routines parse a value from the beginning of a Slice
 // and advance the slice past the parsed value.
 extern bool GetFixed64(Slice* input, uint64_t* value);
-extern bool GetVarint32(Slice* input, uint32_t* value);
+bool GetVarint32(Slice* input, uint32_t* value);
 extern bool GetVarint64(Slice* input, uint64_t* value);
 extern bool GetLengthPrefixedSlice(Slice* input, Slice* result);
 // This function assumes data is well-formed.
@@ -292,4 +290,4 @@ inline Slice GetSliceUntil(Slice* slice, char delimiter) {
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_UTIL_CODING_H
+#endif // YB_ROCKSDB_UTIL_CODING_H

@@ -58,20 +58,6 @@ std::string NormalizeFileName(const std::string fname) {
   return out_name;
 }
 
-class RandomAccessFileImpl : public RandomAccessFile {
- public:
-  explicit RandomAccessFileImpl(std::shared_ptr<InMemoryFileState> file) : file_(std::move(file)) {}
-
-  ~RandomAccessFileImpl() {}
-
-  virtual Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const override {
-    return file_->Read(offset, n, result, reinterpret_cast<uint8_t*>(scratch));
-  }
-
- private:
-  std::shared_ptr<InMemoryFileState> file_;
-};
-
 class WritableFileImpl : public WritableFile {
  public:
   explicit WritableFileImpl(std::shared_ptr<InMemoryFileState> file) : file_(std::move(file)) {}
@@ -128,7 +114,7 @@ class InMemoryEnv : public EnvWrapper {
       return STATUS(IOError, fname, "File not found");
     }
 
-    result->reset(new RandomAccessFileImpl(file_map_[nfname]));
+    result->reset(new yb::InMemoryRandomAccessFile(file_map_[nfname]));
     return Status::OK();
   }
 

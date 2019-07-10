@@ -50,7 +50,6 @@ struct BlockContents;
 class BlockHandle;
 class Footer;
 struct Options;
-class RandomAccessFile;
 struct ReadOptions;
 class TableCache;
 class TableReader;

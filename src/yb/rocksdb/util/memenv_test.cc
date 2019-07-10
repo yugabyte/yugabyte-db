@@ -131,17 +131,16 @@ TEST_F(MemEnvTest, ReadWrite) {
   ASSERT_EQ(0U, result.size());
 
   // Random reads.
-  char* cscratch = pointer_cast<char*>(scratch);
   ASSERT_OK(env_->NewRandomAccessFile("/dir/f", &rand_file, soptions_));
-  ASSERT_OK(rand_file->Read(6, 5, &result, cscratch)); // Read "world".
+  ASSERT_OK(rand_file->Read(6, 5, &result, scratch)); // Read "world".
   ASSERT_EQ(0, result.compare("world"));
-  ASSERT_OK(rand_file->Read(0, 5, &result, cscratch)); // Read "hello".
+  ASSERT_OK(rand_file->Read(0, 5, &result, scratch)); // Read "hello".
   ASSERT_EQ(0, result.compare("hello"));
-  ASSERT_OK(rand_file->Read(10, 100, &result, cscratch)); // Read "d".
+  ASSERT_OK(rand_file->Read(10, 100, &result, scratch)); // Read "d".
   ASSERT_EQ(0, result.compare("d"));
 
   // Too high offset.
-  ASSERT_TRUE(!rand_file->Read(1000, 5, &result, cscratch).ok());
+  ASSERT_TRUE(!rand_file->Read(1000, 5, &result, scratch).ok());
 }
 
 TEST_F(MemEnvTest, Locks) {

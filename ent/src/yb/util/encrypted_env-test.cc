@@ -52,7 +52,7 @@ TEST_F(TestEncryptedEnv, FileOps) {
     TestWrites(writable_file.get(), data);
 
     std::unique_ptr<RandomAccessFile> ra_file;
-    ASSERT_OK(env->NewRandomAccessFile(RandomAccessFileOptions(), fname, &ra_file));
+    ASSERT_OK(env->NewRandomAccessFile(fname, &ra_file));
     TestRandomAccessReads<RandomAccessFile, uint8_t>(ra_file.get(), data);
 
     ASSERT_OK(env->DeleteFile(fname));

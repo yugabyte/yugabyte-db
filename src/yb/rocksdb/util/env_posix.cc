@@ -633,7 +633,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
       }
       close(fd);
     } else {
-      *result = std::make_unique<PosixRandomAccessFile>(fname, fd, options);
+      *result = std::make_unique<yb::PosixRandomAccessFile>(fname, fd, options);
     }
     return s;
   }
