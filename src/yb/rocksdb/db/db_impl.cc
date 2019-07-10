@@ -2455,12 +2455,13 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
         priority_(CalcPriority()) {
   }
 
-  void Run(const Status& status) override {
+  void Run(const Status& status, yb::PriorityThreadPoolSuspender* suspender) override {
     if (!status.ok()) {
       InstrumentedMutexLock lock(&db_impl_->mutex_);
       AbortedUnlocked();
       return; // Failed to schedule, could just drop compaction.
     }
+    compaction().SetSuspender(suspender);
     db_impl_->BackgroundCallCompaction(manual_compaction_, std::move(compaction_));
   }
 
@@ -2468,7 +2469,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     return key == db_impl_;
   }
 
-  int Priority() override {
+  int Priority() const override {
     return priority_;
   }
 
@@ -2483,8 +2484,12 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     }
   }
 
+  void AddToStringFields(std::string* out) const override {
+    *out += yb::Format("compact db: $0 ", db_impl_->GetName());
+  }
+
  private:
-  const Compaction& compaction() const {
+  Compaction& compaction() const {
     return compaction_ ? *compaction_ : *manual_compaction_->compaction;
   }
 
@@ -2512,12 +2517,13 @@ class DBImpl::FlushTask : public ThreadPoolTask {
  public:
   explicit FlushTask(DBImpl* db_impl, ColumnFamilyData* cfd) : db_impl_(db_impl), cfd_(cfd) {}
 
-  void Run(const Status& status) override {
+  void Run(const Status& status, yb::PriorityThreadPoolSuspender* suspender) override {
     if (!status.ok()) {
       InstrumentedMutexLock lock(&db_impl_->mutex_);
       AbortedUnlocked();
       return; // Failed to schedule, could just drop flush task.
     }
+    // Since flush tasks has highest priority we could don't use suspender for them.
     db_impl_->BackgroundCallFlush(cfd_);
   }
 
@@ -2525,7 +2531,7 @@ class DBImpl::FlushTask : public ThreadPoolTask {
     return key == db_impl_;
   }
 
-  int Priority() override {
+  int Priority() const override {
     return kFlushPriority;
   }
 
@@ -2537,6 +2543,10 @@ class DBImpl::FlushTask : public ThreadPoolTask {
     if (--db_impl_->bg_flush_scheduled_ == 0) {
       db_impl_->bg_cv_.SignalAll();
     }
+  }
+
+  void AddToStringFields(std::string* out) const override {
+    *out += yb::Format("flush db: $0 ", db_impl_->GetName());
   }
 
  private:

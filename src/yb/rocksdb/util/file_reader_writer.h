@@ -30,6 +30,12 @@
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/port/port.h"
 
+namespace yb {
+
+class PriorityThreadPoolSuspender;
+
+}
+
 namespace rocksdb {
 
 class Statistics;
@@ -126,10 +132,15 @@ class WritableFileWriter {
   uint64_t                last_sync_size_;
   uint64_t                bytes_per_sync_;
   RateLimiter*            rate_limiter_;
+  // When the writer is used by the priority thread pool's task, this task could pass provided
+  // suspender to the writer, so it will be used by writer to check whether task should be
+  // paused after block is flushed.
+  yb::PriorityThreadPoolSuspender* suspender_;
 
  public:
   WritableFileWriter(std::unique_ptr<WritableFile>&& file,
-                     const EnvOptions& options)
+                     const EnvOptions& options,
+                     yb::PriorityThreadPoolSuspender* suspender = nullptr)
       : writable_file_(std::move(file)),
         buf_(),
         max_buffer_size_(options.writable_file_max_buffer_size),
@@ -141,7 +152,8 @@ class WritableFileWriter {
         use_os_buffer_(writable_file_->UseOSBuffer()),
         last_sync_size_(0),
         bytes_per_sync_(options.bytes_per_sync),
-        rate_limiter_(options.rate_limiter) {
+        rate_limiter_(options.rate_limiter),
+        suspender_(suspender) {
 
     buf_.Alignment(writable_file_->GetRequiredBufferAlignment());
     buf_.AllocateNewBuffer(65536);

@@ -16,9 +16,18 @@
 
 #include <memory>
 
-#include "yb/rocksdb/status.h"
+#include "yb/util/locks.h"
+#include "yb/util/status.h"
 
 namespace yb {
+
+// PriorityThreadPoolSuspender is provided to task ran by thread pool, task could use it to check
+// whether is should be preempted in favor of another task with higher priority.
+class PriorityThreadPoolSuspender {
+ public:
+  virtual void PauseIfNecessary() = 0;
+  virtual ~PriorityThreadPoolSuspender() {}
+};
 
 class PriorityThreadPoolTask {
  public:
@@ -28,27 +37,34 @@ class PriorityThreadPoolTask {
 
   // If status is OK - execute this task in the current thread.
   // Otherwise - abort task with specified status.
-  virtual void Run(const Status& status) = 0;
+  virtual void Run(const Status& status, PriorityThreadPoolSuspender* suspender) = 0;
 
   // Returns true if the task belongs to specified key, which was passed to
   // PriorityThreadPool::Remove.
   virtual bool BelongsTo(void* key) = 0;
 
   // Priority of this task.
-  virtual int Priority() = 0;
+  virtual int Priority() const = 0;
 
   size_t SerialNo() const {
     return serial_no_;
   }
 
+  const std::string& ToString() const;
+
  private:
+  virtual void AddToStringFields(std::string* out) const = 0;
+
   const size_t serial_no_;
+  mutable std::atomic<bool> string_representation_ready_{false};
+  mutable simple_spinlock mutex_;
+  mutable std::string string_representation_;
 };
 
 // Tasks submitted to this pool have assigned priority and are picked from queue using it.
 class PriorityThreadPool {
  public:
-  explicit PriorityThreadPool(size_t max_threads);
+  explicit PriorityThreadPool(size_t max_running_tasks);
   ~PriorityThreadPool();
 
   // Submit task to the pool.
@@ -75,6 +91,9 @@ class PriorityThreadPool {
 
   // Completes shutdown of this pool. It is safe to destroy pool after it.
   void CompleteShutdown();
+
+  // Dumps state to string, useful for debugging.
+  std::string StateToString();
 
  private:
   class Impl;

@@ -98,6 +98,8 @@
   THREAD_ANNOTATION_ATTRIBUTE__(acquired_after(__VA_ARGS__))
 #define ACQUIRED_BEFORE(...) \
   THREAD_ANNOTATION_ATTRIBUTE__(acquired_before(__VA_ARGS__))
+#define REQUIRES(...) \
+  THREAD_ANNOTATION_ATTRIBUTE__(requires_capability(__VA_ARGS__))
 
 // The following three annotations document the lock requirements for
 // functions/methods.
