@@ -84,9 +84,6 @@ yb::Result<uint64_t> Env::GetFileSize(const std::string& fname) {
   return result;
 }
 
-RandomAccessFile::~RandomAccessFile() {
-}
-
 WritableFile::~WritableFile() {
 }
 

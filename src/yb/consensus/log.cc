@@ -1071,8 +1071,7 @@ Status Log::SwitchToAllocatedSegment() {
 
   // Open the segment we just created in readable form and add it to the reader.
   std::unique_ptr<RandomAccessFile> readable_file;
-  RETURN_NOT_OK(get_env()->NewRandomAccessFile(
-      RandomAccessFileOptions(), new_segment_path, &readable_file));
+  RETURN_NOT_OK(get_env()->NewRandomAccessFile(new_segment_path, &readable_file));
 
   scoped_refptr<ReadableLogSegment> readable_segment(
     new ReadableLogSegment(new_segment_path,

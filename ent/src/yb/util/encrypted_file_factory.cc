@@ -13,62 +13,14 @@
 
 #include "yb/util/encrypted_file_factory.h"
 
-#include "yb/util/env.h"
 #include "yb/util/cipher_stream.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/header_manager.h"
+#include "yb/util/encrypted_file.h"
 #include "yb/util/encryption_util.h"
 
 namespace yb {
 namespace enterprise {
-
-// An encrypted fie implementation for random access of a file.
-class EncryptedRandomAccessFile : public RandomAccessFileWrapper {
- public:
-
-  static Status Create(std::unique_ptr<RandomAccessFile>* result,
-                       HeaderManager* header_manager,
-                       std::unique_ptr<RandomAccessFile> underlying) {
-    return CreateRandomAccessFile<EncryptedRandomAccessFile, uint8_t>(
-        result, header_manager, std::move(underlying));
-  }
-
-  EncryptedRandomAccessFile(std::unique_ptr<RandomAccessFile> file,
-                            std::unique_ptr<yb::enterprise::BlockAccessCipherStream> stream,
-                            uint64_t header_size)
-      : RandomAccessFileWrapper(std::move(file)), stream_(std::move(stream)),
-        header_size_(header_size) {}
-
-  ~EncryptedRandomAccessFile() {}
-
-  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
-    if (!scratch) {
-      return STATUS(InvalidArgument, "scratch argument is null.");
-    }
-    uint8_t* buf = static_cast<uint8_t*>(EncryptionBuffer::Get()->GetBuffer(n));
-    RETURN_NOT_OK(RandomAccessFileWrapper::Read(offset + header_size_, n, result, buf));
-    RETURN_NOT_OK(stream_->Decrypt(offset, *result, scratch));
-    *result = Slice(scratch, result->size());
-    return Status::OK();
-  }
-
-  uint64_t GetHeaderSize() const override {
-    return header_size_;
-  }
-
-  Result<uint64_t> Size() const override {
-    return VERIFY_RESULT(RandomAccessFileWrapper::Size()) - header_size_;
-  }
-
-  virtual bool IsEncrypted() const override {
-    return true;
-  }
-
- private:
-
-  std::unique_ptr<BlockAccessCipherStream> stream_;
-  uint64_t header_size_;
-};
 
 // An encrypted file implementation for a writable file.
 class EncryptedWritableFile : public WritableFileWrapper {
@@ -118,16 +70,9 @@ class EncryptedFileFactory : public FileFactoryWrapper {
 
   // NewRandomAccessFile opens a file for random read access.
   Status NewRandomAccessFile(const std::string& fname,
-                                     std::unique_ptr<RandomAccessFile>* result) override {
-
-    return NewRandomAccessFile(RandomAccessFileOptions(), fname, result);
-  }
-
-  Status NewRandomAccessFile(const yb::RandomAccessFileOptions& opts,
-                             const std::string& fname,
                              std::unique_ptr<RandomAccessFile>* result) override {
     std::unique_ptr<RandomAccessFile> underlying;
-    RETURN_NOT_OK(FileFactoryWrapper::NewRandomAccessFile(opts, fname, &underlying));
+    RETURN_NOT_OK(FileFactoryWrapper::NewRandomAccessFile(fname, &underlying));
     return EncryptedRandomAccessFile::Create(result, header_manager_.get(), std::move(underlying));
   }
 

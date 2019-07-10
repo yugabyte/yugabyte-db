@@ -260,57 +260,6 @@ Result<uint64_t> GetFileStat(const std::string& fname, const char* event, Extrac
   return extractor(sbuf);
 }
 
-// pread() based random-access
-class PosixRandomAccessFile: public RandomAccessFile {
- private:
-  std::string filename_;
-  int fd_;
-
- public:
-  PosixRandomAccessFile(std::string fname, int fd)
-      : filename_(std::move(fname)), fd_(fd) {}
-  virtual ~PosixRandomAccessFile() { close(fd_); }
-
-  virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      uint8_t *scratch) const override {
-    ThreadRestrictions::AssertIOAllowed();
-    Status s;
-    ssize_t r = pread(fd_, scratch, n, static_cast<off_t>(offset));
-    *result = Slice(scratch, (r < 0) ? 0 : r);
-    if (r < 0) {
-      // An error: return a non-ok status.
-      s = STATUS_IO_ERROR(filename_, errno);
-    }
-    return s;
-  }
-
-  Result<uint64_t> Size() const override {
-    TRACE_EVENT1("io", __PRETTY_FUNCTION__, "path", filename_);
-    ThreadRestrictions::AssertIOAllowed();
-    struct stat st;
-    if (fstat(fd_, &st) == -1) {
-      return STATUS_IO_ERROR(filename_, errno);
-    }
-    return st.st_size;
-  }
-
-  Result<uint64_t> INode() const override {
-    TRACE_EVENT1("io", __PRETTY_FUNCTION__, "path", filename_);
-    ThreadRestrictions::AssertIOAllowed();
-    struct stat st;
-    if (fstat(fd_, &st) == -1) {
-      return STATUS_IO_ERROR(filename_, errno);
-    }
-    return st.st_ino;
-  }
-
-  const string& filename() const override { return filename_; }
-
-  size_t memory_footprint() const override {
-    return malloc_usable_size(this) + filename_.capacity();
-  }
-};
-
 // Use non-memory mapped POSIX files to write data to a file.
 //
 // TODO (perf) investigate zeroing a pre-allocated allocated area in
@@ -978,12 +927,6 @@ class PosixEnv : public Env {
     return file_factory_->NewRandomAccessFile(fname, result);
   }
 
-  virtual Status NewRandomAccessFile(const RandomAccessFileOptions& opts,
-                                     const std::string& fname,
-                                     std::unique_ptr<RandomAccessFile>* result) override {
-    return file_factory_->NewRandomAccessFile(opts, fname, result);
-  }
-
   virtual Status NewWritableFile(const std::string& fname,
                                  std::unique_ptr<WritableFile>* result) override {
     return file_factory_->NewWritableFile(fname, result);
@@ -1440,12 +1383,6 @@ class PosixFileFactory : public FileFactory {
 
   Status NewRandomAccessFile(const std::string& fname,
                              std::unique_ptr<RandomAccessFile>* result) override {
-    return NewRandomAccessFile(RandomAccessFileOptions(), fname, result);
-  }
-
-  Status NewRandomAccessFile(const RandomAccessFileOptions& opts,
-                             const std::string& fname,
-                             std::unique_ptr<RandomAccessFile>* result) override {
     TRACE_EVENT1("io", "PosixEnv::NewRandomAccessFile", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
     int fd = open(fname.c_str(), O_RDONLY);
@@ -1453,7 +1390,7 @@ class PosixFileFactory : public FileFactory {
       return STATUS_IO_ERROR(fname, errno);
     }
 
-    result->reset(new PosixRandomAccessFile(fname, fd));
+    result->reset(new yb::PosixRandomAccessFile(fname, fd, yb::FileSystemOptions::kDefault));
     return Status::OK();
   }
 

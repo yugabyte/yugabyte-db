@@ -582,8 +582,9 @@ Status ReadableLogSegment::ScanForValidEntryHeaders(int64_t offset, bool* has_va
     Slice chunk;
     // If encryption is enabled, need to use checkpoint file to read pre-allocated file since
     // we want to preserve all 0s.
-    RETURN_NOT_OK(ReadFully(readable_file_checkpoint().get(),
-                            offset + readable_file()->GetHeaderSize(), rem, &chunk, &buf[0]));
+    RETURN_NOT_OK(ReadFully(
+        readable_file_checkpoint().get(), offset + readable_file()->GetEncryptionHeaderSize(), rem,
+        &chunk, &buf[0]));
 
     // Optimization for the case where a chunk is all zeros -- this is common in the
     // case of pre-allocated files. This avoids a lot of redundant CRC calculation.

@@ -16,6 +16,7 @@
 #include "yb/util/cipher_stream.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/header_manager.h"
+#include "yb/util/encrypted_file.h"
 #include "yb/util/encryption_util.h"
 
 namespace yb {
@@ -32,9 +33,8 @@ class EncryptedSequentialFile : public SequentialFileWrapper {
     std::unique_ptr<BlockAccessCipherStream> stream;
     uint32_t header_size;
 
-    auto res =
-        GetEncryptionInfoFromFile<char>
-            (header_manager, underlying_ra.get(), &stream, &header_size);
+    auto res = GetEncryptionInfoFromFile<uint8_t>(
+        header_manager, underlying_ra.get(), &stream, &header_size);
     bool file_encrypted = VERIFY_RESULT(res);
     if (!file_encrypted) {
       *result = std::move(underlying_seq);
@@ -75,40 +75,6 @@ class EncryptedSequentialFile : public SequentialFileWrapper {
  private:
   std::unique_ptr<BlockAccessCipherStream> stream_;
   uint64_t offset_ = 0;
-};
-
-// An encrypted fie implementation for random access of a file.
-class RocksDBEncryptedRandomAccessFile : public rocksdb::RandomAccessFileWrapper {
- public:
-  static Status Create(std::unique_ptr<rocksdb::RandomAccessFile>* result,
-                       HeaderManager* header_manager,
-                       std::unique_ptr<rocksdb::RandomAccessFile> underlying) {
-    return CreateRandomAccessFile<RocksDBEncryptedRandomAccessFile, char>
-        (result, header_manager, std::move(underlying));
-  }
-
-  RocksDBEncryptedRandomAccessFile(std::unique_ptr<rocksdb::RandomAccessFile> file,
-                                   std::unique_ptr<BlockAccessCipherStream> stream,
-                                   uint32_t header_size)
-      : RandomAccessFileWrapper(std::move(file)), stream_(std::move(stream)),
-        header_size_(header_size) {}
-
-  ~RocksDBEncryptedRandomAccessFile() {}
-
-  Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const override {
-    if (!scratch) {
-      return STATUS(InvalidArgument, "scratch argument is null.");
-    }
-    char* buf = static_cast<char*>(EncryptionBuffer::Get()->GetBuffer(n));
-    RETURN_NOT_OK(RandomAccessFileWrapper::Read(offset + header_size_, n, result, buf));
-    RETURN_NOT_OK(stream_->Decrypt(offset, *result, scratch));
-    *result = Slice(scratch, result->size());
-    return Status::OK();
-  }
-
- private:
-  std::unique_ptr<BlockAccessCipherStream> stream_;
-  uint32_t header_size_;
 };
 
 // An encrypted file implementation for a writable file.
@@ -162,7 +128,7 @@ class RocksDBEncryptedFileFactory : public rocksdb::RocksDBFileFactoryWrapper {
                              const rocksdb::EnvOptions& options) override {
     std::unique_ptr<rocksdb::RandomAccessFile> underlying;
     RETURN_NOT_OK(RocksDBFileFactoryWrapper::NewRandomAccessFile(fname, &underlying, options));
-    return RocksDBEncryptedRandomAccessFile::Create(
+    return EncryptedRandomAccessFile::Create(
         result, header_manager_.get(), std::move(underlying));
   }
 

@@ -52,7 +52,7 @@ TEST_F(TestRocksDBEncryptedEnv, FileOps) {
 
     std::unique_ptr<rocksdb::RandomAccessFile> ra_file;
     ASSERT_OK(env->NewRandomAccessFile(fname, &ra_file, rocksdb::EnvOptions()));
-    TestRandomAccessReads<rocksdb::RandomAccessFile, char>(ra_file.get(), data);
+    TestRandomAccessReads<rocksdb::RandomAccessFile, uint8_t>(ra_file.get(), data);
 
     std::unique_ptr<rocksdb::SequentialFile> s_file;
     ASSERT_OK(env->NewSequentialFile(fname, &s_file, rocksdb::EnvOptions()));

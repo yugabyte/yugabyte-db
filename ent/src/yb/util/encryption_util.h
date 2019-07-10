@@ -21,8 +21,6 @@
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/env.h"
 
-#include "yb/rocksdb/env.h"
-
 namespace yb {
 
 class EncryptionParamsPB;
@@ -177,7 +175,7 @@ Status CreateWritableFile(WritablePtr* result,
   return Status::OK();
 }
 
-Result<uint32_t> GetHeaderSize(rocksdb::SequentialFile* file, HeaderManager* header_manager);
+Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manager);
 
 } // namespace enterprise
 } // namespace yb
