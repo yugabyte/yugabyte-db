@@ -24,6 +24,8 @@ template <class T,
           class Compare = std::less<typename Container::value_type>>
 class PriorityQueue {
  public:
+  typedef typename Container::const_iterator const_iterator;
+
   T Pop() {
     auto result = std::move(queue_.front());
     std::pop_heap(queue_.begin(), queue_.end(), compare_);
@@ -67,6 +69,23 @@ class PriorityQueue {
 
   bool empty() const {
     return queue_.empty();
+  }
+
+  size_t size() const {
+    return queue_.size();
+  }
+
+  const T& top() const {
+    DCHECK(!queue_.empty());
+    return queue_.front();
+  }
+
+  const_iterator begin() const {
+    return queue_.begin();
+  }
+
+  const_iterator end() const {
+    return queue_.end();
   }
 
  private:
