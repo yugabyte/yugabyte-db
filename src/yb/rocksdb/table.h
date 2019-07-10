@@ -47,7 +47,6 @@ namespace rocksdb {
 
 // -- Block-based Table
 class FlushBlockPolicyFactory;
-class RandomAccessFile;
 struct TableReaderOptions;
 struct TableBuilderOptions;
 class TableBuilder;

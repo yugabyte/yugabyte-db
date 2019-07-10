@@ -106,7 +106,7 @@ EncryptionBuffer* EncryptionBuffer::Get() {
   return &encryption_buffer;
 }
 
-Result<uint32_t> GetHeaderSize(rocksdb::SequentialFile* file, HeaderManager* header_manager) {
+Result<uint32_t> GetHeaderSize(SequentialFile* file, HeaderManager* header_manager) {
   if (!header_manager) {
     return STATUS(InvalidArgument, "header_manager argument must be non null.");
   }

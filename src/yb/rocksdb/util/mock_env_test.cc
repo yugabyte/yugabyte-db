@@ -129,17 +129,16 @@ TEST_F(MockEnvTest, ReadWrite) {
   ASSERT_EQ(0U, result.size());
 
   // Random reads.
-  char* cscratch = pointer_cast<char*>(scratch);
   ASSERT_OK(env_->NewRandomAccessFile("/dir/f", &rand_file, soptions_));
-  ASSERT_OK(rand_file->Read(6, 5, &result, cscratch));  // Read "world".
+  ASSERT_OK(rand_file->Read(6, 5, &result, scratch));  // Read "world".
   ASSERT_EQ(0, result.compare("world"));
-  ASSERT_OK(rand_file->Read(0, 5, &result, cscratch));  // Read "hello".
+  ASSERT_OK(rand_file->Read(0, 5, &result, scratch));  // Read "hello".
   ASSERT_EQ(0, result.compare("hello"));
-  ASSERT_OK(rand_file->Read(10, 100, &result, cscratch));  // Read "d".
+  ASSERT_OK(rand_file->Read(10, 100, &result, scratch));  // Read "d".
   ASSERT_EQ(0, result.compare("d"));
 
   // Too high offset.
-  ASSERT_TRUE(!rand_file->Read(1000, 5, &result, cscratch).ok());
+  ASSERT_TRUE(!rand_file->Read(1000, 5, &result, scratch).ok());
 }
 
 TEST_F(MockEnvTest, Locks) {
@@ -208,31 +207,30 @@ TEST_F(MockEnvTest, Corrupt) {
 
   std::string scratch;
   scratch.resize(kGood.size() + kCorrupted.size() + 16);
+  uint8_t* read_buf = reinterpret_cast<uint8_t*>(&(scratch[0]));
   Slice result;
   unique_ptr<RandomAccessFile> rand_file;
   ASSERT_OK(env_->NewRandomAccessFile(kFileName, &rand_file, soptions_));
-  ASSERT_OK(rand_file->Read(0, kGood.size(), &result, &(scratch[0])));
+  ASSERT_OK(rand_file->Read(0, kGood.size(), &result, read_buf));
   ASSERT_EQ(result.compare(kGood), 0);
 
   // Sync + corrupt => no change
   ASSERT_OK(writable_file->Fsync());
   ASSERT_OK(dynamic_cast<MockEnv*>(env_)->CorruptBuffer(kFileName));
   result.clear();
-  ASSERT_OK(rand_file->Read(0, kGood.size(), &result, &(scratch[0])));
+  ASSERT_OK(rand_file->Read(0, kGood.size(), &result, read_buf));
   ASSERT_EQ(result.compare(kGood), 0);
 
   // Add new data and corrupt it
   ASSERT_OK(writable_file->Append(kCorrupted));
   ASSERT_TRUE(writable_file->GetFileSize() == kGood.size() + kCorrupted.size());
   result.clear();
-  ASSERT_OK(rand_file->Read(kGood.size(), kCorrupted.size(),
-            &result, &(scratch[0])));
+  ASSERT_OK(rand_file->Read(kGood.size(), kCorrupted.size(), &result, read_buf));
   ASSERT_EQ(result.compare(kCorrupted), 0);
   // Corrupted
   ASSERT_OK(dynamic_cast<MockEnv*>(env_)->CorruptBuffer(kFileName));
   result.clear();
-  ASSERT_OK(rand_file->Read(kGood.size(), kCorrupted.size(),
-            &result, &(scratch[0])));
+  ASSERT_OK(rand_file->Read(kGood.size(), kCorrupted.size(), &result, read_buf));
   ASSERT_NE(result.compare(kCorrupted), 0);
 }
 

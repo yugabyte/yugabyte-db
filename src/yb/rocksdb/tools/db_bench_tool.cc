@@ -904,23 +904,21 @@ class ReportFileOpEnv : public EnvWrapper {
   Status NewRandomAccessFile(const std::string& f,
                              unique_ptr<RandomAccessFile>* r,
                              const EnvOptions& soptions) override {
-    class CountingFile : public RandomAccessFile {
-     private:
-      unique_ptr<RandomAccessFile> target_;
-      ReportFileOpCounters* counters_;
-
+    class CountingFile : public yb::RandomAccessFileWrapper {
      public:
-      CountingFile(unique_ptr<RandomAccessFile>&& target,
+      CountingFile(std::unique_ptr<RandomAccessFile>&& target,
                    ReportFileOpCounters* counters)
-          : target_(std::move(target)), counters_(counters) {}
-      virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                          char* scratch) const override {
+          : RandomAccessFileWrapper(std::move(target)), counters_(counters) {}
+
+      Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
         counters_->read_counter_.fetch_add(1, std::memory_order_relaxed);
-        Status rv = target_->Read(offset, n, result, scratch);
-        counters_->bytes_read_.fetch_add(result->size(),
-                                         std::memory_order_relaxed);
+        Status rv = RandomAccessFileWrapper::Read(offset, n, result, scratch);
+        counters_->bytes_read_.fetch_add(result->size(), std::memory_order_relaxed);
         return rv;
       }
+
+     private:
+      ReportFileOpCounters* counters_;
     };
 
     Status s = target()->NewRandomAccessFile(f, r, soptions);

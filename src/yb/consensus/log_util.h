@@ -238,7 +238,7 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   }
 
   const int64_t get_header_size() const {
-    return readable_file_->GetHeaderSize();
+    return readable_file_->GetEncryptionHeaderSize();
   }
 
   // Returns the full size of the file, if the segment is closed and has

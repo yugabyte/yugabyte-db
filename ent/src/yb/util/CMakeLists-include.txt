@@ -20,6 +20,7 @@ string(REPLACE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/ent
 set(UTIL_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/ntp_clock.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/ctr_cipher_stream.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/encrypted_file.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/encrypted_file_factory.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/header_manager_mock_impl.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/encryption_util.cc
