@@ -25,6 +25,7 @@ jobs:
               python-dev \
               openjdk-8-jdk-headless \
               gcc-7
+            sudo apt-get remove -y gcc-8
       - run: |
           export MAVEN_OPTS="--add-opens=java.base/java.nio=ALL-UNNAMED"
           export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
