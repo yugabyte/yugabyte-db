@@ -2,9 +2,9 @@ version: 2
 jobs:
   # For image tags, see:
   # https://circleci.com/docs/2.0/docker-image-tags.json
-  ubuntu1804:
+  ubuntu1904:
     docker:
-      - image: circleci/buildpack-deps:18.04
+      - image: yugabytedb/yb_build_infra_ubuntu1904:v2019-07-07T17_32_08_mbautin
     steps:
       - checkout
       - run:
@@ -23,7 +23,8 @@ jobs:
               bison \
               ninja-build \
               python-dev \
-              openjdk-8-jdk-headless
+              openjdk-8-jdk-headless \
+              gcc-7
       - run: |
           export MAVEN_OPTS="--add-opens=java.base/java.nio=ALL-UNNAMED"
           export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
@@ -33,4 +34,4 @@ workflows:
   version: 2
   build_yugabyte_db:
     jobs:
-      - ubuntu1804
+      - ubuntu1904
