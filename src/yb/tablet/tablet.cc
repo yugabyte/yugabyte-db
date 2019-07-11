@@ -1630,7 +1630,7 @@ Status Tablet::Truncate(TruncateOperationState *state) {
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
                         << ", new=" << regular_db_->GetLatestSequenceNumber();
   DCHECK(op_pause.status().ok());  // Ensure that op_pause stays in scope throughout this function.
-  return Status::OK();
+  return EnableCompactions();
 }
 
 void Tablet::UpdateMonotonicCounter(int64_t value) {
