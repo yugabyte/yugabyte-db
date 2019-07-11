@@ -30,12 +30,11 @@ resolvers += {
   if (mavenLocal != null && mavenLocal.equals("true")) {
     Resolver.mavenLocal
   } else {
-    "Yugabyte Nexus Snapshots" at "http://no-such-url/repository/yugabyte-snapshots"
+    "Yugabyte Nexus Snapshots" at System.getenv("YB_NEXUS_SNAPSHOT_URL")
   }
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT"
-publishTo := Some("yugabyteS3" at "s3://no-such-url/")
 
 javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
