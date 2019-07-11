@@ -63,7 +63,7 @@
     "js-cookie": "^2.2.0",
     "leaflet": "1.0.2",
     "leaflet.markercluster": "^1.0.0",
-    "lodash": "^4.0.0",
+    "lodash": ">=4.17.13",
     "node-sass": "^4.9.0",
     "npm": "^5.0.4",
     "progressbar.js": "^1.0.1",
