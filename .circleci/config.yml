@@ -11,7 +11,7 @@ jobs:
           java -version && ./yb_build.sh --ninja -j 1
   ubuntu1904_gcc7:
     docker:
-      - image: yugabytedb/yb_build_infra_ubuntu1904_gcc7:v2019-07-11T23_55_23_mbautin
+      - image: yugabytedb/yb_build_infra_ubuntu1904_gcc7:v2019-07-12T01_07_36_mbautin
     steps:
       - checkout
       - run: |
