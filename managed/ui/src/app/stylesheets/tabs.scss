@@ -4,6 +4,7 @@
 @import "_style/mixins.scss";
 
 .nav-tabs {
+  border-bottom: none;
   > li {
     > a {
       border: 1px solid #e2e2e1;
@@ -56,11 +57,13 @@
   position: relative;
   margin: 0;
   padding: 15px 20px 20px 20px;
-  box-shadow: 0 1px 1px rgba($YB_DARK_GRAY_2, 0.25);
   border-top: none;
   background-color: #fff;
   min-height: 400px;
   height: 100%;
+  box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07), 0 -0.05em 0.15em rgba($YB_DARK_GRAY_2, 0.07);
+  border: none;
+  border-radius: 0 0 7px 7px;
   .x_title {
     margin-top: 6px;
     margin-bottom: 20px;
