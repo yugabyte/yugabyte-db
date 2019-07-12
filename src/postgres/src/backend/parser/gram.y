@@ -7877,6 +7877,10 @@ access_method_clause:
 
 yb_index_params: yb_index_elem
 				{
+					if ($1->nulls_ordering == SORTBY_NULLS_LAST)
+					{
+						parser_ybc_not_support(@1, "NULLS LAST");
+					}
 					if ($1->yb_name_list == NULL)
 					{
 						$$ = list_make1($1);
@@ -8026,9 +8030,7 @@ opt_yb_index_sort_order: opt_asc_desc			{ $$ = $1; }
 		;
 
 opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }
-			| NULLS_LA LAST_P				{
-					parser_ybc_not_support(@1, "CREATE INDEX NULL LAST");
-                                              $$ = SORTBY_NULLS_LAST; }
+			| NULLS_LA LAST_P				{ $$ = SORTBY_NULLS_LAST; }
 			| /*EMPTY*/						{ $$ = SORTBY_NULLS_DEFAULT; }
 		;
 
