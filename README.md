@@ -19,28 +19,29 @@
 # What is YugaByte DB?
 
 YugaByte DB is a high-performance, cloud-native distributed SQL database. Here are the salient points about it:
-* Has a pluggable query layer, and supports two APIs:
+* Has a pluggable query layer, and supports two distributed SQL APIs:
     * **[YugaByte SQL (YSQL)](https://docs.yugabyte.com/latest/api/ysql/)** - PostgreSQL-compatible fully relational API
     * **[YugaByte Cloud QL (YCQL)](https://docs.yugabyte.com/latest/api/ycql/)** - Semi-relational SQL-like API with documents/indexing support and Apache Cassandra QL roots 
+* Automated sharding, consensus replication and distributed transactions architecture based on the Google Spanner design
 * Offers horizontal scalability, strong consistency, high availability
 * Extremely resilient - can tolerate disk, node, zone and region failures automatically
 * Supports geo-distributed deployments (multi-zone, multi-region, multi-cloud)
 * Can be deployed in public clouds and natively inside Kubernetes
-* Open source under the [Apache 2.0 license](https://github.com/YugaByte/yugabyte-db/blob/master/LICENSE.txt)
+* Open source under the [Apache 2.0 license](https://github.com/YugaByte/yugabyte-db/blob/master/LICENSE.md)
 
-Read more about YugaByte DB in our [docs](https://docs.yugabyte.com/latest/introduction/).
+Read more about YugaByte DB in our [Docs](https://docs.yugabyte.com/latest/introduction/).
 
 # Get Started
 
 * [Install YugaByte DB](https://docs.yugabyte.com/latest/quick-start/install/)
 * [Create a local cluster](https://docs.yugabyte.com/latest/quick-start/create-local-cluster/)
 * [Connect and try out SQL commands](https://docs.yugabyte.com/latest/quick-start/explore-ysql/)
-* [Build apps](https://docs.yugabyte.com/latest/develop/build-apps/) using a PostgreSQL-compatible driver or ORM.
+* [Build an app](https://docs.yugabyte.com/latest/quick-start/build-apps/) using a PostgreSQL-compatible driver or ORM.
 * Try a real-world app:
     * [Microservices-oriented e-commerce app](https://github.com/YugaByte/yugastore-java)
     * [Streaming IoT app with Kafka and Spark Streaming](https://docs.yugabyte.com/latest/develop/realworld-apps/iot-spark-kafka-ksql/)
 
-Cannot find what you are looking for? Have a question? Please post your questions or comments to our [community forum](https://forum.yugabyte.com).
+Cannot find what you are looking for? Have a question? Please post your questions or comments on our Community [Slack](https://www.yugabyte.com/slack) or [Forum](https://forum.yugabyte.com).
 
 # Build Apps
 
@@ -61,17 +62,19 @@ YugaByte DB supports a number of languages and client drivers. Below is a brief 
 
 <img src="https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/architecture/images/yb-architecture.png" align="center" alt="YugaByte DB Architecture"/>
 
+Review detailed architecture in our [Docs](https://docs.yugabyte.com/latest/architecture/).
+
 # Need Help?
 
-* You can ask questions, find answers, help others on the [YugaByte Community Forum](https://forum.yugabyte.com) and [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db)
+* You can ask questions, find answers, help others on our Community [Slack](https://www.yugabyte.com/slack) and [Forum](https://forum.yugabyte.com) as well as [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db)
 
 * Please use [GitHub issues](https://github.com/YugaByte/yugabyte-db/issues) to report issues.
 
 # Contribute
 
-As an open source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/latest/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of [our community forum](https://forum.yugabyte.com).
+As an open source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/latest/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of [our Forum](https://forum.yugabyte.com).
 
 # Read More
 
 * To see our updates, go to [The Distributed SQL Blog](https://blog.yugabyte.com/).
-* See how YugaByte [compares with other databases](https://docs.yugabyte.com/latest/comparisons/). 
+* See how YugaByte DB [compares with other databases](https://docs.yugabyte.com/latest/comparisons/). 
