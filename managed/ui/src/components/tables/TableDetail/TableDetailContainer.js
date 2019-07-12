@@ -38,6 +38,7 @@ const mapDispatchToProps = (dispatch) => {
 
 function mapStateToProps(state) {
   return {
+    customer: state.customer,
     universe: state.universe,
     tables: state.tables
   };
