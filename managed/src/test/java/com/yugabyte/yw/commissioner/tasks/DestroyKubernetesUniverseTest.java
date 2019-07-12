@@ -101,13 +101,15 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesCommandExecutor,
-      TaskType.RemoveUniverseEntry);
+      TaskType.RemoveUniverseEntry,
+      TaskType.SwamperTargetsFileUpdate);
 
 
   List<JsonNode> KUBERNETES_DESTROY_UNIVERSE_EXPECTED_RESULTS = ImmutableList.of(
       Json.toJson(ImmutableMap.of("commandType", HELM_DELETE.name())),
       Json.toJson(ImmutableMap.of("commandType", VOLUME_DELETE.name())),
       Json.toJson(ImmutableMap.of("commandType", NAMESPACE_DELETE.name())),
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of())
   );
 
@@ -115,7 +117,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     int position = 0;
     for (TaskType taskType: KUBERNETES_DESTROY_UNIVERSE_TASKS) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
-      if (taskType != TaskType.RemoveUniverseEntry) {
+      if (taskType != TaskType.RemoveUniverseEntry &&
+          taskType != TaskType.SwamperTargetsFileUpdate) {
         assertEquals(numTasks, tasks.size());
       } else {
         assertEquals(1, tasks.size());
