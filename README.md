@@ -57,6 +57,9 @@ YugaByte DB supports a number of languages and client drivers. Below is a brief 
 | C++ | Not tested | [libpqxx](https://docs.yugabyte.com/latest/develop/build-apps/cpp/#ysql) | [cassandra-cpp-driver](https://docs.yugabyte.com/latest/develop/build-apps/cpp/#ycql)
 | C   | Not tested | [libpq](https://docs.yugabyte.com/latest/develop/build-apps/c/#ysql) | Not tested
 
+# Architecture
+
+<img src="https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/architecture/images/yb-architecture.png" align="center" alt="YugaByte DB Architecture"/>
 
 # Need Help?
 
