@@ -21,6 +21,7 @@
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 using namespace std::literals;
 
@@ -98,8 +99,8 @@ class Task : public PriorityThreadPoolTask {
 // the same priority.
 void TestRandom(int divisor) {
   const int kTasks = 20;
-  const int kThreads = 3;
-  PriorityThreadPool thread_pool(kThreads);
+  const int kMaxRunningTasks = 3;
+  PriorityThreadPool thread_pool(kMaxRunningTasks);
   std::vector<std::unique_ptr<Task>> tasks;
   tasks.reserve(kTasks);
   Share share;
@@ -112,7 +113,6 @@ void TestRandom(int divisor) {
   std::set<int> stopped;
   std::vector<int> running_vector;
   std::vector<int> expected_running;
-
 
   BOOST_SCOPE_EXIT(&share, scheduled, &thread_pool) {
     thread_pool.StartShutdown();
@@ -134,7 +134,8 @@ void TestRandom(int divisor) {
     } else if (!scheduled.empty() &&
                RandomUniformInt<int>(0, std::max<int>(0, 13 - scheduled.size())) == 0) {
       auto it = scheduled.end();
-      std::advance(it, -RandomUniformInt<int>(1, std::min<int>(scheduled.size(), kThreads)));
+      std::advance(
+          it, -RandomUniformInt<int>(1, std::min<int>(scheduled.size(), kMaxRunningTasks)));
       auto idx = *it;
       stopped.insert(idx);
       share.Stop(idx);
@@ -153,7 +154,7 @@ void TestRandom(int divisor) {
     }
     expected_running.clear();
     auto it = scheduled.end();
-    auto left = kThreads;
+    auto left = kMaxRunningTasks;
     while (it != scheduled.begin() && left > 0) {
       --it;
       expected_running.push_back(*it / divisor);
@@ -174,5 +175,54 @@ TEST(PriorityThreadPoolTest, RandomNonUnique) {
   TestRandom(3 /* divisor */);
 }
 
+constexpr int kMaxRandomTaskTimeMs = 40;
+
+class RandomTask : public PriorityThreadPoolTask {
+ public:
+  RandomTask() : priority_(RandomUniformInt(0, 4)) {}
+
+  void Run(const Status& status, PriorityThreadPoolSuspender* suspender) override {
+    if (!status.ok()) {
+      return;
+    }
+    std::this_thread::sleep_for(1ms * RandomUniformInt(1, kMaxRandomTaskTimeMs));
+  }
+
+  // Returns true if the task belongs to specified key, which was passed to
+  // PriorityThreadPool::Remove.
+  bool BelongsTo(void* key) override {
+    return false;
+  }
+
+  // Priority of this task.
+  int Priority() const override {
+    return priority_;
+  }
+
+  void AddToStringFields(std::string* out) const override {
+  }
+
+ private:
+  int priority_;
+};
+
+TEST(PriorityThreadPoolTest, RandomTasks) {
+  constexpr int kMaxRunningTasks = 10;
+  PriorityThreadPool thread_pool(kMaxRunningTasks);
+  TestThreadHolder holder;
+  for (int i = 0; i != kMaxRunningTasks; ++i) {
+    holder.AddThread([&stop = holder.stop_flag(), &thread_pool] {
+      while (!stop.load()) {
+        auto task = thread_pool.Submit(std::make_unique<RandomTask>());
+        ASSERT_TRUE(task == nullptr);
+        // Submit tasks slightly slower than they complete.
+        // To frequently get case of empty thread pool.
+        std::this_thread::sleep_for(1ms * RandomUniformInt(1, kMaxRandomTaskTimeMs * 5 / 4));
+      }
+    });
+  }
+  holder.WaitAndStop(60s);
+  thread_pool.Shutdown();
+}
 
 } // namespace yb
