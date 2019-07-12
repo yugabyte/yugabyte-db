@@ -154,12 +154,19 @@ public class SwamperHelper {
     ArrayNode ybTargets = Json.newArray();
     swamperFile = getSwamperFile(universeUUID, "yugabyte");
     for (TargetType t : TargetType.values()) {
-      if (!t.toString().equals("NODE_EXPORT")) {
-        ybTargets.add(getIndividualConfig(universe, t, universe.getNodes(), null));
+      if (t != TargetType.NODE_EXPORT && t != TargetType.INVALID_EXPORT) {
+        universe.getNodes().forEach((node) -> {
+          // Since some nodes might not be active (for example removed),
+          // we do not want to add them to the swamper targets.
+          if (node.isActive()) {
+            ybTargets.add(getIndividualConfig(universe, t, Arrays.asList(node), node.nodeName));
+          }
+        });  
       }
     }
     writeTargetJsonFile(swamperFile, ybTargets);
   }
+
   private void removeUniverseTargetJson(UUID universeUUID, String prefix) {
     String swamperFile = getSwamperFile(universeUUID, prefix);
     if (swamperFile != null) {

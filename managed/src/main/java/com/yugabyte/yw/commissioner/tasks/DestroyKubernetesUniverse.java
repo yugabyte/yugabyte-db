@@ -102,6 +102,9 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       createRemoveUniverseEntryTask()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RemovingUnusedServers);
 
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(true /* removeFile */);
+
       // Run all the tasks.
       subTaskGroupQueue.run();
     } catch (Throwable t) {

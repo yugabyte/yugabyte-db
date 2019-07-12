@@ -76,7 +76,7 @@ public class SwamperHelperTest extends FakeDBApplication {
       }
 
       JsonNode targetsJson = Json.parse(sb.toString());
-      assertThat(targetsJson.size(), is(equalTo(6)));
+      assertThat(targetsJson.size(), is(equalTo(15)));
       List<String> targetTypes = new ArrayList<>();
       for (SwamperHelper.TargetType t : Arrays.asList(SwamperHelper.TargetType.values())) {
         targetTypes.add(t.toString());
@@ -84,7 +84,7 @@ public class SwamperHelperTest extends FakeDBApplication {
       for (int i = 0; i < targetsJson.size(); ++i) {
         JsonNode target = targetsJson.get(i);
         assertTrue(target.get("targets").isArray());
-        assertThat(target.get("targets").size(), equalTo(3));
+        assertThat(target.get("targets").size(), equalTo(1));
         assertThat(target.get("targets").toString(), RegexMatcher.matchesRegex("(.*)(|:)([0-9]*)"));
         JsonNode labels = target.get("labels");
         assertThat(labels.get("node_prefix").asText(), equalTo("host"));
