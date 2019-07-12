@@ -45,7 +45,7 @@ YB_STRONGLY_TYPED_BOOL(PickTask);
 class PriorityThreadPoolWorkerContext {
  public:
   virtual void PauseIfNecessary(PriorityThreadPoolWorker* worker) = 0;
-  virtual TaskPtr WorkerFinished(PriorityThreadPoolWorker* worker, PickTask pick_task) = 0;
+  virtual bool WorkerFinished(PriorityThreadPoolWorker* worker) = 0;
   virtual ~PriorityThreadPoolWorkerContext() {}
 };
 
@@ -75,6 +75,11 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
     }
   }
 
+  // It is invoked from WorkerFinished to directly assign a new task.
+  void SetTask(TaskPtr task) {
+    task_ = std::move(task);
+  }
+
   void Run() {
     std::unique_lock<std::mutex> lock(mutex_);
     while (!stopped_) {
@@ -90,8 +95,7 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
         yb::ReverseLock<decltype(lock)> rlock(lock);
         for (;;) {
           task_->Run(Status::OK(), this);
-          task_ = context_->WorkerFinished(this, PickTask::kTrue);
-          if (!task_) {
+          if (!context_->WorkerFinished(this)) {
             break;
           }
         }
@@ -330,7 +334,8 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   }
 
   void PauseIfNecessary(PriorityThreadPoolWorker* worker) override {
-    if (max_priority_to_defer_.load(std::memory_order_acquire) < worker->task()->Priority()) {
+    auto worker_task_priority = worker->task()->Priority();
+    if (max_priority_to_defer_.load(std::memory_order_acquire) < worker_task_priority) {
       return;
     }
 
@@ -338,15 +343,16 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     TaskPtr task;
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (max_priority_to_defer_.load(std::memory_order_acquire) < worker->task()->Priority() ||
+      if (max_priority_to_defer_.load(std::memory_order_acquire) < worker_task_priority ||
           stopping_.load(std::memory_order_acquire) ||
-          queue_.empty() || task_comparator_(queue_.top(), worker->task())) {
+          queue_.empty() || queue_.top()->Priority() <= worker_task_priority) {
         return;
       }
 
       LOG(INFO) << "Pausing " << worker << " with " << worker->task()->ToString()
               << " in favor of " << queue_.top()->ToString() << ", max to defer: "
-              << max_priority_to_defer_.load(std::memory_order_acquire);
+              << max_priority_to_defer_.load(std::memory_order_acquire)
+              << ", queued: " << queue_.size();
 
       paused_workers_.push(worker);
       worker->SetPausedFlag();
@@ -381,29 +387,27 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   }
 
  private:
-  TaskPtr WorkerFinished(PriorityThreadPoolWorker* worker, PickTask pick_task) override {
-    TaskPtr result;
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      TaskFinished(worker->task().get());
+  bool WorkerFinished(PriorityThreadPoolWorker* worker) override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    TaskFinished(worker->task().get());
 
-      // This worker will be marked as free in any of three cases:
-      // 1) worker does not want new tasks, i.e. it is stopped.
-      // 2) task queue is empty.
-      // 3) we have a paused worker whose task has a higher priority than the top-priority task in
-      //    the queue.
-      if (!pick_task || queue_.empty() ||
-          (!paused_workers_.empty() &&
-           queue_.top()->Priority() <= paused_workers_.top()->task()->Priority())) {
-        VLOG(4) << "No task for " << worker;
-        free_workers_.push_back(worker);
-        ResumeHighestPriorityWorker();
-        return nullptr;
-      }
-      result = queue_.Pop();
-      VLOG(4) << "Picked task for " << worker;
+    // This worker will be marked as free in any of three cases:
+    // 1) worker does not want new tasks, i.e. it is stopped.
+    // 2) task queue is empty.
+    // 3) we have a paused worker whose task has a higher priority than the top-priority task in
+    //    the queue.
+    if (queue_.empty() ||
+        (!paused_workers_.empty() &&
+         queue_.top()->Priority() <= paused_workers_.top()->task()->Priority())) {
+      VLOG(4) << "No task for " << worker;
+      free_workers_.push_back(worker);
+      ResumeHighestPriorityWorker();
+      worker->SetTask(nullptr);
+      return false;
     }
-    return result;
+    worker->SetTask(queue_.Pop());
+    VLOG(4) << "Picked task for " << worker;
+    return true;
   }
 
   // Task finished, adjust desired and unwanted tasks.
