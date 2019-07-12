@@ -89,6 +89,16 @@
   z-index: 1031;
   top: 8px;
   left: 120px;
+
+  em {
+    font-style: normal;
+    font-weight: 300;
+    font-size: 20px;
+    letter-spacing: -.005em;
+  }
+  strong {
+    margin: 0 3px;
+  }
 }
 .universe-detail {
   .content-title {

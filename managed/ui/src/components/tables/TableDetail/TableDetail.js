@@ -1,12 +1,13 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, Fragment } from 'react';
 import PropTypes from 'prop-types';
 import { Grid, Row, Col, Tab } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { TableInfoPanel, YBTabsPanel } from '../../panels';
 import { RegionMap, YBMapLegend } from '../../maps';
 import './TableDetail.scss';
+import Measure from 'react-measure';
 import { TableSchema } from '../../tables';
 import { CustomerMetricsPanel } from '../../metrics';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
@@ -16,6 +17,12 @@ import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { UniverseStatusContainer } from '../../universes';
 
 export default class TableDetail extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      dimensions: {},
+    };
+  }
   static propTypes = {
     universeUUID: PropTypes.string.isRequired,
     tableUUID: PropTypes.string.isRequired
@@ -33,12 +40,18 @@ export default class TableDetail extends Component {
     this.props.resetTableDetail();
   }
 
+  onResize(dimensions) {
+    this.setState({dimensions});
+  }
+
   render() {
     let tableInfoContent = <span/>;
     const {
+      customer,
       universe: { currentUniverse },
       tables: { currentTableDetail }
     } = this.props;
+    const width = this.state.dimensions.width;
     if (getPromiseState(currentUniverse).isSuccess()) {
       const primaryCluster = getPrimaryCluster(currentUniverse.data.universeDetails.clusters);
       if (isNonEmptyObject(primaryCluster)) {
@@ -70,8 +83,10 @@ export default class TableDetail extends Component {
       const tableName = currentTableDetail.tableDetails.tableName;
       tableMetricsContent =
         (<CustomerMetricsPanel origin={"table"}
-                               tableName={tableName}
-                               nodePrefixes={nodePrefixes} />);
+          width={width}
+          customer={customer}
+          tableName={tableName}
+          nodePrefixes={nodePrefixes} />);
     }
     const tabElements = [
       <Tab eventKey={"overview"} title="Overview" key="overview-tab" mountOnEnter={true} unmountOnExit={true}>
@@ -86,7 +101,7 @@ export default class TableDetail extends Component {
     ];
     let tableName = "";
     if (isValidObject(currentTableDetail.tableDetails)) {
-      tableName = currentTableDetail.tableDetails.tableName;
+      tableName = <Fragment>{currentTableDetail.tableDetails.keyspace}<strong>.</strong><em>{currentTableDetail.tableDetails.tableName}</em></Fragment>;
     }
 
     let universeState = <span/>;
@@ -114,18 +129,22 @@ export default class TableDetail extends Component {
     }
 
     return (
-      <Grid id="page-wrapper" fluid={true}>
-        <Row className="header-row">
-          {universeState}
-        </Row>
-        <Row>
-          <Col lg={12}>
-            <YBTabsPanel defaultTab={"schema"} id={"tables-tab-panel"}>
-              { tabElements }
-            </YBTabsPanel>
-          </Col>
-        </Row>
-      </Grid>
+      <div className="dashboard-container">
+        <Grid id="page-wrapper" fluid={true}>
+          <Row className="header-row">
+            {universeState}
+          </Row>
+          <Row>
+            <Col lg={12}>
+              <Measure onMeasure={this.onResize.bind(this)}>
+                <YBTabsPanel defaultTab={"schema"} id={"tables-tab-panel"}>
+                  { tabElements }
+                </YBTabsPanel>
+              </Measure>
+            </Col>
+          </Row>
+        </Grid>
+        </div>
     );
   }
 }
