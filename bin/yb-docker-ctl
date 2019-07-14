@@ -264,6 +264,9 @@ class YBDockerControl():
                 '--replication_factor={}'.format(self.args.rf),
                 '--master_addresses={}'.format(",".join(self.master_addrs)),
                 '--rpc_bind_addresses={}'.format(container_with_port)])
+            # If YSQL in not disabled, initialize the sys catalog.
+            if not self.args.disable_ysql:
+                server_cmds.extend(["--use_initial_sys_catalog_snapshot=true"])
             # we expose master ui port for first node alone, exposing other
             # nodes to host would create a port conflict.
             if self.args.master_flags is not None:
@@ -407,26 +410,6 @@ class YBDockerControl():
                     result = get_subprocess_result_as_str(docker_cmd)
                     if "created." not in result:
                         continue
-                    if not self.args.disable_ysql:
-                        pg_bin_dir = os.path.join(self.working_dir, "postgres", 'bin')
-                        # TODO(bogdan): Since docker is one time create and cannot re-run this
-                        # setup step, we do not need the randomness that we put into yb-ctl.
-                        tmp_data_dir = "/tmp/yb_pg_initdb_tmp_data_dir"
-                        init_db_envs = "YB_ENABLED_IN_POSTGRES=1"
-                        init_db_envs += " FLAGS_pggate_master_addresses={}".format(
-                            ",".join(self.master_addrs))
-                        init_db_cmd = "{} {}/initdb -U postgres -D {}".format(
-                            init_db_envs, pg_bin_dir, tmp_data_dir)
-                        # Setup the list based cmdline.
-                        docker_cmd = ['docker', 'exec', '-it', self.YB_TSERVER_FORMAT.format(1)]
-                        docker_cmd.extend(["bash", "-c", init_db_cmd])
-                        print(' '.join(docker_cmd))
-                        print("Running initdb to initialize YSQL metadata "
-                              "in the YugaByte cluster. This may take up to a minute.")
-                        result = get_subprocess_result_as_str(docker_cmd)
-                        with open("initdb.log", "w") as initdb_log:
-                            initdb_log.write(result)
-                        print("initdb log available at ./initdb.log")
                     return
             except subprocess.CalledProcessError:
                 pass
