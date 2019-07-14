@@ -13,7 +13,7 @@ INSERT INTO serialTest1 VALUES ('bar');
 INSERT INTO serialTest1 VALUES ('force', 100);
 INSERT INTO serialTest1 VALUES ('wrong', NULL);
 
-SELECT * FROM serialTest1;
+SELECT * FROM serialTest1 ORDER BY f1;
 
 SELECT * FROM serialTest1_f2_seq;
 
@@ -40,6 +40,7 @@ INSERT INTO serialTest2 (val) VALUES (41);
 INSERT INTO serialTest2 (val) VALUES (42);
 SELECT * FROM serialTest2;
 
+DROP TABLE serialTest2;
 
 
 -- operations directly on sequences
@@ -77,7 +78,7 @@ SELECT nextval('sequence_test2');
 
 SELECT * FROM sequence_test2;
 
-
+DROP SEQUENCE sequence_test2;
 
 -- Information schema
 
