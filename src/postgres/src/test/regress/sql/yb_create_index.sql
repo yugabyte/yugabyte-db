@@ -253,7 +253,8 @@ EXPLAIN SELECT * FROM test_include ORDER BY c2;
 SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
 SELECT * FROM test_include ORDER BY c2;
 UPDATE test_include SET c2 = NULL WHERE c1 = 1;
-UPDATE test_include SET c2 = 33 WHERE c2 = 3;
+-- TODO(mihnea) Disabled temporarily due to issue #1611
+-- UPDATE test_include SET c2 = 33 WHERE c2 = 3;
 DELETE FROM test_include WHERE c1 = 2;
 SELECT c1, c2 FROM test_include WHERE c1 > 0 ORDER BY c2;
 SELECT * FROM test_include ORDER BY c2;
