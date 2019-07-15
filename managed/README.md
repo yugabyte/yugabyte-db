@@ -35,9 +35,7 @@ And check Java build JAR file:
 * Download YugaByte EE release from AWS S3.
 ```
   cd /opt/yugabyte/releases/
-  aws s3 sync s3://no-such-url/{release} {release} --exclude "*" --include "yugabyte-ee*.tar.gz"
-OR
-  s3cmd sync s3://no-such-url/{release} {release} --exclude "*" --include "yugabyte-ee*.tar.gz"
+  mkdir {release} && cd {release} && wget https://s3-us-west-2.amazonaws.com/downloads.yugabyte.com/yugabyte-{release}-linux.tar.gz
 ```
 
 * Install third-parties
