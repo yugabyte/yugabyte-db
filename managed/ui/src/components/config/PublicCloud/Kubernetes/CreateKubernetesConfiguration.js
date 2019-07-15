@@ -192,6 +192,10 @@ class CreateKubernetesConfiguration extends Component {
         ),
     });
 
+    const containsValidRegion = (p) => {
+      return p.values.regionList.filter(region => region.isValid).length > 0;
+    };
+
     return (
       <div>
         <h2 className="table-container-title">{title}</h2>
@@ -279,7 +283,7 @@ class CreateKubernetesConfiguration extends Component {
                   <AddRegionList modal={modal} showModal={showModal} closeModal={closeModal} />  
                 </div>
                 <div className="form-action-button-container">
-                  <YBButton btnText={"Save"} disabled={props.isSubmitting}
+                  <YBButton btnText={"Save"} disabled={props.isSubmitting || isNonEmptyObject(props.errors) || !containsValidRegion(props)}
                             btnClass={"btn btn-default save-btn"}
                             btnType="submit" />
                   {this.props.hasConfigs && <YBButton btnText={"Cancel"} disabled={props.isSubmitting}
