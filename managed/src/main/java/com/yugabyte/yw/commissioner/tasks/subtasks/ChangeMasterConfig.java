@@ -81,8 +81,10 @@ public class ChangeMasterConfig extends AbstractTaskBase {
       throw new IllegalStateException("No master host/ports for a change config op in " +
           taskParams().universeUUID);
     }
+    String certificate = universe.getCertificate();
+    YBClient client;
+    client = ybService.getClient(masterAddresses, certificate);
 
-    YBClient client = ybService.getClient(masterAddresses);
     // Get the node details and perform the change config operation.
     NodeDetails node = universe.getNode(taskParams().nodeName);
     boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);

@@ -100,8 +100,9 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
 
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyInt())).thenReturn(true);
+
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     try {
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);

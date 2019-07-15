@@ -322,7 +322,7 @@ public class NodeManagerTest extends FakeDBApplication {
             }
             if (configureParams.enableNodeToNodeEncrypt) gflags.put("use_node_to_node_encryption", "true");
             if (configureParams.enableClientToNodeEncrypt) gflags.put("use_client_to_server_encryption", "true");
-            gflags.put("allow_insecure_connections", "true");
+            gflags.put("allow_insecure_connections", configureParams.allowInsecure ? "true" : "false");
             gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
             expectedCommand.add("--rootCA_cert");
             expectedCommand.add(cert.certificate);
@@ -947,6 +947,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableNodeToNodeEncrypt = true;
+      params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
@@ -966,6 +967,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableClientToNodeEncrypt = true;
+      params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));
@@ -986,6 +988,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.ybSoftwareVersion = "0.0.1";
       params.enableNodeToNodeEncrypt = true;
       params.enableClientToNodeEncrypt = true;
+      params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.Configure, params, t));

@@ -75,12 +75,14 @@ public class UpdatePlacementInfo extends AbstractTaskBase {
 
   @Override
   public void run() {
-    String hostPorts = Universe.get(taskParams().universeUUID).getMasterAddresses();
+    Universe universe = Universe.get(taskParams().universeUUID); 
+    String hostPorts = universe.getMasterAddresses();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
-
-      client = ybService.getClient(hostPorts);
+      client = ybService.getClient(hostPorts, certificate);
+    
       ModifyUniverseConfig modifyConfig = new ModifyUniverseConfig(client,
                                                                    taskParams().universeUUID,
                                                                    taskParams().blacklistNodes);

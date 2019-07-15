@@ -917,7 +917,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   private boolean isServerAlive(NodeDetails node, ServerType server, String masterAddrs) {
     YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
-    YBClient client = ybService.getClient(masterAddrs);
+    
+    Universe universe = Universe.get(taskParams().universeUUID);
+    String certificate = universe.getCertificate();
+    YBClient client = ybService.getClient(masterAddrs, certificate);
+    
     HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip,
         server == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
     return client.waitForServer(hp, 5000);

@@ -68,7 +68,9 @@ public class WaitForServer extends AbstractTaskBase {
     if (taskParams().serverType != ServerType.MASTER && taskParams().serverType != ServerType.TSERVER) {
       throw new IllegalArgumentException("Unexpected server type " + taskParams().serverType);
     }
-    String hostPorts = Universe.get(taskParams().universeUUID).getMasterAddresses();
+    Universe universe = Universe.get(taskParams().universeUUID);
+    String hostPorts = universe.getMasterAddresses();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
       LOG.info("Running {}: hostPorts={}.", getName(), hostPorts);
@@ -87,7 +89,9 @@ public class WaitForServer extends AbstractTaskBase {
       HostAndPort hp = HostAndPort.fromParts(
           node.cloudInfo.private_ip,
           taskParams().serverType == ServerType.MASTER ? node.masterRpcPort : node.tserverRpcPort);
-      client = ybService.getClient(hostPorts);
+
+      client = ybService.getClient(hostPorts, certificate);
+
       ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());

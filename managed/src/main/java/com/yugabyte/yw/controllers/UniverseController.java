@@ -220,10 +220,15 @@ public class UniverseController extends AuthenticatedController {
         taskType = TaskType.CreateKubernetesUniverse;
       }
 
-      if ((taskParams.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt ||
-        taskParams.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) &&
-        taskParams.rootCA == null) {
-        taskParams.rootCA =  CertificateHelper.createRootCA(taskParams.nodePrefix, customerUUID, appConfig.getString("yb.storage.path"));
+      if (taskParams.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt ||
+          taskParams.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) {
+        if (taskParams.rootCA == null) {
+          taskParams.rootCA =  CertificateHelper.createRootCA(taskParams.nodePrefix,
+                               customerUUID, appConfig.getString("yb.storage.path"));
+        }
+        // Set the flag to mark the universe as using TLS enabled and therefore not allowing
+        // insecure connections.
+        taskParams.allowInsecure = false;
       }
 
       // Submit the task to create the universe.
@@ -865,12 +870,12 @@ public class UniverseController extends AuthenticatedController {
     } catch (RuntimeException e) {
       return ApiResponse.error(BAD_REQUEST, "No universe found with UUID: " + universeUUID);
     }
-
     final String hostPorts = universe.getMasterAddresses();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     // Get and return Leader IP
     try {
-      client = ybService.getClient(hostPorts);
+      client = ybService.getClient(hostPorts, certificate);
       ObjectNode result = Json.newObject().put("privateIP", client.getLeaderMasterHostAndPort().getHostText());
       ybService.closeClient(client, hostPorts);
       return ApiResponse.success(result);
