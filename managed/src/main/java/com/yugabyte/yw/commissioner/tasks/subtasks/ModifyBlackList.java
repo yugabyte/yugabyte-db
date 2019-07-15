@@ -72,6 +72,7 @@ public class ModifyBlackList extends AbstractTaskBase {
   public void run() {
     Universe universe = Universe.get(taskParams().universeUUID);
     String masterHostPorts = universe.getMasterAddresses();
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
       LOG.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
@@ -85,7 +86,7 @@ public class ModifyBlackList extends AbstractTaskBase {
         HostPortPB.Builder hpb =  HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
         modifyHosts.add(hpb.build());
       }
-      client = ybService.getClient(masterHostPorts);
+      client = ybService.getClient(masterHostPorts, certificate);
       ModifyMasterClusterConfigBlacklist modifyBlackList =
         new ModifyMasterClusterConfigBlacklist(client, modifyHosts, taskParams().isAdd);
       modifyBlackList.doCall();

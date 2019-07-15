@@ -91,6 +91,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // The next cluster index to be used when a new read-only cluster is added.
   public int nextClusterIndex = 1;
 
+  // Flag to mark if the universe was created with insecure connections allowed.
+  // Ideally should be false since we would never want to allow insecure connections,
+  // but defaults to true since we want universes created through pre-TLS YW to be
+  // unaffected.
+  public boolean allowInsecure = true;
+
   /**
    * Allowed states for an imported universe.
    */

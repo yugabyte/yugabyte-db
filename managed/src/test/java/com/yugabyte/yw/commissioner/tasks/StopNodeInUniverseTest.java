@@ -62,7 +62,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
                 ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
         mockClient = mock(YBClient.class);
-        when(mockYBClient.getClient(any())).thenReturn(mockClient);
+        when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
         when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
         dummyShellResponse =  new ShellProcessHandler.ShellResponse();
         dummyShellResponse.message = "true";

@@ -95,7 +95,9 @@ public class WaitForServerReady extends AbstractTaskBase {
     int userWaitTimeMs = taskParams().waitTimeMs != 0 ? taskParams().waitTimeMs :
                              RollingRestartParams.DEFAULT_SLEEP_AFTER_RESTART_MS;
 
-    String masterAddresses = Universe.get(taskParams().universeUUID).getMasterAddresses();
+    Universe universe = Universe.get(taskParams().universeUUID);
+    String masterAddresses = universe.getMasterAddresses();
+    String certificate = universe.getCertificate();
     LOG.info("Running {} on masterAddress = {}.", getName(), masterAddresses);
 
     if (masterAddresses == null || masterAddresses.isEmpty()) {
@@ -103,8 +105,8 @@ public class WaitForServerReady extends AbstractTaskBase {
           taskParams().universeUUID);
     }
 
-    client = ybService.getClient(masterAddresses);
-    NodeDetails node = Universe.get(taskParams().universeUUID).getNode(taskParams().nodeName);
+    client = ybService.getClient(masterAddresses, certificate);
+    NodeDetails node = universe.getNode(taskParams().nodeName);
 
     if (node == null) {
       throw new IllegalArgumentException("Node " + taskParams().nodeName + " not found in " +

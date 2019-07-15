@@ -117,7 +117,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockKubernetesManager.helmInstall(anyMap(), any(), any(), any())).thenReturn(response);
     // Table RPCs.
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     YBTable mockTable = mock(YBTable.class);
     when(mockTable.getName()).thenReturn("redis");
     when(mockTable.getTableType()).thenReturn(Common.TableType.REDIS_TABLE_TYPE);

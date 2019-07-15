@@ -93,7 +93,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(responsePod);
 
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     mockWaits(mockClient);
   }
 
