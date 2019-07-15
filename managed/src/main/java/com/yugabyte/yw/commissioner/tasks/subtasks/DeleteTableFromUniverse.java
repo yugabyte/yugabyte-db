@@ -14,6 +14,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.TableTaskParams;
+import com.yugabyte.yw.models.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.DeleteTableResponse;
@@ -54,9 +55,11 @@ public class DeleteTableFromUniverse extends AbstractTaskBase {
   @Override
   public void run() {
     Params params = taskParams();
+    Universe universe = Universe.get(params.universeUUID);
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
-      client = ybService.getClient(params.masterAddresses);
+      client = ybService.getClient(params.masterAddresses, certificate);
       client.deleteTable(params.keyspace, params.tableName);
       LOG.info("Dropped table {}", params.getFullName());
     } catch (Exception e) {

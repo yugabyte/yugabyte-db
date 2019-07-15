@@ -132,6 +132,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           universeDetails.nodePrefix = taskParams().nodePrefix;
           universeDetails.universeUUID = taskParams().universeUUID;
           universeDetails.rootCA = taskParams().rootCA;
+          universeDetails.allowInsecure = taskParams().allowInsecure;
           Cluster cluster = taskParams().getPrimaryCluster();
           if (cluster != null) {
             universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
@@ -622,7 +623,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+
+      params.allowInsecure = taskParams().allowInsecure;
       params.rootCA = taskParams().rootCA;
+      
       UUID custUUID = Customer.get(Universe.get(taskParams().universeUUID).customerId).uuid;
       params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
       // Set if updating master addresses only.

@@ -70,7 +70,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
     mockClient = mock(YBClient.class);
 
-    when(mockYBClient.getClient(any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     mockWaits(mockClient);
   }
 

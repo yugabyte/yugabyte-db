@@ -130,10 +130,10 @@ public class TablesController extends AuthenticatedController {
       LOG.warn(errMsg);
       return ApiResponse.success(errMsg);
     }
-
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
-      client = ybService.getClient(masterAddresses);
+      client = ybService.getClient(masterAddresses, certificate);
       GetTableSchemaResponse schemaResponse = client.getTableSchemaByUUID(
           tableUUID.toString().replace("-", ""));
       ybService.closeClient(client, masterAddresses);
@@ -202,16 +202,17 @@ public class TablesController extends AuthenticatedController {
     }
 
     // Validate universe UUID and retrieve master addresses
-    final String masterAddresses = Universe.get(universeUUID).getMasterAddresses(true);
+    Universe universe = Universe.get(universeUUID);
+    final String masterAddresses = universe.getMasterAddresses(true);
     if (masterAddresses.isEmpty()) {
       String errMsg = "Expected error. Masters are not currently queryable.";
       LOG.warn(errMsg);
       return ok(errMsg);
     }
-
+    String certificate = universe.getCertificate();
     YBClient client = null;
     try {
-      client = ybService.getClient(masterAddresses);
+      client = ybService.getClient(masterAddresses, certificate);
       ListTablesResponse response = client.getTablesList();
       List<TableInfo> tableInfoList = response.getTableInfoList();
       ArrayNode resultNode = Json.newArray();
@@ -257,12 +258,12 @@ public class TablesController extends AuthenticatedController {
         return ApiResponse.error(BAD_REQUEST, errMsg);
       }
       Universe universe = Universe.get(universeUUID);
-
+      String certificate = universe.getCertificate();
       if (masterAddresses.isEmpty()) {
         LOG.warn("Expected error. Masters are not currently queryable.");
         return ok("Expected error. Masters are not currently queryable.");
       }
-      client = ybService.getClient(masterAddresses);
+      client = ybService.getClient(masterAddresses, certificate);
       GetTableSchemaResponse response = client.getTableSchemaByUUID(
         tableUUID.toString().replace("-", ""));
 

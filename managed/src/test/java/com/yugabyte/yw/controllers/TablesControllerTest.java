@@ -114,7 +114,7 @@ public class TablesControllerTest extends WithApplication {
     mockService = mock(YBClientService.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
     mockSchemaResponse = mock(GetTableSchemaResponse.class);
-    when(mockService.getClient(any(String.class))).thenReturn(mockClient);
+    when(mockService.getClient(any(String.class), any(String.class))).thenReturn(mockClient);
     tablesController = new TablesController(mockService);
   }
 

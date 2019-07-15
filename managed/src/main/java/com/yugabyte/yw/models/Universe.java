@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.CertificateInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -460,6 +461,18 @@ public class Universe extends Model {
       return "";
     }
     return getHostPortsString(masters, ServerType.MASTER);
+  }
+
+  /**
+   * Returns the certificate in case TLS is enabled.
+   * @return certificate file if TLS is enabled, null otherwise.
+   */
+  public String getCertificate() {
+    UUID rootCA = this.getUniverseDetails().rootCA;
+    if (rootCA == null) {
+      return null;
+    }
+    return CertificateInfo.get(rootCA).certificate;
   }
 
   /**

@@ -89,7 +89,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
     setDefaultNodeState(NodeState.Removed);
 
     mockClient = mock(YBClient.class);
-    when(mockYBClient.getClient(any())).thenReturn(mockClient);
+    when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockNodeManager.nodeCommand(any(), any()))
         .thenReturn(new ShellProcessHandler.ShellResponse());
     modifyBL = mock(ModifyMasterClusterConfigBlacklist.class);
