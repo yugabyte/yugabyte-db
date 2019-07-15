@@ -12,6 +12,7 @@
 - [What is YugaByte DB?](#what-is-yugabyte-db)
 - [Get Started](#get-started)
 - [Build Apps](#build-apps)
+- [Architecture](#architecture)
 - [Need Help?](#need-help)
 - [Contribute](#contribute)
 - [Read More](#read-more)
