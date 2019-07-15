@@ -1,0 +1,51 @@
+LOAD 'agensgraph';
+SET search_path TO ag_catalog;
+SELECT create_graph('g');
+NOTICE:  graph "g" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT count(*) FROM ag_graph WHERE name = 'g';
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM pg_namespace WHERE nspname = 'g';
+ count 
+-------
+     1
+(1 row)
+
+-- Create a temporary table to test drop_graph().
+CREATE TABLE g.tmp (i int);
+SELECT drop_graph('g');
+ERROR:  cannot drop schema g because other objects depend on it
+DETAIL:  table g.tmp depends on schema g
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+SELECT drop_graph('g', true);
+NOTICE:  drop cascades to table g.tmp
+NOTICE:  graph "g" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT count(*) FROM pg_namespace WHERE nspname = 'g';
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM ag_graph WHERE name = 'g';
+ count 
+-------
+     0
+(1 row)
+
+SELECT create_graph(NULL);
+ERROR:  graph name must not be NULL
+SELECT drop_graph(NULL);
+ERROR:  graph name must not be NULL

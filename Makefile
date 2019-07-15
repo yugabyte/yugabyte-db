@@ -1,14 +1,18 @@
 MODULE_big = agensgraph
 
-OBJS = agensgraph.o \
+OBJS = ag_catalog.o \
+       ag_graph.o \
+       agensgraph.o \
        analyze.o \
+       commands.o \
        scan.o
 
 EXTENSION = agensgraph
 
 DATA = agensgraph--0.0.0.sql
 
-REGRESS = cypher \
+REGRESS = commands \
+          cypher \
           scan
 REGRESS_OPTS = --load-extension=agensgraph
 
