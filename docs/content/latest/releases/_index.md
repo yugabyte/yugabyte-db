@@ -8,14 +8,15 @@ section: RELEASES
 menu:
   latest:
     identifier: releases
-    weight: 2696
+    weight: 2694
 ---
 
 Download YugaByte DB using the table below and then follow the [Quick Start](../quick-start/) instructions to get started.
 
 Release | Date | Binary | Docker Image Tag
 --------|------|-------------------------------|-----------------
-[v1.2.12](./v1.2.12) (latest) | July 3, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-ce-1.2.12.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-ce-1.2.12.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 1.2.12.0-b7
+[v1.3.0](./v1.3.0) (latest) | July 15, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-ce-1.3.0.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-ce-1.3.0.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 1.3.0.0-b1
+[v1.2.12](./v1.2.12) | July 3, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-ce-1.2.12.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-ce-1.2.12.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 1.2.12.0-b7
 [v1.2.11](./v1.2.11) | June 25, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-ce-1.2.11.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-ce-1.2.11.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 1.2.11.0-b26
 [v1.2.10](./v1.2.10) | June 3, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-ce-1.2.10.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-ce-1.2.10.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 1.2.10.0-b13
 [v1.2.9](./v1.2.9) | May 21, 2019 | <a href="https://downloads.yugabyte.com/yugabyte-ce-1.2.9.0-darwin.tar.gz"><i class="fab fa-apple"></i><span class="release-os">macOS</span></a>, <a href="https://downloads.yugabyte.com/yugabyte-ce-1.2.9.0-linux.tar.gz"><i class="fab fa-linux"></i><span class="release-os">Linux</span></a> | 1.2.9.0-b14
