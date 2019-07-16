@@ -1,0 +1,91 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- name: Ensure we have the proper vars
+  assert:
+    that:
+      - cloud_type is defined
+      - use_chrony is defined
+      - mount_points is defined
+
+- name: Do we need chrony?
+  set_fact:
+    should_setup_chrony: "{{ cloud_type == 'aws' and use_chrony | bool }}"
+
+- block:
+  - name: Install NTP
+    become: yes
+    become_method: sudo
+    package:
+      name: ntp
+      state: latest
+
+  - name: Provision | Enable ntpd and restart service.
+    service:
+      enabled: yes
+      name: ntpd
+      state: restarted
+    when: ansible_distribution != "Ubuntu"
+
+  - name: Provision | Enable ntp and restart service.
+    service:
+      enabled: yes
+      name: ntp
+      state: restarted
+    when: ansible_distribution == "Ubuntu"
+  when: not should_setup_chrony
+
+- block:
+  - name: Uninstall NTP if available
+    become: yes
+    become_method: sudo
+    package:
+      name: ntp
+      state: absent
+
+  - name: Install chrony
+    become: yes
+    become_method: sudo
+    package:
+      name: chrony
+      state: latest
+
+  - name: Provision | Enable chronyd and restart service.
+    service:
+      enabled: yes
+      name: chronyd
+      state: restarted
+    when: ansible_distribution != "Ubuntu"
+
+  - name: Provision | Enable chrony and restart service.
+    service:
+      enabled: yes
+      name: chrony
+      state: restarted
+    when: ansible_distribution == "Ubuntu"
+  when: should_setup_chrony
+
+- name: Provision | Set swappiness off
+  sysctl:
+    name: vm.swappiness
+    value: 0
+    state: present
+
+- name: Provision | Create core dump kernel pattern
+  sysctl:
+    name: kernel.core_pattern
+    value: "/home/{{ user_name }}/cores/core_%e.%p"
+    state: present
+
+- name: Provision | Ensure proper permissions for mount paths.
+  file:
+    mode: 0755
+    path: "{{ item }}"
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+  with_items: "{{ mount_points.split(',') }}"
