@@ -560,7 +560,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
   // Prepare various default system configurations.
   RETURN_NOT_OK(PrepareDefaultSysConfig(term));
 
-  if (FLAGS_use_initial_sys_catalog_snapshot &&
+  if ((FLAGS_use_initial_sys_catalog_snapshot || FLAGS_enable_ysql) &&
       !FLAGS_initial_sys_catalog_snapshot_path.empty() &&
       !FLAGS_create_initial_sys_catalog_snapshot) {
     if (!namespace_ids_map_.empty() || !system_tablets_.empty()) {
