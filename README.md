@@ -14,6 +14,7 @@
 - [Architecture](#architecture)
 - [Need Help?](#need-help)
 - [Contribute](#contribute)
+- [License](#license)
 - [Read More](#read-more)
 
 # What is YugaByte DB?
