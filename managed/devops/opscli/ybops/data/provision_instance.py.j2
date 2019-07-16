@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+#
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+import argparse
+import subprocess
+
+
+def construct_command(args):
+    return '{{devops_home}}/bin/ybcloud.sh {{cloud}} '\
+        '--node_metadata '\
+        '\'{"ip":"%s","sshPort":{{ssh_port}},"sshUser":"{{ssh_user}}","nodeName":"@@DEFAULT_NODE_NAME@@"}\' '\
+        'instance provision '\
+        '--vars_file {{vars_file}} ' \
+        '--vault_password_file {{vault_password_file}} '\
+        '--private_key_file {{private_key_file}} '\
+        '--mount_points %s '\
+        {%- if not passwordless_sudo %}
+        '--ask_sudo_pass ' \
+        {%- endif %}
+        '--local_package_path {{local_package_path}} '\
+        '@@DEFAULT_NODE_NAME@@' % (args.ip, args.mount_points)
+
+
+def execute_command(cmd):
+    try:
+        subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
+        print "Success!"
+    except subprocess.CalledProcessError as e:
+        print "Failed!"
+        print e.output
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--ip', required=True,
+                        help='Private IP of the instance to provision.')
+    parser.add_argument('-m', '--mount_points', required=True,
+                        help='The comma-separated locations of each mounted hard drive.')
+    args = parser.parse_args()
+    print 'Executing provision now for instance with IP %s...' % (args.ip)
+    execute_command(construct_command(args))

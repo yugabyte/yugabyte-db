@@ -1,0 +1,54 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- debug:
+    msg: "Creating user {{ create_user.name }} (group: {{ create_user.group|default('no group') }})"
+
+# Don't make the user a "system user" by default on Mac OS X to avoid the following error:
+# "Could not write domain /Library/Preferences/com.apple.loginwindow.plist".
+- set_fact:
+    use_system_user: no
+    user_existence_check_cmd: id
+  when: ansible_os_family == "Darwin"
+
+- set_fact:
+    use_system_user: yes
+    user_existence_check_cmd: getent passwd
+  when: ansible_os_family != "Darwin"
+
+# Do not try to create the user if it already exists. That sometimes produces errors (e.g. on Mac OS
+# X when also trying to set a custom shell for the user).
+- name: Check if the user already exists
+  shell: "{{ user_existence_check_cmd }} {{ create_user.name }}"
+  register: user_existence_check_result
+  ignore_errors: True
+
+- name: Create the group
+  group:
+    name: "{{ create_user.group }}"
+    gid: "{{ create_user.gid | default(omit) }}"
+    system: yes
+  become: yes
+  when: create_user.group is defined
+
+- name: Create the user
+  user:
+    comment: "{{ create_user.comment | default(omit) }}"
+    createhome: yes
+    group: "{{ create_user.group | default(omit) }}"
+    home: "{{ create_user.home_dir | default(omit) }}"
+    name: "{{ create_user.name }}"
+    shell: "{{ create_user.shell | default(omit) }}"
+    system: "{{ use_system_user }}"
+    uid: "{{ create_user.uid | default(omit) }}"
+  when: user_existence_check_result.rc != 0
+  become: yes
+
+- name: "Setup {{ create_user.name }} ssh"
+  include: setup-ssh.yml
+  when: ssh_config is defined and ssh_config.enabled
