@@ -27,19 +27,23 @@
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 
-DEFINE_string(
-    initial_sys_catalog_snapshot_path, "",
+DEFINE_string(initial_sys_catalog_snapshot_path, "",
     "If this is specified, system catalog RocksDB is checkpointed at this location after initdb "
     "is done.");
 
-DEFINE_bool(
-    use_initial_sys_catalog_snapshot, false,
+DEFINE_bool(use_initial_sys_catalog_snapshot, false,
+    "DEPRECATED: use --enable_ysql instead. "
     "Initialize sys catalog tablet from a pre-existing snapshot instead of running initdb. "
     "Only takes effect if --initial_sys_catalog_snapshot_path is specified or can be "
     "auto-detected.");
 
-DEFINE_bool(
-    create_initial_sys_catalog_snapshot, false,
+DEFINE_bool(enable_ysql, false,
+    "Enable YSQL on cluster. This will initialize sys catalog tablet from a pre-existing snapshot "
+    "and start YSQL proxy. "
+    "Only takes effect if --initial_sys_catalog_snapshot_path is specified or can be auto-detected."
+    );
+
+DEFINE_bool(create_initial_sys_catalog_snapshot, false,
     "Run initdb and create an initial sys catalog data snapshot");
 TAG_FLAG(create_initial_sys_catalog_snapshot, advanced);
 TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
@@ -157,11 +161,12 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
     LOG(INFO) << "Disabling the use of initial sys catalog snapshot: env var "
               << kUseInitialSysCatalogSnapshotEnvVar << " is set to 0";
     FLAGS_use_initial_sys_catalog_snapshot = 0;
+    FLAGS_enable_ysql = 0;
   }
 
   if (FLAGS_initial_sys_catalog_snapshot_path.empty() &&
       !FLAGS_create_initial_sys_catalog_snapshot &&
-      FLAGS_use_initial_sys_catalog_snapshot) {
+      (FLAGS_use_initial_sys_catalog_snapshot || FLAGS_enable_ysql)) {
     const char* kStaticDataParentDir = "share";
     const std::string search_for_dir = JoinPathSegments(
         kStaticDataParentDir, kDefaultInitialSysCatalogSnapshotDir,
@@ -195,7 +200,9 @@ void SetDefaultInitialSysCatalogSnapshotFlags() {
         << "FLAGS_create_initial_sys_catalog_snapshot="
         << FLAGS_create_initial_sys_catalog_snapshot << ", "
         << "FLAGS_use_initial_sys_catalog_snapshot="
-        << FLAGS_use_initial_sys_catalog_snapshot;
+        << FLAGS_use_initial_sys_catalog_snapshot << ", "
+        << "FLAGS_enable_ysql="
+        << FLAGS_enable_ysql;
   }
 }
 
