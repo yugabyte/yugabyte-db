@@ -450,6 +450,17 @@ body {
       align-items: center;
     }
 
+    .navbar-misc.mobile {
+      padding: 15px 30px 0 30px;
+      text-align: left;
+      display: none;
+
+      div {
+        margin-top: 15px;
+        font-size: 20px;
+      }
+    }
+
     .navbar-link-btn {
       border: 1px solid #cbcdd0;
       color: #202951;
@@ -498,7 +509,11 @@ body {
         }
       }
       .navbar-misc {
-        justify-content: center;
+        display: none;
+      }
+
+      .navbar-misc.mobile {
+        display: block;
       }
     }
     @media screen and (max-width: 659px) {
