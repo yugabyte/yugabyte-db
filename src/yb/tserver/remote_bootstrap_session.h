@@ -134,6 +134,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   RateLimiter& rate_limiter() { return rate_limiter_; }
 
+  static const std::string kCheckpointsDir;
+
  protected:
   friend class RefCountedThreadSafe<RemoteBootstrapSession>;
 

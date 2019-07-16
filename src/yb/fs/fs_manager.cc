@@ -450,11 +450,14 @@ vector<string> FsManager::GetWalRootDirs() const {
   return wal_dirs;
 }
 
+std::string FsManager::GetRaftGroupMetadataDir(const std::string& data_dir) {
+  return JoinPathSegments(data_dir, kRaftGroupMetadataDirName);
+}
+
 string FsManager::GetRaftGroupMetadataDir() const {
   DCHECK(initted_);
-  return JoinPathSegments(
-      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_),
-      kRaftGroupMetadataDirName);
+  return GetRaftGroupMetadataDir(
+      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_));
 }
 
 string FsManager::GetRaftGroupMetadataPath(const string& tablet_id) const {
@@ -501,9 +504,12 @@ std::string FsManager::GetInstanceMetadataPath(const string& root) const {
 
 std::string FsManager::GetConsensusMetadataDir() const {
   DCHECK(initted_);
-  return JoinPathSegments(
-      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_),
-      kConsensusMetadataDirName);
+  return GetConsensusMetadataDir(
+      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_));
+}
+
+std::string FsManager::GetConsensusMetadataDir(const std::string& data_dir) {
+  return JoinPathSegments(data_dir, kConsensusMetadataDirName);
 }
 
 std::string FsManager::GetFirstTabletWalDirOrDie(const std::string& table_id,
