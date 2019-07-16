@@ -224,7 +224,7 @@ Result<TransactionStatusResult> CDCProducer::GetTransactionStatus(
   };
 
   txn_participant->RequestStatusAt(
-      {&txn_id, hybrid_time, hybrid_time, 0, &reason, MustExist::kFalse, callback});
+      {&txn_id, hybrid_time, hybrid_time, 0, &reason, TransactionLoadFlags{}, callback});
   future.wait();
   return future.get();
 }
