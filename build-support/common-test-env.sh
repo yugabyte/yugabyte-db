@@ -1702,7 +1702,8 @@ run_python_doctest() {
   for python_file in $file_list; do
     local basename=${python_file##*/}
     if [[ $basename == .ycm_extra_conf.py ||
-          $basename == split_long_command_line.py ]]; then
+          $basename == split_long_command_line.py ||
+          $python_file =~ managed/.* ]]; then
       continue
     fi
     ( set -x; python -m doctest "$python_file" )

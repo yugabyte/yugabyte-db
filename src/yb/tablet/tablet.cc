@@ -371,7 +371,7 @@ Tablet::Tablet(
 
   if (transaction_participant_context && metadata->schema().table_properties().is_transactional()) {
     transaction_participant_ = std::make_unique<TransactionParticipant>(
-        transaction_participant_context, this);
+        transaction_participant_context, this, metric_entity_);
     // Create transaction manager for secondary index update.
     if (!metadata_->index_map().empty()) {
       transaction_manager_.emplace(client_future_.get(),

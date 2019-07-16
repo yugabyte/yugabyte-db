@@ -281,6 +281,9 @@
                                       unit, \
                                       desc))
 
+#define METRIC_DEFINE_simple_counter(entity, name, label, unit) \
+    METRIC_DEFINE_counter(entity, name, label, unit, label)
+
 #define METRIC_DEFINE_gauge(type, entity, name, label, unit, desc, ...) \
   ::yb::GaugePrototype<type> BOOST_PP_CAT(METRIC_, name)(         \
       ::yb::MetricPrototype::CtorArgs(BOOST_PP_STRINGIZE(entity), \
@@ -302,6 +305,8 @@
     METRIC_DEFINE_gauge(int64, entity, name, label, unit, desc, ## __VA_ARGS__)
 #define METRIC_DEFINE_gauge_uint64(entity, name, label, unit, desc, ...) \
     METRIC_DEFINE_gauge(uint64_t, entity, name, label, unit, desc, ## __VA_ARGS__)
+#define METRIC_DEFINE_simple_gauge_uint64(entity, name, label, unit, ...) \
+    METRIC_DEFINE_gauge(uint64_t, entity, name, label, unit, label, ## __VA_ARGS__)
 #define METRIC_DEFINE_gauge_double(entity, name, label, unit, desc, ...) \
     METRIC_DEFINE_gauge(double, entity, name, label, unit, desc, ## __VA_ARGS__)
 

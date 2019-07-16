@@ -100,7 +100,9 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
     };
     txn_status_manager_->RequestStatusAt(
         {&transaction_id, read_time_.read, read_time_.global_limit, read_time_.serial_no,
-              &kRequestReason, MustExist::kTrue, callback});
+              &kRequestReason,
+              TransactionLoadFlags{TransactionLoadFlag::kMustExist, TransactionLoadFlag::kCleanup},
+              callback});
     future.wait();
     auto txn_status_result = future.get();
     if (txn_status_result.ok()) {

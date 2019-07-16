@@ -1147,6 +1147,27 @@ void ExternalMiniCluster::AssertNoCrashes() {
   }
 }
 
+Result<std::vector<std::string>> ExternalMiniCluster::GetTabletIds(ExternalTabletServer* ts) {
+  TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());
+  ListTabletsRequestPB req;
+  ListTabletsResponsePB resp;
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(10));
+  RETURN_NOT_OK(proxy.ListTablets(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::vector<std::string> result;
+  result.reserve(resp.status_and_schema().size());
+  for (const StatusAndSchemaPB& status : resp.status_and_schema()) {
+    result.push_back(status.tablet_status().tablet_id());
+  }
+
+  return result;
+}
+
 Status ExternalMiniCluster::WaitForTabletsRunning(ExternalTabletServer* ts,
                                                   const MonoDelta& timeout) {
   TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());
@@ -1319,6 +1340,15 @@ vector<ExternalDaemon*> ExternalMiniCluster::daemons() const {
     results.push_back(master.get());
   }
   return results;
+}
+
+std::vector<ExternalTabletServer*> ExternalMiniCluster::tserver_daemons() const {
+  std::vector<ExternalTabletServer*> result;
+  result.reserve(tablet_servers_.size());
+  for (const auto& ts : tablet_servers_) {
+    result.push_back(ts.get());
+  }
+  return result;
 }
 
 HostPort ExternalMiniCluster::pgsql_hostport(int node_index) const {
