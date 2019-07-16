@@ -18,17 +18,25 @@ if [[ $BASH_SOURCE == $0 ]]; then
   fatal "File '$BASH_SOURCE' must be sourced, not invoked"
 fi
 
-log "$BASH_SOURCE invoked, edition: $YB_EDITION"
-
-# We upload packages that we build here. These will be tested using itest. It is important that this
-# URL ends with a "/".
-SNAPSHOT_PACKAGE_UPLOAD_URL=s3://no-such-url
+log "$BASH_SOURCE is being sourced"
 
 upload_package() {
   package_uploaded=false
+  package_upload_skipped=true
 
-  # Check for errors.
+  if [[ -z ${YB_SNAPSHOT_PACKAGE_UPLOAD_URL:-} ]]; then
+    log "YB_SNAPSHOT_PACKAGE_UPLOAD_URL not set, skipping package upload"
+    return
+  fi
+
+  # If we fail with an error, we don't consider the package upload "skipped".
   package_upload_skipped=false
+
+  if [[ $YB_SNAPSHOT_PACKAGE_UPLOAD_URL != */ ]]; then
+    fatal "YB_SNAPSHOT_PACKAGE_UPLOAD_URL must end in a forward slash, got:" \
+          "$YB_SNAPSHOT_PACKAGE_UPLOAD_URL"
+  fi
+
   if [[ -z ${YB_PACKAGE_PATH:-} ]]; then
     log "The YB_PACKAGE_PATH variable is not set"
     return
@@ -99,12 +107,12 @@ upload_package() {
   fi
 
   package_upload_skipped=false
-  log "Uploading package '$YB_PACKAGE_PATH' to $SNAPSHOT_PACKAGE_UPLOAD_URL"
-  if ( set -x; s3cmd put "$YB_PACKAGE_PATH"{.md5,.sha,} "$SNAPSHOT_PACKAGE_UPLOAD_URL" ); then
-    log "Uploaded package '$YB_PACKAGE_PATH' to $SNAPSHOT_PACKAGE_UPLOAD_URL"
+  log "Uploading package '$YB_PACKAGE_PATH' to $YB_SNAPSHOT_PACKAGE_UPLOAD_URL"
+  if ( set -x; s3cmd put "$YB_PACKAGE_PATH"{.md5,.sha,} "$YB_SNAPSHOT_PACKAGE_UPLOAD_URL" ); then
+    log "Uploaded package '$YB_PACKAGE_PATH' to $YB_SNAPSHOT_PACKAGE_UPLOAD_URL"
     package_uploaded=true
   else
-    log "Failed to upload package '$YB_PACKAGE_PATH' to $SNAPSHOT_PACKAGE_UPLOAD_URL"
+    log "Failed to upload package '$YB_PACKAGE_PATH' to $YB_SNAPSHOT_PACKAGE_UPLOAD_URL"
     package_uploaded=false
   fi
 }
