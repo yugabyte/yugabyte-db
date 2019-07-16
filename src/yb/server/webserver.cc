@@ -376,11 +376,13 @@ int Webserver::RunPathHandler(const PathHandler& handler,
     sq_printf(connection, "HTTP/1.1 200 OK\r\n"
               "Content-Type: text/plain\r\n"
               "Content-Length: %zd\r\n"
+              "Access-Control-Allow-Origin: *\r\n"
               "\r\n", str.length());
   } else {
     sq_printf(connection, "HTTP/1.1 200 OK\r\n"
               "Content-Type: text/html\r\n"
               "Content-Length: %zd\r\n"
+              "Access-Control-Allow-Origin: *\r\n"
               "\r\n", str.length());
   }
 
