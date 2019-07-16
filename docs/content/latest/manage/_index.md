@@ -79,10 +79,10 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
         <div class="articles">11 articles</div>
-        <div class="title">Enterprise Edition</div>
+        <div class="title">YugaByte Platform</div>
       </div>
       <div class="body">
-        Manage YugaByte DB without any downtime using the Enterprise Edition's built-in orchestration and monitoring.
+        Manage YugaByte DB without any downtime using the YugaByte Platform's built-in orchestration and monitoring.
       </div>
     </a>
   </div>

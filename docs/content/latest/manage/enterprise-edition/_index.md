@@ -1,9 +1,9 @@
 ---
-title: Enterprise Edition
-linkTitle: Enterprise Edition
-description: Enterprise Edition
+title: YugaByte Platform
+linkTitle: YugaByte Platform
+description: YugaByte Platform
 image: /images/section_icons/manage/enterprise.png
-headcontent: Manage YugaByte DB without any downtime using the Enterprise Edition's built-in orchestration and monitoring.
+headcontent: Manage YugaByte DB without any downtime using the YugaByte Platform's built-in orchestration and monitoring.
 aliases:
   - /manage/enterprise-edition/
 menu:

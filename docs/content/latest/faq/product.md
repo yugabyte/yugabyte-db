@@ -38,12 +38,13 @@ YugaByte DB has had 4 major releases.
 - [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018
 - [v1.1](https://blog.yugabyte.com/announcing-yugabyte-db-1-1-and-company-update/) in September 2018
 - [v1.2](https://blog.yugabyte.com/announcing-yugabyte-db-1-2-company-update-jepsen-distributed-sql/) in March 2019
+- [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/) in July 2019
 
 Next major release is the v2.0 release in Summer 2019.
 
 ## Can I deploy YugaByte DB to production?
 
-Yes, YugaByte DB is [production ready](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) starting with v1.0 in May 2018. The YSQL API is in beta and is expected to reach production readiness in the v2.0 (Summer 2019).
+Yes, YugaByte DB is [production ready](https://blog.yugabyte.com/yugabyte-db-1-0-a-peek-under-the-hood/) starting with v1.0 in May 2018. The YSQL API is currently in Release Candidacy and is expected to reach production readiness in the v2.0 (Summer 2019).
 
 ## Which companies are currently using YugaByte DB in production?
 
@@ -73,17 +74,19 @@ Details for both the above benchhmarks are published in [Building a Strongly Con
 
 [Jepsen](https://jepsen.io/) is a widely used framework to evaluate databases’ behavior under different failure scenarios. It allows for a database to be run across multiple nodes, and create artificial failure scenarios, as well as verify the correctness of the system under these scenarios. YugaByte DB 1.2 passes [formal Jepsen testing](https://blog.yugabyte.com/yugabyte-db-1-2-passes-jepsen-testing/). 
 
-## Is the Community Edition open source?
+## Is YugaByte DB open source?
 
-Yes, the Community Edition is a completely open source, fully functioning version of YugaByte DB. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
+Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), YugaByte DB is 100% open source. It is licensed under Apache 2.0 and the source is available on [GitHub](https://github.com/yugabyte/yugabyte-db).
 
-## How do the Community Edition and the Enterprise Edition differ from each other?
+## How does YugaByte DB, YugaByte Platform and YugaByte Cloud differ from each other?
 
-[Community Edition](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugaByte DB into production with traditional DevOps tools.
+[YugaByte DB](../../quick-start/) is the best choice for the startup organizations with strong technical operations expertise looking to deploy YugaByte DB into production with traditional DevOps tools.
 
-[Enterprise Edition](../../deploy/enterprise-edition/) includes all the features of the Community Edition as well as additional features such as built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
+[YugaByte Platform](../../deploy/enterprise-edition/) is commercial software for running a self-managed DB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
 
-A more detailed comparison of the two editions is available [here](https://www.yugabyte.com/community-edition/#compare-editions).
+[YugaByte Cloud] is YugaByte's fully-managed cloud service on AWS and GCP. You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
+
+A more detailed comparison of the above is available [here](https://www.yugabyte.com/platform/#compare-editions).
 
 ## How does YugaByte DB compare to other SQL and NoSQL databases?
 
@@ -96,8 +99,6 @@ See [YugaByte DB in Comparison](../../comparisons/)
 - [Amazon DynamoDB](../../comparisons/amazon-dynamodb/)
 - [Apache Cassandra](../../comparisons/cassandra/)
 - [Azure Cosmos DB](../../comparisons/azure-cosmos/)
-- [Apache HBase](../../comparisons/hbase/)
-- [Redis In-Memory Store](../../comparisons/redis/)
 
 ## What is the status of the YEDIS API?
 
