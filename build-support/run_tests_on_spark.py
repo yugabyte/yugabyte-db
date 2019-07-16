@@ -159,12 +159,12 @@ SPARK_URLS = {
     'linux_default': os.getenv(
         'YB_SPARK_URL_LINUX_DEFAULT',
         'spark://spark-for-yugabyte-linux-default.example.com:7077'),
-    'macos': os.getenv(
-        'YB_SPARK_URL_LINUX_ASAN_TSAN',
-        'spark://spark-for-yugabyte-macos.example.com:7077'),
     'linux_asan_tsan': os.getenv(
+        'YB_SPARK_URL_LINUX_ASAN_TSAN',
+        'spark://spark-for-yugabyte-linux-asan-tsan.example.com:7077'),
+    'macos': os.getenv(
         'YB_SPARK_URL_MACOS',
-        'spark://spark-for-yugabyte-linux-asan-tsan.example.com:7077')
+        'spark://spark-for-yugabyte-macos.example.com:7077'),
 }
 
 # This has to match what we output in run-test.sh if YB_LIST_CTEST_TESTS_ONLY is set.
