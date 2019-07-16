@@ -116,25 +116,25 @@ postgres=> \c yb_demo;
 First create the 4 tables necessary to store the data.
 
 ```sql
-postgres=> \i 'schema.sql';
+yb_demo=> \i 'schema.sql';
 ```
 
 Now load the data into the tables.
 
 ```sql
-postgres=> \i 'data/products.sql'
+yb_demo=> \i 'data/products.sql'
 ```
 
 ```sql
-postgres=> \i 'data/users.sql'
+yb_demo=> \i 'data/users.sql'
 ```
 
 ```sql
-postgres=> \i 'data/orders.sql'
+yb_demo=> \i 'data/orders.sql'
 ```
 
 ```sql
-postgres=> \i 'data/reviews.sql'
+yb_demo=> \i 'data/reviews.sql'
 ```
 
 ## 2. Simple Queries
