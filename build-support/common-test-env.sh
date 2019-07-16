@@ -1696,11 +1696,15 @@ run_python_doctest() {
   export PYTHONPATH=$python_root
 
   local IFS=$'\n'
-  local file_list=$( git ls-files '*.py' )
+  local file_list=$( cd "$YB_SRC_ROOT" && git ls-files '*.py' )
 
   local python_file
   for python_file in $file_list; do
     local basename=${python_file##*/}
+    if [[ $python_file == managed/* ||
+          $python_file == src/postgres/src/test/locale/sort-test.py ]]; then
+      continue
+    fi
     if [[ $basename == .ycm_extra_conf.py ||
           $basename == split_long_command_line.py ||
           $python_file =~ managed/.* ]]; then
