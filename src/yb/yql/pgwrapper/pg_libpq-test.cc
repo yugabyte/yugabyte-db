@@ -23,6 +23,9 @@ using namespace std::literals;
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
+METRIC_DECLARE_entity(tablet);
+METRIC_DECLARE_counter(transaction_not_found);
+
 namespace yb {
 namespace pgwrapper {
 
@@ -487,6 +490,25 @@ void PgLibPqTest::TestMultiBankAccount(const std::string& isolation_level) {
     EXPECT_EQ(*sum, kAccounts * kInitialBalance);
     return true;
   }, 10s, "Final read"));
+
+  auto total_not_found = 0;
+  for (auto* tserver : cluster_->tserver_daemons()) {
+    auto tablets = ASSERT_RESULT(cluster_->GetTabletIds(tserver));
+    for (const auto& tablet : tablets) {
+      int64_t value;
+      auto status = tserver->GetInt64Metric(
+          &METRIC_ENTITY_tablet, tablet.c_str(), &METRIC_transaction_not_found, "value", &value);
+      if (status.ok()) {
+        total_not_found += value;
+      } else {
+        ASSERT_TRUE(status.IsNotFound()) << status;
+      }
+    }
+  }
+
+  LOG(INFO) << "Total not found: " << total_not_found;
+  // Check that total not found is not too big.
+  ASSERT_LE(total_not_found, 200);
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(MultiBankAccountSnapshot)) {

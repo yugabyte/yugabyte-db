@@ -108,7 +108,9 @@ class TransactionParticipantContext {
 // instance per tablet.
 class TransactionParticipant : public TransactionStatusManager {
  public:
-  TransactionParticipant(TransactionParticipantContext* context, TransactionIntentApplier* applier);
+  TransactionParticipant(
+      TransactionParticipantContext* context, TransactionIntentApplier* applier,
+      const scoped_refptr<MetricEntity>& entity);
   virtual ~TransactionParticipant();
 
   // Adds new running transaction.

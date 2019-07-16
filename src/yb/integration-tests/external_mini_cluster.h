@@ -298,6 +298,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return all tablet servers and masters.
   std::vector<ExternalDaemon*> daemons() const;
 
+  // Return all tablet servers.
+  std::vector<ExternalTabletServer*> tserver_daemons() const;
+
   // Get tablet server host.
   HostPort pgsql_hostport(int node_index) const;
 
@@ -347,6 +350,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Wait until all tablets on the given tablet server are in 'RUNNING'
   // state.
   CHECKED_STATUS WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
+
+  Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
 
   CHECKED_STATUS WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));

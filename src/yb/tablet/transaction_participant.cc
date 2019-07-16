@@ -56,6 +56,19 @@ DEFINE_uint64(transaction_delay_status_reply_usec_in_tests, 0,
 DEFINE_double(transaction_ignore_applying_probability_in_tests, 0,
               "Probability to ignore APPLYING update in tests.");
 
+METRIC_DEFINE_simple_counter(
+    tablet, transaction_load_attempts,
+    "Total number of tries to load transaction metadata from the intents RocksDB",
+    yb::MetricUnit::kTransactions);
+METRIC_DEFINE_simple_counter(
+    tablet, transaction_not_found,
+    "Total number of missing transactions during load",
+    yb::MetricUnit::kTransactions);
+METRIC_DEFINE_simple_gauge_uint64(
+    tablet, transactions_running,
+    "Total number of transactions running in participant",
+    yb::MetricUnit::kTransactions);
+
 namespace yb {
 namespace tablet {
 
@@ -198,9 +211,9 @@ class RemoveIntentsTask : public rpc::ThreadPoolTask {
 class CleanupAbortsTask : public rpc::ThreadPoolTask {
  public:
   CleanupAbortsTask(TransactionIntentApplier* applier,
-                     TransactionIdSet&& transactions_to_cleanup,
-                     TransactionParticipantContext* participant_context,
-                     TransactionStatusManager* status_manager)
+                    TransactionIdSet&& transactions_to_cleanup,
+                    TransactionParticipantContext* participant_context,
+                    TransactionStatusManager* status_manager)
       : applier_(applier), transactions_to_cleanup_(std::move(transactions_to_cleanup)),
         participant_context_(*participant_context),
         status_manager_(*status_manager) {}
@@ -288,7 +301,7 @@ class CleanupAbortsTask : public rpc::ThreadPoolTask {
           0, // serial no. Could use 0 here, because read_ht == global_limit_ht.
           // So we cannot accept status with time >= read_ht and < global_limit_ht.
           &kRequestReason,
-          MustExist::kFalse,
+          TransactionLoadFlags{},
           [transaction_id, this, &left_wait, tid](Result<TransactionStatusResult> result) {
             std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
             if (tid != std::this_thread::get_id()) {
@@ -324,6 +337,32 @@ class CleanupAbortsTask : public rpc::ThreadPoolTask {
   std::mutex mutex_;
   std::condition_variable cond_;
   std::vector<TransactionId> erased_transactions_;
+};
+
+class CleanupIntentsTask : public rpc::ThreadPoolTask {
+ public:
+  CleanupIntentsTask(TransactionIntentApplier* applier, const TransactionId& id)
+      : applier_(*applier), id_(id) {}
+
+  void Prepare(std::shared_ptr<CleanupIntentsTask> self) {
+    retain_self_ = std::move(self);
+  }
+
+  void Run() override {
+    WARN_NOT_OK(applier_.RemoveIntents(id_),
+                Format("Failed to remove intents of possible completed transaction $0", id_));
+  }
+
+  void Done(const Status& status) override {
+    retain_self_.reset();
+  }
+
+  virtual ~CleanupIntentsTask() {}
+
+ private:
+  TransactionIntentApplier& applier_;
+  TransactionId id_;
+  std::shared_ptr<CleanupIntentsTask> retain_self_;
 };
 
 class RunningTransaction : public std::enable_shared_from_this<RunningTransaction> {
@@ -653,14 +692,19 @@ std::string TransactionApplyData::ToString() const {
 
 class TransactionParticipant::Impl : public RunningTransactionContext {
  public:
-  explicit Impl(TransactionParticipantContext* context, TransactionIntentApplier* applier)
+  Impl(TransactionParticipantContext* context, TransactionIntentApplier* applier,
+       const scoped_refptr<MetricEntity>& entity)
       : RunningTransactionContext(context, applier),
         log_prefix_(Format("T $0 P $1: ", context->tablet_id(), context->permanent_uuid())) {
     LOG_WITH_PREFIX(INFO) << "Start";
+    metric_transactions_running_ = METRIC_transactions_running.Instantiate(entity, 0);
+    metric_transaction_load_attempts_ = METRIC_transaction_load_attempts.Instantiate(entity);
+    metric_transaction_not_found_ = METRIC_transaction_not_found.Instantiate(entity);
   }
 
   ~Impl() {
     transactions_.clear();
+    TransactionsModifiedUnlocked();
     rpcs_.Shutdown();
   }
 
@@ -675,11 +719,12 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     bool store = false;
     if (may_have_metadata) {
       auto lock_and_iterator = LockAndFindOrLoad(
-          metadata->transaction_id, "add"s, MustExist::kFalse);
+          metadata->transaction_id, "add"s, {});
       if (!lock_and_iterator.found()) {
         lock_and_iterator.lock = std::unique_lock<std::mutex>(mutex_);
         auto insert_result = transactions_.insert(
             std::make_shared<RunningTransaction>(*metadata, 0, this));
+        TransactionsModifiedUnlocked();
         lock_and_iterator.iterator = insert_result.first;
         store = insert_result.second;
       } else {
@@ -690,6 +735,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       auto it = transactions_.find(metadata->transaction_id);
       if (it == transactions_.end()) {
         transactions_.insert(std::make_shared<RunningTransaction>(*metadata, 0, this));
+        TransactionsModifiedUnlocked();
         store = true;
       } else {
         DCHECK_EQ((**it).metadata(), *metadata);
@@ -731,7 +777,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   boost::optional<TransactionMetadata> Metadata(const TransactionId& id) {
-    auto lock_and_iterator = LockAndFindOrLoad(id, "metadata"s);
+    // We are not trying to cleanup intents here because we don't know whether this transaction
+    // has intents of not.
+    auto lock_and_iterator = LockAndFindOrLoad(
+        id, "metadata"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (!lock_and_iterator.found()) {
       return boost::none;
     }
@@ -740,7 +789,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
   boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>> MetadataWithWriteId(
       const TransactionId& id) {
-    auto lock_and_iterator = LockAndFindOrLoad(id, "metadata with write id"s);
+    // We are not trying to cleanup intents here because we don't know whether this transaction
+    // has intents of not.
+    auto lock_and_iterator = LockAndFindOrLoad(
+        id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (!lock_and_iterator.found()) {
       return boost::none;
     }
@@ -759,7 +811,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   }
 
   void RequestStatusAt(const StatusRequest& request) {
-    auto lock_and_iterator = LockAndFindOrLoad(*request.id, *request.reason, request.must_exist);
+    auto lock_and_iterator = LockAndFindOrLoad(*request.id, *request.reason, request.flags);
     if (!lock_and_iterator.found()) {
       request.callback(
           STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
@@ -801,13 +853,17 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     while (!cleanup_queue_.empty() && cleanup_queue_.front().request_id < min_request) {
       const auto& id = cleanup_queue_.front().transaction_id;
       transactions_.erase(id);
+      TransactionsModifiedUnlocked();
       VLOG_WITH_PREFIX(2) << "Cleaned from queue: " << id;
       cleanup_queue_.pop_front();
     }
   }
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
-    auto lock_and_iterator = LockAndFindOrLoad(id, "abort"s);
+    // We are not trying to cleanup intents here because we don't know whether this transaction
+    // has intents of not.
+    auto lock_and_iterator = LockAndFindOrLoad(
+        id, "abort"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (!lock_and_iterator.found()) {
       callback(STATUS_FORMAT(NotFound, "Abort of unknown transaction: $0", id));
       return;
@@ -887,7 +943,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     {
       // It is our last chance to load transaction metadata, if missing.
       // Because it will be deleted when intents are applied.
-      auto lock_and_iterator = LockAndFindOrLoad(data.transaction_id, "pre apply"s);
+      // We are not trying to cleanup intents here because we don't know whether this transaction
+      // has intents of not.
+      auto lock_and_iterator = LockAndFindOrLoad(
+          data.transaction_id, "pre apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
       if (!lock_and_iterator.found()) {
         // This situation is normal and could be caused by 2 scenarios:
         // 1) Write batch failed, but originator doesn't know that.
@@ -903,7 +962,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     CHECK_OK(applier_.ApplyIntents(data));
 
     {
-      auto lock_and_iterator = LockAndFindOrLoad(data.transaction_id, "apply"s);
+      // We are not trying to cleanup intents here because we don't know whether this transaction
+      // has intents of not.
+      auto lock_and_iterator = LockAndFindOrLoad(
+          data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
       if (lock_and_iterator.found()) {
         RemoveUnlocked(lock_and_iterator.iterator);
       }
@@ -989,6 +1051,10 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       >
   > Transactions;
 
+  void TransactionsModifiedUnlocked() {
+    metric_transactions_running_->set_value(transactions_.size());
+  }
+
   // Tries to remove transaction with specified id.
   // Returns true if transaction is not exists after call to this method, otherwise returns false.
   // Which means that transaction will be removed later.
@@ -1004,6 +1070,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     if (running_requests_.empty()) {
       TransactionId txn_id = (**it).id();
       transactions_.erase(it);
+      TransactionsModifiedUnlocked();
       VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id
                           << ", left: " << transactions_.size();
       return true;
@@ -1034,8 +1101,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     }
   };
 
-  LockAndFindOrLoadResult LockAndFindOrLoad(const TransactionId& id, const std::string& reason,
-                                            MustExist must_exist = MustExist::kTrue) {
+  LockAndFindOrLoadResult LockAndFindOrLoad(
+      const TransactionId& id, const std::string& reason, TransactionLoadFlags flags) {
     {
       std::unique_lock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
@@ -1044,6 +1111,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       }
     }
 
+    metric_transaction_load_attempts_->Increment();
     LOG_WITH_PREFIX(INFO) << "Loading transaction: " << id << ", for: " << reason;
 
     docdb::KeyBytes key;
@@ -1054,10 +1122,16 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
                                              rocksdb::kDefaultQueryId);
     iter.Seek(key.AsSlice());
     if (!iter.Valid() || iter.key() != key.data()) {
-      if (must_exist) {
+      metric_transaction_not_found_->Increment();
+      if (flags.Test(TransactionLoadFlag::kMustExist)) {
         LOG_WITH_PREFIX(WARNING) << "Transaction not found: " << id << ", for: " << reason;
       } else {
         LOG_WITH_PREFIX(INFO) << "Transaction not found: " << id << ", for: " << reason;
+      }
+      if (flags.Test(TransactionLoadFlag::kCleanup)) {
+        auto cleanup_task = std::make_shared<CleanupIntentsTask>(&applier_, id);
+        cleanup_task->Prepare(cleanup_task);
+        participant_context_.Enqueue(cleanup_task.get());
       }
       return LockAndFindOrLoadResult{};
     }
@@ -1108,6 +1182,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     std::unique_lock<std::mutex> lock(mutex_);
     auto it = transactions_.insert(std::make_shared<RunningTransaction>(
         std::move(*metadata), next_write_id, this)).first;
+    TransactionsModifiedUnlocked();
 
     return LockAndFindOrLoadResult{std::move(lock), it};
   }
@@ -1140,11 +1215,16 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
   // Queue of transaction ids that should be cleaned, paired with request that should be completed
   // in order to be able to do clean.
   std::deque<CleanupQueueEntry> cleanup_queue_;
+
+  scoped_refptr<AtomicGauge<uint64_t>> metric_transactions_running_;
+  scoped_refptr<Counter> metric_transaction_load_attempts_;
+  scoped_refptr<Counter> metric_transaction_not_found_;
 };
 
 TransactionParticipant::TransactionParticipant(
-    TransactionParticipantContext* context, TransactionIntentApplier* applier)
-    : impl_(new Impl(context, applier)) {
+    TransactionParticipantContext* context, TransactionIntentApplier* applier,
+    const scoped_refptr<MetricEntity>& entity)
+    : impl_(new Impl(context, applier, entity)) {
 }
 
 TransactionParticipant::~TransactionParticipant() {

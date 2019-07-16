@@ -80,7 +80,8 @@ inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult
 typedef std::function<void(Result<TransactionStatusResult>)> TransactionStatusCallback;
 struct TransactionMetadata;
 
-YB_STRONGLY_TYPED_BOOL(MustExist);
+YB_DEFINE_ENUM(TransactionLoadFlag, (kMustExist)(kCleanup));
+typedef EnumBitSet<TransactionLoadFlag> TransactionLoadFlags;
 
 // Used by RequestStatusAt.
 struct StatusRequest {
@@ -89,7 +90,7 @@ struct StatusRequest {
   HybridTime global_limit_ht;
   int64_t serial_no;
   const std::string* reason;
-  MustExist must_exist;
+  TransactionLoadFlags flags;
   TransactionStatusCallback callback;
 };
 
