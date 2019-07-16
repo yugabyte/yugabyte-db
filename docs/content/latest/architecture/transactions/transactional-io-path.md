@@ -165,9 +165,7 @@ implement the more performant second option without an additional RPC round-trip
 We also select a point in time we call **global_limit**, computed as **physical_time +
 max_clock_skew**, which allows us to determine whether a particular record was written *definitely
 after* our read request started. **max_clock_skew** is a globally configured bound on clock skew
-between different YugaByte DB servers. (We've also designed an adaptive clock skew tracking algorithm
-that allows to avoid the need to specify a global clock skew bound, which is part of [YugaByte DB
-Enterprise Edition](https://www.yugabyte.com/enterprise-edition/)).
+between different YugaByte DB servers. 
 
 ### 2. Read from all tablets at the chosen hybrid time
 
