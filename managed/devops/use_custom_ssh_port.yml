@@ -1,0 +1,22 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- name: "Use custom SSH port"
+  hosts: "{{ yb_ansible_host }}"
+  become: yes
+  become_method: sudo
+  pre_tasks:
+    # Ensure Python 2.x is installed.
+    # http://stackoverflow.com/questions/32429259/ansible-fails-with-bin-sh-1-usr-bin-python-not-found
+    - name: 'install python 2.x'
+      raw: if grep Ubuntu /etc/issue >/dev/null; then sudo apt-get -y install python; fi
+  roles:
+    - ansible-sshd
+  vars:
+    sshd:
+      Port: "{{ custom_ssh_port }}"

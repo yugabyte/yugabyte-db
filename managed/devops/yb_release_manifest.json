@@ -1,0 +1,64 @@
+{
+  ".": [
+    "ansible.cfg",
+    "ansible_requirements_prod.yml",
+    "configure-cluster-server.yml",
+    "destroy-instance.yml",
+    "python_requirements_frozen.txt",
+    "use_custom_ssh_port.yml",
+    "yb-server-ctl.yml",
+    "yb-server-provision.yml"
+  ],
+  "bin": [
+    "bin/cluster_health.py",
+    "bin/common.sh",
+    "bin/install_ansible_requirements.sh",
+    "bin/install_python_requirements.sh",
+    "bin/install_ybops.sh",
+    "bin/py_wrapper",
+    "bin/run_playbook_locally.sh",
+    "bin/run_role_locally.sh",
+    "bin/ssh_wrapper_with_sudo.sh",
+    "bin/yb_bulk_load.py",
+    "bin/yb_backup.py",
+    "bin/ybcloud.sh"
+  ],
+  "filter_plugins": [
+    "filter_plugins/*"
+  ],
+  "group_vars": [
+    "group_vars/*"
+  ],
+  "inventory": [
+    "inventory/*"
+  ],
+  "opscli": [
+    "opscli/*"
+  ],
+  "plugins": [
+    "plugins/*"
+  ],
+  "roles": [
+    "roles/configure-cluster-server",
+    "roles/create_user",
+    "roles/destroy_instance",
+    "roles/install_mount_ephemeral_drives_script",
+    "roles/install_package",
+    "roles/mount_ephemeral_drives",
+    "roles/provision-cluster-server",
+    "roles/server_base",
+    "roles/swamper"
+  ],
+  "third-party/roles": [
+    "third-party/roles/ansible-prometheus",
+    "third-party/roles/ansible-sshd"
+  ],
+  "vars": [
+    "vars/placeholder.yml"
+  ],
+  "vars/cloud": [
+    "vars/cloud/aws.yml",
+    "vars/cloud/gcp.yml",
+    "vars/cloud/onprem.yml"
+  ]
+}

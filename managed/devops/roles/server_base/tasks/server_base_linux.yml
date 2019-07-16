@@ -1,0 +1,191 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+#
+# Common server configuration tasks for Linux (currently Debian and RedHat families).
+#
+# **** NOTE!! *****
+# This file handles requirements that are common across build/dev environment and prod/test
+# cluster environments. Do not put thing that are only need for build/development servers
+# here.
+# *****************
+#
+# Common handling (e.g., for installing packages with same name in various Linux flavors
+# go in this file). Requirements specific to Debian/Ubuntu vs. RedHat/CentOS are handled
+# in a custom file (e.g., server_base_debian.yml or server_base_redhat.yml).
+#
+
+# Disable sshguard. The Ubuntu image on Google Compute Engine has sshguard by default, which can
+# prevent legitimate SSH logins from succeeding.
+- name: Check if /etc/init.d/sshguard exists
+  stat:
+    path: /etc/init.d/sshguard
+  register: sshguard_file
+
+- name: Stop and disable sshguard
+  service:
+    name: sshguard
+    enabled: no
+    state: stopped
+  when: sshguard_file.stat.exists
+
+# Disable UseDNS to make logins faster and try to prevent sshguard lockout.
+# We only do this if /etc/ssh/sshd_config exists.
+# https://blog.alex-ross.co.uk/ansible-provision-slow-on-centos-host/
+# https://groups.google.com/forum/#!msg/gce-discussion/VytHvjJQ1CQ/nI5lZ61I7TMJ
+- name: Check if /etc/ssh/sshd_config exists
+  stat:
+    path: /etc/ssh/sshd_config
+  register: sshd_config_file
+
+- name: Disable reverse DNS lookup on SSH login
+  become: yes
+  become_method: sudo
+  lineinfile:
+    line: "useDNS no"
+    state: "present"
+    dest: "/etc/ssh/sshd_config"
+  when: sshd_config_file.stat.exists
+
+- name: Allow core dumps
+  become: yes
+  become_method: sudo
+  pam_limits:
+    domain: "*"
+    limit_type: "-"
+    limit_item: core
+    value: unlimited
+
+- name: Increase limit on number of open files
+  become: yes
+  become_method: sudo
+  pam_limits:
+    domain: "*"
+    limit_type: "-"
+    limit_item: nofile
+    value: 1048576
+
+- name: Increase limit on max number of processes
+  become: yes
+  become_method: sudo
+  pam_limits:
+    domain: "*"
+    limit_type: "-"
+    limit_item: nproc
+    value: 12000
+
+- name: Remove file /etc/security/limits.d/20-nproc.conf if present
+  become: yes
+  become_method: sudo
+  file:
+    path: /etc/security/limits.d/20-nproc.conf
+    state: absent
+
+- name: Update package cache on RedHat platforms
+  command: yum makecache fast -y
+  become: yes
+  when: ansible_os_family == "RedHat" and update_yum_cache
+
+- name: Set Linux packages to Install
+  set_fact:
+    linux_packages: "{{ required_packages }}"
+
+- name: Set Dev packages to Install
+  set_fact:
+    linux_packages: "{{ linux_packages + dev_packages }}"
+  when: install_dev_packages
+
+- name: Set Debian packages to Install
+  set_fact:
+    linux_packages: "{{ linux_packages + debian_packages }}"
+  when: install_dev_packages and ansible_os_family == "Debian"
+
+- name: Set RedHat packages to Install
+  set_fact:
+    linux_packages: "{{ linux_packages + redhat_packages }}"
+  when: install_dev_packages and ansible_os_family == "RedHat"
+
+- block:
+  - name: Find all yum repos
+    find:
+      paths: "/etc/yum.repos.d/"
+      patterns: "*.repo"
+    register: repos
+
+  - name: Replace mirror links from https to http
+    become: yes
+    become_method: sudo
+    replace:
+      dest: "{{ item.path }}"
+      regexp: '^#(baseurl=.*)$'
+      replace: '\1'
+      backup: no
+    with_items: "{{ repos.files }}"
+
+  - name: Replace mirror links from https to http
+    become: yes
+    become_method: sudo
+    replace:
+      dest: "{{ item.path }}"
+      regexp: '^(.*)https(.*)$'
+      replace: '\1http\2'
+      backup: no
+    with_items: "{{ repos.files }}"
+
+  when: ansible_os_family == "RedHat" and (cloud_type is not defined or cloud_type != "onprem")
+
+- name: Install epel-release if RedHat.
+  become: yes
+  become_method: sudo
+  yum:
+    name: epel-release
+    state: latest
+    update_cache: yes
+  register: result
+  until: result.rc == 0
+  retries: "{{ yum_retry_count }}"
+  when: ansible_os_family == "RedHat"
+
+- name: Install linux packages we need on our YugaByte clusters on CentOS
+  become: yes
+  become_method: sudo
+  yum:
+    name: "{{ item }}"
+    state: latest
+    update_cache: yes
+  with_items:
+    - "{{ linux_packages }}"
+  register: result
+  until: result.rc == 0
+  retries: "{{ yum_retry_count }}"
+  when: ansible_os_family == "RedHat"
+
+- name: Install linux packages we need on our YugaByte clusters
+  become: yes
+  become_method: sudo
+  package:
+    name: "{{ item }}"
+    state: latest
+  with_items:
+    - "{{ linux_packages }}"
+  register: result
+  until: result.rc == 0
+  retries: "{{ yum_retry_count }}"
+  when: ansible_os_family != "RedHat"
+
+- name: Register our custom SSH port "{{ custom_ssh_port }}" with SELinux
+  become: yes
+  become_method: sudo
+  seport:
+    ports: "{{ custom_ssh_port }}"
+    proto: tcp
+    setype: ssh_port_t
+    state: present
+  when: custom_ssh_port is defined and
+        ansible_port is defined and
+        custom_ssh_port == ansible_port and
+        ansible_os_family == "RedHat"
