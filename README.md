@@ -74,6 +74,17 @@ Review detailed architecture in our [Docs](https://docs.yugabyte.com/latest/arch
 
 As an open source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/latest/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of [our Forum](https://forum.yugabyte.com).
 
+# License
+
+Source code in this repository is variously licensed under the Apache License 2.0 and the Polyform Free Trial License 1.0.0. A copy of each license can be found in the [licenses](licenses) directory.
+
+The build produces two sets of binaries:
+* The entire database with all its features are licensed under the Apache License 2.0
+* The  binaries that contain `-managed` in the artifact and help run a managed service are licensed under the Polyform Free Trial License 1.0.0.
+
+> By default, the build options generate only the Apache License 2.0 binaries.
+
+
 # Read More
 
 * To see our updates, go to [The Distributed SQL Blog](https://blog.yugabyte.com/).
