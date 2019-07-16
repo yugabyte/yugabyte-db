@@ -413,6 +413,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   std::string LogPrefix() const;
 
+  void CleanupCheckpoints();
+
   FsManager* const fs_manager_;
 
   TabletServer* server_;

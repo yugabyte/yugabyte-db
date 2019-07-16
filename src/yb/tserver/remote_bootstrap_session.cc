@@ -206,6 +206,8 @@ Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::
   return result;
 }
 
+const std::string RemoteBootstrapSession::kCheckpointsDir = "checkpoints";
+
 Status RemoteBootstrapSession::Init() {
   // Take locks to support re-initialization of the same session.
   std::lock_guard<std::mutex> lock(mutex_);
@@ -237,7 +239,7 @@ Status RemoteBootstrapSession::Init() {
 
   MonoTime now = MonoTime::Now();
   auto* kv_store = tablet_superblock_.mutable_kv_store();
-  const auto checkpoints_dir = JoinPathSegments(kv_store->rocksdb_dir(), "checkpoints");
+  const auto checkpoints_dir = JoinPathSegments(kv_store->rocksdb_dir(), kCheckpointsDir);
 
   auto session_checkpoint_dir = std::to_string(last_logged_opid.index) + "_" + now.ToString();
   checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);

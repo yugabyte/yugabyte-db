@@ -116,7 +116,7 @@ vector<string> ExternalMiniClusterFsInspector::ListTablets() {
 
 vector<string> ExternalMiniClusterFsInspector::ListTabletsOnTS(int index) {
   string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
-  string meta_dir = JoinPathSegments(data_dir, FsManager::kRaftGroupMetadataDirName);
+  string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
   vector<string> tablets;
   CHECK_OK(ListFilesInDir(meta_dir, &tablets));
   return tablets;
@@ -173,20 +173,20 @@ int ExternalMiniClusterFsInspector::CountReplicasInMetadataDirs() {
   int count = 0;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
     string data_dir = cluster_->tablet_server(i)->GetFullDataDir();
-    count += CountFilesInDir(JoinPathSegments(data_dir, FsManager::kRaftGroupMetadataDirName));
+    count += CountFilesInDir(FsManager::GetRaftGroupMetadataDir(data_dir));
   }
   return count;
 }
 
 Status ExternalMiniClusterFsInspector::CheckNoDataOnTS(int index) {
   string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
-  if (CountFilesInDir(JoinPathSegments(data_dir, FsManager::kRaftGroupMetadataDirName)) > 0) {
+  if (CountFilesInDir(FsManager::GetRaftGroupMetadataDir(data_dir)) > 0) {
     return STATUS(IllegalState, "tablet metadata blocks still exist", data_dir);
   }
   if (CountWALSegmentsOnTS(index) > 0) {
     return STATUS(IllegalState, "wals still exist", data_dir);
   }
-  if (CountFilesInDir(JoinPathSegments(data_dir, FsManager::kConsensusMetadataDirName)) > 0) {
+  if (CountFilesInDir(FsManager::GetConsensusMetadataDir(data_dir)) > 0) {
     return STATUS(IllegalState, "consensus metadata still exists", data_dir);
   }
   return Status::OK();;
@@ -203,7 +203,7 @@ Status ExternalMiniClusterFsInspector::ReadTabletSuperBlockOnTS(int index,
                                                                 const string& tablet_id,
                                                                 RaftGroupReplicaSuperBlockPB* sb) {
   string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
-  string meta_dir = JoinPathSegments(data_dir, FsManager::kRaftGroupMetadataDirName);
+  string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
   string superblock_path = JoinPathSegments(meta_dir, tablet_id);
   return pb_util::ReadPBContainerFromPath(env_, superblock_path, sb);
 }
@@ -212,7 +212,7 @@ Status ExternalMiniClusterFsInspector::ReadConsensusMetadataOnTS(int index,
                                                                  const string& tablet_id,
                                                                  ConsensusMetadataPB* cmeta_pb) {
   string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
-  string cmeta_dir = JoinPathSegments(data_dir, FsManager::kConsensusMetadataDirName);
+  string cmeta_dir = FsManager::GetConsensusMetadataDir(data_dir);
   string cmeta_file = JoinPathSegments(cmeta_dir, tablet_id);
   if (!env_->FileExists(cmeta_file)) {
     return STATUS(NotFound, "Consensus metadata file not found", cmeta_file);
