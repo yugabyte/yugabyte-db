@@ -668,10 +668,8 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     fatal "Package path stored in '$package_path_file' does not exist: $YB_PACKAGE_PATH"
   fi
 
-  # Upload the package, if we have the enterprise-only code in this tree (even if the current build
-  # is a community edition build). Therefore we are not checking the $YB_EDITION env variable here.
-  # We also don't attempt to upload any packages for Phabricator (pre-commit) builds.
-  if [[ -d $YB_SRC_ROOT/ent ]] && ! is_jenkins_phabricator_build; then
+  # Upload the package.
+  if ! is_jenkins_phabricator_build; then
     . "$YB_SRC_ROOT/ent/build-support/upload_package.sh"
     if ! "$package_uploaded" && ! "$package_upload_skipped"; then
       FAILURES+=$'Package upload failed\n'
