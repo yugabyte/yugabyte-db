@@ -1,10 +1,35 @@
+---
+title: 7. Date and Time
+linkTitle: 7. Date and Time
+description: Date and Time
+menu:
+  latest:
+    parent: learn
+    name: 7. Date and Time
+    identifier: learn-date-and-time
+    weight: 569
+type: page
+isTocNested: true
+showAsideToc: true
+---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
+
+
 ## Introduction
 YugaByte DB has extensive date and time capability that may be daunting for the new user. Once understood, the rich functionality will allow you to perform very sophisticated calculations and granular time capture.
 
-Refer to the data types on https://docs.yugabyte.com/latest/api/ysql/datatypes/ for date and time types.
+Refer to the [data types section](https://docs.yugabyte.com/latest/api/ysql/datatypes/) for date and time types.
 
 ## Special Values
-There are special values that you can reference - YugaByte DB only caters for some, other special values from postgresql are not implemented in YugaByte, but some can be recreated if you require them. Below is YSQL to select special date and time values. First start ysql from your command line.
+There are special values that you can reference - YugaByte DB only caters for some, other special values from postgresql are not implemented in YugaByte DB, but some can be recreated if you require them. Below is YSQL to select special date and time values. First start ysql from your command line.
 
 ```sh
 ./bin/ysqlsh
@@ -24,7 +49,9 @@ postgres=# select make_timestamptz(1970, 01, 01, 00, 00, 00, 'UTC') as epoch;
 ------------------------
  1970-01-01 00:00:00+00
 
-postgres=# select (current_date-1)::timestamp as yesterday, current_date::timestamp as today, (current_date+1)::timestamp as tomorrow;
+postgres=# select (current_date-1)::timestamp as yesterday, 
+                  current_date::timestamp as today, 
+                  (current_date+1)::timestamp as tomorrow;
 
       yesterday      |        today        |      tomorrow       
 ---------------------+---------------------+---------------------
@@ -32,14 +59,10 @@ postgres=# select (current_date-1)::timestamp as yesterday, current_date::timest
 
 ```
 
-Note that YugaByte cannot create the special values of `infinity`, `-infinity` and `allballs` that can be found in postgresql. If you are wondering, 'allballs' is a theoretical time of "00:00:00.00 UTC".
+{{< note title="Note" >}}
+YugaByte DB cannot create the special values of `infinity`, `-infinity` and `allballs` that can be found in postgresql. If you are wondering, 'allballs' is a theoretical time of "00:00:00.00 UTC".
+{{< /note >}}
 
-## Current Timestamp in a Distributed Database
-A database normally obtains its date and time from the underlying server. However, in the case of a distributed database, it is one synchronized database that is spread across many servers that are unlikely to have synchronized time.
-
-A detailed explanation of how time is obtained can be found at https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/
-
-A simpler explanation is that the time is determined by the 'Shard Leader' of the table and this is the time used by all followers of the leader. Therefore there could be differences to the UTC timestamp of the underlying server to the current timestamp that is used for a transaction on a particular table.
 
 ## Formatting
 Date formatting is an important aspect. As you can see above, the examples show the default ISO format for dates and timestamps. We will now do some formatting of dates.
@@ -114,13 +137,18 @@ postgres=# select * from pg_timezone_names;
 (593 rows)
 
 ```
+
+{{< note title="Note" >}}
 **Not all 593 rows are shown**, so don't be concerned if the timezone you want is not there. Check your YSQL output to find the timezone you are interested in. What has been left in the results above is that there is a lot of inconsistency in the naming convention and definition of the timezones, this is not the doing of YugaByte!
+{{< /note >}}
 
 You can set the timezone to use for your session using the `SET` command. You can `SET` timezone using the timezone name as listed in pg_timezone_names, but not the abbreviation. You can also set the timezone to a numeric/decimal representation of the time offset. For example, -3.5 is 3 hours and 30 minutes before UTC. 
 
 It seems logical to be able to set the timezone using the `UTC_OFFSET` format above. YugaByte will allow this, however, be aware of the following behaviour if you choose this method:
 
->When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, YugaByte follows the ISO-8601 convention that positive timezone offsets are east of Greenwich. Therefore an entry of '+10:00:00' will result in a timezone offset of -10 Hours as this is deemed East of Greenwich. 
+{{< tip title="Tip" >}}
+When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, YugaByte follows the ISO-8601 convention that positive timezone offsets are east of Greenwich. Therefore an entry of '+10:00:00' will result in a timezone offset of -10 Hours as this is deemed East of Greenwich. 
+{{< /tip >}}
 
 Lets start examining dates and times within YugaByte.
 
@@ -225,7 +253,16 @@ If your application assumes a local time, ensure that it issues a `SET` command 
 Note that the `AT TIME ZONE` statement above does not cater for the variants of `WITH TIME ZONE` and `WITHOUT TIME ZONE`.
 
 
-## Timestamps and YSQL
+## Timestamps
+
+{{< note title="Note" >}}
+A database normally obtains its date and time from the underlying server. However, in the case of a distributed database, it is one synchronized database that is spread across many servers that are unlikely to have synchronized time.
+
+A detailed explanation of how time is obtained can be found at the blog post describing the [architecture of the storage layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/)
+
+A simpler explanation is that the time is determined by the 'Shard Leader' of the table and this is the time used by all followers of the leader. Therefore there could be differences to the UTC timestamp of the underlying server to the current timestamp that is used for a transaction on a particular table.
+{{< /note >}}
+
 Lets start working with dates and timestamps. The following assumes that you have installed the yb_demo database and its demo data.
 
 ```
@@ -345,7 +382,10 @@ yb_demo=# select d.order_id, to_char(o.created_at, 'DD-MON-YYYY HH AM') AS "Orde
 (10 rows)
 
 ```
-Note that your data will be slightly different as we used a `RANDOM()` function for setting the 'delivery_date' in the new 'order_deliveries' table.
+
+{{< note title="Note" >}}
+Your data will be slightly different as we used a `RANDOM()` function for setting the 'delivery_date' in the new 'order_deliveries' table.
+{{< /note >}}
 
 You can use views of the YugaByte Data Catalogs to create data that is already prepared and formatted for your application code so that your SQL is simpler. Below is an example that is defined in the yb_demo database (has no dependency on yb_demo). This demonstration shows how you can nominate a shortlist of timezones that are formatted and ready to use for display purposes.
 ```
@@ -397,7 +437,11 @@ yb_demo=# select * from tz;
 
 ```
 
-Assuming that you chose the timezones that interest you, then your results should be different to those shown above. Who would have thought that Australia needs 23 timezone records ?
+Assuming that you chose the timezones that interest you, then your results should be different to those shown above.
+
+{{< tip title="Fun Fact" >}}
+Who would have thought that Australia needs 23 timezone records ?
+{{< /tip >}}
 
 
 ## Date/Time Intervals
@@ -476,10 +520,11 @@ The above shows that date and time manipulation can be achieved in several ways.
 
 Ensure to cast your values thoroughly. Casts can be done for time(tz), date and timestamp(tz) like `MY_VALUE::timestamptz`. 
 
-Note that the `EXTRACT` command is the preferred command to `DATE_PART`. 
+{{< note title="Note" >}}
+The `EXTRACT` command is the preferred command to `DATE_PART`. 
+{{< /note >}}
 
-
-## Manipulating Dates and Times using Truncation
+## Manipulating using Truncation
 Another useful command is `DATE_TRUNC` which is used to 'floor' the timestamp to a particular unit. For the below YSQL, we assume that you are in the 'yb_demo' database with the demo data loaded.
 
 ```
@@ -543,10 +588,12 @@ postgres=# select to_char(current_date, 'Day, DD-MON-YYYY') AS "Today",
 
 The above approach is to `EXTRACT` the current day of the week as an integer. As today is a Tuesday, the result will be 2. As we know there are 7 days per week, we need to target a calculation that has a result of 8, being 1 day more than the 7th day. We use this to calculate how many days to add to the current date (7 days - 2 + 1 day) to arrive at the next Monday which is day of the week (ISO dow) #1. My addition of the `AT TIME ZONE` was purely illustrative and would not impact the result because I am dealing with days, and my timezone difference is only +10 hours, therefore it does not affect the date. However, if you are working with hours or smaller, then the timezone will *potentially* have a bearing on your result. 
 
-*For the very curious, why is there a gap after 'Tuesday' and 'Monday' in the example above? All 'Day' values are space padded to 9 characters. You could use string functions to remove the extra spaces if needed for formatting purposes or you could do a trimmed `TO_CHAR` for the 'Day' then concatenate with a comma and another `TO_CHAR` for the 'DD-MON-YYYY'.*
+{{< tip title="Fun Fact" >}}
+For the very curious, why is there a gap after 'Tuesday' and 'Monday' in the example above? All 'Day' values are space padded to 9 characters. You could use string functions to remove the extra spaces if needed for formatting purposes or you could do a trimmed `TO_CHAR` for the 'Day' then concatenate with a comma and another `TO_CHAR` for the 'DD-MON-YYYY'.
+{{< /tip >}}
 
 
-## Ambiguity - Working with DateStyle
+## Ambiguity - Using DateStyle
 
 People in different locations of the world are familiar with local representations of dates. Times are reasonably similar, but dates can differ. Within the USA, they use 3/5/19, whereas in Australia we would use 5/3/19 and in Europe they would use either 5.3.19 or 5/3/19. What is the date in question? 5th March, 2019. 
 
@@ -659,8 +706,14 @@ Best practise is to pass all text representations of date and time data types th
 The final example above illustrates the difficulty that can occur with dates. The system is expecting a 'DMY' value but your source is of format 'MDY', therefore YugaByte will not know how to convert it in ambiguous cases, therefore be explicit as shown.
 
 
-## Getting dirty -- into the logs we go...
-This is for those more interested in getting into some of the more finer points of control. YugaByte has inherited a lot of similar capability of the YSQL API to the PostgreSQL SQL API, and this will explain why when we start to look under the hood, it is looking very much like pg.
+## Getting dirty - into the logs we go...
+
+{{< note title="Note" >}}
+This is for those more interested in getting into some of the more finer points of control.
+{{< /note >}}
+
+
+YugaByte DB has inherited a lot of similar capability of the YSQL API to the PostgreSQL SQL API, and this will explain why when we start to look under the hood, it is looking very much like pg.
 
 YugaByte tracks its settings in its catalog, lets query some relevant settings and this time we will transform the layout of the query results using the `Expanded display` setting. This can be done in any database.
 
@@ -759,4 +812,4 @@ Now you don't need to make those settings each time you enter YSQL. However, app
 
 
 ## Conclusion
-As illustrated, the area of dates and times is a comprehensive area that is well addressed by PostgreSQL and hence YSQL within YugaByte. All of the date time data types are implemented, and the vast majority of methods, operators and special values are available. The functionality is complex enough for you to be able to code any shortfalls that you find within the YSQL implementation of its SQL API. 
+As illustrated, the area of dates and times is a comprehensive area that is well addressed by PostgreSQL and hence YSQL within YugaByte DB. All of the date time data types are implemented, and the vast majority of methods, operators and special values are available. The functionality is complex enough for you to be able to code any shortfalls that you find within the YSQL implementation of its SQL API. 
