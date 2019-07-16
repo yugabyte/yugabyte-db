@@ -66,10 +66,10 @@ menu:
     <a class="section-link icon-offset" href="enterprise-edition/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />      
-        <div class="title">Enterprise Edition</div>
+        <div class="title">YugaByte Platform</div>
       </div>
       <div class="body">
-        Running YugaByte DB using the Enterprise Edition.
+        Running YugaByte DB using the YugaByte Platform.
       </div>
     </a>
   </div>

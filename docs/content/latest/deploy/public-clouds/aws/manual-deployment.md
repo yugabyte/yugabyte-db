@@ -72,8 +72,8 @@ export MASTER_RPC_ADDRS="$MASTER1:7100,$MASTER2:7100,$MASTER3:7100"
 export ALL_NODES="$AZ1_NODES $AZ2_NODES $AZ3_NODES"
 export TSERVERS=$ALL_NODES
 
-# Assume you are using a CE (Community Edition) binary
-export TAR_FILE=yugabyte-ce-${YB_VERSION}-linux.tar.gz
+# The binary that you will use
+export TAR_FILE=yugabyte-${YB_VERSION}-linux.tar.gz
 ```
 
 ### Prepare Data Drives
@@ -280,11 +280,11 @@ for ip in $ALL_NODES; do \
    echo =======$ip=======; \
    ssh -i $PEM $ADMIN_USER@$ip \
       "cd ~/yb-software; \
-       curl -k -o yugabyte-ce-${YB_VERSION}-linux.tar.gz \
-         https://downloads.yugabyte.com/yugabyte-ce-${YB_VERSION}-linux.tar.gz"; \
+       curl -k -o yugabyte-${YB_VERSION}-linux.tar.gz \
+         https://downloads.yugabyte.com/yugabyte-${YB_VERSION}-linux.tar.gz"; \
    ssh -i $PEM $ADMIN_USER@$ip \
       "cd ~/yb-software; \
-       tar xvfz yugabyte-ce-${YB_VERSION}-linux.tar.gz"; \
+       tar xvfz yugabyte-${YB_VERSION}-linux.tar.gz"; \
    ssh -i $PEM $ADMIN_USER@$ip \
        "cd ~/yb-software/yugabyte-${YB_VERSION}; \
         ./bin/post_install.sh"; \

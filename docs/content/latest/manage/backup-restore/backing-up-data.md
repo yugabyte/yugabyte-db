@@ -13,14 +13,14 @@ menu:
     weight: 703
 ---
 
-This page covers backups for YugaByte DB CE. Here are some points to keep in mind.
+This page covers backups for YugaByte DB. Here are some points to keep in mind.
 
-- Export-based backups (YugaByte DB CE)
+- Export-based backups 
   - Single row ACID backups
   - Backup the schema and data separately
   - Multi-threaded parallelism
 
-- Distributed backups (YugaByte DB EE)
+- Distributed backups 
   - Single table ACID backups
   - Integrated backup solution, integrated with object stores such as AWS S3
   - Massively parallel, efficient for very large data sets

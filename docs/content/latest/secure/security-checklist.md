@@ -58,7 +58,7 @@ Limit the interfaces on which YugaByte DB instances listen for incoming connecti
 * Make the security groups assigned to the database servers very restrictive. Ensure that they can communicate with each other on the necessary ports, and expose only the client accessible ports to just the required set of servers. See the [list of YugaByte DB ports](../../deploy/checklist/#default-ports-reference).
 
 
-## Enable encryption on the wire (Enterprise Edition)
+## Enable encryption on the wire
 
 [TLS/SSL encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security) ensures that network communication between servers is secure. You can configure YugaByte DB to use TLS to encrypt intra-cluster and client to cluster network communication. It is recommended to enable TLS encryption over the wire in YugaByte DB clusters and clients to ensure privacy and integrity of data transferred over the network.
 
