@@ -2094,7 +2094,7 @@ ExternalTabletServer::~ExternalTabletServer() {
 Status ExternalTabletServer::Start(bool start_cql_proxy, bool start_pgsql_proxy) {
   vector<string> flags;
   start_cql_proxy_ = start_cql_proxy;
-  start_pgsql_proxy_ = start_pgsql_proxy;
+  enable_ysql_ = start_pgsql_proxy;
   flags.push_back("--fs_data_dirs=" + data_dir_);
   flags.push_back(Substitute("--rpc_bind_addresses=$0:$1",
                              bind_host_, rpc_port_));
@@ -2108,7 +2108,8 @@ Status ExternalTabletServer::Start(bool start_cql_proxy, bool start_pgsql_proxy)
   flags.push_back(Substitute("--cql_proxy_bind_address=$0:$1", bind_host_, cql_rpc_port_));
   flags.push_back(Substitute("--cql_proxy_webserver_port=$0", cql_http_port_));
   flags.push_back(Substitute("--start_cql_proxy=$0", start_cql_proxy_));
-  flags.push_back(Substitute("--start_pgsql_proxy=$0", start_pgsql_proxy_));
+  flags.push_back(Substitute("--start_pgsql_proxy=$0", enable_ysql_));
+  flags.push_back(Substitute("--enable_ysql=$0", enable_ysql_));
   flags.push_back("--tserver_master_addrs=" + master_addrs_);
 
   // Use conservative number of threads for the mini cluster for unit test env

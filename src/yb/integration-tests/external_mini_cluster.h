@@ -737,7 +737,7 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t cql_rpc_port_;
   const uint16_t cql_http_port_;
   bool start_cql_proxy_ = true;
-  bool start_pgsql_proxy_ = false;
+  bool enable_ysql_ = false;
   std::unique_ptr<server::ServerStatusPB> cqlserver_status_;
 
   friend class RefCountedThreadSafe<ExternalTabletServer>;

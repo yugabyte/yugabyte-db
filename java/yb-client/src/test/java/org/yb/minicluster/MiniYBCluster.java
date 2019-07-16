@@ -547,7 +547,7 @@ public class MiniYBCluster implements AutoCloseable {
     if (startPgSqlProxy) {
       tsCmdLine.addAll(Lists.newArrayList(
           "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + postgresPort,
-          "--start_pgsql_proxy"
+          "--enable_ysql"
       ));
       if (pgTransactionsEnabled) {
         tsCmdLine.add("--pg_transactions_enabled");
