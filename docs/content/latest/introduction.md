@@ -26,7 +26,7 @@ showAsideToc: true
 
 YugaByte DB is a high-performance distributed SQL database for powering global, internet-scale applications. Built using a unique combination of high-performance document store, auto sharding, per-shard distributed consensus replication and multi-shard ACID transactions (inspired by Google Spanner), YugaByte DB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures and global data distribution. As a cloud native database, it can be deployed across public and private clouds as well as in Kubernetes environments with ease.
 
-YugaByte DB Community Edition is developed and distributed as an [Apache 2.0 open source project](https://github.com/YugaByte/yugabyte-db/).
+YugaByte DB is developed and distributed as an [Apache 2.0 open source project](https://github.com/YugaByte/yugabyte-db/).
 
 ## What makes YugaByte DB unique?
 
@@ -60,8 +60,11 @@ YugaByte DB feature highlights are listed below.
 
 ### 5. Open Source
 
-- Fully functional distributed database available under [Apache 2.0 open source license](https://github.com/YugaByte/yugabyte-db/). Upgrade to [Enterprise Edition](https://www.yugabyte.com/product/compare/) anytime.
+- Fully functional distributed database available under [Apache 2.0 open source license](https://github.com/YugaByte/yugabyte-db/). 
 
+### 6. Built-in Enterprise Features
+
+- Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enterprise-features-as-open-source/), only open source distributed SQL database to have built-in enterprise features such as Distributed Backups, Data Encryption, and Read Replicas. Upcoming features such as Change Data Capture and 2 Data Center Deployments are also included in open source.
 
 ## What client APIs are supported by YugaByte DB?
 

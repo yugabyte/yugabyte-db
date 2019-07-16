@@ -1,9 +1,9 @@
 ---
-title: Enterprise Edition
-linkTitle: Enterprise Edition
-description: Troubleshoot Enterprise Edition
+title: YugaByte Platform
+linkTitle: YugaByte Platform
+description: YugaByte Platform
 image: /images/section_icons/manage/enterprise.png
-headcontent: Tools and issues specific to the Enterprise Edition.
+headcontent: Tools and issues specific to the YugaByte Platform.
 aliases:
   - /troubleshoot/enterprise-edition/
 menu:

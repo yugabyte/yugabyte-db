@@ -22,7 +22,7 @@ Download the YugaByte CE binary package as described in the [Quick Start section
 Copy the YugaByte DB package into each instace and then running the following commands.
 
 ```sh
-$ tar xvfz yugabyte-ce-<version>-<os>.tar.gz && cd yugabyte-<version>/
+$ tar xvfz yugabyte-<version>-<os>.tar.gz && cd yugabyte-<version>/
 ```
 
 ## Configure

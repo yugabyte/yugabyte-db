@@ -1,7 +1,7 @@
 ---
-title: Enterprise Edition
-linkTitle: Enterprise Edition
-description: Enterprise Edition
+title: YugaByte Platform
+linkTitle: YugaByte Platform
+description: YugaByte Platform
 aliases:
   - /faq/enterprise-edition/
 menu:
@@ -15,9 +15,9 @@ showAsideToc: true
 
 ## What is YugaWare?
 
-YugaWare, shipped as a part of YugaByte DB Enterprise, is the Admin Console for YugaByte DB. It has a built-in orchestration and monitoring engine for deploying YugaByte DB in any public or private cloud.
+YugaWare, shipped as a part of YugaByte Platform, is the Admin Console for YugaByte DB. It has a built-in orchestration and monitoring engine for deploying YugaByte DB in any public or private cloud.
 
-## How does the installation work for YugaByte DB Enterprise?
+## How does the installation work for YugaByte Platform?
 
 YugaWare first needs to be installed on any machine. The next step is to configure YugaWare to work with public and/or private clouds. In the case of public clouds, YugaWare spawns the machines to orchestrate bringing up the data platform. In the case of private clouds, you add the nodes you want to be a part of the data platform into YugaWare. YugaWare would need ssh access into these nodes in order to manage them.
 
@@ -59,7 +59,7 @@ For airgapped hosts a supported version of docker-engine (currently 1.7.1 to 17.
 
 Prerequisites for the YugaByte DB data nodes are listed [here](../../../deploy/multi-node-cluster/#prerequisites).
 
-## How are the build artifacts packaged and stored for YugaByte DB Enterprise?
+## How are the build artifacts packaged and stored for YugaByte Platform?
 
 The Admin Console software is packaged as a set of docker container images hosted on [Quay.io](https://quay.io/) container registry and managed by [Replicated](https://www.replicated.com/) management tool. Installation of the admin console starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images the Replicated.com container registry. YugaWare then becomes a managed application of Replicated, which starts by pulling the YugaWare container images from Quay.io for the very first time. Replicated ensures that YugaWare remains highly available as well as allows for instant upgrades by simply pulling the incremental container images associated with a newer YugaWare release. Note that if the host running the admin console does not have Internet connectivity, then a fully airgapped installation option is also available.
 
