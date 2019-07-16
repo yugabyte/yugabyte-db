@@ -162,6 +162,7 @@ class FsManager {
 
   // Return the directory where Raft group superblocks should be stored.
   std::string GetRaftGroupMetadataDir() const;
+  static std::string GetRaftGroupMetadataDir(const std::string& data_dir);
 
   // Return the path for a specific Raft group's superblock.
   std::string GetRaftGroupMetadataPath(const std::string& tablet_id) const;
@@ -174,6 +175,7 @@ class FsManager {
 
   // Return the directory where the consensus metadata is stored.
   std::string GetConsensusMetadataDir() const;
+  static std::string GetConsensusMetadataDir(const std::string& data_dir);
 
   // Return the path where ConsensusMetadataPB is stored.
   std::string GetConsensusMetadataPath(const std::string& tablet_id) const {
@@ -209,7 +211,6 @@ class FsManager {
 
  private:
   FRIEND_TEST(FsManagerTestBase, TestDuplicatePaths);
-  friend class itest::ExternalMiniClusterFsInspector; // for access to directory names
 
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
   CHECKED_STATUS Init();

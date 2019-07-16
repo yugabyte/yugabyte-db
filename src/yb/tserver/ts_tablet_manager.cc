@@ -76,6 +76,7 @@
 
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/remote_bootstrap_client.h"
+#include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/background_task.h"
@@ -431,13 +432,15 @@ Status TSTabletManager::Init() {
                 .set_max_threads(max_bootstrap_threads)
                 .Build(&open_tablet_pool_));
 
+  CleanupCheckpoints();
+
   // Search for tablets in the metadata dir.
   vector<string> tablet_ids;
   RETURN_NOT_OK(fs_manager_->ListTabletIds(&tablet_ids));
 
   InitLocalRaftPeerPB();
 
-  vector<RaftGroupMetadataPtr > metas;
+  vector<RaftGroupMetadataPtr> metas;
 
   // First, load all of the tablet metadata. We do this before we start
   // submitting the actual OpenTablet() tasks so that we don't have to compete
@@ -485,6 +488,34 @@ Status TSTabletManager::Init() {
   }
 
   return Status::OK();
+}
+
+void TSTabletManager::CleanupCheckpoints() {
+  for (const auto& data_root : fs_manager_->GetDataRootDirs()) {
+    auto tables_dir = JoinPathSegments(data_root, FsManager::kRocksDBDirName);
+    auto tables = fs_manager_->env()->GetChildren(tables_dir, ExcludeDots::kTrue);
+    if (!tables.ok()) {
+      LOG(WARNING) << "Failed to get tables in " << tables_dir << ": " << tables.status();
+      continue;
+    }
+    for (const auto& table : *tables) {
+      auto table_dir = JoinPathSegments(tables_dir, table);
+      auto tablets = fs_manager_->env()->GetChildren(table_dir, ExcludeDots::kTrue);
+      if (!tablets.ok()) {
+        LOG(WARNING) << "Failed to get tablets in " << table_dir << ": " << tables.status();
+        continue;
+      }
+      for (const auto& tablet : *tablets) {
+        auto checkpoints_dir = JoinPathSegments(
+            table_dir, tablet, RemoteBootstrapSession::kCheckpointsDir);
+        if (fs_manager_->env()->FileExists(checkpoints_dir)) {
+          LOG(INFO) << "Cleaning up checkpoints dir: " << yb::ToString(checkpoints_dir);
+          auto status = fs_manager_->env()->DeleteRecursively(checkpoints_dir);
+          WARN_NOT_OK(status, Format("Cleanup of checkpoints dir $0 failed", checkpoints_dir));
+        }
+      }
+    }
+  }
 }
 
 Status TSTabletManager::Start() {

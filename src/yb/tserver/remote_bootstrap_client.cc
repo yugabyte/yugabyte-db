@@ -557,7 +557,7 @@ Status RemoteBootstrapClient::EndRemoteSession() {
   EndRemoteBootstrapSessionRequestPB req;
   req.set_session_id(session_id_);
   req.set_is_success(succeeded_);
-  req.set_keep_session(true);
+  req.set_keep_session(succeeded_);
   EndRemoteBootstrapSessionResponsePB resp;
 
   LOG_WITH_PREFIX(INFO) << "Ending remote bootstrap session " << session_id_;
@@ -577,7 +577,7 @@ Status RemoteBootstrapClient::EndRemoteSession() {
   }
 
   status = UnwindRemoteError(status, controller);
-  return status.CloneAndPrepend(Substitute("Failure ending remote bootstrap session $0",
+  return status.CloneAndPrepend(Substitute("Failed to end remote bootstrap session $0",
                                            session_id_));
 }
 
