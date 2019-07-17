@@ -147,6 +147,8 @@ DEFINE_test_flag(bool, simulate_time_out_failures, false, "If true, we will rand
 DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
                  "Probability to respond that write request is failed");
 
+DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC fail.");
+
 DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
@@ -624,6 +626,11 @@ void TabletServiceAdminImpl::CreateTablet(const CreateTabletRequestPB* req,
 void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
                                           DeleteTabletResponsePB* resp,
                                           rpc::RpcContext context) {
+  if (PREDICT_FALSE(FLAGS_rpc_delete_tablet_fail)) {
+    context.RespondFailure(STATUS(NetworkError, "Simulating network partition for test"));
+    return;
+  }
+
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "DeleteTablet", req, resp, &context)) {
     return;
   }

@@ -171,6 +171,9 @@ class RetryingTSRpcTask : public MonitoredTask {
   // pool, rather than a reactor thread, so it may do blocking IO operations.
   void DoRpcCallback();
 
+  // Called when the async task unregisters either successfully or unsuccessfully.
+  virtual void UnregisterAsyncTaskCallback();
+
   Master* const master_;
   ThreadPool* const callback_pool_;
   const gscoped_ptr<TSPicker> replica_picker_;
@@ -294,6 +297,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  void UnregisterAsyncTaskCallback() override;
 
   const TabletId tablet_id_;
   const tablet::TabletDataState delete_type_;

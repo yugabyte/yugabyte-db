@@ -261,6 +261,30 @@ void DeleteTableTest::DeleteTabletWithRetries(const TServerDetails* ts,
   ASSERT_OK(s);
 }
 
+TEST_F(DeleteTableTest, TestPendingDeleteStateClearedOnFailure) {
+  vector<string> tserver_flags, master_flags;
+  master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=5000");
+  // Disable tablet delete operations.
+  tserver_flags.push_back("--rpc_delete_tablet_fail=true");
+  ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 3));
+  // Create a table on the cluster. We're just using TestWorkload
+  // as a convenient way to create it.
+  auto test_workload = TestWorkload(cluster_.get());
+  test_workload.Setup();
+
+  // The table should have replicas on all three tservers.
+  ASSERT_OK(inspect_->WaitForReplicaCount(3));
+
+  client_->TEST_set_admin_operation_timeout(MonoDelta::FromSeconds(10));
+
+  // Delete the table.
+  DeleteTable(TestWorkloadOptions::kDefaultTableName);
+
+  // Wait for the load balancer to report no pending deletes after the delete table fails.
+  ASSERT_OK(WaitFor([&] () { return client_->IsLoadBalanced(3); },
+            MonoDelta::FromSeconds(30), "IsLoadBalanced"));
+}
+
 // Test deleting an empty table, and ensure that the tablets get removed,
 // and the master no longer shows the table as existing.
 TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
