@@ -1702,6 +1702,7 @@ run_python_doctest() {
   for python_file in $file_list; do
     local basename=${python_file##*/}
     if [[ $python_file == managed/* ||
+          $python_file == cloud/* ||
           $python_file == src/postgres/src/test/locale/sort-test.py ]]; then
       continue
     fi
