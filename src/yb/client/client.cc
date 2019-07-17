@@ -85,6 +85,8 @@ using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
 using yb::master::GetTabletLocationsResponsePB;
+using yb::master::IsLoadBalancedRequestPB;
+using yb::master::IsLoadBalancedResponsePB;
 using yb::master::ListMastersRequestPB;
 using yb::master::ListMastersResponsePB;
 using yb::master::ListTablesRequestPB;
@@ -897,6 +899,20 @@ void YBClient::SetLocalTabletServer(const string& ts_uuid,
   data_->meta_cache_->SetLocalTabletServer(ts_uuid, proxy, local_tserver);
 }
 
+Result<bool> YBClient::IsLoadBalanced(uint32_t num_servers) {
+  IsLoadBalancedRequestPB req;
+  IsLoadBalancedResponsePB resp;
+
+  req.set_expected_num_servers(num_servers);
+  // Cannot use CALL_SYNC_LEADER_MASTER_RPC directly since this is susbstituted with RETURN_NOT_OK
+  // and we want to capture the status to check if load is balanced.
+  Status s = [&, this]() {
+    CALL_SYNC_LEADER_MASTER_RPC(req, resp, IsLoadBalanced);
+    return Status::OK();
+  }();
+  return s.ok();
+}
+
 Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             RepeatedPtrField<TabletLocationsPB>* tablets) {
@@ -1175,6 +1191,10 @@ bool YBClient::IsMultiMaster() const {
     return false;
   }
   return addrs.size() > 1;
+}
+
+void YBClient::TEST_set_admin_operation_timeout(const MonoDelta& timeout) {
+  data_->default_admin_operation_timeout_ = timeout;
 }
 
 const MonoDelta& YBClient::default_admin_operation_timeout() const {

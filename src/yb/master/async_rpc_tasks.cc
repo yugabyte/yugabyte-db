@@ -323,7 +323,11 @@ void RetryingTSRpcTask::RunDelayedTask(const Status& status) {
   }
 }
 
+void RetryingTSRpcTask::UnregisterAsyncTaskCallback() {}
+
 void RetryingTSRpcTask::UnregisterAsyncTask() {
+  UnregisterAsyncTaskCallback();
+
   auto s = state();
   if (!IsStateTerminal(s)) {
     LOG_WITH_PREFIX(FATAL) << "Invalid task state " << s;
@@ -475,11 +479,7 @@ void AsyncDeleteReplica::HandleResponse(int attempt) {
     VLOG(1) << "TS " << permanent_uuid_ << ": delete complete on tablet " << tablet_id_;
   }
   if (delete_done) {
-    master_->catalog_manager()->NotifyTabletDeleteFinished(permanent_uuid_, tablet_id_);
-    shared_ptr<TSDescriptor> ts_desc;
-    if (master_->ts_manager()->LookupTSByUUID(permanent_uuid_, &ts_desc)) {
-      ts_desc->ClearPendingTabletDelete(tablet_id_);
-    }
+    UnregisterAsyncTaskCallback();
   }
 }
 
@@ -498,6 +498,10 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
           << " (attempt " << attempt << "):\n"
           << req.DebugString();
   return true;
+}
+
+void AsyncDeleteReplica::UnregisterAsyncTaskCallback() {
+  master_->catalog_manager()->NotifyTabletDeleteFinished(permanent_uuid_, tablet_id_);
 }
 
 // ============================================================================

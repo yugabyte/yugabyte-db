@@ -450,6 +450,8 @@ class YBClient {
   // Result value is set only on success.
   Result<bool> TableExists(const YBTableName& table_name);
 
+  Result<bool> IsLoadBalanced(uint32_t num_servers);
+
   // Open the table with the given name or id. This will do an RPC to ensure that
   // the table exists and look up its schema.
   //
@@ -489,6 +491,8 @@ class YBClient {
   };
 
   bool IsMultiMaster() const;
+
+  void TEST_set_admin_operation_timeout(const MonoDelta& timeout);
 
   const MonoDelta& default_admin_operation_timeout() const;
   const MonoDelta& default_rpc_timeout() const;
