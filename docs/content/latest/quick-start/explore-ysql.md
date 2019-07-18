@@ -228,7 +228,7 @@ yb_demo=> SELECT users.id, users.name, users.email, orders.id, orders.total
           LIMIT 10;
 ```
 
-You should see somthing like the following:
+You should see something like the following:
 ```
   id  |        name         |             email             |  id   |      total
 ------+---------------------+-------------------------------+-------+------------------
