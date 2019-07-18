@@ -140,7 +140,7 @@ container_memory_usage:
       ticksuffix: "&nbsp;GB"
 
 container_volume_stats:
-  metric: "kubelet_volume_stats_used_bytes"
+  metric: "container_fs_usage_bytes"
   function: "sum"
   operator: "/ 1073741824"
   filters:
@@ -152,8 +152,22 @@ container_volume_stats:
     yaxis:
       ticksuffix: "&nbsp;GB"
       alias:
-        "kubelet_volume_stats_used_bytes": "used"
+        "container_fs_usage_bytes": "used"
 
+container_volume_max_usage:
+  metric: "container_fs_limit_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    pod_name: "yb-tserver-(.*)"
+  layout:
+    title: "Persistent Volume Stats"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;GB"
+      alias:
+        "container_fs_limit_bytes": "used"
 
 network_bytes:
   metric: ""

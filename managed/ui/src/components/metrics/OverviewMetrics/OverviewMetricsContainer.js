@@ -5,6 +5,7 @@ import { connect } from 'react-redux';
 import { OverviewMetrics } from '../../metrics';
 import { queryMetrics, queryMetricsSuccess, queryMetricsFailure,
   resetMetrics } from '../../../actions/graph';
+import { isKubernetesUniverse as checkKubernetesUniverse } from 'utils/UniverseUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -24,8 +25,10 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 const mapStateToProps = (state) => {
+  const isKubernetesUniverse = checkKubernetesUniverse(state.universe.currentUniverse.data);
   return {
-    graph: state.graph
+    isKubernetesUniverse,
+    graph: state.graph,
   };
 };
 

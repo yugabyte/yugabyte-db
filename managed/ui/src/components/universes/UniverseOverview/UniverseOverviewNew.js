@@ -290,8 +290,9 @@ export default class UniverseOverviewNew extends Component {
   getDiskUsageWidget = (universeInfo) => {
     // For kubernetes the disk usage would be in container tab, rest it would be server tab.
     const subTab = isKubernetesUniverse(universeInfo) ? "container" : "server";
+    const metricKey = isKubernetesUniverse(universeInfo) ? "container_memory_usage" : "disk_usage";
     return (
-      <StandaloneMetricsPanelContainer metricKey="disk_usage" type="overview">
+      <StandaloneMetricsPanelContainer metricKey={metricKey} type="overview">
         { props => {
           return (<YBWidget
             noMargin
@@ -303,6 +304,7 @@ export default class UniverseOverviewNew extends Component {
               <DiskUsagePanel
                 metric={props.metric}
                 className={"disk-usage-container"}
+                isKubernetes={isKubernetesUniverse(universeInfo)}
               />
             }
           />);
@@ -312,8 +314,12 @@ export default class UniverseOverviewNew extends Component {
 
 
   getCPUWidget = (universeInfo) => {
+    const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
     return (<Col lg={2} md={4} sm={4} xs={6}>
-      <StandaloneMetricsPanelContainer metricKey="cpu_usage" type="overview">
+      <StandaloneMetricsPanelContainer
+        metricKey={isItKubernetesUniverse ? 'container_cpu_usage': 'cpu_usage'}
+        type="overview"
+      >
         { props => {
           return (<YBWidget
             noMargin
@@ -323,6 +329,7 @@ export default class UniverseOverviewNew extends Component {
               <CpuUsagePanel
                  metric={props.metric}
                 className={"disk-usage-container"}
+                isKubernetes={isItKubernetesUniverse}
               />
             }
           />);

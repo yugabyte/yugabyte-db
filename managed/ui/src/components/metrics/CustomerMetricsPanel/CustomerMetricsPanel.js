@@ -22,6 +22,28 @@ const graphPanelTypes = {
   },
 };
 
+/**
+ * Move this logic out of render function because we need `selectedUniverse` prop
+ * that gets passed down from the `GraphPanelHeader` component.
+ */
+const PanelBody = ({ origin, selectedUniverse, nodePrefixes, width, tableName }) => {
+  const location = browserHistory.getCurrentLocation();
+  const currentQuery = location.query;
+  return (
+    <PanelGroup id={origin+" metrics"}>
+      {graphPanelTypes[origin].data.map(function (type, idx) {
+        // if we have subtab query param, then we would have that metric tab open by default
+        const isOpen = currentQuery.subtab ?
+          type === currentQuery.subtab :
+          graphPanelTypes[origin].isOpen[idx];
+        return (<GraphPanelContainer key={idx} isOpen={isOpen} type={type} width={width}
+          nodePrefixes={nodePrefixes} tableName={tableName}
+          selectedUniverse={selectedUniverse} />);
+      })}
+    </PanelGroup>
+  );
+};
+
 export default class CustomerMetricsPanel extends Component {
   static propTypes = {
     origin: PropTypes.oneOf(['customer', 'universe', 'table']).isRequired,
@@ -42,21 +64,10 @@ export default class CustomerMetricsPanel extends Component {
   }
 
   render() {
-    const { origin, nodePrefixes, width, tableName, isKubernetesUniverse } = this.props;
-    const location = browserHistory.getCurrentLocation();
-    const currentQuery = location.query;
-    const graphPanelContainers = graphPanelTypes[origin].data.map(function (type, idx) {
-      // if we have subtab query param, then we would have that metric tab open by default
-      const isOpen = currentQuery.subtab ? type === currentQuery.subtab : graphPanelTypes[origin].isOpen[idx];
-      return (<GraphPanelContainer key={idx} isOpen={isOpen} type={type} width={width}
-                  nodePrefixes={nodePrefixes} tableName={tableName} isKubernetesUniverse={isKubernetesUniverse} />);
-    });
-
+    const { origin } = this.props;
     return (
       <GraphPanelHeaderContainer origin={origin}>
-        <PanelGroup id={origin+" metrics"}>
-          {graphPanelContainers}
-        </PanelGroup>
+        <PanelBody {...this.props} />
       </GraphPanelHeaderContainer>
     );
   }

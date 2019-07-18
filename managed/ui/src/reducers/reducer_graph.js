@@ -22,15 +22,18 @@ export default function(state = INITIAL_STATE, action) {
       return { ...state, loading: true};
     case QUERY_METRICS_SUCCESS:
       let metricData = state.metrics;
-      metricData[action.panelType] = action.payload.data;
+      metricData[action.panelType] = {
+        ...metricData[action.panelType],
+        ...action.payload.data
+      };
       return { ...state, metrics: metricData, loading: false};
     case QUERY_METRICS_FAILURE:
       metricData = state.metrics;
-      metricData[action.panelType] = [];
+      metricData[action.panelType] = {};
       return { ...state, metrics: metricData, error: action.payload,
         loading: false};
     case RESET_METRICS:
-      return { ...state, metrics: [], loading: false, panelType: null};
+      return { ...state, metrics: {}, loading: false, panelType: null};
     default:
       return state;
   }
