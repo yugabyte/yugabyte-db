@@ -49,6 +49,7 @@
 
 using strings::Substitute;
 
+DECLARE_bool(simulate_fs_create_failure);
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
@@ -70,9 +71,10 @@ MiniMaster::~MiniMaster() {
   }
 }
 
-Status MiniMaster::Start() {
+Status MiniMaster::Start(bool simulate_fs_create_failure) {
   CHECK(!running_);
   FLAGS_rpc_server_allow_ephemeral_ports = true;
+  FLAGS_simulate_fs_create_failure = simulate_fs_create_failure;
   RETURN_NOT_OK(StartOnPorts(rpc_port_, web_port_));
   return master_->WaitForCatalogManagerInit();
 }

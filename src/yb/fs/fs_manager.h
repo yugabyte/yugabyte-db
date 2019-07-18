@@ -131,12 +131,17 @@ class FsManager {
 
   //
   // Returns an error if the file system is already initialized.
-  CHECKED_STATUS CreateInitialFileSystemLayout();
+  CHECKED_STATUS CreateInitialFileSystemLayout(bool delete_fs_if_lock_found = false);
 
   // Deletes the yb-data directory contents for data/wal. "logs" subdirectory deletion is skipped
   // when 'delete_logs_also' is set to false.
   // Needed for a master shell process to be stoppable and restartable correctly in shell mode.
   CHECKED_STATUS DeleteFileSystemLayout(bool delete_logs_also = false);
+
+  // Check if a lock file is present.
+  bool HasAnyLockFiles();
+  // Delete the lock files. Used once the caller deems fs creation was succcessful.
+  CHECKED_STATUS DeleteLockFiles();
 
   void DumpFileSystemTree(std::ostream& out);
 
@@ -172,6 +177,9 @@ class FsManager {
 
   // Return the path where InstanceMetadataPB is stored.
   std::string GetInstanceMetadataPath(const std::string& root) const;
+
+  // Return the path where the fs lock file is stored.
+  std::string GetFsLockFilePath(const std::string& root) const;
 
   // Return the directory where the consensus metadata is stored.
   std::string GetConsensusMetadataDir() const;
@@ -242,6 +250,7 @@ class FsManager {
   static const char *kRaftGroupMetadataDirName;
   static const char *kCorruptedSuffix;
   static const char *kInstanceMetadataFileName;
+  static const char *kFsLockFileName;
   static const char *kInstanceMetadataMagicNumber;
   static const char *kTabletSuperBlockMagicNumber;
   static const char *kConsensusMetadataDirName;

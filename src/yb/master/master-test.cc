@@ -1643,5 +1643,15 @@ TEST_F(MasterTest, TestGetTableSchema) {
   }
 }
 
+TEST_F(MasterTest, TestFailedMasterRestart) {
+  TearDown();
+
+  mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master-test"),
+                                    AllocateFreePort(), AllocateFreePort(), 0));
+  ASSERT_NOK(mini_master_->Start(true));
+  // Restart master should succeed.
+  ASSERT_OK(mini_master_->Start());
+}
+
 } // namespace master
 } // namespace yb
