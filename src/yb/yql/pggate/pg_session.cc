@@ -283,10 +283,11 @@ Status PgSession::UpdateSequenceTuple(int64_t db_oid,
   column_value->mutable_expr()->mutable_value()->set_bool_value(is_called);
 
   auto where_pb = write_request->mutable_where_expr()->mutable_condition();
-  where_pb->set_op(QL_OP_EXISTS);
 
   if (expected_last_val && expected_is_called) {
     // WHERE clause => WHERE last_val == expected_last_val AND is_called == expected_is_called.
+    where_pb->set_op(QL_OP_AND);
+
     auto cond = where_pb->add_operands()->mutable_condition();
     cond->set_op(QL_OP_EQUAL);
     cond->add_operands()->set_column_id(t->table()->schema().ColumnId(kPgSequenceLastValueColIdx));
@@ -296,6 +297,8 @@ Status PgSession::UpdateSequenceTuple(int64_t db_oid,
     cond->set_op(QL_OP_EQUAL);
     cond->add_operands()->set_column_id(t->table()->schema().ColumnId(kPgSequenceIsCalledColIdx));
     cond->add_operands()->mutable_value()->set_bool_value(*expected_is_called);
+  } else {
+    where_pb->set_op(QL_OP_EXISTS);
   }
 
   write_request->mutable_column_refs()->add_ids(

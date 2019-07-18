@@ -764,6 +764,7 @@ nextval_internal(Oid relid, bool check_permissions)
 	ReleaseSysCache(pgstuple);
 
 retry:
+	rescnt = 0;
 	if (IsYugaByteEnabled())
 	{
 		int64_t last_val;
@@ -912,6 +913,9 @@ check_bounds:
 	 */
 	if (IsYugaByteEnabled())
 	{
+		if (last == seq->last_value && seq->is_called == true) {
+		  YBC_DEBUG_LOG_FATAL("Invalid sequence value %ld", last);
+		}
 		bool skipped = false;
 		/*
 		 * We do a conditional update here to detect write conflicts with other sessions. If the
