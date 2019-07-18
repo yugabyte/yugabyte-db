@@ -24,14 +24,17 @@ YSQL uses the query layer from PostgreSQL v11.2, and intends to support most Pos
     - [x] Partial indexes
     - [ ] GIN Indexes
     - [ ] GIST Indexes
+- [ ] SQL
+    - [x] Common Table Expressions (CTE) and Recursive Queries
+    - [x] Upserts (`INSERT ... ON CONFLICT DO NOTHING/UPDATE`)
 - [ ] Transactions
     - [x] TRANSACTION blocks
     - [x] Serializable and Snapshot Isolation levels
     - [ ] Savepoints
 - [x] Expressions and Operators
 - [x] JOINS
-- [x] Stored Procedure (BETA)
-- [x] Triggers (BETA)
+- [x] Stored Procedure
+- [x] Triggers
 - [x] Views
 - [ ] Materialized Views
 - [ ] Authentication and RBAC
