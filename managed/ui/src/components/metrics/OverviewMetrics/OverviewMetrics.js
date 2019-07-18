@@ -15,12 +15,22 @@ const moment = require('moment');
 const OVERVIEW_METRICS_INTERVAL_MS = 36000;
 
 const panelTypes = {
-  overview: {title: "Overview",
-    metrics: ["total_rpcs_per_sec",
+  overview: {
+    title: "Overview",
+    metrics: [
+      "total_rpcs_per_sec",
       "tserver_ops_latency",
       "cpu_usage",
-      "disk_usage"]}
+      "disk_usage"
+    ]
+  }
 };
+const kubernetesMetrics = [
+  "container_cpu_usage",
+  "container_memory_usage",
+  "container_volume_stats",
+  "container_volume_max_usage"
+];
 
 class OverviewMetrics extends Component {
   static propTypes = {
@@ -51,7 +61,7 @@ class OverviewMetrics extends Component {
 
   queryMetricsType = graphFilter => {
     const {startMoment, endMoment, nodeName, nodePrefix} = graphFilter;
-    const {type} = this.props;
+    const { type, isKubernetesUniverse } = this.props;
     const params = {
       metrics: panelTypes[type].metrics,
       start: startMoment.format('X'),
@@ -70,8 +80,13 @@ class OverviewMetrics extends Component {
     if (isNonEmptyString(this.props.tableName)) {
       params.tableName = this.props.tableName;
     }
-
     this.props.queryMetrics(params, type);
+    if (isKubernetesUniverse) {
+      this.props.queryMetrics({
+        ...params,
+        metrics: kubernetesMetrics,
+      }, type);
+    }
   };
 
   componentWillUnmount() {
@@ -81,15 +96,19 @@ class OverviewMetrics extends Component {
   }
 
   render() {
-    const { type, graph: { metrics } } = this.props;
-    let panelItem = panelTypes[type].metrics.filter((metricKey) => metricKey !== "disk_usage" && metricKey !== "cpu_usage").map(function(metricKey, idx) {
-      return (<YBWidget key={type+idx}
-        noMargin
-        body={
-          <YBLoading />
-        }
-      />);
-    });
+    const { type, graph: { metrics }, isKubernetesUniverse } = this.props;
+
+    const metricKeys = isKubernetesUniverse ? panelTypes[type].metrics : kubernetesMetrics;
+    let panelItem = metricKeys.filter((metricKey) => (
+      metricKey !== "disk_usage" && metricKey !== "cpu_usage"))
+      .map(function(metricKey, idx) {
+        return (<YBWidget key={type+idx}
+          noMargin
+          body={
+            <YBLoading />
+          }
+        />);
+      });
     if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
       /* Logic here is, since there will be multiple instances of GraphPanel
       we basically would have metrics data keyed off panel type. So we
@@ -97,7 +116,7 @@ class OverviewMetrics extends Component {
       and group metrics by panel type and filter out anything that is empty.
       */
       const width = this.props.width;
-      panelItem = panelTypes[type].metrics.map((metricKey, idx) => {
+      panelItem = metricKeys.map((metricKey, idx) => {
         // skip disk_usage and cpu_usage due to separate widget
         if(metricKey !== "disk_usage" && metricKey !== "cpu_usage") {
           if(isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error) {

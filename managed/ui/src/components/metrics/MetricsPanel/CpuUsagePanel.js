@@ -11,20 +11,27 @@ export default class CpuUsagePanel extends Component {
   }
 
   render() {
+    const { isKubernetes, metric } = this.props;
     const usage = {
       system: undefined,
       user: undefined
     };
 
     try {
-      if (isNonEmptyArray(this.props.metric.data)) {
-        usage.system = parseFloat(this.props.metric.data.find((item)=>item.name==="system").y[0]);
-        usage.user = parseFloat(this.props.metric.data.find((item)=>item.name==="user").y[0]);
+      if (isNonEmptyArray(metric.data)) {
+        if (isKubernetes) {
+          usage.system = parseFloat(metric.data.find((item) => item.name === 'cpu_usage').y[0]);
+        } else {
+          usage.system = parseFloat(metric.data.find((item)=>item.name==="system").y[0]);
+          usage.user = parseFloat(metric.data.find((item)=>item.name==="user").y[0]);
+        }
       }    
     } catch (err) {
       console.log("CPU metric processing failed with: "+err);
     }
-    const value = usage.system ? Math.round((usage.system + usage.user) * 10 ) / 1000 : 0;
+    const value = usage.system ?
+      Math.round((usage.system + (usage.user !== undefined ? usage.user : 0)) * 10 ) / 1000 :
+      0;
     return (
       <div className="metrics-padded-panel cpu-usage-panel">
         { isNaN(usage.system) 
