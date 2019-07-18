@@ -13,7 +13,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-The user issued table creation is handled by the YB-Master leader, and is an asychronous API. The
+The user issued table creation is handled by the YB-Master leader, and is an asynchronous API. The
 YB-Master leader returns a success for the API once it has replicated both the table schema as well
 as all the other information needed to perform the table creation to the other YB-Masters in the
 RAFT group to make it resilient to failures.
