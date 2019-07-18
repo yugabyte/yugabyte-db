@@ -37,7 +37,7 @@ positional arguments:
     destroy             Destroy the current cluster
     restart             Restart the current cluster all at once
     wipe_restart        Stop the cluster, wipe all data files and start the
-                        cluster asbefore. Will lose all the flags though.
+                        cluster as before. Will lose all the flags though.
     add_node            Add a new node to the current cluster
     remove_node         Stop a particular node in the cluster.
     start_node          Start a particular node with flags.
