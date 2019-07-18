@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -97,6 +98,9 @@ public class ImportController extends Controller {
 
   @Inject
   ApiHelper apiHelper;
+
+  @Inject
+  ConfigHelper configHelper;
 
   public Result importUniverse(UUID customerUUID) {
     // Get the submitted form data.
@@ -306,7 +310,7 @@ public class ImportController extends Controller {
   /**
    * Import the various tablet servers from the masters.
    */
-  private Result importUniverseTservers(ImportUniverseFormData importForm, 
+  private Result importUniverseTservers(ImportUniverseFormData importForm,
                                         Customer customer,
                                         ObjectNode results) {
     String masterAddresses = importForm.masterAddresses;
@@ -438,7 +442,7 @@ public class ImportController extends Controller {
    *   - adding the universe to the active list of universes for this customer.
    *   - checking if node_exporter is reachable on all the nodes.
    */
-  private Result finishUniverseImport(ImportUniverseFormData importForm, 
+  private Result finishUniverseImport(ImportUniverseFormData importForm,
                                       Customer customer,
                                       ObjectNode results) {
     if (importForm.universeUUID == null || importForm.universeUUID.toString().isEmpty()) {
@@ -688,6 +692,10 @@ public class ImportController extends Controller {
     userIntent.regionList.add(region.uuid);
     userIntent.providerType = importForm.providerType;
     userIntent.instanceType = importForm.instanceType;
+    // Currently using YW version instead of YB version.
+    // TODO: #1842: Create YBClient endpoint for getting ybSoftwareVersion.
+    userIntent.ybSoftwareVersion = (String) configHelper.getConfig(
+      ConfigHelper.ConfigType.SoftwareVersion).get("version");
 
     InstanceType.upsert(importForm.providerType.toString(), importForm.instanceType.toString(),
                         0 /* numCores */, 0.0 /* memSizeGB */, new InstanceTypeDetails());
@@ -727,7 +735,7 @@ public class ImportController extends Controller {
 
     // Set this node as a part of the primary cluster.
     nodeDetails.placementUuid = taskParams.getPrimaryCluster().uuid;
-    
+
     // Set this node as live and running.
     nodeDetails.state = NodeDetails.NodeState.Live;
 
