@@ -7,6 +7,7 @@ import { MetricsPanel } from '../../metrics';
 import './GraphPanel.scss';
 import { YBLoading } from '../../common/indicators';
 import { isNonEmptyObject, isEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+import { isKubernetesUniverse } from 'utils/UniverseUtils';
 
 const panelTypes = {
   container: {title: "Container",
@@ -177,7 +178,6 @@ class GraphPanel extends Component {
     if (isNonEmptyString(this.props.tableName)) {
       params.tableName = this.props.tableName;
     }
-
     this.props.queryMetrics(params, type);
   };
 
@@ -193,7 +193,7 @@ class GraphPanel extends Component {
   }
 
   render() {
-    const { type, isKubernetesUniverse, graph: { metrics }} = this.props;
+    const { type, selectedUniverse, graph: { metrics }} = this.props;
 
     let panelItem = <YBLoading />;
     if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
@@ -212,14 +212,25 @@ class GraphPanel extends Component {
           : null;
       }).filter(Boolean);
     }
-    let panelData= panelItem;
+    const invalidPanelType = selectedUniverse && isKubernetesUniverse(selectedUniverse) ?
+      panelTypes[type].title === 'Node' :
+      panelTypes[type].title === 'Container';
+    if (invalidPanelType) {
+      return null;
+    }
+
+    let panelData = panelItem;
     if (isEmptyArray(panelItem)) {
       panelData = "Error receiving response from Graph Server";
     }
     return (
       <Panel id={panelTypes[type].title} key={panelTypes[type]} eventKey={this.props.eventKey} defaultExpanded={this.state.isOpen} className="metrics-container">
         <Panel.Heading>
-          <Panel.Title tag="h4" toggle onClick={()=>{this.setState({isOpen: !this.state.isOpen});}}>{panelTypes[type].title === "Node" && isKubernetesUniverse ? "Pod" : panelTypes[type].title}</Panel.Title>
+          <Panel.Title tag="h4" toggle
+            onClick={()=>{this.setState({isOpen: !this.state.isOpen});}}
+          >
+            {panelTypes[type].title}
+          </Panel.Title>
         </Panel.Heading>
         <Panel.Body collapsible>
           {panelData}

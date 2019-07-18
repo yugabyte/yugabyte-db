@@ -313,8 +313,11 @@ class GraphPanelHeader extends Component {
             </FlexContainer>
           </div>
         }
+        /* React.cloneELement for passing state down to child components in HOC */
         body={
-          this.props.children
+          React.cloneElement(this.props.children, {
+            selectedUniverse: this.state.currentSelectedUniverse
+          })
         }
         noBackground
       />
