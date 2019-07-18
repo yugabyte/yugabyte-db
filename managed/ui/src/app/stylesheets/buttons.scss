@@ -91,7 +91,7 @@
     border-color: $YB_GRAY_HOVER;
     background-color: $YB_GRAY_HOVER;
   }
-  &:active:focus, &:focus, &:active, &.active {
+  &:active:focus, &:focus, &:active, &.active, &.active:focus {
     border-color: darken($YB_GRAY, 2%);
     background-color: darken($YB_GRAY, 2%);
     box-shadow: none;
@@ -344,6 +344,9 @@ pre {
 .dropdown-menu {
   padding: 0;
   border: 0;
+  border-radius: 7px;
+  overflow: hidden;
+
   li {
     a, div {
       padding: 15px 20px;
