@@ -434,11 +434,11 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 
 Status RpcAndWebServerBase::Init() {
   Status s = fs_manager_->Open();
-  if (s.IsNotFound()) {
+  if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {
     LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
     LOG(INFO) << "Creating new FS layout";
     is_first_run_ = true;
-    RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(),
+    RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(true),
                           "Could not create new FS layout");
     s = fs_manager_->Open();
   }
