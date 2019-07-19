@@ -88,7 +88,7 @@ For YSQL (and YCQL) tables, every row is a document in DocDB.
 
 ### Primary Key Columns
 
-The document key contains the full primary key with column values in organized in the following order:
+The document key contains the full primary key with column values organized in the following order:
 
 * A 16-bit hash of the hash column values is stored first
 * The partition (hash) column(s) are stored next
