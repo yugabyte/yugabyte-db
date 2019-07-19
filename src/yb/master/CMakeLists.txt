@@ -140,8 +140,15 @@ ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
   DEPS ${MASTER_RPC_LIBS})
 
+# A library with common code shared between master tests.
+set(MASTER_TEST_COMMON_SRCS
+  master-test_base.cc)
+add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
+target_link_libraries(master_test_common
+  master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})
+
 # Tests
-set(YB_TEST_LINK_LIBS master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS master ${MASTER_PROTO_LIBS} master_test_common yb_client ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(sys_catalog-test)

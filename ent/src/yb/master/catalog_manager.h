@@ -14,93 +14,9 @@
 #define ENT_SRC_YB_MASTER_CATALOG_MANAGER_H
 
 #include "../../../../src/yb/master/catalog_manager.h"
-#include "yb/master/master_backup.pb.h"
 
 namespace yb {
 namespace master {
-
-// The data related to a snapshot which is persisted on disk.
-// This portion of SnapshotInfo is managed via CowObject.
-// It wraps the underlying protobuf to add useful accessors.
-struct PersistentSnapshotInfo : public Persistent<SysSnapshotEntryPB, SysRowEntry::SNAPSHOT> {
-  SysSnapshotEntryPB::State state() const {
-    return pb.state();
-  }
-
-  const std::string& state_name() const {
-    return SysSnapshotEntryPB::State_Name(state());
-  }
-
-  bool is_creating() const {
-    return state() == SysSnapshotEntryPB::CREATING;
-  }
-
-  bool started_deleting() const {
-    return state() == SysSnapshotEntryPB::DELETING ||
-           state() == SysSnapshotEntryPB::DELETED;
-  }
-
-  bool is_failed() const {
-    return state() == SysSnapshotEntryPB::FAILED;
-  }
-
-  bool is_cancelled() const {
-    return state() == SysSnapshotEntryPB::CANCELLED;
-  }
-
-  bool is_complete() const {
-    return state() == SysSnapshotEntryPB::COMPLETE;
-  }
-
-  bool is_restoring() const {
-    return state() == SysSnapshotEntryPB::RESTORING;
-  }
-
-  bool is_deleting() const {
-    return state() == SysSnapshotEntryPB::DELETING;
-  }
-};
-
-// The information about a snapshot.
-//
-// This object uses copy-on-write techniques similarly to TabletInfo.
-// Please see the TabletInfo class doc above for more information.
-class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
-                     public MetadataCowWrapper<PersistentSnapshotInfo> {
- public:
-  explicit SnapshotInfo(SnapshotId id);
-
-  virtual const std::string& id() const override { return snapshot_id_; };
-
-  SysSnapshotEntryPB::State state() const;
-
-  const std::string& state_name() const;
-
-  std::string ToString() const override;
-
-  // Returns true if the snapshot creation is in-progress.
-  bool IsCreateInProgress() const;
-
-  // Returns true if the snapshot restoring is in-progress.
-  bool IsRestoreInProgress() const;
-
-  // Returns true if the snapshot deleting is in-progress.
-  bool IsDeleteInProgress() const;
-
-  CHECKED_STATUS AddEntries(const scoped_refptr<NamespaceInfo> ns,
-                            const scoped_refptr<TableInfo>& table,
-                            const std::vector<scoped_refptr<TabletInfo> >& tablets);
-
- private:
-  friend class RefCountedThreadSafe<SnapshotInfo>;
-  ~SnapshotInfo() = default;
-
-  // The ID field is used in the sys_catalog table.
-  const SnapshotId snapshot_id_;
-
-  DISALLOW_COPY_AND_ASSIGN(SnapshotInfo);
-};
-
 namespace enterprise {
 
 class CatalogManager : public yb::master::CatalogManager {
@@ -165,10 +81,32 @@ class CatalogManager : public yb::master::CatalogManager {
   // Is encryption at rest enabled for this cluster.
   CHECKED_STATUS IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
                                      IsEncryptionEnabledResponsePB* resp);
+  // Create a new CDC stream with the specified attributes.
+  CHECKED_STATUS CreateCDCStream(const CreateCDCStreamRequestPB* req,
+                                 CreateCDCStreamResponsePB* resp,
+                                 rpc::RpcContext* rpc);
+
+  // Delete the specified CDCStream.
+  CHECKED_STATUS DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
+                                 DeleteCDCStreamResponsePB* resp,
+                                 rpc::RpcContext* rpc);
+
+  // List CDC streams (optionally, for a given table).
+  CHECKED_STATUS ListCDCStreams(const ListCDCStreamsRequestPB* req,
+                                ListCDCStreamsResponsePB* resp);
+
+  // Get CDC stream.
+  CHECKED_STATUS GetCDCStream(const GetCDCStreamRequestPB* req,
+                              GetCDCStreamResponsePB* resp,
+                              rpc::RpcContext* rpc);
+
+  // Delete CDC streams for a table.
+  CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) override;
 
  private:
   friend class SnapshotLoader;
   friend class ClusterLoadBalancer;
+  friend class CDCStreamLoader;
 
   CHECKED_STATUS RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id);
 
@@ -214,6 +152,25 @@ class CatalogManager : public yb::master::CatalogManager {
   static void SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
                                       SysSnapshotEntryPB* snapshot_pb);
 
+  // Create the cdc_state table if needed (i.e. if it does not exist already).
+  //
+  // This is called at the end of CreateCDCStream.
+  CHECKED_STATUS CreateCdcStateTableIfNeeded(rpc::RpcContext *rpc);
+
+  // Check if cdc_state table creation is done.
+  CHECKED_STATUS IsCdcStateTableCreated(IsCreateTableDoneResponsePB* resp);
+
+  // Return all CDC streams.
+  void GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>* streams);
+
+  // Delete specified CDC streams.
+  CHECKED_STATUS DeleteCDCStreams(const std::vector<scoped_refptr<CDCStreamInfo>>& streams);
+
+  // Find CDC streams for a table.
+  std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTable(const TableId& table_id);
+
+  bool CDCStreamExists(const CDCStreamId& stream_id) override;
+
   template <class Collection>
   typename Collection::value_type::second_type LockAndFindPtrOrNull(
       const Collection& collection, const typename Collection::value_type::first_type& key) {
@@ -226,7 +183,7 @@ class CatalogManager : public yb::master::CatalogManager {
     return cluster_config_;
   }
 
-  // Snapshot map: snapshot-id -> SnapshotInfo
+  // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo> > SnapshotInfoMap;
   SnapshotInfoMap snapshot_ids_map_;
   SnapshotId current_snapshot_id_;
@@ -236,6 +193,10 @@ class CatalogManager : public yb::master::CatalogManager {
   // Should catalog manager resend latest universe key registry to tserver.
   std::unordered_map<TabletServerId, bool> should_send_universe_key_registry_
   GUARDED_BY(should_send_universe_key_registry_mutex_);
+
+  // CDC Stream map: CDCStreamId -> CDCStreamInfo.
+  typedef std::unordered_map<CDCStreamId, scoped_refptr<CDCStreamInfo>> CDCStreamInfoMap;
+  CDCStreamInfoMap cdc_stream_map_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

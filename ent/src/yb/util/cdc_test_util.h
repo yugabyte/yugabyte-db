@@ -16,12 +16,18 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/rpc/rpc_controller.h"
 
 namespace yb {
 namespace cdc {
 
 void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& key,
                   int32_t value);
+
+void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
+                     const TableId& table_id,
+                     CDCStreamId* stream_id);
 
 } // namespace cdc
 } // namespace yb

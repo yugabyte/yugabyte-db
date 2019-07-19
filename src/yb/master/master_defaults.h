@@ -49,6 +49,12 @@ static const char* const kSystemSchemaPartitionsTableName = "partitions";
 static const char* const kSystemSchemaKeyspacesTableName = "keyspaces";
 static const char* const kSystemSchemaTablesTableName = "tables";
 
+static const char* const kCdcStateTableName = "cdc_state";
+static const char* const kCdcStreamId = "stream_id";
+static const char* const kCdcTabletId = "tablet_id";
+static const char* const kCdcCheckpoint  = "checkpoint";
+static const char* const kCdcData = "data";
+
 static const char* const kSystemAuthRolesTableName = "roles";
 static const char* const kSystemAuthRolePermissionsTableName = "role_permissions";
 static const char* const kSystemAuthResourceRolePermissionsIndexTableName =

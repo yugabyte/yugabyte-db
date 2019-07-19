@@ -22,9 +22,6 @@
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
-DEFINE_test_flag(int32, yb_num_total_tablets, 0,
-                 "The total number of tablets per table when a table is created.");
-
 DECLARE_bool(client_suppress_created_logs);
 DECLARE_int32(yb_num_shards_per_tserver);
 
@@ -234,18 +231,7 @@ Status YBTableCreator::Create() {
       num_tablets_ = 1;
       VLOG(1) << "num_tablets=1: using one tablet for a system table";
     } else {
-      if (FLAGS_yb_num_total_tablets > 0) {
-        num_tablets_ = FLAGS_yb_num_total_tablets;
-        VLOG(1) << "num_tablets=" << num_tablets_
-                << ": --yb_num_total_tablets is specified.";
-      } else {
-        int tserver_count = 0;
-        RETURN_NOT_OK(client_->TabletServerCount(&tserver_count, true /* primary_only */));
-        num_tablets_ = tserver_count * FLAGS_yb_num_shards_per_tserver;
-        VLOG(1) << "num_tablets = " << num_tablets_ << ": "
-                << "calculated as tserver_count * FLAGS_yb_num_shards_per_tserver ("
-                << tserver_count << " * " << FLAGS_yb_num_shards_per_tserver << ")";
-      }
+      num_tablets_ = VERIFY_RESULT(client_->NumTabletsForUserTable());
     }
   } else {
     VLOG(1) << "num_tablets: number of tablets explicitly specified: " << num_tablets_;

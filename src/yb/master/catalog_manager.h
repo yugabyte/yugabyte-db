@@ -342,6 +342,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                GetUDTypeInfoResponsePB* resp,
                                rpc::RpcContext* rpc);
 
+  // Delete CDC streams for a table.
+  virtual CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id);
+
   virtual CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
 
@@ -1082,6 +1085,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TasksTracker> tasks_tracker_;
 
  private:
+  virtual bool CDCStreamExists(const CDCStreamId& id);
+
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };
 
