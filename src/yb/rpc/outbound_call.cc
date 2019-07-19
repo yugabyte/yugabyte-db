@@ -230,20 +230,20 @@ OutboundCall::~OutboundCall() {
 }
 
 void OutboundCall::NotifyTransferred(const Status& status, Connection* conn) {
-  // TODO: would be better to cancel the transfer while it is still on the queue if we
-  // timed out before the transfer started, but there is still a race in the case of
-  // a partial send that we have to handle here
+  if (status.ok()) {
+    // Even when call is already finished (timed out) we should notify connection that it was sent
+    // because it should expect response with appropriate id.
+    conn->CallSent(shared_from(this));
+  }
+
   if (IsFinished()) {
-    DCHECK(IsTimedOut());
+    LOG_IF_WITH_PREFIX(DFATAL, !IsTimedOut())
+        << "Transferred call is in wrong state: " << state_.load(std::memory_order_acquire);
+  } else if (status.ok()) {
+    SetSent();
   } else {
-    if (status.ok()) {
-      conn->CallSent(shared_from(this));
-      SetSent();
-    } else {
-      VLOG_WITH_PREFIX(1) << "Connection torn down before " << ToString()
-                          << " could send its call: " << status.ToString();
-      SetFailed(status);
-    }
+    VLOG_WITH_PREFIX(1) << "Connection torn down: " << status;
+    SetFailed(status);
   }
 }
 
@@ -307,31 +307,59 @@ OutboundCall::State OutboundCall::state() const {
   return state_.load(std::memory_order_acquire);
 }
 
-void OutboundCall::set_state(State new_state) {
-  auto old_state = state_.exchange(new_state, std::memory_order_acquire);
+bool FinishedState(RpcCallState state) {
+  switch (state) {
+    case READY:
+    case ON_OUTBOUND_QUEUE:
+    case SENT:
+      return false;
+    case TIMED_OUT:
+    case FINISHED_ERROR:
+    case FINISHED_SUCCESS:
+      return true;
+  }
+  LOG(FATAL) << "Unknown call state: " << state;
+  return false;
+}
+
+bool ValidStateTransition(RpcCallState old_state, RpcCallState new_state) {
+  switch (new_state) {
+    case ON_OUTBOUND_QUEUE:
+      return old_state == READY;
+    case SENT:
+      return old_state == ON_OUTBOUND_QUEUE;
+    case TIMED_OUT:
+      return old_state == SENT || old_state == ON_OUTBOUND_QUEUE;
+    case FINISHED_SUCCESS:
+      return old_state == SENT;
+    case FINISHED_ERROR:
+      return old_state == SENT || old_state == ON_OUTBOUND_QUEUE || old_state == READY;
+    default:
+      // No sanity checks for others.
+      return true;
+  }
+}
+
+bool OutboundCall::SetState(State new_state) {
+  auto old_state = state_.load(std::memory_order_acquire);
   // Sanity check state transitions.
   DVLOG(3) << "OutboundCall " << this << " (" << ToString() << ") switching from " <<
     StateName(old_state) << " to " << StateName(new_state);
-  switch (new_state) {
-    case ON_OUTBOUND_QUEUE:
-      DCHECK_EQ(old_state, READY);
-      break;
-    case SENT:
-      DCHECK_EQ(old_state, ON_OUTBOUND_QUEUE);
-      break;
-    case TIMED_OUT:
-      DCHECK(old_state == SENT || old_state == ON_OUTBOUND_QUEUE) << "Real state: " << old_state;
-      break;
-    case FINISHED_SUCCESS:
-      DCHECK_EQ(old_state, SENT);
-      break;
-    case FINISHED_ERROR:
-      DCHECK(old_state == SENT || old_state == ON_OUTBOUND_QUEUE || old_state == READY)
-          << "Real state: " << old_state;
-      break;
-    default:
-      // No sanity checks for others.
-      break;
+  for (;;) {
+    if (FinishedState(old_state)) {
+      VLOG(1) << "Call already finished: " << RpcCallState_Name(old_state) << ", new state: "
+              << RpcCallState_Name(new_state);
+      return false;
+    }
+    if (!ValidStateTransition(old_state, new_state)) {
+      LOG(DFATAL)
+          << "Invalid call state transition: " << RpcCallState_Name(old_state) << " => "
+          << RpcCallState_Name(new_state);
+      return false;
+    }
+    if (state_.compare_exchange_weak(old_state, new_state, std::memory_order_acq_rel)) {
+      return true;
+    }
   }
 }
 
@@ -389,8 +417,9 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
                                 response_->InitializationErrorString()));
       return;
     }
-    set_state(FINISHED_SUCCESS);
-    InvokeCallback();
+    if (SetState(FINISHED_SUCCESS)) {
+      InvokeCallback();
+    }
   } else {
     // Error
     auto err = std::make_unique<ErrorStatusPB>();
@@ -410,7 +439,7 @@ void OutboundCall::SetQueued() {
   if (outbound_call_metrics_) {
     outbound_call_metrics_->queue_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   }
-  set_state(ON_OUTBOUND_QUEUE);
+  SetState(ON_OUTBOUND_QUEUE);
   TRACE_TO_WITH_TIME(trace_, end_time, "Queued.");
 }
 
@@ -420,7 +449,7 @@ void OutboundCall::SetSent() {
   if (outbound_call_metrics_) {
     outbound_call_metrics_->send_time->Increment(end_time.GetDeltaSince(start_).ToMicroseconds());
   }
-  set_state(SENT);
+  SetState(SENT);
   TRACE_TO_WITH_TIME(trace_, end_time, "Call Sent.");
 }
 
@@ -430,13 +459,15 @@ void OutboundCall::SetFinished() {
     outbound_call_metrics_->time_to_response->Increment(
         MonoTime::Now().GetDeltaSince(start_).ToMicroseconds());
   }
-  set_state(FINISHED_SUCCESS);
-  InvokeCallback();
+  if (SetState(FINISHED_SUCCESS)) {
+    InvokeCallback();
+  }
   TRACE_TO(trace_, "Callback called.");
 }
 
 void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB> err_pb) {
   TRACE_TO(trace_, "Call Failed.");
+  bool invoke_callback;
   {
     std::lock_guard<simple_spinlock> l(lock_);
     status_ = status;
@@ -446,13 +477,16 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
     } else {
       CHECK(!err_pb);
     }
-    set_state(FINISHED_ERROR);
+    invoke_callback = SetState(FINISHED_ERROR);
   }
-  InvokeCallback();
+  if (invoke_callback) {
+    InvokeCallback();
+  }
 }
 
 void OutboundCall::SetTimedOut() {
   TRACE_TO(trace_, "Call TimedOut.");
+  bool invoke_callback;
   {
     auto status = STATUS_FORMAT(TimedOut,
                                 "$0 RPC to $1 timed out after $2",
@@ -461,9 +495,11 @@ void OutboundCall::SetTimedOut() {
                                 controller_->timeout());
     std::lock_guard<simple_spinlock> l(lock_);
     status_ = std::move(status);
-    set_state(TIMED_OUT);
+    invoke_callback = SetState(TIMED_OUT);
   }
-  InvokeCallback();
+  if (invoke_callback) {
+    InvokeCallback();
+  }
 }
 
 bool OutboundCall::IsTimedOut() const {
@@ -471,19 +507,7 @@ bool OutboundCall::IsTimedOut() const {
 }
 
 bool OutboundCall::IsFinished() const {
-  auto state = state_.load(std::memory_order_acquire);
-  switch (state) {
-    case READY:
-    case ON_OUTBOUND_QUEUE:
-    case SENT:
-      return false;
-    case TIMED_OUT:
-    case FINISHED_ERROR:
-    case FINISHED_SUCCESS:
-      return true;
-  }
-  LOG(FATAL) << "Unknown call state: " << state;
-  return false;
+  return FinishedState(state_.load(std::memory_order_acquire));
 }
 
 Status OutboundCall::GetSidecar(int idx, Slice* sidecar) const {

@@ -13,7 +13,7 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <yb/yql/cql/ql/util/errcodes.h>
+#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 
@@ -31,6 +31,7 @@
 #include "yb/rpc/thread_pool.h"
 #include "yb/util/decimal.h"
 #include "yb/util/logging.h"
+#include "yb/util/random_util.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 
@@ -1400,9 +1401,13 @@ void Executor::FlushAsync() {
         CommitDone(s, exec_context);
       });
   }
+  // Use the same score on each tablet. So probability of rejecting write should be related
+  // to used capacity.
+  auto memory_limit_score = RandomUniformReal<double>(0.01, 1);
   for (const auto& pair : flush_sessions) {
     auto session = pair.first;
     auto exec_context = pair.second;
+    session->SetMemoryLimitScore(memory_limit_score);
     TRACE("Flush Async");
     session->FlushAsync([this, exec_context](const Status& s) {
         FlushAsyncDone(s, exec_context);

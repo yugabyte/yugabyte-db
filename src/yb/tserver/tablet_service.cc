@@ -224,16 +224,17 @@ Status GetTabletRef(const TabletPeerPtr& tablet_peer,
 
 template<class Resp>
 bool TabletServiceImpl::CheckMemoryPressureOrRespond(
-    tablet::Tablet* tablet, Resp* resp, rpc::RpcContext* context) {
+    double score, tablet::Tablet* tablet, Resp* resp, rpc::RpcContext* context) {
   // Check for memory pressure; don't bother doing any additional work if we've
   // exceeded the limit.
-  double capacity_pct;
-  if (tablet->mem_tracker()->AnySoftLimitExceeded(&capacity_pct)) {
+  auto soft_limit_exceeded_result = tablet->mem_tracker()->AnySoftLimitExceeded(score);
+  if (soft_limit_exceeded_result.exceeded) {
     tablet->metrics()->leader_memory_pressure_rejections->Increment();
     string msg = StringPrintf(
-        "Soft memory limit exceeded (at %.2f%% of capacity)",
-        capacity_pct);
-    if (capacity_pct >= FLAGS_memory_limit_warn_threshold_percentage) {
+        "Soft memory limit exceeded (at %.2f%% of capacity), score: %.2f",
+        soft_limit_exceeded_result.current_capacity_pct, score);
+    if (soft_limit_exceeded_result.current_capacity_pct >=
+            FLAGS_memory_limit_warn_threshold_percentage) {
       YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
     } else {
       YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
@@ -467,7 +468,7 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
         server_->tablet_peer_lookup(), req->tablet_id(), resp, &context));
     tablet.leader_term = OpId::kUnknownTerm;
   }
-  if (!tablet || !CheckMemoryPressureOrRespond(tablet.peer->tablet(), resp, &context)) {
+  if (!tablet) {
     return;
   }
 
@@ -740,7 +741,9 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   auto tablet = LookupLeaderTabletOrRespond(
       server_->tablet_peer_lookup(), req->tablet_id(), resp, &context);
-  if (!tablet || !CheckMemoryPressureOrRespond(tablet.peer->tablet(), resp, &context)) {
+  if (!tablet ||
+      !CheckMemoryPressureOrRespond(
+          req->memory_limit_score(), tablet.peer->tablet(), resp, &context)) {
     return;
   }
 
@@ -1097,9 +1100,11 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     // always write read intents to detect conflicts with other writes.
     leader_peer = LookupLeaderTabletOrRespond(
         server_->tablet_peer_lookup(), req->tablet_id(), resp, &context, std::move(tablet_peer));
-    // Serialiable read adds intents, i.e. writes data.
+    // Serializable read adds intents, i.e. writes data.
     // We should check for memory pressure in this case.
-    if (!leader_peer || !CheckMemoryPressureOrRespond(leader_peer.peer->tablet(), resp, &context)) {
+    if (!leader_peer ||
+        !CheckMemoryPressureOrRespond(
+            req->memory_limit_score(), leader_peer.peer->tablet(), resp, &context)) {
       return;
     }
     read_context.tablet = leader_peer.peer->shared_tablet();

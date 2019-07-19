@@ -271,6 +271,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel con
   if (!transaction_metadata.transaction_id.is_nil()) {
     SetTransactionMetadata(transaction_metadata, batcher_->may_have_metadata(), &req_);
   }
+  req_.set_memory_limit_score(data->memory_limit_score);
 }
 
 template <class Req, class Resp>

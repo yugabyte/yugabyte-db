@@ -187,6 +187,7 @@ message WriteRequestPB {
   optional fixed64 client_id2 = 15;
   optional int64 request_id = 16;
   optional int64 min_running_request_id = 17;
+  optional double memory_limit_score = 18;
 }
 
 message WriteResponsePB {
@@ -284,6 +285,8 @@ message ReadRequestPB {
   optional string proxy_uuid = 11;
 
   optional bool may_have_metadata = 12;
+
+  optional double memory_limit_score = 13;
 }
 
 message ReadResponsePB {

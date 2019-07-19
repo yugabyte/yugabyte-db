@@ -612,7 +612,7 @@ void Batcher::FlushBuffer(
   std::shared_ptr<AsyncRpc> rpc;
   auto op_group = GetOpGroup(*begin);
   AsyncRpcData data{this, tablet, allow_local_calls_in_curr_thread, need_consistent_read,
-                    std::move(ops)};
+                    memory_limit_score_, std::move(ops)};
   switch (op_group) {
     case OpGroup::kWrite:
       rpc = std::make_shared<WriteRpc>(&data);

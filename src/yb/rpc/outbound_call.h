@@ -326,7 +326,7 @@ class OutboundCall : public RpcCall {
 
   void NotifyTransferred(const Status& status, Connection* conn) override;
 
-  void set_state(State new_state);
+  bool SetState(State new_state);
   State state() const;
 
   // Same as set_state, but requires that the caller already holds

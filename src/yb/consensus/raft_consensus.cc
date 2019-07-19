@@ -1179,23 +1179,6 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
   RETURN_NOT_OK(ExecuteHook(PRE_UPDATE));
   response->set_responder_uuid(state_->GetPeerUuid());
 
-  double capacity_pct;
-  if (parent_mem_tracker_->AnySoftLimitExceeded(&capacity_pct)) {
-    follower_memory_pressure_rejections_->Increment();
-    string msg = StringPrintf(
-        "Soft memory limit exceeded (at %.2f%% of capacity)",
-        capacity_pct);
-    if (capacity_pct >= FLAGS_memory_limit_warn_threshold_percentage) {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting consensus request: " << msg
-                                    << THROTTLE_MSG;
-    } else {
-      YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting consensus request: " << msg
-                                 << THROTTLE_MSG;
-    }
-    YB_LOG_EVERY_N_SECS(INFO, 600) << "Mem trackers:\n" << DumpMemTrackers();
-    return STATUS(ServiceUnavailable, msg);
-  }
-
   VLOG_WITH_PREFIX(2) << "Replica received request: " << request->ShortDebugString();
 
   UpdateReplicaResult result;

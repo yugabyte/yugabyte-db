@@ -587,46 +587,41 @@ bool MemTracker::LimitExceeded() {
   return false;
 }
 
-bool MemTracker::SoftLimitExceeded(double* current_capacity_pct) {
+SoftLimitExceededResult MemTracker::SoftLimitExceeded(double score) {
   // Did we exceed the actual limit?
   if (LimitExceeded()) {
-    if (current_capacity_pct) {
-      *current_capacity_pct =
-          static_cast<double>(consumption()) / limit() * 100;
-    }
-    return true;
+    return {true, consumption() * 100.0 / limit()};
   }
 
   // No soft limit defined.
   if (!has_limit() || limit_ == soft_limit_) {
-    return false;
+    return {false, 0.0};
   }
 
   // Are we under the soft limit threshold?
   int64_t usage = consumption();
   if (usage < soft_limit_) {
-    return false;
+    return {false, 0.0};
   }
 
   // We're over the threshold; were we randomly chosen to be over the soft limit?
-  if (usage + rand_.Uniform64(limit_ - soft_limit_) > limit_) {
-    bool exceeded = GcMemory(soft_limit_);
-    if (exceeded && current_capacity_pct) {
-      *current_capacity_pct =
-          static_cast<double>(consumption()) / limit() * 100;
-    }
-    return exceeded;
+  if (score == 0.0) {
+    score = RandomUniformReal<double>();
   }
-  return false;
+  if (usage + (limit_ - soft_limit_) * score > limit_ && GcMemory(soft_limit_)) {
+    return {true, usage * 100.0 / limit()};
+  }
+  return {false, 0.0};
 }
 
-bool MemTracker::AnySoftLimitExceeded(double* current_capacity_pct) {
+SoftLimitExceededResult MemTracker::AnySoftLimitExceeded(double score) {
   for (MemTracker* t : limit_trackers_) {
-    if (t->SoftLimitExceeded(current_capacity_pct)) {
-      return true;
+    auto result = t->SoftLimitExceeded(score);
+    if (result.exceeded) {
+      return result;
     }
   }
-  return false;
+  return {false, 0.0};
 }
 
 int64_t MemTracker::SpareCapacity() const {
