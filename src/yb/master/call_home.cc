@@ -253,6 +253,10 @@ class TablesCollector : public CollectorBase {
     req.set_exclude_system_tables(true);
     ListTablesResponsePB resp;
     auto status = master()->catalog_manager()->ListTables(&req, &resp);
+    if (!status.ok()) {
+      LOG(INFO) << "Error getting number of tables";
+      return;
+    }
     if (collection_level == CollectionLevel::LOW) {
       json_ = Substitute("\"tables\":$0", resp.tables_size());
     } else {
