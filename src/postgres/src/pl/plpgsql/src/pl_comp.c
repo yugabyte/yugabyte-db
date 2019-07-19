@@ -172,9 +172,7 @@ recheck:
 	if (function)
 	{
 		/* We have a compiled function, but is it still valid? */
-		// TODO(dmitry) once ALTER FUNCTION will be supported in YB mode detect that function could be
-		// changed and recompile.
-		if (IsYugaByteEnabled() ? true :
+		if (IsYugaByteEnabled() ? function->yb_catalog_version == yb_catalog_cache_version :
 				(function->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
 				ItemPointerEquals(&function->fn_tid, &procTup->t_self)))
 			function_valid = true;
@@ -371,6 +369,8 @@ do_compile(FunctionCallInfo fcinfo,
 		function->fn_is_trigger = PLPGSQL_NOT_TRIGGER;
 
 	function->fn_prokind = procStruct->prokind;
+
+	function->yb_catalog_version = yb_catalog_cache_version;
 
 	/*
 	 * Initialize the compiler, particularly the namespace stack.  The

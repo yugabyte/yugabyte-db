@@ -1512,7 +1512,7 @@ create function test_table_func_rec() returns setof found_test_tbl as '
 DECLARE
 	rec RECORD;
 BEGIN
-	FOR rec IN select * from found_test_tbl LOOP
+	FOR rec IN select * from found_test_tbl order by a LOOP
 		RETURN NEXT rec;
 	END LOOP;
 	RETURN;
@@ -1524,7 +1524,7 @@ create function test_table_func_row() returns setof found_test_tbl as '
 DECLARE
 	row found_test_tbl%ROWTYPE;
 BEGIN
-	FOR row IN select * from found_test_tbl LOOP
+	FOR row IN select * from found_test_tbl order by a LOOP
 		RETURN NEXT row;
 	END LOOP;
 	RETURN;
@@ -2924,12 +2924,12 @@ select forc01();
 
 -- try updating the cursor's current row
 
-create temp table forc_test as
+create table forc_test as
   select n as i, n as j from generate_series(1,10) n;
 
 create or replace function forc01() returns void as $$
 declare
-  c cursor for select * from forc_test;
+  c cursor for select * from forc_test order by i;
 begin
   for r in c loop
     raise notice '%, %', r.i, r.j;
@@ -2948,7 +2948,7 @@ declare
   c refcursor := 'fooled_ya';
   r record;
 begin
-  open c for select * from forc_test;
+  open c for select * from forc_test order by i;
   loop
     fetch c into r;
     exit when not found;
@@ -2998,8 +2998,8 @@ insert into tabwithcols values(10,20,30,40),(50,60,70,80);
 create or replace function returnqueryf()
 returns setof tabwithcols as $$
 begin
-  return query select * from tabwithcols;
-  return query execute 'select * from tabwithcols';
+  return query select * from tabwithcols order by a;
+  return query execute 'select * from tabwithcols' order by a;
 end;
 $$ language plpgsql;
 

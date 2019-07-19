@@ -39,7 +39,7 @@ create table atacc1 (a int4 not null, b int4, c int4 not null, d int4);
 insert into atacc1 values (1, 2, 3, 4);
 alter table atacc1 drop a;
 alter table atacc1 drop a;
-ERROR:  Not found: The specified column does not exist: a
+ERROR:  column "a" of relation "atacc1" does not exist
 -- SELECTs
 select * from atacc1;
  b | c | d
@@ -179,13 +179,13 @@ LINE 1: delete from atacc1 where "........pg.dropped.1........" = 3;
 delete from atacc1;
 -- try dropping a non-existent column, should fail
 alter table atacc1 drop bar;
-ERROR:  Not found: The specified column does not exist: bar
+ERROR:  column "bar" of relation "atacc1" does not exist
 -- try dropping the oid column, should succeed
 alter table atacc1 drop oid;
-ERROR:  Not found: The specified column does not exist: oid
+ERROR:  column "oid" of relation "atacc1" does not exist
 -- try dropping the xmin column, should fail
 alter table atacc1 drop xmin;
-ERROR:  Not found: The specified column does not exist: xmin
+ERROR:  cannot drop system column "xmin"
 -- try creating a view and altering that, should fail
 create view myview as select * from atacc1;
 select * from myview;
@@ -255,7 +255,11 @@ alter table atacc1 drop d;
 alter table atacc1 drop b;
 ERROR:  column "b" of relation "atacc1" does not exist
 select * from atacc1;
-ERROR:  Invalid argument: Invalid column number 2
+ e
+----
+ 21
+(1 row)
+
 drop table atacc1;
 --
 -- rename

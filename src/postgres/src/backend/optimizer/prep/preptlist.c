@@ -121,7 +121,7 @@ preprocess_targetlist(PlannerInfo *root)
 	 */
 	tlist = parse->targetList;
 	if (command_type == CMD_INSERT || command_type == CMD_UPDATE ||
-			(IsYugaByteEnabled() && command_type == CMD_DELETE && parse->returningList != NULL))
+			(command_type == CMD_DELETE && IsYBRelation(target_relation) && parse->returningList != NULL))
 		tlist = expand_targetlist(tlist, command_type,
 								  result_relation, target_relation);
 
@@ -143,14 +143,28 @@ preprocess_targetlist(PlannerInfo *root)
 
 		if (rc->allMarkTypes & ~(1 << ROW_MARK_COPY))
 		{
-			/* Need to fetch TID */
-			var = makeVar(rc->rti,
-						  SelfItemPointerAttributeNumber,
-						  TIDOID,
-						  -1,
-						  InvalidOid,
-						  0);
-			snprintf(resname, sizeof(resname), "ctid%u", rc->rowmarkId);
+			if (target_relation && IsYBBackedRelation(target_relation)) 
+			{
+				/* Need to fetch YB TID */
+				var = makeVar(rc->rti,
+								YBTupleIdAttributeNumber,
+								BYTEAOID,
+								-1,
+								InvalidOid,
+								0);
+				snprintf(resname, sizeof(resname), "ybctid%u", rc->rowmarkId);
+			} 
+			else 
+			{
+				/* Need to fetch TID */
+				var = makeVar(rc->rti,
+								SelfItemPointerAttributeNumber,
+								TIDOID,
+								-1,
+								InvalidOid,
+								0);
+				snprintf(resname, sizeof(resname), "ctid%u", rc->rowmarkId);
+			}
 			tle = makeTargetEntry((Expr *) var,
 								  list_length(tlist) + 1,
 								  pstrdup(resname),

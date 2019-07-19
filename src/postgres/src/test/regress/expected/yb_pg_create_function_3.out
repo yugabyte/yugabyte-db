@@ -362,19 +362,15 @@ EXPLAIN (verbose, costs off) SELECT voidtest2(11,22);
 -- TABLE sometable;
 CREATE FUNCTION voidtest5(a int) RETURNS SETOF VOID LANGUAGE SQL AS
 $$ SELECT generate_series(1, a) $$ STABLE;
-ERROR:  Complex type not supported yet
-LINE 1: CREATE FUNCTION voidtest5(a int) RETURNS SETOF VOID LANGUAGE...
-                                                 ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SELECT * FROM voidtest5(3);
-ERROR:  function voidtest5(integer) does not exist
-LINE 1: SELECT * FROM voidtest5(3);
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ voidtest5
+-----------
+(0 rows)
+
 -- Cleanup
 \set VERBOSITY terse \\ -- suppress cascade details
 DROP SCHEMA temp_func_test CASCADE;
-NOTICE:  drop cascades to 18 other objects
+NOTICE:  drop cascades to 19 other objects
 \set VERBOSITY default
 -- DROP USER regress_unpriv_user;
 RESET search_path;

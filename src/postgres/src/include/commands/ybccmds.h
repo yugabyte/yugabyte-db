@@ -62,7 +62,9 @@ extern void YBCCreateIndex(const char *indexName,
 
 extern void YBCDropIndex(Oid relationId);
 
-extern void YBCAlterTable(AlterTableStmt* stmt, Relation rel, Oid relationId);
+extern YBCPgStatement YBCPrepareAlterTable(AlterTableStmt* stmt, Relation rel, Oid relationId);
+
+extern void YBCExecAlterTable(YBCPgStatement handle);
 
 extern void YBCRename(RenameStmt* stmt, Oid relationId);
 

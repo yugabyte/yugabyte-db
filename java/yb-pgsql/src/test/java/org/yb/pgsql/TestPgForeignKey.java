@@ -48,7 +48,7 @@ public class TestPgForeignKey extends BasePgSQLTest {
   }
 
   @Test
-  public void testPgRegressPgMisc() throws Exception {
+  public void testPgRegress() throws Exception {
     runPgRegressTest("yb_foreign_key_serial_schedule");
    }
 
