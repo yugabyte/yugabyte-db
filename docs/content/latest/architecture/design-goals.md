@@ -18,7 +18,7 @@ This page outlines the design goals with which YugaByte DB has been built.
 
 ## Consistency
 
-YugaByte DB offers strong consistency guarantees guarantees in the face of a variety of failures. It  supports distributed transactions.
+YugaByte DB offers strong consistency guarantees in the face of a variety of failures. It  supports distributed transactions.
 
 ### CAP Theorem
 
