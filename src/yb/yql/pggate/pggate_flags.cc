@@ -51,6 +51,10 @@ DEFINE_int32(ysql_prefetch_limit, 1024,
 DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
               "Scale factor to reduce ysql_prefetch_limit for backward scan");
 
+DEFINE_int32(ysql_session_max_batch_size, 512,
+             "Maximum batch size for buffered writes between PostgreSQL server and YugaByte DocDB "
+             "services");
+
 // Top-level flag to enable all YSQL beta features.
 DEFINE_bool(ysql_beta_features, true,
             "Whether to enable all ysql beta features");

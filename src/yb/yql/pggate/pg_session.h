@@ -46,6 +46,9 @@ YB_STRONGLY_TYPED_BOOL(OpBuffered);
 
 class PgTxnManager;
 
+// Convenience typedefs.
+typedef std::vector<std::shared_ptr<client::YBPgsqlOp>> PgsqlOpBuffer;
+
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.
 class PgSession : public RefCountedThreadSafe<PgSession> {
@@ -212,6 +215,13 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // that is later passed to PostgreSQL and further converted into a more specific error code.
   Status CombineErrorsToStatus(client::CollectedErrors errors, Status status);
 
+  // Given two statuses, include messages from the first status in front and take state
+  // from whichever is not OK (if there is one), otherwise return the first status.
+  Status CombineStatuses(Status first_status, Status second_status);
+
+  // Flush buffered write operations from the given buffer.
+  Status FlushBufferedWriteOperations(PgsqlOpBuffer* write_ops, bool transactional);
+
   // YBClient, an API that SQL engine uses to communicate with all servers.
   client::YBClient* const client_;
 
@@ -236,8 +246,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   std::unordered_map<TableId, std::shared_ptr<client::YBTable>> table_cache_;
 
   // Should write operations be buffered?
-  bool buffer_write_ops_ = false;
-  std::vector<std::shared_ptr<client::YBPgsqlOp>> buffered_write_ops_;
+  uint buffer_write_ops_ = 0;
+  PgsqlOpBuffer buffered_write_ops_;
+  PgsqlOpBuffer buffered_txn_write_ops_;
 
   bool has_txn_ops_ = false;
   bool has_non_txn_ops_ = false;

@@ -212,7 +212,7 @@ class PgConstant : public PgExpr {
   void UpdateConstant(const void *value, size_t bytes, bool is_null);
 
   // Expression to PB.
-  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+  CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
 
   // Read binary value.
   const string &binary_value() {
@@ -267,25 +267,6 @@ class PgOperator : public PgExpr {
  private:
   const string opname_;
   std::vector<PgExpr*> args_;
-};
-
-class PgGenerateRowId : public PgExpr {
- public:
-  // Public types.
-  typedef std::shared_ptr<PgGenerateRowId> SharedPtr;
-  typedef std::shared_ptr<const PgGenerateRowId> SharedPtrConst;
-
-  typedef std::unique_ptr<PgGenerateRowId> UniPtr;
-  typedef std::unique_ptr<const PgGenerateRowId> UniPtrConst;
-
-  // Constructor.
-  PgGenerateRowId();
-  virtual ~PgGenerateRowId();
-
-  // Convert this expression structure to PB format.
-  CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
-
- private:
 };
 
 }  // namespace pggate

@@ -286,6 +286,14 @@ class PgApiImpl {
   // Utility method that checks stmt type and calls exec insert, update, or delete internally.
   CHECKED_STATUS DmlExecWriteOp(PgStatement *handle);
 
+  // This function adds a primary column to be used in the construction of the tuple id (ybctid).
+  CHECKED_STATUS DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
+                                       bool is_null, const YBCPgTypeEntity *type_entity);
+
+
+  // This function returns the tuple id (ybctid) of a Postgres tuple.
+  CHECKED_STATUS DmlGetYBTupleId(PgStatement *handle, uint64_t *ybctid);
+
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.
   //   - API for "set_clause" (not yet implemented).

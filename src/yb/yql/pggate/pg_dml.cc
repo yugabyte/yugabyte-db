@@ -13,12 +13,17 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/client/table.h"
+#include "yb/client/yb_op.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
-#include "yb/client/yb_op.h"
 
 namespace yb {
 namespace pggate {
+
+using docdb::PrimitiveValue;
+using docdb::ValueType;
 
 using namespace std::literals;  // NOLINT
 
@@ -262,8 +267,6 @@ Status PgDml::Fetch(int32_t natts,
   return Status::OK();
 }
 
-
-
 Status PgDml::WritePgTuple(PgTuple *pg_tuple) {
   for (const PgExpr *target : targets_) {
     if (target->opcode() != PgColumnRef::Opcode::PG_EXPR_COLREF) {
@@ -274,6 +277,65 @@ Status PgDml::WritePgTuple(PgTuple *pg_tuple) {
     target->TranslateData(&cursor_, header, col_ref->attr_num() - 1, pg_tuple);
   }
   return Status::OK();
+}
+
+Status PgDml::AddYBTupleIdColumn(int attr_num,
+                                 uint64_t datum,
+                                 bool is_null,
+                                 const YBCPgTypeEntity *type_entity) {
+  vector<PrimitiveValue> *values = nullptr;
+  PgsqlExpressionPB *expr_pb;
+  PgsqlExpressionPB temp_expr_pb;
+  PgColumn *col = nullptr;
+  RETURN_NOT_OK(FindColumn(attr_num, &col));
+
+  if (col->desc()->is_partition() && col->desc()->is_primary()) {
+    // Hashed component.
+    values = &hashed_components_;
+    expr_pb = hashed_values_.Add();
+  } else if (!col->desc()->is_partition() && col->desc()->is_primary()) {
+    // Range component.
+    values = &range_components_;
+    expr_pb = &temp_expr_pb;
+  } else {
+    return STATUS_SUBSTITUTE(InvalidArgument, "Attribute number $0 not a primary attribute",
+                             attr_num);
+  }
+
+  if (attr_num == static_cast<int>(PgSystemAttrNum::kYBRowId)) {
+    expr_pb->mutable_value()->set_binary_value(pg_session()->GenerateNewRowid());
+  } else {
+    RETURN_NOT_OK(PgConstant(type_entity, datum, is_null).Eval(this, expr_pb));
+  }
+
+  if (is_null) {
+    values->emplace_back(PrimitiveValue(ValueType::kNull));
+  } else {
+    values->emplace_back(PrimitiveValue::FromQLValuePB(expr_pb->value(),
+                                                       col->desc()->sorting_type()));
+  }
+  return Status::OK();
+}
+
+Result<string> PgDml::GetYBTupleId() {
+  SCHECK_EQ(hashed_values_.size(), table_desc_->num_hash_key_columns(), Corruption,
+            "Number of hashed values does not match column description");
+  SCHECK_EQ(hashed_components_.size(), table_desc_->num_hash_key_columns(), Corruption,
+            "Number of hashed components does not match column description");
+  SCHECK_EQ(range_components_.size(),
+            table_desc_->num_key_columns() - table_desc_->num_hash_key_columns(),
+            Corruption, "Number of range components does not match column description");
+
+  if (!hashed_values_.empty()) {
+    string partition_key;
+    const PartitionSchema& partition_schema = table_desc_->table()->partition_schema();
+    RETURN_NOT_OK(partition_schema.EncodeKey(hashed_values_, &partition_key));
+    const uint16_t hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+
+    return docdb::DocKey(hash, hashed_components_, range_components_).Encode().data();
+  } else {
+    return docdb::DocKey(range_components_).Encode().data();
+  }
 }
 
 }  // namespace pggate

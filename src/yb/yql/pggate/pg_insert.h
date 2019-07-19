@@ -39,13 +39,8 @@ class PgInsert : public PgDmlWrite {
 
   StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }
 
-  // Prepare write operations.
-  CHECKED_STATUS Prepare() override;
-
  private:
   void AllocWriteRequest() override;
-
-  std::unique_ptr<PgGenerateRowId> generate_rowid_;
 };
 
 }  // namespace pggate

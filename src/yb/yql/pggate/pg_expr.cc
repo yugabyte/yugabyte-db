@@ -583,22 +583,5 @@ void PgOperator::AppendArg(PgExpr *arg) {
   args_.push_back(arg);
 }
 
-//--------------------------------------------------------------------------------------------------
-namespace {
-#define POSTGRESQL_BYTEAOID 17
-};
-
-PgGenerateRowId::PgGenerateRowId() :
-    PgExpr(Opcode::PG_EXPR_GENERATE_ROWID, YBCPgFindTypeEntity(POSTGRESQL_BYTEAOID)) {
-}
-
-PgGenerateRowId::~PgGenerateRowId() {
-}
-
-Status PgGenerateRowId::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
-  expr_pb->mutable_value()->set_binary_value(pg_stmt->pg_session()->GenerateNewRowid());
-  return Status::OK();
-}
-
 }  // namespace pggate
 }  // namespace yb
