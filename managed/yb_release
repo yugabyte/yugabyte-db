@@ -4,7 +4,7 @@ set -euo pipefail
 
 # TODO: move this to common file.
 if [[ -z ${DEVOPS_HOME:-} ]]; then
-  devops_home_candidate_dir="${BASH_SOURCE%/*}"/../devops
+  devops_home_candidate_dir="${BASH_SOURCE%/*}"/devops
   if [[ -d $devops_home_candidate_dir ]]; then
     export DEVOPS_HOME=$( cd "$devops_home_candidate_dir" && pwd )
   else

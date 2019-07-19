@@ -96,39 +96,37 @@ class ReleasePackage(object):
           eg: <repo>-<A.B.C.D>-b<build_number>-<system>-<machine>.tar.gz
         """
         # Always expect <repo>-<version>.
-        pattern = "^([^-]+)-({})".format(RELEASE_VERSION_PATTERN)
+        pattern = "^(?P<repo>[^-]+)-(?P<version>{})".format(RELEASE_VERSION_PATTERN)
         # If this is an official release, we expect a commit hash and maybe a build_type, else we
         # expect a "-b" and a build number.
         if is_official_release:
             # Add build number.
-            pattern += "-b([0-9]+)"
+            pattern += "-b(?P<build_number>[0-9]+)"
         else:
             # Add commit hash and maybe build type.
-            pattern += "-([^-]+)(-([^-]+))?"
-        pattern += "-([^-]+)-([^-]+)\.tar\.gz$"
+            pattern += "-(?P<commit_hash>[^-]+)-(?P<build_type>([^-]+))?"
+        pattern += "-(?P<system>[^-]+)-(?P<machine>[^-]+)\.tar\.gz$"
         match = re.match(pattern, package_name)
         if not match:
             raise YBOpsRuntimeError("Invalid package name format: {}".format(package_name))
-        self.repo, self.version, commit_or_build_number = match.group(1, 2, 3)
-        if is_official_release:
-            self.build_number = commit_or_build_number
-            self.commit = None
-        else:
-            self.build_number = None
-            self.commit = commit_or_build_number
-        if is_official_release:
-            self.system, self.machine = match.group(4, 5)
-        else:
-            # build_type should be None except for yugabyte. We ignore match 4 as -release
-            self.build_type, self.system, self.machine = match.group(5, 6, 7)
+        self.repo = match.group("repo")
+        self.version = match.group("version")
+        self.build_number = match.group("build_number") if is_official_release else None
+        self.commit = match.group("commit_hash") if not is_official_release else None
+        self.build_type = match.group("build_type") if not is_official_release else None
+        self.system = match.group("system")
+        self.machine = match.group("machine")
 
     def validate(self):
         if self.repo not in RELEASE_REPOS:
             raise YBOpsRuntimeError("Invalid repo {}".format(self.repo))
 
     def get_release_package_name(self):
-        return "{}-{}-{}-{}.tar.gz".format(
-            self.repo, self.get_release_name(), self.system, self.machine)
+        return "{repo}-{release_name}-{system}-{machine}.tar.gz".format(
+            repo=self.repo,
+            release_name=self.get_release_name(),
+            system=self.system,
+            machine=self.machine)
 
     def get_release_name(self):
         # If we have a build number set, prioritize that to get the release version name, rather
