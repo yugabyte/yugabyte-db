@@ -405,15 +405,15 @@ void MasterServiceImpl::RedisConfigGet(
   HandleIn(req, resp, &rpc, &CatalogManager::RedisConfigGet);
 }
 
+// ------------------------------------------------------------------------------------------------
+// YCQL user-defined types
+// ------------------------------------------------------------------------------------------------
+
 void MasterServiceImpl::CreateUDType(const CreateUDTypeRequestPB* req,
                                      CreateUDTypeResponsePB* resp,
                                      rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::CreateUDType);
 }
-
-// ------------------------------------------------------------------------------------------------
-// YCQL user-defined types
-// ------------------------------------------------------------------------------------------------
 
 void MasterServiceImpl::DeleteUDType(const DeleteUDTypeRequestPB* req,
                                      DeleteUDTypeResponsePB* resp,
@@ -431,6 +431,34 @@ void MasterServiceImpl::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
                                       GetUDTypeInfoResponsePB* resp,
                                       rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::GetUDTypeInfo);
+}
+
+// ------------------------------------------------------------------------------------------------
+// CDC Stream
+// ------------------------------------------------------------------------------------------------
+
+void MasterServiceImpl::CreateCDCStream(const CreateCDCStreamRequestPB* req,
+                                        CreateCDCStreamResponsePB* resp,
+                                        rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::CreateCDCStream);
+}
+
+void MasterServiceImpl::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
+                                        DeleteCDCStreamResponsePB* resp,
+                                        rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteCDCStream);
+}
+
+void MasterServiceImpl::ListCDCStreams(const ListCDCStreamsRequestPB* req,
+                                       ListCDCStreamsResponsePB* resp,
+                                       rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ListCDCStreams);
+}
+
+void MasterServiceImpl::GetCDCStream(const GetCDCStreamRequestPB* req,
+                                     GetCDCStreamResponsePB* resp,
+                                     rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::GetCDCStream);
 }
 
 // ------------------------------------------------------------------------------------------------

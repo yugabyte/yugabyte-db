@@ -114,6 +114,9 @@ class YBTableCreator {
   // or a misuse of the builder; in the latter case, only the last error is
   // returned.
   CHECKED_STATUS Create();
+
+  Result<int> NumTabletsForUserTable();
+
  private:
   friend class YBClient;
 

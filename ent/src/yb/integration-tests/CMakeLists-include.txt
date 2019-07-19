@@ -36,5 +36,6 @@ set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   snapshot-test
   transaction-ent-test
   encryption-test
+  cdc_service-int-test
   cdc_service-txn-test
   PARENT_SCOPE)

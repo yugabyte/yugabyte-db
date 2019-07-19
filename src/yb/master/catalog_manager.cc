@@ -743,7 +743,7 @@ Status CatalogManager::RunLoaders() {
   unique_ptr<UDTypeLoader> udtype_loader(new UDTypeLoader(this));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(udtype_loader.get()),
-      "Failed while visiting namespaces in sys catalog");
+      "Failed while visiting user-defined types in sys catalog");
 
   LOG(INFO) << __func__ << ": Loading cluster configuration into memory.";
   unique_ptr<ClusterConfigLoader> config_loader(new ClusterConfigLoader(this));
@@ -2354,6 +2354,9 @@ std::string CatalogManager::GenerateId(boost::optional<const SysRowEntry::Type> 
         break;
       case SysRowEntry::SNAPSHOT:
         return id;
+      case SysRowEntry::CDC_STREAM:
+        if (!CDCStreamExists(id)) return id;
+        break;
       case SysRowEntry::UNKNOWN: FALLTHROUGH_INTENDED;
       case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
@@ -2698,6 +2701,10 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
   RETURN_NOT_OK(DeleteTableInMemory(req->table(), req->is_index_table(),
                                     true /* update_indexed_table */,
                                     &tables, &deleted_tables, &table_locks, resp, rpc));
+
+  // Delete any CDC streams that are set up on this table.
+  TRACE("Deleting CDC streams on table");
+  RETURN_NOT_OK(DeleteCDCStreamsForTable(resp->table_id()));
 
   // Update the in-memory state.
   TRACE("Committing in-memory state");
@@ -3465,7 +3472,8 @@ bool CatalogManager::IsSystemTable(const TableInfo& table) const {
 // Table can be regular table or index in this case.
 bool CatalogManager::IsUserCreatedTable(const TableInfo& table) const {
   if (table.GetTableType() == PGSQL_TABLE_TYPE || table.GetTableType() == YQL_TABLE_TYPE) {
-    if (!IsSystemTable(table) && !IsSequencesSystemTable(table)) {
+    if (!IsSystemTable(table) && !IsSequencesSystemTable(table) &&
+        GetNamespaceName(table.namespace_id()) != kSystemNamespaceName) {
       return true;
     }
   }
@@ -4277,7 +4285,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
   LOG(INFO) << "CreateUDType from " << RequestorString(rpc)
             << ": " << req->DebugString();
 
-      RETURN_NOT_OK(CheckOnline());
+  RETURN_NOT_OK(CheckOnline());
   Status s;
   scoped_refptr<UDTypeInfo> tp;
   scoped_refptr<NamespaceInfo> ns;
@@ -4524,6 +4532,15 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
     }
   }
   return Status::OK();
+}
+
+// For non-enterprise builds, this is a no-op.
+Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table) {
+  return Status::OK();
+}
+
+bool CatalogManager::CDCStreamExists(const CDCStreamId& stream_id) {
+  return false;
 }
 
 Result<uint64_t> CatalogManager::IncrementYsqlCatalogVersion() {

@@ -12,6 +12,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-internal.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/cluster_balance.h"
 
 #include "yb/gutil/strings/substitute.h"
@@ -28,6 +29,10 @@ using std::unique_ptr;
 
 using google::protobuf::RepeatedPtrField;
 using strings::Substitute;
+
+DEFINE_uint64(cdc_state_table_num_tablets, 0,
+    "Number of tablets to use when creating the CDC state table."
+    "0 to use the same default num tablets as for regular tables.");
 
 namespace yb {
 
@@ -69,6 +74,50 @@ class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
   DISALLOW_COPY_AND_ASSIGN(SnapshotLoader);
 };
 
+
+////////////////////////////////////////////////////////////
+// CDC Stream Loader
+////////////////////////////////////////////////////////////
+
+class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
+ public:
+  explicit CDCStreamLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
+
+  Status Visit(const CDCStreamId& stream_id, const SysCDCStreamEntryPB& metadata) {
+    DCHECK(!ContainsKey(catalog_manager_->cdc_stream_map_, stream_id))
+        << "CDC stream already exists: " << stream_id;
+
+    if (!ContainsKey(catalog_manager_->table_ids_map_, metadata.table_id())) {
+      LOG(ERROR) << "Invalid table ID " << metadata.table_id() << " for stream " << stream_id;
+      // TODO (#2059): Potentially signals a race condition that table got deleted while stream was
+      // being created.
+      // Log error and continue without loading the stream.
+      return Status::OK();
+    }
+
+    // Setup the CDC stream info.
+    auto stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
+    auto l = stream->LockForWrite();
+    l->mutable_data()->pb.CopyFrom(metadata);
+
+    // Add the CDC stream to the CDC stream map.
+    catalog_manager_->cdc_stream_map_[stream->id()] = stream;
+
+    l->Commit();
+
+    LOG(INFO) << "Loaded metadata for CDC stream " << stream->ToString() << ": "
+              << metadata.ShortDebugString();
+
+    return Status::OK();
+  }
+
+ private:
+  CatalogManager *catalog_manager_;
+
+  DISALLOW_COPY_AND_ASSIGN(CDCStreamLoader);
+};
+
+
 ////////////////////////////////////////////////////////////
 // CatalogManager
 ////////////////////////////////////////////////////////////
@@ -79,10 +128,20 @@ Status CatalogManager::RunLoaders() {
   // Clear the snapshots.
   snapshot_ids_map_.clear();
 
+  // Clear CDC stream map.
+  cdc_stream_map_.clear();
+
+  LOG(INFO) << __func__ << ": Loading snapshots into memory.";
   unique_ptr<SnapshotLoader> snapshot_loader(new SnapshotLoader(this));
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(snapshot_loader.get()),
       "Failed while visiting snapshots in sys catalog");
+
+  LOG(INFO) << __func__ << ": Loading CDC streams into memory.";
+  auto cdc_stream_loader = std::make_unique<CDCStreamLoader>(this);
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(cdc_stream_loader.get()),
+      "Failed while visiting CDC streams in sys catalog");
 
   return Status::OK();
 }
@@ -496,6 +555,7 @@ Status CatalogManager::ImportSnapshotMeta(const ImportSnapshotMetaRequestPB* req
       case SysRowEntry::UDTYPE: FALLTHROUGH_INTENDED;
       case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
       case SysRowEntry::SYS_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntry::CDC_STREAM: FALLTHROUGH_INTENDED;
       case SysRowEntry::SNAPSHOT:
         FATAL_INVALID_ENUM_VALUE(SysRowEntry::Type, entry.type());
     }
@@ -1126,6 +1186,317 @@ void CatalogManager::SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
     SysSnapshotEntryPB_TabletSnapshotPB* tablet_info = tablet_snapshots->Mutable(i);
     tablet_info->set_state(state);
   }
+}
+
+Status CatalogManager::CreateCdcStateTableIfNeeded(rpc::RpcContext *rpc) {
+  TableIdentifierPB table_identifier;
+  table_identifier.set_table_name(kCdcStateTableName);
+  table_identifier.mutable_namespace_()->set_name(kSystemNamespaceName);
+
+  // Check that the namespace exists.
+  scoped_refptr<NamespaceInfo> ns_info;
+  RETURN_NOT_OK(FindNamespace(table_identifier.namespace_(), &ns_info));
+  if (!ns_info) {
+    return STATUS(NotFound, "Namespace does not exist", kSystemNamespaceName);
+  }
+
+  // If CDC state table exists do nothing, otherwise create it.
+  scoped_refptr<TableInfo> table_info;
+  RETURN_NOT_OK(FindTable(table_identifier, &table_info));
+
+  if (!table_info) {
+    // Set up a CreateTable request internally.
+    CreateTableRequestPB req;
+    CreateTableResponsePB resp;
+    req.set_name(kCdcStateTableName);
+    req.mutable_namespace_()->CopyFrom(table_identifier.namespace_());
+    req.set_table_type(TableType::YQL_TABLE_TYPE);
+
+    // Explicitly set the number tablets if the corresponding flag is set, otherwise CreateTable
+    // will use the same defaults as for regular tables.
+    if (FLAGS_cdc_state_table_num_tablets > 0) {
+      req.set_num_tablets(FLAGS_cdc_state_table_num_tablets);
+    }
+
+    client::YBSchemaBuilder schema_builder;
+    schema_builder.AddColumn(master::kCdcStreamId)->HashPrimaryKey()->Type(DataType::STRING);
+    schema_builder.AddColumn(master::kCdcTabletId)->HashPrimaryKey()->Type(DataType::STRING);
+    schema_builder.AddColumn(master::kCdcCheckpoint)->Type(DataType::STRING);
+    schema_builder.AddColumn(master::kCdcData)->Type(QLType::CreateTypeMap(
+        DataType::STRING, DataType::STRING));
+
+    client::YBSchema yb_schema;
+    CHECK_OK(schema_builder.Build(&yb_schema));
+
+    auto schema = yb::client::internal::GetSchema(yb_schema);
+    SchemaToPB(schema, req.mutable_schema());
+
+    Status s = CreateTable(&req, &resp, rpc);
+    // We do not lock here so it is technically possible that the table was already created.
+    // If so, there is nothing to do so we just ignore the "AlreadyPresent" error.
+    if (!s.ok() && !s.IsAlreadyPresent()) {
+      return s;
+    }
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::IsCdcStateTableCreated(IsCreateTableDoneResponsePB* resp) {
+  IsCreateTableDoneRequestPB req;
+
+  req.mutable_table()->set_table_name(kCdcStateTableName);
+  req.mutable_table()->mutable_namespace_()->set_name(kSystemNamespaceName);
+
+  return IsCreateTableDone(&req, resp);
+}
+
+Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table_id) {
+  LOG(INFO) << "Deleting CDC streams for table: " << table_id;
+
+  auto streams = FindCDCStreamsForTable(table_id);
+  if (streams.empty()) {
+    return Status::OK();
+  }
+
+  return DeleteCDCStreams(streams);
+}
+
+std::vector<scoped_refptr<CDCStreamInfo>> CatalogManager::FindCDCStreamsForTable(
+    const TableId& table_id) {
+  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  boost::shared_lock<LockType> l(lock_);
+
+  for (const auto& entry : cdc_stream_map_) {
+    auto ltm = entry.second->LockForRead();
+
+    if (ltm->data().table_id() == table_id) {
+      streams.push_back(entry.second);
+    }
+  }
+  return streams;
+}
+
+void CatalogManager::GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>* streams) {
+  streams->clear();
+  streams->reserve(cdc_stream_map_.size());
+  boost::shared_lock<LockType> l(lock_);
+  for (const CDCStreamInfoMap::value_type& e : cdc_stream_map_) {
+    streams->push_back(e.second);
+  }
+}
+
+Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
+                                       CreateCDCStreamResponsePB* resp,
+                                       rpc::RpcContext* rpc) {
+  LOG(INFO) << "CreateCDCStream from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+
+  RETURN_NOT_OK(CheckOnline());
+
+  TableIdentifierPB table_identifier;
+  table_identifier.set_table_id(req->table_id());
+
+  scoped_refptr<TableInfo> table;
+  RETURN_NOT_OK(FindTable(table_identifier, &table));
+  if (table == nullptr) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND,
+                      STATUS(NotFound, "Table not found", req->table_id()));
+  }
+
+  {
+    auto l = table->LockForRead();
+    if (l->data().started_deleting()) {
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND,
+                        STATUS(NotFound, "Table does not exist", req->table_id()));
+    }
+  }
+
+  scoped_refptr<CDCStreamInfo> stream;
+  {
+    TRACE("Acquired catalog manager lock");
+    std::lock_guard<LockType> l(lock_);
+
+    // Construct the CDC stream.
+    CDCStreamId new_id = GenerateId(SysRowEntry::CDC_STREAM);
+    stream = make_scoped_refptr<CDCStreamInfo>(new_id);
+    stream->mutable_metadata()->StartMutation();
+    SysCDCStreamEntryPB *metadata = &stream->mutable_metadata()->mutable_dirty()->pb;
+    metadata->set_table_id(table->id());
+    metadata->mutable_options()->CopyFrom(req->options());
+
+    // Add the stream to the in-memory map.
+    cdc_stream_map_[stream->id()] = stream;
+    resp->set_stream_id(stream->id());
+  }
+  TRACE("Inserted new CDC stream into CatalogManager maps");
+
+  // Update the on-disk system catalog.
+  Status s = sys_catalog_->AddItem(stream.get(), leader_ready_term_);
+  if (!s.ok()) {
+    s = s.CloneAndPrepend(Substitute(
+        "An error occurred while inserting CDC stream into sys-catalog: $0", s.ToString()));
+    LOG(WARNING) << s.ToString();
+    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+  }
+  TRACE("Wrote CDC stream to sys-catalog");
+
+  // Commit the in-memory state.
+  stream->mutable_metadata()->CommitMutation();
+  LOG(INFO) << "Created CDC stream " << stream->ToString();
+
+  RETURN_NOT_OK(CreateCdcStateTableIfNeeded(rpc));
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
+                                       DeleteCDCStreamResponsePB* resp,
+                                       rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing DeleteCDCStream request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+
+  RETURN_NOT_OK(CheckOnline());
+
+  if (!req->has_stream_id()) {
+    Status s = STATUS(InvalidArgument, "No CDC Stream ID given", req->DebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+
+  scoped_refptr<CDCStreamInfo> stream;
+  {
+    std::lock_guard<LockType> l(lock_);
+    TRACE("Acquired catalog manager lock");
+
+    stream = FindPtrOrNull(cdc_stream_map_, req->stream_id());
+    if (stream == nullptr) {
+      Status s = STATUS(NotFound, "CDC stream does not exist", req->DebugString());
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+    }
+  }
+
+  Status s = DeleteCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>({stream}));
+  if (!s.ok()) {
+    if (s.IsIllegalState()) {
+      PANIC_RPC(rpc, s.message().ToString());
+    }
+    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+  }
+
+  LOG(INFO) << "Successfully deleted CDC stream " << stream->ToString()
+            << " per request from " << RequestorString(rpc);
+
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteCDCStreams(const std::vector<scoped_refptr<CDCStreamInfo>>& streams) {
+  std::vector<std::unique_ptr<CDCStreamInfo::lock_type>> locks;
+  locks.reserve(streams.size());
+  for (auto& stream : streams) {
+    locks.push_back(stream->LockForWrite());
+  }
+
+  std::vector<CDCStreamInfo*> items;
+  items.reserve(streams.size());
+  for (const auto& stream : streams) {
+    items.push_back(stream.get());
+  }
+
+  Status s = sys_catalog_->DeleteItems(items, leader_ready_term_);
+  if (!s.ok()) {
+    // The mutation will be aborted when 'l' exits the scope on early return.
+    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys-catalog: $0",
+                                     s.ToString()));
+    LOG(WARNING) << s.ToString();
+    return s;
+  }
+
+  // Remove it from the map.
+  TRACE("Removing from CDC stream maps");
+  {
+    std::lock_guard<LockType> l(lock_);
+    for (const auto& stream : streams) {
+      if (cdc_stream_map_.erase(stream->id()) < 1) {
+        return STATUS(IllegalState, "Could not remove CDC stream from map", stream->id());
+      }
+    }
+  }
+
+  for (auto& lock : locks) {
+    lock->Commit();
+  }
+  return Status::OK();
+}
+
+Status CatalogManager::GetCDCStream(const GetCDCStreamRequestPB* req,
+                                    GetCDCStreamResponsePB* resp,
+                                    rpc::RpcContext* rpc) {
+  LOG(INFO) << "GetCDCStream from " << RequestorString(rpc)
+            << ": " << req->DebugString();
+  RETURN_NOT_OK(CheckOnline());
+
+
+  if (!req->has_stream_id()) {
+    Status s = STATUS(InvalidArgument, "CDC Stream ID must be provided", req->DebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+  }
+
+  scoped_refptr<CDCStreamInfo> stream = FindPtrOrNull(cdc_stream_map_, req->stream_id());
+  if (stream == nullptr) {
+    Status s = STATUS(NotFound, "Could not find CDC Stream", req->DebugString());
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+
+  auto stream_lock = stream->LockForRead();
+
+  CDCStreamInfoPB* stream_info = resp->mutable_stream();
+
+  stream_info->set_stream_id(stream->id());
+  stream_info->set_table_id(stream_lock->data().table_id());
+  stream_info->mutable_options()->CopyFrom(stream_lock->data().options());
+
+  return Status::OK();
+}
+
+Status CatalogManager::ListCDCStreams(const ListCDCStreamsRequestPB* req,
+                                      ListCDCStreamsResponsePB* resp) {
+
+  RETURN_NOT_OK(CheckOnline());
+
+  scoped_refptr<TableInfo> table;
+  bool filter_table = req->has_table_id();
+  if (filter_table) {
+    // Lookup the table and verify that it exists.
+    TableIdentifierPB table_identifier;
+    table_identifier.set_table_id(req->table_id());
+
+    RETURN_NOT_OK(FindTable(table_identifier, &table));
+    if (table == nullptr) {
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND,
+                        STATUS(NotFound, "Table not found", req->table_id()));
+    }
+  }
+
+  boost::shared_lock<LockType> l(lock_);
+
+  for (const CDCStreamInfoMap::value_type& entry : cdc_stream_map_) {
+    auto ltm = entry.second->LockForRead();
+
+    if (filter_table && table->id() != ltm->data().table_id()) {
+      continue; // Skip streams from other tables.
+    }
+
+    CDCStreamInfoPB* stream = resp->add_streams();
+    stream->set_stream_id(entry.second->id());
+    stream->set_table_id(ltm->data().table_id());
+    stream->mutable_options()->CopyFrom(ltm->data().options());
+  }
+  return Status::OK();
+}
+
+bool CatalogManager::CDCStreamExists(const CDCStreamId& stream_id) {
+  if (FindPtrOrNull(cdc_stream_map_, stream_id) == nullptr) {
+    return false;
+  }
+  return true;
 }
 
 } // namespace enterprise

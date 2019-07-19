@@ -39,30 +39,6 @@ target_link_libraries(cdc
   server_process
   tablet
   yb_util
+  ql_util
   gutil)
-
-#########################################
-# cdc tests
-#########################################
-
-set(YB_ENT_CURRENT_SOURCE_DIR
-  ${YB_ENT_CURRENT_SOURCE_DIR}
-  PARENT_SCOPE)
-
-set(CDC_EXTENSIONS_TESTS
-  cdc_service-test)
-
-set(YB_TEST_LINK_LIBS
-  tserver
-  tserver_test_util
-  yb_client # yb::client::YBTableName
-  tablet_test_util
-  cdc_test_util
-  ${YB_MIN_TEST_LIBS})
-
-set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})
-
-foreach(test ${CDC_EXTENSIONS_TESTS})
-  ADD_YB_TEST(${test})
-endforeach()
 

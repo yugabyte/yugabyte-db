@@ -40,6 +40,7 @@
 #include "yb/common/partial_row.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/master/master-test_base.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/call_home.h"
 #include "yb/master/master.h"
@@ -55,200 +56,19 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
-using yb::rpc::Messenger;
-using yb::rpc::MessengerBuilder;
-using yb::rpc::RpcController;
-using std::make_shared;
-using std::shared_ptr;
-
 DECLARE_string(callhome_collection_level);
 DECLARE_string(callhome_tag);
 DECLARE_string(callhome_url);
-DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(simulate_slow_table_create_secs);
 DECLARE_bool(return_error_if_namespace_not_found);
-
-#define NAMESPACE_ENTRY(namespace) \
-    std::make_tuple(k##namespace##NamespaceName, k##namespace##NamespaceId)
-
-#define EXPECTED_SYSTEM_NAMESPACES \
-    NAMESPACE_ENTRY(System), \
-    NAMESPACE_ENTRY(SystemSchema), \
-    NAMESPACE_ENTRY(SystemAuth) \
-    /**/
-
-#define EXPECTED_DEFAULT_NAMESPACE \
-    std::make_tuple(default_namespace_name, default_namespace_id)
-
-#define EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES \
-    EXPECTED_DEFAULT_NAMESPACE, \
-    EXPECTED_SYSTEM_NAMESPACES \
-    /**/
-
-#define TABLE_ENTRY(namespace, table, relation_type) \
-    std::make_tuple(k##namespace##table##TableName, \
-        k##namespace##NamespaceName, k##namespace##NamespaceId, relation_type)
-
-#define SYSTEM_TABLE_ENTRY(namespace, table) \
-    TABLE_ENTRY(namespace, table, SYSTEM_TABLE_RELATION)
-
-#define EXPECTED_SYSTEM_TABLES \
-    SYSTEM_TABLE_ENTRY(System, Peers), \
-    SYSTEM_TABLE_ENTRY(System, Local), \
-    SYSTEM_TABLE_ENTRY(System, Partitions), \
-    SYSTEM_TABLE_ENTRY(System, SizeEstimates), \
-    std::make_tuple(kSysCatalogTableName, kSystemSchemaNamespaceName, kSystemSchemaNamespaceId, \
-        SYSTEM_TABLE_RELATION), \
-    SYSTEM_TABLE_ENTRY(SystemSchema, Aggregates), \
-    SYSTEM_TABLE_ENTRY(SystemSchema, Columns), \
-    SYSTEM_TABLE_ENTRY(SystemSchema, Functions), \
-    SYSTEM_TABLE_ENTRY(SystemSchema, Indexes), \
-    SYSTEM_TABLE_ENTRY(SystemSchema, Triggers), \
-    SYSTEM_TABLE_ENTRY(SystemSchema, Types), \
-    SYSTEM_TABLE_ENTRY(SystemSchema, Views), \
-    SYSTEM_TABLE_ENTRY(SystemSchema, Keyspaces), \
-    SYSTEM_TABLE_ENTRY(SystemSchema, Tables), \
-    SYSTEM_TABLE_ENTRY(SystemAuth, Roles), \
-    SYSTEM_TABLE_ENTRY(SystemAuth, RolePermissions), \
-    SYSTEM_TABLE_ENTRY(SystemAuth, ResourceRolePermissionsIndex)
-    /**/
 
 namespace yb {
 namespace master {
 
 using strings::Substitute;
 
-class MasterTest : public YBTest {
- protected:
-
-  string default_namespace_name = "default_namespace";
-  string default_namespace_id;
-
-  void SetUp() override {
-    YBTest::SetUp();
-
-    // Set an RPC timeout for the controllers.
-    controller_ = make_shared<RpcController>();
-    controller_->set_timeout(MonoDelta::FromSeconds(10));
-
-    // In this test, we create tables to test catalog manager behavior,
-    // but we have no tablet servers. Typically this would be disallowed.
-    FLAGS_catalog_manager_check_ts_count_for_create_table = false;
-
-    // Start master with the create flag on.
-    mini_master_.reset(
-        new MiniMaster(Env::Default(), GetTestPath("Master"),
-                       AllocateFreePort(), AllocateFreePort(), 0));
-    ASSERT_OK(mini_master_->Start());
-    ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-
-    // Create a client proxy to it.
-    client_messenger_ = ASSERT_RESULT(MessengerBuilder("Client").Build());
-    rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new MasterServiceProxy(&proxy_cache, mini_master_->bound_rpc_addr()));
-
-    // Create the default test namespace.
-    CreateNamespaceResponsePB resp;
-    ASSERT_OK(CreateNamespace(default_namespace_name, &resp));
-    default_namespace_id = resp.id();
-  }
-
-  void TearDown() override {
-    client_messenger_->Shutdown();
-    mini_master_->Shutdown();
-    YBTest::TearDown();
-  }
-
-  void DoListTables(const ListTablesRequestPB& req, ListTablesResponsePB* resp);
-  void DoListAllTables(ListTablesResponsePB* resp, const NamespaceName& namespace_name = "");
-
-  Status CreateTable(const NamespaceName& namespace_name,
-                     const TableName& table_name,
-                     const Schema& schema);
-  Status CreateTable(const TableName& table_name,
-                     const Schema& schema) {
-    return CreateTable(default_namespace_name, table_name, schema);
-  }
-  Status CreatePgsqlTable(const NamespaceId& namespace_id,
-                          const TableName& table_name,
-                          const Schema& schema);
-
-  Status DoCreateTable(const NamespaceName& namespace_name,
-                       const TableName& table_name,
-                       const Schema& schema,
-                       CreateTableRequestPB* request);
-  Status DoCreateTable(const TableName& table_name,
-                       const Schema& schema,
-                       CreateTableRequestPB* request) {
-    return DoCreateTable(default_namespace_name, table_name, schema, request);
-  }
-
-  Status DeleteTable(const NamespaceName& namespace_name,
-                     const TableName& table_name,
-                     TableId* table_id = nullptr);
-  Status DeleteTable(const TableName& table_name,
-                     TableId* table_id = nullptr) {
-    return DeleteTable(default_namespace_name, table_name, table_id);
-  }
-
-  void DoListAllNamespaces(ListNamespacesResponsePB* resp);
-  void DoListAllNamespaces(const boost::optional<YQLDatabase>& database_type,
-                           ListNamespacesResponsePB* resp);
-
-  Status CreateNamespace(const NamespaceName& ns_name, CreateNamespaceResponsePB* resp);
-  Status CreateNamespace(const NamespaceName& ns_name,
-                         const boost::optional<YQLDatabase>& database_type,
-                         CreateNamespaceResponsePB* resp);
-
-  RpcController* ResetAndGetController() {
-    controller_->Reset();
-    return controller_.get();
-  }
-
-  void CheckNamespaces(const std::set<std::tuple<NamespaceName, NamespaceId>>& namespace_info,
-                       const ListNamespacesResponsePB& namespaces) {
-    for (int i = 0; i < namespaces.namespaces_size(); i++) {
-      auto search_key = std::make_tuple(namespaces.namespaces(i).name(),
-                                        namespaces.namespaces(i).id());
-      ASSERT_TRUE(namespace_info.find(search_key) != namespace_info.end())
-                    << strings::Substitute("Couldn't find namespace $0", namespaces.namespaces(i)
-                        .name());
-    }
-
-    ASSERT_EQ(namespaces.namespaces_size(), namespace_info.size());
-  }
-
-  void CheckTables(
-      const std::set<std::tuple<TableName, NamespaceName, NamespaceId, bool>>& table_info,
-      const ListTablesResponsePB& tables) {
-    for (int i = 0; i < tables.tables_size(); i++) {
-      auto search_key = std::make_tuple(tables.tables(i).name(),
-                                        tables.tables(i).namespace_().name(),
-                                        tables.tables(i).namespace_().id(),
-                                        tables.tables(i).relation_type());
-      ASSERT_TRUE(table_info.find(search_key) != table_info.end())
-          << strings::Substitute("Couldn't find table $0.$1",
-              tables.tables(i).namespace_().name(), tables.tables(i).name());
-    }
-
-    ASSERT_EQ(tables.tables_size(), table_info.size());
-  }
-
-  void UpdateMasterClusterConfig(SysClusterConfigEntryPB* cluster_config) {
-    ChangeMasterClusterConfigRequestPB change_req;
-    change_req.mutable_cluster_config()->CopyFrom(*cluster_config);
-    ChangeMasterClusterConfigResponsePB change_resp;
-    ASSERT_OK(proxy_->ChangeMasterClusterConfig(change_req, &change_resp, ResetAndGetController()));
-    // Bump version number by 1, so we do not have to re-query.
-    cluster_config->set_version(cluster_config->version() + 1);
-    LOG(INFO) << "Update cluster config to: " << cluster_config->ShortDebugString();
-  }
-
-  std::unique_ptr<Messenger> client_messenger_;
-  gscoped_ptr<MiniMaster> mini_master_;
-  gscoped_ptr<MasterServiceProxy> proxy_;
-  shared_ptr<RpcController> controller_;
+class MasterTest : public MasterTestBase {
 };
 
 TEST_F(MasterTest, TestPingServer) {
@@ -449,103 +269,6 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   }
 }
 
-Status MasterTest::CreateTable(const NamespaceName& namespace_name,
-                               const TableName& table_name,
-                               const Schema& schema) {
-  CreateTableRequestPB req;
-  return DoCreateTable(namespace_name, table_name, schema, &req);
-}
-
-Status MasterTest::CreatePgsqlTable(const NamespaceId& namespace_id,
-                                    const TableName& table_name,
-                                    const Schema& schema) {
-  CreateTableRequestPB req, *request;
-  request = &req;
-  CreateTableResponsePB resp;
-
-  request->set_table_type(TableType::PGSQL_TABLE_TYPE);
-  request->set_name(table_name);
-  SchemaToPB(schema, request->mutable_schema());
-
-  if (!namespace_id.empty()) {
-    request->mutable_namespace_()->set_id(namespace_id);
-  }
-  request->mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
-  request->set_num_tablets(8);
-
-  // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
-  // though, as that helps with readability and standardization.
-  RETURN_NOT_OK(proxy_->CreateTable(*request, &resp, ResetAndGetController()));
-  if (resp.has_error()) {
-    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
-  }
-  return Status::OK();
-}
-
-Status MasterTest::DoCreateTable(const NamespaceName& namespace_name,
-                                 const TableName& table_name,
-                                 const Schema& schema,
-                                 CreateTableRequestPB* request) {
-  CreateTableResponsePB resp;
-
-  request->set_name(table_name);
-  SchemaToPB(schema, request->mutable_schema());
-
-  if (!namespace_name.empty()) {
-    request->mutable_namespace_()->set_name(namespace_name);
-  }
-  request->mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
-  request->set_num_tablets(8);
-
-  // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
-  // though, as that helps with readability and standardization.
-  RETURN_NOT_OK(proxy_->CreateTable(*request, &resp, ResetAndGetController()));
-  if (resp.has_error()) {
-    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
-  }
-  return Status::OK();
-}
-
-void MasterTest::DoListTables(const ListTablesRequestPB& req, ListTablesResponsePB* resp) {
-  ASSERT_OK(proxy_->ListTables(req, resp, ResetAndGetController()));
-  SCOPED_TRACE(resp->DebugString());
-  ASSERT_FALSE(resp->has_error());
-}
-
-void MasterTest::DoListAllTables(ListTablesResponsePB* resp,
-                                 const NamespaceName& namespace_name /*= ""*/) {
-  ListTablesRequestPB req;
-
-  if (!namespace_name.empty()) {
-    req.mutable_namespace_()->set_name(namespace_name);
-  }
-
-  DoListTables(req, resp);
-}
-
-Status MasterTest::DeleteTable(const NamespaceName& namespace_name,
-                               const TableName& table_name,
-                               TableId* table_id /* = nullptr */) {
-  DeleteTableRequestPB req;
-  DeleteTableResponsePB resp;
-  req.mutable_table()->set_table_name(table_name);
-
-  if (!namespace_name.empty()) {
-    req.mutable_table()->mutable_namespace_()->set_name(namespace_name);
-  }
-
-  RETURN_NOT_OK(proxy_->DeleteTable(req, &resp, ResetAndGetController()));
-  SCOPED_TRACE(resp.DebugString());
-  if (table_id) {
-    *table_id = resp.table_id();
-  }
-
-  if (resp.has_error()) {
-    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
-  }
-  return Status::OK();
-}
-
 TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
   FLAGS_simulate_slow_table_create_secs = 10;
 
@@ -630,28 +353,7 @@ TEST_F(MasterTest, TestCatalog) {
 
   // Delete the table
   TableId id;
-  ASSERT_OK(DeleteTable(default_namespace_name, kTableName, &id));
-
-  IsDeleteTableDoneRequestPB done_req;
-  done_req.set_table_id(id);
-  IsDeleteTableDoneResponsePB done_resp;
-  bool delete_done = false;
-
-  for (int num_retries = 0; num_retries < 10; ++num_retries) {
-    const Status s = proxy_->IsDeleteTableDone(done_req, &done_resp, ResetAndGetController());
-    LOG(INFO) << "IsDeleteTableDone: " << s.ToString() << " done=" << done_resp.done();
-    ASSERT_TRUE(s.ok());
-    ASSERT_TRUE(done_resp.has_done());
-    if (done_resp.done()) {
-      LOG(INFO) << "Done on retry " << num_retries;
-      delete_done = true;
-      break;
-    }
-
-    SleepFor(MonoDelta::FromMilliseconds(10 * num_retries)); // sleep a bit more with each attempt.
-  }
-
-  ASSERT_TRUE(delete_done);
+  ASSERT_OK(DeleteTableSync(default_namespace_name, kTableName, &id));
 
   // List tables, should show only system table
   ASSERT_NO_FATALS(DoListAllTables(&tables));
@@ -854,42 +556,6 @@ TEST_F(MasterTest, TestInvalidPlacementInfo) {
 
     --num_retries;
   }
-}
-
-void MasterTest::DoListAllNamespaces(ListNamespacesResponsePB* resp) {
-  DoListAllNamespaces(boost::none, resp);
-}
-
-void MasterTest::DoListAllNamespaces(const boost::optional<YQLDatabase>& database_type,
-                                     ListNamespacesResponsePB* resp) {
-  ListNamespacesRequestPB req;
-  if (database_type) {
-    req.set_database_type(*database_type);
-  }
-
-  ASSERT_OK(proxy_->ListNamespaces(req, resp, ResetAndGetController()));
-  SCOPED_TRACE(resp->DebugString());
-  ASSERT_FALSE(resp->has_error());
-}
-
-Status MasterTest::CreateNamespace(const NamespaceName& ns_name, CreateNamespaceResponsePB* resp) {
-  return CreateNamespace(ns_name, boost::none, resp);
-}
-
-Status MasterTest::CreateNamespace(const NamespaceName& ns_name,
-                                   const boost::optional<YQLDatabase>& database_type,
-                                   CreateNamespaceResponsePB* resp) {
-  CreateNamespaceRequestPB req;
-  req.set_name(ns_name);
-  if (database_type) {
-    req.set_database_type(*database_type);
-  }
-
-  RETURN_NOT_OK(proxy_->CreateNamespace(req, resp, ResetAndGetController()));
-  if (resp->has_error()) {
-    RETURN_NOT_OK(StatusFromPB(resp->error().status()));
-  }
-  return Status::OK();
 }
 
 TEST_F(MasterTest, TestNamespaces) {
