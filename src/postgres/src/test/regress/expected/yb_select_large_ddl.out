@@ -1,0 +1,17 @@
+--
+-- SELECT
+--
+-- table should be full and have indexes created
+SELECT COUNT(*) FROM airports;
+ count
+-------
+  9999
+(1 row)
+
+SELECT * FROM pg_indexes WHERE tablename='airports';
+ schemaname | tablename |     indexname     | tablespace |                                  indexdef
+------------+-----------+-------------------+------------+-----------------------------------------------------------------------------
+ public     | airports  | airports_pkey     |            | CREATE UNIQUE INDEX airports_pkey ON public.airports USING lsm (ident HASH)
+ public     | airports  | airports_type_idx |            | CREATE INDEX airports_type_idx ON public.airports USING lsm (type HASH)
+ public     | airports  | airports_name_idx |            | CREATE INDEX airports_name_idx ON public.airports USING lsm (name HASH)
+(3 rows)

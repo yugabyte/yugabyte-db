@@ -541,6 +541,18 @@ Status PgApiImpl::DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values,
   return down_cast<PgDml*>(handle)->Fetch(natts, values, isnulls, syscols, has_data);
 }
 
+Status PgApiImpl::DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
+                                        bool is_null, const YBCPgTypeEntity *type_entity) {
+  return down_cast<PgDml*>(handle)->AddYBTupleIdColumn(attr_num, datum, is_null, type_entity);
+}
+
+Status PgApiImpl::DmlGetYBTupleId(PgStatement *handle, uint64_t *ybctid) {
+  string id = VERIFY_RESULT(down_cast<PgDml*>(handle)->GetYBTupleId());
+  const YBCPgTypeEntity *type_entity = FindTypeEntity(kPgByteArrayOid);
+  *ybctid = type_entity->yb_to_datum(id.data(), id.size(), nullptr /* type_attrs */);
+  return Status::OK();
+}
+
 Status PgApiImpl::StartBufferingWriteOperations(PgSession *pg_session) {
   return pg_session->StartBufferingWriteOperations();
 }

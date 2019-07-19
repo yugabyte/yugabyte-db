@@ -267,6 +267,13 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
 // Utility method that checks stmt type and calls either exec insert, update, or delete internally.
 YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle);
 
+// This function adds a primary column to be used in the construction of the tuple id (ybctid).
+YBCStatus YBCPgDmlAddYBTupleIdColumn(YBCPgStatement handle, int attr_num, uint64_t datum,
+                                     bool is_null, const YBCPgTypeEntity *type_entity);
+
+// This function returns the tuple id (ybctid) of a Postgres tuple.
+YBCStatus YBCPgDmlGetYBTupleId(YBCPgStatement handle, uint64_t *ybctid);
+
 // DB Operations: WHERE, ORDER_BY, GROUP_BY, etc.
 // + The following operations are run by DocDB.
 //   - Not yet

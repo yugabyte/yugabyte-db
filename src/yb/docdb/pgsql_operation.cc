@@ -58,12 +58,10 @@ Status PgsqlWriteOperation::Init(PgsqlWriteRequestPB* request, PgsqlResponsePB* 
 
   // Init DocDB key using either ybctid or partition and range values.
   if (request_.has_ybctid_column_value()) {
-    CHECK(request_.ybctid_column_value().has_value() &&
-          request_.ybctid_column_value().value().has_binary_value())
-        << "ERROR: Unexpected value for ybctid column";
-
+    const string& ybctid = request_.ybctid_column_value().value().binary_value();
+    SCHECK(!ybctid.empty(), InternalError, "empty ybctid");
     doc_key_.emplace(schema_);
-    RETURN_NOT_OK(doc_key_->DecodeFrom(request_.ybctid_column_value().value().binary_value()));
+    RETURN_NOT_OK(doc_key_->DecodeFrom(ybctid));
   } else {
     vector<PrimitiveValue> hashed_components;
     vector<PrimitiveValue> range_components;

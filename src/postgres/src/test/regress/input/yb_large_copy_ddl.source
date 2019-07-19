@@ -1,0 +1,11 @@
+--
+-- COPY large file while performing DDL in same txn
+--
+BEGIN;
+
+CREATE INDEX ON airports (type);
+CREATE INDEX ON airports (name);
+
+COPY airports FROM '@abs_builddir@/data/airport-codes.csv' CSV HEADER;
+
+COMMIT;
