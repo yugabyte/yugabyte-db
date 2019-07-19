@@ -113,21 +113,21 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
   if (it == servers_by_id_.end()) {
     // Check if a server with the same host and port already exists.
     for (const auto& map_entry : servers_by_id_) {
-      auto ts_info = map_entry.second->GetTSInformationPB();
+      const auto ts_info = map_entry.second->GetTSInformationPB();
 
-      if (HasSameHostPort(ts_info.registration().common().private_rpc_addresses(),
+      if (HasSameHostPort(ts_info->registration().common().private_rpc_addresses(),
                           registration.common().private_rpc_addresses()) ||
-          HasSameHostPort(ts_info.registration().common().broadcast_addresses(),
+          HasSameHostPort(ts_info->registration().common().broadcast_addresses(),
                           registration.common().broadcast_addresses())) {
-        if (ts_info.tserver_instance().instance_seqno() >= instance.instance_seqno()) {
+        if (ts_info->tserver_instance().instance_seqno() >= instance.instance_seqno()) {
           // Skip adding the node since we already have a node with the same rpc address and
           // a higher sequence number.
           LOG(WARNING) << "Skipping registration for TS " << instance.ShortDebugString()
               << " since an entry with same host/port but a higher sequence number exists "
-              << ts_info.ShortDebugString();
+              << ts_info->ShortDebugString();
           return Status::OK();
         } else {
-          LOG(WARNING) << "Removing entry: " << ts_info.ShortDebugString()
+          LOG(WARNING) << "Removing entry: " << ts_info->ShortDebugString()
               << " since we received registration for a tserver with a higher sequence number: "
               << instance.ShortDebugString();
           // Mark the old node to be removed, since we have a newer sequence number.
