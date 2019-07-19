@@ -97,11 +97,6 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       createWaitForTServerHeartBeatsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Initialize YSQL database if enabled by the user.
-      if (taskParams().getPrimaryCluster().userIntent.enableYSQL) {
-        createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.INIT_YSQL);
-      }
-
       createSwamperTargetUpdateTask(false);
 
       // Create a simple redis table.

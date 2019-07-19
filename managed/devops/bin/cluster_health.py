@@ -27,6 +27,8 @@ from multiprocessing import Pool
 YB_TSERVER_DIR = "/home/yugabyte/tserver/"
 YB_CORES_DIR = "/home/yugabyte/cores/"
 YB_PROCESS_LOG_PATH_FORMAT = "/home/yugabyte/{}/logs/"
+VM_CERT_FILE_PATH = "/home/yugabyte/yugabyte-tls-config/ca.crt"
+K8S_CERT_FILE_PATH = "/opt/certs/yugabyte/ca.crt"
 
 RECENT_FAILURE_THRESHOLD_SEC = 8 * 60
 FATAL_TIME_THRESHOLD_MINUTES = 12
@@ -155,11 +157,12 @@ class KubernetesDetails():
 class NodeChecker():
 
     def __init__(self, node, identity_file, ssh_port, start_time_ms,
-                 namespace_to_config, ysql_port):
+                 namespace_to_config, ysql_port, enable_tls_client):
         self.node = node
         self.identity_file = identity_file
         self.ssh_port = ssh_port
         self.start_time_ms = start_time_ms
+        self.enable_tls_client = enable_tls_client
         # TODO: best way to do mark that this is a k8s deployment?
         self.is_k8s = ssh_port == 0 and not self.identity_file
         self.k8s_details = None
@@ -343,6 +346,10 @@ class NodeChecker():
 
         cqlsh = '{}/bin/cqlsh'.format(YB_TSERVER_DIR)
         remote_cmd = '{} {} -e "SHOW HOST"'.format(cqlsh, self.node)
+        if self.enable_tls_client:
+            cert_file = K8S_CERT_FILE_PATH if self.is_k8s else VM_CERT_FILE_PATH
+
+            remote_cmd = 'SSL_CERTFILE={} {} {}'.format(cert_file, remote_cmd, '--ssl')
 
         output = self._remote_check_output(remote_cmd).strip()
 
@@ -593,6 +600,7 @@ class Cluster():
     def __init__(self, data):
         self.identity_file = data["identityFile"]
         self.ssh_port = data["sshPort"]
+        self.enable_tls_client = data["enableTlsClient"]
         self.master_nodes = data["masterNodes"]
         self.tserver_nodes = data["tserverNodes"]
         self.yb_version = data["ybSoftwareVersion"]
@@ -641,7 +649,8 @@ def main():
         for node in all_nodes:
             checker = NodeChecker(
                     node, c.identity_file, c.ssh_port,
-                    args.start_time_ms, c.namespace_to_config, c.ysql_port)
+                    args.start_time_ms, c.namespace_to_config, c.ysql_port,
+                    c.enable_tls_client)
             # TODO: use paramiko to establish ssh connection to the nodes.
             if node in master_nodes:
                 coordinator.add_check(
@@ -654,7 +663,8 @@ def main():
                 # Only need to check redis-cli/cqlsh for tserver nodes, to be docker/k8s friendly.
                 coordinator.add_check(checker, "check_cqlsh")
                 coordinator.add_check(checker, "check_redis_cli")
-                if c.enable_ysql:
+                # TODO: Enable check after addressing issue #1845.
+                if c.enable_ysql and not c.enable_tls_client:
                     coordinator.add_check(checker, "check_psql")
             coordinator.add_check(checker, "check_disk_utilization")
             coordinator.add_check(checker, "check_for_core_files")

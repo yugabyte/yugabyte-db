@@ -254,8 +254,8 @@ public class NodeManagerTest extends FakeDBApplication {
         if (cloud.equals(Common.CloudType.aws)) {
           if (setupParams.useTimeSync) {
             expectedCommand.add("--use_chrony");
-	      }
-	      if (!setupParams.clusters.isEmpty() && setupParams.clusters.get(0) != null &&
+        }
+        if (!setupParams.clusters.isEmpty() && setupParams.clusters.get(0) != null &&
               !setupParams.clusters.get(0).userIntent.instanceTags.isEmpty()) {
             expectedCommand.add("--instance_tags");
             expectedCommand.add(Json.stringify(
@@ -300,6 +300,10 @@ public class NodeManagerTest extends FakeDBApplication {
         Map<String, String> gflags = new HashMap<>(configureParams.gflags);
         if (!configureParams.isMaster) {
           gflags.put("placement_uuid", String.valueOf(params.placementUuid));
+        } else {
+          if (configureParams.enableYSQL) {
+            gflags.put("use_initial_sys_catalog_snapshot", "true");
+          }
         }
         gflags.put("metric_node_name", params.nodeName);
         if (configureParams.type == Everything) {
@@ -363,11 +367,6 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add(tagsParams.deleteTags);            
           }
         }
-        break;
-      case InitYSQL:
-        InstanceActions.Params initYSQLParams = (InstanceActions.Params)params;
-        expectedCommand.add("--master_addresses");
-        expectedCommand.add(Universe.get(initYSQLParams.universeUUID).getMasterAddresses());
         break;
     }
     if (params.deviceInfo != null) {
@@ -1180,39 +1179,6 @@ public class NodeManagerTest extends FakeDBApplication {
                 re.getMessage(), allOf(notNullValue(), is("Invalid instance tags")));
           }
         }
-    }
-  }
-
-  @Test
-  public void testInitYSQL() {
-    for (TestData t : testData) {
-      List<String> expectedCommand = t.baseCommand;
-      InstanceActions.Params params = new InstanceActions.Params();
-      UUID univUUID = createUniverse().universeUUID;
-      Universe universe = Universe.saveDetails(univUUID,ApiUtils.mockUniverseUpdater(t.cloudType));
-      buildValidParams(t, params, universe);
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.InitYSQL, params, t));
-      nodeManager.nodeCommand(NodeManager.NodeCommandType.InitYSQL, params);
-      verify(shellProcessHandler, times(1)).run(expectedCommand,
-        t.region.provider.getConfig());
-    }
-  }
-
-  @Test
-  public void testNegativeInitYSQL() {
-    for (TestData t : testData) {
-      List<String> expectedCommand = t.baseCommand;
-      InstanceActions.Params params = new InstanceActions.Params();
-      UUID univUUID = createUniverse().universeUUID;
-      Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdaterWith1TServer0Masters());
-      buildValidParams(t, params, universe);
-      expectedCommand.addAll(nodeCommand(NodeManager.NodeCommandType.InitYSQL, params, t));
-      try {
-        nodeManager.nodeCommand(NodeManager.NodeCommandType.InitYSQL, params);
-      } catch (RuntimeException re) {
-        assertThat(
-          re.getMessage(), is("Can't run initdb script: No masters found"));
-      }
     }
   }
 }

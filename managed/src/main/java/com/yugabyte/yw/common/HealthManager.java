@@ -33,6 +33,7 @@ public class HealthManager extends DevopsBase {
     public List<String> masterNodes = new ArrayList<>();
     public List<String> tserverNodes = new ArrayList<>();
     public String ybSoftwareVersion = null;
+    public boolean enableTlsClient = false;
     public boolean enableYSQL = false;
     public int ysqlPort = 0;
   }

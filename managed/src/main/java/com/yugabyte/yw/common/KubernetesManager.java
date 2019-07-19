@@ -128,13 +128,6 @@ public class KubernetesManager {
     return execCommand(config, commandList);
   }
 
-  public ShellProcessHandler.ShellResponse initYSQL(Map<String, String> config, String universePrefix, String masterAddresses) {
-    String initDBcommand = String.format("YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=%s %s/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres", masterAddresses, POSTGRES_BIN_PATH);
-    List<String> commandList = ImmutableList.of("kubectl",  "--namespace", universePrefix, "exec", "yb-tserver-0",
-      "--", "bash", "-c", initDBcommand);
-    return execCommand(config, commandList);
-  }
-
   public ShellProcessHandler.ShellResponse helmDelete(Map<String, String> config, String universePrefix) {
     List<String> commandList = ImmutableList.of("helm",  "delete", universePrefix, "--purge");
     return execCommand(config, commandList);

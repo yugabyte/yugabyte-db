@@ -43,6 +43,9 @@ import static org.mockito.Mockito.when;
 @RunWith(MockitoJUnitRunner.class)
   public class TableManagerTest extends FakeDBApplication {
 
+  private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
+  private static final String VM_CERT_PATH = "/home/yugabyte/yugabyte-tls-config/";
+
   @Mock
   play.Configuration mockAppConfig;
 
@@ -81,6 +84,10 @@ import static org.mockito.Mockito.when;
   }
 
   private void setupUniverse(Provider p, String softwareVersion) {
+    setupUniverse(p, softwareVersion, false);
+  }
+
+  private void setupUniverse(Provider p, String softwareVersion, boolean enableTLS) {
     testProvider = p;
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = pkPath;
@@ -96,6 +103,9 @@ import static org.mockito.Mockito.when;
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
     userIntent.regionList = getMockRegionUUIDs(3);
+    if (enableTLS) {
+      userIntent.enableNodeToNodeEncrypt = true;
+    }
     uniParams.upsertPrimaryCluster(userIntent, null);
     testUniverse.setUniverseDetails(uniParams);
     testUniverse = Universe.saveDetails(testUniverse.universeUUID,
@@ -158,6 +168,7 @@ import static org.mockito.Mockito.when;
       BackupTableParams backupTableParams, String storageType) {
     AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
     Map<String, String> namespaceToConfig = new HashMap<>();
+    UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
 
     if (testProvider.code.equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
@@ -197,6 +208,10 @@ import static org.mockito.Mockito.when;
       cmd.add(backupTableParams.tableUUID.toString().replace("-", ""));
     }
     cmd.add("--no_auto_name");
+    if (userIntent.enableNodeToNodeEncrypt) {
+      cmd.add("--certs_dir");
+      cmd.add(testProvider.code.equals("kubernetes") ? K8S_CERT_PATH : VM_CERT_PATH);
+    }
     cmd.add(backupTableParams.actionType.name().toLowerCase());
     if (backupTableParams.enableVerboseLogs) {
       cmd.add("--verbose");
@@ -244,7 +259,6 @@ import static org.mockito.Mockito.when;
   }
 
   private void testCreateS3BackupHelper(boolean enableVerbose) {
-    setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
@@ -258,13 +272,31 @@ import static org.mockito.Mockito.when;
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
   }
 
+  private void testCreateBackupKubernetesHelper() {
+    Map<String, String> config = new HashMap<>();
+    config.put("KUBECONFIG", "foo");
+    testProvider.setConfig(config);
+    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
+    BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
+    backupTableParams.storageConfigUUID = storageConfig.configUUID;
+
+    Backup.create(testCustomer.uuid, backupTableParams);
+    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
+    Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
+    expectedEnvVars.put("KUBECONFIG", "foo");
+    tableManager.createBackup(backupTableParams);
+    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
+  }
+
   @Test
   public void testCreateS3Backup() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
     testCreateS3BackupHelper(false);
   }
 
   @Test
   public void testCreateS3BackupVerbose() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
     testCreateS3BackupHelper(true);
   }
 
@@ -328,24 +360,6 @@ import static org.mockito.Mockito.when;
   }
 
   @Test
-  public void testCreateBackupKubernetes() {
-    setupUniverse(ModelFactory.kubernetesProvider(testCustomer));
-    Map<String, String> config = new HashMap<>();
-    config.put("KUBECONFIG", "foo");
-    testProvider.setConfig(config);
-    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);
-    BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
-    backupTableParams.storageConfigUUID = storageConfig.configUUID;
-
-    Backup.create(testCustomer.uuid, backupTableParams);
-    List<String> expectedCommand = getExpectedBackupTableCommand(backupTableParams, "s3");
-    Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
-    expectedEnvVars.put("KUBECONFIG", "foo");
-    tableManager.createBackup(backupTableParams);
-    verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
-  }
-
-  @Test
   public void testBulkImportWithIncorrectYBVersion() {
     setupUniverse(ModelFactory.awsProvider(testCustomer), "0.0.2");
     BulkImportParams bulkImportParams = getBulkImportParams();
@@ -354,5 +368,23 @@ import static org.mockito.Mockito.when;
     } catch (RuntimeException re) {
       assertEquals("Unable to fetch yugabyte release for version: 0.0.2", re.getMessage());
     }
+  }
+
+  @Test
+  public void testCreateTLSBackup() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer), "0.0.1", true);
+    testCreateS3BackupHelper(false);
+  }
+
+  @Test
+  public void testCreateBackupKubernetes() {
+    setupUniverse(ModelFactory.kubernetesProvider(testCustomer));
+    testCreateBackupKubernetesHelper();
+  }
+
+  @Test
+  public void testCreateBackupKubernetesWithTLS() {
+    setupUniverse(ModelFactory.kubernetesProvider(testCustomer), "0.0.1", true);
+    testCreateBackupKubernetesHelper();
   }
 }

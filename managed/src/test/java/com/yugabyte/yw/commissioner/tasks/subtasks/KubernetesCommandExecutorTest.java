@@ -598,16 +598,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
   }
 
   @Test
-  public void testInitYSQL() {
-    KubernetesCommandExecutor kubernetesCommandExecutor =
-      createExecutor(KubernetesCommandExecutor.CommandType.INIT_YSQL);
-    kubernetesCommandExecutor.run();
-    verify(kubernetesManager, times(1))
-      .initYSQL(config, defaultUniverse.getUniverseDetails().nodePrefix,
-                defaultUniverse.getMasterAddresses());
-  }
-
-  @Test
   public void testNamespaceDelete() {
     KubernetesCommandExecutor kubernetesCommandExecutor =
         createExecutor(KubernetesCommandExecutor.CommandType.NAMESPACE_DELETE);

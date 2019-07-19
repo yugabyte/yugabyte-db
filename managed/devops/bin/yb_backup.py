@@ -475,6 +475,9 @@ class YBBackup:
         parser.add_argument(
             'command', choices=['create', 'restore'],
             help='Create or restore the backup from the provided s3 url')
+        parser.add_argument(
+            '--certs_dir', required=False,
+            help="The directory containing the certs for secure connections.")
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 
@@ -543,6 +546,13 @@ class YBBackup:
         :param cmd_line_args: command-line arguments to yb-admin
         :return: the standard output of yb-admin
         """
+
+        # Specify cert file in case TLS is enabled.
+        cert_flag = []
+        if self.args.certs_dir:
+            cert_flag = ["--certs_dir_name", self.args.certs_dir]
+            cmd_line_args = cert_flag + cmd_line_args
+
         # Use local yb-admin tool if it's specified.
         if self.args.local_yb_admin_binary:
             if not os.path.exists(self.args.local_yb_admin_binary):
