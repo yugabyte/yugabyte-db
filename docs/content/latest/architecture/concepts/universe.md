@@ -59,7 +59,7 @@ You can read more [about YB-TServers](../yb-tserver).
 
 ### YB-Master Process
 
-The **YB-Master** (aka the *YugaByte DB Master Server*) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter drop tables, and initiating maintenance operations such as load-balancing.
+The **YB-Master** (aka the *YugaByte DB Master Server*) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter/drop tables, and initiating maintenance operations such as load-balancing.
 
 You can read more [about YB-TServers](../yb-tserver).
 
