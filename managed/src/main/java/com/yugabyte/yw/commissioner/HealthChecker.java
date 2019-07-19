@@ -199,6 +199,10 @@ public class HealthChecker {
       clusterMetadata.put(cluster.uuid, info);
       info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
       info.enableYSQL = cluster.userIntent.enableYSQL;
+      // Since health checker only uses CQLSH, we only care about the
+      // client to node encryption flag.
+      info.enableTlsClient = cluster.userIntent.enableClientToNodeEncrypt;
+
       Provider provider = Provider.get(UUID.fromString(cluster.userIntent.provider));
       if (provider == null) {
         LOG.warn("Skipping universe " + u.name + " due to invalid provider "

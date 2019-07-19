@@ -66,6 +66,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     VOLUME_DELETE,
     NAMESPACE_DELETE,
     POD_INFO,
+    // The following flag is deprecated.
     INIT_YSQL;
 
     public String getSubTaskGroupName() {
@@ -207,10 +208,6 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         break; 
       case POD_INFO:
         processNodeInfo();
-        break;
-      case INIT_YSQL:
-        kubernetesManager.initYSQL(config, taskParams().nodePrefix,
-                                   Universe.get(taskParams().universeUUID).getMasterAddresses());
         break;
     }
     if (response != null) {

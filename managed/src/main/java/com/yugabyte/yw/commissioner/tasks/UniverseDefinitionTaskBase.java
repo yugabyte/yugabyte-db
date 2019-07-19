@@ -459,34 +459,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Creates a task list to initialize YSQL on the universe by running initdb script. Should only run on 1 tserver.
-   *
-   * @param nodes : a collection of nodes that need to be updated.
-   */
-  public void createInitYSQLTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("InitYSQL", executor);
-    if (!nodes.iterator().hasNext()) {
-      String errorMsg = "Unable to run InitDB script: No tservers found";
-      LOG.error(errorMsg);
-      throw new RuntimeException(errorMsg);
-    }
-    NodeDetails initYSQlNode = nodes.iterator().next();
-    InstanceActions.Params params = new InstanceActions.Params();
-    // Add the node name.
-    params.nodeName = initYSQlNode.nodeName;
-    // Add the universe uuid.
-    params.universeUUID = taskParams().universeUUID;
-    // Add the az uuid.
-    params.azUuid = initYSQlNode.azUuid;
-    // Create and add a task for this node.
-    InstanceActions task = new InstanceActions(NodeManager.NodeCommandType.InitYSQL);
-    task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    subTaskGroupQueue.add(subTaskGroup);
-  }
-
-  /**
    * Creates a task list to start the tservers on the set of passed in nodes and adds it to the task
    * queue.
    *

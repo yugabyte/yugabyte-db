@@ -135,7 +135,7 @@ public class UserTaskDetails {
     // Upgrade pod in Kubernetes.
     KubernetesUpgradePod,
 
-    // Run the initdb script in a tserver pod.
+    // Run the initdb script in a tserver pod. (Deprecated)
     KubernetesInitYSQL,
   }
 
