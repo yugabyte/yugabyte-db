@@ -55,12 +55,12 @@ Here are the features currently supported as of YugaByte DB v1.3, Jul 15 2019. T
 
 ## Core DB Features
 
-- [x] Change data capture
-    - [x] Kafka integration ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
-    - [x] Elastic search integraion ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
-- [x] Two DC deployment
-    - [x] Master-slave (asynchronous replication) ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
-    - [x] Multi-master (bidirectional replication, last writer wins semantics) ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+- [ ] Change data capture
+    - [ ] Kafka integration ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+    - [ ] Elastic search integraion ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+- [ ] Two DC deployment
+    - [ ] Master-slave (asynchronous replication) ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+    - [ ] Multi-master (bidirectional replication, last writer wins semantics) ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
 - [ ] Security
     - [ ] SSL Support/TLS Encryption ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
     - [ ] Encryption at rest ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
@@ -93,4 +93,6 @@ Here are the features currently supported as of YugaByte DB v1.3, Jul 15 2019. T
     - [ ] Advanced Spring support ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
 - [ ] Tools support
     - [x] psql
-    - [ ] Tableplus
+    - [ ] TablePlus
+    - [ ] pg_dump ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+    - [ ] pgbench ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
