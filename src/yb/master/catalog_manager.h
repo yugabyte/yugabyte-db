@@ -539,6 +539,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Returns whether the table is a YCQL table.
   static bool IsYcqlTable(const TableInfo& table);
 
+  CHECKED_STATUS FindNamespaceUnlocked(const NamespaceIdentifierPB& ns_identifier,
+                                       scoped_refptr<NamespaceInfo>* ns_info) const;
+
   CHECKED_STATUS FindNamespace(const NamespaceIdentifierPB& ns_identifier,
                                scoped_refptr<NamespaceInfo>* ns_info) const;
 

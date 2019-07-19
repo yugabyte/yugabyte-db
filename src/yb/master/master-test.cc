@@ -66,6 +66,8 @@ DECLARE_string(callhome_tag);
 DECLARE_string(callhome_url);
 DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
+DECLARE_int32(simulate_slow_table_create_secs);
+DECLARE_bool(return_error_if_namespace_not_found);
 
 #define NAMESPACE_ENTRY(namespace) \
     std::make_tuple(k##namespace##NamespaceName, k##namespace##NamespaceId)
@@ -513,6 +515,68 @@ Status MasterTest::DeleteTable(const NamespaceName& namespace_name,
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }
   return Status::OK();
+}
+
+TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
+  FLAGS_simulate_slow_table_create_secs = 10;
+
+  const char *kNamespaceName = "testnamespace";
+  CreateNamespaceResponsePB resp;
+  ASSERT_OK(CreateNamespace(kNamespaceName, YQLDatabase::YQL_DATABASE_CQL, &resp));
+
+  auto task = [kNamespaceName, this]() {
+    const char *kTableName = "testtable";
+    const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+    shared_ptr<RpcController> controller;
+    // Set an RPC timeout for the controllers.
+    controller = make_shared<RpcController>();
+    controller->set_timeout(MonoDelta::FromSeconds(FLAGS_simulate_slow_table_create_secs * 2));
+
+    CreateTableRequestPB req;
+    CreateTableResponsePB resp;
+
+    req.set_name(kTableName);
+    SchemaToPB(kTableSchema, req.mutable_schema());
+    req.mutable_namespace_()->set_name(kNamespaceName);
+    req.mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+    req.set_num_tablets(8);
+    ASSERT_OK(this->proxy_->CreateTable(req, &resp, controller.get()));
+    ASSERT_FALSE(resp.has_error());
+    LOG(INFO) << "Done creating table";
+  };
+
+  std::thread t(task);
+
+  // Delete the namespace (by NAME).
+  {
+    // Give the CreateTable request some time to start and find the namespace.
+    SleepFor(MonoDelta::FromSeconds(FLAGS_simulate_slow_table_create_secs / 2));
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+    req.mutable_namespace_()->set_name(kNamespaceName);
+    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_FALSE(resp.has_error());
+  }
+
+  t.join();
+
+  {
+    FLAGS_return_error_if_namespace_not_found = true;
+    ListTablesRequestPB req;
+    ListTablesResponsePB resp;
+    ASSERT_OK(proxy_->ListTables(req, &resp, ResetAndGetController()));
+    LOG(INFO) << "Finished first ListTables request";
+    ASSERT_TRUE(resp.has_error());
+    string msg = resp.error().status().message();
+    ASSERT_TRUE(msg.find("Keyspace identifier not found") != string::npos);
+
+    // After turning off this flag, ListTables should skip the table with the error.
+    FLAGS_return_error_if_namespace_not_found = false;
+    ASSERT_OK(proxy_->ListTables(req, &resp, ResetAndGetController()));
+    LOG(INFO) << "Finished second ListTables request";
+    ASSERT_FALSE(resp.has_error());
+  }
 }
 
 TEST_F(MasterTest, TestCatalog) {
