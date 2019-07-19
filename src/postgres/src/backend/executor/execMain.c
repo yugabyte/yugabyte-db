@@ -2452,9 +2452,16 @@ ExecBuildAuxRowMark(ExecRowMark *erm, List *targetlist)
 	if (erm->markType != ROW_MARK_COPY)
 	{
 		/* need ctid for all methods other than COPY */
-		snprintf(resname, sizeof(resname), "ctid%u", erm->rowmarkId);
+		if (IsYBBackedRelation(erm->relation))
+		{
+			snprintf(resname, sizeof(resname), "ybctid%u", erm->rowmarkId);
+		}
+		else
+		{
+			snprintf(resname, sizeof(resname), "ctid%u", erm->rowmarkId);
+		}
 		aerm->ctidAttNo = ExecFindJunkAttributeInTlist(targetlist,
-													   resname);
+													resname);
 		if (!AttributeNumberIsValid(aerm->ctidAttNo))
 			elog(ERROR, "could not find junk %s column", resname);
 	}

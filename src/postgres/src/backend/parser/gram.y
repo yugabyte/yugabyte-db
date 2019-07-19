@@ -894,6 +894,8 @@ stmt :
 			| CreateFunctionStmt { parser_ybc_beta_feature(@1, "function"); }
 			| DoStmt { parser_ybc_beta_feature(@1, "function"); }
 			| RemoveFuncStmt { parser_ybc_beta_feature(@1, "function"); }
+			| CreateTrigStmt { parser_ybc_beta_feature(@1, "trigger"); }
+			| CreateExtensionStmt { parser_ybc_beta_feature(@1, "extension"); }
 
 			/* Not supported in template0/template1 statements */
 			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
@@ -935,7 +937,6 @@ stmt :
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateCastStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateExtensionStmt { parser_ybc_signal_unsupported(@1, "This statement", 1154); }
 			| CreateFdwStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateForeignServerStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateForeignTableStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -951,7 +952,6 @@ stmt :
 			| CreateStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTableSpaceStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateTrigStmt { parser_ybc_signal_unsupported(@1, "This statement", 1156); }
 			| CreateEventTrigStmt { parser_ybc_signal_unsupported(@1, "This statement", 1156); }
 			| CreateRoleStmt { parser_ybc_signal_unsupported(@1, "This statement", 869); }
 			| CreateUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -2476,7 +2476,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE TRIGGER <trig> */
 			| ENABLE_P TRIGGER name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ENABLE TRIGGER", 1124);
+					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableTrig;
 					n->name = $3;
@@ -2485,7 +2485,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE ALWAYS TRIGGER <trig> */
 			| ENABLE_P ALWAYS TRIGGER name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ENABLE TRIGGER", 1124);
+					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableAlwaysTrig;
 					n->name = $4;
@@ -2494,7 +2494,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE REPLICA TRIGGER <trig> */
 			| ENABLE_P REPLICA TRIGGER name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ENABLE TRIGGER", 1124);
+					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableReplicaTrig;
 					n->name = $4;
@@ -2503,7 +2503,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE TRIGGER ALL */
 			| ENABLE_P TRIGGER ALL
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ENABLE TRIGGER", 1124);
+					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableTrigAll;
 					$$ = (Node *)n;
@@ -2511,7 +2511,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ENABLE TRIGGER USER */
 			| ENABLE_P TRIGGER USER
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ENABLE TRIGGER", 1124);
+					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_EnableTrigUser;
 					$$ = (Node *)n;
@@ -2519,7 +2519,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DISABLE TRIGGER <trig> */
 			| DISABLE_P TRIGGER name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ENABLE TRIGGER", 1124);
+					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DisableTrig;
 					n->name = $3;
@@ -2528,7 +2528,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DISABLE TRIGGER ALL */
 			| DISABLE_P TRIGGER ALL
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE DISABLE TRIGGER", 1124);
+					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DisableTrigAll;
 					$$ = (Node *)n;
@@ -2536,7 +2536,7 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DISABLE TRIGGER USER */
 			| DISABLE_P TRIGGER USER
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE DISABLE TRIGGER", 1124);
+					parser_ybc_beta_feature(@1, "trigger");
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DisableTrigUser;
 					$$ = (Node *)n;
@@ -4676,7 +4676,6 @@ DropTableSpaceStmt: DROP TABLESPACE name
 
 CreateExtensionStmt: CREATE EXTENSION name opt_with create_extension_opt_list
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE EXTENSION", 1154);
 					CreateExtensionStmt *n = makeNode(CreateExtensionStmt);
 					n->extname = $3;
 					n->if_not_exists = false;
@@ -4685,7 +4684,6 @@ CreateExtensionStmt: CREATE EXTENSION name opt_with create_extension_opt_list
 				}
 				| CREATE EXTENSION IF_P NOT EXISTS name opt_with create_extension_opt_list
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE EXTENSION", 1154);
 					CreateExtensionStmt *n = makeNode(CreateExtensionStmt);
 					n->extname = $6;
 					n->if_not_exists = true;
@@ -5648,7 +5646,6 @@ CreateTrigStmt:
 			qualified_name TriggerReferencing TriggerForSpec TriggerWhen
 			EXECUTE FUNCTION_or_PROCEDURE func_name '(' TriggerFuncArgs ')'
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE TRIGGER", 1156);
 					CreateTrigStmt *n = makeNode(CreateTrigStmt);
 					n->trigname = $3;
 					n->relation = $7;
@@ -5671,7 +5668,7 @@ CreateTrigStmt:
 			FOR EACH ROW TriggerWhen
 			EXECUTE FUNCTION_or_PROCEDURE func_name '(' TriggerFuncArgs ')'
 				{
-					parser_ybc_signal_unsupported(@1, "CREATE TRIGGER", 1156);
+					parser_ybc_signal_unsupported(@1, "CREATE CONSTRAINT TRIGGER", 1709);
 					CreateTrigStmt *n = makeNode(CreateTrigStmt);
 					n->trigname = $4;
 					n->relation = $8;
@@ -5736,7 +5733,11 @@ TriggerOneEvent:
 		;
 
 TriggerReferencing:
-			REFERENCING TriggerTransitions			{ $$ = $2; }
+			REFERENCING TriggerTransitions			
+				{
+					parser_ybc_signal_unsupported(@1, "REFERENCING clause (transition tables)", 1668);
+					$$ = $2;
+				}
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
@@ -6740,7 +6741,8 @@ drop_type_name:
 				}
 			| EXTENSION
 				{
-					parser_ybc_signal_unsupported(@1, "DROP EXTENSION", 1154); $$ = OBJECT_EXTENSION;
+					parser_ybc_beta_feature(@1, "extension");
+					$$ = OBJECT_EXTENSION;
 				}
 			| FOREIGN DATA_P WRAPPER
 				{
@@ -6756,7 +6758,7 @@ drop_type_name:
 drop_type_name_on_any_name:
 			POLICY { parser_ybc_not_support(@1, "DROP POLICY"); $$ = OBJECT_POLICY; }
 			| RULE { parser_ybc_not_support(@1, "DROP RULE"); $$ = OBJECT_RULE; }
-			| TRIGGER { parser_ybc_signal_unsupported(@1, "DROP TRIGGER", 1156); $$ = OBJECT_TRIGGER; }
+			| TRIGGER { parser_ybc_beta_feature(@1, "trigger"); $$ = OBJECT_TRIGGER; }
 		;
 
 any_name_list:
@@ -9414,7 +9416,7 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TRIGGER name ON qualified_name RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TRIGGER", 1156);
+					parser_ybc_beta_feature(@1, "trigger");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TRIGGER;
 					n->relation = $5;
@@ -13208,7 +13210,6 @@ Typename:	SimpleTypename opt_array_bounds
 				}
 			| SETOF SimpleTypename opt_array_bounds
 				{
-					parser_ybc_not_support(@1, "Complex type");
 					$$ = $2;
 					$$->arrayBounds = $3;
 					$$->setof = true;
@@ -13221,7 +13222,6 @@ Typename:	SimpleTypename opt_array_bounds
 				}
 			| SETOF SimpleTypename ARRAY '[' Iconst ']'
 				{
-					parser_ybc_not_support(@1, "Complex type");
 					$$ = $2;
 					$$->arrayBounds = list_make1(makeInteger($5));
 					$$->setof = true;

@@ -422,7 +422,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 
 	/*
 	 * If hash key is not fully set, we must do a full-table scan so we will clear all the scan
-	 * keys. Othrwise, if primary key is set only partially, clear the remaining scan keys after
+	 * keys. Otherwise, if primary key is set only partially, clear the remaining scan keys after
 	 * the first missing one.
 	 *
 	 * TODO: We scan the primary key columns by increasing attribute number to look for the first

@@ -25,6 +25,7 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "catalog/pg_type.h"
 #include "catalog/ybctype.h"
 #include "utils/relcache.h"
@@ -239,8 +240,7 @@ static void YBCBindTupleId(YBCPgStatement pg_stmt, Datum tuple_id) {
  */
 static bool IsSystemCatalogChange(Relation rel)
 {
-	return IsSystemRelation(rel) &&
-	       !IsBootstrapProcessingMode();
+	return IsSystemRelation(rel) && !IsBootstrapProcessingMode();
 }
 
 /*
@@ -388,6 +388,17 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 		YBCPgExpr ybc_expr = YBCNewConstant(insert_stmt, type_id, datum, is_null);
 		HandleYBStmtStatus(YBCPgDmlBindColumn(insert_stmt, attnum, ybc_expr),
 		                   insert_stmt);
+	}
+
+	/*
+	 * For system tables, mark tuple for invalidation from system caches 
+	 * at next command boundary. Do this now so if there is an error with insert 
+	 * we will re-query to get the correct state from the master.
+	 */
+	if (IsCatalogRelation(rel))
+	{
+		GetCurrentCommandId(true);
+		CacheInvalidateHeapTuple(rel, tuple, NULL);
 	}
 
 	/* Execute the insert */
@@ -657,6 +668,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	 * boundary. Do this now so if there is an error with delete we will
 	 * re-query to get the correct state from the master.
 	 */
+	GetCurrentCommandId(true);
 	CacheInvalidateHeapTuple(rel, tuple, NULL);
 
 	HandleYBStmtStatus(YBCExecWriteStmt(delete_stmt, rel), delete_stmt);
@@ -710,6 +722,7 @@ void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple oldtuple, HeapTuple tuple)
 	 * is an error with update we will re-query to get the correct state
 	 * from the master.
 	 */
+	GetCurrentCommandId(true); 
 	if (oldtuple)
 		CacheInvalidateHeapTuple(rel, oldtuple, tuple);
 	else

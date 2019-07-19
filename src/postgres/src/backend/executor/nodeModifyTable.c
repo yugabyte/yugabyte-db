@@ -1493,9 +1493,14 @@ ExecOnConflictUpdate(ModifyTableState *mtstate,
 	 * However, YugaByte writes the conflict tuple including its "ybctid" to execution state "estate"
 	 * and then frees the slot when done.
 	 */
-	if (IsYugaByteEnabled()) {
+	if (IsYBBackedRelation(relation)) {
 		/* Not using heap buffer for YugaByte */
 		buffer = InvalidBuffer;
+
+		/* Ensure the heap tuple is initialized to invalid too. */
+		ItemPointerSetInvalid(&(tuple.t_self));
+		tuple.t_ybctid = (Datum) 0;
+
 		goto yb_skip_transaction_control_check;
 	}
 
@@ -2218,13 +2223,6 @@ ExecModifyTable(PlanState *pstate)
 
 		EvalPlanQualSetSlot(&node->mt_epqstate, planSlot);
 		slot = planSlot;
-
-		if (IsYugaByteEnabled() && resultRelInfo->ri_RelationDesc->trigdesc &&
-		    !IsolationIsSerializable())
-		{
-			YBRaiseNotSupported("Operation only supported in SERIALIZABLE"
-			                    "isolation level", 1199);
-		}
 
 		tupleid = NULL;
 		oldtuple = NULL;

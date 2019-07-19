@@ -29,5 +29,7 @@ DECLARE_int32(ysql_session_max_batch_size);
 
 DECLARE_bool(ysql_beta_features);
 DECLARE_bool(ysql_beta_feature_function);
+DECLARE_bool(ysql_beta_feature_trigger);
+DECLARE_bool(ysql_beta_feature_extension);
 
 #endif  // YB_YQL_PGGATE_PGGATE_FLAGS_H

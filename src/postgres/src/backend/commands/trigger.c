@@ -4533,7 +4533,7 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 					 * Need to create a tuple slot for both YugaByte tables and
 					 * foreign tables
 					 */
-					if (IsYBRelation(rel) ||
+					if (IsYBBackedRelation(rel) ||
 					    rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
 					{
 						if (slot1 != NULL)
@@ -5928,7 +5928,7 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 	 * In YugaByte mode we (re)use the FDW trigger flags (since we also use the
 	 * FDW tuplestore).
 	 */
-	if (!((IsYBRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger))
+	if (!((IsYBBackedRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger))
 		new_event.ate_flags = (row_trigger && event == TRIGGER_EVENT_UPDATE) ?
 			AFTER_TRIGGER_2CTID : AFTER_TRIGGER_1CTID;
 	/* else, we'll initialize ate_flags for each trigger */
@@ -5952,7 +5952,7 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 		 * In YugaByte mode we also use the tuplestore to store/pass tuples
 		 * within a query execution.
 		 */
-		if ((IsYBRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger)
+		if ((IsYBBackedRelation(rel) || relkind == RELKIND_FOREIGN_TABLE) && row_trigger)
 		{
 			if (fdw_tuplestore == NULL)
 			{

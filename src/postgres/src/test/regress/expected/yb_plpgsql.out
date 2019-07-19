@@ -1634,38 +1634,42 @@ create function test_table_func_rec() returns setof found_test_tbl as '
 DECLARE
 	rec RECORD;
 BEGIN
-	FOR rec IN select * from found_test_tbl LOOP
+	FOR rec IN select * from found_test_tbl order by a LOOP
 		RETURN NEXT rec;
 	END LOOP;
 	RETURN;
 END;' language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create function test_table_func_rec() returns setof found_te...
-                                                      ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from test_table_func_rec();
-ERROR:  function test_table_func_rec() does not exist
-LINE 1: select * from test_table_func_rec();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+  a
+-----
+   2
+   3
+   4
+   5
+   6
+ 100
+(6 rows)
+
 create function test_table_func_row() returns setof found_test_tbl as '
 DECLARE
 	row found_test_tbl%ROWTYPE;
 BEGIN
-	FOR row IN select * from found_test_tbl LOOP
+	FOR row IN select * from found_test_tbl order by a LOOP
 		RETURN NEXT row;
 	END LOOP;
 	RETURN;
 END;' language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create function test_table_func_row() returns setof found_te...
-                                                      ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from test_table_func_row();
-ERROR:  function test_table_func_row() does not exist
-LINE 1: select * from test_table_func_row();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+  a
+-----
+   2
+   3
+   4
+   5
+   6
+ 100
+(6 rows)
+
 create function test_ret_set_scalar(int,int) returns setof int as '
 DECLARE
 	i int;
@@ -1675,15 +1679,21 @@ BEGIN
 	END LOOP;
 	RETURN;
 END;' language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: ...ate function test_ret_set_scalar(int,int) returns setof int ...
-                                                             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from test_ret_set_scalar(1,10);
-ERROR:  function test_ret_set_scalar(integer, integer) does not exist
-LINE 1: select * from test_ret_set_scalar(1,10);
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ test_ret_set_scalar
+---------------------
+                   2
+                   3
+                   4
+                   5
+                   6
+                   7
+                   8
+                   9
+                  10
+                  11
+(10 rows)
+
 create function test_ret_set_rec_dyn(int) returns setof record as '
 DECLARE
 	retval RECORD;
@@ -1699,20 +1709,20 @@ BEGIN
 	END IF;
 	RETURN;
 END;' language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create function test_ret_set_rec_dyn(int) returns setof reco...
-                                                          ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SELECT * FROM test_ret_set_rec_dyn(1500) AS (a int, b int, c int);
-ERROR:  function test_ret_set_rec_dyn(integer) does not exist
-LINE 1: SELECT * FROM test_ret_set_rec_dyn(1500) AS (a int, b int, c...
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ a | b  | c
+---+----+----
+ 5 | 10 | 15
+ 5 | 10 | 15
+(2 rows)
+
 SELECT * FROM test_ret_set_rec_dyn(5) AS (a int, b numeric, c text);
-ERROR:  function test_ret_set_rec_dyn(integer) does not exist
-LINE 1: SELECT * FROM test_ret_set_rec_dyn(5) AS (a int, b numeric, ...
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ a  | b |  c
+----+---+-----
+ 50 | 5 | xxx
+ 50 | 5 | xxx
+(2 rows)
+
 create function test_ret_rec_dyn(int) returns record as '
 DECLARE
 	retval RECORD;
@@ -1777,31 +1787,18 @@ create or replace function f1(inout i int) as $$
 begin
   i := i+1;
 end$$ language plpgsql;
-ERROR:  RETURN cannot have a parameter in function with OUT parameters
-LINE 3:   return i+1;
-                 ^
-QUERY:
-begin
-  return i+1;
-end
 select f1(42);
-ERROR:  RETURN cannot have a parameter in function with OUT parameters
-LINE 3:   return i+1;
-                 ^
-QUERY:
-begin
-  return i+1;
-end
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 3
+ f1
+----
+ 43
+(1 row)
+
 select * from f1(42);
-ERROR:  RETURN cannot have a parameter in function with OUT parameters
-LINE 3:   return i+1;
-                 ^
-QUERY:
-begin
-  return i+1;
-end
-CONTEXT:  compilation of PL/pgSQL function "f1" near line 3
+ i
+----
+ 43
+(1 row)
+
 drop function f1(int);
 create function f1(in i int, out j int) returns setof int as $$
 begin
@@ -1811,17 +1808,14 @@ begin
   return next;
   return;
 end$$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create function f1(in i int, out j int) returns setof int as...
-                                                        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from f1(42);
-ERROR:  function f1(integer) does not exist
-LINE 1: select * from f1(42);
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ j
+----
+ 43
+ 44
+(2 rows)
+
 drop function f1(int);
-ERROR:  function f1(integer) does not exist
 create function f1(in i int, out j int, out k text) as $$
 begin
   j := i;
@@ -1829,17 +1823,18 @@ begin
   k := 'foo';
 end$$ language plpgsql;
 select f1(42);
-ERROR:  function f1(integer) does not exist
-LINE 1: select f1(42);
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+    f1
+----------
+ (43,foo)
+(1 row)
+
 select * from f1(42);
-ERROR:  function f1(integer) does not exist
-LINE 1: select * from f1(42);
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ j  |  k
+----+-----
+ 43 | foo
+(1 row)
+
 drop function f1(int);
-ERROR:  function f1(integer) does not exist
 create function f1(in i int, out j int, out k text) returns setof record as $$
 begin
   j := i+1;
@@ -1849,17 +1844,14 @@ begin
   k := 'foot';
   return next;
 end$$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: ...ction f1(in i int, out j int, out k text) returns setof reco...
-                                                             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from f1(42);
-ERROR:  function f1(integer) does not exist
-LINE 1: select * from f1(42);
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ j  |  k
+----+------
+ 43 | foo
+ 44 | foot
+(2 rows)
+
 drop function f1(int);
-ERROR:  function f1(integer) does not exist
 create function duplic(in i anyelement, out j anyelement, out k anyarray) as $$
 begin
   j := i;
@@ -2944,6 +2936,12 @@ out1 int;
 begin
 end
 $$ language plpgsql;
+WARNING:  variable "in1" shadows a previously defined variable
+LINE 4: in1 int;
+        ^
+WARNING:  variable "out1" shadows a previously defined variable
+LINE 5: out1 int;
+        ^
 select shadowtest(1);
  shadowtest
 ------------
@@ -3035,15 +3033,12 @@ begin
   close c;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create function sc_test() returns setof integer as $$
-                                          ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from sc_test();
-ERROR:  function sc_test() does not exist
-LINE 1: select * from sc_test();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  relation "int4_tbl" does not exist
+LINE 1: select f1 from int4_tbl
+                       ^
+QUERY:  select f1 from int4_tbl
+CONTEXT:  PL/pgSQL function sc_test() line 6 at OPEN
 create or replace function sc_test() returns setof integer as $$
 declare
   c no scroll cursor for select f1 from int4_tbl;
@@ -3058,15 +3053,12 @@ begin
   close c;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create or replace function sc_test() returns setof integer a...
-                                                     ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from sc_test();  -- fails because of NO SCROLL specification
-ERROR:  function sc_test() does not exist
-LINE 1: select * from sc_test();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  relation "int4_tbl" does not exist
+LINE 1: select f1 from int4_tbl
+                       ^
+QUERY:  select f1 from int4_tbl
+CONTEXT:  PL/pgSQL function sc_test() line 6 at OPEN
 create or replace function sc_test() returns setof integer as $$
 declare
   c refcursor;
@@ -3081,15 +3073,12 @@ begin
   close c;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create or replace function sc_test() returns setof integer a...
-                                                     ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from sc_test();
-ERROR:  function sc_test() does not exist
-LINE 1: select * from sc_test();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  relation "int4_tbl" does not exist
+LINE 1: select f1 from int4_tbl
+                       ^
+QUERY:  select f1 from int4_tbl
+CONTEXT:  PL/pgSQL function sc_test() line 6 at OPEN
 create or replace function sc_test() returns setof integer as $$
 declare
   c refcursor;
@@ -3104,15 +3093,12 @@ begin
   close c;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create or replace function sc_test() returns setof integer a...
-                                                     ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from sc_test();
-ERROR:  function sc_test() does not exist
-LINE 1: select * from sc_test();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  relation "int4_tbl" does not exist
+LINE 1: select f1 from int4_tbl
+                       ^
+QUERY:  select f1 from int4_tbl
+CONTEXT:  PL/pgSQL function sc_test() line 6 at OPEN
 create or replace function sc_test() returns setof integer as $$
 declare
   c refcursor;
@@ -3128,15 +3114,12 @@ begin
   close c;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create or replace function sc_test() returns setof integer a...
-                                                     ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from sc_test();
-ERROR:  function sc_test() does not exist
-LINE 1: select * from sc_test();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  relation "int4_tbl" does not exist
+LINE 1: select f1 from int4_tbl
+                       ^
+QUERY:  select f1 from int4_tbl
+CONTEXT:  PL/pgSQL function sc_test() line 6 at OPEN
 create or replace function sc_test() returns setof integer as $$
 declare
   c cursor for select * from generate_series(1, 10);
@@ -3156,15 +3139,14 @@ begin
   close c;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create or replace function sc_test() returns setof integer a...
-                                                     ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from sc_test();
-ERROR:  function sc_test() does not exist
-LINE 1: select * from sc_test();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ sc_test
+---------
+       3
+       6
+       9
+(3 rows)
+
 create or replace function sc_test() returns setof integer as $$
 declare
   c cursor for select * from generate_series(1, 10);
@@ -3179,17 +3161,13 @@ begin
   close c;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create or replace function sc_test() returns setof integer a...
-                                                     ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from sc_test();
-ERROR:  function sc_test() does not exist
-LINE 1: select * from sc_test();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ sc_test
+---------
+      10
+(1 row)
+
 drop function sc_test();
-ERROR:  function sc_test() does not exist
 -- test qualified variable names
 create function pl_qual_names (param1 int) returns void as $$
 <<outerblock>>
@@ -3228,15 +3206,24 @@ begin
     return next;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: ...ate function ret_query1(out int, out int) returns setof reco...
-                                                             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from ret_query1();
-ERROR:  function ret_query1() does not exist
-LINE 1: select * from ret_query1();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ column1 | column2
+---------+---------
+      -1 |      -2
+       1 |       0
+       2 |      10
+       3 |      20
+       4 |      30
+       5 |      40
+       6 |      50
+       7 |      60
+       8 |      70
+       9 |      80
+      10 |      90
+      11 |     100
+      -1 |      -2
+(13 rows)
+
 create type record_type as (x text, y int, z boolean);
 ERROR:  CREATE TYPE not supported yet
 LINE 1: create type record_type as (x text, y int, z boolean);
@@ -3248,10 +3235,7 @@ begin
                  from generate_series(-8, lim) s (x) where s.x % 2 = 0;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: ...e or replace function ret_query2(lim int) returns setof reco...
-                                                             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  type "record_type" does not exist
 select * from ret_query2(8);
 ERROR:  function ret_query2(integer) does not exist
 LINE 1: select * from ret_query2(8);
@@ -3369,11 +3353,11 @@ NOTICE:  after loop, c2 = <NULL>
 (1 row)
 
 -- try updating the cursor's current row
-create temp table forc_test as
+create table forc_test as
   select n as i, n as j from generate_series(1,10) n;
 create or replace function forc01() returns void as $$
 declare
-  c cursor for select * from forc_test;
+  c cursor for select * from forc_test order by i;
 begin
   for r in c loop
     raise notice '%, %', r.i, r.j;
@@ -3381,29 +3365,18 @@ begin
   end loop;
 end;
 $$ language plpgsql;
+ERROR:  WHERE CURRENT OF not supported yet
+LINE 7:     update forc_test set i = i * 100, j = r.j * 2 where curr...
+                                                          ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
 select forc01();
-NOTICE:  5 from c
-NOTICE:  6 from c
-NOTICE:  7 from c
-NOTICE:  9 from c
-NOTICE:  10 from c
-NOTICE:  41 from c2
-NOTICE:  42 from c2
-NOTICE:  43 from c2
-NOTICE:  after loop, c2 = c2
-NOTICE:  41 from special_name
-NOTICE:  42 from special_name
-NOTICE:  43 from special_name
-NOTICE:  after loop, c2 = special_name
-NOTICE:  41
-NOTICE:  42
-NOTICE:  43
-NOTICE:  after loop, c2 = <NULL>
- forc01
---------
-
-(1 row)
-
+NOTICE:  1, 1
+ERROR:  WHERE CURRENT OF not supported yet
+LINE 1: update forc_test set i = i * 100, j = r.j * 2 where current ...
+                                                      ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+QUERY:  update forc_test set i = i * 100, j = r.j * 2 where current of c
+CONTEXT:  PL/pgSQL function forc01() line 7 at SQL statement
 select * from forc_test order by i;
  i  | j
 ----+----
@@ -3425,7 +3398,7 @@ declare
   c refcursor := 'fooled_ya';
   r record;
 begin
-  open c for select * from forc_test;
+  open c for select * from forc_test order by i;
   loop
     fetch c into r;
     exit when not found;
@@ -3434,29 +3407,18 @@ begin
   end loop;
 end;
 $$ language plpgsql;
+ERROR:  WHERE CURRENT OF not supported yet
+LINE 11:     update forc_test set i = i * 100, j = r.j * 2 where curr...
+                                                           ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
 select forc01();
-NOTICE:  5 from c
-NOTICE:  6 from c
-NOTICE:  7 from c
-NOTICE:  9 from c
-NOTICE:  10 from c
-NOTICE:  41 from c2
-NOTICE:  42 from c2
-NOTICE:  43 from c2
-NOTICE:  after loop, c2 = c2
-NOTICE:  41 from special_name
-NOTICE:  42 from special_name
-NOTICE:  43 from special_name
-NOTICE:  after loop, c2 = special_name
-NOTICE:  41
-NOTICE:  42
-NOTICE:  43
-NOTICE:  after loop, c2 = <NULL>
- forc01
---------
-
-(1 row)
-
+NOTICE:  1, 1
+ERROR:  WHERE CURRENT OF not supported yet
+LINE 1: update forc_test set i = i * 100, j = r.j * 2 where current ...
+                                                      ^
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/737. Click '+' on the description to raise its priority
+QUERY:  update forc_test set i = i * 100, j = r.j * 2 where current of c
+CONTEXT:  PL/pgSQL function forc01() line 11 at SQL statement
 select * from forc_test order by i;
  i  | j
 ----+----
@@ -3494,56 +3456,54 @@ begin
   return query execute 'select * from (values($1),($2)) f' using 40,50;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 2: returns setof int as $$
-                ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from return_dquery();
-ERROR:  function return_dquery() does not exist
-LINE 1: select * from return_dquery();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ return_dquery
+---------------
+            10
+            20
+            40
+            50
+(4 rows)
+
 drop function return_dquery();
-ERROR:  function return_dquery() does not exist
 -- test RETURN QUERY with dropped columns
 create table tabwithcols(a int, b int, c int, d int);
 insert into tabwithcols values(10,20,30,40),(50,60,70,80);
 create or replace function returnqueryf()
 returns setof tabwithcols as $$
 begin
-  return query select * from tabwithcols;
-  return query execute 'select * from tabwithcols';
+  return query select * from tabwithcols order by a;
+  return query execute 'select * from tabwithcols' order by a;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 2: returns setof tabwithcols as $$
-                ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from returnqueryf();
-ERROR:  function returnqueryf() does not exist
-LINE 1: select * from returnqueryf();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  column "a" does not exist
+LINE 1: SELECT 'select * from tabwithcols' order by a
+                                                    ^
+QUERY:  SELECT 'select * from tabwithcols' order by a
+CONTEXT:  PL/pgSQL function returnqueryf() line 4 at RETURN QUERY
 alter table tabwithcols drop column b;
 select * from returnqueryf();
-ERROR:  function returnqueryf() does not exist
-LINE 1: select * from returnqueryf();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  column "a" does not exist
+LINE 1: SELECT 'select * from tabwithcols' order by a
+                                                    ^
+QUERY:  SELECT 'select * from tabwithcols' order by a
+CONTEXT:  PL/pgSQL function returnqueryf() line 4 at RETURN QUERY
 alter table tabwithcols drop column d;
 select * from returnqueryf();
-ERROR:  function returnqueryf() does not exist
-LINE 1: select * from returnqueryf();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  column "a" does not exist
+LINE 1: SELECT 'select * from tabwithcols' order by a
+                                                    ^
+QUERY:  SELECT 'select * from tabwithcols' order by a
+CONTEXT:  PL/pgSQL function returnqueryf() line 4 at RETURN QUERY
 alter table tabwithcols add column d int;
 select * from returnqueryf();
-ERROR:  function returnqueryf() does not exist
-LINE 1: select * from returnqueryf();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  column "a" does not exist
+LINE 1: SELECT 'select * from tabwithcols' order by a
+                                                    ^
+QUERY:  SELECT 'select * from tabwithcols' order by a
+CONTEXT:  PL/pgSQL function returnqueryf() line 4 at RETURN QUERY
 drop function returnqueryf();
-ERROR:  function returnqueryf() does not exist
 drop table tabwithcols;
 --
 -- Tests for composite-type results
@@ -3652,10 +3612,7 @@ begin
   return next (2, 'goodbye')::compostype;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create or replace function compos() returns setof compostype...
-                                                    ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  type "compostype" does not exist
 select * from compos();
 ERROR:  function compos() does not exist
 LINE 1: select * from compos();
@@ -3703,16 +3660,6 @@ ERROR:  type "compostype" does not exist
 LINE 3:   v compostype;
             ^
 select compos();
-ERROR:  function compos() does not exist
-LINE 1: select compos();
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
--- test: invalid use of composite expression in scalar-returning function
-create or replace function compos() returns int as $$
-begin
-  return (1, 'hello')::compostype;
-end;
-$$ language plpgsql;
 ERROR:  type "compostype" does not exist
 LINE 3:   v compostype;
             ^
@@ -3724,13 +3671,20 @@ begin
   return v;
 end;
 
+CONTEXT:  compilation of PL/pgSQL function "compos" near line 3
+-- test: invalid use of composite expression in scalar-returning function
+create or replace function compos() returns int as $$
+begin
+  return (1, 'hello')::compostype;
+end;
+$$ language plpgsql;
 select compos();
-ERROR:  function compos() does not exist
-LINE 1: select compos();
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  type "compostype" does not exist
+LINE 1: SELECT (1, 'hello')::compostype
+                             ^
+QUERY:  SELECT (1, 'hello')::compostype
+CONTEXT:  PL/pgSQL function compos() line 3 at RETURN
 drop function compos();
-ERROR:  function compos() does not exist
 drop type compostype;
 ERROR:  DROP TYPE not supported yet
 LINE 1: drop type compostype;
@@ -3767,12 +3721,10 @@ begin
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
+NOTICE:  SQLSTATE: 22012 SQLERRM: check me
+ERROR:  check me
 DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
 create or replace function raise_test() returns void as $$
 begin
   raise 'check me'
@@ -3784,12 +3736,10 @@ begin
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
+NOTICE:  SQLSTATE: 1234F SQLERRM: check me
+ERROR:  check me
 DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
 -- SQLSTATE specification in WHEN
 create or replace function raise_test() returns void as $$
 begin
@@ -3802,12 +3752,10 @@ begin
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
+NOTICE:  SQLSTATE: 1234F SQLERRM: check me
+ERROR:  check me
 DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
 create or replace function raise_test() returns void as $$
 begin
   raise division_by_zero using detail = 'some detail info';
@@ -3818,60 +3766,42 @@ begin
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
+NOTICE:  SQLSTATE: 22012 SQLERRM: division_by_zero
+ERROR:  division_by_zero
 DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
 create or replace function raise_test() returns void as $$
 begin
   raise division_by_zero;
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
-DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+ERROR:  division_by_zero
+CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
 create or replace function raise_test() returns void as $$
 begin
   raise sqlstate '1234F';
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
-DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+ERROR:  1234F
+CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
 create or replace function raise_test() returns void as $$
 begin
   raise division_by_zero using message = 'custom' || ' message';
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
-DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+ERROR:  custom message
+CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
 create or replace function raise_test() returns void as $$
 begin
   raise using message = 'custom' || ' message', errcode = '22012';
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
-DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+ERROR:  custom message
+CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
 -- conflict on message
 create or replace function raise_test() returns void as $$
 begin
@@ -3879,12 +3809,8 @@ begin
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
-DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+ERROR:  RAISE option already specified: MESSAGE
+CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
 -- conflict on errcode
 create or replace function raise_test() returns void as $$
 begin
@@ -3892,12 +3818,8 @@ begin
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
-DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+ERROR:  RAISE option already specified: ERRCODE
+CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
 -- nothing to re-RAISE
 create or replace function raise_test() returns void as $$
 begin
@@ -3905,12 +3827,8 @@ begin
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
-DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+ERROR:  RAISE without parameters cannot be used outside an exception handler
+CONTEXT:  PL/pgSQL function raise_test() line 3 at RAISE
 -- test access to exception data
 create function zero_divide() returns int as $$
 declare v int := 0;
@@ -3962,7 +3880,7 @@ exception when others then
 end;
 $$ language plpgsql;
 select stacked_diagnostics_test();
-NOTICE:  sqlstate: 22012, message: division by zero, context: [PL/pgSQL function zero_divide() line 4 at RETURN <- SQL statement "SELECT zero_divide()" <- PL/pgSQL function stacked_diagnostics_test() line 6 at PERFORM]
+NOTICE:  message: custom exception, detail: some detail of custom exception, hint: some hint related to custom exception
  stacked_diagnostics_test
 --------------------------
 
@@ -3982,12 +3900,8 @@ begin
 end;
 $$ language plpgsql;
 select stacked_diagnostics_test();
-NOTICE:  sqlstate: 22012, message: division by zero, context: [PL/pgSQL function zero_divide() line 4 at RETURN <- SQL statement "SELECT zero_divide()" <- PL/pgSQL function stacked_diagnostics_test() line 6 at PERFORM]
- stacked_diagnostics_test
---------------------------
-
-(1 row)
-
+ERROR:  GET STACKED DIAGNOSTICS cannot be used outside an exception handler
+CONTEXT:  PL/pgSQL function stacked_diagnostics_test() line 6 at GET STACKED DIAGNOSTICS
 drop function zero_divide();
 drop function stacked_diagnostics_test();
 -- check cases where implicit SQLSTATE variable could be confused with
@@ -4002,12 +3916,9 @@ exception
 end;
 $$ language plpgsql;
 select raise_test();
-NOTICE:  1 2 3
-DETAIL:  some detail info
-HINT:  some hint
-ERROR:  1 2 3
-DETAIL:  some detail info
-CONTEXT:  PL/pgSQL function raise_test() line 5 at RAISE
+NOTICE:  22012
+ERROR:  substitute message
+CONTEXT:  PL/pgSQL function raise_test() line 7 at RAISE
 drop function raise_test();
 -- test passing column_name, constraint_name, datatype_name, table_name
 -- and schema_name error fields
@@ -4125,6 +4036,7 @@ begin
 end;
 $$ language plpgsql immutable strict;
 select pleast(10);
+NOTICE:  non-variadic function called
  pleast
 --------
      10
@@ -4157,14 +4069,11 @@ begin
 end;
 $$ language plpgsql immutable strict;
 select * from tftest(10);
- a  | b
-----+----
- 10 | 11
- 10 | 12
- 10 | 13
- 10 | 14
- 10 | 15
-(5 rows)
+  a  |  b
+-----+-----
+  10 |  11
+ 100 | 101
+(2 rows)
 
 drop function tftest(int);
 create or replace function rttest()
@@ -4187,17 +4096,20 @@ begin
   raise notice '% %', found, rca[2];
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 2: returns setof int as $$
-                ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 select * from rttest();
-ERROR:  function rttest() does not exist
-LINE 1: select * from rttest();
-                      ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+NOTICE:  t 2
+NOTICE:  f 0
+NOTICE:  t 2
+NOTICE:  f 0
+ rttest
+--------
+     10
+     20
+     10
+     20
+(4 rows)
+
 drop function rttest();
-ERROR:  function rttest() does not exist
 -- Test for proper cleanup at subtransaction exit.  This example
 -- exposed a bug in PG 8.2.
 CREATE FUNCTION leaker_1(fail BOOL) RETURNS INTEGER AS $$
@@ -4463,10 +4375,10 @@ begin
 end
 $$ language plpgsql;
 select strtest();
-NOTICE:  foo\bar!baz
-   strtest
--------------
- foo\bar!baz
+NOTICE:  foo\\bar\041baz\
+     strtest
+------------------
+ foo\\bar\041baz\
 (1 row)
 
 create or replace function strtest() returns text as $$
@@ -4579,10 +4491,7 @@ begin
   end loop;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: create function conflict_test() returns setof int8_tbl as $$
-                                                ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  type "int8_tbl" does not exist
 select * from conflict_test();
 ERROR:  function conflict_test() does not exist
 LINE 1: select * from conflict_test();
@@ -4598,10 +4507,7 @@ begin
   end loop;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: ...reate or replace function conflict_test() returns setof int8...
-                                                             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  type "int8_tbl" does not exist
 select * from conflict_test();
 ERROR:  function conflict_test() does not exist
 LINE 1: select * from conflict_test();
@@ -4617,10 +4523,7 @@ begin
   end loop;
 end;
 $$ language plpgsql;
-ERROR:  Complex type not supported yet
-LINE 1: ...reate or replace function conflict_test() returns setof int8...
-                                                             ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+ERROR:  type "int8_tbl" does not exist
 select * from conflict_test();
 ERROR:  function conflict_test() does not exist
 LINE 1: select * from conflict_test();
@@ -4654,7 +4557,7 @@ $$ language plpgsql;
 select unreserved_test();
  unreserved_test
 -----------------
-              42
+              43
 (1 row)
 
 drop function unreserved_test();
@@ -4703,25 +4606,11 @@ begin
 $$ language plpgsql;
 -- should fail
 select foreach_test(ARRAY[1,2,3,4]);
-NOTICE:  1
-NOTICE:  2
-NOTICE:  3
-NOTICE:  4
- foreach_test
---------------
-
-(1 row)
-
+ERROR:  FOREACH ... SLICE loop variable must be of an array type
+CONTEXT:  PL/pgSQL function foreach_test(anyarray) line 4 at FOREACH over array
 select foreach_test(ARRAY[[1,2],[3,4]]);
-NOTICE:  1
-NOTICE:  2
-NOTICE:  3
-NOTICE:  4
- foreach_test
---------------
-
-(1 row)
-
+ERROR:  FOREACH ... SLICE loop variable must be of an array type
+CONTEXT:  PL/pgSQL function foreach_test(anyarray) line 4 at FOREACH over array
 create or replace function foreach_test(anyarray)
 returns void as $$
 declare x int[];
@@ -4733,20 +4622,15 @@ begin
   end;
 $$ language plpgsql;
 select foreach_test(ARRAY[1,2,3,4]);
-NOTICE:  1
-NOTICE:  2
-NOTICE:  3
-NOTICE:  4
+NOTICE:  {1,2,3,4}
  foreach_test
 --------------
 
 (1 row)
 
 select foreach_test(ARRAY[[1,2],[3,4]]);
-NOTICE:  1
-NOTICE:  2
-NOTICE:  3
-NOTICE:  4
+NOTICE:  {1,2}
+NOTICE:  {3,4}
  foreach_test
 --------------
 
@@ -4765,31 +4649,19 @@ begin
 $$ language plpgsql;
 -- should fail
 select foreach_test(ARRAY[1,2,3,4]);
-NOTICE:  1
-NOTICE:  2
-NOTICE:  3
-NOTICE:  4
- foreach_test
---------------
-
-(1 row)
-
+ERROR:  slice dimension (2) is out of the valid range 0..1
+CONTEXT:  PL/pgSQL function foreach_test(anyarray) line 4 at FOREACH over array
 -- ok
 select foreach_test(ARRAY[[1,2],[3,4]]);
-NOTICE:  1
-NOTICE:  2
-NOTICE:  3
-NOTICE:  4
+NOTICE:  {{1,2},{3,4}}
  foreach_test
 --------------
 
 (1 row)
 
 select foreach_test(ARRAY[[[1,2]],[[3,4]]]);
-NOTICE:  1
-NOTICE:  2
-NOTICE:  3
-NOTICE:  4
+NOTICE:  {{1,2}}
+NOTICE:  {{3,4}}
  foreach_test
 --------------
 
@@ -4848,6 +4720,9 @@ begin
   end loop;
   end;
 $$ language plpgsql;
+ERROR:  type "xy_tuple[]" does not exist
+LINE 3: declare x xy_tuple[];
+                  ^
 select foreach_test(ARRAY[(10,20),(40,69),(35,78)]::xy_tuple[]);
 ERROR:  type "xy_tuple[]" does not exist
 LINE 1: ...lect foreach_test(ARRAY[(10,20),(40,69),(35,78)]::xy_tuple[]...
@@ -5454,10 +5329,7 @@ DELETE FROM transition_table_level2
   WHERE level2_no BETWEEN 301 AND 305;
 DROP TRIGGER transition_table_level2_bad_usage_trigger
   ON transition_table_level2;
-ERROR:  DROP TRIGGER not supported yet
-LINE 1: DROP TRIGGER transition_table_level2_bad_usage_trigger
-             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1156. Click '+' on the description to raise its priority
+ERROR:  trigger "transition_table_level2_bad_usage_trigger" for table "transition_table_level2" does not exist
 -- attempt modifications which would break RI (should all fail)
 DELETE FROM transition_table_level1
   WHERE level1_no = 25;
