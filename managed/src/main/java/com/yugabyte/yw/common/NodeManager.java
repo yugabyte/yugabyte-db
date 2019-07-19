@@ -218,6 +218,9 @@ public class NodeManager extends DevopsBase {
         Map<String, String> extra_gflags = new HashMap<>();
         if (taskParam.isMaster) {
           extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
+          if (taskParam.enableYSQL) {
+            extra_gflags.put("use_initial_sys_catalog_snapshot", "true");
+          }
         }
         extra_gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
         // Add in the nodeName during configure.
@@ -441,20 +444,6 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(taskParam.deleteTags);
           }
         }
-        break;
-      }
-      case InitYSQL: {
-        if (!(nodeTaskParam instanceof InstanceActions.Params)) {
-          throw new RuntimeException("NodeTaskParams is not InstanceActions.Params");
-        }
-        InstanceActions.Params taskParam = (InstanceActions.Params) nodeTaskParam;
-        String masterAddresses = Universe.get(taskParam.universeUUID).getMasterAddresses();
-        if (masterAddresses == null || masterAddresses.isEmpty()){
-          throw new RuntimeException("Can't run initdb script: No masters found");
-        }
-        commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam));
-        commandArgs.add("--master_addresses");
-        commandArgs.add(masterAddresses);
         break;
       }
     }

@@ -25,6 +25,8 @@ import static com.yugabyte.yw.common.TableManager.CommandSubType.BULK_IMPORT;
 public class TableManager extends DevopsBase {
   private static final int EMR_MULTIPLE = 8;
   private static final String YB_CLOUD_COMMAND_TYPE = "table";
+  private static final String K8S_CERT_PATH = "/opt/certs/yugabyte/";
+  private static final String VM_CERT_PATH = "/home/yugabyte/yugabyte-tls-config/";
 
   public enum CommandSubType {
     BACKUP,
@@ -57,6 +59,9 @@ public class TableManager extends DevopsBase {
     Map<String, String> extraVars = new HashMap<>();
     Map<String, String> namespaceToConfig = new HashMap<>();
 
+    boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
+    String certsDir = VM_CERT_PATH;
+
     if (region.provider.code.equals("kubernetes")) {
       PlacementInfo pi = primaryCluster.placementInfo;
       namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(pi,
@@ -82,6 +87,7 @@ public class TableManager extends DevopsBase {
         if (region.provider.code.equals("kubernetes")) {
             commandArgs.add("--k8s_config");
             commandArgs.add(Json.stringify(Json.toJson(namespaceToConfig)));
+            certsDir = K8S_CERT_PATH;
         } else {
           if (accessKey.getKeyInfo().sshUser != null && !accessKey.getKeyInfo().sshUser.isEmpty()) {
             commandArgs.add("--ssh_user");
@@ -99,6 +105,10 @@ public class TableManager extends DevopsBase {
           commandArgs.add(taskParams.tableUUID.toString().replace("-", ""));
         }
         commandArgs.add("--no_auto_name");
+        if (nodeToNodeTlsEnabled) {
+          commandArgs.add("--certs_dir");
+          commandArgs.add(certsDir);
+        }
         commandArgs.add(backupTableParams.actionType.name().toLowerCase());
         if (backupTableParams.enableVerboseLogs) {
           commandArgs.add("--verbose");
@@ -109,6 +119,8 @@ public class TableManager extends DevopsBase {
         }
 
         break;
+      // TODO: Add support for TLS connections for bulk-loading.
+      // Tracked by issue: https://github.com/YugaByte/yugabyte-db/issues/1864
       case BULK_IMPORT:
         BulkImportParams bulkImportParams = (BulkImportParams) taskParams;
         ReleaseManager.ReleaseMetadata metadata =
