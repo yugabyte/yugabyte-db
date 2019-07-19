@@ -132,6 +132,14 @@ using yb::master::RedisConfigSetRequestPB;
 using yb::master::RedisConfigSetResponsePB;
 using yb::master::RedisConfigGetRequestPB;
 using yb::master::RedisConfigGetResponsePB;
+using yb::master::CreateCDCStreamRequestPB;
+using yb::master::CreateCDCStreamResponsePB;
+using yb::master::DeleteCDCStreamRequestPB;
+using yb::master::DeleteCDCStreamResponsePB;
+using yb::master::GetCDCStreamRequestPB;
+using yb::master::GetCDCStreamResponsePB;
+using yb::master::ListCDCStreamsRequestPB;
+using yb::master::ListCDCStreamsResponsePB;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -149,6 +157,9 @@ DEFINE_bool(client_suppress_created_logs, false,
             "Suppress 'Created table ...' messages");
 TAG_FLAG(client_suppress_created_logs, advanced);
 TAG_FLAG(client_suppress_created_logs, hidden);
+
+DEFINE_test_flag(int32, yb_num_total_tablets, 0,
+                 "The total number of tablets per table when a table is created.");
 
 DECLARE_bool(running_test);
 
@@ -874,6 +885,57 @@ CHECKED_STATUS YBClient::DeleteUDType(const std::string& namespace_name,
   return Status::OK();
 }
 
+Result<CDCStreamId> YBClient::CreateCDCStream(
+    const TableId& table_id,
+    const std::unordered_map<std::string, std::string>& options) {
+  // Setting up request.
+  CreateCDCStreamRequestPB req;
+  req.set_table_id(table_id);
+  req.mutable_options()->Reserve(options.size());
+  for (const auto& option : options) {
+    auto new_option = req.add_options();
+    new_option->set_key(option.first);
+    new_option->set_value(option.second);
+  }
+
+  CreateCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, CreateCDCStream);
+  return resp.stream_id();
+}
+
+CHECKED_STATUS YBClient::GetCDCStream(const CDCStreamId& stream_id,
+                                      TableId* table_id,
+                                      std::unordered_map<std::string, std::string>* options) {
+  // Setting up request.
+  GetCDCStreamRequestPB req;
+  req.set_stream_id(stream_id);
+
+  // Sending request.
+  GetCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetCDCStream);
+
+  // Filling in return values.
+  *table_id = resp.stream().table_id();
+
+  options->clear();
+  options->reserve(resp.stream().options_size());
+  for (const auto& option : resp.stream().options()) {
+    options->emplace(option.key(), option.value());
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS YBClient::DeleteCDCStream(const CDCStreamId& stream_id) {
+  // Setting up request.
+  DeleteCDCStreamRequestPB req;
+  req.set_stream_id(stream_id);
+
+  DeleteCDCStreamResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteCDCStream);
+  return Status::OK();
+}
+
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only) {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
@@ -922,7 +984,11 @@ Status YBClient::GetTablets(const YBTableName& table_name,
                             RepeatedPtrField<TabletLocationsPB>* tablets) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
-  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  if (table_name.has_table()) {
+    table_name.SetIntoTableIdentifierPB(req.mutable_table());
+  } else if (table_name.has_table_id()) {
+    req.mutable_table()->set_table_id(table_name.table_id());
+  }
 
   if (max_tablets == 0) {
     req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
@@ -1130,12 +1196,14 @@ Status YBClient::ListTablesWithIds(
     const ListTablesResponsePB_TableInfo& table_info = resp.tables(i);
     DCHECK(table_info.has_namespace_());
     DCHECK(table_info.namespace_().has_name());
+    DCHECK(table_info.namespace_().has_id());
     if (exclude_ysql && table_info.table_type() == TableType::PGSQL_TABLE_TYPE) {
       continue;
     }
     tables_with_ids->emplace_back(
         table_info.id(),
-        YBTableName(table_info.namespace_().name(), table_info.name()));
+        YBTableName(table_info.namespace_().id(), table_info.namespace_().name(),
+                    table_info.id(), table_info.name()));
   }
   return Status::OK();
 }
@@ -1195,6 +1263,22 @@ bool YBClient::IsMultiMaster() const {
     return false;
   }
   return addrs.size() > 1;
+}
+
+Result<int> YBClient::NumTabletsForUserTable() {
+  if (FLAGS_yb_num_total_tablets > 0) {
+    VLOG(1) << "num_tablets=" << FLAGS_yb_num_total_tablets
+            << ": --yb_num_total_tablets is specified.";
+    return FLAGS_yb_num_total_tablets;
+  } else {
+    int tserver_count = 0;
+    RETURN_NOT_OK(TabletServerCount(&tserver_count, true /* primary_only */));
+    int num_tablets = tserver_count * FLAGS_yb_num_shards_per_tserver;
+    VLOG(1) << "num_tablets = " << num_tablets << ": "
+            << "calculated as tserver_count * FLAGS_yb_num_shards_per_tserver ("
+            << tserver_count << " * " << FLAGS_yb_num_shards_per_tserver << ")";
+    return num_tablets;
+  }
 }
 
 void YBClient::TEST_set_admin_operation_timeout(const MonoDelta& timeout) {

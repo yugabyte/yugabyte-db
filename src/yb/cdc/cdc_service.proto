@@ -42,7 +42,8 @@ import "yb/tserver/tserver.proto";
 import "yb/util/opid.proto";
 
 service CDCService {
-  rpc SetupCDC (SetupCDCRequestPB) returns (SetupCDCResponsePB);
+  rpc CreateCDCStream (CreateCDCStreamRequestPB) returns (CreateCDCStreamResponsePB);
+  rpc DeleteCDCStream (DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
   rpc ListTablets (ListTabletsRequestPB) returns (ListTabletsResponsePB);
   rpc GetChanges (GetChangesRequestPB) returns (GetChangesResponsePB);
   rpc GetCheckpoint (GetCheckpointRequestPB) returns (GetCheckpointResponsePB);
@@ -56,27 +57,15 @@ message CDCErrorPB {
     // RPCs should avoid returning this, since callers will not be
     // able to easily parse the error.
     UNKNOWN_ERROR = 1;
-
-    // Requested tablet cannot be found
     TABLET_NOT_FOUND = 2;
-
-    // Requested table cannot be found
     TABLE_NOT_FOUND = 3;
-
-    // Subscriber UUID not found
     SUBSCRIBER_NOT_FOUND = 4;
-
-    // Checkpoint older than available CDC records
     CHECKPOINT_TOO_OLD = 5;
-
-    // Tablet not running
     TABLET_NOT_RUNNING = 6;
-
-    // Tablet server not the leader of requested tablet
     NOT_LEADER = 7;
-
-    // Tablet server not running
     NOT_RUNNING = 8;
+    INTERNAL_ERROR = 9;
+    INVALID_REQUEST = 10;
   }
 
   // The error code.
@@ -96,31 +85,38 @@ enum CDCRecordType {
 
 enum CDCRecordFormat {
   JSON = 1;
-  WAL = 2; // Used for 2DC
+  WAL = 2; // Used for 2DC.
 }
 
-message SetupCDCRequestPB {
-  // Table to set up CDC on
-  optional master.TableIdentifierPB table = 1;
-  // List of tablet UUIDs to set up CDC on
-  repeated bytes tablets = 2;
-  optional CDCRecordType record_type = 3 [default = CHANGE];
-  optional CDCRecordFormat record_format = 4;
+message CreateCDCStreamRequestPB {
+  // Table to set up CDC on.
+  optional string table_id = 1;
+  optional CDCRecordType record_type = 2 [default = CHANGE];
+  optional CDCRecordFormat record_format = 3 [default = JSON];
 
   // Time period for which CDC changes will be retained on producer.
   // Calling GetChanges() with a checkpoint older than "retention" will result in
   // CHECKPOINT_TOO_OLD error.
-  optional uint32 retention_sec = 5;
+  optional uint32 retention_sec = 4;
 }
 
-message SetupCDCResponsePB {
+message CreateCDCStreamResponsePB {
   optional CDCErrorPB error = 1;
-  optional bytes subscriber_uuid = 2;
+  optional bytes stream_id = 2;
+}
+
+message DeleteCDCStreamRequestPB {
+  optional bytes stream_id = 1;
+}
+
+message DeleteCDCStreamResponsePB {
+  optional CDCErrorPB error = 1;
 }
 
 message ListTabletsRequestPB {
-  optional master.TableIdentifierPB table = 1;
-  // Whether to list tablets local to this tserver or all tablets in the cluster
+  optional string stream_id = 1;
+  // local_only = true will only list tablets local to the tserver that receives the request.
+  // local_only = false will list  all tablets for the stream.
   optional bool local_only = 2 [default = false];
 }
 
@@ -130,9 +126,13 @@ message ListTabletsResponsePB {
 }
 
 message CDCTabletPB {
+  message ReplicaPB {
+    repeated HostPortPB broadcast_addresses = 1;
+    repeated HostPortPB private_rpc_addresses = 2;
+  }
   optional bytes tablet_id = 1;
-  // Tservers holding data for the tablet
-  repeated HostPortPB tserver = 2;
+  // Tservers holding data for the tablet.
+  repeated ReplicaPB tservers = 2;
 }
 
 message CDCCheckpointPB {
@@ -140,20 +140,16 @@ message CDCCheckpointPB {
 }
 
 message GetChangesRequestPB {
-  optional bytes subscriber_uuid = 1;
-  // Tablet to get the changes for
+  optional bytes stream_id = 1;
+  // Tablet to get the changes for.
   optional bytes tablet_id = 2;
 
-  // Checkpoint to start reading from (exclusive)
-  // Start reading from the first record after this checkpoint
+  // Checkpoint to start reading from (exclusive).
+  // Start reading from the first record after this checkpoint.
   optional CDCCheckpointPB from_checkpoint = 3;
 
-  // Mark the given checkpoint as committed
-  // CDC records before this checkpoint can be purged / compacted
-  optional CDCCheckpointPB commit_checkpoint = 4;
-
-  // Maximum records to read
-  optional uint32 max_records = 5;
+  // Maximum records to read.
+  optional uint32 max_records = 4;
 }
 
 message KeyValuePairPB {
@@ -186,16 +182,16 @@ message GetChangesResponsePB {
   optional CDCRecordFormat record_format = 3;
   repeated CDCRecordPB records = 4;
   // Checkpoint that consumers can send back in GetChanges RPC
-  // to mark CDC records until this checkpoint as committed
+  // to mark CDC records until this checkpoint as committed.
   optional CDCCheckpointPB checkpoint = 5;
 
   // In case the tablet is no longer hosted on this tserver, provide the list of tservers holding
-  // data for the tablet
+  // data for the tablet.
   repeated HostPortPB tserver = 6;
 }
 
 message GetCheckpointRequestPB {
-  optional bytes subscriber_uuid = 1;
+  optional bytes stream_id = 1;
   optional bytes tablet_id = 2;
 }
 

@@ -182,6 +182,18 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         RETURN_NOT_OK_PREPEND(client->IsEncryptionEnabled(), "Unable to get encryption status.");
         return Status::OK();
       });
+
+  Register(
+      "create_cdc_stream", " <table_id>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 3) {
+          UsageAndExit(args[0]);
+        }
+        const string table_id = args[2];
+        RETURN_NOT_OK_PREPEND(client->CreateCDCStream(table_id),
+                              Substitute("Unable to create CDC stream for table $0", table_id));
+        return Status::OK();
+      });
 }
 
 }  // namespace enterprise

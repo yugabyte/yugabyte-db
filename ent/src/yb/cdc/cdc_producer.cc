@@ -56,42 +56,37 @@ void AddPrimaryKey(const docdb::SubDocKey& decoded_key,
 }
 } // namespace
 
-Status CDCProducer::GetChanges(const GetChangesRequestPB& req,
+Status CDCProducer::GetChanges(const std::string& stream_id,
+                               const std::string& tablet_id,
+                               const OpIdPB& from_op_id,
+                               const StreamMetadata& stream_metadata,
+                               const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                                GetChangesResponsePB* resp) {
-  const auto& record = VERIFY_RESULT(GetRecordMetadataForSubscriber(req.subscriber_uuid()));
-
-  HybridTime now = tablet_peer_->Now();
-  OpIdPB from_op_id;
-  if (req.has_from_checkpoint()) {
-    from_op_id = req.from_checkpoint().op_id();
-  } else {
-    from_op_id = GetLastCheckpoint(req.subscriber_uuid());
-  }
 
   // Request scope on transaction participant so that transactions are not removed from participant
   // while RequestScope is active.
   RequestScope request_scope;
-  if (tablet_peer_->tablet()->transaction_participant()) {
-    request_scope = RequestScope(tablet_peer_->tablet()->transaction_participant());
+  auto txn_participant = tablet_peer->tablet()->transaction_participant();
+  if (txn_participant) {
+    request_scope = RequestScope(txn_participant);
   }
 
   ReplicateMsgs messages;
-  RETURN_NOT_OK(tablet_peer_->consensus()->ReadReplicatedMessages(from_op_id, &messages));
+  RETURN_NOT_OK(tablet_peer->consensus()->ReadReplicatedMessages(from_op_id, &messages));
 
-  TxnStatusMap txn_map = VERIFY_RESULT(BuildTxnStatusMap(messages, now));
-  const auto& ordered_msgs = VERIFY_RESULT(SortWrites(messages, txn_map));
+  TxnStatusMap txn_map = VERIFY_RESULT(BuildTxnStatusMap(
+      messages, tablet_peer->Now(), txn_participant));
+  auto ordered_msgs = VERIFY_RESULT(SortWrites(messages, txn_map));
 
   for (const auto& msg : ordered_msgs) {
     switch (msg->op_type()) {
       case consensus::OperationType::UPDATE_TRANSACTION_OP:
-        // If record format is WAL, then add CDCRecord.
-        if (record.record_format == CDCRecordFormat::WAL) {
-          RETURN_NOT_OK(PopulateTransactionRecord(msg, resp->add_records()));
-        }
+        RETURN_NOT_OK(PopulateTransactionRecord(msg, resp->add_records()));
         break;
 
       case consensus::OperationType::WRITE_OP:
-        RETURN_NOT_OK(PopulateWriteRecord(msg, txn_map, record, resp));
+        RETURN_NOT_OK(PopulateWriteRecord(msg, txn_map, stream_metadata,
+                                          *tablet_peer->tablet()->schema(), resp));
         break;
 
       default:
@@ -136,7 +131,7 @@ Result<std::vector<RecordTimeIndex>> CDCProducer::GetCommittedRecordIndexes(
 
       case consensus::OperationType::WRITE_OP: {
         if (msg->write_request().write_batch().has_transaction()) {
-          const auto &txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+          auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
               msg->write_request().write_batch().transaction().transaction_id()));
           const auto txn_status = txn_map.find(txn_id);
           if (txn_status == txn_map.end()) {
@@ -171,13 +166,14 @@ Result<std::vector<RecordTimeIndex>> CDCProducer::GetCommittedRecordIndexes(
 }
 
 Result<TxnStatusMap> CDCProducer::BuildTxnStatusMap(const ReplicateMsgs& messages,
-                                                    const HybridTime& hybrid_time) {
+                                                    const HybridTime& hybrid_time,
+                                                    TransactionParticipant* txn_participant) {
   TxnStatusMap txn_map;
   // First go through all APPLYING records and mark transaction as committed.
   for (const auto& msg : messages) {
     if (msg->op_type() == consensus::OperationType::UPDATE_TRANSACTION_OP
         && msg->transaction_state().status() == TransactionStatus::APPLYING) {
-      const auto& txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+      auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
           msg->transaction_state().transaction_id()));
       txn_map.emplace(txn_id,
                       TransactionStatusResult(
@@ -191,10 +187,10 @@ Result<TxnStatusMap> CDCProducer::BuildTxnStatusMap(const ReplicateMsgs& message
   for (const auto& msg : messages) {
     if (msg->op_type() == consensus::OperationType::WRITE_OP
         && msg->write_request().write_batch().has_transaction()) {
-      const auto& txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+      auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
           msg->write_request().write_batch().transaction().transaction_id()));
       if (!txn_map.count(txn_id)) {
-        const auto& result = GetTransactionStatus(txn_id, hybrid_time);
+        auto result = GetTransactionStatus(txn_id, hybrid_time, txn_participant);
         if (!result.ok()) {
           if (result.status().IsNotFound()) {
             LOG(INFO) << "Transaction not found, considering it aborted: " << txn_id;
@@ -202,7 +198,7 @@ Result<TxnStatusMap> CDCProducer::BuildTxnStatusMap(const ReplicateMsgs& message
             return result.status();
           }
         }
-        const auto& txn_status = result.ok() ? *result : TransactionStatusResult::Aborted();
+        auto txn_status = result.ok() ? *result : TransactionStatusResult::Aborted();
         txn_map.emplace(txn_id, txn_status);
       }
     }
@@ -211,10 +207,9 @@ Result<TxnStatusMap> CDCProducer::BuildTxnStatusMap(const ReplicateMsgs& message
 }
 
 Result<TransactionStatusResult> CDCProducer::GetTransactionStatus(
-    const TransactionId& txn_id, const HybridTime& hybrid_time) {
-  TransactionParticipant *txn_participant = tablet_peer_->tablet()->transaction_participant();
-  DCHECK(txn_participant);
-
+    const TransactionId& txn_id,
+    const HybridTime& hybrid_time,
+    TransactionParticipant* txn_participant) {
   static const std::string reason = "cdc";
 
   std::promise<Result<TransactionStatusResult>> txn_status_promise;
@@ -227,12 +222,6 @@ Result<TransactionStatusResult> CDCProducer::GetTransactionStatus(
       {&txn_id, hybrid_time, hybrid_time, 0, &reason, TransactionLoadFlags{}, callback});
   future.wait();
   return future.get();
-}
-
-Result<CDCRecordMetadata> CDCProducer::GetRecordMetadataForSubscriber(
-    const std::string& subscriber_uuid) {
-  // TODO: This should read details from cdc_state table.
-  return CDCRecordMetadata(CDCRecordType::CHANGE, CDCRecordFormat::WAL);
 }
 
 Status CDCProducer::SetRecordTxnAndTime(const TransactionId& txn_id,
@@ -249,7 +238,8 @@ Status CDCProducer::SetRecordTxnAndTime(const TransactionId& txn_id,
 
 Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
                                         const TxnStatusMap& txn_map,
-                                        const CDCRecordMetadata& metadata,
+                                        const StreamMetadata& metadata,
+                                        const Schema& schema,
                                         GetChangesResponsePB* resp) {
   const auto& batch = msg->write_request().write_batch();
 
@@ -275,7 +265,7 @@ Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
       Slice sub_doc_key = write_pair.key();
       docdb::SubDocKey decoded_key;
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
-      AddPrimaryKey(decoded_key, *tablet_peer_->tablet()->schema(), record);
+      AddPrimaryKey(decoded_key, schema, record);
 
       // Check whether operation is WRITE or DELETE.
       if (decoded_value.value_type() == docdb::ValueType::kTombstone &&
@@ -286,7 +276,7 @@ Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
       }
 
       if (batch.has_transaction()) {
-        const auto& txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
+        auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(
             batch.transaction().transaction_id()));
         RETURN_NOT_OK(SetRecordTxnAndTime(txn_id, txn_map, record));
       } else {
@@ -301,8 +291,7 @@ Status CDCProducer::PopulateWriteRecord(const ReplicateMsgPtr& msg,
       Slice key_column = write_pair.key().data() + key_sizes.second;
       RETURN_NOT_OK(PrimitiveValue::DecodeKey(&key_column, &column_id));
       if (column_id.value_type() == docdb::ValueType::kColumnId) {
-        ColumnSchema col = VERIFY_RESULT(tablet_peer_->tablet()->schema()->column_by_id(
-            column_id.GetColumnId()));
+        ColumnSchema col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
         AddColumnToMap(col, decoded_value.primitive_value(), record->add_changes());
       } else if (column_id.value_type() != docdb::ValueType::kSystemColumnId) {
         LOG(DFATAL) << "Unexpected value type in key: "<< column_id.value_type();
@@ -319,14 +308,6 @@ Status CDCProducer::PopulateTransactionRecord(const ReplicateMsgPtr& msg,
   record->mutable_transaction_state()->CopyFrom(msg->transaction_state());
   // TODO: Deserialize record.
   return Status::OK();
-}
-
-OpIdPB CDCProducer::GetLastCheckpoint(const std::string& subscriber_uuid) {
-  // TODO: Read value from cdc_subscribers table.
-  OpIdPB op_id;
-  op_id.set_term(0);
-  op_id.set_index(0);
-  return op_id;
 }
 
 }  // namespace cdc

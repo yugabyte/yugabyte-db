@@ -58,6 +58,14 @@ class YBTableName {
     set_table_name(table_name);
   }
 
+  YBTableName(const std::string& namespace_id, const std::string& namespace_name,
+              const std::string& table_id, const std::string& table_name) {
+    set_namespace_id(namespace_id);
+    set_namespace_name(namespace_name);
+    set_table_id(table_id);
+    set_table_name(table_name);
+  }
+
   // Simple table name (no namespace provided at the moment of construction).
   // In this case the namespace has not been set yet and it MUST be set later.
   explicit YBTableName(const std::string& table_name) {
@@ -76,6 +84,10 @@ class YBTableName {
     return namespace_name_; // Can be empty.
   }
 
+  const std::string& namespace_id() const {
+    return namespace_id_; // Can be empty.
+  }
+
   const std::string& resolved_namespace_name() const {
     DCHECK(has_namespace()); // At the moment the namespace name must NEVER be empty.
                              // It must be set by set_namespace_name() before this call.
@@ -89,6 +101,14 @@ class YBTableName {
 
   const std::string& table_name() const {
     return table_name_;
+  }
+
+  bool has_table_id() const {
+    return !table_id_.empty();
+  }
+
+  const std::string& table_id() const {
+    return table_id_; // Can be empty
   }
 
   bool is_system() const {
@@ -124,6 +144,11 @@ class YBTableName {
     table_name_ = table_name;
   }
 
+  void set_table_id(const std::string& table_id) {
+    DCHECK(!table_id.empty());
+    table_id_ = table_id;
+  }
+
   // ProtoBuf helpers.
   void SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const;
   void GetFromTableIdentifierPB(const master::TableIdentifierPB& id);
@@ -136,11 +161,12 @@ class YBTableName {
  private:
   std::string namespace_id_; // Optional. Can be set when the client knows the namespace id also.
   std::string namespace_name_; // Can be empty, that means the namespace has not been set yet.
+  std::string table_id_; // Optional. Can be set when client knows the table id also.
   std::string table_name_;
 };
 
 inline bool operator ==(const YBTableName& lhs, const YBTableName& rhs) {
-  // Not comparing namespace_id because it is optional.
+  // Not comparing namespace_id and table_id because they are optional.
   return (lhs.namespace_name() == rhs.namespace_name() && lhs.table_name() == rhs.table_name());
 }
 

@@ -56,6 +56,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   CHECKED_STATUS IsEncryptionEnabled();
 
+CHECKED_STATUS CreateCDCStream(const TableId& table_id);
+
  private:
 
   CHECKED_STATUS SendEncryptionRequest(const std::string& key_path, bool enable_encryption);

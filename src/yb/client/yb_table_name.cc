@@ -28,11 +28,21 @@ using std::string;
 void YBTableName::SetIntoTableIdentifierPB(master::TableIdentifierPB* id) const {
   SetIntoNamespaceIdentifierPB(id->mutable_namespace_());
   id->set_table_name(table_name());
+  if (!table_id_.empty()) {
+    id->set_table_id(table_id_);
+  } else {
+    id->clear_table_id();
+  }
 }
 
 void YBTableName::GetFromTableIdentifierPB(const master::TableIdentifierPB& id) {
   GetFromNamespaceIdentifierPB(id.namespace_());
   table_name_ = id.table_name();
+  if (id.has_table_id()) {
+    table_id_ = id.table_id();
+  } else {
+    table_id_.clear();
+  }
 }
 
 void YBTableName::SetIntoNamespaceIdentifierPB(master::NamespaceIdentifierPB* id) const {

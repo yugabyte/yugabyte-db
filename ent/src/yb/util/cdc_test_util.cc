@@ -25,5 +25,21 @@ void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>&
   ASSERT_EQ(key[0].value().int32_value(), value);
 }
 
+void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
+                     const TableId& table_id,
+                     CDCStreamId* stream_id) {
+  CreateCDCStreamRequestPB req;
+  CreateCDCStreamResponsePB resp;
+  req.set_table_id(table_id);
+
+  rpc::RpcController rpc;
+  cdc_proxy->CreateCDCStream(req, &resp, &rpc);
+  ASSERT_FALSE(resp.has_error());
+
+  if (stream_id) {
+    *stream_id = resp.stream_id();
+  }
+}
+
 } // namespace cdc
 } // namespace yb
