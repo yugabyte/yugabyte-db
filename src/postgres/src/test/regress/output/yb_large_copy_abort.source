@@ -1,0 +1,8 @@
+--
+-- COPY large corrupt file
+--
+TRUNCATE TABLE airports;
+-- should fail once it reaches corrupt input on last line
+COPY airports FROM '@abs_builddir@/data/airport-codes-corrupt.csv' CSV HEADER;
+ERROR:  missing data for column "type"
+CONTEXT:  COPY airports, line 10001: "THIS_IS_AN_INVALID_ROW"

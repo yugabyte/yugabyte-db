@@ -44,7 +44,8 @@ void PgColumn::Init(PgSystemAttrNum attr_num) {
                  false,
                  idx,
                  QLType::Create(DataType::BINARY),
-                 InternalType::kBinaryValue);
+                 InternalType::kBinaryValue,
+                 ColumnSchema::SortingType::kNotSpecified);
       return;
     }
   }

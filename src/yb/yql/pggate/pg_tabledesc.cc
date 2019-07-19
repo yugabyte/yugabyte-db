@@ -37,7 +37,8 @@ PgTableDesc::PgTableDesc(std::shared_ptr<client::YBTable> pg_table) : table_(pg_
                idx < schema.num_key_columns(),
                col.order() /* attr_num */,
                col.type(),
-               client::YBColumnSchema::ToInternalDataType(col.type()));
+               client::YBColumnSchema::ToInternalDataType(col.type()),
+               col.sorting_type());
     attr_num_map_[col.order()] = idx;
   }
 

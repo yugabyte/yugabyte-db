@@ -185,10 +185,8 @@ Status PgSession::CreateSequencesDataTable() {
 
   // Set up the schema.
   client::YBSchemaBuilder schemaBuilder;
-  schemaBuilder.
-      AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
-  schemaBuilder.
-      AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
+  schemaBuilder.AddColumn(kPgSequenceDbOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
+  schemaBuilder.AddColumn(kPgSequenceSeqOidColName)->HashPrimaryKey()->Type(yb::INT64)->NotNull();
   schemaBuilder.AddColumn(kPgSequenceLastValueColName)->Type(yb::INT64)->NotNull();
   schemaBuilder.AddColumn(kPgSequenceIsCalledColName)->Type(yb::BOOL)->NotNull();
   client::YBSchema schema;
@@ -454,37 +452,52 @@ void PgSession::InvalidateTableCache(const PgObjectId& table_id) {
 }
 
 Status PgSession::StartBufferingWriteOperations() {
-  if (buffer_write_ops_) {
-    return STATUS(IllegalState, "Buffering write operations already");
-  }
-  buffer_write_ops_ = true;
+  buffer_write_ops_++;
   return Status::OK();
 }
 
-Status PgSession::FlushBufferedWriteOperations() {
-  if (!buffer_write_ops_) {
-    return STATUS(IllegalState, "Not buffering write operations currently");
-  }
-  Status s;
-  if (!buffered_write_ops_.empty()) {
-    // Only non-transactional ops should be buffered currently.
+Status PgSession::FlushBufferedWriteOperations(PgsqlOpBuffer* write_ops, bool transactional) {
+  Status final_status;
+  if (!write_ops->empty()) {
     client::YBSessionPtr session =
-        VERIFY_RESULT(GetSession(false /* transactional */,
-                                 false /* read_only_op */))->shared_from_this();
-    for (const auto& op : buffered_write_ops_) {
-      DCHECK(!op->IsTransactional());
-      RETURN_NOT_OK(session->Apply(op));
+      VERIFY_RESULT(GetSession(transactional,
+                               false /* read_only_op */))->shared_from_this();
+
+    int num_writes = 0;
+    for (auto it = write_ops->begin(); it != write_ops->end(); ++it) {
+      DCHECK_EQ((*it)->IsTransactional(), transactional);
+      RETURN_NOT_OK(session->Apply(*it));
+      num_writes++;
+
+      // Flush and wait for batch to complete if reached max batch size or on final iteration.
+      if (num_writes >= FLAGS_ysql_session_max_batch_size || std::next(it) == write_ops->end()) {
+        Synchronizer sync;
+        StatusFunctor callback = sync.AsStatusFunctor();
+        session->FlushAsync([this, session, callback] (const Status& status) {
+                              callback(CombineErrorsToStatus(session->GetPendingErrors(), status));
+                            });
+        Status s = sync.Wait();
+        final_status = CombineStatuses(final_status, s);
+        num_writes = 0;
+      }
     }
-    Synchronizer sync;
-    StatusFunctor callback = sync.AsStatusFunctor();
-    session->FlushAsync([this, session, callback] (const Status& status) {
-      callback(CombineErrorsToStatus(session->GetPendingErrors(), status));
-    });
-    s = sync.Wait();
-    buffered_write_ops_.clear();
+    write_ops->clear();
   }
-  buffer_write_ops_ = false;
-  return s;
+  return final_status;
+}
+
+Status PgSession::FlushBufferedWriteOperations() {
+  CHECK_GT(buffer_write_ops_, 0);
+  if (--buffer_write_ops_ > 0) {
+    return Status::OK();
+  }
+  Status final_status;
+  Status s;
+  s = FlushBufferedWriteOperations(&buffered_write_ops_, false /* transactional */);
+  final_status = CombineStatuses(final_status, s);
+  s = FlushBufferedWriteOperations(&buffered_txn_write_ops_, true /* transactional */);
+  final_status = CombineStatuses(final_status, s);
+  return final_status;
 }
 
 Result<OpBuffered> PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsqlOp>& op,
@@ -495,11 +508,12 @@ Result<OpBuffered> PgSession::PgApplyAsync(const std::shared_ptr<client::YBPgsql
   // We allow read ops while buffering writes because it can happen when building indexes for sys
   // catalog tables during initdb. Continuing read ops to scan the table can be issued while
   // writes to its index are being buffered.
-  if (buffer_write_ops_ && op->type() == YBOperation::Type::PGSQL_WRITE) {
+  if (buffer_write_ops_ > 0 && op->type() == YBOperation::Type::PGSQL_WRITE) {
     if (op->IsTransactional()) {
-      return STATUS(IllegalState, "Only non-transactional ops should be buffered");
+      buffered_txn_write_ops_.push_back(op);
+    } else {
+      buffered_write_ops_.push_back(op);
     }
-    buffered_write_ops_.push_back(op);
     return OpBuffered::kTrue;
   }
 
@@ -577,6 +591,16 @@ Status PgSession::CombineErrorsToStatus(client::CollectedErrors errors, Status s
     return STATUS(InternalError, GetStatusStringSet(errors));
   }
   return status.CloneAndAppend(". Errors from tablet servers: " + GetStatusStringSet(errors));
+}
+
+Status PgSession::CombineStatuses(Status first_status, Status second_status) {
+  if (!first_status.ok()) {
+    return first_status.CloneAndAppend(second_status.message());
+  } else if (!second_status.ok()) {
+    return second_status.CloneAndPrepend(first_status.message());
+  } else {
+    return first_status;
+  }
 }
 
 Result<YBSession*> PgSession::GetSession(bool transactional, bool read_only_op) {

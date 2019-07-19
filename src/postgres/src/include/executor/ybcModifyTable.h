@@ -101,6 +101,11 @@ extern void YBCFlushBufferedWriteOperations();
 
 extern Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot);
 
+extern Datum YBCGetYBTupleIdFromTuple(YBCPgStatement pg_stmt,
+									  Relation rel,
+									  HeapTuple tuple,
+									  TupleDesc tupleDesc);
+
 /*
  * Returns if a table has secondary indices.
  */
