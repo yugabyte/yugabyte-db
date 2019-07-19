@@ -244,6 +244,9 @@ DEFINE_bool(
 DEFINE_test_flag(int32, simulate_slow_system_tablet_bootstrap_secs, 0,
     "Simulates a slow tablet bootstrap by adding a sleep before system tablet init.");
 
+DEFINE_test_flag(bool, return_error_if_namespace_not_found, false,
+    "Return an error from ListTables if a namespace id is not found in the map");
+
 namespace yb {
 namespace master {
 
@@ -2370,10 +2373,8 @@ Status CatalogManager::FindTable(const TableIdentifierPB& table_identifier,
   return Status::OK();
 }
 
-Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
-                                     scoped_refptr<NamespaceInfo>* ns_info) const {
-  boost::shared_lock<LockType> l(lock_);
-
+Status CatalogManager::FindNamespaceUnlocked(const NamespaceIdentifierPB& ns_identifier,
+                                             scoped_refptr<NamespaceInfo>* ns_info) const {
   if (ns_identifier.has_id()) {
     *ns_info = FindPtrOrNull(namespace_ids_map_, ns_identifier.id());
     if (*ns_info == nullptr) {
@@ -2388,6 +2389,12 @@ Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
     return STATUS(NotFound, "Neither keyspace id nor keyspace name is specified.");
   }
   return Status::OK();
+}
+
+Status CatalogManager::FindNamespace(const NamespaceIdentifierPB& ns_identifier,
+                                     scoped_refptr<NamespaceInfo>* ns_info) const {
+  boost::shared_lock<LockType> l(lock_);
+  return FindNamespaceUnlocked(ns_identifier, ns_info);
 }
 
 Result<TabletInfos> CatalogManager::GetTabletsOrSetupError(
@@ -3234,20 +3241,29 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       relation_type = SYSTEM_TABLE_RELATION;
     }
 
+    scoped_refptr<NamespaceInfo> ns;
+    NamespaceIdentifierPB ns_identifier;
+    ns_identifier.set_id(ltm->data().namespace_id());
+    auto s = FindNamespaceUnlocked(ns_identifier, &ns);
+    if (ns.get() == nullptr) {
+      if (PREDICT_FALSE(FLAGS_return_error_if_namespace_not_found)) {
+        RETURN_NAMESPACE_NOT_FOUND(s, resp);
+      }
+      LOG(ERROR) << "Unable to find namespace with id " << ltm->data().namespace_id()
+                 << " for table " << ltm->data().name();
+      continue;
+    }
+
     ListTablesResponsePB::TableInfo *table = resp->add_tables();
-    table->set_id(entry.second->id());
-    table->set_name(ltm->data().name());
-    table->set_table_type(ltm->data().table_type());
-    table->set_relation_type(relation_type);
-
-    scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_,
-        ltm->data().namespace_id());
-
-    if (CHECK_NOTNULL(ns.get())) {
+    {
       auto l = ns->LockForRead();
       table->mutable_namespace_()->set_id(ns->id());
       table->mutable_namespace_()->set_name(ns->name());
     }
+    table->set_id(entry.second->id());
+    table->set_name(ltm->data().name());
+    table->set_table_type(ltm->data().table_type());
+    table->set_relation_type(relation_type);
   }
   return Status::OK();
 }
