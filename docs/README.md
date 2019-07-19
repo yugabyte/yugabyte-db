@@ -96,6 +96,6 @@ $ git commit
 
 ## Step 4. Submit a pull request
 
-Create a [pull request in the YugaByte docs repo](https://github.com/YugaByte/docs/pulls) once you are ready to submit your changes.
+Create a pull request once you are ready to submit your changes.
 
 We will review your changes, add any feedback and once everything looks good merge your changes into the mainline.
