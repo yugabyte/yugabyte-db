@@ -74,7 +74,10 @@ public class ReleaseManager {
       FileSystems.getDefault().getPathMatcher("glob:**yugabyte*.tar.gz");
   Predicate<Path> packagesFilter = p -> Files.isRegularFile(p) && ybPackageMatcher.matches(p);
 
-  final Pattern ybPackagePattern = Pattern.compile("[^.]+yugabyte-ee-(.*)-centos(.*).tar.gz");
+  // This regex needs to support old style packages with -ee as well as new style packages without.
+  // There are previously existing YW deployments that will have the old packages and users will
+  // need to still be able to use said universes and their existing YB releases.
+  final Pattern ybPackagePattern = Pattern.compile("[^.]+yugabyte-(?:ee-)?(.*)-centos(.*).tar.gz");
 
   public Map<String, String> getLocalReleases(String localReleasePath) {
     Map<String, String> releaseMap = new HashMap<>();

@@ -63,15 +63,24 @@ public class ReleaseManagerTest {
   }
 
   private void createDummyReleases(List<String> versions, boolean multipleRepos, boolean inDockerPath) {
+    createDummyReleases(versions, multipleRepos, inDockerPath, true);
+  }
+
+  private void createDummyReleases(
+      List<String> versions, boolean multipleRepos, boolean inDockerPath,
+      boolean hasEnterpriseStr) {
     versions.forEach((version) -> {
       String versionPath = String.format("%s/%s", TMP_STORAGE_PATH, version);
       new File(versionPath).mkdirs();
       if (inDockerPath) {
         versionPath = TMP_DOCKER_STORAGE_PATH;
       }
-      createTempFile(versionPath, "yugabyte-ee-" + version + "-centos-x86_64.tar.gz", "Sample data");
+      String eeStr = hasEnterpriseStr ? "ee-" : "";
+      createTempFile(
+        versionPath, "yugabyte-" + eeStr + version + "-centos-x86_64.tar.gz", "Sample data");
       if (multipleRepos) {
-        createTempFile(versionPath, "devops.xyz." + version + "-centos-x86_64.tar.gz", "Sample data");
+        createTempFile(
+          versionPath, "devops.xyz." + version + "-centos-x86_64.tar.gz", "Sample data");
       }
     });
   }
@@ -149,6 +158,8 @@ public class ReleaseManagerTest {
     createDummyReleases(versions, false, false);
     List<String> dockerVersions = ImmutableList.of("0.0.2-b2");
     createDummyReleases(dockerVersions, false, true);
+    List<String> dockerVersionsWithoutEe = ImmutableList.of("0.0.3-b3");
+    createDummyReleases(dockerVersionsWithoutEe, false, true, false);
     releaseManager.importLocalReleases();
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
@@ -157,7 +168,9 @@ public class ReleaseManagerTest {
     Mockito.verify(configHelper, times(1)).loadConfigToDB(configType.capture(), releaseMap.capture());
     Map expectedMap = ImmutableMap.of(
         "0.0.1", TMP_STORAGE_PATH + "/0.0.1/yugabyte-ee-0.0.1-centos-x86_64.tar.gz",
-        "0.0.2-b2", TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-ee-0.0.2-b2-centos-x86_64.tar.gz");
+        "0.0.2-b2", TMP_STORAGE_PATH + "/0.0.2-b2/yugabyte-ee-0.0.2-b2-centos-x86_64.tar.gz",
+        "0.0.3-b3", TMP_STORAGE_PATH + "/0.0.3-b3/yugabyte-0.0.3-b3-centos-x86_64.tar.gz"
+    );
 
     assertEquals(SoftwareReleases, configType.getValue());
     assertReleases(expectedMap, releaseMap.getValue());
