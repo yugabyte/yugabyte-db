@@ -64,6 +64,8 @@ Here are the features currently supported as of YugaByte DB v1.3, Jul 15 2019. T
 - [ ] Security
     - [ ] SSL Support/TLS Encryption ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
     - [ ] Encryption at rest ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+- [ ] Read replica support
+
 
 ## App Development Support
 
