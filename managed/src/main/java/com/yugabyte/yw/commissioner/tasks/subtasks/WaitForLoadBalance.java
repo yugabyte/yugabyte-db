@@ -20,6 +20,8 @@ import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 
+import java.util.concurrent.TimeUnit;
+
 import play.api.Play;
 
 public class WaitForLoadBalance extends AbstractTaskBase {
@@ -31,6 +33,11 @@ public class WaitForLoadBalance extends AbstractTaskBase {
   // Timeout for failing to complete load balance. Currently we do no timeout.
   // NOTE: This is similar to WaitForDataMove for blacklist removal.
   private static final long TIMEOUT_SERVER_WAIT_MS = Long.MAX_VALUE;
+
+  // Time to sleep for before querying the loadbalancer.
+  // This is done to give the loadbalancer enough time to
+  // start the task of loadbalancing.
+  private static final int SLEEP_TIME = 10;
 
   // Parameters for data move wait task.
   public static class Params extends UniverseTaskParams { }
@@ -62,6 +69,7 @@ public class WaitForLoadBalance extends AbstractTaskBase {
     try {
       LOG.info("Running {}: hostPorts={}, numTservers={}.", getName(), hostPorts, numTservers);
       client = ybService.getClient(hostPorts, certificate);
+      TimeUnit.SECONDS.sleep(SLEEP_TIME);
       ret = client.waitForLoadBalance(TIMEOUT_SERVER_WAIT_MS, numTservers);
     } catch (Exception e) {
       LOG.error("{} hit error : {}", getName(), e.getMessage());
