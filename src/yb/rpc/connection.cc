@@ -295,9 +295,8 @@ Status Connection::HandleCallResponse(CallData* call_data) {
   ++responded_call_count_;
   auto awaiting = awaiting_response_.find(resp.call_id());
   if (awaiting == awaiting_response_.end()) {
-    LOG_WITH_PREFIX(ERROR) << "Got a response for call id " << resp.call_id() << " which "
-                           << "was not pending! Ignoring.";
-    DCHECK(awaiting != awaiting_response_.end());
+    LOG_WITH_PREFIX(DFATAL) << "Got a response for call id " << resp.call_id() << " which "
+                            << "was not pending! Ignoring.";
     return Status::OK();
   }
   auto call = awaiting->second;

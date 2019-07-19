@@ -306,54 +306,82 @@ bool RemoteTablet::HasLeader() const {
 
 void RemoteTablet::GetRemoteTabletServers(vector<RemoteTabletServer*>* servers) {
   DCHECK(servers->empty());
-  std::shared_lock<rw_spinlock> lock(mutex_);
-  for (RemoteReplica& replica : replicas_) {
-    if (replica.Failed()) {
-      switch (replica.state) {
-        case RaftGroupStatePB::UNKNOWN: FALLTHROUGH_INTENDED;
-        case RaftGroupStatePB::NOT_STARTED: FALLTHROUGH_INTENDED;
-        case RaftGroupStatePB::BOOTSTRAPPING: FALLTHROUGH_INTENDED;
-        case RaftGroupStatePB::RUNNING:
-          // These are non-terminal states that may retry. Check and update failed local replica's
-          // current state. For remote replica, just wait for some time before retrying.
-          if (replica.ts->IsLocal()) {
-            tserver::GetTabletStatusRequestPB req;
-            tserver::GetTabletStatusResponsePB resp;
-            req.set_tablet_id(tablet_id_);
-            const Status status =
-                CHECK_NOTNULL(replica.ts->local_tserver())->GetTabletStatus(&req, &resp);
-            if (!status.ok() || resp.has_error()) {
-              LOG_WITH_PREFIX(ERROR)
-                  << "Received error from GetTabletStatus: "
-                  << (!status.ok() ? status : StatusFromPB(resp.error().status()));
-              continue;
-            }
+  struct ReplicaUpdate {
+    RemoteReplica* replica;
+    tablet::RaftGroupStatePB new_state;
+    bool clear_failed;
+  };
+  std::vector<ReplicaUpdate> replica_updates;
+  {
+    std::shared_lock<rw_spinlock> lock(mutex_);
+    for (RemoteReplica& replica : replicas_) {
+      if (replica.Failed()) {
+        ReplicaUpdate replica_update = {&replica, RaftGroupStatePB::UNKNOWN, false};
+        switch (replica.state) {
+          case RaftGroupStatePB::UNKNOWN: FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::NOT_STARTED: FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::BOOTSTRAPPING: FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::RUNNING:
+            // These are non-terminal states that may retry. Check and update failed local replica's
+            // current state. For remote replica, just wait for some time before retrying.
+            if (replica.ts->IsLocal()) {
+              tserver::GetTabletStatusRequestPB req;
+              tserver::GetTabletStatusResponsePB resp;
+              req.set_tablet_id(tablet_id_);
+              const Status status =
+                  CHECK_NOTNULL(replica.ts->local_tserver())->GetTabletStatus(&req, &resp);
+              if (!status.ok() || resp.has_error()) {
+                LOG_WITH_PREFIX(ERROR)
+                    << "Received error from GetTabletStatus: "
+                    << (!status.ok() ? status : StatusFromPB(resp.error().status()));
+                continue;
+              }
 
-            DCHECK_EQ(resp.tablet_status().tablet_id(), tablet_id_);
-            VLOG_WITH_PREFIX(3) << "GetTabletStatus returned status: "
-                                << tablet::RaftGroupStatePB_Name(resp.tablet_status().state())
-                                << " for replica " << replica.ts->ToString();
-            replica.state = resp.tablet_status().state();
-            if (replica.state != tablet::RaftGroupStatePB::RUNNING) {
+              DCHECK_EQ(resp.tablet_status().tablet_id(), tablet_id_);
+              VLOG_WITH_PREFIX(3) << "GetTabletStatus returned status: "
+                                  << tablet::RaftGroupStatePB_Name(resp.tablet_status().state())
+                                  << " for replica " << replica.ts->ToString();
+              replica_update.new_state = resp.tablet_status().state();
+              if (replica_update.new_state != tablet::RaftGroupStatePB::RUNNING) {
+                if (replica_update.new_state != replica.state) {
+                  // Cannot update replica here directly because holding only shared lock on mutex.
+                  replica_updates.push_back(replica_update); // Update only state
+                }
+                continue;
+              }
+            } else if ((MonoTime::Now() - replica.last_failed_time) <
+                       FLAGS_retry_failed_replica_ms * 1ms) {
               continue;
             }
-          } else if ((MonoTime::Now() - replica.last_failed_time) <
-                     FLAGS_retry_failed_replica_ms * 1ms) {
+            break;
+          case RaftGroupStatePB::FAILED:
+            FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::QUIESCING:
+            FALLTHROUGH_INTENDED;
+          case RaftGroupStatePB::SHUTDOWN:
+            // These are terminal states, so we won't retry.
             continue;
-          }
-          break;
-        case RaftGroupStatePB::FAILED: FALLTHROUGH_INTENDED;
-        case RaftGroupStatePB::QUIESCING: FALLTHROUGH_INTENDED;
-        case RaftGroupStatePB::SHUTDOWN:
-          // These are terminal states, so we won't retry.
-          continue;
-      }
+        }
 
-      VLOG_WITH_PREFIX(3) << "Changing state of replica " << replica.ts->ToString()
-                          << " from failed to not failed";
-      replica.ClearFailed();
+        VLOG_WITH_PREFIX(3) << "Changing state of replica " << replica.ts->ToString()
+                            << " from failed to not failed";
+        replica_update.clear_failed = true;
+        // Cannot update replica here directly because holding only shared lock on mutex.
+        replica_updates.push_back(replica_update);
+      }
+      servers->push_back(replica.ts);
     }
-    servers->push_back(replica.ts);
+  }
+  if (!replica_updates.empty()) {
+    std::lock_guard<rw_spinlock> lock(mutex_);
+    for (const auto& update : replica_updates) {
+      if (update.new_state != RaftGroupStatePB::UNKNOWN) {
+        update.replica->state = update.new_state;
+      }
+      if (update.clear_failed) {
+        update.replica->ClearFailed();
+      }
+    }
   }
 }
 
