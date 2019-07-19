@@ -76,6 +76,11 @@ YB_STRONGLY_TYPED_BOOL(OnlyChildren);
 
 typedef std::function<int64_t()> ConsumptionFunctor;
 
+struct SoftLimitExceededResult {
+  bool exceeded;
+  double current_capacity_pct;
+};
+
 // A MemTracker tracks memory consumption; it contains an optional limit and is
 // arranged into a tree structure such that the consumption tracked by a
 // MemTracker is also tracked by its ancestors.
@@ -292,17 +297,15 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   // Like LimitExceeded() but may also return true if the soft memory limit is exceeded.
   // The greater the excess, the higher the chance that it returns true.
-  //
-  // If the soft limit is exceeded and 'current_capacity_pct' is not NULL, the percentage
-  // of the hard limit consumed is written to it.
-  bool SoftLimitExceeded(double* current_capacity_pct);
+  // If score is not 0, then it is used to determine positive result.
+  SoftLimitExceededResult SoftLimitExceeded(double score);
 
   // Combines the semantics of AnyLimitExceeded() and SoftLimitExceeded().
   //
   // Note: if there's more than one soft limit defined, the probability of it being
   // exceeded in at least one tracker is much higher (as each soft limit check is an
   // independent event).
-  bool AnySoftLimitExceeded(double* current_capacity_pct);
+  SoftLimitExceededResult AnySoftLimitExceeded(double score);
 
   // Returns the maximum consumption that can be made without exceeding the limit on
   // this tracker or any of its parents. Returns int64_t::max() if there are no

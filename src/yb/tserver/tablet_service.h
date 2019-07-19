@@ -154,7 +154,7 @@ class TabletServiceImpl : public TabletServerServiceIf {
 
   template<class Resp>
   bool CheckMemoryPressureOrRespond(
-      tablet::Tablet* tablet, Resp* resp, rpc::RpcContext* context);
+      double score, tablet::Tablet* tablet, Resp* resp, rpc::RpcContext* context);
 
   // Read implementation. If restart is required returns restart time, in case of success
   // returns invalid ReadHybridTime. Otherwise returns error status.

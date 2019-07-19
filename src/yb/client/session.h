@@ -235,6 +235,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   ConsistentReadPoint* read_point();
 
+  void SetMemoryLimitScore(double score);
+
  private:
   friend class YBClient;
   friend class internal::Batcher;
@@ -272,6 +274,8 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   MonoDelta timeout_;
 
   internal::AsyncRpcMetricsPtr async_rpc_metrics_;
+
+  double memory_limit_score_ = 0.0;
 
   DISALLOW_COPY_AND_ASSIGN(YBSession);
 };
