@@ -80,7 +80,7 @@ Status PeersVTable::RetrieveData(const QLReadRequestPB& request,
     size_t current_index = index++;
 
     // This is thread safe since all operations are reads.
-    TSInformationPB ts_info = desc->GetTSInformationPB();
+    TSInformationPB ts_info = *desc->GetTSInformationPB();
 
     if (!proxy_uuid.empty()) {
       if (desc->permanent_uuid() == proxy_uuid) {

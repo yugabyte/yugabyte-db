@@ -195,7 +195,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   server_->ts_manager()->GetAllLiveDescriptors(&descs);
   for (const auto& desc : descs) {
-    *resp->add_tservers() = desc->GetTSInformationPB();
+    *resp->add_tservers() = *desc->GetTSInformationPB();
   }
 
   // Retrieve the ysql catalog schema version.
@@ -457,7 +457,7 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
 
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
     ListTabletServersResponsePB::Entry* entry = resp->add_servers();
-    auto ts_info = desc->GetTSInformationPB();
+    auto ts_info = *desc->GetTSInformationPB();
     *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
     *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
     entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());

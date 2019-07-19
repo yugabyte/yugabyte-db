@@ -71,7 +71,7 @@ Status LocalVTable::RetrieveData(const QLReadRequestPB& request,
     ++index;
 
     // This is thread safe since all operations are reads.
-    TSInformationPB ts_info = desc->GetTSInformationPB();
+    TSInformationPB ts_info = *desc->GetTSInformationPB();
 
     // The system.local table contains only a single entry for the host that we are connected
     // to and hence we need to look for the 'remote_endpoint' here.

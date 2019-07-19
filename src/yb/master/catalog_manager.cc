@@ -5574,7 +5574,7 @@ Status CatalogManager::BuildLocationsForTablet(const scoped_refptr<TabletInfo>& 
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
       replica_pb->set_role(replica.second.role);
       replica_pb->set_member_type(replica.second.member_type);
-      TSInformationPB tsinfo_pb = replica.second.ts_desc->GetTSInformationPB();
+      TSInformationPB tsinfo_pb = *replica.second.ts_desc->GetTSInformationPB();
 
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
       out_ts_info->set_permanent_uuid(tsinfo_pb.tserver_instance().permanent_uuid());
