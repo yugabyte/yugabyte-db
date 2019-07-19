@@ -110,6 +110,14 @@ IsYBRelationById(Oid relid)
 }
 
 bool
+IsYBBackedRelation(Relation relation) 
+{
+	return IsYBRelation(relation) ||
+		(relation->rd_rel->relkind == RELKIND_VIEW &&
+		relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP);
+}
+
+bool
 YBNeedRetryAfterCacheRefresh(ErrorData *edata)
 {
 	// TODO Inspect error code to distinguish retryable errors.

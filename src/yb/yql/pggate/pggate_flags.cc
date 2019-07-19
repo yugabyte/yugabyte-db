@@ -62,3 +62,9 @@ DEFINE_bool(ysql_beta_features, true,
 // Per-feature flags -- only relevant if ysql_beta_features is false.
 DEFINE_bool(ysql_beta_feature_function, false,
             "Whether to enable 'function' ysql beta feature");
+
+DEFINE_bool(ysql_beta_feature_trigger, false,
+            "Whether to enable the 'trigger' ysql beta feature");
+
+DEFINE_bool(ysql_beta_feature_extension, false,
+            "Whether to enable the 'extension' ysql beta feature");

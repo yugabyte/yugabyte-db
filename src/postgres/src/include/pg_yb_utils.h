@@ -83,6 +83,12 @@ extern bool IsYBRelationById(Oid relid);
 
 extern bool IsYBRelation(Relation relation);
 
+/*
+ * Same as IsYBRelation but it additionally includes views on YugaByte
+ * relations i.e. views on persistent (non-temporary) tables.
+ */
+extern bool IsYBBackedRelation(Relation relation);
+
 extern bool YBNeedRetryAfterCacheRefresh(ErrorData *error);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);

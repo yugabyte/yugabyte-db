@@ -3754,14 +3754,28 @@ ATController(AlterTableStmt *parsetree,
 	/* Close the relation, but keep lock until commit */
 	relation_close(rel, NoLock);
 
+	/*
+	 * Prepare the YB alter statement handle -- need to call this before the
+	 * system catalogs are changed below (since it looks up table metadata).
+	 */
+	YBCPgStatement handle = NULL;
 	if (IsYBRelation(rel))
 	{
-		YBCAlterTable(parsetree, rel, relid);
+		handle = YBCPrepareAlterTable(parsetree, rel, relid);
 	}
 
 	/* Phase 2: update system catalogs */
 	ATRewriteCatalogs(&wqueue, lockmode);
 
+	/*
+	 * Execute the YB alter table (if needed).
+	 * Must call this after syscatalog updates succeed (e.g. dependencies are
+	 * checked) since we do not support rollback of YB alter operations yet.
+	 */
+	if (handle)
+	{
+		YBCExecAlterTable(handle);
+	}
 	/* Phase 3: scan/rewrite tables as needed */
 	ATRewriteTables(parsetree, &wqueue, lockmode);
 }

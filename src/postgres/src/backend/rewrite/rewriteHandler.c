@@ -1349,7 +1349,7 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 					  -1,
 					  InvalidOid,
 					  0);
-		attrname = "ybctid";			
+		attrname = "ybctid";
 	}
 	else if (target_relation->rd_rel->relkind == RELKIND_RELATION ||
 		target_relation->rd_rel->relkind == RELKIND_MATVIEW ||

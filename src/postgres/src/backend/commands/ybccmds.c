@@ -353,8 +353,8 @@ YBCCreateIndex(const char *indexName,
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
 
-void
-YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
+YBCPgStatement
+YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 {
 	YBCPgStatement handle = NULL;
 	HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
@@ -418,6 +418,14 @@ YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 
 			case AT_AddConstraint:
 			case AT_DropConstraint:
+			case AT_EnableTrig:
+			case AT_EnableAlwaysTrig:
+			case AT_EnableReplicaTrig:
+			case AT_EnableTrigAll:
+			case AT_EnableTrigUser:
+			case AT_DisableTrig:
+			case AT_DisableTrigAll:
+			case AT_DisableTrigUser:
 				/* For these cases a YugaByte alter isn't required, so we do nothing. */
 				break;
 
@@ -428,7 +436,19 @@ YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 		}
 	}
 
-	if (needsYBAlter)
+	if (!needsYBAlter)
+	{
+		HandleYBStatus(YBCPgDeleteStatement(handle));
+		return NULL;
+	}
+
+	return handle;
+}
+
+void
+YBCExecAlterTable(YBCPgStatement handle)
+{
+	if (handle)
 	{
 		HandleYBStmtStatus(YBCPgExecAlterTable(handle), handle);
 		HandleYBStatus(YBCPgDeleteStatement(handle));

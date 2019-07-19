@@ -52,6 +52,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
 
 /*
  * GUC parameters
@@ -87,6 +88,12 @@ void
 ExecVacuum(VacuumStmt *vacstmt, bool isTopLevel)
 {
 	VacuumParams params;
+
+	/* No need for vacuming in YB mode. */
+	if (IsYugaByteEnabled()) 
+	{
+		return;
+	}
 
 	/* sanity checks on options */
 	Assert(vacstmt->options & (VACOPT_VACUUM | VACOPT_ANALYZE));
