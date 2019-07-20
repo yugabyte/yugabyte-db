@@ -545,7 +545,6 @@ Status Tablet::OpenKeyValueTablet() {
     rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
       return std::bind(&Tablet::IntentsDbFlushFilter, this, _1);
     });
-    rocksdb_options.listeners.clear();
 
     rocksdb_options.compaction_filter_factory =
         FLAGS_tablet_do_compaction_cleanup_for_intents ?

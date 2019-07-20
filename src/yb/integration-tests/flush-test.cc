@@ -166,17 +166,6 @@ class FlushITest : public YBTest {
     return table_name;
   }
 
-  int NumTotalRunningCompactions() {
-    int compactions = 0;
-    for (auto& peer : cluster_->GetTabletPeers(0)) {
-      auto* db = pointer_cast<rocksdb::DBImpl*>(peer->tablet()->TEST_db());
-      if (db) {
-        compactions += db->TEST_NumTotalRunningCompactions();
-      }
-    }
-    return compactions;
-  }
-
   int NumRunningFlushes() {
     int compactions = 0;
     for (auto& peer : cluster_->GetTabletPeers(0)) {
@@ -198,8 +187,9 @@ class FlushITest : public YBTest {
     workload_->StopAndJoin();
     LOG(INFO) << "Wrote " << BytesWritten() << " bytes.";
     AssertLoggedWaitFor(
-        [this] { return NumTotalRunningCompactions() == 0 && NumRunningFlushes() == 0; }, 60s,
-        "Waiting until compactions and flushes are done ...", kWaitDelay);
+        [this] {
+          return NumTotalRunningCompactions(cluster_.get()) == 0 && NumRunningFlushes() == 0;
+        }, 60s, "Waiting until compactions and flushes are done ...", kWaitDelay);
   }
 
   void AddTabletsWithNonEmptyMemTable(std::unordered_map<TabletId, int>* tablets, int order) {
