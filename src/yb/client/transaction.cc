@@ -744,7 +744,7 @@ class YBTransaction::Impl final {
           std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
     } else {
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status;
-      if (status.IsExpired()) {
+      if (status.IsExpired() || status.IsAborted()) {
         SetError(status);
         // If state is aborted, then we already requested this cleanup.
         // If state is committed, then we should not cleanup.

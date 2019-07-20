@@ -47,6 +47,9 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+
+#include "yb/rocksdb/db/db_impl.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/skewed_clock.h"
@@ -672,6 +675,45 @@ Status WaitAllReplicasHaveIndex(MiniCluster* cluster, int64_t index, MonoDelta t
     auto replication_factor = cluster->num_tablet_servers();
     return tablet_ids.size() * replication_factor == peers.size();
   }, timeout, "Wait for all replicas to have a specific Raft index");
+}
+
+std::vector<rocksdb::DB*> GetAllRocksDbs(MiniCluster* cluster) {
+  std::vector<rocksdb::DB*> dbs;
+  for (auto& peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
+    const auto* tablet = peer->tablet();
+    for (auto* db : {tablet->TEST_db(), tablet->TEST_intents_db()}) {
+      if (db) {
+        dbs.push_back(db);
+      }
+    }
+  }
+  return dbs;
+}
+
+int NumTotalRunningCompactions(MiniCluster* cluster) {
+  int compactions = 0;
+  for (auto* db : GetAllRocksDbs(cluster)) {
+    compactions += down_cast<rocksdb::DBImpl*>(db)->TEST_NumTotalRunningCompactions();
+  }
+  return compactions;
+}
+
+int NumRunningFlushes(MiniCluster* cluster) {
+  int flushes = 0;
+  for (auto* db : GetAllRocksDbs(cluster)) {
+    flushes += down_cast<rocksdb::DBImpl*>(db)->TEST_NumRunningFlushes();
+  }
+  return flushes;
+}
+
+Result<scoped_refptr<master::TableInfo>> FindTable(
+    MiniCluster* cluster, const client::YBTableName& table_name) {
+  auto* catalog_manager = cluster->leader_mini_master()->master()->catalog_manager();
+  scoped_refptr<master::TableInfo> table_info;
+  master::TableIdentifierPB identifier;
+  table_name.SetIntoTableIdentifierPB(&identifier);
+  RETURN_NOT_OK(catalog_manager->FindTable(identifier, &table_info));
+  return table_info;
 }
 
 }  // namespace yb

@@ -637,6 +637,10 @@ class Schema {
     table_properties_.SetCopartitionTableId(copartition_table_id);
   }
 
+  void SetTransactional(bool is_transactional) {
+    table_properties_.SetTransactional(is_transactional);
+  }
+
   // Return the column index corresponding to the given column,
   // or kColumnNotFound if the column is not in this schema.
   int find_column(const GStringPiece col_name) const {

@@ -37,8 +37,9 @@
 #include <string>
 #include <vector>
 
-#include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/gutil/macros.h"
+#include "yb/integration-tests/mini_cluster_base.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/env.h"
@@ -269,6 +270,15 @@ CHECKED_STATUS WaitAllReplicasHaveIndex(MiniCluster* cluster, int64_t index, Mon
 
 std::thread RestartsThread(
     MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag);
+
+std::vector<rocksdb::DB*> GetAllRocksDbs(MiniCluster* cluster);
+
+int NumTotalRunningCompactions(MiniCluster* cluster);
+
+int NumRunningFlushes(MiniCluster* cluster);
+
+Result<scoped_refptr<master::TableInfo>> FindTable(
+    MiniCluster* cluster, const client::YBTableName& table_name);
 
 }  // namespace yb
 

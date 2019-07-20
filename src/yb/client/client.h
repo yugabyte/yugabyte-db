@@ -545,6 +545,8 @@ class YBClient {
       const TabletId& tablet_id);
   void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
 
+  void Shutdown();
+
  private:
   class Data;
 
