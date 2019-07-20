@@ -386,6 +386,10 @@ YBClient::YBClient() : data_(new YBClient::Data()) {
 }
 
 YBClient::~YBClient() {
+  Shutdown();
+}
+
+void YBClient::Shutdown() {
   if (data_->messenger_holder_) {
     data_->messenger_holder_->Shutdown();
   }

@@ -497,7 +497,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return regular_db_.get();
   }
 
-  rocksdb::DB* TEST_intents_db() {
+  rocksdb::DB* TEST_intents_db() const {
     return intents_db_.get();
   }
 
