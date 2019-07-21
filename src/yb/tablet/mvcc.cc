@@ -187,7 +187,7 @@ void MvccManager::AddPending(HybridTime* ht) {
 #endif
 
     if (*ht <= sanity_check_lower_bound) {
-      LOG(FATAL) << get_details_msg(/* drain_aborted */ true);
+      LOG_WITH_PREFIX(FATAL) << get_details_msg(/* drain_aborted */ true);
     }
   }
   queue_.push_back(*ht);
@@ -211,9 +211,10 @@ void MvccManager::SetPropagatedSafeTimeOnFollower(HybridTime ht) {
     if (ht >= propagated_safe_time_) {
       propagated_safe_time_ = ht;
     } else {
-      LOG(WARNING) << "Received propagated safe time " << ht << " less than the old value: "
-                   << propagated_safe_time_ << ". This could happen on followers when a new leader "
-                   << "is elected.";
+      LOG_WITH_PREFIX(WARNING)
+          << "Received propagated safe time " << ht << " less than the old value: "
+          << propagated_safe_time_ << ". This could happen on followers when a new leader "
+          << "is elected.";
     }
   }
   cond_.notify_all();
