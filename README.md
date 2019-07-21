@@ -40,7 +40,7 @@ Read more about YugaByte DB in our [Docs](https://docs.yugabyte.com/latest/intro
 * [Build an app](https://docs.yugabyte.com/latest/quick-start/build-apps/) using a PostgreSQL-compatible driver or ORM.
 * Try a real-world app:
     * [Microservices-oriented e-commerce app](https://github.com/YugaByte/yugastore-java)
-    * [Streaming IoT app with Kafka and Spark Streaming](https://docs.yugabyte.com/latest/develop/realworld-apps/iot-spark-kafka-ksql/)
+    * [Streaming IoT app with Kafka and Spark Streaming](https://docs.yugabyte.com/latest/quick-start/realworld-apps/iot-spark-kafka-ksql/)
 
 Cannot find what you are looking for? Have a question? Please post your questions or comments on our Community [Slack](https://www.yugabyte.com/slack) or [Forum](https://forum.yugabyte.com).
 
@@ -50,14 +50,14 @@ YugaByte DB supports a number of languages and client drivers. Below is a brief 
 
 | Language  | ORM | YSQL Drivers | YCQL Drivers |
 | --------- | --- | ------------ | ------------ |
-| Java  | [Spring/Hibernate](https://docs.yugabyte.com/latest/develop/build-apps/java/ysql-spring-data/) | [PostgreSQL JDBC](https://docs.yugabyte.com/latest/develop/build-apps/java/ysql-jdbc/) | [cassandra-driver-core-yb](https://docs.yugabyte.com/latest/develop/build-apps/java/ycql/)
-| Go  | [Gorm](https://github.com/YugaByte/orm-examples) | [pq](https://docs.yugabyte.com/latest/develop/build-apps/go/#ysql) | [gocql](https://docs.yugabyte.com/latest/develop/build-apps/go/#ycql)
-| NodeJS  | [Sequelize](https://github.com/YugaByte/orm-examples) | [pg](https://docs.yugabyte.com/latest/develop/build-apps/nodejs/#ysql) | [cassandra-driver](https://docs.yugabyte.com/latest/develop/build-apps/nodejs/#ycql)
-| Python  | [SQLAlchemy](https://github.com/YugaByte/orm-examples) | [psycopg2](https://docs.yugabyte.com/latest/develop/build-apps/python/#ysql) | [yb-cassandra-driver](https://docs.yugabyte.com/latest/develop/build-apps/python/#ycql)
-| Ruby  | [ActiveRecord](https://github.com/YugaByte/orm-examples) | [pg](https://docs.yugabyte.com/latest/develop/build-apps/ruby/#ysql) | [yugabyte-ycql-driver](https://docs.yugabyte.com/latest/develop/build-apps/ruby/#ycql)
-| C#  | Not tested | Not tested | [CassandraCSharpDriver](https://docs.yugabyte.com/latest/develop/build-apps/csharp/#ycql)
-| C++ | Not tested | [libpqxx](https://docs.yugabyte.com/latest/develop/build-apps/cpp/#ysql) | [cassandra-cpp-driver](https://docs.yugabyte.com/latest/develop/build-apps/cpp/#ycql)
-| C   | Not tested | [libpq](https://docs.yugabyte.com/latest/develop/build-apps/c/#ysql) | Not tested
+| Java  | [Spring/Hibernate](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ysql-spring-data/) | [PostgreSQL JDBC](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ysql-jdbc/) | [cassandra-driver-core-yb](https://docs.yugabyte.com/latest/quick-start/build-apps/java/ycql/)
+| Go  | [Gorm](https://github.com/YugaByte/orm-examples) | [pq](https://docs.yugabyte.com/latest/quick-start/build-apps/go/#ysql) | [gocql](https://docs.yugabyte.com/latest/quick-start/build-apps/go/#ycql)
+| NodeJS  | [Sequelize](https://github.com/YugaByte/orm-examples) | [pg](https://docs.yugabyte.com/latest/quick-start/build-apps/nodejs/#ysql) | [cassandra-driver](https://docs.yugabyte.com/latest/quick-start/build-apps/nodejs/#ycql)
+| Python  | [SQLAlchemy](https://github.com/YugaByte/orm-examples) | [psycopg2](https://docs.yugabyte.com/latest/quick-start/build-apps/python/#ysql) | [yb-cassandra-driver](https://docs.yugabyte.com/latest/quick-start/build-apps/python/#ycql)
+| Ruby  | [ActiveRecord](https://github.com/YugaByte/orm-examples) | [pg](https://docs.yugabyte.com/latest/quick-start/build-apps/ruby/#ysql) | [yugabyte-ycql-driver](https://docs.yugabyte.com/latest/quick-start/build-apps/ruby/#ycql)
+| C#  | Not tested | Not tested | [CassandraCSharpDriver](https://docs.yugabyte.com/latest/quick-start/build-apps/csharp/#ycql)
+| C++ | Not tested | [libpqxx](https://docs.yugabyte.com/latest/quick-start/build-apps/cpp/#ysql) | [cassandra-cpp-driver](https://docs.yugabyte.com/latest/quick-start/build-apps/cpp/#ycql)
+| C   | Not tested | [libpq](https://docs.yugabyte.com/latest/quick-start/build-apps/c/#ysql) | Not tested
 
 # Architecture
 
