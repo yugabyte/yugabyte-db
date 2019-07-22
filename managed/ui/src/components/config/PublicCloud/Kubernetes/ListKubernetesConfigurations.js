@@ -50,7 +50,7 @@ export default class ListKubernetesConfigurations extends Component {
             {row.configPath}
           </FlexGrow>
           <FlexGrow>
-            <YBCopyButton text={row.configPath}/>
+            <YBCopyButton text={row.configPath || ''}/>
           </FlexGrow>
         </FlexContainer>
       );

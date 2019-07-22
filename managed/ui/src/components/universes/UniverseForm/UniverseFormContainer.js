@@ -31,7 +31,6 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     fetchUniverseResources: (payload) => {
-      dispatch(configureUniverseResources(payload));
       dispatch(configureUniverseResources(payload)).then((resourceData) => {
         dispatch(configureUniverseResourcesResponse(resourceData.payload));
       });
