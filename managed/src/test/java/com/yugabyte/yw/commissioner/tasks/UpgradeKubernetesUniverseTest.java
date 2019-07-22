@@ -153,6 +153,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> KUBERNETES_UPGRADE_SOFTWARE_TASKS = ImmutableList.of(
       TaskType.KubernetesCommandExecutor,
+      TaskType.LoadBalancerStateChange,
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesWaitForPod,
       TaskType.WaitForServer,
@@ -178,15 +179,12 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.WaitForServer,
       TaskType.WaitForServerReady,
       TaskType.UpdateSoftwareVersion,
-      TaskType.UniverseUpdateSucceeded
+      TaskType.UniverseUpdateSucceeded,
+      TaskType.LoadBalancerStateChange
   );
 
   List<JsonNode> KUBERNETES_UPGRADE_SOFTWARE_RESULTS = ImmutableList.of(
       Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
-      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name(),
-                                  "ybSoftwareVersion", "new-version")),
-      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name(),
                                   "ybSoftwareVersion", "new-version")),
@@ -211,6 +209,12 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name(),
                                   "ybSoftwareVersion", "new-version")),
       Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name(),
+                                  "ybSoftwareVersion", "new-version")),
+      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
@@ -220,6 +224,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
   List<TaskType> KUBERNETES_UPGRADE_GFLAG_TASKS = ImmutableList.of(
       TaskType.UpdateAndPersistGFlags,
       TaskType.KubernetesCommandExecutor,
+      TaskType.LoadBalancerStateChange,
       TaskType.KubernetesCommandExecutor,
       TaskType.KubernetesWaitForPod,
       TaskType.WaitForServer,
@@ -244,16 +249,14 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.KubernetesWaitForPod,
       TaskType.WaitForServer,
       TaskType.WaitForServerReady,
-      TaskType.UniverseUpdateSucceeded
+      TaskType.UniverseUpdateSucceeded,
+      TaskType.LoadBalancerStateChange
   );
 
   List<JsonNode> KUBERNETES_UPGRADE_GFLAG_RESULTS = ImmutableList.of(
       Json.toJson(ImmutableMap.of("masterGFlags", Json.parse("{\"master-flag\":\"m1\"}"),
                                   "tserverGFlags", Json.parse("{\"tserver-flag\":\"t1\"}"))),
       Json.toJson(ImmutableMap.of("commandType", POD_INFO.name())),
-      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
-      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
       Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
@@ -273,6 +276,11 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
       Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of()),
+      Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+      Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+      Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of()),
       Json.toJson(ImmutableMap.of())

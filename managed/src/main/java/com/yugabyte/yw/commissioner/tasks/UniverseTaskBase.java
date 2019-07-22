@@ -36,6 +36,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
+import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
@@ -952,5 +953,22 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       nodeNames += node.nodeName + ",";
     }
     return nodeNames.substring(0, nodeNames.length() -1);
+  }
+
+  /**
+  * Disable the loadbalancer to not move data. Used during rolling upgrades.
+  */
+  public SubTaskGroup createLoadBalancerStateChangeTask(boolean enable) {
+    LoadBalancerStateChange.Params params = new LoadBalancerStateChange.Params();
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    params.enable = enable;
+    LoadBalancerStateChange task = new LoadBalancerStateChange();
+    task.initialize(params);
+
+    SubTaskGroup subTaskGroup = new SubTaskGroup("LoadBalancerStateChange", executor);
+    subTaskGroup.addTask(task);
+    subTaskGroupQueue.add(subTaskGroup);
+    return subTaskGroup;
   }
 }
