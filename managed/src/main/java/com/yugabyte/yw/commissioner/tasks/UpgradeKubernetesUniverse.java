@@ -109,6 +109,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       LOG.error("Error executing task {} with error={}.", getName(), t);
       throw t;
     } finally {
+      createLoadBalancerStateChangeTask(true /*enable*/)
+                .setSubTaskGroupType(getTaskSubGroupType());
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
@@ -143,6 +145,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
     String masterAddresses = PlacementInfoUtil.computeMasterAddresses(pi, placement.masters,
         taskParams().nodePrefix, provider);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+
+    createLoadBalancerStateChangeTask(false /*enable*/)
+                .setSubTaskGroupType(getTaskSubGroupType());
 
     if (!taskParams().masterGFlags.isEmpty() || !flag) {
       userIntent.masterGFlags = taskParams().masterGFlags;
