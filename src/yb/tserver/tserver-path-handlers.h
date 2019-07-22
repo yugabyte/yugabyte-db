@@ -62,6 +62,8 @@ class TabletServerPathHandlers {
   CHECKED_STATUS Register(Webserver* server);
 
  private:
+  void HandleTablesPage(const Webserver::WebRequest& req,
+                        std::stringstream* output);
   void HandleTabletsPage(const Webserver::WebRequest& req,
                          std::stringstream* output);
   void HandleTabletPage(const Webserver::WebRequest& req,
