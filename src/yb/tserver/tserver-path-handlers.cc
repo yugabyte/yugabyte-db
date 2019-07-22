@@ -58,6 +58,67 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/url-coding.h"
 
+namespace {
+
+// A struct representing some information about a tablet peer.
+struct TabletPeerInfo {
+  string name;
+  int64_t on_disk_size;
+  bool has_on_disk_size;
+  yb::consensus::RaftPeerPB::Role raft_role;
+};
+
+// An identifier for a table, according to the `/tables` page.
+struct TableIdentifier {
+  string uuid;
+  string state;
+};
+
+// A struct representing some information about a table.
+struct TableInfo {
+  string name;
+  int64_t on_disk_size;
+  bool has_complete_on_disk_size;
+  std::map<yb::consensus::RaftPeerPB::Role, size_t> raft_role_counts;
+
+  explicit TableInfo(TabletPeerInfo info)
+      : name(info.name),
+        on_disk_size(info.on_disk_size),
+        has_complete_on_disk_size(info.has_on_disk_size) {
+    raft_role_counts.emplace(info.raft_role, 1);
+  }
+
+  // Adds information about a single tablet peer to a table.
+  void Aggregate(const TabletPeerInfo& other) {
+    auto rc_iter = raft_role_counts.find(other.raft_role);
+    if (rc_iter == raft_role_counts.end()) {
+      raft_role_counts.emplace(other.raft_role, 1);
+    } else {
+      ++rc_iter->second;
+    }
+
+    on_disk_size += other.on_disk_size;
+    has_complete_on_disk_size = has_complete_on_disk_size && other.has_on_disk_size;
+  }
+};
+
+}  // anonymous namespace
+
+namespace std {
+
+template<>
+struct less<TableIdentifier> {
+  bool operator() (const TableIdentifier& lhs, const TableIdentifier& rhs) const {
+    if (lhs.uuid == rhs.uuid) {
+      return lhs.state < rhs.state;
+    } else {
+      return lhs.uuid < rhs.uuid;
+    }
+  }
+};
+
+} //  namespace std
+
 namespace yb {
 namespace tserver {
 
@@ -84,6 +145,9 @@ TabletServerPathHandlers::~TabletServerPathHandlers() {
 }
 
 Status TabletServerPathHandlers::Register(Webserver* server) {
+  server->RegisterPathHandler(
+      "/tables", "Tables", std::bind(&TabletServerPathHandlers::HandleTablesPage, this, _1, _2),
+      true /* styled */, true /* is_on_nav_bar */, "fa fa-table");
   server->RegisterPathHandler(
       "/tablets", "Tablets", std::bind(&TabletServerPathHandlers::HandleTabletsPage, this, _1, _2),
       true /* styled */, true /* is_on_nav_bar */, "fa fa-server");
@@ -190,7 +254,87 @@ bool CompareByTabletId(const std::shared_ptr<TabletPeer>& a,
   return a->tablet_id() < b->tablet_id();
 }
 
+// Returns information about the tables stored on this tablet server.
+std::map<TableIdentifier, TableInfo> GetTablesInfo(
+    const vector<std::shared_ptr<TabletPeer>>& peers) {
+  std::map<TableIdentifier, TableInfo> table_map;
+
+  for (const auto& peer : peers) {
+    TabletStatusPB status;
+    peer->GetTabletStatusPB(&status);
+
+    auto identifer = TableIdentifier {
+      .uuid = std::move(status.table_id()),
+      .state = peer->HumanReadableState()
+    };
+    auto info = TabletPeerInfo {
+      .name = std::move(status.table_name()),
+      .on_disk_size = status.has_estimated_on_disk_size() ? status.estimated_on_disk_size() : 0,
+      .has_on_disk_size = status.has_estimated_on_disk_size(),
+      .raft_role = peer->shared_consensus()->role()
+    };
+
+    auto table_iter = table_map.find(identifer);
+    if (table_iter == table_map.end()) {
+      table_map.emplace(identifer, TableInfo(std::move(info)));
+    } else {
+      table_iter->second.Aggregate(std::move(info));
+    }
+  }
+
+  return table_map;
+}
+
 }  // anonymous namespace
+
+void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req,
+                                                std::stringstream *output) {
+  vector<std::shared_ptr<TabletPeer>> peers;
+  tserver_->tablet_manager()->GetTabletPeers(&peers);
+  auto table_map = GetTablesInfo(peers);
+  bool show_missing_size_footer = false;
+
+  *output << "<h1>Tables</h1>\n"
+          << "<table class='table table-striped'>\n"
+          << "  <tr>\n"
+          << "    <th>Table name</th><th>Table UUID</th>\n"
+          << "    <th>State</th><th>On-disk size</th><th>Raft roles</th>\n"
+          << "  </tr>\n";
+
+  for (const auto& table_iter : table_map) {
+    const auto& identifier = table_iter.first;
+    const auto& info = table_iter.second;
+
+    string disk_size_string = HumanReadableNumBytes::ToString(info.on_disk_size);
+    if (!info.has_complete_on_disk_size) {
+      disk_size_string += "*";
+      show_missing_size_footer = true;
+    }
+
+    std::stringstream role_counts_html;
+    role_counts_html << "<ul>";
+    for (const auto& rc_iter : info.raft_role_counts) {
+      role_counts_html << "<li>" << RaftPeerPB::Role_Name(rc_iter.first)
+                       << ": " << rc_iter.second << "</li>";
+    }
+    role_counts_html << "</ul>";
+
+    *output << Substitute(
+        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
+        EscapeForHtmlToString(info.name),
+        EscapeForHtmlToString(identifier.uuid),
+        EscapeForHtmlToString(identifier.state),
+        disk_size_string,
+        role_counts_html.str());
+  }
+
+  *output << "</table>\n";
+
+  if (show_missing_size_footer) {
+    *output << "<p>* Some tablets did not provide disk size estimates,"
+            << " and were not added to the displayed totals.</p>";
+  }
+}
 
 void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& req,
                                                  std::stringstream *output) {
