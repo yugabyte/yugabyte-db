@@ -40,7 +40,7 @@ Read more about YugaByte DB in our [Docs](https://docs.yugabyte.com/latest/intro
 * [Build an app](https://docs.yugabyte.com/latest/quick-start/build-apps/) using a PostgreSQL-compatible driver or ORM.
 * Try a real-world app:
     * [Microservices-oriented e-commerce app](https://github.com/YugaByte/yugastore-java)
-    * [Streaming IoT app with Kafka and Spark Streaming](https://docs.yugabyte.com/latest/quick-start/realworld-apps/iot-spark-kafka-ksql/)
+    * [Streaming IoT app with Kafka and Spark Streaming](https://docs.yugabyte.com/latest/develop/realworld-apps/iot-spark-kafka-ksql/)
 
 Cannot find what you are looking for? Have a question? Please post your questions or comments on our Community [Slack](https://www.yugabyte.com/slack) or [Forum](https://forum.yugabyte.com).
 
