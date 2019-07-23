@@ -32,12 +32,12 @@
 
 #include <string>
 
-#include <boost/bind.hpp>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/rpc-test-base.h"
+#include "yb/rpc/yb_rpc.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"

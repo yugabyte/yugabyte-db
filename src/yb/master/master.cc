@@ -55,6 +55,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
+#include "yb/rpc/yb_rpc.h"
 #include "yb/server/rpc_server.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/server/default-path-handlers.h"

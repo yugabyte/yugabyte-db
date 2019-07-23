@@ -90,6 +90,10 @@ class InboundCallHandler {
 
   virtual void Failure(const InboundCallPtr& call, const Status& status) = 0;
 
+  virtual bool CallQueued() = 0;
+
+  virtual void CallDequeued() = 0;
+
  protected:
   ~InboundCallHandler() = default;
 };
@@ -148,7 +152,12 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   MonoDelta GetTimeInQueue() const;
 
   ThreadPoolTask* BindTask(InboundCallHandler* handler) {
-    task_.Bind(handler, shared_from(this));
+    auto shared_this = shared_from(this);
+    if (!handler->CallQueued()) {
+      return nullptr;
+    }
+    tracker_ = handler;
+    task_.Bind(handler, shared_this);
     return &task_;
   }
 
@@ -165,7 +174,13 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   bool TryStartProcessing() {
     bool expected = false;
-    return processing_started_.compare_exchange_strong(expected, true, std::memory_order_acq_rel);
+    if (!processing_started_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+      return false;
+    }
+    if (tracker_) {
+      tracker_->CallDequeued();
+    }
+    return true;
   }
 
   std::string LogPrefix() const override;
@@ -241,6 +256,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   InboundCallTask task_;
   InboundCallPtr retained_self_;
+  InboundCallHandler* tracker_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(InboundCall);
 };

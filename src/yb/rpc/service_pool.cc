@@ -162,13 +162,12 @@ class ServicePoolImpl final : public InboundCallHandler {
     }
   }
 
-  void Enqueue(InboundCallPtr call) {
+  void Enqueue(const InboundCallPtr& call) {
     TRACE_TO(call->trace(), "Inserting onto call queue");
 
-    auto queued_calls = queued_calls_.fetch_add(1, std::memory_order_acq_rel);
-    if (queued_calls >= max_queued_calls_) {
-      queued_calls_.fetch_sub(1, std::memory_order_relaxed);
-      Overflow(call, "service", queued_calls);
+    auto task = call->BindTask(this);
+    if (!task) {
+      Overflow(call, "service", queued_calls_.load(std::memory_order_relaxed));
       return;
     }
 
@@ -179,7 +178,7 @@ class ServicePoolImpl final : public InboundCallHandler {
       ScheduleCheckTimeout(call_deadline);
     }
 
-    thread_pool_.Enqueue(call->BindTask(this));
+    thread_pool_.Enqueue(task);
   }
 
   const Counter* RpcsTimedOutInQueueMetricForTests() const {
@@ -216,7 +215,6 @@ class ServicePoolImpl final : public InboundCallHandler {
       return;
     }
 
-    queued_calls_.fetch_sub(1, std::memory_order_relaxed);
     if (status.IsServiceUnavailable()) {
       Overflow(call, "global", thread_pool_.options().queue_limit);
       return;
@@ -230,10 +228,6 @@ class ServicePoolImpl final : public InboundCallHandler {
   }
 
   void Handle(InboundCallPtr incoming) override {
-    Handle(std::move(incoming), true);
-  }
-
-  void Handle(InboundCallPtr incoming, bool queued) {
     incoming->RecordHandlingStarted(incoming_queue_time_);
     ADOPT_TRACE(incoming->trace());
 
@@ -246,9 +240,6 @@ class ServicePoolImpl final : public InboundCallHandler {
       TRACE_TO(incoming->trace(), "Handling call");
 
       if (incoming->TryStartProcessing()) {
-        if (queued) {
-          queued_calls_.fetch_sub(1, std::memory_order_relaxed);
-        }
         service_->Handle(std::move(incoming));
       }
       return;
@@ -266,7 +257,6 @@ class ServicePoolImpl final : public InboundCallHandler {
  private:
   void TimedOut(InboundCall* call, const char* error_message, Counter* metric) {
     if (call->RespondTimedOutIfPending(error_message)) {
-      queued_calls_.fetch_sub(1, std::memory_order_relaxed);
       metric->Increment();
     }
   }
@@ -369,6 +359,24 @@ class ServicePoolImpl final : public InboundCallHandler {
     return log_prefix_;
   }
 
+  bool CallQueued() override {
+    auto queued_calls = queued_calls_.fetch_add(1, std::memory_order_acq_rel);
+    if (queued_calls < 0) {
+      YB_LOG_EVERY_N_SECS(DFATAL, 5) << "Negative number of queued calls: " << queued_calls;
+    }
+
+    if (queued_calls >= max_queued_calls_) {
+      queued_calls_.fetch_sub(1, std::memory_order_relaxed);
+      return false;
+    }
+
+    return true;
+  }
+
+  void CallDequeued() override {
+    queued_calls_.fetch_sub(1, std::memory_order_relaxed);
+  }
+
   const size_t max_queued_calls_;
   ThreadPool& thread_pool_;
   Scheduler& scheduler_;
@@ -379,7 +387,7 @@ class ServicePoolImpl final : public InboundCallHandler {
   scoped_refptr<Counter> rpcs_queue_overflow_;
   // Have to use CoarseDuration here, since CoarseTimePoint does not work with clang + libstdc++
   std::atomic<CoarseDuration> last_backpressure_at_{CoarseTimePoint().time_since_epoch()};
-  std::atomic<size_t> queued_calls_{0};
+  std::atomic<int64_t> queued_calls_{0};
 
   // It is too expensive to update timeout priority queue when each call is received.
   // So we are doing the following trick.
@@ -441,7 +449,7 @@ void ServicePool::QueueInboundCall(InboundCallPtr call) {
 }
 
 void ServicePool::Handle(InboundCallPtr call) {
-  impl_->Handle(std::move(call), false /* queued */);
+  impl_->Handle(std::move(call));
 }
 
 const Counter* ServicePool::RpcsTimedOutInQueueMetricForTests() const {

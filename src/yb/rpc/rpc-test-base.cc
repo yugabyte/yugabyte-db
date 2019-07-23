@@ -17,6 +17,8 @@
 
 #include <thread>
 
+#include "yb/rpc/yb_rpc.h"
+
 #include "yb/util/random_util.h"
 
 using namespace std::chrono_literals;
