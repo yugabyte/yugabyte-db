@@ -33,6 +33,8 @@
 #include "yb/util/cast.h"
 #include "yb/util/service_util.h"
 #include "yb/util/tostring.h"
+#include "yb/util/string_util.h"
+#include "yb/cdc/cdc_consumer.pb.h"
 
 using std::string;
 using std::unique_ptr;
@@ -693,6 +695,55 @@ Status CatalogManager::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* r
       VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(decrypted_registry));
 
   resp->set_key_id(universe_key_registry.latest_version_id());
+  return Status::OK();
+}
+
+Status CatalogManager::InitCDCConsumer(
+    const std::vector<CDCConsumerStreamInfo>& consumer_info,
+    const std::string& master_addrs,
+    const std::string& producer_universe_uuid) {
+
+  std::unordered_set<HostPort, HostPortHash> tserver_addrs;
+
+  cdc::ProducerEntryPB producer_entry;
+  for (const auto& stream_info : consumer_info) {
+    // Get the tablets in the consumer table.
+    GetTableLocationsRequestPB consumer_table_req;
+    GetTableLocationsResponsePB consumer_table_resp;
+    TableIdentifierPB table_identifer;
+    table_identifer.set_table_id(stream_info.consumer_table_id);
+    *(consumer_table_req.mutable_table()) = table_identifer;
+    RETURN_NOT_OK(GetTableLocations(&consumer_table_req, &consumer_table_resp));
+    cdc::StreamEntryPB stream_entry;
+    RETURN_NOT_OK(RegisterTableSubscriber(
+        stream_info.producer_table_id, stream_info.consumer_table_id, master_addrs,
+        consumer_table_resp, &tserver_addrs, &stream_entry));
+    (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
+  }
+
+  auto master_addrs_list = StringSplit(master_addrs, ',');
+  producer_entry.mutable_master_addrs()->Reserve(master_addrs_list.size());
+  for (const auto& addr : master_addrs_list) {
+    auto hp = VERIFY_RESULT(HostPort::FromString(addr, 0));
+    HostPortToPB(hp, producer_entry.add_master_addrs());
+  }
+
+  producer_entry.mutable_tserver_addrs()->Reserve(tserver_addrs.size());
+  for (const auto& addr : tserver_addrs) {
+    HostPortToPB(addr, producer_entry.add_tserver_addrs());
+  }
+
+  auto l = cluster_config_->LockForWrite();
+  auto producer_map = l->mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+  auto it = producer_map->find(producer_universe_uuid);
+  if (it != producer_map->end()) {
+    return STATUS(InvalidArgument, "Already created a consumer for this universe");
+  }
+
+  (*producer_map)[producer_universe_uuid] = std::move(producer_entry);
+  l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
+  RETURN_NOT_OK(sys_catalog_->UpdateItem(cluster_config_.get(), leader_ready_term_));
+  l->Commit();
 
   return Status::OK();
 }
@@ -1201,26 +1252,53 @@ void CatalogManager::GetTsDescsFromPlacementInfo(const PlacementInfoPB& placemen
   }
 }
 
-Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
-                                             TSHeartbeatResponsePB* resp) {
-
-  SysClusterConfigEntryPB cluster_config;
-  RETURN_NOT_OK(GetClusterConfig(&cluster_config));
-  const auto& ts_uuid = req->common().ts_instance().permanent_uuid();
+template <typename Registry, typename Mutex>
+bool ShouldResendRegistry(
+    const std::string& ts_uuid, bool has_registration, Registry* registry, Mutex* mutex) {
   bool should_resend_registry;
   {
-    std::lock_guard<simple_spinlock> lock(should_send_universe_key_registry_mutex_);
-    auto it = should_send_universe_key_registry_.find(ts_uuid);
-    should_resend_registry = it ==
-        should_send_universe_key_registry_.end() || it->second || req->has_registration();
-    if (it == should_send_universe_key_registry_.end()) {
-      should_send_universe_key_registry_.emplace(ts_uuid, false);
+    std::lock_guard<Mutex> lock(*mutex);
+    auto it = registry->find(ts_uuid);
+    should_resend_registry = (it == registry->end() || it->second || has_registration);
+    if (it == registry->end()) {
+      registry->emplace(ts_uuid, false);
     } else {
       it->second = false;
     }
   }
+  return should_resend_registry;
+}
 
-  if (!cluster_config.has_encryption_info() || !should_resend_registry) {
+Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
+                                             TSHeartbeatResponsePB* resp) {
+  SysClusterConfigEntryPB cluster_config;
+  RETURN_NOT_OK(GetClusterConfig(&cluster_config));
+  RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
+  return FillHeartbeatResponseCDC(cluster_config, req, resp);
+}
+
+
+Status CatalogManager::FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& cluster_config,
+                                                const TSHeartbeatRequestPB* req,
+                                                TSHeartbeatResponsePB* resp) {
+  const auto& ts_uuid = req->common().ts_instance().permanent_uuid();
+  if (!cluster_config.has_consumer_registry() ||
+      !ShouldResendRegistry(ts_uuid, req->has_registration(), &should_send_consumer_registry_,
+                            &should_send_consumer_registry_mutex_)) {
+    return Status::OK();
+  }
+  *resp->mutable_consumer_registry() = cluster_config.consumer_registry();
+  return Status::OK();
+}
+
+Status CatalogManager::FillHeartbeatResponseEncryption(
+    const SysClusterConfigEntryPB& cluster_config,
+    const TSHeartbeatRequestPB* req,
+    TSHeartbeatResponsePB* resp) {
+  const auto& ts_uuid = req->common().ts_instance().permanent_uuid();
+  if (!cluster_config.has_encryption_info() ||
+      !ShouldResendRegistry(ts_uuid, req->has_registration(), &should_send_universe_key_registry_,
+                            &should_send_universe_key_registry_mutex_)) {
     return Status::OK();
   }
 

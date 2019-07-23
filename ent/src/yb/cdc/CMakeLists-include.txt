@@ -23,7 +23,8 @@ string(REPLACE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/ent
 
 set(CDC_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_service.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_producer.cc)
+  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_producer.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_consumer_proxy_manager.cc)
 
 add_library(cdc ${CDC_SRCS_EXTENSIONS})
 target_link_libraries(cdc
