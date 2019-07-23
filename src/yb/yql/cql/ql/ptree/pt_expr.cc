@@ -524,7 +524,7 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp1(SemState *sem_state) {
 CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
   // The state of operand2 is dependent on operand1.
   PTExpr::SharedPtr operand1 = op1();
-  DCHECK(operand1 != nullptr);
+  DCHECK_NOTNULL(operand1.get());
   sem_state->set_allowing_column_refs(false);
 
   switch (ql_op_) {
@@ -548,15 +548,37 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
         sem_state->SetExprState(operand1->ql_type(), operand1->internal_type());
       }
 
-      if (operand1->expr_op() == ExprOperator::kBcall) {
-        PTBcall *bcall = static_cast<PTBcall *>(operand1.get());
-        if (strcmp(bcall->name()->c_str(), "token") == 0) {
-          sem_state->set_bindvar_name(PTBindVar::token_bindvar_name());
+      switch (operand1->expr_op()) {
+        case ExprOperator::kBcall: {
+          PTBcall *bcall = static_cast<PTBcall *>(operand1.get());
+          DCHECK_NOTNULL(bcall->name().get());
+          if (strcmp(bcall->name()->c_str(), "token") == 0) {
+            sem_state->set_bindvar_name(PTBindVar::token_bindvar_name());
+          }
+          if (strcmp(bcall->name()->c_str(), "partition_hash") == 0) {
+            sem_state->set_bindvar_name(PTBindVar::partition_hash_bindvar_name());
+          }
+          break;
         }
-        if (strcmp(bcall->name()->c_str(), "partition_hash") == 0) {
-          sem_state->set_bindvar_name(PTBindVar::partition_hash_bindvar_name());
+
+        case ExprOperator::kSubColRef: {
+          const PTSubscriptedColumn *ref = static_cast<const PTSubscriptedColumn *>(operand1.get());
+          DCHECK_NOTNULL(ref->desc());
+          sem_state->set_bindvar_name(PTBindVar::coll_bindvar_name(ref->desc()->name()));
+          break;
         }
+
+        case ExprOperator::kJsonOperatorRef: {
+          const PTJsonColumnWithOperators *ref =
+              static_cast<const PTJsonColumnWithOperators*>(operand1.get());
+          DCHECK_NOTNULL(ref->desc());
+          sem_state->set_bindvar_name(PTBindVar::json_bindvar_name(ref->desc()->name()));
+          break;
+        }
+
+        default: {} // Use default bindvar name below.
       }
+
       break;
     }
 
@@ -578,6 +600,10 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
 
     default:
       LOG(FATAL) << "Invalid operator" << int(ql_op_);
+  }
+
+  if (!sem_state->bindvar_name()) {
+    sem_state->set_bindvar_name(PTBindVar::default_bindvar_name());
   }
 
   return Status::OK();

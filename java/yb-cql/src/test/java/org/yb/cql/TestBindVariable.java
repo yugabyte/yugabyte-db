@@ -25,6 +25,7 @@ import com.datastax.driver.core.Row;
 
 import org.junit.Test;
 import org.yb.client.TestUtils;
+import org.json.JSONObject;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
@@ -2006,4 +2007,117 @@ public class TestBindVariable extends BaseCQLTest {
     }
   }
 
+  private Row expected_one_row(ResultSet rs) {
+      LOG.info(String.format("Result: %s", rs.toString()));
+      Row row = rs.one();
+      LOG.info(row.toString());
+      assertNotNull(row);
+      assertNull(rs.one()); // Assert exactly 1 row.
+      return row;
+  }
+
+  interface Checker {
+    void check(ResultSet rs);
+  };
+
+  @Test
+  public void testSelectBindWithExpr() throws Exception {
+    LOG.info("Begin test");
+
+    Checker myjson = (ResultSet rs) -> {
+      // Assert exactly 1 row is returned with expected column values.
+      Row row = expected_one_row(rs);
+      assertEquals(1, row.getInt(0));
+      assertEquals(5, new JSONObject(row.getJson("j")).getInt("y"));
+    };
+
+    session.execute("CREATE TABLE test_tbl (h int PRIMARY KEY, j jsonb);");
+    session.execute("INSERT INTO test_tbl (h, j) VALUES (1, '{\"y\":5}');");
+    {
+      String sel_stmt = "SELECT * FROM test_tbl WHERE h = 1 ;";
+      myjson.check(session.execute(sel_stmt));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_tbl WHERE h = ? ;";
+      myjson.check(session.execute(sel_stmt, new Integer(1)));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_tbl WHERE j = ? ;";
+      myjson.check(session.execute(sel_stmt, new String("{\"y\":5}")));
+    }
+    {
+      // Bind using expression based on JSONB.
+      String sel_stmt = "SELECT * FROM test_tbl WHERE j->>'y' = ? ;";
+      myjson.check(session.execute(sel_stmt, new String("5")));
+    }
+    {
+      // Bind using expression based on JSONB with binded variable name.
+      String sel_stmt = "SELECT * FROM test_tbl WHERE j->>'y' = :my_var_name ;";
+      myjson.check(session.execute(sel_stmt, new HashMap<String, Object>()
+          {{ put("my_var_name", "5"); }}));
+    }
+    // Test internal names for the bind variables.
+    {
+      String sel_stmt = "SELECT * FROM test_tbl WHERE h = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      myjson.check(session.execute(prep_stmt.bind().setInt("h", 1)));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_tbl WHERE j->>'y' = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      myjson.check(session.execute(prep_stmt.bind().setString("json_attr(j)", "5")));
+    }
+
+    Checker mymap = (ResultSet rs) -> {
+      // Assert exactly 1 row is returned with expected column values.
+      Row row = expected_one_row(rs);
+      Map<Integer, String> map_value = row.getMap(1, Integer.class, String.class);
+      assertEquals(2, map_value.size());
+      assertTrue(map_value.containsKey(2));
+      assertEquals("b", map_value.get(2));
+      assertTrue(map_value.containsKey(3));
+      assertEquals("c", map_value.get(3));
+    };
+
+    session.execute("CREATE TABLE test_map (h int PRIMARY KEY, m map<int, varchar>);");
+    session.execute("INSERT INTO test_map (h, m) VALUES (1, {2:'b', 3:'c'});");
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE h = 1 ;";
+      mymap.check(session.execute(sel_stmt));
+    }
+    {
+      // Bind using expression based on MAP.
+      String sel_stmt = "SELECT * FROM test_map WHERE m[2] = ? ;";
+      mymap.check(session.execute(sel_stmt, new String("b")));
+    }
+    // Test PreparedStatement API.
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE m[2] = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      mymap.check(session.execute(prep_stmt.bind(new String("b"))));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE m[2] = :my_var_name ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      mymap.check(session.execute(prep_stmt.bind().setString("my_var_name", "b")));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE h = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      mymap.check(session.execute(prep_stmt.bind(new Integer(1))));
+    }
+    // Test internal names for the bind variables.
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE h = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      mymap.check(session.execute(prep_stmt.bind().setInt("h", 1)));
+    }
+    {
+      String sel_stmt = "SELECT * FROM test_map WHERE m[2] = ? ;";
+      PreparedStatement prep_stmt = session.prepare(sel_stmt);
+      mymap.check(session.execute(prep_stmt.bind().setString("value(m)", "b")));
+    }
+
+    LOG.info("End test");
+  }
 }

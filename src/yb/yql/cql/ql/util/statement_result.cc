@@ -55,7 +55,8 @@ void GetBindVariableSchemasFromDmlStmt(const PTDmlStmt& stmt,
     table_names->reserve(table_names->size() + stmt.bind_variables().size());
   }
   for (const PTBindVar *var : stmt.bind_variables()) {
-    schemas->emplace_back(string(var->name()->c_str()), var->ql_type());
+    DCHECK_NOTNULL(var->name().get());
+    schemas->emplace_back(var->name() ? string(var->name()->c_str()) : string(), var->ql_type());
     if (table_names != nullptr) {
       table_names->emplace_back(stmt.bind_table()->name());
     }
