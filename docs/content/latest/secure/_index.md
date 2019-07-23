@@ -59,4 +59,16 @@ menu:
       </div>
     </a>
   </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="encryption-at-rest/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/tls-encryption.png"
+        aria-hidden="true" />
+        <div class="title">Encryption At Rest</div>
+      </div>
+      <div class="body">
+          Enable encryption at rest in YugaByte DB to secure and protect data on disk.
+      </div>
+    </a>
+  </div>
 </div>
