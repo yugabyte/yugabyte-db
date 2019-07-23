@@ -86,6 +86,8 @@ Int RandomUniformInt(Int min, Int max, std::mt19937_64* rng = nullptr) {
   return std::uniform_int_distribution<Int>(min, max)(*rng);
 }
 
+bool RandomUniformBool(std::mt19937_64* rng = nullptr);
+
 template <class Int>
 std::vector<Int> RandomUniformVector(Int min, Int max, uint32_t size,
                                      std::mt19937_64* rng = nullptr) {

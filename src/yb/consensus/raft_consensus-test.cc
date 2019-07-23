@@ -695,7 +695,7 @@ TEST_F(RaftConsensusTest, TestAbortOperations) {
 TEST_F(RaftConsensusTest, TestReceivedIdIsInittedBeforeStart) {
   SetUpConsensus();
   OpId opid;
-  ASSERT_OK(consensus_->GetLastOpId(RECEIVED_OPID, &opid));
+  consensus_->GetLastReceivedOpId().ToPB(&opid);
   ASSERT_TRUE(opid.IsInitialized());
   ASSERT_OPID_EQ(opid, MinimumOpId());
 }

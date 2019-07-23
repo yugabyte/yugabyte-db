@@ -216,9 +216,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) override;
 
-  CHECKED_STATUS RemoveIntents(const TransactionId& id) override;
+  CHECKED_STATUS RemoveIntents(const RemoveIntentsData& data, const TransactionId& id) override;
 
-  CHECKED_STATUS RemoveIntents(const TransactionIdSet& transactions) override;
+  CHECKED_STATUS RemoveIntents(
+      const RemoveIntentsData& data, const TransactionIdSet& transactions) override;
 
   HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) override;
 
@@ -261,7 +262,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       HybridTime hybrid_time);
 
   void WriteBatch(const rocksdb::UserFrontiers* frontiers,
-                  HybridTime hybrid_time,
                   rocksdb::WriteBatch* write_batch,
                   rocksdb::DB* dest_db);
 
@@ -711,6 +711,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, const Status& status);
 
   Result<bool> IntentsDbFlushFilter(const rocksdb::MemTable& memtable);
+
+  template <class Ids>
+  CHECKED_STATUS RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids);
 
   std::function<rocksdb::MemTableFilter()> mem_table_flush_filter_factory_;
 

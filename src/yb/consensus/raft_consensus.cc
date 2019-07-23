@@ -2781,17 +2781,14 @@ void RaftConsensus::DoElectionCallback(const LeaderElectionData& data,
   }
 }
 
-Status RaftConsensus::GetLastOpId(OpIdType type, OpId* id) {
-  SCHECK_NE(id, nullptr, InvalidArgument, "id should not be nullptr");
+yb::OpId RaftConsensus::GetLastReceivedOpId() {
   auto lock = state_->LockForRead();
-  if (type == RECEIVED_OPID) {
-    state_->GetLastReceivedOpIdUnlocked().ToPB(id);
-  } else if (type == COMMITTED_OPID) {
-    state_->GetCommittedOpIdUnlocked().ToPB(id);
-  } else {
-    return STATUS(InvalidArgument, "Unsupported OpIdType", OpIdType_Name(type));
-  }
-  return Status::OK();
+  return state_->GetLastReceivedOpIdUnlocked();
+}
+
+yb::OpId RaftConsensus::GetLastCommittedOpId() {
+  auto lock = state_->LockForRead();
+  return state_->GetCommittedOpIdUnlocked();
 }
 
 void RaftConsensus::MarkDirty(std::shared_ptr<StateChangeContext> context) {

@@ -531,6 +531,11 @@ void TabletPeer::SubmitUpdateTransaction(
   Submit(std::move(operation), term);
 }
 
+void TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
+  consensus_->GetLastCommittedOpId().ToPB(&data->op_id);
+  data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
+}
+
 HybridTime TabletPeer::Now() {
   return clock_->Now();
 }
@@ -706,15 +711,7 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
 
   // We keep at least one committed operation in the log so that we can always recover safe time
   // during bootstrap.
-  OpId committed_op_id;
-  const Status get_committed_op_id_status =
-      consensus()->GetLastOpId(OpIdType::COMMITTED_OPID, &committed_op_id);
-  if (!get_committed_op_id_status.IsNotFound()) {
-    // NotFound is returned by local consensus. We should get rid of this logic once local
-    // consensus is gone.
-    RETURN_NOT_OK(get_committed_op_id_status);
-    *min_index = std::min(*min_index, static_cast<int64_t>(committed_op_id.index()));
-  }
+  *min_index = std::min(*min_index, consensus()->GetLastCommittedOpId().index);
 
   return Status::OK();
 }

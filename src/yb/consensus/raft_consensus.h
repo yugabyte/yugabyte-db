@@ -215,7 +215,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                             int64_t term,
                             const std::string& reason) override;
 
-  CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) override;
+  yb::OpId GetLastReceivedOpId() override;
+
+  yb::OpId GetLastCommittedOpId() override;
 
   MicrosTime MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;

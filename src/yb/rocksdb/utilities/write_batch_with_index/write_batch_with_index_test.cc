@@ -29,6 +29,7 @@
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend.h"

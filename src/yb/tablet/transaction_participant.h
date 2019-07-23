@@ -74,12 +74,19 @@ struct TransactionApplyData {
   std::string ToString() const;
 };
 
+struct RemoveIntentsData {
+  consensus::OpId op_id;
+  HybridTime log_ht;
+};
+
 // Interface to object that should apply intents in RocksDB when transaction is applying.
 class TransactionIntentApplier {
  public:
   virtual CHECKED_STATUS ApplyIntents(const TransactionApplyData& data) = 0;
-  virtual CHECKED_STATUS RemoveIntents(const TransactionId& transaction_id) = 0;
-  virtual CHECKED_STATUS RemoveIntents(const TransactionIdSet& transactions) = 0;
+  virtual CHECKED_STATUS RemoveIntents(
+      const RemoveIntentsData& data, const TransactionId& transaction_id) = 0;
+  virtual CHECKED_STATUS RemoveIntents(
+      const RemoveIntentsData& data, const TransactionIdSet& transactions) = 0;
   virtual HybridTime ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) = 0;
 
  protected:
@@ -92,6 +99,10 @@ class TransactionParticipantContext {
   virtual const std::string& tablet_id() const = 0;
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
   virtual const server::ClockPtr& clock_ptr() const = 0;
+
+  // Fills RemoveIntentsData with information about replicated state.
+  virtual void GetLastReplicatedData(RemoveIntentsData* data) = 0;
+
   virtual bool Enqueue(rpc::ThreadPoolTask* task) = 0;
   virtual HybridTime Now() = 0;
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
@@ -114,8 +125,8 @@ class TransactionParticipant : public TransactionStatusManager {
   virtual ~TransactionParticipant();
 
   // Adds new running transaction.
-  void Add(const TransactionMetadataPB& data, bool may_have_metadata,
-           rocksdb::WriteBatch *write_batch);
+  MUST_USE_RESULT bool Add(
+      const TransactionMetadataPB& data, bool may_have_metadata, rocksdb::WriteBatch *write_batch);
 
   boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override;
 
