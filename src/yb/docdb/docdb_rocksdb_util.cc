@@ -95,6 +95,9 @@ DEFINE_int32(num_reserved_small_compaction_threads, -1, "Number of reserved smal
 DEFINE_bool(enable_ondisk_compression, true,
             "Determines whether SSTable compression is enabled or not.");
 
+DEFINE_int32(compaction_thread_pool_size, -1,
+             "Max running workers in compaction thread pool. -1 for auto detection.");
+
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
@@ -411,6 +414,7 @@ void AutoInitRocksDBFlags(rocksdb::Options* options) {
     return;
   }
 
+  bool has_rocksdb_max_background_compactions = false;
   if (FLAGS_rocksdb_max_background_compactions == -1) {
     if (kNumCpus <= 4) {
       FLAGS_rocksdb_max_background_compactions = 1;
@@ -423,6 +427,8 @@ void AutoInitRocksDBFlags(rocksdb::Options* options) {
     }
     LOG(INFO) << "Auto setting FLAGS_rocksdb_max_background_compactions to "
               << FLAGS_rocksdb_max_background_compactions;
+  } else {
+    has_rocksdb_max_background_compactions = true;
   }
   options->max_background_compactions = FLAGS_rocksdb_max_background_compactions;
 
@@ -432,6 +438,14 @@ void AutoInitRocksDBFlags(rocksdb::Options* options) {
               << FLAGS_rocksdb_base_background_compactions;
   }
   options->base_background_compactions = FLAGS_rocksdb_base_background_compactions;
+
+  if (FLAGS_compaction_thread_pool_size == -1) {
+    if (has_rocksdb_max_background_compactions) {
+      FLAGS_compaction_thread_pool_size = FLAGS_rocksdb_max_background_compactions;
+    } else {
+      FLAGS_compaction_thread_pool_size = std::max(1, static_cast<int>(std::sqrt(kNumCpus)));
+    }
+  }
 }
 
 } // namespace
@@ -457,8 +471,7 @@ void InitRocksDBOptions(
   }
   options->env = tablet_options.rocksdb_env;
   options->checkpoint_env = rocksdb::Env::Default();
-  static PriorityThreadPool compaction_thread_pool(
-      options->max_background_compactions + options->max_background_flushes);
+  static PriorityThreadPool compaction_thread_pool(FLAGS_compaction_thread_pool_size);
   options->compaction_thread_pool = &compaction_thread_pool;
 
   if (FLAGS_num_reserved_small_compaction_threads != -1) {
