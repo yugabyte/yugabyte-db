@@ -22,24 +22,36 @@
 #include "yb/common/entity_ids.h"
 #include "yb/master/master.proxy.h"
 #include "yb/rpc/messenger.h"
+
 #include "yb/util/status.h"
 #include "yb/util/result.h"
 #include "yb/util/net/net_util.h"
 
 namespace yb {
+namespace client {
+
+class YBClient;
+class YBTableName;
+
+} // namespace client
+
 namespace master {
+
+class TableIdentifierPB;
+class TabletLocationsPB;
 
 class CDCRpcTasks {
  public:
   static Result<std::shared_ptr<CDCRpcTasks>> CreateWithMasterAddrs(
       const std::string& master_addrs);
-
+  Result<google::protobuf::RepeatedPtrField<TabletLocationsPB>> GetTableLocations(
+      const std::string& table_id);
+  // Returns a list of (table id, table name).
+  Result<std::vector<std::pair<TableId, client::YBTableName>>> ListTables();
   client::YBClient* client() const {
     return yb_client_.get();
   }
-
  private:
-  std::string master_addrs_;
   std::unique_ptr<client::YBClient> yb_client_;
 };
 

@@ -40,6 +40,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/tablet/metadata.proto";
 import "yb/util/encryption.proto";
+import "yb/cdc/cdc_consumer.proto";
 
 ////////////////////////////////////////////////////////////
 // Common data structures
@@ -460,6 +461,7 @@ message SysClusterConfigEntryPB {
   optional ReplicationInfoPB replication_info = 2;
   optional BlacklistPB server_blacklist = 3;
   optional EncryptionInfoPB encryption_info = 5;
+  optional cdc.ConsumerRegistryPB consumer_registry = 6;
 }
 
 message SysRoleEntryPB {
@@ -645,6 +647,8 @@ message TSHeartbeatResponsePB {
   optional uint64 ysql_catalog_version = 10;
 
   optional UniverseKeyRegistryPB universe_key_registry = 11;
+
+  optional cdc.ConsumerRegistryPB consumer_registry = 12;
 }
 
 message TSInformationPB {
@@ -1647,6 +1651,7 @@ service MasterService {
   rpc IsInitDbDone(IsInitDbDoneRequestPB) returns (IsInitDbDoneResponsePB);
 
   rpc ChangeEncryptionInfo(ChangeEncryptionInfoRequestPB) returns (ChangeEncryptionInfoResponsePB);
+
   rpc IsEncryptionEnabled(IsEncryptionEnabledRequestPB) returns (IsEncryptionEnabledResponsePB);
 
   rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)

@@ -446,7 +446,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
     VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
     master::TSHeartbeatResponsePB resp;
     RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
-        "Failed to send heartbeat");
+                          "Failed to send heartbeat");
     if (resp.has_error()) {
       if (resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
         return StatusFromPB(resp.error().status());
@@ -479,6 +479,11 @@ Status Heartbeater::Thread::TryHeartbeat() {
     // Check for a universe key registry for encryption.
     if (resp.has_universe_key_registry()) {
       RETURN_NOT_OK(server_->SetUniverseKeyRegistry(resp.universe_key_registry()));
+    }
+
+    if (resp.has_consumer_registry()) {
+      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->SetConsumerRegistry(
+          resp.consumer_registry()));
     }
 
     // At this point we know resp is a successful heartbeat response from the master so set it as

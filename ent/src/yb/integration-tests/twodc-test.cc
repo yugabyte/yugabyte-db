@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol.h"
+
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema.h"
@@ -40,12 +41,16 @@
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master-test-util.h"
+
+#include "yb/master/cdc_consumer_registry_service.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/tserver/cdc_consumer.h"
 #include "yb/util/atomic.h"
 #include "yb/util/faststring.h"
 #include "yb/util/random.h"
@@ -53,6 +58,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_int32(replication_factor);
+DECLARE_bool(mock_get_changes_response_for_consumer_testing);
 
 namespace yb {
 
@@ -70,6 +76,7 @@ using client::YBTableType;
 using client::YBTableName;
 using master::MiniMaster;
 using tserver::MiniTabletServer;
+using tserver::enterprise::CDCConsumer;
 
 namespace enterprise {
 
@@ -79,20 +86,22 @@ class TwoDCTest : public YBTest {
  public:
   Result<std::vector<std::shared_ptr<client::YBTable>>>
       SetUpWithParams(std::vector<uint32_t> num_consumer_tablets,
-                      std::vector<uint32_t> num_producer_tablets) {
+                      std::vector<uint32_t> num_producer_tablets,
+                      uint32_t replication_factor) {
     YBTest::SetUp();
     MiniClusterOptions opts;
-    opts.num_tablet_servers = num_replicas();
-    FLAGS_replication_factor = num_replicas();
+    opts.num_tablet_servers = replication_factor;
+    FLAGS_replication_factor = replication_factor;
+    FLAGS_mock_get_changes_response_for_consumer_testing = true;
     opts.cluster_id = "producer";
     producer_cluster_ = std::make_unique<MiniCluster>(Env::Default(), opts);
     RETURN_NOT_OK(producer_cluster_->StartSync());
-    RETURN_NOT_OK(producer_cluster_->WaitForTabletServerCount(num_replicas()));
+    RETURN_NOT_OK(producer_cluster_->WaitForTabletServerCount(replication_factor));
 
     opts.cluster_id = "consumer";
     consumer_cluster_ = std::make_unique<MiniCluster>(Env::Default(), opts);
     RETURN_NOT_OK(consumer_cluster_->StartSync());
-    RETURN_NOT_OK(consumer_cluster_->WaitForTabletServerCount(num_replicas()));
+    RETURN_NOT_OK(consumer_cluster_->WaitForTabletServerCount(replication_factor));
 
     producer_client_ = VERIFY_RESULT(producer_cluster_->CreateClient());
     consumer_client_ = VERIFY_RESULT(consumer_cluster_->CreateClient());
@@ -138,13 +147,6 @@ class TwoDCTest : public YBTest {
                  .Create());
     tables->push_back(table);
     return Status::OK();
-  }
-
-  void Destroy() {
-    producer_client_.reset();
-    producer_cluster_->Shutdown();
-    consumer_client_.reset();
-    consumer_cluster_->Shutdown();
   }
 
   Status SetupUniverseReplication(
@@ -206,6 +208,68 @@ class TwoDCTest : public YBTest {
     return Status::OK();
   }
 
+  void Destroy() {
+    if (consumer_cluster_) {
+      consumer_cluster_->Shutdown();
+      consumer_cluster_.reset();
+    }
+
+    if (producer_cluster_) {
+      producer_cluster_->Shutdown();
+      producer_cluster_.reset();
+    }
+
+    producer_client_.reset();
+
+    consumer_client_.reset();
+  }
+
+  void WriteWorkload(uint32_t start, uint32_t end, YBClient* client, const YBTableName& table) {
+    auto session = client->NewSession();
+    client::TableHandle table_handle;
+    ASSERT_OK(table_handle.Open(table, client));
+    std::vector<std::shared_ptr<client::YBqlOp>> ops;
+
+    for (uint32_t i = start; i < end; i++) {
+      auto op = table_handle.NewInsertOp();
+      int32_t key = i;
+      auto req = op->mutable_request();
+      QLAddInt32HashValue(req, key);
+      ASSERT_OK(session->ApplyAndFlush(op));
+    }
+  }
+
+  std::vector<string> ScanToStrings(const YBTableName& table_name, YBClient* client) {
+    client::TableHandle table;
+    EXPECT_OK(table.Open(table_name, client));
+    auto result = ScanTableToStrings(table);
+    std::sort(result.begin(), result.end());
+    return result;
+  }
+
+  void VerifyWrittenRecords(const YBTableName& table_name) {
+    auto producer_results = ScanToStrings(table_name, producer_client_.get());
+    auto consumer_results = ScanToStrings(table_name, consumer_client_.get());
+    ASSERT_EQ(producer_results, consumer_results);
+  }
+
+  Status InitCDCConsumer() {
+    master::ListTablesRequestPB tables_req;
+    master::ListTablesResponsePB tables_resp;
+    tables_req.set_exclude_system_tables(true);
+
+    RETURN_NOT_OK(consumer_cluster_->leader_mini_master()->master()->catalog_manager()->
+                  ListTables(&tables_req, &tables_resp));
+
+    auto master_addrs = producer_cluster_->GetMasterAddresses();
+    auto consumer_info = VERIFY_RESULT(
+        master::enterprise::TEST_GetConsumerProducerTableMap(master_addrs, tables_resp));
+    auto universe_uuid = "universe_uuid";
+
+    return consumer_cluster_->leader_mini_master()->master()->catalog_manager()->
+           InitCDCConsumer(consumer_info, master_addrs, universe_uuid);
+  }
+
   YBClient* producer_client() {
     return producer_client_.get();
   }
@@ -214,11 +278,43 @@ class TwoDCTest : public YBTest {
     return consumer_client_.get();
   }
 
+
+  uint32_t NumProducerTabletsPolled() {
+    uint32_t size = 0;
+    for (const auto& mini_tserver : consumer_cluster_->mini_tablet_servers()) {
+      uint32_t new_size = 0;
+      auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(
+          mini_tserver->server());
+      CDCConsumer* cdc_consumer;
+      if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
+        auto tablets_running = cdc_consumer->TEST_producer_tablets_running();
+        new_size = tablets_running.size();
+      }
+      size += new_size;
+    }
+    return size;
+  }
+
+  Status CorrectlyPollingAllTablets(uint32_t num_producer_tablets) {
+    return LoggedWaitFor([=]() -> Result<bool> {
+      static int i = 0;
+      constexpr int kNumIterationsWithCorrectResult = 5;
+      if (NumProducerTabletsPolled() == num_producer_tablets) {
+        if (i++ == kNumIterationsWithCorrectResult) {
+          i = 0;
+          return true;
+        }
+      } else {
+        i = 0;
+      }
+      return false;
+    }, MonoDelta::FromSeconds(30), "Num producer tablets being polled");
+  }
+
   std::unique_ptr<MiniCluster> producer_cluster_;
   std::unique_ptr<MiniCluster> consumer_cluster_;
 
  private:
-  int num_replicas() const { return 3; }
 
   std::unique_ptr<YBClient> producer_client_;
   std::unique_ptr<YBClient> consumer_client_;
@@ -228,7 +324,7 @@ class TwoDCTest : public YBTest {
 
 TEST_F(TwoDCTest, SetupUniverseReplication) {
   static const std::string universe_id = "universe_A";
-  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}));
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, 3));
 
   std::vector<std::shared_ptr<client::YBTable>> producer_tables;
   // tables contains both producer and consumer universe tables (alternately).
@@ -260,6 +356,64 @@ TEST_F(TwoDCTest, SetupUniverseReplication) {
   }
 
   Destroy();
+}
+
+TEST_F(TwoDCTest, PollWithConsumerRestart) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, replication_factor));
+
+  ASSERT_OK(InitCDCConsumer());
+
+  // After creating the cluster, make sure all 32 tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(32));
+
+  consumer_cluster_->mini_tablet_server(0)->Shutdown();
+
+  // After shutting down a consumer node.
+  if (replication_factor > 1) {
+    ASSERT_OK(CorrectlyPollingAllTablets(32));
+  }
+
+  ASSERT_OK(consumer_cluster_->mini_tablet_server(0)->Start());
+
+  // After restarting the node.
+  ASSERT_OK(CorrectlyPollingAllTablets(32));
+
+  ASSERT_OK(consumer_cluster_->RestartSync());
+
+  // After consumer cluster restart.
+  ASSERT_OK(CorrectlyPollingAllTablets(32));
+
+  Destroy();
+}
+
+TEST_F(TwoDCTest, PollWithProducerRestart) {
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, replication_factor));
+
+  ASSERT_OK(InitCDCConsumer());
+
+  // After creating the cluster, make sure all 32 tablets being polled for.
+  ASSERT_OK(CorrectlyPollingAllTablets(32));
+
+  producer_cluster_->mini_tablet_server(0)->Shutdown();
+
+  // After stopping a producer node.
+  ASSERT_OK(CorrectlyPollingAllTablets(32));
+
+  ASSERT_OK(producer_cluster_->mini_tablet_server(0)->Start());
+
+  // After starting the node.
+  ASSERT_OK(CorrectlyPollingAllTablets(32));
+
+  ASSERT_OK(producer_cluster_->RestartSync());
+
+  // After producer cluster restart.
+  ASSERT_OK(CorrectlyPollingAllTablets(32));
+
+  Destroy();
+
+
 }
 
 } // namespace enterprise

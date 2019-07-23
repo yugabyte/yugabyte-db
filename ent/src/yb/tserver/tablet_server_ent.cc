@@ -11,6 +11,7 @@
 // under the License.
 
 #include "yb/cdc/cdc_service.h"
+
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/server/hybrid_clock.h"
@@ -19,6 +20,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/backup_service.h"
 #include "yb/tserver/header_manager_impl.h"
+#include "yb/tserver/cdc_consumer.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
@@ -89,6 +91,11 @@ rocksdb::Env* TabletServer::GetRocksDBEnv() {
   return rocksdb_env_.get();
 }
 
+CDCConsumer* TabletServer::GetCDCConsumer() {
+  std::unique_lock<std::mutex> l(cdc_consumer_mutex_);
+  return cdc_consumer_.get();
+}
+
 yb::enterprise::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
   return universe_key_manager_.get();
 }
@@ -96,6 +103,28 @@ yb::enterprise::UniverseKeyManager* TabletServer::GetUniverseKeyManager() {
 Status TabletServer::SetUniverseKeyRegistry(
     const yb::UniverseKeyRegistryPB& universe_key_registry) {
   universe_key_manager_->SetUniverseKeyRegistry(universe_key_registry);
+  return Status::OK();
+}
+
+Status TabletServer::CreateCDCConsumer() {
+  std::unique_lock<std::mutex> l(cdc_consumer_mutex_);
+  auto is_leader_clbk = [this](const string& tablet_id){
+    std::shared_ptr<tablet::TabletPeer> tablet_peer;
+    if (!tablet_manager_->LookupTablet(tablet_id, &tablet_peer)) {
+      return false;
+    }
+    return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+  };
+  cdc_consumer_ = VERIFY_RESULT(CDCConsumer::Create(std::move(is_leader_clbk), proxy_cache_.get(),
+                                                    permanent_uuid()));
+  return Status::OK();
+}
+
+Status TabletServer::SetConsumerRegistry(const cdc::ConsumerRegistryPB& consumer_registry) {
+  if (!cdc_consumer_.get()) {
+    RETURN_NOT_OK(CreateCDCConsumer());
+  }
+  cdc_consumer_->RefreshWithNewRegistryFromMaster(consumer_registry);
   return Status::OK();
 }
 

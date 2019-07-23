@@ -230,6 +230,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // The comma separated string of the master adresses host/ports from current list of masters.
   string GetMasterAddresses() const;
 
+  string GetTabletServerAddresses() const;
+
   // Start a new master with `peer_addrs` as the master_addresses parameter.
   Result<ExternalMaster *> StartMasterWithPeers(const string& peer_addrs);
 
