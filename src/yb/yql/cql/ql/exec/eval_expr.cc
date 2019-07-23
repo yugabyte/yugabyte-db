@@ -87,7 +87,12 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *expr_pb) {
+  if (!bind_pt->name()) {
+    return STATUS(NotSupported, "Undefined bind variable name, please contact the support");
+  }
+
   QLValue ql_bind;
+  DCHECK_NOTNULL(bind_pt->name().get());
   RETURN_NOT_OK(exec_context_->params().GetBindVariable(bind_pt->name()->c_str(),
                                                         bind_pt->pos(),
                                                         bind_pt->ql_type(),
