@@ -10,7 +10,8 @@ import { ClusterInfoPanelContainer, YBWidget } from '../../panels';
 import { OverviewMetricsContainer, StandaloneMetricsPanelContainer, DiskUsagePanel, CpuUsagePanel } from '../../metrics';
 import { YBResourceCount, YBCost, DescriptionList } from 'components/common/descriptors';
 import { RegionMap, YBMapLegend} from '../../maps';
-import { isNonEmptyObject, isEmptyObject, isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
+import { isNonEmptyObject, isNullOrEmpty,
+  isNonEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 import { isKubernetesUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
@@ -46,7 +47,9 @@ class DatabasePanel extends PureComponent {
     return (
       <Row className={"overview-widget-database"}>
         <Col xs={12} className="centered" >
-          <YBResourceCount className="hidden-costs" size={optimizeVersion(userIntent.ybSoftwareVersion.split("-")[0].split("."))} kind={'Version'} />
+          <YBResourceCount className="hidden-costs"
+            size={optimizeVersion(userIntent.ybSoftwareVersion.split("-")[0].split("."))}
+            kind={'Version'} />
         </Col>
       </Row>
     );
@@ -206,7 +209,7 @@ export default class UniverseOverviewNew extends Component {
   };
 
   getCostWidget = (currentUniverse) => {
-    if (currentUniverse.resources == null || isEmptyObject(currentUniverse.resources)) return;
+    if (isNullOrEmpty(currentUniverse.resources)) return;
     const costPerDay = <YBCost value={currentUniverse.resources.pricePerHour} multiplier={"day"} />;
     const costPerMonth = <YBCost value={currentUniverse.resources.pricePerHour} multiplier={"month"} />;
     return (<Col lg={2} md={4} sm={4} xs={6}>
@@ -231,14 +234,14 @@ export default class UniverseOverviewNew extends Component {
   }
 
   getPrimaryClusterWidget = (currentUniverse) => {
-    if (isEmptyObject(currentUniverse)) return;
+    if (isNullOrEmpty(currentUniverse)) return;
     return (<Col lg={2} sm={4} xs={6}>
       <ClusterInfoPanelContainer type={"primary"} universeInfo={currentUniverse} />
     </Col>);
   }
 
   getTablesWidget = (universeInfo) => {
-    if (isEmptyObject(this.props.tables)) return;
+    if (isNullOrEmpty(this.props.tables)) return;
     const { tables } =  this.props;
 
     let numCassandraTables = 0;

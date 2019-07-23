@@ -16,6 +16,13 @@ export function isNonEmptyArray(arr) {
   return _.isArray(arr) && arr.length > 0;
 }
 
+export function isNullOrEmpty(obj) {
+  if (obj == null) {
+    return true;
+  }
+  return _.isObject(obj) && Object.keys(obj).length === 0;
+}
+
 export function isEmptyObject(obj) {
   if (typeof obj === "undefined") {
     return true;

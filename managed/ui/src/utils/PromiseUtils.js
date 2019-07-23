@@ -1,5 +1,5 @@
 // Copyright (c) YugaByte, Inc.
-import { isNonEmptyArray, isEmptyObject, isDefinedNotNull } from '../utils/ObjectUtils';
+import { isNonEmptyArray, isNullOrEmpty, isDefinedNotNull } from '../utils/ObjectUtils';
 import _ from 'lodash';
 import { Enum } from 'enumify';
 
@@ -48,7 +48,8 @@ export function setInitialState(state, object, data = {}, error = null) {
 }
 
 export function getPromiseState(dataObject) {
-  if (isDefinedNotNull(dataObject.data) && (isNonEmptyArray(dataObject.data) || !isEmptyObject(dataObject.data))) {
+  if (isDefinedNotNull(dataObject.data) &&
+    (isNonEmptyArray(dataObject.data) || !isNullOrEmpty(dataObject.data))) {
     if (dataObject.promiseState === PromiseState.LOADING) return PromiseState.LOADING;
     return PromiseState.SUCCESS;
   } else if (isDefinedNotNull(dataObject.promiseState) && dataObject.promiseState.isSuccess()) {
