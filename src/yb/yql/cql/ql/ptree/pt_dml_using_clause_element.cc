@@ -30,6 +30,13 @@ PTDmlUsingClauseElement::~PTDmlUsingClauseElement() {
 }
 
 Status PTDmlUsingClauseElement::Analyze(SemContext *sem_context) {
+  if (name_ == nullptr) {
+    return sem_context->Error(
+        this,
+        "Undefined parameter name in DML using clause element",
+        ErrorCode::INVALID_ARGUMENTS);
+  }
+
   if (strcmp(name_->c_str(), kTtl) != 0 && strcmp(name_->c_str(), kTimestamp) != 0) {
     return sem_context->Error(
         this,

@@ -1359,6 +1359,22 @@ class PTBindVar : public PTExpr {
     return strings::Substitute("arg$0(system.$1)", arg_position, bcall_name);
   }
 
+  // The name Cassandra uses for binding the collection elements.
+  static const string coll_bindvar_name(const string& col_name) {
+    return strings::Substitute("value($0)", col_name);
+  }
+
+  // The name for binding the JSON attributes.
+  static const string json_bindvar_name(const string& col_name) {
+    return strings::Substitute("json_attr($0)", col_name);
+  }
+
+  // Use the binding name by default (if no other cases applicable).
+  static const string& default_bindvar_name() {
+    static string default_bindvar_name = "expr";
+    return default_bindvar_name;
+  }
+
  private:
   // 0-based position.
   PTConstVarInt::SharedPtr user_pos_; // pos used for parsing.
