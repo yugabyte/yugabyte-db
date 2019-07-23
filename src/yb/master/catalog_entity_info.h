@@ -58,6 +58,8 @@ struct TabletReplica {
   consensus::RaftPeerPB::Role role;
   consensus::RaftPeerPB::MemberType member_type;
 
+  void UpdateFrom(const TabletReplica& source);
+
   std::string ToString() const;
 };
 
@@ -186,7 +188,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 
   // Adds the given replica to the replica_locations_ map.
   // Returns true iff the replica was inserted.
-  bool AddToReplicaLocations(const TabletReplica& replica);
+  void UpdateReplicaLocations(const TabletReplica& replica);
 
   // Accessors for the last time the replica locations were updated.
   void set_last_update_time(const MonoTime& ts);
