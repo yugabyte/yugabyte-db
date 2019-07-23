@@ -59,6 +59,10 @@ class SkipListRep : public MemTableRep {
     skip_list_.InsertConcurrently(static_cast<char*>(handle));
   }
 
+  bool Erase(KeyHandle handle, const MemTableRep::KeyComparator& comparator) override {
+    return skip_list_.Erase(static_cast<char*>(handle), comparator);
+  }
+
   // Returns true iff an entry that compares equal to key is in the list.
   bool Contains(const char* key) const override {
     return skip_list_.Contains(key);

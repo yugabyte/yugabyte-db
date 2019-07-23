@@ -265,9 +265,8 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
       auto ts_tablet_peers = ts->server()->tablet_manager()->GetTabletPeers();
       max_tablets = std::max(max_tablets, ts_tablet_peers.size());
       for (const auto& tablet_peer : ts_tablet_peers) {
-        consensus::OpId op_id;
-        ASSERT_OK(tablet_peer->consensus()->GetLastOpId(OpIdType::RECEIVED_OPID, &op_id));
-        last_tablet_op[tablet_peer->tablet_id()].MakeAtLeast(OpId::FromPB(op_id));
+        last_tablet_op[tablet_peer->tablet_id()].MakeAtLeast(
+            tablet_peer->consensus()->GetLastReceivedOpId());
       }
     }
 
@@ -292,10 +291,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         auto last_op_id = last_tablet_op[tablet_peer->tablet_id()];
         ASSERT_OK(WaitFor([tablet_peer, last_op_id]() {
             EXPECT_OK(tablet_peer->WaitUntilConsensusRunning(15s));
-            consensus::OpId pre_op_id;
-            EXPECT_OK(tablet_peer->consensus()->GetLastOpId(OpIdType::COMMITTED_OPID, &pre_op_id));
-            auto op_id = OpId::FromPB(pre_op_id);
-            return op_id >= last_op_id;
+            return tablet_peer->consensus()->GetLastCommittedOpId() >= last_op_id;
           },
           15s,
           "Wait for op id commit"

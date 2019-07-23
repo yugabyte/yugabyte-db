@@ -121,6 +121,18 @@ Status Consensus::ExecuteHook(HookPoint point) {
   return Status::OK();
 }
 
+Result<yb::OpId> Consensus::GetLastOpId(OpIdType type) {
+  switch (type) {
+    case OpIdType::RECEIVED_OPID:
+      return GetLastReceivedOpId();
+    case OpIdType::COMMITTED_OPID:
+      return GetLastCommittedOpId();
+    case OpIdType::UNKNOWN_OPID_TYPE:
+      break;
+  }
+  return STATUS(InvalidArgument, "Unsupported OpIdType", OpIdType_Name(type));
+}
+
 LeaderState& LeaderState::MakeNotReadyLeader(LeaderStatus status_) {
   status = status_;
   term = yb::OpId::kUnknownTerm;

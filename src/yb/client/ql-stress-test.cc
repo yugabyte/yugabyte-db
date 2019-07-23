@@ -490,9 +490,9 @@ TEST_F_EX(QLStressTest, ShortTimeLeaderDoesNotReplicateNoOp, QLStressTestSingleT
   tablet::TabletPeerPtr always_follower = followers[1];
 
   ASSERT_OK(WaitFor([old_leader, always_follower]() -> Result<bool> {
-    auto leader_op_id = VERIFY_RESULT(old_leader->consensus()->GetLastReceivedOpId());
-    auto follower_op_id = VERIFY_RESULT(always_follower->consensus()->GetLastReceivedOpId());
-    return follower_op_id.index() == leader_op_id.index();
+    auto leader_op_id = old_leader->consensus()->GetLastReceivedOpId();
+    auto follower_op_id = always_follower->consensus()->GetLastReceivedOpId();
+    return follower_op_id == leader_op_id;
   }, 5s, "Follower catch up"));
 
   for (const auto& follower : followers) {
@@ -762,16 +762,15 @@ TEST_F_EX(QLStressTest, DelayWrite, QLStressTestDelayWrite) {
 
   ASSERT_OK(WaitFor([cluster = cluster_.get()] {
     auto peers = ListTabletPeers(cluster, ListPeersFilter::kAll);
-    consensus::OpId first_op_id = consensus::MinimumOpId();
+    OpId first_op_id;
     for (const auto& peer : peers) {
       if (!peer->consensus()) {
         return false;
       }
-      auto current = CHECK_RESULT(peer->consensus()->GetLastOpId(
-          consensus::OpIdType::COMMITTED_OPID));
-      if (consensus::OpIdEquals(first_op_id, consensus::MinimumOpId())) {
+      auto current = peer->consensus()->GetLastCommittedOpId();
+      if (!first_op_id) {
         first_op_id = current;
-      } else if (!consensus::OpIdEquals(current, first_op_id)) {
+      } else if (current != first_op_id) {
         return false;
       }
     }

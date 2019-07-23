@@ -112,7 +112,6 @@ Result<HybridTime> TransactionStatusCache::DoGetCommitTime(const TransactionId& 
     if (txn_status_result.status().IsNotFound()) {
       // We have intent w/o metadata, that means that transaction was already cleaned up.
       LOG(WARNING) << "Intent for transaction w/o metadata: " << transaction_id;
-      txn_status_manager_->Cleanup({transaction_id});
       return HybridTime::kMin;
     }
     LOG(WARNING)

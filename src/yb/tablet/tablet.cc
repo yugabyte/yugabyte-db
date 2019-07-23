@@ -555,6 +555,7 @@ Status Tablet::OpenKeyValueTablet() {
       Format("$0-$1", kIntentsDB, tablet_id()), block_based_table_mem_tracker_);
 
     rocksdb::DB* intents_db = nullptr;
+    rocksdb_options.in_memory_erase = true;
     RETURN_NOT_OK(rocksdb::DB::Open(rocksdb_options, db_dir + kIntentsDBSuffix, &intents_db));
     intents_db_.reset(intents_db);
   }
@@ -762,13 +763,16 @@ void Tablet::PrepareTransactionWriteBatch(
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch) {
-  if (put_batch.transaction().has_isolation()) {
-    // Store transaction metadata (status tablet, isolation level etc.)
-    transaction_participant()->Add(
-        put_batch.transaction(), put_batch.may_have_metadata(), rocksdb_write_batch);
-  }
   auto transaction_id = CHECK_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
+  if (put_batch.transaction().has_isolation()) {
+    // Store transaction metadata (status tablet, isolation level etc.)
+    if (!transaction_participant()->Add(
+            put_batch.transaction(), put_batch.may_have_metadata(), rocksdb_write_batch)) {
+      LOG_WITH_PREFIX(INFO) << "Transaction was recently aborted: " << transaction_id
+                            << ", don't write intents for it";
+    }
+  }
   auto metadata_with_write_id = transaction_participant()->MetadataWithWriteId(transaction_id);
   if (!metadata_with_write_id) {
     // If metadata is missing it could be caused by aborted and removed transaction.
@@ -797,15 +801,14 @@ void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
   if (put_batch.has_transaction()) {
     RequestScope request_scope(transaction_participant_.get());
     PrepareTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
-    WriteBatch(frontiers, hybrid_time, &write_batch, intents_db_.get());
+    WriteBatch(frontiers, &write_batch, intents_db_.get());
   } else {
     PrepareNonTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
-    WriteBatch(frontiers, hybrid_time, &write_batch, regular_db_.get());
+    WriteBatch(frontiers, &write_batch, regular_db_.get());
   }
 }
 
 void Tablet::WriteBatch(const rocksdb::UserFrontiers* frontiers,
-                        HybridTime hybrid_time,
                         rocksdb::WriteBatch* write_batch,
                         rocksdb::DB* dest_db) {
   if (write_batch->Count() == 0) {
@@ -1366,50 +1369,52 @@ Status Tablet::ImportData(const std::string& source_dir) {
   return regular_db_->Import(source_dir);
 }
 
-// We apply intents using by iterating over whole transaction reverse index.
+template <class Data>
+void InitFrontiers(const Data& data, docdb::ConsensusFrontiers* frontiers) {
+  set_op_id({data.op_id.term(), data.op_id.index()}, frontiers);
+  set_hybrid_time(data.log_ht, frontiers);
+}
+
+// We apply intents by iterating over whole transaction reverse index.
 // Using value of reverse index record we find original intent record and apply it.
 // After that we delete both intent record and reverse index record.
-// TODO(dtxn) use separate thread for applying intents.
 // TODO(dtxn) use multiple batches when applying really big transaction.
 Status Tablet::ApplyIntents(const TransactionApplyData& data) {
   rocksdb::WriteBatch regular_write_batch;
-  rocksdb::WriteBatch intents_write_batch;
   RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
       data.transaction_id, data.commit_ht, &key_bounds_,
-      &regular_write_batch, intents_db_.get(), &intents_write_batch));
+      &regular_write_batch, intents_db_.get(), nullptr /* intents_write_batch */));
 
   // data.hybrid_time contains transaction commit time.
   // We don't set transaction field of put_batch, otherwise we would write another bunch of intents.
   docdb::ConsensusFrontiers frontiers;
-  set_op_id({data.op_id.term(), data.op_id.index()}, &frontiers);
-  set_hybrid_time(data.log_ht, &frontiers);
-  WriteBatch(&frontiers, data.commit_ht, &regular_write_batch, regular_db_.get());
-  WriteBatch(&frontiers, data.commit_ht, &intents_write_batch, intents_db_.get());
+  InitFrontiers(data, &frontiers);
+  WriteBatch(&frontiers, &regular_write_batch, regular_db_.get());
   return Status::OK();
 }
 
-CHECKED_STATUS Tablet::RemoveIntents(const TransactionId& id) {
+template <class Ids>
+CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids) {
   rocksdb::WriteBatch intents_write_batch;
-  RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
-      id, HybridTime() /* commit_ht */, &key_bounds_, nullptr /* regular_write_batch */,
-      intents_db_.get(), &intents_write_batch));
-
-  rocksdb::WriteOptions write_options;
-  InitRocksDBWriteOptions(&write_options);
-  return intents_db_->Write(write_options, &intents_write_batch);
-}
-
-CHECKED_STATUS Tablet::RemoveIntents(const TransactionIdSet& transactions) {
-  rocksdb::WriteBatch intents_write_batch;
-  for (const TransactionId& id : transactions) {
+  for (const auto& id : ids) {
     RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
         id, HybridTime() /* commit_ht */, &key_bounds_, nullptr /* regular_write_batch */,
         intents_db_.get(), &intents_write_batch));
   }
 
-  rocksdb::WriteOptions write_options;
-  InitRocksDBWriteOptions(&write_options);
-  return intents_db_->Write(write_options, &intents_write_batch);
+  docdb::ConsensusFrontiers frontiers;
+  InitFrontiers(data, &frontiers);
+  WriteBatch(&frontiers, &intents_write_batch, intents_db_.get());
+  return Status::OK();
+}
+
+
+Status Tablet::RemoveIntents(const RemoveIntentsData& data, const TransactionId& id) {
+  return RemoveIntentsImpl(data, std::initializer_list<TransactionId>{id});
+}
+
+Status Tablet::RemoveIntents(const RemoveIntentsData& data, const TransactionIdSet& transactions) {
+  return RemoveIntentsImpl(data, transactions);
 }
 
 HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadline) {

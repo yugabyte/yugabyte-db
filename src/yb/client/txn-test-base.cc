@@ -290,7 +290,7 @@ void TransactionTestBase::CheckNoRunningTransactions() {
             "Wait until no transactions are running");
         if (!status.ok()) {
           LOG(ERROR) << Format(
-              "Server: $0, tablet: $1, transactions: $2",
+              "T $1 P $0: Transactions: $2",
               server->permanent_uuid(), peer->tablet_id(),
               participant->TEST_GetNumRunningTransactions());
           has_bad = true;

@@ -1418,6 +1418,9 @@ Status PrepareApplyIntentsBatch(
     const TransactionId &transaction_id, HybridTime commit_ht, const KeyBounds* key_bounds,
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch) {
+  // regular_batch or intents_batch could be null. In this case we don't fill apply batch for
+  // appropriate DB.
+
   Slice reverse_index_upperbound;
   auto reverse_index_iter = CreateRocksDBIterator(
       intents_db, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
@@ -1466,10 +1469,14 @@ Status PrepareApplyIntentsBatch(
             regular_batch, &write_id));
       }
 
-      intents_batch->Delete(reverse_index_iter.value());
+      if (intents_batch) {
+        intents_batch->Delete(reverse_index_iter.value());
+      }
     }
 
-    intents_batch->Delete(reverse_index_iter.key());
+    if (intents_batch) {
+      intents_batch->Delete(reverse_index_iter.key());
+    }
 
     reverse_index_iter.Next();
   }

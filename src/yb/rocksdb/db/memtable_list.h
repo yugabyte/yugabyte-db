@@ -31,7 +31,6 @@
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/memtable.h"
-#include "yb/rocksdb/db/skiplist.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"

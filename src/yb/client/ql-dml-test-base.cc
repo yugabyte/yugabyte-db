@@ -20,6 +20,8 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 
+#include "yb/util/bfql/gen_opcodes.h"
+
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -78,6 +80,31 @@ void QLDmlTestBase::DoTearDown() {
 
 void KeyValueTableTest::CreateTable(Transactional transactional) {
   CreateTable(transactional, NumTablets(), client_.get(), &table_);
+}
+
+Result<YBqlWriteOpPtr> KeyValueTableTest::Increment(
+    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta) {
+  auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+  auto value_column_id = table->ColumnId(kValueColumn);
+
+  auto* const req = op->mutable_request();
+  QLAddInt32HashValue(req, key);
+  req->mutable_column_refs()->add_ids(value_column_id);
+  auto* column_value = req->add_column_values();
+  column_value->set_column_id(value_column_id);
+  auto* bfcall = column_value->mutable_expr()->mutable_bfcall();
+  bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_ConvertI64ToI32_18));
+  bfcall = bfcall->add_operands()->mutable_bfcall();
+
+  bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
+  auto column_op = bfcall->add_operands()->mutable_bfcall();
+  column_op->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_ConvertI32ToI64_13));
+  column_op->add_operands()->set_column_id(value_column_id);
+  bfcall->add_operands()->mutable_value()->set_int64_value(delta);
+
+  RETURN_NOT_OK(session->Apply(op));
+
+  return op;
 }
 
 void KeyValueTableTest::CreateTable(

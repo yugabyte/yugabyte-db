@@ -51,10 +51,11 @@ namespace master {
 // ================================================================================================
 
 string TabletReplica::ToString() const {
-  return Format("{ ts_desc: $0 state: $1 role: $2 }",
+  return Format("{ ts_desc: $0 state: $1 role: $2 member_type: $3 }",
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
-                consensus::RaftPeerPB_Role_Name(role));
+                consensus::RaftPeerPB_Role_Name(role),
+                consensus::RaftPeerPB::MemberType_Name(member_type));
 }
 
 void TabletReplica::UpdateFrom(const TabletReplica& source) {

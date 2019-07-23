@@ -228,7 +228,8 @@ class YBTransaction::Impl final {
         // Prepare is invoked when we are going to send request to tablet server.
         // So after that tablet may have metadata, and we reflect it in our local state.
         if (it->second.metadata_state == InvolvedTabletMetadataState::MISSING &&
-            !op->yb_op->read_only()) {
+            (!op->yb_op->read_only() ||
+             metadata_.isolation == IsolationLevel::SERIALIZABLE_ISOLATION)) {
           it->second.metadata_state = InvolvedTabletMetadataState::MAY_EXIST;
         }
       }
