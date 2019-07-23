@@ -3669,7 +3669,7 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
       // master yet.
       LOG(INFO) << "Tablet: " << tablet->tablet_id() << " reported consensus state change."
                 << " New consensus state: " << cstate.ShortDebugString()
-                << "from " << ts_desc->permanent_uuid();
+                << " from " << ts_desc->permanent_uuid();
 
       // If we need to change the report, copy the whole thing on the stack
       // rather than const-casting.

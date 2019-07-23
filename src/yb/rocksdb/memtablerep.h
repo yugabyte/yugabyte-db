@@ -112,6 +112,11 @@ class MemTableRep {
 #endif
   }
 
+  virtual bool Erase(KeyHandle handle, const KeyComparator& comparator) {
+    LOG(FATAL) << "Erase not supported";
+    return false;
+  }
+
   // Returns true iff an entry that compares equal to key is in the collection.
   virtual bool Contains(const char* key) const = 0;
 
@@ -229,6 +234,8 @@ class MemTableRepFactory {
   // Return true if the current MemTableRep supports concurrent inserts
   // Default: false
   virtual bool IsInsertConcurrentlySupported() const { return false; }
+
+  virtual bool IsInMemoryEraseSupported() const { return false; }
 };
 
 YB_STRONGLY_TYPED_BOOL(ConcurrentWrites);
@@ -254,9 +261,23 @@ class SkipListFactory : public MemTableRepFactory {
 
   bool IsInsertConcurrentlySupported() const override { return concurrent_writes_; }
 
+  bool IsInMemoryEraseSupported() const override { return !concurrent_writes_; }
+
  private:
   const size_t lookahead_;
   const ConcurrentWrites concurrent_writes_;
+};
+
+class CDSSkipListFactory : public MemTableRepFactory {
+ public:
+  MemTableRep* CreateMemTableRep(const MemTableRep::KeyComparator&,
+                                 MemTableAllocator*,
+                                 const SliceTransform*,
+                                 Logger* logger) override;
+
+  const char* Name() const override { return "CDSSkipListFactory"; }
+
+  bool IsInsertConcurrentlySupported() const override { return true; }
 };
 
 #ifndef ROCKSDB_LITE

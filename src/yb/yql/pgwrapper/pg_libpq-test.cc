@@ -32,13 +32,18 @@ namespace pgwrapper {
 class PgLibPqTest : public PgWrapperTestBase {
  protected:
   Result<PGConnPtr> Connect() {
-    PGConnPtr result(PQconnectdb(Format(
-        "host=$0 port=$1 user=postgres", pg_ts->bind_host(), pg_ts->pgsql_rpc_port()).c_str()));
-    auto status = PQstatus(result.get());
-    if (status != ConnStatusType::CONNECTION_OK) {
-      return STATUS_FORMAT(NetworkError, "Connect failed: $0", status);
+    auto deadline = CoarseMonoClock::now() + 15s;
+    for (;;) {
+      PGConnPtr result(PQconnectdb(Format(
+          "host=$0 port=$1 user=postgres", pg_ts->bind_host(), pg_ts->pgsql_rpc_port()).c_str()));
+      auto status = PQstatus(result.get());
+      if (status == ConnStatusType::CONNECTION_OK) {
+        return result;
+      }
+      if (CoarseMonoClock::now() >= deadline) {
+        return STATUS_FORMAT(NetworkError, "Connect failed: $0", status);
+      }
     }
-    return result;
   }
 
   void TestMultiBankAccount(const std::string& isolation_level);

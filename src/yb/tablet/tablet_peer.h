@@ -165,6 +165,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperationState> state, int64_t term) override;
 
+  void GetLastReplicatedData(RemoveIntentsData* data) override;
+
   void GetTabletStatusPB(TabletStatusPB* status_pb_out) const;
 
   // Used by consensus to create and start a new ReplicaOperation.

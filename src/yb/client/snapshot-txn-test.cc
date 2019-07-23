@@ -21,6 +21,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 
@@ -511,6 +512,38 @@ TEST_F_EX(SnapshotTxnTest, InconsistentPaging, SingleTabletSnapshotTxnTest) {
     EXPECT_GE(counts.inconsistent, 1);
   }
   EXPECT_EQ(counts.failed, 0);
+}
+
+TEST_F(SnapshotTxnTest, HotRow) {
+  constexpr int kBlockSize = RegularBuildVsSanitizers(1000, 100);
+  constexpr int kNumBlocks = 10;
+  constexpr int kIterations = kBlockSize * kNumBlocks;
+  constexpr int kKey = 42;
+
+  MonoDelta block_time;
+  TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
+  auto session = CreateSession();
+  MonoTime start = MonoTime::Now();
+  for (int i = 1; i <= kIterations; ++i) {
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+    session->SetTransaction(txn);
+
+    ASSERT_OK(Increment(&table_, session, kKey));
+    ASSERT_OK(session->FlushFuture().get());
+    ASSERT_OK(txn->CommitFuture().get());
+    if (i % kBlockSize == 0) {
+      auto now = MonoTime::Now();
+      auto passed = now - start;
+      start = now;
+
+      LOG(INFO) << "Written: " << i << " for " << passed;
+      if (block_time) {
+        ASSERT_LE(passed, block_time * 2);
+      } else {
+        block_time = passed;
+      }
+    }
+  }
 }
 
 } // namespace client

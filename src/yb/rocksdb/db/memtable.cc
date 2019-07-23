@@ -123,7 +123,7 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
   }
 }
 
-MemTable::~MemTable() { assert(refs_ == 0); }
+MemTable::~MemTable() { DCHECK_EQ(refs_, 0); }
 
 size_t MemTable::ApproximateMemoryUsage() {
   size_t arena_usage = arena_.ApproximateMemoryUsage();
@@ -479,6 +479,60 @@ void MemTable::Add(SequenceNumber s, ValueType type,
   }
 
   UpdateFlushState();
+}
+
+class OnlyUserKeyComparator : public MemTableRep::KeyComparator {
+ public:
+  explicit OnlyUserKeyComparator(const Comparator* user_comparator)
+      : user_comparator_(user_comparator) {}
+
+  int operator()(const char* prefix_len_key1, const char* prefix_len_key2) const override {
+    // Internal keys are encoded as length-prefixed strings.
+    Slice k1 = GetLengthPrefixedSlice(prefix_len_key1);
+    Slice k2 = GetLengthPrefixedSlice(prefix_len_key2);
+    return Compare(k1, k2);
+  }
+
+  int operator()(const char* prefix_len_key, const Slice& key) const override {
+    // Internal keys are encoded as length-prefixed strings.
+    Slice a = GetLengthPrefixedSlice(prefix_len_key);
+    return Compare(a, key);
+  }
+
+  int Compare(const Slice& a, const Slice& b) const {
+    return user_comparator_->Compare(ExtractUserKey(a), ExtractUserKey(b));
+  }
+
+ private:
+  const Comparator* user_comparator_;
+};
+
+bool MemTable::Erase(const Slice& user_key) {
+  uint32_t user_key_size = static_cast<uint32_t>(user_key.size());
+  uint32_t internal_key_size = user_key_size + 8;
+  const uint32_t encoded_len = VarintLength(internal_key_size) + internal_key_size;
+
+  if (erase_key_buffer_.size() < encoded_len) {
+    erase_key_buffer_.resize(encoded_len);
+  }
+  char* buf = erase_key_buffer_.data();
+  char* p = EncodeVarint32(buf, internal_key_size);
+  memcpy(p, user_key.data(), user_key_size);
+  p += user_key_size;
+  // Fill key tail with 0xffffffffffffffff so it we be less than actual user key.
+  // Please note descending order is used for key tail.
+  EncodeFixed64(p, -1LL);
+  OnlyUserKeyComparator only_user_key_comparator(comparator_.comparator.user_comparator());
+  if (table_->Erase(buf, only_user_key_comparator)) {
+    // this is a bit ugly, but is the way to avoid locked instructions
+    // when incrementing an atomic
+    num_erased_.store(num_erased_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
+
+    UpdateFlushState();
+    return true;
+  }
+
+  return false;
 }
 
 // Callback from MemTable::Get()

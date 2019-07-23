@@ -1635,8 +1635,12 @@ void ConsensusServiceImpl::GetLastOpId(const consensus::GetLastOpIdRequestPB *re
                         STATUS(InvalidArgument, "Invalid opid_type specified to GetLastOpId()"));
     return;
   }
-  Status s = consensus->GetLastOpId(req->opid_type(), resp->mutable_opid());
-  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
+  auto op_id = consensus->GetLastOpId(req->opid_type());
+  // RETURN_UNKNOWN_ERROR_IF_NOT_OK does not support Result, so have to add extra check here.
+  if (!op_id.ok()) {
+    RETURN_UNKNOWN_ERROR_IF_NOT_OK(op_id.status(), resp, &context);
+  }
+  op_id->ToPB(resp->mutable_opid());
   context.RespondSuccess();
 }
 

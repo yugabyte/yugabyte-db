@@ -21,13 +21,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "yb/rocksdb/db/skiplist.h"
 #include <set>
+
+#include "yb/rocksdb/db/skiplist.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
+
+#include "yb/util/random_util.h"
+
 
 namespace rocksdb {
 
@@ -44,6 +48,8 @@ struct TestComparator {
     }
   }
 };
+
+typedef SkipList<Key, TestComparator> TestSkipList;
 
 class SkipTest : public testing::Test {};
 
@@ -138,6 +144,86 @@ TEST_F(SkipTest, InsertAndLookup) {
       iter.Prev();
     }
     ASSERT_TRUE(!iter.Valid());
+  }
+}
+
+TEST_F(SkipTest, Erase) {
+  constexpr int kNumIterations = 100;
+  constexpr int kNumKeys = 200;
+
+  for (int iteration = 0; iteration != kNumIterations; ++iteration) {
+    Arena arena;
+    TestComparator cmp;
+    TestSkipList list(cmp, &arena);
+
+    std::vector<Key> keys(kNumKeys);
+
+    for (size_t i = 0; i != keys.size(); ++i) {
+      keys[i] = yb::RandomUniformInt<Key>();
+      list.Insert(keys[i]);
+    }
+
+    std::set<Key> left_keys(keys.begin(), keys.end());
+    std::shuffle(keys.begin(), keys.end(), yb::ThreadLocalRandom());
+
+    for (auto key : keys) {
+      left_keys.erase(key);
+      list.Erase(key, cmp);
+      TestSkipList::Iterator iter(&list);
+      iter.SeekToFirst();
+      auto j = left_keys.begin();
+      while (iter.Valid()) {
+        ASSERT_NE(j, left_keys.end());
+
+        ASSERT_EQ(iter.key(), *j);
+
+        iter.Next();
+        ++j;
+      }
+      ASSERT_EQ(j, left_keys.end());
+    }
+  }
+}
+
+TEST_F(SkipTest, EraseInsert) {
+  constexpr int kNumIterations = 100;
+
+  for (int iteration = 0; iteration != kNumIterations; ++iteration) {
+    Arena arena;
+    TestComparator cmp;
+    TestSkipList list(cmp, &arena);
+
+    std::set<Key> present_keys;
+
+    for (size_t i = 0; i != 1000; ++i) {
+      if (present_keys.empty() || yb::RandomUniformBool()) {
+        Key key = yb::RandomUniformInt<Key>(0, 100);
+        if (present_keys.count(key)) {
+          continue;
+        }
+        LOG(INFO) << "Insert: " << key;
+        present_keys.insert(key);
+        list.Insert(key);
+      } else {
+        auto idx = yb::RandomUniformInt<size_t>(0, present_keys.size() - 1);
+        auto it = present_keys.begin();
+        std::advance(it, idx);
+        LOG(INFO) << "Erase: " << *it;
+        list.Erase(*it, cmp);
+        present_keys.erase(it);
+      }
+
+      SCOPED_TRACE(yb::Format("i: $0", i));
+
+      std::vector<Key> listed;
+      TestSkipList::Iterator iter(&list);
+      iter.SeekToFirst();
+      while (iter.Valid()) {
+        listed.push_back(iter.key());
+        iter.Next();
+      }
+      ASSERT_EQ(yb::ToString(listed), yb::ToString(present_keys));
+    }
   }
 }
 

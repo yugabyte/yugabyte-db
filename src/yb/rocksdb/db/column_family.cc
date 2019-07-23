@@ -159,6 +159,14 @@ Status CheckConcurrentWritesSupported(const ColumnFamilyOptions& cf_options) {
   return Status::OK();
 }
 
+Status CheckInMemoryEraseSupported(const ColumnFamilyOptions& cf_options) {
+  if (!cf_options.memtable_factory->IsInMemoryEraseSupported()) {
+    return STATUS(InvalidArgument,
+        "Memtable doesn't support in memory erase (in_memory_erase)");
+  }
+  return Status::OK();
+}
+
 ColumnFamilyOptions SanitizeOptions(const DBOptions& db_options,
                                     const InternalKeyComparator* icmp,
                                     const ColumnFamilyOptions& src) {
@@ -314,7 +322,7 @@ void SuperVersion::Cleanup() {
   MemTable* m = mem->Unref();
   if (m != nullptr) {
     auto* memory_usage = current->cfd()->imm()->current_memory_usage();
-    assert(*memory_usage >= m->ApproximateMemoryUsage());
+    DCHECK_GE(*memory_usage, m->ApproximateMemoryUsage());
     *memory_usage -= m->ApproximateMemoryUsage();
     to_delete.push_back(m);
   }

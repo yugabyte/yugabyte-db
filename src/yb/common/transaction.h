@@ -70,6 +70,10 @@ struct TransactionStatusResult {
   static TransactionStatusResult Aborted() {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
   }
+
+  std::string ToString() const {
+    return Format("{ status: $0 status_time: $1 }", status, status_time);
+  }
 };
 
 inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult& result) {
@@ -92,6 +96,11 @@ struct StatusRequest {
   const std::string* reason;
   TransactionLoadFlags flags;
   TransactionStatusCallback callback;
+
+  std::string ToString() const {
+    return Format("{ id: $0 read_ht: $1 global_limit_ht: $2 serial_no: $3 reason: $4 flags: $5}",
+                  *id, read_ht, global_limit_ht, serial_no, *reason, flags);
+  }
 };
 
 class RequestScope;
