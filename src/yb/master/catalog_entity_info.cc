@@ -57,6 +57,12 @@ string TabletReplica::ToString() const {
                 consensus::RaftPeerPB_Role_Name(role));
 }
 
+void TabletReplica::UpdateFrom(const TabletReplica& source) {
+  state = source.state;
+  role = source.role;
+  member_type = source.member_type;
+}
+
 // ================================================================================================
 // TabletInfo
 // ================================================================================================
@@ -81,9 +87,14 @@ void TabletInfo::GetReplicaLocations(ReplicaMap* replica_locations) const {
   *replica_locations = replica_locations_;
 }
 
-bool TabletInfo::AddToReplicaLocations(const TabletReplica& replica) {
+void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
   std::lock_guard<simple_spinlock> l(lock_);
-  return InsertIfNotPresent(&replica_locations_, replica.ts_desc->permanent_uuid(), replica);
+  auto it = replica_locations_.find(replica.ts_desc->permanent_uuid());
+  if (it == replica_locations_.end()) {
+    replica_locations_.emplace(replica.ts_desc->permanent_uuid(), replica);
+    return;
+  }
+  it->second.UpdateFrom(replica);
 }
 
 void TabletInfo::set_last_update_time(const MonoTime& ts) {
