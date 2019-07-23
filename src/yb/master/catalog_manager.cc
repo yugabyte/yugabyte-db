@@ -3704,7 +3704,7 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
       // been added as replica, add it.
       LOG(INFO) << "Peer " << ts_desc->permanent_uuid() << " sent full tablet report for "
                 << tablet->tablet_id() << ". Consensus state: " << cstate.ShortDebugString();
-      AddReplicaToTabletIfNotFound(ts_desc, report, tablet);
+      UpdateTabletReplica(ts_desc, report, tablet);
     }
   }
 
@@ -4505,13 +4505,12 @@ Status CatalogManager::ResetTabletReplicasFromReportedConfig(
   return Status::OK();
 }
 
-void CatalogManager::AddReplicaToTabletIfNotFound(TSDescriptor* ts_desc,
-                                                  const ReportedTabletPB& report,
-                                                  const scoped_refptr<TabletInfo>& tablet) {
+void CatalogManager::UpdateTabletReplica(TSDescriptor* ts_desc,
+                                         const ReportedTabletPB& report,
+                                         const scoped_refptr<TabletInfo>& tablet) {
   TabletReplica replica;
   NewReplica(ts_desc, report, &replica);
-  // Only inserts if a replica with a matching UUID was not already present.
-  ignore_result(tablet->AddToReplicaLocations(replica));
+  tablet->UpdateReplicaLocations(replica);
 }
 
 void CatalogManager::NewReplica(TSDescriptor* ts_desc,
