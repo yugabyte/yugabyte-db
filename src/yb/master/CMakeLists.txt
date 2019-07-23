@@ -45,7 +45,8 @@ set(MASTER_YRPC_LIBS
   tablet_proto
   tserver_proto
   wire_protocol_proto
-  yb_pgwrapper)
+  yb_pgwrapper
+  cdc_consumer_proto)
 ADD_YB_LIBRARY(master_proto
   SRCS ${MASTER_YRPC_SRCS}
   DEPS ${MASTER_YRPC_LIBS}

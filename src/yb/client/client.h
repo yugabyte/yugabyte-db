@@ -462,6 +462,11 @@ class YBClient {
                             std::vector<master::TabletLocationsPB>* locations = nullptr,
                             bool update_tablets_cache = false);
 
+
+  Status GetTabletsFromTableId(
+      const std::string& table_id, const int32_t max_tablets,
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
+
   CHECKED_STATUS GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);

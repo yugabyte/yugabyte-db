@@ -140,7 +140,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
 
   s = server_->catalog_manager()->FillHeartbeatResponse(req, resp);
   if (!s.ok()) {
-    LOG(WARNING) << "Unable to set universe key registry: " << s.ToString();
+    LOG(WARNING) << "Unable to fill heartbeat response: " << s.ToString();
     rpc.RespondFailure(s);
   }
 

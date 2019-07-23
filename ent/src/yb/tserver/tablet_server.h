@@ -34,6 +34,8 @@ class SecureContext;
 namespace tserver {
 namespace enterprise {
 
+class CDCConsumer;
+
 class TabletServer : public yb::tserver::TabletServer {
   typedef yb::tserver::TabletServer super;
  public:
@@ -47,12 +49,17 @@ class TabletServer : public yb::tserver::TabletServer {
   yb::enterprise::UniverseKeyManager* GetUniverseKeyManager();
   CHECKED_STATUS SetUniverseKeyRegistry(
       const yb::UniverseKeyRegistryPB& universe_key_registry) override;
+  CHECKED_STATUS SetConsumerRegistry(const cdc::ConsumerRegistryPB& consumer_registry);
+  CDCConsumer* GetCDCConsumer();
 
  protected:
   CHECKED_STATUS RegisterServices() override;
   CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
  private:
+
+  CHECKED_STATUS CreateCDCConsumer();
+
   std::unique_ptr<rpc::SecureContext> secure_context_;
   // Object that manages the universe key registry used for encrypting and decrypting data keys.
   // Copies are given to each Env.
@@ -61,6 +68,10 @@ class TabletServer : public yb::tserver::TabletServer {
   std::unique_ptr<yb::Env> env_;
   // Encrypted env for all rocksdb file i/o operations.
   std::unique_ptr<rocksdb::Env> rocksdb_env_;
+  // CDC consumer.
+  std::unique_ptr<CDCConsumer> cdc_consumer_;
+  std::mutex cdc_consumer_mutex_;
+
 };
 
 } // namespace enterprise
