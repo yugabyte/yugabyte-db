@@ -64,5 +64,9 @@ Limit the interfaces on which YugaByte DB instances listen for incoming connecti
 
 Read more about enabling [TLS/SSL encryption](../tls-encryption) in YugaByte DB.
 
+## Enable encryption at rest
 
+[Encryption at rest](https://en.wikipedia.org/wiki/Data_at_rest#Encryption) ensures that data
+stored on disk is protected. You can configure YugaByte DB with a user generated symmetric key to
+perform cluster-wide encryption.
 
