@@ -35,7 +35,6 @@
 #include <string>
 
 #include "yb/gutil/gscoped_ptr.h"
-#include "yb/rpc/local_call.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/service_if.h"
 #include "yb/util/ref_cnt_buffer.h"

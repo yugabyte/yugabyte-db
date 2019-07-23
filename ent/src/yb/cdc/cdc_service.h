@@ -48,57 +48,13 @@ class CDCServiceImpl : public CDCServiceIf {
 
  private:
   template <class ReqType, class RespType>
-  bool CheckOnline(const ReqType* req, RespType* resp, rpc::RpcContext* rpc) {
-    TRACE("Received RPC $0: $1", rpc->ToString(), req->DebugString());
-    if (PREDICT_FALSE(!tablet_manager_)) {
-      SetupErrorAndRespond(resp->mutable_error(),
-                           STATUS(ServiceUnavailable, "Tablet Server is not running"),
-                           CDCErrorPB::NOT_RUNNING,
-                           rpc);
-      return false;
-    }
-    return true;
-  }
+  bool CheckOnline(const ReqType* req, RespType* resp, rpc::RpcContext* rpc);
 
   template <class RespType>
   Result<std::shared_ptr<tablet::TabletPeer>> GetLeaderTabletPeer(
       const std::string& tablet_id,
       RespType* resp,
-      rpc::RpcContext* rpc) {
-    std::shared_ptr<tablet::TabletPeer> peer;
-    Status status = tablet_manager_->GetTabletPeer(tablet_id, &peer);
-    if (PREDICT_FALSE(!status.ok())) {
-      CDCErrorPB::Code code = status.IsNotFound() ?
-          CDCErrorPB::TABLET_NOT_FOUND : CDCErrorPB::TABLET_NOT_RUNNING;
-      SetupErrorAndRespond(resp->mutable_error(), status, code, rpc);
-      return status;
-    }
-
-    // Check RUNNING state.
-    status = peer->CheckRunning();
-    if (PREDICT_FALSE(!status.ok())) {
-      Status s = STATUS(IllegalState, "Tablet not RUNNING");
-      SetupErrorAndRespond(resp->mutable_error(), s, CDCErrorPB::TABLET_NOT_RUNNING, rpc);
-      return s;
-    }
-
-    // Check if tablet peer is leader.
-    consensus::LeaderStatus leader_status = peer->LeaderStatus();
-    if (leader_status != consensus::LeaderStatus::LEADER_AND_READY) {
-      // No records to read.
-      if (leader_status == consensus::LeaderStatus::NOT_LEADER) {
-        // TODO: Change this to provide new leader
-      }
-      Status s = STATUS(IllegalState, "Tablet Server is not leader", ToCString(leader_status));
-      SetupErrorAndRespond(
-          resp->mutable_error(),
-          s,
-          CDCErrorPB::NOT_LEADER,
-          rpc);
-      return s;
-    }
-    return peer;
-  }
+      rpc::RpcContext* rpc);
 
   tserver::TSTabletManager* tablet_manager_;
 };

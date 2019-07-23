@@ -42,6 +42,7 @@
 #include "yb/rpc/rtest.proxy.h"
 #include "yb/rpc/rtest.service.h"
 #include "yb/rpc/rpc-test-base.h"
+#include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"

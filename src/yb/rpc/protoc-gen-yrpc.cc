@@ -348,7 +348,6 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       "#include \"yb/rpc/rpc_fwd.h\"\n"
       "#include \"yb/rpc/rpc_header.pb.h\"\n"
       "#include \"yb/rpc/service_if.h\"\n"
-      "#include \"yb/rpc/yb_rpc.h\"\n"
       "\n"
       "namespace yb {\n"
       "class MetricEntity;\n"
@@ -428,7 +427,6 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
         "  void InitMetrics(const scoped_refptr<MetricEntity>& ent);\n"
         "\n"
         "  ::yb::rpc::RpcMethodMetrics metrics_[kMethodCount];\n"
-        "\n"
         "};\n"
       );
 
@@ -453,6 +451,7 @@ class CodeGenerator : public ::google::protobuf::compiler::CodeGenerator {
       "#include <glog/logging.h>\n"
       "\n"
       "#include \"yb/rpc/inbound_call.h\"\n"
+      "#include \"yb/rpc/local_call.h\"\n"
       "#include \"yb/rpc/remote_method.h\"\n"
       "#include \"yb/rpc/rpc_context.h\"\n"
       "#include \"yb/rpc/service_if.h\"\n"

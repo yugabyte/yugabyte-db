@@ -50,12 +50,11 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/connection_context.h"
-#include "yb/rpc/outbound_call.h"
-#include "yb/rpc/inbound_call.h"
 #include "yb/rpc/server_event.h"
 #include "yb/rpc/stream.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"

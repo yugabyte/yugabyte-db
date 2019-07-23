@@ -35,6 +35,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
