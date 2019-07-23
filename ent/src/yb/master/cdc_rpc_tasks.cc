@@ -24,14 +24,26 @@ namespace master {
 Result<std::shared_ptr<CDCRpcTasks>> CDCRpcTasks::CreateWithMasterAddrs(
     const std::string& master_addrs) {
   auto cdc_rpc_tasks = std::make_shared<CDCRpcTasks>();
-  cdc_rpc_tasks->master_addrs_ = master_addrs;
   cdc_rpc_tasks->yb_client_ = VERIFY_RESULT(
       yb::client::YBClientBuilder()
-          .add_master_server_addr(cdc_rpc_tasks->master_addrs_)
+          .add_master_server_addr(master_addrs)
           .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms))
           .Build());
 
   return cdc_rpc_tasks;
+}
+
+Result<google::protobuf::RepeatedPtrField<TabletLocationsPB>> CDCRpcTasks::GetTableLocations(
+    const std::string& table_id) {
+  google::protobuf::RepeatedPtrField<TabletLocationsPB> tablets;
+  RETURN_NOT_OK(yb_client_->GetTabletsFromTableId(table_id, 0 /* max tablets */, &tablets));
+  return tablets;
+}
+
+Result<std::vector<std::pair<TableId, client::YBTableName>>> CDCRpcTasks::ListTables() {
+  std::vector<std::pair<TableId, client::YBTableName>> tables;
+  RETURN_NOT_OK(yb_client_->ListTablesWithIds(&tables));
+  return tables;
 }
 
 } // namespace master

@@ -44,6 +44,10 @@ DEFINE_int32(cdc_ybclient_reactor_threads, 50,
              "requests for CDC.");
 TAG_FLAG(cdc_ybclient_reactor_threads, advanced);
 
+// TODO(Rahul): Remove this flag once the master handshake has been landed.
+DEFINE_test_flag(bool, mock_get_changes_response_for_consumer_testing, false,
+                 "Mock a successful response to consumer before stream id integration is set up.");
+
 namespace yb {
 namespace cdc {
 
@@ -290,6 +294,12 @@ std::shared_ptr<std::unordered_set<std::string>> CDCServiceImpl::GetTabletIdsFor
 void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
                                 GetChangesResponsePB* resp,
                                 RpcContext context) {
+  if (FLAGS_mock_get_changes_response_for_consumer_testing) {
+    *resp->mutable_checkpoint()->mutable_op_id() = consensus::MinimumOpId();
+    context.RespondSuccess();
+    return;
+  }
+
   if (!CheckOnline(req, resp, &context)) {
     return;
   }
