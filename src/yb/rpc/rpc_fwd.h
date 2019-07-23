@@ -65,6 +65,7 @@ class Stream;
 class StreamReadBuffer;
 class ThreadPool;
 class ThreadPoolTask;
+class LocalYBInboundCall;
 
 struct CallData;
 struct ProcessDataResult;

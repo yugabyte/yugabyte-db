@@ -42,6 +42,7 @@
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/service_if.h"
+#include "yb/rpc/yb_rpc.h"
 #include "yb/server/rpc_server.h"
 #include "yb/server/webserver.h"
 #include "yb/tablet/maintenance_manager.h"

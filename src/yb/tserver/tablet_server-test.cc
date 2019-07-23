@@ -38,6 +38,7 @@
 #include "yb/master/master.pb.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/yb_rpc.h"
 
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.pb.h"

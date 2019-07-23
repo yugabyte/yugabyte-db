@@ -384,6 +384,8 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
   }
 
   void TearDown() override {
+    ExternalMiniClusterITestBase::cluster_->AssertNoCrashes();
+
     driver_.reset();
     LOG(INFO) << "Stopping YB ExternalMiniCluster...";
     ExternalMiniClusterITestBase::TearDown();
@@ -1234,6 +1236,52 @@ TEST_F_EX(CppCassandraDriverTest, BatchWriteDuringSoftMemoryLimit,
   auto total_writes_value = total_writes.load();
   LOG(INFO) << "Total writes: " << total_writes_value;
   ASSERT_GE(total_writes_value, RegularBuildVsSanitizers(1500, 100));
+}
+
+class CppCassandraDriverBackpressureTest : public CppCassandraDriverTest {
+ public:
+  std::vector<std::string> ExtraTServerFlags() override {
+    return {"--tablet_server_svc_queue_length=10"s, "--max_time_in_queue_ms=-1"s};
+  }
+
+  bool UsePartitionAwareRouting() override {
+    // Disable partition aware routing in this test because of TSAN issue (#1837).
+    // Should be reenabled when issue is fixed.
+    return false;
+  }
+};
+
+TEST_F_EX(CppCassandraDriverTest, LocalCallBackpressure, CppCassandraDriverBackpressureTest) {
+  constexpr int kBatchSize = 30;
+  constexpr int kNumBatches = 300;
+
+  typedef TestTable<int64_t, int64_t> MyTable;
+  typedef MyTable::ColumnsTuple ColumnsType;
+  MyTable table;
+  table.CreateTable(&session_, "test.key_value", {"key", "value"}, {"(key)"});
+
+  std::vector<CassandraFuture> futures;
+
+  for (int batch_idx = 0; batch_idx != kNumBatches; ++batch_idx) {
+    CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
+    auto prepared = table.PrepareInsert(&session_);
+    if (!prepared.ok()) {
+      // Prepare could be failed because cluster has heavy load.
+      // It is ok to just retry in this case, because we check that process did not crash.
+      continue;
+    }
+    for (int i = 0; i != kBatchSize; ++i) {
+      ColumnsType tuple(batch_idx * kBatchSize + i, -1);
+      auto statement = prepared->Bind();
+      table.BindInsert(&statement, tuple);
+      batch.Add(&statement);
+    }
+    futures.push_back(session_.SubmitBatch(batch));
+  }
+
+  for (auto& future : futures) {
+    WARN_NOT_OK(future.Wait(), "Write failed");
+  }
 }
 
 }  // namespace yb

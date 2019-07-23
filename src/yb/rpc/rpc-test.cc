@@ -45,6 +45,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/rpc/serialization.h"
+#include "yb/rpc/yb_rpc.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env.h"
 #include "yb/util/test_util.h"

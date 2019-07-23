@@ -39,6 +39,7 @@
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/inbound_call.h"
+#include "yb/rpc/local_call.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/reactor.h"
