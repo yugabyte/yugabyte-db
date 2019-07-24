@@ -97,7 +97,7 @@ std::shared_ptr<TSDescriptor> SetupTS(const string& uuid, const string& az) {
   ci->set_placement_region(default_region);
   ci->set_placement_zone(az);
 
-  std::shared_ptr<TSDescriptor> ts(new YB_EDITION_NS_PREFIX TSDescriptor(node.permanent_uuid()));
+  std::shared_ptr<TSDescriptor> ts(new enterprise::TSDescriptor(node.permanent_uuid()));
   CHECK_OK(ts->Register(node, reg, CloudInfoPB(), nullptr));
   return ts;
 }

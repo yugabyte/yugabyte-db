@@ -394,9 +394,7 @@ class Configuration:
         if not self.file_regex and args.file_name_glob:
             self.file_regex = fnmatch.translate('*/' + args.file_name_glob)
 
-        self.src_dir_paths = [self.src_dir_path]
-        if os.environ.get('YB_EDITION') != 'community' and os.path.exists(self.ent_src_dir_path):
-            self.src_dir_paths.append(self.ent_src_dir_path)
+        self.src_dir_paths = [self.src_dir_path, self.ent_src_dir_path]
 
         for dir_path in self.src_dir_paths:
             if not os.path.isdir(dir_path):
@@ -958,10 +956,7 @@ class DependencyGraph:
         """
         Add dependencies of .pb.{h,cc} files on the corresponding .proto file. We do that by
         finding .proto and .pb.{h,cc} nodes in the graph independently and matching them
-        based on their path relative to the source root, regardless of whether the .proto file
-        is present within the Community Edition C/C++ source directory (src) or Enterprise Edition
-        source directory (ent/src), because these two are folded into the same directory hierarchy
-        in the build directory.
+        based on their path relative to the source root.
 
         Additionally, we are inferring dependencies between binaries (protobuf libs or in some
         cases other libraries or even tests) that use a .pb.cc file on the CMake target that

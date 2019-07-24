@@ -76,8 +76,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // tablet superblock and list of WAL segments.
   CHECKED_STATUS Init();
 
-  // Add snapshot files to tablet superblock.
-  // Snapshots are not supported in the community edition.
+  // Add snapshot files to tablet superblock. This does nothing in the base class, because
+  // snapshots are implemented in enterprise::RemoteBootstrapSession. TODO: unify the two classes.
   virtual CHECKED_STATUS InitSnapshotFiles();
 
   // Return ID of tablet corresponding to this session.

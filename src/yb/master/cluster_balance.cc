@@ -154,9 +154,9 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     LOG(INFO) << "Load balancing is not enabled.";
     return;
   }
-  std::unique_ptr<YB_EDITION_NS_PREFIX Options> options_unique_ptr;
+  std::unique_ptr<enterprise::Options> options_unique_ptr;
   if (options == nullptr) {
-    options_unique_ptr = std::make_unique<YB_EDITION_NS_PREFIX Options>();
+    options_unique_ptr = std::make_unique<enterprise::Options>();
     options = options_unique_ptr.get();
   }
 
@@ -324,7 +324,7 @@ void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
 }
 
 void ClusterLoadBalancer::ResetState() {
-  state_ = make_unique<YB_EDITION_NS_PREFIX ClusterLoadState>();
+  state_ = make_unique<enterprise::ClusterLoadState>();
 }
 
 Status ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {

@@ -153,7 +153,7 @@ static int TabletServerMain(int argc, char** argv) {
 
   auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
-  YB_EDITION_NS_PREFIX Factory factory;
+  enterprise::Factory factory;
 
   auto server = factory.CreateTabletServer(*tablet_server_options);
 

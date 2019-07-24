@@ -88,7 +88,7 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
   void Shutdown() override;
 
  protected:
-  typedef YB_EDITION_NS_PREFIX RemoteBootstrapSession RemoteBootstrapSessionClass;
+  typedef enterprise::RemoteBootstrapSession RemoteBootstrapSessionClass;
 
   virtual CHECKED_STATUS GetDataFilePiece(
       const DataIdPB& data_id, const scoped_refptr<RemoteBootstrapSessionClass>& session,

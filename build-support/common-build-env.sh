@@ -272,20 +272,16 @@ readonly VALID_COMPILER_TYPES=( gcc clang zapcc )
 
 readonly VALID_LINKING_TYPES=( static dynamic )
 
-readonly VALID_EDITIONS=( community enterprise )
-
 make_regexes_from_lists \
   VALID_BUILD_TYPES \
   VALID_CMAKE_BUILD_TYPES \
   VALID_COMPILER_TYPES \
-  VALID_LINKING_TYPES \
-  VALID_EDITIONS
+  VALID_LINKING_TYPES
 
 readonly BUILD_ROOT_BASENAME_RE=\
 "^($VALID_BUILD_TYPES_RAW_RE)-\
 ($VALID_COMPILER_TYPES_RAW_RE)-\
-($VALID_LINKING_TYPES_RAW_RE)-\
-($VALID_EDITIONS_RAW_RE)\
+($VALID_LINKING_TYPES_RAW_RE)\
 (-ninja)?\
 (-clion)?$"
 
@@ -411,9 +407,6 @@ set_build_root() {
   determine_linking_type
 
   BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE-$YB_LINK
-
-  detect_edition
-  BUILD_ROOT+="-$YB_EDITION"
 
   if using_ninja; then
     BUILD_ROOT+="-ninja"
@@ -1700,62 +1693,15 @@ configure_remote_compilation() {
   export YB_REMOTE_COMPILATION
 }
 
-yb_edition_detected=false
-
-validate_edition() {
-  if [[ ! $YB_EDITION =~ ^(community|enterprise)$ ]]; then
-    fatal "The YB_EDITION environment variable has an invalid value: '$YB_EDITION'" \
-          "(must be either 'community' or 'enterprise')."
-  fi
-}
-
-detect_edition() {
-  if "$yb_edition_detected"; then
-    return
-  fi
-  yb_edition_detected=true
-
-  # If we haven't detected edition based on BUILD_ROOT, let's do that based on existence of the
-  # enterprise source directory.
-  if [[ -z ${YB_EDITION:-} ]]; then
-    if is_jenkins && [[ $JOB_NAME =~ -community(-|$) ]]; then
-      YB_EDITION=community
-      log "Detecting YB_EDITION: $YB_EDITION based on Jenkins job name: $JOB_NAME"
-    elif is_jenkins && [[ $JOB_NAME =~ -enterprise(-|$) ]]; then
-      YB_EDITION=enterprise
-      log "Detecting YB_EDITION: $YB_EDITION based on Jenkins job name: $JOB_NAME"
-    elif [[ -d $YB_ENTERPRISE_ROOT ]]; then
-      YB_EDITION=enterprise
-      log "Detected YB_EDITION: $YB_EDITION based on existence of '$YB_ENTERPRISE_ROOT'"
-    else
-      YB_EDITION=community
-      log "Detected YB_EDITION: $YB_EDITION"
-    fi
-  fi
-
-  if [[ $YB_EDITION == "enterprise" && ! -d $YB_ENTERPRISE_ROOT ]]; then
-    fatal "YB_EDITION is set to '$YB_EDITION' but the directory '$YB_ENTERPRISE_ROOT'" \
-          "does not exist"
-  fi
-
-  readonly YB_EDITION
-  export YB_EDITION
-
-  yb_java_project_dirs=( "$YB_SRC_ROOT"/java )
-  if [[ $YB_EDITION == "enterprise" ]]; then
-    yb_java_project_dirs+=( "$YB_ENTERPRISE_ROOT"/java )
-  fi
-}
-
 set_yb_src_root() {
   export YB_SRC_ROOT=$1
   YB_BUILD_SUPPORT_DIR=$YB_SRC_ROOT/build-support
   if [[ ! -d $YB_SRC_ROOT ]]; then
     fatal "YB_SRC_ROOT directory '$YB_SRC_ROOT' does not exist"
   fi
-  YB_ENTERPRISE_ROOT=$YB_SRC_ROOT/ent
   YB_COMPILER_WRAPPER_CC=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/cc
   YB_COMPILER_WRAPPER_CXX=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/c++
+  yb_java_project_dirs=( "$YB_SRC_ROOT/java" "$YB_SRC_ROOT/ent/java" )
 }
 
 read_file_and_trim() {
@@ -1842,8 +1788,7 @@ handle_predefined_build_root() {
     local _build_type=${BASH_REMATCH[1]}
     local _compiler_type=${BASH_REMATCH[2]}
     local _linking_type=${BASH_REMATCH[3]}
-    local _edition=${BASH_REMATCH[4]}
-    local _dash_ninja=${BASH_REMATCH[5]}
+    local _dash_ninja=${BASH_REMATCH[4]}
   else
     fatal "Could not parse build root directory name '$basename'" \
           "(full path: '$predefined_build_root'). Expected to match '$BUILD_ROOT_BASENAME_RE'."
@@ -1884,17 +1829,6 @@ handle_predefined_build_root() {
   fi
 
   set_use_ninja
-
-  if [[ -z ${YB_EDITION:-} ]]; then
-    export YB_EDITION=$_edition
-    if ! "$handle_predefined_build_root_quietly"; then
-      log "Detected YB_EDITION: '$YB_EDITION' based on predefined build root ('$basename')"
-    fi
-  elif [[ $YB_EDITION != $_edition ]]; then
-    fatal "Edition from the build root ('$_edition' from '$predefined_build_root') " \
-          "does not match YB_EDITION ('$YB_EDITION')."
-  fi
-
 }
 
 # Remove the build/latest symlink to prevent Jenkins from showing every test twice in test results.
@@ -1952,6 +1886,9 @@ handle_build_root_from_current_dir() {
   local d=$PWD
   while [[ $d != "/" && $d != "" ]]; do
     basename=${d##*/}
+    if [[ ${YB_DEBUG_BUILD_ROOT_BASENAME_VALIDATION:-0} == "1" ]]; then
+      log "Trying to match basename $basename to regex: $BUILD_ROOT_BASENAME_RE"
+    fi
     if [[ $basename =~ $BUILD_ROOT_BASENAME_RE ]]; then
       predefined_build_root=$d
       handle_predefined_build_root

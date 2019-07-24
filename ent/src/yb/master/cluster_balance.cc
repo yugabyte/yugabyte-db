@@ -135,8 +135,8 @@ void ClusterLoadBalancer::RunLoadBalancer(yb::master::Options* options) {
   SysClusterConfigEntryPB config;
   CHECK_OK(catalog_manager_->GetClusterConfig(&config));
 
-  std::unique_ptr<YB_EDITION_NS_PREFIX Options> options_unique_ptr =
-      std::make_unique<YB_EDITION_NS_PREFIX Options>();
+  std::unique_ptr<enterprise::Options> options_unique_ptr =
+      std::make_unique<enterprise::Options>();
   Options* options_ent = options_unique_ptr.get();
   // First, we load balance the live cluster.
   options_ent->type = LIVE;

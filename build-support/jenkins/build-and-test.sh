@@ -774,8 +774,7 @@ find . -type f -name "*_test_report.json" | \
       --output-dir "$YB_SRC_ROOT" \
       --build-type "$build_type" \
       --compiler-type "$YB_COMPILER_TYPE" \
-      --build-root "$BUILD_ROOT" \
-      --edition "$YB_EDITION"
+      --build-root "$BUILD_ROOT"
 
 if [[ -n $FAILURES ]]; then
   heading "Failure summary"

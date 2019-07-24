@@ -286,7 +286,7 @@ using tablet::RaftGroupStatePB;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
 using tserver::HandleReplacingStaleTablet;
-using tserver::YB_EDITION_NS_PREFIX RemoteBootstrapClient;
+using tserver::enterprise::RemoteBootstrapClient;
 using tserver::TabletServerErrorPB;
 using master::MasterServiceProxy;
 using yb::pgwrapper::PgWrapper;
@@ -383,7 +383,7 @@ CatalogManager::CatalogManager(Master* master)
       state_(kConstructed),
       leader_ready_term_(-1),
       leader_lock_(RWMutex::Priority::PREFER_WRITING),
-      load_balance_policy_(new YB_EDITION_NS_PREFIX ClusterLoadBalancer(this)),
+      load_balance_policy_(new enterprise::ClusterLoadBalancer(this)),
       permissions_manager_(std::make_unique<PermissionsManager>(this)),
       tasks_tracker_(new TasksTracker()) {
   yb::InitCommonFlags();

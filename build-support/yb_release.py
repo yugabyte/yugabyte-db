@@ -30,10 +30,6 @@ from yb.common_util import init_env, get_build_type_from_build_root, set_thirdpa
 
 YB_SRC_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-RELEASE_EDITION_ENTERPRISE = "ee"
-RELEASE_EDITION_COMMUNITY = "ce"
-RELEASE_EDITION_ALLOWED_VALUES = set([RELEASE_EDITION_ENTERPRISE, RELEASE_EDITION_COMMUNITY])
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -48,9 +44,6 @@ def main():
                              'false if --build_target is specified, true otherwise.')
     parser.add_argument('--destination', help='Copy release to Destination folder.')
     parser.add_argument('--force', help='Skip prompts', action='store_true')
-    parser.add_argument('--edition', help='Which edition the code is built as.',
-                        default=None,
-                        choices=RELEASE_EDITION_ALLOWED_VALUES)
     parser.add_argument('--commit', help='Custom specify a git commit.')
     parser.add_argument('--skip_build', help='Skip building the code', action='store_true')
     parser.add_argument('--build_target',
@@ -79,31 +72,6 @@ def main():
                            '--build_archive')
 
     build_root = args.build_root
-    if build_root and not args.edition:
-        build_root_basename = os.path.basename(build_root)
-        if '-community-' in build_root_basename or build_root_basename.endswith('community'):
-            logging.info("Setting edition to Community based on build root")
-            args.edition = RELEASE_EDITION_COMMUNITY
-        elif '-enterprise-' in build_root_basename or build_root_basename.endswith('enterprise'):
-            logging.info("Setting edition to Enterprise based on build root")
-            args.edition = RELEASE_EDITION_ENTERPRISE
-
-    # We must have either not had a build_root specified, or not been able to deduce from the root.
-    if not args.edition:
-        ent_path = "{}/ent".format(YB_SRC_ROOT)
-        if os.path.isdir(ent_path):
-            logging.info(
-                "No --edition was specified, but found '{}', releasing Enterprise edition.".format(
-                    ent_path))
-            args.edition = RELEASE_EDITION_ENTERPRISE
-        else:
-            logging.info(
-                "No --edition was specified and '{}' is not a valid dir, releasing Community "
-                "edition.".format(ent_path))
-            args.edition = RELEASE_EDITION_COMMUNITY
-
-    build_edition = "enterprise" if args.edition == RELEASE_EDITION_ENTERPRISE else "community"
-
     build_type = args.build_type
 
     tmp_dir = os.path.join(YB_SRC_ROOT, "build", "yb_release_tmp_{}".format(str(uuid.uuid4())))
@@ -141,20 +109,18 @@ def main():
     if not build_type:
         build_type = 'release'
 
-    logging.info("Building YugaByte DB {} Edition: '{}' build".format(
-        build_edition.capitalize(), build_type))
+    logging.info("Building YugaByte DB {} build".format(build_type))
 
     build_desc_path = os.path.join(tmp_dir, 'build_descriptor.yaml')
     build_cmd_list = [
         "./yb_build.sh",
         "--write-build-descriptor", build_desc_path,
-        "--edition", build_edition,
         build_type
     ]
 
     if build_root:
         # This will force yb_build.sh to use this build directory, and detect build type,
-        # compiler type, edition, etc. based on that.
+        # compiler type, etc. based on that.
         build_cmd_list += ["--build-root", build_root]
 
     build_cmd_list += [
@@ -218,8 +184,7 @@ def main():
     # This points to the release manifest within the release_manager, and we are modifying that
     # directly.
     release_util = ReleaseUtil(
-        YB_SRC_ROOT, build_type, args.edition, build_target, args.force,
-        args.commit, build_root)
+            YB_SRC_ROOT, build_type, build_target, args.force, args.commit, build_root)
 
     system = platform.system().lower()
     library_packager_args = dict(

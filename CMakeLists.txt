@@ -155,7 +155,7 @@ function(INIT_COMPILER_TYPE)
   get_filename_component(BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
 
   if ("$ENV{YB_COMPILER_TYPE}" STREQUAL "")
-    # TODO: deduplicate this. Also might want to detect edition based on dir name, etc.
+    # TODO: deduplicate this.
     string(REGEX MATCH "^.*-zapcc-.*$" RE_MATCH_RESULT "${BUILD_ROOT_BASENAME}")
     if (NOT "${RE_MATCH_RESULT}" STREQUAL "")
       set(ENV{YB_COMPILER_TYPE} "zapcc")
@@ -277,40 +277,17 @@ endif()
 ADD_CXX_FLAGS("-DROCKSDB_PLATFORM_POSIX -DROCKSDB_USING_THREAD_STATUS=0")
 ADD_CXX_FLAGS("-DBOOST_ERROR_CODE_HEADER_ONLY")
 
-# This duplicates part of the logic from common-build-env.sh so that we can run from CLion where
-# cmake is invoked directly.
-function(DETECT_EDITION)
-  set(YB_ENTERPRISE_ROOT "${YB_SRC_ROOT}/ent")
-  set(YB_ENTERPRISE_ROOT "${YB_ENTERPRISE_ROOT}" PARENT_SCOPE)
-  if ("$ENV{YB_EDITION}" STREQUAL "")
-    if (IS_DIRECTORY "${YB_ENTERPRISE_ROOT}")
-      set(ENV{YB_EDITION} "enterprise")
-    else()
-      set(ENV{YB_EDITION} "community")
-    endif()
-  endif()
-  set(YB_EDITION "$ENV{YB_EDITION}")
-  set(YB_EDITION "${YB_EDITION}" PARENT_SCOPE)
-  if ("${YB_EDITION}" STREQUAL "enterprise" AND NOT IS_DIRECTORY "${YB_ENTERPRISE_ROOT}")
-    message(FATAL_ERROR "YB_EDITION is '${YB_EDITION}' but the directory '${YB_ENTERPRISE_ROOT}'"
-                           " does not exist.")
-  endif()
-  message("YB_EDITION: ${YB_EDITION}")
-endfunction()
-
 function(YB_INCLUDE_EXTENSIONS)
-  if ("${YB_EDITION}" STREQUAL "enterprise")
-    file(RELATIVE_PATH CUR_REL_LIST_FILE "${YB_SRC_ROOT}" "${CMAKE_CURRENT_LIST_FILE}")
-    get_filename_component(CUR_REL_LIST_NAME_NO_EXT "${CUR_REL_LIST_FILE}" NAME_WE)
-    get_filename_component(CUR_REL_LIST_DIR "${CUR_REL_LIST_FILE}" DIRECTORY)
+  file(RELATIVE_PATH CUR_REL_LIST_FILE "${YB_SRC_ROOT}" "${CMAKE_CURRENT_LIST_FILE}")
+  get_filename_component(CUR_REL_LIST_NAME_NO_EXT "${CUR_REL_LIST_FILE}" NAME_WE)
+  get_filename_component(CUR_REL_LIST_DIR "${CUR_REL_LIST_FILE}" DIRECTORY)
 
-    set(YB_MATCHING_ENTERPRISE_DIR "${YB_ENTERPRISE_ROOT}/${CUR_REL_LIST_DIR}" PARENT_SCOPE)
-    set(YB_MATCHING_ENTERPRISE_DIR "${YB_ENTERPRISE_ROOT}/${CUR_REL_LIST_DIR}")
+  set(YB_MATCHING_ENTERPRISE_DIR "${YB_SRC_ROOT}/ent/${CUR_REL_LIST_DIR}" PARENT_SCOPE)
+  set(YB_MATCHING_ENTERPRISE_DIR "${YB_SRC_ROOT}/ent/${CUR_REL_LIST_DIR}")
 
-    set(INCLUDED_PATH "${YB_MATCHING_ENTERPRISE_DIR}/${CUR_REL_LIST_NAME_NO_EXT}-include.txt")
-    message("Including '${INCLUDED_PATH}' into '${CMAKE_CURRENT_LIST_FILE}'")
-    include("${INCLUDED_PATH}")
-  endif()
+  set(INCLUDED_PATH "${YB_MATCHING_ENTERPRISE_DIR}/${CUR_REL_LIST_NAME_NO_EXT}-include.txt")
+  message("Including '${INCLUDED_PATH}' into '${CMAKE_CURRENT_LIST_FILE}'")
+  include("${INCLUDED_PATH}")
 endfunction()
 
 set(YB_NUM_TESTS "0" CACHE INTERNAL "Number of tests" FORCE)
@@ -470,11 +447,6 @@ endif()
 
 set(YB_SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 message("YB_SRC_ROOT: ${YB_SRC_ROOT}")
-
-DETECT_EDITION()
-if ("$YB_EDITION" STREQUAL "")
-  message(FATAL_ERROR "YB_EDITION not defined after calling DETECT_EDITION()")
-endif()
 
 set(YB_THIRDPARTY_DIR "$ENV{YB_THIRDPARTY_DIR}")
 if("${YB_THIRDPARTY_DIR}" STREQUAL "")
@@ -1076,17 +1048,9 @@ file(MAKE_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(EXECUTABLE_OUTPUT_PATH "${YB_BUILD_ROOT}/bin")
 file(MAKE_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}")
 
-# Generated sources always have higher priority than even enterprise code.
+# Generated sources always have higher priority than even the "ent" directory include files.
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/src)
-
-if ("${YB_EDITION}" STREQUAL "enterprise")
-  # Enterprise sources have higher priority than community code.
-  include_directories(ent/src)
-  ADD_CXX_FLAGS(-DYB_EDITION_NS_PREFIX=enterprise::)
-else()
-  ADD_CXX_FLAGS(-DYB_EDITION_NS_PREFIX=)
-endif()
-
+include_directories(ent/src)
 include_directories(src)
 
 ############################################################
@@ -1807,9 +1771,7 @@ add_subdirectory(src/yb/cdc)
 # PostgreSQL source code is not in src/yb so that we can grep non-PostgreSQL YB code easily.
 add_subdirectory(src/postgres)
 
-if ("${YB_EDITION}" STREQUAL "enterprise")
-  include("${YB_ENTERPRISE_ROOT}/CMakeLists.txt")
-endif()
+include("${YB_SRC_ROOT}/ent/CMakeLists.txt")
 
 # We could not accumulate multiple lines in YB_ALL_DEPS due to a CMake bug with cache variables,
 # but we can write multiple lines in the output file.

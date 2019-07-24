@@ -288,7 +288,7 @@ Status RemoteBootstrapSession::Init() {
 }
 
 Status RemoteBootstrapSession::InitSnapshotFiles() {
-  // Snapshots are not supported in the community edition.
+  // Snapshots are implemented in enterprise::RemoteBootstrapSession. TODO: unify the two classes.
   tablet_superblock_.mutable_kv_store()->clear_snapshot_files();
   return Status::OK();
 }

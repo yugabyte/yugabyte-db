@@ -53,7 +53,7 @@ Result<TSDescriptorPtr> TSDescriptor::RegisterNew(
     const TSRegistrationPB& registration,
     CloudInfoPB local_cloud_info,
     rpc::ProxyCache* proxy_cache) {
-  auto result = std::make_shared<YB_EDITION_NS_PREFIX TSDescriptor>(
+  auto result = std::make_shared<enterprise::TSDescriptor>(
       instance.permanent_uuid());
   RETURN_NOT_OK(result->Register(instance, registration, std::move(local_cloud_info), proxy_cache));
   return std::move(result);

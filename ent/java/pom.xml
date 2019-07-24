@@ -14,10 +14,10 @@
     <relativePath>../../java/</relativePath>
   </parent>
 
-  <name>YugaByte Enterprise Edition</name>
+  <name>YugaByte Extra Functionality</name>
 
   <description>
-    YugaByte Enterprise Edition Java functionality and tests
+    YugaByte Extra Java functionality and tests
   </description>
 
   <dependencies>

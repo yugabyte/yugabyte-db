@@ -21,6 +21,10 @@
 namespace yb {
 namespace tablet {
 
+namespace enterprise {
+class Tablet;
+}
+
 class AbstractTablet;
 
 class OperationDriver;
@@ -39,7 +43,7 @@ class TabletStatusPB;
 class TabletStatusListener;
 class WriteOperationState;
 
-typedef YB_EDITION_NS_PREFIX Tablet TabletClass;
+using TabletClass = enterprise::Tablet;
 
 YB_STRONGLY_TYPED_BOOL(RequireLease);
 
