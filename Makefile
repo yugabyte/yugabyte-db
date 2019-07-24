@@ -21,3 +21,7 @@ PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
 scan.c: FLEX_NO_BACKUP=yes
+
+.PHONY: doc-html
+doc-html:
+	make -C doc html
