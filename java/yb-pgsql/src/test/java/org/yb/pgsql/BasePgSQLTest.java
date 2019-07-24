@@ -72,13 +72,19 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static boolean pgInitialized = false;
 
-  public void runPgRegressTest(String schedule) throws Exception {
+  public void runPgRegressTest(String schedule, long maxRuntimeMillis) throws Exception {
     final int tserverIndex = 0;
     PgRegressRunner pgRegress = new PgRegressRunner(schedule,
-        getPgHost(tserverIndex), getPgPort(tserverIndex), DEFAULT_PG_USER);
+        getPgHost(tserverIndex), getPgPort(tserverIndex), DEFAULT_PG_USER,
+        maxRuntimeMillis);
     pgRegress.setEnvVars(getPgRegressEnvVars());
     pgRegress.start();
     pgRegress.stop();
+  }
+
+  public void runPgRegressTest(String schedule) throws Exception {
+    // Run test without maximum time.
+    runPgRegressTest(schedule, 0);
   }
 
   private static int getRetryableRpcSingleCallTimeoutMs() {
