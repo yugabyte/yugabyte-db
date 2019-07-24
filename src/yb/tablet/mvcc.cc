@@ -119,7 +119,7 @@ void MvccManager::AddPending(HybridTime* ht) {
     auto iter = std::lower_bound(queue_.begin(), queue_.end(), aborted_.top());
 
     // Every hybrid time in aborted_ must also exist in queue_.
-    CHECK(iter != queue_.end());
+    CHECK(iter != queue_.end()) << LogPrefix();
 
     auto start_iter = iter;
     while (iter != queue_.end() && *iter == aborted_.top()) {
@@ -291,7 +291,7 @@ HybridTime MvccManager::DoGetSafeTime(const HybridTime min_allowed,
                                       const HybridTime ht_lease,
                                       std::unique_lock<std::mutex>* lock) const {
   DCHECK_ONLY_NOTNULL(lock);
-  CHECK(ht_lease.is_valid());
+  CHECK(ht_lease.is_valid()) << LogPrefix();
   CHECK_LE(min_allowed, ht_lease) << LogPrefix();
 
   const bool has_lease = ht_lease.GetPhysicalValueMicros() < kMaxHybridTimePhysicalMicros;

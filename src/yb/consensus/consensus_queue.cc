@@ -348,10 +348,17 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
 
-    const HybridTime now_ht = clock_->Now();
+    HybridTime now_ht;
 
     is_new = peer->is_new;
     if (!is_new) {
+      // Should be before now_ht, i.e. not greater than propagated_hybrid_time.
+      if (propagated_safe_time_provider_ && FLAGS_propagate_safe_time) {
+        propagated_safe_time = propagated_safe_time_provider_();
+      }
+
+      now_ht = clock_->Now();
+
       auto ht_lease_expiration_micros = now_ht.GetPhysicalValueMicros() +
                                         FLAGS_ht_lease_duration_ms * 1000;
       auto leader_lease_duration_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
@@ -373,14 +380,11 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
           CoarseMonoClock::Now() + leader_lease_duration_ms * 1ms - kCoarseClockPrecision * 2;
       peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
     } else {
+      now_ht = clock_->Now();
       request->clear_leader_lease_duration_ms();
       request->clear_ht_lease_expiration();
       peer->last_leader_lease_expiration_received_by_follower = CoarseTimePoint();
       peer->last_ht_lease_expiration_sent_to_follower = 0;
-    }
-
-    if (propagated_safe_time_provider_ && FLAGS_propagate_safe_time) {
-      propagated_safe_time = propagated_safe_time_provider_();
     }
 
     request->set_propagated_hybrid_time(now_ht.ToUint64());
