@@ -173,7 +173,7 @@ The YQL engine sends requests to all tablets the transaction needs to read from.
 for **ht_read** to become a safe time to read at according to our [definition of safe time](../single-row-transactions/#definition-of-safe-time), and then starts executing its part
 of the read request from its local DocDB.
 
-WHen a tablet server sees a relevant record with a hybrid time *ht_record*, it executes the
+When a tablet server sees a relevant record with a hybrid time *ht_record*, it executes the
 following logic:
 
  * If **ht_record &le; ht_read**, include the record in the result.
