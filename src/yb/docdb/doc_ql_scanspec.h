@@ -71,6 +71,8 @@ class DocQLScanSpec : public common::QLScanSpec {
     return range_bounds_.get();
   }
 
+  const Schema* schema() const override { return &schema_; }
+
  private:
   // Return inclusive lower/upper range doc key considering the start_doc_key.
   Result<KeyBytes> Bound(const bool lower_bound) const;

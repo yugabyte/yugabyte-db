@@ -117,6 +117,9 @@ class QLScanSpec : public YQLScanSpec {
     return is_forward_scan_;
   }
 
+  // Get Schema if available.
+  virtual const Schema* schema() const { return nullptr; }
+
  protected:
   const QLConditionPB* condition_;
   const bool is_forward_scan_;
