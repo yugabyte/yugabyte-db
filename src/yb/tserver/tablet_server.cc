@@ -284,7 +284,7 @@ Status TabletServer::RegisterServices() {
                                                      rpc::ServicePriority::kHigh));
 
   std::unique_ptr<ServiceIf> remote_bootstrap_service =
-      std::make_unique<YB_EDITION_NS_PREFIX RemoteBootstrapServiceImpl>(fs_manager_.get(),
+      std::make_unique<enterprise::RemoteBootstrapServiceImpl>(fs_manager_.get(),
                                                                         tablet_manager_.get(),
                                                                         metric_entity());
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_ts_remote_bootstrap_svc_queue_length,

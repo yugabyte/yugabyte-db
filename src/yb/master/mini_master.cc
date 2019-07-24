@@ -131,7 +131,7 @@ Status MiniMaster::StartOnPorts(uint16_t rpc_port, uint16_t web_port,
     opts->SetPlacement(Format("cloud$0", (index_ + 1) / 2), Format("rack$0", index_), "zone");
   }
 
-  gscoped_ptr<Master> server(new YB_EDITION_NS_PREFIX Master(*opts));
+  gscoped_ptr<Master> server(new enterprise::Master(*opts));
   RETURN_NOT_OK(server->Init());
 
   server::TEST_SetupConnectivity(server->messenger(), index_);

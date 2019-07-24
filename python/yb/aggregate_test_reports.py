@@ -118,10 +118,6 @@ def parse_args():
         '--build-root',
         help='Root directory for build artifacts (not including Java). Added to test result files.',
         required=True)
-    parser.add_argument(
-        '--edition',
-        help='YugaByte DB edition',
-        required=True)
 
     return parser.parse_args()
 
@@ -192,8 +188,7 @@ def aggregate_test_reports(args):
         "build_root": os.path.relpath(
             os.path.realpath(args.build_root),
             os.path.realpath(args.yb_src_root)
-        ),
-        "edition": args.edition
+        )
     }
 
     failure_only_report = dict(top_level_details)

@@ -38,7 +38,6 @@ class ReleaseManager(object):
         self.repository = options["repository"]
         self.release_name = options["name"]
         self.build_type = options.get("type", None)
-        self.yb_edition = options.get("edition", ybutils.RELEASE_EDITION_ENTERPRISE)
         self.release_manifest = self.fetch_release_manifest()
         self.force_yes = options.get("force_yes", False)
 
@@ -95,8 +94,7 @@ class ReleaseManager(object):
         """
         tarball_path = ybutils.get_release_file(self.repository,
                                                 self.release_name,
-                                                self.build_type,
-                                                self.yb_edition)
+                                                self.build_type)
         ybutils.log_message(logging.INFO, "Exporting release tarball")
 
         # TODO(bogdan,ram): hack around yugabyte untaring into a top-level dir named by repo.

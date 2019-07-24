@@ -665,7 +665,7 @@ void MasterServiceImpl::IsInitDbDone(const IsInitDbDoneRequestPB* req,
 void MasterServiceImpl::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                              ChangeEncryptionInfoResponsePB* resp,
                                              rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &YB_EDITION_NS_PREFIX CatalogManager::ChangeEncryptionInfo);
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ChangeEncryptionInfo);
 }
 
 

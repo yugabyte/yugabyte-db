@@ -66,7 +66,7 @@ class MasterServiceBase {
       Status (HandlerType::*f)(const ReqType*, RespType*, rpc::RpcContext*),
       HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
 
-  YB_EDITION_NS_PREFIX CatalogManager* handler(CatalogManager*);
+  enterprise::CatalogManager* handler(CatalogManager*);
   FlushManager* handler(FlushManager*);
   PermissionsManager* handler(PermissionsManager*);
 

@@ -427,5 +427,5 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 }  // namespace yb
 
 int main(int argc, char** argv) {
-  return yb::tools::YB_EDITION_NS_PREFIX ClusterAdminCli().Run(argc, argv);
+  return yb::tools::enterprise::ClusterAdminCli().Run(argc, argv);
 }

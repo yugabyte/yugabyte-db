@@ -85,7 +85,7 @@ Status BootstrapTablet(
     ConsensusBootstrapInfo* consensus_info) {
   TRACE_EVENT1("tablet", "BootstrapTablet",
                "tablet_id", data.meta->raft_group_id());
-  YB_EDITION_NS_PREFIX TabletBootstrap bootstrap(data);
+  enterprise::TabletBootstrap bootstrap(data);
   RETURN_NOT_OK(bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, consensus_info));
   // This is necessary since OpenNewLog() initially disables sync.
   RETURN_NOT_OK((*rebuilt_log)->ReEnableSyncIfRequired());

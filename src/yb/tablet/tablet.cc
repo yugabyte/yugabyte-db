@@ -2101,12 +2101,12 @@ bool Tablet::ShouldApplyWrite() {
 
 // Create snapshot for this tablet.
 Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
-  return STATUS(NotSupported, "Snapshot creation not supported in YugaByte DB Community Edition");
+  return STATUS(NotSupported, "Internal error: CreateSnapshot called on the base Tablet class");
 }
 
 // Delete snapshot for this tablet.
 Status Tablet::DeleteSnapshot(SnapshotOperationState* tx_state) {
-  return STATUS(NotSupported, "Snapshot deletion not supported in YugaByte DB Community Edition");
+  return STATUS(NotSupported, "Internal error: DeleteSnapshot called on the base Tablet class");
 }
 
 Status Tablet::RestoreCheckpoint(const std::string& dir, const docdb::ConsensusFrontier& frontier) {
