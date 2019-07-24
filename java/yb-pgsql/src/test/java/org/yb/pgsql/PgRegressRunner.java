@@ -51,7 +51,11 @@ public class PgRegressRunner {
 
   private Set<String> failedTests = new ConcurrentSkipListSet<>();
 
-  public PgRegressRunner(String schedule, String pgHost, int pgPort, String pgUser) {
+  private long maxRuntimeMillis;
+  private long startTimeMillis;
+
+  public PgRegressRunner(String schedule, String pgHost, int pgPort, String pgUser,
+                         long maxRuntimeMillis) {
     pgRegressDir = new File(TestUtils.getBuildRootDir(), "postgres_build/src/test/regress");
     pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
     pgRegressExecutable = new File(pgRegressDir, "pg_regress");
@@ -59,6 +63,7 @@ public class PgRegressRunner {
     this.pgHost = pgHost;
     this.pgPort = pgPort;
     this.pgUser = pgUser;
+    this.maxRuntimeMillis = maxRuntimeMillis;
     regressionDiffsPath = new File(pgRegressDir, "regression.diffs");
   }
 
@@ -117,6 +122,7 @@ public class PgRegressRunner {
     procBuilder.environment().put("YB_PG_REGRESS_RESULTSFILE_POSTPROCESS_CMD",
         postprocessScript.toString());
 
+    startTimeMillis = System.currentTimeMillis();
     pgRegressProc = procBuilder.start();
     pgRegressPid = ProcessUtil.pidOfProcess(pgRegressProc);
     String logPrefix = "pg_regress|pid" + pgRegressPid;
@@ -132,6 +138,7 @@ public class PgRegressRunner {
 
   public void stop() throws InterruptedException, IOException {
     exitCode = pgRegressProc.waitFor();
+    long runtimeMillis = System.currentTimeMillis() - startTimeMillis;
     stdoutLogPrinter.stop();
     stderrLogPrinter.stop();
     if (regressionDiffsPath.exists()) {
@@ -180,6 +187,14 @@ public class PgRegressRunner {
       throw new AssertionError("Tests failed (but pg_regress exit code is 0, unexpectedly): " +
           sortedFailedTests);
     }
+    if (maxRuntimeMillis != 0 && runtimeMillis > maxRuntimeMillis) {
+      throw new AssertionError("Schedule " + pgSchedule + " exceeded max runtime. " +
+                               "Elapsed time = " + runtimeMillis + " msecs. " +
+                               "Max time = " + maxRuntimeMillis + " msecs.");
+    }
+
+    LOG.info(String.format("Completed schedule: %s. Elapsed time = %d msecs",
+                           pgSchedule, runtimeMillis));
   }
 
 }
