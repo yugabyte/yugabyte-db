@@ -70,6 +70,20 @@ namespace ql {
     EXPECT_FALSE(s.ok());                      \
   } while (false)
 
+#define EXEC_INVALID_STMT_WITH_ERROR(stmt, expected_error, expected_error_msg)                  \
+  do {                                                                                          \
+    Status s = processor->Run(stmt);                                                            \
+    EXPECT_FALSE(s.ok()) << s.ToString();                                                       \
+    const auto expected_error_copy = (expected_error);                                          \
+    const auto expected_error_msg_copy = (expected_error_msg);                                  \
+    if (!std::string(expected_error_copy).empty()) {                                            \
+      EXPECT_FALSE(s.ToString().find(expected_error_copy) == string::npos) << s.ToString();     \
+    }                                                                                           \
+    if (!std::string(expected_error_msg_copy).empty()) {                                        \
+      EXPECT_FALSE(s.ToString().find(expected_error_msg_copy) == string::npos) << s.ToString(); \
+    }                                                                                           \
+  } while (false)
+
 #define CHECK_VALID_STMT(stmt)                 \
   do {                                         \
     Status s = processor->Run(stmt);           \

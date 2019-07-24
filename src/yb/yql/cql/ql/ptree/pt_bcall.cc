@@ -114,6 +114,8 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     pindex++;
   }
 
+  RETURN_NOT_OK(CheckOperatorAfterArgAnalyze(sem_context));
+
   // Reset the semantics state after analyzing the arguments.
   sem_state.ResetContextState();
 
@@ -319,22 +321,6 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     ql_type_ = pt_result->ql_type();
   }
 
-  // Check that ToJson() built-in function supports the parameter types.
-  if (bfopcode == bfql::BFOpcode::OPCODE_ToJson_144) {
-    for (const PTExpr::SharedPtr& param : params) {
-      // ToJson() does not support FROZEN & UDT now.
-      // https://github.com/YugaByte/yugabyte-db/issues/1675
-      for (DataType not_sup_type_id : {FROZEN, USER_DEFINED_TYPE}) {
-        if (param->ql_type()->Contains(not_sup_type_id)) {
-          string err_msg = Substitute("$0 type is not supported by $1 builtin function",
-                                      QLType::ToCQLString(not_sup_type_id),
-                                      bfdecl->cpp_name());
-          return sem_context->Error(this, err_msg.c_str(), ErrorCode::FEATURE_NOT_SUPPORTED);
-        }
-      }
-    }
-  }
-
   internal_type_ = yb::client::YBColumnSchema::ToInternalDataType(ql_type_);
   return CheckExpectedTypeCompatibility(sem_context);
 }
@@ -376,6 +362,27 @@ CHECKED_STATUS PTBcall::CheckCounterUpdateSupport(SemContext *sem_context) const
   if (ref->desc() != sem_context->lhs_col()) {
     return sem_context->Error(arg1, "Right and left arguments must reference the same counter",
                               ErrorCode::INVALID_COUNTING_EXPR);
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PTBcall::CheckOperatorAfterArgAnalyze(SemContext *sem_context) {
+  if (*name_ == "tojson") {
+    // The arguments must be analyzed and correct types must be set.
+    const QLType::SharedPtr type = args_->element(0)->ql_type();
+    DCHECK(!type->IsUnknown());
+
+    if (type->main() == TUPLE) {
+      // https://github.com/YugaByte/yugabyte-db/issues/936
+      return sem_context->Error(args_->element(0),
+          "Tuple type not implemented yet", ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+    }
+
+    if (type->Contains(FROZEN) || type->Contains(USER_DEFINED_TYPE)) {
+      // Only the server side implementation allows unwrapping complex types based on the schema.
+      name_->insert(0, "server_");
+    }
   }
 
   return Status::OK();

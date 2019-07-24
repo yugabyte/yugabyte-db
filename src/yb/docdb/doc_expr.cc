@@ -4,11 +4,14 @@
 
 #include "yb/docdb/doc_expr.h"
 
+#include "yb/common/jsonb.h"
+
 #include "yb/client/schema.h"
 
 #include "yb/docdb/subdocument.h"
 
 #include "yb/util/decimal.h"
+#include "yb/util/bfql/bfunc.h"
 
 namespace yb {
 namespace docdb {
@@ -49,7 +52,8 @@ CHECKED_STATUS DocExprExecutor::GetTupleId(QLValue *result) const {
 
 CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
                                            const QLTableRow& table_row,
-                                           QLValue *result) {
+                                           QLValue *result,
+                                           const Schema *schema) {
   TSOpcode tsopcode = static_cast<TSOpcode>(tscall.opcode());
   switch (tsopcode) {
     case TSOpcode::kNoOp:
@@ -148,6 +152,9 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const QLBCallPB& tscall,
       }
       return Status::OK();
     }
+
+    case TSOpcode::kToJson:
+      return EvalParametricToJson(tscall.operands(0), table_row, result, schema);
   }
 
   result->SetNull();
@@ -249,6 +256,103 @@ CHECKED_STATUS DocExprExecutor::EvalAvg(const QLValue& val, QLValue *aggr_avg) {
   *map->mutable_keys(0) = count.value();
   *map->mutable_values(0) = sum.value();
   return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+namespace {
+
+void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
+  if (type->IsUserDefined() && value->value_case() == QLValuePB::kMapValue) {
+    // Change MAP<field_index:field_value> into MAP<field_name:field_value>
+    // in case of UDT.
+    const vector<string> field_names = type->udtype_field_names();
+    QLMapValuePB* map = value->mutable_map_value();
+    for (int i = 0; i < map->keys_size(); ++i) {
+      map->mutable_keys(i)->set_string_value(field_names[i]);
+    }
+  } else if (type->IsFrozen() && value->value_case() == QLValuePB::kFrozenValue) {
+    if (type->param_type()->IsUserDefined()) {
+      // Change FROZEN[field_value,...] into MAP<field_name:field_value>
+      // in case of FROZEN<UDT>.
+      const vector<string> field_names = type->param_type()->udtype_field_names();
+      QLSeqValuePB seq(value->frozen_value());
+      DCHECK_EQ(seq.elems_size(), field_names.size());
+      QLMapValuePB* map = value->mutable_map_value();
+
+      if (seq.elems_size() == field_names.size()) {
+        for (int i = 0; i < seq.elems_size(); ++i) {
+          map->add_keys()->set_string_value(field_names[i]);
+          *(map->add_values()) = seq.elems(i);
+        }
+      }
+    } else if (type->param_type()->main() == MAP) {
+      // Case: FROZEN<MAP>=[Key1,Value1,Key2,Value2] -> MAP<Key1:Value1, Key2:Value2>.
+      QLSeqValuePB seq(value->frozen_value());
+      DCHECK_EQ(seq.elems_size() % 2, 0);
+      QLMapValuePB* map = value->mutable_map_value();
+
+      for (int i = 0; i < seq.elems_size();) {
+        QLValuePB* const key = map->add_keys();
+        *key = seq.elems(i++);
+        UnpackUDTAndFrozen(type->param_type()->keys_type(), key);
+
+        QLValuePB* const value = map->add_values();
+        *value = seq.elems(i++);
+        UnpackUDTAndFrozen(type->param_type()->values_type(), value);
+      }
+    } else {
+      DCHECK(type->param_type()->main() == LIST || type->param_type()->main() == SET);
+      // Case: FROZEN<LIST/SET>
+      QLSeqValuePB* seq = value->mutable_frozen_value();
+      for (int i = 0; i < seq->elems_size(); ++i) {
+        UnpackUDTAndFrozen(type->param_type()->param_type(), seq->mutable_elems(i));
+      }
+    }
+  } else if (type->main() == LIST && value->value_case() == QLValuePB::kListValue) {
+    QLSeqValuePB* seq = value->mutable_list_value();
+    for (int i = 0; i < seq->elems_size(); ++i) {
+      UnpackUDTAndFrozen(type->param_type(), seq->mutable_elems(i));
+    }
+  } else if (type->main() == SET && value->value_case() == QLValuePB::kSetValue) {
+    QLSeqValuePB* seq = value->mutable_set_value();
+    for (int i = 0; i < seq->elems_size(); ++i) {
+      UnpackUDTAndFrozen(type->param_type(), seq->mutable_elems(i));
+    }
+  } else if (type->main() == MAP && value->value_case() == QLValuePB::kMapValue) {
+    QLMapValuePB* map = value->mutable_map_value();
+    DCHECK_EQ(map->keys_size(), map->values_size());
+    for (int i = 0; i < map->keys_size(); ++i) {
+      UnpackUDTAndFrozen(type->keys_type(), map->mutable_keys(i));
+      UnpackUDTAndFrozen(type->values_type(), map->mutable_values(i));
+    }
+  } else if (type->main() == TUPLE) {
+    // https://github.com/YugaByte/yugabyte-db/issues/936
+    LOG(FATAL) << "Tuple type not implemented yet";
+  }
+}
+
+} // namespace
+
+CHECKED_STATUS DocExprExecutor::EvalParametricToJson(const QLExpressionPB& operand,
+                                                     const QLTableRow& table_row,
+                                                     QLValue *result,
+                                                     const Schema *schema) {
+  QLValue val;
+  RETURN_NOT_OK(EvalExpr(operand, table_row, &val, schema));
+
+  // Repack parametric types like UDT, FROZEN, SET<FROZEN>, etc.
+  if (operand.has_column_id() && schema != nullptr) {
+    Result<const ColumnSchema&> col = schema->column_by_id(ColumnId(operand.column_id()));
+    DCHECK(col.ok());
+
+    if (col.ok()) {
+      UnpackUDTAndFrozen(col->type(), val.mutable_value());
+    }
+  }
+
+  // Direct call of ToJson() for elementary type.
+  return bfql::ToJson(&val, result);
 }
 
 //--------------------------------------------------------------------------------------------------

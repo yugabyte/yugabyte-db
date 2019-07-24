@@ -92,6 +92,8 @@ class PTBcall : public PTExpr {
 
   virtual CHECKED_STATUS CheckCounterUpdateSupport(SemContext *sem_context) const override;
 
+  CHECKED_STATUS CheckOperatorAfterArgAnalyze(SemContext *sem_context);
+
   virtual std::string QLName() const override;
   virtual bool IsAggregateCall() const override;
   virtual yb::bfql::TSOpcode aggregate_opcode() const override {
