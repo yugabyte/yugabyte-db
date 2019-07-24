@@ -32,8 +32,8 @@ class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
 TEST_F(RemoteBootstrapRocksDBTest, TestCheckpointDirectory) {
   string checkpoint_dir;
   {
-    scoped_refptr<YB_EDITION_NS_PREFIX RemoteBootstrapSession>
-        temp_session(new YB_EDITION_NS_PREFIX RemoteBootstrapSession(
+    scoped_refptr<enterprise::RemoteBootstrapSession>
+        temp_session(new enterprise::RemoteBootstrapSession(
             tablet_peer_, "TestTempSession", "FakeUUID", fs_manager(), nullptr /* nsessions */));
     CHECK_OK(temp_session->Init());
     checkpoint_dir = temp_session->checkpoint_dir_;

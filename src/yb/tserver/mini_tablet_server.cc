@@ -117,7 +117,7 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
 Status MiniTabletServer::Start() {
   CHECK(!started_);
 
-  gscoped_ptr<TabletServer> server(new YB_EDITION_NS_PREFIX TabletServer(opts_));
+  gscoped_ptr<TabletServer> server(new enterprise::TabletServer(opts_));
   RETURN_NOT_OK(server->Init());
 
   server::TEST_SetupConnectivity(server->messenger(), index_);

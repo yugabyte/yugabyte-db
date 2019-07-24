@@ -746,8 +746,8 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   LOG(INFO) << init_msg;
   TRACE(init_msg);
 
-  gscoped_ptr<YB_EDITION_NS_PREFIX RemoteBootstrapClient> rb_client(
-      new YB_EDITION_NS_PREFIX RemoteBootstrapClient(
+  gscoped_ptr<enterprise::RemoteBootstrapClient> rb_client(
+      new enterprise::RemoteBootstrapClient(
           tablet_id, fs_manager_, fs_manager_->uuid()));
 
   // Download and persist the remote superblock in TABLET_DATA_COPYING state.

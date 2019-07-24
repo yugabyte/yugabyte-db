@@ -56,7 +56,7 @@ using tablet::RaftGroupMetadataPtr;
 using tablet::TabletStatusListener;
 
 class RemoteBootstrapClientTest : public RemoteBootstrapTest {
-  typedef YB_EDITION_NS_PREFIX RemoteBootstrapClient RemoteBootstrapClientClass;
+  typedef enterprise::RemoteBootstrapClient RemoteBootstrapClientClass;
  public:
   explicit RemoteBootstrapClientTest(TableType table_type = DEFAULT_TABLE_TYPE)
       : RemoteBootstrapTest(table_type) {}

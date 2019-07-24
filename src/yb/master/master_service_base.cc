@@ -20,7 +20,7 @@ namespace master {
 
 // Available overloaded handlers of different types:
 
-YB_EDITION_NS_PREFIX CatalogManager* MasterServiceBase::handler(CatalogManager*) {
+enterprise::CatalogManager* MasterServiceBase::handler(CatalogManager*) {
   return server_->catalog_manager();
 }
 

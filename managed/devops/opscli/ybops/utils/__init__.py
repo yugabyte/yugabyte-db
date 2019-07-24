@@ -49,16 +49,12 @@ SSH_TIMEOUT = 16
 RSA_KEY_LENGTH = 2048
 RELEASE_VERSION_FILENAME = "version.txt"
 RELEASE_VERSION_PATTERN = "\d+.\d+.\d+.\d+"
-RELEASE_EDITION_ENTERPRISE = "ee"
-RELEASE_EDITION_COMMUNITY = "ce"
-RELEASE_EDITION_ALLOWED_VALUES = set([RELEASE_EDITION_ENTERPRISE, RELEASE_EDITION_COMMUNITY])
 RELEASE_REPOS = set(["devops", "yugaware", "yugabyte"])
 
 
 class ReleasePackage(object):
     def __init__(self):
         self.repo = None
-        self.edition = None
         self.version = None
         self.commit = None
         self.build_number = None
@@ -67,10 +63,9 @@ class ReleasePackage(object):
         self.machine = None
 
     @classmethod
-    def from_pieces(cls, repo, edition, version, commit, build_type=None):
+    def from_pieces(cls, repo, version, commit, build_type=None):
         obj = cls()
         obj.repo = repo
-        obj.edition = edition
         obj.version = version
         obj.commit = commit
         obj.build_type = build_type
@@ -96,12 +91,12 @@ class ReleasePackage(object):
         """
         There are two possible formats for our package names:
         - RC format, containing git hash and build type
-          eg: <repo>.<edition>-<A.B.C.D>-<commit>[-<build_type>]-<system>-<machine>.tar.gz
+          eg: <repo>-<A.B.C.D>-<commit>[-<build_type>]-<system>-<machine>.tar.gz
         - Release format (is always release, so no need for build_type):
-          eg: <repo>.<edition>-<A.B.C.D>-b<build_number>-<system>-<machine>.tar.gz
+          eg: <repo>-<A.B.C.D>-b<build_number>-<system>-<machine>.tar.gz
         """
-        # Always expect <repo>-<edition>-<version>.
-        pattern = "^([^-]+)-([^-]+)-({})".format(RELEASE_VERSION_PATTERN)
+        # Always expect <repo>-<version>.
+        pattern = "^([^-]+)-({})".format(RELEASE_VERSION_PATTERN)
         # If this is an official release, we expect a commit hash and maybe a build_type, else we
         # expect a "-b" and a build number.
         if is_official_release:
@@ -114,7 +109,7 @@ class ReleasePackage(object):
         match = re.match(pattern, package_name)
         if not match:
             raise YBOpsRuntimeError("Invalid package name format: {}".format(package_name))
-        self.repo, self.edition, self.version, commit_or_build_number = match.group(1, 2, 3, 4)
+        self.repo, self.version, commit_or_build_number = match.group(1, 2, 3)
         if is_official_release:
             self.build_number = commit_or_build_number
             self.commit = None
@@ -122,20 +117,18 @@ class ReleasePackage(object):
             self.build_number = None
             self.commit = commit_or_build_number
         if is_official_release:
-            self.system, self.machine = match.group(5, 6)
+            self.system, self.machine = match.group(4, 5)
         else:
-            # build_type should be None except for yugabyte. We ignore match 5 as -release
-            self.build_type, self.system, self.machine = match.group(6, 7, 8)
+            # build_type should be None except for yugabyte. We ignore match 4 as -release
+            self.build_type, self.system, self.machine = match.group(5, 6, 7)
 
     def validate(self):
         if self.repo not in RELEASE_REPOS:
             raise YBOpsRuntimeError("Invalid repo {}".format(self.repo))
-        if self.edition not in RELEASE_EDITION_ALLOWED_VALUES:
-            raise YBOpsRuntimeError("Invalid YB edition: {}".format(self.edition))
 
     def get_release_package_name(self):
-        return "{}-{}-{}-{}-{}.tar.gz".format(
-            self.repo, self.edition, self.get_release_name(), self.system, self.machine)
+        return "{}-{}-{}-{}.tar.gz".format(
+            self.repo, self.get_release_name(), self.system, self.machine)
 
     def get_release_name(self):
         # If we have a build number set, prioritize that to get the release version name, rather
@@ -370,15 +363,13 @@ def get_default_release_version(repo_path=None):
     return match.group(1)
 
 
-def get_release_file(repository, release_name, build_type=None,
-                     yb_edition=RELEASE_EDITION_ENTERPRISE):
+def get_release_file(repository, release_name, build_type=None):
     """This method checks the git commit sha and constructs
        the filename based on that and returns it.
     Args:
         repository (str): repository folder path where the release file exists
         release_file (str): release file name
         build_type (str): build type release/debug
-        yb_edition (str): the enterprise vs community edition of the software
     Returns:
         (str): Tar Filename
     """
@@ -391,8 +382,7 @@ def get_release_file(repository, release_name, build_type=None,
         os.makedirs(build_dir)
 
     cur_commit = subprocess.check_output(["git", "rev-parse", "HEAD"]).strip()
-    release = ReleasePackage.from_pieces(release_name, yb_edition, base_version, cur_commit,
-                                         build_type)
+    release = ReleasePackage.from_pieces(release_name, base_version, cur_commit, build_type)
     file_name = release.get_release_package_name()
     return os.path.join(build_dir, file_name)
 

@@ -271,7 +271,6 @@ print_report() {
         print_report_line "%s" "C/C++ compiler" "$YB_COMPILER_TYPE"
       fi
       print_report_line "%s" "Build directory" "${BUILD_ROOT:-undefined}"
-      print_report_line "%s" "Edition" "${YB_EDITION:-undefined}"
       print_report_line "%s" "Third-party dir" "${YB_THIRDPARTY_DIR:-undefined}"
       if using_linuxbrew; then
         print_report_line "%s" "Linuxbrew dir" "${YB_LINUXBREW_DIR:-undefined}"
@@ -817,18 +816,6 @@ while [[ $# -gt 0 ]]; do
     --skip-build|--sb)
       set_flags_to_skip_build
     ;;
-    --community|--comm)
-      export YB_EDITION=community
-    ;;
-    --enterprise|--ent)
-      export YB_EDITION=enterprise
-    ;;
-    --edition)
-      ensure_option_has_arg "$@"
-      export YB_EDITION=$2
-      validate_edition
-      shift
-    ;;
     --mvn-opts)
       ensure_option_has_arg "$@"
       user_mvn_opts+=" $2"
@@ -1073,8 +1060,6 @@ if [[ -f $do_not_use_local_thirdparty_flag_path ]] ||
 fi
 
 echo "Using third-party directory (YB_THIRDPARTY_DIR): $YB_THIRDPARTY_DIR"
-
-detect_edition
 
 if "$java_lint"; then
   log "--lint-java-code specified, only linting java code and then exiting."

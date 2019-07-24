@@ -81,7 +81,7 @@ using std::vector;
 using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
-using yb::tserver::YB_EDITION_NS_PREFIX RemoteBootstrapServiceImpl;
+using yb::tserver::enterprise::RemoteBootstrapServiceImpl;
 using strings::Substitute;
 
 DEFINE_int32(master_tserver_svc_num_threads, 10,
@@ -126,7 +126,7 @@ Master::Master(const MasterOptions& opts)
         "Master", opts, "yb.master", server::CreateMemTrackerForServer()),
     state_(kStopped),
     ts_manager_(new TSManager()),
-    catalog_manager_(new YB_EDITION_NS_PREFIX CatalogManager(this)),
+    catalog_manager_(new enterprise::CatalogManager(this)),
     path_handlers_(new MasterPathHandlers(this)),
     flush_manager_(new FlushManager(this, catalog_manager())),
     opts_(opts),

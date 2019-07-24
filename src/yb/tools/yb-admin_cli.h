@@ -43,7 +43,7 @@ namespace yb {
 namespace tools {
 
 class ClusterAdminClient;
-typedef YB_EDITION_NS_PREFIX ClusterAdminClient ClusterAdminClientClass;
+typedef enterprise::ClusterAdminClient ClusterAdminClientClass;
 
 // Tool to administer a cluster from the CLI.
 class ClusterAdminCli {

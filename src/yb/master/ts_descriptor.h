@@ -332,7 +332,7 @@ class TSDescriptor {
   // The (read replica) cluster uuid to which this tserver belongs.
   std::string placement_uuid_;
 
-  YB_EDITION_NS_PREFIX ProxyTuple proxies_;
+  enterprise::ProxyTuple proxies_;
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_;

@@ -91,7 +91,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     if (state_) {
       options = state_->options_;
     }
-    state_ = std::make_unique<YB_EDITION_NS_PREFIX ClusterLoadState>();
+    state_ = std::make_unique<enterprise::ClusterLoadState>();
     state_->options_ = options;
   }
 

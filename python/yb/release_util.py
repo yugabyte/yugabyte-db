@@ -25,12 +25,11 @@ THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 class ReleaseUtil(object):
     """Packages a YugaByte package with the appropriate file naming schema."""
-    def __init__(self, repository, build_type, edition, distribution_path, force, commit,
+    def __init__(self, repository, build_type, distribution_path, force, commit,
                  build_root):
         self.repo = repository
         self.build_type = build_type
         self.build_path = os.path.join(self.repo, 'build')
-        self.edition = edition
         self.distribution_path = distribution_path
         self.force = force
         self.commit = commit or ReleaseUtil.get_head_commit_hash()
@@ -166,8 +165,8 @@ class ReleaseUtil(object):
         if system == "linux":
             system = platform.linux_distribution(full_distribution_name=False)[0].lower()
 
-        release_file_name = "yugabyte-{}-{}-{}-{}.tar.gz".format(
-            self.edition, release_name, system, platform.machine().lower())
+        release_file_name = "yugabyte-{}-{}-{}.tar.gz".format(
+            release_name, system, platform.machine().lower())
         return os.path.join(self.build_path, release_file_name)
 
     def generate_release(self):
