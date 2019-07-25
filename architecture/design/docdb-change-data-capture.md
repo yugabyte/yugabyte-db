@@ -100,3 +100,5 @@ The CDC options for Elasticsearch include:
   ╚═══════════════════════════════════════════╝    ╚═══════════════════════════════════════════╝
 
 ```
+
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-change-data-capture.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
