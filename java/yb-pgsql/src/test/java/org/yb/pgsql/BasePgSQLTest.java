@@ -18,6 +18,7 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.postgresql.core.TransactionState;
 import org.postgresql.jdbc.PgConnection;
+import org.postgresql.util.PGobject;
 import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +41,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -656,12 +658,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rows;
   }
 
+  protected Comparable toComparable(Object obj) {
+    if (obj instanceof Comparable) {
+      return (Comparable)obj;
+    } else if (obj instanceof PGobject) {
+      return ((PGobject) obj).getValue(); // For PG_LSN type.
+    } else if (obj instanceof byte[]) {
+      return Arrays.toString((byte[])obj); // For BYTEA type.
+    }
+
+    throw new IllegalArgumentException(
+        "Cannot cast to Comparable " + obj.getClass().getSimpleName() + ": " + obj.toString());
+  }
+
   protected List<Row> getRowList(ResultSet rs) throws SQLException {
     List<Row> rows = new ArrayList<>();
     while (rs.next()) {
       Comparable[] elems = new Comparable[rs.getMetaData().getColumnCount()];
       for (int i = 0; i < elems.length; i++) {
-        elems[i] = (Comparable)rs.getObject(i + 1); // Column index starts from 1.
+        elems[i] = toComparable(rs.getObject(i + 1)); // Column index starts from 1.
       }
       rows.add(new Row(elems));
     }
