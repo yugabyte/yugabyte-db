@@ -549,6 +549,68 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
   jw.EndObject();
 }
 
+void MasterPathHandlers::HandleHealthCheck(
+    const Webserver::WebRequest& req, stringstream* output) {
+  // TODO: Lock not needed since other APIs handle it.  Refactor other functions accordingly
+
+  JsonWriter jw(output, JsonWriter::COMPACT);
+
+  SysClusterConfigEntryPB config;
+  Status s = master_->catalog_manager()->GetClusterConfig(&config);
+  if (!s.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(s.ToString());
+    return;
+  }
+
+  vector<std::shared_ptr<TSDescriptor> > descs;
+  const auto* ts_manager = master_->ts_manager();
+  ts_manager->GetAllDescriptors(&descs);
+
+  const auto& live_placement_uuid = config.replication_info().live_replicas().placement_uuid();
+  // Ignore read replica health for V1.
+
+  vector<std::shared_ptr<TSDescriptor> > dead_nodes;
+  uint64_t most_recent_uptime = std::numeric_limits<uint64_t>::max();
+
+  jw.StartObject();
+  {
+    // Iterate TabletServers, looking for health anomalies.
+    for (const auto & desc : descs) {
+      if (desc->placement_uuid() == live_placement_uuid) {
+        if (!master_->ts_manager()->IsTSLive(desc)) {
+          // 1. Are any of the TS marked dead in the master?
+          dead_nodes.push_back(desc);
+        } else {
+          // 2. Have any of the servers restarted lately?
+          most_recent_uptime = min(most_recent_uptime, desc->uptime_seconds());
+        }
+      }
+    }
+
+    jw.String("dead_nodes");
+    jw.StartArray();
+    for (auto const & ts_desc : dead_nodes) {
+      jw.String(ts_desc->permanent_uuid());
+    }
+    jw.EndArray();
+
+    jw.String("most_recent_uptime");
+    jw.Uint(most_recent_uptime);
+
+    // TODO: Add these health checks in a subsequent diff
+    //
+    // 3. is the load balancer busy moving tablets/leaders around
+    /* Use: CHECKED_STATUS IsLoadBalancerIdle(const IsLoadBalancerIdleRequestPB* req,
+                                              IsLoadBalancerIdleResponsePB* resp);
+     */
+    // 4. are any tablets currently underreplicated
+    // 5. do any of the TS have tablets they were not able to start up
+  }
+  jw.EndObject();
+}
+
 void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
                                               stringstream* output,
                                               bool skip_system_tables) {
@@ -602,7 +664,6 @@ void MasterPathHandlers::HandleCatalogManager(const Webserver::WebRequest& req,
     if (skip_system_tables && table_type_[i] == "System") {
       continue;
     }
-
     (*output) << "<div class='panel panel-default'>\n"
               << "<div class='panel-heading'><h2 class='panel-title'>" << table_type_[i]
               << " Tables</h2></div>\n";
@@ -1188,7 +1249,6 @@ void MasterPathHandlers::HandleGetClusterConfig(
   << "<pre class=\"prettyprint\">" << config.DebugString() << "</pre>";
 }
 
-
 Status MasterPathHandlers::Register(Webserver* server) {
   bool is_styled = true;
   bool is_on_nav_bar = true;
@@ -1205,27 +1265,18 @@ Status MasterPathHandlers::Register(Webserver* server) {
       is_on_nav_bar, "fa fa-server");
   cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
   server->RegisterPathHandler(
-    "/api/v1/tablet-servers", "Tserver Statuses",
-    std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
-                 this, _1, _2, false /* skip_system_tables */);
-  server->RegisterPathHandler(
       "/tables", "Tables",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar, "fa fa-table");
   cb = std::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
 
-  // The set of handlers not visible on the nav bar.
+  // The set of handlers not currently visible on the nav bar.
   server->RegisterPathHandler(
       "/table", "", std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb),
       is_styled, false);
   server->RegisterPathHandler(
       "/masters", "Masters", std::bind(&MasterPathHandlers::HandleMasters, this, _1, _2), is_styled,
       false);
-  cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
-  server->RegisterPathHandler(
-      "/dump-entities", "Dump Entities",
-      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   cb = std::bind(&MasterPathHandlers::HandleGetClusterConfig, this, _1, _2);
   server->RegisterPathHandler(
       "/cluster-config", "Cluster Config",
@@ -1236,6 +1287,21 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/tasks", "Tasks",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       false);
+
+  // JSON Endpoints
+  server->RegisterPathHandler(
+      "/api/v1/tablet-servers", "Tserver Statuses",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  cb = std::bind(&MasterPathHandlers::HandleHealthCheck, this, _1, _2 );
+  server->RegisterPathHandler(
+      "/api/v1/health-check", "Cluster Health Check",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
+  cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
+      this, _1, _2, false /* skip_system_tables */);
+  cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
+  server->RegisterPathHandler(
+      "/dump-entities", "Dump Entities",
+      std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
   return Status::OK();
 }
 
