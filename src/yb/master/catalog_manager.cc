@@ -343,6 +343,22 @@ class IndexInfoBuilder {
   IndexInfoPB& index_info_;
 };
 
+template<class RespClass>
+Status CheckIfTableDeletedOrNotRunning(TableInfo::lock_type* lock, RespClass* resp) {
+  // This covers both in progress and fully deleted objects.
+  if (lock->data().started_deleting()) {
+    Status s = STATUS_SUBSTITUTE(NotFound,
+        "The table '$0.$1' does not exist", lock->data().namespace_id(), lock->data().name());
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+  if (!lock->data().is_running()) {
+    Status s = STATUS_SUBSTITUTE(ServiceUnavailable,
+        "The table '$0.$1' is not running", lock->data().namespace_id(), lock->data().name());
+    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
+  }
+  return Status::OK();
+}
+
 } // namespace
 
 #define RETURN_NAMESPACE_NOT_FOUND(s, resp)                                       \
@@ -1986,8 +2002,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
                      partitions.size(), max_tablets);
     s = STATUS(InvalidArgument, msg);
     LOG(WARNING) << msg;
-    RETURN_NOT_OK(SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s));
-    return s;
+    return SetupError(resp->mutable_error(), MasterErrorPB::TOO_MANY_TABLETS, s);
   }
 
   // Verify that the number of replicas isn't larger than the number of live tablet
@@ -1998,8 +2013,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
                      "$1 tablet servers are alive.", num_replicas, num_live_tservers);
     LOG(WARNING) << msg;
     s = STATUS(InvalidArgument, msg);
-    RETURN_NOT_OK(SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s));
-    return s;
+    return SetupError(resp->mutable_error(), MasterErrorPB::REPLICATION_FACTOR_TOO_HIGH, s);
   }
 
   // Verify that placement requests are reasonable and we can satisfy the minimums.
@@ -2011,8 +2025,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
         msg = Substitute("Got placement info without cloud info set: $0", pb.ShortDebugString());
         s = STATUS(InvalidArgument, msg);
         LOG(WARNING) << msg;
-        RETURN_NOT_OK(SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s));
-        return s;
+        return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
       }
     }
 
@@ -2021,8 +2034,7 @@ Status CatalogManager::CheckValidPlacementInfo(const PlacementInfoPB& placement_
                        " ($1)", minimum_sum, num_replicas);
       s = STATUS(InvalidArgument, msg);
       LOG(WARNING) << msg;
-      RETURN_NOT_OK(SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s));
-      return s;
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     }
   }
   return Status::OK();
@@ -2185,10 +2197,7 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  if (l->data().started_deleting()) {
-    Status s = STATUS(NotFound, "The object was deleted", l->data().pb.state_msg());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   // 2. Verify if the create is in-progress.
   TRACE("Verify if the table creation is in progress for $0", table->ToString());
@@ -2471,11 +2480,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   TRACE(Substitute("Locking $0", table_type));
   auto l = table->LockForRead();
   DCHECK(is_index == !l->data().pb.indexed_table_id().empty());
-  if (l->data().started_deleting() || l->data().is_deleted()) {
-    Status s = STATUS_SUBSTITUTE(NotFound,
-        "The object '$0.$1' does not exist", GetNamespaceName(table), table->name());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   // Send a Truncate() request to each tablet in the table.
   SendTruncateTableRequest(table);
@@ -2526,10 +2531,7 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  if (l->data().started_deleting() || l->data().is_deleted()) {
-    Status s = STATUS(NotFound, "The object does not exist");
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   resp->set_done(!table->HasTasks(MonitoredTask::Type::ASYNC_TRUNCATE_TABLET));
   return Status::OK();
@@ -2963,10 +2965,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   TRACE("Locking table");
   auto l = table->LockForWrite();
-  if (l->data().started_deleting()) {
-    Status s = STATUS(NotFound, "The object was deleted", l->data().pb.state_msg());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   bool has_changes = false;
   const TableName table_name = l->data().name();
@@ -3091,10 +3090,7 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  if (l->data().started_deleting()) {
-    Status s = STATUS(NotFound, "The object was deleted", l->data().pb.state_msg());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   // 2. Verify if the alter is in-progress.
   TRACE("Verify if there is an alter operation in progress for $0", table->ToString());
@@ -3122,10 +3118,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  if (l->data().started_deleting()) {
-    Status s = STATUS(NotFound, "The object was deleted", l->data().pb.state_msg());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   if (l->data().pb.has_fully_applied_schema()) {
     // An AlterTable is in progress; fully_applied_schema is the last
@@ -5094,7 +5087,7 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
     s = SelectReplicasForTablet(ts_descs, tablet);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute(
-          "An error occured while selecting replicas for tablet $0: $1",
+          "An error occurred while selecting replicas for tablet $0: $1",
           tablet->tablet_id(), s.ToString()));
       tablet->table()->SetCreateTableErrorStatus(s);
       break;
@@ -5563,16 +5556,7 @@ Status CatalogManager::GetTableLocations(const GetTableLocationsRequestPB* req,
   }
 
   auto l = table->LockForRead();
-  if (l->data().started_deleting()) {
-    Status s = STATUS(NotFound, "The object was deleted",
-                                l->data().pb.state_msg());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
-
-  if (!l->data().is_running()) {
-    Status s = STATUS(ServiceUnavailable, "The object is not running");
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   vector<scoped_refptr<TabletInfo>> tablets_in_range;
   table->GetTabletsInRange(req, &tablets_in_range);
