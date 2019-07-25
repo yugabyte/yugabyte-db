@@ -720,4 +720,10 @@ ReadOptions::ReadOptions(bool cksum, bool cache)
              reinterpret_cast<ReadOptions*>(this));
 }
 
+std::atomic<int64_t> flush_tick_(1);
+
+int64_t FlushTick() {
+  return flush_tick_.fetch_add(1, std::memory_order_acq_rel);
+}
+
 }  // namespace rocksdb
