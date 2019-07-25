@@ -19,16 +19,18 @@
 
 # What is YugaByte DB?
 
-YugaByte DB is a high-performance, cloud-native distributed SQL database. Here are the salient points about it:
+YugaByte DB is a high-performance, cloud-native distributed SQL database. Here are its salient points:
 * Has a pluggable query layer, and supports two distributed SQL APIs:
     * **[YugaByte SQL (YSQL)](https://docs.yugabyte.com/latest/api/ysql/)** - PostgreSQL-compatible fully relational API
     * **[YugaByte Cloud QL (YCQL)](https://docs.yugabyte.com/latest/api/ycql/)** - Semi-relational SQL-like API with documents/indexing support and Apache Cassandra QL roots 
-* Automated sharding, consensus replication and distributed transactions architecture based on the Google Spanner design
-* Offers horizontal scalability, strong consistency, high availability
-* Extremely resilient - can tolerate disk, node, zone and region failures automatically
+* Automated sharding, Raft consensus replication and distributed transactions architecture based on the Google Spanner design
+* Offers horizontal write scalability, strong write consistency and tunable read consistency (strong reads by default with follower & observer reads as options)
+* Extremely resilient with native failover and repair - can tolerate disk, node, zone and region failures automatically
 * Supports geo-distributed deployments (multi-zone, multi-region, multi-cloud)
+* Built-in enterprise features such as distributed backups, in-flight/at-rest encryption and read replicas (for observer reads)
 * Can be deployed in public clouds and natively inside Kubernetes
-* Open source under the [Apache 2.0 license](https://github.com/YugaByte/yugabyte-db/blob/master/LICENSE.md)
+* Best fit for powering massively-scalable, globally-distributed, cloud-native applications that require absolute data correctness and high tolerance to failures
+* 100% open source under the [Apache 2.0 license](https://github.com/YugaByte/yugabyte-db/blob/master/LICENSE.md)
 
 Read more about YugaByte DB in our [Docs](https://docs.yugabyte.com/latest/introduction/).
 
@@ -80,7 +82,7 @@ As an open source project with a strong focus on the user community, we welcome 
 Source code in this repository is variously licensed under the Apache License 2.0 and the Polyform Free Trial License 1.0.0. A copy of each license can be found in the [licenses](licenses) directory.
 
 The build produces two sets of binaries:
-* The entire database with all its features are licensed under the Apache License 2.0
+* The entire database with all its features (including the enterprise ones) are licensed under the Apache License 2.0
 * The  binaries that contain `-managed` in the artifact and help run a managed service are licensed under the Polyform Free Trial License 1.0.0.
 
 > By default, the build options generate only the Apache License 2.0 binaries.
