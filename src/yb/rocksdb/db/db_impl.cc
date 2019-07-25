@@ -5698,10 +5698,21 @@ UserFrontierPtr DBImpl::GetMutableMemTableSmallestFrontier() {
   InstrumentedMutexLock l(&mutex_);
   UserFrontierPtr accumulated;
   for (auto cfd : *versions_->GetColumnFamilySet()) {
-    const auto* mem = cfd->mem();
-    if (cfd->imm()->NumNotFlushed() == 0 && !cfd->IsDropped() && !mem->IsEmpty()) {
-      UserFrontier::Update(
-          mem->GetSmallestFrontierLocked().get(), UpdateUserValueType::kSmallest, &accumulated);
+    if (cfd) {
+      const auto* mem = cfd->mem();
+      if (mem) {
+        if (!cfd->IsDropped() && cfd->imm()->NumNotFlushed() == 0 && !mem->IsEmpty()) {
+          UserFrontier::Update(
+              mem->GetSmallestFrontierLocked().get(), UpdateUserValueType::kSmallest, &accumulated);
+        }
+      } else {
+        YB_LOG_EVERY_N_SECS(WARNING, 5) << db_options_.log_prefix
+                                        << "[" << cfd->GetName()
+                                        << "] mem is expected to be non-nullptr here";
+      }
+    } else {
+      YB_LOG_EVERY_N_SECS(WARNING, 5) << db_options_.log_prefix
+                                      << "cfd is expected to be non-nullptr here";
     }
   }
   return accumulated;
