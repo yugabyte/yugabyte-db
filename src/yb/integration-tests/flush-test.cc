@@ -255,6 +255,7 @@ void FlushITest::TestFlushPicksOldestInactiveTabletAfterCompaction(bool with_res
   // granularity.
   FLAGS_memstore_size_mb = kServerLimitMB / 5;
   std::unordered_map<TabletId, int> inactive_tablets_to_flush;
+
   // Write to tables until compaction started and until we occupy 50% of kServerLimitMB by
   // memtables.
   int tables = 1; // First empty table is created by test setup.
