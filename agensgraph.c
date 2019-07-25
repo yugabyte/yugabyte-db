@@ -4,6 +4,7 @@
 #include "utils/builtins.h"
 
 #include "analyze.h"
+#include "nodes.h"
 
 PG_MODULE_MAGIC;
 
@@ -11,6 +12,7 @@ void _PG_init(void);
 
 void _PG_init(void)
 {
+    register_ag_nodes();
     post_parse_analyze_init();
 }
 

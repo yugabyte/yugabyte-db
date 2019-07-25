@@ -5,6 +5,12 @@ OBJS = ag_catalog.o \
        agensgraph.o \
        analyze.o \
        commands.o \
+       cypher_clause.o \
+       cypher_gram.o \
+       cypher_keywords.o \
+       cypher_parser.o \
+       nodes.o \
+       outfuncs.o \
        scan.o
 
 EXTENSION = agensgraph
@@ -19,6 +25,8 @@ REGRESS_OPTS = --load-extension=agensgraph
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
+
+cypher_gram.c: BISONFLAGS += --defines=$(basename $@)_def.h
 
 scan.c: FLEX_NO_BACKUP=yes
 

@@ -276,8 +276,8 @@ static pg_wchar surrogate_pair_to_codepoint(const pg_wchar hi,
 
 #define scan_errmsg(msg) _scan_errmsg(msg, &yyextra)
 static int _scan_errmsg(const char *msg, const ag_yy_extra *extra);
-#define scan_errposition() _scan_errposition(&yyextra)
-static int _scan_errposition(const ag_yy_extra *extra);
+#define scan_errposition() _scan_errposition(yyextra.last_loc, &yyextra)
+static int _scan_errposition(const int location, const ag_yy_extra *extra);
 
 /*
  * Avoid exit() on fatal scanner errors.
@@ -814,7 +814,7 @@ static void integer_literal_to_token(const char *s, ag_token *token,
     {
         ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
                         _scan_errmsg("invalid octal integer literal", extra),
-                        _scan_errposition(extra)));
+                        _scan_errposition(extra->last_loc, extra)));
     }
 
     // Treat it as a decimal if it is too large to be an "int" value.
@@ -1090,11 +1090,16 @@ static int _scan_errmsg(const char *msg, const ag_yy_extra *extra)
         return errmsg("%s at or near \"%s\"", msg, t);
 }
 
-static int _scan_errposition(const ag_yy_extra *extra)
+static int _scan_errposition(const int location, const ag_yy_extra *extra)
 {
     int pos;
 
-    pos = pg_mbstrlen_with_len(extra->scan_buf, extra->last_loc) + 1;
+    // no-op if location is unknown
+    if (location < 0)
+        return 0;
+
+    // convert byte offset to number of characters
+    pos = pg_mbstrlen_with_len(extra->scan_buf, location) + 1;
 
     return errposition(pos);
 }
@@ -1138,4 +1143,22 @@ void ag_scanner_destroy(ag_scanner_t scanner)
     strbuf_cleanup(&extra.literal_buf);
 
     ag_yylex_destroy(scanner);
+}
+
+int ag_scanner_errmsg(const char *msg, ag_scanner_t *scanner)
+{
+    ag_yy_extra extra;
+
+    extra = ag_yyget_extra(scanner);
+
+    return _scan_errmsg(msg, &extra);
+}
+
+int ag_scanner_errposition(const int location, ag_scanner_t *scanner)
+{
+    ag_yy_extra extra;
+
+    extra = ag_yyget_extra(scanner);
+
+    return _scan_errposition(location, &extra);
 }

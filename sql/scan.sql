@@ -44,7 +44,7 @@ $$) AS t(a int, b int, c int, d int, e int, f int, g int, h int, i int);
 -- 2^31 - 1, 2^31
 SELECT * FROM cypher($$
 RETURN 2147483647, 2147483648
-$$) AS t(a int, b text);
+$$) AS t(a int, b int8);
 
 --
 -- octal integer
@@ -61,12 +61,12 @@ $$) AS t(a int, b int, c int, d int, e int, f int, g int, h int);
 -- 2^31 - 1, 2^31
 SELECT * FROM cypher($$
 RETURN 000000000000, 017777777777, 0020000000000
-$$) AS t(a int, b int, c text);
+$$) AS t(a int, b int, c int8);
 
 -- 2^60 - 1, 2^64 - 1
 SELECT * FROM cypher($$
 RETURN 077777777777777777777, 01777777777777777777777
-$$) AS t(a text, b text);
+$$) AS t(a int8, b numeric);
 
 -- an invalid character after reading valid digits
 SELECT * FROM cypher($$
@@ -101,12 +101,12 @@ $$) AS t(a int, b int, c int, d int, e int, f int);
 -- 2^31 - 1, 2^31
 SELECT * FROM cypher($$
 RETURN 0x00000000, 0x7FFFFFFF, 0x080000000
-$$) AS t(a int, b int, c text);
+$$) AS t(a int, b int, c int8);
 
 -- 10^18, 2^64 - 1
 SELECT * FROM cypher($$
 RETURN 0xde0b6b3a7640000, 0xffffffffffffffff
-$$) AS t(a text, b text);
+$$) AS t(a int8, b numeric);
 
 -- an invalid character after reading valid digits
 SELECT * FROM cypher($$
@@ -129,7 +129,7 @@ $$) AS t(a int);
 
 SELECT * FROM cypher($$
 RETURN 03., 3.141592, .141592
-$$) AS t(a text, b text, c text);
+$$) AS t(a numeric, b numeric, c numeric);
 
 -- "0" and ".."
 SELECT * FROM cypher($$
@@ -142,7 +142,7 @@ $$) AS t(a text, b text, c text);
 
 SELECT * FROM cypher($$
 RETURN 3141592e-6, 3.141592E0, .3141592e+1
-$$) AS t(a text, b text, c text);
+$$) AS t(a numeric, b numeric, c numeric);
 
 -- invalid exponent parts
 
@@ -262,9 +262,31 @@ SELECT * FROM cypher($$RETURN "high surrogate \uD835$$) AS t(a text);
 -- identifier
 --
 
+-- check that they are accepted as identifier (all tests throw an error)
+
 SELECT * FROM cypher($$
-RETURN _$09A_z, A, z, `$`, `0`, ````
-$$) AS t(a text, b text, c text, d text, e text, f text);
+RETURN _$09A_z
+$$) AS t(id text);
+
+SELECT * FROM cypher($$
+RETURN A
+$$) AS t(id text);
+
+SELECT * FROM cypher($$
+RETURN z
+$$) AS t(id text);
+
+SELECT * FROM cypher($$
+RETURN `$`
+$$) AS t(id text);
+
+SELECT * FROM cypher($$
+RETURN `0`
+$$) AS t(id text);
+
+SELECT * FROM cypher($$
+RETURN ````
+$$) AS t(id text);
 
 -- zero-length quoted identifier
 SELECT * FROM cypher($$
@@ -280,6 +302,8 @@ $$) AS t(a text);
 -- parameter
 --
 
+-- This fails for now because there is no logic in parser implementation
+-- to handle parameters.
 SELECT * FROM cypher($$
 RETURN $_$09A_z, $A, $z
 $$) AS t(a text, b text, c text);
@@ -293,31 +317,3 @@ $cypher$) AS t(a text);
 SELECT * FROM cypher($$
 RETURN $0
 $$) AS t(a text);
-
---
--- operators and language constructs
---
-
-SELECT * FROM cypher($$
-RETURN +, -, *, /, %, ^
-$$) AS t(a text, b text, c text, d text, e text, f text);
-
-SELECT * FROM cypher($$
-RETURN <, <=, <>, =, >=, >
-$$) AS t(a text, b text, c text, d text, e text, f text);
-
-SELECT * FROM cypher($$
-RETURN ., +=, =~
-$$) AS t(a text, b text, c text);
-
-SELECT * FROM cypher($$
-RETURN (, )
-$$) AS t(a text, b text);
-
-SELECT * FROM cypher($$
-RETURN {, :, }, [, ]
-$$) AS t(a text, b text, c text, d text, e text);
-
-SELECT * FROM cypher($$
-RETURN .., |
-$$) AS t(a text, b text);

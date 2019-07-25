@@ -56,4 +56,7 @@ ag_scanner_t ag_scanner_create(const char *s);
 void ag_scanner_destroy(ag_scanner_t scanner);
 ag_token ag_scanner_next_token(ag_scanner_t scanner);
 
+int ag_scanner_errmsg(const char *msg, ag_scanner_t *scanner);
+int ag_scanner_errposition(const int location, ag_scanner_t *scanner);
+
 #endif

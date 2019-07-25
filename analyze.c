@@ -18,7 +18,8 @@
 #include "utils/syscache.h"
 
 #include "analyze.h"
-#include "scan.h"
+#include "cypher_clause.h"
+#include "cypher_parser.h"
 
 typedef struct cypher_parse_error_callback_arg
 {
@@ -37,9 +38,6 @@ static const char *expr_get_const_cstring(Node *expr, const char *source_str);
 static int get_query_location(const int location, const char *source_str);
 static void cypher_parse_error_callback(void *arg);
 static Query *parse_and_analyze_cypher(const char *query_str);
-static List *parse_cypher(const char *query_str);
-static int cypher_errposition(const int location, const char *query_str);
-static Query *generate_values_query_with_values(List *values);
 static void check_result_type(Query *query, RangeTblFunction *rtfunc,
                               ParseState *pstate);
 
@@ -333,120 +331,14 @@ static void cypher_parse_error_callback(void *arg)
 
 static Query *parse_and_analyze_cypher(const char *query_str)
 {
-    List *values;
-    Query *query;
-
-    values = parse_cypher(query_str);
-
-    query = generate_values_query_with_values(values);
-
-    return query;
-}
-
-static List *parse_cypher(const char *query_str)
-{
-    ag_scanner_t scanner;
-    struct ag_token tmp;
-    List *values;
-
-    scanner = ag_scanner_create(query_str);
-
-    tmp = ag_scanner_next_token(scanner);
-    if (tmp.type != AG_TOKEN_IDENTIFIER ||
-        strcasecmp(tmp.value.s, "return") != 0)
-    {
-        ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-                        errmsg("\"RETURN\" is expected"),
-                        cypher_errposition(tmp.location, query_str)));
-    }
-
-    values = NIL;
-    for (;;)
-    {
-        A_Const *n;
-
-        n = makeNode(A_Const);
-        tmp = ag_scanner_next_token(scanner);
-        switch (tmp.type)
-        {
-        case AG_TOKEN_INTEGER:
-            n->val.type = T_Integer;
-            n->val.val.ival = tmp.value.i;
-            n->location = tmp.location;
-            break;
-        case AG_TOKEN_DECIMAL:
-        case AG_TOKEN_STRING:
-        case AG_TOKEN_IDENTIFIER:
-        case AG_TOKEN_PARAMETER:
-        case AG_TOKEN_LT_GT:
-        case AG_TOKEN_LT_EQ:
-        case AG_TOKEN_GT_EQ:
-        case AG_TOKEN_DOT_DOT:
-        case AG_TOKEN_PLUS_EQ:
-        case AG_TOKEN_EQ_TILDE:
-            n->val.type = T_String;
-            n->val.val.str = pstrdup(tmp.value.s);
-            n->location = tmp.location;
-            break;
-        case AG_TOKEN_CHAR:
-        {
-            char buf[2] = {tmp.value.c, '\0'};
-
-            n->val.type = T_String;
-            n->val.val.str = pstrdup(buf);
-            n->location = tmp.location;
-            break;
-        }
-        default:
-            ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-                            errmsg("unexpected token type: %d", tmp.type),
-                            cypher_errposition(tmp.location, query_str)));
-            break;
-        }
-        values = lappend(values, n);
-
-        tmp = ag_scanner_next_token(scanner);
-        if (tmp.type == AG_TOKEN_CHAR && tmp.value.c == ',')
-            continue;
-        if (tmp.type == AG_TOKEN_NULL)
-            break;
-
-        ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-                        errmsg("\",\" or EOF is expected"),
-                        cypher_errposition(tmp.location, query_str)));
-    }
-
-    ag_scanner_destroy(scanner);
-
-    return values;
-}
-
-static int cypher_errposition(const int location, const char *query_str)
-{
-    int pos;
-
-    if (location < 0)
-        return 0;
-
-    pos = pg_mbstrlen_with_len(query_str, location) + 1;
-
-    return errposition(pos);
-}
-
-// XXX: dummy implementation
-static Query *generate_values_query_with_values(List *values)
-{
-    SelectStmt *sel;
+    List *stmt;
     ParseState *pstate;
     Query *query;
 
-    sel = makeNode(SelectStmt);
-    sel->valuesLists = list_make1(values);
+    stmt = parse_cypher(query_str);
 
     pstate = make_parsestate(NULL);
-
-    query = transformStmt(pstate, (Node *)sel);
-
+    query = transform_cypher_stmt(pstate, stmt);
     free_parsestate(pstate);
 
     return query;

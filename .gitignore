@@ -1,4 +1,6 @@
 /results/
 *.o
 *.so
+cypher_gram.c
+cypher_gram_def.h
 scan.c
