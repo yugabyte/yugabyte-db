@@ -55,6 +55,7 @@ const initialState = {
   // Maximum Number of nodes currently in use OnPrem case
   maxNumNodes: -1,
   assignPublicIP: true,
+  hasInstanceTypeChanged: false,
   useTimeSync: false,
   enableYSQL: false,
   enableNodeToNodeEncrypt: false,
@@ -90,9 +91,16 @@ export default class ClusterFields extends Component {
     this.hasFieldChanged = this.hasFieldChanged.bind(this);
     this.getCurrentUserIntent = this.getCurrentUserIntent.bind(this);
 
+    this.currentInstanceType = _.get(this.props.universe,
+      'currentUniverse.data.universeDetails.clusters[0].userIntent.instanceType');
+
     if (this.props.type === "Async" && isNonEmptyObject(this.props.universe.currentUniverse.data)) {
       if (isDefinedNotNull(getReadOnlyCluster(this.props.universe.currentUniverse.data.universeDetails.clusters))) {
-        this.state = { ...initialState, isReadOnlyExists: true, editNotAllowed: this.props.editNotAllowed};
+        this.state = {
+          ...initialState,
+          isReadOnlyExists: true,
+          editNotAllowed: this.props.editNotAllowed
+        };
       } else {
         this.state = { ...initialState, isReadOnlyExists: false, editNotAllowed: false};
       }
@@ -239,7 +247,11 @@ export default class ClusterFields extends Component {
 
     const currentProvider = this.getCurrentProvider(providerSelected);
     // Set default storageType once API call has completed, defaults to AWS provider if current provider is not GCP
-    if (typeof currentProvider !== 'undefined' && currentProvider.code === "gcp" && isNonEmptyArray(nextProps.cloud.gcpTypes.data) && !isNonEmptyArray(this.props.cloud.gcpTypes.data)) {
+    if (typeof currentProvider !== 'undefined' &&
+      currentProvider.code === "gcp" &&
+      isNonEmptyArray(nextProps.cloud.gcpTypes.data) &&
+      !isNonEmptyArray(this.props.cloud.gcpTypes.data)
+    ) {
       this.props.updateFormField(`${clusterType}.storageType`, DEFAULT_STORAGE_TYPES['GCP']);
       this.setState({"storageType": DEFAULT_STORAGE_TYPES['GCP']});
     } else if (isNonEmptyArray(nextProps.cloud.ebsTypes) && !isNonEmptyArray(this.props.cloud.ebsTypes)) {
@@ -607,8 +619,8 @@ export default class ClusterFields extends Component {
 
   configureUniverseNodeList() {
     const {universe: {universeConfigTemplate, currentUniverse}, formValues, clusterType} = this.props;
+    const { hasInstanceTypeChanged } = this.state;
     const currentProviderUUID = this.state.providerSelected;
-
     let universeTaskParams = {};
     if (isNonEmptyObject(universeConfigTemplate.data)) {
       universeTaskParams = _.cloneDeep(universeConfigTemplate.data);
@@ -645,6 +657,12 @@ export default class ClusterFields extends Component {
       },
       accessKeyCode: formValues[clusterType].accessKeyCode
     };
+
+    if (hasInstanceTypeChanged !==
+      (formValues[clusterType].instanceType !== this.currentInstanceType)
+    ) {
+      this.setState({ hasInstanceTypeChanged: !hasInstanceTypeChanged });
+    }
 
     if (isNonEmptyObject(formValues[clusterType].masterGFlags)) {
       userIntent["masterGFlags"] = formValues[clusterType].masterGFlags;
@@ -740,6 +758,7 @@ export default class ClusterFields extends Component {
 
   render() {
     const {clusterType, cloud, softwareVersions, accessKeys, universe, formValues} = this.props;
+    const { hasInstanceTypeChanged } = this.state;
     const self = this;
     let gflagArray = <span/>;
     let tagsArray = <span/>;
@@ -831,14 +850,14 @@ export default class ClusterFields extends Component {
           <span className="volume-info-field volume-info-count">
             <Field name={`${clusterType}.numVolumes`} component={YBUnControlledNumericInput}
               label="Number of Volumes" onInputChanged={self.numVolumesChanged}
-              readOnly={fixedNumVolumes || isFieldReadOnly} />
+              readOnly={fixedNumVolumes || !hasInstanceTypeChanged} />
           </span>
         );
         const volumeSize = (
           <span className="volume-info-field volume-info-size">
             <Field name={`${clusterType}.volumeSize`} component={YBUnControlledNumericInput}
               label="Volume Size" valueFormat={volumeTypeFormat} onInputChanged={self.volumeSizeChanged}
-              readOnly={fixedVolumeInfo || isFieldReadOnly} />
+              readOnly={fixedVolumeInfo || !hasInstanceTypeChanged} />
           </span>
         );
         deviceDetail = (
