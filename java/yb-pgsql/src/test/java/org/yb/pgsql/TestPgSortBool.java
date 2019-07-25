@@ -22,44 +22,30 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgSortChar extends BasePgSortingOrder {
-  private static final Logger LOG = LoggerFactory.getLogger(TestPgSortNumeric.class);
+public class TestPgSortBool extends BasePgSortingOrder {
+  private static final Logger LOG = LoggerFactory.getLogger(TestPgSortBool.class);
 
   // All typename MUST be in upper case for comparison purpose.
   static String testTypes[] = {
-    "CHARACTER (10)",
-    "CHARACTER VARYING (10)",
-    "TEXT"
+    "BOOLEAN",  // BOOL
   };
 
   static String[][] testValues = {
-    // CHAR(10)
-    { "'abc'", "'xyz'", "'lmn'" },
-
-    // VARCHAR(10)
-    { "'abc'", "'xyz'", "'lmn'" },
-
-    // TEXT
-    { "'abc'", "'xyz'", "'lmn'" },
+    // BOOLEAN
+    { "true", // = "True" = "'true'" = "'True'"
+      "false" // = "False" = "'false'" = "'False'"
+    },
   };
 
+
   static String[][] testInvalidValues = {
-    // CHAR(10)
-    { "'12345678901'", "NULL" },
-
-    // VARCHAR(10)
-    { "'12345678901'", "NULL" },
-
-    // TEXT
-    { "NULL" }
+    // BOOLEAN
+    { "NULL", "yes", "no", "on", "off", "0", "1" },
   };
 
   // Testing sorting order for the listed types.
   @Test
   public void testSort() throws Exception {
     RunTest(testTypes, testValues, testInvalidValues);
-
-    // Test invalid type names.
-    createTablesWithInvalidPrimaryKey("BIT", "VARBIT", "TSQUERY", "TSVECTOR");
   }
 }

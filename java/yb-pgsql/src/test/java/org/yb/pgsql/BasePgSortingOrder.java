@@ -23,6 +23,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Arrays;
+import java.util.Set;
+import java.util.HashSet;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -30,10 +32,13 @@ import static org.yb.AssertionWrappers.*;
 public class BasePgSortingOrder extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSortingOrder.class);
 
-  private static String supportedTypes[] = {
+  private static final Set<String> supportedTypes = new HashSet(Arrays.asList(
+    "BIGINT",
     "BIGSERIAL",
+    "BIT",
     "BIT (10)",
     "BIT VARYING (10)",
+    "VARBIT",
     "VARBIT (10)",
     "BOOLEAN",
     "BOX",
@@ -45,9 +50,21 @@ public class BasePgSortingOrder extends BasePgSQLTest {
     "CIDR",
     "CIRCLE",
     "DATE",
+    "DEC",
+    "DECIMAL",
     "DOUBLE PRECISION",
+    "FLOAT",
+    "FLOAT (3)",
+    "FLOAT2",
+    "FLOAT4",
+    "FLOAT8",
     "INET",
     "INT",
+    "INT2",
+    "INT4",
+    "INT8",
+    "INTEGER",
+    "INTERVAL",
     "JSON",
     "JSONB",
     "LINE",
@@ -55,41 +72,55 @@ public class BasePgSortingOrder extends BasePgSQLTest {
     "MACADDR",
     "MACADDR8",
     "MONEY",
+    "NUMERIC",
     "NUMERIC (10, 3)",
     "PATH",
     "PG_LSN",
     "POINT",
     "POLYGON",
     "REAL",
+    "SERIAL",
+    "SERIAL2",
+    "SERIAL4",
+    "SERIAL8",
     "SMALLINT",
     "SMALLSERIAL",
-    "SERIAL",
     "TEXT",
+    "TIME",
     "TIME (3) WITHOUT TIME ZONE",
     "TIME (3) WITH TIME ZONE",
+    "TIME WITHOUT TIME ZONE",
+    "TIME WITH TIME ZONE",
+    "TIMESTAMP",
     "TIMESTAMP (3) WITHOUT TIME ZONE",
     "TIMESTAMP (3) WITH TIME ZONE",
+    "TIMESTAMP WITHOUT TIME ZONE",
+    "TIMESTAMP WITH TIME ZONE",
+    "TIMESTAMPTZ",
+    "TIMETZ",
     "TSQUERY",
     "TSVECTOR",
     "TXID_SNAPSHOT",
     "UUID",
     "XML"
-  };
+  ));
 
   public String formTableName(String typeName) {
     String name = typeName.replaceAll("[ ()]", "_");
     return name;
   }
 
-  public void createTables(String[] typenames) throws SQLException {
+  public void createTables(String[] typeNames) throws SQLException {
     LOG.info("CREATE TABLES - Start");
-    for (String type_name : typenames) {
-      Arrays.stream(supportedTypes).anyMatch(str -> type_name.equals(str));
+    for (String typeName : typeNames) {
+      if (!supportedTypes.contains(typeName)) {
+        throw new RuntimeException("Unknown type name: " + typeName);
+      }
 
       try (Statement statement = connection.createStatement()) {
         String sql = String.format("CREATE TABLE tab_%s" +
                                    "(id bool, datum %s, PRIMARY KEY(id, datum));",
-                                   formTableName(type_name), type_name);
+                                   formTableName(typeName), typeName);
         statement.execute(sql);
         LOG.info("CREATED: " + sql);
       }
@@ -97,14 +128,31 @@ public class BasePgSortingOrder extends BasePgSQLTest {
     LOG.info("CREATE TABLES - Done");
   }
 
-  public void insertValues(String table_name, String[] values) throws Exception {
+  public void createTablesWithInvalidPrimaryKey(String... invalidTypeNames) throws SQLException {
+    LOG.info("CREATE TABLES WITH INVALID PRIMARY KEY - Start");
+    for (String typeName : invalidTypeNames) {
+      if (!supportedTypes.contains(typeName)) {
+        throw new RuntimeException("Unknown type name: " + typeName);
+      }
+
+      try (Statement statement = connection.createStatement()) {
+        String sql = String.format("CREATE TABLE tab_%s" +
+                                   "(id bool, datum %s, PRIMARY KEY(id, datum));",
+                                   formTableName(typeName), typeName);
+        runInvalidQuery(statement, sql);
+      }
+    }
+    LOG.info("CREATE TABLES WITH INVALID PRIMARY KEY - Done");
+  }
+
+  public void insertValues(String tableName, String[] values) throws Exception {
     LOG.info("INSERT VALUES - Start");
 
     // Constructing the SQL statement.
     // INSERT INTO tab_xxx VALUES (true, datum_value);
     // - Hash value should always true to keep all data into one tablet.
     // - DocDB should insert and read "datum_value" in ASC order.
-    String stmt = "INSERT INTO tab_" + table_name + " VALUES ";
+    String stmt = "INSERT INTO tab_" + tableName + " VALUES ";
     boolean first = true;
     for (String value : values) {
       if (first) {
@@ -125,11 +173,11 @@ public class BasePgSortingOrder extends BasePgSQLTest {
     LOG.info("INSERT VALUES - Done");
   }
 
-  public void insertInvalidValues(String table_name, String[] values) throws Exception {
+  public void insertInvalidValues(String tableName, String[] values) throws Exception {
     LOG.info("INSERT INVALID VALUES - Start");
 
     // Constructing the SQL statement.
-    String stmtFormat = "INSERT INTO tab_" + table_name + " VALUES (true, %s);";
+    String stmtFormat = "INSERT INTO tab_" + tableName + " VALUES (true, %s);";
     for (String value : values) {
       // Execute the statement.
       String stmt = String.format(stmtFormat, value);
@@ -141,9 +189,9 @@ public class BasePgSortingOrder extends BasePgSQLTest {
     LOG.info("INSERT INVALID VALUES - Done");
   }
 
-  public void selectAndCompare(String table_name, int row_count) throws Exception {
-    String pgsqlStmt = "SELECT datum FROM tab_" + table_name + " ORDER BY datum;";
-    String docdbStmt = "SELECT datum FROM tab_" + table_name + ";";
+  public void selectAndCompare(String tableName, int rowCount) throws Exception {
+    String pgsqlStmt = "SELECT datum FROM tab_" + tableName + " ORDER BY datum;";
+    String docdbStmt = "SELECT datum FROM tab_" + tableName + ";";
 
     // Make sure that DocDB order is exactly the same as Postgres ORDER BY.
     try (Statement statement = connection.createStatement()) {
@@ -156,11 +204,11 @@ public class BasePgSortingOrder extends BasePgSQLTest {
         docdbRows = getRowList(rs);
       }
 
-      LOG.info("Comparing result for " + table_name +
+      LOG.info("Comparing result for " + tableName +
                "\n  SQL Order = " + pgsqlRows.toString() +
                "\n  DOC Order = " + docdbRows.toString());
-      assertEquals(pgsqlRows.size(), row_count);
-      assertEquals(docdbRows.size(), row_count);
+      assertEquals(pgsqlRows.size(), rowCount);
+      assertEquals(docdbRows.size(), rowCount);
       assertEquals(pgsqlRows, docdbRows);
     }
   }
@@ -176,15 +224,15 @@ public class BasePgSortingOrder extends BasePgSQLTest {
     int count = typeNames.length;
     for (int i = 0; i < count; i++) {
       String typeName = typeNames[i];
-      String table_name = formTableName(typeName);
+      String tableName = formTableName(typeName);
       LOG.info("Testing sorting order for " + typeName);
 
       // Insert values.
-      insertValues(table_name, values[i]);
-      insertInvalidValues(table_name, invalidValues[i]);
+      insertValues(tableName, values[i]);
+      insertInvalidValues(tableName, invalidValues[i]);
 
       // Check the ordering in DocDB.
-      selectAndCompare(table_name, values[i].length);
+      selectAndCompare(tableName, values[i].length);
     }
   }
 
