@@ -29,6 +29,7 @@ namespace yb {
 namespace ql {
 
 class WhereExprState;
+class PTColumnDefinition;
 
 //--------------------------------------------------------------------------------------------------
 // This class represents the state variables for the analyzing process of one tree node. This
@@ -127,6 +128,11 @@ class SemState {
     allowing_column_refs_ = val;
   }
 
+  void set_processing_index_column(PTColumnDefinition *index_column) {
+    index_column_ = index_column;
+  }
+  void add_index_column_ref(int32_t col_id);
+
  private:
   // Context that owns this SemState.
   SemContext *sem_context_;
@@ -165,6 +171,8 @@ class SemState {
   // State variable for allowing column references.
   bool allowing_column_refs_ = false;
 
+  // State variable for processing index column.
+  PTColumnDefinition *index_column_ = nullptr;
 };
 
 }  // namespace ql

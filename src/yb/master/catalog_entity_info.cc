@@ -191,17 +191,21 @@ const Status TableInfo::GetSchema(Schema* schema) const {
 
 const std::string TableInfo::indexed_table_id() const {
   auto l = LockForRead();
-  return l->data().pb.has_indexed_table_id() ? l->data().pb.indexed_table_id() : "";
+  return l->data().pb.has_index_info()
+             ? l->data().pb.index_info().indexed_table_id()
+             : l->data().pb.has_indexed_table_id() ? l->data().pb.indexed_table_id() : "";
 }
 
 bool TableInfo::is_local_index() const {
   auto l = LockForRead();
-  return l->data().pb.is_local_index();
+  return l->data().pb.has_index_info() ? l->data().pb.index_info().is_local()
+                                       : l->data().pb.is_local_index();
 }
 
 bool TableInfo::is_unique_index() const {
   auto l = LockForRead();
-  return l->data().pb.is_unique_index();
+  return l->data().pb.has_index_info() ? l->data().pb.index_info().is_unique()
+                                       : l->data().pb.is_unique_index();
 }
 
 TableType TableInfo::GetTableType() const {

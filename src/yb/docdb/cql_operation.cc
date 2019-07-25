@@ -1009,22 +1009,52 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
         const IndexInfo::IndexColumn& index_column = index->column(idx);
         QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
-        auto result = new_row.GetValue(index_column.indexed_column_id);
-        if (!existing_row.IsEmpty()) {
-          // For each column in the index key, if there is a new value, see if the value is changed
-          // from the current value. Else, use the current value.
-          if (result) {
-            if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
-              index_key_changed = true;
+
+        // Column_id should be used without executing "colexpr" for the following cases (we want
+        // to avoid executing colexpr as it is less efficient).
+        // - Old PROTO messages (expr_case() == NOT SET).
+        // - When indexing expression is just a column-ref (expr_case == kColumnId)
+        if (index_column.colexpr.expr_case() == QLExpressionPB::ExprCase::EXPR_NOT_SET ||
+            index_column.colexpr.expr_case() == QLExpressionPB::ExprCase::kColumnId) {
+          auto result = new_row.GetValue(index_column.indexed_column_id);
+          if (!existing_row.IsEmpty()) {
+            // For each column in the index key, if there is a new value, see if the value is
+            // changed from the current value. Else, use the current value.
+            if (result) {
+              if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
+                index_key_changed = true;
+              }
+            } else {
+              result = existing_row.GetValue(index_column.indexed_column_id);
             }
-          } else {
-            result = existing_row.GetValue(index_column.indexed_column_id);
           }
-        }
-        if (result) {
-          key_column->mutable_value()->CopyFrom(*result);
+          if (result) {
+            key_column->mutable_value()->CopyFrom(*result);
+          }
+        } else {
+          // TODO(Oleg) INDEX SUPPORT - Remove the error STATUS and update the code accordingly.
+          return STATUS(NotSupported, "Indexing by expression is not yet supported");
+
+          QLValue result;
+          if (existing_row.IsEmpty()) {
+            RETURN_NOT_OK(EvalExpr(index_column.colexpr, new_row, &result));
+          } else {
+            // The following code needs to be updated to support various expression including JSONB.
+            // For each column in the index key, if there is a new value, see if the value is
+            // specified in the new value. Otherwise, use the current value.
+            if (new_row.IsColumnSpecified(index_column.indexed_column_id)) {
+              RETURN_NOT_OK(EvalExpr(index_column.colexpr, new_row, &result));
+              if (!new_row.MatchColumn(index_column.indexed_column_id, existing_row)) {
+                index_key_changed = true;
+              }
+            } else {
+              RETURN_NOT_OK(EvalExpr(index_column.colexpr, existing_row, &result));
+            }
+          }
+          key_column->mutable_value()->CopyFrom(result.value());
         }
       }
+
       // Prepare the covering columns.
       for (size_t idx = index->key_column_count(); idx < index->columns().size(); idx++) {
         const IndexInfo::IndexColumn& index_column = index->column(idx);
@@ -1041,6 +1071,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
         }
       }
     }
+
     // If the index key is changed, delete the current key.
     if (index_key_changed) {
       QLWriteRequestPB* index_request = NewIndexRequest(index, QLWriteRequestPB::QL_STMT_DELETE,
@@ -1048,13 +1079,27 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
       for (size_t idx = 0; idx < index->key_column_count(); idx++) {
         const IndexInfo::IndexColumn& index_column = index->column(idx);
         QLExpressionPB *key_column = NewKeyColumn(index_request, *index, idx);
-        auto result = existing_row.GetValue(index_column.indexed_column_id);
-        if (result) {
-          key_column->mutable_value()->CopyFrom(*result);
+
+        // For old message expr_case() == NOT SET.
+        // For new message expr_case == kColumnId when indexing expression is a column-ref.
+        if (index_column.colexpr.expr_case() != QLExpressionPB::ExprCase::kColumnId) {
+          // TODO(Oleg) INDEX SUPPORT - Remove the error STATUS and update the code accordingly.
+          return STATUS(NotSupported, "Indexing expression is not yet supported");
+
+          QLValue result;
+          RETURN_NOT_OK(EvalExpr(index_column.colexpr, existing_row, &result));
+          key_column->mutable_value()->CopyFrom(result.value());
+
+        } else {
+          auto result = existing_row.GetValue(index_column.indexed_column_id);
+          if (result) {
+            key_column->mutable_value()->CopyFrom(*result);
+          }
         }
       }
     }
   }
+
   return Status::OK();
 }
 

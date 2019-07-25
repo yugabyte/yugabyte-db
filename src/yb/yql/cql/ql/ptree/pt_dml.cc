@@ -55,7 +55,8 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
       column_refs_(memctx),
       static_column_refs_(memctx),
       pk_only_indexes_(memctx),
-      non_pk_only_indexes_(memctx) {
+      non_pk_only_indexes_(memctx),
+      filtering_exprs_(memctx) {
 }
 
 // Clone a DML tnode for re-analysis. Only the syntactic information populated by the parser should
@@ -80,7 +81,8 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other)
       column_refs_(memctx),
       static_column_refs_(memctx),
       pk_only_indexes_(memctx),
-      non_pk_only_indexes_(memctx) {
+      non_pk_only_indexes_(memctx),
+      filtering_exprs_(memctx) {
 }
 
 PTDmlStmt::~PTDmlStmt() {
@@ -253,7 +255,8 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
   ColumnOpCounter partition_key_counter;
   WhereExprState where_state(&where_ops_, &key_where_ops_, &subscripted_col_where_ops_,
                              &json_col_where_ops_, &partition_key_ops_, &op_counters,
-                             &partition_key_counter, opcode(), &func_ops_);
+                             &partition_key_counter, opcode(), &func_ops_,
+                             &filtering_exprs_);
 
   SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
   sem_state.SetWhereState(&where_state);
@@ -469,6 +472,9 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
                                        const ColumnDesc *col_desc,
                                        PTExpr::SharedPtr value,
                                        PTExprListNode::SharedPtr col_args) {
+  // Collecting all filtering expressions to help choosing INDEX when processing a DML.
+  filtering_exprs_->push_back(expr);
+
   // If this is a nested select from an uncovered index, ignore column that is uncovered.
   if (col_desc == nullptr && sem_context->IsUncoveredIndexSelect()) {
     return Status::OK();

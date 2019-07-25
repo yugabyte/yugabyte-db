@@ -100,15 +100,7 @@ class SemContext : public ProcessContext {
                              const PermissionType permission_type,
                              std::shared_ptr<client::YBTable>* table,
                              bool* is_system,
-                             MCVector<ColumnDesc>* col_descs = nullptr,
-                             MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
-
-  // Load index schema into symbol table.
-  CHECKED_STATUS LookupIndex(const TableId& index_id,
-                             const YBLocation& loc,
-                             std::shared_ptr<client::YBTable>* index_table,
-                             MCVector<ColumnDesc>* col_descs = nullptr,
-                             MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
+                             MCVector<ColumnDesc>* col_descs = nullptr);
 
   //------------------------------------------------------------------------------------------------
   // Access functions to current processing table and column.
@@ -325,8 +317,7 @@ class SemContext : public ProcessContext {
 
  private:
   CHECKED_STATUS LoadSchema(const std::shared_ptr<client::YBTable>& table,
-                            MCVector<ColumnDesc>* col_descs = nullptr,
-                            MCVector<PTColumnDefinition::SharedPtr>* column_definitions = nullptr);
+                            MCVector<ColumnDesc>* col_descs = nullptr);
 
   // Find symbol.
   const SymbolEntry *SeekSymbol(const MCString& name) const;

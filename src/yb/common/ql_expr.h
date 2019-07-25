@@ -127,6 +127,10 @@ class QLTableRow {
     return GetValue(col.rep());
   }
 
+  // Predicate if given column is specified in the row.
+  // NOTE: This returns true if column is specified even when its value is NULL.
+  bool IsColumnSpecified(ColumnIdRep col_id) const;
+
   // Clear the column value.
   void ClearValue(ColumnIdRep col_id);
   void ClearValue(const ColumnId& col) {

@@ -25,14 +25,20 @@ using google::protobuf::uint32;
 
 namespace yb {
 
+// When DocDB receive messages from older clients, those messages won't have "column_name" and
+// "colexpr" attributes.
 IndexInfo::IndexColumn::IndexColumn(const IndexInfoPB::IndexColumnPB& pb)
     : column_id(ColumnId(pb.column_id())),
-      indexed_column_id(ColumnId(pb.indexed_column_id())) {
+      column_name(pb.column_name()), // Default to empty.
+      indexed_column_id(ColumnId(pb.indexed_column_id())),
+      colexpr(pb.colexpr()) /* Default to empty message */ {
 }
 
 void IndexInfo::IndexColumn::ToPB(IndexInfoPB::IndexColumnPB* pb) const {
   pb->set_column_id(column_id);
+  pb->set_column_name(column_name);
   pb->set_indexed_column_id(indexed_column_id);
+  pb->mutable_colexpr()->CopyFrom(colexpr);
 }
 
 namespace {
@@ -120,6 +126,35 @@ bool IndexInfo::PrimaryKeyColumnsOnly(const Schema& indexed_schema) const {
 
 bool IndexInfo::IsColumnCovered(const ColumnId column_id) const {
   return covered_column_ids_.find(column_id) != covered_column_ids_.end();
+}
+
+int32_t IndexInfo::IsExprCovered(const string& expr_content) const {
+  // TODO(Oleg) INDEX SUPPORT
+  // - For this function to worl properly, the expression name MUST be serialized in a way that
+  //   guarantees its uniqueness.
+  //
+  // - Example:
+  //     CREATE TABLE tab (pk int primary key, a int, j jsonb);
+  //     CREATE INDEX jindex on tab(j->'b'->>'a');
+  //     SELECT a from tab;
+  //   In this example, clearly "jindex" doesn't cover column "a", but the name "a" is a substring
+  //   of "j->b->>a", so this function would return TRUE, which is wrong. To avoid this issue,
+  //   <column names> and JSONB <attribute names> must be escaped uniquely and differently.
+  //
+  // - Function "virtual string IndexColumnName() const" in "pt_expr.h" must be reimplemented
+  //   to avoid this issue.
+  LOG(FATAL) << "This function should not be activated before the above issue is addressed";
+
+  int32_t idx = 0;
+  for (auto col : columns_) {
+    if (expr_content.find(col.column_name) != expr_content.npos) {
+      // Column that is referenced by the expression is found in the index.
+      return idx;
+    }
+    idx++;
+  }
+
+  return -1;
 }
 
 IndexMap::IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes) {
