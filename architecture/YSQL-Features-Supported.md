@@ -96,3 +96,5 @@ Here are the features currently supported as of YugaByte DB v1.3, Jul 15 2019. T
     - [ ] TablePlus
     - [ ] pg_dump ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
     - [ ] pgbench ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
+
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/YSQL-Features-Supported.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
