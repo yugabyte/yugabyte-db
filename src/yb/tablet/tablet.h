@@ -407,7 +407,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Returns oldest mutable memtable write hybrid time in RocksDB or HybridTime::kMax if memtable
   // is empty.
-  HybridTime OldestMutableMemtableWriteHybridTime() const;
+  Result<HybridTime> OldestMutableMemtableWriteHybridTime() const;
 
   // Returns the location of the last rocksdb checkpoint. Used for tests only.
   std::string TEST_LastRocksDBCheckpointDir() { return last_rocksdb_checkpoint_dir_; }

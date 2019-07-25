@@ -296,9 +296,15 @@ TabletPeerPtr TSTabletManager::TabletToFlush() {
     const auto tablet = entry.second->shared_tablet();
     if (tablet) {
       const auto ht = tablet->OldestMutableMemtableWriteHybridTime();
-      if (ht < oldest_write_in_memstores) {
-        oldest_write_in_memstores = ht;
-        tablet_to_flush = entry.second;
+      if (ht.ok()) {
+        if (*ht < oldest_write_in_memstores) {
+          oldest_write_in_memstores = *ht;
+          tablet_to_flush = entry.second;
+        }
+      } else {
+        YB_LOG_EVERY_N_SECS(WARNING, 5) << Format(
+            "Failed to get oldest mutable memtable write ht for tablet $0: $1",
+            tablet->tablet_id(), ht.status());
       }
     }
   }

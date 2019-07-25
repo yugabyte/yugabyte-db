@@ -1711,7 +1711,10 @@ Result<HybridTime> Tablet::MaxPersistentHybridTime() const {
   return result;
 }
 
-HybridTime Tablet::OldestMutableMemtableWriteHybridTime() const {
+Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
   HybridTime result = HybridTime::kMax;
   for (auto* db : { regular_db_.get(), intents_db_.get() }) {
     if (db) {
