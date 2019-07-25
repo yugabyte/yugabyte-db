@@ -161,6 +161,7 @@ class PTSelectStmt : public PTDmlStmt {
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
   ExplainPlanPB AnalysisResultToPB() override;
+  bool CoversFully(const IndexInfo& index_info) const;
 
   // Execution opcode.
   virtual TreeNodeOpcode opcode() const override {
@@ -283,6 +284,7 @@ class PTSelectStmt : public PTDmlStmt {
   PTOrderByListNode::SharedPtr order_by_clause_;
   PTExpr::SharedPtr limit_clause_;
   PTExpr::SharedPtr offset_clause_;
+  MCVector<const PTExpr*> covering_exprs_;
 
   // -- The semantic analyzer will decorate this node with the following information --
 

@@ -181,9 +181,6 @@ typedef std::shared_ptr<ColumnIds> ColumnIdsPtr;
 // In the future, it may hold information about annotations, etc.
 class ColumnSchema {
  public:
-  typedef std::pair<JsonOperatorPB, QLValuePB> QLJsonOperation;
-  typedef std::vector<QLJsonOperation> QLJsonOperations;
-
   enum SortingType : uint8_t {
     kNotSpecified = 0,
     kAscending,
@@ -209,8 +206,7 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified,
-               const QLJsonOperations& json_ops = QLJsonOperations())
+               SortingType sorting_type = SortingType::kNotSpecified)
       : name_(std::move(name)),
         type_(type),
         is_nullable_(is_nullable),
@@ -218,8 +214,7 @@ class ColumnSchema {
         is_static_(is_static),
         is_counter_(is_counter),
         order_(order),
-        sorting_type_(sorting_type),
-        json_ops_(json_ops) {
+        sorting_type_(sorting_type) {
   }
 
   // convenience constructor for creating columns with simple (non-parametric) data types
@@ -230,10 +225,9 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified,
-               const QLJsonOperations& json_ops = QLJsonOperations())
+               SortingType sorting_type = SortingType::kNotSpecified)
       : ColumnSchema(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                     order, sorting_type, json_ops) {
+                     order, sorting_type) {
   }
 
   const std::shared_ptr<QLType>& type() const {
@@ -290,10 +284,6 @@ class ColumnSchema {
 
   const string &name() const {
     return name_;
-  }
-
-  const QLJsonOperations& json_ops() const {
-    return json_ops_;
   }
 
   // Return a string identifying this column, including its
@@ -365,7 +355,6 @@ class ColumnSchema {
   bool is_counter_;
   int32_t order_;
   SortingType sorting_type_;
-  QLJsonOperations json_ops_;
 };
 
 class ContiguousRow;

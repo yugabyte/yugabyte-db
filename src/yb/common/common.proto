@@ -195,7 +195,10 @@ message ColumnSchemaPB {
   optional uint32 sorting_type = 9 [default = 0];
   // Reserved for deprecated read_default_value and write_default_value fields.
   reserved 10, 11;
-  repeated QLJsonOperationPB json_operations = 13; // JSON attribute (for c->'a'->>'b' case).
+  // The JSON attribute was mistakenly placed here, but it is not used.
+  // To be safe, it's left here for now.
+  // JSON attribute (for c->'a'->>'b' case).
+  repeated QLJsonOperationPB OBSOLETE_json_operations = 13;
 }
 
 message TablePropertiesPB {
@@ -218,14 +221,31 @@ message SchemaPB {
 message IndexInfoPB {
   optional bytes table_id = 1; // Index table id.
   optional bytes indexed_table_id = 8; // Indexed table id.
-  optional uint32 version = 2; // Index table's schema version.
+  optional uint32 version = 2 [ default = 0]; // Index table's schema version.
   optional bool is_local = 3 [ default = false ];  // Whether the index is a local index
   optional bool is_unique = 7 [ default = false ]; // Whether the index is a unique index
 
   // Index column mapping.
+  // "colexpr" is used to compute the value of this column in an INDEX.
+  // - When a table is indexed by expressions, we create internal/hidden columns to store the index
+  //   value, and "value_expr" specifies the indexing expression.
+  // - As of 07/2019, only QLJsonColumnOperationsPB is allowed for "colexpr".
+  // - In the current index design & implementation, expression can only reference ONE column.
+  //
+  // Example:
+  //   Example for scalar index
+  //     TABLE (a, b, c)
+  //     INDEX (c) -> INDEX is a table whose column 'c' is referencing TABLE(c)
+  //     colexpr = ref to "c" column_id.
+  //   Example for JSON index
+  //     TABLE (a, b, j)
+  //     INDEX (j->>'b') -> INDEX is a table whose column 'j->>b' is referencing to TABLE(j)
+  //     colexpr = j->'b'
   message IndexColumnPB {
     optional uint32 column_id = 1;         // Column id in the index table.
+    optional string column_name = 3;       // Generated column name in the index table.
     optional uint32 indexed_column_id = 2; // Corresponding column id in indexed table.
+    optional QLExpressionPB colexpr = 4;   // Column value in INDEX.
   }
   repeated IndexColumnPB columns = 4;  // Indexed and covering columns.
   optional uint32 hash_column_count = 5;   // Number of hash columns in the index.

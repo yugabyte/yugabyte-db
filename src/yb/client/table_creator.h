@@ -89,6 +89,11 @@ class YBTableCreator {
   // For index table: sets whether this is a unique index.
   YBTableCreator& is_unique_index(bool is_unique_index);
 
+  // Return index_info for caller to fill index information.
+  IndexInfoPB* mutable_index_info() {
+    return &index_info_;
+  }
+
   // Set the timeout for the operation. This includes any waiting
   // after the create has been submitted (i.e if the create is slow
   // to be performed for a large table, it may time out and then
@@ -139,13 +144,11 @@ class YBTableCreator {
   master::ReplicationInfoPB replication_info_;
   bool has_replication_info_ = false;
 
-  std::string indexed_table_id_;
-
-  bool is_local_index_ = false;
-  bool is_unique_index_ = false;
+  // When creating index, proxy server construct index_info_, and master server will write it to
+  // the data-table being indexed.
+  IndexInfoPB index_info_;
 
   MonoDelta timeout_;
-
   bool wait_ = true;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableCreator);

@@ -707,6 +707,10 @@ boost::optional<const QLValuePB&> QLTableRow::GetValue(ColumnIdRep col_id) const
   return col_iter->second.value;
 }
 
+bool QLTableRow::IsColumnSpecified(ColumnIdRep col_id) const {
+  return col_map_.find(col_id) != col_map_.end();
+}
+
 void QLTableRow::ClearValue(ColumnIdRep col_id) {
   col_map_[col_id].value.Clear();
 }

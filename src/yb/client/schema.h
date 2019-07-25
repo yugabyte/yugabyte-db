@@ -166,9 +166,7 @@ class YBColumnSchema {
                  bool is_static = false,
                  bool is_counter = false,
                  int32_t order = 0,
-                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified,
-                 const ColumnSchema::QLJsonOperations& json_ops =
-                     ColumnSchema::QLJsonOperations());
+                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified);
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
 
@@ -187,7 +185,6 @@ class YBColumnSchema {
   bool is_counter() const;
   int32_t order() const;
   ColumnSchema::SortingType sorting_type() const;
-  const ColumnSchema::QLJsonOperations& json_ops() const;
 
  private:
   friend class YBColumnSpec;
