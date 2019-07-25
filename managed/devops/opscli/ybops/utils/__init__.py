@@ -104,7 +104,7 @@ class ReleasePackage(object):
             pattern += "-b(?P<build_number>[0-9]+)"
         else:
             # Add commit hash and maybe build type.
-            pattern += "-(?P<commit_hash>[^-]+)-(?P<build_type>([^-]+))?"
+            pattern += "-(?P<commit_hash>[^-]+)(-(?P<build_type>[^-]+))?"
         pattern += "-(?P<system>[^-]+)-(?P<machine>[^-]+)\.tar\.gz$"
         match = re.match(pattern, package_name)
         if not match:
