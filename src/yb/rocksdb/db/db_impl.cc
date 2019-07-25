@@ -2734,10 +2734,16 @@ Status DBImpl::FlushMemTable(ColumnFamilyData* cfd,
     WriteContext context;
     InstrumentedMutexLock guard_lock(&mutex_);
 
+    if (last_flush_at_tick_ > flush_options.ignore_if_flushed_after_tick) {
+      return STATUS(AlreadyPresent, "Mem table already flushed");
+    }
+
     if (cfd->imm()->NumNotFlushed() == 0 && cfd->mem()->IsEmpty()) {
       // Nothing to flush
       return Status::OK();
     }
+
+    last_flush_at_tick_ = FlushTick();
 
     WriteThread::Writer w;
     write_thread_.EnterUnbatched(&w, &mutex_);
@@ -5693,7 +5699,7 @@ UserFrontierPtr DBImpl::GetMutableMemTableSmallestFrontier() {
   UserFrontierPtr accumulated;
   for (auto cfd : *versions_->GetColumnFamilySet()) {
     const auto* mem = cfd->mem();
-    if (!cfd->IsDropped() && !mem->IsEmpty()) {
+    if (cfd->imm()->NumNotFlushed() == 0 && !cfd->IsDropped() && !mem->IsEmpty()) {
       UserFrontier::Update(
           mem->GetSmallestFrontierLocked().get(), UpdateUserValueType::kSmallest, &accumulated);
     }

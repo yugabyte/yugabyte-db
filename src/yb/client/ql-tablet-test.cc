@@ -42,6 +42,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -59,6 +60,9 @@ DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_int32(memstore_size_mb);
+DECLARE_int64(global_memstore_size_mb_max);
+DECLARE_bool(TEST_allow_stop_writes);
 
 namespace yb {
 namespace client {
@@ -864,6 +868,38 @@ TEST_F(QLTabletTest, ManySstFilesBootstrap) {
   LOG(INFO) << "Verify table";
 
   VerifyTable(1, key, &table1_);
+}
+
+class QLTabletTestSmallMemstore : public QLTabletTest {
+ public:
+  void SetUp() override {
+    FLAGS_memstore_size_mb = 1;
+    FLAGS_global_memstore_size_mb_max = 1;
+    QLTabletTest::SetUp();
+  }
+};
+
+TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
+  FLAGS_TEST_allow_stop_writes = false;
+
+  TestWorkload workload(cluster_.get());
+  workload.set_table_name(kTable1Name);
+  workload.set_write_timeout_millis(30000);
+  workload.set_num_tablets(1);
+  workload.set_num_write_threads(10);
+  workload.set_write_batch_size(1);
+  workload.set_payload_bytes(1_KB);
+  workload.Setup();
+  workload.Start();
+
+  while (workload.rows_inserted() < 75000) {
+    std::this_thread::sleep_for(10ms);
+  }
+
+  workload.StopAndJoin();
+
+  cluster_->Shutdown(); // Need to shutdown cluster before resetting clock back.
+  cluster_.reset();
 }
 
 } // namespace client

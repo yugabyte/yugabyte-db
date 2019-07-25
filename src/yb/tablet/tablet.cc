@@ -1321,19 +1321,20 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
   operation->state()->CompleteWithStatus(Status::OK());
 }
 
-Status Tablet::Flush(FlushMode mode, FlushFlags flags) {
+Status Tablet::Flush(FlushMode mode, FlushFlags flags, int64_t ignore_if_flushed_after_tick) {
   TRACE_EVENT0("tablet", "Tablet::Flush");
 
   rocksdb::FlushOptions options;
+  options.ignore_if_flushed_after_tick = ignore_if_flushed_after_tick;
   bool flush_intents = intents_db_ && HasFlags(flags, FlushFlags::kIntents);
   if (flush_intents) {
     options.wait = false;
-    intents_db_->Flush(options);
+    WARN_NOT_OK(intents_db_->Flush(options), "Flush intents DB");
   }
 
   if (HasFlags(flags, FlushFlags::kRegular) && regular_db_) {
     options.wait = mode == FlushMode::kSync;
-    regular_db_->Flush(options);
+    WARN_NOT_OK(regular_db_->Flush(options), "Flush regular DB");
   }
 
   if (flush_intents && mode == FlushMode::kSync) {

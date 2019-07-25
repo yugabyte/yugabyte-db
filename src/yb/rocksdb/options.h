@@ -1553,13 +1553,19 @@ struct WriteOptions {
         ignore_missing_column_families(false) {}
 };
 
+// On each call returned value is incremented by 1.
+// Could be used to track whether one action happened before another.
+int64_t FlushTick();
+
 // Options that control flush operations
 struct FlushOptions {
   // If true, the flush will wait until the flush is done.
   // Default: true
-  bool wait;
+  bool wait = true;
 
-  FlushOptions() : wait(true) {}
+  static constexpr int64_t kNeverIgnore = std::numeric_limits<int64_t>::max();
+
+  int64_t ignore_if_flushed_after_tick = kNeverIgnore;
 };
 
 // Get options based on some guidelines. Now only tune parameter based on
