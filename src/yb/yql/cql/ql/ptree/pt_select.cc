@@ -67,16 +67,6 @@ OpSelectivity GetOperatorSelectivity(const QLOperator op) {
   return OpSelectivity::kNone;
 }
 
-// Return whether the index covers the read fully.
-bool CoversFully(const IndexInfo& index_info, const MCSet<int32>& column_refs) {
-  for (const int32 table_col_id : column_refs) {
-    if (!index_info.IsColumnCovered(ColumnId(table_col_id))) {
-      return false;
-    }
-  }
-  return true;
-}
-
 // Class to compare selectivity of an index for a SELECT statement.
 class Selectivity {
  public:
@@ -96,9 +86,17 @@ class Selectivity {
   Selectivity(MemoryContext *memctx, const PTSelectStmt& stmt, const IndexInfo& index_info)
       : index_id_(index_info.table_id()),
         is_local_(index_info.is_local()),
-        covers_fully_(CoversFully(index_info, stmt.column_refs())) {
+        covers_fully_(stmt.CoversFully(index_info)),
+        index_info_(&index_info) {
     MCIdToIndexMap id_to_idx(memctx);
     for (size_t i = 0; i < index_info.key_column_count(); i++) {
+      // TODO (Oleg) INDEX SUPPORT - We might not need id_to_idx if expression is used.
+      if (false) {
+        // Map the column id if the index expression is just a column-ref.
+        if (index_info.column(i).colexpr.expr_case() == QLExpressionPB::ExprCase::kColumnId) {
+          id_to_idx.emplace(index_info.column(i).indexed_column_id, i);
+        }
+      }
       id_to_idx.emplace(index_info.column(i).indexed_column_id, i);
     }
     Analyze(memctx, stmt, id_to_idx, index_info.key_column_count(), index_info.hash_column_count());
@@ -191,6 +189,18 @@ class Selectivity {
       }
     }
 
+    // TODO(Oleg) INDEX SUPPORT - Remove 'false' to allow processing JSONB expression.
+    if (false && index_info_) {
+      for (const JsonColumnOp& col_op : stmt.json_col_where_ops()) {
+        int32_t idx = index_info_->IsExprCovered(col_op.expr()->QLName());
+        if (idx >= 0) {
+          ops[idx] = GetOperatorSelectivity(col_op.yb_op());
+        } else {
+          num_non_key_ops_++;
+        }
+      }
+    }
+
     // Find the length of fully specified prefix in index or indexed table.
     while (prefix_length_ < ops.size() && ops[prefix_length_] == OpSelectivity::kEqual) {
       prefix_length_++;
@@ -211,6 +221,7 @@ class Selectivity {
   bool ends_with_range_ = false; // Is there a range clause after prefix?
   size_t num_non_key_ops_ = 0; // How many non-primary-key column operators needs to be evaluated?
   bool covers_fully_ = false;  // Does the index cover the read fully? (true for indexed table)
+  const IndexInfo* index_info_ = nullptr;
 };
 
 } // namespace
@@ -236,7 +247,8 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
       having_clause_(having_clause),
       order_by_clause_(order_by_clause),
       limit_clause_(limit_clause),
-      offset_clause_(offset_clause) {
+      offset_clause_(offset_clause),
+      covering_exprs_(memctx) {
 }
 
 // Construct a nested select tnode to select from the index. Only the syntactic information
@@ -256,6 +268,7 @@ PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
       order_by_clause_(other.order_by_clause_),
       limit_clause_(other.limit_clause_),
       offset_clause_(other.offset_clause_),
+      covering_exprs_(memctx),
       index_id_(index_id),
       covers_fully_(covers_fully) {
 }
@@ -303,12 +316,19 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
   sem_state.set_allowing_aggregate(true);
   sem_state.set_allowing_column_refs(true);
+
   RETURN_NOT_OK(selected_exprs_->Analyze(sem_context));
+
   sem_state.set_allowing_aggregate(false);
   sem_state.set_allowing_column_refs(false);
 
   if (distinct_) {
     RETURN_NOT_OK(AnalyzeDistinctClause(sem_context));
+  }
+
+  // Collect covering expression.
+  for (auto expr_node : selected_exprs_->node_list()) {
+    covering_exprs_.push_back(expr_node.get());
   }
 
   // Check if this is an aggregate read.
@@ -495,6 +515,38 @@ CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context) {
   }
 
   return Status::OK();
+}
+
+// Return whether the index covers the read fully.
+bool PTSelectStmt::CoversFully(const IndexInfo& index_info) const {
+  // TODO(Oleg) INDEX SUPPORT - Remove 'false'. Traverse the expression lists to check index.
+  if (false) {
+    for (const PTExpr *expr : covering_exprs_) {
+      if (expr->opcode() == TreeNodeOpcode::kPTAllColumns) {
+        for (const ColumnDesc coldesc : static_cast<const PTAllColumns*>(expr)->columns()) {
+          if (index_info.IsExprCovered(coldesc.name()) < 0) {
+            return false;
+          }
+        }
+      } else if (expr->op1() != nullptr && index_info.IsExprCovered(expr->QLName()) < 0) {
+        return false;
+      }
+    }
+    for (const PTExpr *expr : filtering_exprs_) {
+      if (expr->op1() != nullptr && index_info.IsExprCovered(expr->QLName()) < 0) {
+        return false;
+      }
+    }
+  }
+
+  // TODO(Oleg) INDEX SUPPORT - Remove this for block. Since we walk the expression list, we don't
+  // need to walk the column_id list.
+  for (const int32 table_col_id : column_refs_) {
+    if (!index_info.IsColumnCovered(ColumnId(table_col_id))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // -------------------------------------------------------------------------------------------------

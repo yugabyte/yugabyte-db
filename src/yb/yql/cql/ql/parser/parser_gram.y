@@ -143,6 +143,7 @@ typedef PTTypeFieldListNode::SharedPtr PTypeFieldListNode;
 typedef PTAssignListNode::SharedPtr    PAssignListNode;
 
 typedef PTName::SharedPtr              PName;
+typedef PTIndexColumn::SharedPtr       PIndexColumn;
 typedef PTQualifiedName::SharedPtr     PQualifiedName;
 typedef PTQualifiedNameListNode::SharedPtr PQualifiedNameListNode;
 
@@ -291,7 +292,7 @@ using namespace yb::ql;
 
                           // Create table clauses.
                           OptTableElementList TableElementList
-                          ColQualList NestedColumnList columnList
+                          ColQualList NestedColumnList columnList index_column_list
 
                           // Alter table commands.
                           addColumnDefList dropColumnList alterPropertyList
@@ -370,6 +371,7 @@ using namespace yb::ql;
 
 // Name nodes.
 %type <PName>             indirection_el
+%type <PIndexColumn>      index_column
 
 %type <PQualifiedNameListNode>  insert_column_list any_name_list relation_expr_list
 
@@ -1375,19 +1377,45 @@ opt_column_list:
 ;
 
 NestedColumnList:
-  columnElem {
+  index_column {
     $$ = MAKE_NODE(@1, PTListNode, $1);
   }
-  | NestedColumnList ',' columnElem {
+  | NestedColumnList ',' index_column {
     $1->Append($3);
     $$ = $1;
   }
   | '(' NestedColumnList ')' {
     $$ = MAKE_NODE(@1, PTListNode, $2);
   }
-  | '(' NestedColumnList ')' ',' columnElem {
+  | '(' NestedColumnList ')' ',' index_column {
     $$ = MAKE_NODE(@1, PTListNode, $2);
     $$->Append($5);
+  }
+;
+
+// This can be "a_expr", but as of now, we only allow column_ref and json attributes.
+index_column:
+  columnref {
+    // A columnref expression refers to a previously defined column.
+    if (!$1->name()->IsSimpleName()) {
+      PARSER_ERROR_MSG(@0, INVALID_ARGUMENTS, "Cannot use qualified name in this context");
+    }
+    $$ = MAKE_NODE(@1, PTIndexColumn, $1->name()->column_name(), $1);
+  }
+  | columnref json_ref {
+    // Declare an index column here as generic expressions are not mapped to any pre-defined column.
+    PTExpr::SharedPtr expr = MAKE_NODE(@1, PTJsonColumnWithOperators, $1->name(), $2);
+    $$ = MAKE_NODE(@1, PTIndexColumn, parser_->MakeString(expr->IndexColumnName().c_str()), expr);
+  }
+;
+
+index_column_list:
+  index_column {
+    $$ = MAKE_NODE(@1, PTListNode, $1);
+  }
+  | index_column_list ',' index_column {
+    $1->Append($3);
+    $$ = $1;
   }
 ;
 
@@ -1404,10 +1432,6 @@ columnList:
 columnElem:
   ColId {
     $$ = MAKE_NODE(@1, PTName, $1);
-  }
-  | ColId json_ref {
-    PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $1);
-    $$ = MAKE_NODE(@1, PTJsonColumnWithOperators, name_node, $2);
   }
 ;
 
@@ -8122,10 +8146,10 @@ opt_include_clause:
   /*EMPTY*/ {
     $$ = nullptr;
   }
-  | INCLUDE '(' columnList ')' {
+  | INCLUDE '(' index_column_list ')' {
     $$ = $3;
   }
-  | COVERING '(' columnList ')' {
+  | COVERING '(' index_column_list ')' {
     $$ = $3;
   }
 ;

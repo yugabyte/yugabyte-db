@@ -110,7 +110,7 @@ class TreeListNode : public TreeNode {
     int nested_level = 0;
     int nested_count = 0;
 
-    for (auto tnode : node_list_) {
+    for (TreeNode::SharedPtr tnode : node_list_) {
       if (tnode->opcode() != TreeNodeOpcode::kPTListNode) {
         // Cast the node from (TreeNode*) to the given template type.
         DerivedType *node = static_cast<DerivedType*>(tnode.get());
@@ -149,6 +149,10 @@ class TreeListNode : public TreeNode {
 
   // Access function to node_list_.
   const MCList<MCSharedPtr<NodeType>>& node_list() const {
+    return node_list_;
+  }
+
+  MCList<MCSharedPtr<NodeType>>& node_list() {
     return node_list_;
   }
 

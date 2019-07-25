@@ -331,6 +331,8 @@ message SysTablesEntryPB {
   optional State state = 6 [ default = UNKNOWN ];
   optional bytes state_msg = 7;
 
+  // TODO(neil) OLDER INDEXes will always have the deprecated fields. To remove the old format, we
+  // first need to come up with a way to convert existing catalog content to new format.
   // Secondary indexes of the table.
   repeated IndexInfoPB indexes = 12;
 
@@ -685,6 +687,7 @@ message CreateTableRequestPB {
   optional NamespaceIdentifierPB namespace = 8;
 
   // For index table.
+  optional IndexInfoPB index_info = 16;
   optional bytes indexed_table_id = 9; // Indexed table id of this index.
   optional bool is_local_index = 10 [ default = false ];  // Is a local index?
   optional bool is_unique_index = 11 [ default = false ]; // Is a unique index?

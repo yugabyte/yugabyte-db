@@ -303,6 +303,52 @@ using yb::client::YBTableName;
 
 namespace {
 
+// Macros to access index information in CATALOG.
+//
+// NOTES from file master.proto for SysTablesEntryPB.
+// - For index table: [to be deprecated and replaced by "index_info"]
+//     optional bytes indexed_table_id = 13; // Indexed table id of this index.
+//     optional bool is_local_index = 14 [ default = false ];  // Whether this is a local index.
+//     optional bool is_unique_index = 15 [ default = false ]; // Whether this is a unique index.
+// - During transition period, we have to consider both fields and the following macros help
+//   avoiding duplicate protobuf version check thru out our code.
+
+#define PROTO_GET_INDEXED_TABLE_ID(tabpb) \
+  (tabpb.has_index_info() ? tabpb.index_info().indexed_table_id() \
+                          : tabpb.indexed_table_id())
+
+#define PROTO_GET_IS_LOCAL(tabpb) \
+  (tabpb.has_index_info() ? tabpb.index_info().is_local() \
+                          : tabpb.is_local_index())
+
+#define PROTO_GET_IS_UNIQUE(tabpb) \
+  (tabpb.has_index_info() ? tabpb.index_info().is_unique() \
+                          : tabpb.is_unique_index())
+
+#define PROTO_IS_INDEX(tabpb) \
+  (tabpb.has_index_info() || !tabpb.indexed_table_id().empty())
+
+#define PROTO_IS_TABLE(tabpb) \
+  (!tabpb.has_index_info() && tabpb.indexed_table_id().empty())
+
+#define PROTO_PTR_IS_INDEX(tabpb) \
+  (tabpb->has_index_info() || !tabpb->indexed_table_id().empty())
+
+#define PROTO_PTR_IS_TABLE(tabpb) \
+  (!tabpb->has_index_info() && tabpb->indexed_table_id().empty())
+
+#if (0)
+// Once the deprecated fields are obsolete, the above macros should be defined as the following.
+#define PROTO_GET_INDEXED_TABLE_ID(tabpb) (tabpb.index_info().indexed_table_id())
+#define PROTO_GET_IS_LOCAL(tabpb) (tabpb.index_info().is_local())
+#define PROTO_GET_IS_UNIQUE(tabpb) (tabpb.index_info().is_unique())
+#define PROTO_IS_INDEX(tabpb) (tabpb.has_index_info())
+#define PROTO_IS_TABLE(tabpb) (!tabpb.has_index_info())
+#define PROTO_PTR_IS_INDEX(tabpb) (tabpb->has_index_info())
+#define PROTO_PTR_IS_TABLE(tabpb) (!tabpb->has_index_info())
+
+#endif
+
 class IndexInfoBuilder {
  public:
   explicit IndexInfoBuilder(IndexInfoPB* index_info) : index_info_(*index_info) {
@@ -1661,13 +1707,22 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
     table_req.set_is_pg_catalog_table(true);
     table_req.set_table_id(table_id);
 
-    if (!l->data().pb.indexed_table_id().empty()) {
+    if (PROTO_IS_INDEX(l->data().pb)) {
       const uint32_t indexed_table_oid =
-          VERIFY_RESULT(GetPgsqlTableOid(l->data().pb.indexed_table_id()));
+        VERIFY_RESULT(GetPgsqlTableOid(PROTO_GET_INDEXED_TABLE_ID(l->data().pb)));
       const TableId indexed_table_id = GetPgsqlTableId(database_oid, indexed_table_oid);
+
+      // Set index_info.
+      // Previously created INDEX wouldn't have the attribute index_info.
+      if (l->data().pb.has_index_info()) {
+        table_req.mutable_index_info()->CopyFrom(l->data().pb.index_info());
+        table_req.mutable_index_info()->set_indexed_table_id(indexed_table_id);
+      }
+
+      // Set depricated field for index_info.
       table_req.set_indexed_table_id(indexed_table_id);
-      table_req.set_is_local_index(l->data().pb.is_local_index());
-      table_req.set_is_unique_index(l->data().pb.is_unique_index());
+      table_req.set_is_local_index(PROTO_GET_IS_LOCAL(l->data().pb));
+      table_req.set_is_unique_index(PROTO_GET_IS_UNIQUE(l->data().pb));
     }
 
     const Status s = CreatePgsqlSysTable(&table_req, &table_resp, rpc);
@@ -1701,8 +1756,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   Status s;
-
-  const char* const object_type = orig_req->indexed_table_id().empty() ? "table" : "index";
+  const char* const object_type = PROTO_PTR_IS_TABLE(orig_req) ? "table" : "index";
 
   // Copy the request, so we can fill in some defaults.
   CreateTableRequestPB req = *orig_req;
@@ -1737,7 +1791,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // TODO (ENG-1860) The referenced namespace and types retrieved/checked above could be deleted
   // some time between this point and table creation below.
   Schema schema = client_schema.CopyWithColumnIds();
-
   if (schema.table_properties().HasCopartitionTableId()) {
     return CreateCopartitionedTable(req, resp, rpc, schema, namespace_id);
   }
@@ -1814,7 +1867,27 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // For index table, populate the index info.
   scoped_refptr<TableInfo> indexed_table;
   IndexInfoPB index_info;
-  if (req.has_indexed_table_id()) {
+
+  if (req.has_index_info()) {
+    // Current message format.
+    TRACE("Looking up indexed table");
+    index_info.CopyFrom(req.index_info());
+    indexed_table = GetTableInfo(index_info.indexed_table_id());
+    if (indexed_table == nullptr) {
+      return STATUS(NotFound, "The indexed table does not exist");
+    }
+
+    // Assign column-ids that have just been computed and assigned to "index_info".
+    if (orig_req->table_type() != PGSQL_TABLE_TYPE) {
+      DCHECK_EQ(index_info.columns().size(), schema.num_columns())
+        << "Number of columns are not the same between index_info and index_schema";
+      // int colidx = 0;
+      for (int colidx = 0; colidx < schema.num_columns(); colidx++) {
+        index_info.mutable_columns(colidx)->set_column_id(schema.column_id(colidx));
+      }
+    }
+  } else if (req.has_indexed_table_id()) {
+    // Old client message format when rolling upgrade (Not having "index_info").
     TRACE("Looking up indexed table");
     indexed_table = GetTableInfo(req.indexed_table_id());
     if (indexed_table == nullptr) {
@@ -1829,6 +1902,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       RETURN_NOT_OK(index_info_builder.ApplyColumnMapping(indexed_schema, schema));
     }
   }
+
   TSDescriptorVector all_ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
   s = CheckValidReplicationInfo(replication_info, all_ts_descs, partitions, resp);
@@ -1860,6 +1934,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                       namespace_id, partitions, &index_info,
                                       &tablets, resp, &table));
   }
+
   if (PREDICT_FALSE(FLAGS_simulate_slow_table_create_secs > 0)) {
     LOG(INFO) << "Simulating slow table creation";
     SleepFor(MonoDelta::FromSeconds(FLAGS_simulate_slow_table_create_secs));
@@ -1899,7 +1974,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Wrote table to system table");
 
   // For index table, insert index info in the indexed table.
-  if (req.has_indexed_table_id() && orig_req->table_type() != PGSQL_TABLE_TYPE) {
+  if ((req.has_index_info() || req.has_indexed_table_id()) &&
+      orig_req->table_type() != PGSQL_TABLE_TYPE) {
     s = AddIndexInfoToTable(indexed_table, index_info);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(table.get(), tablets,
@@ -2209,10 +2285,10 @@ Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
   RETURN_NOT_OK(table->GetCreateTableErrorStatus());
 
   // 4. For index table, check if alter schema is done on the indexed table also.
-  if (resp->done() && !l->data().pb.indexed_table_id().empty()) {
+  if (resp->done() && PROTO_IS_INDEX(l->data().pb)) {
     IsAlterTableDoneRequestPB alter_table_req;
     IsAlterTableDoneResponsePB alter_table_resp;
-    alter_table_req.mutable_table()->set_table_id(l->data().pb.indexed_table_id());
+    alter_table_req.mutable_table()->set_table_id(PROTO_GET_INDEXED_TABLE_ID(l->data().pb));
     const Status s = IsAlterTableDone(&alter_table_req, &alter_table_resp);
     if (!s.ok()) {
       resp->mutable_error()->Swap(alter_table_resp.mutable_error());
@@ -2311,10 +2387,31 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
   SchemaToPB(schema, metadata->mutable_schema());
   partition_schema.ToPB(metadata->mutable_partition_schema());
   // For index table, set index details (indexed table id and whether the index is local).
-  if (req.has_indexed_table_id()) {
+  if (req.has_index_info()) {
+    metadata->mutable_index_info()->CopyFrom(req.index_info());
+
+    // Set the depricated fields also for compatibility reasons.
+    metadata->set_indexed_table_id(req.index_info().indexed_table_id());
+    metadata->set_is_local_index(req.index_info().is_local());
+    metadata->set_is_unique_index(req.index_info().is_unique());
+
+    // Setup index info.
+    if (index_info != nullptr) {
+      index_info->set_table_id(table->id());
+      metadata->mutable_index_info()->CopyFrom(*index_info);
+    }
+  } else if (req.has_indexed_table_id()) {
+    // Read data from the depricated field and update the new fields.
+    metadata->mutable_index_info()->set_indexed_table_id(req.indexed_table_id());
+    metadata->mutable_index_info()->set_is_local(req.is_local_index());
+    metadata->mutable_index_info()->set_is_unique(req.is_unique_index());
+
+    // Set the depricated fields also for compatibility reasons.
     metadata->set_indexed_table_id(req.indexed_table_id());
     metadata->set_is_local_index(req.is_local_index());
     metadata->set_is_unique_index(req.is_unique_index());
+
+    // Setup index info.
     if (index_info != nullptr) {
       index_info->set_table_id(table->id());
       metadata->mutable_index_info()->CopyFrom(*index_info);
@@ -2479,7 +2576,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 
   TRACE(Substitute("Locking $0", table_type));
   auto l = table->LockForRead();
-  DCHECK(is_index == !l->data().pb.indexed_table_id().empty());
+  DCHECK(is_index == PROTO_IS_INDEX(l->data().pb));
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   // Send a Truncate() request to each tablet in the table.
@@ -2663,7 +2760,7 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
   auto l = table->LockForWrite();
   resp->set_table_id(table->id());
 
-  if (is_index_table == l->data().pb.indexed_table_id().empty()) {
+  if (is_index_table == PROTO_IS_TABLE(l->data().pb)) {
     Status s = STATUS(NotFound, "The object does not exist");
     return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
   }
@@ -2704,7 +2801,7 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
                                         table_lcks, resp, rpc));
     }
   } else if (update_indexed_table) {
-    s = DeleteIndexInfoFromTable(l->data().pb.indexed_table_id(), table->id(), resp);
+    s = DeleteIndexInfoFromTable(PROTO_GET_INDEXED_TABLE_ID(l->data().pb), table->id(), resp);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute("An error occurred while deleting index info: $0",
                                        s.ToString()));
@@ -3146,7 +3243,7 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   resp->mutable_indexes()->CopyFrom(l->data().pb.indexes());
   if (l->data().pb.has_index_info()) {
     *resp->mutable_index_info() = l->data().pb.index_info();
-    resp->set_obsolete_indexed_table_id(l->data().pb.index_info().indexed_table_id());
+    resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->data().pb));
   }
 
   // Get namespace name by id.
@@ -3881,7 +3978,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
       if (!ltm->data().started_deleting() && ltm->data().namespace_id() == ns->id()) {
         Status s = STATUS(InvalidArgument,
                           Substitute("Cannot delete namespace which has $0: $1 [id=$2]",
-                                     ltm->data().pb.indexed_table_id().empty() ? "table" : "index",
+                                     PROTO_IS_TABLE(ltm->data().pb) ? "table" : "index",
                                      ltm->data().name(), entry.second->id()), req->DebugString());
         return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_IS_NOT_EMPTY, s);
       }
@@ -4046,7 +4143,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
       // For regular (indexed) table, insert table info and lock in the front of the list. Else for
       // index table, append them to the end. We do so so that we will commit and delete the indexed
       // table first before its indexes.
-      if (l->data().pb.indexed_table_id().empty()) {
+      if (PROTO_IS_TABLE(l->data().pb)) {
         tables.insert(tables.begin(), table);
         deleted_tables.insert(deleted_tables.begin(), deleted_table);
       } else {

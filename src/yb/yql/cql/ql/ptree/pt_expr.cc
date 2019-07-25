@@ -740,6 +740,70 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
   return Status::OK();
 }
 
+string PTRelationExpr::QLName() const {
+  switch (ql_op_) {
+    case QL_OP_NOOP:
+      return "NO OP";
+
+    // Logic operators that take one operand.
+    case QL_OP_NOT:
+      return string("NOT ") + op1()->QLName();
+    case QL_OP_IS_TRUE:
+      return op1()->QLName() + "IS TRUE";
+    case QL_OP_IS_FALSE:
+      return op1()->QLName() + "IS FALSE";
+
+      // Logic operators that take two or more operands.
+    case QL_OP_AND:
+      return op1()->QLName() + " AND " + op2()->QLName();
+    case QL_OP_OR:
+      return op1()->QLName() + " OR " + op2()->QLName();
+
+      // Relation operators that take one operand.
+    case QL_OP_IS_NULL:
+      return op1()->QLName() + " IS NULL";
+    case QL_OP_IS_NOT_NULL:
+      return op1()->QLName() + " IS NOT NULL";
+
+      // Relation operators that take two operands.
+    case QL_OP_EQUAL:
+      return op1()->QLName() + " == " + op2()->QLName();
+    case QL_OP_LESS_THAN:
+      return op1()->QLName() + " < " + op2()->QLName();
+    case QL_OP_LESS_THAN_EQUAL:
+      return op1()->QLName() + " <= " + op2()->QLName();
+    case QL_OP_GREATER_THAN:
+      return op1()->QLName() + " > " + op2()->QLName();
+    case QL_OP_GREATER_THAN_EQUAL:
+      return op1()->QLName() + " >= " + op2()->QLName();
+    case QL_OP_NOT_EQUAL:
+      return op1()->QLName() + " != " + op2()->QLName();
+
+    case QL_OP_LIKE:
+      return op1()->QLName() + " LIKE " + op2()->QLName();
+    case QL_OP_NOT_LIKE:
+      return op1()->QLName() + " NOT LIKE " + op2()->QLName();
+    case QL_OP_IN:
+      return op1()->QLName() + " IN " + op2()->QLName();
+    case QL_OP_NOT_IN:
+      return op1()->QLName() + " NOT IN " + op2()->QLName();
+
+      // Relation operators that take three operands.
+    case QL_OP_BETWEEN:
+      return op1()->QLName() + " BETWEEN " + op2()->QLName() + " AND " + op3()->QLName();
+    case QL_OP_NOT_BETWEEN:
+      return op1()->QLName() + " NOT BETWEEN " + op2()->QLName() + " AND " + op3()->QLName();
+
+      // Operators that take no operand. For use in "if" clause only currently.
+    case QL_OP_EXISTS:
+      return "EXISTS";
+    case QL_OP_NOT_EXISTS:
+      return "NOT EXISTS";
+  }
+
+  return "expr";
+}
+
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS PTOperatorExpr::SetupSemStateForOp1(SemState *sem_state) {
@@ -826,7 +890,6 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
   // Type resolution: Ref(x) should have the same datatype as (x).
   internal_type_ = desc_->internal_type();
   ql_type_ = desc_->ql_type();
-
   return Status::OK();
 }
 
@@ -895,7 +958,6 @@ PTJsonColumnWithOperators::~PTJsonColumnWithOperators() {
 }
 
 CHECKED_STATUS PTJsonColumnWithOperators::AnalyzeOperator(SemContext *sem_context) {
-
   // Look for a column descriptor from symbol table.
   RETURN_NOT_OK(name_->Analyze(sem_context));
   desc_ = GetColumnDesc(sem_context, name_->last_name());
@@ -941,103 +1003,6 @@ CHECKED_STATUS PTJsonColumnWithOperators::AnalyzeOperator(SemContext *sem_contex
 
 CHECKED_STATUS PTJsonColumnWithOperators::CheckLhsExpr(SemContext *sem_context) {
   return Status::OK();
-}
-
-CHECKED_STATUS PTJsonColumnWithOperators::SetupPrimaryKey(SemContext *sem_context) const {
-  PTColumnDefinition* column = sem_context->GetColumnDefinition(name_->first_name());
-  if (column == nullptr) {
-    return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
-  }
-
-  // Add the analyzed column to table. For CREATE INDEX, need to check for proper datatype and set
-  // column location because column definition is loaded from the indexed table definition actually.
-  PTCreateTable* const table = sem_context->current_create_table_stmt();
-  if (table->opcode() == TreeNodeOpcode::kPTCreateIndex) {
-    if (column->datatype() == nullptr) {
-      return sem_context->Error(this, "Unsupported index datatype",
-                                ErrorCode::SQL_STATEMENT_INVALID);
-    }
-
-    DCHECK_GT(operators_->size(), 0);
-    // JSONB type cannot be Key (because it's not indexable). Let's replace JSONB type by TEXT.
-    // For that new PTColumnDefinition will be created of fly with replaced data type.
-    // Replace JSONB column type by TEXT indexable type.
-    const PTColumnDefinition::SharedPtr copied_column = MCMakeShared<PTColumnDefinition>(
-        sem_context->PTreeMem(), *column, operators_,
-        MCMakeShared<PTVarchar>(sem_context->PTreeMem(), loc_));
-    sem_context->current_create_index_stmt()->AddColumnDefinition(copied_column);
-    column = copied_column.get();
-
-    column->set_loc(*this);
-    column->datatype()->set_loc(*this);
-  }
-
-  return table->AppendPrimaryColumn(sem_context, column);
-}
-
-CHECKED_STATUS PTJsonColumnWithOperators::SetupHashAndPrimaryKey(SemContext *sem_context) const {
-  PTColumnDefinition* column = sem_context->GetColumnDefinition(name_->first_name());
-  if (column == nullptr) {
-    return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
-  }
-
-  // Add the analyzed column to table. For CREATE INDEX, need to check for proper datatype and set
-  // column location because column definition is loaded from the indexed table definition actually.
-  PTCreateTable* const table = sem_context->current_create_table_stmt();
-  if (table->opcode() == TreeNodeOpcode::kPTCreateIndex) {
-    if (column->datatype() == nullptr) {
-      return sem_context->Error(this, "Unsupported index datatype",
-                                ErrorCode::SQL_STATEMENT_INVALID);
-    }
-
-    DCHECK_GT(operators_->size(), 0);
-    // JSONB type cannot be Key (because it's not indexable). Let's replace JSONB type by TEXT.
-    // For that new PTColumnDefinition will be created of fly with replaced data type.
-    // Replace JSONB column type by TEXT indexable type.
-    const PTColumnDefinition::SharedPtr copied_column = MCMakeShared<PTColumnDefinition>(
-        sem_context->PTreeMem(), *column, operators_,
-        MCMakeShared<PTVarchar>(sem_context->PTreeMem(), loc_));
-    sem_context->current_create_index_stmt()->AddColumnDefinition(copied_column);
-    column = copied_column.get();
-
-    column->set_loc(*this);
-    column->datatype()->set_loc(*this);
-  }
-
-  return table->AppendHashColumn(sem_context, column);
-}
-
-CHECKED_STATUS PTJsonColumnWithOperators::SetupCoveringIndexColumn(SemContext *sem_context) const {
-  PTColumnDefinition* column = sem_context->GetColumnDefinition(name_->first_name());
-  if (column == nullptr) {
-    return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
-  }
-  if (column->is_static()) {
-    return sem_context->Error(this, "Static column not supported as a covering index column",
-                              ErrorCode::SQL_STATEMENT_INVALID);
-  }
-
-  // Add the analyzed covering index column to table. Need to check for proper datatype and set
-  // column location because column definition is loaded from the indexed table definition actually.
-  PTCreateTable* const table = sem_context->current_create_table_stmt();
-  DCHECK(table->opcode() == TreeNodeOpcode::kPTCreateIndex);
-  if (column->datatype() == nullptr) {
-    return sem_context->Error(this, "Unsupported index datatype", ErrorCode::SQL_STATEMENT_INVALID);
-  }
-
-  DCHECK_GT(operators_->size(), 0);
-  // JSONB type cannot be Key (because it's not indexable). Let's replace JSONB type by TEXT.
-  // For that new PTColumnDefinition will be created of fly with replaced data type.
-  // Replace JSONB column type by TEXT indexable type.
-  const PTColumnDefinition::SharedPtr copied_column = MCMakeShared<PTColumnDefinition>(
-      sem_context->PTreeMem(), *column, operators_,
-      MCMakeShared<PTVarchar>(sem_context->PTreeMem(), loc_));
-  sem_context->current_create_index_stmt()->AddColumnDefinition(copied_column);
-  column = copied_column.get();
-
-  column->set_loc(*this);
-  column->datatype()->set_loc(*this);
-  return table->AppendColumnIfNotPresent(sem_context, column);
 }
 
 //--------------------------------------------------------------------------------------------------

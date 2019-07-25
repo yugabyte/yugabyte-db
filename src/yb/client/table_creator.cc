@@ -151,17 +151,17 @@ YBTableCreator& YBTableCreator::replication_info(const master::ReplicationInfoPB
 }
 
 YBTableCreator& YBTableCreator::indexed_table_id(const std::string& id) {
-  indexed_table_id_ = id;
+  index_info_.set_indexed_table_id(id);
   return *this;
 }
 
 YBTableCreator& YBTableCreator::is_local_index(bool is_local_index) {
-  is_local_index_ = is_local_index;
+  index_info_.set_is_local(is_local_index);
   return *this;
 }
 
 YBTableCreator& YBTableCreator::is_unique_index(bool is_unique_index) {
-  is_unique_index_ = is_unique_index;
+  index_info_.set_is_unique(is_unique_index);
   return *this;
 }
 
@@ -176,7 +176,7 @@ YBTableCreator& YBTableCreator::wait(bool wait) {
 }
 
 Status YBTableCreator::Create() {
-  const char *object_type = indexed_table_id_.empty() ? "table" : "index";
+  const char *object_type = index_info_.has_indexed_table_id() ? "index" : "table";
   if (table_name_.table_name().empty()) {
     return STATUS_SUBSTITUTE(InvalidArgument, "Missing $0 name", object_type);
   }
@@ -253,10 +253,15 @@ Status YBTableCreator::Create() {
   req.set_num_tablets(num_tablets_);
   req.mutable_partition_schema()->CopyFrom(partition_schema_);
 
-  if (!indexed_table_id_.empty()) {
-    req.set_indexed_table_id(indexed_table_id_);
-    req.set_is_local_index(is_local_index_);
-    req.set_is_unique_index(is_unique_index_);
+  // Index mapping with data-table being indexed.
+  if (index_info_.has_indexed_table_id()) {
+    req.mutable_index_info()->CopyFrom(index_info_);
+
+    // For compatibility reasons, set the old fields just in case we have new clients talking to
+    // old master server during rolling upgrade.
+    req.set_indexed_table_id(index_info_.indexed_table_id());
+    req.set_is_local_index(index_info_.is_local());
+    req.set_is_unique_index(index_info_.is_unique());
   }
 
   auto deadline = CoarseMonoClock::Now() +
