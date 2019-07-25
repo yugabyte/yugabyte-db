@@ -950,6 +950,9 @@ class DBImpl : public DB {
   // Indicate DB was opened successfully
   bool opened_successfully_;
 
+  // Returns flush tick of the last flush of this DB.
+  int64_t last_flush_at_tick_ = 0;
+
   // No copying allowed
   DBImpl(const DBImpl&);
   void operator=(const DBImpl&);

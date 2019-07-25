@@ -266,6 +266,7 @@ void TSTabletManager::MaybeFlushTablet() {
          (iteration++ == 0 && FLAGS_pretend_memory_exceeded_enforce_flush)) {
     YB_LOG_EVERY_N_SECS(INFO, 5) << Format("Memstore global limit of $0 bytes reached, looking for "
                                            "tablet to flush", memory_monitor()->limit());
+    auto flush_tick = rocksdb::FlushTick();
     TabletPeerPtr tablet_to_flush = TabletToFlush();
     // TODO(bojanserafimov): If tablet_to_flush flushes now because of other reasons,
     // we will schedule a second flush, which will unnecessarily stall writes for a short time. This
@@ -274,7 +275,9 @@ void TSTabletManager::MaybeFlushTablet() {
       LOG(INFO) << Format(
           "Flushing tablet $0 with oldest memstore write at $1", tablet_to_flush->tablet_id(),
           tablet_to_flush->tablet()->OldestMutableMemtableWriteHybridTime());
-      WARN_NOT_OK(tablet_to_flush->tablet()->Flush(tablet::FlushMode::kAsync),
+      WARN_NOT_OK(
+          tablet_to_flush->tablet()->Flush(
+              tablet::FlushMode::kAsync, tablet::FlushFlags::kAll, flush_tick),
           Substitute("Flush failed on $0", tablet_to_flush->tablet_id()));
       for (auto listener : TEST_listeners) {
         listener->StartedFlush(tablet_to_flush->tablet_id());

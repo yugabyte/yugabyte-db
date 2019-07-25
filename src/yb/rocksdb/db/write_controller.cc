@@ -22,11 +22,18 @@
 
 #include <atomic>
 #include <cassert>
+
 #include "yb/rocksdb/env.h"
+
+#include "yb/util/flag_tags.h"
+
+DEFINE_test_flag(bool, TEST_allow_stop_writes, true,
+                 "Whether it is allowed to stop writes in tests.");
 
 namespace rocksdb {
 
 std::unique_ptr<WriteControllerToken> WriteController::GetStopToken() {
+  CHECK(FLAGS_TEST_allow_stop_writes);
   ++total_stopped_;
   return std::unique_ptr<WriteControllerToken>(new StopWriteToken(this));
 }
