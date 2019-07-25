@@ -144,3 +144,56 @@ Oid get_graph_namespace(const Name graph_name)
 
     return nsp_id;
 }
+
+// Function updates graph name in ag_graph table.
+void update_graph_name(const Name graph_name, const Name new_name)
+{
+    ScanKeyData scan_keys[1];
+    Relation ag_graph;
+    SysScanDesc scan_desc;
+    TupleDesc tuple_desc;
+    HeapTuple cur_tuple;
+    HeapTuple new_tuple;
+    Datum repl_values[Natts_ag_graph];
+    bool repl_isnull[Natts_ag_graph];
+    bool do_replace[Natts_ag_graph];
+
+    // open and scan ag_graph for graph name
+    ScanKeyInit(&scan_keys[0], Anum_ag_graph_name, BTEqualStrategyNumber,
+                F_NAMEEQ, NameGetDatum(graph_name));
+
+    ag_graph = heap_open(ag_graph_relation_id(), RowExclusiveLock);
+
+    tuple_desc = RelationGetDescr(ag_graph);
+
+    scan_desc = systable_beginscan(ag_graph, ag_graph_name_index_id(), true,
+                                   NULL, 1, scan_keys);
+
+    cur_tuple = systable_getnext(scan_desc);
+
+    if (!HeapTupleIsValid(cur_tuple)) {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                 errmsg("graph \"%s\" does not exist", NameStr(*graph_name))));
+    }
+
+    // modify (which creates a new tuple) the current tuple's graph name
+    MemSet(repl_values, 0, sizeof(repl_values));
+    MemSet(repl_isnull, false, sizeof(repl_isnull));
+    MemSet(do_replace, false, sizeof(do_replace));
+
+    repl_values[Anum_ag_graph_name - 1] = NameGetDatum(new_name);
+    repl_isnull[Anum_ag_graph_name - 1] = false;
+    do_replace[Anum_ag_graph_name - 1] = true;
+
+    new_tuple = heap_modify_tuple(cur_tuple, tuple_desc, repl_values,
+                                  repl_isnull, do_replace);
+
+    // update the current tuple with the new tuple
+    CatalogTupleUpdate(ag_graph, &cur_tuple->t_self, new_tuple);
+
+    // end scan and close ag_graph
+    systable_endscan(scan_desc);
+
+    heap_close(ag_graph, RowExclusiveLock);
+}
