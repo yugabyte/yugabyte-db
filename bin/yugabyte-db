@@ -65,7 +65,7 @@ YUGABYTE_API_CLIENT_PROGRAMS = {
 }
 YUGAWARE_CONF = os.path.join(DEFAULT_CONF_DIR, "application.default.conf")
 WEBSERVER_DB = "system_wbsvr"
-
+DEMO_DB_PREFIX = "yb_demo_"
 
 class YugaByteProcessManager(object):
     def __init__(self):
@@ -116,93 +116,84 @@ class YugaByteProcessManager(object):
         cmd = [path, "127.0.0.1", self.configs.saved_data.get("ycql_port")]
         os.execv(path, cmd)
 
-    # Create retail database if it does not exist.
-    def create_demo_retail(self):
+    # Create target demo database if it does not exist.
+    def create_demo(self):
         if self.get_failed_processes():
             Output.log_error_and_exit("YugaByte DB is not running. Cannot create sample database.")
 
-        demo_db = "yb_demo_retail"
+        demo_db = self.configs.temp_data.get("demo_db")
+        db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         if not ysql_proxy.db_exists(demo_db):
-            Output.print_out("Initializing demo retail database...")
+            Output.print_out("Initializing {} demo database...".format(demo_db))
             # Create demo database.
-            Output.log("Creating database {}...".format(demo_db))
-            _, err = ysql_proxy.create_db(demo_db)
+            Output.log("Creating database {}...".format(db_name))
+            _, err = ysql_proxy.create_db(db_name)
             if err:
                 Output.log_error_and_exit("Failed to create {} database: {}".format(demo_db, err))
 
             # Populate demo database.
-            Output.log("Populating {} with sample data...".format(demo_db))
+            Output.log("Populating {} with sample data...".format(db_name))
             files = []
             for name in ("schema.sql", "products.sql", "users.sql", "reviews.sql", "orders.sql"):
                 files.append(os.path.join(YUGABYTE_DIR, "share", name))
-            _, err = ysql_proxy.load_files(files, db=demo_db)
+            _, err = ysql_proxy.load_files(files, db=db_name)
             if err:
                 Output.log_error_and_exit("Failed to populate data to {}: {}".format(demo_db, err))
 
             msg = "Successfully loaded sample database!"
-            Output.log(msg)
+            Output.print_and_log(msg)
             Output.print_out(
-                Output.make_green(msg) +
-                "\n\n################################\n"
-                "#  WELCOME TO THE retail DEMO  #\n"
+                "\n################################\n"
+                "#  WELCOME TO THE {} DEMO  #\n"
                 "################################\n"
-                "    Database: yb_demo_retail\n"
-                "    |_ users\n"
-                "    |_ products\n"
-                "    |_ orders\n"
-                "    |_ reviews\n\n"
+                "{}"
                 "################################\n"
                 "# NEXT STEP: RUN THE DEMO\n"
                 "################################\n"
-                "$ yugabyte-db demo run retail\n\n"
+                "$ yugabyte-db demo run {}\n\n".format(
+                    demo_db.upper(), Configs.get_demo_info()[demo_db]["output"], demo_db)
             )
         else:
             Output.log_error_and_exit(
-                "Retail sample database has already been created. "
-                "Use `yugabyte-db demo run retail` to interact with it.")
+                "{0} sample database has already been created. "
+                "Use `yugabyte-db demo run {0}` to interact with it.".format(demo_db))
 
-    # Run YSQL shell in retail database.
-    def run_demo_retail(self):
+    # Run YSQL shell in target demo database.
+    def run_demo(self):
         if self.get_failed_processes():
             Output.log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
 
-        demo_db = "yb_demo_retail"
+        demo_db = self.configs.temp_data.get("demo_db")
+        db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
-        if ysql_proxy.db_exists(demo_db):
+        if ysql_proxy.db_exists(db_name):
             # TODO: Add more commands.
             website = Output.make_underline(
                 "https://docs.yugabyte.com/latest/quick-start/explore-ysql/")
-            Output.print_out(
-                "\n################################\n"
-                "#     SAMPLE QUERIES TO TRY    #\n"
-                "################################\n\n"
-                "# JOINS (find user details of orders):\n"
-                "    %s users.id, users.name, users.email, orders.id, orders.total\n"
-                "        %s orders %s users %s orders.user_id=users.id\n"
-                "        %s 10;\n\n" % tuple([Output.make_cyan(kw) for kw in (
-                    "SELECT", "FROM", "INNER JOIN", "ON", "LIMIT")])
-            )
+            Output.print_out(Configs.get_demo_info()[demo_db]["examples"])
             Output.print_out(
                 "For more, go to {}\n".format(website)
             )
-            ysql_proxy.connect(db="yb_demo_retail")
+            ysql_proxy.connect(db=db_name)
         else:
             Output.log_error_and_exit(
-                "Retail demo has not been created. Run `yugabyte-db demo create retail`.")
+                "{0} demo has not been created."
+                "Run `yugabyte-db demo create {0}`.".format(demo_db))
 
-    # Destroy retail database if it exists.
-    def destroy_demo_retail(self):
+    # Destroy target demo database if it exists.
+    def destroy_demo(self):
         if self.get_failed_processes():
             Output.log_error_and_exit("YugaByte DB is not running. Cannot destroy sample database.")
 
-        demo_db = "yb_demo_retail"
+        demo_db = self.configs.temp_data.get("demo_db")
+        db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
-        if not ysql_proxy.db_exists(demo_db):
+        if not ysql_proxy.db_exists(db_name):
             Output.log_error_and_exit(
-                "Failed to destroy database. Retail demo has not been created.")
+                "Failed to destroy database. {} demo has not been created.".format(demo_db))
         else:
-            _, err = ysql_proxy.drop_db(demo_db)
+            _, err = ysql_proxy.drop_db(db_name)
             if err:
                 Output.log_error_and_exit("Failed to drop database {}: {}".format(demo_db, err))
             msg = "Successfully destroyed demo database {}.".format(demo_db)
@@ -342,7 +333,7 @@ class YugaByteProcessManager(object):
                     should_callhome = True
 
             # Start or iniitialize yugaware.
-            if self.configs.saved_data.get("webserver_enabled") and self.wait_yb_master():
+            if self.wait_yb_master() and self.configs.saved_data.get("webserver_enabled"):
                 yw_proxy = YugaWareProxy(self.configs.saved_data.get("api_port"))
                 if not self.is_yw_initialized():
                     Output.log("Initiating webserver...")
@@ -407,9 +398,8 @@ class YugaByteProcessManager(object):
         # Create YW database.
         create_yw_db = [
             os.path.join(BIN_DIR, "ysqlsh"), "-c", "create database {};".format(WEBSERVER_DB)]
-        process = subprocess.Popen(create_yw_db, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        _, err = process.communicate()
-        if err:
+        _, err, ret_code = run_process(create_yw_db)
+        if err or ret_code:
             return False
 
         # Create Play evolutions table. Required for YugaWare to start up properly.
@@ -419,10 +409,8 @@ class YugaByteProcessManager(object):
             "applied_at TIMESTAMP WITHOUT TIME ZONE not null, "
             "apply_script text, revert_script text, state varchar(255), last_problem text)"
         ]
-        process = subprocess.Popen(
-            create_play_table, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        _, err = process.communicate()
-        return not err
+        _, err, ret_code = run_process(create_play_table)
+        return not err and not ret_code
 
     # Returns if yb-master and yb-tserver were properly initialized before.
     def is_yb_initialized(self):
@@ -435,16 +423,14 @@ class YugaByteProcessManager(object):
     def is_yw_initialized(self):
         # Check YW database was created.
         list_db_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-c", "\l"]
-        dbs = subprocess.Popen(
-            list_db_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
-        if "system" not in dbs:
+        out, err, ret_code = run_process(list_db_cmd)
+        if err or ret_code or WEBSERVER_DB not in out:
             return False
 
         # Check Play evolutions table was created.
         list_tables_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
-        tables = subprocess.Popen(
-            list_tables_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
-        if "play_evolutions" not in tables:
+        out, err, ret_code = run_process(list_tables_cmd)
+        if err or ret_code or "play_evolutions" not in out:
             return False
         return True
 
@@ -455,8 +441,7 @@ class YugaByteProcessManager(object):
             return saved_uuid
         elif not self.get_failed_processes():
             cmd = [os.path.join(BIN_DIR, "yb-admin"), "get_universe_config"]
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate()
+            stdout, _, _ = run_process(cmd)
             if stdout:
                 universe_configs = stdout.split()
                 if universe_configs:
@@ -466,12 +451,18 @@ class YugaByteProcessManager(object):
                     return univ_uuid
         return None
 
-    # TODO: Use yb-admin to wait for yb-master to be ready.
-    def wait_yb_master(self, timeout=8):
-        time.sleep(timeout)
-        return True
+    def wait_yb_master(self, timeout=30):
+        num_tservers = 1
+        master_addr = "127.0.0.1:{}".format(self.configs.saved_data.get("master_port"))
 
-    # TODO: Attempt to login to yugaware to see if it's up.
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            cur_num_tservers = YBAdminProxy.get_num_tservers(master_addr)
+            if cur_num_tservers is not None and cur_num_tservers == num_tservers:
+                return True
+            time.sleep(2)
+        return False
+
     def wait_yw_login(self, yw_proxy, timeout=30):
         start_time = time.time()
         # Only the last error message is recorded if timed out.
@@ -494,7 +485,7 @@ class YugaByteProcessManager(object):
         # Make sure ascii escape characters for color encoding do not count towards char limit.
         extra_len = len(Output.make_bold(Output.make_green("")))
         status_info = [
-            (Output.make_yellow("JDBC"), "postgresql://postgres@127.0.0.1:{}".format(
+            (Output.make_yellow("JDBC"), "jdbc:postgresql//127.0.0.1:{}/postgres".format(
                 self.configs.saved_data.get("ysql_port"))),
             (Output.make_yellow("YSQL"), "yugabyte-db connect ysql"),
             (Output.make_yellow("YCQL"), "yugabyte-db connect ycql"),
@@ -629,6 +620,8 @@ class YugaByteProcessManager(object):
                         "   - Install Java 1.8 or higher (recommended)"
                         "   - Continue without the UI by passing the --disable_ui flag.")
                     has_errors = True
+        elif args.parser == "demo":
+            self.configs.temp_data["demo_db"] = args.demo_db
 
         if has_errors:
             sys.exit(1)
@@ -686,15 +679,18 @@ class YugaByteProcessManager(object):
         # TODO: Make below code readable...
         create_help = "Create sample database if it does not exist yet."
         create_demo = demo_subparser.add_parser("create", help=create_help)
-        create_demo_subparser = create_demo.add_subparsers()
+        create_demo_subparser = create_demo.add_subparsers(dest="demo_db")
         run_help = "Open interactive shell in sample database."
         run_demo = demo_subparser.add_parser("run", help=run_help)
-        run_demo_subparser = run_demo.add_subparsers()
+        run_demo_subparser = run_demo.add_subparsers(dest="demo_db")
         destroy_help = "Destroy sample database."
         destroy_demo = demo_subparser.add_parser("destroy", help=destroy_help)
-        destroy_demo_subparser = destroy_demo.add_subparsers()
+        destroy_demo_subparser = destroy_demo.add_subparsers(dest="demo_db")
         for demo_type, demo_help in (
-                ("retail", "Retail is a database with products, users, orders, and reviews."),):
+                ("retail", "A simple database with tables like products and reviews."),
+                ("northwind", "A retail database featuring foreign keys."),
+                ("club", "A database featuring indices and foreign keys."),
+                ("sports", "A database featuring indices, foreign keys, and constraints."),):
             for action, action_help, cur_subparser in (
                     ("create", create_help, create_demo_subparser),
                     ("destroy", destroy_help, destroy_demo_subparser),
@@ -702,7 +698,7 @@ class YugaByteProcessManager(object):
                 help_msg = "{} {}".format(action_help, demo_help)
                 cur_parser = cur_subparser.add_parser(
                     demo_type, help=help_msg, parents=[common_parser])
-                func = getattr(self, "{}_demo_{}".format(action, demo_type), None)
+                func = getattr(self, "{}_demo".format(action), None)
                 cur_parser.set_defaults(func=func)
                 all_parsers["{}_{}".format(action, demo_type)] = cur_parser
 
@@ -767,10 +763,13 @@ class Configs(object):
             "api_port": DEFAULT_API_PORT,
             "universe_uuid": "",
             "polling_interval": "5",
-            "yb_demo_retail": False,
             "webserver_enabled": True,
             "master_flags": "",
             "tserver_flags": "",
+        }
+        # Used to store data specific to certain functions that we don't want to save.
+        self.temp_data = {
+            "demo_db": "retail",
         }
         self.config_file = config_file
 
@@ -791,6 +790,42 @@ class Configs(object):
                 Output.log_error_and_exit(
                     "Failed to read config file {}: {}".format(config_file, str(e)))
         return configs
+
+    # Returns information about demo databases.
+    @staticmethod
+    def get_demo_info():
+        return {
+            "retail": {
+                "files": ("schema.sql", "products.sql", "users.sql", "reviews.sql", "orders.sql"),
+                "output": "    Database: yb_demo_retail\n"
+                        "    |_ users\n"
+                        "    |_ products\n"
+                        "    |_ orders\n"
+                        "    |_ reviews\n\n",
+                "examples": "# JOINS (find user details of orders):\n"
+                        "    %s users.id, users.name, users.email, orders.id, orders.total\n"
+                        "        %s orders %s users %s orders.user_id=users.id\n"
+                        "        %s 10;\n\n" % tuple([Output.make_cyan(kw) for kw in (
+                            "SELECT", "FROM", "INNER JOIN", "ON", "LIMIT")])
+            },
+            "northwind": {
+                "files": ("northwind_ddl.sql", "northwind_data.sql"),
+                "output": "",
+                "examples": ""
+            },
+            "club": {
+                "files": ("clubdata_ddl.sql", "clubdata_data.sql"),
+                "output": "",
+                "examples": ""
+            },
+            "sports": {
+                "files": (
+                    "sportsdb_tables.sql", "sportsdb_fks.sql",
+                    "sportsdb_indexes.sql", "sportsdb_inserts.sql"),
+                "output": "",
+                "examples": ""
+            }
+        }
 
 
 class ProcessManager(object):
@@ -965,9 +1000,12 @@ class Diagnostics(object):
             if p.start_time:
                 payload["{}_start_time".format(p.name)] = p.start_time
 
+        master_addrs = "127.0.0.1:{}".format(self.configs.saved_data.get("master_port"))
+        # TODO: This is going to change for multi-node.
+        cur_master_addr = master_addrs
         data = {
-            "cluster_uuid": "312b7810-1752-4fe2-94f1-8d2f6fc25251",
-            "node_uuid": "312b7810-1752-4fe2-94f1-8d2f6fc25251",
+            "cluster_uuid": YBAdminProxy.get_cluster_uuid(master_addrs),
+            "node_uuid": YBAdminProxy.get_node_uuid(master_addrs, cur_master_addr),
             "server_type": "yugabyte-db",
             "timestamp": int(time.time()),
             "payload": payload
@@ -983,6 +1021,43 @@ class Diagnostics(object):
                 if os.path.isfile(filepath):
                     size += os.path.getsize(filepath)
         return size
+
+
+# Proxy for parsing output from yb-admin commands.
+class YBAdminProxy(object):
+    path = os.path.join(BIN_DIR, "yb-admin")
+
+    # Returns number of tservers reported by yb-master.
+    @staticmethod
+    def get_num_tservers(master_addrs):
+        cmd = [YBAdminProxy.path, "--master_addresses", master_addrs, "list_all_tablet_servers"]
+        out, err, ret_code = run_process(cmd)
+        return len(out.splitlines()) - 1 if not ret_code else None
+
+    # Returns the cluster_uuid for this universe
+    @staticmethod
+    def get_cluster_uuid(master_addrs):
+        cmd = [YBAdminProxy.path, "--master_addresses", master_addrs, "get_universe_config"]
+        out, err, ret_code = run_process(cmd)
+        if ret_code:
+            return None
+        for line in out.splitlines():
+            if "cluster_uuid: " in line:
+                return line.split("cluster_uuid: ")[1].replace('"', '')
+        return None
+
+    # Returns node_uuid by finding the UUID corresponding to current master's IP
+    @staticmethod
+    def get_node_uuid(master_addrs, cur_master_addr):
+        cmd = [YBAdminProxy.path, "--master_addressses", master_addrs, "list_all_masters"]
+        out, err, ret_code = run_process(cmd)
+        if ret_code:
+            return None
+        for line in out:
+            master_uuid, rpc_addr, _, _ = out.split()
+            if rpc_addr == cur_master_addr:
+                return master_uuid
+        return None
 
 
 # Proxy for ysqlsh commands.
@@ -1324,6 +1399,11 @@ def get_kv(map):
         return map.iteritems()
     else:
         return map.items()
+
+def run_process(cmd):
+    proc = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    out, err = proc.communicate()
+    return out.decode('utf-8'), err.decode('utf-8'), proc.returncode
 
 if __name__ == '__main__':
     YugaByteProcessManager().run()
