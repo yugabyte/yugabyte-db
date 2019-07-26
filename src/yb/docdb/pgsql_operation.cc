@@ -389,8 +389,8 @@ Status PgsqlReadOperation::Execute(const common::YQLStorageIf& ql_storage,
     RETURN_NOT_OK(ql_storage.GetIterator(index_request, index_projection, *index_schema,
                                          txn_op_context_, deadline, read_time, &index_iter_));
     iter = index_iter_.get();
-    const size_t idx = index_schema->find_column("ybbasectid");
-    SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybbasectid not found in index schema");
+    const size_t idx = index_schema->find_column("ybidxbasectid");
+    SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
     ybbasectid_id = index_schema->column_id(idx);
   } else {
     iter = table_iter_.get();
