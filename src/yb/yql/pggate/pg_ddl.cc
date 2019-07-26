@@ -256,22 +256,25 @@ PgCreateIndex::~PgCreateIndex() {
 }
 
 Status PgCreateIndex::AddYBbasectidColumn() {
-  // Add ybindexkeysuffix column to store key suffix for handling multiple NULL values in column
+  // Add YBUniqueIdxKeySuffix column to store key suffix for handling multiple NULL values in column
   // with unique index.
   // Value of this column is set to ybctid (same as ybbasectid) for index row in case index
   // is unique and at least one of its key column is NULL.
   // In all other case value of this column is NULL.
-  RETURN_NOT_OK(PgCreateTable::AddColumnImpl("ybindexkeysuffix",
-                                             to_underlying(PgSystemAttrNum::kYBIndexKeySuffix),
-                                             YB_YQL_DATA_TYPE_BINARY,
-                                             false /* is_hash */,
-                                             true /* is_range */));
+  if (is_unique_index_) {
+    RETURN_NOT_OK(
+        PgCreateTable::AddColumnImpl("ybuniqueidxkeysuffix",
+                                     to_underlying(PgSystemAttrNum::kYBUniqueIdxKeySuffix),
+                                     YB_YQL_DATA_TYPE_BINARY,
+                                     false /* is_hash */,
+                                     true /* is_range */));
+  }
 
   // Add ybbasectid column to store the ybctid of the rows in the indexed table. It should be added
   // at the end of the primary key of the index, i.e. either before any non-primary-key column if
   // any or before exec() below.
-  RETURN_NOT_OK(PgCreateTable::AddColumnImpl("ybbasectid",
-                                             to_underlying(PgSystemAttrNum::kYBBaseTupleId),
+  RETURN_NOT_OK(PgCreateTable::AddColumnImpl("ybidxbasectid",
+                                             to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId),
                                              YB_YQL_DATA_TYPE_BINARY,
                                              false /* is_hash */,
                                              !is_unique_index_ /* is_range */));

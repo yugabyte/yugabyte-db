@@ -39,8 +39,8 @@
  */
 #define YBRowIdAttributeNumber					(-100)
 
-#define YBBaseTupleIdAttributeNumber			(-101)
-#define YBIndexKeySuffixAttributeNumber			(-102)
+#define YBIdxBaseTupleIdAttributeNumber			(-101)
+#define YBUniqueIdxKeySuffixAttributeNumber		(-102)
 #define YBSystemFirstLowInvalidAttributeNumber	(-103)
 
 #endif							/* SYSATTR_H */

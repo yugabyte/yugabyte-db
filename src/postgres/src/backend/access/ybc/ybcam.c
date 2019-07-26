@@ -656,7 +656,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 	 * include ybctid column also for building indexes.
 	 */
 	if (relation->rd_index)
-		ybcAddTargetColumn(ybScan, YBBaseTupleIdAttributeNumber);
+		ybcAddTargetColumn(ybScan, YBIdxBaseTupleIdAttributeNumber);
 	else
 		ybcAddTargetColumn(ybScan, YBTupleIdAttributeNumber);
 

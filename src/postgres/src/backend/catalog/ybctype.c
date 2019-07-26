@@ -108,9 +108,9 @@ YBCDataTypeFromOidMod(int attnum, Oid type_id)
 			case MaxTransactionIdAttributeNumber: /* xmax */
 				type_id = XIDOID;
 				break;
-			case YBTupleIdAttributeNumber:        /* ybctid */
-			case YBBaseTupleIdAttributeNumber:    /* ybbasectid */
-			case YBIndexKeySuffixAttributeNumber: /* ybindexkeysuffix */
+			case YBTupleIdAttributeNumber:            /* ybctid */
+			case YBIdxBaseTupleIdAttributeNumber:     /* ybidxbasectid */
+			case YBUniqueIdxKeySuffixAttributeNumber: /* ybuniqueidxkeysuffix */
 				type_id = BYTEAOID;
 				break;
 			default:

@@ -18,22 +18,27 @@ namespace yb {
 // Virtual columns are just expression that is evaluated by DocDB in "doc_expr.cc".
 enum class PgSystemAttrNum : int {
   // Postgres system columns.
-  kSelfItemPointer  = -1, // ctid.
-  kObjectId         = -2, // oid.
-  kMinTransactionId = -3, // xmin
-  kMinCommandId     = -4, // cmin
-  kMaxTransactionId = -5, // xmax
-  kMaxCommandId     = -6, // cmax
-  kTableOid         = -7, // tableoid
+  kSelfItemPointer      = -1, // ctid.
+  kObjectId             = -2, // oid.
+  kMinTransactionId     = -3, // xmin
+  kMinCommandId         = -4, // cmin
+  kMaxTransactionId     = -5, // xmax
+  kMaxCommandId         = -6, // cmax
+  kTableOid             = -7, // tableoid
 
   // YugaByte system columns.
-  kYBTupleId        = -8, // ybctid.
+  kYBTupleId            = -8, // ybctid: virtual column representing DocDB-encoded key.
+                              // YB analogue of Postgres's SelfItemPointer/ctid column.
 
   // The following attribute numbers are stored persistently in the table schema. For this reason,
   // they are chosen to avoid potential conflict with Postgres' own sys attributes now and future.
-  kYBRowId          = -100, // ybrowid
-  kYBBaseTupleId    = -101, // ybbasectid
-  kYBIndexKeySuffix = -102, // ybindexkeysuffix
+  kYBRowId              = -100, // ybrowid: auto-generated key-column for tables without pkey.
+  kYBIdxBaseTupleId     = -101, // ybidxbasectid: for indexes ybctid of the indexed table row.
+  kYBUniqueIdxKeySuffix = -102, // ybuniqueidxkeysuffix: extra key column for unique indexes, used
+                                // to ensure SQL semantics for null (null != null) in DocDB
+                                // (where null == null). For each index row will be set to:
+                                //  - the base table ctid when one or more indexed cols are null
+                                //  - to null otherwise (all indexed cols are non-null).
 };
 
 // TODO(neil)

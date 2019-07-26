@@ -497,7 +497,7 @@ PgColumnRef::PgColumnRef(int attr_num,
       case static_cast<int>(PgSystemAttrNum::kYBTupleId):
         translate_data_ = TranslateYBCtid;
         break;
-      case static_cast<int>(PgSystemAttrNum::kYBBaseTupleId):
+      case static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId):
         translate_data_ = TranslateYBBasectid;
         break;
     }
