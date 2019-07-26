@@ -75,7 +75,7 @@ void PgSelect::PrepareColumns() {
 
     // Select ybbasectid column from the index to fetch the rows from the base table.
     PgColumn *col;
-    CHECK_OK(FindIndexColumn(static_cast<int>(PgSystemAttrNum::kYBBaseTupleId), &col));
+    CHECK_OK(FindIndexColumn(static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId), &col));
     AllocIndexTargetPB()->set_column_id(col->id());
     col->set_read_requested(true);
 

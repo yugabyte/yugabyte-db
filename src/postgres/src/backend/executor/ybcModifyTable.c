@@ -67,8 +67,8 @@ bool IsRealYBColumn(Relation rel, int attrNum)
 bool IsYBSystemColumn(int attrNum)
 {
 	return (attrNum == YBRowIdAttributeNumber ||
-			attrNum == YBBaseTupleIdAttributeNumber ||
-			attrNum == YBIndexKeySuffixAttributeNumber);
+			attrNum == YBIdxBaseTupleIdAttributeNumber ||
+			attrNum == YBUniqueIdxKeySuffixAttributeNumber);
 }
 
 /*
@@ -423,44 +423,58 @@ static void BindColumn(YBCPgStatement stmt, int attr_num, Oid type_id, Datum dat
 /*
  * Utility method to set keys and value to index write statement
  */
-static bool PrepareIndexWriteStmt(YBCPgStatement stmt,
+static void PrepareIndexWriteStmt(YBCPgStatement stmt,
                                   Relation index,
                                   Datum *values,
                                   bool *isnull,
                                   int natts,
-                                  Datum ybctid,
+                                  Datum ybbasectid,
                                   bool ybctid_as_value)
 {
-  TupleDesc tupdesc = RelationGetDescr(index);
+	TupleDesc tupdesc = RelationGetDescr(index);
 
-  bool has_null_attr = false;
-  for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
-  {
-    Oid   type_id = GetTypeId(attnum, tupdesc);
-    Datum value   = values[attnum - 1];
-    bool  is_null = isnull[attnum - 1];
-    has_null_attr = has_null_attr || is_null;
+	if (ybbasectid == 0)
+	{
+		ereport(ERROR,
+		(errcode(ERRCODE_INTERNAL_ERROR), errmsg(
+			"Missing base table ybctid in index write request")));
+	}
 
-    BindColumn(stmt, attnum, type_id, value, is_null);
-  }
+	bool has_null_attr = false;
+	for (AttrNumber attnum = 1; attnum <= natts; ++attnum)
+	{
+		Oid   type_id = GetTypeId(attnum, tupdesc);
+		Datum value   = values[attnum - 1];
+		bool  is_null = isnull[attnum - 1];
+		has_null_attr = has_null_attr || is_null;
+		BindColumn(stmt, attnum, type_id, value, is_null);
+	}
 
-  const bool unique_index = index->rd_index->indisunique;
-  const bool ybctid_required = !unique_index || has_null_attr || ybctid_as_value;
-  if (ybctid_required && ybctid == 0)
-    return false;
+	const bool unique_index = index->rd_index->indisunique;
 
-  /*
-   * Index key suffix should be equal ybctid only in case index is unique
-   * and at least one key column is NULL.
-   * Index key suffix should be NULL in all other cases
-   */
-  const bool key_suffix_is_null = !(unique_index && has_null_attr);
-  BindColumn(stmt, YBIndexKeySuffixAttributeNumber, BYTEAOID, ybctid, key_suffix_is_null);
+	/*
+	 * For unique indexes we need to set the key suffix system column:
+	 * - to ybbasectid if at least one index key column is null.
+	 * - to NULL otherwise (setting is_null to true is enough).
+	 */
+	if (unique_index)
+		BindColumn(stmt,
+		           YBUniqueIdxKeySuffixAttributeNumber,
+		           BYTEAOID,
+		           ybbasectid,
+		           !has_null_attr /* is_null */);
 
-  if (ybctid_as_value || !unique_index)
-    BindColumn(stmt, YBBaseTupleIdAttributeNumber, BYTEAOID, ybctid, false /* is_null */);
-
-  return true;
+	/*
+	 * We may need to set the base ctid column:
+	 * - for unique indexes only if we need it as a value (i.e. for inserts)
+	 * - for non-unique indexes always (it is a key column).
+	 */
+	if (ybctid_as_value || !unique_index)
+		BindColumn(stmt,
+		           YBIdxBaseTupleIdAttributeNumber,
+		           BYTEAOID,
+		           ybbasectid,
+		           false /* is_null */);
 }
 
 Oid YBCExecuteInsert(Relation rel,
@@ -579,12 +593,10 @@ void YBCExecuteDeleteIndex(Relation index, Datum *values, bool *isnull, Datum yb
 	/* Create the DELETE request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewDelete(ybc_pg_session, dboid, relid, &delete_stmt));
 
-	if (PrepareIndexWriteStmt(delete_stmt, index, values, isnull,
-	                          IndexRelationGetNumberOfKeyAttributes(index),
-	                          ybctid, false /* ybctid_as_value */))
-		HandleYBStmtStatus(YBCExecWriteStmt(delete_stmt, index), delete_stmt);
-	else
-		YBC_LOG_WARNING("Skipping index deletion in %s", RelationGetRelationName(index));
+	PrepareIndexWriteStmt(delete_stmt, index, values, isnull,
+	                      IndexRelationGetNumberOfKeyAttributes(index),
+	                      ybctid, false /* ybctid_as_value */);
+	HandleYBStmtStatus(YBCExecWriteStmt(delete_stmt, index), delete_stmt);
 
 	HandleYBStatus(YBCPgDeleteStatement(delete_stmt));
 }
