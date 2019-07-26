@@ -6,11 +6,12 @@ import json
 import logging
 import multiprocessing
 import os
-import sys
-import time
 import re
+import resource
 import shutil
 import subprocess
+import sys
+import time
 import uuid
 from datetime import datetime
 from signal import SIGABRT, SIGINT, SIGTERM, SIG_DFL, signal
@@ -42,6 +43,7 @@ yugabyte
 +-- yugabyte-data
 """
 
+# YugaByte DB configs.
 YUGABYTE_DIR = os.path.dirname(os.path.realpath(__file__))
 DEFAULT_CONF_DIR = os.path.join(YUGABYTE_DIR, "conf")
 BIN_DIR = os.path.join(YUGABYTE_DIR, "bin")
@@ -52,13 +54,17 @@ DEFAULT_MASTER_PORT = 7100
 DEFAULT_TSERVER_PORT = 9100
 DEFAULT_YSQL_PORT = 5433
 DEFAULT_YCQL_PORT = 9042
-DEFAULT_WEBSERVER_PORT = 8080
+# TODO: Bug where webserver must be initiated with port 9000.
+DEFAULT_WEBSERVER_PORT = 9000
+# TODO: Add api port options in yugaware. It has to be 9000 no matter what right now.
+DEFAULT_API_PORT = 9000
 VERSION_METADATA_PATH = os.path.join(YUGABYTE_DIR, "version_metadata.json")
 YUGABYTE_API_CLIENT_PROGRAMS = {
     "ysql": "ysqlsh",
     "ycql": "cqlsh",
 }
 YUGAWARE_CONF = os.path.join(DEFAULT_CONF_DIR, "application.default.conf")
+WEBSERVER_DB = "system_wbsvr"
 
 
 class YugaByteProcessManager(object):
@@ -69,7 +75,8 @@ class YugaByteProcessManager(object):
 
     # Starts YugaByte DB node.
     def start(self):
-        print_and_log("Starting YugaByte DB...")
+        self.validate_resources()
+        Output.print_and_log("Starting YugaByte DB...")
         self.set_signals(self.kill_yugabyte)
         atexit.register(self.kill_yugabyte)
         self.start_processes()
@@ -78,10 +85,10 @@ class YugaByteProcessManager(object):
     def status(self):
         if os.path.isdir(self.configs.saved_data.get("data_dir")):
             if self.get_failed_processes():
-                print("YugaByte DB is not running.")
-            print(self.get_status_string())
+                Output.print_out("YugaByte DB is not running.")
+            Output.print_out(self.get_status_string())
         else:
-            print("YugaByte DB is not running.")
+            Output.print_out("YugaByte DB is not running.")
 
     # Prints YugaByte DB version.
     def version(self):
@@ -92,19 +99,19 @@ class YugaByteProcessManager(object):
                 ("Version", "{}-b{}".format(data.get("version_number"), data.get("build_number"))),
                 ("Build Time", data.get("build_timestamp")),
                 ("Build Hash", data.get("git_hash"))]
-            print(self.get_status_string())
+            Output.print_out(self.get_status_string())
 
     # Starts an interactive YSQL shell.
     def connect_ysql(self):
         if self.get_failed_processes():
-            log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
+            Output.log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         ysql_proxy.connect()
 
     # Starts an interactive YCQL shell.
     def connect_ycql(self):
         if self.get_failed_processes():
-            log_error_and_exit("YugaByte DB is not running. Cannot connect to YCQL.")
+            Output.log_error_and_exit("YugaByte DB is not running. Cannot connect to YCQL.")
         path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
         cmd = [path, "127.0.0.1", self.configs.saved_data.get("ycql_port")]
         os.execv(path, cmd)
@@ -112,30 +119,33 @@ class YugaByteProcessManager(object):
     # Create retail database if it does not exist.
     def create_demo_retail(self):
         if self.get_failed_processes():
-            log_error_and_exit("YugaByte DB is not running. Cannot create sample database.")
+            Output.log_error_and_exit("YugaByte DB is not running. Cannot create sample database.")
 
         demo_db = "yb_demo_retail"
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         if not ysql_proxy.db_exists(demo_db):
+            Output.print_out("Initializing demo retail database...")
             # Create demo database.
-            print_and_log("Creating database {}...".format(demo_db))
+            Output.log("Creating database {}...".format(demo_db))
             _, err = ysql_proxy.create_db(demo_db)
             if err:
-                log_error_and_exit("Failed to create {} database: {}".format(demo_db, err))
+                Output.log_error_and_exit("Failed to create {} database: {}".format(demo_db, err))
 
             # Populate demo database.
-            print_and_log("Populating {} with sample data...".format(demo_db))
+            Output.log("Populating {} with sample data...".format(demo_db))
             files = []
             for name in ("schema.sql", "products.sql", "users.sql", "reviews.sql", "orders.sql"):
                 files.append(os.path.join(YUGABYTE_DIR, "share", name))
             _, err = ysql_proxy.load_files(files, db=demo_db)
             if err:
-                log_error_and_exit("Failed to populate data to {}: {}".format(demo_db, err))
+                Output.log_error_and_exit("Failed to populate data to {}: {}".format(demo_db, err))
 
-            print_and_log("Successfully loaded sample database!")
-            print(
-                "\n################################\n"
-                "# WELCOME TO THE retail DEMO\n"
+            msg = "Successfully loaded sample database!"
+            Output.log(msg)
+            Output.print_out(
+                Output.make_green(msg) +
+                "\n\n################################\n"
+                "#  WELCOME TO THE retail DEMO  #\n"
                 "################################\n"
                 "    Database: yb_demo_retail\n"
                 "    |_ users\n"
@@ -148,48 +158,55 @@ class YugaByteProcessManager(object):
                 "$ yugabyte-db demo run retail\n\n"
             )
         else:
-            print_and_log(
+            Output.log_error_and_exit(
                 "Retail sample database has already been created. "
                 "Use `yugabyte-db demo run retail` to interact with it.")
 
     # Run YSQL shell in retail database.
     def run_demo_retail(self):
         if self.get_failed_processes():
-            log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
+            Output.log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
 
         demo_db = "yb_demo_retail"
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         if ysql_proxy.db_exists(demo_db):
             # TODO: Add more commands.
-            print(
+            website = Output.make_underline(
+                "https://docs.yugabyte.com/latest/quick-start/explore-ysql/")
+            Output.print_out(
                 "\n################################\n"
-                "# SAMPLE QUERIES TO TRY\n"
+                "#     SAMPLE QUERIES TO TRY    #\n"
                 "################################\n\n"
                 "# JOINS (find user details of orders):\n"
-                "    SELECT users.id, users.name, users.email, orders.id, orders.total\n"
-                "        FROM orders INNER JOIN users ON orders.user_id=users.id\n"
-                "        LIMIT 10;\n\n"
-                "For more, go to https://docs.yugabyte.com/latest/quick-start/explore-ysql/\n"
+                "    %s users.id, users.name, users.email, orders.id, orders.total\n"
+                "        %s orders %s users %s orders.user_id=users.id\n"
+                "        %s 10;\n\n" % tuple([Output.make_cyan(kw) for kw in (
+                    "SELECT", "FROM", "INNER JOIN", "ON", "LIMIT")])
+            )
+            Output.print_out(
+                "For more, go to {}\n".format(website)
             )
             ysql_proxy.connect(db="yb_demo_retail")
         else:
-            log_error_and_exit(
+            Output.log_error_and_exit(
                 "Retail demo has not been created. Run `yugabyte-db demo create retail`.")
 
     # Destroy retail database if it exists.
     def destroy_demo_retail(self):
         if self.get_failed_processes():
-            log_error_and_exit("YugaByte DB is not running. Cannot destroy sample database.")
+            Output.log_error_and_exit("YugaByte DB is not running. Cannot destroy sample database.")
 
         demo_db = "yb_demo_retail"
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         if not ysql_proxy.db_exists(demo_db):
-            log_error_and_exit("Failed to destroy database. Retail demo has not been created.")
+            Output.log_error_and_exit(
+                "Failed to destroy database. Retail demo has not been created.")
         else:
             _, err = ysql_proxy.drop_db(demo_db)
             if err:
-                log_error_and_exit("Failed to drop database {}: {}".format(demo_db, err))
-            print_and_log("Successfully destroyed demo database {}.".format(demo_db))
+                Output.log_error_and_exit("Failed to drop database {}: {}".format(demo_db, err))
+            msg = "Successfully destroyed demo database {}.".format(demo_db)
+            Output.print_and_log(msg)
 
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
@@ -204,12 +221,12 @@ class YugaByteProcessManager(object):
     # Called after receiving certain signals or on exit. Kills all subprocesses.
     def kill_yugabyte(self, signum=None, frame=None):
         if signum:
-            logging.debug("Received signal: " + str(signum))
-        print_and_log("Shutting down...")
+            Output.log("Received signal: {}".format(signum), logging.DEBUG)
+        Output.print_and_log("Shutting down...")
         cur_pid = os.getpid()
         pgid = os.getpgid(cur_pid)
         if not pgid:
-            log_error_and_exit(
+            Output.log_error_and_exit(
                 "PGID could not be found for PID {}. Is YugaByte DB running?".format(cur_pid))
 
         self.set_signals(SIG_DFL)
@@ -221,11 +238,11 @@ class YugaByteProcessManager(object):
             # Kill process group instead of self.processes to ensure
             # any spawned child processes are killed
             os.killpg(pgid, SIGTERM)
-            log_error_and_exit(
+            Output.log_error_and_exit(
                 "YugaByte DB may not have terminated properly... "
                 "Please check PGID {}.".format(pgid))
         except OSError as err:
-            log_error_and_exit(
+            Output.log_error_and_exit(
                 "Failed to kill PGID {}... Is YugaByte DB running?\n{}".format(pgid, str(err)))
 
     # Starts yb-master, yb-tserver, and yugaware processes.
@@ -245,6 +262,11 @@ class YugaByteProcessManager(object):
              "--use_initial_sys_catalog_snapshot",
              "--server_dump_info_path",
              os.path.join(self.configs.saved_data.get("data_dir"), "master-info"),]
+        if self.configs.saved_data.get("master_flags"):
+            yb_master_cmd.extend(
+                ["--{}".format(flag) for flag in \
+                    self.configs.saved_data.get("master_flags").split(",")])
+
         yb_tserver_cmd = [os.path.join(BIN_DIR, "yb-tserver")] + common_gflags + \
             ["--tserver_master_addrs={}".format(master_address),
              "--rpc_bind_addresses", tserver_address,
@@ -256,6 +278,11 @@ class YugaByteProcessManager(object):
              "127.0.0.1:{}".format(self.configs.saved_data.get("ysql_port")),
              "--server_dump_info_path",
              os.path.join(self.configs.saved_data.get("data_dir"), "tserver-info"),]
+        if self.configs.saved_data.get("tserver_flags"):
+            yb_tserver_cmd.extend(
+                ["--{}".format(flag) for flag in \
+                    self.configs.saved_data.get("tserver_flags").split(",")])
+
         yw_cmd = [
             os.path.join(BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
             "-Dplay.evolutions.db.default.autoApply=true",
@@ -279,7 +306,7 @@ class YugaByteProcessManager(object):
         for p in self.processes.values():
             pid = p.get_pid()
             if pid:
-                print("YugaByte DB is already running!")
+                Output.print_out("YugaByte DB is already running!")
                 # Clear self.processes so kill_yugabyte() doesn't kill existing processes.
                 self.processes = {}
                 return
@@ -292,14 +319,14 @@ class YugaByteProcessManager(object):
 
             # Delete corrupted data dirs left from interrupting yb-master and yb-tserver startup.
             if not self.is_yb_initialized() and os.path.exists(self.configs.saved_data.get("data_dir")):
-                print_and_log(
+                Output.print_and_log(
                     "Found data from failed initialization in {}. Removing...".format(
                         self.configs.saved_data.get("data_dir")))
                 shutil.rmtree(self.configs.saved_data.get("data_dir"))
 
             # Create data directory.
             if not os.path.exists(self.configs.saved_data.get("data_dir")):
-                print_and_log(
+                Output.log(
                     "Creating data directory {}.".format(self.configs.saved_data.get("data_dir")))
                 os.makedirs(self.configs.saved_data.get("data_dir"))
 
@@ -310,36 +337,37 @@ class YugaByteProcessManager(object):
                 if not process.is_running():
                     process.start()
                     if not is_first_run:
-                        print_and_log(
+                        Output.print_and_log(
                             "{} died unexpectedly. Restarting...".format(p.name), logging.ERROR)
                     should_callhome = True
 
             # Start or iniitialize yugaware.
             if self.configs.saved_data.get("webserver_enabled") and self.wait_yb_master():
-                yw_proxy = YugaWareProxy(self.configs.saved_data.get("webserver_port"))
+                yw_proxy = YugaWareProxy(self.configs.saved_data.get("api_port"))
                 if not self.is_yw_initialized():
-                    print_and_log("Initiating YugaWare...")
+                    Output.log("Initiating webserver...")
                     self.init_yw()
                     process = self.processes.get("yugaware")
                     process.start()
 
-                    yw_proxy = YugaWareProxy(self.configs.saved_data.get("webserver_port"))
                     err = self.wait_yw_login(yw_proxy)
                     if err:
-                        log_error_and_exit(err)
+                        Output.log_error_and_exit(err)
 
                     err = yw_proxy.import_universe(self.configs.saved_data.get("master_port"))
                     if err:
-                        log_error_and_exit(err)
+                        Output.log_error_and_exit(err)
+
+                    # Should yugabyte-db exit if features aren't disabled properly? Retry?
+                    err = yw_proxy.update_features()
                     should_callhome = True
                 else:
                     process = self.processes.get("yugaware")
                     if not process.is_running():
                         process.start()
                         self.wait_yw_login(yw_proxy)
-                        if not is_first_run:
-                            print_and_log(
-                                "YugaWare died unexpectedly. Restarting...", logging.ERROR)
+                        Output.print_and_log(
+                            "Webserver died unexpectedly. Restarting...", logging.ERROR)
                         should_callhome = True
 
             if should_callhome:
@@ -356,10 +384,13 @@ class YugaByteProcessManager(object):
                 if first_run_success and self.is_yb_initialized() and (
                         not self.configs.saved_data.get("webserver_enabled")
                         or self.is_yw_initialized()):
-                    startup_info = self.get_status_string() + \
-                        "YugaByte DB started successfully!\n" \
-                        "For help, join us on Slack at https://www.yugabyte.com/slack.\n"
-                    print(startup_info)
+                    status = self.get_status_string() + \
+                        Output.make_green("YugaByte DB started successfully!\n") + \
+                        Output.make_magenta(
+                                "Join us on Slack at {}".format(
+                                    Output.make_underline("https://www.yugabyte.com/slack\n")))
+                    Output.print_out(status)
+
                     callhome_thread = Thread(target=self.callhome_loop)
                     callhome_thread.start()
                     is_first_run = False
@@ -374,7 +405,8 @@ class YugaByteProcessManager(object):
     # Initialize YW process. Creates all necessary tables. Returns false if init failed.
     def init_yw(self):
         # Create YW database.
-        create_yw_db = [os.path.join(BIN_DIR, "ysqlsh"), "-c", "create database yugaware;"]
+        create_yw_db = [
+            os.path.join(BIN_DIR, "ysqlsh"), "-c", "create database {};".format(WEBSERVER_DB)]
         process = subprocess.Popen(create_yw_db, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         _, err = process.communicate()
         if err:
@@ -382,7 +414,7 @@ class YugaByteProcessManager(object):
 
         # Create Play evolutions table. Required for YugaWare to start up properly.
         create_play_table = [
-            os.path.join(BIN_DIR, "ysqlsh"), "-d", "yugaware", "-c",
+            os.path.join(BIN_DIR, "ysqlsh"), "-d", WEBSERVER_DB, "-c",
             "create table play_evolutions (id int not null, hash varchar(255) not null, "
             "applied_at TIMESTAMP WITHOUT TIME ZONE not null, "
             "apply_script text, revert_script text, state varchar(255), last_problem text)"
@@ -405,11 +437,11 @@ class YugaByteProcessManager(object):
         list_db_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-c", "\l"]
         dbs = subprocess.Popen(
             list_db_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
-        if "yugaware" not in dbs:
+        if "system" not in dbs:
             return False
 
         # Check Play evolutions table was created.
-        list_tables_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-d", "yugaware", "-c", "\d"]
+        list_tables_cmd = [os.path.join(BIN_DIR, "ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
         tables = subprocess.Popen(
             list_tables_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()[0]
         if "play_evolutions" not in tables:
@@ -449,7 +481,7 @@ class YugaByteProcessManager(object):
             if not err:
                 return ""
             time.sleep(.5)
-        return err
+        return "Timeout: " + err
 
     # Returns pretty output table.
     def get_status_string(self):
@@ -458,21 +490,25 @@ class YugaByteProcessManager(object):
         else:
             yw_status = "Disabled"
 
-        title = "YugaByte DB"
+        title = Output.make_bold(Output.make_green("YugaByte DB"))
+        # Make sure ascii escape characters for color encoding do not count towards char limit.
+        extra_len = len(Output.make_bold(Output.make_green("")))
         status_info = [
-            ("JDBC", "postgresql://postgres@127.0.0.1:{}".format(
+            (Output.make_yellow("JDBC"), "postgresql://postgres@127.0.0.1:{}".format(
                 self.configs.saved_data.get("ysql_port"))),
-            ("YSQL", "yugabyte-db connect ysql"),
-            ("YCQL", "yugabyte-db connect ycql"),
-            ("YugaWare UI", yw_status),
-            ("Data Dir", self.configs.saved_data.get("data_dir")),
-            ("Universe UUID", self.get_universe_uuid())
+            (Output.make_yellow("YSQL"), "yugabyte-db connect ysql"),
+            (Output.make_yellow("YCQL"), "yugabyte-db connect ycql"),
+            (Output.make_yellow("Webserver UI"), yw_status),
+            (Output.make_yellow("Data Dir"), self.configs.saved_data.get("data_dir")),
+            (Output.make_yellow("Log Dir"), self.configs.saved_data.get("log_dir")),
+            (Output.make_yellow("Universe UUID"), self.get_universe_uuid())
         ]
         status = "\n" + "-" * 100 + "\n"
-        status += "| {:<96} |\n".format(title)
+        status += ("| {:^" + str(96 + extra_len) + "} |\n").format(title)
         status += "-" * 100 + "\n"
         for k, v in status_info:
-            status += "| {:20}: {:<74} |\n".format(k, v)
+            extra_len = len(Output.make_yellow(""))
+            status += ("| {:" + str(20 + extra_len) + "}: {:<74} |\n").format(k, v)
         status += "-" * 100 + "\n"
         return status
 
@@ -485,7 +521,7 @@ class YugaByteProcessManager(object):
             try:
                 self.callhome()
             except URLError as e:
-                logging.error("Failed to send callhome: %s", str(e))
+                Output.log("Failed to send callhome: {}".format(e), logging.ERROR)
             num_times_called += 1
             # Send callhome data more often in initial hour.
             time.sleep(initial_interval if num_times_called < 60 else final_interval)
@@ -516,6 +552,39 @@ class YugaByteProcessManager(object):
         except (OSError, AttributeError, IndexError) as e:
             return False
 
+    # Checks resource settings for current shell. Prints warning if requirements aren't met.
+    def validate_resources(self):
+        recommended_resources = {
+            "file_size": ("RLIMIT_FSIZE", resource.RLIM_INFINITY, "-f"),
+            "max_locked_memory": ("RLIMIT_MEMLOCK", resource.RLIM_INFINITY, "-l"),
+            "max_memory_size": ("RLIMIT_AS", resource.RLIM_INFINITY, "-m"),
+            "open_files": ("RLIMIT_NOFILE", 64000, "-n"),
+            "cpu_time": ("RLIMIT_CPU", resource.RLIM_INFINITY, "-t"),
+            "max_user_processes": ("RLIMIT_NPROC", 64000, "-u"),
+            "virtual_memory": ("RLIMIT_VMEM", resource.RLIM_INFINITY, "-v"),
+        }
+
+        failed = []
+        # If the current platform does not support the resource,
+        # it won't be defined in the resource module.
+        for res in recommended_resources:
+            var, recommended_value, flag = recommended_resources[res]
+            if hasattr(resource, var):
+                # Check soft limit, not hard limit.
+                value = resource.getrlimit(getattr(resource, var))[0]
+                if value < recommended_value:
+                    failed.append((res, value, recommended_value, flag))
+        if failed:
+            msg = "{}: Did not meet recommended system resource limits.\n".format(
+                Output.make_red("WARNING"))
+            for name, value, recommended_value, flag in failed:
+                if recommended_value == resource.RLIM_INFINITY:
+                    recommended_value = "unlimited"
+                msg += "{0}: {1}. {2}: {3}. Use 'ulimit {4} {3}' to set.\n".format(
+                    Output.make_yellow("Current " + name), value,
+                    Output.make_green("Recommended"), recommended_value, flag)
+            Output.print_and_log(msg, logging.WARNING)
+
     # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
         has_errors = False
@@ -538,14 +607,14 @@ class YugaByteProcessManager(object):
                         config_data_dir != args.data_dir):
                     has_errors = True
                     # TODO: Gradefully handle this case... User should be able to override config.
-                    print(
+                    Output.print_out(
                         "Data directory already exits at {}.".format(config_data_dir))
 
             if args.log_dir:
                 config_log_dir = self.configs.saved_data.get("log_dir")
                 if (config_log_dir and os.path.exists(config_log_dir) and
                         config_log_dir != args.log_dir):
-                    print(
+                    Output.print_out(
                         "Old log directory already exists at {}. New logs will go to {}".format(
                             config_log_dir, args.log_dir))
 
@@ -555,7 +624,7 @@ class YugaByteProcessManager(object):
                 args.webserver_enabled = self.configs.saved_data.get("webserver_enabled")
             if args.webserver_enabled:
                 if not self.java_installed():
-                    print(
+                    Output.print_out(
                         "ERROR: Java 1.8 or higher is required by YugaByte DB UI. You can:"
                         "   - Install Java 1.8 or higher (recommended)"
                         "   - Continue without the UI by passing the --disable_ui flag.")
@@ -584,13 +653,15 @@ class YugaByteProcessManager(object):
         common_parser.add_argument(
             "--data_dir", help="Directory where YugaByte DB will store data.")
 
-        parser = argparse.ArgumentParser()
+        start_msg = "To start YugaByte DB, run '{}'.\n\n".format(
+            Output.make_green("yugabyte-db start"))
+        parser = PrettyArgParser(description=start_msg)
         all_parsers = {"default": parser}
         subparsers = parser.add_subparsers(dest="parser")
         for cmd, description in (
+                ("start", "Start YugaByte DB."),
                 ("status", "Print status of YugaByte DB."),
-                ("version", "Version of YugaByte DB."),
-                ("start", "Start YugaByte DB."),):
+                ("version", "Version of YugaByte DB."),):
             subparser = subparsers.add_parser(cmd, help=description, parents=[common_parser])
             func = getattr(self, cmd, None)
             subparser.set_defaults(func=func)
@@ -648,9 +719,10 @@ class YugaByteProcessManager(object):
                 "--master_port", help="Port on which yb-master will run.")
             cur_parser.add_argument(
                 "--tserver_port", help="Port on which yb-tserver will run.")
-            # TODO: Create option for api_port. This needs yugaware changes since UI is hardcoded.
             cur_parser.add_argument(
-                "--webserver_port", help="Port on which YugaWare API will listen.")
+                "--webserver_port", help="Port on which webserver will run.")
+            cur_parser.add_argument(
+                "--api_port", help="Port on which webserver API will run.")
 
             group = cur_parser.add_mutually_exclusive_group()
             group.add_argument(
@@ -660,10 +732,10 @@ class YugaByteProcessManager(object):
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
                 "--polling_interval", default=5, help=argparse.SUPPRESS)
-
-        for _, cur_parser in get_kv(all_parsers):
-            cur_parser._positionals.title = "Commands"
-            cur_parser._optionals.title = "Flags"
+            cur_parser.add_argument(
+                "--master_flags", help=argparse.SUPPRESS)
+            cur_parser.add_argument(
+                "--tserver_flags", help=argparse.SUPPRESS)
 
         if not sys.argv[1:]:
             parser.print_help()
@@ -681,6 +753,7 @@ class YugaByteProcessManager(object):
             format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
         args.func()
 
+
 class Configs(object):
     def __init__(self, config_file):
         self.saved_data = {
@@ -691,10 +764,13 @@ class Configs(object):
             "ysql_port": DEFAULT_YSQL_PORT,
             "ycql_port": DEFAULT_YCQL_PORT,
             "webserver_port": DEFAULT_WEBSERVER_PORT,
+            "api_port": DEFAULT_API_PORT,
             "universe_uuid": "",
             "polling_interval": "5",
             "yb_demo_retail": False,
             "webserver_enabled": True,
+            "master_flags": "",
+            "tserver_flags": "",
         }
         self.config_file = config_file
 
@@ -712,7 +788,8 @@ class Configs(object):
                 with open(config_file) as f:
                     configs.saved_data.update(json.load(f))
             except ValueError as e:
-                log_error_and_exit("Failed to read config file {}: {}".format(config_file, str(e)))
+                Output.log_error_and_exit(
+                    "Failed to read config file {}: {}".format(config_file, str(e)))
         return configs
 
 
@@ -737,7 +814,7 @@ class ProcessManager(object):
         # TODO: Redirect YW logs to yugabyte-logs
         with open(self.pidfile, "w+") as pid_file:
             pid_file.write(str(self.process.pid))
-            print_and_log("{} running with PID {}.".format(self.name, self.process.pid))
+            Output.log("{} running with PID {}.".format(self.name, self.process.pid), logging.DEBUG)
 
     # Returns pid of this process if it's running.
     def get_pid(self):
@@ -749,7 +826,7 @@ class ProcessManager(object):
                     try:
                         pid = int(f.readline())
                     except ValueError as e:
-                        print_and_log(
+                        Output.log(
                             "Could not parse int PID from {}. Deleting file.".format(self.pidfile),
                             logging.DEBUG)
                         self.delete_pidfile()
@@ -758,10 +835,9 @@ class ProcessManager(object):
                 if command and self.name in command:
                     return pid
 
-            print_and_log(
-                "Pidfile {} was not properly deleted. Contained PID {}. Deleting file.".format(
-                    self.pidfile, pid),
-                logging.DEBUG)
+            Output.log(
+                "Pidfile {} was not properly deleted."
+                "Contained PID {}. Deleting file.".format(self.pidfile, pid), logging.DEBUG)
             self.delete_pidfile()
         return None
 
@@ -785,7 +861,7 @@ class ProcessManager(object):
                 os.remove(self.pidfile)
             except OSError as e:
                 if os.path.exists(self.pidfile):
-                    log_error_and_exit("Failed to delete {}.".format(self.pidfile))
+                    Output.log_error_and_exit("Failed to delete {}.".format(self.pidfile))
         self.start_time = None
 
     # Check fatal errors in fatal/error logs, if any. Overwritten in YBProcessManager
@@ -830,8 +906,9 @@ class YBProcessManager(ProcessManager):
             try:
                 os.symlink(self.data_log_path, log_path)
             except OSError as e:
-                logging.error(
-                    "Failed to create symlink from {} to {}".format(self.data_log_path, log_path))
+                Output.log(
+                    "Failed to create symlink from {} to {}".format(self.data_log_path, log_path),
+                    logging.ERROR)
 
     def remove_error_logs(self):
         if os.path.isfile(self.error_log):
@@ -841,6 +918,7 @@ class YBProcessManager(ProcessManager):
         # Error logs contain port information, but fatal logs don't.
         address_error_1 = "Could not start on address"
         address_error_2 = "Error binding socket to "
+        address_error_3 = "Is another postmaster already running on port "
         if os.path.isfile(self.error_log):
             with open(self.error_log) as log:
                 for line in log.readlines():
@@ -851,13 +929,23 @@ class YBProcessManager(ProcessManager):
                             err_msg = err_msg[1]
                         else:
                             err_msg = line
-                        log_error_and_exit(
+                        Output.log_error_and_exit(
                             "Failed to bind to address: {}".format(err_msg))
                     elif address_error_2 in line:
                         err_msg = line.split(address_error_2)[1]
-                        address = err_msg.split(" ")[0]
-                        log_error_and_exit(
+                        address = err_msg.split()[0]
+                        Output.log_error_and_exit(
                             "Failed to bind to address: {}".format(address))
+                    elif address_error_3 in line:
+                        err_msg = line.split(address_error_3)
+                        # Try to find address, otherwise log entire error message.
+                        if len(err_msg) == 2:
+                            err_msg = err_msg[1].split()[0]
+                            Output.log_error_and_exit(
+                                "Failed to bind to port: {}.".format(err_msg))
+                        else:
+                            Output.log_error_and_exit(
+                                "Failed to bind to address: {}".format(err_msg))
 
 
 class Diagnostics(object):
@@ -869,6 +957,8 @@ class Diagnostics(object):
         payload = {
             "data_dir_size": self.get_dir_size(self.configs.saved_data.get("data_dir")),
             "num_cpus": multiprocessing.cpu_count(),
+            "master_flags": self.configs.saved_data.get("master_flags"),
+            "tserver_flags": self.configs.saved_data.get("tserver_flags")
         }
         for p in processes.values():
             payload["{}_status".format(p.name)] = "UP" if p.is_running() else "DOWN"
@@ -973,11 +1063,11 @@ class LogAnalyzer(object):
 
 # Manages API calls to YW.
 class YugaWareProxy(object):
-    def __init__(self, yw_port, univ_name="local-universe"):
+    def __init__(self, api_port, univ_name="local-universe"):
         self.univ_name = univ_name
         self.api_token = ""
         self.cust_uuid = ""
-        self.url = "http://localhost:{}/api/v1".format(yw_port)
+        self.url = "http://localhost:{}/api/v1".format(api_port)
 
     # Retrieves permanent api_token. Returns error, if any.
     def login(self):
@@ -1006,7 +1096,7 @@ class YugaWareProxy(object):
             self.api_token = api_data["apiToken"]
             return None
         except (ValueError, HTTPError, URLError, KeyError) as e:
-            return "Failed to log into YugaWare. {}".format(e)
+            return "Failed to log into webserver. {}".format(e)
 
     # Import local universe into YW. Returns error, if any.
     def import_universe(self, master_port):
@@ -1024,63 +1114,209 @@ class YugaWareProxy(object):
             "universeUUID": "",
         }
 
-        print_and_log("Importing YugaByte into YugaWare...")
+        Output.log("Importing YugaByte into webserver...")
         try:
-            logging.debug("Importing master.")
+            Output.log("Importing master.", logging.DEBUG)
             req = Request(target, headers=headers, data=json.dumps(data))
             resp = json.loads(urlopen(req).read())
             checks = resp.get("checks")
-            logging.debug("Import master payload: %s", resp)
+            Output.log("Import master payload: {}".format(resp), logging.DEBUG)
             if checks and not all(check == 'OK' for check in checks.values()):
-                log_error_and_exit("Failed to import local universe into YugaWare: checks failed.")
+                Output.log_error_and_exit(
+                    "Failed to import local universe into webserver: checks failed.")
 
             # Set the universeUUID that YW returns.
             data["universeUUID"] = resp.get("universeUUID")
 
-            logging.debug("Importing tserver.")
+            Output.log("Importing tserver.", logging.DEBUG)
             data["currentState"] = "IMPORTED_MASTERS"
             req = Request(target, headers=headers, data=json.dumps(data))
             resp = json.loads(urlopen(req).read())
             checks = resp.get("checks")
-            logging.debug("Import tserver payload: %s", resp)
+            Output.log("Import tserver payload: {}".format(resp), logging.DEBUG)
             if checks and not all(check == 'OK' for check in checks.values()):
-                log_error_and_exit("Failed to import local universe into YugaWare: checks failed.")
+                Output.log_error_and_exit(
+                    "Failed to import local universe into webserver: checks failed.")
 
-            logging.debug("Finalizing import.")
+            Output.log("Finalizing import.", logging.DEBUG)
             data["currentState"] = "IMPORTED_TSERVERS"
             req = Request(target, headers=headers, data=json.dumps(data))
             resp = json.loads(urlopen(req).read())
             checks = resp.get("checks")
-            logging.debug("Finalizing import payload: %s", resp)
+            Output.log("Finalizing import payload: {}".format(resp), logging.DEBUG)
             # Node exporter does not matter for local universes and will fail on import.
             if "node_exporter_ip_error_map" in checks:
                 del[checks["node_exporter_ip_error_map"]]
             if checks and not all(check == 'OK' for check in checks.values()):
-                log_error_and_exit("Failed to import local universe into YugaWare: checks failed.")
+                Output.log_error_and_exit(
+                    "Failed to import local universe into webserver: checks failed.")
         except (ValueError, HTTPError, URLError, KeyError) as e:
             return "Failed to import local universe into YW with payload: {}.\n" \
                 "Got error: {}".format(data, e)
 
-        print_and_log("Import succeeded!")
+        Output.log("Import succeeded!")
         return None
 
+    # Disables/hides paid services on UI.
+    def update_features(self):
+        target = "{}/customers/{}".format(self.url, self.cust_uuid)
+        headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "User-Agent": "Mozilla",
+            "Content-Type": "application/json",
+        }
+        data = {
+            "code": "admin",
+            "name": "admin",
+            "email": "admin@yugabyte.com",
+            "features": {
+                "universe": {
+                    "import": "disabled"
+                },
+                "config": {
+                    "infra": "hidden"
+                },
+                "costs": {
+                    "universe_list": "hidden",
+                    "stats_panel": "hidden"
+                },
+                "main": {
+                    "dropdown": "hidden",
+                    "stats": "hidden",
+                    "landing_page": "universes"
+                },
+                "menu": {
+                    "dashboard": "hidden"
+                },
+                "universes": {
+                    "details": {
+                        "tasks": "disabled",
+                        "backups": "disabled",
+                        "health": "disabled",
+                        "overview": {
+                            "costs": "hidden"
+                        }
+                    }
+                }
+            }
+        }
 
-def print_and_log(msg, level=logging.INFO):
-    print(msg)
-    if level == logging.CRITICAL:
-        logging.critical(msg)
-    elif level == logging.ERROR:
-        logging.error(msg)
-    elif level == logging.WARNING:
-        logging.warning(msg)
-    elif level == logging.INFO:
-        logging.info(msg)
-    elif level == logging.DEBUG:
-        logging.debug(msg)
+        err_msg = None
+        Output.log("Updating UI with proper features...")
+        try:
+            req = Request(target, headers=headers, data=json.dumps(data))
+            req.get_method = lambda: "PUT"
+            resp = json.loads(urlopen(req).read())
+            if resp.get("features") != data["features"]:
+                err_msg = "Failed to update features. Sent: {}.\nReceived: {}".format(data, resp)
+        except (ValueError, HTTPError, URLError, KeyError) as e:
+            err_msg = "Failed to update features: {}".format(e)
 
-def log_error_and_exit(msg):
-    print_and_log(msg, logging.ERROR)
-    sys.exit(1)
+        if not err_msg:
+            Output.log("Successfully updated features.")
+        else:
+            Output.log(err_msg, logging.ERROR)
+        return err_msg
+
+# Class that handles any output operations. Use print for what users should see.
+# Use log for logging. ANSI escape characters should not be used for logging.
+class Output(object):
+    supports_color = (sys.platform != 'win32' or 'ANSICON' in os.environ) and \
+        hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+    END = u"\u001b[0m"
+    BOLD = u"\u001b[1m"
+    UNDERLINE = u"\u001b[4m"
+    RED = u"\u001b[31m"
+    GREEN = u"\u001b[32m"
+    YELLOW = u"\u001b[33m"
+    BLUE = u"\u001b[34m"
+    MAGENTA = u"\u001b[35m"
+    CYAN = u"\u001b[36m"
+    map_level_to_output = {
+        logging.DEBUG: logging.debug,
+        logging.INFO: logging.info,
+        logging.WARNING: logging.warning,
+        logging.ERROR: logging.error,
+        logging.CRITICAL: logging.critical
+    }
+
+    @staticmethod
+    def print_out(msg):
+        print(msg)
+
+    @staticmethod
+    def log(msg, level=logging.INFO):
+        Output.map_level_to_output[level](msg)
+
+    @staticmethod
+    def print_and_log(msg, level=logging.INFO):
+        Output.log(msg, level=level)
+        Output.print_out(msg)
+
+    @staticmethod
+    def log_error_and_exit(msg):
+        Output.print_and_log(msg, logging.ERROR)
+        sys.exit(1)
+
+    @staticmethod
+    def make_bold(msg):
+        return Output.BOLD + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_underline(msg):
+        return Output.UNDERLINE + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_red(msg):
+        return Output.RED + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_green(msg):
+        return Output.GREEN + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_yellow(msg):
+        return Output.YELLOW + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_blue(msg):
+        return Output.BLUE + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_magenta(msg):
+        return Output.MAGENTA + msg + Output.END if Output.supports_color else msg
+
+    @staticmethod
+    def make_cyan(msg):
+        return Output.CYAN + msg + Output.END if Output.supports_color else msg
+
+
+# Class to customize argparse output.
+class PrettyArgParser(argparse.ArgumentParser):
+    epilog = "Run 'yugabyte-db [command] -h' for help with specific commands."
+    def __init__(self, **kwargs):
+        kwargs["formatter_class"] = PrettyHelpFormatter
+        kwargs["epilog"] = self.epilog
+        super(PrettyArgParser, self).__init__(**kwargs)
+        self._positionals.title = Output.make_yellow("Commands")
+        self._optionals.title = Output.make_yellow("Flags")
+
+    # Add epilog help message to errors.
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        err = "{} {}\n{}\n".format(Output.make_red("Error:"), message, self.epilog)
+        self.exit(2, err)
+
+
+# Class that capitalizes argparse help message.
+class PrettyHelpFormatter(argparse.HelpFormatter):
+    # Change the "Usage: "  string to yellow
+    def add_usage(self, usage, actions, groups, prefix=None):
+        if prefix is None:
+            prefix = Output.make_yellow('Usage: ')
+        super(PrettyHelpFormatter, self).add_usage(
+            usage, actions, groups, prefix)
+
 
 # Returns key-value pairs of input dict. Independent of python version.
 def get_kv(map):
