@@ -114,6 +114,20 @@ public class TestPgMisc extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testTemporaryTableTransactionInExecute() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TEMP TABLE test_table(a int, b int, c int, PRIMARY KEY (a))");
+
+      // Can insert using JDBC prepared statement.
+      statement.execute("INSERT INTO test_table(a, b, c) VALUES (1, 2, 3)");
+
+      // Can insert explicitly prepared statement.
+      statement.execute("PREPARE ins AS INSERT INTO test_table(a, b, c) VALUES (2, 3, 4)");
+      statement.execute("EXECUTE ins");
+    }
+  }
+
   private void executeQueryInTemplate(String query) throws Exception {
     try (Connection connection = createConnection(0, "template1");
          Statement statement = connection.createStatement()) {

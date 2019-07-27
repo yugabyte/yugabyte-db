@@ -51,6 +51,7 @@
 #include <limits.h>
 
 #include "access/transam.h"
+#include "access/xact.h"
 #include "catalog/namespace.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -416,6 +417,9 @@ CompleteCachedPlan(CachedPlanSource *plansource,
 	plansource->cursor_options = cursor_options;
 	plansource->fixed_result = fixed_result;
 	plansource->resultDesc = PlanCacheComputeResultDesc(querytree_list);
+
+	/* If the planner txn uses a pg relation, so will the execution txn */
+	plansource->usesPostgresRel = IsCurrentTxnWithPGRel();
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -1239,6 +1243,8 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 		MemoryContextSetParent(plan->context, CacheMemoryContext);
 		plan->is_saved = true;
 	}
+
+	plan->usesPostgresRel = plansource->usesPostgresRel;
 
 	return plan;
 }

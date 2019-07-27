@@ -247,6 +247,14 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 	plan_list = cplan->stmt_list;
 
 	/*
+	 * If the planner found a pg relation in this plan, set the appropriate
+	 * flag for the execution txn.
+	 */
+	if (cplan->usesPostgresRel) {
+		SetTxnWithPGRel();
+	}
+
+	/*
 	 * For CREATE TABLE ... AS EXECUTE, we must verify that the prepared
 	 * statement is one that produces tuples.  Currently we insist that it be
 	 * a plain old SELECT.  In future we might consider supporting other
