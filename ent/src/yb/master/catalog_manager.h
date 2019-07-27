@@ -162,6 +162,10 @@ class CatalogManager : public yb::master::CatalogManager {
   CHECKED_STATUS FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                        TSHeartbeatResponsePB* resp) override;
 
+  // Is encryption at rest enabled for this cluster.
+  CHECKED_STATUS IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
+                                     IsEncryptionEnabledResponsePB* resp);
+
  private:
   friend class SnapshotLoader;
   friend class ClusterLoadBalancer;

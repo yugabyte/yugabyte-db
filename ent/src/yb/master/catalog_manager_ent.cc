@@ -554,6 +554,27 @@ Status CatalogManager::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB*
   return Status::OK();
 }
 
+Status CatalogManager::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
+                                           IsEncryptionEnabledResponsePB* resp) {
+  auto l = cluster_config_->LockForRead();
+  const auto& encryption_info = l->data().pb.encryption_info();
+  resp->set_encryption_enabled(encryption_info.encryption_enabled());
+  if (!encryption_info.encryption_enabled()) {
+    return Status::OK();
+  }
+
+  // Decrypt the universe key registry to get the latest version id.
+  auto decrypted_registry =
+      VERIFY_RESULT(DecryptUniverseKeyRegistry(
+          encryption_info.universe_key_registry_encoded(), encryption_info.key_path()));
+  auto universe_key_registry =
+      VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(decrypted_registry));
+
+  resp->set_key_id(universe_key_registry.latest_version_id());
+
+  return Status::OK();
+}
+
 Status CatalogManager::ImportNamespaceEntry(const SysRowEntry& entry,
                                             NamespaceMap* ns_map) {
   DCHECK_EQ(entry.type(), SysRowEntry::NAMESPACE);

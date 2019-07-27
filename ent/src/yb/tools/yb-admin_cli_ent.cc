@@ -175,6 +175,13 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         RETURN_NOT_OK_PREPEND(client->DisableEncryption(), "Unable to disable encryption.");
         return Status::OK();
       });
+
+  Register(
+      "is_encryption_enabled", "",
+      [client](const CLIArguments& args) -> Status {
+        RETURN_NOT_OK_PREPEND(client->IsEncryptionEnabled(), "Unable to get encryption status.");
+        return Status::OK();
+      });
 }
 
 }  // namespace enterprise
