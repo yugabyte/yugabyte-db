@@ -115,6 +115,7 @@ typedef struct CachedPlanSource
 	double		generic_cost;	/* cost of generic plan, or -1 if not known */
 	double		total_custom_cost;	/* total cost of custom plans so far */
 	int			num_custom_plans;	/* number of plans included in total */
+	bool 		usesPostgresRel; /* Does this plan use pg relations */
 } CachedPlanSource;
 
 /*
@@ -141,6 +142,7 @@ typedef struct CachedPlan
 	int			generation;		/* parent's generation number for this plan */
 	int			refcount;		/* count of live references to this struct */
 	MemoryContext context;		/* context containing this CachedPlan */
+	bool 		usesPostgresRel; /* Does this plan use pg relations */
 } CachedPlan;
 
 
