@@ -384,6 +384,15 @@ message ChangeEncryptionInfoResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message IsEncryptionEnabledRequestPB {
+}
+
+message IsEncryptionEnabledResponsePB {
+  optional bool encryption_enabled = 1;
+  optional string key_id = 2;
+  optional MasterErrorPB error = 3;
+}
+
 message EncryptionInfoPB {
   optional bool encryption_enabled = 1 [default = false];
   optional bytes universe_key_registry_encoded = 2;
@@ -1489,4 +1498,5 @@ service MasterService {
   rpc IsInitDbDone(IsInitDbDoneRequestPB) returns (IsInitDbDoneResponsePB);
 
   rpc ChangeEncryptionInfo(ChangeEncryptionInfoRequestPB) returns (ChangeEncryptionInfoResponsePB);
+  rpc IsEncryptionEnabled(IsEncryptionEnabledRequestPB) returns (IsEncryptionEnabledResponsePB);
 }

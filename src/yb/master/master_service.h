@@ -223,6 +223,10 @@ class MasterServiceImpl : public MasterServiceIf,
                             ChangeEncryptionInfoResponsePB* resp,
                             rpc::RpcContext rpc) override;
 
+  void IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
+                           IsEncryptionEnabledResponsePB* resp,
+                           rpc::RpcContext rpc) override;
+
  private:
 };
 
