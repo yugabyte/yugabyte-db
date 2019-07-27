@@ -54,6 +54,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   CHECKED_STATUS DisableEncryption();
 
+  CHECKED_STATUS IsEncryptionEnabled();
+
  private:
 
   CHECKED_STATUS SendEncryptionRequest(const std::string& key_path, bool enable_encryption);

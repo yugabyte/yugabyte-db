@@ -68,6 +68,18 @@ class EncryptionTest : public YBTableTestBase {
     }
   }
 
+  Result<std::string> IsEncryptionEnabled() {
+    rpc::RpcController rpc;
+    rpc.set_timeout(MonoDelta::FromSeconds(5));
+
+    master::IsEncryptionEnabledRequestPB is_enabled_req;
+    master::IsEncryptionEnabledResponsePB is_enabled_resp;
+
+    RETURN_NOT_OK(external_mini_cluster()->master_proxy()->
+        IsEncryptionEnabled(is_enabled_req, &is_enabled_resp, &rpc));
+    return is_enabled_resp.encryption_enabled() ? is_enabled_resp.key_id() : "";
+  }
+
   void RotateKey() {
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(5));
@@ -88,6 +100,10 @@ class EncryptionTest : public YBTableTestBase {
     ASSERT_OK(external_mini_cluster()->master_proxy()->
         ChangeEncryptionInfo(encryption_info_req, &encryption_info_resp, &rpc));
     ASSERT_FALSE(encryption_info_resp.has_error());
+    auto res = ASSERT_RESULT(IsEncryptionEnabled());
+    ASSERT_NE("", res);
+    ASSERT_NE(current_key_id_, res);
+    current_key_id_ = res;
   }
 
   void DisableEncryption() {
@@ -101,7 +117,13 @@ class EncryptionTest : public YBTableTestBase {
     ASSERT_OK(external_mini_cluster()->master_proxy()->
         ChangeEncryptionInfo(encryption_info_req, &encryption_info_resp, &rpc));
     ASSERT_FALSE(encryption_info_resp.has_error());
+
+    auto res = ASSERT_RESULT(IsEncryptionEnabled());
+    ASSERT_EQ(res, "");
+    current_key_id_ = "";
   }
+ private:
+  std::string current_key_id_ = "";
 };
 
 TEST_F(EncryptionTest, BasicWriteRead) {
@@ -149,7 +171,6 @@ TEST_F(EncryptionTest, DisableEncryption) {
   ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
-
 
 } // namespace integration_tests
 } // namespace yb

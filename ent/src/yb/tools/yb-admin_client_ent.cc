@@ -515,6 +515,26 @@ Status ClusterAdminClient::SendEncryptionRequest(
   return Status::OK();
 }
 
+Status ClusterAdminClient::IsEncryptionEnabled() {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+
+  master::IsEncryptionEnabledRequestPB req;
+  master::IsEncryptionEnabledResponsePB resp;
+  RETURN_NOT_OK_PREPEND(master_proxy_->
+      IsEncryptionEnabled(req, &resp, &rpc),
+      "MasterServiceImpl::IsEncryptionEnabled call fails.");
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "Encryption status: " << (resp.encryption_enabled() ?
+      Format("ENABLED with key id $0", resp.key_id()) : "DISABLED" ) << std::endl;
+
+  return Status::OK();
+}
+
 }  // namespace enterprise
 }  // namespace tools
 }  // namespace yb

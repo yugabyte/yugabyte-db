@@ -668,6 +668,13 @@ void MasterServiceImpl::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ChangeEncryptionInfo);
 }
 
+void MasterServiceImpl::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
+                                            IsEncryptionEnabledResponsePB* resp,
+                                            rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsEncryptionEnabled);
+}
+
+
 
 
 } // namespace master
