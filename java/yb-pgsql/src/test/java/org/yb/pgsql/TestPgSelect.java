@@ -18,6 +18,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.util.RegexMatcher;
 
 import java.math.BigDecimal;
 import java.sql.ResultSet;
@@ -289,6 +290,24 @@ public class TestPgSelect extends BasePgSQLTest {
       // Test expressions in SELECT WHERE clause.
       assertOneRow("SELECT * FROM test_expr WHERE h + r <= 10 AND substring(vs from 2) = 'bc'",
                    2L, 3.0D, 4, "abc");
+    }
+  }
+
+  @Test
+  public void testPgsqlVersion() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery("SELECT version();")) {
+          assertTrue(rs.next());
+          assertThat(String.valueOf(rs.getArray(1)),
+                     RegexMatcher.matchesRegex("PostgreSQL.*-YB-.*"));
+          assertFalse(rs.next());
+      }
+      try (ResultSet rs = statement.executeQuery("show server_version;")) {
+        assertTrue(rs.next());
+        assertThat(String.valueOf(rs.getArray(1)),
+                RegexMatcher.matchesRegex(".*-YB-.*"));
+        assertFalse(rs.next());
+      }
     }
   }
 }

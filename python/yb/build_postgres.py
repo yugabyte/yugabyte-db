@@ -128,6 +128,10 @@ class PostgresBuilder:
             raise RuntimeError(
                 "No 'auto' value is allowed for YB_REMOTE_COMPILATION at this point")
 
+    def get_yb_version(self):
+        with open(os.path.join(YB_SRC_ROOT, 'version.txt'), "r") as version_file:
+            return version_file.read().strip()
+
     def set_env_var(self, name, value):
         if value is None:
             if name in os.environ:
@@ -377,6 +381,7 @@ class PostgresBuilder:
         configure_cmd_line = [
                 './configure',
                 '--prefix', self.pg_prefix,
+                '--with-extra-version=-YB-' + self.get_yb_version(),
                 '--enable-depend',
                 # We're enabling debug symbols for all types of builds.
                 '--enable-debug']
