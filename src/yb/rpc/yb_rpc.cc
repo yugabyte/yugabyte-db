@@ -99,6 +99,15 @@ YBConnectionContext::YBConnectionContext(
       read_buffer_(receive_buffer_size, buffer_tracker),
       call_tracker_(call_tracker) {}
 
+void YBConnectionContext::SetEventLoop(ev::loop_ref* loop) {
+  loop_ = loop;
+}
+
+void YBConnectionContext::Shutdown(const Status& status) {
+  timer_.Shutdown();
+  loop_ = nullptr;
+}
+
 YBConnectionContext::~YBConnectionContext() {}
 
 namespace {
@@ -115,12 +124,6 @@ CoarseMonoClock::Duration HeartbeatPeriod() {
 
 uint64_t YBConnectionContext::ExtractCallId(InboundCall* call) {
   return down_cast<YBInboundCall*>(call)->call_id();
-}
-
-void YBInboundConnectionContext::Shutdown(const Status& status) {
-  if (timer_.is_active()) {
-    timer_.stop();
-  }
 }
 
 Result<ProcessDataResult> YBInboundConnectionContext::ProcessCalls(
@@ -179,13 +182,11 @@ void YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
   connection_ = connection;
   last_write_time_ = connection->reactor()->cur_time();
   if (FLAGS_enable_rpc_keepalive) {
-    StartTimer(HeartbeatPeriod(), &timer_);
+    timer_.Init(*loop_);
+    timer_.SetCallback<
+        YBInboundConnectionContext, &YBInboundConnectionContext::HandleTimeout>(this);
+    timer_.Start(HeartbeatPeriod());
   }
-}
-
-void YBInboundConnectionContext::SetEventLoop(ev::loop_ref* loop) {
-  timer_.set(*loop);
-  timer_.set<YBInboundConnectionContext, &YBInboundConnectionContext::HandleTimeout>(this);
 }
 
 void YBInboundConnectionContext::UpdateLastWrite(const ConnectionPtr& connection) {
@@ -210,7 +211,7 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
       connection->QueueOutboundData(HeartbeatOutboundData::Instance());
     }
 
-    StartTimer(deadline - now, &timer_);
+    timer_.Start(deadline - now);
   }
 }
 
@@ -460,12 +461,6 @@ void YBInboundCall::Respond(const MessageLite& response, bool is_success) {
   QueueResponse(is_success);
 }
 
-void YBOutboundConnectionContext::Shutdown(const Status& status) {
-  if (timer_.is_active()) {
-    timer_.stop();
-  }
-}
-
 Status YBOutboundConnectionContext::HandleCall(
     const ConnectionPtr& connection, CallData* call_data) {
   return connection->HandleCallResponse(call_data);
@@ -476,7 +471,10 @@ void YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
   connection_ = connection;
   last_read_time_ = connection->reactor()->cur_time();
   if (FLAGS_enable_rpc_keepalive) {
-    StartTimer(Timeout(), &timer_);
+    timer_.Init(*loop_);
+    timer_.SetCallback<
+        YBOutboundConnectionContext, &YBOutboundConnectionContext::HandleTimeout>(this);
+    timer_.Start(Timeout());
   }
 }
 
@@ -487,11 +485,6 @@ void YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connecti
 Result<ProcessDataResult> YBOutboundConnectionContext::ProcessCalls(
     const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
   return parser().Parse(connection, data, read_buffer_full);
-}
-
-void YBOutboundConnectionContext::SetEventLoop(ev::loop_ref* loop) {
-  timer_.set(*loop);
-  timer_.set<YBOutboundConnectionContext, &YBOutboundConnectionContext::HandleTimeout>(this);
 }
 
 void YBOutboundConnectionContext::UpdateLastRead(const ConnectionPtr& connection) {
@@ -521,7 +514,7 @@ void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents)
       return;
     }
 
-    StartTimer(deadline - now, &timer_);
+    timer_.Start(deadline - now);
   }
 }
 

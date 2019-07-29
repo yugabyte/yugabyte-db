@@ -480,6 +480,37 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
   }
 }
 
+TEST_F(DeleteTableTest, DeleteTableWithConcurrentWritesNoRestarts) {
+  ASSERT_NO_FATALS(StartCluster());
+  constexpr auto kNumIters = 10;
+  for (int iter = 0; iter < kNumIters; iter++) {
+    TestWorkload workload(cluster_.get());
+    workload.set_table_name(YBTableName("my_keyspace", Format("table-$0", iter)));
+
+    // We'll delete the table underneath the writers, so we expect a NotFound error during the
+    // writes.
+    workload.set_not_found_allowed(true);
+    workload.Setup();
+    workload.Start();
+
+    AssertLoggedWaitFor(
+        [&workload] { return workload.rows_inserted() > 100; }, 60s,
+        "Waiting until we have inserted some data...", 10ms);
+
+    auto tablets = inspect_->ListTabletsWithDataOnTS(1);
+    ASSERT_EQ(1, tablets.size());
+    const auto& tablet_id = tablets[0];
+
+    ASSERT_NO_FATALS(DeleteTable(workload.table_name()));
+    for (int ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ts_idx++) {
+      ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(ts_idx, tablet_id, SUPERBLOCK_EXPECTED));
+    }
+
+    workload.StopAndJoin();
+    cluster_->AssertNoCrashes();
+  }
+}
+
 // Test that a tablet replica is automatically tombstoned on startup if a local
 // crash occurs in the middle of remote bootstrap.
 TEST_F(DeleteTableTest, TestAutoTombstoneAfterCrashDuringRemoteBootstrap) {

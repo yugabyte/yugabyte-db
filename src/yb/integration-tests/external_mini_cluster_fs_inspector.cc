@@ -123,6 +123,7 @@ vector<string> ExternalMiniClusterFsInspector::ListTabletsOnTS(int index) {
 }
 
 vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(int index) {
+  static const std::string kTabletDirPrefix = "tablet-";
   string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
   string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
   vector<string> tables;
@@ -132,7 +133,10 @@ vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(int index
   for (const auto& table : tables) {
     auto table_wal_dir = JoinPathSegments(wal_dir, table);
     CHECK_OK(ListFilesInDir(table_wal_dir, &table_tablets));
-    tablets.insert(tablets.end(), table_tablets.begin(), table_tablets.end());
+    for (const auto& tablet : table_tablets) {
+      CHECK(Slice(tablet).starts_with(kTabletDirPrefix));
+      tablets.push_back(tablet.substr(kTabletDirPrefix.size()));
+    }
   }
   return tablets;
 }

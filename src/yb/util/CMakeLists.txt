@@ -164,6 +164,7 @@ set(UTIL_SRCS
   decimal.cc
   env.cc env_posix.cc env_util.cc
   errno.cc
+  ev_util.cc
   failure_detector.cc
   fast_varint.cc
   faststring.cc
@@ -262,6 +263,7 @@ set(UTIL_LIBS
   glog
   gutil
   histogram_proto
+  libev
   pb_util_proto
   protobuf
   version_info_proto
