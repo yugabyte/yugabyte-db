@@ -90,7 +90,7 @@ Status TcpStream::DoStart(ev::loop_ref* loop, bool connect) {
   int events = ev::READ | (!connected_ ? ev::WRITE : 0);
   io_.start(socket_.GetFd(), events);
 
-  DVLOG_WITH_PREFIX(4) << "Starting, listen events: " << events << ", fd: " << socket_.GetFd();
+  DVLOG_WITH_PREFIX(3) << "Starting, listen events: " << events << ", fd: " << socket_.GetFd();
 
   is_epoll_registered_ = true;
 
@@ -239,7 +239,7 @@ void TcpStream::PopSending() {
 }
 
 void TcpStream::Handler(ev::io& watcher, int revents) {  // NOLINT
-  DVLOG_WITH_PREFIX(3) << "Handler(revents=" << revents << ")";
+  DVLOG_WITH_PREFIX(4) << "Handler(revents=" << revents << ")";
   auto status = Status::OK();
   if (revents & ev::ERROR) {
     status = STATUS(NetworkError, ToString() + ": Handler encountered an error");
@@ -409,7 +409,7 @@ size_t TcpStream::Send(OutboundDataPtr data) {
   // Serialize the actual bytes to be put on the wire.
   sending_.emplace_back(std::move(data), mem_tracker_);
   queued_bytes_to_send_ += sending_.back().bytes_size();
-  DVLOG_WITH_PREFIX(3) << "Added data queued_bytes_to_send_: " << queued_bytes_to_send_;
+  DVLOG_WITH_PREFIX(4) << "Added data queued_bytes_to_send_: " << queued_bytes_to_send_;
 
   return result;
 }

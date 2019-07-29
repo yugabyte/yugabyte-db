@@ -21,6 +21,8 @@
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_with_call_id.h"
 
+#include "yb/util/ev_util.h"
+
 namespace yb {
 namespace rpc {
 
@@ -33,8 +35,16 @@ class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCal
 
   const MemTrackerPtr& call_tracker() const { return call_tracker_; }
 
+  void SetEventLoop(ev::loop_ref* loop) override;
+
+  void Shutdown(const Status& status) override;
+
  protected:
   BinaryCallParser& parser() { return parser_; }
+
+  ev::loop_ref* loop_ = nullptr;
+
+  EvTimerHolder timer_;
 
  private:
   uint64_t ExtractCallId(InboundCall* call) override;
@@ -57,8 +67,6 @@ class YBInboundConnectionContext : public YBConnectionContext {
       const MemTrackerPtr& call_tracker)
       : YBConnectionContext(receive_buffer_size, buffer_tracker, call_tracker) {}
 
-  void Shutdown(const Status& status) override;
-
   static std::string Name() { return "Inbound RPC"; }
  private:
   // Takes ownership of call_data content.
@@ -77,13 +85,9 @@ class YBInboundConnectionContext : public YBConnectionContext {
 
   RpcConnectionPB::StateType state_ = RpcConnectionPB::UNKNOWN;
 
-  void SetEventLoop(ev::loop_ref* loop) override;
-
   void UpdateLastWrite(const ConnectionPtr& connection) override;
 
   std::weak_ptr<Connection> connection_;
-
-  ev::timer timer_;
 
   CoarseTimePoint last_write_time_;
 };
@@ -208,8 +212,6 @@ class YBOutboundConnectionContext : public YBConnectionContext {
       const MemTrackerPtr& call_tracker)
       : YBConnectionContext(receive_buffer_size, buffer_tracker, call_tracker) {}
 
-  void Shutdown(const Status& status) override;
-
   static std::string Name() { return "Outbound RPC"; }
 
  private:
@@ -225,15 +227,11 @@ class YBOutboundConnectionContext : public YBConnectionContext {
                               const IoVecs& data,
                               ReadBufferFull read_buffer_full) override;
 
-  void SetEventLoop(ev::loop_ref* loop) override;
-
   void UpdateLastRead(const ConnectionPtr& connection) override;
 
   void HandleTimeout(ev::timer& watcher, int revents); // NOLINT
 
   std::weak_ptr<Connection> connection_;
-
-  ev::timer timer_;
 
   CoarseTimePoint last_read_time_;
 };
