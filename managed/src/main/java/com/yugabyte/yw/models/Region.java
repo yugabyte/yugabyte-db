@@ -47,10 +47,10 @@ public class Region extends Model {
   @Constraints.Required
   public String ybImage;
 
-  @Column
+  @Column(columnDefinition = "float")
   public double longitude;
 
-  @Column
+  @Column(columnDefinition = "float")
   public double latitude;
 
   public void setLatLon(double latitude, double longitude) {
@@ -81,6 +81,7 @@ public class Region extends Model {
   public void setActiveFlag(Boolean active) { this.active = active; }
 
   @DbJson
+  @Column(columnDefinition = "TEXT")
   public JsonNode details;
 
   public void setSecurityGroupId(String securityGroupId) {
@@ -100,6 +101,7 @@ public class Region extends Model {
   }
 
   @DbJson
+  @Column(columnDefinition = "TEXT")
   public JsonNode config;
 
   public void setConfig(Map<String, String> configMap) {

@@ -69,7 +69,7 @@ public class CustomerConfig extends Model {
   public String name;
 
   @Constraints.Required
-  @Column(nullable = false)
+  @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   @JsonIgnore
   public JsonNode data;

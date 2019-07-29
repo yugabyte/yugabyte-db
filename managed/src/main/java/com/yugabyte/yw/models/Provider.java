@@ -52,7 +52,7 @@ public class Provider extends Model {
   }
 
   @Constraints.Required
-  @Column(nullable = false)
+  @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode config;
 
@@ -140,7 +140,7 @@ public class Provider extends Model {
   /**
    * Get all the providers for a given customer uuid
    * @param customerUUID, customer uuid
-   * @return list of cloud providers. 
+   * @return list of cloud providers.
    */
   public static List<Provider> getAll(UUID customerUUID) {
     return find.where().eq("customer_uuid", customerUUID).findList();
