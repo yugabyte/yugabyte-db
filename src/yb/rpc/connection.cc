@@ -145,7 +145,7 @@ void Connection::Shutdown(const Status& status) {
   context_->Shutdown(status);
 
   stream_->Shutdown(status);
-  timer_.stop();
+  timer_.Shutdown();
 }
 
 void Connection::OutboundQueued() {
@@ -207,7 +207,7 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   }
 
   if (deadline != CoarseTimePoint::max()) {
-    StartTimer(deadline - now, &timer_);
+    timer_.Start(deadline - now);
   }
 }
 
@@ -225,7 +225,7 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
     expiration_queue_.push({expires_at, call, handle});
     if (reschedule && (stream_->IsConnected() ||
                        expires_at < last_activity_time_ + FLAGS_rpc_connection_timeout_ms * 1ms)) {
-      StartTimer(timeout.ToSteadyDuration(), &timer_);
+      timer_.Start(timeout.ToSteadyDuration());
     }
   }
 
@@ -304,7 +304,8 @@ Status Connection::HandleCallResponse(CallData* call_data) {
 
   if (PREDICT_FALSE(!call)) {
     // The call already failed due to a timeout.
-    VLOG(1) << "Got response to call id " << resp.call_id() << " after client already timed out";
+    VLOG_WITH_PREFIX(1) << "Got response to call id " << resp.call_id()
+                        << " after client already timed out";
     return Status::OK();
   }
 
@@ -432,11 +433,11 @@ Status Connection::Start(ev::loop_ref* loop) {
 
   RETURN_NOT_OK(stream_->Start(direction_ == Direction::CLIENT, loop, this));
 
-  timer_.set(*loop);
-  timer_.set<Connection, &Connection::HandleTimeout>(this); // NOLINT
+  timer_.Init(*loop);
+  timer_.SetCallback<Connection, &Connection::HandleTimeout>(this); // NOLINT
 
   if (!stream_->IsConnected()) {
-    StartTimer(FLAGS_rpc_connection_timeout_ms * 1ms, &timer_);
+    timer_.Start(FLAGS_rpc_connection_timeout_ms * 1ms);
   }
 
   auto self = shared_from_this();
@@ -491,10 +492,6 @@ void Connection::Destroy(const Status& status) {
 
 std::string Connection::LogPrefix() const {
   return ToString() + ": ";
-}
-
-void StartTimer(CoarseMonoClock::Duration left, ev::timer* timer) {
-  timer->start(MonoDelta(left).ToSeconds(), 0 /* repeat */);
 }
 
 }  // namespace rpc
