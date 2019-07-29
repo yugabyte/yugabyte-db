@@ -7,7 +7,7 @@ SET search_path TO ag_catalog;
 
 --
 -- create_graph() and drop_graph() tests.
--- 
+--
 
 SELECT create_graph('g');
 SELECT count(*) FROM ag_graph WHERE name = 'g';
@@ -65,8 +65,8 @@ SELECT alter_graph('GraphB', 'RENAME', 'GraphA');
 
 -- Verify NULL input checks.
 SELECT alter_graph(NULL, 'RENAME', 'GraphA');
-SELECT alter_graph('tom', NULL, 'GraphA');
-SELECT alter_graph('tom', 'RENAME', NULL);
+SELECT alter_graph('GraphB', NULL, 'GraphA');
+SELECT alter_graph('GraphB', 'RENAME', NULL);
 
 -- Verify invalid input check for operation parameter.
 SELECT alter_graph('GraphB', 'DUMMY', 'GraphA');

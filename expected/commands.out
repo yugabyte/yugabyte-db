@@ -5,7 +5,7 @@ LOAD 'agensgraph';
 SET search_path TO ag_catalog;
 --
 -- create_graph() and drop_graph() tests.
--- 
+--
 SELECT create_graph('g');
 NOTICE:  graph "g" has been created
  create_graph 
@@ -152,9 +152,9 @@ ERROR:  schema "GraphB" does not exist
 -- Verify NULL input checks.
 SELECT alter_graph(NULL, 'RENAME', 'GraphA');
 ERROR:  graph_name must not be NULL
-SELECT alter_graph('tom', NULL, 'GraphA');
+SELECT alter_graph('GraphB', NULL, 'GraphA');
 ERROR:  operation must not be NULL
-SELECT alter_graph('tom', 'RENAME', NULL);
+SELECT alter_graph('GraphB', 'RENAME', NULL);
 ERROR:  new_value must not be NULL
 -- Verify invalid input check for operation parameter.
 SELECT alter_graph('GraphB', 'DUMMY', 'GraphA');
