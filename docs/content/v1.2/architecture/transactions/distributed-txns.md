@@ -67,7 +67,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
   subsystem makes sure that for any two conflicting transactions, at least one of them is aborted.
 
   As an example, suppose a snapshot isolation transaction is setting column `col1` in row `row1` to
-  `value1`. Then `DocumentKey` is `col` and `SubKey1` is `row1`. Suppose the provisional record was
+  `value1`. Then `DocumentKey` is `row1` and `SubKey1` is `col1`. Suppose the provisional record was
   written into the tablet with hybrid `1516847525206000`, and the transaction id is
   `7c98406e-2373-499d-88c2-25d72a4a178c`. In that case we will end up with the following provisional
   record values in RocksDB:
