@@ -87,7 +87,7 @@ public class MetaMasterController extends Controller {
     try {
       // Lookup the entry for the instanceUUID.
       Universe universe = Universe.get(universeUUID);
-      // In case of kuberentes universe we would fetch the service ip
+      // In case of Kubernetes universe we would fetch the service ip
       // instead of the POD ip.
       String serviceIPPort = getKuberenetesServiceIPPort(type, universe);
       if (serviceIPPort != null) {
@@ -98,7 +98,7 @@ public class MetaMasterController extends Controller {
         case MASTER: return ApiResponse.success(universe.getMasterAddresses());
         case YQLSERVER: return ApiResponse.success(universe.getYQLServerAddresses());
         case YSQLSERVER: return ApiResponse.success(universe.getYSQLServerAddresses());
-        case REDISSERVER: return ApiResponse.success(universe.getRedisServerAddresses()); 
+        case REDISSERVER: return ApiResponse.success(universe.getRedisServerAddresses());
         default: throw new IllegalArgumentException("Unexpected type " + type);
       }
     } catch (RuntimeException e) {

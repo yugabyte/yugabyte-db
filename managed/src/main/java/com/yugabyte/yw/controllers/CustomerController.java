@@ -159,9 +159,10 @@ public class CustomerController extends AuthenticatedController {
     }
     Map<String, String> params = formData.data();
 
-    // Given we have a limitation on not being able to rename the pod labels in kuberentes cadvisor metrics,
-    // we try to see if the metric being queried is for container or not, and use pod_name vs exported_instance
-    // accordingly. Expect for container metrics, all the metrics would with node_prefix and exported_instance.
+    // Given we have a limitation on not being able to rename the pod labels in
+    // kubernetes cadvisor metrics, we try to see if the metric being queried is for
+    // container or not, and use pod_name vs exported_instance accordingly.
+    // Expect for container metrics, all the metrics would with node_prefix and exported_instance.
     boolean hasContainerMetric = formData.get().metrics.stream().anyMatch(s -> s.startsWith("container"));
     String universeFilterLabel = hasContainerMetric ? "namespace" : "node_prefix";
     String nodeFilterLabel = hasContainerMetric ? "pod_name" : "exported_instance";

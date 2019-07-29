@@ -78,11 +78,11 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   }
 
   // TODO: move this to ModelFactory!
-  private Universe getKuberentesUniverse(boolean isMultiAz) {
+  private Universe getKubernetesUniverse(boolean isMultiAz) {
     Provider provider = ModelFactory.newProvider(defaultCustomer, kubernetes);
     provider.setConfig(ImmutableMap.of("KUBECONFIG", "test"));
     provider.save();
-    UserIntent ui = isMultiAz ? getDefaultUserIntent(provider) : 
+    UserIntent ui = isMultiAz ? getDefaultUserIntent(provider) :
         getDefaultUserIntentSingleAZ(provider);
     Universe universe = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(ui, true));
@@ -161,7 +161,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testServerAddressForKuberenetesServiceFailure() {
-    Universe universe = getKuberentesUniverse(false);
+    Universe universe = getKubernetesUniverse(false);
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = -1;
     re.message = "Unknown Error!";
@@ -183,7 +183,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testServerAddressForKuberenetesServiceWithPodIP() {
-    Universe universe = getKuberentesUniverse(false);
+    Universe universe = getKubernetesUniverse(false);
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15||";
@@ -201,7 +201,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testServerAddressForKuberenetesServiceWithPodIPMultiCluster() {
-    Universe universe = getKuberentesUniverse(true);
+    Universe universe = getKubernetesUniverse(true);
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15||";
@@ -219,7 +219,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIP() {
-    Universe universe = getKuberentesUniverse(false);
+    Universe universe = getKubernetesUniverse(false);
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15|56.78.90.1|";
@@ -236,7 +236,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerHostname() {
-    Universe universe = getKuberentesUniverse(false);
+    Universe universe = getKubernetesUniverse(false);
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15||loadbalancer.hostname";
@@ -253,7 +253,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
 
   @Test
   public void testServerAddressForKuberenetesServiceWithPodAndLoadBalancerIpAndHostname() {
-    Universe universe = getKuberentesUniverse(false);
+    Universe universe = getKubernetesUniverse(false);
     ShellProcessHandler.ShellResponse re = new ShellProcessHandler.ShellResponse();
     re.code = 0;
     re.message = "12.13.14.15|56.78.90.1|loadbalancer.hostname";
