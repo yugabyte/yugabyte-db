@@ -38,7 +38,7 @@ public class AccessKey extends Model {
   public UUID getProviderUUID() { return this.idKey.providerUUID; }
 
   @Constraints.Required
-  @Column(nullable = false)
+  @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   public JsonNode keyInfo;
 

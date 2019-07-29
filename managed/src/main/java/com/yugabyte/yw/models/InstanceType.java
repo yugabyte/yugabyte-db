@@ -64,7 +64,7 @@ public class InstanceType extends Model {
   public Integer numCores;
 
   @Constraints.Required
-  @Column(nullable = false)
+  @Column(nullable = false, columnDefinition = "float")
   public Double memSizeGB;
 
   @Column(columnDefinition = "TEXT")
@@ -196,8 +196,8 @@ public class InstanceType extends Model {
   }
 
   public static class InstanceTypeDetails {
-  	public static final int DEFAULT_VOLUME_COUNT = 1;
-  	public static final int DEFAULT_GCP_VOLUME_SIZE_GB = 375;
+    public static final int DEFAULT_VOLUME_COUNT = 1;
+    public static final int DEFAULT_GCP_VOLUME_SIZE_GB = 375;
 
     public List<VolumeDetails> volumeDetailsList;
     public PublicCloudConstants.Tenancy tenancy;
@@ -221,12 +221,12 @@ public class InstanceType extends Model {
         volumeDetailsList.get(idx).mountPath = String.format("/mnt/d%d", idx);
       }
     }
-    
+
     public static InstanceTypeDetails createGCPDefault() {
-    	InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
-    	instanceTypeDetails.setVolumeDetailsList(DEFAULT_VOLUME_COUNT, DEFAULT_GCP_VOLUME_SIZE_GB,
+      InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
+      instanceTypeDetails.setVolumeDetailsList(DEFAULT_VOLUME_COUNT, DEFAULT_GCP_VOLUME_SIZE_GB,
           VolumeType.SSD);
-    	return instanceTypeDetails;
+      return instanceTypeDetails;
     }
 
     public static InstanceTypeDetails createGCPInstanceTypeDetails(VolumeType volumeType) {

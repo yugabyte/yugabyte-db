@@ -13,7 +13,9 @@ import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
 import javax.persistence.Id;
+import javax.persistence.SequenceGenerator;
 
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 
@@ -46,8 +48,8 @@ public class Customer extends Model {
   // it is assumed that there is a single instance of the db. The id space for this field may have
   // to be partitioned in case the db is being sharded.
   @Id
-  @GeneratedValue
-  private Long id;
+  @SequenceGenerator(name="customer_id_seq", sequenceName="customer_id_seq", allocationSize=1)
+  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator="customer_id_seq")  private Long id;
   public Long getCustomerId() { return id; }
 
   @Column(length = 15, unique = true, nullable = false)
@@ -87,7 +89,7 @@ public class Customer extends Model {
   @Column(nullable = true)
   private String apiToken;
 
-  @Column(nullable = true)
+  @Column(nullable = true, columnDefinition = "TEXT")
   private JsonNode features;
 
   public Date getAuthTokenIssueDate() {

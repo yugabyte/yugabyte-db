@@ -9,7 +9,9 @@ import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
 import javax.persistence.Id;
+import javax.persistence.SequenceGenerator;
 
 import com.avaje.ebean.Model;
 import com.avaje.ebean.annotation.EnumValue;
@@ -98,7 +100,10 @@ public class CustomerTask extends Model {
     }
   }
 
-  @Id @GeneratedValue
+  @Id
+  @SequenceGenerator(
+    name="customer_task_id_seq", sequenceName="customer_task_id_seq", allocationSize=1)
+  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator="customer_task_id_seq")
   private Long id;
 
   @Constraints.Required
