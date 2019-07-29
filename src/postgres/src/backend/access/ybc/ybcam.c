@@ -370,6 +370,15 @@ ybcSetupScanPlan(Relation relation, Relation index, YbScanDesc ybScan, YbScanPla
 	ybScan->tupdesc = RelationGetDescr(index);
 }
 
+static bool
+ShouldPushdownScanKey(ScanKey key) {
+	/*
+	 * TODO: support the different search options like SK_SEARCHARRAY and SK_SEARCHNULL,
+	 * SK_SEARCHNOTNULL, and search strategies other than equality.
+	 */
+	return key->sk_flags == 0 && key->sk_strategy == BTEqualStrategyNumber;
+}
+
 /*
  * Begin a scan of a table or index. When "relation" is a table, an optional local "index" may be
  * given, in which case we will scan using that index co-located with the table (which currently
@@ -405,12 +414,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 		if (ybScan->sk_attno[i] == InvalidOid)
 			break;
 
-		/*
-		 * TODO: support the different search options like SK_SEARCHARRAY and SK_SEARCHNULL,
-		 * SK_SEARCHNOTNULL, and search strategies other than equality.
-		 */
-		if (ybScan->key[i].sk_flags != 0 ||
-			ybScan->key[i].sk_strategy != BTEqualStrategyNumber)
+		if (!ShouldPushdownScanKey(&ybScan->key[i]))
 			continue;
 
 		int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
@@ -455,6 +459,9 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 	/* Bind the scan keys */
 	for (int i = 0; i < ybScan->nkeys; i++)
 	{
+		if (!ShouldPushdownScanKey(&ybScan->key[i]))
+			continue;
+
 		int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
 
 		if (bms_is_member(idx, scan_plan.sk_cols))

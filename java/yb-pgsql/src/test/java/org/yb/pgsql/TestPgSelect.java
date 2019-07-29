@@ -242,6 +242,37 @@ public class TestPgSelect extends BasePgSQLTest {
     }
   }
 
+  /**
+   * Regression test for #1827.
+   */
+  @Test
+  public void testJoinWithArraySearch() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(id int, name varchar, PRIMARY KEY (id))");
+      statement.execute("CREATE TABLE join_table(id int, tid int, PRIMARY KEY (id))");
+
+      statement.execute("INSERT INTO test_table VALUES (0, 'name 1')");
+      statement.execute("INSERT INTO test_table VALUES (1, 'name 2')");
+      statement.execute("INSERT INTO test_table VALUES (2, 'name 3')");
+
+      statement.execute("INSERT INTO join_table VALUES (0, 0)");
+      statement.execute("INSERT INTO join_table VALUES (1, 0)");
+      statement.execute("INSERT INTO join_table VALUES (2, 1)");
+      statement.execute("INSERT INTO join_table VALUES (3, 1)");
+      statement.execute("INSERT INTO join_table VALUES (4, 2)");
+      statement.execute("INSERT INTO join_table VALUES (5, 2)");
+
+      assertQuery(statement, "SELECT tt.name, jt.id FROM test_table tt" +
+              " INNER JOIN join_table jt ON tt.id = jt.tid" +
+              " WHERE tt.id IN (0, 1)" +
+              " ORDER BY jt.id",
+          new Row("name 1", 0),
+          new Row("name 1", 1),
+          new Row("name 2", 2),
+          new Row("name 2", 3));
+    }
+  }
+
   @Test
   public void testExpressions() throws Exception {
     try (Statement statement = connection.createStatement()) {
