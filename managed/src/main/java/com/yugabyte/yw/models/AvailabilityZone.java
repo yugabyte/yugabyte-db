@@ -54,6 +54,7 @@ public class AvailabilityZone extends Model {
   public String subnet;
 
   @DbJson
+  @Column(columnDefinition = "TEXT")
   public JsonNode config;
 
   public void setConfig(Map<String, String> configMap) {

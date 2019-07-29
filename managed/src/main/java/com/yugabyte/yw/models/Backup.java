@@ -53,7 +53,7 @@ public class Backup extends Model {
   @Column(nullable = false)
   public BackupState state;
 
-  @Column(nullable = false)
+  @Column(columnDefinition = "TEXT", nullable = false)
   @DbJson
   public JsonNode backupInfo;
 

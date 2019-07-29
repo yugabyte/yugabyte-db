@@ -63,7 +63,7 @@ public class Schedule extends Model {
   private long frequency;
   public long getFrequency() { return frequency; }
 
-  @Column(nullable = false)
+  @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode taskParams;
   public JsonNode getTaskParams() { return taskParams; }

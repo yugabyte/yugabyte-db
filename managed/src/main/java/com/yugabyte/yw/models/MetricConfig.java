@@ -54,7 +54,7 @@ public class MetricConfig extends Model {
   public String getKey() { return config_key; }
   public void setKey(String key) { this.config_key = key; }
 
-  @Column(nullable = false)
+  @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode config;
 

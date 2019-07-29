@@ -96,7 +96,7 @@ public class TaskInfo extends Model {
   // Details of the task, usually a JSON representation of the incoming task. This is used to
   // describe the details of the task that is being executed.
   @Constraints.Required
-  @Column(nullable = false)
+  @Column(columnDefinition = "TEXT default '{}'", nullable = false)
   @DbJson
   private JsonNode details;
 
