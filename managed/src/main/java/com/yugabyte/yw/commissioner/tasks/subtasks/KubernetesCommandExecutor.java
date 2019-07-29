@@ -88,7 +88,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         case VOLUME_DELETE:
           return UserTaskDetails.SubTaskGroupType.KubernetesVolumeDelete.name();
         case NAMESPACE_DELETE:
-          return UserTaskDetails.SubTaskGroupType.KubernetesNamespaceDelete.name(); 
+          return UserTaskDetails.SubTaskGroupType.KubernetesNamespaceDelete.name();
         case POD_INFO:
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
         case INIT_YSQL:
@@ -205,7 +205,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
         break;
       case NAMESPACE_DELETE:
         kubernetesManager.deleteNamespace(config, taskParams().nodePrefix);
-        break; 
+        break;
       case POD_INFO:
         processNodeInfo();
         break;
@@ -241,7 +241,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
             return response;
           }
         }
-      }      
+      }
     }
     if (!flag) {
       response.message = "No pods even scheduled. Previous step(s) incomplete";
@@ -276,7 +276,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
       ShellProcessHandler.ShellResponse podResponse =
           kubernetesManager.getPodInfos(config, namespace);
-      JsonNode podInfos = parseShellResponseAsJson(podResponse); 
+      JsonNode podInfos = parseShellResponseAsJson(podResponse);
 
       for (JsonNode podInfo: podInfos.path("items")) {
         ObjectNode pod = Json.newObject();
@@ -379,7 +379,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml();
-    
+
     // TODO: decide if the user want to expose all the services or just master.
     overrides = (HashMap<String, Object>) yaml.load(
         application.resourceAsStream("k8s-expose-all.yml")
@@ -395,7 +395,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     Map<String, String> regionConfig = new HashMap<String, String>();
 
     Universe u = Universe.get(taskParams().universeUUID);
-    // TODO: This only takes into account primary cluster for Kuberentes, we need to
+    // TODO: This only takes into account primary cluster for Kubernetes, we need to
     // address ReadReplica clusters as well.
     UniverseDefinitionTaskParams.UserIntent userIntent =
         u.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -412,7 +412,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
     String placementRegion = null;
     String placementZone = null;
     boolean isMultiAz = (taskParams().masterAddresses != null) ? true : false;
-   
+
     PlacementInfo pi = isMultiAz ? taskParams().placementInfo :
         u.getUniverseDetails().getPrimaryCluster().placementInfo;;
     if (pi != null) {
@@ -468,7 +468,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
          overrides.put("AZ", placementZone);
       }
       overrides.put("isMultiAz", true);
-      
+
       overrides.put("replicas", ImmutableMap.of("tserver", numNodes,
           "master", replicationFactorZone, "totalMasters", replicationFactor));
     } else {
@@ -495,7 +495,7 @@ public class KubernetesCommandExecutor extends AbstractTaskBase {
 
     Map<String, Object> masterResource = new HashMap<>();
     Map<String, Object> masterLimit = new HashMap<>();
-    
+
     // If the instance type is not xsmall or dev, we would bump the master resource.
     if (!instanceType.getInstanceTypeCode().equals("xsmall") &&
         !instanceType.getInstanceTypeCode().equals("dev")) {
