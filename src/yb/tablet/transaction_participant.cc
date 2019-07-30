@@ -856,7 +856,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = transactions_.find(id);
     if (it == transactions_.end()) {
-      LOG_WITH_PREFIX(DFATAL) << "Update last write id for unknown transaction: " << id;
+      LOG_IF_WITH_PREFIX(DFATAL, !WasTransactionRecentlyRemoved(id))
+          << "Update last write id for unknown transaction: " << id;
       return;
     }
     (**it).UpdateLastWriteId(value);
