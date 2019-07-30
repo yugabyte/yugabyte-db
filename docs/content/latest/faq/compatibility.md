@@ -63,6 +63,8 @@ YugaByte DB's goal is to remain as compatible with PostgreSQL as possible. If yo
 1. Lightweight transactions for compare-and-swap operations (such as incrementing integers) are unnecessary because YCQL achieves single row linearizability by default.
 2. Tunable write consistency is disallowed in YCQL because writes are committed at quorum using Raft replication protocol.
 
+This [blog](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/) goes into the details of YCQL vs Apache Cassandra architecture and is recommended for further reading.
+
 ### Do INSERTs do “upserts” by default? How do I insert data only if it is absent?
 
 By default, inserts overwrite data on primary key collisions. So INSERTs do an upsert. This an intended CQL feature. In order to insert data only if the primary key is not already present,  add a clause "IF NOT EXISTS" to the INSERT statement. This will cause the INSERT fail if the row exists.
