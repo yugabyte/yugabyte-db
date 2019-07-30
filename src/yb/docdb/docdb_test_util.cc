@@ -214,7 +214,7 @@ PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
       }
       return PrimitiveValue(s);
     }
-    case 2: return PrimitiveValue(ValueType::kNull);
+    case 2: return PrimitiveValue(ValueType::kNullLow);
     case 3: return PrimitiveValue(ValueType::kTrue);
     case 4: return PrimitiveValue(ValueType::kFalse);
     case 5: return PrimitiveValue(kFruit[(*rng)() % kFruit.size()]);

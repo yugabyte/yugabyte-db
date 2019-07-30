@@ -116,21 +116,37 @@ class PgCreateTable : public PgDdl {
   virtual boost::optional<const PgObjectId&> indexed_table_id() const { return boost::none; }
   virtual bool is_unique_index() const { return false; }
 
-  virtual CHECKED_STATUS AddColumn(const char *attr_name,
-                                   int attr_num,
-                                   int attr_ybtype,
-                                   bool is_hash,
-                                   bool is_range);
-  virtual CHECKED_STATUS AddColumn(const char *attr_name,
-                                   int attr_num,
-                                   const YBCPgTypeEntity *attr_type,
-                                   bool is_hash,
-                                   bool is_range) {
-    return AddColumn(attr_name, attr_num, attr_type->yb_type, is_hash, is_range);
+  CHECKED_STATUS AddColumn(const char *attr_name,
+                           int attr_num,
+                           int attr_ybtype,
+                           bool is_hash,
+                           bool is_range,
+                           ColumnSchema::SortingType sorting_type =
+                              ColumnSchema::SortingType::kNotSpecified) {
+    return AddColumnImpl(attr_name, attr_num, attr_ybtype, is_hash, is_range, sorting_type);
+  }
+
+  CHECKED_STATUS AddColumn(const char *attr_name,
+                           int attr_num,
+                           const YBCPgTypeEntity *attr_type,
+                           bool is_hash,
+                           bool is_range,
+                           ColumnSchema::SortingType sorting_type =
+                               ColumnSchema::SortingType::kNotSpecified) {
+    return AddColumnImpl(attr_name, attr_num, attr_type->yb_type, is_hash, is_range, sorting_type);
   }
 
   // Execute.
   virtual CHECKED_STATUS Exec();
+
+ protected:
+  virtual CHECKED_STATUS AddColumnImpl(const char *attr_name,
+                                       int attr_num,
+                                       int attr_ybtype,
+                                       bool is_hash,
+                                       bool is_range,
+                                       ColumnSchema::SortingType sorting_type =
+                                           ColumnSchema::SortingType::kNotSpecified);
 
  private:
   client::YBTableName table_name_;
@@ -223,14 +239,16 @@ class PgCreateIndex : public PgCreateTable {
     return is_unique_index_;
   }
 
-  CHECKED_STATUS AddColumn(const char *attr_name,
-                           int attr_num,
-                           const YBCPgTypeEntity *attr_type,
-                           bool is_hash,
-                           bool is_range) override;
-
   // Execute.
   CHECKED_STATUS Exec() override;
+
+ protected:
+  CHECKED_STATUS AddColumnImpl(const char *attr_name,
+                               int attr_num,
+                               int attr_ybtype,
+                               bool is_hash,
+                               bool is_range,
+                               ColumnSchema::SortingType sorting_type) override;
 
  private:
   CHECKED_STATUS AddYBbasectidColumn();

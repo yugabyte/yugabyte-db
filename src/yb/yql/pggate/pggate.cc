@@ -29,6 +29,26 @@
 
 namespace yb {
 namespace pggate {
+namespace {
+
+CHECKED_STATUS AddColumn(PgCreateTable* pg_stmt, const char *attr_name, int attr_num,
+                         const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range,
+                         bool is_desc, bool is_nulls_first) {
+  using SortingType = ColumnSchema::SortingType;
+  SortingType sorting_type = SortingType::kNotSpecified;
+
+  if (!is_hash && is_range) {
+    if (is_desc) {
+      sorting_type = is_nulls_first ? SortingType::kDescending : SortingType::kDescendingNullsLast;
+    } else {
+      sorting_type = is_nulls_first ? SortingType::kAscending : SortingType::kAscendingNullsLast;
+    }
+  }
+
+  return pg_stmt->AddColumn(attr_name, attr_num, attr_type, is_hash, is_range, sorting_type);
+}
+
+} // namespace
 
 using std::make_shared;
 using client::YBSession;
@@ -276,16 +296,16 @@ Status PgApiImpl::NewCreateTable(PgSession *pg_session,
   return Status::OK();
 }
 
-Status PgApiImpl::CreateTableAddColumn(PgStatement *handle, const char *attr_name,
-                                       int attr_num, const YBCPgTypeEntity *attr_type,
-                                       bool is_hash, bool is_range) {
+Status PgApiImpl::CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
+                                       const YBCPgTypeEntity *attr_type,
+                                       bool is_hash, bool is_range,
+                                       bool is_desc, bool is_nulls_first) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
-
-  PgCreateTable *pg_stmt = down_cast<PgCreateTable*>(handle);
-  return pg_stmt->AddColumn(attr_name, attr_num, attr_type, is_hash, is_range);
+  return AddColumn(down_cast<PgCreateTable*>(handle), attr_name, attr_num, attr_type,
+      is_hash, is_range, is_desc, is_nulls_first);
 }
 
 Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
@@ -473,16 +493,17 @@ Status PgApiImpl::NewCreateIndex(PgSession *pg_session,
   return Status::OK();
 }
 
-Status PgApiImpl::CreateIndexAddColumn(PgStatement *handle, const char *attr_name,
-                                       int attr_num, const YBCPgTypeEntity *attr_type,
-                                       bool is_hash, bool is_range) {
+Status PgApiImpl::CreateIndexAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
+                                       const YBCPgTypeEntity *attr_type,
+                                       bool is_hash, bool is_range,
+                                       bool is_desc, bool is_nulls_first) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_INDEX)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
-  PgCreateIndex *pg_stmt = down_cast<PgCreateIndex*>(handle);
-  return pg_stmt->AddColumn(attr_name, attr_num, attr_type, is_hash, is_range);
+  return AddColumn(down_cast<PgCreateIndex*>(handle), attr_name, attr_num, attr_type,
+      is_hash, is_range, is_desc, is_nulls_first);
 }
 
 Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {

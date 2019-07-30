@@ -300,13 +300,8 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 					info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 				}
 			}
-			else if (amroutine->amcanorder && !IsYBRelation(relation))
+			else if (amroutine->amcanorder)
 			{
-				/*
-				 * TODO: enable ordering for YugaByte relations after DocDB supports
-				 * null-last.
-				 */
-
 				/*
 				 * Otherwise, identify the corresponding btree opfamilies by
 				 * trying to map this index's "<" operators into btree.  Since

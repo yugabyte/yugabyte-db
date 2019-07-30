@@ -1799,7 +1799,7 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
             pair->set_key(key.data(), key.size());
             // Empty values are disallowed by docdb.
             // https://github.com/YugaByte/yugabyte-db/issues/736
-            pair->set_value(std::string(1, docdb::ValueTypeAsChar::kNull));
+            pair->set_value(std::string(1, docdb::ValueTypeAsChar::kNullLow));
           }
         }
       }

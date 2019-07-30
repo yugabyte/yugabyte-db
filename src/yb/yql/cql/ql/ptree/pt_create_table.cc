@@ -226,10 +226,13 @@ void PTCreateTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
       sem_output += " <Hash key, Type = ";
     } else if (column->is_primary_key()) {
       sem_output += " <Primary key, ";
+      using SortingType = ColumnSchema::SortingType;
       switch (column->sorting_type()) {
-        case ColumnSchema::SortingType::kNotSpecified: sem_output += "None"; break;
-        case ColumnSchema::SortingType::kAscending: sem_output += "Asc"; break;
-        case ColumnSchema::SortingType::kDescending: sem_output += "Desc"; break;
+        case SortingType::kNotSpecified: sem_output += "None"; break;
+        case SortingType::kAscending: sem_output += "Asc"; break;
+        case SortingType::kDescending: sem_output += "Desc"; break;
+        case SortingType::kAscendingNullsLast: sem_output += "Asc nulls last"; break;
+        case SortingType::kDescendingNullsLast: sem_output += "Desc nulls last"; break;
       }
       sem_output += ", Type = ";
     } else {
