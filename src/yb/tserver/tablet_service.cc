@@ -1144,6 +1144,7 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     if (!status.ok()) {
       SetupErrorAndRespond(
           resp->mutable_error(), status, TabletServerErrorPB::UNKNOWN_ERROR, &context);
+      return;
     }
   }
 
