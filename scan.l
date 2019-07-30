@@ -219,7 +219,8 @@ self     [%()*+,\-./:<=>[\]^{|}]
 other .
 
 %{
-struct strbuf {
+struct strbuf
+{
     char *buffer;
     int capacity;
     int length;
@@ -234,7 +235,8 @@ static void strbuf_ensure_capacity(struct strbuf *sb, int len);
 static const char *strbuf_get_str(struct strbuf *sb);
 static void strbuf_reset(struct strbuf *sb);
 
-struct ag_yy_extra {
+struct ag_yy_extra
+{
     // accumulate matched strings to build a complete literal if multiple rules
     // are needed to scan it, or keep a decimal integer literal that is
     // converted from a hexadecimal or an octal integer literal if it is too
@@ -265,7 +267,8 @@ static pg_wchar surrogate_pair_to_codepoint(const pg_wchar hi,
                                             const pg_wchar lo);
 
 #define update_location() \
-    do { \
+    do \
+    { \
         yyextra.last_loc = yytext - yyextra.scan_buf; \
     } while (0)
 #define get_location() (yyextra.last_loc)
@@ -278,7 +281,8 @@ static int _scan_errposition(const struct ag_yy_extra *extra);
 // Avoid exit() on fatal scanner errors.
 // Call yy_fatal_error() just to keep compiler quiet.
 #define YY_FATAL_ERROR(msg) \
-    do { \
+    do \
+    { \
         ereport(ERROR, (errmsg_internal("%s", msg))); \
         yy_fatal_error(NULL, NULL); \
     } while (0)
@@ -388,7 +392,8 @@ struct ag_token token;
 <dqstr,sqstr>{esascii} {
     char c;
 
-    switch (yytext[1]) {
+    switch (yytext[1])
+    {
     case 'b':
         c = '\b';
         break;
@@ -414,11 +419,14 @@ struct ag_token token;
 }
 
 <dqstr,sqstr>{esasciifail} {
-    if (yyleng == 1) {
+    if (yyleng == 1)
+    {
         // This happens when the scanner meets "\"<<EOF>>. Just consume "\"
         // so that <dqstr,sqstr,qstru><<EOF>> rule can do the rest.
         strbuf_append_char(&yyextra.literal_buf, '\\');
-    } else {
+    }
+    else
+    {
         update_location();
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE),
@@ -433,7 +441,8 @@ struct ag_token token;
 
     // It is unnecessary to check endptr and errno here.
     c = strtoul(yytext + 2, NULL, 16);
-    if (c > 0x10FFFF) {
+    if (c > 0x10FFFF)
+    {
         // c is greater than the maximum value of a Unicode code point.
         update_location();
         ereport(ERROR,
@@ -441,8 +450,11 @@ struct ag_token token;
                  scan_errmsg("invalid Unicode escape value"),
                  errdetail("Unicode escape values cannot be greater than 10FFFF, which is the maximum value of a code point."),
                  scan_errposition()));
-    } else if (c > 0x7F) {
-        if (GetDatabaseEncoding() != PG_UTF8) {
+    }
+    else if (c > 0x7F)
+    {
+        if (GetDatabaseEncoding() != PG_UTF8)
+        {
             update_location();
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE),
@@ -451,24 +463,33 @@ struct ag_token token;
                      scan_errposition()));
         }
 
-        if (is_high_surrogate(c)) {
+        if (is_high_surrogate(c))
+        {
             yyextra.high_surrogate = c;
             yyextra.start_cond = YY_START;
             BEGIN(qstru);
-        } else if (is_low_surrogate(c)) {
+        }
+        else if (is_low_surrogate(c))
+        {
             update_location();
             ereport(ERROR,
                     (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE),
                      scan_errmsg("invalid Unicode surrogate pair"),
                      errdetail("A low surrogate must follow a high surrogate."),
                      scan_errposition()));
-        } else {
+        }
+        else
+        {
             strbuf_append_codepoint(&yyextra.literal_buf, c);
         }
-    } else if (c > 0) {
+    }
+    else if (c > 0)
+    {
         // c is an ASCII character.
         strbuf_append_char(&yyextra.literal_buf, (char)c);
-    } else {
+    }
+    else
+    {
         // U+0000 NUL is the minimum value of a Unicode code point.
         // However, it is invalid in quoted strings as well as query strings.
         update_location();
@@ -484,12 +505,15 @@ struct ag_token token;
     pg_wchar c;
 
     c = strtoul(yytext + 2, NULL, 16);
-    if (is_low_surrogate(c)) {
+    if (is_low_surrogate(c))
+    {
         c = surrogate_pair_to_codepoint(yyextra.high_surrogate, c);
         // 0x010000 <= c <= 0x10FFFF always holds for surrogate pairs.
         strbuf_append_codepoint(&yyextra.literal_buf, c);
         BEGIN(yyextra.start_cond);
-    } else {
+    }
+    else
+    {
         update_location();
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE),
@@ -561,7 +585,8 @@ struct ag_token token;
 <bqid>{bquote} {
     BEGIN(INITIAL);
 
-    if (yyextra.literal_buf.length == 0) {
+    if (yyextra.literal_buf.length == 0)
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_NAME),
                         scan_errmsg("zero-length quoted identifier"),
                         scan_errposition()));
@@ -671,14 +696,20 @@ void *ag_yyalloc(yy_size_t size, yyscan_t yyscanner)
 void *ag_yyrealloc(void *ptr, yy_size_t size, yyscan_t yyscanner)
 {
     // see realloc(3)
-    if (ptr) {
-        if (size == 0) {
+    if (ptr)
+    {
+        if (size == 0)
+        {
             pfree(ptr);
             return NULL;
-        } else {
+        }
+        else
+        {
             return repalloc(ptr, size);
         }
-    } else {
+    }
+    else
+    {
         return palloc(size);
     }
 }
@@ -732,7 +763,8 @@ static void strbuf_ensure_capacity(struct strbuf *sb, int len)
     if (len < sb->capacity)
         return;
 
-    do {
+    do
+    {
         sb->capacity *= 2;
     } while (sb->capacity <= len);
 
@@ -761,19 +793,22 @@ static void integer_literal_to_token(const char *s, struct ag_token *token,
 
     // This is only needed for invalid octal integer literals. (e.g. "08")
     // Other cases cannot happen because of digitseq and hexint rules.
-    if (*endptr != '\0') {
+    if (*endptr != '\0')
+    {
         ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
                         _scan_errmsg("invalid octal integer literal", extra),
                         _scan_errposition(extra)));
     }
 
     // Treat it as a decimal if it is too large to be an "int" value.
-    if (errno == ERANGE) {
+    if (errno == ERANGE)
+    {
         // Accessing s[0] and s[1] is safe because ERANGE is returned only if
         // there are 10 or more characters in s. In this case, the shortest
         // integer literals for decimal, hexadecimal, and octal integers are
         // "2147483648", "0x80000000", and "020000000000" respectively.
-        if (s[0] == '0') {
+        if (s[0] == '0')
+        {
             strbuf_reset(&extra->literal_buf);
 
             // No matter how many characters s has, if all digits in s are
@@ -829,7 +864,8 @@ static void _numstr_to_decimal(const char *numstr, const int base,
     int i;
 
     // set constants for each base
-    switch (base) {
+    switch (base)
+    {
     case 16:
         // Hexadecimal
         //
@@ -897,16 +933,19 @@ static void _numstr_to_decimal(const char *numstr, const int base,
 
     // fill the first word
     word = digit_value(*digitp++);
-    for (i = 1; i < ndigits_word0; i++) {
+    for (i = 1; i < ndigits_word0; i++)
+    {
         word <<= nbits_per_digit;
         word |= digit_value(*digitp++);
     }
     words[word_i++] = word;
 
     // fill the rest of "words"
-    while (word_i < nwords) {
+    while (word_i < nwords)
+    {
         word = digit_value(*digitp++);
-        for (i = 1; i < ndigits_per_word; i++) {
+        for (i = 1; i < ndigits_per_word; i++)
+        {
             word <<= nbits_per_digit;
             word |= digit_value(*digitp++);
         }
@@ -919,12 +958,14 @@ static void _numstr_to_decimal(const char *numstr, const int base,
     nremainders = 0;
     word_i = 0;
     // repeat dividing "words" by "divisor" until the quotient becomes 0
-    while (word_i < nwords) {
+    while (word_i < nwords)
+    {
         uint64 r;
 
         r = 0;
         // divide "words" by "divisor"
-        for (i = word_i; i < nwords; i++) {
+        for (i = word_i; i < nwords; i++)
+        {
             uint64 d;
             uint64 q;
 
@@ -947,7 +988,8 @@ static void _numstr_to_decimal(const char *numstr, const int base,
     }
 
     // convert the collected remainders to a string, starting from the last one
-    for (i = nremainders - 1; i >= 0; i--) {
+    for (i = nremainders - 1; i >= 0; i--)
+    {
         char buf[ndigits_per_remainder];
         int buf_i;
         uint32 tmp;
@@ -958,7 +1000,8 @@ static void _numstr_to_decimal(const char *numstr, const int base,
             buf[--buf_i] = '0' + (char)(tmp % 10);
 
         // leading zeros for intermediate digits
-        if (i < nremainders - 1) {
+        if (i < nremainders - 1)
+        {
             while (buf_i > 0)
                 buf[--buf_i] = '0';
         }

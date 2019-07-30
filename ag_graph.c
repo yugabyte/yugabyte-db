@@ -26,7 +26,8 @@ static Oid ag_graph_relation_id(void)
     Oid id;
 
     id = get_relname_relid("ag_graph", ag_catalog_namespace_id());
-    if (!OidIsValid(id)) {
+    if (!OidIsValid(id))
+    {
         ereport(ERROR, (errcode(ERRCODE_UNDEFINED_TABLE),
                         errmsg("table \"ag_graph\" does not exist")));
     }
@@ -39,7 +40,8 @@ static Oid ag_graph_name_index_id(void)
     Oid id;
 
     id = get_relname_relid("ag_graph_name_index", ag_catalog_namespace_id());
-    if (!OidIsValid(id)) {
+    if (!OidIsValid(id))
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_UNDEFINED_TABLE),
                  errmsg("index \"ag_graph_name_index\" does not exist")));
@@ -91,7 +93,8 @@ void delete_graph(const Name graph_name)
                                    NULL, 1, scan_keys);
 
     tuple = systable_getnext(scan_desc);
-    if (!HeapTupleIsValid(tuple)) {
+    if (!HeapTupleIsValid(tuple))
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_UNDEFINED_SCHEMA),
                  errmsg("graph \"%s\" does not exist", NameStr(*graph_name))));
@@ -123,7 +126,8 @@ Oid get_graph_namespace(const Name graph_name)
                                    NULL, 1, scan_keys);
 
     tuple = systable_getnext(scan_desc);
-    if (!HeapTupleIsValid(tuple)) {
+    if (!HeapTupleIsValid(tuple))
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_UNDEFINED_SCHEMA),
                  errmsg("graph \"%s\" does not exist", NameStr(*graph_name))));
@@ -131,7 +135,8 @@ Oid get_graph_namespace(const Name graph_name)
 
     value = fastgetattr(tuple, Anum_ag_graph_namespace,
                         RelationGetDescr(ag_graph), &is_null);
-    if (is_null) {
+    if (is_null)
+    {
         ereport(ERROR, (errmsg("namespace of graph \"%s\" is NULL",
                                NameStr(*graph_name))));
     }
@@ -171,7 +176,8 @@ void update_graph_name(const Name graph_name, const Name new_name)
 
     cur_tuple = systable_getnext(scan_desc);
 
-    if (!HeapTupleIsValid(cur_tuple)) {
+    if (!HeapTupleIsValid(cur_tuple))
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_UNDEFINED_SCHEMA),
                  errmsg("graph \"%s\" does not exist", NameStr(*graph_name))));

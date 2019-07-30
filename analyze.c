@@ -20,7 +20,8 @@
 #include "analyze.h"
 #include "scan.h"
 
-struct cypher_parse_error_callback_arg {
+struct cypher_parse_error_callback_arg
+{
     const char *source_str;
     int query_loc;
 };
@@ -67,10 +68,12 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
     if (!node)
         return false;
 
-    if (IsA(node, RangeTblEntry)) {
+    if (IsA(node, RangeTblEntry))
+    {
         RangeTblEntry *rte = (RangeTblEntry *)node;
 
-        switch (rte->rtekind) {
+        switch (rte->rtekind)
+        {
         case RTE_SUBQUERY:
             // traverse other RTE_SUBQUERYs
             return convert_cypher_walker((Node *)rte->subquery, pstate);
@@ -86,13 +89,15 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
     // This handles a cypher() call with other function calls in a ROWS FROM
     // expression. We can let the FuncExpr case below handle it but do this
     // here to throw a better error message.
-    if (IsA(node, RangeTblFunction)) {
+    if (IsA(node, RangeTblFunction))
+    {
         RangeTblFunction *rtfunc = (RangeTblFunction *)node;
         FuncExpr *funcexpr = (FuncExpr *)rtfunc->funcexpr;
 
         // It is better to throw a kind error message here instead of the
         // internal error message that cypher() throws later when it is called.
-        if (is_func_cypher(funcexpr)) {
+        if (is_func_cypher(funcexpr))
+        {
             ereport(ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                      errmsg("cypher(...) in ROWS FROM is not supported"),
@@ -106,10 +111,12 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
     // This handles cypher() calls in expressions. Those in RTE_FUNCTIONs are
     // handled by either convert_cypher_to_subquery() or the RangeTblFunction
     // case above.
-    if (IsA(node, FuncExpr)) {
+    if (IsA(node, FuncExpr))
+    {
         FuncExpr *funcexpr = (FuncExpr *)node;
 
-        if (is_func_cypher(funcexpr)) {
+        if (is_func_cypher(funcexpr))
+        {
             ereport(ERROR,
                     (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                      errmsg("cypher(...) in expressions is not supported"),
@@ -121,7 +128,8 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
                                       convert_cypher_walker, pstate);
     }
 
-    if (IsA(node, Query)) {
+    if (IsA(node, Query))
+    {
         int flags;
 
         // QTW_EXAMINE_RTES
@@ -177,7 +185,8 @@ static bool is_func_cypher(FuncExpr *funcexpr)
     proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcexpr->funcid));
     Assert(HeapTupleIsValid(proctup));
     proc = (Form_pg_proc)GETSTRUCT(proctup);
-    if (strncmp(NameStr(proc->proname), "cypher", NAMEDATALEN) != 0) {
+    if (strncmp(NameStr(proc->proname), "cypher", NAMEDATALEN) != 0)
+    {
         ReleaseSysCache(proctup);
         return false;
     }
@@ -204,7 +213,8 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     // planner does not support it. Adding a "row_number() OVER ()" expression
     // to the subquery as a result target might be a workaround but we throw an
     // error for now.
-    if (rte->funcordinality) {
+    if (rte->funcordinality)
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
                  errmsg("WITH ORDINALITY is not supported"),
@@ -227,7 +237,8 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     //   may differ from what they are shown. This will confuse users.
     // * In the case above, the error position may not be accurate.
     query_str = expr_get_const_cstring(arg, pstate->p_sourcetext);
-    if (!query_str) {
+    if (!query_str)
+    {
         ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
                         errmsg("a dollar-quoted string constant is expected"),
                         parser_errposition(pstate, exprLocation(arg))));
@@ -324,19 +335,22 @@ static List *parse_cypher(const char *query_str)
 
     tmp = ag_scanner_next_token(scanner);
     if (tmp.type != AG_TOKEN_IDENTIFIER ||
-        strcasecmp(tmp.value.s, "return") != 0) {
+        strcasecmp(tmp.value.s, "return") != 0)
+    {
         ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
                         errmsg("\"RETURN\" is expected"),
                         cypher_errposition(tmp.location, query_str)));
     }
 
     values = NIL;
-    for (;;) {
+    for (;;)
+    {
         A_Const *n;
 
         n = makeNode(A_Const);
         tmp = ag_scanner_next_token(scanner);
-        switch (tmp.type) {
+        switch (tmp.type)
+        {
         case AG_TOKEN_INTEGER:
             n->val.type = T_Integer;
             n->val.val.ival = tmp.value.i;
@@ -356,7 +370,8 @@ static List *parse_cypher(const char *query_str)
             n->val.val.str = pstrdup(tmp.value.s);
             n->location = tmp.location;
             break;
-        case AG_TOKEN_CHAR: {
+        case AG_TOKEN_CHAR:
+        {
             char buf[2] = {tmp.value.c, '\0'};
 
             n->val.type = T_String;
@@ -427,7 +442,8 @@ static void check_result_type(Query *query, RangeTblFunction *rtfunc,
     ListCell *lc2;
     ListCell *lc3;
 
-    if (list_length(query->targetList) != rtfunc->funccolcount) {
+    if (list_length(query->targetList) != rtfunc->funccolcount)
+    {
         ereport(ERROR,
                 (errcode(ERRCODE_DATATYPE_MISMATCH),
                  errmsg("return row and column definition list do not match"),
@@ -438,7 +454,8 @@ static void check_result_type(Query *query, RangeTblFunction *rtfunc,
     lc1 = list_head(rtfunc->funccoltypes);
     lc2 = list_head(rtfunc->funccoltypmods);
     lc3 = list_head(rtfunc->funccolcollations);
-    foreach (lc, query->targetList) {
+    foreach (lc, query->targetList)
+    {
         TargetEntry *te = lfirst(lc);
         Node *expr = (Node *)te->expr;
 
@@ -446,7 +463,8 @@ static void check_result_type(Query *query, RangeTblFunction *rtfunc,
 
         if (exprType(expr) != lfirst_oid(lc1) ||
             exprTypmod(expr) != lfirst_int(lc2) ||
-            exprCollation(expr) != lfirst_oid(lc3)) {
+            exprCollation(expr) != lfirst_oid(lc3))
+        {
             ereport(ERROR,
                     (errcode(ERRCODE_DATATYPE_MISMATCH),
                      errmsg("return row and column definition list do not match"),

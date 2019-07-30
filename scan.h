@@ -5,7 +5,8 @@
 //
 // AG_TOKEN_DECIMAL can be a decimal integer literal that does not fit in "int"
 // type.
-enum ag_token_type {
+enum ag_token_type
+{
     AG_TOKEN_NULL,
     AG_TOKEN_INTEGER,
     AG_TOKEN_DECIMAL,
@@ -32,9 +33,11 @@ enum ag_token_type {
 // value.s is read-only because it points at an internal buffer and it changes
 // for every ag_scanner_next_token() call. So, users who want to keep or modify
 // the value need to copy it first.
-struct ag_token {
+struct ag_token
+{
     enum ag_token_type type;
-    union {
+    union
+    {
         char c;
         int i;
         const char *s;

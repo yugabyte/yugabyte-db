@@ -25,7 +25,8 @@ Datum create_graph(PG_FUNCTION_ARGS)
     Name graph_name;
     Oid nsp_id;
 
-    if (PG_ARGISNULL(0)) {
+    if (PG_ARGISNULL(0))
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("graph name must not be NULL")));
     }
@@ -69,7 +70,8 @@ Datum drop_graph(PG_FUNCTION_ARGS)
     Name graph_name;
     bool cascade;
 
-    if (PG_ARGISNULL(0)) {
+    if (PG_ARGISNULL(0))
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("graph name must not be NULL")));
     }
@@ -96,7 +98,8 @@ static void drop_schema_for_graph(const Name graph_name, const bool cascade)
 
     nsp_id = get_graph_namespace(graph_name);
 
-    if (!pg_namespace_ownercheck(nsp_id, GetUserId())) {
+    if (!pg_namespace_ownercheck(nsp_id, GetUserId()))
+    {
         aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_SCHEMA,
                        get_namespace_name(nsp_id));
     }
@@ -123,15 +126,18 @@ Datum alter_graph(PG_FUNCTION_ARGS)
     Name new_value;
     char *operation;
 
-    if (PG_ARGISNULL(0)) {
+    if (PG_ARGISNULL(0))
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("graph_name must not be NULL")));
     }
-    if (PG_ARGISNULL(1)) {
+    if (PG_ARGISNULL(1))
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("operation must not be NULL")));
     }
-    if (PG_ARGISNULL(2)) {
+    if (PG_ARGISNULL(2))
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("new_value must not be NULL")));
     }
@@ -140,9 +146,12 @@ Datum alter_graph(PG_FUNCTION_ARGS)
     operation = PG_GETARG_CSTRING(1);
     new_value = PG_GETARG_NAME(2);
 
-    if (strcasecmp("RENAME", operation) == 0) {
+    if (strcasecmp("RENAME", operation) == 0)
+    {
         rename_graph(graph_name, new_value);
-    } else {
+    }
+    else
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("invalid operation \"%s\"", operation),
                         errhint("valid operations: RENAME")));
