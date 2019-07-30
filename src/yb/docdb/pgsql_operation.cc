@@ -538,7 +538,7 @@ Status PgsqlReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB
     pair->set_key(doc_key.Encode().data());
   }
 
-  pair->set_value(std::string(1, ValueTypeAsChar::kNull));
+  pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
   return Status::OK();
 }
 

@@ -62,7 +62,7 @@ namespace docdb {
     /* Null must be lower than the other primitive types so that it compares as smaller than */ \
     /* them. It is used for frozen CQL user-defined types (which can contain null elements) on */ \
     /* ASC columns. */ \
-    ((kNull, '$')) /* ASCII code 36 */ \
+    ((kNullLow, '$')) /* ASCII code 36 */ \
     /* Counter to check cardinality. */ \
     ((kCounter, '%')) /* ASCII code 37 */ \
     /* Forward and reverse mappings for sorted sets. */ \
@@ -128,7 +128,7 @@ namespace docdb {
     /* Null desc must be higher than the other descending primitive types so that it compares */ \
     /* as bigger than them. It is used for frozen CQL user-defined types (which can contain */ \
     /* null elements) on DESC columns. */ \
-    ((kNullDescending, '|')) /* ASCII code 124 */ \
+    ((kNullHigh, '|')) /* ASCII code 124 */ \
     \
     /* This is only needed when used as the end marker for a frozen value on a DESC column. */ \
     ((kGroupEndDescending, '}')) /* ASCII code 125 -- we pick the highest value below kHighest. */ \
@@ -189,8 +189,8 @@ typedef EnumBitSet<IntentType> IntentTypeSet;
 // All primitive value types fall into this range, but not all value types in this range are
 // primitive (e.g. object and tombstone are not).
 
-constexpr ValueType kMinPrimitiveValueType = ValueType::kNull;
-constexpr ValueType kMaxPrimitiveValueType = ValueType::kNullDescending;
+constexpr ValueType kMinPrimitiveValueType = ValueType::kNullLow;
+constexpr ValueType kMaxPrimitiveValueType = ValueType::kNullHigh;
 
 // kArray is handled slightly differently and hence we only have
 // kObject, kRedisTS, kRedisSet, and kRedisList.

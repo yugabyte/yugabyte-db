@@ -58,7 +58,7 @@ class PrimitiveValue {
   // Indicates that the stored jsonb is the complete jsonb value and not a partial update to jsonb.
   static constexpr int64_t kCompleteJsonb = 1;
 
-  PrimitiveValue() : type_(ValueType::kNull) {
+  PrimitiveValue() : type_(ValueType::kNullLow) {
   }
 
   explicit PrimitiveValue(ValueType value_type);
@@ -499,7 +499,7 @@ class PrimitiveValue {
       // it.
       memset(other, 0xab, sizeof(PrimitiveValue));
       // Restore the type. There should be no deallocation for non-string types anyway.
-      other->type_ = ValueType::kNull;
+      other->type_ = ValueType::kNullLow;
 #endif
     }
   }

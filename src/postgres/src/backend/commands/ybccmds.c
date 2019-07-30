@@ -50,6 +50,28 @@
 #include "parser/parser.h"
 #include "parser/parse_type.h"
 
+/* Utility function to calculate column sorting options */
+static void
+ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_nulls_first)
+{
+  if (dir == SORTBY_DESC) {
+    /*
+     * From postgres doc NULLS FIRST is the default for DESC order.
+     * So SORTBY_NULLS_DEFAULT is equal to SORTBY_NULLS_FIRST here.
+     */
+    *is_desc = true;
+    *is_nulls_first = (nulls != SORTBY_NULLS_LAST);
+  } else {
+    /*
+     * From postgres doc ASC is the default sort order and NULLS LAST is the default for it.
+     * So SORTBY_DEFAULT is equal to SORTBY_ASC and SORTBY_NULLS_DEFAULT is equal
+     * to SORTBY_NULLS_LAST here.
+     */
+    *is_desc = false;
+    *is_nulls_first = (nulls == SORTBY_NULLS_FIRST);
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Database Functions. */
 
@@ -104,11 +126,14 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 {
 	for (int i = 0; i < desc->natts; i++)
 	{
-		Form_pg_attribute att = TupleDescAttr(desc, i);
-		char              *attname = NameStr(att->attname);
-		AttrNumber        attnum = att->attnum;
-		bool              is_hash    = false;
-		bool              is_primary = false;
+		Form_pg_attribute att            = TupleDescAttr(desc, i);
+		char              *attname       = NameStr(att->attname);
+		AttrNumber        attnum         = att->attnum;
+		bool              is_hash        = false;
+		bool              is_primary     = false;
+		bool              is_desc        = false;
+		bool              is_nulls_first = false;
+
 
 		if (primary_key != NULL)
 		{
@@ -126,6 +151,7 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 					is_hash = (order == SORTBY_HASH) ||
 					          (key_col_idx == 0 && order == SORTBY_DEFAULT);
 					is_primary = true;
+          ColumnSortingOptions(order, index_elem->nulls_ordering, &is_desc, &is_nulls_first);
 					break;
 				}
 				key_col_idx++;
@@ -146,7 +172,9 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 			                                             attnum,
 			                                             col_type,
 			                                             is_hash,
-			                                             is_primary), handle);
+			                                             is_primary,
+			                                             is_desc,
+			                                             is_nulls_first), handle);
 		}
 	}
 }
@@ -313,12 +341,11 @@ YBCCreateIndex(const char *indexName,
 
 	for (int i = 0; i < indexTupleDesc->natts; i++)
 	{
-		Form_pg_attribute att	   = TupleDescAttr(indexTupleDesc, i);
-		char			  *attname = NameStr(att->attname);
-		AttrNumber		  attnum   = att->attnum;			
-		const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum, att->atttypid);
-		bool			  is_key   = (i < indexInfo->ii_NumIndexKeyAttrs);
-		bool			  is_hash  = (coloptions[i] & INDOPTION_HASH) != 0;
+		Form_pg_attribute     att         = TupleDescAttr(indexTupleDesc, i);
+		char                  *attname    = NameStr(att->attname);
+		AttrNumber            attnum      = att->attnum;
+		const YBCPgTypeEntity *col_type   = YBCDataTypeFromOidMod(attnum, att->atttypid);
+		const bool            is_key      = (i < indexInfo->ii_NumIndexKeyAttrs);
 
 		if (is_key)
 		{
@@ -327,24 +354,21 @@ YBCCreateIndex(const char *indexName,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("INDEX on column of type '%s' not yet supported",
 								YBPgTypeOidToStr(att->atttypid))));
+		}
 
-			HandleYBStmtStatus(YBCPgCreateIndexAddColumn(handle,
-														 attname,
-														 attnum,
-														 col_type,
-														 is_hash,
-														 true /* is_range */), handle);
-			is_hash = false;
-		}
-		else
-		{
-			HandleYBStmtStatus(YBCPgCreateIndexAddColumn(handle,
-														 attname,
-														 attnum,
-														 col_type,
-														 false /* is_hash */,
-														 false /* is_range */), handle);
-		}
+    const int16 options        = coloptions[i];
+    const bool  is_hash        = options & INDOPTION_HASH;
+    const bool  is_desc        = options & INDOPTION_DESC;
+    const bool  is_nulls_first = options & INDOPTION_NULLS_FIRST;
+
+		HandleYBStmtStatus(YBCPgCreateIndexAddColumn(handle,
+		                                             attname,
+		                                             attnum,
+		                                             col_type,
+		                                             is_hash,
+		                                             is_key,
+		                                             is_desc,
+		                                             is_nulls_first), handle);
 	}
 
 	/* Create the index. */

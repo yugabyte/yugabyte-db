@@ -309,7 +309,7 @@ Status PgDml::AddYBTupleIdColumn(int attr_num,
   }
 
   if (is_null) {
-    values->emplace_back(PrimitiveValue(ValueType::kNull));
+    values->emplace_back(PrimitiveValue(ValueType::kNullLow));
   } else {
     values->emplace_back(PrimitiveValue::FromQLValuePB(expr_pb->value(),
                                                        col->desc()->sorting_type()));

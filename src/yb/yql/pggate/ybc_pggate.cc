@@ -239,9 +239,10 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
-                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range) {
+                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range,
+                                    bool is_desc, bool is_nulls_first) {
   return ToYBCStatus(pgapi->CreateTableAddColumn(handle, attr_name, attr_num, attr_type,
-                                                 is_hash, is_range));
+                                                 is_hash, is_range, is_desc, is_nulls_first));
 }
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
@@ -353,9 +354,10 @@ YBCStatus YBCPgNewCreateIndex(YBCPgSession pg_session,
 }
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
-                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range) {
+                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range,
+                                    bool is_desc, bool is_nulls_first) {
   return ToYBCStatus(pgapi->CreateIndexAddColumn(handle, attr_name, attr_num, attr_type,
-                                                 is_hash, is_range));
+                                                 is_hash, is_range, is_desc, is_nulls_first));
 }
 
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {

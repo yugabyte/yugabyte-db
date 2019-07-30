@@ -96,8 +96,8 @@ const PrimitiveValue PrimitiveValue::kObject = PrimitiveValue(ValueType::kObject
 
 string PrimitiveValue::ToString() const {
   switch (type_) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull:
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow:
       return "null";
     case ValueType::kCounter:
       return "counter";
@@ -236,8 +236,8 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
     case ValueType::kLowest: return;
     case ValueType::kHighest: return;
     case ValueType::kMaxByte: return;
-    case ValueType::kNullDescending: return;
-    case ValueType::kNull: return;
+    case ValueType::kNullHigh: return;
+    case ValueType::kNullLow: return;
     case ValueType::kCounter: return;
     case ValueType::kSSForward: return;
     case ValueType::kSSReverse: return;
@@ -400,8 +400,8 @@ string PrimitiveValue::ToValue() const {
   string result;
   result.push_back(static_cast<char>(type_));
   switch (type_) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kSSForward: FALLTHROUGH_INTENDED;
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
@@ -565,11 +565,11 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
     // Ensure we are not leaving the object in an invalid state in case e.g. an exception is thrown
     // due to inability to allocate memory.
   }
-  type_ref = ValueType::kNull;
+  type_ref = ValueType::kNullLow;
 
   switch (value_type) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kSSForward: FALLTHROUGH_INTENDED;
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
@@ -911,14 +911,14 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
   this->~PrimitiveValue();
   // Ensure we are not leaving the object in an invalid state in case e.g. an exception is thrown
   // due to inability to allocate memory.
-  type_ = ValueType::kNull;
+  type_ = ValueType::kNullLow;
 
   const auto value_type = ConsumeValueType(&slice);
 
   // TODO: ensure we consume all data from the given slice.
   switch (value_type) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kSSForward: FALLTHROUGH_INTENDED;
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
@@ -1223,8 +1223,8 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     return false;
   }
   switch (type_) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
@@ -1299,8 +1299,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     return result;
   }
   switch (type_) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kSSForward: FALLTHROUGH_INTENDED;
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
@@ -1394,7 +1394,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
   LOG(FATAL) << "Comparing invalid PrimitiveValues: " << *this << " and " << other;
 }
 
-// This is used to initialize kNull, kNullDescending, kTrue, kFalse constants.
+// This is used to initialize kNullLow, kNullHigh, kTrue, kFalse constants.
 PrimitiveValue::PrimitiveValue(ValueType value_type)
     : type_(value_type) {
   complex_data_structure_ = nullptr;
@@ -1416,7 +1416,8 @@ PrimitiveValue::PrimitiveValue(ValueType value_type)
 
 SortOrder PrimitiveValue::SortOrderFromColumnSchemaSortingType(
     ColumnSchema::SortingType sorting_type) {
-  if (sorting_type == ColumnSchema::SortingType::kDescending) {
+  if (sorting_type == ColumnSchema::SortingType::kDescending ||
+      sorting_type == ColumnSchema::SortingType::kDescendingNullsLast) {
     return SortOrder::kDescending;
   }
   return SortOrder::kAscending;
@@ -1478,9 +1479,9 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
     case QLValuePB::kFrozenValue: {
       QLSeqValuePB frozen = value.frozen_value();
       PrimitiveValue pv(ValueType::kFrozen);
-      auto null_value_type = ValueType::kNull;
+      auto null_value_type = ValueType::kNullLow;
       if (sort_order == SortOrder::kDescending) {
-        null_value_type = ValueType::kNullDescending;
+        null_value_type = ValueType::kNullHigh;
         pv.type_ = ValueType::kFrozenDescending;
       }
 
@@ -1512,8 +1513,8 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
                                  QLValuePB* ql_value) {
   // DocDB sets type to kInvalidValueType for SubDocuments that don't exist. That's why they need
   // to be set to Null in QLValue.
-  if (primitive_value.value_type() == ValueType::kNull ||
-      primitive_value.value_type() == ValueType::kNullDescending ||
+  if (primitive_value.value_type() == ValueType::kNullLow ||
+      primitive_value.value_type() == ValueType::kNullHigh ||
       primitive_value.value_type() == ValueType::kInvalid) {
     SetNull(ql_value);
     return;
