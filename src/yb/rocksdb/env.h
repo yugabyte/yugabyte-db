@@ -722,6 +722,11 @@ class Logger {
     log_level_ = log_level;
   }
 
+  virtual const std::string& Prefix() const {
+    static const std::string kEmptyString;
+    return kEmptyString;
+  }
+
  private:
   // No copying allowed
   Logger(const Logger&);

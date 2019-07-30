@@ -667,6 +667,8 @@ class DBImpl : public DB {
 
   void SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task);
 
+  const std::string& LogPrefix() const;
+
   // table_cache_ provides its own synchronization
   std::shared_ptr<Cache> table_cache_;
 
