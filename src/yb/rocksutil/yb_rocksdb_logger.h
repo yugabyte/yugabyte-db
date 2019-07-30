@@ -44,6 +44,10 @@ class YBRocksDBLogger : public rocksdb::Logger {
   // Convert from glog level to rocksdb log level.
   static rocksdb::InfoLogLevel ConvertToRocksDBLogLevel(const int glog_level);
 
+  const std::string& Prefix() const override {
+    return prefix_;
+  }
+
  private:
   // Convert from rocksdb log level to glog level.
   static int ConvertToGLogLevel(const rocksdb::InfoLogLevel rocksdb_log_level);
@@ -51,6 +55,6 @@ class YBRocksDBLogger : public rocksdb::Logger {
   const std::string prefix_;
 };
 
-}
+} // namespace yb
 
 #endif // YB_ROCKSUTIL_YB_ROCKSDB_LOGGER_H
