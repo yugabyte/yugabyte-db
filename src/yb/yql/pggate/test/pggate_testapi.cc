@@ -52,7 +52,7 @@ YBCStatus YBCTestCreateTableAddColumn(YBCPgStatement handle, const char *attr_na
     break;
   }
   return YBCPgCreateTableAddColumn(handle, attr_name, attr_num, YBCPgFindTypeEntity(pg_type),
-                                   is_hash, is_range);
+      is_hash, is_range, false /* is_desc */, false /* is_nulls_first */);
 }
 
 //--------------------------------------------------------------------------------------------------

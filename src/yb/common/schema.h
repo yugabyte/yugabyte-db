@@ -183,8 +183,10 @@ class ColumnSchema {
  public:
   enum SortingType : uint8_t {
     kNotSpecified = 0,
-    kAscending,
-    kDescending
+    kAscending,          // ASC, NULLS FIRST
+    kDescending,         // DESC, NULLS FIRST
+    kAscendingNullsLast, // ASC, NULLS LAST
+    kDescendingNullsLast // DESC, NULLS LAST
   };
 
   // name: column name
@@ -278,6 +280,10 @@ class ColumnSchema {
         return "asc";
       case kDescending:
         return "desc";
+      case kAscendingNullsLast:
+        return "asc nulls last";
+      case kDescendingNullsLast:
+        return "desc nulls last";
     }
     LOG (FATAL) << "Invalid sorting type: " << sorting_type_;
   }

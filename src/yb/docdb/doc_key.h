@@ -112,7 +112,7 @@ class DocKey {
 
   // Resize the range components:
   //  - drop elements (primitive values) from the end if new_size is smaller than the old size.
-  //  - append kNull primitive values (default constructor) if new_size is bigger than the old size.
+  //  - append default primitive values (kNullLow) if new_size is bigger than the old size.
   void ResizeRangeComponents(int new_size);
 
   DocKeyHash hash() const {

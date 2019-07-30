@@ -438,7 +438,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key,
                                  PrimitiveValue::SystemColumnId(
                                      SystemColumnIds::kLivenessColumn)),
-                         Value(PrimitiveValue(ValueType::kNull)),
+                         Value(PrimitiveValue(ValueType::kNullLow)),
                          HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, PrimitiveValue(ColumnId(1))),
                          Value(PrimitiveValue::kTombstone), HybridTime(1000)));

@@ -81,7 +81,9 @@ static void YBCAddSysCatalogColumn(YBCPgStatement yb_stmt,
 		                                             attnum,
 		                                             col_type,
 		                                             false /* is_hash */,
-		                                             is_key), yb_stmt);
+		                                             is_key,
+		                                             false /* is_desc */,
+		                                             false /* is_nulls_first */), yb_stmt);
 	}
 }
 

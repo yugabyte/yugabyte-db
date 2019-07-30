@@ -1317,7 +1317,7 @@ Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* o
     DocKey doc_key(request_.hash_code(), hashed_components);
     pair->set_key(doc_key.Encode().data());
   }
-  pair->set_value(std::string(1, ValueTypeAsChar::kNull));
+  pair->set_value(std::string(1, ValueTypeAsChar::kNullLow));
   return Status::OK();
 }
 

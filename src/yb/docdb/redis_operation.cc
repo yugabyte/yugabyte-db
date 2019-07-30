@@ -35,7 +35,7 @@ namespace docdb {
 
 // A simple conversion from RedisDataTypes to ValueTypes
 // Note: May run into issues if we want to support ttl on individual set elements,
-// as they are represented by ValueType::kNull.
+// as they are represented by ValueType::kNullLow.
 ValueType ValueTypeFromRedisType(RedisDataType dt) {
   switch(dt) {
   case RedisDataType::REDIS_TYPE_STRING:
@@ -188,7 +188,7 @@ Result<RedisDataType> GetRedisValueType(
       return REDIS_TYPE_SORTEDSET;
     case ValueType::kRedisList:
       return REDIS_TYPE_LIST;
-    case ValueType::kNull: FALLTHROUGH_INTENDED; // This value is a set member.
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED; // This value is a set member.
     case ValueType::kString:
       return REDIS_TYPE_STRING;
     default:
@@ -1236,7 +1236,7 @@ Status RedisWriteOperation::ApplyAdd(const DocOperationApplyData& data) {
 
     set_entries.SetChild(
         PrimitiveValue(kv.subkey(i).string_subkey()),
-        SubDocument(PrimitiveValue(ValueType::kNull)));
+        SubDocument(PrimitiveValue(ValueType::kNullLow)));
   }
 
   RETURN_NOT_OK(set_entries.ConvertToRedisSet());

@@ -370,10 +370,6 @@ SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
 
 DROP INDEX fooi;
 CREATE INDEX fooi ON foo (f1 DESC NULLS LAST);
-ERROR:  NULLS LAST not supported yet
-LINE 1: CREATE INDEX fooi ON foo (f1 DESC NULLS LAST);
-                                  ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 SELECT * FROM foo ORDER BY f1;
  f1
 ----
