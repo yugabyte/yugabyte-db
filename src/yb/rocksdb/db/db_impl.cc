@@ -123,6 +123,8 @@
 #include "yb/rocksdb/util/thread_status_util.h"
 #include "yb/rocksdb/util/xfunc.h"
 
+using namespace std::literals;
+
 DEFINE_bool(dump_dbimpl_info, false, "Dump RocksDB info during constructor.");
 DEFINE_bool(flush_rocksdb_on_shutdown, true,
             "Safely flush RocksDB when instance is destroyed, disabled for crash tests.");
@@ -403,6 +405,7 @@ DBImpl::~DBImpl() {
         cfd->Ref();
         mutex_.Unlock();
         if (FLAGS_flush_rocksdb_on_shutdown) {
+          LOG_WITH_PREFIX(INFO) << "Flushing mem table on shutdown";
           FlushMemTable(cfd, FlushOptions());
         } else {
           RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
@@ -430,9 +433,15 @@ DBImpl::~DBImpl() {
   bg_compaction_scheduled_ -= compactions_unscheduled;
   bg_flush_scheduled_ -= flushes_unscheduled;
 
+  LOG_WITH_PREFIX(INFO) << "Pending " << bg_compaction_scheduled_ << " compactions and "
+                        << bg_flush_scheduled_ << " flushes";
+
   // Wait for background work to finish
   while (bg_compaction_scheduled_ || bg_flush_scheduled_) {
-    bg_cv_.Wait();
+    if (bg_cv_.TimedWait(env_->NowMicros() + yb::ToMicroseconds(5s))) {
+      LOG_WITH_PREFIX(ERROR) << "Waiting for " << bg_compaction_scheduled_ << " compactions and "
+                             << bg_flush_scheduled_ << " flushes";
+    }
   }
   EraseThreadStatusDbInfo();
   flush_scheduler_.Clear();
@@ -2439,7 +2448,32 @@ SequenceNumber DBImpl::GetLatestSequenceNumber() const {
 
 class DBImpl::ThreadPoolTask : public yb::PriorityThreadPoolTask {
  public:
+  explicit ThreadPoolTask(DBImpl* db_impl) : db_impl_(db_impl) {}
+
+  bool BelongsTo(void* key) override {
+    return key == db_impl_;
+  }
+
+  void Run(const Status& status, yb::PriorityThreadPoolSuspender* suspender) override {
+    if (!status.ok()) {
+      LOG_WITH_PREFIX(INFO) << "Task cancelled " << ToString() << ": " << status;
+      InstrumentedMutexLock lock(&db_impl_->mutex_);
+      AbortedUnlocked();
+      return; // Failed to schedule, could just drop compaction.
+    }
+    DoRun(suspender);
+  }
+
   virtual void AbortedUnlocked() = 0;
+
+  virtual void DoRun(yb::PriorityThreadPoolSuspender* suspender) = 0;
+
+  const std::string& LogPrefix() const {
+    return db_impl_->LogPrefix();
+  }
+
+ protected:
+  DBImpl* const db_impl_;
 };
 
 constexpr int kFlushPriority = 4;
@@ -2451,26 +2485,17 @@ constexpr int kLargeCompactionPriority = 0;
 class DBImpl::CompactionTask : public ThreadPoolTask {
  public:
   CompactionTask(DBImpl* db_impl, DBImpl::ManualCompaction* manual_compaction)
-      : db_impl_(db_impl), manual_compaction_(manual_compaction), priority_(CalcPriority()) {
+      : ThreadPoolTask(db_impl), manual_compaction_(manual_compaction), priority_(CalcPriority()) {
   }
 
   CompactionTask(DBImpl* db_impl, std::unique_ptr<Compaction> compaction)
-      : db_impl_(db_impl), manual_compaction_(nullptr), compaction_(std::move(compaction)),
+      : ThreadPoolTask(db_impl), manual_compaction_(nullptr), compaction_(std::move(compaction)),
         priority_(CalcPriority()) {
   }
 
-  void Run(const Status& status, yb::PriorityThreadPoolSuspender* suspender) override {
-    if (!status.ok()) {
-      InstrumentedMutexLock lock(&db_impl_->mutex_);
-      AbortedUnlocked();
-      return; // Failed to schedule, could just drop compaction.
-    }
+  void DoRun(yb::PriorityThreadPoolSuspender* suspender) override {
     compaction().SetSuspender(suspender);
     db_impl_->BackgroundCallCompaction(manual_compaction_, std::move(compaction_));
-  }
-
-  bool BelongsTo(void* key) override {
-    return key == db_impl_;
   }
 
   int Priority() const override {
@@ -2510,7 +2535,6 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     return kSmallCompactionPriority;
   }
 
-  DBImpl* const db_impl_;
   // Only one of manual_compaction_ and compaction_ could be non null.
   DBImpl::ManualCompaction* const manual_compaction_;
   std::unique_ptr<Compaction> compaction_;
@@ -2519,20 +2543,11 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
 
 class DBImpl::FlushTask : public ThreadPoolTask {
  public:
-  explicit FlushTask(DBImpl* db_impl, ColumnFamilyData* cfd) : db_impl_(db_impl), cfd_(cfd) {}
+  FlushTask(DBImpl* db_impl, ColumnFamilyData* cfd) : ThreadPoolTask(db_impl), cfd_(cfd) {}
 
-  void Run(const Status& status, yb::PriorityThreadPoolSuspender* suspender) override {
-    if (!status.ok()) {
-      InstrumentedMutexLock lock(&db_impl_->mutex_);
-      AbortedUnlocked();
-      return; // Failed to schedule, could just drop flush task.
-    }
+  void DoRun(yb::PriorityThreadPoolSuspender* suspender) override {
     // Since flush tasks has highest priority we could don't use suspender for them.
     db_impl_->BackgroundCallFlush(cfd_);
-  }
-
-  bool BelongsTo(void* key) override {
-    return key == db_impl_;
   }
 
   int Priority() const override {
@@ -2554,7 +2569,6 @@ class DBImpl::FlushTask : public ThreadPoolTask {
   }
 
  private:
-  DBImpl* db_impl_;
   ColumnFamilyData* cfd_;
 };
 
@@ -6457,5 +6471,10 @@ Status DBImpl::GetLatestSequenceForKey(SuperVersion* sv, const Slice& key,
   return Status::OK();
 }
 #endif  // ROCKSDB_LITE
+
+const std::string& DBImpl::LogPrefix() const {
+  static const std::string kEmptyString;
+  return db_options_.info_log ? db_options_.info_log->Prefix() : kEmptyString;
+}
 
 }  // namespace rocksdb
