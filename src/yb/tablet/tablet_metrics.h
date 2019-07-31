@@ -65,6 +65,8 @@ struct TabletMetrics {
   scoped_refptr<Counter> transaction_conflicts;
   scoped_refptr<Counter> expired_transactions;
   scoped_refptr<Counter> restart_read_requests;
+
+  scoped_refptr<Counter> rows_inserted;
 };
 
 class ScopedTabletMetricsTracker {

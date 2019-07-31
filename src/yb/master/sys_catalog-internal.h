@@ -78,11 +78,21 @@ class SysCatalogWriter {
     const bool is_write = (op_type == QLWriteRequestPB::QL_STMT_INSERT ||
                            op_type == QLWriteRequestPB::QL_STMT_UPDATE);
 
-    QLWriteRequestPB* ql_write = req_.add_ql_write_batch();
-    ql_write->set_type(op_type);
-
+    string diff;
     faststring metadata_buf;
     if (is_write) {
+      if (pb_util::ArePBsEqual(item->metadata().state().pb,
+                      item->metadata().dirty().pb,
+                      VLOG_IS_ON(2) ? &diff : nullptr)) {
+        // Short-circuit empty updates.
+        return Status::OK();
+      }
+    }
+    QLWriteRequestPB* ql_write = req_.add_ql_write_batch();
+    ql_write->set_type(op_type);
+    if (is_write) {
+      VLOG(2) << "Updating item " << item->id() << " in catalog: " << diff;
+
       if (!pb_util::SerializeToString(item->metadata().dirty().pb, &metadata_buf)) {
         return STATUS(Corruption, strings::Substitute(
             "Unable to serialize SysCatalog entry of type $0 for id $1.",

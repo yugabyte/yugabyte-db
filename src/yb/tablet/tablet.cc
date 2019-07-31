@@ -732,6 +732,9 @@ Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
           ? operation_state->consensus_round()->replicate_msg()->write_request().write_batch()
           // Bootstrap case.
           : operation_state->request()->write_batch();
+  if (metrics_) {
+    metrics_->rows_inserted->IncrementBy(put_batch.write_pairs().size());
+  }
 
   docdb::ConsensusFrontiers frontiers;
   set_op_id({operation_state->op_id().term(), operation_state->op_id().index()}, &frontiers);
