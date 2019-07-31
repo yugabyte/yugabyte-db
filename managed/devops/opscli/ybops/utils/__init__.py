@@ -91,12 +91,16 @@ class ReleasePackage(object):
         """
         There are two possible formats for our package names:
         - RC format, containing git hash and build type
-          eg: <repo>-<A.B.C.D>-<commit>[-<build_type>]-<system>-<machine>.tar.gz
+          eg: <repo>[-ee]-<A.B.C.D>-<commit>[-<build_type>]-<system>-<machine>.tar.gz
         - Release format (is always release, so no need for build_type):
-          eg: <repo>-<A.B.C.D>-b<build_number>-<system>-<machine>.tar.gz
+          eg: <repo>[-ee]-<A.B.C.D>-b<build_number>-<system>-<machine>.tar.gz
+
+        Note that each of these types has an optional -ee for backwards compatibility to our
+        previous enterprise vs community split. Also the yugabyte package has an optional build
+        type, ie: -release, -debug, etc.
         """
-        # Always expect <repo>-<version>.
-        pattern = "^(?P<repo>[^-]+)-(?P<version>{})".format(RELEASE_VERSION_PATTERN)
+        # Expect <repo>-<version>.
+        pattern = "^(?P<repo>[^-]+)(?:-[^-]+)?-(?P<version>{})".format(RELEASE_VERSION_PATTERN)
         # If this is an official release, we expect a commit hash and maybe a build_type, else we
         # expect a "-b" and a build number.
         if is_official_release:
