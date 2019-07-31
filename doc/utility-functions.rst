@@ -1,10 +1,10 @@
 Utility Functions
 =================
 
-``create_graph``
-----------------
+``create_graph()``
+------------------
 
-``create_graph()`` defines a graph in the database.
+Creates a graph in the database.
 
 Prototype
 ~~~~~~~~~
@@ -37,10 +37,10 @@ Examples
   
   (1 row)
 
-``drop_graph``
---------------
+``drop_graph()``
+----------------
 
-``drop_graph()`` removes a graph from the database.
+Removes a graph from the database.
 
 Prototype
 ~~~~~~~~~
@@ -73,5 +73,50 @@ Examples
   NOTICE:  graph "g" has been dropped
    drop_graph
   ------------
+  
+  (1 row)
+
+``alter_graph()``
+-----------------
+
+Alters a graph characteristic. Currently, the only operation supported is
+``rename``.
+
+Prototype
+~~~~~~~~~
+
+``alter_graph(graph_name name, operation cstring, new_value name) void``
+
+Parameters
+~~~~~~~~~~
+
++----------------+---------------------------------------------------------+
+| Name           | Description                                             |
++================+=========================================================+
+| ``graph_name`` | The name of the graph to modify. This parameter is case |
+|                | sensitive.                                              |
++----------------+---------------------------------------------------------+
+| ``operation``  | The name of the operation - see below. This parameter   |
+|                | is case insensitive and needs to be in single quotes.   |
+|                |                                                         |
+|                | ``rename`` - renames ``graph_name`` to ``new_value``.   |
++----------------+---------------------------------------------------------+
+| ``new_value``  | The new value. This parameter is case sensitive.        |
++----------------+---------------------------------------------------------+
+
+Return Value
+~~~~~~~~~~~~
+
+N/A
+
+Examples
+~~~~~~~~
+
+.. code-block:: postgresql
+
+  =# SELECT alter_graph('Network', 'rename', 'lan_network');
+  NOTICE:  graph "Network" renamed to "lan_network"
+   alter_graph
+  -------------
   
   (1 row)
