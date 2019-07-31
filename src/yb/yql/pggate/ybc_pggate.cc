@@ -317,8 +317,12 @@ YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle,
   return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, catalog_cache_version));
 }
 
-YBCStatus YBCPgSetIfIsSysCatalogVersionChange(YBCPgStatement handle, bool *is_version_change) {
-  return ToYBCStatus(pgapi->SetIfIsSysCatalogVersionChange(handle, is_version_change));
+YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row) {
+  return ToYBCStatus(pgapi->DmlModifiesRow(handle, modifies_row));
+}
+
+YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->SetIsSysCatalogVersionChange(handle));
 }
 
 YBCStatus YBCPgNewTruncateTable(YBCPgSession pg_session,

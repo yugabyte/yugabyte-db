@@ -132,16 +132,6 @@ recordSharedDependencyOn(ObjectAddress *depender,
 	if (IsBootstrapProcessingMode())
 		return;
 
-	/*
-	 * Disable dependency check here for now to avoid many full-table
-	 * scans caused by isObjectPinned below. YugaByte master catalog maps
-	 * should catch broken dependencies for now anyway.
-	 * TODO as we enable more postgres-exclusive features this needs to be
-	 * handled (re-enabled) to ensure correctness.
-	 */
-	if (IsYugaByteEnabled())
-		return;
-
 	sdepRel = heap_open(SharedDependRelationId, RowExclusiveLock);
 
 	/* If the referenced object is pinned, do nothing. */

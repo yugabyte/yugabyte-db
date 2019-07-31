@@ -95,7 +95,7 @@ static bool ExecCheckRTEPermsModified(Oid relOid, Oid userid,
 						  Bitmapset *modifiedCols,
 						  AclMode requiredPerms);
 static void ExecCheckXactReadOnly(PlannedStmt *plannedstmt);
-static char *ExecBuildSlotValueDescription(Oid reloid,
+static char *ExecBuildSlotValueDescription(Relation rel,
 							  TupleTableSlot *slot,
 							  TupleDesc tupdesc,
 							  Bitmapset *modifiedCols,
@@ -676,8 +676,8 @@ ExecCheckRTEPerms(RangeTblEntry *rte)
 
 			while ((col = bms_next_member(rte->selectedCols, col)) >= 0)
 			{
-				/* bit #s are offset by FirstLowInvalidHeapAttributeNumber */
-				AttrNumber	attno = col + FirstLowInvalidHeapAttributeNumber;
+				/* Add appropriate offset to get attribute # from column # */
+				AttrNumber attno = col + YBGetFirstLowInvalidAttributeNumberFromOid(relOid);
 
 				if (attno == InvalidAttrNumber)
 				{
@@ -739,8 +739,8 @@ ExecCheckRTEPermsModified(Oid relOid, Oid userid, Bitmapset *modifiedCols,
 
 	while ((col = bms_next_member(modifiedCols, col)) >= 0)
 	{
-		/* bit #s are offset by FirstLowInvalidHeapAttributeNumber */
-		AttrNumber	attno = col + FirstLowInvalidHeapAttributeNumber;
+		/* Add appropriate offset to get attribute # from column # */
+		AttrNumber attno = col + YBGetFirstLowInvalidAttributeNumberFromOid(relOid);
 
 		if (attno == InvalidAttrNumber)
 		{
@@ -1955,7 +1955,7 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
 	insertedCols = GetInsertedColumns(resultRelInfo, estate);
 	updatedCols = GetUpdatedColumns(resultRelInfo, estate);
 	modifiedCols = bms_union(insertedCols, updatedCols);
-	val_desc = ExecBuildSlotValueDescription(RelationGetRelid(rel),
+	val_desc = ExecBuildSlotValueDescription(rel,
 											 slot,
 											 tupdesc,
 											 modifiedCols,
@@ -2034,7 +2034,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 				insertedCols = GetInsertedColumns(resultRelInfo, estate);
 				updatedCols = GetUpdatedColumns(resultRelInfo, estate);
 				modifiedCols = bms_union(insertedCols, updatedCols);
-				val_desc = ExecBuildSlotValueDescription(RelationGetRelid(rel),
+				val_desc = ExecBuildSlotValueDescription(rel,
 														 slot,
 														 tupdesc,
 														 modifiedCols,
@@ -2082,7 +2082,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 			insertedCols = GetInsertedColumns(resultRelInfo, estate);
 			updatedCols = GetUpdatedColumns(resultRelInfo, estate);
 			modifiedCols = bms_union(insertedCols, updatedCols);
-			val_desc = ExecBuildSlotValueDescription(RelationGetRelid(rel),
+			val_desc = ExecBuildSlotValueDescription(rel,
 													 slot,
 													 tupdesc,
 													 modifiedCols,
@@ -2188,7 +2188,7 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
 					insertedCols = GetInsertedColumns(resultRelInfo, estate);
 					updatedCols = GetUpdatedColumns(resultRelInfo, estate);
 					modifiedCols = bms_union(insertedCols, updatedCols);
-					val_desc = ExecBuildSlotValueDescription(RelationGetRelid(rel),
+					val_desc = ExecBuildSlotValueDescription(rel,
 															 slot,
 															 tupdesc,
 															 modifiedCols,
@@ -2254,7 +2254,7 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
  * columns they are.
  */
 static char *
-ExecBuildSlotValueDescription(Oid reloid,
+ExecBuildSlotValueDescription(Relation rel,
 							  TupleTableSlot *slot,
 							  TupleDesc tupdesc,
 							  Bitmapset *modifiedCols,
@@ -2268,6 +2268,7 @@ ExecBuildSlotValueDescription(Oid reloid,
 	AclResult	aclresult;
 	bool		table_perm = false;
 	bool		any_perm = false;
+	Oid 		reloid = RelationGetRelid(rel);
 
 	/*
 	 * Check if RLS is enabled and should be active for the relation; if so,
@@ -2322,7 +2323,7 @@ ExecBuildSlotValueDescription(Oid reloid,
 			 */
 			aclresult = pg_attribute_aclcheck(reloid, att->attnum,
 											  GetUserId(), ACL_SELECT);
-			if (bms_is_member(att->attnum - FirstLowInvalidHeapAttributeNumber,
+			if (bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
 							  modifiedCols) || aclresult == ACLCHECK_OK)
 			{
 				column_perm = any_perm = true;
