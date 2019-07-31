@@ -2726,6 +2726,7 @@ Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
   LOG(INFO) << "Successfully initiated deletion of "
             << (req->is_index_table() ? "index" : "table") << " with "
             << req->table().DebugString() << " per request from " << RequestorString(rpc);
+  // Asynchronously cleans up the final memory traces of the deleted database.
   background_tasks_->Wake();
   return Status::OK();
 }
@@ -3481,6 +3482,11 @@ bool CatalogManager::IsUserIndex(const TableInfo& table) const {
 
 bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
   if (table.GetTableType() == PGSQL_TABLE_TYPE) {
+    // This case commonly occurs during unit testing. Avoid unnecessary assert within Get().
+    if (!IsPgsqlId(table.namespace_id()) || !IsPgsqlId(table.id())) {
+      LOG(WARNING) << "Not PGSQL IDs " << table.namespace_id() << ", " << table.id();
+      return false;
+    }
     Result<uint32_t> database_oid = GetPgsqlDatabaseOid(table.namespace_id());
     if (!database_oid.ok()) {
       LOG(WARNING) << "Invalid Namespace ID " << table.namespace_id();
@@ -3530,9 +3536,6 @@ void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uu
     LOG(INFO) << "Clearing pending delete for tablet " << tablet_id << " in ts " << tserver_uuid;
     ts_desc->ClearPendingTabletDelete(tablet_id);
   }
-
-  TRACE("Try to delete from internal by-id map");
-  CleanUpDeletedTables();
 }
 
 Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
@@ -4183,6 +4186,8 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
         tables.push_back(table);
         deleted_tables.push_back(deleted_table);
       }
+      // Update the in-memory state.
+      l->Commit();
     }
   }
 
@@ -4195,7 +4200,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
     DeleteTabletsAndSendRequests(tables[i]);
   }
 
-  // Invoke the tasks and return.
+  // Invoke any background tasks and return (notably, table cleanup).
   background_tasks_->Wake();
   return Status::OK();
 }
@@ -5032,7 +5037,8 @@ void CatalogManager::ExtractTabletsToProcess(
     auto table_lock = tablet->table()->LockForRead();
 
     // If the table is deleted or the tablet was replaced at table creation time.
-    if (tablet_lock->data().is_deleted() || table_lock->data().started_deleting()) {
+    if (table_lock->data().started_deleting() &&
+        table_ids_map_.find(tablet->table()->id()) != table_ids_map_.end()) {
       tablets_to_delete->push_back(tablet);
       continue;
     }
