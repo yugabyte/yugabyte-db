@@ -153,12 +153,12 @@ TEST_F(TestQLKeyspace, TestQLCreateKeyspaceIfNotExists) {
   // Try to create 2 keyspaces in one request.
 //  LOG(INFO) << "Exec SQL: " << CreateKeyspaceIfNotExistsStmt("ks1 ks2;");
 //  EXEC_INVALID_STMT_WITH_ERROR(CreateKeyspaceIfNotExistsStmt("ks1 ks2;"),
-//      "Invalid SQL Statement", "syntax error");
+//      "Invalid SQL Statement. syntax error");
 
   // Try to create a keyspaces with unsupported AUTHORIZATION keyword.
 //  LOG(INFO) << "Exec SQL: " << CreateKeyspaceIfNotExistsStmt("ks1 AUTHORIZATION user1;");
 //  EXEC_INVALID_STMT_WITH_ERROR(CreateKeyspaceIfNotExistsStmt("ks1 AUTHORIZATION user1;"),
-//      "Feature Not Supported", "AUTHORIZATION");
+//      "Feature Not Supported. AUTHORIZATION");
 }
 
 TEST_F(TestQLKeyspace, TestQLCreateSchemaSimple) {
@@ -244,12 +244,12 @@ TEST_F(TestQLKeyspace, TestQLCreateSchemaIfNotExists) {
   // Try to create 2 keyspaces in one request.
 //  LOG(INFO) << "Exec SQL: " << CreateSchemaIfNotExistsStmt("ks1 ks2;");
 //  EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaIfNotExistsStmt("ks1 ks2;"),
-//      "Invalid SQL Statement", "syntax error");
+//      "Invalid SQL Statement. syntax error");
 
   // Try to create a keyspaces with unsupported AUTHORIZATION keyword.
 //  LOG(INFO) << "Exec SQL: " << CreateSchemaIfNotExistsStmt("ks1 AUTHORIZATION user1;");
 //  EXEC_INVALID_STMT_WITH_ERROR(CreateSchemaIfNotExistsStmt("ks1 AUTHORIZATION user1;"),
-//      "Feature Not Supported", "AUTHORIZATION");
+//      "Feature Not Supported. AUTHORIZATION");
 }
 
 TEST_F(TestQLKeyspace, TestQLUseKeyspaceSimple) {

@@ -106,7 +106,7 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
   int pindex = 0;
   const MCList<PTExpr::SharedPtr>& exprs = args_->node_list();
   vector<PTExpr::SharedPtr> params(exprs.size());
-  for (const auto& expr : exprs) {
+  for (const PTExpr::SharedPtr& expr : exprs) {
     RETURN_NOT_OK(expr->Analyze(sem_context));
     RETURN_NOT_OK(expr->CheckRhsExpr(sem_context));
 
@@ -145,6 +145,15 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     // Use the builtin-function opcode since this is a regular builtin call.
     bfopcode_ = static_cast<int32_t>(bfopcode);
 
+    if (*name_ == "cql_cast" || *name_ == "tojson") {
+      // Argument must be of primitive type for these operators.
+      for (const PTExpr::SharedPtr &expr : exprs) {
+        if (expr->expr_op() == ExprOperator::kCollection) {
+          return sem_context->Error(expr, "Input argument must be of primitive type",
+                                    ErrorCode::INVALID_ARGUMENTS);
+        }
+      }
+    }
   } else {
     // Use the server opcode since this is a server operator. Ignore the BFOpcode.
     is_server_operator_ = true;
@@ -380,7 +389,7 @@ CHECKED_STATUS PTBcall::CheckOperatorAfterArgAnalyze(SemContext *sem_context) {
     }
 
     if (type->Contains(FROZEN) || type->Contains(USER_DEFINED_TYPE)) {
-      // Only the server side implementation allows unwrapping complex types based on the schema.
+      // Only the server side implementation allows complex types unwrapping based on the schema.
       name_->insert(0, "server_");
     }
   }

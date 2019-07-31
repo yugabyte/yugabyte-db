@@ -174,21 +174,16 @@ TEST_F(TestQLInsertTable, TestQLInsertCast) {
   // cast(INT as TEXT)
   EXEC_INVALID_STMT_WITH_ERROR("INSERT INTO test_cast (h, t) values (2, cast(22 as text))",
       "Execution Error. Cannot convert varint to text");
-/*
-  TOFIX: https://github.com/YugaByte/yugabyte-db/issues/1944
-         Uncomment the block when the issue is fixed.
-
   // cast(LIST as TEXT)
   EXEC_INVALID_STMT_WITH_ERROR("INSERT INTO test_cast (h, t) values (7, cast([1, 2] as text))",
-      "Query error", "Cannot convert list to text");
+      "Invalid Arguments. Input argument must be of primitive type");
   // cast(SET as TEXT)
   EXEC_INVALID_STMT_WITH_ERROR("INSERT INTO test_cast (h, t) values (7, cast({1, 2} as text))",
-      "Query error", "Cannot convert set to text");
+      "Invalid Arguments. Input argument must be of primitive type");
   // cast(MAP as TEXT)
   EXEC_INVALID_STMT_WITH_ERROR(
-      "INSERT INTO test_cast (h, t) values (7, cast({1:11, 2:22} as text))",
-      "Query error", "Cannot convert map to text");
-*/
+      "INSERT INTO test_cast (h, t) values (7, cast({'a':11, 'b':22} as text))",
+      "Invalid Arguments. Input argument must be of primitive type");
 }
 
 TEST_F(TestQLInsertTable, TestQLInsertToJson) {
@@ -255,32 +250,18 @@ TEST_F(TestQLInsertTable, TestQLInsertToJson) {
   EXPECT_EQ(6, row_block->row(0).column(0).int32_value());
   EXPECT_EQ("\"{1, 2}\"", to_json_str(row_block->row(0).column(1)));
 
-/*
-  TOFIX: https://github.com/YugaByte/yugabyte-db/issues/1944
-         Uncomment the block when the issue is fixed.
-
   // ToJson(LIST)
-  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (7, ToJson([1, 2]))");
-  CHECK_VALID_STMT("SELECT * FROM test_json where h = 7");
-  row_block = processor->row_block();
-  CHECK_EQ(row_block->row_count(), 1);
-  EXPECT_EQ(7, row_block->row(0).column(0).int32_value());
-  EXPECT_EQ("[1,2]", to_json_str(row_block->row(0).column(1)));
+  EXEC_INVALID_STMT_WITH_ERROR("INSERT INTO test_json (h, j) values (7, ToJson([1, 2]))",
+      "Invalid Arguments. Input argument must be of primitive type");
   // ToJson(SET)
-  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (8, ToJson({3, 4}))");
-  CHECK_VALID_STMT("SELECT * FROM test_json where h = 8");
-  row_block = processor->row_block();
-  CHECK_EQ(row_block->row_count(), 1);
-  EXPECT_EQ(8, row_block->row(0).column(0).int32_value());
-  EXPECT_EQ("[3,4]", to_json_str(row_block->row(0).column(1)));
+  EXEC_INVALID_STMT_WITH_ERROR("INSERT INTO test_json (h, j) values (8, ToJson({3, 4}))",
+      "Invalid Arguments. Input argument must be of primitive type");
   // ToJson(MAP)
-  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (9, ToJson({5:55, 6:66}))");
-  CHECK_VALID_STMT("SELECT * FROM test_json where h = 9");
-  row_block = processor->row_block();
-  CHECK_EQ(row_block->row_count(), 1);
-  EXPECT_EQ(9, row_block->row(0).column(0).int32_value());
-  EXPECT_EQ("{\"5\":55,\"6\":66}", to_json_str(row_block->row(0).column(1)));
-*/
+  EXEC_INVALID_STMT_WITH_ERROR("INSERT INTO test_json (h, j) values (9, ToJson({5:55, 6:66}))",
+      "Invalid Arguments. Input argument must be of primitive type");
+  EXEC_INVALID_STMT_WITH_ERROR(
+      "INSERT INTO test_json (h, j) values (10, ToJson({a : 1, b : 'foo'}))",
+      "Invalid Arguments. Input argument must be of primitive type");
 }
 
 } // namespace ql
