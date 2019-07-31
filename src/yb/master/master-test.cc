@@ -170,6 +170,9 @@ class MasterTest : public YBTest {
                      const Schema& schema) {
     return CreateTable(default_namespace_name, table_name, schema);
   }
+  Status CreatePgsqlTable(const NamespaceId& namespace_id,
+                          const TableName& table_name,
+                          const Schema& schema);
 
   Status DoCreateTable(const NamespaceName& namespace_name,
                        const TableName& table_name,
@@ -451,6 +454,32 @@ Status MasterTest::CreateTable(const NamespaceName& namespace_name,
                                const Schema& schema) {
   CreateTableRequestPB req;
   return DoCreateTable(namespace_name, table_name, schema, &req);
+}
+
+Status MasterTest::CreatePgsqlTable(const NamespaceId& namespace_id,
+                                    const TableName& table_name,
+                                    const Schema& schema) {
+  CreateTableRequestPB req, *request;
+  request = &req;
+  CreateTableResponsePB resp;
+
+  request->set_table_type(TableType::PGSQL_TABLE_TYPE);
+  request->set_name(table_name);
+  SchemaToPB(schema, request->mutable_schema());
+
+  if (!namespace_id.empty()) {
+    request->mutable_namespace_()->set_id(namespace_id);
+  }
+  request->mutable_partition_schema()->set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
+  request->set_num_tablets(8);
+
+  // Dereferencing as the RPCs require const ref for request. Keeping request param as pointer
+  // though, as that helps with readability and standardization.
+  RETURN_NOT_OK(proxy_->CreateTable(*request, &resp, ResetAndGetController()));
+  if (resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
+  }
+  return Status::OK();
 }
 
 Status MasterTest::DoCreateTable(const NamespaceName& namespace_name,
@@ -1076,11 +1105,67 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   // Create a new namespace.
   const NamespaceName other_ns_name = "testns";
   NamespaceId other_ns_id;
-
+  const NamespaceName other_ns_pgsql_name = "testns_pgsql";
+  NamespaceId other_ns_pgsql_id;
   {
     CreateNamespaceResponsePB resp;
     ASSERT_OK(CreateNamespace(other_ns_name, &resp));
     other_ns_id = resp.id();
+  }
+  {
+    CreateNamespaceResponsePB resp;
+    ASSERT_OK(CreateNamespace(other_ns_pgsql_name, YQLDatabase::YQL_DATABASE_PGSQL, &resp));
+    other_ns_pgsql_id = resp.id();
+  }
+  {
+    ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
+    ASSERT_EQ(3 + kNumSystemNamespaces, namespaces.namespaces_size());
+    CheckNamespaces(
+        {
+            EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES,
+            std::make_tuple(other_ns_name, other_ns_id),
+            std::make_tuple(other_ns_pgsql_name, other_ns_pgsql_id)
+        }, namespaces);
+  }
+  {
+    ASSERT_NO_FATALS(DoListAllNamespaces(YQLDatabase::YQL_DATABASE_PGSQL, &namespaces));
+    ASSERT_EQ(1, namespaces.namespaces_size());
+    CheckNamespaces(
+        {
+            std::make_tuple(other_ns_pgsql_name, other_ns_pgsql_id)
+        }, namespaces);
+  }
+
+  // Create a table.
+  const TableName kTableName = "testtb";
+  const TableName kTableNamePgsql = "testtb_pgsql";
+  const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
+
+  ASSERT_OK(CreateTable(other_ns_name, kTableName, kTableSchema));
+  ASSERT_OK(CreatePgsqlTable(other_ns_pgsql_id, kTableNamePgsql, kTableSchema));
+
+  {
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(2 + kNumSystemTables, tables.tables_size());
+    CheckTables(
+        {
+            std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
+            std::make_tuple(kTableNamePgsql, other_ns_pgsql_name, other_ns_pgsql_id,
+                USER_TABLE_RELATION),
+            EXPECTED_SYSTEM_TABLES
+        }, tables);
+  }
+
+  // You should be able to successfully delete a non-empty PGSQL Database - by ID only
+  {
+    DeleteNamespaceRequestPB req;
+    DeleteNamespaceResponsePB resp;
+    req.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
+    req.mutable_namespace_()->set_id(other_ns_pgsql_id);
+    ASSERT_OK(proxy_->DeleteNamespace(req, &resp, ResetAndGetController()));
+    SCOPED_TRACE(resp.DebugString());
+    ASSERT_FALSE(resp.has_error());
   }
   {
     ASSERT_NO_FATALS(DoListAllNamespaces(&namespaces));
@@ -1088,24 +1173,20 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
     CheckNamespaces(
         {
             EXPECTED_DEFAULT_AND_SYSTEM_NAMESPACES,
-            std::make_tuple(other_ns_name, other_ns_id),
+            std::make_tuple(other_ns_name, other_ns_id)
         }, namespaces);
   }
-
-  // Create a table.
-  const TableName kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
-
-  ASSERT_OK(CreateTable(other_ns_name, kTableName, kTableSchema));
-
-  ListTablesResponsePB tables;
-  ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
-  CheckTables(
-      {
-          std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
-          EXPECTED_SYSTEM_TABLES
-      }, tables);
+  {
+    // verify that the table for that database also went away
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(1 + kNumSystemTables, tables.tables_size());
+    CheckTables(
+        {
+            std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
+            EXPECTED_SYSTEM_TABLES
+        }, tables);
+  }
 
   // Try to delete the non-empty namespace - by NAME.
   {
@@ -1159,12 +1240,15 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   ASSERT_OK(DeleteTable(other_ns_name, kTableName));
 
   // List tables, should show only system table.
-  ASSERT_NO_FATALS(DoListAllTables(&tables));
-  ASSERT_EQ(kNumSystemTables, tables.tables_size());
-  CheckTables(
-      {
-          EXPECTED_SYSTEM_TABLES
-      }, tables);
+  {
+    ListTablesResponsePB tables;
+    ASSERT_NO_FATALS(DoListAllTables(&tables));
+    ASSERT_EQ(kNumSystemTables, tables.tables_size());
+    CheckTables(
+        {
+            EXPECTED_SYSTEM_TABLES
+        }, tables);
+  }
 
   // Delete the namespace (by NAME).
   {
