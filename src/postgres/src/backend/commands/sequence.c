@@ -597,19 +597,10 @@ DeleteSequenceTuple(Oid relid)
 }
 
 HeapTuple
-ReadSequenceTuple(Relation seqrel, bool check_permissions)
+YBReadSequenceTuple(Relation seqrel)
 {
   /* Get sequence OID */
   Oid relid = seqrel->rd_id;
-
-  /* Verify we can access it */
-  if (check_permissions &&
-      pg_class_aclcheck(relid, GetUserId(),
-                        ACL_USAGE) != ACLCHECK_OK)
-    ereport(ERROR,
-            (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-                errmsg("permission denied for sequence %s",
-                       RelationGetRelationName(seqrel))));
 
   /* Read our data from YB's table of all sequences */
   FormData_pg_sequence_data seqdataform;

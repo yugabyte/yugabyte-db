@@ -3165,9 +3165,9 @@ initialize_data_directory(void)
 		setup_conversion(cmdfd);
 
 		setup_dictionary(cmdfd);
-
-		setup_privileges(cmdfd);
 	}
+
+	setup_privileges(cmdfd);
 
 	setup_schema(cmdfd);
 

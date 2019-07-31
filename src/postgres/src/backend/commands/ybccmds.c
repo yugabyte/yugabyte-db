@@ -450,6 +450,7 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 			case AT_DisableTrig:
 			case AT_DisableTrigAll:
 			case AT_DisableTrigUser:
+			case AT_ChangeOwner:
 				/* For these cases a YugaByte alter isn't required, so we do nothing. */
 				break;
 
