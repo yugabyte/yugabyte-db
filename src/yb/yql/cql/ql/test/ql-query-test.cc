@@ -445,10 +445,32 @@ class TestQLQuery : public QLTestBase {
     ASSERT_EQ(1, row_block->row_count());
 
     //----------------------------------------------------------------------------------------------
-    // Testing parametric types (i.e. with frozen)
+    // Testing separate UDT type.
     //----------------------------------------------------------------------------------------------
     CHECK_OK(processor->Run("CREATE TYPE udt_partition_hash_test(a int, b text)"));
 
+    CHECK_OK(processor->Run(
+        "CREATE TABLE partition_hash_bcall_udt_test("
+        " h frozen<udt_partition_hash_test>, r int, v int, PRIMARY KEY ((h), r))"));
+
+    // Sample values to check hash value computation
+    key_values = "{a : 1, b : 'foo'}";
+
+    insert_stmt = Substitute("INSERT INTO partition_hash_bcall_udt_test "
+                             "(h, r, v) VALUES ($0, 1, 1);", key_values);
+    CHECK_OK(processor->Run(insert_stmt));
+
+    select_stmt = Substitute("SELECT * FROM partition_hash_bcall_udt_test WHERE "
+                                 "$0(h) = $1($2)", func_name, func_name, key_values);
+    CHECK_OK(processor->Run(select_stmt));
+
+    // Checking result.
+    row_block = processor->row_block();
+    ASSERT_EQ(1, row_block->row_count());
+
+    //----------------------------------------------------------------------------------------------
+    // Testing parametric types (i.e. with frozen)
+    //----------------------------------------------------------------------------------------------
     CHECK_OK(processor->Run(
         "CREATE TABLE partition_hash_bcall_frozen_test("
         " h1 frozen<map<int,text>>, h2 frozen<set<text>>, h3 frozen<list<int>>, "
