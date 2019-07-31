@@ -45,15 +45,20 @@
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master-test-util.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
+#include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
 #include "yb/util/stopwatch.h"
 
 DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(yb_num_shards_per_tserver);
+
+METRIC_DECLARE_counter(rows_inserted);
 
 namespace yb {
 
@@ -103,11 +108,18 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     string tablet_id_1;
     string tablet_id_2;
     string table_id_1;
+    FLAGS_yb_num_shards_per_tserver = 10;
 
     ASSERT_OK(cluster_->WaitForTabletServerCount(1));
 
     MiniTabletServer* ts = cluster_->mini_tablet_server(0);
-    string ts_root = cluster_->GetTabletServerFsRoot(0);
+
+    auto GetCatalogMetric = [&](CounterPrototype& prototype) -> int64_t {
+      auto metrics = cluster_->mini_master()->master()->catalog_manager()->sys_catalog()
+          ->tablet_peer()->shared_tablet()->GetMetricEntity();
+      return prototype.Instantiate(metrics)->value();
+    };
+    int before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
 
     // Add a tablet, make sure it reports itself.
     CreateTabletForTesting(cluster_->mini_master(), YBTableName("my_keyspace", "fake-table"),
@@ -119,14 +131,34 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
     LOG(INFO) << "Tablet successfully reported on " <<
               locs.replicas(0).ts_info().permanent_uuid();
 
+    // TODO(bogdan): why do namespaces/tables report 2 writes?
+    // Check that we inserted the right number of rows for the first table:
+    // - 2 for the namespace
+    // - 2 for the table
+    // - 4 * FLAGS_yb_num_shards_per_tserver for the tablets:
+    //    CREATING, PREPARING, first heartbeat, leader election heartbeat
+    int after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+    int expected_rows = 2 + 2 + FLAGS_yb_num_shards_per_tserver * 4;
+    EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted)
+        << "Expected 2 writes for the table and 4 per each tablet";
+
     // Add another tablet, make sure it is reported via incremental.
     Schema schema_copy = Schema(schema_);
     if (co_partition) {
       schema_copy.SetCopartitionTableId(table_id_1);
     }
 
+    // Record the number of rows before the new table.
+    before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
     CreateTabletForTesting(cluster_->mini_master(), YBTableName("my_keyspace", "fake-table2"),
                            schema_copy, &tablet_id_2);
+    // Sleep for enough to make sure the TS has plenty of time to re-heartbeat.
+    SleepFor(MonoDelta::FromSeconds(2));
+    after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+    // For a normal table, we expect 4 writes per tablet.
+    // For a copartitioned table, we expect just 1 write per tablet.
+    expected_rows = 2 + FLAGS_yb_num_shards_per_tserver * (co_partition ? 1 : 4);
+    EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
 
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
 
@@ -143,6 +175,25 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_1, 1, &locs));
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
+    // Sleep for enough to make sure the TS has plenty of time to re-heartbeat.
+    SleepFor(MonoDelta::FromSeconds(2));
+
+    // After restart, check that the tablet reports produced the expected number of
+    // writes to the catalog table:
+    // - If no copartitions, then two updates per tablet, since both replicas should have increased
+    //   their term on restart.
+    // - If copartitioned, then one update per tablet.
+    EXPECT_EQ(
+        (co_partition ? 1 : 2) * FLAGS_yb_num_shards_per_tserver,
+        GetCatalogMetric(METRIC_rows_inserted));
+
+    // If we restart just the master, it should not write any data to the catalog, since the
+    // tablets themselves are not changing term, etc.
+    ASSERT_OK(cluster_->mini_master()->Restart());
+    // Sleep for enough to make sure the TS has plenty of time to re-heartbeat.
+    ASSERT_OK(cluster_->WaitForTabletServerCount(1));
+    SleepFor(MonoDelta::FromSeconds(2));
+    EXPECT_EQ(0, GetCatalogMetric(METRIC_rows_inserted));
 
     // TODO: KUDU-870: once the master supports detecting failed/lost replicas,
     // we should add a test case here which removes or corrupts metadata, restarts

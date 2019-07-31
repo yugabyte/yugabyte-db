@@ -253,12 +253,12 @@ static TabletInfo *CreateTablet(TableInfo *table,
                                 const string& start_key,
                                 const string& end_key) {
   TabletInfo *tablet = new TabletInfo(table, tablet_id);
-  auto l = tablet->LockForWrite();
-  l->mutable_data()->pb.set_state(SysTabletsEntryPB::PREPARING);
-  l->mutable_data()->pb.mutable_partition()->set_partition_key_start(start_key);
-  l->mutable_data()->pb.mutable_partition()->set_partition_key_end(end_key);
-  l->mutable_data()->pb.set_table_id(table->id());
-  l->Commit();
+  tablet->mutable_metadata()->StartMutation();
+  auto* metadata = &tablet->mutable_metadata()->mutable_dirty()->pb;
+  metadata->set_state(SysTabletsEntryPB::PREPARING);
+  metadata->mutable_partition()->set_partition_key_start(start_key);
+  metadata->mutable_partition()->set_partition_key_end(end_key);
+  metadata->set_table_id(table->id());
   return tablet;
 }
 
@@ -266,6 +266,7 @@ static TabletInfo *CreateTablet(TableInfo *table,
 // visit)
 TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
   scoped_refptr<TableInfo> table(master_->catalog_manager()->NewTableInfo("abc"));
+  // This leaves all three in StartMutation.
   scoped_refptr<TabletInfo> tablet1(CreateTablet(table.get(), "123", "a", "b"));
   scoped_refptr<TabletInfo> tablet2(CreateTablet(table.get(), "456", "b", "c"));
   scoped_refptr<TabletInfo> tablet3(CreateTablet(table.get(), "789", "c", "d"));
@@ -283,11 +284,9 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet2.get());
 
     loader->Reset();
-    auto l1 = tablet1->LockForWrite();
-    auto l2 = tablet2->LockForWrite();
     ASSERT_OK(sys_catalog->AddItems(tablets, kLeaderTerm));
-    l1->Commit();
-    l2->Commit();
+    tablet1->mutable_metadata()->CommitMutation();
+    tablet2->mutable_metadata()->CommitMutation();
 
     ASSERT_OK(sys_catalog->Visit(loader.get()));
     ASSERT_EQ(2 + kNumSystemTables, loader->tablets.size());
@@ -317,7 +316,6 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     std::vector<TabletInfo *> to_add;
     std::vector<TabletInfo *> to_update;
 
-    auto l3 = tablet3->LockForWrite();
     to_add.push_back(tablet3.get());
     to_update.push_back(tablet1.get());
     to_update.push_back(tablet2.get());
@@ -332,7 +330,8 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
 
     l1->Commit();
     l2->Commit();
-    l3->Commit();
+    // This was still open from the initial create!
+    tablet3->mutable_metadata()->CommitMutation();
 
     ASSERT_OK(sys_catalog->Visit(loader.get()));
     ASSERT_EQ(3 + kNumSystemTables, loader->tablets.size());

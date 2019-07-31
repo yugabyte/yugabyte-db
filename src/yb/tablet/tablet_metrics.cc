@@ -145,7 +145,8 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
     MINIT(leader_memory_pressure_rejections),
     MINIT(transaction_conflicts),
     MINIT(expired_transactions),
-    MINIT(restart_read_requests) {
+    MINIT(restart_read_requests),
+    MINIT(rows_inserted) {
 }
 #undef MINIT
 
