@@ -140,16 +140,17 @@ void CatalogManagerBgTasks::Run() {
       } else {
         catalog_manager_->load_balance_policy_->RunLoadBalancer();
       }
-    }
 
-    // if (!to_delete.empty()) {
-    //   // TODO: Run the cleaner
-    // }
+      if (!to_delete.empty()) {
+        catalog_manager_->CleanUpDeletedTables();
+      }
+    }
 
     // Wait for a notification or a timeout expiration.
     //  - CreateTable will call Wake() to notify about the tablets to add
     //  - HandleReportedTablet/ProcessPendingAssignments will call WakeIfHasPendingUpdates()
     //    to notify about tablets creation.
+    //  - DeleteTable will call Wake() to finish destructing any table internals
     l.Unlock();
     Wait(FLAGS_catalog_manager_bg_task_wait_ms);
   }
