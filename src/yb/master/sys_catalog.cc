@@ -555,6 +555,14 @@ Status SysCatalogTable::WaitUntilRunning() {
 
 CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   tserver::WriteResponsePB resp;
+  // If this is a PG write, them the pgsql write batch is not empty.
+  //
+  // If this is a QL write, then it is a normal sys_catalog write, so ignore writes that might
+  // have filtered out all of the writes from the batch, as they were the same payload as the cow
+  // objects that are backing them.
+  if (writer->req().ql_write_batch().empty() && writer->req().pgsql_write_batch().empty()) {
+    return Status::OK();
+  }
 
   CountDownLatch latch(1);
   auto txn_callback = std::make_unique<LatchOperationCompletionCallback<WriteResponsePB>>(
