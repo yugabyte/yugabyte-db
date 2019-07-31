@@ -41,6 +41,7 @@
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_database.h"
+#include "utils/catcache.h"
 #include "utils/inval.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
@@ -50,6 +51,15 @@
 #include "utils/syscache.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
+
+/*
+ * Hack to ensure that the next CommandCounterIncrement() will call
+ * CommandEndInvalidationMessages(). The result of this call is not
+ * needed on the yb side, however the side effects are.
+ */
+void MarkCurrentCommandUsed() {
+	(void) GetCurrentCommandId(true);
+}
 
 /*
  * Returns whether a relation's attribute is a real column in the backing
@@ -251,13 +261,23 @@ static bool IsSystemCatalogChange(Relation rel)
 static YBCStatus YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel)
 {
 	bool is_syscatalog_change = IsSystemCatalogChange(rel);
-	bool is_syscatalog_version_change = false;
+	bool modifies_row = false;
+	HandleYBStmtStatus(YBCPgDmlModifiesRow(ybc_stmt, &modifies_row), ybc_stmt);
+
+	/*
+	 * If this write may invalidate catalog cache tuples (i.e. UPDATE or DELETE),
+	 * or this write may insert into a cached list, we must increment the
+	 * cache version so other sessions can invalidate their caches.
+	 * NOTE: If this relation caches lists, an INSERT could effectively be
+	 * UPDATINGing the list object.
+	 */
+	bool is_syscatalog_version_change = is_syscatalog_change
+			&& (modifies_row || RelationHasCachedLists(rel));
 
 	/* Let the master know if this should increment the catalog version. */
-	if (is_syscatalog_change)
+	if (is_syscatalog_version_change)
 	{
-		YBCPgSetIfIsSysCatalogVersionChange(ybc_stmt,
-		                                    &is_syscatalog_version_change);
+		HandleYBStmtStatus(YBCPgSetIsSysCatalogVersionChange(ybc_stmt), ybc_stmt);
 	}
 
 	HandleYBStmtStatus(YBCPgSetCatalogCacheVersion(ybc_stmt,
@@ -279,6 +299,7 @@ static YBCStatus YBCExecWriteStmt(YBCPgStatement ybc_stmt, Relation rel)
 	 */
 	if (!status && is_syscatalog_version_change)
 	{
+		// TODO(shane) also update the shared memory catalog version here.
 		yb_catalog_cache_version += 1;
 	}
 
@@ -397,7 +418,7 @@ static Oid YBCExecuteInsertInternal(Relation rel,
 	 */
 	if (IsCatalogRelation(rel))
 	{
-		GetCurrentCommandId(true);
+		MarkCurrentCommandUsed();
 		CacheInvalidateHeapTuple(rel, tuple, NULL);
 	}
 
@@ -680,7 +701,7 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 	 * boundary. Do this now so if there is an error with delete we will
 	 * re-query to get the correct state from the master.
 	 */
-	GetCurrentCommandId(true);
+	MarkCurrentCommandUsed();
 	CacheInvalidateHeapTuple(rel, tuple, NULL);
 
 	HandleYBStmtStatus(YBCExecWriteStmt(delete_stmt, rel), delete_stmt);
@@ -734,7 +755,7 @@ void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple oldtuple, HeapTuple tuple)
 	 * is an error with update we will re-query to get the correct state
 	 * from the master.
 	 */
-	GetCurrentCommandId(true); 
+	MarkCurrentCommandUsed();
 	if (oldtuple)
 		CacheInvalidateHeapTuple(rel, oldtuple, tuple);
 	else

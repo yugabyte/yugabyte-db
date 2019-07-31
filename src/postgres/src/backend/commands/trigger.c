@@ -3447,7 +3447,7 @@ TriggerEnabled(EState *estate, ResultRelInfo *relinfo,
 		modified = false;
 		for (i = 0; i < trigger->tgnattr; i++)
 		{
-			if (bms_is_member(trigger->tgattr[i] - FirstLowInvalidHeapAttributeNumber,
+			if (bms_is_member(trigger->tgattr[i] - YBGetFirstLowInvalidAttributeNumber(relinfo->ri_RelationDesc),
 							  modifiedCols))
 			{
 				modified = true;

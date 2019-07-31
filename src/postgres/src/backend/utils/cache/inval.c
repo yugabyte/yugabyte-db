@@ -629,24 +629,16 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 }
 
 /*
- *		InvalidateSystemCaches
+ *		CallSystemCacheCallbacks
  *
- *		This blows away all tuples in the system catalog caches and
- *		all the cached relation descriptors and smgr cache entries.
- *		Relation descriptors that have positive refcounts are then rebuilt.
- *
- *		We call this when we see a shared-inval-queue overflow signal,
- *		since that tells us we've lost some shared-inval messages and hence
- *		don't know what needs to be invalidated.
+ *		Calls all syscache and relcache invalidation callbacks.
+ *		This is useful when the entire cache is being reloaded or
+ *		invalidated, rather than a single cache entry.
  */
 void
-InvalidateSystemCaches(void)
+CallSystemCacheCallbacks(void)
 {
 	int			i;
-
-	InvalidateCatalogSnapshot();
-	ResetCatalogCaches();
-	RelationCacheInvalidate();	/* gets smgr and relmap too */
 
 	for (i = 0; i < syscache_callback_count; i++)
 	{
@@ -661,6 +653,26 @@ InvalidateSystemCaches(void)
 
 		ccitem->function(ccitem->arg, InvalidOid);
 	}
+}
+
+/*
+ *		InvalidateSystemCaches
+ *
+ *		This blows away all tuples in the system catalog caches and
+ *		all the cached relation descriptors and smgr cache entries.
+ *		Relation descriptors that have positive refcounts are then rebuilt.
+ *
+ *		We call this when we see a shared-inval-queue overflow signal,
+ *		since that tells us we've lost some shared-inval messages and hence
+ *		don't know what needs to be invalidated.
+ */
+void
+InvalidateSystemCaches(void)
+{
+	InvalidateCatalogSnapshot();
+	ResetCatalogCaches();
+	RelationCacheInvalidate();	/* gets smgr and relmap too */
+	CallSystemCacheCallbacks();
 }
 
 

@@ -248,6 +248,10 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 		{
 			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
 		}
+		if (ybScan->tableOid != InvalidOid)
+		{
+			tuple->t_tableOid = ybScan->tableOid;
+		}
 	}
 	pfree(values);
 	pfree(nulls);
@@ -453,6 +457,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 	ybScan->key   = key;
 	ybScan->nkeys = nkeys;
 	ybScan->exec_params = NULL;
+	ybScan->tableOid = RelationGetRelid(relation);
 
 	/* Setup up the scan plan */
 	YbScanPlanData	scan_plan;
@@ -1196,6 +1201,7 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 		{
 			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
 		}
+		tuple->t_tableOid = RelationGetRelid(relation);
 	}
 	pfree(values);
 	pfree(nulls);

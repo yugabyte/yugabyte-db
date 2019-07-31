@@ -71,6 +71,7 @@
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
 #include "tcop/utility.h"
+#include "utils/inval.h"
 #include "utils/relcache.h"
 #include "utils/catcache.h"
 #include "utils/syscache.h"
@@ -3696,8 +3697,9 @@ static void YBRefreshCache()
 	/* Need to execute some (read) queries internally so start a local txn. */
 	start_xact_command();
 
-	/* Clear and reload system catalog caches. */
+	/* Clear and reload system catalog caches, including all callbacks. */
 	ResetCatalogCaches();
+	CallSystemCacheCallbacks();
 	YBPreloadRelCache();
 
 	/* Also invalidate the pggate cache. */

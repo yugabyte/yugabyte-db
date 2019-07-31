@@ -22,21 +22,41 @@ import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.IsInitDbDoneResponse;
-import org.yb.client.Partition;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.util.*;
+import org.yb.pgsql.cleaners.ClusterCleaner;
+import org.yb.pgsql.cleaners.ConnectionCleaner;
+import org.yb.pgsql.cleaners.UserObjectCleaner;
+import org.yb.util.EnvAndSysPropertyUtil;
+import org.yb.util.SanitizerUtil;
 
 import java.io.File;
-import java.sql.*;
-import java.util.*;
+import java.net.InetSocketAddress;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.yb.AssertionWrappers.*;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static org.yb.AssertionWrappers.assertArrayEquals;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
+import static org.yb.util.SanitizerUtil.isASAN;
 import static org.yb.util.SanitizerUtil.isTSAN;
 
 public class BasePgSQLTest extends BaseMiniClusterTest {
@@ -45,15 +65,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   // Postgres settings.
   protected static final String DEFAULT_PG_DATABASE = "postgres";
   protected static final String DEFAULT_PG_USER = "postgres";
-  protected static final String DEFAULT_PG_PASSWORD = "";
+  public static final String TEST_PG_USER = "postgres_test";
 
   // Postgres flags.
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
   private static final String PG_DATA_FLAG = "PGDATA";
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
-
-  // Extra Postgres flags.
-  protected static Map<String, String> extraPostgresEnvVars;
 
   // CQL and Redis settings.
   protected static boolean startCqlProxy = false;
@@ -63,7 +80,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected File pgBinDir;
 
-  private static List<Connection> connectionsToClose = new ArrayList<>();
+  // Post-test cleaners, stored in a tree-map to maintain order.
+  private final TreeMap<Integer, ClusterCleaner> cleanersByPriority = getCleaners();
 
   protected static final int DEFAULT_STATEMENT_TIMEOUT_MS = 30000;
 
@@ -145,8 +163,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = new TreeMap<>();
 
-    if (isTSAN()) {
+    if (isTSAN() || isASAN()) {
       flagMap.put("yb_client_admin_operation_timeout_sec", "120");
+      flagMap.put("pggate_rpc_timeout_secs", "120");
     }
     flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
     flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
@@ -230,29 +249,44 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       connection.close();
       connection = null;
     }
-    connection = createConnection();
+
+    // Create test role.
+    try (Connection initialConnection = newConnectionBuilder().setUser(DEFAULT_PG_USER).connect();
+         Statement statement = initialConnection.createStatement()) {
+      statement.execute(
+          "CREATE ROLE " + TEST_PG_USER + " SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN");
+    }
+
+    connection = newConnectionBuilder().connect();
     pgInitialized = true;
   }
 
-  private void configureDefaultConnectionOptions(Connection conn) throws Exception {
-    conn.setTransactionIsolation(IsolationLevel.DEFAULT.pgIsolationLevel);
-    conn.setAutoCommit(AutoCommit.DEFAULT.enabled);
+  static ConnectionBuilder newConnectionBuilder() {
+    return new ConnectionBuilder(miniCluster);
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createConnection(
       IsolationLevel isolationLevel,
       AutoCommit autoCommit) throws Exception {
-    Connection conn = createConnection();
-    conn.setTransactionIsolation(isolationLevel.pgIsolationLevel);
-    conn.setAutoCommit(autoCommit.enabled);
-    return conn;
+    return newConnectionBuilder()
+        .setIsolationLevel(isolationLevel)
+        .setAutoCommit(autoCommit)
+        .connect();
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createConnectionSerializableNoAutoCommit() throws Exception {
-    return createConnection(
-        IsolationLevel.SERIALIZABLE,
-        AutoCommit.DISABLED
-    );
+    return newConnectionBuilder()
+        .setIsolationLevel(IsolationLevel.SERIALIZABLE)
+        .setAutoCommit(AutoCommit.DISABLED)
+        .connect();
   }
 
   public String getPgHost(int tserverIndex) {
@@ -263,77 +297,48 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return miniCluster.getPostgresContactPoints().get(tserverIndex).getPort();
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createConnection() throws Exception {
-    return createConnection(0);
+    return newConnectionBuilder().connect();
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createConnection(int tserverIndex) throws Exception {
-    return createConnection(tserverIndex, DEFAULT_PG_DATABASE);
+    return newConnectionBuilder()
+        .setTServer(tserverIndex)
+        .connect();
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createPgConnectionToTServer(
       int tserverIndex,
       IsolationLevel isolationLevel,
       AutoCommit autoCommit) throws Exception {
-    Connection conn = createConnection(tserverIndex, DEFAULT_PG_DATABASE);
-    conn.setTransactionIsolation(isolationLevel.pgIsolationLevel);
-    conn.setAutoCommit(autoCommit.enabled);
-    return conn;
+    return newConnectionBuilder()
+        .setTServer(tserverIndex)
+        .setIsolationLevel(isolationLevel)
+        .setAutoCommit(autoCommit)
+        .connect();
   }
 
+  /**
+   * @deprecated Use {@link #newConnectionBuilder()} instead.
+   */
+  @Deprecated
   protected Connection createConnection(int tserverIndex, String pgDB) throws Exception {
-    final String pgHost = getPgHost(tserverIndex);
-    final int pgPort = getPgPort(tserverIndex);
-    String url = String.format("jdbc:postgresql://%s:%d/%s", pgHost, pgPort, pgDB);
-    if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
-      url += "?loggerLevel=TRACE";
-    }
-
-    final int MAX_ATTEMPTS = 10;
-    int delayMs = 500;
-    Connection connection = null;
-    for (int attempt = 1; attempt <= MAX_ATTEMPTS; ++attempt) {
-      try {
-        connection = DriverManager.getConnection(url, DEFAULT_PG_USER, DEFAULT_PG_PASSWORD);
-        if (connection == null) {
-          throw new NullPointerException("getConnection returned null");
-        }
-        connectionsToClose.add(connection);
-        configureDefaultConnectionOptions(connection);
-        // JDBC does not specify a default for auto-commit, let's set it to true here for
-        // determinism.
-        connection.setAutoCommit(true);
-        return connection;
-      } catch (SQLException sqlEx) {
-        // Close the connection now if we opened it, instead of waiting until the end of the test.
-        if (connection != null) {
-          try {
-            connection.close();
-            connectionsToClose.remove(connection);
-            connection = null;
-          } catch (SQLException closingError) {
-            LOG.error("Failure to close connection during failure cleanup before a retry:",
-                closingError);
-            LOG.error("When handling this exception when opening/setting up connection:", sqlEx);
-          }
-        }
-
-        if (attempt < MAX_ATTEMPTS &&
-            sqlEx.getMessage().contains("FATAL: the database system is starting up") ||
-            sqlEx.getMessage().contains("refused. Check that the hostname and port are correct " +
-                "and that the postmaster is accepting")) {
-          LOG.info("Postgres is still starting up, waiting for " + delayMs + " ms. " +
-              "Got message: " + sqlEx.getMessage());
-          Thread.sleep(delayMs);
-          delayMs = Math.min(delayMs + 500, 10000);
-          continue;
-        }
-        LOG.error("Exception while trying to create connection (after " + attempt +
-            " attempts): " + sqlEx.getMessage());
-        throw sqlEx;
-      }
-    }
-    throw new IllegalStateException("Should not be able to reach here");
+    return newConnectionBuilder()
+        .setTServer(tserverIndex)
+        .setDatabase(pgDB)
+        .connect();
   }
 
   protected Map<String, String> getPgRegressEnvVars() {
@@ -357,79 +362,46 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return pgRegressEnvVars;
   }
 
+  /**
+   * Register default post-test cleaners.
+   */
+  protected TreeMap<Integer, ClusterCleaner> getCleaners() {
+    TreeMap<Integer, ClusterCleaner> cleaners = new TreeMap<>();
+    cleaners.put(99, new UserObjectCleaner());
+    cleaners.put(100, new ConnectionCleaner());
+    return cleaners;
+  }
+
   @After
   public void cleanUpAfter() throws Exception {
     if (connection == null) {
-      LOG.warn("No connection created, skipping dropping tables");
+      LOG.warn("No connection created, skipping cleanup");
       return;
     }
-    try (Statement statement = connection.createStatement())  {
-      DatabaseMetaData dbmd = connection.getMetaData();
-      String[] views = {"VIEW"};
-      ResultSet rs = dbmd.getTables(null, null, "%", views);
-      while (rs.next()) {
-        statement.execute("DROP VIEW " + rs.getString("TABLE_NAME") + " CASCADE");
-      }
-      String[] tables = {"TABLE"};
-      rs = dbmd.getTables(null, null, "%", tables);
-      while (rs.next()) {
-        statement.execute("DROP TABLE " + rs.getString("TABLE_NAME") + " CASCADE");
-      }
+
+    // If root connection was closed, open a new one for cleaning.
+    if (connection.isClosed()) {
+      connection = newConnectionBuilder().connect();
+    }
+
+    // Run cleaners in ascending key order (i.e. low key => high priority).
+    for (Map.Entry<Integer, ClusterCleaner> entry : cleanersByPriority.entrySet()) {
+      entry.getValue().clean(connection);
     }
   }
 
   @AfterClass
   public static void tearDownAfter() throws Exception {
-    try {
-      tearDownPostgreSQL();
-    } finally {
-      LOG.info("Destroying mini-cluster");
-      if (miniCluster != null) {
-        destroyMiniCluster();
-        miniCluster = null;
-      }
+    // Close the root connection, which is not cleaned up after each test.
+    if (connection != null && !connection.isClosed()) {
+      connection.close();
     }
-  }
-
-  private static void tearDownPostgreSQL() throws Exception {
-    if (connection != null) {
-      try (Statement statement = connection.createStatement()) {
-        try (ResultSet resultSet = statement.executeQuery(
-            "SELECT client_hostname, client_port, state, query, pid FROM pg_stat_activity")) {
-          while (resultSet.next()) {
-            int backendPid = resultSet.getInt(5);
-            LOG.info("Found connection: " +
-                "hostname=" + resultSet.getString(1) + ", " +
-                "port=" + resultSet.getInt(2) + ", " +
-                "state=" + resultSet.getString(3) + ", " +
-                "query=" + resultSet.getString(4) + ", " +
-                "backend_pid=" + backendPid);
-          }
-        }
-      }
-      catch (SQLException e) {
-        LOG.info("Exception when trying to list PostgreSQL connections", e);
-      }
-
-      LOG.info("Closing connections.");
-      for (Connection connection : connectionsToClose) {
-        try {
-          if (connection == null) {
-            LOG.error("connectionsToClose contains a null connection!");
-          } else {
-            connection.close();
-          }
-        } catch (SQLException ex) {
-          LOG.error("Exception while trying to close connection");
-          throw ex;
-        }
-      }
-    } else {
-      LOG.info("Connection is already null, nothing to close");
+    pgInitialized = false;
+    LOG.info("Destroying mini-cluster");
+    if (miniCluster != null) {
+      destroyMiniCluster();
+      miniCluster = null;
     }
-    LOG.info("Finished closing connection.");
-
-    LOG.info("Finished stopping postgres server.");
   }
 
   /**
@@ -919,5 +891,130 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     long elapsedTimeMillis = System.currentTimeMillis() - runtimeMillis;
     LOG.info(String.format("Complete query: %s. Elapsed time = %d msecs", stmt, elapsedTimeMillis));
     assertTrue(elapsedTimeMillis < maxRuntimeMillis);
+  }
+
+  public static class ConnectionBuilder {
+    private static final int MAX_CONNECTION_ATTEMPTS = 10;
+    private static final int INITIAL_CONNECTION_DELAY_MS = 500;
+
+    private final MiniYBCluster miniCluster;
+
+    private int tserverIndex = 0;
+    private String database = DEFAULT_PG_DATABASE;
+    private String user = TEST_PG_USER;
+    private String password = null;
+    private IsolationLevel isolationLevel = IsolationLevel.DEFAULT;
+    private AutoCommit autoCommit = AutoCommit.DEFAULT;
+
+    ConnectionBuilder(MiniYBCluster miniCluster) {
+      this.miniCluster = miniCluster;
+    }
+
+    ConnectionBuilder setTServer(int tserverIndex) {
+      this.tserverIndex = tserverIndex;
+      return this;
+    }
+
+    ConnectionBuilder setDatabase(String database) {
+      this.database = database;
+      return this;
+    }
+
+    ConnectionBuilder setUser(String user) {
+      this.user = user;
+      return this;
+    }
+
+    ConnectionBuilder setPassword(String password) {
+      this.password = password;
+      return this;
+    }
+
+    ConnectionBuilder setIsolationLevel(IsolationLevel isolationLevel) {
+      this.isolationLevel = isolationLevel;
+      return this;
+    }
+
+    ConnectionBuilder setAutoCommit(AutoCommit autoCommit) {
+      this.autoCommit = autoCommit;
+      return this;
+    }
+
+    ConnectionBuilder newBuilder() {
+      return new ConnectionBuilder(miniCluster)
+          .setTServer(tserverIndex)
+          .setDatabase(database)
+          .setUser(user)
+          .setPassword(password)
+          .setIsolationLevel(isolationLevel)
+          .setAutoCommit(autoCommit);
+    }
+
+    Connection connect() throws Exception {
+      final InetSocketAddress postgresAddress = miniCluster.getPostgresContactPoints()
+          .get(tserverIndex);
+      String url = String.format(
+          "jdbc:postgresql://%s:%d/%s",
+          postgresAddress.getHostName(),
+          postgresAddress.getPort(),
+          database
+      );
+      if (EnvAndSysPropertyUtil.isEnvVarOrSystemPropertyTrue("YB_PG_JDBC_TRACE_LOGGING")) {
+        url += "?loggerLevel=TRACE";
+      }
+
+      int delayMs = INITIAL_CONNECTION_DELAY_MS;
+      for (int attempt = 1; attempt <= MAX_CONNECTION_ATTEMPTS; ++attempt) {
+        Connection connection = null;
+        try {
+          connection = checkNotNull(DriverManager.getConnection(url, user, password));
+
+          connection.setTransactionIsolation(isolationLevel.pgIsolationLevel);
+          connection.setAutoCommit(autoCommit.enabled);
+
+          ConnectionCleaner.register(connection);
+          return connection;
+        } catch (SQLException sqlEx) {
+          // Close the connection now if we opened it, instead of waiting until the end of the test.
+          if (connection != null) {
+            try {
+              connection.close();
+            } catch (SQLException closingError) {
+              LOG.error("Failure to close connection during failure cleanup before a retry:",
+                  closingError);
+              LOG.error("When handling this exception when opening/setting up connection:", sqlEx);
+            }
+          }
+
+          boolean retry = false;
+
+          if (attempt < MAX_CONNECTION_ATTEMPTS) {
+            if (sqlEx.getMessage().contains("FATAL: the database system is starting up")
+                || sqlEx.getMessage().contains("refused. Check that the hostname and port are " +
+                "correct and that the postmaster is accepting")) {
+              retry = true;
+
+              LOG.info("Postgres is still starting up, waiting for " + delayMs + " ms. " +
+                  "Got message: " + sqlEx.getMessage());
+            } else if (sqlEx.getMessage().contains("the database system is in recovery mode")) {
+              retry = true;
+
+              LOG.info("Postgres is in recovery mode, waiting for " + delayMs + " ms. " +
+                  "Got message: " + sqlEx.getMessage());
+            }
+          }
+
+          if (retry) {
+            Thread.sleep(delayMs);
+            delayMs = Math.min(delayMs + 500, 10000);
+          } else {
+            LOG.error("Exception while trying to create connection (after " + attempt +
+                " attempts): " + sqlEx.getMessage());
+            throw sqlEx;
+          }
+        }
+      }
+      throw new IllegalStateException("Should not be able to reach here");
+    }
   }
 }
