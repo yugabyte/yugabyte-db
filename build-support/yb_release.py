@@ -118,6 +118,9 @@ def main():
         build_type
     ]
 
+    if args.force:
+        build_cmd_list.append("--force")
+
     if build_root:
         # This will force yb_build.sh to use this build directory, and detect build type,
         # compiler type, etc. based on that.
