@@ -134,7 +134,6 @@ set(ROCKSDB_SRCS
     util/hash.cc
     util/histogram.cc
     util/instrumented_mutex.cc
-    util/iostats_context.cc
     utilities/backupable/backupable_db.cc
     utilities/convenience/info_log_finder.cc
     utilities/checkpoint/checkpoint.cc
@@ -178,7 +177,6 @@ set(ROCKSDB_SRCS
     util/options_parser.cc
     util/options_sanity_check.cc
     util/perf_context.cc
-    util/perf_level.cc
     util/random.cc
     util/rate_limiter.cc
     util/slice_transform.cc
@@ -304,7 +302,6 @@ ADD_YB_TEST(util/env_test)
 ADD_YB_TEST(util/event_logger_test)
 ADD_YB_TEST(util/filelock_test)
 ADD_YB_TEST(util/histogram_test)
-ADD_YB_TEST(util/iostats_context_test)
 ADD_YB_TEST(util/memenv_test)
 ADD_YB_TEST(util/mock_env_test)
 ADD_YB_TEST(util/options_test)

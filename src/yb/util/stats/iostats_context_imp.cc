@@ -18,11 +18,11 @@
 // under the License.
 //
 
-#include <sstream>
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
+#include "yb/util/stats/iostats_context_imp.h"
 
-namespace rocksdb {
+#include <sstream>
+
+namespace yb {
 
 #ifndef IOS_CROSS_COMPILE
 # ifdef _WIN32
@@ -32,8 +32,8 @@ __thread IOStatsContext iostats_context;
 # endif
 #endif  // IOS_CROSS_COMPILE
 
-void IOStatsContext::Reset() {
-  thread_pool_id = Env::Priority::TOTAL;
+void IOStatsContext::Reset(uint64_t _thread_pool_id) {
+  thread_pool_id = _thread_pool_id;
   bytes_read = 0;
   bytes_written = 0;
   open_nanos = 0;
@@ -68,4 +68,4 @@ std::string IOStatsContext::ToString(bool exclude_zero_counters) const {
   return ss.str();
 }
 
-}  // namespace rocksdb
+}  // namespace yb

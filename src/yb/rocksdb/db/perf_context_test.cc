@@ -462,13 +462,13 @@ void ProfileQueries(bool enabled_time = false) {
 
 #ifndef ROCKSDB_LITE
 TEST_F(PerfContextTest, KeyComparisonCount) {
-  SetPerfLevel(kEnableCount);
+  SetPerfLevel(PerfLevel::kEnableCount);
   ProfileQueries();
 
-  SetPerfLevel(kDisable);
+  SetPerfLevel(PerfLevel::kDisable);
   ProfileQueries();
 
-  SetPerfLevel(kEnableTime);
+  SetPerfLevel(PerfLevel::kEnableTime);
   ProfileQueries(true);
 }
 #endif  // ROCKSDB_LITE
@@ -508,7 +508,7 @@ TEST_F(PerfContextTest, SeekKeyComparison) {
   HistogramImpl hist_wal_time;
   HistogramImpl hist_time_diff;
 
-  SetPerfLevel(kEnableTime);
+  SetPerfLevel(PerfLevel::kEnableTime);
   StopWatchNano timer(Env::Default());
   for (const int i : keys) {
     std::string key = "k" + ToString(i);
@@ -586,7 +586,7 @@ TEST_F(PerfContextTest, DBMutexLockCounter) {
 }
 
 TEST_F(PerfContextTest, FalseDBMutexWait) {
-  SetPerfLevel(kEnableTime);
+  SetPerfLevel(PerfLevel::kEnableTime);
   int stats_code[] = {0, static_cast<int>(DB_MUTEX_WAIT_MICROS)};
   for (int c = 0; c < 2; ++c) {
     InstrumentedMutex mutex(nullptr, Env::Default(), stats_code[c]);

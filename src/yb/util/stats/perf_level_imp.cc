@@ -18,16 +18,16 @@
 // under the License.
 //
 
-#include <sstream>
-#include "yb/rocksdb/util/perf_level_imp.h"
-#include "yb/rocksdb/port/port.h"
+#include "yb/util/stats/perf_level_imp.h"
 
-namespace rocksdb {
+#include <sstream>
+
+namespace yb {
 
 #if defined(IOS_CROSS_COMPILE)
 PerfLevel perf_level = kEnableCount;
 #else
-__thread PerfLevel perf_level = kEnableCount;
+__thread PerfLevel perf_level = PerfLevel::kEnableCount;
 #endif
 
 void SetPerfLevel(PerfLevel level) {
@@ -38,4 +38,4 @@ PerfLevel GetPerfLevel() {
   return perf_level;
 }
 
-}  // namespace rocksdb
+}  // namespace yb

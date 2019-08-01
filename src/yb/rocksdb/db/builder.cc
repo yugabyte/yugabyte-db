@@ -42,9 +42,10 @@
 #include "yb/rocksdb/table/block_based_table_builder.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/thread_status_util.h"
+
+#include "yb/util/stats/iostats_context_imp.h"
 
 namespace rocksdb {
 

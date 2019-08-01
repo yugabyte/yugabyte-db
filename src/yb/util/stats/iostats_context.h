@@ -17,21 +17,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#pragma once
+
+#ifndef YB_UTIL_STATS_IOSTATS_CONTEXT_H
+#define YB_UTIL_STATS_IOSTATS_CONTEXT_H
 
 #include <stdint.h>
 #include <string>
 
-#include "yb/rocksdb/perf_level.h"
+#include "yb/util/stats/perf_level.h"
 
 // A thread local context for gathering io-stats efficiently and transparently.
 // Use SetPerfLevel(PerfLevel::kEnableTime) to enable time stats.
 
-namespace rocksdb {
+namespace yb {
 
 struct IOStatsContext {
   // reset all io-stats counter to zero
-  void Reset();
+  void Reset(uint64_t _thread_pool_id_);
 
   std::string ToString(bool exclude_zero_counters = false) const;
 
@@ -69,4 +71,6 @@ extern __thread IOStatsContext iostats_context;
 # endif
 #endif  // IOS_CROSS_COMPILE
 
-}  // namespace rocksdb
+}  // namespace yb
+
+#endif // YB_UTIL_STATS_IOSTATS_CONTEXT_H

@@ -1840,7 +1840,7 @@ TEST_F(DBTest, FLUSH) {
     CreateAndReopenWithCF({"pikachu"}, CurrentOptions());
     WriteOptions writeOpt = WriteOptions();
     writeOpt.disableWAL = true;
-    SetPerfLevel(kEnableTime);;
+    SetPerfLevel(PerfLevel::kEnableTime);;
     ASSERT_OK(dbfull()->Put(writeOpt, handles_[1], "foo", "v1"));
     // this will now also flush the last 2 writes
     ASSERT_OK(Flush(1));
@@ -1876,7 +1876,7 @@ TEST_F(DBTest, FLUSH) {
     ASSERT_EQ("v3", Get(1, "foo"));
     ASSERT_EQ("v3", Get(1, "bar"));
 
-    SetPerfLevel(kDisable);
+    SetPerfLevel(PerfLevel::kDisable);
   } while (ChangeCompactOptions());
 }
 
@@ -6880,7 +6880,7 @@ TEST_F(DBTest, MergeTestTime) {
   PutFixed64(&three, 3);
 
   // Enable time profiling
-  SetPerfLevel(kEnableTime);
+  SetPerfLevel(PerfLevel::kEnableTime);
   this->env_->addon_time_.store(0);
   this->env_->time_elapse_only_sleep_ = true;
   this->env_->no_sleep_ = true;
@@ -6924,7 +6924,7 @@ TEST_F(DBTest, MergeTestTime) {
 
 #ifndef ROCKSDB_LITE
 TEST_P(DBTestWithParam, MergeCompactionTimeTest) {
-  SetPerfLevel(kEnableTime);
+  SetPerfLevel(PerfLevel::kEnableTime);
   Options options;
   options = CurrentOptions(options);
   options.compaction_filter_factory = std::make_shared<KeepFilterFactory>();

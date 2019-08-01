@@ -60,7 +60,6 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/event_logger.h"
 #include "yb/rocksdb/util/file_util.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
 #include "yb/rocksdb/util/log_buffer.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
@@ -70,6 +69,7 @@
 #include "yb/rocksdb/util/thread_status_util.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/stats/iostats_context_imp.h"
 
 DEFINE_int32(rocksdb_nothing_in_memtable_to_flush_sleep_ms, 10,
     "Used for a temporary workaround for http://bit.ly/ybissue437. How long to wait (ms) in case "
