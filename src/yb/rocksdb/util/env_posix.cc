@@ -57,14 +57,15 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/io_posix.h"
 #include "yb/rocksdb/util/thread_posix.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/posix_logger.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_local.h"
 #include "yb/rocksdb/util/thread_status_updater.h"
+
+#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/string_util.h"
 
 #if !defined(TMPFS_MAGIC)
 #define TMPFS_MAGIC 0x01021994

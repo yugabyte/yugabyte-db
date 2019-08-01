@@ -18,18 +18,30 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_PERF_LEVEL_H
-#define YB_ROCKSDB_PERF_LEVEL_H
+#ifndef YB_UTIL_STATS_PERF_LEVEL_H
+#define YB_UTIL_STATS_PERF_LEVEL_H
 
-#include "yb/util/stats/perf_level.h"
+#include <stdint.h>
+#include <string>
 
-namespace rocksdb {
+namespace yb {
 
-typedef yb::PerfLevel PerfLevel;
+// How much perf stats to collect. Affects perf_context and iostats_context.
 
-using yb::SetPerfLevel;
-using yb::GetPerfLevel;
+enum class PerfLevel {
+  kDisable = 0,                   // disable perf stats
+  kEnableCount = 1,               // enable only count stats
+  kEnableTimeExceptForMutex = 2,  // Other than count stats, also enable time
+                                  // stats except for mutexes
+  kEnableTime = 3                 // enable count and time stats
+};
 
-} // namespace rocksdb
+// set the perf stats level for current thread
+void SetPerfLevel(PerfLevel level);
 
-#endif // YB_ROCKSDB_PERF_LEVEL_H
+// get current perf stats level for current thread
+PerfLevel GetPerfLevel();
+
+}  // namespace yb
+
+#endif  // YB_UTIL_STATS_PERF_LEVEL_H

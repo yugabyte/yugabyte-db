@@ -17,18 +17,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#pragma once
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/perf_level_imp.h"
-#include "yb/rocksdb/util/stop_watch.h"
 
-namespace rocksdb {
+#ifndef YB_UTIL_STATS_PERF_STEP_TIMER_H
+#define YB_UTIL_STATS_PERF_STEP_TIMER_H
+
+#include "yb/util/env.h"
+#include "yb/util/stats/perf_level_imp.h"
+
+namespace yb {
 
 class PerfStepTimer {
  public:
   explicit PerfStepTimer(uint64_t* metric, bool for_mutex = false)
       : enabled_(perf_level >= PerfLevel::kEnableTime ||
-                 (!for_mutex && perf_level >= kEnableTimeExceptForMutex)),
+                 (!for_mutex && perf_level >= PerfLevel::kEnableTimeExceptForMutex)),
         env_(enabled_ ? Env::Default() : nullptr),
         start_(0),
         metric_(metric) {}
@@ -65,4 +67,6 @@ class PerfStepTimer {
   uint64_t* metric_;
 };
 
-}  // namespace rocksdb
+}  // namespace yb
+
+#endif // YB_UTIL_STATS_PERF_STEP_TIMER_H

@@ -109,7 +109,6 @@
 #include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/file_util.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
 #include "yb/rocksdb/util/log_buffer.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
@@ -122,6 +121,8 @@
 #include "yb/rocksdb/util/thread_status_updater.h"
 #include "yb/rocksdb/util/thread_status_util.h"
 #include "yb/rocksdb/util/xfunc.h"
+
+#include "yb/util/stats/iostats_context_imp.h"
 
 using namespace std::literals;
 

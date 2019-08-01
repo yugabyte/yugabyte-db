@@ -17,11 +17,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#pragma once
-#include "yb/rocksdb/perf_level.h"
-#include "yb/rocksdb/port/port.h"
 
-namespace rocksdb {
+#ifndef YB_UTIL_STATS_PERF_LEVEL_IMP_H
+#define YB_UTIL_STATS_PERF_LEVEL_IMP_H
+
+#include "yb/util/stats/perf_level.h"
+
+namespace yb {
 
 #if defined(IOS_CROSS_COMPILE)
 extern PerfLevel perf_level;
@@ -29,4 +31,6 @@ extern PerfLevel perf_level;
 extern __thread PerfLevel perf_level;
 #endif
 
-}  // namespace rocksdb
+}  // namespace yb
+
+#endif // YB_UTIL_STATS_PERF_LEVEL_IMP_H
