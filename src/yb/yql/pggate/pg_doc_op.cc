@@ -241,7 +241,15 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
     if (res.has_paging_state()) {
       PgsqlReadRequestPB *req = read_op_->mutable_request();
       // Set up paging state for next request.
-      *req->mutable_paging_state() = res.paging_state();
+      // A query request can be nested, and paging state belong to the innermost query which is
+      // the read operator that is operated first and feeds data to other queries.
+      // Recursive Proto Message:
+      //     PgsqlReadRequestPB { PgsqlReadRequestPB index_request; }
+      PgsqlReadRequestPB *innermost_req = req;
+      while (innermost_req->has_index_request()) {
+        innermost_req = innermost_req->mutable_index_request();
+      }
+      *innermost_req->mutable_paging_state() = res.paging_state();
       // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
       // The docdb layer will check the target table's schema version is compatible.
       // This allows long-running queries to continue in the presence of other DDL statements
