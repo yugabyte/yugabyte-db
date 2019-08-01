@@ -196,13 +196,11 @@ class RemoveIntentsTask : public rpc::ThreadPoolTask {
   }
 
   void Run() override {
-    if (context_.IsLeader()) {
-      RemoveIntentsData data;
-      context_.GetLastReplicatedData(&data);
-      auto status = applier_.RemoveIntents(data, id_);
-      LOG_IF(WARNING, !status.ok()) << "Failed to remove intents of aborted transaction " << id_
-                                    << ": " << status;
-    }
+    RemoveIntentsData data;
+    context_.GetLastReplicatedData(&data);
+    auto status = applier_.RemoveIntents(data, id_);
+    LOG_IF(WARNING, !status.ok()) << "Failed to remove intents of aborted transaction " << id_
+                                  << ": " << status;
   }
 
   void Done(const Status& status) override {
@@ -1019,7 +1017,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
 
     {
       // We are not trying to cleanup intents here because we don't know whether this transaction
-      // has intents of not.
+      // has intents or not.
       auto lock_and_iterator = LockAndFindOrLoad(
           data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
       if (lock_and_iterator.found()) {
