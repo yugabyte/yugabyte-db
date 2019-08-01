@@ -23,6 +23,51 @@ using std::pair;
 using std::vector;
 
 //-------------------------------------- QL scan range --------------------------------------
+QLScanRange::QLScanRange(const Schema& schema, const PgsqlExpressionPB *intervals_expr)
+  : schema_(schema) {
+    auto const& interval_exprs = intervals_expr->and_compound().exprs();
+
+    // If there is no range column or exprs, return.
+    if (schema_.num_range_key_columns() == 0 || interval_exprs.empty()) {
+      return;
+    }
+
+    // Initialize the lower/upper bounds of each range column to null to mean it is unbounded.
+    ranges_.reserve(schema_.num_range_key_columns());
+    for (size_t i = 0; i < schema.num_key_columns(); i++) {
+      if (schema.is_range_column(i)) {
+        ranges_.emplace(schema.column_id(i), QLRange());
+      }
+    }
+
+    for (auto const& interval_expr : interval_exprs) {
+      auto const& interval = interval_expr.interval();
+      size_t idx = interval.column_id() - 1;
+
+      auto const& column_id = schema.column_id(idx);
+      auto col = schema.column(idx);
+
+      auto& min_value = ranges_.at(column_id).min_value;
+      auto& max_value = ranges_.at(column_id).max_value;
+
+      // If column is DESC, swap min and max.
+      if (col.sorting_type() == ColumnSchema::SortingType::kDescending) {
+        std::swap(min_value, max_value);
+      }
+
+      if (interval.has_start()) {
+        if (interval.has_end()) {
+          min_value = interval.start();
+          max_value = interval.end();
+        } else {
+          min_value = interval.start();
+        }
+      } else if (interval.has_end()) {
+        max_value = interval.end();
+      }
+    }
+}
+
 QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
     : schema_(schema) {
 

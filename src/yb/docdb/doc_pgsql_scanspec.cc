@@ -84,6 +84,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const DocKey& start_doc_key,
                                    bool is_forward_scan)
     : PgsqlScanSpec(YQL_CLIENT_PGSQL, nullptr),
+      schema_(schema),
       query_id_(query_id),
       hashed_components_(nullptr),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
@@ -103,9 +104,13 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const boost::optional<int32_t> hash_code,
                                    const boost::optional<int32_t> max_hash_code,
                                    const PgsqlExpressionPB *where_expr,
+                                   const PgsqlExpressionPB *intervals_expr,
                                    const DocKey& start_doc_key,
                                    bool is_forward_scan)
     : PgsqlScanSpec(YQL_CLIENT_PGSQL, where_expr),
+      range_bounds_((intervals_expr != nullptr) ?
+          new common::QLScanRange(schema, intervals_expr) : nullptr),
+      schema_(schema),
       query_id_(query_id),
       hashed_components_(&hashed_components),
       hash_code_(hash_code),
@@ -155,6 +160,22 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
 
 std::vector<PrimitiveValue> DocPgsqlScanSpec::range_components(const bool lower_bound) const {
   std::vector<PrimitiveValue> result;
+
+  if (range_bounds_ != nullptr) {
+    const std::vector<QLValuePB> range_values = range_bounds_->range_values(lower_bound);
+    result.reserve(range_values.size());
+    size_t column_idx = schema_.num_hash_key_columns();
+    for (const auto& value : range_values) {
+      const auto& column = schema_.column(column_idx);
+      if (IsNull(value)) {
+        result.emplace_back(lower_bound ? ValueType::kLowest : ValueType::kHighest);
+      } else {
+        result.emplace_back(PrimitiveValue::FromQLValuePB(value, column.sorting_type()));
+      }
+      column_idx++;
+    }
+  }
+
   if (!lower_bound) {
     // We add +inf as an extra component to make sure this is greater than all keys in range.
     // For lower bound, this is true already, because dockey + suffix is > dockey

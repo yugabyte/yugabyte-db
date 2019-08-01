@@ -389,6 +389,11 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
+YBCStatus YBCPgDmlBindIntervalColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
+    YBCPgExpr attr_value_end) {
+  return ToYBCStatus(pgapi->DmlBindIntervalColumn(handle, attr_num, attr_value, attr_value_end));
+}
+
 YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
   return ToYBCStatus(pgapi->DmlBindIndexColumn(handle, attr_num, attr_value));
 }
@@ -497,6 +502,11 @@ YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, const YBCPgTypeEn
 YBCStatus YBCPgNewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
                            uint64_t datum, bool is_null, YBCPgExpr *expr_handle) {
   return ToYBCStatus(pgapi->NewConstant(stmt, type_entity, datum, is_null, expr_handle));
+}
+
+YBCStatus YBCPgNewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                           uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt) {
+  return ToYBCStatus(pgapi->NewConstantOp(stmt, type_entity, datum, is_null, expr_handle, is_gt));
 }
 
 // Overwriting the expression's result with any desired values.

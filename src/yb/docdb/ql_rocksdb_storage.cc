@@ -169,6 +169,9 @@ Status QLRocksDBStorage::GetIterator(const PgsqlReadRequestPB& request,
                                                     request.has_where_expr()
                                                       ? &request.where_expr()
                                                       : nullptr,
+                                                    request.has_intervals_expr()
+                                                      ? &request.intervals_expr()
+                                                      : nullptr,
                                                     start_sub_doc_key.doc_key(),
                                                     request.is_forward_scan())));
     }

@@ -123,10 +123,7 @@ static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 	HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
 }
 
-/*
- * Bind a scan key.
- */
-static void ybcBindColumn(YbScanDesc ybScan, bool useIndex, AttrNumber attnum, Datum value)
+static Oid ybc_get_atttypid(YbScanDesc ybScan, AttrNumber attnum)
 {
 	Oid	atttypid;
 
@@ -141,6 +138,16 @@ static void ybcBindColumn(YbScanDesc ybScan, bool useIndex, AttrNumber attnum, D
 		atttypid = OIDOID;
 	}
 
+  return atttypid;
+}
+
+/*
+ * Bind a scan key.
+ */
+static void ybcBindColumn(YbScanDesc ybScan, bool useIndex, AttrNumber attnum, Datum value)
+{
+	Oid	atttypid = ybc_get_atttypid(ybScan, attnum);
+
 	YBCPgExpr ybc_expr = YBCNewConstant(ybScan->handle, atttypid, value, false /* isnull */);
 
 	if (useIndex)
@@ -151,6 +158,25 @@ static void ybcBindColumn(YbScanDesc ybScan, bool useIndex, AttrNumber attnum, D
 		HandleYBStmtStatusWithOwner(YBCPgDmlBindColumn(ybScan->handle, attnum, ybc_expr),
 									ybScan->handle,
 									ybScan->stmt_owner);
+}
+
+/*
+ * Bind an interval key.
+ */
+static void ybcBindIntervalColumn(YbScanDesc ybScan, AttrNumber attnum, 
+    bool start_valid, Datum value, bool end_valid, Datum value_end)
+{
+	Oid	atttypid = ybc_get_atttypid(ybScan, attnum);
+
+	YBCPgExpr ybc_expr = start_valid ? YBCNewConstant(ybScan->handle, atttypid, value, 
+      false /* isnull */) : NULL;
+	YBCPgExpr ybc_expr_end = end_valid ? YBCNewConstant(ybScan->handle, atttypid, value_end, 
+      false /* isnull */) : NULL;
+
+  HandleYBStmtStatusWithOwner(YBCPgDmlBindIntervalColumn(ybScan->handle, attnum, ybc_expr, 
+        ybc_expr_end),
+      ybScan->handle,
+      ybScan->stmt_owner);
 }
 
 /*
@@ -370,13 +396,39 @@ ybcSetupScanPlan(Relation relation, Relation index, YbScanDesc ybScan, YbScanPla
 	ybScan->tupdesc = RelationGetDescr(index);
 }
 
+static bool ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int op_strategy)
+{
+  const int idx = attnum - FirstLowInvalidHeapAttributeNumber;
+
+  switch (op_strategy)
+  {
+    case BTEqualStrategyNumber:
+      return bms_is_member(idx, scan_plan->primary_key);
+
+    case BTLessStrategyNumber:
+    case BTLessEqualStrategyNumber:
+    case BTGreaterEqualStrategyNumber:
+    case BTGreaterStrategyNumber:
+      /* range key */
+      return (!bms_is_member(idx, scan_plan->hash_key) && 
+          bms_is_member(idx, scan_plan->primary_key));
+
+    default:
+      /* TODO: support other logical operators */
+      return false;
+  }
+}
+
 static bool
-ShouldPushdownScanKey(ScanKey key) {
-	/*
-	 * TODO: support the different search options like SK_SEARCHARRAY and SK_SEARCHNULL,
-	 * SK_SEARCHNOTNULL, and search strategies other than equality.
-	 */
-	return key->sk_flags == 0 && key->sk_strategy == BTEqualStrategyNumber;
+ShouldPushdownScanKey(Relation relation, YbScanPlan scan_plan, AttrNumber attnum, ScanKey key) {
+  /*
+   * TODO: support the different search options like SK_SEARCHARRAY and SK_SEARCHNULL,
+   * SK_SEARCHNOTNULL.
+   */
+  return !(key->sk_flags != 0 || 
+    ((IsSystemRelation(relation) && key->sk_strategy != BTEqualStrategyNumber) ||
+     (!IsSystemRelation(relation) && 
+      !ybc_should_pushdown_op(scan_plan, attnum, key->sk_strategy))));
 }
 
 /*
@@ -414,7 +466,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 		if (ybScan->sk_attno[i] == InvalidOid)
 			break;
 
-		if (!ShouldPushdownScanKey(&ybScan->key[i]))
+    if (!ShouldPushdownScanKey(relation, &scan_plan, ybScan->sk_attno[i], &ybScan->key[i]))
 			continue;
 
 		int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
@@ -456,17 +508,114 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybScan->handle);
 	ybScan->stmt_owner = CurrentResourceOwner;
 
-	/* Bind the scan keys */
-	for (int i = 0; i < ybScan->nkeys; i++)
-	{
-		if (!ShouldPushdownScanKey(&ybScan->key[i]))
-			continue;
+  if (IsSystemRelation(relation))
+  {
+    /* Bind the scan keys */
+    for (int i = 0; i < ybScan->nkeys; i++)
+    {
+      int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
 
-		int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
+      if (!ShouldPushdownScanKey(relation, &scan_plan, ybScan->sk_attno[i], &ybScan->key[i]))
+        continue;
 
-		if (bms_is_member(idx, scan_plan.sk_cols))
-			ybcBindColumn(ybScan, useIndex, ybScan->sk_attno[i], key[i].sk_argument);
-	}
+      if (bms_is_member(idx, scan_plan.sk_cols))
+        ybcBindColumn(ybScan, useIndex, ybScan->sk_attno[i], key[i].sk_argument);
+    }
+  }
+  else
+  {
+    /* Find max number of cols in schema in use in query */
+    int max_idx = 0;
+    for (int i = 0; i < ybScan->nkeys; i++)
+    {
+      int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
+
+      if (!bms_is_member(idx, scan_plan.sk_cols))
+        continue;
+
+      if (max_idx < idx)
+        max_idx = idx;
+    }
+    max_idx++;
+
+    /* Find intervals for columns */
+
+    bool start_valid[max_idx]; /* VLA - scratch space */
+    memset(start_valid, 0, sizeof(bool) * max_idx);
+
+    bool end_valid[max_idx]; /* VLA - scratch space */
+    memset(end_valid, 0, sizeof(bool) * max_idx);
+
+    Datum start[max_idx]; /* VLA - scratch space */
+    Datum end[max_idx]; /* VLA - scratch space */
+
+    for (int i = 0; i < ybScan->nkeys; i++)
+    {
+      int idx = ybScan->sk_attno[i] - FirstLowInvalidHeapAttributeNumber;
+
+      if (!ShouldPushdownScanKey(relation, &scan_plan, ybScan->sk_attno[i], &ybScan->key[i]))
+        continue;
+
+      if (!bms_is_member(idx, scan_plan.sk_cols))
+        continue;
+
+      switch (ybScan->key[i].sk_strategy)
+      {
+        case BTEqualStrategyNumber:
+          /* Bind the scan keys */
+          ybcBindColumn(ybScan, useIndex, ybScan->sk_attno[i], key[i].sk_argument);
+          break;
+
+        case BTGreaterEqualStrategyNumber:
+        case BTGreaterStrategyNumber:
+          if (start_valid[idx]) {
+            /* take max of old value and new value */
+            bool is_gt = DatumGetBool(FunctionCall2Coll(&key[i].sk_func, key[i].sk_collation, 
+                  start[idx], key[i].sk_argument));
+            if (!is_gt) {
+              start[idx] = key[i].sk_argument;
+            }
+          } 
+          else 
+          {
+            start[idx] = key[i].sk_argument;
+            start_valid[idx] = true;
+          }
+          break;
+
+        case BTLessStrategyNumber:
+        case BTLessEqualStrategyNumber:
+          if (end_valid[idx]) 
+          {
+            /* take min of old value and new value */
+            bool is_lt = DatumGetBool(FunctionCall2Coll(&key[i].sk_func, key[i].sk_collation, 
+                  end[idx], key[i].sk_argument));
+            if (!is_lt) {
+              end[idx] = key[i].sk_argument;
+            }
+          } 
+          else 
+          {
+            end[idx] = key[i].sk_argument;
+            end_valid[idx] = true;
+          }
+          break;
+
+        default:
+          break; /* unreachable */
+      }
+    }
+
+    /* Bind the interval keys */
+    for (int idx = 1 - FirstLowInvalidHeapAttributeNumber; idx < max_idx; idx++)
+    {
+      if (!start_valid[idx] && !end_valid[idx])
+        continue;
+
+      ybcBindIntervalColumn(ybScan, idx + FirstLowInvalidHeapAttributeNumber, 
+          start_valid[idx], start[idx], end_valid[idx], end[idx]);
+    }
+  }
 
 	/* If scanning with the primary key, switch the attribute numbers in the scan keys
 	 * to the table's column numbers. Switch the tuple descriptor to the table's tuple
@@ -940,8 +1089,7 @@ void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
                                                path->indexinfo->opfamily[qinfo->indexcol]);
         Assert(op_strategy != 0);  /* not a member of opfamily?? */
 
-        /* TODO: support other logical operators than equality */
-        if (op_strategy == BTEqualStrategyNumber)
+        if (ybc_should_pushdown_op(&scan_plan, attnum, op_strategy))
           ybcAddAttributeColumn(&scan_plan, attnum);
       }
     }

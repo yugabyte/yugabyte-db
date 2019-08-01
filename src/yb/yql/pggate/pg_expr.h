@@ -67,6 +67,7 @@ class PgExpr {
 
   // Convert this expression structure to PB format.
   virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, QLValuePB *result);
 
   // Access methods.
   Opcode opcode() const {
@@ -194,7 +195,8 @@ class PgConstant : public PgExpr {
   typedef std::unique_ptr<const PgConstant> UniPtrConst;
 
   // Constructor.
-  explicit PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null);
+  explicit PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null,
+      PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
 
   // Destructor.
   virtual ~PgConstant();
@@ -213,6 +215,7 @@ class PgConstant : public PgExpr {
 
   // Expression to PB.
   CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
+  CHECKED_STATUS Eval(PgDml *pg_stmt, QLValuePB *result) override;
 
   // Read binary value.
   const string &binary_value() {

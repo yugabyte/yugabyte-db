@@ -113,6 +113,8 @@ YBCStatus YBCTestNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_nul
                                  YBCPgExpr *expr_handle);
 YBCStatus YBCTestNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_null,
                                  YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantInt8Op(YBCPgStatement stmt, int64_t value, bool is_null,
+                                 YBCPgExpr *expr_handle, bool is_gt);
 YBCStatus YBCTestNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,
                                    YBCPgExpr *expr_handle);
 YBCStatus YBCTestNewConstantFloat8(YBCPgStatement stmt, double value, bool is_null,

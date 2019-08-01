@@ -273,6 +273,8 @@ class PgApiImpl {
   //     contain bind-variables (placeholders) and contants whose values can be updated for each
   //     execution of the same allocated statement.
   CHECKED_STATUS DmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+  CHECKED_STATUS DmlBindIntervalColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
+      YBCPgExpr attr_value_end);
   CHECKED_STATUS DmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
   // API for SET clause.
@@ -352,6 +354,8 @@ class PgApiImpl {
   // Constant expressions.
   CHECKED_STATUS NewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
                              uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
+  CHECKED_STATUS NewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                             uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt);
 
   // TODO(neil) UpdateConstant should be merged into one.
   // Update constant.
