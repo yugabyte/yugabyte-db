@@ -1160,6 +1160,24 @@ class PosixEnv : public Env {
     return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
   }
 
+  uint64_t NowNanos() override {
+#if defined(__linux__) || defined(OS_FREEBSD)
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return static_cast<uint64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec;
+#elif defined(__MACH__)
+    clock_serv_t cclock;
+    mach_timespec_t ts;
+    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+    clock_get_time(cclock, &ts);
+    mach_port_deallocate(mach_task_self(), cclock);
+    return static_cast<uint64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec;
+#else
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+       std::chrono::steady_clock::now().time_since_epoch()).count();
+#endif
+  }
+
   void SleepForMicroseconds(int micros) override {
     ThreadRestrictions::AssertWaitAllowed();
     SleepFor(MonoDelta::FromMicroseconds(micros));

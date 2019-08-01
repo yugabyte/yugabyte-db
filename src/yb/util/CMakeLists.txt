@@ -223,6 +223,8 @@ set(UTIL_SRCS
   slice.cc
   spinlock_profiling.cc
   split.cc
+  stats/perf_level_imp.cc
+  stats/iostats_context_imp.cc
   status.cc
   status_callback.cc
   stol_utils.cc
@@ -393,6 +395,7 @@ ADD_YB_TEST(slice-test)
 ADD_YB_TEST(spinlock_profiling-test)
 ADD_YB_TEST(split-test)
 ADD_YB_TEST(stack_watchdog-test)
+ADD_YB_TEST(stats/iostats_context_test)
 ADD_YB_TEST(status-test)
 ADD_YB_TEST(stol_utils-test)
 ADD_YB_TEST(string_case-test)

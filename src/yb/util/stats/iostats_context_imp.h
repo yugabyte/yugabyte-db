@@ -17,40 +17,43 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#pragma once
-#include "yb/rocksdb/iostats_context.h"
-#include "yb/rocksdb/util/perf_step_timer.h"
+
+#ifndef YB_UTIL_STATS_IOSTATS_CONTEXT_IMP_H
+#define YB_UTIL_STATS_IOSTATS_CONTEXT_IMP_H
+
+#include "yb/util/stats/iostats_context.h"
+#include "yb/util/stats/perf_step_timer.h"
 
 #ifndef IOS_CROSS_COMPILE
 
 // increment a specific counter by the specified value
-#define IOSTATS_ADD(metric, value)     \
-  (iostats_context.metric += value)
+#define IOSTATS_ADD(metric, value)             \
+  (yb::iostats_context.metric += value)
 
 // Increase metric value only when it is positive
 #define IOSTATS_ADD_IF_POSITIVE(metric, value)   \
   if (value > 0) { IOSTATS_ADD(metric, value); }
 
 // reset a specific counter to zero
-#define IOSTATS_RESET(metric)          \
-  (iostats_context.metric = 0)
+#define IOSTATS_RESET(metric)                  \
+  (yb::iostats_context.metric = 0)
 
 // reset all counters to zero
-#define IOSTATS_RESET_ALL()                        \
-  (iostats_context.Reset())
+#define IOSTATS_RESET_ALL(thread_pool_id)      \
+  (yb::iostats_context.Reset(thread_pool_id))
 
 #define IOSTATS_SET_THREAD_POOL_ID(value)      \
-  (iostats_context.thread_pool_id = value)
+  (yb::iostats_context.thread_pool_id = value)
 
 #define IOSTATS_THREAD_POOL_ID()               \
-  (iostats_context.thread_pool_id)
+  (yb::iostats_context.thread_pool_id)
 
 #define IOSTATS(metric)                        \
-  (iostats_context.metric)
+  (yb::iostats_context.metric)
 
 // Declare and set start time of the timer
-#define IOSTATS_TIMER_GUARD(metric)                                       \
-  PerfStepTimer iostats_step_timer_ ## metric(&(iostats_context.metric));  \
+#define IOSTATS_TIMER_GUARD(metric)                                                \
+  yb::PerfStepTimer iostats_step_timer_ ## metric(&(yb::iostats_context.metric));  \
   iostats_step_timer_ ## metric.Start();
 
 #else  // IOS_CROSS_COMPILE
@@ -66,3 +69,5 @@
 #define IOSTATS_TIMER_GUARD(metric)
 
 #endif  // IOS_CROSS_COMPILE
+
+#endif // YB_UTIL_STATS_IOSTATS_CONTEXT_IMP_H

@@ -42,13 +42,13 @@
 #endif
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
 #include "yb/rocksdb/util/posix_logger.h"
 #include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/file_system_posix.h"
 #include "yb/util/malloc.h"
 #include "yb/util/slice.h"
+#include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
 
 namespace rocksdb {

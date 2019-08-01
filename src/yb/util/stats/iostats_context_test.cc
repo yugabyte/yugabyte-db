@@ -18,13 +18,14 @@
 // under the License.
 //
 
-#include "yb/rocksdb/iostats_context.h"
-#include "yb/rocksdb/util/testharness.h"
+#include <gtest/gtest.h>
 
-namespace rocksdb {
+#include "yb/util/stats/iostats_context.h"
+
+namespace yb {
 
 TEST(IOStatsContextTest, ToString) {
-  iostats_context.Reset();
+  iostats_context.Reset(0);
   iostats_context.bytes_read = 12345;
 
   std::string zero_included = iostats_context.ToString();
@@ -36,9 +37,4 @@ TEST(IOStatsContextTest, ToString) {
   ASSERT_NE(std::string::npos, zero_excluded.find("= 12345"));
 }
 
-}  // namespace rocksdb
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
+}  // namespace yb
