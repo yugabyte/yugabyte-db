@@ -29,8 +29,10 @@
 #include "yb/docdb/intent.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/rocksutil/yb_rocksdb.h"
+#include "yb/tablet/tablet_options.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/util/minmax.h"
 #include "yb/util/path_util.h"
@@ -3252,6 +3254,42 @@ TEST_F(DocDBTest, ForceFlushedFrontier) {
   LOG(INFO) << "Checking that flushed frontier is still set to "
             << rocksdb_->GetFlushedFrontier()->ToString();
   ASSERT_EQ(*new_user_frontier_ptr, *rocksdb_->GetFlushedFrontier());
+}
+
+// Handy code to analyze some DB.
+TEST_F(DocDBTest, DISABLED_DumpDB) {
+  tablet::TabletOptions tablet_options;
+  rocksdb::Options options;
+  docdb::InitRocksDBOptions(
+      &options, "" /* log_prefix */, rocksdb::CreateDBStatistics(), tablet_options);
+
+  rocksdb::DB* rocksdb = nullptr;
+  std::string db_path = "";
+  ASSERT_OK(rocksdb::DB::Open(options, db_path, &rocksdb));
+
+  rocksdb::ReadOptions read_opts;
+  read_opts.query_id = rocksdb::kDefaultQueryId;
+  unique_ptr<rocksdb::Iterator> iter(rocksdb->NewIterator(read_opts));
+  iter->SeekToFirst();
+
+  int txn_meta = 0;
+  int rev_key = 0;
+  int intent = 0;
+  while (iter->Valid()) {
+    auto key_type = GetKeyType(iter->key(), StorageDbType::kIntents);
+    if (key_type == KeyType::kTransactionMetadata) {
+      ++txn_meta;
+    } else if (key_type == KeyType::kReverseTxnKey) {
+      ++rev_key;
+    } else if (key_type == KeyType::kIntentKey) {
+      ++intent;
+    } else {
+      ASSERT_TRUE(false);
+    }
+    iter->Next();
+  }
+
+  LOG(INFO) << "TXN meta: " << txn_meta << ", rev key: " << rev_key << ", intents: " << intent;
 }
 
 }  // namespace docdb
