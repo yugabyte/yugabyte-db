@@ -1509,5 +1509,44 @@ TEST_F(QLTransactionTest, DelayedInit) {
   }
 }
 
+class QLTransactionTestSingleTablet : public QLTransactionTest {
+ public:
+  int NumTablets() override {
+    return 1;
+  }
+};
+
+TEST_F_EX(QLTransactionTest, DeleteFlushedIntents, QLTransactionTestSingleTablet) {
+  constexpr int kNumWrites = 10;
+
+  auto session = CreateSession();
+  for (size_t idx = 0; idx != kNumWrites; ++idx) {
+    auto txn = CreateTransaction();
+    session->SetTransaction(txn);
+    WriteRows(session, idx, WriteOpType::INSERT);
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kIntents));
+    ASSERT_OK(txn->CommitFuture().get());
+  }
+
+  auto deadline = MonoTime::Now() + 15s;
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto& peer : peers) {
+    if (!peer->tablet()) {
+      continue;
+    }
+    auto* db = peer->tablet()->TEST_intents_db();
+    if (!db) {
+      continue;
+    }
+    ASSERT_OK(Wait([db] {
+      rocksdb::ReadOptions read_opts;
+      read_opts.query_id = rocksdb::kDefaultQueryId;
+      std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
+      iter->SeekToFirst();
+      return !iter->Valid();
+    }, deadline, "Intents are removed"));
+  }
+}
+
 } // namespace client
 } // namespace yb
