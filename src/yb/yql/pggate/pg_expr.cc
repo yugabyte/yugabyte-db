@@ -104,6 +104,12 @@ Status PgExpr::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   return Status::OK();
 }
 
+Status PgExpr::Eval(PgDml *pg_stmt, QLValuePB *result) {
+  // Expressions that are neither bind_variable nor constant don't need to be updated.
+  // Only values for bind variables and constants need to be updated in the SQL requests.
+  return Status::OK();
+}
+
 void PgExpr::TranslateText(Slice *yb_cursor, const PgWireDataHeader& header, int index,
                            const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
                            PgTuple *pg_tuple) {
@@ -238,8 +244,9 @@ InternalType PgExpr::internal_type() const {
 
 //--------------------------------------------------------------------------------------------------
 
-PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null)
-    : PgExpr(PgExpr::Opcode::PG_EXPR_CONSTANT, type_entity) {
+PgConstant::PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null,
+    PgExpr::Opcode opcode)
+    : PgExpr(opcode, type_entity) {
 
   switch (type_entity_->yb_type) {
     case YB_YQL_DATA_TYPE_INT8:
@@ -445,6 +452,13 @@ void PgConstant::UpdateConstant(const void *value, size_t bytes, bool is_null) {
 
 Status PgConstant::Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   QLValuePB *result = expr_pb->mutable_value();
+  *result = ql_value_;
+  return Status::OK();
+}
+
+Status PgConstant::Eval(PgDml *pg_stmt, QLValuePB *result) {
+  CHECK(pg_stmt != nullptr);
+  CHECK(result != nullptr);
   *result = ql_value_;
   return Status::OK();
 }

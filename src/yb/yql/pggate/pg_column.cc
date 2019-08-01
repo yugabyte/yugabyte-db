@@ -119,5 +119,14 @@ PgsqlExpressionPB *PgColumn::AllocBindPB(PgsqlReadRequestPB *read_req) {
   return bind_pb_;
 }
 
+//--------------------------------------------------------------------------------------------------
+
+PgsqlExpressionPB *PgColumn::AllocBindIntervalPB(PgsqlReadRequestPB *read_req) {
+  if (bind_interval_pb_ == nullptr) {
+    bind_interval_pb_ = read_req->mutable_intervals_expr()->mutable_and_compound()->add_exprs();
+  }
+  return bind_interval_pb_;
+}
+
 }  // namespace pggate
 }  // namespace yb

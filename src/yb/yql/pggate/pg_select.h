@@ -55,6 +55,9 @@ class PgSelect : public PgDml {
   // Bind an index column with an expression.
   CHECKED_STATUS BindIndexColumn(int attnum, PgExpr *attr_value);
 
+  // Bind a range column with an interval.
+  CHECKED_STATUS BindIntervalColumn(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end);
+
   // Set forward (or backward) scan.
   void SetForwardScan(const bool is_forward_scan) {
     DCHECK_NOTNULL(read_req_)->set_is_forward_scan(is_forward_scan);
@@ -70,6 +73,7 @@ class PgSelect : public PgDml {
  private:
   // Allocate column protobuf.
   PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  PgsqlExpressionPB *AllocColumnBindIntervalPB(PgColumn *col);
   PgsqlExpressionPB *AllocIndexColumnBindPB(PgColumn *col);
 
   // Allocate protobuf for target.

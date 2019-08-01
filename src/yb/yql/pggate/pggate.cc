@@ -545,6 +545,11 @@ Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
 
+Status PgApiImpl::DmlBindIntervalColumn(PgStatement *handle, int attr_num, PgExpr *attr_value,
+    PgExpr *attr_value_end) {
+  return down_cast<PgSelect*>(handle)->BindIntervalColumn(attr_num, attr_value, attr_value_end);
+}
+
 Status PgApiImpl::DmlBindIndexColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
     // Invalid handle.
@@ -720,6 +725,20 @@ Status PgApiImpl::NewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_e
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   PgExpr::SharedPtr pg_const = make_shared<PgConstant>(type_entity, datum, is_null);
+  stmt->AddExpr(pg_const);
+
+  *expr_handle = pg_const.get();
+  return Status::OK();
+}
+
+Status PgApiImpl::NewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                              uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt) {
+  if (!stmt) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  PgExpr::SharedPtr pg_const = make_shared<PgConstant>(type_entity, datum, is_null,
+      is_gt ? PgExpr::Opcode::PG_EXPR_GT : PgExpr::Opcode::PG_EXPR_LT);
   stmt->AddExpr(pg_const);
 
   *expr_handle = pg_const.get();
