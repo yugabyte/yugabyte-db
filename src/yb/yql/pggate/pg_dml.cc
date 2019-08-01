@@ -170,6 +170,10 @@ Status PgDml::UpdateBindPBs() {
   return Status::OK();
 }
 
+Status PgDml::BindIntervalColumn(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end) {
+  return Status::OK();
+}
+
 //--------------------------------------------------------------------------------------------------
 
 Status PgDml::AssignColumn(int attr_num, PgExpr *attr_value) {

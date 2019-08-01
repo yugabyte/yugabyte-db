@@ -43,6 +43,9 @@ class PgColumn {
   PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlReadRequestPB *write_req);
   PgsqlExpressionPB *AllocBindPB(PgsqlReadRequestPB *read_req);
 
+  // Bindings for read requests.
+  PgsqlExpressionPB *AllocBindIntervalPB(PgsqlReadRequestPB *read_req);
+
   // Assign values for write requests.
   PgsqlExpressionPB *AllocAssignPB(PgsqlWriteRequestPB *write_req);
 
@@ -57,6 +60,10 @@ class PgColumn {
 
   PgsqlExpressionPB *bind_pb() {
     return bind_pb_;
+  }
+
+  PgsqlExpressionPB *bind_interval_pb() {
+    return bind_interval_pb_;
   }
 
   PgsqlExpressionPB *assign_pb() {
@@ -113,6 +120,7 @@ class PgColumn {
   // - During DML execution, the reserved expression spaces will be filled with actual values.
   // - The data-member "primary_exprs" is to map column id with the reserved expression spaces.
   PgsqlExpressionPB *bind_pb_ = nullptr;
+  PgsqlExpressionPB *bind_interval_pb_ = nullptr;
 
   // Protobuf for new-values of a column in the tuple.
   PgsqlExpressionPB *assign_pb_ = nullptr;

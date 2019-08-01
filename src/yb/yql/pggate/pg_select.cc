@@ -16,6 +16,7 @@
 #include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/client/yb_op.h"
+#include "yb/docdb/primitive_value.h"
 
 namespace yb {
 namespace pggate {
@@ -91,6 +92,10 @@ void PgSelect::PrepareColumns() {
 
 PgsqlExpressionPB *PgSelect::AllocColumnBindPB(PgColumn *col) {
   return col->AllocBindPB(read_req_);
+}
+
+PgsqlExpressionPB *PgSelect::AllocColumnBindIntervalPB(PgColumn *col) {
+  return col->AllocBindIntervalPB(read_req_);
 }
 
 PgsqlExpressionPB *PgSelect::AllocIndexColumnBindPB(PgColumn *col) {
@@ -236,6 +241,68 @@ Status PgSelect::Exec(const PgExecParameters *exec_params) {
   // Execute select statement asynchronously.
   SCHECK_EQ(VERIFY_RESULT(doc_op_->Execute()), RequestSent::kTrue, IllegalState,
             "YSQL read operation was not sent");
+
+  return Status::OK();
+}
+
+Status PgSelect::BindIntervalColumn(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end) {
+  // Find column.
+  PgColumn *col = nullptr;
+  RETURN_NOT_OK(FindColumn(attr_num, &col));
+
+  // Check datatype.
+  // TODO(neil) Current code combine TEXT and BINARY datatypes into ONE representation.  Once that
+  // is fixed, we can remove the special if() check for BINARY type.
+  if (col->internal_type() != InternalType::kBinaryValue) {
+    if (attr_value) {
+      SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
+          "Attribute value type does not match column type");
+    }
+
+    if (attr_value_end) {
+      SCHECK_EQ(col->internal_type(), attr_value_end->internal_type(), Corruption,
+          "Attribute value type does not match column type");
+    }
+  }
+
+  // Alloc the protobuf.
+  PgsqlExpressionPB *bind_interval_pb = col->bind_interval_pb();
+  if (bind_interval_pb == nullptr) {
+    bind_interval_pb = AllocColumnBindIntervalPB(col);
+  }
+
+  // Link the expression and protobuf. During execution, expr will write result to the pb.
+  if (attr_value) {
+    RETURN_NOT_OK(attr_value->PrepareForRead(this, bind_interval_pb));
+  }
+  if (attr_value_end) {
+    RETURN_NOT_OK(attr_value_end->PrepareForRead(this, bind_interval_pb));
+  }
+
+  // Link the given expression "attr_value" with the allocated protobuf. Note that except for
+  // constants and place_holders, all other expressions can be setup just one time during prepare.
+  // Examples:
+  // - Bind values for primary columns in where clause.
+  //     WHERE hash = ?
+  // - Bind values for a column in INSERT statement.
+  //     INSERT INTO a_table(hash, key, col) VALUES(?, ?, ?)
+
+  auto interval_pb = bind_interval_pb->mutable_interval();
+  interval_pb->set_column_id(attr_num);
+
+  if (attr_value) {
+    RETURN_NOT_OK(attr_value->Eval(this, interval_pb->mutable_start()));
+  }
+
+  if (attr_value_end) {
+    RETURN_NOT_OK(attr_value_end->Eval(this, interval_pb->mutable_end()));
+  }
+
+  if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+    CHECK(attr_value->is_constant()) << "Column ybctid must be bound to constant";
+    CHECK(attr_value_end->is_constant()) << "Column ybctid must be bound to constant";
+    ybctid_bind_ = true;
+  }
 
   return Status::OK();
 }

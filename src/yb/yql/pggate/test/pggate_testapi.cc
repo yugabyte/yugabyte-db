@@ -129,6 +129,13 @@ YBCStatus YBCTestNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_nul
   return YBCPgNewConstant(stmt, type_entity, datum, is_null, expr_handle);
 }
 
+YBCStatus YBCTestNewConstantInt8Op(YBCPgStatement stmt, int64_t value, bool is_null,
+                                 YBCPgExpr *expr_handle, bool is_gt) {
+  const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(INT8OID);
+  Datum datum = type_entity->yb_to_datum(&value, 0, nullptr);
+  return YBCPgNewConstantOp(stmt, type_entity, datum, is_null, expr_handle, is_gt);
+}
+
 YBCStatus YBCTestNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,
                                    YBCPgExpr *expr_handle) {
   const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(FLOAT4OID);
