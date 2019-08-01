@@ -15,14 +15,9 @@ export default class Dashboard extends Component {
 
     return (
       <div id="page-wrapper">
-        <Row className="header-row">
-          <Col xs={6}>
-            <h2 className="content-title">Universes</h2>
-          {isAvailable(currentCustomer.data.features, "main.stats") && <div className="dashboard-stats">
-            <HighlightedStatsPanelContainer />
-          </div>}
-          </Col>
-        </Row>
+        {isAvailable(currentCustomer.data.features, "main.stats") && <div className="dashboard-stats">
+          <HighlightedStatsPanelContainer />
+        </div>}
         <UniverseDisplayPanelContainer {...this.props}/>
         <Row>
           <Col lg={12}>
