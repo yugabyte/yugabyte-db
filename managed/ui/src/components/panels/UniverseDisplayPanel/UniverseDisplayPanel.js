@@ -10,7 +10,7 @@ import { YBCost, DescriptionItem } from 'components/common/descriptors';
 import { UniverseStatusContainer } from 'components/universes';
 import './UniverseDisplayPanel.scss';
 import { isNonEmptyObject } from "../../../utils/ObjectUtils";
-import { YBModal } from '../../common/forms/fields';
+import { YBModal, YBButton } from '../../common/forms/fields';
 import { getPrimaryCluster, getReadOnlyCluster, getClusterProviderUUIDs, getProviderMetadata } from "../../../utils/UniverseUtils";
 import { isNotHidden, isDisabled } from 'utils/LayoutUtils';
 
@@ -31,73 +31,6 @@ class CTAButton extends Component {
           </div>
         </div>
       </Link>
-    );
-  }
-}
-
-class CTAButtonAnimated extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      hover: false
-    };
-
-    this.plusIcon = null;
-    this.mainLabel = null;
-    this.addUniverseElems = [];
-    this.feature = null;
-    this.description = null;
-    this.icons = [];
-  }
-
-
-  mouseEnter = () => {
-    this.setState({hover: true});
-  }
-
-  mouseLeave = () => {
-    this.setState({hover: false});
-  }
-
-  disableLink = (e) => {
-    e.preventDefault();
-  }
-
-  render() {
-    const { labelText, onClick, otherProps, className, currentCustomer } = this.props;
-
-    const createDisabled = isDisabled(currentCustomer.data.features, "universe.create");
-    const importDisabled = isDisabled(currentCustomer.data.features, "universe.import");
-
-    return (
-      <div>
-        <div ref={ div => this.content = div } onMouseEnter={this.mouseEnter} onMouseLeave={this.mouseLeave} className={className ? "create-universe-button "+className : "create-universe-button"} {...otherProps}>
-          <div ref={ div => this.plusIcon = div } className="btn-icon">
-            <i className="fa fa-plus"/>
-          </div>
-          <div ref={ div => this.mainLabel = div } className="display-name text-center">
-            {labelText}
-          </div>
-          <div className="button-group">
-            {isNotHidden(currentCustomer.data.features, "universe.create") &&
-            <Link className="btn btn-default" to={"/universes/create"}
-              disabled={createDisabled}
-              onClick={createDisabled ? this.disableLink: onClick}>
-              <div ref={ block => this.addUniverseElems[0] = block }>
-                <span className="fa fa-plus"></span> Create Universe
-              </div>
-            </Link>}
-            {isNotHidden(currentCustomer.data.features, "universe.import") &&
-            <Link to={"/importer"} className="btn btn-default"
-              disabled={importDisabled}
-              onClick={importDisabled ? this.disableLink: onClick}>
-              <div ref={ block => this.addUniverseElems[1] = block }>
-                <span className="fa fa-mail-forward"></span> Import Universe
-              </div>
-            </Link>}
-          </div>
-        </div>
-      </div>
     );
   }
 }
@@ -195,19 +128,27 @@ export default class UniverseDisplayPanel extends Component {
                                        refreshUniverseData={self.props.fetchUniverseMetadata} />);
         });
       }
-      const createUniverseButton =
-        (<Col sm={4} md={3} lg={2}><CTAButtonAnimated
-          labelText={"Add Universe"}
-          className={self.state.addUniverseModal? "active" : ""}
-          onClick={() => 0}
-          currentCustomer={currentCustomer}
-        /></Col>);
+
       return (
         <div className="universe-display-panel-container">
-          <h2>Universes</h2>
-          <Row>
+          <Row xs={6} >
+            <Col xs={3}>
+              <h2>Universes</h2>
+            </Col>
+            <Col className="universe-table-header-action dashboard-universe-actions">
+              {isNotHidden(currentCustomer.data.features, "universe.import") &&
+              <Link to="/importer"><YBButton btnClass="universe-button btn btn-lg btn-default"
+                disabled={isDisabled(currentCustomer.data.features, "universe.import")}
+                btnText="Import Universe" btnIcon="fa fa-mail-forward"/></Link>}
+              {isNotHidden(currentCustomer.data.features, "universe.create") &&
+                <YBButton btnClass="universe-button btn btn-lg btn-orange"
+                  disabled={isDisabled(currentCustomer.data.features, "universe.create")}
+                  btnText="Create Universe" btnIcon="fa fa-plus"
+                  onClick={this.createNewUniverse} />}
+            </Col>
+          </Row>
+          <Row className="list-group">
             {universeDisplayList}
-            {createUniverseButton}
           </Row>
           <YBModal
             className="mymodal"
