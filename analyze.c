@@ -20,11 +20,11 @@
 #include "analyze.h"
 #include "scan.h"
 
-struct cypher_parse_error_callback_arg
+typedef struct cypher_parse_error_callback_arg
 {
     const char *source_str;
     int query_loc;
-};
+} cypher_parse_error_callback_arg;
 
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook;
 
@@ -86,16 +86,20 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
         }
     }
 
-    // This handles a cypher() call with other function calls in a ROWS FROM
-    // expression. We can let the FuncExpr case below handle it but do this
-    // here to throw a better error message.
+    /*
+     * This handles a cypher() call with other function calls in a ROWS FROM
+     * expression. We can let the FuncExpr case below handle it but do this
+     * here to throw a better error message.
+     */
     if (IsA(node, RangeTblFunction))
     {
         RangeTblFunction *rtfunc = (RangeTblFunction *)node;
         FuncExpr *funcexpr = (FuncExpr *)rtfunc->funcexpr;
 
-        // It is better to throw a kind error message here instead of the
-        // internal error message that cypher() throws later when it is called.
+        /*
+         * It is better to throw a kind error message here instead of the
+         * internal error message that cypher() throws later when it is called.
+         */
         if (is_func_cypher(funcexpr))
         {
             ereport(ERROR,
@@ -108,9 +112,11 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
                                       convert_cypher_walker, pstate);
     }
 
-    // This handles cypher() calls in expressions. Those in RTE_FUNCTIONs are
-    // handled by either convert_cypher_to_subquery() or the RangeTblFunction
-    // case above.
+    /*
+     * This handles cypher() calls in expressions. Those in RTE_FUNCTIONs are
+     * handled by either convert_cypher_to_subquery() or the RangeTblFunction
+     * case above.
+     */
     if (IsA(node, FuncExpr))
     {
         FuncExpr *funcexpr = (FuncExpr *)node;
@@ -132,17 +138,19 @@ static bool convert_cypher_walker(Node *node, ParseState *pstate)
     {
         int flags;
 
-        // QTW_EXAMINE_RTES
-        //     We convert RTE_FUNCTION (cypher()) to RTE_SUBQUERY (SELECT)
-        //     in-place.
-        //
-        // QTW_IGNORE_RT_SUBQUERIES
-        //     After the conversion, we don't need to traverse the resulting
-        //     RTE_SUBQUERY. However, we need to traverse other RTE_SUBQUERYs.
-        //     This is done manually by the RTE_SUBQUERY case above.
-        //
-        // QTW_IGNORE_JOINALIASES
-        //     We are not interested in this.
+        /*
+         * QTW_EXAMINE_RTES
+         *     We convert RTE_FUNCTION (cypher()) to RTE_SUBQUERY (SELECT)
+         *     in-place.
+         *
+         * QTW_IGNORE_RT_SUBQUERIES
+         *     After the conversion, we don't need to traverse the resulting
+         *     RTE_SUBQUERY. However, we need to traverse other RTE_SUBQUERYs.
+         *     This is done manually by the RTE_SUBQUERY case above.
+         *
+         * QTW_IGNORE_JOINALIASES
+         *     We are not interested in this.
+         */
         flags = QTW_EXAMINE_RTES | QTW_IGNORE_RT_SUBQUERIES |
                 QTW_IGNORE_JOINALIASES;
 
@@ -158,23 +166,29 @@ static bool is_rte_cypher(RangeTblEntry *rte)
     RangeTblFunction *rtfunc;
     FuncExpr *funcexpr;
 
-    // The planner expects RangeTblFunction nodes in rte->functions list.
-    // We cannot replace one of them to a SELECT subquery.
+    /*
+     * The planner expects RangeTblFunction nodes in rte->functions list.
+     * We cannot replace one of them to a SELECT subquery.
+     */
     if (list_length(rte->functions) != 1)
         return false;
 
-    // A plain function call or a ROWS FROM expression with one function call
-    // reaches here. At this point, it is impossible to distinguish between the
-    // two. However, it doesn't matter because they are identical in terms of
-    // their meaning.
+    /*
+     * A plain function call or a ROWS FROM expression with one function call
+     * reaches here. At this point, it is impossible to distinguish between the
+     * two. However, it doesn't matter because they are identical in terms of
+     * their meaning.
+     */
 
     rtfunc = linitial(rte->functions);
     funcexpr = (FuncExpr *)rtfunc->funcexpr;
     return is_func_cypher(funcexpr);
 }
 
-// Return true if the qualified name of the given function is
-// <"ag_catalog"."cypher">. Otherwise, return false.
+/*
+ * Return true if the qualified name of the given function is
+ * <"ag_catalog"."cypher">. Otherwise, return false.
+ */
 static bool is_func_cypher(FuncExpr *funcexpr)
 {
     HeapTuple proctup;
@@ -205,14 +219,16 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     FuncExpr *funcexpr = (FuncExpr *)rtfunc->funcexpr;
     Node *arg;
     const char *query_str;
-    struct cypher_parse_error_callback_arg ecb_arg;
+    cypher_parse_error_callback_arg ecb_arg;
     ErrorContextCallback ecb;
     Query *query;
 
-    // We cannot apply this feature directly to SELECT subquery because the
-    // planner does not support it. Adding a "row_number() OVER ()" expression
-    // to the subquery as a result target might be a workaround but we throw an
-    // error for now.
+    /*
+     * We cannot apply this feature directly to SELECT subquery because the
+     * planner does not support it. Adding a "row_number() OVER ()" expression
+     * to the subquery as a result target might be a workaround but we throw an
+     * error for now.
+     */
     if (rte->funcordinality)
     {
         ereport(ERROR,
@@ -226,16 +242,18 @@ static void convert_cypher_to_subquery(RangeTblEntry *rte, ParseState *pstate)
     arg = linitial(funcexpr->args);
     Assert(exprType(arg) == CSTRINGOID);
 
-    // Since cypher() function is nothing but an interface to get a Cypher
-    // query, it must take a string constant as an argument so that the query
-    // can be parsed and analyzed at this point to create a Query tree of it.
-    //
-    // Also, only dollar-quoted string constants are allowed because of the
-    // following reasons.
-    //
-    // * If other kinds of string constants are used, the actual values of them
-    //   may differ from what they are shown. This will confuse users.
-    // * In the case above, the error position may not be accurate.
+    /*
+     * Since cypher() function is nothing but an interface to get a Cypher
+     * query, it must take a string constant as an argument so that the query
+     * can be parsed and analyzed at this point to create a Query tree of it.
+     *
+     * Also, only dollar-quoted string constants are allowed because of the
+     * following reasons.
+     *
+     * * If other kinds of string constants are used, the actual values of them
+     *   may differ from what they are shown. This will confuse users.
+     * * In the case above, the error position may not be accurate.
+     */
     query_str = expr_get_const_cstring(arg, pstate->p_sourcetext);
     if (!query_str)
     {
@@ -302,7 +320,7 @@ static int get_query_location(const int location, const char *source_str)
 
 static void cypher_parse_error_callback(void *arg)
 {
-    struct cypher_parse_error_callback_arg *ecb_arg = arg;
+    cypher_parse_error_callback_arg *ecb_arg = arg;
     int pos;
 
     if (geterrcode() == ERRCODE_QUERY_CANCELED)

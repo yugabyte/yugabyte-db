@@ -68,9 +68,11 @@ void insert_graph(const Name graph_name, const Oid nsp_id)
 
     tuple = heap_form_tuple(RelationGetDescr(ag_graph), values, nulls);
 
-    // CatalogTupleInsert() is originally for PostgreSQL's catalog. However,
-    // it is used at here for convenience. We don't care about the returned OID
-    // because ag_graph doesn't have OID column.
+    /*
+     * CatalogTupleInsert() is originally for PostgreSQL's catalog. However,
+     * it is used at here for convenience. We don't care about the returned OID
+     * because ag_graph doesn't have OID column.
+     */
     CatalogTupleInsert(ag_graph, tuple);
 
     heap_close(ag_graph, RowExclusiveLock);

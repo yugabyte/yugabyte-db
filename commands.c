@@ -35,7 +35,7 @@ Datum create_graph(PG_FUNCTION_ARGS)
     nsp_id = create_schema_for_graph(graph_name);
     insert_graph(graph_name, nsp_id);
 
-    // Make sure later steps can see the object created here.
+    // Make effects of this command visible.
     CommandCounterIncrement();
 
     ereport(NOTICE,
@@ -49,9 +49,11 @@ static Oid create_schema_for_graph(const Name graph_name)
     CreateSchemaStmt *stmt;
     Oid nsp_id;
 
-    // This is the same with running `CREATE SCHEMA graph_name`.
-    // schemaname doesn't have to be graph_name but the same name is used so
-    // that users can find the backed schema for a graph only by its name.
+    /*
+     * This is the same with running `CREATE SCHEMA graph_name`.
+     * schemaname doesn't have to be graph_name but the same name is used so
+     * that users can find the backed schema for a graph only by its name.
+     */
     stmt = makeNode(CreateSchemaStmt);
     stmt->schemaname = NameStr(*graph_name);
     stmt->authrole = NULL;
@@ -115,11 +117,13 @@ static void drop_schema_for_graph(const Name graph_name, const bool cascade)
 
 PG_FUNCTION_INFO_V1(alter_graph);
 
-// Function alter_graph, invoked by the sql function -
-// alter_graph(graph_name name, operation cstring, new_value name)
-// NOTE: Currently only RENAME is supported.
-//       graph_name and new_value are case sensitive.
-//       operation is case insensitive.
+/*
+ * Function alter_graph, invoked by the sql function -
+ * alter_graph(graph_name name, operation cstring, new_value name)
+ * NOTE: Currently only RENAME is supported.
+ *       graph_name and new_value are case sensitive.
+ *       operation is case insensitive.
+ */
 Datum alter_graph(PG_FUNCTION_ARGS)
 {
     Name graph_name;
@@ -163,8 +167,10 @@ Datum alter_graph(PG_FUNCTION_ARGS)
     PG_RETURN_VOID();
 }
 
-// Function to rename a graph by renaming the schema (which is also the
-// namespace) and updating the name in ag_graph
+/*
+ * Function to rename a graph by renaming the schema (which is also the
+ * namespace) and updating the name in ag_graph
+ */
 static void rename_graph(const Name graph_name, const Name new_name)
 {
     char *oldname = NameStr(*graph_name);

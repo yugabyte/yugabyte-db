@@ -21,7 +21,7 @@
 %option never-interactive
 %option noyywrap
 %option reentrant
-%option extra-type="struct ag_yy_extra"
+%option extra-type="ag_yy_extra"
 %option prefix="ag_yy"
 %option nounistd
 %option fast noread
@@ -219,29 +219,31 @@ self     [%()*+,\-./:<=>[\]^{|}]
 other .
 
 %{
-struct strbuf
+typedef struct strbuf
 {
     char *buffer;
     int capacity;
     int length;
-};
+} strbuf;
 
-static void strbuf_init(struct strbuf *sb, int capacity);
-static void strbuf_cleanup(struct strbuf *sb);
-static void strbuf_append_buf(struct strbuf *sb, const char *b, const int len);
-static void strbuf_append_char(struct strbuf *sb, const char c);
-static void strbuf_append_codepoint(struct strbuf *sb, const pg_wchar c);
-static void strbuf_ensure_capacity(struct strbuf *sb, int len);
-static const char *strbuf_get_str(struct strbuf *sb);
-static void strbuf_reset(struct strbuf *sb);
+static void strbuf_init(strbuf *sb, int capacity);
+static void strbuf_cleanup(strbuf *sb);
+static void strbuf_append_buf(strbuf *sb, const char *b, const int len);
+static void strbuf_append_char(strbuf *sb, const char c);
+static void strbuf_append_codepoint(strbuf *sb, const pg_wchar c);
+static void strbuf_ensure_capacity(strbuf *sb, int len);
+static const char *strbuf_get_str(strbuf *sb);
+static void strbuf_reset(strbuf *sb);
 
-struct ag_yy_extra
+typedef struct ag_yy_extra
 {
-    // accumulate matched strings to build a complete literal if multiple rules
-    // are needed to scan it, or keep a decimal integer literal that is
-    // converted from a hexadecimal or an octal integer literal if it is too
-    // large to fit in "int" type
-    struct strbuf literal_buf;
+    /*
+     * accumulate matched strings to build a complete literal if multiple rules
+     * are needed to scan it, or keep a decimal integer literal that is
+     * converted from a hexadecimal or an octal integer literal if it is too
+     * large to fit in "int" type
+     */
+    strbuf literal_buf;
 
     // for Unicode surrogate pair
     pg_wchar high_surrogate;
@@ -250,14 +252,13 @@ struct ag_yy_extra
     // for the location of the current token and the actual position of it
     const char *scan_buf;
     int last_loc;
-};
+} ag_yy_extra;
 
-static void integer_literal_to_token(const char *s, struct ag_token *token,
-                                     struct ag_yy_extra *extra);
+static void integer_literal_to_token(const char *s, ag_token *token,
+                                     ag_yy_extra *extra);
 #define hexadecimal_to_decimal(numstr, sb) _numstr_to_decimal(numstr, 16, sb)
 #define octal_to_decimal(numstr, sb) _numstr_to_decimal(numstr, 8, sb)
-static void _numstr_to_decimal(const char *numstr, const int base,
-                               struct strbuf *sb);
+static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb);
 static uint32 hexdigit_value(const char c);
 static uint32 octdigit_value(const char c);
 
@@ -274,12 +275,14 @@ static pg_wchar surrogate_pair_to_codepoint(const pg_wchar hi,
 #define get_location() (yyextra.last_loc)
 
 #define scan_errmsg(msg) _scan_errmsg(msg, &yyextra)
-static int _scan_errmsg(const char *msg, const struct ag_yy_extra *extra);
+static int _scan_errmsg(const char *msg, const ag_yy_extra *extra);
 #define scan_errposition() _scan_errposition(&yyextra)
-static int _scan_errposition(const struct ag_yy_extra *extra);
+static int _scan_errposition(const ag_yy_extra *extra);
 
-// Avoid exit() on fatal scanner errors.
-// Call yy_fatal_error() just to keep compiler quiet.
+/*
+ * Avoid exit() on fatal scanner errors.
+ * Call yy_fatal_error() just to keep compiler quiet.
+ */
 #define YY_FATAL_ERROR(msg) \
     do \
     { \
@@ -287,17 +290,19 @@ static int _scan_errposition(const struct ag_yy_extra *extra);
         yy_fatal_error(NULL, NULL); \
     } while (0)
 
-// "yyscanner" must be used for the name of the parameter because it is
-// referenced internally. "yyscan_t" is OK because it is actually "void *"
-// and is the same with "ag_scanner_t".
-#define YY_DECL struct ag_token ag_scanner_next_token(yyscan_t yyscanner)
+/*
+ * "yyscanner" must be used for the name of the parameter because it is
+ * referenced internally. "yyscan_t" is OK because it is actually "void *"
+ * and is the same with "ag_scanner_t".
+ */
+#define YY_DECL ag_token ag_scanner_next_token(yyscan_t yyscanner)
 %}
 
 %%
 
 %{
 // This is used in the actions below.
-struct ag_token token;
+ag_token token;
 %}
 
 {whitespace} {
@@ -421,8 +426,10 @@ struct ag_token token;
 <dqstr,sqstr>{esasciifail} {
     if (yyleng == 1)
     {
-        // This happens when the scanner meets "\"<<EOF>>. Just consume "\"
-        // so that <dqstr,sqstr,qstru><<EOF>> rule can do the rest.
+        /*
+         * This happens when the scanner meets "\"<<EOF>>. Just consume "\"
+         * so that <dqstr,sqstr,qstru><<EOF>> rule can do the rest.
+         */
         strbuf_append_char(&yyextra.literal_buf, '\\');
     }
     else
@@ -490,8 +497,10 @@ struct ag_token token;
     }
     else
     {
-        // U+0000 NUL is the minimum value of a Unicode code point.
-        // However, it is invalid in quoted strings as well as query strings.
+        /*
+         * U+0000 NUL is the minimum value of a Unicode code point.
+         * However, it is invalid in quoted strings as well as query strings.
+         */
         update_location();
         ereport(ERROR,
                 (errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE),
@@ -544,9 +553,11 @@ struct ag_token token;
 <sqstr>{squote} {
     BEGIN(INITIAL);
 
-    // In quoted strings, only Unicode escape sequences need to be verified,
-    // and the actions for <dqstr,sqstr>{esunicode} and <qstru>{esunicode}
-    // rules verify the code point values. So, quoted strings are always valid.
+    /*
+     * In quoted strings, only Unicode escape sequences need to be verified,
+     * and the actions for <dqstr,sqstr>{esunicode} and <qstru>{esunicode}
+     * rules verify the code point values. So, quoted strings are always valid.
+     */
 
     token.type = AG_TOKEN_STRING;
     token.value.s = strbuf_get_str(&yyextra.literal_buf);
@@ -685,8 +696,10 @@ struct ag_token token;
 
 %%
 
-// Override the default memory management to make flex use palloc() instead of
-// malloc().
+/*
+ * Override the default memory management to make flex use palloc() instead of
+ * malloc().
+ */
 
 void *ag_yyalloc(yy_size_t size, yyscan_t yyscanner)
 {
@@ -720,34 +733,34 @@ void ag_yyfree(void *ptr, yyscan_t yyscanner)
         pfree(ptr);
 }
 
-static void strbuf_init(struct strbuf *sb, int capacity)
+static void strbuf_init(strbuf *sb, int capacity)
 {
     sb->buffer = palloc(capacity);
     sb->capacity = capacity;
     sb->length = 0;
 }
 
-static void strbuf_cleanup(struct strbuf *sb)
+static void strbuf_cleanup(strbuf *sb)
 {
     if (sb->buffer)
         pfree(sb->buffer);
 }
 
-static void strbuf_append_buf(struct strbuf *sb, const char *b, const int len)
+static void strbuf_append_buf(strbuf *sb, const char *b, const int len)
 {
     strbuf_ensure_capacity(sb, sb->length + len);
     memcpy(sb->buffer + sb->length, b, len);
     sb->length += len;
 }
 
-static void strbuf_append_char(struct strbuf *sb, const char c)
+static void strbuf_append_char(strbuf *sb, const char c)
 {
     strbuf_ensure_capacity(sb, sb->length + 1);
     sb->buffer[sb->length] = c;
     sb->length += 1;
 }
 
-static void strbuf_append_codepoint(struct strbuf *sb, const pg_wchar c)
+static void strbuf_append_codepoint(strbuf *sb, const pg_wchar c)
 {
     unsigned char buf[6];
 
@@ -755,9 +768,11 @@ static void strbuf_append_codepoint(struct strbuf *sb, const pg_wchar c)
     strbuf_append_buf(sb, (char *)buf, pg_utf_mblen(buf));
 }
 
-// len cannot be greater than MaxAllocSize because ReadCommand() reads
-// a message and places the message body in StringInfo.
-static void strbuf_ensure_capacity(struct strbuf *sb, int len)
+/*
+ * len cannot be greater than MaxAllocSize because ReadCommand() reads
+ * a message and places the message body in StringInfo.
+ */
+static void strbuf_ensure_capacity(strbuf *sb, int len)
 {
     // consider additional 1 byte for the last '\0' character
     if (len < sb->capacity)
@@ -771,19 +786,19 @@ static void strbuf_ensure_capacity(struct strbuf *sb, int len)
     sb->buffer = repalloc(sb->buffer, sb->capacity);
 }
 
-static const char *strbuf_get_str(struct strbuf *sb)
+static const char *strbuf_get_str(strbuf *sb)
 {
     sb->buffer[sb->length] = '\0';
     return sb->buffer;
 }
 
-static void strbuf_reset(struct strbuf *sb)
+static void strbuf_reset(strbuf *sb)
 {
     sb->length = 0;
 }
 
-static void integer_literal_to_token(const char *s, struct ag_token *token,
-                                     struct ag_yy_extra *extra)
+static void integer_literal_to_token(const char *s, ag_token *token,
+                                     ag_yy_extra *extra)
 {
     char *endptr;
     int i;
@@ -791,8 +806,10 @@ static void integer_literal_to_token(const char *s, struct ag_token *token,
     errno = 0;
     i = strtoint(s, &endptr, 0);
 
-    // This is only needed for invalid octal integer literals. (e.g. "08")
-    // Other cases cannot happen because of digitseq and hexint rules.
+    /*
+     * This is only needed for invalid octal integer literals. (e.g. "08")
+     * Other cases cannot happen because of digitseq and hexint rules.
+     */
     if (*endptr != '\0')
     {
         ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
@@ -803,18 +820,22 @@ static void integer_literal_to_token(const char *s, struct ag_token *token,
     // Treat it as a decimal if it is too large to be an "int" value.
     if (errno == ERANGE)
     {
-        // Accessing s[0] and s[1] is safe because ERANGE is returned only if
-        // there are 10 or more characters in s. In this case, the shortest
-        // integer literals for decimal, hexadecimal, and octal integers are
-        // "2147483648", "0x80000000", and "020000000000" respectively.
+        /*
+         * Accessing s[0] and s[1] is safe because ERANGE is returned only if
+         * there are 10 or more characters in s. In this case, the shortest
+         * integer literals for decimal, hexadecimal, and octal integers are
+         * "2147483648", "0x80000000", and "020000000000" respectively.
+         */
         if (s[0] == '0')
         {
             strbuf_reset(&extra->literal_buf);
 
-            // No matter how many characters s has, if all digits in s are
-            // zeros, strtoint() returns 0 without an error.
-            // So, _numstr_to_decimal() assumes that there is at least one
-            // non-zero digit in s.
+            /*
+             * No matter how many characters s has, if all digits in s are
+             * zeros, strtoint() returns 0 without an error.
+             * So, _numstr_to_decimal() assumes that there is at least one
+             * non-zero digit in s.
+             */
             if (s[1] == 'X' || s[1] == 'x')
                 hexadecimal_to_decimal(s + 2, &extra->literal_buf);
             else
@@ -831,23 +852,26 @@ static void integer_literal_to_token(const char *s, struct ag_token *token,
     token->value.i = i;
 }
 
-// convert a string of a hexadecimal or an octal integer to a string of the
-// corresponding decimal integer
-static void _numstr_to_decimal(const char *numstr, const int base,
-                               struct strbuf *sb)
+/*
+ * convert a string of a hexadecimal or an octal integer to a string of the
+ * corresponding decimal integer
+ */
+static void _numstr_to_decimal(const char *numstr, const int base, strbuf *sb)
 {
     // constants for each base
     int ndigits_per_word;
     int nbits_per_digit;
     uint32 (*digit_value)(const char);
 
-    // constants for the conversion
-    //
-    //     "divisor" is 10^9.
-    //
-    //     At most 3 divisions are needed to eliminate 1 word.
-    //         hex: 4294967295999999999 -> 4294967295 -> 4 -> 0
-    //         oct: 1073741823999999999 -> 1073741823 -> 1 -> 0
+    /*
+     * constants for the conversion
+     *
+     *     "divisor" is 10^9.
+     *
+     *     At most 3 divisions are needed to eliminate 1 word.
+     *         hex: 4294967295999999999 -> 4294967295 -> 4 -> 0
+     *         oct: 1073741823999999999 -> 1073741823 -> 1 -> 0
+     */
     const uint64 divisor = 1000000000;
     const int ndivisions = 3;
     const int ndigits_per_remainder = 9;
@@ -867,41 +891,45 @@ static void _numstr_to_decimal(const char *numstr, const int base,
     switch (base)
     {
     case 16:
-        // Hexadecimal
-        //
-        // Maximum value for each word
-        //     0xFFFFFFFF = 4294967295
-        // Divisor
-        //     0x3B9ACA00 = 1000000000
-        // Maximum remainder
-        //     0x3B9AC9FF = 999999999
-        //
-        // Maximum dividend
-        //     0x3B9AC9FFFFFFFFFF = 4294967295999999999
-        // Quotient of the maximum dividend and the divisor
-        //     0xFFFFFFFF = 4294967295
-        // Remainer of the above division
-        //     0x3B9AC9FF = 999999999
+        /*
+         * Hexadecimal
+         *
+         * Maximum value for each word
+         *     0xFFFFFFFF = 4294967295
+         * Divisor
+         *     0x3B9ACA00 = 1000000000
+         * Maximum remainder
+         *     0x3B9AC9FF = 999999999
+         *
+         * Maximum dividend
+         *     0x3B9AC9FFFFFFFFFF = 4294967295999999999
+         * Quotient of the maximum dividend and the divisor
+         *     0xFFFFFFFF = 4294967295
+         * Remainer of the above division
+         *     0x3B9AC9FF = 999999999
+         */
         ndigits_per_word = 8;
         nbits_per_digit = 4;
         digit_value = hexdigit_value;
         break;
     case 8:
-        // Octal
-        //
-        // Maximum value for each word
-        //     07777777777 = 1073741823
-        // Divisor
-        //     07346545000 = 1000000000
-        // Maximum remainder
-        //     07346544777 = 999999999
-        //
-        // Maximum dividend
-        //     073465447777777777777 = 1073741823999999999
-        // Quotient of the maximum dividend and the divisor
-        //     07777777777 = 1073741823
-        // Remainer of the above division
-        //     07346544777 = 999999999
+        /*
+         * Octal
+         *
+         * Maximum value for each word
+         *     07777777777 = 1073741823
+         * Divisor
+         *     07346545000 = 1000000000
+         * Maximum remainder
+         *     07346544777 = 999999999
+         *
+         * Maximum dividend
+         *     073465447777777777777 = 1073741823999999999
+         * Quotient of the maximum dividend and the divisor
+         *     07777777777 = 1073741823
+         * Remainer of the above division
+         *     07346544777 = 999999999
+         */
         ndigits_per_word = 10;
         nbits_per_digit = 3;
         digit_value = octdigit_value;
@@ -981,8 +1009,10 @@ static void _numstr_to_decimal(const char *numstr, const int base,
         // collect the remainder to build the result
         remainders[nremainders++] = (uint32)r;
 
-        // Divisions over the first effective word is done
-        // and "words" is getting closer to 0.
+        /*
+         * Divisions over the first effective word is done
+         * and "words" is getting closer to 0.
+         */
         if (words[word_i] == 0)
             word_i++;
     }
@@ -1050,7 +1080,7 @@ static pg_wchar surrogate_pair_to_codepoint(const pg_wchar hi,
     return (hi << 10) + lo + surrogate_offset;
 }
 
-static int _scan_errmsg(const char *msg, const struct ag_yy_extra *extra)
+static int _scan_errmsg(const char *msg, const ag_yy_extra *extra)
 {
     const char *t = extra->scan_buf + extra->last_loc;
 
@@ -1060,7 +1090,7 @@ static int _scan_errmsg(const char *msg, const struct ag_yy_extra *extra)
         return errmsg("%s at or near \"%s\"", msg, t);
 }
 
-static int _scan_errposition(const struct ag_yy_extra *extra)
+static int _scan_errposition(const ag_yy_extra *extra)
 {
     int pos;
 
@@ -1074,7 +1104,7 @@ ag_scanner_t ag_scanner_create(const char *s)
     Size len;
     char *buf;
     yyscan_t yyscanner;
-    struct ag_yy_extra extra;
+    ag_yy_extra extra;
     int ret;
 
     // The last two YY_END_OF_BUFFER_CHAR are required by flex.
@@ -1102,7 +1132,7 @@ ag_scanner_t ag_scanner_create(const char *s)
 
 void ag_scanner_destroy(ag_scanner_t scanner)
 {
-    struct ag_yy_extra extra;
+    ag_yy_extra extra;
 
     extra = ag_yyget_extra(scanner);
     strbuf_cleanup(&extra.literal_buf);
