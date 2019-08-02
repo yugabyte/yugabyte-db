@@ -144,7 +144,7 @@ export default class TableDetail extends Component {
             </Col>
           </Row>
         </Grid>
-        </div>
+      </div>
     );
   }
 }
