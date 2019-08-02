@@ -900,7 +900,8 @@ uint64_t TabletPeer::OnDiskSize() const {
   }
 
   if (tablet_) {
-    ret += tablet_->GetTotalSSTFileSizes();
+    // TODO: consider updating this to include all on-disk SST files.
+    ret += tablet_->GetCurrentVersionSstFilesSize();
   }
 
   if (log_) {

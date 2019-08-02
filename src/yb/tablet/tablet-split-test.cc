@@ -172,8 +172,8 @@ TEST_F(TabletSplitTest,  v) {
     // Each split tablet data size should be less than original data size divided by number
     // of split points.
     ASSERT_LT(
-        split_tablet->doc_db().regular->GetDataSSTFileSize(),
-        tablet()->doc_db().regular->GetDataSSTFileSize() / kNumSplits);
+        split_tablet->doc_db().regular->GetCurrentVersionDataSstFilesSize(),
+        tablet()->doc_db().regular->GetCurrentVersionDataSstFilesSize() / kNumSplits);
   }
 
   // Split tablets should have all data from the source tablet.
