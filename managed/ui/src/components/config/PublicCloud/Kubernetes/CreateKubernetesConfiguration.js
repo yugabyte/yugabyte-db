@@ -170,7 +170,7 @@ class CreateKubernetesConfiguration extends Component {
 
       kubeConfig: Yup.mixed().nullable(),
 
-      pullSecret: Yup.mixed().required('Pull Secret file is required'),
+      pullSecret: Yup.mixed(),
 
       regionCode: Yup.string(),
 
