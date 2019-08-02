@@ -321,14 +321,11 @@ YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
 YBCStatus YBCPgExecDelete(YBCPgStatement handle);
 
 // SELECT ------------------------------------------------------------------------------------------
-// read_time points to place where read_time for whole postgres statement is stored.
-// It is available while statement is executed.
 YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
                          YBCPgOid database_oid,
                          YBCPgOid table_oid,
                          YBCPgOid index_oid,
-                         YBCPgStatement *handle,
-                         uint64_t* read_time);
+                         YBCPgStatement *handle);
 
 // Set forward/backward scan direction.
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan);
