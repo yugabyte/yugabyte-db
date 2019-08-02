@@ -2018,7 +2018,7 @@ size_t Tablet::TEST_CountRegularDBRecords() {
   return result;
 }
 
-uint64_t Tablet::GetTotalSSTFileSizes() const {
+uint64_t Tablet::GetCurrentVersionSstFilesSize() const {
   ScopedPendingOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
@@ -2027,10 +2027,10 @@ uint64_t Tablet::GetTotalSSTFileSizes() const {
   if (!pending_op_counter_.IsReady() || !regular_db_) {
     return 0;
   }
-  return regular_db_->GetTotalSSTFileSize();
+  return regular_db_->GetCurrentVersionSstFilesSize();
 }
 
-uint64_t Tablet::GetUncompressedSSTFileSizes() const {
+uint64_t Tablet::GetCurrentVersionSstFilesUncompressedSize() const {
   ScopedPendingOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
@@ -2039,7 +2039,7 @@ uint64_t Tablet::GetUncompressedSSTFileSizes() const {
   if (!pending_op_counter_.IsReady() || !regular_db_) {
     return 0;
   }
-  return regular_db_->GetUncompressedSSTFileSize();
+  return regular_db_->GetCurrentVersionSstFilesUncompressedSize();
 }
 
 // ------------------------------------------------------------------------------------------------

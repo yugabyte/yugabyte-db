@@ -390,8 +390,10 @@ Status Heartbeater::Thread::TryHeartbeat() {
       shared_ptr<yb::tablet::TabletPeer> tablet_peer = *it;
       if (tablet_peer) {
         shared_ptr<yb::tablet::TabletClass> tablet_class = tablet_peer->shared_tablet();
-        total_file_sizes += (tablet_class) ? tablet_class->GetTotalSSTFileSizes() : 0;
-        uncompressed_file_sizes += (tablet_class) ? tablet_class->GetUncompressedSSTFileSizes() : 0;
+        total_file_sizes += (tablet_class)
+            ? tablet_class->GetCurrentVersionSstFilesSize() : 0;
+        uncompressed_file_sizes += (tablet_class)
+            ? tablet_class->GetCurrentVersionSstFilesUncompressedSize() : 0;
       }
     }
     req.mutable_metrics()->set_total_sst_file_size(total_file_sizes);
