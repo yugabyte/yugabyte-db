@@ -1665,7 +1665,7 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
   return file_number_holder;
 }
 
-uint64_t DBImpl::GetTotalSSTFileSize() {
+uint64_t DBImpl::GetCurrentVersionSstFilesSize() {
   std::vector<rocksdb::LiveFileMetaData> file_metadata;
   GetLiveFilesMetaData(&file_metadata);
   uint64_t total_sst_file_size = 0;
@@ -1676,13 +1676,16 @@ uint64_t DBImpl::GetTotalSSTFileSize() {
 }
 
 void DBImpl::SetSSTFileSizeTickers() {
-  uint64_t total_sst_file_size = GetTotalSSTFileSize();
-  SetTickerCount(stats_, TOTAL_SST_FILE_SIZE, total_sst_file_size);
-  uint64_t uncompressed_sst_file_size = GetUncompressedSSTFileSize();
-  SetTickerCount(stats_, TOTAL_UNCOMPRESSED_SST_FILE_SIZE, uncompressed_sst_file_size);
+  if (stats_) {
+    auto sst_files_size = GetCurrentVersionSstFilesSize();
+    SetTickerCount(stats_, CURRENT_VERSION_SST_FILES_SIZE, sst_files_size);
+    auto uncompressed_sst_files_size = GetCurrentVersionSstFilesUncompressedSize();
+    SetTickerCount(
+        stats_, CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE, uncompressed_sst_files_size);
+  }
 }
 
-uint64_t DBImpl::GetUncompressedSSTFileSize() {
+uint64_t DBImpl::GetCurrentVersionSstFilesUncompressedSize() {
   std::vector<rocksdb::LiveFileMetaData> file_metadata;
   GetLiveFilesMetaData(&file_metadata);
   uint64_t total_uncompressed_file_size = 0;
@@ -1692,7 +1695,7 @@ uint64_t DBImpl::GetUncompressedSSTFileSize() {
   return total_uncompressed_file_size;
 }
 
-uint64_t DBImpl::GetDataSSTFileSize() {
+uint64_t DBImpl::GetCurrentVersionDataSstFilesSize() {
   std::vector<rocksdb::LiveFileMetaData> file_metadata;
   GetLiveFilesMetaData(&file_metadata);
   uint64_t data_sst_file_size = 0;
@@ -1710,47 +1713,47 @@ void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
                                     const MutableCFOptions& mutable_cf_options,
                                     int job_id, TableProperties prop) {
 #ifndef ROCKSDB_LITE
-  if (db_options_.listeners.size() == 0U) {
-    return;
-  }
   mutex_.AssertHeld();
   if (shutting_down_.load(std::memory_order_acquire)) {
     return;
   }
-  bool triggered_writes_slowdown =
-      (cfd->current()->storage_info()->NumLevelFiles(0) >=
-       mutable_cf_options.level0_slowdown_writes_trigger);
-  bool triggered_writes_stop =
-      (cfd->current()->storage_info()->NumLevelFiles(0) >=
-       mutable_cf_options.level0_stop_writes_trigger);
-
-  if (triggered_writes_stop) {
-    TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteStop");
-  } else if (triggered_writes_slowdown) {
-    TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteSlowdown");
-  }
-
-  // release lock while notifying events
-  mutex_.Unlock();
-  {
-    FlushJobInfo info;
-    info.cf_name = cfd->GetName();
-    // TODO(yhchiang): make db_paths dynamic in case flush does not
-    //                 go to L0 in the future.
-    info.file_path = MakeTableFileName(db_options_.db_paths[0].path,
-                                       file_meta->fd.GetNumber());
-    info.thread_id = env_->GetThreadID();
-    info.job_id = job_id;
-    info.triggered_writes_slowdown = triggered_writes_slowdown;
-    info.triggered_writes_stop = triggered_writes_stop;
-    info.smallest_seqno = file_meta->smallest.seqno;
-    info.largest_seqno = file_meta->largest.seqno;
-    info.table_properties = prop;
-    for (auto listener : db_options_.listeners) {
-      listener->OnFlushCompleted(this, info);
+  if (db_options_.listeners.size() > 0) {
+    bool triggered_writes_slowdown =
+        (cfd->current()->storage_info()->NumLevelFiles(0) >=
+         mutable_cf_options.level0_slowdown_writes_trigger);
+    bool triggered_writes_stop =
+        (cfd->current()->storage_info()->NumLevelFiles(0) >=
+         mutable_cf_options.level0_stop_writes_trigger);
+    if (triggered_writes_stop) {
+      TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteStop");
+    } else if (triggered_writes_slowdown) {
+      TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteSlowdown");
     }
-    SetSSTFileSizeTickers();
+
+    // release lock while notifying events
+    mutex_.Unlock();
+    {
+      FlushJobInfo info;
+      info.cf_name = cfd->GetName();
+      // TODO(yhchiang): make db_paths dynamic in case flush does not
+      //                 go to L0 in the future.
+      info.file_path = MakeTableFileName(db_options_.db_paths[0].path,
+                                         file_meta->fd.GetNumber());
+      info.thread_id = env_->GetThreadID();
+      info.job_id = job_id;
+      info.triggered_writes_slowdown = triggered_writes_slowdown;
+      info.triggered_writes_stop = triggered_writes_stop;
+      info.smallest_seqno = file_meta->smallest.seqno;
+      info.largest_seqno = file_meta->largest.seqno;
+      info.table_properties = prop;
+      for (auto listener : db_options_.listeners) {
+        listener->OnFlushCompleted(this, info);
+      }
+    }
+  } else {
+    mutex_.Unlock();
   }
+  SetSSTFileSizeTickers();
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
   // flush process.
@@ -2115,9 +2118,6 @@ void DBImpl::NotifyOnCompactionCompleted(
     const CompactionJobStats& compaction_job_stats,
     const int job_id) {
 #ifndef ROCKSDB_LITE
-  if (db_options_.listeners.size() == 0U) {
-    return;
-  }
   mutex_.AssertHeld();
   if (shutting_down_.load(std::memory_order_acquire)) {
     return;
@@ -2125,7 +2125,7 @@ void DBImpl::NotifyOnCompactionCompleted(
   VersionPtr current = cfd->current();
   // release lock while notifying events
   mutex_.Unlock();
-  {
+  if (db_options_.listeners.size() > 0) {
     CompactionJobInfo info;
     info.cf_name = cfd->GetName();
     info.status = st;
@@ -2159,8 +2159,8 @@ void DBImpl::NotifyOnCompactionCompleted(
     for (auto listener : db_options_.listeners) {
       listener->OnCompactionCompleted(this, info);
     }
-    SetSSTFileSizeTickers();
   }
+  SetSSTFileSizeTickers();
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
   // flush process.
