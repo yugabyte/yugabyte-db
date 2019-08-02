@@ -2,13 +2,15 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { MetricsPanelOverview, DiskUsagePanel } from '../';
+import { MetricsPanelOverview } from '../';
 import './OverviewMetrics.scss';
 import { YBLoading } from '../../common/indicators';
 import { isNonEmptyObject, isNonEmptyArray, isEmptyArray, isNonEmptyString } from 'utils/ObjectUtils';
 import { YBPanelLegend } from '../../common/descriptors';
 import { YBWidget } from '../../panels';
 import { METRIC_COLORS } from '../MetricsConfig';
+import _ from 'lodash';
+
 const moment = require('moment');
 
 // TODO set predefined defaults another way not to share defaults this way
@@ -96,9 +98,8 @@ class OverviewMetrics extends Component {
   }
 
   render() {
-    const { type, graph: { metrics }, isKubernetesUniverse } = this.props;
-
-    const metricKeys = isKubernetesUniverse ? panelTypes[type].metrics : kubernetesMetrics;
+    const { type, graph: { metrics } } = this.props;
+    const metricKeys = panelTypes[type].metrics;
     let panelItem = metricKeys.filter((metricKey) => (
       metricKey !== "disk_usage" && metricKey !== "cpu_usage"))
       .map(function(metricKey, idx) {
@@ -133,7 +134,9 @@ class OverviewMetrics extends Component {
                 title: metrics[type][metricKey].data[idx].name
               });
             }
-            const measureUnit = isNonEmptyObject(metrics[type][metricKey].layout.yaxis) && metrics[type][metricKey].layout.yaxis.ticksuffix ? (" ("+metrics[type][metricKey].layout.yaxis.ticksuffix.replace('&nbsp;','')+")") : '';
+            const metricTickSuffix= _.get(metrics[type][metricKey], 'layout.yaxis.ticksuffix');
+            const measureUnit = metricTickSuffix ?
+              ` (${metricTickSuffix.replace('&nbsp;','')})` : '';
             return (
               <YBWidget key={idx}
                 noMargin
@@ -142,11 +145,7 @@ class OverviewMetrics extends Component {
                   <YBPanelLegend data={legendData} />
                 }
                 headerLeft={metrics[type][metricKey].layout.title + measureUnit}
-                body={metricKey === "disk_usage" ?
-                  <DiskUsagePanel
-                    metric={metrics[type][metricKey]}
-                    className={"disk-usage-container"}
-                  /> :
+                body={
                   <MetricsPanelOverview
                     metricKey={metricKey}
                     metric={metrics[type][metricKey]}
