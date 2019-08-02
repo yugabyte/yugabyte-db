@@ -25,27 +25,28 @@ Run the command below to see that we now have 1 `yb-master` process and 1 `yb-ts
 ```sh
 $ ./bin/yb-ctl status
 ```
+
 ```
 ----------------------------------------------------------------------------------------------------
 | Node Count: 1 | Replication Factor: 1                                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
-| YSQL Shell          : ./bin/ysqlsh                                                               |
-| YCQL Shell          : ./bin/cqlsh 127.0.0.1 9042                                                 |
-| YEDIS Shell         : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
+| YSQL Shell          : build/latest/bin/ysqlsh                                                    |
+| YCQL Shell          : build/latest/bin/cqlsh                                                     |
+| YEDIS Shell         : build/latest/bin/redis-cli                                                 |
 | Web UI              : http://127.0.0.1:7000/                                                     |
-| Cluster Data        : /Users/schoudhury/yugabyte-data                                            |
+| Cluster Data        : /Users/jason/yugabyte-data                                                 |
 ----------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
 | Node 1: yb-tserver (pid 68412), yb-master (pid 68409)                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
-| YSQL Shell          : ./bin/ysqlsh                                                               |
-| YCQL Shell          : ./bin/cqlsh 127.0.0.1 9042                                                 |
-| YEDIS Shell         : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
-| data-dir[0]         : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data                      |
-| yb-tserver Logs     : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data/tserver/logs         |
-| yb-master Logs      : /Users/schoudhury/yugabyte-data/node-1/disk-1/yb-data/master/logs          |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
+| YSQL Shell          : build/latest/bin/ysqlsh                                                    |
+| YCQL Shell          : build/latest/bin/cqlsh                                                     |
+| YEDIS Shell         : build/latest/bin/redis-cli                                                 |
+| data-dir[0]         : /Users/jason/yugabyte-data/node-1/disk-1/yb-data                           |
+| yb-tserver Logs     : /Users/jason/yugabyte-data/node-1/disk-1/yb-data/tserver/logs              |
+| yb-master Logs      : /Users/jason/yugabyte-data/node-1/disk-1/yb-data/master/logs               |
 ----------------------------------------------------------------------------------------------------
 ```
 
