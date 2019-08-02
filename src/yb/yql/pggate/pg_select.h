@@ -42,9 +42,7 @@ class PgSelect : public PgDml {
   void UseIndex(const PgObjectId& index_id);
 
   // Prepare SELECT before execution.
-  // read_time points to place where read_time for whole postgres statement is stored.
-  // It is available while statement is executed.
-  CHECKED_STATUS Prepare(uint64_t* read_time);
+  CHECKED_STATUS Prepare();
 
   // Setup internal structures for binding values during prepare.
   void PrepareColumns();
