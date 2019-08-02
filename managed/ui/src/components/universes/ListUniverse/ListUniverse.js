@@ -35,7 +35,7 @@ export default class ListUniverse extends Component {
             {isNotHidden(currentCustomer.data.features, "universe.create") &&
               <YBButton btnClass="universe-button btn btn-lg btn-orange"
                 disabled={isDisabled(currentCustomer.data.features, "universe.create")}
-                btnText="Create Universe" btnIcon="fa fa-pencil"
+                btnText="Create Universe" btnIcon="fa fa-plus"
                 onClick={this.createNewUniverse} />}
           </Col>
         </Row>
