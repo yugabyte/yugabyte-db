@@ -167,10 +167,10 @@ CreateExecutorState(void)
 	 */
 	MemoryContextSwitchTo(oldcontext);
 
-	/* YugaByte-specific fields
+	/*
+	 * YugaByte-specific fields
 	 * TODO(neil) Rename "es_yb" to "yb_es".  Not sure why they are named this way in the past.
 	 */
-	estate->es_yb_read_ht = 0;
 	estate->es_yb_is_single_row_modify_txn = false;
 	estate->yb_conflict_slot = NULL;
 	estate->yb_exec_params.limit_count = -1;

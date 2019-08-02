@@ -21,8 +21,8 @@
 namespace yb {
 namespace pggate {
 
-PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time)
-    : pg_session_(std::move(pg_session)), read_time_(read_time) {
+PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session)
+    : pg_session_(std::move(pg_session)) {
   exec_params_.limit_count = FLAGS_ysql_prefetch_limit;
   exec_params_.limit_offset = 0;
   exec_params_.limit_use_default = true;
@@ -166,9 +166,8 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocReadOp::PgDocReadOp(
-    PgSession::ScopedRefPtr pg_session, uint64_t* read_time, client::YBPgsqlReadOp *read_op)
-    : PgDocOp(pg_session, read_time), read_op_(read_op) {
+PgDocReadOp::PgDocReadOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlReadOp *read_op)
+    : PgDocOp(pg_session), read_op_(read_op) {
 }
 
 PgDocReadOp::~PgDocReadOp() {
@@ -201,7 +200,7 @@ Status PgDocReadOp::SendRequestUnlocked() {
   CHECK(!waiting_for_response_);
 
   SetRequestPrefetchLimit();
-  SCHECK_EQ(VERIFY_RESULT(pg_session_->PgApplyAsync(read_op_, read_time_)), OpBuffered::kFalse,
+  SCHECK_EQ(VERIFY_RESULT(pg_session_->PgApplyAsync(read_op_, &read_time_)), OpBuffered::kFalse,
             IllegalState, "YSQL read operation should not be buffered");
 
   waiting_for_response_ = true;
@@ -266,7 +265,7 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocWriteOp::PgDocWriteOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlWriteOp *write_op)
-    : PgDocOp(pg_session, nullptr /* read_time */), write_op_(write_op) {
+    : PgDocOp(pg_session), write_op_(write_op) {
 }
 
 PgDocWriteOp::~PgDocWriteOp() {
@@ -276,7 +275,7 @@ Status PgDocWriteOp::SendRequestUnlocked() {
   CHECK(!waiting_for_response_);
 
   // If the op is buffered, we should not flush now. Just return.
-  if (VERIFY_RESULT(pg_session_->PgApplyAsync(write_op_, read_time_)) == OpBuffered::kTrue) {
+  if (VERIFY_RESULT(pg_session_->PgApplyAsync(write_op_, &read_time_)) == OpBuffered::kTrue) {
     return Status::OK();
   }
 
@@ -313,7 +312,7 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocCompoundOp::PgDocCompoundOp(PgSession::ScopedRefPtr pg_session)
-    : PgDocOp(pg_session, nullptr /* read_time */) {
+    : PgDocOp(pg_session) {
 }
 
 PgDocCompoundOp::~PgDocCompoundOp() {
