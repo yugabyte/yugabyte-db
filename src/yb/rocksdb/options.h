@@ -868,7 +868,7 @@ struct DBOptions {
   // Env used to create checkpoints. Default: Env::Default()
   Env* checkpoint_env;
 
-  yb::PriorityThreadPool* compaction_thread_pool = nullptr;
+  yb::PriorityThreadPool* priority_thread_pool_for_compactions_and_flushes = nullptr;
 
   // Use to control write rate of flush and compaction. Flush has higher
   // priority than compaction. Rate limiting is disabled if nullptr.

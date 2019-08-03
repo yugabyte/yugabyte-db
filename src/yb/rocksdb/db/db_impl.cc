@@ -132,13 +132,15 @@ DEFINE_bool(flush_rocksdb_on_shutdown, true,
 DEFINE_double(fault_crash_after_rocksdb_flush, 0.0,
               "Fraction of time to crash right after a successful RocksDB flush in tests.");
 
-DEFINE_bool(use_compaction_thread_pool_for_flushes, false,
-            "Whether we should use compaction thread pool for flushes");
-TAG_FLAG(use_compaction_thread_pool_for_flushes, runtime);
+DEFINE_bool(use_priority_thread_pool_for_flushes, false,
+            "When true priority thread pool will be used for flushes, otherwise "
+            "Env thread pool with Priority::HIGH will be used.");
+TAG_FLAG(use_priority_thread_pool_for_flushes, runtime);
 
-DEFINE_bool(use_compaction_thread_pool_for_compactions, true,
-            "Whether we should use compaction thread pool for compactions");
-TAG_FLAG(use_compaction_thread_pool_for_compactions, runtime);
+DEFINE_bool(use_priority_thread_pool_for_compactions, true,
+            "When true priority thread pool will be used for compactions, otherwise "
+            "Env thread pool with Priority::LOW will be used.");
+TAG_FLAG(use_priority_thread_pool_for_compactions, runtime);
 
 namespace rocksdb {
 
@@ -424,8 +426,8 @@ DBImpl::~DBImpl() {
   // marker. After this we do a variant of the waiting and unschedule work
   // (to consider: moving all the waiting into CancelAllBackgroundWork(true))
   CancelAllBackgroundWork(false);
-  if (db_options_.compaction_thread_pool) {
-    db_options_.compaction_thread_pool->Remove(this);
+  if (db_options_.priority_thread_pool_for_compactions_and_flushes) {
+    db_options_.priority_thread_pool_for_compactions_and_flushes->Remove(this);
   }
   int compactions_unscheduled = env_->UnSchedule(this, Env::Priority::LOW);
   int flushes_unscheduled = env_->UnSchedule(this, Env::Priority::HIGH);
@@ -2574,7 +2576,8 @@ class DBImpl::FlushTask : public ThreadPoolTask {
 };
 
 void DBImpl::SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task) {
-  auto submit_result = db_options_.compaction_thread_pool->Submit(std::move(task));
+  auto submit_result = db_options_.priority_thread_pool_for_compactions_and_flushes->Submit(
+      std::move(task));
   if (submit_result) {
     down_cast<ThreadPoolTask*>(submit_result.get())->AbortedUnlocked();
   }
@@ -2696,7 +2699,8 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
       }
       manual_compaction.incomplete = false;
       bg_compaction_scheduled_++;
-      if (db_options_.compaction_thread_pool && FLAGS_use_compaction_thread_pool_for_compactions) {
+      if (db_options_.priority_thread_pool_for_compactions_and_flushes &&
+          FLAGS_use_priority_thread_pool_for_compactions) {
         SubmitCompactionOrFlushTask(std::make_unique<CompactionTask>(this, &manual_compaction));
       } else {
         ca = new CompactionArg;
@@ -2892,7 +2896,8 @@ bool DBImpl::AddToCompactionQueue(ColumnFamilyData* cfd) {
     c = cfd->PickCompaction(*cfd->GetLatestMutableCFOptions(), &log_buffer);
     if (c) {
       cfd->Ref();
-      if (db_options_.compaction_thread_pool && FLAGS_use_compaction_thread_pool_for_compactions) {
+      if (db_options_.priority_thread_pool_for_compactions_and_flushes &&
+          FLAGS_use_priority_thread_pool_for_compactions) {
         ++bg_compaction_scheduled_;
         SubmitCompactionOrFlushTask(std::make_unique<CompactionTask>(this, std::move(c)));
         // True means that we need to schedule one more compaction, since it is already scheduled
@@ -2944,7 +2949,8 @@ void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd) {
     for (auto listener : db_options_.listeners) {
       listener->OnFlushScheduled(this);
     }
-    if (db_options_.compaction_thread_pool && FLAGS_use_compaction_thread_pool_for_flushes) {
+    if (db_options_.priority_thread_pool_for_compactions_and_flushes &&
+        FLAGS_use_priority_thread_pool_for_flushes) {
       ++bg_flush_scheduled_;
       cfd->Ref();
       cfd->set_pending_flush(true);

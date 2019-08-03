@@ -21,7 +21,7 @@
 
 using namespace std::literals;
 
-DECLARE_bool(use_compaction_thread_pool_for_flushes);
+DECLARE_bool(use_priority_thread_pool_for_flushes);
 
 
 ///////////////////////////////////////////////////
@@ -33,7 +33,7 @@ namespace yb {
 template <class T>
 void YBMiniClusterTestBase<T>::SetUp() {
   YBTest::SetUp();
-  FLAGS_use_compaction_thread_pool_for_flushes = true;
+  FLAGS_use_priority_thread_pool_for_flushes = true;
   verify_cluster_before_next_tear_down_ = true;
 }
 
