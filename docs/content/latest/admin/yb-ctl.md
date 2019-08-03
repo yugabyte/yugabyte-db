@@ -13,7 +13,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-`yb-ctl`, located in the bin directory of YugaByte home, is a simple command line interface for administering local clusters. It invokes the [`yb-master`](../yb-master/) and [`yb-tserver`](../yb-tserver/) binaries to perform the necessary administration.
+`yb-ctl`, located in the bin directory of YugaByte home, is a simple command line interface for administering local clusters. It invokes the [`yb-master`](/latest/admin/yb-master/) and [`yb-tserver`](/latest/admin/yb-tserver/) binaries to perform the necessary administration.
 
 Use the **-\-help** option to see all the commands supported.
 

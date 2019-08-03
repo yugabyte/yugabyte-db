@@ -1,7 +1,7 @@
 ---
 title: cqlsh
 linkTitle: cqlsh
-description: cqlsh
+description: Use the "cqlsh" command line shell to interact with YugaByteDB using YCQL.
 aliases:
   - /develop/tools/cqlsh/
   - /latest/develop/tools/cqlsh/
@@ -16,11 +16,11 @@ showAsideToc: true
 
 ## Overview
 
-`cqlsh` is a command line shell for interacting with YugaByte DB through [YCQL](../../api/ycql/). 
+`cqlsh` is a command line shell for interacting with YugaByte DB through [YCQL](/latest/api/ycql/).
 
-## Download 
+## Download
 
-cqlsh is installed as part of YugaByte DB and is located in the bin directory of YugaByte home. It is also available for download and install from YugaByte DB's [Github repo](https://github.com/YugaByte/cqlsh/releases).
+cqlsh is installed as part of YugaByte DB and is located in the `bin` directory of YugaByte home. It is also available for download and install from YugaByte DB's [GitHub repo](https://github.com/YugaByte/cqlsh/releases).
 
 ## Example
 
@@ -34,17 +34,17 @@ $ ./bin/cqlsh --execute "select cluster_name, data_center, rack from system.loca
  local cluster | datacenter1 | rack1
 ```
 
-## Command Line Options
+## Command line options
 
 Use the **-\-help** option to see all the command line options supported.
 
-```
+```sh
 cqlsh [options] [host [port]]
 ```
 
 Where
 
-- `host` is the IP address of the host on which [YB-TServer](../../../architecture/concepts/universe/#yb-tserver) is run. The default is local host at 127.0.0.1.
+- `host` is the IP address of the host on which [YB-TServer](/latest/architecture/concepts/universe/#yb-tserver) is run. The default is local host at 127.0.0.1.
 - `port` is the TCP port at which YB-TServer listens for YCQL connections. The default is 9042.
 
 Options | Short Form | Default | Description
@@ -65,7 +65,7 @@ Options | Short Form | Default | Description
 `--request-timeout` | | 10 | Specify the request timeout in seconds
 `--tty` | `-t` | | Force tty mode (command prompt)
 
-## Special Commands
+## Special commands
 
 In addition to supporting regular YCQL statements, `cqlsh` also supports the following special commands.
 
@@ -85,6 +85,7 @@ Consistency Level | Description
 To inspect the current consistency level, use `CONSISTENCY` with no arguments.
 
 ### SHOW VERSION
+
 Prints the `cqlsh`, Cassandra, CQL, and native protocol versions in use. Example:
 
 ```sql
@@ -96,6 +97,7 @@ cqlsh> SHOW VERSION
 ```
 
 ### SHOW HOST
+
 Prints the IP address and port of the YB-TServer node that `cqlsh` is connected to in addition to the cluster name. Example:
 
 ```sql
@@ -107,6 +109,7 @@ Connected to local cluster at 127.0.0.1:9042.
 ```
 
 ### SOURCE
+
 Reads the contents of a file and executes each line as a YCQL statement or special `cqlsh` command.
 
 ```
@@ -120,6 +123,7 @@ cqlsh> SOURCE '/home/yugabyte/commands.cql'
 ```
 
 ### CAPTURE
+
 Begins capturing command output and appending it to a specified file. Output will not be shown at the console while it is captured.
 
 ```
@@ -142,6 +146,7 @@ HELP <topic>
 ```
 
 ### PAGING
+
 Enables paging, disables paging, or sets the page size for read queries. When paging is enabled, only one page of data will be fetched at a time and a prompt will appear to fetch the next page. Generally, it’s a good idea to leave paging enabled in an interactive session to avoid fetching and printing large amounts of data at once.
 
 ```sql
@@ -149,9 +154,11 @@ PAGING ON
 PAGING OFF
 PAGING <page size in rows>
 ```
+
 To inspect the current paging setting, use `PAGING` with no arguments.
 
 ### EXPAND
+
 Enables or disables vertical printing of rows. Enabling EXPAND is useful when many columns are fetched, or the contents of a single column are large.
 
 ```sql
@@ -162,6 +169,7 @@ EXPAND OFF
 To inspect the current expand setting, use `EXPAND` with no arguments.
 
 ### LOGIN
+
 Authenticate as a specified YugaByte DB user for the current session.
 
 ```sql
@@ -169,6 +177,7 @@ LOGIN <username> [<password>]
 ```
 
 ### EXIT
+
 Ends the current session and terminates the `cqlsh` process.
 
 ```sql
@@ -177,6 +186,7 @@ QUIT
 ```
 
 ### CLEAR
+
 Clears the console.
 
 ```sql
@@ -185,6 +195,7 @@ CLS
 ```
 
 ### DESCRIBE
+
 Prints a description (typically a series of DDL statements) of a schema element or the cluster. This is useful for dumping all or portions of the schema.
 
 ```sql
@@ -214,6 +225,7 @@ Cluster: local cluster
 The `DESCRIBE SCHEMA` command prints the DDL statements needed to recreate the entire schema. This is especially useful for dumping the schema in order to clone a cluster or restore from a backup.
 
 ### COPY TO
+
 Copies data from a table to a CSV file.
 
 ```sql
@@ -248,11 +260,13 @@ Options | Default | Description
 `RATEFILE` | | An optional file to output rate statistics to. By default, statistics are not output to a file.
 
 ### COPY FROM
+
 Copies data from a CSV file to table.
 
 ```sql
 COPY <table name> [(<column>, ...)] FROM <file name> WITH <copy option> [AND <copy option> ...]
 ```
+
 If no columns are specified, all columns from the CSV file will be copied to the table. A subset of columns to copy may be specified by adding a comma-separated list of column names surrounded by parenthesis after the table name.
 
 The `file name` should be a string literal (with single quotes) representing a path to the source file. This can also the special value `STDIN` (without single quotes) to read the CSV data from stdin.
