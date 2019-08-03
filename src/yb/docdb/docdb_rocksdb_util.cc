@@ -95,8 +95,10 @@ DEFINE_int32(num_reserved_small_compaction_threads, -1, "Number of reserved smal
 DEFINE_bool(enable_ondisk_compression, true,
             "Determines whether SSTable compression is enabled or not.");
 
-DEFINE_int32(compaction_thread_pool_size, -1,
-             "Max running workers in compaction thread pool. -1 for auto detection.");
+DEFINE_int32(priority_thread_pool_size, -1,
+             "Max running workers in compaction thread pool. "
+             "If -1 and max_background_compactions is specified - use max_background_compactions. "
+             "If -1 and max_background_compactions is not specified - use sqrt(num_cpus).");
 
 using std::shared_ptr;
 using std::string;
@@ -439,12 +441,14 @@ void AutoInitRocksDBFlags(rocksdb::Options* options) {
   }
   options->base_background_compactions = FLAGS_rocksdb_base_background_compactions;
 
-  if (FLAGS_compaction_thread_pool_size == -1) {
+  if (FLAGS_priority_thread_pool_size == -1) {
     if (has_rocksdb_max_background_compactions) {
-      FLAGS_compaction_thread_pool_size = FLAGS_rocksdb_max_background_compactions;
+      FLAGS_priority_thread_pool_size = FLAGS_rocksdb_max_background_compactions;
     } else {
-      FLAGS_compaction_thread_pool_size = std::max(1, static_cast<int>(std::sqrt(kNumCpus)));
+      FLAGS_priority_thread_pool_size = std::max(1, static_cast<int>(std::sqrt(kNumCpus)));
     }
+    LOG(INFO) << "Auto setting FLAGS_priority_thread_pool_size to "
+              << FLAGS_priority_thread_pool_size;
   }
 }
 
@@ -471,8 +475,10 @@ void InitRocksDBOptions(
   }
   options->env = tablet_options.rocksdb_env;
   options->checkpoint_env = rocksdb::Env::Default();
-  static PriorityThreadPool compaction_thread_pool(FLAGS_compaction_thread_pool_size);
-  options->compaction_thread_pool = &compaction_thread_pool;
+  static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
+      FLAGS_priority_thread_pool_size);
+  options->priority_thread_pool_for_compactions_and_flushes =
+      &priority_thread_pool_for_compactions_and_flushes;
 
   if (FLAGS_num_reserved_small_compaction_threads != -1) {
     options->num_reserved_small_compaction_threads = FLAGS_num_reserved_small_compaction_threads;
