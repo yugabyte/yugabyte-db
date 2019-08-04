@@ -65,6 +65,7 @@
 
 namespace yb {
 
+class GarbageCollector;
 class PartitionSchema;
 class FsManager;
 class HostPort;
@@ -419,6 +420,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   void CleanupCheckpoints();
 
+  void LogCacheGC(MemTracker* log_cache_mem_tracker, size_t required);
+
   FsManager* const fs_manager_;
 
   TabletServer* server_;
@@ -489,6 +492,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   boost::optional<yb::client::AsyncClientInitialiser> async_client_init_;
 
   TabletPeers shutting_down_peers_;
+
+  std::shared_ptr<GarbageCollector> block_based_table_gc_;
+  std::shared_ptr<GarbageCollector> log_cache_gc_;
 
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
 
