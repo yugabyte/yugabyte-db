@@ -78,6 +78,9 @@ class LogCache {
            const std::string& tablet_id);
   ~LogCache();
 
+  static std::shared_ptr<MemTracker> GetServerMemTracker(
+      const std::shared_ptr<MemTracker>& server_tracker);
+
   // Initialize the cache.
   //
   // 'preceding_op' is the current latest op. The next AppendOperation() call must follow this op.
@@ -131,7 +134,8 @@ class LogCache {
   bool HasOpBeenWritten(int64_t log_index) const;
 
   // Evict any operations with op index <= 'index'.
-  void EvictThroughOp(int64_t index);
+  size_t EvictThroughOp(
+      int64_t index, int64_t bytes_to_evict = std::numeric_limits<int64_t>::max());
 
   // Return the number of bytes of memory currently in use by the cache.
   int64_t BytesUsed() const;
@@ -177,7 +181,7 @@ class LogCache {
   // Try to evict the oldest operations from the queue, stopping either when
   // 'bytes_to_evict' bytes have been evicted, or the op with index
   // 'stop_after_index' has been evicted, whichever comes first.
-  void EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict);
+  size_t EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict);
 
   // Update metrics and MemTracker to account for the removal of the
   // given message.

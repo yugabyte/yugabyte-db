@@ -33,8 +33,8 @@
 // they want something more sophisticated (like scan-resistance, a
 // custom eviction policy, variable cache sizing, etc.)
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_CACHE_H_
-#define STORAGE_ROCKSDB_INCLUDE_CACHE_H_
+#ifndef YB_ROCKSDB_CACHE_H
+#define YB_ROCKSDB_CACHE_H
 
 #include <stdint.h>
 #include <memory>
@@ -190,6 +190,9 @@ class Cache {
 
   virtual void SetMetrics(const scoped_refptr<yb::MetricEntity>& entity) = 0;
 
+  // Tries to evict specified amount of bytes from cache.
+  virtual size_t Evict(size_t required) { return 0; }
+
  private:
   void LRU_Remove(Handle* e);
   void LRU_Append(Handle* e);
@@ -202,4 +205,4 @@ class Cache {
 
 }  // namespace rocksdb
 
-#endif  // STORAGE_ROCKSDB_UTIL_CACHE_H_
+#endif  // YB_ROCKSDB_CACHE_H

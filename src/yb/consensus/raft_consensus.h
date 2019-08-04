@@ -236,6 +236,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     return DoStartElection(data, PreElected::kFalse);
   }
 
+  size_t LogCacheSize();
+  size_t EvictLogCache(size_t bytes_to_evict);
+
   RetryableRequestsCounts TEST_CountRetryableRequests();
 
   void TEST_RejectMode(RejectMode value) {
