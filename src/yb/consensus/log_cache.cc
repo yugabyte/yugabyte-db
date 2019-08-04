@@ -103,13 +103,10 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
     metrics_(metric_entity) {
 
   const int64_t max_ops_size_bytes = FLAGS_log_cache_size_limit_mb * 1_MB;
-  const int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1_MB;
 
   // Set up (or reuse) a tracker with the global limit. It is parented directly to the root tracker
   // so that it's always global.
-  parent_tracker_ = MemTracker::FindOrCreateTracker(global_max_ops_size_bytes,
-                                                    kParentMemTrackerId,
-                                                    server_tracker);
+  parent_tracker_ = GetServerMemTracker(server_tracker);
 
   // And create a child tracker with the per-tablet limit.
   tracker_ = MemTracker::CreateTracker(
@@ -121,6 +118,12 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
   auto zero_op = std::make_shared<ReplicateMsg>();
   *zero_op->mutable_id() = MinimumOpId();
   InsertOrDie(&cache_, 0, { zero_op, zero_op->SpaceUsed() });
+}
+
+MemTrackerPtr LogCache::GetServerMemTracker(const MemTrackerPtr& server_tracker) {
+  const int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1_MB;
+  return MemTracker::FindOrCreateTracker(
+      global_max_ops_size_bytes, kParentMemTrackerId, server_tracker);
 }
 
 LogCache::~LogCache() {
@@ -384,13 +387,12 @@ Status LogCache::ReadOps(int64_t after_op_index,
   return Status::OK();
 }
 
-void LogCache::EvictThroughOp(int64_t index) {
+size_t LogCache::EvictThroughOp(int64_t index, int64_t bytes_to_evict) {
   std::lock_guard<simple_spinlock> lock(lock_);
-
-  EvictSomeUnlocked(index, MathLimits<int64_t>::kMax);
+  return EvictSomeUnlocked(index, bytes_to_evict);
 }
 
-void LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict) {
+size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict) {
   DCHECK(lock_.is_locked());
   VLOG_WITH_PREFIX_UNLOCKED(2) << "Evicting log cache index <= "
                       << stop_after_index
@@ -430,6 +432,8 @@ void LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evic
     }
   }
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Evicting log cache: after state: " << ToStringUnlocked();
+
+  return bytes_evicted;
 }
 
 void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {

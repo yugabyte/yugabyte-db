@@ -2950,6 +2950,14 @@ yb::OpId RaftConsensus::MinRetryableRequestOpId() {
   return state_->MinRetryableRequestOpId();
 }
 
+size_t RaftConsensus::LogCacheSize() {
+  return queue_->LogCacheSize();
+}
+
+size_t RaftConsensus::EvictLogCache(size_t bytes_to_evict) {
+  return queue_->EvictLogCache(bytes_to_evict);
+}
+
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {
   return state_->TEST_CountRetryableRequests();
 }

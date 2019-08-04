@@ -1247,5 +1247,13 @@ string PeerMessageQueue::QueueState::ToString() const {
       /* 8 */ active_config ? ", active raft config: " + active_config->ShortDebugString() : "");
 }
 
+size_t PeerMessageQueue::LogCacheSize() {
+  return log_cache_.BytesUsed();
+}
+
+size_t PeerMessageQueue::EvictLogCache(size_t bytes_to_evict) {
+  return log_cache_.EvictThroughOp(std::numeric_limits<int64_t>::max(), bytes_to_evict);
+}
+
 }  // namespace consensus
 }  // namespace yb
