@@ -49,6 +49,7 @@ typedef struct
 
 	List		*filter_tables;		/* filter out tables */
 	List		*add_tables;		/* add only these tables */
+	List		*filter_msg_prefixes;	/* filter by message prefixes */
 
 	int			format_version;		/* support different formats */
 
@@ -94,6 +95,7 @@ static void pg_decode_message(LogicalDecodingContext *ctx,
 
 static bool parse_table_identifier(List *qualified_tables, char separator, List **select_tables);
 static bool string_to_SelectTable(char *rawstring, char separator, List **select_tables);
+static bool split_string_to_list(char *rawstring, char separator, List **sl);
 
 void
 _PG_init(void)
@@ -146,6 +148,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_lsn = false;
 	data->include_not_null = false;
 	data->filter_tables = NIL;
+	data->filter_msg_prefixes = NIL;
 
 	data->format_version = WAL2JSON_FORMAT_VERSION;
 
@@ -359,6 +362,29 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 			{
 				rawstr = pstrdup(strVal(elem->arg));
 				if (!string_to_SelectTable(rawstr, ',', &data->add_tables))
+				{
+					pfree(rawstr);
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_NAME),
+							 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+								 strVal(elem->arg), elem->defname)));
+				}
+				pfree(rawstr);
+			}
+		}
+		else if (strcmp(elem->defname, "filter-msg-prefixes") == 0)
+		{
+			char	*rawstr;
+
+			if (elem->arg == NULL)
+			{
+				elog(DEBUG1, "filter-msg-prefixes argument is null");
+				data->filter_msg_prefixes = NIL;
+			}
+			else
+			{
+				rawstr = pstrdup(strVal(elem->arg));
+				if (!split_string_to_list(rawstr, ',', &data->filter_msg_prefixes))
 				{
 					pfree(rawstr);
 					ereport(ERROR,
@@ -1053,6 +1079,23 @@ pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	/* Avoid leaking memory by using and resetting our own context */
 	old = MemoryContextSwitchTo(data->context);
 
+	/* Filter message prefixes, if available */
+	if (list_length(data->filter_msg_prefixes) > 0)
+	{
+		ListCell	*lc;
+
+		foreach(lc, data->filter_msg_prefixes)
+		{
+			char	*p = lfirst(lc);
+
+			if (strcmp(p, prefix) == 0)
+			{
+				elog(DEBUG2, "message prefix \"%s\" was filtered out", p);
+				return;
+			}
+		}
+	}
+
 	/*
 	 * write immediately iif (i) write-in-chunks=1 or (ii) non-transactional
 	 * messages.
@@ -1252,6 +1295,68 @@ string_to_SelectTable(char *rawstring, char separator, List **select_tables)
 		return false;
 
 	list_free_deep(qualified_tables);
+
+	return true;
+}
+
+static bool
+split_string_to_list(char *rawstring, char separator, List **sl)
+{
+	char	   *nextp;
+	bool		done = false;
+
+	nextp = rawstring;
+
+	while (isspace(*nextp))
+		nextp++;				/* skip leading whitespace */
+
+	if (*nextp == '\0')
+		return true;			/* allow empty string */
+
+	/* At the top of the loop, we are at start of a new identifier. */
+	do
+	{
+		char	   *curname;
+		char	   *endp;
+		char	   *pname;
+
+		curname = nextp;
+		while (*nextp && *nextp != separator && !isspace(*nextp))
+		{
+			if (*nextp == '\\')
+				nextp++;	/* ignore next character because of escape */
+			nextp++;
+		}
+		endp = nextp;
+		if (curname == nextp)
+			return false;	/* empty unquoted name not allowed */
+
+		while (isspace(*nextp))
+			nextp++;			/* skip trailing whitespace */
+
+		if (*nextp == separator)
+		{
+			nextp++;
+			while (isspace(*nextp))
+				nextp++;		/* skip leading whitespace for next */
+			/* we expect another name, so done remains false */
+		}
+		else if (*nextp == '\0')
+			done = true;
+		else
+			return false;		/* invalid syntax */
+
+		/* Now safe to overwrite separator with a null */
+		*endp = '\0';
+
+		/*
+		 * Finished isolating current name --- add it to list
+		 */
+		pname = pstrdup(curname);
+		*sl = lappend(*sl, pname);
+
+		/* Loop back if we didn't reach end of string */
+	} while (!done);
 
 	return true;
 }
