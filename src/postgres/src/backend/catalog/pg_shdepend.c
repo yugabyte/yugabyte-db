@@ -67,8 +67,6 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
-#include "pg_yb_utils.h"
-
 typedef enum
 {
 	LOCAL_OBJECT,
