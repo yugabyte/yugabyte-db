@@ -173,7 +173,7 @@ TEST_F(TestQLInsertTable, TestQLInsertCast) {
 
   // cast(INT as TEXT)
   EXEC_INVALID_STMT_WITH_ERROR("INSERT INTO test_cast (h, t) values (2, cast(22 as text))",
-      "Query error", "Cannot convert varint to text");
+      "Execution Error. Cannot convert varint to text");
 /*
   TOFIX: https://github.com/YugaByte/yugabyte-db/issues/1944
          Uncomment the block when the issue is fixed.
