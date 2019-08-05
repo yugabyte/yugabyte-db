@@ -1,7 +1,7 @@
 ---
 title: yb-docker-ctl
 linkTitle: yb-docker-ctl
-description: yb-docker-ctl
+description: Use the "yb-docker-ctl" command line interface to administer local Docker clusters.
 menu:
   latest:
     identifier: yb-docker-ctl
@@ -13,7 +13,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-`yb-docker-ctl` is a simple command line interface for administering local Docker clusters. It manages the [`yb-master`](../yb-master/) and [`yb-tserver`](../yb-tserver/) containers to perform the necessary administration.
+The `yb-docker-ctl` is a simple command line interface for administering local Docker clusters for development and learning. It manages the [`yb-master`](../yb-master/) and [`yb-tserver`](../yb-tserver/) containers to perform the necessary administration.
 
 ## Download
 
@@ -27,7 +27,7 @@ $ wget https://downloads.yugabyte.com/yb-docker-ctl && chmod +x yb-docker-ctl
 
 ## Help command
 
-Use the **-\-help** option to see all the commands supported.
+Use the **-\-help** option to see all of the supported commands.
 
 ```sh
 $ ./yb-docker-ctl -h
@@ -59,7 +59,11 @@ optional arguments:
 
 ## Create cluster
 
-- Create a 1 node local cluster with replication factor 1. 
+Use the `yb-docker-ctl create` command to create a local YugaByte DB cluster with Docker containers. This cluster is intended for development and learning.
+
+The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](#add-a-node) and [remove_node](#remove-a-node) commands, the size of the cluster can thereafter be expanded or shrunk as needed.
+
+### Create a 1 node local cluster with replication factor 1
 
 Note that the create command pulls the latest `yugabytedb/yugabyte` image at the outset in case the image is not yet downloaded or is not the latest.
 
@@ -67,7 +71,7 @@ Note that the create command pulls the latest `yugabytedb/yugabyte` image at the
 $ ./yb-docker-ctl create
 ```
 
-- Create a 3 node local cluster with replication factor 3. 
+### Create a 3 node local cluster with replication factor 3
 
 Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal to the replication factor for the cluster to be considered as operating normally and the number of yb-tservers is equal to be the number of nodes.
 
@@ -97,9 +101,7 @@ PID        Type       Node                 URL                       Status     
 11133      master     yb-master-n1         http://172.19.0.2:9000    Running         2017-11-28T23:32:57.905097927Z
 ```
 
-The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [add_node](#add-a-node) and [remove_node](#remove-a-node) commands the size of the cluster can thereafter be expanded or shrinked as necessary. 
-
-- Create a 5 node local cluster with replication factor 5. 
+#### Create a 5 node local cluster with replication factor 5
 
 ```sh
 $ ./yb-docker-ctl create --rf 5
@@ -107,7 +109,7 @@ $ ./yb-docker-ctl create --rf 5
 
 ## Check cluster status
 
-Get the status of the local cluster including the URLs for the admin UIs for the YB-Master and YB-TServer.
+Get the status of your local cluster, including the URLs for the admin UIs for the YB-Master and YB-TServer.
 
 ```sh
 $ ./yb-docker-ctl status
@@ -168,7 +170,7 @@ Stopping node :yb-tserver-n3
 
 ## Destroy cluster
 
-The command below destroys the cluster which includes deleting the data directories.
+The `yb-docker-ctl destroy` command below destroys the local cluster, including deletion of the data directories.
 
 ```sh
 $ ./yb-docker-ctl destroy
@@ -176,7 +178,7 @@ $ ./yb-docker-ctl destroy
 
 ## Upgrade container image
 
-The command below upgrades the YugaByte DB image to the latest version.
+The following `docker pull` command below upgrades the Docker image of YugaByte DB to the latest version.
 
 ```sh
 $ docker pull yugabytedb/yugabyte

@@ -1,7 +1,7 @@
 ---
 title: yb-ctl
 linkTitle: yb-ctl
-description: yb-ctl
+description: Use the "yb-ctl" command line interface to administer local clusters for development and learning.
 menu:
   latest:
     identifier: yb-ctl
@@ -13,7 +13,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-`yb-ctl`, located in the bin directory of YugaByte home, is a simple command line interface for administering local clusters. It invokes the [`yb-master`](/latest/admin/yb-master/) and [`yb-tserver`](/latest/admin/yb-tserver/) binaries to perform the necessary administration.
+The `yb-ctl` utility, located in the bin directory of YugaByte home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-master`](/latest/admin/yb-master/) and [`yb-tserver`](/latest/admin/yb-tserver/) binaries to perform the necessary administration.
 
 Use the **-\-help** option to see all the commands supported.
 
@@ -69,7 +69,7 @@ optional arguments:
 
 Here are the default values for all the optional arguments.
 
-Optional Argument | Default | Description
+Optional argument | Default | Description
 ----------------------------|-----------|---------------------------------------
 `--binary_dir` | Same directory as the `yb-ctl` binary | Location of the `yb-master` and the `yb-tserver` binaries
 `--data_dir` | `/tmp/yugabyte-local-cluster` | Location of the data directory for the YugaByte DB
@@ -77,16 +77,15 @@ Optional Argument | Default | Description
 `--require_clock_sync`| `false` | Tells YugaByte DB whether to depend on clock synchronization between the nodes in the cluster
 `--num_shards_per_tserver`| `2` | Number of shards (tablets) per tablet server for each table
 
-
 ## Create a cluster
 
-The `create` cluster command is used to create a cluster.
+Use the `yb-ctl create` command to quickly create a local YugaByte DB cluster for development and learning.
 
 The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. Use the [add_node](#add-nodes) and [remove_node](#stop-remove-nodes) commands to expand or shrink the cluster.
 
 Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal the replication factor for the cluster to be considered operating normally.
 
-- Creating a local cluster with replication factor 1.
+### Create a local cluster with replication factor 1
 
 ```sh
 $ ./bin/yb-ctl create
@@ -94,7 +93,7 @@ $ ./bin/yb-ctl create
 
 Note that the default replication factor is 1.
 
-- Creating a 4 node cluster with replication factor 3.
+### Create a 4 node cluster with replication factor 3
 
 First create 3 node cluster with replication factor 3.
 
@@ -108,7 +107,7 @@ Add a node to make it a 4 node cluster.
 $ ./bin/yb-ctl add_node
 ```
 
-- Creating a 5 node cluster with replication factor 5.
+### Create a 5 node cluster with replication factor 5
 
 ```sh
 $ ./bin/yb-ctl --rf 5 create
@@ -162,11 +161,13 @@ yugabyte-data/node-#/disk-#/yb-data/tserver/logs
 ## Start and stop an existing cluster
 
 Create a new cluster, or start an existing cluster if it already exists.
+
 ```sh
 $ ./bin/yb-ctl start
 ```
 
 Stop a cluster so that you can start it later.
+
 ```sh
 $ ./bin/yb-ctl stop
 ```
@@ -197,11 +198,10 @@ $ ./bin/yb-ctl setup_redis
 $ ./bin/yb-ctl add_node
 ```
 
-### Stop/remove nodes
+### Stop and remove nodes
 
 We can stop a node by executing the `stop` command. The command takes the node id of the node
-that has to be removed as input. Stop node command expects a node id which denotes the index of the server that needs to be stopped. It also takes an optional flag `--master` which denotes that the server is a
-master.
+that has to be removed as input. Stop node command expects a node id which denotes the index of the server that needs to be stopped. It also takes an optional flag `--master` which denotes that the server is a master.
 
 ```sh
 $ ./bin/yb-ctl stop_node 4
@@ -211,18 +211,16 @@ At this point of time `remove_node` and `stop_node` do the same thing. So they c
 
 ## Destroy a cluster
 
-You can use the `destroy` command to destroy a cluster. This command stops all the nodes and 
+You can use the `yb-ctl destroy` command to destroy a cluster. This command stops all the nodes and
 deletes the data directory of the cluster.
 
 ```sh
 $ ./bin/yb-ctl destroy
 ```
 
-
-
 ## Advanced commands
 
-### Create a cluster across multiple zones, regions and clouds
+### Create a cluster across multiple zones, regions, and clouds
 
 You can pass the placement information for nodes in a cluster from the command line. The placement information is provided as a set of (cloud, region, zone) tuples separated by commas. Each cloud, region and zone entry is separated by dots.
 
@@ -326,5 +324,3 @@ $ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1"
 ```sh
 $ ./bin/yb-ctl wipe_restart --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
 ```
-
-

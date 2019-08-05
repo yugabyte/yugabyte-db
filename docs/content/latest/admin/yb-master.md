@@ -25,7 +25,7 @@ $ ./bin/yb-master \
 --replication_factor=3 &
 ```
 
-## Help 
+## Help
 
 Use the **-\-help** option to see all the commands supported.
 
@@ -61,19 +61,19 @@ Flag | Mandatory | Default | Description
 
 The Admin UI for yb-master is available at http://localhost:7000.
 
-### Home 
+### Home
 
 Home page of the yb-master that gives a high level overview of the cluster. Note all yb-masters in a cluster show exactly the same information.
 
 ![master-home](/images/admin/master-home-binary-with-tables.png)
 
-### Tables 
+### Tables
 
 List of tables present in the cluster.
 
 ![master-tables](/images/admin/master-tables.png)
 
-### Tablet Servers 
+### Tablet servers
 
 List of all nodes (aka yb-tservers) present in the cluster.
 
@@ -87,9 +87,9 @@ List of all utilities available to debug the performance of the cluster.
 
 ## Default ports reference
 
-The various default ports are listed below. 
+The various default ports are listed below.
 
-Service | Type | Port 
+Service | Type | Port
 --------|------| -------
 `yb-master` | rpc | 7100
 `yb-master` | admin web server | 7000
