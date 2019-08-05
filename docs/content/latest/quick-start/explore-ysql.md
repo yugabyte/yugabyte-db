@@ -22,13 +22,11 @@ showAsideToc: true
 
 After [creating a local cluster](../create-local-cluster/), follow the instructions here to explore YugaByte DB's PostgreSQL-compatible [YSQL](../../api/ysql/) API.
 
-
 {{< note title="Note" >}}
 YSQL is currently in beta. We are actively working on making it production ready for the 2.0 release in Summer 2019. If you face any problems while trying YSQL or find important features not yet supported, help us make it better by reporting issues on <a href="https://github.com/YugaByte/yugabyte-db/issues">GitHub</a> and/or join our <a href="https://www.yugabyte.com/slack">Slack channel</a> to discuss live with us.
 {{< /note >}}
 
-## 1. Load Data
-
+## 1. Load data
 
 - Download the sample schema.
 
@@ -54,7 +52,7 @@ $ ls data/
 orders.sql  products.sql  reviews.sql users.sql
 ```
 
--  Connect using ysqlsh, the YugaByte SQL shell
+- Connect using ysqlsh, the YugaByte SQL shell
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -98,7 +96,7 @@ orders.sql  products.sql  reviews.sql users.sql
   </div>
 </div>
 
--  Create a database.
+- Create a database.
 
 ```sql
 postgres=> CREATE DATABASE yb_demo;
@@ -111,7 +109,8 @@ postgres=> GRANT ALL ON DATABASE yb_demo to postgres;
 ```sql
 postgres=> \c yb_demo;
 ```
--  Insert sample data
+
+- Insert sample data
 
 First create the 4 tables necessary to store the data.
 
@@ -137,7 +136,7 @@ yb_demo=> \i 'data/orders.sql'
 yb_demo=> \i 'data/reviews.sql'
 ```
 
-## 2. Simple Queries
+## 2. Simple queries
 
 Lets us look at the schema of the `products` table. You can do this as follows:
 
@@ -245,7 +244,7 @@ You should see something like the following:
 (10 rows)
 ```
 
-## 4. Distributed Transactions
+## 4. Distributed transactions
 
 In order to track the quantities accurately, each product being ordered in some quantity by a user has to decrement the corresponding product inventory quantity. These operations should be performed inside a transaction.
 
@@ -311,7 +310,7 @@ We can also verify that total quantity of product id `2` in the inventory is `49
 yb_demo=# SELECT id, category, price, quantity FROM products WHERE id=2;
 ```
 
-```
+```sql
 SELECT id, category, price, quantity FROM products WHERE id=2;
  id | category  |      price       | quantity
 ----+-----------+------------------+----------
@@ -319,13 +318,11 @@ SELECT id, category, price, quantity FROM products WHERE id=2;
 (1 row)
 ```
 
-
-
-## 5. Built-in Functions
+## 5. Built-in functions
 
 YSQL supports a rich set of built-in functions. In this example, we will look at some functions such as `DISTINCT`, `MIN`, `MAX` and `AVG` in the context of the data set.
 
--  How are users signing up for my site?
+- How are users signing up for my site?
 
 To answer this question, we should list the unique set of `source` channels present in the database. This can be achieved as follows:
 
@@ -344,7 +341,7 @@ source
 (5 rows)
 ```
 
--  What is the min, max and average price of products in the store?
+- What is the min, max and average price of products in the store?
 
 ```sql
 yb_demo=> SELECT MIN(price), MAX(price), AVG(price) FROM products;
@@ -381,7 +378,7 @@ source     | num_user_signups
 (5 rows)
 ```
 
--  What are the most effective channels for product sales by revenue?
+- What are the most effective channels for product sales by revenue?
 
 ```sql
 yb_demo=> SELECT source, ROUND(SUM(orders.total)) AS total_sales

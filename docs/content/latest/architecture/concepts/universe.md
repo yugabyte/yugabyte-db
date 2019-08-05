@@ -26,7 +26,7 @@ The universe can be deployed in a variety of configurations depending on busines
 - Multiple AZs in a region
 - Multiple regions (with synchronous and asynchronous replication choices)
 
-## Organization of User Data
+## Organization of user data
 
 A YugaByte DB *universe* can consist of one or more namespaces. Each of these namespaces can contain one or more user tables.
 
@@ -40,7 +40,7 @@ Namespaces in YSQL are referred to as **databases** and are logically the same a
 
 A namespace in YCQL is referred to as a **keyspace** and is logically the same as a keyspace in Apache Cassandra's CQL. 
 
-## Processes and Services
+## Processes and services
 
 A universe comprises of two sets of processes, **YB-TServer** and **YB-Master**. The YB-TServer and YB-Master processes form two respective distributed services using [Raft](https://raft.github.io/) as a building block. High Availability (HA) of both these services is achieved by the failure-detection, leader election and data replication mechanisms in the Raft implementation.
 
@@ -50,43 +50,34 @@ YugaByte DB is architected to not have any single point of failure.
 
 These serve different purposes as described below.
 
-### YB-TServer Process
+### YB-TServer process
 
 The **YB-TServer** (aka the *YugaByte DB Tablet Server*) processes are responsible for hosting/serving user data (e.g, tables). They deal with all the user queries.
 
 You can read more [about YB-TServers](../yb-tserver).
 
-
-### YB-Master Process
+### YB-Master process
 
 The **YB-Master** (aka the *YugaByte DB Master Server*) processes are responsible for keeping system metadata, coordinating system-wide operations such as create/alter/drop tables, and initiating maintenance operations such as load-balancing.
 
 You can read more [about YB-TServers](../yb-tserver).
 
-
-
 Below is an illustration of a simple 4-node YugaByte universe:
 
 ![4 node cluster](/images/architecture/4_node_cluster.png)
-
 
 ## Universe vs Cluster
 
 A YugaByte DB universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServers that are either performing one of the following replication modes:
 
-* Synchronous replication
-* Asynchronous replication
-
+- Synchronous replication
+- Asynchronous replication
 
 The set of nodes that are performing strong replication are referred to as the **Primary cluster** and other groups are called **Read Replica clusters**. 
 
 Note that:
 
-* There is always one primary cluster in a universe
-* There can be zero or more read replica clusters in that universe.
+- There is always one primary cluster in a universe
+- There can be zero or more read replica clusters in that universe.
 
 You can find more information about read replicas [here](../replication/#read-only-replicas).
-
-
-
-

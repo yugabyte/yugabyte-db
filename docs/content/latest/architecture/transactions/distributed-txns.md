@@ -1,7 +1,7 @@
 ---
-title: Distributed Transactions
-linkTitle: Distributed Transactions
-description: Distributed ACID Transactions
+title: Distributed transactions
+linkTitle: Distributed transactions
+description: Distributed ACID transactions
 menu:
   latest:
     identifier: architecture-distributed-acid-transactions
@@ -34,12 +34,12 @@ RocksDB keys before those of regular records. Compared to other possible design 
 storing provisional records inline with the regular records or putting them in a separate RocksDB
 instance altogether, the approach we have chosen has the following benefits:
 
-  - It is easy to scan all provisional records. As we will see, this is very helpful in cleaning up
+- It is easy to scan all provisional records. As we will see, this is very helpful in cleaning up
     aborted / abandoned transactions.
-  - During the read path, we need to handle provisional records very differently compared to regular
+- During the read path, we need to handle provisional records very differently compared to regular
     records, and putting them in a separate section of the RocksDB key space allows to simplify the
     read path.
-  - Storing provisional records in the same RocksDB instance allows to atomically delete provisional
+- Storing provisional records in the same RocksDB instance allows to atomically delete provisional
     records and write regular records as one RocksDB operation after the transaction is committed.
 
 ### Encoding details of provisional records
@@ -102,6 +102,7 @@ the one-byte prefix that puts these records before all regular records in RocksD
       aborted and restarted.
 
 #### 3. Provisional record keys indexed by transaction id** ("reverse index")
+
 ```
 TxnId, HybridTime -> primary provisional record key
 ```
@@ -113,7 +114,6 @@ TxnId, HybridTime -> primary provisional record key
   the end of the encoded representation of hybrid time in order to obtain unique RocksDB keys for
   this reverse index. This write id is shown as `.0`, `.1`, etc. in `T130.0`, `T130.1` in the figure
   above.
-
 
 ## Transaction status tracking
 
@@ -143,8 +143,7 @@ After a transaction is committed, two more fields are set:
     committed status. This process might take multiple retries, and the transaction record can only
     be cleaned up after this is done.
 
-
 ## See also
 
 To continue exploring the architecture of YugaByte DB's distributed transaction implementation,
-please take a look at the [Core Functions / IO Path with Distributed Transactions](../transactional-io-path/) section next.
+please take a look at the [Core functions / IO path with distributed transactions](../transactional-io-path/) section next.

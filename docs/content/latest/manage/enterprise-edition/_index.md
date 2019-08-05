@@ -20,7 +20,7 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
     <a class="section-link icon-offset" href="create-universe-multi-zone/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
-        <div class="title">Create Universe - Multi-Zone</div>
+        <div class="title">Create universe - Multi-zone</div>
       </div>
       <div class="body">
         Create YugaByte DB universes in one region across multiple zones using YugaByte Admin Console's intent-driven orchestration.
@@ -32,7 +32,7 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
     <a class="section-link icon-offset" href="create-universe-multi-region/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
-        <div class="title">Create Universe - Multi-Region</div>
+        <div class="title">Create universe - Multi-region</div>
       </div>
       <div class="body">
         Create YugaByte DB universes in multiple regions using YugaByte Admin Console's intent-driven orchestration.
@@ -44,10 +44,10 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
     <a class="section-link icon-offset" href="edit-universe/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />   
-        <div class="title">Edit Universe</div>
+        <div class="title">Edit universe</div>
       </div>
       <div class="body">
-        Expand, shrink and reconfigure universes without any downtime.
+        Expand, shrink, and reconfigure universes without any downtime.
       </div>
     </a>
   </div>
@@ -56,7 +56,7 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
     <a class="section-link icon-offset" href="edit-config/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />    
-        <div class="title">Edit Config Flags</div>
+        <div class="title">Edit config flags</div>
       </div>
       <div class="body">
         Change the config flags for universes in a rolling manner without any application impact.
@@ -68,10 +68,10 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
     <a class="section-link icon-offset" href="instance-tags/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />    
-        <div class="title">Instance Tags</div>
+        <div class="title">Instance tags</div>
       </div>
       <div class="body">
-        Create and Edit Instance tags.
+        Create and edit instance tags.
       </div>
     </a>
   </div>
@@ -80,7 +80,7 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
     <a class="section-link icon-offset" href="cluster-health/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
-        <div class="title">Health Checks and Alerts</div>
+        <div class="title">Health checks and alerts</div>
       </div>
       <div class="body">
         Setup automatic cluster health checking and error reporting.
@@ -92,7 +92,7 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
     <a class="section-link icon-offset" href="read-replicas/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/create_universe.png" aria-hidden="true" />
-        <div class="title">Read Replicas</div>
+        <div class="title">Read replicas</div>
       </div>
       <div class="body">
         Create YugaByte DB universes with primary and read replica clusters in a hybrid cloud deployment.
@@ -104,10 +104,10 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
     <a class="section-link icon-offset" href="backup-restore/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
-        <div class="title">Backup Restore</div>
+        <div class="title">Backup restore</div>
       </div>
       <div class="body">
-        Backup and Restore tables using the YugaByte Admin Console.
+        Backup and restore tables using the YugaByte Admin Console.
       </div>
     </a>
   </div>
@@ -116,7 +116,7 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
     <a class="section-link icon-offset" href="upgrade-universe/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/upgrade_universe.png" aria-hidden="true" />   
-        <div class="title">Upgrade Universe</div>
+        <div class="title">Upgrade universe</div>
       </div>
       <div class="body">
         Upgrade universes in a rolling manner without any application impact.
@@ -128,7 +128,7 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
     <a class="section-link icon-offset" href="node-actions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
-        <div class="title">Node Status and Actions</div>
+        <div class="title">Node status and actions</div>
       </div>
       <div class="body">
         Node status and actions to transition them for node maintenance.
@@ -140,7 +140,7 @@ YugaByte DB creates a `universe` with a bunch of instances (VMs, pods, machines 
     <a class="section-link icon-offset" href="delete-universe/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/delete_universe.png" aria-hidden="true" /> 
-        <div class="title">Delete Universe</div>
+        <div class="title">Delete universe</div>
       </div>
       <div class="body">
         Delete unwanted universes to free up infrastructure capacity.

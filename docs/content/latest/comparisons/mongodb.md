@@ -18,44 +18,47 @@ Following are the key areas of difference between YugaByte DB 1.1 and MongoDB 4.
 
 ![MongoDB 4.0 vs. YugaByte DB 1.1](/images/comparisons/mongodb-vs-yugabyte-db.png)
 
-## Data Modeling
+## Data modeling
 
 MongoDB is a document-oriented database that only supports document data modeling. On the other hand, YugaByte DB is a multi-model and multi-API database that supports multiple different types of data modeling including document data (with the native JSON data type support in the Cassandra-compatible YCQL API). Additionally, YugaByte DB supports key-value (with the Redis-compatible YEDIS API) and relational (with the PostgreSQL-compatible YSQL API) data modeling.
 
-## Auto Sharding
+## Auto-sharding
 
 Sharding is not automatic in MongoDB since a Replica Set has to be manually converted to Sharded Cluster. On the other hand, YugaByte DB automatically shards data in any cluster of any size.
 
-## Fault Tolerance
+## Fault tolerance
+
 Fault-tolerance for a given shard is similar in both systems since both rely on Raft consensus protocol for fast primary/leader election.
 
-## Synchronous Data Replication
+## Synchronous data replication
+
 While primary election is Raft-based in MongoDB, actual data replication is not. Data replication is asynchronous where secondary pulls from primary. Both leader election and data replication are based on Raft distributed consensus. 
 
+## Durable and fast writes
 
-## Durable & Fast Writes
 Durability can be achieved in MongoDB only w/ majority writeConcern which suffers from asynchronous replication lag. On the other hand, durability is by default in YugaByte DB since the write path is based on Raft's synchronous data replication and majority consensus. Synchronous replication is typically of lower latency than the completely asynchronous approach of MongoDB.
 
+## Linearizable and fast reads
 
-## Linearizable & Fast Reads
 Linearizable single-key reads are only possible w/ linearizable readConcern which is high latency given quorum at read time. On the other hand, linearizable reads served directly off the shard leader w/o quorum in YugaByte DB making it 3x faster than MongoDB both in terms of latency and throughput.
 
+## Single key and single shard transactions
 
-## Single Key / Single Shard Transactions
-Both databases support single-key/single-shard transactions. In MongoDB, the transaction is coordinated by the primary in a Replica Set. In YugaByte DB, the transaction is coordinated by Raft leader for a shard (similar to Google Spanner).
+Both databases support single-key and single-shard transactions. In MongoDB, the transaction is coordinated by the primary in a Replica Set. In YugaByte DB, the transaction is coordinated by Raft leader for a shard (similar to Google Spanner).
 
+## Distributed (aka multi-shard) transactions
 
-## Distributed (aka Multi-Shard) Transactions
 Distributed transactions not yet available in MongoDB Sharded Clusters. On the other hand, YugaByte DB has full support for distributed transactions based on a distributed transaction manager that manages transactions across multiple shards (similar in architecture to that of Google Spanner).
 
-## Strongly Consistent Global Secondary Indexes
+## Strongly consistent global secondary indexes
+
 MongoDB secondary indexes are not global and have to be updated often with all updates blocked for special cases such as unique secondary indexes. On the other hand, global secondary indexes leverage distributed txns to remain always consistent without any need for out-of-band index re-builds.
 
-## High Data Density
+## High data density
 
 MongoDB's [WiredTiger storage engine runs only the B-Tree mode](https://blog.yugabyte.com/a-busy-developers-guide-to-database-storage-engines-the-basics/) even though WiredTiger itself has support for the Log Structured Merge (LSM) mode. B-Tree engines are good for fast searches while LSM engines are suitable for storing large amounts of data on modern SSDs. While LSM engines can be optimzied to increase read informance, optimizing write performance in a B-Tree engine is not easy. This choice of B-Tree engine tends to make MongoDB suitable only for small workloads where each ReplicaSet primary node is a terabyte or less. However, YugaByte DB can store multi-terabytes of data per node and elastically scale as needed.
 
-## Relevant Blog Posts
+## Relevant blog posts
 
 A few blog posts that highlight how YugaByte DB differs from MongoDB are below.
 

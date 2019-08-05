@@ -1,7 +1,7 @@
 ---
-title: Diagnostics Reporting
-linkTitle: Diagnostics Reporting
-description: Diagnostics Reporting
+title: Diagnostics reporting
+linkTitle: Diagnostics reporting
+description: Diagnostics reporting
 aliases:
   - /manage/diagnostics-reporting/
 menu:
@@ -42,7 +42,6 @@ Everything we collect for level “low” plus:
 Performance metrics
 RPC metrics
 ```
-
 
 ### Collection level: high
 Same as `medium` level. In other words, no extra information is collected for this level. It will be used in the future to collect additional dianostics information such as error logs.

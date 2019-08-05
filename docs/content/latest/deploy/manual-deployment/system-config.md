@@ -1,7 +1,7 @@
 ---
-title: System Configuration
-linkTitle: 1. System Configuration
-description: System Configuration
+title: System configuration
+linkTitle: 1. System configuration
+description: System configuration
 aliases:
   - /deploy/manual-deployment/system-config
 menu:

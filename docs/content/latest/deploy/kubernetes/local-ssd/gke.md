@@ -220,7 +220,7 @@ cqlsh> DESCRIBE KEYSPACES;
 system_schema  system_auth  system
 ```
 
-## 6. Destroy the cluster (optional)
+## 6. [Optional] Destroy the cluster
 
 You can destroy the YugaByte DB universe by running the following. Note that this does not destroy the data, and you may not be able to respawn the cluster because there is data left behind on the persistent disks.
 

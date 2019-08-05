@@ -1,5 +1,5 @@
 
-## 1. Create a new security group (optional)
+## 1. [Optional] Create a new security group
 
 In order to access YugaWare from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the YugaWare machine. You will at minimum need to:
 
@@ -20,7 +20,8 @@ You should see something like the screenshot below, click `Create` next.
 
 ![Create security group](/images/ee/aws-setup/yugaware-aws-create-sg.png)
 
-## 2. Create a new IAM role (optional)
+## 2. [Optional] Create a new IAM role
+
 In order for YugaWare to manage YugaByte nodes, it will require some limited access to your AWS infrastructure. This can be accomplished through directly providing a set of credentials, when configuring the AWS provider, which you can read more later on [here](../configure-cloud-providers/). Alternatively, the EC2 instance where YugaWare will be running can be brought up with an IAM role with enough permissions to take all the actions required by YugaWare. Below we provide a sample of such a role:
 
 ```sh
@@ -78,7 +79,6 @@ In order for YugaWare to manage YugaByte nodes, it will require some limited acc
 ## 3. Provision instance for YugaWare
 
 Create an instance to run YugaWare. In order to do so, go to `EC2` -> `Instances` and click on `Launch Instance`. Fill in the following values.
-
 
 - Change the boot disk image to `Ubuntu 16.04` and continue to the next step.
 ![Pick OS Image](/images/ee/aws-setup/yugaware-create-instance-os.png)

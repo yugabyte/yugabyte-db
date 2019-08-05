@@ -19,7 +19,6 @@ This page describes how to prepare each node in a YugaByte DB cluster to enable 
 
 ## Basic setup
 
-
 ### Create a secure data directory
 
 We will generate and store the secure info such as the root certificate in the `secure-data` directory. Once the setup is done, we will copy this data in a secure location and delete this directory.
@@ -39,7 +38,6 @@ $ export IP_ADDRESSES="$ip1 $ip2 $ip3 ..."
 {{< tip title="Tip" >}}
 Add the desired set of IP addresses or node names into the `IP_ADDRESSES` variable as shown above. Remember to add exactly one entry for each node in the cluster.
 {{< /tip >}}
-
 
 ### Create a directory for config data of each node
 
@@ -110,7 +108,7 @@ keyUsage = critical,digitalSignature,nonRepudiation,keyEncipherment,keyCertSign
 basicConstraints = critical,CA:true,pathlen:1
 ```
 
-### Setup the necessary files
+### Set up the necessary files
 
 Delete the existing index and database files.
 
@@ -124,7 +122,6 @@ Create the index and database file.
 $ touch index.txt ; echo '01' > serial.txt
 ```
 
-
 ## Generate root config
 
 In this section, we will generate the root key file `ca.key` and the root certificate `ca.crt`.
@@ -135,13 +132,11 @@ We will generate the root private key file `ca.key` in the `secure-data` directo
 $ openssl genrsa -out secure-data/ca.key 2048
 ```
 
-
 Change the permissions of the generated private key as follows.
 
 ```sh
 $ chmod 400 secure-data/ca.key
 ```
-
 
 Now generate the root certificate.
 
@@ -265,7 +260,8 @@ do
 done
 ```
 
-Sign the node CSR with ca.key and ca.crt
+Sign the node CSR with `ca.key` and `ca.crt`.
+
 ```sh
 $ for node in $IP_ADDRESSES;
 do
@@ -286,11 +282,13 @@ The node key and crt should have `node.<name>.[crt | key]` naming format.
 {{< /note >}}
 
 You can verify the signed certificate for each of the nodes by doing the following:
+
 ```sh
 $ openssl verify -CAfile secure-data/ca.crt $node/node.$node.crt
 ```
 
 You should see the following output:
+
 ```
 X.X.X.X/node.X.X.X.X.crt: OK
 ```

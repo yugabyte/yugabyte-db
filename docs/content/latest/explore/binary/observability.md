@@ -95,7 +95,6 @@ Paste the following expressions into the Expression box and click Execute follow
 
 ### Throughput
 
-
 > Read IOPS
 
 ```sh
@@ -128,7 +127,7 @@ avg(irate(handler_latency_yb_cqlserver_SQLProcessor_InsertStmt_sum[1m])) / avg(i
 ```
 ![Prometheus Read IOPS](/images/ce/prom-write-latency.png)
 
-## 6. Clean up (optional)
+## 6. [Optional] Clean up
 
 Optionally, you can shutdown the local cluster created in Step 1.
 

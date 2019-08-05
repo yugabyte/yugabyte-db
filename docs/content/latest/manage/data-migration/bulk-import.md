@@ -1,7 +1,7 @@
 ---
-title: Bulk Import
-linkTitle: Bulk Import
-description: Bulk Import
+title: Bulk import
+linkTitle: Bulk import
+description: Bulk import
 image: /images/section_icons/manage/enterprise.png
 headcontent: Bulk import data into YugaByte DB.
 menu:

@@ -1,7 +1,7 @@
 ---
-title: Single Row Transactions
-linkTitle: Single Row Transactions
-description: Single Row ACID Transactions
+title: Single row transactions
+linkTitle: Single row transactions
+description: Single row ACID transactions
 aliases:
   - /architecture/transactions/single-row-transactions/
 menu:
@@ -167,6 +167,7 @@ For this purpose, the leader is always considered to have replicated an infinite
 itself.
 
 ### Definition of safe time
+
 Now, suppose the current majority-replicated hybrid time leader lease expiration is
 **replicated_ht_lease_exp**. Then the safe timestamp for a read request can be computed as the
 maximum of:

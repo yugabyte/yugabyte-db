@@ -1,7 +1,7 @@
 ---
-title: Design Goals
-linkTitle: Design Goals
-description: Design Goals
+title: Design goals
+linkTitle: Design goals
+description: Design goals
 aliases:
   - /latest/architecture/design-goals/
 menu:
@@ -20,20 +20,20 @@ This page outlines the design goals with which YugaByte DB has been built.
 
 YugaByte DB offers strong consistency guarantees in the face of a variety of failures. It  supports distributed transactions.
 
-### CAP Theorem
+### CAP theorem
 
 In terms of the [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugaByte DB is a CP database (consistent and partition tolerant), but achieves very high availability. The architectural design of YugaByte is similar to Google Cloud Spanner, which is also a CP system. The description about [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is just as valid for YugaByte DB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most users no longer have to be concerned about outages. For example, given there are many sources of outages for an application, if YugaByte DB is an insignificant contributor to its downtime, then users are correct to not worry about it.
 
-### Single-Key Linearizability
+### Single-key linearizability
 
 YugaByte DB supports single-key linearizable writes. Linearizability is one of the strongest single-key consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single key: 
 
 * Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
 * If operation A completes before operation B begins, then B should logically take effect after A.
 
-### Multi-Key ACID Transactions
+### Multi-key ACID transactions
 
-YugaByte DB supports multi-key transactions with both Serializable and Snapshot Isolation. 
+YugaByte DB supports multi-key transactions with both Serializable and Snapshot Isolation.
 
 - The [YSQL](../../api/ysql/) API supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Note that YSQL Serializable support was added in [v1.2.6](../../releases/v1.2.6/).
 - The [YCQL](../../api/ycql/dml_transaction/) API supports only Snapshot Isolation using the `BEGIN TRANSACTION` syntax.
@@ -47,15 +47,14 @@ YugaByte DB supports multi-key transactions with both Serializable and Snapshot 
 
 ## Query APIs
 
-YugaByte DB does not re-invent storage APIs. It is wire-compatible with existing APIs and extends functionality. It supports the following APIs:
+YugaByte DB does not reinvent storage APIs. It is wire-compatible with existing APIs and extends functionality. It supports the following APIs:
 
 * **YSQL** which is being built to be ANSI-SQL compliant and is wire-compatible with PostgreSQL
 * **YCQL** (or the *YugaByte Cloud Query Language*) which is a semi-relational API with Cassandra roots
 
-
 ### Distributed SQL
 
-The YSQL API is PostgreSQL compatible as noted before. It re-uses PostgreSQL code base.
+The YSQL API is PostgreSQL-compatible as noted before. It reuses PostgreSQL code base.
 
 * New changes do not break existing PostgreSQL functionality
 
@@ -76,10 +75,9 @@ The YSQL API is PostgreSQL compatible as noted before. It re-uses PostgreSQL cod
 Understanding [the design of the query layer](../query-layer/overview/).
 {{< /tip >}}
 
-
 ## Performance
 
-Written ground-up in C++ to ensure high performance and the ability to leverage large memory heaps (RAM) as an internal database cache. It is optimized primarily to run on SSDs and NVMe drives. It is designed with the following workloads in mind:
+Written in C++ to ensure high performance and the ability to leverage large memory heaps (RAM) as an internal database cache. It is optimized primarily to run on SSDs and NVMe drives. It is designed with the following workloads in mind:
 
 * High write throughput
 * High client concurrency
@@ -90,10 +88,9 @@ Written ground-up in C++ to ensure high performance and the ability to leverage 
 Achieving [high performance in YugaByte DB](../docdb/performance/).
 {{< /tip >}}
 
+## Geo-distributed
 
-## Geo-Distributed
-
-### Multi-Region Deployments
+### Multi-region deployments
 
 YugaByte DB should work well in deployments where the nodes of the cluster span:
 
@@ -107,25 +104,25 @@ In order to achieve this, a number of features would be required. For example, c
 * Cluster-aware, with ability to handle node failures seamlessly
 * Topology-aware, with ability to route traffic seamlessly
 
-## Cloud Native
+## Cloud native
 
 YugaByte DB is a cloud-native database. It has been designed with the following cloud-native principles in mind:
 
-### Run on Commodity Hardware
+### Run on commodity hardware
 
 * Run on any public cloud or on-premise datacenter. This means YugaByte DB should be able to run on commodity hardware on bare metal machines, VMs or containers.
 
 * No hard external dependencies. For example, YugaByte DB should not rely on atomic clocks, but should be able to utilize one if available.
 
-### Kubernetes Ready
+### Kubernetes ready
 
 The database should work natively in Kubernetes and other containerized environments as a stateful application.
 
-### Open Source
+### Open source
 
 YugaByte DB is open source under the very permissive Apache 2.0 license.
 
-## What's Next?
+## What's next?
 
 You can now read about the following:
 
@@ -136,5 +133,3 @@ You can now read about the following:
 * [Design of the query layer](../query-layer/)
 * [How various functions work, like the read and write IO paths](../core-functions/)
 {{< /note >}}
-
-

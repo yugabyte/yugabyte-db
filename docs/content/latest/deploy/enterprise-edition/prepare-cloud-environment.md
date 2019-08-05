@@ -1,7 +1,7 @@
 ---
-title: Prepare Cloud Environment
-linkTitle: 1. Prepare Cloud Env
-description: Prepare Cloud Environment
+title: Prepare cloud environment
+linkTitle: 1. Prepare cloud environment
+description: Prepare cloud environment
 aliases:
   - /deploy/enterprise-edition/prepare-cloud-environment/
 menu:

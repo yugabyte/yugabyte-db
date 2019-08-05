@@ -1,7 +1,7 @@
 ---
-title: Edit Config Flags
-linkTitle: Edit Config Flags
-description: Edit Config Flags
+title: Edit config flags
+linkTitle: Edit config flags
+description: Edit config flags
 aliases:
   - /manage/enterprise-edition/edit-flags/
 menu:

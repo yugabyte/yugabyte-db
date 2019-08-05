@@ -123,7 +123,7 @@ For cluster named `test-cluster`, this security group will be named `yb-ce-test-
 
 - `module.yugabyte-db-cluster.null_resource.create_yugabyte_universe` A local script that configures the newly created instances to form a new YugaByte DB universe.
 
-## 4. Destroy the cluster (optional)
+## 4. [Optional] Destroy the cluster
 
 To destroy what we just created, you can run the following command.
 

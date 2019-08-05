@@ -15,19 +15,19 @@ showAsideToc: True
 isTocNested: True
 ---
 
-## Goal 
+## Goal
 
 The goal of this benchmark is to get an idea of the performance of YugaByte DB using a key-value workload.
 
-## Recommended Configuration
+## Recommended configuration
 
-### Cluster Configuration
+### Cluster configuration
 
 For this benchmark, we will setup a 3-node cluster with a replication factor of 3.
 
-### Machine Configuration
+### Machine configuration
 
-* Amazon Web Services 
+* Amazon Web Services
 
   * Instance type: i3.4xlarge
   * Disks: 2 x 1.9 TB NVMe SSDs (comes pre-configured with the instance)
@@ -37,15 +37,13 @@ For this benchmark, we will setup a 3-node cluster with a replication factor of 
   * Instance type: n1-standard-16
   * Disks: 2 x 375 GB SSDs
 
-
 * On-Premises Datacenter
 
   * Instance: 16 CPU cores
   * Disk size: 1 x 200 GB SSD (minimum)
   * RAM size: 30 GB (minimum)
 
-
-### Benchmark Tool
+### Benchmark tool
 
 We will use the `yb-sample-apps.jar` tool to perform this benchmark. You can get it from [this GitHub repository](https://github.com/YugaByte/yb-sample-apps) as shown below.
 
@@ -58,7 +56,6 @@ You would need to install java in order to run this tool. Also export the enviro
 ```
 ENDPOINTS="X.X.X.X:9042,X.X.X.X:9042,X.X.X.X:9042"
 ```
-
 
 ## Write-heavy KV workload 
 
@@ -77,14 +74,13 @@ $ java -jar ./yb-sample-apps.jar  \
       --num_unique_keys 1000000000
 ```
 
-### Expected Results
+### Expected results
 
 Name    | Observation
 --------|------
 Write Ops/sec | ~90k
 Read Latency | ~2.5-3.0 ms/op
 CPU (User + Sys) | 60%
-
 
 ## Read-heavy KV workload 
 
@@ -103,8 +99,7 @@ $ java -jar ./yb-sample-apps.jar  \
       --num_unique_keys 1000000
 ```
 
-### Expected Results
-
+### Expected results
 
 Name    | Observation
 --------|------
@@ -112,8 +107,7 @@ Name    | Observation
 (Read) Latency | ~1.66 ms/op
 CPU (User + Sys) | 60%
 
-
-## Batch Write-heavy KV workload 
+## Batch write-heavy KV workload 
 
 Run the key-value workload in batch mode and higher number of write threads (representing batched, write-heavy workload).  
 
@@ -131,7 +125,7 @@ $ java -jar ./yb-sample-apps.jar      \
       --num_unique_keys 1000000000
 ```
 
-### Expected Results
+### Expected results
 
 Name    | Observation
 --------|------

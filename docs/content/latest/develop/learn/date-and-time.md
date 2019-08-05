@@ -596,11 +596,11 @@ For the very curious, why is there a gap after 'Tuesday' and 'Monday' in the exa
 
 ## Ambiguity - Using DateStyle
 
-People in different locations of the world are familiar with local representations of dates. Times are reasonably similar, but dates can differ. Within the USA, they use 3/5/19, whereas in Australia we would use 5/3/19 and in Europe they would use either 5.3.19 or 5/3/19. What is the date in question? 5th March, 2019. 
+People in different locations of the world are familiar with local representations of dates. Times are reasonably similar, but dates can differ. Within the USA, they use 3/5/19, whereas in Australia we would use 5/3/19 and in Europe they would use either 5.3.19 or 5/3/19. What is the date in question? 5th March, 2019.
 
 YugaByte has `DateStyle` which is a setting that you apply to your session so that ambiguous dates can be determined and the display of dates in YSQL can be defaulted to a particular format.
 
-By default, YugaByte uses the ISO Standard of YYYY-MM-DD HH24:MI:SS. Other settings you can use are 'SQL', 'German', and 'Postgres'. These are all referenced below allowing you to see examples. 
+By default, YugaByte uses the ISO Standard of YYYY-MM-DD HH24:MI:SS. Other settings you can use are 'SQL', 'German', and 'Postgres'. These are all referenced below allowing you to see examples.
 
 All settings except ISO allow you specify whether a Day appears before or after the Month. Therefore, a setting of 'DMY' will result in 3/5 being 3rd May, whereas 'MDY' will result in 5th March. 
 
@@ -612,7 +612,7 @@ Note that YugaByte will always interpret '6/6' as 6th June, and '13/12' as 13th 
 
 postgres=# SHOW DateStyle;
 
- DateStyle 
+ DateStyle
 -----------
  ISO, DMY
 
@@ -712,13 +712,11 @@ The final example above illustrates the difficulty that can occur with dates. Th
 This is for those more interested in getting into some of the more finer points of control.
 {{< /note >}}
 
-
 YugaByte DB has inherited a lot of similar capability of the YSQL API to the PostgreSQL SQL API, and this will explain why when we start to look under the hood, it is looking very much like pg.
 
 YugaByte tracks its settings in its catalog, lets query some relevant settings and this time we will transform the layout of the query results using the `Expanded display` setting. This can be done in any database.
 
 ```
-
 postgres=# \x on   
 
 Expanded display is on.
@@ -814,4 +812,4 @@ Now you don't need to make those settings each time you enter YSQL. However, app
 
 ## Conclusion
 
-As illustrated, the area of dates and times is a comprehensive area that is well addressed by PostgreSQL and hence YSQL within YugaByte DB. All of the date time data types are implemented, and the vast majority of methods, operators and special values are available. The functionality is complex enough for you to be able to code any shortfalls that you find within the YSQL implementation of its SQL API.
+As illustrated, the area of dates and times is a comprehensive area that is well addressed by PostgreSQL and hence YSQL within YugaByte DB. All of the date-time data types are implemented, and the vast majority of methods, operators and special values are available. The functionality is complex enough for you to be able to code any shortfalls that you find within the YSQL implementation of its SQL API.

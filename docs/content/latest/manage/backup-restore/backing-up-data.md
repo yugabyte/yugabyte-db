@@ -1,7 +1,7 @@
 ---
-title: Backing Up Data
-linkTitle: Backing Up Data
-description: Backing Up Data
+title: Backing up data
+linkTitle: Backing up data
+description: Backing up data
 image: /images/section_icons/manage/enterprise.png
 headcontent: Backing up data in YugaByte DB.
 aliases:
@@ -41,7 +41,3 @@ Dump the keyspace schema (optional) as well as the data in the tables to create 
     {{% includeMarkdown "ycql/backing-up-data.md" /%}}
   </div>
 </div>
-
-
-
-
