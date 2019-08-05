@@ -1,7 +1,7 @@
 ---
-title: Timeseries
-linkTitle: Timeseries
-description: Timeseries
+title: Time series
+linkTitle: Time series
+description: Time series
 aliases:
   - /develop/learn/timeseries-data/
 ---

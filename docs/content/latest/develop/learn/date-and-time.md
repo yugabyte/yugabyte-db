@@ -1,11 +1,11 @@
 ---
-title: 7. Date and Time
-linkTitle: 7. Date and Time
-description: Date and Time
+title: 7. Date and time
+linkTitle: 7. Date and time
+description: Date and time
 menu:
   latest:
     parent: learn
-    name: 7. Date and Time
+    name: 7. Date and time
     identifier: learn-date-and-time
     weight: 569
 type: page

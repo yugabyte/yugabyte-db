@@ -1,3 +1,16 @@
+---
+title: 8. String operations
+linkTitle: 8. String operations
+description: String operations
+aliases:
+  - /develop/learn/string-operations/
+menu:
+  latest:
+    identifier: string-operations
+    parent: learn
+    weight: 570
+---
+
 ## Introduction
 
 Strings, character data types, or text. What you want to call it is up to you. Manipulating and outputting text is a very important topic that will be required for many different types of systems that you work with. The YugaByte SQL API offers extensive text capability that we will demonstrate here.
