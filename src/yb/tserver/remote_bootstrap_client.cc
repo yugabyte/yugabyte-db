@@ -149,7 +149,6 @@ using tablet::RaftGroupReplicaSuperBlockPB;
 constexpr int kBytesReservedForMessageHeaders = 16384;
 std::atomic<int32_t> RemoteBootstrapClient::n_started_(0);
 
-
 namespace {
 
 // Decode the remote error into a human-readable Status object.

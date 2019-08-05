@@ -252,6 +252,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   void MarkTabletDirty(const std::string& tablet_id,
                        std::shared_ptr<consensus::StateChangeContext> context);
 
+  void MarkTabletBeingRemoteBootstrapped(const std::string& tablet_id);
+
+  void UnmarkTabletBeingRemoteBootstrapped(const std::string& tablet_id);
+
   // Returns the number of tablets in the "dirty" map, for use by unit tests.
   int GetNumDirtyTabletsForTests() const;
 
@@ -428,8 +432,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
                              std::unordered_map<std::string, std::unordered_set<std::string>>>
     TableDiskAssignmentMap;
 
-  // Lock protecting tablet_map_, dirty_tablets_, state_, and
-  // transition_in_progress_.
+  // Lock protecting tablet_map_, dirty_tablets_, state_, transition_in_progress_, and
+  // tablets_being_remote_bootstrapped_.
   mutable RWMutex lock_;
 
   // Map from tablet ID to tablet
@@ -448,6 +452,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // When a tablet is added/removed/added locally and needs to be
   // reported to the master, an entry is added to this map.
   DirtyMap dirty_tablets_;
+
+  std::set<std::string> tablets_being_remote_bootstrapped_;
 
   // Next tablet report seqno.
   int32_t next_report_seq_;

@@ -232,7 +232,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // Proxy to call this tablet server locally.
   std::shared_ptr<TabletServerServiceProxy> proxy_;
 
-  // Cluster uuid. This is sent by the master leader during the first hearbeat.
+  // Cluster uuid. This is sent by the master leader during the first heartbeat.
   std::string cluster_uuid_;
 
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).

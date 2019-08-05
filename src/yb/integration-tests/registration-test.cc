@@ -130,7 +130,6 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 
     ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
 
-
     if (co_partition) {
       ASSERT_EQ(tablet_id_1, tablet_id_2);
     }
@@ -172,7 +171,7 @@ TEST_F(RegistrationTest, TestTSRegisters) {
   ASSERT_NO_FATALS(CheckTabletServersPage());
 
   // Restart the master, so it loses the descriptor, and ensure that the
-  // hearbeater thread handles re-registering.
+  // heartbeater thread handles re-registering.
   ASSERT_OK(cluster_->mini_master()->Restart());
 
   ASSERT_OK(cluster_->WaitForTabletServerCount(1));

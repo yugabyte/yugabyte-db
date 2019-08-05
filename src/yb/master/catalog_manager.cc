@@ -3543,7 +3543,8 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
   for (const ReportedTabletPB& reported : report.updated_tablets()) {
     ReportedTabletUpdatesPB *tablet_report = report_update->add_tablets();
     tablet_report->set_tablet_id(reported.tablet_id());
-    RETURN_NOT_OK_PREPEND(HandleReportedTablet(ts_desc, reported, tablet_report),
+    RETURN_NOT_OK_PREPEND(HandleReportedTablet(ts_desc, reported, tablet_report,
+                          report.is_incremental()),
                           Substitute("Error handling $0", reported.ShortDebugString()));
   }
 
@@ -3587,7 +3588,8 @@ bool ShouldTransitionTabletToRunning(const ReportedTabletPB& report) {
 
 Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
                                             const ReportedTabletPB& report,
-                                            ReportedTabletUpdatesPB *report_updates) {
+                                            ReportedTabletUpdatesPB *report_updates,
+                                            bool is_incremental) {
   TRACE_EVENT1("master", "HandleReportedTablet",
                "tablet_id", report.tablet_id());
   scoped_refptr<TabletInfo> tablet;
@@ -3679,8 +3681,10 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
 
   // The report will not have a committed_consensus_state if it is in the
   // middle of starting up, such as during tablet bootstrap.
+  // If we received an incremental report, and the tablet is starting up, we will update the
+  // replica so that the balancer knows how many tablets are in the middle of a remote bootstrap.
   if (report.has_committed_consensus_state()) {
-    const ConsensusStatePB& prev_cstate = tablet_lock->data().pb.committed_consensus_state();
+    const ConsensusStatePB &prev_cstate = tablet_lock->data().pb.committed_consensus_state();
     ConsensusStatePB cstate = report.committed_consensus_state();
 
     // Check if we got a report from a tablet that is no longer part of the raft
@@ -3796,16 +3800,26 @@ Status CatalogManager::HandleReportedTablet(TSDescriptor* ts_desc,
                 << tablet->tablet_id() << ". Consensus state: " << cstate.ShortDebugString();
       UpdateTabletReplica(ts_desc, report, tablet);
     }
+  } else if (is_incremental &&
+             (report.state() == tablet::NOT_STARTED || report.state() == tablet::BOOTSTRAPPING)) {
+    // When a tablet server is restarted, it sends a full tablet report with all of its tablets in
+    // the NOT_STARTED state, so this would make the load balancer think that all the tablets are
+    // being remote bootstrapped at once. That's why we only process incremental reports here.
+    UpdateTabletReplica(ts_desc, report, tablet);
+    DCHECK(!tablet_lock->is_dirty()) << "Invalid modification of tablet";
   }
 
   table_lock->Unlock();
-  // We update the tablets each time that someone reports it.
-  // This shouldn't be very frequent and should only happen when something in fact changed.
-  Status s = sys_catalog_->UpdateItem(tablet.get(), leader_ready_term_);
-  if (!s.ok()) {
-    LOG(WARNING) << "Error updating tablets: " << s.ToString() << ". Tablet report was: "
-                 << report.ShortDebugString();
-    return s;
+
+  if (tablet_lock->is_dirty()) {
+    // We update the tablets each time that someone reports it.
+    // This shouldn't be very frequent and should only happen when something in fact changed.
+    Status s = sys_catalog_->UpdateItem(tablet.get(), leader_ready_term_);
+    if (!s.ok()) {
+      LOG(WARNING) << "Error updating tablets: " << s.ToString() << ". Tablet report was: "
+                   << report.ShortDebugString();
+      return s;
+    }
   }
   tablet_lock->Commit();
 
@@ -4555,6 +4569,9 @@ Status CatalogManager::ResetTabletReplicasFromReportedConfig(
   *tablet_lock->mutable_data()->pb.mutable_committed_consensus_state() = cstate;
 
   TabletInfo::ReplicaMap replica_locations;
+  TabletInfo::ReplicaMap rl;
+  tablet->GetReplicaLocations(&rl);
+
   for (const consensus::RaftPeerPB& peer : cstate.config().peers()) {
     shared_ptr<TSDescriptor> ts_desc;
     if (!peer.has_permanent_uuid()) {
@@ -4567,10 +4584,27 @@ Status CatalogManager::ResetTabletReplicasFromReportedConfig(
       continue;
     }
 
-    TabletReplica replica;
-    NewReplica(ts_desc.get(), report, &replica);
-    InsertOrDie(&replica_locations, replica.ts_desc->permanent_uuid(), replica);
+    // Do not replace replicas in the NOT_STARTED or BOOTSTRAPPING state unless they are stale.
+    bool create_new_replica = true;
+    TabletReplica* existing_replica;
+    auto it = rl.find(ts_desc->permanent_uuid());
+    if (it != rl.end()) {
+      existing_replica = &it->second;
+      // IsStarting returns true if state == NOT_STARTED or state == BOOTSTRAPPING.
+      if (existing_replica->IsStarting() && !existing_replica->IsStale()) {
+        create_new_replica = false;
+      }
+    }
+    if (create_new_replica) {
+      TabletReplica replica;
+      NewReplica(ts_desc.get(), report, &replica);
+      InsertOrDie(&replica_locations, replica.ts_desc->permanent_uuid(), replica);
+    } else {
+      InsertOrDie(&replica_locations, existing_replica->ts_desc->permanent_uuid(),
+                  *existing_replica);
+    }
   }
+
   tablet->SetReplicaLocations(std::move(replica_locations));
 
   if (FLAGS_master_tombstone_evicted_tablet_replicas) {
@@ -4606,12 +4640,19 @@ void CatalogManager::UpdateTabletReplica(TSDescriptor* ts_desc,
 void CatalogManager::NewReplica(TSDescriptor* ts_desc,
                                 const ReportedTabletPB& report,
                                 TabletReplica* replica) {
-  CHECK(report.has_committed_consensus_state()) << "No cstate: " << report.ShortDebugString();
+
+  // Tablets in state NOT_STARTED or BOOTSTRAPPING don't have a consensus.
+  if (report.state() == tablet::NOT_STARTED || report.state() == tablet::BOOTSTRAPPING) {
+    replica->role = RaftPeerPB::NON_PARTICIPANT;
+    replica->member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+  } else {
+    CHECK(report.has_committed_consensus_state()) << "No cstate: " << report.ShortDebugString();
+    replica->role = GetConsensusRole(ts_desc->permanent_uuid(), report.committed_consensus_state());
+    replica->member_type = GetConsensusMemberType(ts_desc->permanent_uuid(),
+                                                  report.committed_consensus_state());
+  }
   replica->state = report.state();
-  replica->role = GetConsensusRole(ts_desc->permanent_uuid(), report.committed_consensus_state());
   replica->ts_desc = ts_desc;
-  replica->member_type = GetConsensusMemberType(ts_desc->permanent_uuid(),
-                                                report.committed_consensus_state());
 }
 
 Status CatalogManager::GetTabletPeer(const TabletId& tablet_id,
