@@ -32,6 +32,12 @@ import static org.yb.AssertionWrappers.*;
 public class TestPgDepend extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgDepend.class);
 
+  private static final int PG_TYPE_OID = 1247;
+  private static final int PG_CLASS_OID = 1259;
+  private static final int PG_AUTH_ID_OID = 1260;
+  private static final int PG_NAMESPACE_OID = 2615;
+  private static final int PUBLIC_NAMESPACE_OID = 2200;
+
   @Test
   public void testPgDependInsertion() throws SQLException {
     createSimpleTable("test");
@@ -111,11 +117,9 @@ public class TestPgDepend extends BasePgSQLTest {
       rs.next();
       int oidTable = rs.getInt("oid");
 
-      int pgSequenceOid = 1259;
-
       // Get the parent sequence's oid.
       rs = statement.executeQuery("SELECT objid FROM pg_depend "
-                                  + "WHERE classid=" + pgSequenceOid + "AND refobjid=" + oidTable);
+                                  + "WHERE classid=" + PG_CLASS_OID + "AND refobjid=" + oidTable);
 
       rs.next();
       int oidSequence = rs.getInt("objid");
@@ -246,11 +250,9 @@ public class TestPgDepend extends BasePgSQLTest {
       rs.next();
       int oidTable = rs.getInt("oid");
 
-      int pgTypeOid = 1247;
-
       // Get the OID of the table column type
-      rs = statement.executeQuery("SELECT objid FROM pg_depend "
-                                  + " WHERE classid=" + pgTypeOid + " AND refobjid=" + oidSequence);
+      rs = statement.executeQuery("SELECT objid FROM pg_depend WHERE " +
+                                      "classid=" + PG_TYPE_OID + " AND refobjid=" + oidSequence);
       rs.next();
       int oidColType = rs.getInt("objid");
 
@@ -263,6 +265,56 @@ public class TestPgDepend extends BasePgSQLTest {
       // Check that we have deleted the table column to sequence type dependency in pg_depend.
       rs = statement.executeQuery("SELECT * FROM pg_depend "
                                   + "WHERE objid=" + oidColType + " AND refobjid=" + oidSequence);
+      assertFalse(rs.next());
+    }
+  }
+
+  @Test
+  public void testPinnedSystemTables() throws SQLException {
+    try (Statement statement = connection.createStatement()) {
+
+      // Check that we cannot drop system tables.
+      runInvalidQuery(statement, "DROP TABLE pg_class", "permission denied");
+      runInvalidQuery(statement, "DROP TABLE pg_database", "permission denied");
+
+      // Check that there are pinned entries in pg_depend.
+      ResultSet rs = statement.executeQuery("SELECT count(*) AS num_pinned FROM pg_depend " +
+                                                "WHERE deptype = 'p'");
+      assertTrue(rs.next());
+      assertTrue(rs.getInt("num_pinned") > 50);
+
+
+      // Check that there are pinned entries in pg_shdepend.
+      rs = statement.executeQuery("SELECT count(*) AS num_pinned FROM pg_shdepend " +
+                                                "WHERE deptype = 'p'");
+      assertTrue(rs.next());
+      assertTrue(rs.getInt("num_pinned") > 3);
+
+
+      // Create a simple table and get its oid.
+      statement.execute("CREATE TABLE pin_test(a int PRIMARY KEY, b int)");
+      rs = statement.executeQuery("SELECT oid FROM pg_class where relname = 'pin_test'");
+      assertTrue(rs.next());
+      int tableOid = rs.getInt("oid");
+
+      // Check that it does not add superfluous entries in pg_depend.
+      // - The public namespace is not pinned so that is the only expected entry.
+      rs = statement.executeQuery("SELECT * FROM pg_depend where objid = " + tableOid);
+      assertTrue(rs.next());
+      assertEquals(PG_NAMESPACE_OID, rs.getInt("refclassid"));
+      assertEquals(PUBLIC_NAMESPACE_OID, rs.getInt("refobjid"));
+      assertFalse(rs.next());
+
+      // Check that it does not add superfluous entries in pg_shdepend.
+      // - The test user (TEST_PG_USER) is not pinned so that is the only expected entry.
+      rs = statement.executeQuery("SELECT oid FROM pg_authid WHERE " +
+                                      "rolname = '" + TEST_PG_USER + "'");
+      assertTrue(rs.next());
+      int testUserOid = rs.getInt("oid");
+      rs = statement.executeQuery("SELECT * FROM pg_shdepend where objid = " + tableOid);
+      assertTrue(rs.next());
+      assertEquals(PG_AUTH_ID_OID, rs.getInt("refclassid"));
+      assertEquals(testUserOid, rs.getInt("refobjid"));
       assertFalse(rs.next());
     }
   }
