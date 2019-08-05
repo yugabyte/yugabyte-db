@@ -6,7 +6,7 @@ a) One of the following operating systems
 
 <i class="icon-ubuntu"></i> Ubuntu 16.04+
 
-b) Verify thatyou have python2 installed. Support for python3 is in the works.
+b) Verify that you have python2 installed. Support for python3 is in the works.
 
 ```sh
 $ python --version

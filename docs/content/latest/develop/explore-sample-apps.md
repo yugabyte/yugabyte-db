@@ -1,7 +1,7 @@
 ---
-title: Explore Sample Apps
-linkTitle: Explore Sample Apps
-description: Explore Sample Apps
+title: Explore sample applications
+linkTitle: Explore sample applications
+description: Explore sample applications built on top of YugaByte DB.
 headcontent: 
 image: /images/section_icons/index/develop.png
 aliases:

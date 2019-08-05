@@ -1,5 +1,5 @@
 ---
-title: Create Local Cluster
+title: 2. Create Local Cluster
 linkTitle: 2. Create Local Cluster
 description: Create Local Cluster
 aliases:

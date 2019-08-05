@@ -1,5 +1,5 @@
 ---
-title: Install YugaByte DB
+title: 1. Install YugaByte DB
 linkTitle: 1. Install YugaByte DB
 description: Install YugaByte DB
 aliases:

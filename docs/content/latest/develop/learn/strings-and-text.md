@@ -1,12 +1,12 @@
 ---
-title: 8. String operations
-linkTitle: 8. String operations
-description: String operations
+title: 8. Strings and text
+linkTitle: 8. Strings and text
+description: Learn to work with strings and text in YugaByte DB.
 aliases:
-  - /develop/learn/string-operations/
+  - /develop/learn/strings-and-text/
 menu:
   latest:
-    identifier: string-operations
+    identifier: strings-and-text
     parent: learn
     weight: 570
 ---
