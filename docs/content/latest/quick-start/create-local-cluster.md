@@ -1,7 +1,7 @@
 ---
-title: 2. Create Local Cluster
-linkTitle: 2. Create Local Cluster
-description: Create Local Cluster
+title: 2. Create a local cluster
+linkTitle: 2. Create a local cluster
+description: Create a local cluster
 aliases:
   - /quick-start/create-local-cluster/
 menu:

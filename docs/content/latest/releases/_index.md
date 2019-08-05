@@ -1,7 +1,7 @@
 ---
-title: Release History
-linkTitle: Release History
-description: Release History
+title: Release history
+linkTitle: Release history
+description: Release history
 headcontent: History of important YugaByte DB releases.
 image: /images/section_icons/quick_start/install.png
 section: RELEASES
