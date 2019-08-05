@@ -23,8 +23,6 @@ YugaByte DB uses Raft consensus without any atomic clocks in order to achieve si
 
 ## Leader Leases
 
-:white_check_mark: Improves **read performance** by decreasing latency of read queries.
-
 In order to serve reads, the Raft consensus algorithm requires the current Raft-leader to successfully heartbeat to a majority of peers after it receives the query but before responding to it. This is done to ensure that it is still the Raft-leader, especially in the presence of network-partitions. One possible sequence of operations is shown below.
 
 ```
@@ -57,18 +55,20 @@ Node C                                 ╔════════╩═══�
 
 ```
 
+### What causes the high latency?
+
+In the figure above, the cause of the high latency is the step 4b, which introduces a network hop in the read path by forcing the Raft leader to wait for the heartbeat response from  one of the Raft followers.
+
+> **NOTE**: If the nodes A, B and C are in different regions, the network latency between them is often very large. In this scenario, the read latencies would be very high. 
+
 
 ## Group Commits
-
-:white_check_mark: Improves **write performance** by increasing write throughput.
 
 Per the Raft algorithm, each new entry being appended into the Raft log is assigned a monotonically increasing operation id. This operation id is a tuple consisting of (term, index). If each client issued update operation is treated as a separate Raft record entry, this would lead to a lot of RPCs between the Raft members. This means that the network would not be optimally utilized since there would be a lot of small packets.
 
 To utilize the network better, DocDB batches multiple outstanding updates into a single record. This batching of updates in order to commit them to the Raft log is referred to as a **group commit**.
 
 ## Raft Leader Balancing
-
-:white_check_mark: Improves **read and write performance** with optimal utilization of nodes in the cluster.
 
 YugaByte DB uses the Raft algorithm to implement a consistent and fault-tolerant write-ahead log. Per the Raft consensus algorithm, the various nodes that host the different Raft replicas (called tablet peers) first elect a leader. This results in one of the nodes becoming the leader of the tablet, and the others become followers. There could now arise scenarios where the distribution of Raft leaders and followers per node is uneven.
 
@@ -80,16 +80,10 @@ YugaByte DB tries to balance the Raft leaders and followers evenly across the no
 
 ## Affinitized Raft Leaders
 
-:white_check_mark: Improves **read and write performance** in geo-distributed scenarios by allowing placing leaders closer to the the location of the app.
-
 ## Configurable missed heartbeats
-
-:white_check_mark: Enables **multi-region and hybrid-cloud** deployments where network latency between nodes is high.
 
 
 ## Integrating Hybrid Logical Clocks
-
-:white_check_mark: Enables **cross-shard transactions** as a building block for a software-defined atomic clock for a cluster.
 
 
 ## MVCC Fencing
