@@ -3,7 +3,7 @@ export const ROOT_URL = process.env.REACT_APP_YUGAWARE_API_URL ||
   (process.env.NODE_ENV === 'development' ? 'http://localhost:9000/api/v1' : '/api/v1');
 
 export const MAP_SERVER_URL = process.env.NODE_ENV === 'development'
-  ? 'https://no-such-url'
+  ? 'https://s3-us-west-2.amazonaws.com/' + process.env.YB_MAP_URL + '/map'
   : '/static/map';
 
 export const IN_DEVELOPMENT_MODE = process.env.NODE_ENV === 'development';
