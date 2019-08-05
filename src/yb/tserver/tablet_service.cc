@@ -392,8 +392,8 @@ void TabletServiceAdminImpl::AlterSchema(const ChangeMetadataRequestPB* req,
 
   uint32_t schema_version = tablet.peer->tablet_metadata()->schema_version();
 
-  // If the schema was already applied, respond as succeeded
-  if (schema_version == req->schema_version()) {
+  // If the schema was already applied, respond as succeeded.
+  if (!req->has_wal_retention_secs() && schema_version == req->schema_version()) {
     // Sanity check, to verify that the tablet should have the same schema
     // specified in the request.
     Schema req_schema;

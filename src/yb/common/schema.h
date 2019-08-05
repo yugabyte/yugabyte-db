@@ -441,6 +441,7 @@ class TableProperties {
   bool is_transactional_ = false;
   YBConsistencyLevel consistency_level_ = YBConsistencyLevel::STRONG;
   TableId copartition_table_id_ = kNoCopartitionTableId;
+  boost::optional<uint32_t> wal_retention_secs_;
 };
 
 // The schema for a set of rows.

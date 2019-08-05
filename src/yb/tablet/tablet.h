@@ -349,6 +349,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply the Schema of the specified operation.
   CHECKED_STATUS AlterSchema(ChangeMetadataOperationState* operation_state);
 
+  // Change wal_retention_secs in the metadata.
+  CHECKED_STATUS AlterWalRetentionSecs(ChangeMetadataOperationState* operation_state);
+
   // Apply replicated add table operation.
   CHECKED_STATUS AddTable(const TableInfoPB& table_info);
 

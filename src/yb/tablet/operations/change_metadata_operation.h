@@ -94,6 +94,14 @@ class ChangeMetadataOperationState : public OperationState {
     return request_->schema_version();
   }
 
+  uint32_t wal_retention_secs() const {
+    return request_->wal_retention_secs();
+  }
+
+  bool has_wal_retention_secs() const {
+    return request_->has_wal_retention_secs();
+  }
+
   void AcquireSchemaLock(rw_semaphore* l);
 
   // Release the acquired schema lock.
@@ -108,6 +116,8 @@ class ChangeMetadataOperationState : public OperationState {
   }
 
   log::Log* log() const { return log_; }
+
+  log::Log* mutable_log() { return log_; }
 
   virtual std::string ToString() const override;
 

@@ -1515,6 +1515,19 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   return metadata_->Flush();
 }
 
+Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperationState* operation_state) {
+  if (operation_state->has_wal_retention_secs()) {
+    LOG_WITH_PREFIX(INFO) << "Altering metadata wal_retention_secs from "
+                          << metadata_->wal_retention_secs()
+                          << " to " << operation_state->wal_retention_secs();
+    metadata_->set_wal_retention_secs(operation_state->wal_retention_secs());
+    // Flush the updated schema metadata to disk.
+    return metadata_->Flush();
+  }
+  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid ChangeMetadataOperationState: $0",
+      operation_state->ToString());
+}
+
 ScopedPendingOperationPause Tablet::PauseReadWriteOperations() {
   LOG_SLOW_EXECUTION(WARNING, 1000,
                      Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
