@@ -20,6 +20,7 @@
 
 #include "yb/consensus/quorum_util.h"
 #include "yb/master/master.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -65,6 +66,10 @@ DEFINE_int32(load_balancer_max_concurrent_moves,
 DEFINE_int32(load_balancer_num_idle_runs,
              5,
              "Number of idle runs of load balancer to deem it idle.");
+
+DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false,
+                 "Limit the functionality of the load balancer during tests so tests can make "
+                 "progress")
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 
@@ -228,6 +233,10 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
         break;
       }
       --remaining_adds;
+    }
+    if (PREDICT_FALSE(FLAGS_load_balancer_handle_under_replicated_tablets_only)) {
+      LOG(INFO) << "Skipping remove replicas and leader moves for " << table.first;
+      continue;
     }
 
     // Handle cleanup after over-replication.

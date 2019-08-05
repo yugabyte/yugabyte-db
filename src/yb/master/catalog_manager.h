@@ -717,7 +717,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Requires that the lock is already held.
   CHECKED_STATUS HandleReportedTablet(TSDescriptor* ts_desc,
                                       const ReportedTabletPB& report,
-                                      ReportedTabletUpdatesPB *report_updates);
+                                      ReportedTabletUpdatesPB* report_updates,
+                                      bool is_incremental);
 
   CHECKED_STATUS ResetTabletReplicasFromReportedConfig(const ReportedTabletPB& report,
                                                        const scoped_refptr<TabletInfo>& tablet,
@@ -732,6 +733,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   void UpdateTabletReplica(TSDescriptor* ts_desc,
                            const ReportedTabletPB& report,
                            const scoped_refptr<TabletInfo>& tablet);
+
+  // It works as AddReplicaToTabletIfNotFound if the replica is not in the tablet map.
+  // If it already exists, it replaces the existing replica with a new replica created from the
+  // report.
+  void UpdateReplicaInTablet(TSDescriptor* ts_desc,
+                             const ReportedTabletPB& report,
+                             const scoped_refptr<TabletInfo>& tablet);
 
   void NewReplica(TSDescriptor* ts_desc, const ReportedTabletPB& report, TabletReplica* replica);
 

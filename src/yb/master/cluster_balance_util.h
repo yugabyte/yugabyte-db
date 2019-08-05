@@ -275,11 +275,13 @@ class ClusterLoadState {
       }
 
       const tablet::RaftGroupStatePB& tablet_state = replica.second.state;
+      const bool replica_is_stale = replica.second.IsStale();
       if (tablet_state == tablet::RUNNING) {
         ts_meta_it->second.running_tablets.insert(tablet_id);
         ++tablet_meta.running;
         ++total_running_;
-      } else if (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED) {
+      } else if (!replica_is_stale &&
+                 (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED)) {
         // Keep track of transitioning state (not running, but not in a stopped or failed state).
         ts_meta_it->second.starting_tablets.insert(tablet_id);
         ++tablet_meta.starting;

@@ -39,6 +39,7 @@
 #include <vector>
 
 #include <boost/optional/optional.hpp>
+#include <boost/scope_exit.hpp>
 
 #include <glog/logging.h>
 
@@ -133,6 +134,10 @@ DEFINE_test_flag(double, fault_crash_after_rb_files_fetched, 0.0,
 
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
                  "Always pretend memory has been exceeded to enforce background flush.");
+
+DEFINE_test_flag(int32, crash_if_remote_bootstrap_sessions_greater_than, 0,
+                 "If greater than zero, this process will crash if we detect more than the "
+                 "specified number of remote bootstrap sessions.");
 
 namespace {
 
@@ -776,6 +781,12 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // Registering a non-initialized TabletPeer offers visibility through the Web UI.
   RegisterTabletPeerMode mode = replacing_tablet ? REPLACEMENT_PEER : NEW_PEER;
   TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, mode));
+  MarkTabletBeingRemoteBootstrapped(tablet_peer->tablet_id());
+
+  // TODO: If we ever make this method asynchronous, we need to move this code somewhere else.
+  BOOST_SCOPE_EXIT(this_, tablet_peer) {
+    this_->UnmarkTabletBeingRemoteBootstrapped(tablet_peer->tablet_id());
+  } BOOST_SCOPE_EXIT_END
 
   // Download all of the remote files.
   TOMBSTONE_NOT_OK(rb_client->FetchAll(tablet_peer->status_listener()),
@@ -1271,6 +1282,32 @@ void TSTabletManager::MarkTabletDirty(const std::string& tablet_id,
   MarkDirtyUnlocked(tablet_id, context);
 }
 
+void TSTabletManager::MarkTabletBeingRemoteBootstrapped(const std::string& tablet_id) {
+  std::lock_guard<RWMutex> lock(lock_);
+  tablets_being_remote_bootstrapped_.insert(tablet_id);
+  if (PREDICT_FALSE(FLAGS_crash_if_remote_bootstrap_sessions_greater_than > 0) &&
+      tablets_being_remote_bootstrapped_.size() >
+          FLAGS_crash_if_remote_bootstrap_sessions_greater_than) {
+    string tablets;
+    for (const auto& tablet_id : tablets_being_remote_bootstrapped_) {
+      if (!tablets.empty()) {
+        tablets += ", ";
+      }
+      tablets += tablet_id;
+    }
+    LOG(FATAL) << "Exceeded the specified maximum number of concurrent remote botstraps sessions. "
+               << "Specified: " << FLAGS_crash_if_remote_bootstrap_sessions_greater_than
+               << ", concurrent remote bootstrap sessions: " << tablets;
+  }
+  LOG(INFO) << "Concurrent remote bootstrap sessions: "
+            << tablets_being_remote_bootstrapped_.size();
+}
+
+void TSTabletManager::UnmarkTabletBeingRemoteBootstrapped(const std::string& tablet_id) {
+  std::lock_guard<RWMutex> lock(lock_);
+  tablets_being_remote_bootstrapped_.erase(tablet_id);
+}
+
 int TSTabletManager::GetNumDirtyTabletsForTests() const {
   boost::shared_lock<RWMutex> lock(lock_);
   return dirty_tablets_.size();
@@ -1389,12 +1426,21 @@ void TSTabletManager::GenerateIncrementalTabletReport(TabletReportPB* report) {
   // to block if there is a waiting writer (see KUDU-2193). So, we just make
   // a local copy of the set of replicas.
   vector<std::shared_ptr<TabletPeer>> to_report;
+  vector<std::string> tablet_ids;
   {
     boost::shared_lock<RWMutex> shared_lock(lock_);
-    to_report.reserve(dirty_tablets_.size());
+    tablet_ids.reserve(dirty_tablets_.size() + tablets_being_remote_bootstrapped_.size());
+    to_report.reserve(dirty_tablets_.size() + tablets_being_remote_bootstrapped_.size());
     report->set_sequence_number(next_report_seq_++);
     for (const DirtyMap::value_type& dirty_entry : dirty_tablets_) {
       const string& tablet_id = dirty_entry.first;
+      tablet_ids.push_back(tablet_id);
+    }
+    for (auto const& tablet_id : tablets_being_remote_bootstrapped_) {
+      tablet_ids.push_back(tablet_id);
+    }
+
+    for (auto const& tablet_id : tablet_ids) {
       TabletPeerPtr* tablet_peer = FindOrNull(tablet_map_, tablet_id);
       if (tablet_peer) {
         // Dirty entry, report on it.

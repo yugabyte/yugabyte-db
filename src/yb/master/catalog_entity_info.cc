@@ -43,6 +43,8 @@ using std::string;
 
 using strings::Substitute;
 
+DECLARE_int32(tserver_unresponsive_timeout_ms);
+
 namespace yb {
 namespace master {
 
@@ -51,17 +53,32 @@ namespace master {
 // ================================================================================================
 
 string TabletReplica::ToString() const {
-  return Format("{ ts_desc: $0 state: $1 role: $2 member_type: $3 }",
+  return Format("{ ts_desc: $0 state: $1 role: $2 member_type: $3 time since update: $4ms}",
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
                 consensus::RaftPeerPB_Role_Name(role),
-                consensus::RaftPeerPB::MemberType_Name(member_type));
+                consensus::RaftPeerPB::MemberType_Name(member_type),
+                MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());
 }
 
 void TabletReplica::UpdateFrom(const TabletReplica& source) {
   state = source.state;
   role = source.role;
   member_type = source.member_type;
+  time_updated = MonoTime::Now();
+}
+
+bool TabletReplica::IsStale() const {
+  MonoTime now(MonoTime::Now());
+  if (now.GetDeltaSince(time_updated).ToMilliseconds() >=
+      GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
+    return true;
+  }
+  return false;
+}
+
+bool TabletReplica::IsStarting() const {
+  return (state == tablet::NOT_STARTED || state == tablet::BOOTSTRAPPING);
 }
 
 // ================================================================================================

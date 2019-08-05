@@ -66,7 +66,7 @@ TabletServerTestBase::TabletServerTestBase(TableType table_type)
 
   // Decrease heartbeat timeout: we keep re-trying heartbeats when a
   // single master server fails due to a network error. Decreasing
-  // the hearbeat timeout to 1 second speeds up unit tests which
+  // the heartbeat timeout to 1 second speeds up unit tests which
   // purposefully specify non-running Master servers.
   FLAGS_heartbeat_rpc_timeout_ms = 1000;
 

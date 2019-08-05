@@ -144,7 +144,6 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     rpc.RespondFailure(s);
   }
 
-
   // TODO: KUDU-86 if something fails after this point the TS will not be able
   //       to register again.
 
@@ -655,7 +654,6 @@ void MasterServiceImpl::IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
   HandleIn(req, resp, &rpc, &FlushManager::IsFlushTablesDone);
 }
 
-
 void MasterServiceImpl::IsInitDbDone(const IsInitDbDoneRequestPB* req,
                                      IsInitDbDoneResponsePB* resp,
                                      RpcContext rpc) {
@@ -673,9 +671,6 @@ void MasterServiceImpl::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* 
                                             rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsEncryptionEnabled);
 }
-
-
-
 
 } // namespace master
 } // namespace yb
