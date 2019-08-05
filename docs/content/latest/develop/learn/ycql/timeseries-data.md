@@ -2,11 +2,11 @@
 
 ## Overview
 
-## Datatypes
+## Data types
 
 ### timeuuid
 
-### built-in functions
+### Built-in functions
 
 ## Creating table
 

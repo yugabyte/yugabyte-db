@@ -34,7 +34,6 @@ These can be loosely defined as the high-level concerns when choosing a database
 | High Write Throughput | No | Sometimes | Yes
 | Tunable read latency | No | Yes | Yes
 
-
 ### Operational characteristics
 
 Operational characteristics can be defined as the runtime concerns that arise when a database is deployed, run and managed in production. When running a database in production in a cloud-like architecture, there are a number of operational characteristics that become essential. Operationally here are the capabilities of YugaByte DB compared to SQL and NoSQL databases. As before, there are a number of NoSQL databases which are different in their own ways and the table below is meant to give a broad idea.
@@ -52,7 +51,6 @@ Operational characteristics can be defined as the runtime concerns that arise wh
 | Tunable reads with timeline consistency | No - manual setup | Sometimes | Yes
 | Read replica support | No - manual setup | No - no async replication | Yes - sync and async replication options
 
-
 ## Core features
 
 Applications and cloud services depend on databases for a variety of built-in features. These can include the ability to perform multi-row transactions, JSON or document support, secondary indexes, automatic data expiry with TTLs, and so on.
@@ -63,12 +61,11 @@ Here is a table that lists some of the important features that YugaByte DB suppo
 | --------------- | ---------------- | ------------------ |
 | Multi-row transactions | Yes | - |
 | Consistent secondary indexes | Coming soon | - |
-| JSON/document support | Roadmap - JSON datatype coming soon | Yes - supports primitive types, maps, lists, (sorted) sets |
+| JSON/document support | Roadmap - JSON data type coming soon | Yes - supports primitive types, maps, lists, (sorted) sets |
 | Secondary Indexes | Coming soon | - |
 | High Throughput | Yes - batch inserts | Yes - pipelined operations |
 | Automatic data expiry with TTL | Yes - table and column level TTL | Yes - key level TTL |
 | Run Apache Spark for AI/ML | Yes | - |
-
 
 ## Linear scalability
 
@@ -88,7 +85,6 @@ The second chart below shows the latency for the YCSB run.
 
 ![YCSB Benchmark - latency](/images/develop/learn/yb-perf-ycsb-latency.png)
 
-
 ## Geo-distributed
 
 This is a screenshot of YugaByte DB EE, which visualized the universe created. Below is a screenshot of a 5-node YugaByte DB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in us-west, 2 copies of the data in us-east and 1 copy of the data in asia-pacific region. 
@@ -105,7 +101,6 @@ Because of this configuration, this universe can:
 ![Geo-distributed latency](/images/develop/learn/yb-geo-distributed-latency.png)
 
 The graphs above, also taken from the EE, show that the average read latencies for apps running the the various cloud regions are just 250 microseconds, while writes are strongly consistent and incur 218 milliseconds.
-
 
 ## Multi-cloud ready
 

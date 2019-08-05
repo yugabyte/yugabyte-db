@@ -1,7 +1,7 @@
 ---
-title: API Compatibility
-linkTitle: API Compatibility
-description: API Compatibility
+title: API compatibility
+linkTitle: API compatibility
+description: API compatibility
 aliases:
   - /faq/cassandra/
   - /latest/faq/cassandra/
@@ -27,8 +27,7 @@ The [YSQL](../../api/ysql) API is compatible with PostgreSQL. This means Postgre
 
 - YugaByte DB's API compatibility is not aimed at lift-and-shift porting of existing applications written for the original language. This is because existing applications are not written to take advantage of the distributed SQL APIs provided by YugaByte DB. For such existing applications, developers should expect to modify their previously monolithic PostgreSQL and/or non-transactional Cassandra data access logic as they look to migrate to YugaByte DB.
 
-
-## YSQL Compatibility with PostgreSQL
+## YSQL compatibility with PostgreSQL
 
 ### What is the extent of compatibility with PostgreSQL?
 
@@ -43,9 +42,9 @@ As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Q
 
 YugaByte DB's goal is to remain as compatible with PostgreSQL as possible. If you see a feature currently missing, please file a [GitHub issue](https://github.com/YugaByte/yugabyte-db/issues) for us.
 
-## YCQL Compatibility with Apache Cassandra QL
+## YCQL compatibility with Apache Cassandra QL
 
-### List the features where YCQL goes beyond Apache Cassandra QL.
+### Features where YCQL goes beyond Apache Cassandra QL
 
 - Following are the features that are present in YCQL but not present in Apache Cassandra QL.
 
@@ -56,7 +55,7 @@ YugaByte DB's goal is to remain as compatible with PostgreSQL as possible. If yo
 - Following are the features that are present in both YCQL and Apache Cassandra QL but YCQL provides stricter guarantees.
 
 1. [Secondary indexes](../../develop/learn/data-modeling/) are by default strongly consistent since internally they use distributed transactions.
-2. [INTEGER](../../api/ycql/type_int/) and [COUNTER](../../api/ycql/type_int/) datatypes are equivalent and both can be incremented without any lightweight transactions.
+2. [INTEGER](../../api/ycql/type_int/) and [COUNTER](../../api/ycql/type_int/) data types are equivalent and both can be incremented without any lightweight transactions.
 
 - Following are the features that are either unnecessary or disallowed in YCQL.
 
@@ -81,7 +80,7 @@ IF NOT EXISTS;
 
 Yes, you can have collection data types as primary keys as long as they are marked FROZEN. Collection types that are marked `FROZEN` do not support partial matches.
 
-### What is the difference between a `COUNTER` type and `INTEGER` types?
+### What is the difference between a `COUNTER` data type and `INTEGER` data type?
 
 Unlike Apache Cassandra, YugaByte COUNTER type is almost the same as INTEGER types. There is no need of lightweight transactions requiring 4 round trips to perform increments in YugaByte - these are efficiently performed with just one round trip.
 
@@ -90,21 +89,26 @@ Unlike Apache Cassandra, YugaByte COUNTER type is almost the same as INTEGER typ
 In Apache Cassandra, the highest timestamp provided always wins. Example:
 
 INSERT with timestamp far in the future.
+
 ```sql
 > INSERT INTO table (c1, c2, c3) VALUES (1, 2, 3) USING TIMESTAMP 1607681258727447;
 > SELECT * FROM table;
 ```
+
 ```
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  3
 ```
+
 INSERT at the current timestamp does not overwrite previous value which was written at a higher
 timestamp.
+
 ```sql
 > INSERT INTO table (c1, c2, c3) VALUES (1, 2, 4); 
 > SELECT * FROM table;
 ```
+
 ```
  c1 | c2 | c3
 ----+----+----
@@ -112,33 +116,40 @@ timestamp.
 ```
 
 On the other hand in YugaByte, for efficiency purposes INSERTs and UPDATEs without the `USING
-TIMESTAMP` clause always overwrite the older values. On the other hand if we have the `USING
+TIMESTAMP` clause always overwrite the older values. On the other hand, if we have the `USING
 TIMESTAMP` clause, then appropriate timestamp ordering is performed. Example:
 
 ```sql
 > INSERT INTO table (c1, c2, c3) VALUES (1, 2, 3) USING TIMESTAMP 1000;
 > SELECT * FROM table;
 ```
+
 ```
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  3
 ```
+
 INSERT with timestamp far in the future, this would overwrite old value.
+
 ```sql
 > INSERT INTO table (c1, c2, c3) VALUES (1, 2, 4) USING TIMESTAMP 1607681258727447;
 > SELECT * FROM table;
 ```
+
 ```
  c1 | c2 | c3
 ----+----+----
   1 |  2 |  4
 ```
+
 INSERT without 'USING TIMESTAMP' will always overwrite.
+
 ```sql
 > INSERT INTO table (c1, c2, c3) VALUES (1, 2, 5); 
 > SELECT * FROM table;
 ```
+
 ```
  c1 | c2 | c3
 ----+----+----

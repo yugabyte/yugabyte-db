@@ -1,18 +1,18 @@
 ## Introduction
 
-Strings, character datatypes, or text. What you want to call it is up to you. Manipulating and outputting text is a very important topic that will be required for many different types of systems that you work with. The YugaByte SQL API offers extensive text capability that we will demonstrate here.
+Strings, character data types, or text. What you want to call it is up to you. Manipulating and outputting text is a very important topic that will be required for many different types of systems that you work with. The YugaByte SQL API offers extensive text capability that we will demonstrate here.
 
-## About Character Datatypes
+## About character data types
 
-### Character Datatypes
+### Character data types
 
-For character datatypes, see [Datatypes](/latest/api/ysql/datatypes/). Note that YugaByte implements the datatype aliases, and that is what is used here.
+For character data types, see [Data types](/latest/api/ysql/datatypes/). Note that YugaByte implements the data type aliases, and that is what is used here.
 
-With PostgreSQL the use of different character datatypes has a historical aspect to it — whereas with YugaByte being a recent implementation, no such history exists. Therefore, you should consider keeping your use of character datatypes simple, ideally just 'text' or 'varchar(n)' if you require a restricted length. Its a personal choice, but using text and then verifying the length of a character string will allow you to build your own behaviour in treating that scenario rather than encountering errors by exceeding an arbitrary length.
+With PostgreSQL the use of different character data types has a historical aspect to it — whereas with YugaByte being a recent implementation, no such history exists. Therefore, you should consider keeping your use of character data types simple, ideally just 'text' or 'varchar(n)' if you require a restricted length. Its a personal choice, but using text and then verifying the length of a character string will allow you to build your own behaviour in treating that scenario rather than encountering errors by exceeding an arbitrary length.
 
-If you use char(n), character(n), or varchar(n), then the limitation will be the number you assign which cannot exceed 10,485,760. For unlimited length, use a character datatype without a length description, such as 'text'.
+If you use char(n), character(n), or varchar(n), then the limitation will be the number you assign which cannot exceed 10,485,760. For unlimited length, use a character data type without a length description, such as 'text'.
 
-However, if you have specific requirements to ignore trailing spaces, then you may wish to consider using char(n). Below is an example of working with the different datatypes.
+However, if you have specific requirements to ignore trailing spaces, then you may wish to consider using char(n). Below is an example of working with the different data types.
 
 ```
 ./bin/ysqlsh
@@ -85,9 +85,9 @@ postgres=# select tablename, hasindexes AS nocast, hasindexes::text AS casted
  sql_features   | f      | false
 ```
 
-In the last example above, the column 'hasindexes' is a BOOLEAN datatype and by casting it to TEXT, you will receive a text result of `true` or `false`.
+In the last example above, the column 'hasindexes' is a BOOLEAN data type and by casting it to TEXT, you will receive a text result of `true` or `false`.
 
-## Manipulating Text
+## Manipulating text
 
 There are a lot of functions that can be applied to text. Below the functions are classified into logical groupings - in many cases the capability of the functions overlap and personal choice will determine how you approach solving the problem.
 
@@ -255,7 +255,7 @@ postgres=# select E'a\\b/c\u00B6' as escaped_txt, 'a\\b/c\u00B6' as raw_txt;
 
 Note that `\n` refers to a new line, and `\t` is a tab, hence the formatted result.
 
-YugaByte also has `DECODE` and `ENCODE` for decoding/encoding from/to binary data. It caters for 'base64', 'hex' and 'escape' representations. Decode will give the output in `BYTEA` datatype. In addition you can use the `TO_HEX` command to an ascii number to its digital representation.
+YugaByte also has `DECODE` and `ENCODE` for decoding/encoding from/to binary data. It caters for 'base64', 'hex' and 'escape' representations. Decode will give the output in `BYTEA` data type. In addition you can use the `TO_HEX` command to an ascii number to its digital representation.
 
 #### Joining strings
 
@@ -647,7 +647,7 @@ yb_demo=# select m.name
 
 ## Something a bit more advanced
 
-For those that like a bit of a challenge, below is an example that URL escapes a string. There is still some more room for tweaking in its current form, that is left for you to do. 
+For those that like a bit of a challenge, below is an example that URL escapes a string. There is still some more room for tweaking in its current form, that is left for you to do.
 
 ```
 postgres=# select string_agg(case 

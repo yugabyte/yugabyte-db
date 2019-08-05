@@ -22,13 +22,14 @@ showAsideToc: true
   </li>
 </ul>
 
-
 ## Introduction
+
 YugaByte DB has extensive date and time capability that may be daunting for the new user. Once understood, the rich functionality will allow you to perform very sophisticated calculations and granular time capture.
 
-Refer to the [data types section](https://docs.yugabyte.com/latest/api/ysql/datatypes/) for date and time types.
+For date and time data types, see [Data types](/latest/api/ysql/datatypes/).
 
-## Special Values
+## Special values
+
 There are special values that you can reference - YugaByte DB only caters for some, other special values from postgresql are not implemented in YugaByte DB, but some can be recreated if you require them. Below is YSQL to select special date and time values. First start ysql from your command line.
 
 ```sh
@@ -63,8 +64,8 @@ postgres=# select (current_date-1)::timestamp as yesterday,
 YugaByte DB cannot create the special values of `infinity`, `-infinity` and `allballs` that can be found in postgresql. If you are wondering, 'allballs' is a theoretical time of "00:00:00.00 UTC".
 {{< /note >}}
 
-
 ## Formatting
+
 Date formatting is an important aspect. As you can see above, the examples show the default ISO format for dates and timestamps. We will now do some formatting of dates.
 
 ```
@@ -91,8 +92,9 @@ postgres=# select to_char(current_timestamp, 'DD-MON-YYYY HH:MI:SS PM');
 
 In the above you will see that to present the date in a friendly readable format, the date and time needs to be represented in text using `TO_CHAR`. When it is represented as a date or time data type, it is displayed using system settings, hence why the date representation of text `09-JUL-2019` appears as `2019-07-09`.
 
-## Timezones
-Thus far, we have been operating with the default timezone installed for YugaByte being UTC (+0). Lets select what timezones are available from YugaByte:
+## Time zones
+
+Thus far, we have been operating with the default time zone installed for YugaByte being UTC (+0). Lets select what time zones are available from YugaByte:
 
 ```
 
@@ -592,7 +594,6 @@ The above approach is to `EXTRACT` the current day of the week as an integer. As
 For the very curious, why is there a gap after 'Tuesday' and 'Monday' in the example above? All 'Day' values are space padded to 9 characters. You could use string functions to remove the extra spaces if needed for formatting purposes or you could do a trimmed `TO_CHAR` for the 'Day' then concatenate with a comma and another `TO_CHAR` for the 'DD-MON-YYYY'.
 {{< /tip >}}
 
-
 ## Ambiguity - Using DateStyle
 
 People in different locations of the world are familiar with local representations of dates. Times are reasonably similar, but dates can differ. Within the USA, they use 3/5/19, whereas in Australia we would use 5/3/19 and in Europe they would use either 5.3.19 or 5/3/19. What is the date in question? 5th March, 2019. 
@@ -705,8 +706,7 @@ Best practise is to pass all text representations of date and time data types th
 
 The final example above illustrates the difficulty that can occur with dates. The system is expecting a 'DMY' value but your source is of format 'MDY', therefore YugaByte will not know how to convert it in ambiguous cases, therefore be explicit as shown.
 
-
-## Getting dirty - into the logs we go...
+## Getting dirty - into the logs we go
 
 {{< note title="Note" >}}
 This is for those more interested in getting into some of the more finer points of control.
@@ -756,6 +756,7 @@ postgres=# \x off
 Using the `log_directory` and `log_filename` references, we can find the YugaByte log to examine the timestamps being inserted into the logs. These are all UTC timestamps and should remain that way. 
 
 You will see that the `lc_time` setting is currently UTF and the file the setting is obtained from is listed. Opening that file **as sudo/superuser**, you will see contents that look like the below (after much scrolling or searching for 'datestyle'):
+
 ```sh
 
 # - Locale and Formatting -
@@ -789,6 +790,7 @@ default_text_search_config = 'pg_catalog.english'
 Make a backup of the original file and then change `datestyle = 'SQL, DMY'`, `timezone = 'GB'` (or any other timezone **name** you prefer) and save the file. You will need to restart your YugaByte cluster for the changes to take affect using the shell command `./bin/yb-ctl restart` (and ensure you append any startup flags if you do this).
 
 Once the cluster is running as expected, then:
+
 ```
 $ ./bin/ysqlsh
 ysqlsh (11.2)
@@ -810,6 +812,6 @@ postgres=# select current_date;
 
 Now you don't need to make those settings each time you enter YSQL. However, applications should not rely upon these settings, they should always `SET` their requirements before submitting their SQL. These settings should only be used by 'casual querying' such as we are doing now.
 
-
 ## Conclusion
-As illustrated, the area of dates and times is a comprehensive area that is well addressed by PostgreSQL and hence YSQL within YugaByte DB. All of the date time data types are implemented, and the vast majority of methods, operators and special values are available. The functionality is complex enough for you to be able to code any shortfalls that you find within the YSQL implementation of its SQL API. 
+
+As illustrated, the area of dates and times is a comprehensive area that is well addressed by PostgreSQL and hence YSQL within YugaByte DB. All of the date time data types are implemented, and the vast majority of methods, operators and special values are available. The functionality is complex enough for you to be able to code any shortfalls that you find within the YSQL implementation of its SQL API.

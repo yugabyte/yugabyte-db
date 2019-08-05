@@ -14,9 +14,10 @@ showAsideToc: true
 ---
 
 ## Synopsis
-Floating-point and fixed-point numbers are used to specify non-integer numbers. Different floating point datatypes represent different precision numbers.
 
-Datatype | Description | Decimal Precision |
+Floating-point and fixed-point numbers are used to specify non-integer numbers. Different floating point data types represent different precision numbers.
+
+Data type | Description | Decimal precision |
 ---------|-----|-----|
 `FLOAT` | Inexact 32-bit floating point number | 7 |
 `DOUBLE` | Inexact 64-bit floating point number | 15 |
@@ -42,9 +43,9 @@ Where
 
 ## Semantics
 
-- Values of different floating-point and fixed-point datatypes are comparable and convertible to one another.
+- Values of different floating-point and fixed-point data types are comparable and convertible to one another.
   - Conversion from floating-point types into `DECIMAL` will raise an error for the special values `NaN`, `Infinity`, and `-Infinity`.
-- Values of non-integer numeric datatypes are neither comparable nor convertible to integer although integers are convertible to them.
+- Values of non-integer numeric data types are neither comparable nor convertible to integer although integers are convertible to them.
 - The ordering for special floating-point values is defined as (in ascending order): `-Infinity`, all negative values in order, all positive values in order, `Infinity`, and `NaN`.
 
 ## Examples
@@ -75,6 +76,6 @@ cqlsh:example> SELECT * FROM sensor_data;
          1 | 321.04568 | 321.04568 | 321.0456789
 ```
 
-## See Also
+## See also
 
-[Data Types](..#datatypes)
+[Data Types](..#data-types)
