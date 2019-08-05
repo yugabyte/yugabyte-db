@@ -58,6 +58,8 @@ message ChangeMetadataRequestPB {
   optional fixed64 propagated_hybrid_time = 6;
 
   optional tablet.TableInfoPB add_table = 8;
+
+  optional uint32 wal_retention_secs = 9;
 }
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster

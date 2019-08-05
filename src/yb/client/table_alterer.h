@@ -60,7 +60,9 @@ class YBTableAlterer {
   // Alter table properties.
   YBTableAlterer* SetTableProperties(const TableProperties& table_properties);
 
-  // Set the timeout for the operation. This includes any waiting
+  YBTableAlterer* SetWalRetentionSecs(const uint32_t wal_retention_secs);
+
+      // Set the timeout for the operation. This includes any waiting
   // after the alter has been submitted (i.e if the alter is slow
   // to be performed on a large table, it may time out and then
   // later be successful).
@@ -106,6 +108,8 @@ class YBTableAlterer {
   boost::optional<YBTableName> rename_to_;
 
   boost::optional<TableProperties> table_properties_;
+
+  boost::optional<uint32_t> wal_retention_secs_;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableAlterer);
 };

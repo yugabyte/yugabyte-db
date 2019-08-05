@@ -550,6 +550,7 @@ Status TabletBootstrap::RemoveRecoveryDir() {
 
 Status TabletBootstrap::OpenNewLog() {
   auto log_options = LogOptions();
+  log_options.retention_secs = tablet_->metadata()->wal_retention_secs();
   log_options.env = GetEnv();
   RETURN_NOT_OK(Log::Open(log_options,
                           tablet_->tablet_id(),
@@ -989,6 +990,12 @@ Status TabletBootstrap::PlayChangeMetadataRequest(ReplicateMsg* replicate_msg) {
     // Also update the log information. Normally, the AlterSchema() call above takes care of this,
     // but our new log isn't hooked up to the tablet yet.
     log_->SetSchemaForNextLogSegment(schema, operation_state.schema_version());
+  }
+
+  if (request->has_wal_retention_secs()) {
+    RETURN_NOT_OK_PREPEND(tablet_->AlterWalRetentionSecs(&operation_state),
+                          "Failed to alter wal retention secs");
+    log_->set_wal_retention_secs(request->wal_retention_secs());
   }
 
   return Status::OK();
