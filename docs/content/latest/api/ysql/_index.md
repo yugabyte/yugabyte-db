@@ -27,7 +27,7 @@ The main components of YSQL are data definition language (DDL), data manipulatio
 
 You can explore the basics of the YSQL API using the [Quick Start](../../quick-start/explore-ysql) steps.
 
-## Data Definition Language (DDL)
+## Data definition language (DDL)
 
 DDL commands define structures in the database, change their definitions, as well as remove them by using CREATE, ALTER, and DROP commands respectively.
 
@@ -47,7 +47,7 @@ DDL commands define structures in the database, change their definitions, as wel
 | [`DROP TABLE`](commands/ddl_drop_table) | Delete a table from a database |
 | [`TRUNCATE`](commands/ddl_truncate) | Clear all rows from a table |
 
-## Data Manipulation Language (DML)
+## Data manipulation language (DML)
 
 DML commands modify the contents of the database.
 
@@ -58,7 +58,7 @@ DML commands modify the contents of the database.
 | [`SELECT`](commands/dml_select) | Select rows from a table |
 | [`UPDATE`](commands/dml_update) | Update rows in a table |
 
-## Data Control Language (DCL)
+## Data control language (DCL)
 
 DCL commands protect and prevent the database from corruptions.
 
@@ -68,7 +68,7 @@ DCL commands protect and prevent the database from corruptions.
 | [`GRANT`](commands/dcl_grant) | Grant permissions (under development) |
 | [`REVOKE`](commands/dcl_revoke) | Revoke permissions (under development) |
 
-## Transaction Control Language (TCL)
+## Transaction control language (TCL)
 
 TCL commands manage transactions of operations on the database.
 
@@ -82,7 +82,6 @@ TCL commands manage transactions of operations on the database.
 | [`SET CONSTRAINTS`](commands/txn_set_constraints) | Set constraints on current transaction|
 | [`SET TRANSACTION`](commands/txn_set) | Set transaction behaviors |
 | [`SHOW TRANSACTION`](commands/txn_show) | Show properties of a transaction |
-
 
 Note that Serializable isolation level for multi-key transactions was added in [v1.2.6](../../releases/v1.2.6/).
 
