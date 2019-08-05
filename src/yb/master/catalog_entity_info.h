@@ -57,8 +57,15 @@ struct TabletReplica {
   tablet::RaftGroupStatePB state;
   consensus::RaftPeerPB::Role role;
   consensus::RaftPeerPB::MemberType member_type;
+  MonoTime time_updated;
+
+  TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
+
+  bool IsStale() const;
+
+  bool IsStarting() const;
 
   std::string ToString() const;
 };
@@ -186,8 +193,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void SetReplicaLocations(ReplicaMap replica_locations);
   void GetReplicaLocations(ReplicaMap* replica_locations) const;
 
-  // Adds the given replica to the replica_locations_ map.
-  // Returns true iff the replica was inserted.
+  // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
   void UpdateReplicaLocations(const TabletReplica& replica);
 
   // Accessors for the last time the replica locations were updated.
