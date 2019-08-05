@@ -28,32 +28,32 @@ YugaByte DB uses Raft consensus without any atomic clocks in order to achieve si
 In order to serve reads, the Raft consensus algorithm requires the current Raft-leader to successfully heartbeat to a majority of peers after it receives the query but before responding to it. This is done to ensure that it is still the Raft-leader, especially in the presence of network-partitions. One possible sequence of operations is shown below.
 
 ```
-                                             ╔════════════╗     ╔════════════╗
-                                             ║ 3a) Heart- ║     ║ 4b) Heart- ║
-                                             ║     beat   ║     ║     beat   ║
-                                             ║    request ║     ║   response ║
-                                             ║    from B  ║     ║    from A  ║ 
-                                             ╚═══════════╦╝     ╚═══╦════════╝          Increasing Time
-Node A --------------------------------------------------^----------|-------------------------------->
-                                                         |           \
-      ╔══════════════╗  ╔═══════════╗ ╔════════════╗    /             \      ╔═════════════════════════╗
-      ║ 1) Node wins ║  ║ 2) Read   ║ ║ 3) Heart-  ║   /               |     ║ 5) Got majority heart-  ║
-      ║    leader    ║  ║    query  ║ ║   beat to  ║  /                |     ║    beat, can respond    ║
-      ║    election  ║  ║   arrives ║ ║   majority ║ /                 |     ║    to client read query ║
-      ╚═════╦════════╝  ╚═════╦═════╝ ╚═══════════╦╝/                  |     ╚═════╦═══════════════════╝  
-Node B -----V-----------------V-------------------V|---------------^---V-----------V---------^-------->
-                                                    \           ╔══╩════════════╗            |
-                                                     \          ║ 4a) Heart-    ║           /
-                                                      \         ║     beat resp ║          /
-                                                      |         ║     from self ║         /
-                                                      |         ╚═══════════════╝        /  Increasing Time
-Node C -----------------------------------------------V---------------------------------|------------->
-                                             ╔════════╩═══╗                      ╔══════╩═════╗
-                                             ║ 3b) Heart- ║                      ║ 6) Heart-  ║
-                                             ║     beat   ║                      ║     beat   ║
-                                             ║    request ║                      ║   response ║
-                                             ║    from B  ║                      ║     from C ║
-                                             ╚════════════╝                      ╚════════════╝
+                                       ╔════════════╗     ╔════════════╗
+                                       ║ 3a) Heart- ║     ║ 4b) Heart- ║
+                                       ║     beat   ║     ║     beat   ║
+                                       ║    request ║     ║   response ║
+                                       ║    from B  ║     ║    from A  ║ 
+Node A                                 ╚═══════════╦╝     ╚═══╦════════╝                   Increasing Time
+---------------------------------------------------^----------|------------------------------------->
+                                                   |           \
+╔══════════════╗  ╔═══════════╗ ╔════════════╗    /             \      ╔═════════════════════════╗
+║ 1) Node wins ║  ║ 2) Read   ║ ║ 3) Heart-  ║   /               |     ║ 5) Got majority heart-  ║
+║    leader    ║  ║    query  ║ ║   beat to  ║  /                |     ║    beat, can respond    ║
+║    election  ║  ║   arrives ║ ║   majority ║ /                 |     ║    to client read query ║
+╚═════╦════════╝  ╚═════╦═════╝ ╚═══════════╦╝/                  |     ╚═════╦═══════════════════╝  
+------V-----------------V-------------------V|---------------^---V-----------V---------^------------>
+Node B                                        \           ╔══╩════════════╗            |   Increasing Time
+                                               \          ║ 4a) Heart-    ║           /
+                                                \         ║     beat resp ║          /
+                                                |         ║     from self ║         /
+                                                |         ╚═══════════════╝        /       Increasing Time
+------------------------------------------------V---------------------------------|----------------->
+Node C                                 ╔════════╩═══╗                      ╔══════╩═════╗
+                                       ║ 3b) Heart- ║                      ║ 6) Heart-  ║
+                                       ║     beat   ║                      ║     beat   ║
+                                       ║    request ║                      ║   response ║
+                                       ║    from B  ║                      ║     from C ║
+                                       ╚════════════╝                      ╚════════════╝
 
 ```
 
