@@ -346,6 +346,8 @@ message SysTablesEntryPB {
 
   // For Postgres:
   optional bool is_pg_shared_table = 16 [ default = false ]; // Is this a shared table?
+
+  optional uint32 wal_retention_secs = 24;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -864,6 +866,7 @@ message AlterTableRequestPB {
   optional string new_table_name = 3;
   optional NamespaceIdentifierPB new_namespace = 4;
   optional TablePropertiesPB alter_properties = 5;
+  optional uint32 wal_retention_secs = 6;
 }
 
 message AlterTableResponsePB {

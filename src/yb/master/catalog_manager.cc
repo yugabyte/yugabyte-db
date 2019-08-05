@@ -3114,6 +3114,20 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     has_changes = true;
   }
 
+  // TODO(hector): Simplify the AlterSchema workflow to avoid doing the same checks on every layer
+  // this request goes through: https://github.com/YugaByte/yugabyte-db/issues/1882.
+  if (req->has_wal_retention_secs()) {
+    if (has_changes) {
+      const Status s = STATUS(InvalidArgument,
+          "wal_retention_secs cannot be altered concurrently with other properties");
+      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+    }
+    // TODO(hector): Handle co-partitioned tables:
+    // https://github.com/YugaByte/yugabyte-db/issues/1905.
+    l->mutable_data()->pb.set_wal_retention_secs(req->wal_retention_secs());
+    has_changes = true;
+  }
+
   // Skip empty requests...
   if (!has_changes) {
     return Status::OK();
@@ -3126,7 +3140,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     }
     SchemaToPB(new_schema, l->mutable_data()->pb.mutable_schema());
   }
-  l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
+
+  // Only increment the version number if it is a schema change (AddTable change goes through a
+  // different path and it's not processed here).
+  if (!req->has_wal_retention_secs()) {
+    l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
+  }
   l->mutable_data()->pb.set_next_column_id(next_col_id);
   l->mutable_data()->set_state(SysTablesEntryPB::ALTERING,
                                Substitute("Alter table version=$0 ts=$1",

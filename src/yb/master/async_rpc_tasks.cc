@@ -567,13 +567,19 @@ bool AsyncAlterTable::SendRequest(int attempt) {
   auto l = table_->LockForRead();
 
   tserver::ChangeMetadataRequestPB req;
+  req.set_schema_version(l->data().pb.version());
   req.set_dest_uuid(permanent_uuid());
   req.set_tablet_id(tablet_->tablet_id());
-  req.set_new_table_name(l->data().pb.name());
-  req.set_schema_version(l->data().pb.version());
+
+  if (l->data().pb.has_wal_retention_secs()) {
+    req.set_wal_retention_secs(l->data().pb.wal_retention_secs());
+  }
+
   req.mutable_schema()->CopyFrom(l->data().pb.schema());
+  req.set_new_table_name(l->data().pb.name());
   req.mutable_indexes()->CopyFrom(l->data().pb.indexes());
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+
   schema_version_ = l->data().pb.version();
 
   l->Unlock();

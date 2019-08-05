@@ -87,6 +87,8 @@ Status BootstrapTablet(
                "tablet_id", data.meta->raft_group_id());
   enterprise::TabletBootstrap bootstrap(data);
   RETURN_NOT_OK(bootstrap.Bootstrap(rebuilt_tablet, rebuilt_log, consensus_info));
+  // Set WAL retention time from the metadata.
+  (*rebuilt_log)->set_wal_retention_secs(data.meta->wal_retention_secs());
   // This is necessary since OpenNewLog() initially disables sync.
   RETURN_NOT_OK((*rebuilt_log)->ReEnableSyncIfRequired());
   return Status::OK();

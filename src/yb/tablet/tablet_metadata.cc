@@ -702,6 +702,26 @@ string RaftGroupMetadata::wal_root_dir() const {
   }
 }
 
+void RaftGroupMetadata::set_wal_retention_secs(uint32 wal_retention_secs) {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  auto it = kv_store_.tables.find(primary_table_id_);
+  if (it == kv_store_.tables.end()) {
+    LOG_WITH_PREFIX(DFATAL) << "Unable to set WAL retention time for primary table "
+                            << primary_table_id_;
+    return;
+  }
+  it->second->wal_retention_secs = wal_retention_secs;
+}
+
+uint32_t RaftGroupMetadata::wal_retention_secs() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  auto it = kv_store_.tables.find(primary_table_id_);
+  if (it == kv_store_.tables.end()) {
+    return 0;
+  }
+  return it->second->wal_retention_secs;
+}
+
 void RaftGroupMetadata::set_tablet_data_state(TabletDataState state) {
   std::lock_guard<MutexType> lock(data_mutex_);
   tablet_data_state_ = state;
