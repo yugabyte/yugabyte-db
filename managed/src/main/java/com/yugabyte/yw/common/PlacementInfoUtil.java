@@ -622,8 +622,8 @@ public class PlacementInfoUtil {
 
   public static Set<NodeDetails> getLiveNodes(Set<NodeDetails> nodeDetailsSet) {
     return nodeDetailsSet.stream()
-	           .filter(n -> n.state.equals(NodeDetails.NodeState.Live))
-               .collect(Collectors.toSet());
+                         .filter(n -> n.state.equals(NodeDetails.NodeState.Live))
+                         .collect(Collectors.toSet());
   }
 
   public static Set<NodeDetails> getNodesToProvision(Set<NodeDetails> nodeDetailsSet) {
@@ -1604,7 +1604,8 @@ public class PlacementInfoUtil {
     return String.format("%s-%s", nodePrefix, azName);
   }
 
-  public static Map<String, String> getConfigPerNamespace(PlacementInfo pi, String nodePrefix) {
+  public static Map<String, String> getConfigPerNamespace(PlacementInfo pi, String nodePrefix,
+                                                          Provider provider) {
     Map<String, String> namespaceToConfig = new HashMap<String, String>();
     Map<UUID, Map<String, String>> azToConfig = getConfigPerAZ(pi);
     for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
@@ -1612,7 +1613,7 @@ public class PlacementInfoUtil {
       if (kubeconfig == null) {
         throw new NullPointerException("Couldn't find a kubeconfig");
       }
-      if (azToConfig.size() == 1) {
+      if (!isMultiAZ(provider)) {
         namespaceToConfig.put(nodePrefix, kubeconfig);
         break;
       } else {
