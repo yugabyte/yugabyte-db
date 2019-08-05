@@ -173,7 +173,7 @@ import static org.mockito.Mockito.when;
     if (testProvider.code.equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
       namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(pi,
-          testUniverse.getUniverseDetails().nodePrefix);
+          testUniverse.getUniverseDetails().nodePrefix, testProvider);
     }
     
     List<String> cmd = new LinkedList<>();

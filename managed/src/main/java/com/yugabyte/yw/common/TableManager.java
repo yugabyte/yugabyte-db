@@ -53,6 +53,8 @@ public class TableManager extends DevopsBase {
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
     UniverseDefinitionTaskParams.UserIntent userIntent = primaryCluster.userIntent;
+    Provider provider = Provider.get(region.provider.uuid);
+
     String accessKeyCode = userIntent.accessKeyCode;
     AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
@@ -65,7 +67,7 @@ public class TableManager extends DevopsBase {
     if (region.provider.code.equals("kubernetes")) {
       PlacementInfo pi = primaryCluster.placementInfo;
       namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(pi,
-          universe.getUniverseDetails().nodePrefix);
+          universe.getUniverseDetails().nodePrefix, provider);
     }
 
     commandArgs.add(PY_WRAPPER);
