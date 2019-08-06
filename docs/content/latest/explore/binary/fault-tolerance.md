@@ -66,7 +66,7 @@ Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">table
 
 ![Read and write IOPS with 2nd node removed](/images/ce/pgsql-fault-tolerance-2-nodes-dead.png)
 
-## 6. Clean up (optional)
+## 6. [Optional] Clean up 
 
 Optionally, you can shutdown the local cluster created in Step 1.
 

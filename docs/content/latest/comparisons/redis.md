@@ -1,7 +1,7 @@
 ---
-title: Redis In-Memory Store
-linkTitle: Redis In-Memory Store
-description: Redis In-Memory Store
+title: Redis in-memory store
+linkTitle: Redis in-memory store
+description: Redis in-memory store
 aliases:
   - /comparisons/redis/
 menu:
@@ -12,30 +12,29 @@ isTocNested: false
 showAsideToc: true
 ---
 
-Following are the key areas of differences between YugaByte DB and [Redis In-Memory Store](https://redis.io/).
+Following are the key areas of differences between YugaByte DB and [Redis in-memory store](https://redis.io/).
 
-## Persistent DB vs. In-Memory Cache
+## Persistent DB vs. in-memory cache
 
 YugaByte DB’s Redis is a persistent database rather than an in-memory cache. [While Redis has a
 check-pointing feature for persistence, it is a highly inefficient operation that does a process
 fork. It is also not an incremental operation; the entire memory state is written to disk causing
 serious overall performance impact.]
 
-## Auto Sharded and Clustered
+## Auto-sharded and clustered
 
-YugaByte DB’s Redis is an auto sharded, clustered with built-in support for strongly consistent
+YugaByte DB’s Redis is an auto-sharded, clustered with built-in support for strongly consistent
 replication and multi-DC deployment flexibility. Operations such as add node, remove node are
 simple, throttled and intent-based and leverage YugaByte’s core engine (YBase) and associated
 architectural benefits.
 
-## No Explicit Memory Management
+## No explicit memory management
 
 Unlike the normal Redis, the entire data set does not need to fit in memory. In YugaByte, the hot
 data lives in RAM, and colder data is automatically tiered to storage and on-demand paged in at
 block granularity from storage much like traditional database.
 
-
-## Consistent and Transparent Caching
+## Consistent and transparent caching
 
 Applications that use Redis only as a cache and use a separate backing database as the main system
 of record, and need to deal with dev pain points around keeping the cache and DB consistent and

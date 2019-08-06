@@ -1,7 +1,7 @@
 ---
-title: Build a Ruby App
-linkTitle: Build a Ruby App
-description: Build a Ruby App
+title: Build a Ruby application
+linkTitle: Build a Ruby application
+description: Build a Ruby application
 aliases:
   - /develop/client-drivers/ruby/
   - /latest/develop/client-drivers/ruby/
@@ -39,23 +39,21 @@ showAsideToc: true
   </li>
 </ul>
 
-
 ## Install the pg driver gem
 
 Install the Ruby PostgreSQL driver (pg) using the following command. You can get further details for the driver [here](https://bitbucket.org/ged/ruby-pg/wiki/Home).
 
 ```sh
-$ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config 
+$ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_config
 ```
 
-## Working Example
+## Working example
 
 ### Prerequisites
 
 This tutorial assumes that you have:
 
 - installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
-
 
 ### Writing the Ruby code
 
@@ -71,14 +69,14 @@ begin
   conn = PG.connect(host: '127.0.0.1', port: '5433', dbname: 'postgres', user: 'postgres', password: 'postgres')
 
   # Create table
-  conn.exec ("CREATE TABLE employee (id int PRIMARY KEY, \                           
-                                     name varchar, age int, \                        
+  conn.exec ("CREATE TABLE employee (id int PRIMARY KEY, \
+                                     name varchar, age int, \
                                      language varchar)");
 
   puts "Created table employee\n";
 
   # Insert a row
-  conn.exec ("INSERT INTO employee (id, name, age, language) \                       
+  conn.exec ("INSERT INTO employee (id, name, age, language) \
                             VALUES (1, 'John', 35, 'Ruby')");
   puts "Inserted data (1, 'John', 35, 'Ruby')\n";
 

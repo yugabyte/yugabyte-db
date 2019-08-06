@@ -1,7 +1,7 @@
 ---
-title: Building the Source Code
-linkTitle: Building the Source
-description: Building the Source Code
+title: Building the source code
+linkTitle: Building the source
+description: Building the source code
 image: /images/section_icons/index/quick_start.png
 headcontent: Building the source code.
 type: page
@@ -15,9 +15,8 @@ showAsideToc: false
 ---
 
 {{< note title="Note" >}}
-CentOS 7 is the main recommended development and production platform for YugaByte.
+CentOS 7 is the main recommended development and production platform for YugaByte DB.
 {{< /note >}}
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -52,12 +51,11 @@ CentOS 7 is the main recommended development and production platform for YugaByt
   </div> 
 </div>
 
-
 ## Building the code
 
 Assuming this repository is checked out in `~/code/yugabyte-db`, do the following:
 
-```bash
+```sh
 cd ~/code/yugabyte-db
 ./yb_build.sh release
 ```
@@ -68,9 +66,7 @@ The above command will build the release configuration, put the C++ binaries in 
 You can find the binaries you just built in `build/latest` directory.
 {{< /tip >}}
 
-
-For Linux it will first make sure our custom Linuxbrew distribution is installed into `~/.linuxbrew-yb-build/linuxbrew-<version>`.
-
+For Linux, it will first make sure our custom Linuxbrew distribution is installed into `~/.linuxbrew-yb-build/linuxbrew-<version>`.
 
 ## Build Java code
 
@@ -80,9 +76,8 @@ YugaByte DB core is written in C++, but the repository contains Java code needed
 * [Apache Maven](https://maven.apache.org/).
 Also make sure Maven's bin directory is added to your PATH, e.g. by adding to your `~/.bashrc`. See the example below (if you've installed Maven into `~/tools/apache-maven-3.5.0`)
 
-```
+```sh
 export PATH=$HOME/tools/apache-maven-3.5.0/bin:$PATH
 ```
 
 For building YugaByte DB Java code, you'll need to install Java and Apache Maven.
-

@@ -20,6 +20,7 @@ Use the **-\-help** option to see all the commands supported.
 ```sh
 $ ./bin/yb-ctl --help
 ```
+
 ```sh
 usage: yb-ctl [-h] [--binary_dir BINARY_DIR] [--data_dir DATA_DIR]
               [--replication_factor REPLICATION_FACTOR]

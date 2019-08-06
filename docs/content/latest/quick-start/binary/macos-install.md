@@ -7,6 +7,7 @@ b) Verify that you have python2 installed. Support for python3 is in the works.
 ```sh
 $ python --version
 ```
+
 ```
 Python 2.7.10
 ```
@@ -16,14 +17,15 @@ c) Each tablet maps to its own file, so if you experiment with a few hundred tab
 ```sh
 $ launchctl limit maxfiles
 ```
+
 We recommend simply setting the soft and hard limits to 1048576.
 
 - Edit `/etc/sysctl.conf` with the following contents.
 
 ```sh
-kern.maxfiles=1048576                                                                                
-kern.maxproc=2500                                                                                    
-kern.maxprocperuid=2500                                                                              
+kern.maxfiles=1048576
+kern.maxproc=2500
+kern.maxprocperuid=2500
 kern.maxfilesperproc=1048576
 ```
 
@@ -57,6 +59,7 @@ Enure that the plist file is owned by `root:wheel` and has permissions `-rw-r--r
 ```sh
 $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
 ```
+
 You might have to `unload` the service before loading it.
 
 ## Download

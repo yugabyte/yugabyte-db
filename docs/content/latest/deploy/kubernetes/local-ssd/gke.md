@@ -11,7 +11,7 @@ First, choose the zone in which you want to run the cluster in. In this tutorial
 $ gcloud compute zones list
 ```
 
-```
+```sh
 NAME                       REGION                   STATUS
 ...
 us-west1-b                 us-west1                 UP
@@ -36,16 +36,16 @@ You can list the available cluster by running the following command.
 $ gcloud container clusters list
 ```
 
-```
+```sh
 NAME      LOCATION    MASTER_VERSION  MASTER_IP       MACHINE_TYPE   NODE_VERSION  NUM_NODES  STATUS
 yugabyte  us-west1-b  1.8.7-gke.1     35.199.164.253  n1-standard-1  1.8.7-gke.1   3          RUNNING
 ```
-```
+
+```sh
 Created [https://container.googleapis.com/v1/projects/yugabyte/zones/us-west1-b/clusters/yugabyte].
 ```
 
 ## 2. Create a node pool
-
 
 Create a node pool with 3 nodes, each having 8 cpus and 2 local SSDs.
 
@@ -58,7 +58,7 @@ $ gcloud container node-pools create node-pool-8cpu-2ssd \
       --zone=us-west1-b
 ```
 
-```
+```sh
 Created
 NAME                 MACHINE_TYPE   DISK_SIZE_GB  NODE_VERSION
 node-pool-8cpu-2ssd  n1-standard-8  100           1.8.7-gke.1
@@ -72,7 +72,7 @@ We can list all the node pools by doing the following.
 $ gcloud container node-pools list --cluster yugabyte --zone=us-west1-b
 ```
 
-```
+```sh
 NAME                 MACHINE_TYPE   DISK_SIZE_GB  NODE_VERSION
 default-pool         n1-standard-1  100           1.8.7-gke.1
 node-pool-8cpu-2ssd  n1-standard-8  100           1.8.7-gke.1
@@ -84,7 +84,7 @@ You can view details of the node-pool just created by running the following comm
 $ gcloud container node-pools describe node-pool-8cpu-2ssd --cluster yugabyte --zone=us-west1-b
 ```
 
-```
+```sh
 config:
   diskSizeGb: 100
   imageType: COS
@@ -102,7 +102,7 @@ If this is your only container cluster, `kubectl` automatically points to this c
 $ gcloud container clusters get-credentials yugabyte --zone us-west1-b
 ```
 
-```
+```sh
 Fetching cluster endpoint and auth data.
 kubeconfig entry generated for yugabyte.
 ```
@@ -113,7 +113,7 @@ You can launch a universe on this node pool to run on local SSDs by running the 
 $ kubectl apply -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/yugabyte-statefulset-local-ssd-gke.yaml
 ```
 
-```
+```sh
 service "yb-masters" created
 service "yb-master-ui" created
 statefulset "yb-master" created
@@ -157,7 +157,7 @@ You can verify that the YugaByte DB pods are running by doing the following:
 $ kubectl get pods
 ```
 
-```
+```sh
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    1/1       Running   0          49s
 yb-master-1    1/1       Running   0          49s
@@ -173,7 +173,7 @@ You can check all the services that are running by doing the following:
 $ kubectl get services
 ```
 
-```
+```sh
 NAME           TYPE           CLUSTER-IP    EXTERNAL-IP     PORT(S)                               AGE
 kubernetes     ClusterIP      10.7.240.1    <none>          443/TCP                               11m
 yb-master-ui   LoadBalancer   10.7.246.86   XX.XX.XX.XX     7000:30707/TCP                        1m
@@ -185,7 +185,6 @@ Note the `yb-master-ui` service above. It is a loadbalancer service, which expos
 
 ![GKE YugaByte DB dashboard](/images/deploy/kubernetes/gke-kubernetes-dashboard.png)
 
-
 ## 5. Connect to the universe
 
 You can connect to one of the tserver pods and verify that the local disk is mounted into the pods.
@@ -196,7 +195,7 @@ $ kubectl exec -it yb-tserver-0 bash
 
 We can observe the local disks by running the following command.
 
-```
+```sh
 [root@yb-tserver-0 yugabyte]# df -kh
 Filesystem      Size  Used Avail Use% Mounted on
 ...
@@ -211,7 +210,7 @@ You can connect to the `cqlsh` shell on this universe by running the following c
 $ kubectl exec -it yb-tserver-0 bin/cqlsh
 ```
 
-```
+```sh
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.

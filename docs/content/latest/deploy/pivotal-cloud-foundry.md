@@ -28,6 +28,7 @@ After installing the tile, you have two ways to create a YugaByte DB instance, o
 Cloud Foundry CLI (cf).
 
 ## Using PCF App Manager
+
 In your PCF App manager, go to marketplace and pick YugaByte DB, it will present you with different service plans,
 each service plan has a small description on what the resource requirements and what it is the intended environment.
 
@@ -37,11 +38,15 @@ Once you pick the service plan you would be provided with the service instance c
 ![App Manager Config](/images/deploy/pivotal-cloud-foundry/apps-manager-config.png)
 
 ## Using Cloud Foundry (cf) CLI
+
 You can view the marketplace and plan description in cf cli by executing the below command.
+
 ```sh
 $ cf marketplace -s yugabyte-db
 ```
+
 you would see a table as shown below.
+
 ```
 service plan   description                  free or paid
 x-small        Cores: 2, Memory (GB): 4     paid
@@ -52,11 +57,13 @@ x-large        Cores: 32, Memory (GB): 30   paid
 ```
 
 Once you decide on the service plan you can launch the YugaByte DB service instance by executing the below command.
+
 ```sh
 $ cf create-service yugabyte-db x-small yb-demo -c '{"universe_name": "yb-demo"}'
 ```
 
 ## Service Broker override options
+
 This section lists various override options that you can specify when creating a service instance using yugabyte-db service broker.
 
 ### Overriding cloud provider
@@ -109,7 +116,8 @@ other parameters for the cloud provider. Make sure the replication factor is one
 }
 ```
 
-### Overriding Volume specifications
+### Overriding volume specifications
+
 To override the volume specs, just include `num_volumes` with the desired value, and also the `volume_size` with the volume size
 in GB for each of those volumes, lets say if you want to have 2 volumes with 100GB each, you would specify the overrides as below.
 
@@ -121,8 +129,9 @@ in GB for each of those volumes, lets say if you want to have 2 volumes with 100
 }
 ```
 
-### Overriding the YugaByte Software Version to use
-To override the YugaByte Software version to use, just include `yb_version` with the desired value. Just make sure that particular
+### Overriding the YugaByte DB software version to use
+
+To override the YugaByte DB software version to use, just include `yb_version` with the desired value. Just make sure that particular
 version exists in YugaWare.
 
 ```sh

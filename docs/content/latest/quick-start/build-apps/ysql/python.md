@@ -7,7 +7,7 @@ Install the python PostgreSQL driver using the following command. You can get fu
 $ pip install psycopg2-binary
 ```
 
-## Working Example
+## Working example
 
 ### Prerequisites
 
@@ -15,8 +15,7 @@ This tutorial assumes that you have:
 
 - installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
 
-
-### Writing the python code
+### Writing the Python code
 
 Create a file `yb-sql-helloworld.py` and add the following content to it.
 

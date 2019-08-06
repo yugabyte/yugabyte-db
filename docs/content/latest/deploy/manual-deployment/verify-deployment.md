@@ -29,11 +29,11 @@ $ ./bin/yb-admin --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.
 
 ## View the master UI dashboard
 
-You should now be able to view the master dashboard on the ip address of any master. In our example, this is one of the following urls:
+You should now be able to view the master dashboard on the ip address of any master. In our example, this is one of the following URLs:
 
-- http://172.151.17.130:7000
-- http://172.151.17.220:7000
-- http://172.151.17.140:7000
+- `http://172.151.17.130:7000`
+- `http://172.151.17.220:7000`
+- `http://172.151.17.140:7000`
 
 {{< tip title="Tip" >}}If this is a public cloud deployment, remember to use the public ip for the nodes, or a http proxy to view these pages.{{< /tip >}}<br>
 
@@ -59,9 +59,9 @@ You should now be able to view the master dashboard on the ip address of any mas
 
 ## Default ports reference
 
-The above deployment uses the various default ports listed below. 
+The above deployment uses the various default ports listed below.
 
-Service | Type | Port 
+Service | Type | Port
 --------|------| -------
 `yb-master` | rpc | 7100
 `yb-master` | admin web server | 7000

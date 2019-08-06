@@ -1,7 +1,7 @@
 ---
-title: Build a Go App
-linkTitle: Build a Go App
-description: Build a Go App
+title: Build a Go application
+linkTitle: Build a Go application
+description: Build a Go application
 menu:
   latest:
     parent: build-apps
@@ -85,9 +85,9 @@ func main() {
     if err := session.Query(`DROP TABLE IF EXISTS ybdemo.employee`).Exec(); err != nil {
         log.Fatal(err)
     }
-    var createStmt = `CREATE TABLE ybdemo.employee (id int PRIMARY KEY, 
-                                                           name varchar, 
-                                                           age int, 
+    var createStmt = `CREATE TABLE ybdemo.employee (id int PRIMARY KEY,
+                                                           name varchar,
+                                                           age int,
                                                            language varchar)`;
     if err := session.Query(createStmt).Exec(); err != nil {
         log.Fatal(err)
@@ -95,7 +95,7 @@ func main() {
     fmt.Println("Created table ybdemo.employee")
 
     // Insert into the table.
-    var insertStmt string = "INSERT INTO ybdemo.employee(id, name, age, language)" + 
+    var insertStmt string = "INSERT INTO ybdemo.employee(id, name, age, language)" +
         " VALUES (1, 'John', 35, 'Go')";
     if err := session.Query(insertStmt).Exec(); err != nil {
         log.Fatal(err)
@@ -118,7 +118,7 @@ func main() {
 }
 ```
 
-## Running the app
+## Running the application
 
 To execute the file, run the following command:
 

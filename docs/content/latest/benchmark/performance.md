@@ -48,7 +48,7 @@ For this benchmark, we will setup a 3-node cluster with a replication factor of 
 We will use the `yb-sample-apps.jar` tool to perform this benchmark. You can get it from [this GitHub repository](https://github.com/YugaByte/yb-sample-apps) as shown below.
 
 ```sh
-$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
+$ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
 ```
 
 You would need to install java in order to run this tool. Also export the environment variable  $ENDPOINTS containing the IP addresses (plus port) for the nodes of the cluster.
@@ -57,7 +57,7 @@ You would need to install java in order to run this tool. Also export the enviro
 ENDPOINTS="X.X.X.X:9042,X.X.X.X:9042,X.X.X.X:9042"
 ```
 
-## Write-heavy KV workload 
+## Write-heavy KV workload
 
 Run the key-value workload with higher number of write threads (representing write-heavy workload).  
 
@@ -82,9 +82,9 @@ Write Ops/sec | ~90k
 Read Latency | ~2.5-3.0 ms/op
 CPU (User + Sys) | 60%
 
-## Read-heavy KV workload 
+## Read-heavy KV workload
 
-Run the key-value workload with higher number of read threads (representing read-heavy workload). 
+Run the key-value workload with higher number of read threads (representing read-heavy workload).
 
 Load 1M keys of 256 bytes and access them with 256 reader threads
 
@@ -107,7 +107,7 @@ Name    | Observation
 (Read) Latency | ~1.66 ms/op
 CPU (User + Sys) | 60%
 
-## Batch write-heavy KV workload 
+## Batch write-heavy KV workload
 
 Run the key-value workload in batch mode and higher number of write threads (representing batched, write-heavy workload).  
 

@@ -32,7 +32,7 @@ Fault-tolerance for a given shard is similar in both systems since both rely on 
 
 ## Synchronous data replication
 
-While primary election is Raft-based in MongoDB, actual data replication is not. Data replication is asynchronous where secondary pulls from primary. Both leader election and data replication are based on Raft distributed consensus. 
+While primary election is Raft-based in MongoDB, actual data replication is not. Data replication is asynchronous where secondary pulls from primary. Both leader election and data replication are based on Raft distributed consensus.
 
 ## Durable and fast writes
 
@@ -64,9 +64,9 @@ A few blog posts that highlight how YugaByte DB differs from MongoDB are below.
 
 - [Are MongoDB’s ACID Transactions Ready for High Performance Applications?](https://blog.yugabyte.com/are-mongodb-acid-transactions-ready-for-high-performance-applications/)
 
-- [Overcoming MongoDB Sharding and Replication Limitations with YugaByte DB](https://blog.yugabyte.com/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/) 
+- [Overcoming MongoDB Sharding and Replication Limitations with YugaByte DB](https://blog.yugabyte.com/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
 
-- [YugaByte DB 1.1 New Feature: Document Data Modeling with the JSON Data Type](https://blog.yugabyte.com/yugabyte-db-1-1-new-feature-document-data-modeling-with-json-data-type/) 
+- [YugaByte DB 1.1 New Feature: Document Data Modeling with the JSON Data Type](https://blog.yugabyte.com/yugabyte-db-1-1-new-feature-document-data-modeling-with-json-data-type/)
 
 - [DynamoDB vs MongoDB vs Cassandra for Fast Growing Geo-Distributed Apps](https://blog.yugabyte.com/dynamodb-vs-mongodb-vs-cassandra-for-fast-growing-geo-distributed-apps/)
 

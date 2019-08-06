@@ -1,7 +1,7 @@
 ---
-title: Build a Ruby App
-linkTitle: Build a Ruby App
-description: Build a Ruby App
+title: Build a Ruby application
+linkTitle: Build a Ruby application
+description: Build a Ruby application
 menu:
   latest:
     parent: build-apps
@@ -42,14 +42,13 @@ Install the Ruby YCQL driver using the following command. You can get further de
 $ gem install yugabyte-ycql-driver
 ```
 
-## Working Example
+## Working example
 
 ### Prerequisites
 
 This tutorial assumes that you have:
 
 - installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
-
 
 ### Writing the Ruby code
 

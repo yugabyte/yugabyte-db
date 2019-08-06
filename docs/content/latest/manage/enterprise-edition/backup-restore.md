@@ -1,7 +1,7 @@
 ---
-title: Backup & Restore
-linkTitle: Backup & Restore
-description: Backup & Restore
+title: Back up and restore
+linkTitle: Back up and restore
+description: Back up and restore
 menu:
   latest:
     identifier: manage-ee-backup-restore
@@ -11,7 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This section will describe how to backup and restore tables using the YugaByte Admin Console.
+This section will describe how to back up and restore tables using the YugaByte Admin Console.
 
 ## Create universe
 

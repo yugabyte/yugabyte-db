@@ -1,4 +1,4 @@
-## 1. Create a local cluster 
+## 1. Create a local cluster
   
 We will use the [`yb-docker-ctl`](../../admin/yb-docker-ctl/) utility downloaded in the previous step to create and administer a containerized local cluster. Detailed output for the *create* command is available in [yb-docker-ctl Reference](../../admin/yb-docker-ctl/#create-cluster).
   
@@ -30,19 +30,18 @@ feea0823209a   5039       master     yb-master-n1         http://192.168.64.2:70
 
 ## 3. Check cluster status with Admin UI
 
-The [yb-master-n1 Admin UI](../../admin/yb-master/#admin-ui) is available at http://localhost:7000 and the [yb-tserver-n1 Admin UI](../../admin/yb-tserver/#admin-ui) is available at http://localhost:9000. Other masters and tservers do not have their admin ports mapped to localhost to avoid port conflicts. 
+The [yb-master-n1 Admin UI](../../admin/yb-master/#admin-ui) is available at `http://localhost:7000` and the [yb-tserver-n1 Admin UI](../../admin/yb-tserver/#admin-ui) is available at `http://localhost:9000`. Other masters and tservers do not have their admin ports mapped to localhost to avoid port conflicts.
 
 **NOTE:**
 Clients connecting to the cluster will connect to only yb-tserver-n1 even if you used yb-docker-ctl to create a multi-node local cluster. In case of Docker for Mac, routing [traffic directly to containers](https://docs.docker.com/docker-for-mac/networking/#known-limitations-use-cases-and-workarounds) is not even possible today. Since only 1 node will receive the incoming client traffic, throughput expected for Docker-based local clusters can be significantly lower than binary-based local clusters.
 
-
 ### 3.1 Overview and Master status
 
-The yb-master-n1 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugaByte DB version number is also shown for your reference. 
+The yb-master-n1 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugaByte DB version number is also shown for your reference.
 
 ![master-home](/images/admin/master-home-docker-rf1.png)
 
-The Masters section highlights the 3 masters along with their corresponding cloud, region and zone placement. 
+The Masters section highlights the 3 masters along with their corresponding cloud, region and zone placement.
 
 ### 3.2 TServer status
 

@@ -40,7 +40,7 @@ YugaByte DB feature highlights are listed below.
 
 - Transactional [document store](../architecture/concepts/docdb/) backed by self-healing, strongly consistent [replication](../architecture/concepts/docdb/replication/).
 
-### 2. High performance and massive ccalability
+### 2. High performance and massive scalability
 
 - Low latency for geo-distributed applications with multiple [read consistency levels](../architecture/concepts/docdb/replication/#tunable-read-consistency) and [read-only replicas](../architecture/concepts/docdb/replication/#read-only-replicas).
 

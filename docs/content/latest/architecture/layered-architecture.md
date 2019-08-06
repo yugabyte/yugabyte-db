@@ -26,11 +26,11 @@ The [YugaByte Query Layer or YQL](../query-layer/) is the upper layer of YugaByt
 
 Currently, YQL supports two flavors of distributed SQL APIs.
 
-#### YugaByte SQL (YSQL)
+### YugaByte SQL (YSQL)
 
 YSQL is a distributed SQL API that is built by re-using the PostgreSQL language layer code. It is a stateless SQL query engine that is wire-format compatible with PostgreSQL.
 
-#### YugaByte Cloud QL (YCQL)
+### YugaByte Cloud QL (YCQL)
 
 YCQL is a semi-relational language that has its roots in Cassandra Query Language. It is a SQL-like language built specifically to be aware of clustering of data across nodes.
 
@@ -50,25 +50,25 @@ Understanding [the design of the query layer](../query-layer/overview/).
 
 Data in DocDB is stored in tables. Each table is composed of rows, each row contains a key and a document. Here are some key points:
 
-#### Sharding
+### Sharding
 
 Data is stored inside tables in DocDB. A DocDB table is often sharded into a number of **tablets**. This sharding of tables is transparent to users.
 
 You can read more about [how sharding works in DocDB](../docdb/sharding/).
 
-#### Replication
+### Replication
 
 Each tablet consisting of user data is replicated according to some replication factor using the Raft consensus algorithm. Replication is performed at a tablet level, and ensures single row linearizability even in the presence of failures.
 
 You can read more about [how replication works in DocDB](../docdb/replication/).
 
-#### Persistence
+### Persistence
 
 In order to persist data, a log-structured row/document-oriented storage is used. It includes several optimizations for handling ever-growing datasets efficiently.
 
 You can read more about [how persistence of data works in DocDB](../docdb/persistence/).
 
-#### Transactions
+### Transactions
 
 DocDB has support for both single-row and multi-row transactions. This means that DocDB allows modifying multiple keys while preserving ACID properties.
 
@@ -76,7 +76,7 @@ DocDB has support for both single-row and multi-row transactions. This means tha
 * [Single-row transactions](../transactions/single-row-transactions/).
 * [Multi-row transactions](../transactions/distributed-txns/).
 
-## What's next?
+## What's next
 
 You can now read about the following:
 

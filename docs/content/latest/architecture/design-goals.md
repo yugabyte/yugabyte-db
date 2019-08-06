@@ -35,8 +35,8 @@ YugaByte DB supports single-key linearizable writes. Linearizability is one of t
 
 YugaByte DB supports multi-key transactions with both Serializable and Snapshot Isolation.
 
-- The [YSQL](../../api/ysql/) API supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Note that YSQL Serializable support was added in [v1.2.6](../../releases/v1.2.6/).
-- The [YCQL](../../api/ycql/dml_transaction/) API supports only Snapshot Isolation using the `BEGIN TRANSACTION` syntax.
+* The [YSQL](../../api/ysql/) API supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Note that YSQL Serializable support was added in [v1.2.6](../../releases/v1.2.6/).
+* The [YCQL](../../api/ycql/dml_transaction/) API supports only Snapshot Isolation using the `BEGIN TRANSACTION` syntax.
 
 {{< tip title="Read More about Consistency" >}}
 * Achieving [consistency with Raft consensus](../docdb/replication/).
@@ -127,9 +127,11 @@ YugaByte DB is open source under the very permissive Apache 2.0 license.
 You can now read about the following:
 
 {{< note title="" >}}
+
 * [Overview of the architectural layers in YugaByte DB](../layered-architecture/)
 * [Architecture of DocDB](../docdb/)
 * [Transactions in DocDB](../transactions/)
 * [Design of the query layer](../query-layer/)
 * [How various functions work, like the read and write IO paths](../core-functions/)
+
 {{< /note >}}

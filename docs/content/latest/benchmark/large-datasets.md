@@ -44,14 +44,15 @@ A machine in the AWS cloud with the following spec was chosen: **32-vcpus, 240 G
 
 Create a standard 4 node cluster, with replication factor of 3. Pass the following option to the YugaByte DB processes.
 
-```
+```sh
 --yb_num_shards_per_tserver=20
 ```
 
 The `yb_num_shards_per_tserver` was set to **20** (from the default value of 8). This is done because the i3.8xlarge nodes have 4 disks. In future, YugaByte DB will automatically pick better defaults for nodes with multiple disks.
 
 Export the following environment variable:
-```
+
+```sh
 $ export YCQL_ADDRS="<ip1>:9042,<ip2>:9042,<ip3>:9042,<ip4>:9042"
 ```
 

@@ -26,9 +26,7 @@ cqlsh is installed as part of YugaByte DB and is located in the `bin` directory 
 
 ```sh
 $ ./bin/cqlsh --execute "select cluster_name, data_center, rack from system.local" 127.0.0.1
-```
 
-```
  cluster_name  | data_center | rack
 ---------------+-------------+-------
  local cluster | datacenter1 | rack1
@@ -44,7 +42,7 @@ cqlsh [options] [host [port]]
 
 Where
 
-- `host` is the IP address of the host on which [YB-TServer](/latest/architecture/concepts/universe/#yb-tserver) is run. The default is local host at 127.0.0.1.
+- `host` is the IP address of the host on which [YB-TServer](/latest/architecture/concepts/universe/#yb-tserver-process) is run. The default is local host at 127.0.0.1.
 - `port` is the TCP port at which YB-TServer listens for YCQL connections. The default is 9042.
 
 Options | Short Form | Default | Description

@@ -1,8 +1,8 @@
-An “airgapped” host has either no or a restricted path to inbound/outbound Internet traffic at all.
+An “airgapped” host has either no or a restricted path to inbound or outbound Internet traffic at all.
 
 ## Prerequisites
 
-### 1. Whitelist Endpoints
+### 1. Whitelist endpoints
 
 In order to install Replicated and YugaWare on a host with no Internet connectivity at all, we have to first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation.
 
@@ -20,46 +20,55 @@ A supported version of docker-engine (currently 1.7.1 to 17.03.1-ce) needs to be
 On a machine connected to the Internet, perform the following steps.
 
 Make a directory for downloading the binaries.
+
 ```sh
 $ sudo mkdir /opt/downloads
 ```
 
 Change the owner user for the directory
+
 ```sh
 $ sudo chown -R ubuntu:ubuntu /opt/downloads
 ```
 
 Change to the directory.
+
 ```sh
 $ cd /opt/downloads
 ```
 
 Get the replicated binary.
+
 ```sh
 $ wget https://downloads.yugabyte.com/replicated.tar.gz
 ```
 
 Get the yugaware binary where the last 4 digits refer to the version of the binary. Change this number as needed.
+
 ```sh
 $ wget https://downloads.yugabyte.com/yugaware-1.2.6.0.airgap
 ```
 
 Change to the directory.
+
 ```sh
 $ cd /opt/downloads
 ```
 
 Expand the replicated binary.
+
 ```sh
 $ tar xzvf replicated.tar.gz
 ```
 
 Install replicated (yugaware will be installed via replicated ui after replicated install completes) pick `eth0` network interface in case multiple ones show up.
+
 ```sh
 $ cat ./install.sh | sudo bash -s airgap
 ```
 
 After replicated install completes, make sure it is running.
+
 ```sh
 $ sudo docker ps
 ```
@@ -70,9 +79,9 @@ You should see an output similar to the following.
 
 Next step is install YugaWare as described in the [section below](#step-2-install-yugaware-via-replicated).
 
-## Step 2. Install YugaWare via Replicated
+## Step 2. Install YugaWare using Replicated
 
-### Setup HTTPS for Replicated
+### Set up HTTPS for Replicated
 
 Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will address this warning as soon as we setup HTTPS for the Replicated Admin Console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated Admin Console.
 
@@ -86,7 +95,7 @@ The simplest option is use a self-signed cert for now and add the custom SSL cer
 
 ![Replicated Self Signed Cert](/images/replicated/replicated-selfsigned.png)
 
-### Upload License File
+### Upload license file
 
 Now upload the YugaByte license file received from YugaByte Support.
 
@@ -106,7 +115,7 @@ The next step is to add a password to protect the Replicated Admin Console (note
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
-### Pre-Flight Checks
+### Pre-flight checks
 
 Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the YugaWare application.
 

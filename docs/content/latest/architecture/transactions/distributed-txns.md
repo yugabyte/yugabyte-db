@@ -88,18 +88,16 @@ the one-byte prefix that puts these records before all regular records in RocksD
 
 - `TxnId -> StatusTabletId, IsolationLevel, Priority`
 
-    - `StatusTabletId` is the id of the tablet that keeps track of this transaction's status.
-      Unlike the case of tables/tablets holding user data, where we are using a [hash-based
-      mapping](../../concepts/sharding/) from keys to tablets, there is no deterministic way
-      to compute the transaction status tablet id by transaction id, so this information must be
-      explicitly passed to all components handling a particular transaction.
-
-    - `Isolation Level` [Snapshot Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) or
-      [Serializable Isolation](https://en.wikipedia.org/wiki/Serializability). 
-
-    - `Priority` This priority is assigned randomly during transaction creation. When a conflict
-      is detected between two transactions, the transaction with lower priority is
-      aborted and restarted.
+  - `StatusTabletId` is the id of the tablet that keeps track of this transaction's status.
+    Unlike the case of tables/tablets holding user data, where we are using a [hash-based
+    mapping](../../concepts/sharding/) from keys to tablets, there is no deterministic way
+    to compute the transaction status tablet id by transaction id, so this information must be
+    explicitly passed to all components handling a particular transaction.
+  - `Isolation Level` [Snapshot Isolation](https://en.wikipedia.org/wiki/Snapshot_isolation) or
+    [Serializable Isolation](https://en.wikipedia.org/wiki/Serializability).
+  - `Priority` This priority is assigned randomly during transaction creation. When a conflict
+    is detected between two transactions, the transaction with lower priority is
+    aborted and restarted.
 
 #### 3. Provisional record keys indexed by transaction id** ("reverse index")
 
@@ -124,24 +122,22 @@ storage engine. The same approach could be reused to make *transaction status* c
 
 A transaction status record contains the following fields for a particular transaction id:
 
-  * **Status** (*pending*, *committed*, or *aborted*).
-
-    All transactions start in the "pending" status, and progress to "committed" or "aborted" status,
-    in which they remain permanently until cleaned up.
+- **Status** (*pending*, *committed*, or *aborted*).
+  All transactions start in the "pending" status, and progress to "committed" or "aborted" status,
+  in which they remain permanently until cleaned up.
 
 After a transaction is committed, two more fields are set:
 
-  * **Commit hybrid timestamp**. This timestamp is chosen as the current hybrid time at the
-    transaction status tablet at the moment of appending the "transaction committed" entry to its
-    Raft log. It is then used as the final MVCC timestamp for regular records that replace the
-    transaction's provisional records when provisional records are being applied and cleaned up.
-
-  * **List of ids of participating tablets**. After a transaction commits, we know the final set of
-    tablets that the transaction has written to. The tablet server managing the transaction sends
-    this list to the transaction status tablet as part of the commit message, and the transaction
-    status tablet makes sure that all participating tablets are notified of the transaction's
-    committed status. This process might take multiple retries, and the transaction record can only
-    be cleaned up after this is done.
+- **Commit hybrid timestamp**. This timestamp is chosen as the current hybrid time at the
+  transaction status tablet at the moment of appending the "transaction committed" entry to its
+  Raft log. It is then used as the final MVCC timestamp for regular records that replace the
+  transaction's provisional records when provisional records are being applied and cleaned up.
+- **List of ids of participating tablets**. After a transaction commits, we know the final set of
+  tablets that the transaction has written to. The tablet server managing the transaction sends
+  this list to the transaction status tablet as part of the commit message, and the transaction
+  status tablet makes sure that all participating tablets are notified of the transaction's
+  committed status. This process might take multiple retries, and the transaction record can only
+  be cleaned up after this is done.
 
 ## See also
 

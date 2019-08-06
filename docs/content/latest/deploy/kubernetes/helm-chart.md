@@ -50,7 +50,7 @@ For creating the cluster, you need to have a service account with cluster-admin 
 $ kubectl create -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/yugabyte-rbac.yaml
 ```
 
-```
+```sh
 serviceaccount/yugabyte-helm created
 clusterrolebinding.rbac.authorization.k8s.io/yugabyte-helm created
 ```
@@ -63,7 +63,7 @@ Initialize `helm` with the service account but use the `--upgrade` flag to ensur
 $ helm init --service-account yugabyte-helm --upgrade --wait
 ```
 
-```
+```sh
 $HELM_HOME has been configured at /Users/<user>/.helm.
 
 Tiller (the Helm server-side component) has been upgraded to the current version.
@@ -87,10 +87,12 @@ $ helm repo update
 ```sh
 $ helm search yugabytedb/yugabyte
 ```
-```
+
+```sh
 NAME               	CHART VERSION	APP VERSION	DESCRIPTION
 yugabytedb/yugabyte	1.3.0        	1.3.0.0-b1 	YugaByte Database is the high-performance distr...
 ```
+
 ### Install YugaByte DB
 
 Install YugaByte DB in the Kubernetes cluster using the command below.
@@ -106,6 +108,7 @@ $ helm install yugabytedb/yugabyte --set resource.master.requests.cpu=0.1,resour
 ```
 
 ### Installing YugaByte DB with YSQL (beta)
+
 If you wish to enable YSQL (beta) support, install YugaByte DB with additional parameter as shown below.
 
 ```sh
@@ -124,7 +127,7 @@ Connect using ysqlsh client as shown below.
 $ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
-## Check Cluster Status
+## Check the cluster status
 
 You can check the status of the cluster using various commands noted below.
 
@@ -132,7 +135,7 @@ You can check the status of the cluster using various commands noted below.
 $ helm status yb-demo
 ```
 
-```
+```sh
 LAST DEPLOYED: Fri Oct  5 09:04:46 2018
 NAMESPACE: yb-demo
 STATUS: DEPLOYED
@@ -160,13 +163,14 @@ yb-tserver-2  0/1    Pending  0         7s
 
 ...
 ```
+
 Check the pods.
 
 ```sh
 $ kubectl get pods --namespace yb-demo
 ```
 
-```
+```sh
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    1/1       Running   0          4m
 yb-master-1    1/1       Running   0          4m
@@ -175,13 +179,14 @@ yb-tserver-0   1/1       Running   0          4m
 yb-tserver-1   1/1       Running   0          4m
 yb-tserver-2   1/1       Running   0          4m
 ```
+
 Check the services.
 
 ```sh
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```sh
 NAME           TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                               AGE
 yb-master-ui   LoadBalancer   10.111.34.175   <pending>     7000:31418/TCP                        1m
 yb-masters     ClusterIP      None            <none>        7100/TCP,7000/TCP                     1m
@@ -194,14 +199,14 @@ You can even check the history of the `yb-demo` helm chart.
 $ helm history yb-demo
 ```
 
-```
+```sh
 REVISION  UPDATED                   STATUS    CHART           DESCRIPTION     
 1         Fri Oct  5 09:04:46 2018  DEPLOYED  yugabyte-1.3.0 Install complete
 ```
 
-## Connect using YCQL client
+## Connect using the YCQL client
 
-By default YugaByte helm will expose only the master ui endpoint via LoadBalancer. If you wish to expose YCQL, YEDIS and YSQL services via LoadBalancer for your app to use, you can do that as follows.
+By default, YugaByte helm will expose only the master ui endpoint via LoadBalancer. If you wish to expose YCQL, YEDIS and YSQL services via LoadBalancer for your app to use, you can do that as follows.
 
 ```sh
 helm install yugabytedb/yugabyte -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo --wait
@@ -225,7 +230,7 @@ You can connect to this cluster with `cqlsh` as follows:
 $ cqlsh 35.225.153.213
 ```
 
-## Upgrade Cluster
+## Upgrade the cluster
 
 You can perform rolling upgrades on the YugaByte DB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugaByte DB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the `latest` Docker image is used for the install.
 
@@ -233,7 +238,7 @@ You can perform rolling upgrades on the YugaByte DB cluster with the following c
 $ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=1.1.0.3-b6 --wait
 ```
 
-## Delete Cluster
+## Delete the cluster
 
 Deleting the cluster involves purging the helm chart followed by deletion of the PVCs.
 
