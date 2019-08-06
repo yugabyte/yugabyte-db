@@ -24,7 +24,9 @@ SELECT 'msg10' FROM pg_logical_emit_message(true, 'wal2json', 'this is message #
 COMMIT;
 
 SELECT 'msg11' FROM pg_logical_emit_message(true, 'filtered', 'this message will be filtered');
+SELECT 'msg12' FROM pg_logical_emit_message(true, 'added1', 'this message will be printed');
+SELECT 'msg13' FROM pg_logical_emit_message(true, 'added2', 'this message will be filtered');
 
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'filter-msg-prefixes', 'foo, filtered, bar');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'filter-msg-prefixes', 'foo, filtered, bar', 'add-msg-prefixes', 'added1, added3, wal2json');
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');

@@ -50,6 +50,7 @@ typedef struct
 	List		*filter_tables;		/* filter out tables */
 	List		*add_tables;		/* add only these tables */
 	List		*filter_msg_prefixes;	/* filter by message prefixes */
+	List		*add_msg_prefixes;	/* add only messages with these prefixes */
 
 	int			format_version;		/* support different formats */
 
@@ -149,6 +150,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_not_null = false;
 	data->filter_tables = NIL;
 	data->filter_msg_prefixes = NIL;
+	data->add_msg_prefixes = NIL;
 
 	data->format_version = WAL2JSON_FORMAT_VERSION;
 
@@ -385,6 +387,29 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 			{
 				rawstr = pstrdup(strVal(elem->arg));
 				if (!split_string_to_list(rawstr, ',', &data->filter_msg_prefixes))
+				{
+					pfree(rawstr);
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_NAME),
+							 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+								 strVal(elem->arg), elem->defname)));
+				}
+				pfree(rawstr);
+			}
+		}
+		else if (strcmp(elem->defname, "add-msg-prefixes") == 0)
+		{
+			char	*rawstr;
+
+			if (elem->arg == NULL)
+			{
+				elog(DEBUG1, "add-msg-prefixes argument is null");
+				data->add_msg_prefixes = NIL;
+			}
+			else
+			{
+				rawstr = pstrdup(strVal(elem->arg));
+				if (!split_string_to_list(rawstr, ',', &data->add_msg_prefixes))
 				{
 					pfree(rawstr);
 					ereport(ERROR,
@@ -1093,6 +1118,27 @@ pg_decode_message(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				elog(DEBUG2, "message prefix \"%s\" was filtered out", p);
 				return;
 			}
+		}
+	}
+
+	/* Add messages by prefix */
+	if (list_length(data->add_msg_prefixes) > 0)
+	{
+		ListCell	*lc;
+		bool		skip = true;
+
+		foreach(lc, data->add_msg_prefixes)
+		{
+			char	*p = lfirst(lc);
+
+			if (strcmp(p, prefix) == 0)
+				skip = false;
+		}
+
+		if (skip)
+		{
+			elog(DEBUG2, "message prefix \"%s\" was skipped", prefix);
+			return;
 		}
 	}
 

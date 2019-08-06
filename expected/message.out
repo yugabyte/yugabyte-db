@@ -77,7 +77,19 @@ SELECT 'msg11' FROM pg_logical_emit_message(true, 'filtered', 'this message will
  msg11
 (1 row)
 
-SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'filter-msg-prefixes', 'foo, filtered, bar');
+SELECT 'msg12' FROM pg_logical_emit_message(true, 'added1', 'this message will be printed');
+ ?column? 
+----------
+ msg12
+(1 row)
+
+SELECT 'msg13' FROM pg_logical_emit_message(true, 'added2', 'this message will be filtered');
+ ?column? 
+----------
+ msg13
+(1 row)
+
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pretty-print', '1', 'filter-msg-prefixes', 'foo, filtered, bar', 'add-msg-prefixes', 'added1, added3, wal2json');
                                                   data                                                   
 ---------------------------------------------------------------------------------------------------------
  {                                                                                                      +
@@ -170,7 +182,21 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'pre
          "change": [                                                                                    +
          ]                                                                                              +
  }
-(9 rows)
+ {                                                                                                      +
+         "change": [                                                                                    +
+                 {                                                                                      +
+                         "kind": "message",                                                             +
+                         "transactional": true,                                                         +
+                         "prefix": "added1",                                                            +
+                         "content": "this message will be printed"                                      +
+                 }                                                                                      +
+         ]                                                                                              +
+ }
+ {                                                                                                      +
+         "change": [                                                                                    +
+         ]                                                                                              +
+ }
+(11 rows)
 
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
  ?column? 
