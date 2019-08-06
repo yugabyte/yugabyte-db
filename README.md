@@ -59,6 +59,8 @@ max_replication_slots = 1
 
 After changing these parameters, a restart is needed.
 
+By default, PostgreSQL 10 or later doesn't need to adjust parameters.
+
 Parameters
 ----------
 
@@ -87,12 +89,18 @@ There are two ways to obtain the changes (JSON objects) from **wal2json** plugin
 pg_recvlogical
 --------------
 
-Besides the configuration above, it is necessary to configure a replication connection to use pg_recvlogical.
+Besides the configuration above, it is necessary to configure a replication connection to use pg_recvlogical. A logical replication connection in version 9.4, 9.5, and 9.6 requires `replication` keyword in the database column. Since version 10, logical replication matches a normal entry with a database name or keywords such as `all`.
 
-First, add a replication connection rule at pg_hba.conf:
+First, add a replication connection rule at pg_hba.conf (9.4, 9.5, and 9.6):
 
 ```
 local    replication     myuser                     trust
+```
+
+If you are using version 10 or later:
+
+```
+local    mydatabase      myuser                     trust
 ```
 
 Also, set max_wal_senders at postgresql.conf:
