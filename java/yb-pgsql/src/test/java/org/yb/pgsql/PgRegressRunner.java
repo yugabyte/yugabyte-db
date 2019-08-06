@@ -34,9 +34,19 @@ public class PgRegressRunner {
 
   private static final Logger LOG = LoggerFactory.getLogger(PgRegressRunner.class);
 
-  private File pgBinDir;
-  private File pgRegressDir;
-  private File pgRegressExecutable;
+  private static File pgRegressDir =
+                new File(TestUtils.getBuildRootDir(), "postgres_build/src/test/regress");
+  private static File pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
+  private static File pgRegressExecutable = new File(pgRegressDir, "pg_regress");
+
+  public static File getPgRegressDir() {
+    return pgRegressDir;
+  }
+
+  public static File getPgBinDir() {
+    return pgBinDir;
+  }
+
   private Process pgRegressProc;
   private LogPrinter stdoutLogPrinter, stderrLogPrinter;
   private String pgSchedule;
@@ -56,9 +66,6 @@ public class PgRegressRunner {
 
   public PgRegressRunner(String schedule, String pgHost, int pgPort, String pgUser,
                          long maxRuntimeMillis) {
-    pgRegressDir = new File(TestUtils.getBuildRootDir(), "postgres_build/src/test/regress");
-    pgBinDir = new File(TestUtils.getBuildRootDir(), "postgres/bin");
-    pgRegressExecutable = new File(pgRegressDir, "pg_regress");
     this.pgSchedule = schedule;
     this.pgHost = pgHost;
     this.pgPort = pgPort;

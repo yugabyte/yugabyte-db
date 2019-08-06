@@ -206,6 +206,18 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 			   bool *no_inherit, core_yyscan_t yyscanner);
 static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
+#define YBINDEXELEM_EXPR_TO_COLREF(idxelem, expr, parserloc) \
+	do { \
+		ColumnRef *col = (ColumnRef *)(expr); \
+		if (col->type != T_ColumnRef || list_length(col->fields) != 1) \
+			ereport(ERROR, \
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE), \
+					 errmsg("only column list is allowed"), \
+					 parser_errposition(parserloc))); \
+		char *colname = strVal(linitial(col->fields)); \
+		idxelem->yb_name_list = lappend(idxelem->yb_name_list, makeString(colname)); \
+	} while(0)
+
 %}
 
 %pure-parser
@@ -7970,7 +7982,14 @@ index_elem:	ColId opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
  * For YugaByte DB, index column can be grouped and hashed together. Unfortunately, we cannot
  * use "columnList" below due to reduce/reduce conflict.
  */
-yb_index_elem:	index_elem							{ $$ = $1; }
+yb_index_elem: index_elem
+				{
+					$$ = $1;
+					if ($$->expr)
+					{
+						YBINDEXELEM_EXPR_TO_COLREF($$, $$->expr, @1);
+					}
+				}
 			| '(' expr_list ')' opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
 				{
 					$$ = makeNode(IndexElem);
@@ -7978,14 +7997,7 @@ yb_index_elem:	index_elem							{ $$ = $1; }
 					ListCell *lc;
 					foreach(lc, $2)
 					{
-						ColumnRef *col = (ColumnRef *)lfirst(lc);
-						if (col->type != T_ColumnRef || list_length(col->fields) != 1)
-							ereport(ERROR,
-									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-									 errmsg("only column list is allowed"),
-									 parser_errposition(@2)));
-						char *colname = strVal(linitial(col->fields));
-						$$->yb_name_list = lappend($$->yb_name_list, makeString(colname));
+						YBINDEXELEM_EXPR_TO_COLREF($$, lfirst(lc), @2);
 					}
 					$$->indexcolname = NULL;
 					$$->collation = $4;
@@ -8026,8 +8038,8 @@ opt_yb_index_sort_order: opt_asc_desc			{ $$ = $1; }
 		;
 
 opt_nulls_order: NULLS_LA FIRST_P			{ $$ = SORTBY_NULLS_FIRST; }
-			| NULLS_LA LAST_P		{ $$ = SORTBY_NULLS_LAST; }
-			| /*EMPTY*/			{ $$ = SORTBY_NULLS_DEFAULT; }
+			| NULLS_LA LAST_P				{ $$ = SORTBY_NULLS_LAST; }
+			| /*EMPTY*/						{ $$ = SORTBY_NULLS_DEFAULT; }
 		;
 
 
