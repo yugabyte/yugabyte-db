@@ -1,7 +1,7 @@
 ---
-title: Build a NodeJS App
-linkTitle: Build a NodeJS App
-description: Build a NodeJS App
+title: Build a NodeJS application
+linkTitle: Build a NodeJS application
+description: Build a NodeJS application
 menu:
   latest:
     parent: build-apps
@@ -18,7 +18,7 @@ showAsideToc: true
   <li >
     <a href="/latest/quick-start/build-apps/nodejs/ysql-pg" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG Driver
+      YSQL - PG driver
     </a>
   </li>
   <li >
@@ -42,7 +42,6 @@ This tutorial assumes that you have:
 
 - installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
 
-
 ## Clone the orm-examples repo
 
 ```sh
@@ -57,7 +56,7 @@ This repository has a node.js example that implements a simple REST API server. 
 
 The source for the above application can be found in the [repo](https://github.com/YugaByte/orm-examples/tree/master/node/sequelize). There are a number of options that can be customized in the properties file located at `config/config.json`. 
 
-## Build the app
+## Build the application
 
 ```sh
 $ cd ./node/sequelize/
@@ -67,7 +66,7 @@ $ cd ./node/sequelize/
 npm install
 ```
 
-## Run the app
+## Run the application
 
 Bring the NodeJS API server at http://localhost:8080 with DEBUG logs on.
 
@@ -75,9 +74,10 @@ Bring the NodeJS API server at http://localhost:8080 with DEBUG logs on.
 $ DEBUG=sequelize:* npm start
 ```
 
-## Send requests to the app
+## Send requests to the application
 
 Create 2 users.
+
 ```sh
 $ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
@@ -88,11 +88,13 @@ $ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewar
 ```
 
 Create 2 products.
+
 ```sh
 $ curl \
   --data '{ "productName": "Notebook", "description": "200 page notebook", "price": 7.50 }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/products
 ```
+
 ```sh
 $ curl \
   --data '{ "productName": "Pencil", "description": "Mechanical pencil", "price": 2.50 }' \
@@ -100,11 +102,13 @@ $ curl \
 ```
 
 Create 2 orders.
+
 ```sh
 $ curl \
   --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
+
 ```sh
 $ curl \
   --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 }, { "productId": 2, "units": 4 } ] }' \
@@ -118,15 +122,18 @@ $ curl \
 ```sh
 $ ./bin/ysqlsh 
 ```
+
 ```
 ysqlsh (11.2)
 Type "help" for help.
 
 postgres=#
 ```
+
 ```sql
 postgres=> SELECT count(*) FROM users;
 ```
+
 ```
  count 
 -------
@@ -137,6 +144,7 @@ postgres=> SELECT count(*) FROM users;
 ```sql
 postgres=> SELECT count(*) FROM products;
 ```
+
 ```
  count 
 -------
@@ -147,6 +155,7 @@ postgres=> SELECT count(*) FROM products;
 ```sql
 postgres=> SELECT count(*) FROM orders;
 ```
+
 ```
  count 
 -------
@@ -159,6 +168,7 @@ postgres=> SELECT count(*) FROM orders;
 ```sh
 $ curl http://localhost:8080/users
 ```
+
 ```
 {
   "content": [
@@ -178,7 +188,6 @@ $ curl http://localhost:8080/users
   ...
 }  
 ```
-
 
 ```sh
 $ curl http://localhost:8080/products
@@ -206,6 +215,7 @@ $ curl http://localhost:8080/products
 ```sh
 $ curl http://localhost:8080/orders
 ```
+
 ```
 {
   "content": [
@@ -242,6 +252,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-As highlighted earlier, the source for the above application can be found in the [orm-examples](https://github.com/YugaByte/orm-examples/tree/master/node/sequelize) repo.
-
-
+As highlighted earlier, the source for the above application can be found in the [orm-examples repository](https://github.com/YugaByte/orm-examples/tree/master/node/sequelize).

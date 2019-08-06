@@ -41,7 +41,7 @@ This tutorial assumes that you have:
 - installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra/).
 - installed Go version 1.8+
 
-## Install Go Cassandra Driver
+## Install the Go Cassandra driver
 
 To install the driver locally run:
 

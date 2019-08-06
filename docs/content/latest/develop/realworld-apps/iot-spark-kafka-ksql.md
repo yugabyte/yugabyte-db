@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Overview
 
-This is an end-to-end functional application with source code and installation instructions available on [GitHub](https://github.com/YugaByte/yb-iot-fleet-management). It is a blueprint for an IoT application built on top of YugaByte DB (using the Cassandra-compatible YCQL API) as the database, Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework. 
+This is an end-to-end functional application with source code and installation instructions available on [GitHub](https://github.com/YugaByte/yb-iot-fleet-management). It is a blueprint for an IoT application built on top of YugaByte DB (using the Cassandra-compatible YCQL API) as the database, Confluent Kafka as the message broker, KSQL or Apache Spark Streaming for real-time analytics and Spring Boot as the application framework.
 
 ## Scenario
 
@@ -29,7 +29,7 @@ This app renders a dashboard showing both of the above. Below is a view of the r
 
 ![YB IoT Fleet Management Dashboard](/images/develop/realworld-apps/iot-spark-kafka-ksql/yb-iot-fleet-management-screenshot.png)
 
-## App architecture
+## Application architecture
 
 This application has the following subcomponents:
 
@@ -40,13 +40,13 @@ This application has the following subcomponents:
 
 We will look at each of these components in detail. Below is an architecture diagram showing how these components fit together.
 
-### Confluent Kafka, KSQL and YugaByte DB (CKY Stack)
+### Confluent Kafka, KSQL, and YugaByte DB (CKY Stack)
 
 App architecture with the CKY stack is shown below. The same [Kafka Connect Sink Connector for YugaByte DB](https://github.com/YugaByte/yb-kafka-connector) is used for storing both the raw events as well as the aggregate data (that's generated using KSQL).
 
 ![YB IoT Fleet Management Architecture with KSQL](/images/develop/realworld-apps/iot-spark-kafka-ksql/yb-iot-fleet-mgmt-arch-kafka-ksql.png)
 
-### Spark, Kafka and YugaByte DB (SKY Stack)
+### Spark, Kafka, and YugaByte DB (SKY Stack)
 
 App architecture with the SKY stack is shown below. The Kafka Connect Sink Connector for YugaByte DB is used for storing raw events from Kafka to YugaByte DB. The aggregate data generated via Apache Spark Streaming is persisted in YugaByte DB using the Spark-Cassandra Connector.
 
@@ -66,15 +66,15 @@ There is one table for storing the raw events. Note the `default_time_to_live` v
 
 ```sql
 CREATE TABLE TrafficKeySpace.Origin_Table (
-  vehicleId text, 
-  routeId text, 
-  vehicleType text, 
-  longitude text, 
-  latitude text, 
-  timeStamp timestamp, 
-  speed double, 
-  fuelLevel double, 
-PRIMARY KEY ((vehicleId), timeStamp)) 
+  vehicleId text,
+  routeId text,
+  vehicleType text,
+  longitude text,
+  latitude text,
+  timeStamp timestamp,
+  speed double,
+  fuelLevel double,
+PRIMARY KEY ((vehicleId), timeStamp))
 WITH default_time_to_live = 3600;
 ```
 
@@ -108,7 +108,7 @@ CREATE TABLE TrafficKeySpace.poi_traffic(
 );
 ```
 
-## Data Producer
+## Data producer
 
 A program that generates random test data and publishes it to the Kafka topic `iot-data-event`. This emulates the data received from the connected vehicles using a message broker in the real world.
 
@@ -243,7 +243,7 @@ We create entity classes for the three tables `Total_Traffic`, `Window_Traffic` 
 @Repository
 public interface TotalTrafficDataRepository extends CassandraRepository<TotalTrafficData> {
   @Query("SELECT * FROM traffickeyspace.total_traffic WHERE recorddate = ? ALLOW FILTERING")
-  Iterable<TotalTrafficData> findTrafficDataByDate(String date);   
+  Iterable<TotalTrafficData> findTrafficDataByDate(String date);
 }
 ```
 

@@ -1,7 +1,7 @@
 ---
-title: Build a NodeJS App
-linkTitle: Build a NodeJS App
-description: Build a NodeJS App
+title: Build a NodeJS application
+linkTitle: Build a NodeJS application
+description: Build a NodeJS application
 menu:
   latest:
     parent: build-apps
@@ -17,7 +17,7 @@ showAsideToc: true
   <li >
     <a href="/latest/quick-start/build-apps/nodejs/ysql-pg" class="nav-link ">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG Driver
+      YSQL - PG driver
     </a>
   </li>
   <li >
@@ -42,7 +42,7 @@ Install the nodejs driver using the following command. You can find the source f
 $ npm install cassandra-driver
 ```
 
-## Working Example
+## Working example
 
 ### Prerequisites
 
@@ -57,7 +57,7 @@ We will be using the [async](https://github.com/caolan/async) JS utility to work
 $ npm install --save async
 ```
 
-### Writing the js code
+### Writing the JavaScript code
 
 Create a file `yb-cql-helloworld.js` and add the following content to it.
 

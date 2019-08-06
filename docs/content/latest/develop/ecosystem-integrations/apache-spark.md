@@ -43,4 +43,3 @@ menu:
     {{% includeMarkdown "apache-spark/scala.md" /%}}
   </div>
 </div>
-
