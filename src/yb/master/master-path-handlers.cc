@@ -1263,14 +1263,15 @@ Status MasterPathHandlers::Register(Webserver* server) {
       "/tablet-servers", "Tablet Servers",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar, "fa fa-server");
-  cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
+  cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
+      this, _1, _2, false /* skip_system_tables */);
   server->RegisterPathHandler(
       "/tables", "Tables",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), is_styled,
       is_on_nav_bar, "fa fa-table");
-  cb = std::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
 
   // The set of handlers not currently visible on the nav bar.
+  cb = std::bind(&MasterPathHandlers::HandleTablePage, this, _1, _2);
   server->RegisterPathHandler(
       "/table", "", std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb),
       is_styled, false);
@@ -1289,6 +1290,7 @@ Status MasterPathHandlers::Register(Webserver* server) {
       false);
 
   // JSON Endpoints
+  cb = std::bind(&MasterPathHandlers::HandleGetTserverStatus, this, _1, _2);
   server->RegisterPathHandler(
       "/api/v1/tablet-servers", "Tserver Statuses",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
@@ -1296,8 +1298,6 @@ Status MasterPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/api/v1/health-check", "Cluster Health Check",
       std::bind(&MasterPathHandlers::CallIfLeaderOrPrintRedirect, this, _1, _2, cb), false, false);
-  cb = std::bind(&MasterPathHandlers::HandleCatalogManager,
-      this, _1, _2, false /* skip_system_tables */);
   cb = std::bind(&MasterPathHandlers::HandleDumpEntities, this, _1, _2);
   server->RegisterPathHandler(
       "/dump-entities", "Dump Entities",
