@@ -21,17 +21,17 @@ Note that the YB-Master is highly available as it forms a Raft group with its pe
 
 ![master_overview](/images/architecture/master_overview.png)
 
-Here are some of the functions of the YB-Master.
+## Functions of YB-Master
 
-### Coordination of Universe-wide Admin Operations
+### Coordination of universe-wide admin operations
 
 Examples of such operations are user-issued create/alter/drop table requests, as well as a creating a backup of a table. The YB-Master performs these operations with a guarantee that the operation is propagated to all tablets irrespective of the state of the YB-TServers hosting these tablets. This is essential because a YB-TServer failure while one of these universe-wide operations is in progress cannot affect the outcome of the operation by failing to apply it on some tablets.
 
-### Storage of System Metadata
+### Storage of Ssystem metadata
 
-The master stores system metadata such as the information about all the keyspaces, tables, roles, permissions, and assignment of tablets to YB-TServers. These system records are replicated across the YB-Masters for redundancy using Raft as well. The system metadata is also stored as a DocDB table by the YB-Master(s).
+The master store system metadata such as the information about all the keyspaces, tables, roles, permissions, and assignment of tablets to YB-TServers. These system records are replicated across the YB-Masters for redundancy using Raft as well. The system metadata is also stored as a DocDB table by the YB-Master(s).
 
-### Authoritative Source of Tablet Assignments to YB-TServers
+### Authoritative source of tablet ssignments to YB-TServers
 
 The YB-Master stores all tablets and the corresponding YB-TServers that currently host them. This map of tablets to the hosting YB-TServers is queried by clients (such as the YQL layer). Applications using the YB smart clients for various languages (such as Cassandra, Redis, or PostgreSQL(beta)) are very efficient in retrieving data. The smart clients query the YB-Master for the tablet to YB-TServer map and cache it. By doing so, the smart clients can talk directly to the correct YB-TServer to serve various queries without incurring additional network hops.
 
@@ -51,4 +51,3 @@ Aside from ensuring that the number of tablets served by each YB-TServer is bala
 #### Re-replication of Data on Extended YB-TServer Failure
 
 The YB-Master receives heartbeats from all the YB-TServers, and tracks their liveness. It detects if any YB-TServers has failed, and keeps track of the time interval for which the YB-TServer remains in a failed state. If the time duration of the failure extends beyond a threshold, it finds replacement YB-TServers to which the tablet data of the failed YB-TServer is re-replicated. Re-replication is initiated in a throttled fashion by the YB-Master leader so as to not impact the foreground operations of the universe.
-

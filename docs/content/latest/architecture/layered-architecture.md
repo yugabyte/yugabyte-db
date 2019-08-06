@@ -1,7 +1,7 @@
 ---
-title: Layered Architecture
-linkTitle: Layered Architecture
-description: Layered Architecture
+title: Layered architecture
+linkTitle: Layered architecture
+description: Layered architecture
 aliases:
   - /latest/architecture/layered-architecture/
 menu:
@@ -19,7 +19,6 @@ YugaByte DB architecture follows a layered design. It is comprised of 2 logical 
 * **DocDB** distributed document store
 
 ![YugaByte DB Logical Architecture](/images/architecture/yb-arch-new.png)
-
 
 ## YugaByte Query Layer
 
@@ -63,7 +62,6 @@ Each tablet consisting of user data is replicated according to some replication 
 
 You can read more about [how replication works in DocDB](../docdb/replication/).
 
-
 #### Persistence
 
 In order to persist data, a log-structured row/document-oriented storage is used. It includes several optimizations for handling ever-growing datasets efficiently.
@@ -78,15 +76,16 @@ DocDB has support for both single-row and multi-row transactions. This means tha
 * [Single-row transactions](../transactions/single-row-transactions/).
 * [Multi-row transactions](../transactions/distributed-txns/).
 
-## What's Next?
+## What's next?
 
 You can now read about the following:
 
 {{< note title="" >}}
+
 * [The design goals of YugaByte DB](../design-goals/)
 * [Architecture of DocDB](../docdb/)
 * [Transactions in DocDB](../transactions/)
 * [Design of the query layer](../query-layer/)
 * [How various functions work, like the read and write IO paths](../core-functions/)
-{{< /note >}}
 
+{{< /note >}}

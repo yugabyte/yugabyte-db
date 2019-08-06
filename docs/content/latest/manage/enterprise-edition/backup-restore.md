@@ -18,7 +18,7 @@ This section will describe how to backup and restore tables using the YugaByte A
 First, create a universe similar to steps shown in [Create universe](../create-universe-multi-zone).
 For the purposes of this demo we create a 1 node cluster that looks something like this. 
 
-![Create universe 1 Node](/images/ee/br-create-universe.png) 
+![Create universe 1 Node](/images/ee/br-create-universe.png)
 
 Wait for the universe to become ready.
 
@@ -29,7 +29,7 @@ Wait for the universe to become ready.
 In this example, we create a local directory on the tserver to backup to. Select the
 `Connect` modal in the `Nodes` tab of the universe and select the server from Admin Host.
 
-![Connect Modal](/images/ee/br-connect-modal.png)       
+![Connect Modal](/images/ee/br-connect-modal.png)
 
 Once you are sshed in, create a directory `/backup` and change the owner to yugabyte.
 

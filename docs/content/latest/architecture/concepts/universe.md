@@ -38,7 +38,7 @@ Namespaces in YSQL are referred to as **databases** and are logically the same a
 
 ### YCQL
 
-A namespace in YCQL is referred to as a **keyspace** and is logically the same as a keyspace in Apache Cassandra's CQL. 
+A namespace in YCQL is referred to as a **keyspace** and is logically the same as a keyspace in Apache Cassandra's CQL.
 
 ## Processes and services
 
@@ -66,14 +66,14 @@ Below is an illustration of a simple 4-node YugaByte universe:
 
 ![4 node cluster](/images/architecture/4_node_cluster.png)
 
-## Universe vs Cluster
+## Universe vs cluster
 
 A YugaByte DB universe can comprise of one or more clusters. Each cluster is a logical group of nodes running YB-TServers that are either performing one of the following replication modes:
 
 - Synchronous replication
 - Asynchronous replication
 
-The set of nodes that are performing strong replication are referred to as the **Primary cluster** and other groups are called **Read Replica clusters**. 
+The set of nodes that are performing strong replication are referred to as the **Primary cluster** and other groups are called **Read Replica clusters**.
 
 Note that:
 
