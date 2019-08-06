@@ -148,6 +148,14 @@ class KeyBytes {
     util::AppendInt64ToKey(x, &data_);
   }
 
+  void AppendUInt64(uint64_t x) {
+    AppendUInt64ToKey(x, &data_);
+  }
+
+  void AppendDescendingUInt64(int64_t x) {
+    AppendUInt64ToKey(~x, &data_);
+  }
+
   void AppendInt32(int32_t x) {
     util::AppendInt32ToKey(x, &data_);
   }

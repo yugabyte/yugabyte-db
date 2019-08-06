@@ -353,6 +353,14 @@ Datum YBCInt64ToDatum(const int64 *data, int64 bytes, const YBCPgTypeAttrs *type
 	return Int64GetDatum(*data);
 }
 
+void YBCDatumToUInt64(Datum datum, uint64 *data, uint64 *bytes) {
+        *data = DatumGetUInt64(datum);
+}
+
+Datum YBCUInt64ToDatum(const uint64 *data, uint64 bytes, const YBCPgTypeAttrs *type_attrs) {
+        return UInt64GetDatum(*data);
+}
+
 void YBCDatumToOid(Datum datum, Oid *data, int64 *bytes) {
 	*data = DatumGetObjectId(datum);
 }
@@ -1006,9 +1014,9 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToBinary,
 		(YBCPgDatumFromData)YBCBinaryToDatum },
 
-	{ LSNOID, YB_YQL_DATA_TYPE_INT64, true, sizeof(int64),
-		(YBCPgDatumToData)YBCDatumToInt64,
-		(YBCPgDatumFromData)YBCInt64ToDatum },
+	{ LSNOID, YB_YQL_DATA_TYPE_UINT64, true, sizeof(uint64),
+		(YBCPgDatumToData)YBCDatumToUInt64,
+		(YBCPgDatumFromData)YBCUInt64ToDatum },
 
 	{ PG_LSNARRAYOID, YB_YQL_DATA_TYPE_BINARY, false, -1,
 		(YBCPgDatumToData)YBCDatumToBinary,

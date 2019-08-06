@@ -101,6 +101,8 @@ class YBColumnSchema {
         return InternalType::kInt64Value;
       case UINT32:
         return InternalType::kUint32Value;
+      case UINT64:
+        return InternalType::kUint64Value;
       case FLOAT:
         return InternalType::kFloatValue;
       case DOUBLE:
@@ -146,8 +148,7 @@ class YBColumnSchema {
 
       case TYPEARGS: FALLTHROUGH_INTENDED;
       case UINT8: FALLTHROUGH_INTENDED;
-      case UINT16: FALLTHROUGH_INTENDED;
-      case UINT64:
+      case UINT16:
         break;
     }
     LOG(FATAL) << "Internal error: unsupported type " << ql_type->ToString();

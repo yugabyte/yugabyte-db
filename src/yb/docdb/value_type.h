@@ -94,6 +94,7 @@ namespace docdb {
     ((kUInt32, 'O'))  /* ASCII code 78 */ \
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
+    ((kUInt64, 'U')) /* ASCII code 85 */ \
     ((kTombstone, 'X'))  /* ASCII code 88 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
     \
@@ -111,6 +112,7 @@ namespace docdb {
     ((kUInt32Descending, 'g'))  /* ASCII code 103 */ \
     ((kTrueDescending, 'h'))  /* ASCII code 104 */ \
     ((kFalseDescending, 'i'))  /* ASCII code 105 */ \
+    ((kUInt64Descending, 'j')) /* ASCII code 106 */ \
     \
     /* Flag type for merge record flags */ \
     ((kMergeFlags, 'k')) /* ASCII code 107 */ \

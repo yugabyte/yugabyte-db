@@ -464,6 +464,7 @@ message QLValuePB {
     // (see DateTime::kMaxTime)
     int64 time_value = 22;
     uint32 uint32_value = 23;
+    uint64 uint64_value = 24;
   }
 }
 
