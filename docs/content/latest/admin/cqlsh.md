@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Overview
 
-`cqlsh` is a command line shell for interacting with YugaByte DB through [YCQL](/latest/api/ycql/).
+`cqlsh` is a command line shell for interacting with YugaByte DB through [YCQL](../../api/ycql/).
 
 ## Download
 
@@ -42,8 +42,8 @@ cqlsh [options] [host [port]]
 
 Where
 
-- `host` is the IP address of the host on which [YB-TServer](/latest/architecture/concepts/universe/#yb-tserver-process) is run. The default is local host at 127.0.0.1.
-- `port` is the TCP port at which YB-TServer listens for YCQL connections. The default is 9042.
+- `host` is the IP address of the host on which [YB-TServer](../../architecture/concepts/universe/#yb-tserver-process) is run. The default is local host at `127.0.0.1`.
+- `port` is the TCP port at which YB-TServer listens for YCQL connections. The default is `9042`.
 
 Options | Short Form | Default | Description
 ----------------------------|----|-------|---------------------------------------
