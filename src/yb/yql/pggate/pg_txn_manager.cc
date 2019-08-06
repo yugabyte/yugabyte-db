@@ -181,5 +181,9 @@ void PgTxnManager::ResetTxnAndSession() {
   can_restart_.store(true, std::memory_order_release);
 }
 
+void PgTxnManager::PreventRestart() {
+  can_restart_.store(false, std::memory_order_release);
+}
+
 }  // namespace pggate
 }  // namespace yb

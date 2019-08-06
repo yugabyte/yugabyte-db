@@ -39,7 +39,7 @@ class PgDocOp {
   typedef scoped_refptr<PgDocOp> ScopedRefPtr;
 
   // Constructors & Destructors.
-  explicit PgDocOp(PgSession::ScopedRefPtr pg_session);
+  PgDocOp(PgSession::ScopedRefPtr pg_session, PreventRestart prevent_restart);
   virtual ~PgDocOp();
 
   // Set execution control parameters.
@@ -76,6 +76,7 @@ class PgDocOp {
 
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
+  const PreventRestart prevent_restart_;
 
   // Operation time. This time is set at the start and must stay the same for the lifetime of the
   // operation to ensure that it is operating on one snapshot.
@@ -121,7 +122,8 @@ class PgDocReadOp : public PgDocOp {
   typedef scoped_refptr<PgDocReadOp> ScopedRefPtr;
 
   // Constructors & Destructors.
-  PgDocReadOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlReadOp *read_op);
+  PgDocReadOp(PgSession::ScopedRefPtr pg_session, PreventRestart prevent_restart,
+              client::YBPgsqlReadOp *read_op);
   virtual ~PgDocReadOp();
 
   // Access function.
