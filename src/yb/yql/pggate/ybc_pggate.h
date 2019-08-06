@@ -325,6 +325,7 @@ YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
                          YBCPgOid database_oid,
                          YBCPgOid table_oid,
                          YBCPgOid index_oid,
+                         bool prevent_restart,
                          YBCPgStatement *handle);
 
 // Set forward/backward scan direction.

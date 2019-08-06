@@ -43,6 +43,7 @@ class TServerSharedMemory;
 namespace pggate {
 
 YB_STRONGLY_TYPED_BOOL(OpBuffered);
+YB_STRONGLY_TYPED_BOOL(PreventRestart);
 
 class PgTxnManager;
 

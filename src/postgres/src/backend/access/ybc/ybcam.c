@@ -444,7 +444,8 @@ ShouldPushdownScanKey(Relation relation, YbScanPlan scan_plan, AttrNumber attnum
  * will be NULL.
  */
 static YbScanDesc
-ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys, ScanKey key)
+ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys, ScanKey key,
+             bool prevent_restart)
 {
 	if (nkeys > YB_MAX_SCAN_KEYS)
 		ereport(ERROR,
@@ -507,7 +508,8 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 	bool	useIndex = (index && !index->rd_index->indisprimary);
 	Oid		index_id = useIndex ? RelationGetRelid(index) : InvalidOid;
 
-	HandleYBStatus(YBCPgNewSelect(ybc_pg_session, dboid, relid, index_id, &ybScan->handle));
+	HandleYBStatus(YBCPgNewSelect(ybc_pg_session, dboid, relid, index_id,
+	                              prevent_restart, &ybScan->handle));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybScan->handle);
 	ybScan->stmt_owner = CurrentResourceOwner;
@@ -816,8 +818,9 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
                                 ScanKey key,
 								bool temp_snap)
 {
+  // Restart should not be prevented if operation caused by system read of system table.
 	YbScanDesc ybScan = ybcBeginScan(relation, NULL /* index */, false /* index_cols_only */,
-									 nkeys, key);
+									                 nkeys, key, !IsSystemRelation(relation) /* prevent_restart */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -853,7 +856,9 @@ SysScanDesc ybc_systable_beginscan(Relation relation,
 		}
 	}
 
-	YbScanDesc ybScan = ybcBeginScan(relation, index, false /* index_cols_only */, nkeys, key);
+  // Restart should not be prevented if operation caused by system read of system table.
+	YbScanDesc ybScan = ybcBeginScan(relation, index, false /* index_cols_only */, nkeys, key,
+	                                 !IsSystemRelation(relation) /* prevent_restart */);
 
 	/* Set up Postgres sys table scan description */
 	SysScanDesc scan_desc = (SysScanDesc) palloc0(sizeof(SysScanDescData));
@@ -889,7 +894,7 @@ void ybc_pkey_beginscan(Relation relation,
 	Assert(index->rd_index->indisprimary);
 
 	YbScanDesc ybScan = ybcBeginScan(relation, index, scan_desc->xs_want_itup /* index_cols_only */,
-									 nkeys, key);
+									                 nkeys, key, true /* prevent_restart */);
 	ybScan->index = index;
 
 	scan_desc->opaque = ybScan;
@@ -912,7 +917,8 @@ void ybc_index_beginscan(Relation index,
 	 * because we are scanning the index directly, not scanning base table with an index.
 	 */
 	YbScanDesc ybScan = ybcBeginScan(index /* relation */, NULL /* index */,
-									 false /* index_cols_only */, nkeys, key);
+									                 false /* index_cols_only */, nkeys, key,
+									                 true /* prevent_restart */);
 	ybScan->index = index;
 
 	scan_desc->opaque = ybScan;
@@ -1133,6 +1139,7 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 								  YBCGetDatabaseOid(relation),
 								  RelationGetRelid(relation),
 								  InvalidOid,
+								  true /* prevent_restart */,
 								  &ybc_stmt));
 
 	/* Bind ybctid to identify the current row. */

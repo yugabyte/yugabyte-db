@@ -479,10 +479,12 @@ YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
                          const YBCPgOid index_oid,
+                         bool prevent_restart,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
   const PgObjectId index_id(database_oid, index_oid);
-  return ToYBCStatus(pgapi->NewSelect(pg_session, table_id, index_id, handle));
+  return ToYBCStatus(pgapi->NewSelect(
+      pg_session, table_id, index_id, PreventRestart(prevent_restart), handle));
 }
 
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
