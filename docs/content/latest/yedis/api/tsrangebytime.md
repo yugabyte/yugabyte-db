@@ -14,6 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`TSRANGEBYTIME key low_ts high_ts`</b><br>
 This command fetches the values for the given `low_ts`, `high_ts` range in the time series that is
 specified by the given `key`.
@@ -24,8 +25,9 @@ specified by the given `key`.
 exclusive.</li>
 <li>Special bounds `-inf` and `+inf` are also supported to retrieve an entire range</li>
 
-## Return Value
-Returns a list of timestamp, value pairs found in the range specified by `low_ts`, `high_ts`
+## Return value
+
+Returns a list of timestamp, value pairs found in the range specified by `low_ts`, `high_ts`.
 
 ## Examples
 
@@ -63,6 +65,7 @@ TSRANGEBYTIME ts_key (2 4
 3) "4"
 4) "four"
 ```
+
 2 and 4 are exclusive
 
 ```sh
@@ -104,6 +107,7 @@ TSRANGEBYTIME ts_key 2 +inf
 10) "six"
 ```
 
-## See Also
+## See also
+
 [`tsrevrangebytime`](../tsrevrangebytime/), [`tsadd`](../tsadd/), [`tsget`](../tsget/),
 [`tsrem`](../tsrem/), [`tslastn`](../tslastn/), [`tscard`](../tscard/)

@@ -42,7 +42,6 @@ Create a sample table.
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
-
 Begin a transaction and insert some rows.
 
 ```sql
@@ -130,7 +129,7 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 (2 rows)
 ```
 
-## See Also
+## See also
 
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)

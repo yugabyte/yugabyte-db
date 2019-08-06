@@ -29,8 +29,7 @@ This app renders a dashboard showing both of the above. Below is a view of the r
 
 ![YB IoT Fleet Management Dashboard](/images/develop/realworld-apps/iot-spark-kafka-ksql/yb-iot-fleet-management-screenshot.png)
 
-
-## App Architecture
+## App architecture
 
 This application has the following subcomponents:
 
@@ -53,11 +52,12 @@ App architecture with the SKY stack is shown below. The Kafka Connect Sink Conne
 
 ![YB IoT Fleet Management Architecture with Apache Spark](/images/develop/realworld-apps/iot-spark-kafka-ksql/yb-iot-fleet-mgmt-arch-kafka-spark.png)
 
+## Data store
 
-## Data Store
 Stores all the user-facing data. YugaByte DB is used here, with the Cassandra-compatible [YCQL](../../../api/ycql) as the programming language.
 
 All the data is stored in the keyspace `TrafficKeySpace`:
+
 ```sql
 CREATE KEYSPACE IF NOT EXISTS TrafficKeySpace
 ```
@@ -108,11 +108,12 @@ CREATE TABLE TrafficKeySpace.poi_traffic(
 );
 ```
 
-
 ## Data Producer
+
 A program that generates random test data and publishes it to the Kafka topic `iot-data-event`. This emulates the data received from the connected vehicles using a message broker in the real world.
 
 A single data point is a JSON payload and looks as follows:
+
 ```
 {
   "vehicleId":"0bf45cac-d1b8-4364-a906-980e1c2bdbcb",
@@ -128,7 +129,7 @@ A single data point is a JSON payload and looks as follows:
 
 The [Kafka Connect Sink Connector for YugaByte DB](https://github.com/YugaByte/yb-kafka-connector) reads the above `iot-data-event` topic, transforms the event into a YCQL `INSERT` statement and then calls YugaByte DB to persist the event in the `TrafficKeySpace.Origin_Table` table.
 
-## Data Processor
+## Data processor
 
 ### KSQL
 
@@ -184,7 +185,6 @@ CREATE TABLE window_traffic
      GROUP BY routeId, vehicleType;
 ```
 
-
 ```sql
 CREATE STREAM poi_traffic
       WITH ( PARTITIONS=1,
@@ -199,13 +199,13 @@ CREATE STREAM poi_traffic
       WHERE GEO_DISTANCE(cast(latitude AS double),cast(longitude AS double),33.877495,-95.50238,'KM') < 30;
 ```
 
+### Apache Spark streaming
 
-
-### Apache Spark Streaming
 This is a Apache Spark streaming application that consumes the data stream from the Kafka topic, converts them into meaningful insights and writes the resulting aggregate data back to YugaByte DB.
 
 Spark communicates with YugaByte DB using the Spark-Cassandra connector. This is done as follows:
-```
+
+```java
 SparkConf conf =
   new SparkConf().setAppName(prop.getProperty("com.iot.app.spark.app.name"))
                  .set("spark.cassandra.connection.host",prop.getProperty("com.iot.app.cassandra.host"))
@@ -213,7 +213,7 @@ SparkConf conf =
 
 The data is consumed from a Kafka stream and collected in 5 second batches. This is achieved as follows:
 
-```
+```java
 JavaStreamingContext jssc = new JavaStreamingContext(conf,Durations.seconds(5));
 
 JavaPairInputDStream<String, IoTData> directKafkaStream =
@@ -233,14 +233,13 @@ It computes the following:
 - Compute the above breakdown for active shipments. This is done by computing the breakdown by vehicle type and shipment route for the last 30 seconds.
 - Detect the vehicles which are within a 20 mile radius of a given Point of Interest (POI), which represents a road-closure.
 
-
-## Data Dashboard
+## Data dashboard
 
 This is a [Spring Boot](http://projects.spring.io/spring-boot/) application which queries the data from YugaByte and pushes the data to the webpage using [Web Sockets](http://docs.spring.io/spring/docs/current/spring-framework-reference/html/websocket.html#websocket-intro) and [jQuery](https://jquery.com/). The data is pushed to the web page in fixed intervals so data will be refreshed automatically. Dashboard displays data in charts and tables. This web page uses [bootstrap.js](http://getbootstrap.com/) to display the dashboard containing charts and tables.
 
 We create entity classes for the three tables `Total_Traffic`, `Window_Traffic` and `Poi_Traffic`, and DAO interfaces for all the entities extending `CassandraRepository`. For example, we create the DAO class for `TotalTrafficData` entity as follows.
 
-```
+```java
 @Repository
 public interface TotalTrafficDataRepository extends CassandraRepository<TotalTrafficData> {
   @Query("SELECT * FROM traffickeyspace.total_traffic WHERE recorddate = ? ALLOW FILTERING")
@@ -250,7 +249,7 @@ public interface TotalTrafficDataRepository extends CassandraRepository<TotalTra
 
 In order to connect to YugaByte DB cluster and get connection for database operations, we write the assandraConfig class. This is done as follows:
 
-```
+```java
 public class CassandraConfig extends AbstractCassandraConfiguration {
   @Bean
   public CassandraClusterFactoryBean cluster() {
@@ -267,7 +266,6 @@ public class CassandraConfig extends AbstractCassandraConfiguration {
 
 Note that currently the Dashboard does not use the raw events table and relies only on the data stored in the aggregates tables.
 
-
 ## Summary
 
-This application is a blue print for building IoT applications. The instructions to build and run the application, as well as the source code can be found in [this github repo](https://github.com/YugaByte/yb-iot-fleet-management).
+This application is a blue print for building IoT applications. The instructions to build and run the application, as well as the source code can be found in the [IoT Fleet Management GitHub repository](https://github.com/YugaByte/yb-iot-fleet-management).

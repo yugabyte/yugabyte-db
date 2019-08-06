@@ -14,6 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`TSGET key timestamp`</b><br>
 This command fetches the value for the given `timestamp` in the time series that is specified by the
 given `key`.
@@ -22,12 +23,14 @@ given `key`.
 <li>If the given `key` is associated with non-timeseries data, an error is raised.</li>
 <li>If the given `timestamp` is not a valid signed 64 bit integer, an error is raised.</li>
 
-## Return Value
-Returns the value for the given `timestamp`
+## Return value
+
+Returns the value for the given `timestamp`.
 
 ## Examples
 
 The timestamp can be arbitrary integers used just for sorting values in a certain order.
+
 ```sh
 $ TSADD cpu_usage 10 "70"
 ```
@@ -55,6 +58,7 @@ $ TSADD cpu_usage 201710311100 "50"
 ```
 
 A more common option would be to specify the timestamp as the unix timestamp.
+
 ```sh
 $ TSADD cpu_usage 1509474505 "75"
 ```
@@ -94,6 +98,7 @@ $ TSGET cpu_usage 1509474505
 ```
 "75"
 ```
+
 An error is returned when the timestamp is not an int64.
 
 ```sh
@@ -104,6 +109,6 @@ $ TSGET cpu_usage xyz
 (error) Request was unable to be processed from server.
 ```
 
-## See Also
+## See also
 [`tsadd`](../tsadd/), [`tsrem`](../tsrem/), [`tsrangebytime`](../tsrangebytime/),
 [`tsrevrangebytime`](../tsrevrangebytime/), [`tslastn`](../tslastn/), [`tscard`](../tscard/)

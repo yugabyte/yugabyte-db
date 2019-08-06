@@ -77,6 +77,7 @@ postgres=# SELECT * FROM sample; -- run in first shell
   1 |  3 |  4 | b
 (2 rows)
 ```
+
 2nd shell
 
 ```sql
@@ -129,7 +130,7 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 (2 rows)
 ```
 
-## See Also
+## See also
 
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)

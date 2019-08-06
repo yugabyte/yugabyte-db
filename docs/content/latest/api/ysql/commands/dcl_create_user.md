@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Synopsis 
+## Synopsis
 
 YugaByte supports the `CREATE USER` and limited `GRANT`/`REVOKE` commands to create new roles and set/remove permissions.
 
@@ -29,6 +29,7 @@ create_user ::= CREATE USER name ;
 ```
 
 - Not all GRANT and REVOKE options are supported yet in YSQL, but the following GRANT and REVOKE statements are supported in YSQL.
+
 ```
 postgres=# GRANT ALL ON DATABASE name TO name;
 postgres=# REVOKE ALL ON DATABASE name FROM name;
@@ -56,6 +57,6 @@ postgres=# GRANT ALL ON DATABASE postgres TO John;
 postgres=# REVOKE ALL ON DATABASE postgres FROM John;
 ```
 
-## See Also
+## See also
 
 [Other YSQL Statements](..)

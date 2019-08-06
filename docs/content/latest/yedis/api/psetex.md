@@ -14,10 +14,12 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`PSETEX key ttl_in_msec string_value`</b><br>
 This command sets the value of `key` to be `string_value`, and sets the key to expire in `ttl_in_msec` milli-seconds.
 
 ## Return Value
+
 Returns status string.
 
 ## Examples
@@ -37,6 +39,7 @@ $ GET yugakey
 ```
 "YugaByte"
 ```
+
 ```sh
 $ PTTL yugakey
 ```
@@ -45,5 +48,6 @@ $ PTTL yugakey
 (integer) 900 
 ```
 
-## See Also
+## See also
+
 [`append`](../append/), [`set`](../set/), [`setex`](../setex/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`incrby`](../incrby/), [`setrange`](../setrange/), [`strlen`](../strlen/)

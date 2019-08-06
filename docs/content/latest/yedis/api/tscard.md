@@ -14,13 +14,15 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`TSCARD key`</b><br>
 This command returns the number of entires in the given time series.
 
 <li>If the given `key` is associated with non-timeseries data, an error is raised.</li>
 <li>If the given `key` is not associated with any data, 0 is returned.</li>
 
-## Return Value
+## Return value
+
 Returns the number of entries in the given time series.
 
 ## Examples
@@ -66,7 +68,8 @@ $ TSCARD ts_key2
 (integer) 0
 ```
 
-## See Also
+## See also
+
 [`tsadd`](../tsadd/), [`tsget`](../tsget/), [`tsrem`](../tsrem/),
 [`tsrangebytime`](../tsrangebytime), [`tsrevrangebytime`](../tsrevrangebytime),
 [`tslastn`](../tslastn)
