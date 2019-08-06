@@ -57,7 +57,7 @@ optional arguments:
   -h, --help            show this help message and exit
 ```
 
-## Create cluster
+## Create a cluster
 
 Use the `yb-docker-ctl create` command to create a local YugaByte DB cluster with Docker containers. This cluster is intended for development and learning.
 
@@ -92,7 +92,7 @@ docker run --name yb-tserver-n2 --privileged --net yb-net --detach yugabytedb/yu
 Adding node yb-tserver-n2
 docker run --name yb-tserver-n3 --privileged --net yb-net --detach yugabytedb/yugabyte:latest /home/yugabyte/yb-tserver --fs_data_dirs=/mnt/disk0,/mnt/disk1 --tserver_master_addrs=yb-master-n1:7100,yb-master-n2:7100,yb-master-n3:7100 --rpc_bind_addresses=yb-tserver-n3:9100
 Adding node yb-tserver-n3
-PID        Type       Node                 URL                       Status          Started At          
+PID        Type       Node                 URL                       Status          Started At
 11818      tserver    yb-tserver-n3        http://172.19.0.7:9000    Running         2017-11-28T23:33:00.369124907Z
 11632      tserver    yb-tserver-n2        http://172.19.0.6:9000    Running         2017-11-28T23:32:59.874963849Z
 11535      tserver    yb-tserver-n1        http://172.19.0.5:9000    Running         2017-11-28T23:32:59.444064946Z
@@ -116,7 +116,7 @@ $ ./yb-docker-ctl status
 ```
 
 ```
-PID        Type       Node                 URL                       Status          Started At          
+PID        Type       Node                 URL                       Status          Started At
 11818      tserver    yb-tserver-n3        http://172.19.0.7:9000    Running         2017-11-28T23:33:00.369124907Z
 11632      tserver    yb-tserver-n2        http://172.19.0.6:9000    Running         2017-11-28T23:32:59.874963849Z
 11535      tserver    yb-tserver-n1        http://172.19.0.5:9000    Running         2017-11-28T23:32:59.444064946Z

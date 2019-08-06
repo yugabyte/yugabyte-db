@@ -1,8 +1,8 @@
 ---
-title: 1. Prepare Nodes
-linkTitle: 1. Prepare Nodes
-description: 1. Prepare Nodes
-headcontent: Generate the per-node config and prepare the nodes with the config data.
+title: 1. Prepare nodes
+linkTitle: 1. Prepare nodes
+description: 1. Prepare nodes
+headcontent: Generate the per-node configuration and prepare the nodes with the config data.
 image: /images/section_icons/secure/prepare-nodes.png
 aliases:
   - /secure/tls-encryption/prepare-nodes
@@ -27,7 +27,7 @@ We will generate and store the secure info such as the root certificate in the `
 $ mkdir secure-data
 ```
 
-### Prepare a IP_ADDRESSES env variable
+### Prepare a IP_ADDRESSES environment variable
 
 In this example, we assume a 3 node cluster, with the variables `ip1`, `ip2` and `ip3` representing the ip addresses for the three nodes. Create a variable `IP_ADDRESSES` is a space-separated list of the IP addresses of the various nodes. We will use this variable to loop over all the nodes when needed.
 
@@ -39,7 +39,7 @@ $ export IP_ADDRESSES="$ip1 $ip2 $ip3 ..."
 Add the desired set of IP addresses or node names into the `IP_ADDRESSES` variable as shown above. Remember to add exactly one entry for each node in the cluster.
 {{< /tip >}}
 
-### Create a directory for config data of each node
+### Create a directory for configuration data of each node
 
 We will create one directory per node and put all the required data in that directory. This directory will eventually be copied into the respective nodes.
 
@@ -122,7 +122,7 @@ Create the index and database file.
 $ touch index.txt ; echo '01' > serial.txt
 ```
 
-## Generate root config
+## Generate root configuration
 
 In this section, we will generate the root key file `ca.key` and the root certificate `ca.crt`.
 
@@ -150,6 +150,7 @@ $ openssl req -new                         \
 ```
 
 You can verify the root certificate by doing the following:
+
 ```sh
 $ openssl x509 -in secure-data/ca.crt -text -noout
 ```
@@ -185,6 +186,7 @@ Certificate:
 ```
 
 Copy the generated root certificate file `ca.crt` to all the node directories.
+
 ```sh
 $ for node in $IP_ADDRESSES;
 do
@@ -192,11 +194,11 @@ do
 done
 ```
 
-## Generate per-node config
+## Generate per-node configuration
 
 In this section, we will generate the node key `node.key` and node certificate `node.crt` for each node. 
 
-### Generate config for each node
+### Generate configuration for each node
 
 Repeat the steps in this section once for each node.
 
@@ -204,7 +206,8 @@ Repeat the steps in this section once for each node.
 The IP address of each node is denoted by the variable `$NODE_IP_ADDRESS` below.
 {{< /tip >}}
 
-Generate a config file named `node.conf` for each node in the appropriate node directory as shown below. 
+Generate a configuration file (`node.conf`) for each node in the appropriate node directory as shown below.
+
 ```sh
 $ cat > $NODE_IP_ADDRESS/node.conf
 ```
@@ -293,7 +296,7 @@ You should see the following output:
 X.X.X.X/node.X.X.X.X.crt: OK
 ```
 
-## Copy config to nodes
+## Copy configuration files to the nodes
 
 The files needed for each node are:
 

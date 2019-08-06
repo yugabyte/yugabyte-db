@@ -5,7 +5,6 @@ YEDIS authentication is based on passwords. Each client connecting using the YED
 
 **NOTE:** YEDIS implements a password-only authentication scheme. From the [Redis security docs page ("Authentication feature" section)](https://redis.io/topics/security), Open-source Redis does not try to implement Access Control, it provides a tiny layer of authentication that is optionally turned on editing the redis.conf file.
 
-
 ## 1. Enable YEDIS authentication
 
 You can enable access control to enforce password based authentication in YEDIS API using the [CONFIG](../../api/yedis/config/) command.
@@ -26,6 +25,7 @@ Next exit `redis-cli`, connect to the cluster again using `redis-cli` and run th
 ```sql
 127.0.0.1:6379> PING
 ```
+
 ```
 (error) NOAUTH PING: Authentication required.
 ```
@@ -35,14 +35,17 @@ You would need to authenticate the client (`redis-cli` in this case) by running 
 ```sql
 127.0.0.1:6379> AUTH password
 ```
+
 ```
 "OK"
 ```
 
 Subsequently, running any command would succeed:
+
 ```sql
 127.0.0.1:6379> PING
 ```
+
 ```
 PONG
 ```

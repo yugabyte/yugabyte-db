@@ -2,7 +2,7 @@ This page documents the manual deployment of YugaByte DB on 6 AWS EC2 instances 
 
 ## 1. Prerequisites
 
-### Create AWS EC2 Instances
+### Create AWS EC2 instances
 
 Create AWS EC2 instances with the following characteristics.
 
@@ -14,7 +14,7 @@ Create AWS EC2 instances with the following characteristics.
 
 We now have 2 VMs each in Availability Zones `us-west-2a`, `us-west-2b`, `us-west-2c` respectively.
 
-### Set Environment Variables
+### Set environment variables
 
 Now that the 6 nodes have been prepared, the yb-master process will be run on 3 of these nodes (because RF=3) and yb-tserver will be run on all 6 nodes. To learn more about YugaByte DB’s process architecture, see [here](../../../architecture/concepts/universe/).
 
@@ -37,8 +37,8 @@ export YB_VERSION=1.3.1.0
 # will be something like /mnt/d0,/mnt/d1.
 export DATA_DIRS=/mnt/d0
 
-# PEM file used to access the VM/instances over SSH. 
-# If you are not using pem file based way of connecting to machines, 
+# PEM file used to access the VM/instances over SSH.
+# If you are not using pem file based way of connecting to machines,
 # you’ll need to replace the “-i $PEM” ssh option in later
 # commands in the document appropriately.
 export PEM=~/.ssh/yb-dev-aws-2.pem
@@ -48,7 +48,7 @@ export PEM=~/.ssh/yb-dev-aws-2.pem
 # or some reasonable file system), update system ulimits etc.
 #
 # If those steps are done differently and your image already has
-# suitable limits and data directories for YugaByte to use then 
+# suitable limits and data directories for YugaByte to use then
 # you may not need to worry about those steps.
 export ADMIN_USER=centos
 
@@ -76,11 +76,11 @@ export TSERVERS=$ALL_NODES
 export TAR_FILE=yugabyte-${YB_VERSION}-linux.tar.gz
 ```
 
-### Prepare Data Drives
+### Prepare data drives
 
 If your AMI already has the needed hooks for mounting the devices as directories in some well defined location OR if are just trying to use a vanilla directory as the data drive for a quick experiment and do not need mounting the additional devices on your AWS volume, you can just use an arbitrary directory (like `/home/$USER/` as your data directory), and YugaByte DB will create a `yb-data` sub-directory there (`/home/$USER/yb-data`) and use that. The steps below are are simply a guide to help use the additional volumes (install a filesystem on those volumes and mount them in some well defined location so that they can be used as data directories by YugaByte DB).
 
-#### Locate Drives
+#### Locate drives
 
 On each of those nodes, first locate the SSD device(s) that’ll be used as the data directories for YugaByte DB to store data on (such as RAFT/txn logs, SSTable files, logs, etc.)
 
@@ -106,9 +106,9 @@ done
 
 Notice that the 370G partition is on `nvme1n1`, but its MOUNTPOINT column is empty - meaning that it has not been mounted. We should prepare this drive for use by putting a reasonable filesystem on it and mounting it in some well defined location.
 
-#### Create File System
+#### Create file system
 
-Create xfs file system on those device(s). The filesystem on the drives do not have to be XFS. It could be ext4 also, for instance. But we have primarily tested with xfs.
+Create xfs file system on those devices. The filesystem on the drives do not have to be XFS. It could be ext4 also, for instance. But we have primarily tested with xfs.
 
 You can run this command on each node OR use the sample loop below.
 
@@ -170,7 +170,7 @@ for ip in $ALL_NODES; do \
 done
 ```
 
-Verify that the drives were mounted and are of expected size. 
+Verify that the drives were mounted and are of expected size.
 
 ```sh
 for ip in $ALL_NODES; do \
@@ -315,12 +315,11 @@ done
 
 The advantage of using symlinks is that, when you later need to do a rolling software upgrade, you can upgrade yb-master and yb-tserver processes one at a time by stopping yb-master, switching link to new release, and starting master. And then, similarly for yb-tserver.
 
-
-## 3. Prepare YB-Master Configuration Files
+## 3. Prepare YB-Master configuration files
 
 This step prepares the config files for the 3 masters. The config files need to, among other things, have the right information to indicate which Cloud/Region/AZ each master is in.
 
-### Create YB-Master1’s config file.
+### Create YB-Master1’s configuration file
 
 ```sh
 (MASTER=$MASTER1; CLOUD=aws; REGION=us-west; AZ=us-west-2a; CONFIG_FILE=~/yb-conf/master.conf ;\
@@ -335,7 +334,8 @@ This step prepares the config files for the 3 masters. The config files need to,
 "
 )
 ```
-### Create YB-Master2’s config file.
+
+### Create YB-Master2’s configuration file
 
 ```sh
 (MASTER=$MASTER2; CLOUD=aws; REGION=us-west; AZ=us-west-2b; CONFIG_FILE=~/yb-conf/master.conf ;\
@@ -350,7 +350,8 @@ This step prepares the config files for the 3 masters. The config files need to,
 "
 )
 ```
-### Create YB-Master3’s config file.
+
+### Create YB-Master3’s configuration file
 
 ```sh
 (MASTER=$MASTER3; CLOUD=aws; REGION=us-west; AZ=us-west-2c; CONFIG_FILE=~/yb-conf/master.conf ;\
@@ -366,9 +367,9 @@ This step prepares the config files for the 3 masters. The config files need to,
 )
 ```
 
-### Verify 
+### Verify
 
-Verify that all the config vars look right and environment vars were substituted correctly.
+Verify that all the configuration vars look right and environment vars were substituted correctly.
 
 ```sh
 for ip in $MASTER_NODES; do \
@@ -377,7 +378,7 @@ for ip in $MASTER_NODES; do \
 done
 ```
 
-## 4. Prepare YB-TServer Configuration Files
+## 4. Prepare YB-TServer configuration files
 
 ### Create config file for AZ1 yb-tserver nodes
 
@@ -421,7 +422,7 @@ done
 )
 ```
 
-### Create config file for AZ3 yb-tserver nodes
+### Create configuration file for AZ3 yb-tserver nodes
 
 ```sh
 (CLOUD=aws; REGION=us-west; AZ=us-west-2c; CONFIG_FILE=~/yb-conf/tserver.conf; \
@@ -444,7 +445,7 @@ done
 
 ### Verify
 
-Verify that all the config vars look right and environment vars were substituted correctly.
+Verify that all the configuration vars look right and environment vars were substituted correctly.
 
 ```sh
 for ip in $ALL_NODES; do \
@@ -465,7 +466,6 @@ for ip in $MASTER_NODES; do \
       >& /mnt/d0/yb-master.out &"; \
 done
 ```
-
 
 ### Verify
 
@@ -493,7 +493,6 @@ $ links http://<a-master-ip>:7000/
 ### Troubleshooting
 
 Make sure all the ports detailed in the earlier section are opened up. Else, check the log at `/mnt/d0/yb-master.out` for stdout/stderr output from yb-master process. Also, check INFO/WARNING/ERROR/FATAL glogs output by the process in the `/mnt/d0/yb-data/master/logs/*`
-
 
 ## 6. Start YB-TServers
 
@@ -616,9 +615,9 @@ Output should be the following.
       1 |         3 |       c
 ```
 
-### Running Sample Workload
+### Running sample workload
 
-If you want to try the pre-bundled `yb-sample-apps.jar` for some sample apps, you can either use a separate load tester machine (recommended) or use one of the nodes itself. 
+If you want to try the pre-bundled `yb-sample-apps.jar` for some sample apps, you can either use a separate load tester machine (recommended) or use one of the nodes itself.
 
 First install Java on the machine.
 
@@ -658,7 +657,7 @@ When workload is running, verify active YCQL or YEDIS RPCs from this links on th
 http://<any-tserver-ip>:9000/utilz
 ```
 
-## 9. Test Redis Compatible YEDIS API
+## 9. Test Redis-compatible YEDIS API
 
 ### Prerequisite
 
@@ -677,6 +676,7 @@ $ ./bin/yb-admin --master_addresses $MASTER_RPC_ADDRS setup_redis_table
 $ cd ~/tserver
 $ ./bin/redis-cli -h <any-node-ip>
 ```
+
 ```sql
 > CREATEDB 0
 ```
@@ -686,12 +686,13 @@ $ ./bin/redis-cli -h <any-node-ip>
 ```sh
 $ ./bin/redis-cli -h <any-node-ip>
 ```
+
 ```sql
 > SET key1 hello_world
 > GET key1
 ```
 
-## 10. Stop Cluster and Delete Data
+## 10. Stop cluster and delete data
 
 Following commands can be used to stop the cluster as well as delete the data directories.
 

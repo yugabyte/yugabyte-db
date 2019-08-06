@@ -1,7 +1,7 @@
 ---
-title: Check Processes
-linkTitle: Check Processes
-description: Check YugaByte DB Processes
+title: Check processes
+linkTitle: Check processes
+description: Check YugaByte DB processes
 aliases:
   - /troubleshoot/nodes/check-processes/
 menu:
@@ -13,6 +13,7 @@ showAsideToc: true
 ---
 
 ## 1. Are the YugaByte DB processes running?
+
 Connect to the local node where YugaByte DB is running. 
 
 On the local setup, this is your local machine (or a docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the YugaByte node(s) are running.
@@ -36,6 +37,7 @@ If the processes are not running you can start them with:
 Once the processes are running, if they are not accessible from your client machine this may be a network issue (see below).
 
 ## 2. Are the yb-master and yb-tserver endpoints accessible?
+
 Generally the endpoints are: 
 
 |      Description |                       URL |
@@ -47,10 +49,10 @@ Generally the endpoints are:
 | Redis Server     | `<node-ip>:6379`          |
 | CQL Server       | `<node-ip>:9042`          |
 
-
 However, in some setups these endpoints may not be accessible, depending on the configuration on your physical machines or on your cloud-provider account:
 
-### IP not accessible: 
+### IP not accessible
+
 - Private vs Public IP: Consider setting up a VPN or using the node’s public IP (e.g. get it from the machine status on your cloud-provider account).
 
 ### Ports closed
