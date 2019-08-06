@@ -51,7 +51,7 @@ YBC_STATUS_METHOD(SetIsolationLevel, ((int, isolation)));
   Status RestartTransaction();
 
   bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
-  void PreventRestart() { can_restart_.store(false, std::memory_order_release); }
+  void PreventRestart();
 
  private:
 
