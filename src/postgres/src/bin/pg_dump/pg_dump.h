@@ -321,6 +321,7 @@ typedef struct _tableInfo
 	bool	   *inhNotNull;		/* true if NOT NULL is inherited */
 	struct _attrDefInfo **attrdefs; /* DEFAULT expressions */
 	struct _constraintInfo *checkexprs; /* CHECK constraints */
+	struct _indxInfo *primaryKeyIndex; /* Associated index of a PRIMARY KEY constraint */
 	char	   *partkeydef;		/* partition key definition */
 	char	   *partbound;		/* partition bound definition */
 	bool		needs_override; /* has GENERATED ALWAYS AS IDENTITY */
@@ -367,6 +368,7 @@ typedef struct _indxInfo
 	int			indnattrs;		/* total number of index attributes */
 	Oid		   *indkeys;		/* In spite of the name 'indkeys' this field
 								 * contains both key and nonkey attributes */
+	Oid		   *indoptions;		/* Access flags for each column of the index */
 	bool		indisclustered;
 	bool		indisreplident;
 	Oid			parentidx;		/* if partitioned, parent index OID */
