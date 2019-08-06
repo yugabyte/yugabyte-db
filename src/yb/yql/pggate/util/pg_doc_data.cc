@@ -79,6 +79,9 @@ Status PgDocData::WriteColumn(const QLValue& col_value, faststring *buffer) {
     case InternalType::kUint32Value:
       WriteUint32(col_value.uint32_value(), buffer);
       break;
+    case InternalType::kUint64Value:
+      WriteUint64(col_value.uint64_value(), buffer);
+      break;
     case InternalType::kFloatValue:
       WriteFloat(col_value.float_value(), buffer);
       break;

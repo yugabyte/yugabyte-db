@@ -122,6 +122,9 @@ string PrimitiveValue::ToString() const {
     case ValueType::kUInt32:
     case ValueType::kUInt32Descending:
       return std::to_string(uint32_val_);
+    case ValueType::kUInt64:  FALLTHROUGH_INTENDED;
+    case ValueType::kUInt64Descending:
+      return std::to_string(uint64_val_);
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64:
       return std::to_string(int64_val_);
@@ -279,6 +282,14 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
       key_bytes->AppendDescendingInt64(int64_val_);
       return;
 
+    case ValueType::kUInt64:
+      key_bytes->AppendUInt64(uint64_val_);
+      return;
+
+    case ValueType::kUInt64Descending:
+      key_bytes->AppendDescendingUInt64(uint64_val_);
+      return;
+
     case ValueType::kDouble:
       key_bytes->AppendDouble(double_val_);
       return;
@@ -432,6 +443,11 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       AppendBigEndianUInt32(uint32_val_, &result);
+      return result;
+
+    case ValueType::kUInt64Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kUInt64:
+      AppendBigEndianUInt64(uint64_val_, &result);
       return result;
 
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
@@ -716,6 +732,23 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
       type_ref = value_type;
       return Status::OK();
 
+    case ValueType::kUInt64Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kUInt64:
+      if (slice->size() < sizeof(uint64_t)) {
+        return STATUS_SUBSTITUTE(Corruption,
+                                 "Not enough bytes to decode a 64-bit integer: $0",
+                                 slice->size());
+      }
+      if (out) {
+        out->uint64_val_ = BigEndian::Load64(slice->data());
+        if (value_type == ValueType::kUInt64Descending) {
+          out->uint64_val_ = ~out->uint64_val_;
+        }
+      }
+      slice->remove_prefix(sizeof(uint64_t));
+      type_ref = value_type;
+      return Status::OK();
+
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
@@ -990,6 +1023,16 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       uint32_val_ = BigEndian::Load32(slice.data());
       return Status::OK();
 
+    case ValueType::kUInt64: FALLTHROUGH_INTENDED;
+    case ValueType::kUInt64Descending:
+      if (slice.size() != sizeof(uint64_t)) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+            value_type, slice.size());
+      }
+      type_ = value_type;
+      uint64_val_ = BigEndian::Load64(slice.data());
+      return Status::OK();
+
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex: FALLTHROUGH_INTENDED;
@@ -1193,6 +1236,17 @@ PrimitiveValue PrimitiveValue::UInt32(uint32_t v, SortOrder sort_order) {
   return primitive_value;
 }
 
+PrimitiveValue PrimitiveValue::UInt64(uint64_t v, SortOrder sort_order) {
+  PrimitiveValue primitive_value;
+  if (sort_order == SortOrder::kDescending) {
+    primitive_value.type_ = ValueType::kUInt64Descending;
+  } else {
+    primitive_value.type_ = ValueType::kUInt64;
+  }
+  primitive_value.uint64_val_ = v;
+  return primitive_value;
+}
+
 PrimitiveValue PrimitiveValue::TransactionId(Uuid transaction_id) {
   PrimitiveValue primitive_value(transaction_id);
   primitive_value.type_ = ValueType::kTransactionId;
@@ -1248,6 +1302,9 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
 
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: return uint32_val_ == other.uint32_val_;
+
+    case ValueType::kUInt64Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kUInt64: return uint64_val_ == other.uint64_val_;
 
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
@@ -1327,6 +1384,10 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(other.uint32_val_, uint32_val_);
     case ValueType::kUInt32:
       return CompareUsingLessThan(uint32_val_, other.uint32_val_);
+    case ValueType::kUInt64Descending:
+      return CompareUsingLessThan(other.uint64_val_, uint64_val_);
+    case ValueType::kUInt64:
+      return CompareUsingLessThan(uint64_val_, other.uint64_val_);
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
       return CompareUsingLessThan(int64_val_, other.int64_val_);
@@ -1438,6 +1499,8 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       return PrimitiveValue(value.int64_value(), sort_order);
     case QLValuePB::kUint32Value:
       return PrimitiveValue::UInt32(value.uint32_value(), sort_order);
+    case QLValuePB::kUint64Value:
+      return PrimitiveValue::UInt64(value.uint64_value(), sort_order);
     case QLValuePB::kFloatValue: {
       float f = value.float_value();
       return PrimitiveValue::Float(util::CanonicalizeFloat(f), sort_order);
@@ -1535,6 +1598,9 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
       return;
     case UINT32:
       ql_value->set_uint32_value(primitive_value.GetUInt32());
+      return;
+    case UINT64:
+      ql_value->set_uint64_value(primitive_value.GetUInt64());
       return;
     case FLOAT:
       ql_value->set_float_value(primitive_value.GetFloat());
@@ -1643,7 +1709,6 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
 
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
-    case UINT64: FALLTHROUGH_INTENDED;
     case UNKNOWN_DATA:
       break;
 
