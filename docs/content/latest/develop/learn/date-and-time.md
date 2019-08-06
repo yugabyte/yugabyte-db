@@ -37,24 +37,23 @@ There are special values that you can reference - YugaByte DB only caters for so
 ```
 
 ```
-
 postgres=# select current_date, current_time, current_timestamp, now();
 
- current_date |    current_time    |       current_timestamp       |              now              
+ current_date |    current_time    |       current_timestamp       |              now
 --------------+--------------------+-------------------------------+-------------------------------
  2019-07-09   | 00:53:13.924407+00 | 2019-07-09 00:53:13.924407+00 | 2019-07-09 00:53:13.924407+00
 
 postgres=# select make_timestamptz(1970, 01, 01, 00, 00, 00, 'UTC') as epoch;
 
-         epoch          
+         epoch
 ------------------------
  1970-01-01 00:00:00+00
 
-postgres=# select (current_date-1)::timestamp as yesterday, 
-                  current_date::timestamp as today, 
+postgres=# select (current_date-1)::timestamp as yesterday,
+                  current_date::timestamp as today,
                   (current_date+1)::timestamp as tomorrow;
 
-      yesterday      |        today        |      tomorrow       
+      yesterday      |        today        |      tomorrow
 ---------------------+---------------------+---------------------
  2019-07-08 00:00:00 | 2019-07-09 00:00:00 | 2019-07-10 00:00:00
 
@@ -69,22 +68,21 @@ YugaByte DB cannot create the special values of `infinity`, `-infinity` and `all
 Date formatting is an important aspect. As you can see above, the examples show the default ISO format for dates and timestamps. We will now do some formatting of dates.
 
 ```
-
 postgres=# select to_char(current_timestamp, 'DD-MON-YYYY');
 
-   to_char   
+   to_char
 -------------
  09-JUL-2019
 
 postgres=# select to_date(to_char(current_timestamp, 'DD-MON-YYYY'), 'DD-MON-YYYY');
 
-  to_date   
+  to_date
 ------------
  2019-07-09
 
 postgres=# select to_char(current_timestamp, 'DD-MON-YYYY HH:MI:SS PM');
 
-         to_char         
+         to_char
 -------------------------
  09-JUL-2019 01:50:13 AM
 
@@ -97,10 +95,9 @@ In the above you will see that to present the date in a friendly readable format
 Thus far, we have been operating with the default time zone installed for YugaByte being UTC (+0). Lets select what time zones are available from YugaByte:
 
 ```
-
 postgres=# select * from pg_timezone_names;
 
-               name               | abbrev | utc_offset | is_dst 
+               name               | abbrev | utc_offset | is_dst
 ----------------------------------+--------+------------+--------
  W-SU                             | MSK    | 03:00:00   | f
  GMT+0                            | GMT    | 00:00:00   | f
@@ -144,38 +141,37 @@ postgres=# select * from pg_timezone_names;
 **Not all 593 rows are shown**, so don't be concerned if the timezone you want is not there. Check your YSQL output to find the timezone you are interested in. What has been left in the results above is that there is a lot of inconsistency in the naming convention and definition of the timezones, this is not the doing of YugaByte!
 {{< /note >}}
 
-You can set the timezone to use for your session using the `SET` command. You can `SET` timezone using the timezone name as listed in pg_timezone_names, but not the abbreviation. You can also set the timezone to a numeric/decimal representation of the time offset. For example, -3.5 is 3 hours and 30 minutes before UTC. 
+You can set the timezone to use for your session using the `SET` command. You can `SET` timezone using the timezone name as listed in pg_timezone_names, but not the abbreviation. You can also set the timezone to a numeric/decimal representation of the time offset. For example, -3.5 is 3 hours and 30 minutes before UTC.
 
 It seems logical to be able to set the timezone using the `UTC_OFFSET` format above. YugaByte will allow this, however, be aware of the following behaviour if you choose this method:
 
 {{< tip title="Tip" >}}
-When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, YugaByte follows the ISO-8601 convention that positive timezone offsets are east of Greenwich. Therefore an entry of '+10:00:00' will result in a timezone offset of -10 Hours as this is deemed East of Greenwich. 
+When using POSIX time zone names, positive offsets are used for locations west of Greenwich. Everywhere else, YugaByte follows the ISO-8601 convention that positive timezone offsets are east of Greenwich. Therefore an entry of '+10:00:00' will result in a timezone offset of -10 Hours as this is deemed East of Greenwich.
 {{< /tip >}}
 
 Lets start examining dates and times within YugaByte.
 
 ```
-
-postgres=# \echo `date`      
+postgres=# \echo `date`
 
 Tue 09 Jul 12:27:08 AEST 2019
 
 ```
-Note that the above does not use quotes, but is the "Grave Accent" symbol, which is normally found below the Tilde `~` symbol on your keyboard. 
+
+Note that the above does not use quotes, but is the "Grave Accent" symbol, which is normally found below the Tilde `~` symbol on your keyboard.
 
 The above is showing you the current date and time of the underlying server.  It is not the date and time of the database. However, in a single node implementation of YugaByte there will be a relationship between your computer's date and the database date because YugaByte would have obtained the date from the server when it was started. We will explore the date and time (timestamps) within the database.
 
 ```
-
 postgres=# SHOW timezone;
 
- TimeZone 
+ TimeZone
 ----------
  UTC
 
 postgres=# select current_timestamp;
 
-      current_timestamp       
+      current_timestamp
 ------------------------------
  2019-07-09 02:27:46.65152+00
 
@@ -184,13 +180,13 @@ SET
 
 postgres=# SHOW timezone;
 
- TimeZone 
+ TimeZone
 ----------
  <+01>-01
 
 postgres=# select current_timestamp;
 
-      current_timestamp       
+      current_timestamp
 ------------------------------
  2019-07-09 03:28:11.52311+01
 
@@ -200,7 +196,7 @@ SET
 
 postgres=# select current_timestamp;
 
-        current_timestamp         
+        current_timestamp
 ----------------------------------
  2019-07-09 00:58:27.906963-01:30
 
@@ -209,13 +205,13 @@ SET
 
 postgres=# SHOW timezone;
 
-     TimeZone     
+     TimeZone
 ------------------
  Australia/Sydney
 
 postgres=# select current_timestamp;
 
-       current_timestamp       
+       current_timestamp
 -------------------------------
  2019-07-09 12:28:46.610746+10
 
@@ -224,36 +220,35 @@ SET
 
 postgres=# select current_timestamp;
 
-       current_timestamp       
+       current_timestamp
 -------------------------------
  2019-07-09 02:28:57.610746+00
 
 postgres=# select current_timestamp AT TIME ZONE 'Australia/Sydney';
 
-          timezone          
+          timezone
 ----------------------------
  2019-07-09 12:29:03.416867
 
 postgres=# select current_timestamp(0);
 
-   current_timestamp    
+   current_timestamp
 ------------------------
  2019-07-09 03:15:38+00
 
 postgres=# select current_timestamp(2);
 
-     current_timestamp     
+     current_timestamp
 ---------------------------
  2019-07-09 03:15:53.07+00
 
 ```
 
-As shown above, you can set your SESSION to a particular timezone. When working with timestamps, you can control their seconds precision by specifying a value from 0 -> 6. Timestamps cannot go beyond millisecond precision which is 1,000,000 parts to one second. 
+As shown above, you can set your SESSION to a particular timezone. When working with timestamps, you can control their seconds precision by specifying a value from 0 -> 6. Timestamps cannot go beyond millisecond precision which is 1,000,000 parts to one second.
 
 If your application assumes a local time, ensure that it issues a `SET` command to set to the correct time offset. Note that Daylight Savings is quite an advanced topic, so for the time being it is recommended to instead use the offset notation, for example -3.5 for 3 hours and 30 minutes before UTC.
 
 Note that the `AT TIME ZONE` statement above does not cater for the variants of `WITH TIME ZONE` and `WITHOUT TIME ZONE`.
-
 
 ## Timestamps
 
@@ -268,7 +263,6 @@ A simpler explanation is that the time is determined by the 'Shard Leader' of th
 Lets start working with dates and timestamps. The following assumes that you have installed the yb_demo database and its demo data.
 
 ```
-
 postgres=# \c yb_demo
 You are now connected to database "yb_demo" as user "postgres".
 
@@ -280,12 +274,12 @@ yb_demo=# select to_char(max(orders.created_at), 'DD-MON-YYYY HH24:MI') AS "Last
 
 yb_demo=# select extract(MONTH from o.created_at) AS "Mth Num", to_char(o.created_at, 'MON') AS "Month",
           extract(YEAR from o.created_at) AS "Year", count(*) AS "Orders"
-          from orders o 
+          from orders o
           where o.created_at > current_timestamp(0)
           group by 1,2,3
           order by 3 DESC, 1 DESC limit 10;
-          
- Mth Num | Month | Year | Orders 
+
+ Mth Num | Month | Year | Orders
 ---------+-------+------+--------
        4 | APR   | 2020 |    344
        3 | MAR   | 2020 |    527
@@ -305,7 +299,7 @@ yb_demo=# select to_char(o.created_at, 'HH AM') AS "Popular Hours", count(*) AS 
           order by 2 DESC
           limit 4;
 
- Popular Hours | Orders 
+ Popular Hours | Orders
 ---------------+--------
  12 PM         |    827
  11 AM         |    820
@@ -318,13 +312,13 @@ yb_demo=# update orders
 
 UPDATE 18760
 
-yb_demo=# select to_char(o.created_at, 'Day') AS "Top Day", 
+yb_demo=# select to_char(o.created_at, 'Day') AS "Top Day",
           count(o.*) AS "SALES"
-          from orders o                                                                            
-          group by 1 
+          from orders o
+          group by 1
           order by 2 desc;
 
-Top Day  | SALES 
+Top Day  | SALES
 -----------+---------
  Monday    |    2786
  Tuesday   |    2737
@@ -336,10 +330,10 @@ Top Day  | SALES
 (7 rows)
 
 yb_demo=# create table order_deliveries (
-          order_id bigint,                                                               
+          order_id bigint,
           creation_date date DEFAULT current_date,
           delivery_date timestamptz);
-          
+
 CREATE TABLE
 
 yb_demo=# insert into order_deliveries
@@ -352,7 +346,7 @@ INSERT 0 12268
 
 yb_demo=# select * from order_deliveries limit 5;
 
- order_id | creation_date |       delivery_date        
+ order_id | creation_date |       delivery_date
 ----------+---------------+----------------------------
      5636 | 2019-07-09    | 2017-01-06 03:06:01.071+00
     10990 | 2019-07-09    | 2018-12-16 12:02:56.169+00
@@ -368,8 +362,8 @@ yb_demo=# select d.order_id, to_char(o.created_at, 'DD-MON-YYYY HH AM') AS "Orde
           where o.id = d.order_id
           and d.delivery_date - o.created_at > interval '15 days'
           order by d.delivery_date - o.created_at DESC, d.delivery_date DESC limit 10;
-          
- order_id |      Ordered      |     Delivered     |  Delivery Days 
+
+ order_id |      Ordered      |     Delivered     |  Delivery Days
 ----------+-------------------+-------------------+------------------
     10984 | 12-JUN-2019 08 PM | 07-JUL-2019 02 AM | 24 days 06:00:00
      6263 | 01-JUN-2019 03 AM | 25-JUN-2019 09 AM | 24 days 06:00:00
@@ -390,13 +384,13 @@ Your data will be slightly different as we used a `RANDOM()` function for settin
 {{< /note >}}
 
 You can use views of the YugaByte Data Catalogs to create data that is already prepared and formatted for your application code so that your SQL is simpler. Below is an example that is defined in the yb_demo database (has no dependency on yb_demo). This demonstration shows how you can nominate a shortlist of timezones that are formatted and ready to use for display purposes.
-```
 
+```
 yb_demo=# CREATE OR REPLACE VIEW TZ AS
           select '* Current time' AS "tzone", '' AS "offset", to_char(current_timestamp AT TIME ZONE 'Australia/Sydney', 'Dy dd-Mon-yy hh:mi PM') AS "Local Time"
           UNION
-          select x.name AS "tzone", 
-          left(x.utc_offset::text, 5) AS "offset", 
+          select x.name AS "tzone",
+          left(x.utc_offset::text, 5) AS "offset",
           to_char(current_timestamp AT TIME ZONE x.name, 'Dy dd-Mon-yy hh:mi PM') AS "Local Time"
           from pg_catalog.pg_timezone_names x
           where  x.name like 'Australi%' or name in('Singapore', 'NZ', 'UTC')
@@ -406,7 +400,7 @@ CREATE VIEW
 
 yb_demo=# select * from tz;
 
-         tzone         | offset |       Local Time       
+         tzone         | offset |       Local Time
 -----------------------+--------+------------------------
  * Current time        |        | Wed 10-Jul-19 11:49 AM
  Australia/ACT         | 10:00  | Wed 10-Jul-19 11:49 AM
@@ -445,101 +439,101 @@ Assuming that you chose the timezones that interest you, then your results shoul
 Who would have thought that Australia needs 23 timezone records ?
 {{< /tip >}}
 
+## Date and time intervals
 
-## Date/Time Intervals
 You may have noticed that the above YSQL has references to `INTERVAL`. An interval is a data type that describes an increment of time. An interval allows you to show the difference between two timestamps or to create a new timestamp by adding or subtracting a particular unit of measure. Some examples are:
 
 ```
-
-postgres=# select current_timestamp AS "Current Timestamp", 
+postgres=# select current_timestamp AS "Current Timestamp",
            current_timestamp + (10 * interval '1 min') AS "Plus 10 Mins",
            current_timestamp + (10 * interval '3 min') AS "Plus 30 Mins",
            current_timestamp + (10 * interval '2 hour') AS "Plus 20 hours",
            current_timestamp + (10 * interval '1 month') AS "Plus 10 Months"
 
-       Current Timestamp       |         Plus 10 Mins          |         Plus 30 Mins          |         Plus 20 hours         |        Plus 10 Months         
+       Current Timestamp       |         Plus 10 Mins          |         Plus 30 Mins          |         Plus 20 hours         |        Plus 10 Months
 -------------------------------+-------------------------------+-------------------------------+-------------------------------+-------------------------------
  2019-07-09 05:08:58.859123+00 | 2019-07-09 05:18:58.859123+00 | 2019-07-09 05:38:58.859123+00 | 2019-07-10 01:08:58.859123+00 | 2020-05-09 05:08:58.859123+00
 
 postgres=# select current_time::time(0), time '05:00' + interval '5 hours 7 mins' AS "New time";
 
- current_time | New Time       
+ current_time | New Time
 --------------+----------
  05:09:24     | 10:16:24
 
 postgres=# select current_date - date '01-01-2019' AS "Day of Year(A)", current_date - date_trunc('year', current_date) AS "Day of Year(B)";
 
- Day of Year(A) | Day of Year(B) 
+ Day of Year(A) | Day of Year(B)
 ----------------+----------------
             189 | 189 days
 
 postgres=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamp '2019-07-09 09:00:00.000000+00' AS "Time Difference";
 
- Time Difference 
+ Time Difference
 -----------------
  01:00:00
 
 postgres=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-09 10:00:00.000000+00' AS "Time Offset";
 
- Time Offset 
+ Time Offset
 -------------
  00:00:00
 
 postgres=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-09 10:00:00.000000EST' AS "Time Offset";
 
- Time Offset 
+ Time Offset
 -------------
  -05:00:00
 
 postgres=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-08 10:00:00.000000EST' AS "Time Offset";
 
- Time Offset 
+ Time Offset
 -------------
  19:00:00
 
 postgres=# select timestamp '2019-07-09 10:00:00.000000+00' - timestamptz '2019-07-07 10:00:00.000000EST' AS "Time Offset";
 
-  Time Offset   
+  Time Offset
 ----------------
  1 day 19:00:00
 
 postgres=# select age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST') AS "Age Diff";
 
-    Age Diff   
+    Age Diff
 ----------------
  1 day 19:00:00
 
 postgres=# select (extract('days' from age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST'))*24)+
            (extract('hours' from age(timestamp '2019-07-09 10:00:00.000000+00', timestamptz '2019-07-07 10:00:00.000000EST'))) AS "Hours Diff";
-           
- Hours Diff 
+
+ Hours Diff
 ------------
          43
 
 ```
 
-The above shows that date and time manipulation can be achieved in several ways. It is important to note that some outputs are of type `INTEGER`, whilst others are of type `INTERVAL` (not text as they may appear). The final YSQL above for "Hours Diff" uses the output of `EXTRACT` which produces an `INTEGER` so that it may be multiplied by the hours per day whereas the `EXTRACT` function itself requires either a `INTERVAL` or `TIMESTAMP(TZ)` data type as its input. 
+The above shows that date and time manipulation can be achieved in several ways. It is important to note that some outputs are of type `INTEGER`, whilst others are of type `INTERVAL` (not text as they may appear). The final YSQL above for "Hours Diff" uses the output of `EXTRACT` which produces an `INTEGER` so that it may be multiplied by the hours per day whereas the `EXTRACT` function itself requires either a `INTERVAL` or `TIMESTAMP(TZ)` data type as its input.
 
-Ensure to cast your values thoroughly. Casts can be done for time(tz), date and timestamp(tz) like `MY_VALUE::timestamptz`. 
+Ensure to cast your values thoroughly. Casts can be done for time(tz), date and timestamp(tz) like `MY_VALUE::timestamptz`.
 
 {{< note title="Note" >}}
-The `EXTRACT` command is the preferred command to `DATE_PART`. 
+The `EXTRACT` command is the preferred command to `DATE_PART`.
 {{< /note >}}
 
-## Manipulating using Truncation
-Another useful command is `DATE_TRUNC` which is used to 'floor' the timestamp to a particular unit. For the below YSQL, we assume that you are in the 'yb_demo' database with the demo data loaded.
+## Manipulating using truncation
+
+Another useful command is `DATE_TRUNC` which is used to 'floor' the timestamp to a particular unit. For the following YSQL, we assume that you are in the 'yb_demo' database with the demo data loaded.
 
 ```
 yb_demo=# select date_trunc('hour', current_timestamp);
-       date_trunc       
+       date_trunc
 ------------------------
  2019-07-09 06:00:00+00
 (1 row)
 
-yb_demo=# select to_char((date_trunc('month', generate_series)::date)-1, 'DD-MON-YYYY') AS "Last Day of Month" 
+yb_demo=# select to_char((date_trunc('month', generate_series)::date)-1, 'DD-MON-YYYY') AS "Last Day of Month"
           from generate_series(current_date-(365-1), current_date, '1 month');
-          
- Last Day of Month 
+
+ Last Day of Month
 -------------------
  30-JUN-2018
  31-JUL-2018
@@ -557,7 +551,7 @@ yb_demo=# select to_char((date_trunc('month', generate_series)::date)-1, 'DD-MON
 
 yb_demo=# select date_trunc('days', age(created_at)) AS "Product Age" from products order by 1 desc limit 10;
 
-      Product Age       
+      Product Age
 ------------------------
  3 years 2 mons 12 days
  3 years 2 mons 10 days
@@ -574,21 +568,22 @@ yb_demo=# select date_trunc('days', age(created_at)) AS "Product Age" from produ
 ```
 
 ## Bringing it all together
-A common requirement is to find out the date of next Monday, for example that might be the first day of the new week for scheduling purposes. This can be achieved in many ways, maybe in a simpler fashion than I have illustrated below. Below illustrates the chaining together of different date and time operators and functions to achieve the result you want.
-```
 
-postgres=# select to_char(current_date, 'Day, DD-MON-YYYY') AS "Today", 
-           to_char((current_timestamp AT TIME ZONE 'Australia/Sydney')::date + 
-           (7-(extract('isodow' from current_timestamp AT TIME ZONE 'Australia/Sydney'))::int + 1), 
+A common requirement is to find out the date of next Monday, for example that might be the first day of the new week for scheduling purposes. This can be achieved in many ways, maybe in a simpler fashion than I have illustrated below. Below illustrates the chaining together of different date and time operators and functions to achieve the result you want.
+
+```
+postgres=# select to_char(current_date, 'Day, DD-MON-YYYY') AS "Today",
+           to_char((current_timestamp AT TIME ZONE 'Australia/Sydney')::date +
+           (7-(extract('isodow' from current_timestamp AT TIME ZONE 'Australia/Sydney'))::int + 1),
            'Day, DD-MON-YYYY') AS "Start of Next Week";
 
-         Today          |   Start of Next Week   
+         Today          |   Start of Next Week
 ------------------------+------------------------
  Tuesday  , 09-JUL-2019 | Monday   , 15-JUL-2019
 
 ```
 
-The above approach is to `EXTRACT` the current day of the week as an integer. As today is a Tuesday, the result will be 2. As we know there are 7 days per week, we need to target a calculation that has a result of 8, being 1 day more than the 7th day. We use this to calculate how many days to add to the current date (7 days - 2 + 1 day) to arrive at the next Monday which is day of the week (ISO dow) #1. My addition of the `AT TIME ZONE` was purely illustrative and would not impact the result because I am dealing with days, and my timezone difference is only +10 hours, therefore it does not affect the date. However, if you are working with hours or smaller, then the timezone will *potentially* have a bearing on your result. 
+The above approach is to `EXTRACT` the current day of the week as an integer. As today is a Tuesday, the result will be 2. As we know there are 7 days per week, we need to target a calculation that has a result of 8, being 1 day more than the 7th day. We use this to calculate how many days to add to the current date (7 days - 2 + 1 day) to arrive at the next Monday which is day of the week (ISO dow) #1. My addition of the `AT TIME ZONE` was purely illustrative and would not impact the result because I am dealing with days, and my timezone difference is only +10 hours, therefore it does not affect the date. However, if you are working with hours or smaller, then the timezone will *potentially* have a bearing on your result.
 
 {{< tip title="Fun Fact" >}}
 For the very curious, why is there a gap after 'Tuesday' and 'Monday' in the example above? All 'Day' values are space padded to 9 characters. You could use string functions to remove the extra spaces if needed for formatting purposes or you could do a trimmed `TO_CHAR` for the 'Day' then concatenate with a comma and another `TO_CHAR` for the 'DD-MON-YYYY'.
@@ -602,14 +597,13 @@ YugaByte has `DateStyle` which is a setting that you apply to your session so th
 
 By default, YugaByte uses the ISO Standard of YYYY-MM-DD HH24:MI:SS. Other settings you can use are 'SQL', 'German', and 'Postgres'. These are all referenced below allowing you to see examples.
 
-All settings except ISO allow you specify whether a Day appears before or after the Month. Therefore, a setting of 'DMY' will result in 3/5 being 3rd May, whereas 'MDY' will result in 5th March. 
+All settings except ISO allow you specify whether a Day appears before or after the Month. Therefore, a setting of 'DMY' will result in 3/5 being 3rd May, whereas 'MDY' will result in 5th March.
 
 If you are reading dates as text fields from a file or any source that is not a YugaByte date or timestamp data type, then it is very important that you set your DateStyle properly unless you are very specific on how to convert a text field to a date - an example of which is included below.
 
 Note that YugaByte will always interpret '6/6' as 6th June, and '13/12' as 13th December (because the month cannot be 13), but what about about '6/12'? Lets work through some examples within YSQL.
 
 ```
-
 postgres=# SHOW DateStyle;
 
  DateStyle
@@ -618,7 +612,7 @@ postgres=# SHOW DateStyle;
 
 postgres=# select current_date, current_time(0), current_timestamp(0);
 
- current_date | current_time |   current_timestamp    
+ current_date | current_time |   current_timestamp
 --------------+--------------+------------------------
  2019-07-09   | 20:26:28+00  | 2019-07-09 20:26:28+00
 
@@ -627,7 +621,7 @@ SET
 
 postgres=# select current_date, current_time(0), current_timestamp(0);
 
- current_date | current_time |    current_timestamp    
+ current_date | current_time |    current_timestamp
 --------------+--------------+-------------------------
  09/07/2019   | 20:26:48+00  | 09/07/2019 20:26:48 UTC
 
@@ -636,7 +630,7 @@ SET
 
 postgres=# select current_date, current_time(0), current_timestamp(0);
 
- current_date | current_time |    current_timestamp    
+ current_date | current_time |    current_timestamp
 --------------+--------------+-------------------------
  07/09/2019   | 20:27:04+00  | 07/09/2019 20:27:04 UTC
 
@@ -645,7 +639,7 @@ SET
 
 postgres=# select current_date, current_time(0), current_timestamp(0);
 
- current_date | current_time |    current_timestamp    
+ current_date | current_time |    current_timestamp
 --------------+--------------+-------------------------
  09.07.2019   | 20:27:30+00  | 09.07.2019 20:27:30 UTC
 
@@ -654,7 +648,7 @@ SET
 
 postgres=# select current_date, current_time(0), current_timestamp(0);
 
- current_date | current_time |      current_timestamp       
+ current_date | current_time |      current_timestamp
 --------------+--------------+------------------------------
  09-07-2019   | 20:28:07+00  | Tue 09 Jul 20:28:07 2019 UTC
 
@@ -663,25 +657,25 @@ SET
 
 postgres=# select current_date, current_time(0), current_timestamp(0);
 
- current_date | current_time |      current_timestamp       
+ current_date | current_time |      current_timestamp
 --------------+--------------+------------------------------
  07-09-2019   | 20:28:38+00  | Tue Jul 09 20:28:38 2019 UTC
 
 postgres=# select '01-01-2019'::date;
 
-    date    
+    date
 ------------
  01-01-2019
 
 postgres=# select to_char('01-01-2019'::date, 'DD-MON-YYYY');
 
-   to_char   
+   to_char
 -------------
  01-JAN-2019
 
 postgres=# select to_char('05-03-2019'::date, 'DD-MON-YYYY');
 
-   to_char   
+   to_char
 -------------
  03-MAY-2019
 
@@ -690,13 +684,13 @@ SET
 
 postgres=# select to_char('05-03-2019'::date, 'DD-MON-YYYY');
 
-   to_char   
+   to_char
 -------------
  05-MAR-2019
 
 postgres=# select to_char(to_date('05-03-2019', 'MM-DD-YYYY'), 'DD-MON-YYYY');
 
-   to_char   
+   to_char
 -------------
  03-MAY-2019
 
@@ -717,13 +711,13 @@ YugaByte DB has inherited a lot of similar capability of the YSQL API to the Pos
 YugaByte tracks its settings in its catalog, lets query some relevant settings and this time we will transform the layout of the query results using the `Expanded display` setting. This can be done in any database.
 
 ```
-postgres=# \x on   
+postgres=# \x on
 
 Expanded display is on.
 
 postgres=# select name, short_desc, coalesce(setting, reset_val) AS "setting_value", sourcefile  
-          from pg_catalog.pg_settings 
-          where name in('log_timezone', 'log_directory', 'log_filename', 'lc_time') 
+          from pg_catalog.pg_settings
+          where name in('log_timezone', 'log_directory', 'log_filename', 'lc_time')
           order by name asc;
 
 -[ RECORD 1 ]-+----------------------------------------------------------------
@@ -735,23 +729,23 @@ sourcefile    | /home/xxxxx/yugabyte-data/node-1/disk-1/pg_data/postgresql.conf
 name          | log_directory
 short_desc    | Sets the destination directory for log files.
 setting_value | /home/xxxxx/yugabyte-data/node-1/disk-1/yb-data/tserver/logs
-sourcefile    | 
+sourcefile    |
 -[ RECORD 3 ]-+----------------------------------------------------------------
 name          | log_filename
 short_desc    | Sets the file name pattern for log files.
 setting_value | postgresql-%Y-%m-%d_%H%M%S.log
-sourcefile    | 
+sourcefile    |
 -[ RECORD 4 ]-+----------------------------------------------------------------
 name          | log_timezone
 short_desc    | Sets the time zone to use in log messages.
 setting_value | UTC
 sourcefile    | /home/xxxxx/yugabyte-data/node-1/disk-1/pg_data/postgresql.conf
 
-postgres=# \x off   
+postgres=# \x off
 
 ```
 
-Using the `log_directory` and `log_filename` references, we can find the YugaByte log to examine the timestamps being inserted into the logs. These are all UTC timestamps and should remain that way. 
+Using the `log_directory` and `log_filename` references, we can find the YugaByte log to examine the timestamps being inserted into the logs. These are all UTC timestamps and should remain that way.
 
 You will see that the `lc_time` setting is currently UTF and the file the setting is obtained from is listed. Opening that file **as sudo/superuser**, you will see contents that look like the below (after much scrolling or searching for 'datestyle'):
 
@@ -789,20 +783,20 @@ Make a backup of the original file and then change `datestyle = 'SQL, DMY'`, `ti
 
 Once the cluster is running as expected, then:
 
-```
+```sh
 $ ./bin/ysqlsh
 ysqlsh (11.2)
 Type "help" for help.
 
 postgres=# SHOW timezone;
 
- TimeZone 
+ TimeZone
 ----------
  GB
 
 postgres=# select current_date;
 
- current_date 
+ current_date
 --------------
  09/07/2019
 
