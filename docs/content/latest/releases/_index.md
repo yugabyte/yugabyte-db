@@ -8,7 +8,7 @@ section: RELEASES
 menu:
   latest:
     identifier: releases
-    weight: 2692
+    weight: 2690
 ---
 
 Download YugaByte DB using the table below and then follow the [Quick Start](../quick-start/) instructions to get started.
