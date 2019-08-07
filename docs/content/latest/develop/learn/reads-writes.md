@@ -1,6 +1,6 @@
 ---
-title: Reads and Writes
-linkTitle: Reads and Writes
+title: Reads and writes
+linkTitle: Reads and writes
 aliases:
   - /develop/learn/reads-writes/
 ---

@@ -14,11 +14,12 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`ZCARD key`</b><br>
 This command returns the number of `members` in the sorted set at `key`. If `key` does not exist, 0 is returned.
 If `key` is associated with non sorted-set data, an error is returned.
 
-## Return Value
+## Return value
 
 The cardinality of the sorted set.
 
@@ -58,6 +59,6 @@ $ ZCARD ts_key
 (integer) 0
 ```
 
-## See Also
+## See also
 
 [`zadd`](../zadd/), [`zrange`](../zrange/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)

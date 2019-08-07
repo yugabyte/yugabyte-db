@@ -3,7 +3,7 @@
 
 Update packages on your system, install development tools and additional packages:
 
-```
+```sh
 sudo apt-get update
 sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build
 ```
@@ -12,7 +12,7 @@ sudo apt-get install uuid-dev libbz2-dev libreadline-dev maven ninja-build
 
 Make sure `cmake` / `ctest` binaries are at least version 3. On CentOS one way to achive this is to symlink them into `/usr/local/bin`.
 
-```
+```sh
 sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
 sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 ```
@@ -26,5 +26,3 @@ During the build we install Linuxbrew in a separate directory, `~/.linuxbrew-yb-
 
 We don't need to add `~/.linuxbrew-yb-build/linuxbrew-<version>/bin` to PATH. The build scripts will automatically discover this Linuxbrew installation.
 {{< /note >}}
-
-

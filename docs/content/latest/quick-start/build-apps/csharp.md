@@ -1,7 +1,7 @@
 ---
 title: C#
 linkTitle: C#
-description: Build a C# App
+description: Build a C# application
 aliases:
   - /develop/client-drivers/csharp/
   - /latest/develop/client-drivers/csharp/

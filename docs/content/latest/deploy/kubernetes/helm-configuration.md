@@ -1,7 +1,7 @@
 ---
-title: Helm Configuration
-linkTitle: Helm Configuration
-description: Helm Configuration
+title: Helm configuration
+linkTitle: Helm configuration
+description: Helm configuration
 aliases:
   - /deploy/kubernetes/helm-configuration/
 menu:
@@ -13,11 +13,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Configure Cluster
+## Configure cluster
 
 Instead of using the default values in the helm chart, you can also modify the configuration of the YugaByte cluster according to your requirements. The following section shows the commands and tags that can be modified to achieve the desired configuration.
 
-### CPU, Memory & Replica Count
+### CPU, memory, and replica count
 
 The default values for the Helm chart are in the `helm/yugabyte/values.yaml` file. The most important ones are listed below. As noted in the Prerequisites section above, the defaults are set for a 3 nodes Kubernetes cluster each with 4 CPU cores and 15 GB RAM.
 
@@ -58,10 +58,9 @@ Replica count can be changed using the command below. Note only the tservers nee
 $ helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 ```
 
-### LoadBalancer for Services
+### LoadBalancer for services
 
-By default, the YugaByte DB helm chart exposes only the master ui endpoint via LoadBalancer. If you wish to expose also the ycql and yedis services via LoadBalancer for your app to use, you could do that in couple of different ways.
-
+By default, the YugaByte DB helm chart exposes only the master ui endpoint using LoadBalancer. If you wish to expose also the ycql and yedis services via LoadBalancer for your app to use, you could do that in couple of different ways.
 
 If you want individual LoadBalancer endpoint for each of the services (YCQL, YEDIS), run the following command.
 
@@ -101,7 +100,7 @@ You can also bring up an internal LoadBalancer (for either the masters' or the t
   </div>
 </div>
 
-### Storage Class
+### Storage class
 
 In case you want to use a storage class other than the standard class for your deployment, provision the storage class and then pass in the name of the class while running the helm install command.
 

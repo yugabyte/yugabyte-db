@@ -1,7 +1,7 @@
 ---
-title: System Configuration
-linkTitle: 1. System Configuration
-description: System Configuration
+title: System configuration
+linkTitle: 1. System configuration
+description: System configuration
 aliases:
   - /deploy/manual-deployment/system-config
 menu:
@@ -69,7 +69,7 @@ You can change values by substituting the -n option for any possible value in th
 $ ulimit -n <value>
 ```
 
-```
+```sh
 -f (file size): unlimited
 -t (cpu time): unlimited
 -v (virtual memory): unlimited [1]
@@ -80,6 +80,8 @@ $ ulimit -n <value>
 ```
 
 {{< note title="Note" >}}
+
 - After changing a ulimit setting, the YB-Master and YB-TServer processes must be restarted in order for the new settings to take effect. Check the `/proc/<process pid>` file to see the current settings.
 - Changes made using ulimit may revert following a system restart depending on the system configuration.
+
 {{< /note >}}

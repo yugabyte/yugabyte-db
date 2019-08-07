@@ -1,7 +1,7 @@
 ---
-title: Verify Deployment
-linkTitle: 5. Verify Deployment
-description: Verify Deployment
+title: Verify deployment
+linkTitle: 5. Verify deployment
+description: Verify deployment
 aliases:
   - /deploy/manual-deployment/verify-deployment
 menu:
@@ -15,8 +15,7 @@ showAsideToc: true
 
 As before, we shall assume that we brought up a universe on four nodes with replication factor `3`. Let us assume their IP addresses are `172.151.17.130`, `172.151.17.220`, `172.151.17.140` and `172.151.17.150`
 
-
-## Setup YEDIS service (Optional)
+## [Optional] Setup YEDIS service
 
 {{< note title="Note" >}}
 If you want this cluster to be able to support Redis clients, you **must** perform this step.
@@ -30,16 +29,15 @@ $ ./bin/yb-admin --master_addresses 172.151.17.130:7100,172.151.17.220:7100,172.
 
 ## View the master UI dashboard
 
-You should now be able to view the master dashboard on the ip address of any master. In our example, this is one of the following urls:
+You should now be able to view the master dashboard on the ip address of any master. In our example, this is one of the following URLs:
 
-- http://172.151.17.130:7000
-- http://172.151.17.220:7000
-- http://172.151.17.140:7000
+- `http://172.151.17.130:7000`
+- `http://172.151.17.220:7000`
+- `http://172.151.17.140:7000`
 
 {{< tip title="Tip" >}}If this is a public cloud deployment, remember to use the public ip for the nodes, or a http proxy to view these pages.{{< /tip >}}<br>
 
 ## Connect clients
-
 
 - Clients can connect to YSQL API at
 
@@ -59,12 +57,11 @@ You should now be able to view the master dashboard on the ip address of any mas
 172.151.17.130:6379,172.151.17.220:6379,172.151.17.140:6379,172.151.17.150:6379
 ```
 
-
 ## Default ports reference
 
-The above deployment uses the various default ports listed below. 
+The above deployment uses the various default ports listed below.
 
-Service | Type | Port 
+Service | Type | Port
 --------|------| -------
 `yb-master` | rpc | 7100
 `yb-master` | admin web server | 7000

@@ -7,17 +7,17 @@ The tutorial assumes that you have:
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2+, clang 3.4+ installed.
 
-## Installing the C++ Driver (libpqxx)
+## Installing the C++ driver (libpqxx)
 
 Download the source from [here](https://github.com/jtv/libpqxx) and build the binaries as follows. Detailed instructions are provided [here](https://github.com/jtv/libpqxx).
 
-### Get the source 
+### Get the source
 
 ```sh
 $ git clone https://github.com/jtv/libpqxx.git
 ```
 
-### Dependencies 
+### Dependencies
 
 Note that this package depends on pg binaries. Make sure that postgres bin directory is on the command path.
 
@@ -34,9 +34,9 @@ $ make
 $ make install
 ```
 
-## Working Example
+## Working example
 
-### Sample C++ Code
+### Sample C++ code
 
 Create a file `ybsql_hello_world.cpp` and copy the contents below:
 
@@ -51,7 +51,7 @@ int main(int, char *argv[])
   pqxx::result r;
 
   /* Create table */
-  try 
+  try
   {
     r = txn.exec("CREATE TABLE employee (id int PRIMARY KEY, \
                   name varchar, age int, \
@@ -66,7 +66,7 @@ int main(int, char *argv[])
   std::cout << "Created table employee\n";
 
   /* Insert a row */
-  try 
+  try
   {
     r = txn.exec("INSERT INTO employee (id, name, age, language) \
                   VALUES (1, 'John', 35, 'C++')");
@@ -80,12 +80,12 @@ int main(int, char *argv[])
   std::cout << "Inserted data (1, 'John', 35, 'C++')\n";
 
   /* Query the row */
-  try 
+  try
   {
     r = txn.exec("SELECT name, age, language FROM employee WHERE id = 1");
 
     for (auto row: r)
-      std::cout << "Query returned: " 
+      std::cout << "Query returned: "
           << row["name"].c_str() << ", "
           << row["age"].as<int>() << ", "
           << row["language"].c_str() << std::endl;
@@ -120,5 +120,5 @@ You should see the following output:
 ```
 Created table employee
 Inserted data (1, 'John', 35, 'C++')
-Query returned: John, 35, C++ 
+Query returned: John, 35, C++
 ```

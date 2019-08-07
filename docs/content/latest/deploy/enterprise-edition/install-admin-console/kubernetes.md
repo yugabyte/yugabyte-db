@@ -20,16 +20,17 @@ Client: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"
 Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"}
 ```
 
-## Create Cluster
+## Create a cluster
 
 ### Create a service account with cluster admin access
+
 For deploying a YugaWare helm chart we need have a service account which has cluster admin access, if the user in context already has that access you can skip this step.
 
 ```sh
 $ kubectl apply -f https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/cloud/kubernetes/helm/yugabyte-rbac.yaml
 ```
 
-```
+```sh
 serviceaccount/yugabyte-helm created
 clusterrolebinding.rbac.authorization.k8s.io/yugabyte-helm created
 ```
@@ -42,7 +43,7 @@ Initialize `helm` with the service account but use the `--upgrade` flag to ensur
 $ helm init --service-account yugabyte-helm --upgrade --wait
 ```
 
-```
+```sh
 $HELM_HOME has been configured at /Users/<user>/.helm.
 
 Tiller (the Helm server-side component) has been upgraded to the current version.
@@ -65,7 +66,7 @@ Install YugaWare in the Kubernetes cluster using the command below.
 $ helm install yugaware-1.0.0.tgz --name yb --set=image.tag=1.1.10.0-b3 --wait
 ```
 
-### Check Cluster Status
+### Check the cluster status
 
 You can check the status of the cluster using various commands noted below.
 
@@ -73,7 +74,7 @@ You can check the status of the cluster using various commands noted below.
 $ helm status yb
 ```
 
-```
+```sh
 LAST DEPLOYED: Wed Jan  2 14:12:27 2019
 NAMESPACE: default
 STATUS: DEPLOYED
@@ -109,13 +110,14 @@ yb-yugaware  14d
 NAME           READY  STATUS   RESTARTS  AGE
 yb-yugaware-0  5/5    Running  0         14d
 ```
+
 Get service details.
 
 ```sh
 $ kubectl get svc -lapp=yb-yugaware
 ```
 
-```
+```sh
 NAME             TYPE           CLUSTER-IP    EXTERNAL-IP      PORT(S)                       AGE
 yb-yugaware-ui   LoadBalancer   10.102.9.91   10.200.300.400   80:32495/TCP,9090:30087/TCP   15d
 ```
@@ -126,7 +128,7 @@ You can even check the history of the `yb` helm chart.
 $ helm history yb
 ```
 
-```
+```sh
 REVISION	UPDATED                 	STATUS  	CHART         	DESCRIPTION
 1       	Wed Jan  2 14:12:27 2019	DEPLOYED	yugaware-1.0.0	Install complete
 ```

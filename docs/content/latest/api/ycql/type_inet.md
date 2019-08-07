@@ -1,7 +1,7 @@
 ---
 title: INET
 summary: IP Address String
-description: INET Type
+description: INET type
 menu:
   latest:
     parent: api-cassandra
@@ -15,9 +15,10 @@ showAsideToc: true
 
 ## Synopsis
 
-`INET` datatype is used to specify columns for data of IP addresses.
+`INET` data type is used to specify columns for data of IP addresses.
 
 ## Syntax
+
 ```
 type_specification ::= INET
 ```
@@ -25,8 +26,8 @@ type_specification ::= INET
 ## Semantics
 
 - Columns of type `INET` can be part of the `PRIMARY KEY`.
-- Implicitly, values of type `INET` datatypes are neither convertible nor comparable to other datatypes.
-- Values of text datatypes with correct format are convertible to `INET`.
+- Implicitly, values of type `INET` data types are neither convertible nor comparable to other data types.
+- Values of text data types with correct format are convertible to `INET`.
 - `INET` value format supports text literals for both IPv4 and IPv6 addresses.
 
 ## Examples
@@ -60,6 +61,6 @@ cqlsh:example> SELECT * FROM dns_table;
    localhost |                          127.0.0.1
 ```
 
-## See Also
+## See also
 
-[Data Types](..#datatypes)
+[Data Types](..#data-types)

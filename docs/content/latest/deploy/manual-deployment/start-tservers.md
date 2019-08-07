@@ -17,7 +17,8 @@ showAsideToc: true
 For any cluster, the number of nodes on which the YB-TServers need to be started on **must** equal or exceed the replication factor in order for any table to get created successfully.
 {{< /note >}}
 
-## Example Scenario
+## Example scenario
+
 Let us assume the following.
 
 - We want to create a a 4 node cluster with replication factor `3`.
@@ -72,11 +73,12 @@ $ ./bin/yb-tserver --flagfile tserver.conf >& /home/centos/disk1/yb-tserver.out 
 ## Initialize YSQL
 
 On any yb-tserver or yb-master, run the following command.
+
 ```sh
 YB_ENABLED_IN_POSTGRES=1 FLAGS_pggate_master_addresses=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 /home/yugabyte/postgres/bin/initdb -D /tmp/yb_pg_initdb_tmp_data_dir -U postgres
 ```
 
-## Verify Health
+## Verify health
 
 - Make sure all the 4 yb-tservers are now working as expected by inspecting the INFO log. The default logs directory is always inside the first directory specified in the `--fs_data_dirs` flag.
 

@@ -25,7 +25,7 @@ Here are a few different criteria where YugaByte DB brings the best of SQL and N
 
 These can be loosely defined as the high-level concerns when choosing a database to build an application or a cloud service - such as its data model, the API it supports, its consistency semantics and so on. Here is a table that contrasts what YugaByte DB offers with SQL and NoSQL databases in general. Note that there are a number of different NoSQL databases each with their own nuanced behavior, and the table below is not accurate for all NoSQL databases - it is just meant to give an idea.
 
-| Database Characteristics  | SQL | NoSQL | YugaByte DB |
+| Database characteristics  | SQL | NoSQL | YugaByte DB |
 | --------------- | ---------------- | ------------------ | ------------------ |
 | Data model | Well-defined schema (tables, rows, columns)  | Schemaless | Both |
 | API    | SQL | Various | SQL + Flexible-Schema NoSQL + Key-Value NoSQL |
@@ -34,12 +34,11 @@ These can be loosely defined as the high-level concerns when choosing a database
 | High Write Throughput | No | Sometimes | Yes
 | Tunable read latency | No | Yes | Yes
 
-
 ### Operational characteristics
 
 Operational characteristics can be defined as the runtime concerns that arise when a database is deployed, run and managed in production. When running a database in production in a cloud-like architecture, there are a number of operational characteristics that become essential. Operationally here are the capabilities of YugaByte DB compared to SQL and NoSQL databases. As before, there are a number of NoSQL databases which are different in their own ways and the table below is meant to give a broad idea.
 
-| Operational Characteristics  | SQL | NoSQL | YugaByte DB |
+| Operational characteristics  | SQL | NoSQL | YugaByte DB |
 | --------------- | ---------------- | ------------------ | ------------------ |
 | Automatic sharding | No | Sometimes | Yes
 | Linear scalability | No | Yes | Yes 
@@ -52,29 +51,27 @@ Operational characteristics can be defined as the runtime concerns that arise wh
 | Tunable reads with timeline consistency | No - manual setup | Sometimes | Yes
 | Read replica support | No - manual setup | No - no async replication | Yes - sync and async replication options
 
-
 ## Core features
 
 Applications and cloud services depend on databases for a variety of built-in features. These can include the ability to perform multi-row transactions, JSON or document support, secondary indexes, automatic data expiry with TTLs, and so on.
 
 Here is a table that lists some of the important features that YugaByte DB supports, and which of YugaByte DB's APIs to use in order to achieve these features. Note that typically, multiple databases are deployed in order to achieve these features.
 
-| Database Features  | YugaByte DB - Cassandra-compatible YCQL API | YugaByte DB - Redis-compatible YEDIS API|
+| Database features  | YugaByte DB - Cassandra-compatible YCQL API | YugaByte DB - Redis-compatible YEDIS API|
 | --------------- | ---------------- | ------------------ |
 | Multi-row transactions | Yes | - |
 | Consistent secondary indexes | Coming soon | - |
-| JSON/document support | Roadmap - JSON datatype coming soon | Yes - supports primitive types, maps, lists, (sorted) sets |
+| JSON/document support | Roadmap - JSON data type coming soon | Yes - supports primitive types, maps, lists, (sorted) sets |
 | Secondary Indexes | Coming soon | - |
 | High Throughput | Yes - batch inserts | Yes - pipelined operations |
 | Automatic data expiry with TTL | Yes - table and column level TTL | Yes - key level TTL |
 | Run Apache Spark for AI/ML | Yes | - |
 
-
 ## Linear scalability
 
 In order to test the linear scalability of YugaByte DB, we have run some large cluster benchmarks (upto 50 nodes). We were able to scale YugaByte DB to million of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugaByte DB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
 
-![Linear Scalability at large cluster sizes](/images/develop/learn/yb-scale-out.png)
+![Linear scalability at large cluster sizes](/images/develop/learn/yb-scale-out.png)
 
 ## High performance
 
@@ -87,7 +84,6 @@ The first chart below shows the total ops/second when running YBSB benchmark.
 The second chart below shows the latency for the YCSB run.
 
 ![YCSB Benchmark - latency](/images/develop/learn/yb-perf-ycsb-latency.png)
-
 
 ## Geo-distributed
 
@@ -105,7 +101,6 @@ Because of this configuration, this universe can:
 ![Geo-distributed latency](/images/develop/learn/yb-geo-distributed-latency.png)
 
 The graphs above, also taken from the EE, show that the average read latencies for apps running the the various cloud regions are just 250 microseconds, while writes are strongly consistent and incur 218 milliseconds.
-
 
 ## Multi-cloud ready
 

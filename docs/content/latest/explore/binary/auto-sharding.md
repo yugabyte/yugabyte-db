@@ -1,4 +1,4 @@
-## 1. Create universe
+## 1. Create a universe
 
 If you have a previously running local universe, destroy it using the following.
 
@@ -80,9 +80,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 ```
 
-
 ## 2. Create a table
-
 
 Create a YCQL table. The keyspace and table name below must created exactly as shown below, since we will be using the sample application to write data into this table.
 
@@ -98,9 +96,7 @@ cqlsh> CREATE KEYSPACE ybdemo_keyspace;
 cqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
 ```
 
-
 For each table, we have instructed YugaByte DB to create 4 shards per tserver present in the universe. Since we have 3 nodes, we expect 12 tablets for the `ybdemo_keyspace.cassandrakeyvalue` table.
-
 
 ## 3. Explore tablets
 
@@ -143,7 +139,7 @@ $ du -hs /tmp/yugabyte-local-cluster/node*/disk*/yb-data/tserver/data/rocksdb/ta
  20K    /tmp/yugabyte-local-cluster/node-3/disk-2/yb-data/tserver/data/rocksdb/table-9987797012ce4c1c91782c25e7608c34/tablet-5aaeb96381044aa2b09ed9973830bb27
  ```
 
-## 4. Insert/query a table
+## 4. Insert and query a table
 
 Let us insert a key-value entry, with the value size around 2MB. Since the memstores are configured to be 1MB, this will cause the data to flush to disk immediately. Note that the key flags we pass to the sample app are:
 
@@ -153,7 +149,7 @@ Let us insert a key-value entry, with the value size around 2MB. Since the memst
 - `--value_size 10000000`  - Generate the value being written as a random byte string of around 10MB size.
 - `--nouuid` - Do not prefix a UUID to the key. A UUID allows multiple instances of the load tester to run without interfering with each other.
 
-Download the sample app jar.
+Download the sample app JAR file.
 
 ```sh
 $ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
@@ -217,7 +213,6 @@ We can also easily confirm that the `node-1` indeed has about 10MB of storage be
 
 ![Inserting values with auto-sharding](/images/ce/auto-sharding-single-kv-insert.png)
 
-
 ## 5. Automatic sharding when add nodes
 
 Let us add one more node to the universe for a total of 4 nodes, by running the following command.
@@ -226,10 +221,9 @@ Let us add one more node to the universe for a total of 4 nodes, by running the 
 $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
 
-
 By looking at the tablet servers page, we find that the tablets are re-distributed evenly among the 4 nodes and each node now has 3 shards.
 
-![Auto sharding when adding one node](/images/ce/auto-sharding-add-1-node.png)
+![Auto-sharding when adding one node](/images/ce/auto-sharding-add-1-node.png)
 
 Next, let us add 2 more nodes to the universe, making it a total of 6 nodes. We can do this by running the following.
 
@@ -241,13 +235,11 @@ $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 $ ./bin/yb-ctl add_node --tserver_flags "memstore_size_mb=1"
 ```
 
-
 We can verify that the tablets are evenly distributed across the 6 nodes. Each node now has 2 tablets.
 
-![Auto sharding when adding three nodes](/images/ce/auto-sharding-add-3-node.png)
+![Auto-sharding when adding three nodes](/images/ce/auto-sharding-add-3-node.png)
 
-
-## 6. Clean up (optional)
+## 6. [Optional] Clean up
 
 Optionally, you can shutdown the local cluster created in Step 1.
 

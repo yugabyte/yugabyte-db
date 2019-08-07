@@ -1,7 +1,7 @@
 ---
-title: Transactional IO Path
-linkTitle: Transactional IO Path
-description: Transactional IO Path
+title: Transactional IO path
+linkTitle: Transactional IO path
+description: Transactional IO path
 aliases:
   - /architecture/transactions/transactional-io-path/
 menu:
@@ -15,12 +15,12 @@ showAsideToc: true
 
 ## Introduction
 
-Review the [Distributed ACID Transactions](../distributed-txns/) section
-for an overview of some common concepts used in YugaByte DB's implementation of distributed
-transactions. In this section, we will go over the write path of a transaction modifying multiple
+For an overview of some common concepts used in YugaByte DB's implementation of distributed
+transactions, see [Distributed ACID transactions](../distributed-txns/) section. In this section, 
+we will go over the write path of a transaction modifying multiple
 keys, and the read path for reading a consistent combination of values from multiple tablets.
 
-## Write Path 
+## Write path
 
 Let us walk through the lifecycle of a single distributed write-only transaction. Suppose we are
 trying to modify rows with keys `k1` and `k2`. If they belong to the same tablet, we could execute
@@ -35,6 +35,7 @@ any conflict resolution.
 ![distributed_txn_write_path](/images/architecture/txn/distributed_txn_write_path.svg)
 
 ### 1. Client's request
+
 The client sends a request to a YB tablet server that requires a distributed transaction. We
 currently only support transactions that can be expressed by a single client request.  Here is an
 example using our extension to CQL:
@@ -52,6 +53,7 @@ is performed by a component we call a *transaction manager*. Every transaction i
 one transaction manager.
 
 ### 2. Creating a transaction record
+
 We assign a *transaction id* and select a *transaction status tablet* that would keep track of
 a *transaction status record* that has the following fields:
 
@@ -75,7 +77,6 @@ In contranst, there is only one commit hybrid timestamp for the entire transacti
 As we write the provisional records, we might encounter conflicts with other transactions.  In
 this case we would have to abort and restart the transaction. These restarts still happen
 transparently to the client up to a certain number of retries.
-
 
 ### 4. Committing the transaction
 
@@ -117,7 +118,7 @@ special "applied everywhere" entry to the Raft log of the status tablet. Raft lo
 to this transaction will be cleaned up from the status tablet's Raft log as part of regular
 garbage-collection of old Raft logs soon after this point.
 
-## Read Path
+## Read path
 
 YugaByte DB is an [MVCC](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) database,
 which means it internally keeps track of multiple versions of the same value. Read operations don't
@@ -125,7 +126,7 @@ take any locks, and rely on the MVCC timestamp in order to read a consistent sna
 long-running read operation, either single-shard or cross-shard, can proceed concurrently with write
 operations modifying the same key.
 
-In the [ACID Transactions](../) section, we talked about how
+In the [ACID transactions](../) section, we talked about how
 up-to-date reads are performed from a single shard (tablet). In that case, the most recent value of
 a key is simply the value written by the last committed Raft log record that the Raft leader knows
 about. For reading multiple keys from different tablets, though, we have to make sure that the
@@ -206,7 +207,7 @@ it is treated as if DocDB already contained permanent records with hybrid time e
 transaction's commit time. The [cleanup](../transactional-io-path/#6-asynchronously-applying-and-cleaning-up-provisional-records)
 of provisional records happens independently and asynchronously.
 
-### 4. Tablets respond to YQL 
+### 4. Tablets respond to YQL
 
 Each tablet's response to YQL contains the following:
 
@@ -223,5 +224,5 @@ appropriate wire protocol.
 
 ## See also
 
-See the [Distributed ACID Transactions](../distributed-txns/) section
+See the [Distributed ACID transactions](../distributed-txns/) section
 to review some common concepts relevant to YugaByte DB's implementation of distributed transactions.

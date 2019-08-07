@@ -7,7 +7,7 @@ Install the nodejs driver using the following command. You can find further deta
 $ npm install pg
 ```
 
-## Working Example
+## Working example
 
 ### Prerequisites
 
@@ -22,8 +22,7 @@ We will be using the [async](https://github.com/caolan/async) JS utility to work
 $ npm install --save async
 ```
 
-
-### Sample js code
+### Sample JavaScript code
 
 Create a file `yb-ysql-helloworld.js` and add the following content to it.
 

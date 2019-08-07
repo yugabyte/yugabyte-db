@@ -30,7 +30,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
         <div class="articles">5 articles</div>
-        <div class="title">Manual Deployment</div>
+        <div class="title">Manual deployment</div>
       </div>
       <div class="body">
           Manual deployment of YugaByte DB in a private datacenter using the basic admin commands.
@@ -78,7 +78,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/public-clouds.png" aria-hidden="true" />
         <div class="articles">3 articles</div>
-        <div class="title">Public Clouds</div>
+        <div class="title">Public clouds</div>
       </div>
       <div class="body">
         Automated and manual deployments of YugaByte DB on various public clouds.

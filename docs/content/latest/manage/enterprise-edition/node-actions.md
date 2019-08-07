@@ -1,7 +1,7 @@
 ---
-title: Node Status & Actions
-linkTitle: Node Status & Actions
-description: Node Status & Actions
+title: Node status and actions
+linkTitle: Node status and actions
+description: Node status and actions
 aliases:
   - /manage/enterprise-edition/node-actions/
 menu:
@@ -17,7 +17,7 @@ Each node in a universe has a Status column indicating its current logical state
 
 ![Node Actions](/images/ee/node-actions-live.png)
 
-## Node Status
+## Node status
 
 The current list of status columns and some related information.
 
@@ -35,11 +35,9 @@ Upgrade GFlags | A server (master or tserver) process config file is being updat
 Unreachable | YugaWare is not able to get information from the node_exporter process on that node.
 Destroyed | Very transient, while the universe (or cluster) is being deleted.
 
-
-## Node Actions
+## Node actions
 
 For some of node statuses, there are some actions that are allowed to help make changes to that nodes' backing IaaS instance. They provide a way to handle errors per node and seamlessly take care of data migration in case of instance failures and load balancing in case of node addition.
-
 
 Status  |  Allowed Actions | Description
 --------|--------------|----------------
@@ -52,7 +50,7 @@ Decommissioned | Add Node | A new instance will be used/spawned to replace the r
 Rest of the status types do not have any user actions, as they are mostly transient and will end up in one of the above statuses.
 
 {{< note title="Note" >}}
-Add Node just recreates a new backing instance for an existing node in the universe/cluster. To add a completely new node (as in, increase the number of nodes in the universe), one can use the 'Edit Universe' option to expand the universe.
+**Add Node** just recreates a new backing instance for an existing node in the universe or cluster. To add a completely new node (as in, increase the number of nodes in the universe), one can use the **Edit Universe** option to expand the universe.
 {{< /note >}}
 
 The rest of this page describes how to modify the state of each node in a universe/cluster. The UI provides different actions that can be taken against each node under the `ACTION` column drop down.
@@ -75,7 +73,7 @@ So, for the `yb-14-node-actions-n3` node, one can use the dropdown `Actions` at 
 
 Note that there is no `MASTER/TSERVER` shown for that node. If that node was the `Master Leader`, then the RAFT level election will move it to another node quickly. Similar leader elections happen for tablets for which this node was the the leader tablet server.
 
-### Release Instance
+### Release instance
 
 Since we know that the instance is dead, we can go ahead and release the ip as well using the 'Release Instance' dropdown option at the end of the Removed node. It will show up as a `Decommissioned` node.
 
@@ -95,14 +93,13 @@ Do not `REMOVE` more than (RF - 1)/2 nodes at any given time. For example, on a 
 `REMOVE NODE` will not work for the case where the number of nodes is equal to the RF of the cluster. Since there is no other nodes to move the data via the load balancer.
 {{< /note >}}
 
-
 ## Quick operations, on an existing instance
 
 The second scenario is for more of a 'quick' planned change that can be performed on a node. For example, the DevOps wants to mount a new disk on the node or just install and run a new security daemon. In that case, the instance is still in use and stopping any running YugaByte process might be needed. Then the user can pick the `Stop Processes` option and then perform the system task, and then pick the `Start Processes` for that node.
 
 The following two steps helps stop the server processes on the node and restart it back up. There is no data moved out of the node proactively, but the data shard/tablet leaders could change as perf RAFT requirements.
 
-### Stop Processes
+### Stop processes
 
 Let's say `yb-14-node-actions-n4` is the node that needs the intervention, then one would pick the 'Stop Processes' option. 
 
@@ -116,8 +113,7 @@ Once the yb-tserver (and yb-master, if applicable) are stopped, the node status 
 Do not STOP more than (RF - 1)/2 processes at any given time. For example, on an RF=3 cluster with 3 nodes, there can only be one node with stopped processes to allow majority of nodes to perform consensus operations.
 {{< /note >}}
 
-
-### Start Processes
+### Start processes
 
 After the work is complete, the processes can be restarted via the same dropdown for that node.
 
@@ -127,8 +123,7 @@ The node will go back to 'Live' state once the processes are up and running.
 
 In the worst case scenario, when the system runs into some unrecoverable errors at this stage, there is a `Release Instance` option for the stopped node, which will help remove the backing instance as well, as decribed above.
 
-
-## Node Action Task Summary
+## Node action task summary
 
 As a summary of all the actions that were run on this universe, one can check the 'Tasks' tab to see the remove/add and stop/start tasks that were run on that universe.
 
@@ -139,4 +134,5 @@ In any universe, one cannot have more than (RF - 1)/2 `Master` nodes in `Stop` o
 {{< /note >}}
 
 ## Interaction with other operations
+
 If there is a node in any of the in-transit states of `Stopped`, `Removed` or `Decommissioned` in the universe, we disallow [edit operations](../edit-universe/) and [rolling upgrade operations](../upgrade-universe/). These operations are allowed once such a node comes out of that in-transit state.

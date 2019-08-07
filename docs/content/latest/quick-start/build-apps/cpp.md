@@ -1,7 +1,7 @@
 ---
 title: C++
 linkTitle: C++
-description: Build a C++ App
+description: Build a C++ application
 aliases:
   - /develop/client-drivers/cpp/
   - /latest/develop/client-drivers/cpp/
@@ -35,4 +35,3 @@ menu:
     {{% includeMarkdown "ycql/cpp.md" /%}}
   </div>
 </div>
-

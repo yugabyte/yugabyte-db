@@ -14,6 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`TSREVRANGEBYTIME key low_ts high_ts [LIMIT limit]`</b><br>
 This command fetches the values for the given `low_ts`, `high_ts` range in the time series that is
 specified by the given `key` ordered from newest to oldest. If `LIMIT` is specified, then at most
@@ -26,7 +27,8 @@ specified by the given `key` ordered from newest to oldest. If `LIMIT` is specif
 exclusive.</li>
 <li>Special bounds `-inf` and `+inf` are also supported to retrieve an entire range</li>
 
-## Return Value
+## Return value
+
 Returns a list of timestamp, value pairs found in the range specified by `low_ts`, `high_ts`. If
 `LIMIT` is specified, at most `limit` pairs will be fetched.
 
@@ -54,6 +56,7 @@ TSREVRANGEBYTIME ts_key 2 4
 5) "2"
 6) "two"
 ```
+
 2 is exclusive
 
 ```sh
@@ -66,6 +69,7 @@ TSREVRANGEBYTIME ts_key (2 4
 3) "3"
 4) "three"
 ```
+
 2 and 4 are exclusive
 
 ```sh
@@ -131,6 +135,7 @@ TSREVRANGEBYTIME ts_key -inf 3 LIMIT 10
 6) "one"
 ```
 
-## See Also
+## See also
+
 [`tsrangebytime`](../tsrangebytime/), [`tsadd`](../tsadd/), [`tsget`](../tsget/),
 [`tsrem`](../tsrem/), [`tslastn`](../tslastn/), [`tscard`](../tscard/)

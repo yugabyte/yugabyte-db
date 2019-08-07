@@ -52,7 +52,7 @@ menu:
     <a class="section-link icon-offset" href="tls-encryption/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption.png" aria-hidden="true" />
-        <div class="title">TLS Encryption</div>
+        <div class="title">TLS encryption</div>
       </div>
       <div class="body">
           Enable TLS encryption over the wire in YugaByte DB to secure and protect network communication.
@@ -64,7 +64,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/tls-encryption.png"
         aria-hidden="true" />
-        <div class="title">Encryption At Rest</div>
+        <div class="title">Encryption at rest</div>
       </div>
       <div class="body">
           Enable encryption at rest in YugaByte DB to secure and protect data on disk.

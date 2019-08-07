@@ -18,10 +18,10 @@ menu:
     <a class="section-link icon-offset" href="rbac-model/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
-        <div class="title">1. RBAC Model</div>
+        <div class="title">1. RBAC model</div>
       </div>
       <div class="body">
-          Understanding Role-Based Access Control.
+          Understanding role-based access control (RBAC).
       </div>
     </a>
   </div>
@@ -29,7 +29,7 @@ menu:
     <a class="section-link icon-offset" href="create-roles/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/create-roles.png" aria-hidden="true" />
-        <div class="title">2. Create Roles</div>
+        <div class="title">2. Create roles</div>
       </div>
       <div class="body">
           Create one or more roles.
@@ -40,7 +40,7 @@ menu:
     <a class="section-link icon-offset" href="grant-permissions/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
-        <div class="title">3. Grant Permissions</div>
+        <div class="title">3. Grant permissions</div>
       </div>
       <div class="body">
           Grant permissions to users and roles.

@@ -30,7 +30,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
         <div class="articles">2 articles</div>
-        <div class="title">Cluster Level Issues</div>
+        <div class="title">Cluster level issues</div>
       </div>
       <div class="body">
         Diagnostics and solutions for typical YugaByte DB cluster issues.
@@ -43,7 +43,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/concepts/universe.png" aria-hidden="true" />
         <div class="articles">3 articles</div>
-        <div class="title">Node Level Issues</div>
+        <div class="title">Node level issues</div>
       </div>
       <div class="body">
         Diagnose and solve issues on an individual YugaByte DB node.

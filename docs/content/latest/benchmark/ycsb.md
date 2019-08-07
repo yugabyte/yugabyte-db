@@ -23,7 +23,7 @@ For more information about YCSB see:
 {{< /note >}}
 
 
-We will first setup YCSB and configure it to use the YCQL Driver for Cassandra.
+We will first setup YCSB and configure it to use the YCQL driver for Cassandra.
 
 ## Step 1.Clone the YCSB repository
 
@@ -35,13 +35,16 @@ git clone https://github.com/brianfrankcooper/YCSB.git
 cd YCSB
 ```
 
-## Step 2. Use YCQL Driver
+## Step 2. Use YCQL driver
 
-1. In pom.xml change the line
+1. In `pom.xml`, change the line
+
 ```
 <cassandra.cql.version>3.0.0</cassandra.cql.version>
 ```
+
 to the latest version of the YugaByte-Cassandra driver
+
 ```
 <cassandra.cql.version>3.2.0-yb-17</cassandra.cql.version>
 ```
@@ -50,19 +53,21 @@ to the latest version of the YugaByte-Cassandra driver
 You can (and probably should) always check Maven to find the latest version.
 {{< /note >}}
 
+1. In `cassandra/pom.xml`, change the line
 
-2. In cassandra/pom.xml change the line
 ```
 <groupId>com.datastax.cassandra</groupId>
 ```
+
 to
+
 ``` 
 <groupId>com.yugabyte</groupId>
 ```
 
 ## Step 3. Build YCSB
 
-You can build YCSB by running the following command:
+You can build YCSB by running the following command.
 
 ```sh
 mvn -pl com.yahoo.ycsb:cassandra-binding -am clean package -DskipTests
@@ -159,9 +164,10 @@ cleanup
 
 We use YugaByte DB with strongly consistent reads and writes, which corresponds, in Cassandra, to using the `QUORUM` option for both `cassandra.readconsistencylevel` and `cassandra.writeconsistencylevel` (see the command above).
 
-## Step 6. Run and Check Results
+## Step 6. Run and check results
 
 Simply run the script above:
+
 ```sh
 ./run-yb-ycsb.sh
 ```

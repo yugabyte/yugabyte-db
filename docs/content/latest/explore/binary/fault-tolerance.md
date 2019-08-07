@@ -1,4 +1,4 @@
-## 1. Create universe
+## 1. Create a universe
 
 If you have a previously running local universe, destroy it using the following.
 
@@ -12,9 +12,9 @@ Start a new local cluster - a 3-node universe with a replication factor of 3.
 $ ./bin/yb-ctl --rf 3 create
 ```
 
-## 2. Run sample key-value app
+## 2. Run the sample key-value app
 
-Download the sample app jar.
+Download the sample app JAR file.
 
 ```sh
 $ wget https://github.com/YugaByte/yb-sample-apps/releases/download/v1.2.0/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar 
@@ -28,7 +28,6 @@ $ java -jar ./yb-sample-apps.jar --workload SqlInserts \
                                     --num_threads_write 1 \
                                     --num_threads_read 4
 ```
-
 
 The sample application prints some stats while running, which is also shown below. You can read more details about the output of the sample applications [here](https://github.com/YugaByte/yb-sample-apps).
 
@@ -55,7 +54,6 @@ Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">table
 
 ![Read and write IOPS with 3rd node dead](/images/ce/pgsql-fault-tolerance-1-node-dead.png)
 
-
 ## 4. Remove another node and observe write unavailability
 
 Remove another node from the universe.
@@ -68,7 +66,7 @@ Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">table
 
 ![Read and write IOPS with 2nd node removed](/images/ce/pgsql-fault-tolerance-2-nodes-dead.png)
 
-## 6. Clean up (optional)
+## 6. [Optional] Clean up 
 
 Optionally, you can shutdown the local cluster created in Step 1.
 

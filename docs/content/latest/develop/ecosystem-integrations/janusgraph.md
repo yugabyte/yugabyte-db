@@ -15,7 +15,7 @@ showAsideToc: true
 
 In this tutorial, we are first going to setup [JanusGraph](https://janusgraph.org/) to work with YugaByte DB as the underlying database. Then, using the Gremlin console, we are going to load some data and run some graph commands.
 
-## 1. Start Local Cluster
+## 1. Start local cluster
 
 Start a cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to YugaByte DB using `cqlsh` by doing the following.
 
@@ -34,7 +34,6 @@ system_schema  system_auth  system
 cqlsh>
 ```
 
-
 ## 2. Download JanusGraph
 
 Download from the [JanusGraph downloads page](https://github.com/JanusGraph/janusgraph/releases). This tutorial uses the `0.2.0` version of JanusGraph.
@@ -44,7 +43,6 @@ $ wget https://github.com/JanusGraph/janusgraph/releases/download/v0.2.0/janusgr
 $ unzip janusgraph-0.2.0-hadoop2.zip
 $ cd janusgraph-0.2.0-hadoop2
 ```
-
 
 ## 3. Run JanusGraph with YugaByte DB
 
@@ -75,7 +73,7 @@ gremlin> graph = JanusGraphFactory.open('conf/janusgraph-cql.properties')
 
 ![List of keyspaces and tables when running JanusGraph on YugaByte DB](/images/develop/ecosystem-integrations/janusgraph/yb-janusgraph-tables.png)
 
-## 4. Load Sample Data
+## 4. Load sample data
 
 We are going to load the sample data that JanusGraph ships with - the Graph of the Gods. You can do this by running the following:
 
@@ -86,8 +84,7 @@ gremlin> g = graph.traversal()
 ==>graphtraversalsource[standardjanusgraph[cql:[127.0.0.1]], standard]
 ```
 
-
-## 5. Graph Traversal Examples
+## 5. Graph traversal examples
 
 For reference, here is the graph data loaded by the Graph of the Gods. You can find a lot more useful information about this in the [JanusGraph getting started page](http://docs.janusgraph.org/latest/getting-started.html).
 
@@ -106,7 +103,6 @@ gremlin> saturn = g.V().has('name', 'saturn').next()
 gremlin> g.V(saturn).in('father').in('father').values('name')
 ==>hercules
 ```
-
 
 - Queries about Hercules
 
@@ -136,8 +132,7 @@ gremlin> g.V(hercules).outE('battled').has('time', gt(1)).inV().values('name')
 ==>hydra
 ```
 
-
-## 6. Complex Graph Traversal Examples
+## 6. Complex graph traversal examples
 
 - Who are Pluto's cohabitants?
 
@@ -158,7 +153,6 @@ gremlin> g.V(pluto).as('x').out('lives').in('lives').where(neq('x')).values('nam
 gremlin>
 ```
 
-
 - Queries about Pluto’s Brothers.
 
 ```sh
@@ -178,8 +172,7 @@ gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('go
 ==>[god:jupiter,place:sky]
 ```
 
-
-## 7. Global Graph Index Examples
+## 7. Global graph index examples
 
 NOTE: Secondary indexes in YugaByte DB are coming soon. These queries will iterate over all vertices to find the result.
 
@@ -196,4 +189,3 @@ gremlin> g.E().has('place', geoWithin(Geoshape.circle(37.97, 23.72, 50))).as('so
 ==>[god1:hercules,god2:hydra]
 ==>[god1:hercules,god2:nemean]
 ```
-

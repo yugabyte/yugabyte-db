@@ -14,12 +14,14 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`SCARD key`</b><br>
 This command finds the cardinality of the set that is associated with the given `key`. Cardinality is the number of elements in a set.
 <li>If the `key` does not exist, 0 is returned.</li>
 <li>If the `key` is associated with a non-set value, an error is raised.</li>
 
-## Return Value
+## Return value
+
 Returns the cardinality of the set.
 
 ## Examples
@@ -50,5 +52,6 @@ $ SCARD yuga_world
 2
 ```
 
-## See Also
+## See also
+
 [`sadd`](../sadd/), [`sismember`](../sismember/), [`smembers`](../smembers/), [`srem`](../srem/)

@@ -1,7 +1,7 @@
 ---
-title: 4. ACID Transactions
-linkTitle: 4. ACID Transactions
-description: ACID Transactions
+title: 4. ACID transactions
+linkTitle: 4. ACID transactions
+description: ACID transactions
 aliases:
   - /develop/learn/acid-transactions/
   - /latest/explore/transactional/acid-transactions/
@@ -23,7 +23,6 @@ A transaction is a sequence of operations performed as a single logical unit of 
 - **Isolation** This property determines how/when changes made by one transaction become visible to the other. For example, a *serializable* isolation level guarantees that two concurrent transactions appear as if one executed after the other (i.e. as if they occur in a completely isolated fashion). YugaByte DB supports both *Snapshot Isolation*, and *Serializable* isolation levels. Read more about the different [levels of isolation](../../../architecture/transactions/isolation-levels/).
 
 - **Durability** The results of the transaction are permanently stored in the system. The modifications must persist even in the instance of power loss or system failures.
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>

@@ -1,7 +1,7 @@
 ---
-title: Restoring Data
-linkTitle: Restoring Data
-description: Restoring Data
+title: Restoring data
+linkTitle: Restoring data
+description: Restoring data
 image: /images/section_icons/manage/enterprise.png
 headcontent: Restoring data in YugaByte DB.
 aliases:

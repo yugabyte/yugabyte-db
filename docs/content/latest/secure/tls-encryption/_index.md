@@ -1,7 +1,7 @@
 ---
-title: TLS Encryption
-linkTitle: TLS Encryption
-description: TLS Encryption
+title: TLS encryption
+linkTitle: TLS encryption
+description: TLS encryption
 headcontent: Enable TLS encryption over the wire in YugaByte DB (enterprise edition only).
 image: /images/section_icons/secure/tls-encryption.png
 aliases:

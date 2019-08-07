@@ -14,10 +14,12 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`SETEX key ttl_in_sec string_value`</b><br>
 This command sets the value of `key` to be `string_value`, and sets the key to expire in `ttl_in_sec` seconds.
 
-## Return Value
+## Return value
+
 Returns status string.
 
 ## Examples
@@ -45,5 +47,6 @@ $ TTL yugakey
 (integer) 10
 ```
 
-## See Also
+## See also
+
 [`append`](../append/), [`set`](../set/), [`psetex`](../psetex/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`incrby`](../incrby/), [`setrange`](../setrange/), [`strlen`](../strlen/)

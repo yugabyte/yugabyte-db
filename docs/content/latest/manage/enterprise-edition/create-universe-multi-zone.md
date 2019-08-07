@@ -1,7 +1,7 @@
 ---
-title: Create Universe - Multi-Zone
-linkTitle: Create Universe  - Multi-Zone
-description: Create Universe - Multi-Zone
+title: Create universe - Multi-zone
+linkTitle: Create universe  - Multi-zone
+description: Create universe - Multi-zone
 aliases:
   - /manage/enterprise-edition/create-universe/
 menu:
@@ -17,7 +17,7 @@ This section will describe how to create a universe in one geographic region acr
 
 ## 1. Create the universe
 
-If there are no universes created yet, the Dashboard page will look like the following. Click on "Create Universe" to create the universe.
+If there are no universes created yet, the Dashboard page will look like the following. Click **Create Universe** to create the universe.
 
 ![Dashboard with No Universes](/images/ee/no-univ-dashboard.png)
 
@@ -31,14 +31,13 @@ We are going to enter the following values to create a multi-zone universe on [G
 - Enter the region (**Oregon**)
 - Change instance type (**n1-standard-8**)
 
-All other options as set to the default values (replication factor = 3, number of nodes = 3). Click on create.
+All other options as set to the default values (replication factor = 3, number of nodes = 3). Click **Create**.
 
 ![Create Universe on GCP](/images/ee/create-univ-multi-zone.png)
 
 Here's how a Universe in Pending state looks like.
 
 ![Dashboard with Pending Universe](/images/ee/pending-univ-dashboard.png)
-
 
 ## 2. Examine the universe
 
@@ -60,7 +59,7 @@ You can browse to the nodes tab for the universe to see a list of nodes - in the
 
 ![Nodes for a Pending Universe](/images/ee/pending-univ-nodes.png)
 
-### Cloud Provider instances for the universe
+### Cloud provider instances for the universe
 
 Browse to the cloud provider's instances page. In this example, since we are using Google Cloud Platform as the cloud provider, browse to `Compute Engine` -> `VM Instances` and search for instances that have `helloworld1` in their name. You should see something as follows.
 

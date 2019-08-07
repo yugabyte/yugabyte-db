@@ -14,6 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`GETSET key value`</b><br>
 This command is an atomic read and write operation that gets the existing value that is associated with the given `key` while rewriting it with the given `value`.
 
@@ -21,6 +22,7 @@ This command is an atomic read and write operation that gets the existing value 
 <li>If the given `key` is associated with non-string data, an error is raised.</li>
 
 ## Return Value
+
 Returns the old value of the given `key`.
 
 ## Examples
@@ -41,5 +43,6 @@ $ GETSET yugakey 2
 1
 ```
 
-## See Also
+## See also
+
 [`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`incr`](../incr/), [`incrby`](../incrby/), [`set`](../set/), [`setrange`](../setrange/), [`strlen`](../strlen/)

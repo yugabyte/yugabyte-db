@@ -11,8 +11,6 @@ menu:
     weight: 622
 ---
 
-
-
 <h2>Local vs remote SSDs</h2>
 
 Kubernetes gives users the option of using remote disks using dynamic provisioning or local storage which has to be pre-provisioned.
@@ -67,7 +65,6 @@ Below is a table that summarizes the features and when to use local vs remote st
 </table>
 
 Thus, it is generally preferable to use local storage where possible for higher performance and lower costs. The following section explains how to deploy YugaByte DB on Kubernetes using local SSDs.
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >

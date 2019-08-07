@@ -1,7 +1,7 @@
 ---
-title: Contributing to the Core Database
-linkTitle: Core Database
-description: Contributing to the Core Database
+title: Contributing to the core database
+linkTitle: Core database
+description: Contributing to the core database
 image: /images/section_icons/index/quick_start.png
 headcontent: How to contribute code to the core database?
 type: page
