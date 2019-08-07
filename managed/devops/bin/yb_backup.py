@@ -768,10 +768,12 @@ class YBBackup:
             directories for that tablet id that we found.
         """
         tserver_ip_to_tablet_id_to_snapshot_dirs = {}
+        deleted_tablets_by_tserver_ip = {}
 
         for tserver_ip, tablets in tablets_by_tserver_ip.iteritems():
             tablet_dirs = []
             data_dirs = data_dir_by_tserver[tserver_ip]
+            deleted_tablets = deleted_tablets_by_tserver_ip.setdefault(tserver_ip, set())
 
             for data_dir in data_dirs:
                 # Find all tablets for this table on this TS in this data_dir:
@@ -803,31 +805,28 @@ class YBBackup:
                 tablet_dir_by_id[tablet_dir[-UUID_LEN:]] = tablet_dir
 
             for tablet_id in tablets:
-                if tablet_id not in tablet_dir_by_id:
-                    logging.error("Tablet '{}' directory in table '{}' was not found on "
-                                  "tablet server '{}'.".format(tablet_id, table_id, tserver_ip))
-                    raise BackupException("Not found tablet " + tablet_id + " directory in table "
-                                          + table_id + " on tablet server " + tserver_ip)
-
-                snapshot_dir = tablet_dir_by_id[tablet_id] + '.snapshots/' + snapshot_id
-                tablet_id_to_snapshot_dirs.setdefault(tablet_id, set()).add(snapshot_dir)
+                if tablet_id in tablet_dir_by_id:
+                    # Tablet was found in a data dir - use this path.
+                    snapshot_dir = tablet_dir_by_id[tablet_id] + '.snapshots/' + snapshot_id
+                    tablet_id_to_snapshot_dirs.setdefault(tablet_id, set()).add(snapshot_dir)
+                else:
+                    # Tablet was not found. That means that the tablet was deleted from this TS.
+                    # Let's ignore the tablet and allow retry-loop to find and process new
+                    # tablet location on the next downloading round.
+                    deleted_tablets.add(tablet_id)
+                    if self.args.verbose:
+                        logging.info("Tablet '{}' directory in table '{}' was not found on "
+                                     "tablet server '{}'.".format(tablet_id, table_id, tserver_ip))
 
             if self.args.verbose:
                 logging.info("Downloading list for tablet server '{}': {}".format(
                     tserver_ip, tablet_id_to_snapshot_dirs))
 
-            # Sanity check. In fact lists 'tablets' and 'tablets_with_dirs' must be
-            # always equal. Let's check it to be sure.
-            tablets_with_dirs = set(tablet_id_to_snapshot_dirs.keys())
+            if deleted_tablets:
+                logging.info("No snapshot directories generated on tablet server '{}' "
+                             "for tablet ids: '{}'".format(tserver_ip, deleted_tablets))
 
-            if tablets > tablets_with_dirs:
-                logging.error("No snapshot directories generated for tablet ids '{}' on "
-                              "tablet server '{}'.".format(tablets - tablets_with_dirs,
-                                                           tserver_ip))
-                raise BackupException("Did not generated snapshot directories for some tablets on "
-                                      + "tablet server " + tserver_ip)
-
-        return tserver_ip_to_tablet_id_to_snapshot_dirs
+        return (tserver_ip_to_tablet_id_to_snapshot_dirs, deleted_tablets_by_tserver_ip)
 
     def find_snapshot_directories(self, data_dir, snapshot_id, tserver_ip):
         """
@@ -1046,10 +1045,7 @@ class YBBackup:
                 if len(snapshot_dirs) > 1:
                     raise BackupException(
                         ('Found multiple snapshot directories on tserver {} for snapshot id '
-                         '{}: {} and {}').format(
-                            tserver_ip, snapshot_id,
-                            snapshot_dirs,
-                            data_dir))
+                         '{}: {}').format(tserver_ip, snapshot_id, snapshot_dirs))
                 assert len(snapshot_dirs) == 1
                 snapshot_dir = list(snapshot_dirs)[0] + '/'
                 parallel_commands.start_command()
@@ -1310,23 +1306,29 @@ class YBBackup:
 
         return (tablets_by_tserver_union, tablets_by_tserver_delta)
 
-    def download_snapshot_directories(self, snapshot_meta, tablets_by_tserver_ip,
+    def download_snapshot_directories(self, snapshot_meta, tablets_by_tserver_to_download,
                                       snapshot_id, table_id):
         pool = ThreadPool(self.args.parallelism)
 
-        tserver_ips = tablets_by_tserver_ip.keys()
+        tserver_ips = tablets_by_tserver_to_download.keys()
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
 
         if self.args.verbose:
             logging.info('Found data directories: {}'.format(data_dir_by_tserver))
 
-        tserver_ip_to_tablet_id_to_snapshot_dirs = self.generate_snapshot_dirs(
-            data_dir_by_tserver, snapshot_id, tablets_by_tserver_ip, table_id)
+        (tserver_to_tablet_to_snapshot_dirs, tserver_to_deleted_tablets) =\
+            self.generate_snapshot_dirs(
+                data_dir_by_tserver, snapshot_id, tablets_by_tserver_to_download, table_id)
+
+        # Remove deleted tablets from the list of planned to be downloaded tablets.
+        for tserver_ip, deleted_tablets in tserver_to_deleted_tablets.iteritems():
+            tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
 
         parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd)
         self.prepare_s3cmd_ssh_cmds(
-            parallel_downloads, tserver_ip_to_tablet_id_to_snapshot_dirs, self.args.s3bucket,
-            snapshot_id, tablets_by_tserver_ip, upload=False, snapshot_metadata=snapshot_meta)
+            parallel_downloads, tserver_to_tablet_to_snapshot_dirs, self.args.s3bucket,
+            snapshot_id, tablets_by_tserver_to_download, upload=False,
+            snapshot_metadata=snapshot_meta)
 
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
         results = parallel_downloads.run(pool)
@@ -1334,6 +1336,8 @@ class YBBackup:
         for k, v in results.iteritems():
             if v.strip() != 'correct':
                 raise BackupException('Check-sum for "{}" is {}'.format(k, v.strip()))
+
+        return tserver_to_deleted_tablets
 
     def restore_table(self):
         """
@@ -1351,9 +1355,12 @@ class YBBackup:
             logging.info("Snapshot %s will be deleted at exit...", snapshot_id)
             atexit.register(self.delete_created_snapshot, snapshot_id)
 
-        tablets_by_tserver_ip = self.find_tablet_replicas(snapshot_metadata)
-        tablets_by_tserver_to_download = tablets_by_tserver_ip
+        all_tablets_by_tserver = self.find_tablet_replicas(snapshot_metadata)
+        tablets_by_tserver_to_download = all_tablets_by_tserver
 
+        # The loop must stop after a few rounds because the downloading list includes only new
+        # tablets for downloading. The downloading list should become smaller with every round
+        # and must become empty in the end.
         while tablets_by_tserver_to_download:
             logging.info(
                 'Downloading tablets onto %d tservers...' % (len(tablets_by_tserver_to_download)))
@@ -1361,12 +1368,23 @@ class YBBackup:
             if self.args.verbose:
                 logging.info('Downloading list: {}'.format(tablets_by_tserver_to_download))
 
-            self.download_snapshot_directories(
+            # Download tablets and get list of deleted tablets.
+            tserver_to_deleted_tablets = self.download_snapshot_directories(
                 snapshot_metadata, tablets_by_tserver_to_download, snapshot_id, table_id)
 
-            tablets_by_tserver_ip_new = self.find_tablet_replicas(snapshot_metadata)
-            (tablets_by_tserver_ip, tablets_by_tserver_to_download) =\
-                self.identify_new_tablet_replicas(tablets_by_tserver_ip, tablets_by_tserver_ip_new)
+            # Remove deleted tablets from the list of all tablets.
+            for tserver_ip, deleted_tablets in tserver_to_deleted_tablets.iteritems():
+                all_tablets_by_tserver[tserver_ip] -= deleted_tablets
+
+            tablets_by_tserver_new = self.find_tablet_replicas(snapshot_metadata)
+            # Calculate the new downloading list as a subtraction of sets:
+            #     downloading_list = NEW_all_tablet_replicas - OLD_all_tablet_replicas
+            # And extend the list of all tablets (as unioun of sets) for using it on the next
+            # loop iteration:
+            #     OLD_all_tablet_replicas = OLD_all_tablet_replicas + NEW_all_tablet_replicas
+            #                             = OLD_all_tablet_replicas + downloading_list
+            (all_tablets_by_tserver, tablets_by_tserver_to_download) =\
+                self.identify_new_tablet_replicas(all_tablets_by_tserver, tablets_by_tserver_new)
 
         # Finally, restore the snapshot.
         logging.info('Downloading is finished. Restoring snapshot %s ...', snapshot_id)
