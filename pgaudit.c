@@ -13,6 +13,7 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
+#include "access/relation.h"
 #include "catalog/catalog.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_class.h"
@@ -1006,7 +1007,7 @@ log_select_dml(Oid auditOid, List *rangeTabls)
         relOid = rte->relid;
         rel = relation_open(relOid, NoLock);
 
-        if (!auditLogCatalog && IsSystemNamespace(RelationGetNamespace(rel)))
+        if (!auditLogCatalog && IsCatalogNamespace(RelationGetNamespace(rel)))
         {
             relation_close(rel, NoLock);
             continue;
@@ -1218,7 +1219,7 @@ log_function_execute(Oid objectId)
      * Logging execution of all pg_catalog functions would make the log
      * unusably noisy.
      */
-    if (IsSystemNamespace(proc->pronamespace))
+    if (IsCatalogNamespace(proc->pronamespace))
     {
         ReleaseSysCache(proctup);
         return;
