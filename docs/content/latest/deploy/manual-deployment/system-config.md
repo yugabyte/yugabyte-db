@@ -83,3 +83,32 @@ $ ulimit -n <value>
 - After changing a ulimit setting, the YB-Master and YB-TServer processes must be restarted in order for the new settings to take effect. Check the `/proc/<process pid>` file to see the current settings.
 - Changes made using ulimit may revert following a system restart depending on the system configuration.
 {{< /note >}}
+
+Most of these settings can also be applied permanently by adding the following in /etc/security/limits.conf
+
+```
+*                -       core            unlimited
+*                -       data            unlimited
+*                -       fsize           unlimited
+*                -       sigpending      119934
+*                -       memlock         64
+*                -       rss             unlimited
+*                -       nofile          1048576
+*                -       msgqueue        819200
+*                -       stack           8192
+*                -       cpu             unlimited
+*                -       nproc           12000
+*                -       locks           unlimited
+```
+
+On CentOS, /etc/security/limits.d/20-nproc.conf must also be configured
+
+```
+*          soft    nproc     12000
+```
+
+{{< note title="Note" >}}
+- After changing a ulimit setting in /etc/security/limits.conf, you will need to log out and back in. To update system processes, you may need to restart.
+{{< /note >}}
+
+
