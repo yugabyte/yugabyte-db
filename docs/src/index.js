@@ -133,6 +133,11 @@ $(document).ready(() => {
     $('#imageModal .modal-body').html($(this).clone());
   });
 
+  $('#imageModal .modal-close-icon').click(() => {
+    $('#imageModal').modal('hide');
+    $('#imageModal .modal-body').html();
+  });
+
   $('#imageModal').on('hide.bs.modal', () => {
     $('#imageModal .modal-body').html('');
     $('#imageModal').hide();
