@@ -474,6 +474,7 @@ TopoSort(DumpableObject **objs,
 		obj = objs[j];
 		/* Output candidate to ordering[] */
 		ordering[--i] = obj;
+
 		/* Update beforeConstraints counts of its predecessors */
 		for (k = 0; k < obj->nDeps; k++)
 		{

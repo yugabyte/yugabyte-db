@@ -584,11 +584,11 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
   }
 }
 
-TEST_F(PgLibPqTest, TestParallelCounterSerializable) {
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestParallelCounterSerializable)) {
   TestParallelCounter(IsolationLevel::SERIALIZABLE_ISOLATION);
 }
 
-TEST_F(PgLibPqTest, TestParallelCounterRepeatableRead) {
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestParallelCounterRepeatableRead)) {
   TestParallelCounter(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
@@ -624,12 +624,57 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
   ASSERT_EQ(row_val, kThreads * kIncrements);
 }
 
-TEST_F(PgLibPqTest, TestConcurrentCounterSerializable) {
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestConcurrentCounterSerializable)) {
   TestConcurrentCounter(IsolationLevel::SERIALIZABLE_ISOLATION);
 }
 
-TEST_F(PgLibPqTest, TestConcurrentCounterRepeatableRead) {
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestConcurrentCounterRepeatableRead)) {
   TestConcurrentCounter(IsolationLevel::SNAPSHOT_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
+  constexpr int kThreads = 4;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (a INT PRIMARY KEY, b INT)"));
+  ASSERT_OK(Execute(conn.get(), "CREATE INDEX ON t (b, a)"));
+
+  TestThreadHolder holder;
+  std::array<std::atomic<int>, kThreads> written;
+  for (auto& w : written) {
+    w.store(0, std::memory_order_release);
+  }
+
+  for (int i = 0; i != kThreads; ++i) {
+    holder.AddThread([this, i, &stop = holder.stop_flag(), &written] {
+      auto conn = ASSERT_RESULT(Connect());
+      SetFlagOnExit set_flag_on_exit(&stop);
+      int key = 0;
+
+      while (!stop.load(std::memory_order_acquire)) {
+        if (RandomUniformBool()) {
+          int a = i * 1000000 + key;
+          int b = key;
+          ASSERT_OK(Execute(conn.get(), Format("INSERT INTO t (a, b) VALUES ($0, $1)", a, b)));
+          written[i].store(++key, std::memory_order_release);
+        } else {
+          int writer_index = RandomUniformInt(0, kThreads - 1);
+          int num_written = written[writer_index].load(std::memory_order_acquire);
+          if (num_written == 0) {
+            continue;
+          }
+          int read_key = num_written - 1;
+          int b = read_key;
+          int read_a = ASSERT_RESULT(FetchValue<int32_t>(
+              conn.get(), Format("SELECT a FROM t WHERE b = $0 LIMIT 1", b)));
+          ASSERT_EQ(read_a % 1000000, read_key);
+        }
+      }
+    });
+  }
+
+  holder.WaitAndStop(60s);
 }
 
 } // namespace pgwrapper

@@ -13,6 +13,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/pg_doc_op.h"
+
+#include <boost/algorithm/string.hpp>
+
+#include "yb/client/table.h"
+
 #include "yb/yql/pggate/pggate_flags.h"
 
 // TODO: include a header for PgTxnManager specifically.
@@ -21,8 +26,9 @@
 namespace yb {
 namespace pggate {
 
-PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session)
-    : pg_session_(std::move(pg_session)) {
+PgDocOp::PgDocOp(PgSession::
+    ScopedRefPtr pg_session, PreventRestart prevent_restart)
+    : pg_session_(std::move(pg_session)), prevent_restart_(prevent_restart) {
   exec_params_.limit_count = FLAGS_ysql_prefetch_limit;
   exec_params_.limit_offset = 0;
   exec_params_.limit_use_default = true;
@@ -113,7 +119,9 @@ Status PgDocOp::GetResult(string *result_set) {
   // rows.
   RETURN_NOT_OK(SendRequestIfNeededUnlocked());
 
-  pg_session_->pg_txn_manager()->PreventRestart();
+  if (prevent_restart_) {
+    pg_session_->pg_txn_manager()->PreventRestart();
+  }
   return Status::OK();
 }
 
@@ -158,7 +166,8 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
     // We're doing this to eventually replace error message by a one mentioning index name
     exec_status_ = STATUS(AlreadyPresent, op->response().error_message());
   } else {
-    exec_status_ = STATUS(QLError, op->response().error_message());
+    exec_status_ = STATUS(QLError, op->response().error_message(), Slice(),
+                          static_cast<int64_t>(op->response().status()));
   }
 
   return false;
@@ -166,8 +175,10 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocReadOp::PgDocReadOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlReadOp *read_op)
-    : PgDocOp(pg_session), read_op_(read_op) {
+PgDocReadOp::PgDocReadOp(
+    PgSession::ScopedRefPtr pg_session, PreventRestart prevent_restart,
+    client::YBPgsqlReadOp *read_op)
+    : PgDocOp(std::move(pg_session), prevent_restart), read_op_(read_op) {
 }
 
 PgDocReadOp::~PgDocReadOp() {
@@ -265,7 +276,7 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocWriteOp::PgDocWriteOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlWriteOp *write_op)
-    : PgDocOp(pg_session), write_op_(write_op) {
+    : PgDocOp(pg_session, PreventRestart::kTrue), write_op_(write_op) {
 }
 
 PgDocWriteOp::~PgDocWriteOp() {
@@ -312,7 +323,7 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocCompoundOp::PgDocCompoundOp(PgSession::ScopedRefPtr pg_session)
-    : PgDocOp(pg_session) {
+    : PgDocOp(std::move(pg_session), PreventRestart::kTrue) {
 }
 
 PgDocCompoundOp::~PgDocCompoundOp() {
