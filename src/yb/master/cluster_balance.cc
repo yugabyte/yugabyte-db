@@ -923,7 +923,7 @@ const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
   // Skip load-balancing of system tables. They are virtual tables not hosted by tservers.
-  return catalog_manager_->IsSystemTable(table);
+  return catalog_manager_->IsSystemTableUnlocked(table);
 }
 
 void ClusterLoadBalancer::CountPendingTasks(const TableId& table_uuid,

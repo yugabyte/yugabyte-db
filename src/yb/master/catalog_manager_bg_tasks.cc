@@ -145,7 +145,6 @@ void CatalogManagerBgTasks::Run() {
         catalog_manager_->CleanUpDeletedTables();
       }
     }
-
     // Wait for a notification or a timeout expiration.
     //  - CreateTable will call Wake() to notify about the tablets to add
     //  - HandleReportedTablet/ProcessPendingAssignments will call WakeIfHasPendingUpdates()

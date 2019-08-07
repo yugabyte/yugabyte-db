@@ -400,13 +400,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   NamespaceName GetNamespaceName(const scoped_refptr<TableInfo>& table) const;
 
   // Is the table a system table?
-  bool IsSystemTable(const TableInfo& table) const;
+  bool IsSystemTableUnlocked(const TableInfo& table) const;
 
   // Is the table a user created table?
   bool IsUserTable(const TableInfo& table) const;
+  bool IsUserTableUnlocked(const TableInfo& table) const;
 
   // Is the table a user created index?
   bool IsUserIndex(const TableInfo& table) const;
+  bool IsUserIndexUnlocked(const TableInfo& table) const;
 
   // Is the table a special sequences system table?
   bool IsSequencesSystemTable(const TableInfo& table) const;
@@ -414,6 +416,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   // Is the table created by user?
   // Note that table can be regular table or index in this case.
   bool IsUserCreatedTable(const TableInfo& table) const;
+  bool IsUserCreatedTableUnlocked(const TableInfo& table) const;
 
   // Let the catalog manager know that we have received a response for a delete tablet request,
   // and that we either deleted the tablet successfully, or we received a fatal error.
@@ -841,7 +844,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      bool is_index_table,
                                      bool update_indexed_table,
                                      std::vector<scoped_refptr<TableInfo>>* tables,
-                                     std::vector<scoped_refptr<DeletedTableInfo>>* deleted_tables,
                                      std::vector<std::unique_ptr<TableInfo::lock_type>>* table_lcks,
                                      DeleteTableResponsePB* resp,
                                      rpc::RpcContext* rpc);
@@ -931,11 +933,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   }
 
   // Delete tables from internal map by id, if it has no more active tasks and tablets.
+  // This function should only be called from the bg_tasks thread, in a single threaded fashion!
   void CleanUpDeletedTables();
-
-  // Updated table state from DELETING to DELETED, if it has no more tablets.
-  void MarkTableDeletedIfNoTablets(scoped_refptr<DeletedTableInfo> deleted_table,
-                                   TableInfo* table_info = nullptr);
 
   // Called when a new table id is added to table_ids_map_.
   void HandleNewTableId(const TableId& id);
@@ -963,9 +962,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Table map: [namespace-id, table-name] -> TableInfo
   TableInfoByNameMap table_names_map_;
-
-  DeletedTabletMap deleted_tablet_map_; // Deleted Tablets map:
-                                        // [tserver-id, tablet-id] -> DeletedTableInfo
 
   // Tablet maps: tablet-id -> TabletInfo
   TabletInfoMap tablet_map_;
