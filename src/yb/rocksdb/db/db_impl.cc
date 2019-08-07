@@ -1677,16 +1677,6 @@ uint64_t DBImpl::GetCurrentVersionSstFilesSize() {
   return total_sst_file_size;
 }
 
-void DBImpl::SetSSTFileSizeTickers() {
-  if (stats_) {
-    auto sst_files_size = GetCurrentVersionSstFilesSize();
-    SetTickerCount(stats_, CURRENT_VERSION_SST_FILES_SIZE, sst_files_size);
-    auto uncompressed_sst_files_size = GetCurrentVersionSstFilesUncompressedSize();
-    SetTickerCount(
-        stats_, CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE, uncompressed_sst_files_size);
-  }
-}
-
 uint64_t DBImpl::GetCurrentVersionSstFilesUncompressedSize() {
   std::vector<rocksdb::LiveFileMetaData> file_metadata;
   GetLiveFilesMetaData(&file_metadata);
@@ -1695,6 +1685,24 @@ uint64_t DBImpl::GetCurrentVersionSstFilesUncompressedSize() {
     total_uncompressed_file_size += meta.uncompressed_size;
   }
   return total_uncompressed_file_size;
+}
+
+uint64_t DBImpl::GetCurrentVersionNumSSTFiles() {
+  std::vector<rocksdb::LiveFileMetaData> file_metadata;
+  GetLiveFilesMetaData(&file_metadata);
+  return file_metadata.size();
+}
+
+void DBImpl::SetSSTFileTickers() {
+  if (stats_) {
+    auto sst_files_size = GetCurrentVersionSstFilesSize();
+    SetTickerCount(stats_, CURRENT_VERSION_SST_FILES_SIZE, sst_files_size);
+    auto uncompressed_sst_files_size = GetCurrentVersionSstFilesUncompressedSize();
+    SetTickerCount(
+        stats_, CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE, uncompressed_sst_files_size);
+    auto num_sst_files = GetCurrentVersionNumSSTFiles();
+    SetTickerCount(stats_, CURRENT_VERSION_NUM_SST_FILES, num_sst_files);
+  }
 }
 
 uint64_t DBImpl::GetCurrentVersionDataSstFilesSize() {
@@ -1755,7 +1763,7 @@ void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
   } else {
     mutex_.Unlock();
   }
-  SetSSTFileSizeTickers();
+  SetSSTFileTickers();
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
   // flush process.
@@ -2162,7 +2170,7 @@ void DBImpl::NotifyOnCompactionCompleted(
       listener->OnCompactionCompleted(this, info);
     }
   }
-  SetSSTFileSizeTickers();
+  SetSSTFileTickers();
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
   // flush process.
@@ -6130,7 +6138,7 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     delete impl;
     *dbptr = nullptr;
   } else if (impl) {
-    impl->SetSSTFileSizeTickers();
+    impl->SetSSTFileTickers();
   }
 
   return s;

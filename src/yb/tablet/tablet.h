@@ -479,6 +479,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   uint64_t GetCurrentVersionSstFilesSize() const;
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
+  uint64_t GetCurrentVersionNumSSTFiles() const;
 
   void SetHybridTimeLeaseProvider(HybridTimeLeaseProvider provider) {
     ht_lease_provider_ = std::move(provider);

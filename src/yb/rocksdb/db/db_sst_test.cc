@@ -667,6 +667,8 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
         &total_sst_files_size));
     // Live SST files = 5
     // Total SST files = 5
+    // SST metrics will only check current version (live) stats
+    // so CURRENT_VERSION_NUM_SST_FILES will match live SST files.
     if (!is_compressed) {
       // Compressed size could be different for each file, so we only test this without compression.
       ASSERT_EQ(live_sst_files_size, 5 * single_file_size);
@@ -676,6 +678,7 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
     ASSERT_EQ(
         stats->getTickerCount(CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE),
         5 * single_file_uncompressed_size);
+    ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_NUM_SST_FILES), 5);
 
     // hold current version
     std::unique_ptr<Iterator> iter1(dbfull()->NewIterator(ReadOptions()));
@@ -706,6 +709,7 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
     ASSERT_EQ(
         stats->getTickerCount(CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE),
         1 * single_file_uncompressed_size);
+    ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_NUM_SST_FILES), 1);
 
     // hold current version
     std::unique_ptr<Iterator> iter2(dbfull()->NewIterator(ReadOptions()));
@@ -732,6 +736,7 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
     }
     ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_SST_FILES_SIZE), 0);
     ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE), 0);
+    ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_NUM_SST_FILES), 0);
 
     iter1.reset();
     ASSERT_TRUE(dbfull()->GetIntProperty(
@@ -744,6 +749,7 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
     }
     ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_SST_FILES_SIZE), 0);
     ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE), 0);
+    ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_NUM_SST_FILES), 0);
 
     iter2.reset();
     ASSERT_TRUE(dbfull()->GetIntProperty(
@@ -753,6 +759,8 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
     // Total SST files = 0
     ASSERT_EQ(total_sst_files_size, 0);
     ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_SST_FILES_SIZE), 0);
+    ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE), 0);
+    ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_NUM_SST_FILES), 0);
   }
 }
 
@@ -789,6 +797,8 @@ TEST_F(DBTest, GetTotalSstFilesSizeVersionsFilesShared) {
 
     // Live SST files = 5
     // Total SST files = 5
+    // SST metrics will only check current version (live) stats
+    // so CURRENT_VERSION_NUM_SST_FILES will match live SST files.
     if (!is_compressed) {
       // Compressed size could be different for each file, so we only test this without compression.
       ASSERT_EQ(live_sst_files_size, 5 * single_file_size);
@@ -798,6 +808,7 @@ TEST_F(DBTest, GetTotalSstFilesSizeVersionsFilesShared) {
     ASSERT_EQ(
         stats->getTickerCount(CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE),
         5 * single_file_uncompressed_size);
+    ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_NUM_SST_FILES), 5);
 
     // hold current version
     std::unique_ptr<Iterator> iter1(dbfull()->NewIterator(ReadOptions()));
@@ -828,6 +839,7 @@ TEST_F(DBTest, GetTotalSstFilesSizeVersionsFilesShared) {
     ASSERT_EQ(
         stats->getTickerCount(CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE),
         5 * single_file_uncompressed_size);
+    ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_NUM_SST_FILES), 5);
 
     // hold current version
     std::unique_ptr<Iterator> iter2(dbfull()->NewIterator(ReadOptions()));
@@ -854,6 +866,7 @@ TEST_F(DBTest, GetTotalSstFilesSizeVersionsFilesShared) {
     }
     ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_SST_FILES_SIZE), 0);
     ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE), 0);
+    ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_NUM_SST_FILES), 0);
 
     iter1.reset();
     iter2.reset();
@@ -866,6 +879,7 @@ TEST_F(DBTest, GetTotalSstFilesSizeVersionsFilesShared) {
     ASSERT_EQ(total_sst_files_size, 0);
     ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_SST_FILES_SIZE), 0);
     ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE), 0);
+    ASSERT_EQ(stats->getTickerCount(CURRENT_VERSION_NUM_SST_FILES), 0);
   }
 }
 
