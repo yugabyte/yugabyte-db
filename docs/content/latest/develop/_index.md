@@ -20,7 +20,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
         <div class="articles">6 articles</div>
-        <div class="title">Learn application development</div>
+        <div class="title">Learn app development</div>
       </div>
       <div class="body">
         Learn how to build cloud services and applications on YugaByte DB.
