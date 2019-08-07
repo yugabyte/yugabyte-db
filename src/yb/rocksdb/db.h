@@ -794,6 +794,9 @@ class DB {
   virtual uint64_t GetCurrentVersionSstFilesSize() { return 0; }
   virtual uint64_t GetCurrentVersionSstFilesUncompressedSize() { return 0; }
 
+  // Returns total number of SST Files.
+  virtual uint64_t GetCurrentVersionNumSSTFiles() { return 0; }
+
   // Returns the combined size of all the SST Files data blocks for the current version in the
   // rocksdb instance.
   virtual uint64_t GetCurrentVersionDataSstFilesSize() { return 0; }
