@@ -1,7 +1,7 @@
 ---
-title: Date & Time Functions
+title: Date and time Functions
 summary: Functions that work on data types related to date and time.
-description: Date & Time Functions
+description: Date and Ttme Functions
 menu:
   latest:
     parent: api-cassandra
@@ -13,10 +13,10 @@ isTocNested: false
 showAsideToc: true
 ---
 
-This section covers the set of CQL builtin functions that work on the data types related to
+This section covers the set of CQL built-in functions that work on the data types related to
 date and time, i.e [`DATE`, `TIME`, `TIMESTAMP`](../type_datetime) or [`TIMEUUID`](../type_uuid).
 
-## currentdate(), currenttime() and currenttimestamp()
+## currentdate(), currenttime(), and currenttimestamp()
 
 These functions return the current system date and time in UTC time zone.
 
@@ -25,7 +25,7 @@ These functions return the current system date and time in UTC time zone.
 
 ### Examples
 
-#### Insert values using currentdate(), currenttime() and currenttimestamp()
+#### Insert values using currentdate(), currenttime(), and currenttimestamp()
 
 ```sql
 cqlsh:example> CREATE TABLE test_current (k INT PRIMARY KEY, d DATE, t TIME, ts TIMESTAMP);
@@ -203,8 +203,8 @@ cqlsh:example> SELECT v FROM test_dateof WHERE v < dateof(now());
 
 ## tounixtimestamp()
 
-This function converts TIMEUUID, date or timestamp to a unix timestamp (which is
-equal to the number of millisecond since epoch Thursday, 1 January 1970). 
+This function converts TIMEUUID, date, or timestamp to a UNIX timestamp (which is
+equal to the number of millisecond since epoch Thursday, 1 January 1970).
 
 - It takes in an argument of type `TIMEUUID`, `DATE` or `TIMESTAMP`.
 - The return value is a `BIGINT`.
@@ -334,7 +334,7 @@ cqlsh:example> SELECT uuid() FROM test_uuid;
  12f91a52-ebba-4461-94c5-b73f0914284a
 ```
 
-## See Also
+## See also
 
 [`DATE`, `TIME` and `TIMESTAMP`](../type_datetime)
 [`TIMEUUID`](../type_uuid)

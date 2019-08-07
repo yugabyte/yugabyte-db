@@ -18,9 +18,9 @@ YugaByte DB beats CockroachDB in the context of multiple developer benefits incl
 
 - [YugaByte DB vs CockroachDB Performance Benchmarks for Internet-Scale Transactional Workloads](https://blog.yugabyte.com/yugabyte-db-vs-cockroachdb-performance-benchmarks-for-internet-scale-transactional-workloads/)
 
-- [Distributed PostgreSQL on a Google Spanner Architecture – Storage Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/) 
+- [Distributed PostgreSQL on a Google Spanner Architecture – Storage Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-storage-layer/)
 
-- [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/) 
+- [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://blog.yugabyte.com/distributed-postgresql-on-a-google-spanner-architecture-query-layer/)
 
 - [Yes We Can! Distributed ACID Transactions with High Performance](https://blog.yugabyte.com/yes-we-can-distributed-acid-transactions-with-high-performance/)
 
@@ -40,10 +40,6 @@ Following blogs highlight how YugaByte DB works as an open source, cloud native 
 
 - [Practical Tradeoffs in Google Cloud Spanner, Azure Cosmos DB and YugaByte DB](https://blog.yugabyte.com/practical-tradeoffs-in-google-cloud-spanner-azure-cosmos-db-and-yugabyte-db/)
 
-## Download Benchmarking Report
+## Download benchmarking report
 
 [Download](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/) our comprehensive report that benchmarks YugaByte DB against CockroachDB while highlighting the architectural choices that enables YugaByte DB to have 3.5x better throughput and 3x lower latency.
-
-
-
-

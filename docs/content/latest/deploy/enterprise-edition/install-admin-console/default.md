@@ -1,7 +1,5 @@
 
-
-YugaByte DB clusters are created and managed from YugaWare. The default option to install YugaWare on a host machine that is connected to the Internet. 
-
+YugaByte DB clusters are created and managed from YugaWare. The default option to install YugaWare on a host machine that is connected to the Internet.
 
 ## Step 1. Install Replicated
 
@@ -33,10 +31,9 @@ You should see an output similar to the following.
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
-
 ## Step 2. Install YugaWare
 
-### Setup HTTPS for Replicated
+### Set up HTTPS for Replicated
 
 Launch Replicated UI by going to [http://yugaware-host-public-ip:8800](http://yugaware-host-public-ip:8800). The warning shown next states that the connection to the server is not private (yet). We will address this warning as soon as we setup HTTPS for the Replicated Admin Console in the next step. Click Continue to Setup and then ADVANCED to bypass this warning and go to the Replicated Admin Console.
 
@@ -50,7 +47,7 @@ The simplest option is use a self-signed cert for now and add the custom SSL cer
 
 ![Replicated Self Signed Cert](/images/replicated/replicated-selfsigned.png)
 
-### Upload License File
+### Upload license file
 
 Now upload the YugaByte license file received from YugaByte Support.
 
@@ -68,7 +65,7 @@ The next step is to add a password to protect the Replicated Admin Console (note
 
 ![Replicated Password](/images/replicated/replicated-password.png)
 
-### Pre-Flight Checks
+### Pre-flight checks
 
 Replicated will perform a set of pre-flight checks to ensure that the host is setup correctly for the YugaWare application.
 
@@ -76,4 +73,4 @@ Replicated will perform a set of pre-flight checks to ensure that the host is se
 
 Clicking Continue above will bring us to YugaWare configuration.
 
-In case the pre-flight check fails, review the [Troubleshoot YugaByte Platform](../../../troubleshoot/enterprise-edition/) section below to identify the resolution.
+In case the pre-flight check fails, see [Troubleshoot YugaByte Platform](../../../troubleshoot/enterprise-edition/) to identify the resolution.

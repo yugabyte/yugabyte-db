@@ -5,12 +5,14 @@ This tutorial assumes that you have:
 - installed YugaByte DB, created a universe and are able to interact with it using the YSQL shell. If not, please follow these steps in the [ysql guide](../../../api/ysql/).
 - installed Visual Studio
 
-## Writing a HelloWorld C# app
+## Writing a HelloWorld C# application
 
 In your Visual Studio create a new Project and choose Console Application as template. Follow the instructions to save the project.
 
 ### Install YSQL C# driver
+
 To install the driver in your Visual Studio project
+
 <ol>
   <li>Open your Project Solution View.</li>
   <li>Right-click on Packages and click Add Packages.</li>
@@ -19,7 +21,7 @@ To install the driver in your Visual Studio project
   ![Search Package](/images/develop/client-drivers/csharp/visual-studio-search-ngpsql-package.png)
 </ol>
 
-### Copy the contents below to your `Program.cs` file.
+### Copy the contents below to your `Program.cs` file
 
 ```cs
 using System;
@@ -73,7 +75,8 @@ namespace YugaByte_CSharp_Demo
 }
 ```
 
-### Running the C# app
+### Running the C# application
+
 Run the C# app from menu select `Run -> Start Without Debugging`
 
 You should see the following as the output.

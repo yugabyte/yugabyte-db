@@ -15,6 +15,7 @@ showAsideToc: true
 YEDIS only has `master` role as far as Redis compatibility is concerned.
 
 ## Synopsis
+
 <b>`ROLE`</b><br>
 This command provides information of a Redis instance, such as its role, its state of replication, its slaves, or its master. Roles are either "master", "slave", or "sentinel".
 <li>Information of a master instance may include the following.
@@ -42,7 +43,8 @@ This command provides information of a Redis instance, such as its role, its sta
   </ol>
 </li>
 
-## Return Value
+## Return value
+
 Returns an array of values.
 
 ## Examples
@@ -62,5 +64,6 @@ $ ROLE
       3) "0"
 ```
 
-## See Also
+## See also
+
 [`auth`](../auth/), [`config`](../config/)

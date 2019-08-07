@@ -1,7 +1,7 @@
 ---
-title: Bulk Export
-linkTitle: Bulk Export
-description: Bulk Export
+title: Bulk export
+linkTitle: Bulk export
+description: Bulk export
 image: /images/section_icons/manage/enterprise.png
 headcontent: Bulk export data from YugaByte DB.
 menu:

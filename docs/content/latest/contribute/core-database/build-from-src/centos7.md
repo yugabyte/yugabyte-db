@@ -1,10 +1,9 @@
 
-
 ## Install necessary packages
 
 Update packages on your system, install development tools and additional packages:
 
-```
+```sh
 sudo yum update
 sudo yum groupinstall -y 'Development Tools'
 sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip
@@ -15,7 +14,7 @@ sudo yum install -y cmake3 ctest3
 
 Make sure `cmake` / `ctest` binaries are at least version 3. On CentOS one way to achive this is to symlink them into `/usr/local/bin`.
 
-```
+```sh
 sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
 sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
 ```

@@ -4,13 +4,13 @@
 The tutorial assumes that you have:
 
 - installed YugaByte DB, created a universe and are able to interact with it using the CQL shell. If
-  not, please follow these steps in the [quick start guide](../../../quick-start/test-cassandra).
+  not, please follow these steps in the [Quick Start guide](../../../quick-start/test-cassandra).
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2+, Clang 3.4+ installed.
 
-## Installing the C/C++ Driver
+## Installing the C/C++ driver
 
-To get the C/C++ driver run: 
+To get the C/C++ driver, run:
 
 ```sh
 $ git clone https://github.com/YugaByte/cassandra-cpp-driver.git
@@ -27,7 +27,7 @@ The C/C++ driver depends on the following:
 More detailed instructions for installing the dependencies are 
 given [here](https://docs.datastax.com/en/developer/cpp-driver/2.9/topics/building/#dependencies).
 
-### Build and Install
+### Build and install
 
 To build and install the driver:
 
@@ -39,9 +39,9 @@ $ make
 $ make install
 ```
 
-## Working Example
+## Working example
 
-### Write an app
+### Write an application
 
 Create a file `ybcql_hello_world.c` and copy the contents below:
 
@@ -190,7 +190,7 @@ int main() {
 }
 ```
 
-### Run the app
+### Run the application
 
 You can compile the file using gcc or clang. 
 For clang, you can use:

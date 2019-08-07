@@ -1,7 +1,7 @@
 ---
-title: Frequently Asked Questions
+title: Frequently asked questions
 linkTitle: Other FAQs
-description: Frequently Asked Questions
+description: Frequently asked questions
 image: /images/section_icons/index/faq.png
 headcontent:
 aliases:
@@ -78,7 +78,7 @@ menu:
     <a class="section-link icon-offset" href="compatibility/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/api.png" aria-hidden="true" />    
-        <div class="title">API Compatibility</div>
+        <div class="title">API compatibility</div>
       </div>
       <div class="body">
         Understanding API compatibility with popular DB languages.

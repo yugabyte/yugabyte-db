@@ -1,7 +1,7 @@
 ---
 title: ABORT
-description: ABORT Command
-summary: Overview of ABORT commands.
+description: ABORT command
+summary: Overview of the ABORT command.
 menu:
   latest:
     identifier: api-ysql-commands-txn-abort
@@ -29,8 +29,9 @@ abort_transaction ::= 'ABORT' [ 'TRANSACTION' | 'WORK' ] ;
 ```
 
 ## Semantics
+
 - The `SERIALIZABLE` isolation level not yet supported. (This is currently in progress).
-- Currently YugaByte will always use the snapshot isolation level internally. See more [here](../../../architecture/transactions/isolation-levels/).
+- Currently YugaByte DB will always use the snapshot isolation level internally. For more information, see [Isolation levels](../../../architecture/transactions/isolation-levels/).
 
 ## Examples
 
@@ -39,7 +40,6 @@ Create a sample table.
 ```sql
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
-
 
 Begin a transaction and insert some rows.
 
@@ -128,7 +128,7 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 (2 rows)
 ```
 
-## See Also
+## See also
 
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)

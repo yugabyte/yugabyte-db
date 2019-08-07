@@ -18,15 +18,17 @@ showAsideToc: true
 ---
 
 ## Introduction
+
 YSQL is a distributed SQL API that is compatible with the SQL dialect of PostgreSQL. Currently, the compatibility is with 11.2 version of PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). 
 
-The main components of YSQL are data definition language (DDL), data manipulation language (DML), and data control language (DCL). A number of elements are used to construct these components including datatypes, database objects, names and qualifiers, expressions, and comments. Several other components are also provided for different purposes such as system control, transaction control, and performance tuning.
+The main components of YSQL are data definition language (DDL), data manipulation language (DML), and data control language (DCL). A number of elements are used to construct these components including data types, database objects, names and qualifiers, expressions, and comments. Several other components are also provided for different purposes such as system control, transaction control, and performance tuning.
 
 ## Quick Start
 
 You can explore the basics of the YSQL API using the [Quick Start](../../quick-start/explore-ysql) steps.
 
-## Data Definition Language (DDL)
+## Data definition language (DDL)
+
 DDL commands define structures in the database, change their definitions, as well as remove them by using CREATE, ALTER, and DROP commands respectively.
 
 | Statement | Description |
@@ -45,7 +47,8 @@ DDL commands define structures in the database, change their definitions, as wel
 | [`DROP TABLE`](commands/ddl_drop_table) | Delete a table from a database |
 | [`TRUNCATE`](commands/ddl_truncate) | Clear all rows from a table |
 
-## Data Manipulation Language (DML)
+## Data manipulation language (DML)
+
 DML commands modify the contents of the database.
 
 | Statement | Description |
@@ -55,7 +58,8 @@ DML commands modify the contents of the database.
 | [`SELECT`](commands/dml_select) | Select rows from a table |
 | [`UPDATE`](commands/dml_update) | Update rows in a table |
 
-## Data Control Language (DCL)
+## Data control language (DCL)
+
 DCL commands protect and prevent the database from corruptions.
 
 | Statement | Description |
@@ -64,7 +68,8 @@ DCL commands protect and prevent the database from corruptions.
 | [`GRANT`](commands/dcl_grant) | Grant permissions (under development) |
 | [`REVOKE`](commands/dcl_revoke) | Revoke permissions (under development) |
 
-## Transaction Control Language (TCL)
+## Transaction control language (TCL)
+
 TCL commands manage transactions of operations on the database.
 
 | Statement | Description |
@@ -78,10 +83,9 @@ TCL commands manage transactions of operations on the database.
 | [`SET TRANSACTION`](commands/txn_set) | Set transaction behaviors |
 | [`SHOW TRANSACTION`](commands/txn_show) | Show properties of a transaction |
 
-
 Note that Serializable isolation level for multi-key transactions was added in [v1.2.6](../../releases/v1.2.6/).
 
-## Session and System Control
+## Session and system control
 
 | Statement | Description |
 |-----------|-------------|
@@ -89,7 +93,7 @@ Note that Serializable isolation level for multi-key transactions was added in [
 | [`SET`](commands/cmd_set) | Set a system, session, or transactional parameter |
 | [`SHOW`](commands/cmd_show) | Show value of a system, session, or transactional parameter |
 
-## Performance Control
+## Performance control
 
 | Statement | Description |
 |-----------|-------------|
@@ -99,16 +103,18 @@ Note that Serializable isolation level for multi-key transactions was added in [
 | [`PREPARE`](commands/perf_prepare) | Prepare a statement |
 
 ## Other commands
+
 | Statement | Description |
 |-----------|-------------|
 | [`COPY`](commands/cmd_copy) | Copy data between tables and files |
 
-## Language Elements
+## Language elements
+
 This section lists the main elements of YSQL.
 
 - [Keywords](keywords).
 - Names and Qualifiers: Some names are reserved for the system. List of [reserved names](reserved_names).
-- Datatypes: Most PostgreSQL-compatible datatypes are supported. List of [datatypes](datatypes).
+- Data types: Most PostgreSQL-compatible data types are supported. List of [data types](data-types).
 - [Expressions](exprs)
 - Database Objects
 - Comments

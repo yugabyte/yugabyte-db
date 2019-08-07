@@ -14,6 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 The `CREATE INDEX` statement is used to create a new index on a table. It defines the index name, index columns, and additional columns to include.
 
 ## Syntax
@@ -45,6 +46,7 @@ The `CREATE INDEX` statement is used to create a new index on a table. It define
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="617" height="100" viewbox="0 0 617 100"><path class="connector" d="M0 52h5m53 0h10m98 0h10m62 0h10m35 0h10m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h97m24 0h98q5 0 5 5v20q0 5-5 5m-108 0h30m44 0h29m-83 25q0 5 5 5h5m53 0h5q5 0 5-5m-78-25q5 0 5 5v33q0 5 5 5h63q5 0 5-5v-33q0-5 5-5m5 0h30m25 0h5"/><rect class="literal" x="5" y="35" width="53" height="25" rx="7"/><text class="text" x="15" y="52">WITH</text><rect class="literal" x="68" y="35" width="98" height="25" rx="7"/><text class="text" x="78" y="52">CLUSTERING</text><rect class="literal" x="176" y="35" width="62" height="25" rx="7"/><text class="text" x="186" y="52">ORDER</text><rect class="literal" x="248" y="35" width="35" height="25" rx="7"/><text class="text" x="258" y="52">BY</text><rect class="literal" x="293" y="35" width="25" height="25" rx="7"/><text class="text" x="303" y="52">(</text><rect class="literal" x="440" y="5" width="24" height="25" rx="7"/><text class="text" x="450" y="22">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="348" y="35" width="106" height="25"/><text class="text" x="358" y="52">column_name</text></a><rect class="literal" x="484" y="35" width="44" height="25" rx="7"/><text class="text" x="494" y="52">ASC</text><rect class="literal" x="484" y="65" width="53" height="25" rx="7"/><text class="text" x="494" y="82">DESC</text><rect class="literal" x="587" y="35" width="25" height="25" rx="7"/><text class="text" x="597" y="52">)</text></svg>
 
 ### Grammar
+
 ```
 create_index ::= CREATE [ UNIQUE ] INDEX [ IF NOT EXISTS ] index_name ON table_name '(' index_columns ')'
                      [ included_columns ] [ clustering_key_column_ordering ];
@@ -65,26 +67,32 @@ Where
 - `index_name`, `table_name`, and `column_name` are identifiers. `table_name` may be qualified with a keyspace name. `index_name` cannot be qualified with a keyspace name because an index must be created in the table's keyspace.
 
 ## Semantics
+
 - An error is raised if transactions have not be enabled using the `WITH transactions = { 'enabled' : true }` clause on the table to be indexed. This is because secondary indexes internally use distributed transactions to ensure ACID guarantees in the updates to the secondary index and the associated primary key. More details [here](https://blog.yugabyte.com/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/).
 - An error is raised if `index_name` already exists in the associated keyspace unless the `IF NOT EXISTS` option is used.
 - Indexes do not support TTL. An error is raised if data is inserted with TTL into a table with indexes.
 - Currently, when an index is created on a table, the existing data in the table is not indexed. Therefore, the index should be created before any data is inserted into the table.
 
 ### PARTITION KEY
- - Partition key is required and defines a split of the index into _partitions_.
+
+- Partition key is required and defines a split of the index into _partitions_.
 
 ### CLUSTERING KEY
- - Clustering key is optional and defines an ordering for index rows within a partition.
- - Default ordering is ascending (`ASC`) but can be set for each clustering column as ascending or descending using the `CLUSTERING ORDER BY` property.
- - Any primary key column of the table not indexed explicitly in `index_columns` is added as a clustering column to the index implicitly. This is necessary so that the whole primary key of the table is indexed.
+
+- Clustering key is optional and defines an ordering for index rows within a partition.
+- Default ordering is ascending (`ASC`) but can be set for each clustering column as ascending or descending using the `CLUSTERING ORDER BY` property.
+- Any primary key column of the table not indexed explicitly in `index_columns` is added as a clustering column to the index implicitly. This is necessary so that the whole primary key of the table is indexed.
 
 ### INCLUDED COLUMNS
- - Included columns are optional table columns whose values are copied into the index in addition to storing them in the table. When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
+
+- Included columns are optional table columns whose values are copied into the index in addition to storing them in the table. When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
 
 ### UNIQUE INDEX
+
  - A unique index disallows duplicate values from being inserted into the indexed columns. It can be used to ensure uniqueness of index column values.
 
 ## Examples
+
 ### Create a table to be indexed
 
 'customer_id' is the partitioning column and 'order_date' is the clustering column.
@@ -172,7 +180,6 @@ cqlsh:example> CREATE TABLE emp (enum INT primary key,
 cqlsh:example> CREATE UNIQUE INDEX emp_by_userid ON emp (userid);
 ```
 
-
 ### Insert values into the table and verify no duplicate `userid` is inserted
 
 ```sql
@@ -200,9 +207,7 @@ cqlsh:example> SELECT * FROM emp;
  1001 |    Smith |      John |  jsmith
 ```
 
-
-
-## See Also
+## See also
 
 [`CREATE TABLE`](../ddl_create_table)
 [`DROP INDEX`](../ddl_drop_index)

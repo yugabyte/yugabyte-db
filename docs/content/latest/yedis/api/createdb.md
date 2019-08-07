@@ -13,7 +13,6 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 ## Synopsis
 
 `CREATEDB` is used to create a new yedis database. All databases other than the default database ("0") need to be created before use.
@@ -21,7 +20,8 @@ showAsideToc: true
 A client can issue the `CREATEDB` command through the redis-cli.
 This is required before issuing a `SELECT` command to start using the database.
 
-## Return Value
+## Return value
+
 Returns a status string, if creating the database was successful. Returns an error message upon error.
 
 ## Examples
@@ -69,7 +69,8 @@ $ LISTDB
 3) "second"
 ```
 
-## See Also
+## See also
+
 [`createdb`](../createdb/)
 [`listdb`](../listdb/)
 [`deletedb`](../deletedb/)

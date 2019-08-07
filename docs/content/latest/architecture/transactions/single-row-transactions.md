@@ -1,7 +1,7 @@
 ---
-title: Single Row Transactions
-linkTitle: Single Row Transactions
-description: Single Row ACID Transactions
+title: Single row transactions
+linkTitle: Single row transactions
+description: Single row ACID transactions
 aliases:
   - /architecture/transactions/single-row-transactions/
 menu:
@@ -38,8 +38,7 @@ corresponding to the same key, e.g. of a particular column in a particular row. 
 multiple versions of the same key are stored in each replica's DocDB are described in [here](../../concepts/docdb/persistence/#mapping-docdb-documents-to-rocksdb). The last part of each key is a timestamp, which allows to quickly navigate to a particular version of a key in the RocksDB
 key-value store.
 
-The timestamp that we are using for MVCC comes from the [Hybrid Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local realtime (physical) clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value seen, including the current physical time on the server.  Multiple aspects of YugaByte DB's transaction model rely on
-these properties of Hybrid Time, e.g.:
+The timestamp that we are using for MVCC comes from the [Hybrid Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local realtime (physical) clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value seen, including the current physical time on the server.  Multiple aspects of YugaByte DB's transaction model rely on these properties of Hybrid Time, e.g.:
 
 * Hybrid timestamps assigned to committed Raft log entries in the same tablet always keep
   increasing, even if there are leader changes. This is because the new leader always has all
@@ -75,10 +74,10 @@ committed.
 Leader leases are a mechanism for a tablet leader to establish its authority for a certain short
 time period in order to avoid the following inconsistency:
 
-  * The leader is network-partitioned away from its followers
-  * A new leader is elected
-  * The client writes a new value and the new leader replicates it
-  * The client reads a stale value from the old leader.
+* The leader is network-partitioned away from its followers
+* A new leader is elected
+* The client writes a new value and the new leader replicates it
+* The client reads a stale value from the old leader.
 
 ![A diagram showing a potential inconsistency in case of a network partition if leader leases are not present](/images/architecture/txn/leader_leases_network_partition.svg)
 
@@ -167,6 +166,7 @@ For this purpose, the leader is always considered to have replicated an infinite
 itself.
 
 ### Definition of safe time
+
 Now, suppose the current majority-replicated hybrid time leader lease expiration is
 **replicated_ht_lease_exp**. Then the safe timestamp for a read request can be computed as the
 maximum of:

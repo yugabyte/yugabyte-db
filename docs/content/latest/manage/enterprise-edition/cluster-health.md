@@ -1,7 +1,7 @@
 ---
-title: Health Checking and Alerts
-linkTitle: Health Checking and Alerts
-description: Health Checking and Alerts
+title: Health checking and alerts
+linkTitle: Health checking and alerts
+description: Health checking and alerts
 aliases:
   - /manage/enterprise-edition/cluster-health/
   - /manage/cluster-health/

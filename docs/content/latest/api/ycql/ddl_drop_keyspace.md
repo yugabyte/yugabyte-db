@@ -14,6 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 The `DROP KEYSPACE` statement removes a keyspace from the system.
 
 ## Syntax
@@ -27,6 +28,7 @@ The `DROP KEYSPACE` statement removes a keyspace from the system.
 ```
 drop_keyspace ::= DROP { KEYSPACE | SCHEMA } [ IF EXISTS ] keyspace_name;
 ```
+
 Where
 
 - `keyspace_name` is an identifier.
@@ -39,6 +41,7 @@ Where
 ## Examples
 
 You can do this as shown below.
+
 ```sql
 cqlsh> CREATE KEYSPACE example;
 ```
@@ -51,7 +54,7 @@ cqlsh> DROP KEYSPACE example;
 cqlsh> DROP KEYSPACE IF EXISTS example;
 ```
 
-## See Also
+## See also
 [`ALTER KEYSPACE`](../ddl_alter_keyspace)
 [`CREATE KEYSPACE`](../ddl_create_keyspace)
 [`USE`](../ddl_use)

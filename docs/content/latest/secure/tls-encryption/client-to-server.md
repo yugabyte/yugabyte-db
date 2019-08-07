@@ -1,7 +1,7 @@
 ---
-title: 3. Client-Server Encryption
-linkTitle: 3. Client-Server Encryption
-description: 3. Client-Server Encryption
+title: 3. Client-server encryption
+linkTitle: 3. Client-server encryption
+description: 3. Client-server encryption
 headcontent: Enable client to server encryption.
 image: /images/section_icons/secure/tls-encryption/client-to-server.png
 aliases:
@@ -43,6 +43,5 @@ bin/yb-tserver                                       \
     --allow_insecure_connections=false               \
     --use_client_to_server_encryption=true &
 ```
-
 
 You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugaByte DB cluster](../../../deploy/manual-deployment/start-tservers/).

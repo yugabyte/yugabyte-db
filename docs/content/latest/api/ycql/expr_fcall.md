@@ -14,9 +14,11 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 Function call expression applies the specified function to to given arguments between parentheses and return the result of the computation.
 
 ## Syntax
+
 ```
 function_call ::= function_name '(' [ arguments ... ] ')'
 ```
@@ -60,7 +62,7 @@ function_call ::= function_name '(' [ arguments ... ] ')'
 
 ## Semantics
 
-<li>The argument datatypes must be convertible to the expected type for that argument that was specified by the function definition.</li>
+<li>The argument data types must be convertible to the expected type for that argument that was specified by the function definition.</li>
 <li>Function execution will return a value of the specified type by the function definition.</li>
 <li>YugaByte allows function calls to be used any where that expression is allowed.</li>
 
@@ -105,5 +107,6 @@ cqlsh:example> SELECT CAST(ts AS DATE) FROM test_cast;
        2018-10-09
 ```
 
-## See Also
+## See also
+
 [All Expressions](..##expressions)

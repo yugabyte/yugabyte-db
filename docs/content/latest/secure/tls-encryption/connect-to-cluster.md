@@ -1,7 +1,7 @@
 ---
-title: 4. Connect to Cluster
-linkTitle: 4. Connect to Cluster
-description: 4. Connect to Cluster
+title: 4. Connect to cluster
+linkTitle: 4. Connect to cluster
+description: 4. Connect to cluster
 headcontent: Connect to YugaByte DB cluster using cqlsh.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 aliases:
@@ -33,7 +33,6 @@ Variable       | Description                  |
 `SSL_USERCERT` | The user certificate file  (`node.<name>.crt`). |
 `SSL_USERKEY`  | The user key file (`node.<name>.key`).  |
 
-
 You can do so by doing the following:
 
 ```sh
@@ -63,12 +62,14 @@ system_schema  system_auth  system
 To enable `yb-admin` to connect with a cluster having TLS enabled, one can pass in the extra argument of `certs_dir_name` with the directory location where the root certificate is present. The `yb-admin` tool is present on the cluster node in the `~/master/bin/` directory. The `~/yugabyte-tls-config` directory on the cluster node contains all the certificates.
 
 For example, the command below will list the master information for the TLS enabled cluster:
+
 ```sh
 export MASTERS=node1:7100,node2:7100,node3:7100
 ./yb-admin --master_addresses $MASTERS -certs_dir_name ~/yugabyte-tls-config list_all_masters
 ```
 
 You should see the following output format:
+
 ```sh
 Master UUID	RPC Host/Port	State	Role
 UUID_1 		node1:7100  	ALIVE 	FOLLOWER

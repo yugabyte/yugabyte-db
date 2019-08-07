@@ -13,19 +13,19 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## 1. Start Local Cluster with YSQL API Enabled
+## 1. Start local cluster with YSQL API enabled
 
 Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte DB cluster. Test the YSQL API as [documented](../../../quick-start/explore-ysql/) so that you can confirm that you have the YSQL service running on `localhost:5433`. 
 
-## 2. Load Data
+## 2. Load data
 
-### Download the Sample Schema
+### Download the sample schema
 
 ```sh
 $ wget https://raw.githubusercontent.com/YugaByte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
 
-### Download the Sample Data
+### Download the sample data
 
 ```sh
 $ wget https://github.com/YugaByte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
@@ -56,7 +56,7 @@ Type "help" for help.
 postgres=#
 ```
 
-### Create a Database
+### Create a database
 
 You can do this as shown below.
 
@@ -72,9 +72,9 @@ postgres=> GRANT ALL ON DATABASE yb_demo to postgres;
 postgres=> \c yb_demo;
 ```
 
-### Load Data
+### Load data
 
-First create the 4 tables necessary to store the data.
+First create the four tables necessary to store the data.
 
 ```sql
 postgres=> \i 'schema.sql';
@@ -98,7 +98,7 @@ postgres=> \i 'data/orders.sql'
 postgres=> \i 'data/reviews.sql'
 ```
 
-## 3. Run Queries
+## 3. Run queries
 
 ### How are users signing up for my site?
 

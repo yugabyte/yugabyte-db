@@ -70,15 +70,16 @@ Where
 
 ## Semantics
 
- - An error is raised if the specified table does not exist. 
- - An error is raised if a specified column does not exist.
- - Each of the primary key columns must have a non-null value.
- - Constraints must be satisfied.  
+- An error is raised if the specified table does not exist.
+- An error is raised if a specified column does not exist.
+- Each of the primary key columns must have a non-null value.
+- Constraints must be satisfied.  
 
-### `VALUES` Clause
- - Each of the values list must have the same length as the columns list.
- - Each value must be convertible to its corresponding (by position) column type.
- - Each value literal can be an expression.
+### `VALUES` clause
+
+- Each of the values list must have the same length as the columns list.
+- Each value must be convertible to its corresponding (by position) column type.
+- Each value literal can be an expression.
 
 ### `ON CONFLICT` Clause
 
@@ -94,7 +95,6 @@ set the values of the remaining specified columns to those in the VALUES relatio
 In this way, the net effect is either to insert or to update; and for this reason
 the INSERT ON CONFLICT variant is often colloquially referred to as "upsert".
 
-
 ## Examples
 
 First, the bare insert. Create a sample table.
@@ -103,16 +103,13 @@ First, the bare insert. Create a sample table.
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
-
 Insert some rows.
 
 ```sql
 postgres=# INSERT INTO sample VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
-
 Check the inserted rows.
-
 
 ```sql
 postgres=# SELECT * FROM sample ORDER BY k1;
@@ -125,7 +122,6 @@ postgres=# SELECT * FROM sample ORDER BY k1;
   2 |  3 |  4 | b
   3 |  4 |  5 | c
 ```
-
 
 Next, a basic "upsert" example. Re-create and re-populate the sample table.
 
@@ -147,9 +143,7 @@ postgres=# INSERT INTO sample(id, c1, c2)
          (3, 'monkey' , 'thrush');
 ```
 
-
 Check the inserted rows.
-
 
 ```sql
 postgres=# SELECT id, c1, c2 FROM sample ORDER BY id;
@@ -163,9 +157,7 @@ postgres=# SELECT id, c1, c2 FROM sample ORDER BY id;
   3 | monkey | thrush
 ```
 
-
 Demonstrate "on conflict do nothing". In this case, we don't need to specify the conflict target.
-
 
 ```sql
 postgres=# INSERT INTO sample(id, c1, c2)
@@ -175,10 +167,8 @@ postgres=# INSERT INTO sample(id, c1, c2)
   DO NOTHING;
 ```
 
-
 Check the result.
 The non-conflicting row with id = 4 is inserted, but the conflicting row with id = 3 is NOT updated.
-
 
 ```sql
 postgres=# SELECT id, c1, c2 FROM sample ORDER BY id;
@@ -196,7 +186,6 @@ postgres=# SELECT id, c1, c2 FROM sample ORDER BY id;
 Demonstrate the real "upsert". In this case, we DO need to specify the conflict target. Notice the use of the
 EXCLUDED keyword to specify the conflicting rows in the to-be-upserted relation.
 
-
 ```sql
 postgres=# INSERT INTO sample(id, c1, c2)
   VALUES (3, 'horse' , 'pigeon'),
@@ -208,7 +197,6 @@ postgres=# INSERT INTO sample(id, c1, c2)
 
 Check the result.
 The non-conflicting row with id = 5 is inserted, and the conflicting row with id = 3 is updated.
-
 
 ```sql
 postgres=# SELECT id, c1, c2 FROM sample ORDER BY id;
@@ -244,7 +232,6 @@ INSERT INTO sample(id, c1, c2)
 Check the result.
 The non-conflicting row with id = 6 is inserted;  the conflicting row with id = 4 is updated;
 but the conflicting row with id = 5 (and c1 = 'tiger') is NOT updated;
-
 
 ```sql
 postgres=# SELECT id, c1, c2 FROM sample ORDER BY id;
@@ -289,9 +276,7 @@ INSERT INTO sample(c1, c2)
          ('horse' , 'vulture');
 ```
 
-
 Check the inserted rows.
-
 
 ```sql
 postgres=# SELECT id, c1, c2 FROM sample ORDER BY c1;
@@ -313,7 +298,6 @@ a VALUES clause. We also specify the conflict column(s)
 indirectly by mentioniing the name of the unique constrained
 that covers them.
 
-
 ```sql
 postgres=# WITH to_be_upserted AS (
   SELECT c1, c2 FROM (VALUES
@@ -331,7 +315,6 @@ postgres=# WITH to_be_upserted AS (
 
 Check the inserted rows.
 
-
 ```sql
 postgres=# SELECT id, c1, c2 FROM sample ORDER BY c1;
 ```
@@ -347,8 +330,7 @@ postgres=# SELECT id, c1, c2 FROM sample ORDER BY c1;
   8 | tiger | pigeon
 ```
 
-
-## See Also
+## See also
 
 [`CREATE TABLE`](../ddl_create_table)
 [`SELECT`](../dml_select)

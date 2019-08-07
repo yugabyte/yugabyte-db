@@ -1,8 +1,8 @@
 ---
 title: Develop
 linkTitle: Develop
-description: Develop Apps on YugaByte DB
-headcontent: This section will help you get started with building apps on top of YugaByte DB.
+description: Develop apps on YugaByte DB
+headcontent: Get started building applications on top of YugaByte DB.
 image: /images/section_icons/index/develop.png
 aliases:
   - /develop/
@@ -20,7 +20,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true" />
         <div class="articles">6 articles</div>
-        <div class="title">Learn App Development</div>
+        <div class="title">Learn application development</div>
       </div>
       <div class="body">
         Learn how to build cloud services and applications on YugaByte DB.
@@ -32,7 +32,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/ecosystem-integrations.png" aria-hidden="true" />
         <div class="articles">6 articles</div>
-        <div class="title">Ecosystem Integrations</div>
+        <div class="title">Ecosystem integrations</div>
       </div>
       <div class="body">
         Get started with the various ecosystem integrations including Apache Spark.
@@ -44,7 +44,7 @@ menu:
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/real-world-apps.png" aria-hidden="true" />
         <div class="articles">3 articles</div>
-        <div class="title">Real World Examples</div>
+        <div class="title">Real world examples</div>
       </div>
       <div class="body">
         A walk-through of real world, end-to-end applications build on top of YugaByte DB.

@@ -52,6 +52,7 @@ postgres=# PREPARE ins (bigint, double precision, int, text) AS
 ```sql
 postgres=# EXECUTE ins(1, 2.0, 3, 'a');
 ```
+
 ```sql
 postgres=# EXECUTE ins(2, 3.0, 4, 'b');
 ```
@@ -61,6 +62,7 @@ postgres=# EXECUTE ins(2, 3.0, 4, 'b');
 ```sql
 postgres=# SELECT * FROM sample ORDER BY k1;
 ```
+
 ```
  k1 | k2 | v1 | v2
 ----+----+----+----
@@ -69,7 +71,7 @@ postgres=# SELECT * FROM sample ORDER BY k1;
 (2 rows)
 ```
 
-## See Also
+## See also
 
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)

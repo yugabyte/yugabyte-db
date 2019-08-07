@@ -12,14 +12,16 @@ aliases:
 isTocNested: true
 showAsideToc: true
 ---
-`SUBSCRIBE` 
+`SUBSCRIBE`
 
 ## Synopsis
+
 <b>`SUBSCRIBE channel [channel ...]`</b><br>
 This command subscribes the client to the specified channel(s). The client will receive a message whenever a
 publisher sends a message to any of the channels that it has subscribed to.
 
-## See Also
+## See also
+
 [`pubsub`](../pubsub/), 
 [`publish`](../publish/), 
 [`subscribe`](../subscribe/), 

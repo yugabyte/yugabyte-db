@@ -19,7 +19,8 @@ showAsideToc: true
 
 A client can issue the `DELETEDB` command through the redis-cli.
 
-## Return Value
+## Return value
+
 Returns a status string upon success.
 
 ## Examples
@@ -75,7 +76,8 @@ $ LISTDB
 2) "second"
 ```
 
-## See Also
+## See also
+
 [`createdb`](../createdb/)
 [`listdb`](../listdb/)
 [`deletedb`](../deletedb/)

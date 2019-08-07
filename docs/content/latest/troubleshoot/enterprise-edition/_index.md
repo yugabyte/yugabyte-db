@@ -17,10 +17,10 @@ menu:
     <a class="section-link icon-offset" href="universes">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Troubleshoot Universes</div>
+        <div class="title">Troubleshoot universes</div>
       </div>
       <div class="body">
-        Troubleshoot a YugaByte DB Universe using the YugaByte Admin Console.
+        Troubleshoot a YugaByte DB universe using the YugaByte Admin Console.
       </div>
     </a>
   </div>

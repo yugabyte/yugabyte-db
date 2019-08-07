@@ -1,7 +1,7 @@
 ---
-title: 3. Data Types
-linkTitle: 3. Data Types
-description: Data Types
+title: 3. Data types
+linkTitle: 3. Data types
+description: Data types
 aliases:
   - /develop/learn/data-types/
   - /latest/explore/transactional/json-documents/

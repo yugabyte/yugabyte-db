@@ -1,7 +1,7 @@
 ---
 title: C
 linkTitle: C
-description: Build a C App
+description: Build a C application
 aliases:
   - /develop/client-drivers/c/
   - /latest/develop/client-drivers/c/
@@ -39,4 +39,3 @@ menu:
   </div>
 -->
 </div>
-

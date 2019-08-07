@@ -113,6 +113,6 @@ time ./cassandra-loader \
 
 For additional options, refer to the [cassandra-loader options](https://github.com/YugaByte/cassandra-loader#options).
 
-### Large Datasets (TBs or larger)
+### Large datasets (TBs or larger)
 
 For large datasets that are in the order of terabytes, YugaByte DB's bulk-importer is the tool to be used. Currently, it is supported only for AWS based deployments. Further documentation on this topic will be added soon. Meanwhile, reach out to [support@yugabyte.com](mailto:support@yugabyte.com) for more details.

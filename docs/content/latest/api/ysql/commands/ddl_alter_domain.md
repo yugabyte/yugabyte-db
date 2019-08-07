@@ -14,6 +14,7 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 `ALTER DOMAIN` changes or redefines one or more attributes of a domain.
 
 ## Syntax
@@ -29,6 +30,7 @@ showAsideToc: true
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="488" height="35" viewbox="0 0 488 35"><path class="connector" d="M0 22h5m58 0h10m70 0h10m106 0h10m71 0h10m36 0h10m87 0h5"/><rect class="literal" x="5" y="5" width="58" height="25" rx="7"/><text class="text" x="15" y="22">ALTER</text><rect class="literal" x="73" y="5" width="70" height="25" rx="7"/><text class="text" x="83" y="22">DOMAIN</text><a xlink:href="../../grammar_diagrams#domain-name"><rect class="rule" x="153" y="5" width="106" height="25"/><text class="text" x="163" y="22">domain_name</text></a><rect class="literal" x="269" y="5" width="71" height="25" rx="7"/><text class="text" x="279" y="22">RENAME</text><rect class="literal" x="350" y="5" width="36" height="25" rx="7"/><text class="text" x="360" y="22">TO</text><rect class="literal" x="396" y="5" width="87" height="25" rx="7"/><text class="text" x="406" y="22">new_name</text></svg>
 
 ### Grammar
+
 ```
 alter_domain_default := ALTER DOMAIN name
     { SET DEFAULT expression | DROP DEFAULT }
@@ -37,7 +39,7 @@ alter_domain_rename := ALTER DOMAIN name
     RENAME TO new_name
 ```
 
-Where 
+Where
 
 - `SET/DROP DEFAULT` sets or removes the default value for a domain.
 - `RENAME` changes the name of the domain.
@@ -65,7 +67,8 @@ postgres=# ALTER DOMAIN idx RENAME TO idx_new;
 postgres=# DROP DOMAIN idx_new;
 ```
 
-## See Also
+## See also
+
 [`CREATE DOMAIN`](../ddl_create_domain)
 [`DROP DOMAIN`](../ddl_drop_domain)
 [Other YSQL Statements](..)

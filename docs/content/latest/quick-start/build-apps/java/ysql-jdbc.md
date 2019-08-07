@@ -1,7 +1,7 @@
 ---
-title: Build a Java App
-linkTitle: Build a Java App
-description: Build a Java App
+title: Build a Java application
+linkTitle: Build a Java application
+description: Build a Java application
 aliases:
   - /develop/client-drivers/java/
   - /latest/develop/client-drivers/java/
@@ -17,7 +17,6 @@ type: page
 isTocNested: true
 showAsideToc: true
 ---
-
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
@@ -52,7 +51,7 @@ To build your Java application using the PostgreSQL JDBC driver, add the followi
 </dependency>
 ```
 
-## Working Example
+## Working example
 
 ### Prerequisites
 
@@ -61,8 +60,7 @@ This tutorial assumes that you have:
 - installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql/).
 - installed JDK version 1.8+ and maven 3.3+
 
-
-### Create the maven build file
+### Create the Maven build file
 
 Create a maven build file `pom.xml` and add the following content into it.
 
@@ -123,7 +121,7 @@ Create a maven build file `pom.xml` and add the following content into it.
 </project>
 ```
 
-### Write an app
+### Write an application
 
 Create the appropriate directory structure as expected by maven.
 
@@ -185,8 +183,7 @@ public class YBSqlHelloWorld {
 }
 ```
 
-
-### Build and run the app
+### Build and run the application
 
 To build the application, just run the following command.
 

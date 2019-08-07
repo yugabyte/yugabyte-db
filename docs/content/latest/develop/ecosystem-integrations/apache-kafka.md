@@ -15,7 +15,7 @@ showAsideToc: true
 
 In this tutorial, we are going to use the [Kafka Connect-based Sink Connector for YugaByte DB](https://github.com/YugaByte/yb-kafka-connector) to store events from Apache Kafka into YugaByte DB using YugaByte DB's [YCQL](../../../api/ycql) API.
 
-## 1. Start Local Cluster
+## 1. Start local cluster
 
 Start a YugaByte DB cluster on your [local machine](../../../quick-start/install/). Check that you are able to connect to YugaByte DB using `cqlsh` by doing the following.
 
@@ -27,7 +27,7 @@ $ ./bin/cqlsh localhost
 Connected to local cluster at 127.0.0.1:9042.
 [cqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
-cqlsh> 
+cqlsh>
 ```
 
 Create the table that would store the Kafka events.
@@ -37,7 +37,7 @@ cqlsh> CREATE KEYSPACE IF NOT EXISTS demo;
 cqlsh> CREATE TABLE demo.test_table (key text, value bigint, ts timestamp, PRIMARY KEY (key));
 ```
 
-## 2. Download Apache Kafka 
+## 2. Download Apache Kafka
 
 Download from the [Apache Kafka downloads page](https://kafka.apache.org/downloads). This tutorial uses the `2.11` version of Apache Kafka.
 
@@ -98,10 +98,10 @@ Now create the Kafka topic that will be used to persist messages in the YugaByte
 
 ```sh
 $ ./bin/kafka-topics.sh --create \
-	--zookeeper localhost:2181 \
-	--replication-factor 1 \
-	--partitions 1 \
-	--topic test
+    --zookeeper localhost:2181 \
+    --replication-factor 1 \
+    --partitions 1 \
+    --topic test
 ```
 
 ## 5. Start Kafka Sink Connector for YugaByte DB
@@ -110,8 +110,8 @@ At this point, we have YugaByte DB's YCQL APU running at 9042 port with the `tes
 
 ```sh
 $ ./bin/connect-standalone.sh \
-	~/yb-kafka/yb-kafka-connector/resources/examples/kafka.connect.properties \
-	~/yb-kafka/yb-kafka-connector/resources/examples/yugabyte.sink.properties 
+    ~/yb-kafka/yb-kafka-connector/resources/examples/kafka.connect.properties \
+    ~/yb-kafka/yb-kafka-connector/resources/examples/yugabyte.sink.properties
 ```
 
 The `yugabyte.sink.properties` file used above (and shown below) has the configuration necessary for this sink to work correctly. You will have to change this file to the Kafka topic and YugaByte DB table necessary for your application.
@@ -128,14 +128,14 @@ yugabyte.cql.keyspace=demo
 yugabyte.cql.tablename=test_table
 ```
 
-## 6. Produce Events for Kafka
+## 6. Produce events for Kafka
 
 We can now produce some events into Kafka using the `kafka-console-producer.sh` utility that ships with Kafka.
 
 ```sh
-$ ~/yb-kafka/kafka_2.11-2.0.0/bin/kafka-console-producer.sh 
-	--broker-list localhost:9092 \
-	--topic test_topic
+$ ~/yb-kafka/kafka_2.11-2.0.0/bin/kafka-console-producer.sh
+    --broker-list localhost:9092 \
+    --topic test_topic
 ```
 
 Enter the following.
@@ -146,7 +146,7 @@ Enter the following.
 {"key" : "C", "value" : 3, "ts" : 1541559413000}
 ```
 
-## 7. Verify Events in YugaByte DB
+## 7. Verify events in YugaByte DB
 
 The events above should now show up as rows in the YugaByte DB table.
 

@@ -1,7 +1,7 @@
 ---
 title: Replication
 linkTitle: Replication
-description: Replication with Raft Consensus
+description: Replication with Raft consensus
 aliases:
   - /latest/architecture/docdb/replication/
   - /latest/architecture/concepts/replication/
@@ -16,13 +16,13 @@ showAsideToc: true
 ---
 
 DocDB replicates data in order to survive failures while continuing to maintain consistency of
-data and not requiring operator intervention. **Replication Factor** (or RF) is the number of copies
-of data in a YugaByte DB universe. **Fault Tolerance** (or FT) of a YugaByte DB universe is the maximum
+data and not requiring operator intervention. The **replication factor** (RF) is the number of copies
+of data in a YugaByte DB universe. The **fault tolerance** (FT) of a YugaByte DB universe is the maximum
 number of node failures it can survive while continuing to preserve correctness of data. FT and RF
 are highly correlated. To achieve a FT of k nodes, the universe has to be configured with a RF of
 (2k + 1).
 
-## Strong Write Consistency
+## Strong write consistency
 
 Replication of data in DocDB is achieved at the level of tablets, using **tablet-peers**. Each
 tablet comprises of a set of tablet-peers - each of which stores one copy of the data belonging to
@@ -51,7 +51,7 @@ majority, the write is applied into DocDB document storage layer and is subseque
 write is persisted on disk by the document storage layer, the write entries can be purged from the Raft log. This is
 performed as a controlled background operation without any impact to the foreground operations.
 
-## Tunable Read Consistency
+## Tunable read consistency
 
 Only the tablet leader can process user-facing write and read requests. Note that while this is the
 case for strongly consistent reads, YugaByte DB offers reading from **followers** with relaxed
@@ -59,7 +59,7 @@ guarantees which is desired in some deployment models. All other tablet-peers ar
 and merely replicate data, and are available as hot standbys that can take over quickly in case the
 leader fails.
 
-## Read-only Replicas
+## Read-only replicas
 
 In addition to the core distributed consensus based replication, DocDB extends Raft to add
 read-only replicas (aks observer nodes) that do not participate in writes but get a timeline consistent

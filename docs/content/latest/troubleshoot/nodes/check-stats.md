@@ -1,7 +1,7 @@
 ---
-title: System Stats
-linkTitle: System Stats
-description: Check System Stats
+title: System statistics
+linkTitle: System statistics
+description: Check system statistics
 aliases:
   - /troubleshoot/nodes/check-stats/
 menu:
@@ -33,11 +33,12 @@ CPUs: 88
 Mem: 251G
 Disk: /dev/sda2       208G  5.1G  203G   3% /
 ```
+
 Generally, common tools like `top` or `iostat` may be useful.
 
 ### Auditd
-If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used YugaByte which can significantly affect performance. 
-You can try temporarily disabling `audit` by running (on each YugaByte node):
+
+If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used YugaByte which can significantly affect performance. You can try temporarily disabling `audit` by running (on each YugaByte node):
 
 ```sh
 $ auditctl -e 0
@@ -45,7 +46,7 @@ $ auditctl -e 0
 
 and check if this improves peformance.
 
-To re-enable it afterwards run:
+To re-enable it afterwards, run:
 
 ```sh
 $ auditctl -e 1

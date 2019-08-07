@@ -36,7 +36,7 @@ We do not recommend a local cluster setup on a single host for production deploy
     <a class="section-link icon-offset" href="create-local-cluster/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">2. Create Local Cluster</div>
+        <div class="title">2. Create a local cluster</div>
       </div>
       <div class="body">
         Create a local cluster.
@@ -60,7 +60,7 @@ We do not recommend a local cluster setup on a single host for production deploy
     <a class="section-link icon-offset" href="build-apps/">
       <div class="head">
         <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">4. Build an App</div>
+        <div class="title">4. Build an app</div>
       </div>
       <div class="body">
         Build an app in the programming language of your choice.

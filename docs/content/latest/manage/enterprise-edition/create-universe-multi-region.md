@@ -1,7 +1,7 @@
 ---
-title: Create Universe - Multi-Region
-linkTitle: Create Universe  - Multi-Region
-description: Create Universe - Multi-Region
+title: Create universe - Multi-region
+linkTitle: Create universe  - Multi-region
+description: Create universe - Multi-region
 menu:
   latest:
     identifier: manage-create-universe-multi-region
@@ -18,20 +18,18 @@ This section will describe how to create a universe spanning multiple geographic
 * Read data from the local datacenter (low latency timeline consistent reads)
 * Verify the latencies of the overall app
 
-
 ## 1. Create the universe
 
-We are going to enter the following values to create a multi-region universe on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-gcp) cloud provider. Click on `Create Universe` and enter the following intent. 
+We are going to enter the following values to create a multi-region universe on [GCP](../../../deploy/enterprise-edition/configure-cloud-providers/#configure-gcp) cloud provider. Click **Create Universe** and enter the following intent.
 
 - Enter a universe name: **helloworld2**
 - Enter the set of regions: **Oregon**, **Northern Virginia**, **Tokyo**
 - Change instance type: **n1-standard-8**
 - Add the following G-Flag for Master and T-Server: **leader_failure_max_missed_heartbeat_periods = 10**. Since the the data is globally replicated, RPC latencies are higher. We use this flag to increase the failure detection interval in such a higher RPC latency deployment. See the screenshot below.
 
-Click on `Create`.
+Click **Create**.
 
 ![Create Multi-Region Universe on GCP](/images/ee/multi-region-create-universe.png)
-
 
 ## 2. Examine the universe
 
@@ -64,7 +62,6 @@ In this section, we are going to connect to each node and perform the following:
 Browse to the nodes tab to find the nodes and click on the `Connect` button. This should bring up a dialog showing how to connect to the nodes.
 
 ![Multi-region universe nodes](/images/ee/multi-region-universe-nodes-connect.png)
-
 
 ### Connect to the nodes
 

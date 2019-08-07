@@ -14,13 +14,15 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`HMGET key field [field ...]`</b><br>
 This command fetches one or more values for the given fields of the hash that is associated with the given `key`.
 
 <li>For every given `field`, (null) is returned if either `key` or `field` does not exist.</li>
 <li>If `key` is associated with a non-hash data, an error is raised.</li>
 
-## Return Value
+## Return value
+
 Returns list of string values of the fields in the same order that was requested.
 
 ## Examples
@@ -43,5 +45,6 @@ $ HMGET yugahash area1 area2 area_none
 3) (null)
 ```
 
-## See Also
+## See also
+
 [`hdel`](../hdel/), [`hexists`](../hexists/), [`hget`](../hget/), [`hgetall`](../hgetall/), [`hkeys`](../hkeys/), [`hlen`](../hlen/), [`hmset`](../hmset/), [`hset`](../hset/), [`hincrby`](../hincrby/), [`hstrlen`](../hstrlen/), [`hvals`](../hvals/)

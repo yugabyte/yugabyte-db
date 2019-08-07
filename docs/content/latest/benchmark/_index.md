@@ -40,7 +40,7 @@ menu:
     <a class="section-link icon-offset" href="large-datasets/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Large Datasets</div>
+        <div class="title">Large datasets</div>
       </div>
       <div class="body">
         Testing event-data like workloads where the data density per node is high and the read/writes IOPS requirement is high.

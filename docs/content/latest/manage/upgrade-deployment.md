@@ -1,7 +1,7 @@
 ---
-title: Upgrade Deployment
-linkTitle: Upgrade Deployment
-description: Upgrade Deployment
+title: Upgrade deployment
+linkTitle: Upgrade deployment
+description: Upgrade deployment
 aliases:
   - /deploy/manual-deployment/upgrade-deployment
   - /manage/upgrade-deployment
@@ -18,10 +18,9 @@ The basic flow is to upgrade each yb-master and yb-tserver one at a time, verify
 
 If you plan to script this in a loop, then a pause of about 60 secs is recommended before moving from one process/node to another.
 
-{{<tip title="Preserving Data and Cluster Configuration Across Upgrades" >}}
+{{<tip title="Preserving data and cluster configuration across upgrades" >}}
 Your data/log/conf directories are generally stored in a separate location which stays the same across the upgrade so that the cluster data, its configuration settings are retained across the upgrade.
 {{< /tip >}}
-
 
 ## Upgrade YB-Masters
 

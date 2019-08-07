@@ -1,7 +1,7 @@
 ---
-title: Troubleshooting Overview
-linkTitle: Troubleshooting Overview
-description: Troubleshooting Overview
+title: Troubleshooting overview
+linkTitle: Troubleshooting overview
+description: Troubleshooting overview
 aliases:
   - /troubleshoot/overview/
 menu:
@@ -27,9 +27,8 @@ Next, check the list of [cluster issues](../cluster) and the respective fixes fo
 
 ## 3. Check logs
 
-Inspect the YugaByte logs for more details on your issue. See [this](../nodes/check-logs) page for more details on where to find and how to understand the YugaByte log files.
+Inspect the YugaByte logs for more details on your issue. For more details on where to find and how to understand the YugaByte log files, see [Inspect logs](../nodes/check-logs).
 
 ## 4. File an issue
 
 If you could not find a solution to your problem in these docs, please file a [GitHub issue](https://github.com/YugaByte/yugabyte-db/issues) describing your specific problem.
-

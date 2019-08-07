@@ -1,7 +1,7 @@
 ---
 title: PHP
 linkTitle: PHP
-description: Build a PHP App
+description: Build a PHP application
 aliases:
   - /develop/client-drivers/php/
   - /latest/develop/client-drivers/php/
