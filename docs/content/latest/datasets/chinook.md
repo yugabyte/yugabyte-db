@@ -1,7 +1,7 @@
 ---
 title: Chinook sample database
 linkTitle: Chinook
-description: Use the Chinook sample database to begin exploring YugaByte DB.
+description: Use the Chinook sample database, for a digital media store, to begin exploring YugaByte DB.
 menu:
   latest:
     identifier: chinook
@@ -11,23 +11,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Introduction
-
-In this post we are going to walk you through how to download and install the PostgreSQL compatible version of the Chinook sample db onto the YugaByte DB distributed SQL database with a replication factor of 3.
-
-The Chinook data model represents a digital media store, including tables for artists, albums, media tracks, invoices and customers. Media related data was created using real data from an iTunes Library. Customer and employee information was created using fictitious names and addresses that can be located on Google maps, and other well formatted data (phone, fax, email, etc.). Sales information was auto generated using random data for a four year period. The basic characteristics of Chinook include:
-
-- 11 tables
-- A variety of indexes, primary and foreign key constraints
-- Over 15,000 rows of data
-
-Here’s an ER diagram of the Chinook data model:
-
-[add ER diagram]
+The Chinook sample database is a sample database for a digital media store that you can use to explore and learn YugaByte DB.
 
 ## Before you begin
 
-To use the Chinook sample database, you must have installed and configured YugaByte DB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
+To install and use the Chinook sample database, you need to have installed and configured YugaByte DB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
 
 ## Install the Chinook database
 
@@ -49,9 +37,9 @@ Type "help" for help.
 postgres=#
 ```
 
-### 3. Create the database
+### 3. Create the Chinook database
 
-To create the `chinook` database:
+To create the Chinook database, run the following command.
 
 ```sql
 CREATE DATABASE chinook;
@@ -63,28 +51,31 @@ Confirm that you have the chinook database by listing out the databases on your 
 postgres=# \l
 ```
 
-Switch to the chinook database.
+![Chinook list of databases](/images/datasets/chinook/chinook-list-of-dbs.png)
+
+Connect to the `chinook` database.
 
 ```
 postgres=# \c chinook
 You are now connected to database "chinook" as user "postgres".
-chinook=# 
+chinook=#
 ```
 
 ### Build the tables and objects
 
-To build the tables and database objects, run the following command.
+To build the tables and database objects, run the following `\i` command.
 
 ```
 chinook=# \i /Users/yugabyte/chinook_ddl.sql
 ```
-You can verify that all 14 tables have been created by executing:
+
+You can verify that all 14 tables have been created by running the `\d` command.
 
 ```
 chinook=# \d
 ```
 
-[add image - list of relations]
+![Chinook list of relations](/images/datasets/chinook/chinook-list-of-relations.png)
 
 ### Load sample data
 
@@ -94,33 +85,44 @@ To load the `chinook` database with sample data, run the following command to ex
 chinook=# \i /Users/yugabyte/chinook_data.sql
 ```
 
-To verify that you have some data to work with, you can run a simple SELECT statement to pull data from the `customers` table.
+To verify that you have some data to work with, you can run a simple SELECT statement to pull data from the `Track` table.
+
+```sql
+chinook=# SELECT "Name", "Composer" FROM "Track" LIMIT 10;
+```
 
 ```
-chinook=# SELECT * FROM customers LIMIT 2;
+              Name               |                          Composer
+---------------------------------+------------------------------------------------------------
+ Boa Noite                       |
+ The Memory Remains              | Hetfield, Ulrich
+ Plush                           | R. DeLeo/Weiland
+ The Trooper                     | Steve Harris
+ Surprise! You're Dead!          | Faith No More
+ School                          | Kurt Cobain
+ Sometimes I Feel Like Screaming | Ian Gillan, Roger Glover, Jon Lord, Steve Morse, Ian Paice
+ Sad But True                    | Apocalyptica
+ Tailgunner                      |
+ Tempus Fugit                    | Miles Davis
+(10 rows)
 ```
 
-[Add image]
-
-## Explore the chinook dataset
-
-The `chinook` dataset consists of 14 tables and the table relationships are showcased in the entity relationship diagram below:
-
-[add e-r diagram]
-
-The dataset contains the following:
-
-- Suppliers: Suppliers and vendors of chinook
-- Customers: Customers who buy products from chinook
-- Employees: Employee details of chinook traders
-- Products: Product information
-- Shippers: The details of the shippers who ship the products from the traders to the end-customers
-- Orders and Order_Details: Sales Order transactions taking place between the customers & the company
+## Explore the Chinook sample database
 
 That’s it! Using the command line or your favorite PostgreSQL development or administration tool, you are now ready to start exploring the chinook database and YugaByte DB features.
 
-## What to do next
+The Chinook data model represents a digital media store, including tables for artists, albums, media tracks, invoices and customers. Media related data was created using real data from an iTunes Library. Customer and employee information was created using fictitious names and addresses that can be located on Google maps, and other well formatted data (phone, fax, email, etc.). Sales information was auto generated using random data for a four year period. The basic characteristics of Chinook include:
 
-- Compare YugaByte DB in depth to databases like CockroachDB, Google Cloud Spanner and MongoDB.
-- Get started with YugaByte DB on macOS, Linux, Docker, and Kubernetes.
-- Contact us to learn more about licensing, pricing or to schedule a technical overview.
+- 11 tables
+- A variety of indexes, primary and foreign key constraints
+- Over 15,000 rows of data
+
+Here’s an entity relationship diagram of the Chinook data model.
+
+![Chinook E-R diagram](/images/datasets/chinook/chinook-er-diagram.png)
+
+## What's next
+
+- [Compare YugaByte DB to other databases](../comparisons) like [CockroachDB](https://www.yugabyte.com/yugabyte-db-vs-cockroachdb/), Google Cloud Spanner and MongoDB.
+- Get started with YugaByte DB using the [Quick Start tutorial](../quick-start) on macOS, Linux, Docker, and Kubernetes.
+- [Contact YugaByte](https://www.yugabyte.com/contact-sales/) to learn more about licensing, pricing, or to schedule a technical overview.
