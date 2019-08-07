@@ -101,6 +101,8 @@ struct LogOptions {
   // Whether the allocation should happen asynchronously.
   bool async_preallocate_segments;
 
+  uint32_t retention_secs = 0;
+
   // Env for log file operations.
   Env* env;
 

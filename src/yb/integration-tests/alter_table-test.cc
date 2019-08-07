@@ -79,6 +79,7 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(use_hybrid_clock);
 DECLARE_int32(ht_lease_duration_ms);
 DECLARE_int32(replication_factor);
+DECLARE_int32(log_min_seconds_to_retain);
 
 namespace yb {
 
@@ -105,7 +106,8 @@ using std::vector;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 
-class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
+class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
+                       public ::testing::WithParamInterface<int> {
  public:
   AlterTableTest()
     : stop_threads_(false),
@@ -632,6 +634,32 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("{ int32:0, null, null }", rows[0]);
   ASSERT_EQ("{ int32:16777216, null, null }", rows[1]);
+}
+
+INSTANTIATE_TEST_CASE_P(TestAlterWalRetentionSecs,
+                        AlterTableTest,
+                        ::testing::Values(FLAGS_log_min_seconds_to_retain / 2,
+                                          FLAGS_log_min_seconds_to_retain * 2));
+
+TEST_P(AlterTableTest, TestAlterWalRetentionSecs) {
+  InsertRows(1, 1000);
+  int kWalRetentionSecs = GetParam();
+
+  LOG(INFO) << "Modifying wal retention time";
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+
+  ASSERT_OK(table_alterer->SetWalRetentionSecs(kWalRetentionSecs)->Alter());
+
+  int expected_wal_retention_secs = max(FLAGS_log_min_seconds_to_retain, kWalRetentionSecs);
+
+  ASSERT_EQ(kWalRetentionSecs, tablet_peer_->tablet()->metadata()->wal_retention_secs());
+  ASSERT_EQ(expected_wal_retention_secs, tablet_peer_->log()->wal_retention_secs());
+
+  // Test that the wal retention time gets set correctly in the metadata and in the log objects.
+  ASSERT_NO_FATALS(RestartTabletServer());
+
+  ASSERT_EQ(kWalRetentionSecs, tablet_peer_->tablet()->metadata()->wal_retention_secs());
+  ASSERT_EQ(expected_wal_retention_secs, tablet_peer_->log()->wal_retention_secs());
 }
 
 TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {

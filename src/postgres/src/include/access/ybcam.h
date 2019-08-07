@@ -55,6 +55,9 @@ typedef struct YbScanDescData
 
 	Relation index;
 
+	/* Oid of the table being scanned */
+	Oid tableOid;
+
 	/* Kept execution control to pass it to PgGate.
 	 * - When YBC-index-scan layer is called by Postgres IndexScan functions, it will read the
 	 *   "yb_exec_params" from Postgres IndexScan and kept the info in this attribute.

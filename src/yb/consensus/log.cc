@@ -365,6 +365,7 @@ Log::Log(LogOptions options, string log_path,
       metric_entity_(metric_entity),
       on_disk_size_(0),
       log_prefix_(Format("T $0 P $1: ", tablet_id_, peer_uuid_)) {
+  set_wal_retention_secs(options.retention_secs);
   CHECK_OK(ThreadPoolBuilder("log-alloc").set_max_threads(1).Build(&allocation_pool_));
   if (metric_entity_) {
     metrics_.reset(new LogMetrics(metric_entity_));
@@ -730,7 +731,7 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
     if (!segment->footer().has_close_timestamp_micros()) continue;
 
     int64_t age_seconds = (now - segment->footer().close_timestamp_micros()) / 1000000;
-    if (age_seconds < FLAGS_log_min_seconds_to_retain) {
+    if (age_seconds < wal_retention_secs()) {
       VLOG_WITH_PREFIX(2)
           << "Segment " << segment->path() << " is only " << age_seconds << "s old: "
           << "cannot GC it yet due to configured time-based retention policy.";
@@ -781,6 +782,17 @@ Status Log::WaitUntilAllFlushed() {
   Synchronizer s;
   RETURN_NOT_OK(AsyncAppend(reserved_entry_batch, s.AsStatusCallback()));
   return s.Wait();
+}
+
+void Log::set_wal_retention_secs(uint32_t wal_retention_secs) {
+  wal_retention_secs_.store(wal_retention_secs, std::memory_order_release);
+}
+
+uint32_t Log::wal_retention_secs() const {
+  uint32_t wal_retention_secs = wal_retention_secs_.load(std::memory_order_acquire);
+  return FLAGS_log_min_seconds_to_retain > 0 ?
+      std::max(wal_retention_secs, static_cast<uint32_t>(FLAGS_log_min_seconds_to_retain)) :
+      wal_retention_secs;
 }
 
 yb::OpId Log::GetLatestEntryOpId() const {
@@ -900,7 +912,7 @@ void Log::GetMaxIndexesToSegmentSizeMap(int64_t min_op_idx,
   }
 
   int64_t now = GetCurrentTimeMicros();
-  int64_t max_close_time_us = now - (FLAGS_log_min_seconds_to_retain * 1000000);
+  int64_t max_close_time_us = now - (wal_retention_secs() * 1000000);
   reader_->GetMaxIndexesToSegmentSizeMap(min_op_idx, segments_count, max_close_time_us,
                                          max_idx_to_segment_size);
 }

@@ -540,7 +540,7 @@ intorel_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 
 	for (attnum = 1; attnum <= intoRelationDesc->rd_att->natts; attnum++)
 		rte->insertedCols = bms_add_member(rte->insertedCols,
-										   attnum - FirstLowInvalidHeapAttributeNumber);
+										   attnum - YBGetFirstLowInvalidAttributeNumber(intoRelationDesc));
 
 	ExecCheckRTPerms(list_make1(rte), true);
 

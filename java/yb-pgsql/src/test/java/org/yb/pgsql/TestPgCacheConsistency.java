@@ -155,8 +155,10 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
   @Test
   public void testVersionMismatchWithoutRetry() throws Exception {
-    try (Statement statement1 = createConnection(0).createStatement();
-         Statement statement2 = createConnection(1).createStatement()) {
+    try (Connection connection1 = newConnectionBuilder().setTServer(0).connect();
+         Connection connection2 = newConnectionBuilder().setTServer(1).connect();
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
       statement1.execute("CREATE TABLE test_table(id int, PRIMARY KEY (id))");
       statement1.execute("INSERT INTO test_table(id) VALUES (1), (2), (3)");
 
@@ -208,8 +210,10 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
   @Test
   public void testVersionMismatchWithFailedRetry() throws Exception {
-    try (Statement statement1 = createConnection(0).createStatement();
-         Statement statement2 = createConnection(1).createStatement()) {
+    try (Connection connection1 = newConnectionBuilder().setTServer(0).connect();
+         Connection connection2 = newConnectionBuilder().setTServer(1).connect();
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
       // Create table from connection 1.
       statement1.execute("CREATE TABLE test_table(id int)");
 
@@ -259,8 +263,10 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
   @Ignore // TODO enable after #1502
   public void testUndetectedSelectVersionMismatch() throws Exception {
-    try (Statement statement1 = createConnection(0).createStatement();
-         Statement statement2 = createConnection(1).createStatement()) {
+    try (Connection connection1 = newConnectionBuilder().setTServer(0).connect();
+         Connection connection2 = newConnectionBuilder().setTServer(1).connect();
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
       // Create table from connection 1.
       statement1.execute("CREATE TABLE test_table(id int, PRIMARY KEY (id))");
 
@@ -280,8 +286,10 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
   @Test
   public void testConsistentNonRetryableTransactions() throws Exception {
-    try (Statement statement1 = createConnection(0).createStatement();
-         Statement statement2 = createConnection(1).createStatement()) {
+    try (Connection connection1 = newConnectionBuilder().setTServer(0).connect();
+         Connection connection2 = newConnectionBuilder().setTServer(1).connect();
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
       // Create table from connection 1.
       statement1.execute("CREATE TABLE test_table(id int, PRIMARY KEY (id))");
 
@@ -307,8 +315,10 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
   @Test
   public void testConsistentPreparedStatements() throws Exception {
-    try (Statement statement1 = createConnection(0).createStatement();
-         Statement statement2 = createConnection(1).createStatement()) {
+    try (Connection connection1 = newConnectionBuilder().setTServer(0).connect();
+         Connection connection2 = newConnectionBuilder().setTServer(1).connect();
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
       // Create table from connection 1.
       statement1.execute("CREATE TABLE test_table(id int, PRIMARY KEY (id))");
 
@@ -349,8 +359,10 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
 
   @Test
   public void testConsistentExplain() throws Exception {
-    try (Statement statement1 = createConnection(0).createStatement();
-         Statement statement2 = createConnection(1).createStatement()) {
+    try (Connection connection1 = newConnectionBuilder().setTServer(0).connect();
+         Connection connection2 = newConnectionBuilder().setTServer(1).connect();
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
       // Create table with unique column from connection 1.
       statement1.execute("CREATE TABLE test_table(id int, u int)");
       statement1.execute("ALTER TABLE test_table ADD CONSTRAINT unq UNIQUE (u)");
@@ -379,6 +391,51 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
           new Row("Foreign Scan on test_table"),
           new Row("  Filter: (u = 1)")
       );
+    }
+  }
+
+  @Test
+  public void testConsistentGUCWrites() throws Exception {
+    try (Connection connection1 = newConnectionBuilder().setTServer(0).connect();
+         Connection connection2 = newConnectionBuilder().setTServer(1).connect();
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
+      statement1.execute("CREATE ROLE some_role");
+
+      // Update roles cache on connection 2.
+      statement2.execute("SET ROLE some_role");
+      statement2.execute("RESET ROLE");
+
+      statement1.execute("DROP ROLE some_role");
+
+      waitForTServerHeartbeat();
+
+      // Connection 2 refreshes its cache before setting the guc var.
+      runInvalidQuery(statement2, "SET ROLE some_role", "role \"some_role\" does not exist");
+    }
+  }
+
+  @Test
+  public void testInvalidationCallbacksWhenInsertingIntoList() throws Exception {
+    try (Connection connection1 = newConnectionBuilder().setTServer(0).connect();
+         Connection connection2 = newConnectionBuilder().setTServer(1).connect();
+         Statement statement1 = connection1.createStatement();
+         Statement statement2 = connection2.createStatement()) {
+      statement1.execute("CREATE ROLE some_role CREATEROLE");
+
+      statement2.execute("SET SESSION AUTHORIZATION some_role");
+
+      // Populate membership roles cache from connection 2.
+      statement2.execute("CREATE ROLE inaccessible");
+      runInvalidQuery(statement2, "SET ROLE inaccessible", "permission denied");
+
+      // Invalidate membership roles cache from connection 1.
+      statement1.execute("CREATE ROLE some_group ROLE some_role");
+
+      waitForTServerHeartbeat();
+
+      // Connection 2 observes the new membership roles list.
+      statement2.execute("SET ROLE some_group");
     }
   }
 

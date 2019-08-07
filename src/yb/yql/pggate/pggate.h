@@ -221,7 +221,9 @@ class PgApiImpl {
                                bool *is_primary,
                                bool *is_hash);
 
-  CHECKED_STATUS SetIfIsSysCatalogVersionChange(PgStatement *handle, bool *is_version_change);
+  CHECKED_STATUS DmlModifiesRow(PgStatement *handle, bool *modifies_row);
+
+  CHECKED_STATUS SetIsSysCatalogVersionChange(PgStatement *handle);
 
   CHECKED_STATUS SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version);
 
@@ -334,7 +336,7 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Select.
   CHECKED_STATUS NewSelect(PgSession *pg_session, const PgObjectId& table_id,
-                           const PgObjectId& index_id, PgStatement **handle, uint64_t* read_time);
+                           const PgObjectId& index_id, PgStatement **handle);
 
   CHECKED_STATUS SetForwardScan(PgStatement *handle, bool is_forward_scan);
 

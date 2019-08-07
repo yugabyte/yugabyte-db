@@ -102,6 +102,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
         createConfigureServerTasks(node, true /* isShell */)
             .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
+        createGFlagsOverrideTasks(node, ServerType.MASTER);
+
         // Start a shell master process.
         createStartMasterTasks(node)
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
@@ -124,6 +126,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // Configure so that this tserver picks all the master nodes.
       createConfigureServerTasks(node, false /* isShell */)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+
+      createGFlagsOverrideTasks(node, ServerType.TSERVER);
 
       // Add the tserver process start task.
       createTServerTaskForNode(currentNode, "start")

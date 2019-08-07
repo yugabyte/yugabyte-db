@@ -349,6 +349,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply the Schema of the specified operation.
   CHECKED_STATUS AlterSchema(ChangeMetadataOperationState* operation_state);
 
+  // Change wal_retention_secs in the metadata.
+  CHECKED_STATUS AlterWalRetentionSecs(ChangeMetadataOperationState* operation_state);
+
   // Apply replicated add table operation.
   CHECKED_STATUS AddTable(const TableInfoPB& table_info);
 
@@ -473,8 +476,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return last_committed_write_index_.load(std::memory_order_acquire);
   }
 
-  uint64_t GetTotalSSTFileSizes() const;
-  uint64_t GetUncompressedSSTFileSizes() const;
+  uint64_t GetCurrentVersionSstFilesSize() const;
+  uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
 
   void SetHybridTimeLeaseProvider(HybridTimeLeaseProvider provider) {
     ht_lease_provider_ = std::move(provider);

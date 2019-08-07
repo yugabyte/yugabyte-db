@@ -67,6 +67,10 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.uuid);
     userIntent.replicationFactor = 3;
+    Map<String, String> gflags = new HashMap<>();
+    gflags.put("foo", "bar");
+    userIntent.masterGFlags = gflags;
+    userIntent.tserverGFlags = gflags;
     defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
     defaultUniverse = Universe.saveDetails(defaultUniverse.universeUUID,
         ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
@@ -123,6 +127,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   List<TaskType> ADD_NODE_TASK_SEQUENCE = ImmutableList.of(
     TaskType.SetNodeState,
     TaskType.AnsibleConfigureServers,
+    TaskType.AnsibleConfigureServers,
     TaskType.AnsibleClusterServerCtl,
     TaskType.UpdateNodeProcess,
     TaskType.WaitForServer,
@@ -135,6 +140,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
 
   List<JsonNode> ADD_NODE_TASK_EXPECTED_RESULTS = ImmutableList.of(
     Json.toJson(ImmutableMap.of("state", "Adding")),
+    Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
     Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
@@ -149,10 +155,12 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   List<TaskType> WITH_MASTER_UNDER_REPLICATED = ImmutableList.of(
     TaskType.SetNodeState,
     TaskType.AnsibleConfigureServers,
+    TaskType.AnsibleConfigureServers,
     TaskType.AnsibleClusterServerCtl,
     TaskType.UpdateNodeProcess,
     TaskType.WaitForServer,
     TaskType.ChangeMasterConfig,
+    TaskType.AnsibleConfigureServers,
     TaskType.AnsibleConfigureServers,
     TaskType.AnsibleClusterServerCtl,
     TaskType.UpdateNodeProcess,
@@ -168,8 +176,10 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS = ImmutableList.of(
     Json.toJson(ImmutableMap.of("state", "Adding")),
     Json.toJson(ImmutableMap.of()),
+    Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
     Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", true)),
+    Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
     Json.toJson(ImmutableMap.of()),
@@ -219,7 +229,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
   @Test
   public void testAddNodeSuccess() {
     TaskInfo taskInfo = submitTask(DEFAULT_NODE_NAME, 3);
-    verify(mockNodeManager, times(2)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));
@@ -245,7 +255,7 @@ public class AddNodeToUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.universeUUID, updater);
 
     TaskInfo taskInfo = submitTask(DEFAULT_NODE_NAME, 4);
-    verify(mockNodeManager, times(4)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(6)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(w -> w.getPosition()));

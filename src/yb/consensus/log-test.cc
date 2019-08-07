@@ -756,6 +756,7 @@ TEST_F(LogTest, TestLogReopenAndGC) {
   // Turn off the time-based retention and try GCing again. This time
   // we should succeed.
   FLAGS_log_min_seconds_to_retain = 0;
+  log_->set_wal_retention_secs(0);
   ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(2, num_gced_segments);
 

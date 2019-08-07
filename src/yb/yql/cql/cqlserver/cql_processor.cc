@@ -90,7 +90,6 @@ using std::unique_ptr;
 
 using client::YBClient;
 using client::YBSession;
-using client::YBMetaDataCache;
 using ql::ExecutedResult;
 using ql::PreparedResult;
 using ql::RowsResult;

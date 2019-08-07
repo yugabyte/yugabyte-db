@@ -61,7 +61,6 @@ Result<TSDescriptorPtr> TSDescriptor::RegisterNew(
 
 TSDescriptor::TSDescriptor(std::string perm_id)
     : permanent_uuid_(std::move(perm_id)),
-      latest_seqno_(-1),
       last_heartbeat_(MonoTime::Now()),
       has_tablet_report_(false),
       recent_replica_creations_(0),
@@ -87,24 +86,31 @@ Status TSDescriptor::RegisterUnlocked(
     rpc::ProxyCache* proxy_cache) {
   CHECK_EQ(instance.permanent_uuid(), permanent_uuid_);
 
-  if (instance.instance_seqno() < latest_seqno_) {
+  int64_t latest_seqno = ts_information_
+      ? ts_information_->tserver_instance().instance_seqno()
+      : -1;
+  if (instance.instance_seqno() < latest_seqno) {
     return STATUS(AlreadyPresent,
       strings::Substitute("Cannot register with sequence number $0:"
                           " Already have a registration from sequence number $1",
                           instance.instance_seqno(),
-                          latest_seqno_));
-  } else if (instance.instance_seqno() == latest_seqno_) {
+                          latest_seqno));
+  } else if (instance.instance_seqno() == latest_seqno) {
     // It's possible that the TS registered, but our response back to it
     // got lost, so it's trying to register again with the same sequence
     // number. That's fine.
     LOG(INFO) << "Processing retry of TS registration from " << instance.ShortDebugString();
   }
 
-  latest_seqno_ = instance.instance_seqno();
+  latest_seqno = instance.instance_seqno();
   // After re-registering, make the TS re-report its tablets.
   has_tablet_report_ = false;
 
-  registration_.reset(new TSRegistrationPB(registration));
+  ts_information_ = std::make_shared<TSInformationPB>();
+  ts_information_->mutable_registration()->CopyFrom(registration);
+  ts_information_->mutable_tserver_instance()->set_permanent_uuid(permanent_uuid_);
+  ts_information_->mutable_tserver_instance()->set_instance_seqno(latest_seqno);
+
   placement_id_ = generate_placement_id(registration.common().cloud_info());
 
   proxies_.reset();
@@ -147,7 +153,7 @@ MonoDelta TSDescriptor::TimeSinceHeartbeat() const {
 
 int64_t TSDescriptor::latest_seqno() const {
   std::shared_lock<rw_spinlock> l(lock_);
-  return latest_seqno_;
+  return ts_information_->tserver_instance().instance_seqno();
 }
 
 bool TSDescriptor::has_tablet_report() const {
@@ -191,22 +197,18 @@ double TSDescriptor::RecentReplicaCreations() {
 
 TSRegistrationPB TSDescriptor::GetRegistration() const {
   std::shared_lock<rw_spinlock> l(lock_);
-  return *registration_;
+  return ts_information_->registration();
 }
 
-TSInformationPB TSDescriptor::GetTSInformationPB() const {
+const std::shared_ptr<TSInformationPB> TSDescriptor::GetTSInformationPB() const {
   std::shared_lock<rw_spinlock> l(lock_);
-  CHECK(registration_) << "No registration";
-  TSInformationPB result;
-  *result.mutable_registration() = *registration_;
-  result.mutable_tserver_instance()->set_permanent_uuid(permanent_uuid_);
-  result.mutable_tserver_instance()->set_instance_seqno(latest_seqno_);
-  return result;
+  CHECK(ts_information_) << "No stored information";
+  return ts_information_;
 }
 
 bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
   std::shared_lock<rw_spinlock> l(lock_);
-  const auto& ci = registration_->common().cloud_info();
+  const auto& ci = ts_information_->registration().common().cloud_info();
 
   return cloud_info.placement_cloud() == ci.placement_cloud() &&
          cloud_info.placement_region() == ci.placement_region() &&
@@ -232,10 +234,10 @@ bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
 }
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
-  const auto& addr = DesiredHostPort(registration_->common(), local_cloud_info_);
+  const auto& addr = DesiredHostPort(ts_information_->registration().common(), local_cloud_info_);
   if (addr.host().empty()) {
     return STATUS_FORMAT(NetworkError, "Unable to find the TS address for $0: $1",
-                         permanent_uuid_, registration_->ShortDebugString());
+                         permanent_uuid_, ts_information_->registration().ShortDebugString());
   }
 
   return HostPortFromPB(addr);
@@ -288,7 +290,7 @@ std::size_t TSDescriptor::NumTasks() const {
 std::string TSDescriptor::ToString() const {
   std::shared_lock<rw_spinlock> l(lock_);
   return Format("{ permanent_uuid: $0 registration: $1 placement_id: $2 }",
-                permanent_uuid_, registration_, placement_id_);
+                permanent_uuid_, ts_information_->registration(), placement_id_);
 }
 
 } // namespace master

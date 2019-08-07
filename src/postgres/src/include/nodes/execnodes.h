@@ -580,9 +580,6 @@ typedef struct EState
 	struct JitInstrumentation *es_jit_worker_instr;
 
 	/* YugaByte-specific fields */
-	uint64_t es_yb_read_ht; /* read hybrid time used by YB proxy to read consistent snapshot,
-                             initial value is 0, it means that value is not initialised */
-
 	bool es_yb_is_single_row_modify_txn; /* Is this query a single-row modify
 																				* and the only stmt in this txn. */
 	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,

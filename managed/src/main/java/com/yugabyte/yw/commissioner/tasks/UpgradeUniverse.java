@@ -16,7 +16,6 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -320,19 +319,5 @@ public class UpgradeUniverse extends UniverseTaskBase {
     task.initialize(params);
 
     return task;
-  }
-
-  private SubTaskGroup createLoadBalancerStateChangeTask(boolean enable) {
-    LoadBalancerStateChange.Params params = new LoadBalancerStateChange.Params();
-    // Add the universe uuid.
-    params.universeUUID = taskParams().universeUUID;
-    params.enable = enable;
-    LoadBalancerStateChange task = new LoadBalancerStateChange();
-    task.initialize(params);
-
-    SubTaskGroup subTaskGroup = new SubTaskGroup("LoadBalancerStateChange", executor);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
   }
 }

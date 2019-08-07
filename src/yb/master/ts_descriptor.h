@@ -114,7 +114,7 @@ class TSDescriptor {
   TSRegistrationPB GetRegistration() const;
 
   // Returns TSInformationPB for this TSDescriptor.
-  TSInformationPB GetTSInformationPB() const;
+  const std::shared_ptr<TSInformationPB> GetTSInformationPB() const;
 
   // Helper function to tell if this TS matches the cloud information provided. For now, we have
   // no wildcard functionality, so it will have to explicitly match each individual component.
@@ -326,7 +326,7 @@ class TSDescriptor {
   // The number of tablets for which this ts is a leader.
   int leader_count_;
 
-  gscoped_ptr<TSRegistrationPB> registration_;
+  std::shared_ptr<TSInformationPB> ts_information_;
   std::string placement_id_;
 
   // The (read replica) cluster uuid to which this tserver belongs.

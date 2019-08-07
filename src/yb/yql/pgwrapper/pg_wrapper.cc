@@ -35,6 +35,7 @@ DEFINE_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API. This should eventually "
             "be set to true by default.");
 DEFINE_int32(pgsql_proxy_webserver_port, 13000, "Webserver port for PGSQL");
+DEFINE_test_flag(string, pgsql_hba_conf_file, "", "PGSQL host-based authentication file path");
 DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
 TAG_FLAG(pg_transactions_enabled, hidden);
@@ -113,6 +114,11 @@ Status PgWrapper::Start() {
   argv.push_back("-c");
   argv.push_back("yb_pg_metrics.port=" + std::to_string(FLAGS_pgsql_proxy_webserver_port));
 
+  if (!FLAGS_pgsql_hba_conf_file.empty()) {
+    argv.push_back("-c");
+    argv.push_back("hba_file=" + FLAGS_pgsql_hba_conf_file);
+  }
+
   pg_proc_.emplace(postgres_executable, argv);
   pg_proc_->ShareParentStderr();
   pg_proc_->ShareParentStdout();
@@ -141,21 +147,6 @@ Status PgWrapper::InitDb(bool yb_enabled) {
     return STATUS_FORMAT(RuntimeError, "$0 failed with exit code $1",
                          initdb_program_path,
                          exit_code);
-  }
-
-  {
-    string hba_conf_path = JoinPathSegments(conf_.data_dir, "pg_hba.conf");
-    std::ofstream hba_conf_file;
-
-    hba_conf_file.open(hba_conf_path, std::ios_base::app);
-    hba_conf_file << std::endl;
-    hba_conf_file << "host all all 0.0.0.0/0 trust" << std::endl;
-    hba_conf_file << "host all all ::0/0 trust" << std::endl;
-
-    if (!hba_conf_file) {
-      return STATUS(IOError, "Could not append additional lines to file " + hba_conf_path,
-                    ErrnoToString(errno), errno);
-    }
   }
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;

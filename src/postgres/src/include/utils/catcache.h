@@ -229,6 +229,7 @@ extern void PrepareToInvalidateCacheTuple(Relation relation,
 							  HeapTuple tuple,
 							  HeapTuple newtuple,
 							  void (*function) (int, uint32, Oid));
+extern bool RelationHasCachedLists(Relation relation);
 
 extern void PrintCatCacheLeakWarning(HeapTuple tuple);
 extern void PrintCatCacheListLeakWarning(CatCList *list);

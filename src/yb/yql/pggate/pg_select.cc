@@ -43,14 +43,14 @@ Status PgSelect::LoadIndex() {
   return Status::OK();
 }
 
-Status PgSelect::Prepare(uint64_t* read_time) {
+Status PgSelect::Prepare() {
   RETURN_NOT_OK(LoadTable());
   if (index_id_.IsValid()) {
     RETURN_NOT_OK(LoadIndex());
   }
 
   // Allocate READ/SELECT operation.
-  auto doc_op = make_shared<PgDocReadOp>(pg_session_, read_time, table_desc_->NewPgsqlSelect());
+  auto doc_op = make_shared<PgDocReadOp>(pg_session_, table_desc_->NewPgsqlSelect());
   read_req_ = doc_op->read_op()->mutable_request();
   if (index_id_.IsValid()) {
     index_req_ = read_req_->mutable_index_request();
@@ -75,7 +75,7 @@ void PgSelect::PrepareColumns() {
 
     // Select ybbasectid column from the index to fetch the rows from the base table.
     PgColumn *col;
-    CHECK_OK(FindIndexColumn(static_cast<int>(PgSystemAttrNum::kYBBaseTupleId), &col));
+    CHECK_OK(FindIndexColumn(static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId), &col));
     AllocIndexTargetPB()->set_column_id(col->id());
     col->set_read_requested(true);
 

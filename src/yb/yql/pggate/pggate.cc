@@ -434,7 +434,26 @@ Status PgApiImpl::GetColumnInfo(YBCPgTableDesc table_desc,
   return table_desc->GetColumnInfo(attr_number, is_primary, is_hash);
 }
 
-Status PgApiImpl::SetIfIsSysCatalogVersionChange(PgStatement *handle, bool *is_version_change) {
+Status PgApiImpl::DmlModifiesRow(PgStatement *handle, bool *modifies_row) {
+  if (!handle) {
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  *modifies_row = false;
+
+  switch (handle->stmt_op()) {
+    case StmtOp::STMT_UPDATE:
+    case StmtOp::STMT_DELETE:
+      *modifies_row = true;
+      break;
+    default:
+      break;
+  }
+
+  return Status::OK();
+}
+
+Status PgApiImpl::SetIsSysCatalogVersionChange(PgStatement *handle) {
   if (!handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
@@ -442,11 +461,8 @@ Status PgApiImpl::SetIfIsSysCatalogVersionChange(PgStatement *handle, bool *is_v
   switch (handle->stmt_op()) {
     case StmtOp::STMT_UPDATE:
     case StmtOp::STMT_DELETE:
-      *is_version_change = true;
-      down_cast<PgDmlWrite *>(handle)->SetIsSystemCatalogChange();
-      return Status::OK();
     case StmtOp::STMT_INSERT:
-      *is_version_change = false;
+      down_cast<PgDmlWrite *>(handle)->SetIsSystemCatalogChange();
       return Status::OK();
     default:
       break;
@@ -668,15 +684,14 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
 Status PgApiImpl::NewSelect(PgSession *pg_session,
                             const PgObjectId& table_id,
                             const PgObjectId& index_id,
-                            PgStatement **handle,
-                            uint64_t* read_time) {
+                            PgStatement **handle) {
   DCHECK(pg_session) << "Invalid session handle";
   *handle = nullptr;
   auto stmt = make_scoped_refptr<PgSelect>(pg_session, table_id);
   if (index_id.IsValid()) {
     stmt->UseIndex(index_id);
   }
-  RETURN_NOT_OK(stmt->Prepare(read_time));
+  RETURN_NOT_OK(stmt->Prepare());
   *handle = stmt.detach();
   return Status::OK();
 }

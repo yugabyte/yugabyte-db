@@ -618,19 +618,14 @@ class DBImpl : public DB {
   Result<FileNumbersHolder> BackgroundFlush(
       bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, ColumnFamilyData* cfd);
 
-  // Yugabyte: This updates the stats object to show
-  // total SST file size ticker.
-  // This is different from HandleTotalSSTFileSizes since the later
-  // looks into the version set and not necessarily computes
-  // all the live file sizes.
+  uint64_t GetCurrentVersionSstFilesSize() override;
 
-  uint64_t GetTotalSSTFileSize() override;
+  uint64_t GetCurrentVersionSstFilesUncompressedSize() override;
 
+  uint64_t GetCurrentVersionDataSstFilesSize() override;
+
+  // Updates stats_ object with SST files size metrics.
   void SetSSTFileSizeTickers();
-
-  uint64_t GetUncompressedSSTFileSize() override;
-
-  uint64_t GetDataSSTFileSize() override;
 
   void PrintStatistics();
 

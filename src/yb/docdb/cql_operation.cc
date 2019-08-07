@@ -639,6 +639,7 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
   const SubDocument& sub_doc =
       SubDocument::FromQLValuePB(expr_result.value(), column.sorting_type(), write_instr);
   switch (write_instr) {
+    case TSOpcode::kToJson: FALLTHROUGH_INTENDED;
     case TSOpcode::kScalarInsert:
           RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
               sub_path, sub_doc, data.read_time, data.deadline,
@@ -1321,12 +1322,14 @@ Status QLReadOperation::GetIntents(const Schema& schema, KeyValueWriteBatchPB* o
   return Status::OK();
 }
 
-Status QLReadOperation::PopulateResultSet(const QLTableRow& table_row, QLResultSet *resultset) {
+Status QLReadOperation::PopulateResultSet(const std::unique_ptr<common::QLScanSpec>& spec,
+                                          const QLTableRow& table_row,
+                                          QLResultSet *resultset) {
   resultset->AllocateRow();
   int rscol_index = 0;
   for (const QLExpressionPB& expr : request_.selected_exprs()) {
     QLValue value;
-    RETURN_NOT_OK(EvalExpr(expr, table_row, &value));
+    RETURN_NOT_OK(EvalExpr(expr, table_row, &value, spec->schema()));
     resultset->AppendColumn(rscol_index, value);
     rscol_index++;
   }
@@ -1373,7 +1376,7 @@ Status QLReadOperation::AddRowToResult(const std::unique_ptr<common::QLScanSpec>
         if (request_.is_aggregate()) {
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
-          RETURN_NOT_OK(PopulateResultSet(row, resultset));
+          RETURN_NOT_OK(PopulateResultSet(spec, row, resultset));
         }
       } else {
         (*num_rows_skipped)++;

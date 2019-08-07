@@ -132,13 +132,15 @@ DEFINE_bool(flush_rocksdb_on_shutdown, true,
 DEFINE_double(fault_crash_after_rocksdb_flush, 0.0,
               "Fraction of time to crash right after a successful RocksDB flush in tests.");
 
-DEFINE_bool(use_compaction_thread_pool_for_flushes, false,
-            "Whether we should use compaction thread pool for flushes");
-TAG_FLAG(use_compaction_thread_pool_for_flushes, runtime);
+DEFINE_bool(use_priority_thread_pool_for_flushes, false,
+            "When true priority thread pool will be used for flushes, otherwise "
+            "Env thread pool with Priority::HIGH will be used.");
+TAG_FLAG(use_priority_thread_pool_for_flushes, runtime);
 
-DEFINE_bool(use_compaction_thread_pool_for_compactions, true,
-            "Whether we should use compaction thread pool for compactions");
-TAG_FLAG(use_compaction_thread_pool_for_compactions, runtime);
+DEFINE_bool(use_priority_thread_pool_for_compactions, true,
+            "When true priority thread pool will be used for compactions, otherwise "
+            "Env thread pool with Priority::LOW will be used.");
+TAG_FLAG(use_priority_thread_pool_for_compactions, runtime);
 
 namespace rocksdb {
 
@@ -424,8 +426,8 @@ DBImpl::~DBImpl() {
   // marker. After this we do a variant of the waiting and unschedule work
   // (to consider: moving all the waiting into CancelAllBackgroundWork(true))
   CancelAllBackgroundWork(false);
-  if (db_options_.compaction_thread_pool) {
-    db_options_.compaction_thread_pool->Remove(this);
+  if (db_options_.priority_thread_pool_for_compactions_and_flushes) {
+    db_options_.priority_thread_pool_for_compactions_and_flushes->Remove(this);
   }
   int compactions_unscheduled = env_->UnSchedule(this, Env::Priority::LOW);
   int flushes_unscheduled = env_->UnSchedule(this, Env::Priority::HIGH);
@@ -1665,7 +1667,7 @@ Result<FileNumbersHolder> DBImpl::FlushMemTableToOutputFile(
   return file_number_holder;
 }
 
-uint64_t DBImpl::GetTotalSSTFileSize() {
+uint64_t DBImpl::GetCurrentVersionSstFilesSize() {
   std::vector<rocksdb::LiveFileMetaData> file_metadata;
   GetLiveFilesMetaData(&file_metadata);
   uint64_t total_sst_file_size = 0;
@@ -1676,13 +1678,16 @@ uint64_t DBImpl::GetTotalSSTFileSize() {
 }
 
 void DBImpl::SetSSTFileSizeTickers() {
-  uint64_t total_sst_file_size = GetTotalSSTFileSize();
-  SetTickerCount(stats_, TOTAL_SST_FILE_SIZE, total_sst_file_size);
-  uint64_t uncompressed_sst_file_size = GetUncompressedSSTFileSize();
-  SetTickerCount(stats_, TOTAL_UNCOMPRESSED_SST_FILE_SIZE, uncompressed_sst_file_size);
+  if (stats_) {
+    auto sst_files_size = GetCurrentVersionSstFilesSize();
+    SetTickerCount(stats_, CURRENT_VERSION_SST_FILES_SIZE, sst_files_size);
+    auto uncompressed_sst_files_size = GetCurrentVersionSstFilesUncompressedSize();
+    SetTickerCount(
+        stats_, CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE, uncompressed_sst_files_size);
+  }
 }
 
-uint64_t DBImpl::GetUncompressedSSTFileSize() {
+uint64_t DBImpl::GetCurrentVersionSstFilesUncompressedSize() {
   std::vector<rocksdb::LiveFileMetaData> file_metadata;
   GetLiveFilesMetaData(&file_metadata);
   uint64_t total_uncompressed_file_size = 0;
@@ -1692,7 +1697,7 @@ uint64_t DBImpl::GetUncompressedSSTFileSize() {
   return total_uncompressed_file_size;
 }
 
-uint64_t DBImpl::GetDataSSTFileSize() {
+uint64_t DBImpl::GetCurrentVersionDataSstFilesSize() {
   std::vector<rocksdb::LiveFileMetaData> file_metadata;
   GetLiveFilesMetaData(&file_metadata);
   uint64_t data_sst_file_size = 0;
@@ -1710,47 +1715,47 @@ void DBImpl::NotifyOnFlushCompleted(ColumnFamilyData* cfd,
                                     const MutableCFOptions& mutable_cf_options,
                                     int job_id, TableProperties prop) {
 #ifndef ROCKSDB_LITE
-  if (db_options_.listeners.size() == 0U) {
-    return;
-  }
   mutex_.AssertHeld();
   if (shutting_down_.load(std::memory_order_acquire)) {
     return;
   }
-  bool triggered_writes_slowdown =
-      (cfd->current()->storage_info()->NumLevelFiles(0) >=
-       mutable_cf_options.level0_slowdown_writes_trigger);
-  bool triggered_writes_stop =
-      (cfd->current()->storage_info()->NumLevelFiles(0) >=
-       mutable_cf_options.level0_stop_writes_trigger);
-
-  if (triggered_writes_stop) {
-    TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteStop");
-  } else if (triggered_writes_slowdown) {
-    TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteSlowdown");
-  }
-
-  // release lock while notifying events
-  mutex_.Unlock();
-  {
-    FlushJobInfo info;
-    info.cf_name = cfd->GetName();
-    // TODO(yhchiang): make db_paths dynamic in case flush does not
-    //                 go to L0 in the future.
-    info.file_path = MakeTableFileName(db_options_.db_paths[0].path,
-                                       file_meta->fd.GetNumber());
-    info.thread_id = env_->GetThreadID();
-    info.job_id = job_id;
-    info.triggered_writes_slowdown = triggered_writes_slowdown;
-    info.triggered_writes_stop = triggered_writes_stop;
-    info.smallest_seqno = file_meta->smallest.seqno;
-    info.largest_seqno = file_meta->largest.seqno;
-    info.table_properties = prop;
-    for (auto listener : db_options_.listeners) {
-      listener->OnFlushCompleted(this, info);
+  if (db_options_.listeners.size() > 0) {
+    bool triggered_writes_slowdown =
+        (cfd->current()->storage_info()->NumLevelFiles(0) >=
+         mutable_cf_options.level0_slowdown_writes_trigger);
+    bool triggered_writes_stop =
+        (cfd->current()->storage_info()->NumLevelFiles(0) >=
+         mutable_cf_options.level0_stop_writes_trigger);
+    if (triggered_writes_stop) {
+      TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteStop");
+    } else if (triggered_writes_slowdown) {
+      TEST_SYNC_POINT("DBImpl::NotifyOnFlushCompleted::TriggeredWriteSlowdown");
     }
-    SetSSTFileSizeTickers();
+
+    // release lock while notifying events
+    mutex_.Unlock();
+    {
+      FlushJobInfo info;
+      info.cf_name = cfd->GetName();
+      // TODO(yhchiang): make db_paths dynamic in case flush does not
+      //                 go to L0 in the future.
+      info.file_path = MakeTableFileName(db_options_.db_paths[0].path,
+                                         file_meta->fd.GetNumber());
+      info.thread_id = env_->GetThreadID();
+      info.job_id = job_id;
+      info.triggered_writes_slowdown = triggered_writes_slowdown;
+      info.triggered_writes_stop = triggered_writes_stop;
+      info.smallest_seqno = file_meta->smallest.seqno;
+      info.largest_seqno = file_meta->largest.seqno;
+      info.table_properties = prop;
+      for (auto listener : db_options_.listeners) {
+        listener->OnFlushCompleted(this, info);
+      }
+    }
+  } else {
+    mutex_.Unlock();
   }
+  SetSSTFileSizeTickers();
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
   // flush process.
@@ -2115,9 +2120,6 @@ void DBImpl::NotifyOnCompactionCompleted(
     const CompactionJobStats& compaction_job_stats,
     const int job_id) {
 #ifndef ROCKSDB_LITE
-  if (db_options_.listeners.size() == 0U) {
-    return;
-  }
   mutex_.AssertHeld();
   if (shutting_down_.load(std::memory_order_acquire)) {
     return;
@@ -2125,7 +2127,7 @@ void DBImpl::NotifyOnCompactionCompleted(
   VersionPtr current = cfd->current();
   // release lock while notifying events
   mutex_.Unlock();
-  {
+  if (db_options_.listeners.size() > 0) {
     CompactionJobInfo info;
     info.cf_name = cfd->GetName();
     info.status = st;
@@ -2159,8 +2161,8 @@ void DBImpl::NotifyOnCompactionCompleted(
     for (auto listener : db_options_.listeners) {
       listener->OnCompactionCompleted(this, info);
     }
-    SetSSTFileSizeTickers();
   }
+  SetSSTFileSizeTickers();
   mutex_.Lock();
   // no need to signal bg_cv_ as it will be signaled at the end of the
   // flush process.
@@ -2574,7 +2576,8 @@ class DBImpl::FlushTask : public ThreadPoolTask {
 };
 
 void DBImpl::SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task) {
-  auto submit_result = db_options_.compaction_thread_pool->Submit(std::move(task));
+  auto submit_result = db_options_.priority_thread_pool_for_compactions_and_flushes->Submit(
+      std::move(task));
   if (submit_result) {
     down_cast<ThreadPoolTask*>(submit_result.get())->AbortedUnlocked();
   }
@@ -2696,7 +2699,8 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
       }
       manual_compaction.incomplete = false;
       bg_compaction_scheduled_++;
-      if (db_options_.compaction_thread_pool && FLAGS_use_compaction_thread_pool_for_compactions) {
+      if (db_options_.priority_thread_pool_for_compactions_and_flushes &&
+          FLAGS_use_priority_thread_pool_for_compactions) {
         SubmitCompactionOrFlushTask(std::make_unique<CompactionTask>(this, &manual_compaction));
       } else {
         ca = new CompactionArg;
@@ -2892,7 +2896,8 @@ bool DBImpl::AddToCompactionQueue(ColumnFamilyData* cfd) {
     c = cfd->PickCompaction(*cfd->GetLatestMutableCFOptions(), &log_buffer);
     if (c) {
       cfd->Ref();
-      if (db_options_.compaction_thread_pool && FLAGS_use_compaction_thread_pool_for_compactions) {
+      if (db_options_.priority_thread_pool_for_compactions_and_flushes &&
+          FLAGS_use_priority_thread_pool_for_compactions) {
         ++bg_compaction_scheduled_;
         SubmitCompactionOrFlushTask(std::make_unique<CompactionTask>(this, std::move(c)));
         // True means that we need to schedule one more compaction, since it is already scheduled
@@ -2944,7 +2949,8 @@ void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd) {
     for (auto listener : db_options_.listeners) {
       listener->OnFlushScheduled(this);
     }
-    if (db_options_.compaction_thread_pool && FLAGS_use_compaction_thread_pool_for_flushes) {
+    if (db_options_.priority_thread_pool_for_compactions_and_flushes &&
+        FLAGS_use_priority_thread_pool_for_flushes) {
       ++bg_flush_scheduled_;
       cfd->Ref();
       cfd->set_pending_flush(true);

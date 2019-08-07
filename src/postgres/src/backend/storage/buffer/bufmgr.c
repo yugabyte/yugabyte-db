@@ -598,7 +598,7 @@ ReadBuffer(Relation reln, BlockNumber blockNum)
 }
 
 /* Only here for sequence support */
-extern HeapTuple ReadSequenceTuple(Relation seqrel, bool check_permissions);
+extern HeapTuple YBReadSequenceTuple(Relation seqrel);
 
 /*
  * ReadBufferExtended -- returns a buffer containing the requested
@@ -663,12 +663,12 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
 	/* Special handling for sequences */
   if (RelationGetForm(reln)->relkind == RELKIND_SEQUENCE)
   {
+    /* Get a sequence tuple */
+    HeapTuple seqtuple = YBReadSequenceTuple(reln);
+
     /* Create an empty buffer to initialize with the sequence data */
     buf = ReadBuffer_common(reln->rd_smgr, reln->rd_rel->relpersistence,
                             forkNum, blockNum, RBM_ZERO_AND_LOCK, strategy, &hit);
-
-    /* Get a sequence tuple */
-    HeapTuple seqtuple = ReadSequenceTuple(reln, true);
 
     /* Insert onto the page */
     Page dp = BufferGetPage(buf);

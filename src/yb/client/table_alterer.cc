@@ -59,6 +59,11 @@ YBTableAlterer* YBTableAlterer::SetTableProperties(const TableProperties& table_
   return this;
 }
 
+YBTableAlterer* YBTableAlterer::SetWalRetentionSecs(const uint32_t wal_retention_secs) {
+  wal_retention_secs_ = wal_retention_secs;
+  return this;
+}
+
 YBTableAlterer* YBTableAlterer::timeout(const MonoDelta& timeout) {
   timeout_ = timeout;
   return this;
@@ -92,7 +97,7 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
     return status_;
   }
 
-  if (!rename_to_.is_initialized() && steps_.empty() && !table_properties_.is_initialized()) {
+  if (!rename_to_ && steps_.empty() && !table_properties_ && !wal_retention_secs_) {
     return STATUS(InvalidArgument, "No alter steps provided");
   }
 
@@ -158,6 +163,10 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
 
   if (table_properties_.is_initialized()) {
     table_properties_->ToTablePropertiesPB(req->mutable_alter_properties());
+  }
+
+  if (wal_retention_secs_) {
+    req->set_wal_retention_secs(*wal_retention_secs_);
   }
 
   return Status::OK();

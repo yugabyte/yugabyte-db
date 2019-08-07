@@ -39,9 +39,7 @@ class PgDocOp {
   typedef scoped_refptr<PgDocOp> ScopedRefPtr;
 
   // Constructors & Destructors.
-  // read_time points to place where read_time for whole postgres statement is stored.
-  // It is available while statement is executed.
-  explicit PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time);
+  explicit PgDocOp(PgSession::ScopedRefPtr pg_session);
   virtual ~PgDocOp();
 
   // Set execution control parameters.
@@ -79,7 +77,9 @@ class PgDocOp {
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
 
-  uint64_t* const read_time_;
+  // Operation time. This time is set at the start and must stay the same for the lifetime of the
+  // operation to ensure that it is operating on one snapshot.
+  uint64_t read_time_ = 0;
 
   // This mutex protects the fields below.
   mutable std::mutex mtx_;
@@ -121,8 +121,7 @@ class PgDocReadOp : public PgDocOp {
   typedef scoped_refptr<PgDocReadOp> ScopedRefPtr;
 
   // Constructors & Destructors.
-  PgDocReadOp(
-      PgSession::ScopedRefPtr pg_session, uint64_t* read_time, client::YBPgsqlReadOp *read_op);
+  PgDocReadOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlReadOp *read_op);
   virtual ~PgDocReadOp();
 
   // Access function.

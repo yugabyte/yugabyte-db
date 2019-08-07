@@ -53,8 +53,8 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
   // SELECT: Empty Table ---------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from empty table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
-                                  nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -142,8 +142,8 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from partitioned table WITH specifying RANGE column";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
-                                  nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
@@ -215,8 +215,8 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from partitioned table WITHOUT specifying RANGE column";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
-                                  nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
+                                  &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);

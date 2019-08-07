@@ -86,6 +86,9 @@ struct TableInfo {
   // make sure this vector doesn't grow too large.
   std::vector<DeletedColumn> deleted_cols;
 
+  // We use the retention time from the primary table.
+  uint32_t wal_retention_secs = 0;
+
   TableInfo() = default;
   TableInfo(std::string table_id,
             std::string table_name,
@@ -303,6 +306,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata> {
   std::string upper_bound_key() const { return kv_store_.upper_bound_key; }
 
   std::string wal_dir() const { return wal_dir_; }
+
+  // Set the WAL retention time for the primary table.
+  void set_wal_retention_secs(uint32 wal_retention_secs);
+
+  // Returns the wal retention time for the primary table.
+  uint32_t wal_retention_secs() const;
 
   // Returns the data root dir for this Raft group, for example:
   // /mnt/d0/yb-data/tserver/data

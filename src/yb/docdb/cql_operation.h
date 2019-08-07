@@ -191,7 +191,9 @@ class QLReadOperation : public DocExprExecutor {
                          QLResultSet* result_set,
                          HybridTime* restart_read_ht);
 
-  CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row, QLResultSet *result_set);
+  CHECKED_STATUS PopulateResultSet(const std::unique_ptr<common::QLScanSpec>& spec,
+                                   const QLTableRow& table_row,
+                                   QLResultSet *result_set);
 
   CHECKED_STATUS EvalAggregate(const QLTableRow& table_row);
   CHECKED_STATUS PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset);

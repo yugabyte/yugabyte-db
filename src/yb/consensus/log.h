@@ -216,8 +216,6 @@ class Log : public RefCountedThreadSafe<Log> {
     return active_segment_.get();
   }
 
-
-
   // Forces the Log to allocate a new segment and roll over.  This can be used to make sure all
   // entries appended up to this point are available in closed, readable segments.
   CHECKED_STATUS AllocateSegmentAndRollOver();
@@ -234,6 +232,10 @@ class Log : public RefCountedThreadSafe<Log> {
   //
   // This method is thread-safe.
   void SetSchemaForNextLogSegment(const Schema& schema, uint32_t version);
+
+  void set_wal_retention_secs(uint32_t wal_retention_secs);
+
+  uint32_t wal_retention_secs() const;
 
   // Waits until specified op id is added to log.
   // Returns current op id after waiting, which could be greater than or equal to specified op id.
@@ -469,6 +471,8 @@ class Log : public RefCountedThreadSafe<Log> {
   bool all_op_ids_safe_ = false;
 
   const std::string log_prefix_;
+
+  std::atomic<uint32_t> wal_retention_secs_{0};
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

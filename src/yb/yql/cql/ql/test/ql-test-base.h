@@ -64,11 +64,14 @@ namespace ql {
     EXPECT_TRUE(s.ok());                       \
   } while (false)
 
-#define EXEC_INVALID_STMT(stmt)                \
-  do {                                         \
-    Status s = processor->Run(stmt);           \
-    EXPECT_FALSE(s.ok());                      \
+#define EXEC_INVALID_STMT_WITH_ERROR(stmt, err_msg)           \
+  do {                                                        \
+    Status s = processor->Run(stmt);                          \
+    EXPECT_FALSE(s.ok());                                     \
+    EXPECT_FALSE(s.ToString().find(err_msg) == string::npos); \
   } while (false)
+
+#define EXEC_INVALID_STMT(stmt) EXEC_INVALID_STMT_WITH_ERROR(stmt, "")
 
 #define CHECK_VALID_STMT(stmt)                 \
   do {                                         \

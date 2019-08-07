@@ -653,14 +653,10 @@ TEST_F(BfqlTest, TestBuiltinToJson) {
   param.add_list_elem()->set_int32_value(456);
   check_tojson(param, "[123,456]");
 
-  // FROZEN is not supported.
-  // https://github.com/YugaByte/yugabyte-db/issues/1675
-  // Uncomment the following block if FROZEN is supported.
-/*
+  // Test FROZEN<SET> or FROZEN<LIST>.
   param.add_frozen_elem()->set_int32_value(789);
   param.add_frozen_elem()->set_int32_value(123);
   check_tojson(param, "[789,123]");
-*/
 }
 
 } // namespace bfql

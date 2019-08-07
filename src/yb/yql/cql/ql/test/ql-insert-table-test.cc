@@ -13,8 +13,10 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/table_properties_constants.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+
+#include "yb/common/jsonb.h"
+#include "yb/common/table_properties_constants.h"
 
 namespace yb {
 namespace ql {
@@ -124,6 +126,161 @@ TEST_F(TestQLInsertTable, TestQLInsertTableSimple) {
   // Because string and numeric datatypes are implicitly compatible, we cannot test datatype
   // mismatch yet. Once timestamp, boolean, ... types are introduced, type incompability should be
   // tested here also.
+}
+
+TEST_F(TestQLInsertTable, TestQLInsertCast) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  std::shared_ptr<QLRowBlock> row_block;
+  LOG(INFO) << "Test inserting with cast(... as text) built-in.";
+
+  // Create table.
+  CHECK_VALID_STMT("CREATE TABLE test_cast (h int PRIMARY KEY, t text)");
+
+  // Test simple insert.
+  CHECK_VALID_STMT("INSERT INTO test_cast (h, t) values (1, 'a')");
+  CHECK_VALID_STMT("SELECT * FROM test_cast");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(1, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("a", row_block->row(0).column(1).string_value());
+
+  // Test various insert vi cast() built-in.
+  // cast(FLOAT as TEXT)
+  CHECK_VALID_STMT("INSERT INTO test_cast (h, t) values (3, cast(1234.5 as text))");
+  CHECK_VALID_STMT("SELECT * FROM test_cast where h = 3");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(3, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("1234.5", row_block->row(0).column(1).string_value());
+  // cast(TEXT as TEXT)
+  CHECK_VALID_STMT("INSERT INTO test_cast (h, t) values (4, cast('ABC' as text))");
+  CHECK_VALID_STMT("SELECT * FROM test_cast where h = 4");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(4, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("ABC", row_block->row(0).column(1).string_value());
+  // cast(TEXT as TEXT) where the string is a list in string.
+  CHECK_VALID_STMT("INSERT INTO test_cast (h, t) values (5, cast('[1, 2]' as text))");
+  CHECK_VALID_STMT("SELECT * FROM test_cast where h = 5");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(5, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("[1, 2]", row_block->row(0).column(1).string_value());
+
+  // cast(INT as TEXT)
+  EXEC_INVALID_STMT_WITH_ERROR("INSERT INTO test_cast (h, t) values (2, cast(22 as text))",
+      "Execution Error. Cannot convert varint to text");
+/*
+  TOFIX: https://github.com/YugaByte/yugabyte-db/issues/1944
+         Uncomment the block when the issue is fixed.
+
+  // cast(LIST as TEXT)
+  EXEC_INVALID_STMT_WITH_ERROR("INSERT INTO test_cast (h, t) values (7, cast([1, 2] as text))",
+      "Query error", "Cannot convert list to text");
+  // cast(SET as TEXT)
+  EXEC_INVALID_STMT_WITH_ERROR("INSERT INTO test_cast (h, t) values (7, cast({1, 2} as text))",
+      "Query error", "Cannot convert set to text");
+  // cast(MAP as TEXT)
+  EXEC_INVALID_STMT_WITH_ERROR(
+      "INSERT INTO test_cast (h, t) values (7, cast({1:11, 2:22} as text))",
+      "Query error", "Cannot convert map to text");
+*/
+}
+
+TEST_F(TestQLInsertTable, TestQLInsertToJson) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  std::shared_ptr<QLRowBlock> row_block;
+  LOG(INFO) << "Test inserting with ToJson() built-in.";
+
+  auto to_json_str = [](const QLValue& value) -> string {
+    common::Jsonb jsonb(value.jsonb_value());
+    string str;
+    CHECK_OK(jsonb.ToJsonString(&str));
+    return str;
+  };
+
+  // Create table with JSONB.
+  CHECK_VALID_STMT("CREATE TABLE test_json (h int PRIMARY KEY, j jsonb)");
+
+  // Test simple JSON insert.
+  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (1, '{\"a\":123}')");
+  CHECK_VALID_STMT("SELECT * FROM test_json");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(1, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("{\"a\":123}", to_json_str(row_block->row(0).column(1)));
+
+  // Test various insert vi ToJson() built-in.
+  // ToJson(INT)
+  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (2, ToJson(22))");
+  CHECK_VALID_STMT("SELECT * FROM test_json where h = 2");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(2, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("22", to_json_str(row_block->row(0).column(1)));
+  // ToJson(FLOAT)
+  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (3, ToJson(1234.5))");
+  CHECK_VALID_STMT("SELECT * FROM test_json where h = 3");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(3, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("1234.5", to_json_str(row_block->row(0).column(1)));
+  // ToJson(TEXT)
+  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (4, ToJson('ABC'))");
+  CHECK_VALID_STMT("SELECT * FROM test_json where h = 4");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(4, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("\"ABC\"", to_json_str(row_block->row(0).column(1)));
+  // ToJson(TEXT) where the string is a list in string.
+  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (5, ToJson('[1, 2]'))");
+  CHECK_VALID_STMT("SELECT * FROM test_json where h = 5");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(5, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("\"[1, 2]\"", to_json_str(row_block->row(0).column(1)));
+  // ToJson(TEXT) where the string is a set in string.
+  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (6, ToJson('{1, 2}'))");
+  CHECK_VALID_STMT("SELECT * FROM test_json where h = 6");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(6, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("\"{1, 2}\"", to_json_str(row_block->row(0).column(1)));
+
+/*
+  TOFIX: https://github.com/YugaByte/yugabyte-db/issues/1944
+         Uncomment the block when the issue is fixed.
+
+  // ToJson(LIST)
+  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (7, ToJson([1, 2]))");
+  CHECK_VALID_STMT("SELECT * FROM test_json where h = 7");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(7, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("[1,2]", to_json_str(row_block->row(0).column(1)));
+  // ToJson(SET)
+  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (8, ToJson({3, 4}))");
+  CHECK_VALID_STMT("SELECT * FROM test_json where h = 8");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(8, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("[3,4]", to_json_str(row_block->row(0).column(1)));
+  // ToJson(MAP)
+  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (9, ToJson({5:55, 6:66}))");
+  CHECK_VALID_STMT("SELECT * FROM test_json where h = 9");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(9, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("{\"5\":55,\"6\":66}", to_json_str(row_block->row(0).column(1)));
+*/
 }
 
 } // namespace ql

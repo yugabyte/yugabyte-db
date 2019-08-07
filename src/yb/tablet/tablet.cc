@@ -1515,6 +1515,19 @@ Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   return metadata_->Flush();
 }
 
+Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperationState* operation_state) {
+  if (operation_state->has_wal_retention_secs()) {
+    LOG_WITH_PREFIX(INFO) << "Altering metadata wal_retention_secs from "
+                          << metadata_->wal_retention_secs()
+                          << " to " << operation_state->wal_retention_secs();
+    metadata_->set_wal_retention_secs(operation_state->wal_retention_secs());
+    // Flush the updated schema metadata to disk.
+    return metadata_->Flush();
+  }
+  return STATUS_SUBSTITUTE(InvalidArgument, "Invalid ChangeMetadataOperationState: $0",
+      operation_state->ToString());
+}
+
 ScopedPendingOperationPause Tablet::PauseReadWriteOperations() {
   LOG_SLOW_EXECUTION(WARNING, 1000,
                      Substitute("Tablet $0: Waiting for pending ops to complete", tablet_id())) {
@@ -2018,7 +2031,7 @@ size_t Tablet::TEST_CountRegularDBRecords() {
   return result;
 }
 
-uint64_t Tablet::GetTotalSSTFileSizes() const {
+uint64_t Tablet::GetCurrentVersionSstFilesSize() const {
   ScopedPendingOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
@@ -2027,10 +2040,10 @@ uint64_t Tablet::GetTotalSSTFileSizes() const {
   if (!pending_op_counter_.IsReady() || !regular_db_) {
     return 0;
   }
-  return regular_db_->GetTotalSSTFileSize();
+  return regular_db_->GetCurrentVersionSstFilesSize();
 }
 
-uint64_t Tablet::GetUncompressedSSTFileSizes() const {
+uint64_t Tablet::GetCurrentVersionSstFilesUncompressedSize() const {
   ScopedPendingOperation scoped_operation(&pending_op_counter_);
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
@@ -2039,7 +2052,7 @@ uint64_t Tablet::GetUncompressedSSTFileSizes() const {
   if (!pending_op_counter_.IsReady() || !regular_db_) {
     return 0;
   }
-  return regular_db_->GetUncompressedSSTFileSize();
+  return regular_db_->GetCurrentVersionSstFilesUncompressedSize();
 }
 
 // ------------------------------------------------------------------------------------------------

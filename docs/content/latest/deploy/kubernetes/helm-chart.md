@@ -42,7 +42,7 @@ Server: &version.Version{SemVer:"v2.10.0", GitCommit:"...", GitTreeState:"clean"
 
 ## Create Cluster
 
-### Create Service Account
+### Create service account
 
 For creating the cluster, you need to have a service account with cluster-admin privilege.
 
@@ -95,7 +95,7 @@ yugabytedb/yugabyte	1.3.0        	1.3.0.0-b1 	YugaByte Database is the high-perf
 
 ### Install YugaByte DB
 
-Install YugaByte DB in the Kubernetes cluster using the command below.
+Install YugaByte DB in the Kubernetes cluster using the command below. By default, this helm chart will expose only the master ui endpoint via LoadBalancer. If you need to connect external clients, see the section below.
 
 ```sh
 $ helm install yugabytedb/yugabyte --namespace yb-demo --name yb-demo --wait
@@ -204,38 +204,50 @@ REVISION  UPDATED                   STATUS    CHART           DESCRIPTION
 1         Fri Oct  5 09:04:46 2018  DEPLOYED  yugabyte-1.3.0 Install complete
 ```
 
-## Connect using the YCQL client
+## Connect using shell clients
 
-By default, YugaByte helm will expose only the master ui endpoint via LoadBalancer. If you wish to expose YCQL, YEDIS and YSQL services via LoadBalancer for your app to use, you can do that as follows.
+If you installed YugaByte DB with YSQL on, then connect using ysqlsh client as shown below.
 
 ```sh
-helm install yugabytedb/yugabyte -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo --wait
+$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/ysqlsh -- -h yb-tserver-0.yb-tservers.yb-demo
 ```
 
-To connect an external program, get the load balancer IP address of the corresponding service. The example below shows how to do this for the YCQL service.
+Connect using cqlsh client as shown below.
+
+```sh
+$ kubectl exec -n yb-demo -it yb-tserver-0 /home/yugabyte/bin/cqlsh yb-tserver-0.yb-tservers.yb-demo
+```
+
+## Connect using external clients
+
+By default YugaByte helm will expose only the master ui endpoint via LoadBalancer. If you wish to expose YSQL and YCQL services using LoadBalancer for your app to use, you can do that as follows.
+
+```sh
+helm install yugabytedb/yugabyte -f https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo --wait --set "disableYsql=true"
+```
+
+To connect an external program, get the load balancer IP address of the corresponding service. The example below shows how to do this for the YSQL and YCQL services.
 
 ```sh
 $ kubectl get services --all-namespaces
+```
+```
 NAMESPACE     NAME                   TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)               AGE
 ...
 yb-demo       yql-service            LoadBalancer   10.47.249.27    35.225.153.213   9042:30940/TCP        2m
+yb-demo       ysql-service           LoadBalancer   10.106.28.246   35.225.153.214   5433:30790/TCP        2m
 ...
 ```
 
-Any program can use the `EXTERNAL-IP` of the `yql-service` to connect to YugaByte DB via YCQL API.
+Any program can use the `EXTERNAL-IP` of the `ysql-service` and `yql-service` to connect to the YSQL and YCQL APIs respectively.
 
-You can connect to this cluster with `cqlsh` as follows:
-
-```sh
-$ cqlsh 35.225.153.213
-```
 
 ## Upgrade the cluster
 
 You can perform rolling upgrades on the YugaByte DB cluster with the following command. Change the `Image.tag` value to any valid tag from [YugaByte DB's listing on the Docker Hub registry](https://hub.docker.com/r/yugabytedb/yugabyte/tags/). By default, the `latest` Docker image is used for the install.
 
 ```sh
-$ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=1.1.0.3-b6 --wait
+$ helm upgrade yb-demo yugabytedb/yugabyte --set Image.tag=1.3.1.0-b16 --wait
 ```
 
 ## Delete the cluster

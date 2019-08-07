@@ -248,6 +248,10 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 		{
 			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
 		}
+		if (ybScan->tableOid != InvalidOid)
+		{
+			tuple->t_tableOid = ybScan->tableOid;
+		}
 	}
 	pfree(values);
 	pfree(nulls);
@@ -453,6 +457,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 	ybScan->key   = key;
 	ybScan->nkeys = nkeys;
 	ybScan->exec_params = NULL;
+	ybScan->tableOid = RelationGetRelid(relation);
 
 	/* Setup up the scan plan */
 	YbScanPlanData	scan_plan;
@@ -502,8 +507,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 	bool	useIndex = (index && !index->rd_index->indisprimary);
 	Oid		index_id = useIndex ? RelationGetRelid(index) : InvalidOid;
 
-	HandleYBStatus(YBCPgNewSelect(ybc_pg_session, dboid, relid, index_id, &ybScan->handle,
-								  NULL /* read_time */));
+	HandleYBStatus(YBCPgNewSelect(ybc_pg_session, dboid, relid, index_id, &ybScan->handle));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybScan->handle);
 	ybScan->stmt_owner = CurrentResourceOwner;
@@ -656,7 +660,7 @@ ybcBeginScan(Relation relation, Relation index, bool index_cols_only, int nkeys,
 	 * include ybctid column also for building indexes.
 	 */
 	if (relation->rd_index)
-		ybcAddTargetColumn(ybScan, YBBaseTupleIdAttributeNumber);
+		ybcAddTargetColumn(ybScan, YBIdxBaseTupleIdAttributeNumber);
 	else
 		ybcAddTargetColumn(ybScan, YBTupleIdAttributeNumber);
 
@@ -1129,8 +1133,7 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 								  YBCGetDatabaseOid(relation),
 								  RelationGetRelid(relation),
 								  InvalidOid,
-								  &ybc_stmt,
-								  NULL /* read_time */));
+								  &ybc_stmt));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt,
@@ -1196,6 +1199,7 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 		{
 			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
 		}
+		tuple->t_tableOid = RelationGetRelid(relation);
 	}
 	pfree(values);
 	pfree(nulls);
