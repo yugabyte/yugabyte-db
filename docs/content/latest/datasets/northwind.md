@@ -23,14 +23,14 @@ To use the Northwind sample database, you must have installed and configured Yug
 
 ## Download and install the Northwind database
 
-### Download the files
+### 1. Download the files
 
 You can download the Northwind database that is compatible with YugaByte DB from our GitHub repo. Here’s the two files you’ll need:
 
 [northwind_ddl.sql](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/sample/northwind_ddl.sql) which creates tables and other database objects
 [northwind_data.sql](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/sample/northwind_data.sql) which loads the sample data into Northwind
 
-### Open the YSQL shell
+### 2. Open the YSQL shell
 
 To open the YSQL shell, run the `ysqlsh` command.
 
@@ -40,7 +40,7 @@ Type "help" for help.
 postgres=#
 ```
 
-### Create the database
+### 3. Create the Northwind database
 
 To create the `northwind` database, run the following CREATE DATABASE command.
 
@@ -54,7 +54,7 @@ Confirm that you have the Northwind database by listing out the databases on you
 postgres=# \l
 ```
 
-Switch to the Northwind database.
+Connect to the Northwind database.
 
 ```
 postgres=# \c northwind
@@ -62,14 +62,15 @@ You are now connected to database "northwind" as user "postgres".
 northwind=# 
 ```
 
-### Build the tables and objects
+### 4. Build the tables and objects
 
-To build the tables and database objects, run the following command.
+To build the tables and database objects, execute the `northwind_ddl.sql` SQL script.
 
 ```
 northwind=# \i /Users/yugabyte/northwind_ddl.sql
 ```
-You can verify that all 14 tables have been created by executing:
+
+You can verify that all 14 tables have been created by running the `\d` command.
 
 ```
 northwind=# \d
@@ -110,7 +111,7 @@ The dataset contains the following:
 
 That’s it! You are now ready to start exploring the Northwind database and YugaByte DB features using the command line or your favorite PostgreSQL development or administration tool.
 
-## What to do next
+## What's next
 
 - Compare YugaByte DB in depth to databases like CockroachDB, Google Cloud Spanner and MongoDB.
 - Get started with YugaByte DB on macOS, Linux, Docker, and Kubernetes.
