@@ -1,7 +1,7 @@
 ---
 title: 8. Strings and text
 linkTitle: 8. Strings and text
-description: Learn to work with strings and text in YugaByte DB.
+description: Work with strings and text
 aliases:
   - /develop/learn/strings-and-text/
 menu:
@@ -9,23 +9,27 @@ menu:
     identifier: strings-and-text
     parent: learn
     weight: 570
+isTocNested: true
+showAsideToc: true
 ---
 
 ## Introduction
 
-Strings, character data types, or text. What you want to call it is up to you. Manipulating and outputting text is a very important topic that will be required for many different types of systems that you work with. The YugaByte SQL API offers extensive text capability that we will demonstrate here.
+Strings, character data types, or text. What you want to call it is up to you. Manipulating and outputting text is a very important topic that will be required for many different types of systems that you work with. The YugaByte SQL API offers extensive text capability that will be demonstrated here.
 
 ## About character data types
 
 ### Character data types
 
-For character data types, see [Data types](/latest/api/ysql/datatypes/). Note that YugaByte implements the data type aliases, and that is what is used here.
+For character data types, see [Data types](/latest/api/ysql/datatypes/). Note that YugaByte implements the data type aliases and that is what is used here.
 
-With PostgreSQL the use of different character data types has a historical aspect to it — whereas with YugaByte being a recent implementation, no such history exists. Therefore, you should consider keeping your use of character data types simple, ideally just 'text' or 'varchar(n)' if you require a restricted length. Its a personal choice, but using text and then verifying the length of a character string will allow you to build your own behaviour in treating that scenario rather than encountering errors by exceeding an arbitrary length.
+With PostgreSQL, the use of different character data types has a historical aspect. YugaByte DB — being a more recent implementation — has no such history. Consider keeping your use of character data types simple, ideally just 'text', or 'varchar(n)' if you require a restricted length. Although it's your choice, using text and then verifying the length of a character string will allow you to develop your own approach to managing this scenario, rather than encountering errors by exceeding some arbitrary length.
 
-If you use char(n), character(n), or varchar(n), then the limitation will be the number you assign which cannot exceed 10,485,760. For unlimited length, use a character data type without a length description, such as 'text'.
+{{< note title="Note" >}}
+If you use char(n), character(n), or varchar(n), then the limitation will be the number you assign, which cannot exceed 10,485,760. For unlimited length, use a character data type without a length description, such as 'text'. However, if you have specific requirements to ignore trailing spaces, then you may wish to consider using char(n).
+{{< /note >}}
 
-However, if you have specific requirements to ignore trailing spaces, then you may wish to consider using char(n). Below is an example of working with the different data types.
+The following example shows a few ways to work with the different data types.
 
 ```
 ./bin/ysqlsh
@@ -43,38 +47,38 @@ ERROR:  value too long for type character(1)
 postgres=# insert into text_columns values('abc ', 'abc ', 'a', 'abc ', 'abc ');
 INSERT 0 1
 
-postgres=# select * from text_columns 
-           where a_text like 'ab__' and a_varchar like 'ab__' 
+postgres=# select * from text_columns
+           where a_text like 'ab__' and a_varchar like 'ab__'
            and b_varchar like 'ab__';
 
- a_text | a_varchar | a_char | b_varchar |   b_char   
+ a_text | a_varchar | a_char | b_varchar |   b_char
 --------+-----------+--------+-----------+------------
- abc    | abc       | a      | abc       | abc       
+ abc    | abc       | a      | abc       | abc
 
-postgres=# select * from text_columns 
-           where a_text like 'ab__' and a_varchar like 'ab__' 
+postgres=# select * from text_columns
+           where a_text like 'ab__' and a_varchar like 'ab__'
            and b_varchar like 'ab__' and b_char like 'ab__';
 
- a_text | a_varchar | a_char | b_varchar | b_char 
+ a_text | a_varchar | a_char | b_varchar | b_char
 --------+-----------+--------+-----------+--------
 (0 rows)
 
-postgres=# select length(a_text) as a_text, length(a_varchar) as a_varchar, length(a_char) as a_char, 
-           length(b_varchar) as b_varchar, length(b_char) as b_char 
+postgres=# select length(a_text) as a_text, length(a_varchar) as a_varchar, length(a_char) as a_char,
+           length(b_varchar) as b_varchar, length(b_char) as b_char
            from text_columns;
-           
- a_text | a_varchar | a_char | b_varchar | b_char 
+
+ a_text | a_varchar | a_char | b_varchar | b_char
 --------+-----------+--------+-----------+--------
       4 |         4 |      1 |         4 |      3
 ```
 
-The example above shows that the column 'b_char' does not contain the trailing space and this could impact your SQL. Also, if you specify a maximum length on the column definition, the SQL can also error, so you will have to either manually truncate your input values or introduce error handling.
+In the example above, notice that the column `b_char` does not contain a trailing space and this could impact your SQL. And, if you specify a maximum length on the column definition, the SQL can also generate errors, so you will have to either manually truncate your input values or introduce error handling.
 
 ### Casting
 
 When you are working with text that has been entered by users through an application, ensure that YugaByte understands that it is working with a text input. All values should be cast unless they can be trusted due to other validation measures that have already occurred.
 
-Start YSQL and we can seeing the impacts of casting.
+Start YSQL and you can see the impacts of casting.
 
 ```sh
 ./bin/ysqlsh
@@ -84,27 +88,27 @@ Type "help" for help.
 
 postgres=# select cast(123 AS TEXT), cast('123' AS TEXT), 123::text, '123'::text;
 
- text | text | text | text 
+ text | text | text | text
 ------+------+------+------
  123  | 123  | 123  | 123
 
-postgres=# select tablename, hasindexes AS nocast, hasindexes::text AS casted 
+postgres=# select tablename, hasindexes AS nocast, hasindexes::text AS casted
   from pg_catalog.pg_tables
   where tablename in('pg_default_acl', 'sql_features');
   
-   tablename    | nocast | casted 
+   tablename    | nocast | casted
 ----------------+--------+--------
  pg_default_acl | t      | true
  sql_features   | f      | false
 ```
 
-In the last example above, the column 'hasindexes' is a BOOLEAN data type and by casting it to TEXT, you will receive a text result of `true` or `false`.
+In the last example above, the column 'hasindexes' is a `Boolean` data type and by casting it to `text`, you will receive a text result of `true` or `false`.
 
 ## Manipulating text
 
 There are a lot of functions that can be applied to text. Below the functions are classified into logical groupings - in many cases the capability of the functions overlap and personal choice will determine how you approach solving the problem.
 
-Rather than serve as a reference guide, here we are focused on showing how each of the functions could be used, with examples. It is assumed that you have the [`yb_demo` database](/latest/quick-start/explore-ysql/#1-load-data) installed.
+The focus here was to quickly show how each of the functions could be used, along with some examples. It is assumed that you have the [`yb_demo` database](/latest/quick-start/explore-ysql/#1-load-data) installed.
 
 ### Altering the appearance of text
 
@@ -116,51 +120,51 @@ yb_demo =# select lower('hELLO world') AS LOWER,
   upper('hELLO world') AS UPPER,
   initcap('hELLO world') AS INITCAP;
 
-    lower    |    upper    |   initcap   
+    lower    |    upper    |   initcap
 -------------+-------------+-------------
  hello world | HELLO WORLD | Hello World
 
 yb_demo =# select quote_ident('ok') AS EASY, quote_ident('I am OK') AS QUOTED, quote_ident('I''m not OK') AS DOUBLE_QUOTED, quote_ident('') AS EMPTY_STR, quote_ident(null) AS NULL_QUOTED;
 
- easy |  quoted   | double_quoted | empty_str | null_quoted 
+ easy |  quoted   | double_quoted | empty_str | null_quoted
 ------+-----------+---------------+-----------+-------------
- ok   | "I am OK" | "I'm not OK"  | ""        | 
+ ok   | "I am OK" | "I'm not OK"  | ""        |
 
 yb_demo =# select quote_literal('ok') AS EASY, quote_literal('I am OK') AS QUOTED, quote_literal('I''m not OK') AS DOUBLE_QUOTED, quote_literal('') AS EMPTY_STR, quote_literal(null) AS NULL_QUOTED;
 
- easy |  quoted   | double_quoted | empty_str | null_quoted 
+ easy |  quoted   | double_quoted | empty_str | null_quoted
 ------+-----------+---------------+-----------+-------------
- 'ok' | 'I am OK' | 'I''m not OK' | ''        | 
+ 'ok' | 'I am OK' | 'I''m not OK' | ''        |
 
 yb_demo =# select quote_nullable('ok') AS EASY, quote_nullable('I am OK') AS QUOTED, quote_nullable('I''m not OK') AS DOUBLE_QUOTED, quote_nullable('') AS EMPTY_STR, quote_nullable(null) AS NULL_QUOTED;
 
-easy |  quoted   | double_quoted | empty_str | null_quoted 
+easy |  quoted   | double_quoted | empty_str | null_quoted
 ------+-----------+---------------+-----------+-------------
  'ok' | 'I am OK' | 'I''m not OK' | ''        | NULL
 ```
 
 Use `quote_ident` to parse identifiers in SQL like column names and `quote_nullable` as a string literal that may also be a null.
 
-You can use "dollar sign quoting" to parse raw text. Any text contained within dollar sign quotations are treated as a raw literal. The starting and ending markers but be identical and must start and end with a dollar sign (`$`). See the examples below.
+You can use "dollar sign quoting" to parse raw text — any text contained within dollar sign quotations are treated as a raw literal. The starting and ending markers do not need to be identical, but must start and end with a dollar sign (`$`). See the examples below.
 
 ```
 postgres=# select $$%&*$&$%7'\67458\''""""';;'\//\/\/\""'/'''''"""""'''''''''$$;
 
-                         ?column?                          
+                         ?column?
 -----------------------------------------------------------
  %&*$&$%7'\67458\''""""';;'\//\/\/\""'/'''''"""""'''''''''
 
 postgres=# select $__unique_$           Lots of space
 postgres$#                    and multi line too       $__unique_$;
 
-                   ?column?                   
+                   ?column?
 ----------------------------------------------
             Lots of space                    +
-                    and multi line too       
+                    and multi line too
 
 postgres=# select $$first$$ AS "F1", $$second$$ AS "F2";
 
-  F1   |   F2   
+  F1   |   F2
 -------+--------
  first | second
 ```
@@ -172,27 +176,27 @@ The reverse of padding is trimming, which will remove spaces if found. Below are
 ```
 yb_demo=# select name, lpad(name, 10), rpad(name, 15) from users order by name limit 5;
 
-       name        |    lpad    |      rpad       
+       name        |    lpad    |      rpad
 -------------------+------------+-----------------
- Aaron Hand        | Aaron Hand | Aaron Hand     
+ Aaron Hand        | Aaron Hand | Aaron Hand
  Abbey Satterfield | Abbey Satt | Abbey Satterfie
- Abbie Parisian    | Abbie Pari | Abbie Parisian 
- Abbie Ryan        | Abbie Ryan | Abbie Ryan     
- Abby Larkin       | Abby Larki | Abby Larkin   
+ Abbie Parisian    | Abbie Pari | Abbie Parisian
+ Abbie Ryan        | Abbie Ryan | Abbie Ryan
+ Abby Larkin       | Abby Larki | Abby Larkin
 
 yb_demo=# select name, lpad(name, 20), rpad(name, 20) from users order by name limit 5;
 
-       name        |         lpad         |         rpad         
+       name        |         lpad         |         rpad
 -------------------+----------------------+----------------------
- Aaron Hand        |           Aaron Hand | Aaron Hand          
- Abbey Satterfield |    Abbey Satterfield | Abbey Satterfield   
- Abbie Parisian    |       Abbie Parisian | Abbie Parisian      
- Abbie Ryan        |           Abbie Ryan | Abbie Ryan          
- Abby Larkin       |          Abby Larkin | Abby Larkin         
+ Aaron Hand        |           Aaron Hand | Aaron Hand
+ Abbey Satterfield |    Abbey Satterfield | Abbey Satterfield
+ Abbie Parisian    |       Abbie Parisian | Abbie Parisian
+ Abbie Ryan        |           Abbie Ryan | Abbie Ryan
+ Abby Larkin       |          Abby Larkin | Abby Larkin
 
 yb_demo=# select name, lpad(name, 20, '. '), rpad(name, 20, '.') from users order by name limit 5;
 
-       name        |         lpad         |         rpad         
+       name        |         lpad         |         rpad
 -------------------+----------------------+----------------------
  Aaron Hand        | . . . . . Aaron Hand | Aaron Hand..........
  Abbey Satterfield | . .Abbey Satterfield | Abbey Satterfield...
@@ -204,39 +208,39 @@ yb_demo=# select repeat(' ', ((x.maxlen-length(u.name))/2)::int) || rpad(u.name,
           from users u,
           (select max(length(a.name))::int AS maxlen from users a) AS x;
 
-            cname             
+            cname
 ------------------------------
-      Stewart Marks          
-      Regan Corkery          
-    Domenic Daugherty      
-    Winfield Donnelly      
-    Theresa Kertzmann      
-    Terrence Emmerich      
-      Hudson Jacobi          
-      Aidan Hagenes          
-    Virgil Schowalter      
-      Rahul Kreiger          
-    Wilhelmine Erdman      
-      Elwin Okuneva          
+      Stewart Marks
+      Regan Corkery
+    Domenic Daugherty
+    Winfield Donnelly
+    Theresa Kertzmann
+    Terrence Emmerich
+      Hudson Jacobi
+      Aidan Hagenes
+    Virgil Schowalter
+      Rahul Kreiger
+    Wilhelmine Erdman
+      Elwin Okuneva
   Maximillian Dickinson  
-      Lucie Cormier          
+      Lucie Cormier
   Alexandrine Rosenbaum  
-    Jayne Breitenberg      
+    Jayne Breitenberg
   Alexandria Schowalter  
  Augustine Runolfsdottir
-    Mathilde Weissnat      
-      Theresa Grant          
+    Mathilde Weissnat
+      Theresa Grant
  ...
 
-yb_demo=# select x.RawDay, length(x.RawDay) AS RawLen, x.TrimDay, length(x.TrimDay) AS TrimLen, 
+yb_demo=# select x.RawDay, length(x.RawDay) AS RawLen, x.TrimDay, length(x.TrimDay) AS TrimLen,
           x.LTrimDay, length(x.LTrimDay) AS LTrimLen, x.RTrimDay, length(x.RTrimDay) AS RTrimLen
-          from (select to_char(generate_series, 'Day') AS RawDay, 
-                trim(to_char(generate_series, 'Day')) AS TrimDay, 
-                ltrim(to_char(generate_series, 'Day')) AS LTrimDay, 
+          from (select to_char(generate_series, 'Day') AS RawDay,
+                trim(to_char(generate_series, 'Day')) AS TrimDay,
+                ltrim(to_char(generate_series, 'Day')) AS LTrimDay,
                 rtrim(to_char(generate_series, 'Day')) AS RTrimDay  
                 from generate_series(current_date, current_date+6, '1 day')) AS x;
-                
-  rawday   | rawlen |  trimday  | trimlen | ltrimday  | ltrimlen | rtrimday  | rtrimlen 
+
+  rawday   | rawlen |  trimday  | trimlen | ltrimday  | ltrimlen | rtrimday  | rtrimlen
 -----------+--------+-----------+---------+-----------+----------+-----------+----------
  Wednesday |      9 | Wednesday |       9 | Wednesday |        9 | Wednesday |        9
  Thursday  |      9 | Thursday  |       8 | Thursday  |        9 | Thursday  |        8
@@ -247,55 +251,57 @@ yb_demo=# select x.RawDay, length(x.RawDay) AS RawLen, x.TrimDay, length(x.TrimD
  Tuesday   |      9 | Tuesday   |       7 | Tuesday   |        9 | Tuesday   |        7
 ```
 
-The final padding example above shows how you can centre text and the trim example shows the impacts of the different trims on a value that is padded. Note that the 'Day' value is right-padded to 9 characters which is why a left-trim has no impact upon the field length at all, only the right-trim or a 'full' trim will remove spaces.
+The final padding example above shows how you can center text and the trim example shows the impacts of the different trims on a value that is padded. Note that the 'Day' value is right-padded to 9 characters which is why a left-trim has no impact upon the field length at all, only the right-trim or a 'full' trim will remove spaces.
 
-You can also state that a text value is 'escaped' by prefixing with an 'e' or 'E', see the following example.
+You can also state that a text value is 'escaped' by prefixing with an 'e' or 'E'. Take a look at this example.
 
 ```
 postgres=# select E'I''ve told YugaByte that this is an escaped string\n\tso I can specify escapes safely' as escaped_text;
 
-                   escaped_text                    
+                   escaped_text
 ---------------------------------------------------
  I've told YugaByte that this is an escaped string+
          so I can specify escapes safely
 
 postgres=# select E'a\\b/c\u00B6' as escaped_txt, 'a\\b/c\u00B6' as raw_txt;
 
- escaped_txt |   raw_txt    
+ escaped_txt |   raw_txt
 -------------+--------------
  a\b/c¶     | a\\b/c\u00B6
 ```
 
-Note that `\n` refers to a new line, and `\t` is a tab, hence the formatted result.
+{{< note title="Note" >}}
+`\n` refers to a new line, and `\t` is a tab, hence the formatted result.
+{{< /note >}}
 
-YugaByte also has `DECODE` and `ENCODE` for decoding/encoding from/to binary data. It caters for 'base64', 'hex' and 'escape' representations. Decode will give the output in `BYTEA` data type. In addition you can use the `TO_HEX` command to an ascii number to its digital representation.
+YugaByte also has `DECODE` and `ENCODE` for decoding and encoding from, or to, binary data. It caters for 'base64', 'hex' and 'escape' representations. Decode will give the output in `BYTEA` data type. Additionally, you can use the `TO_HEX` command to convert an ascii number to its digital representation.
 
 #### Joining strings
 
-You can concatenate strings of text in several different ways. For robustness, you should ensure that everything being passed is interpreted as text (by casting) so that unexpected results do not appear in edge cases. Here are some examples that show that YugaByte is leniant in passing in variables, but you should implement more robust casting for proper treatment of strings.
+You can concatenate strings of text in several different ways. For robustness, you should ensure that everything being passed is interpreted as text (by casting) so that unexpected results do not appear in edge cases. Here are some examples that show that YugaByte DB is leniant in passing in variables, but you should implement more robust casting for proper treatment of strings.
 
 ```sh
 yb_demo=# select 'one' || '-' || 2 || '-one' AS "121";
 
-    121    
+    121
 -----------
  one-2-one
 
 yb_demo=# select 2 || '-one-one' AS "211";
 
-    211    
+    211
 -----------
  2-one-one
 
 yb_demo=# select 1 || '-one' || repeat('-two', 2) AS "1122";
 
-     1122      
+     1122
 ---------------
  1-one-two-two
 
 yb_demo=# select 1::text || 2::text || 3::text AS "123";
 
- 123 
+ 123
 -----
  123
 
@@ -308,21 +314,21 @@ HINT:  No operator matches the given name and argument types. You might need to 
 
 yb_demo=# select concat(1,2,3) AS "123";
 
- 123 
+ 123
 -----
  123
 
 yb_demo=# select concat_ws(':', 1,2,3) AS "123 WS";
 
- 123 WS 
+ 123 WS
 --------
  1:2:3
 (1 row)
 
-yb_demo =# select left(vendor,1) AS V, string_agg(distinct(category), ', ' ORDER BY category) AS CATEGORIES 
+yb_demo =# select left(vendor,1) AS V, string_agg(distinct(category), ', ' ORDER BY category) AS CATEGORIES
   from products group by left(vendor,1) order by 1;
   
- v |            categories            
+ v |            categories
 ---+----------------------------------
  A | Doohickey, Gadget, Gizmo
  B | Doohickey, Gadget, Gizmo, Widget
@@ -350,36 +356,36 @@ yb_demo =# select left(vendor,1) AS V, string_agg(distinct(category), ', ' ORDER
  Z | Gizmo
 ```
 
-In the example above, we explore the `LEFT` function below, but the `string_agg` function is best used by an input of a series or set of data as done in SQL rows. The example shows how the aggregated string has its own order by compared to the outer SQL which is the vendors being classified A-Z.
+In the example above, we explore the `LEFT` function, but the `string_agg` function is best used by an input of a series or a set of data as done in SQL rows. The example shows how the aggregated string has its own order by compared to the outer SQL which is the vendors being classified A-Z.
 
 There is also the `REVERSE` function that reverses the contents of text in a simple manner as shown in the next example.
 
 ```sh
 yb_demo=# select reverse(to_char(current_date, 'DD-MON-YYYY'));
 
-   reverse   
+   reverse
 -------------
  9102-LUJ-92
 ```
 
-The `FORMAT` function is useful for parsing in user input as parameters to a SQL statement to minimise the impact of unexpected data that is typical of a SQL injection attack. The most popular method is to use the `EXECUTE` command within a procedure as this is not available at the YSQL command prompt, only within the YSQL plpgsql environment. The `FORMAT` command is used to finalise the complete SQL statement and passed to `EXECUTE` to run. As we are not simulating YSQL plpgsql here, we will illustrate how to use the `FORMAT` function only.
+You can use the `FORMAT` function parse user input as parameters to a SQL statement in order to minimise the impact of unexpected data that is typical of a SQL injection attack. The most popular method is to use the `EXECUTE` command within a procedure as this is not available at the YSQL command prompt, only within the YSQL plpgsql environment. The `FORMAT` command is used to finalise the complete SQL statement and passed to `EXECUTE` to run. As we are not simulating YSQL plpgsql here, let's illustrate how to use the `FORMAT` function only.
 
 ```
 yb_demo=# select format('Hello %s, today''s date is %s', 'Jono', to_char(current_date, 'DD-MON-YYYY'), 'discarded');
 
-                 format                  
+                 format
 -----------------------------------------
  Hello Jono, today's date is 29-JUL-2019
 
 yb_demo=# select format('On this day, %2$s, %1$s was here', 'Jono', to_char(current_date, 'DD-MON-YYYY'));
 
-                 format                  
+                 format
 -----------------------------------------
  On this day, 29-JUL-2019, Jono was here
 
-yb_demo=# select format('SELECT %2$I, %3$I from %1$I where name = %4$L', 'users', 'birth_date', 'email', 'Brody O''Reilly'); 
+yb_demo=# select format('SELECT %2$I, %3$I from %1$I where name = %4$L', 'users', 'birth_date', 'email', 'Brody O''Reilly');
 
-                               format                               
+                               format
 --------------------------------------------------------------------
  SELECT birth_date, email from users where name = 'Brody O''Reilly'
 
@@ -400,7 +406,7 @@ yb_demo=# select trunc(avg(coalesce(discount,0))::numeric,3) AS "COALESCED", tru
 
 yb_demo=# select 'Hello ' || null AS GREETING, 'Goodbye ' || coalesce(null, 'Valued Customer') AS GOODBYE;
 
- greeting |         goodbye         
+ greeting |         goodbye
 ----------+-------------------------
           | Goodbye Valued Customer
 ```
@@ -410,7 +416,7 @@ The above shows how substituting when null can have a significant impact upon th
 ```
 yb_demo=# select overlay(password placing 'XXXXXXXXXXXXXXX' from 1 for length(password)) AS SCRAMBLED from users limit 5;
 
-    scrambled    
+    scrambled
 -----------------
  XXXXXXXXXXXXXXX
  XXXXXXXXXXXXXXX
@@ -420,19 +426,19 @@ yb_demo=# select overlay(password placing 'XXXXXXXXXXXXXXX' from 1 for length(pa
 
 yb_demo=# select regexp_replace('Hi my number is +999 9996-1234','[[:alpha:]]','','g');
 
-   regexp_replace   
+   regexp_replace
 --------------------
      +999 9996-1234
 
 yb_demo=# select 'I think I can hear an ' || repeat('echo.. ', 3) AS CLICHE;
 
-                   cliche                    
+                   cliche
 ---------------------------------------------
- I think I can hear an echo.. echo.. echo.. 
+ I think I can hear an echo.. echo.. echo..
 
 yb_demo=# select replace('Gees I love Windows', 'Windows', 'Linux') AS OBVIOUS;
 
-      obvious      
+      obvious
 -------------------
  Gees I love Linux
 ```
@@ -446,46 +452,46 @@ There are several ways of extracting text from text, in some cases it might be p
 ```
 yb_demo=# select left('123456', 3);
 
- left 
+ left
 ------
  123
 
 yb_demo=# select right('123456', 3);
 
- right 
+ right
 -------
  456
 
 yb_demo=# select substr('123456', 3);
 
- substr 
+ substr
 --------
  3456
 
 yb_demo=# select substr('123456', 3, 2);
 
- substr 
+ substr
 --------
  34
 
 yb_demo=# select substr('123456', position('4' in '123456')+1, 2);
 
- substr 
+ substr
 --------
  56
- 
+
 yb_demo=# select substring('123456', position('4' in '123456')+1, 2);
 
- substring 
+ substring
 -----------
  56
- 
+
 yb_demo=# select replace(substr(email, position('@' in email)+1, (length(email)
             -position('.' in substr(email, position('@' in email)+1)))), '.com', '') AS "Domain", count(*)
           from users
           group by 1;
 
- Domain  | count 
+ Domain  | count
 ---------+-------
  hotmail |   813
  yahoo   |   838
@@ -493,17 +499,19 @@ yb_demo=# select replace(substr(email, position('@' in email)+1, (length(email)
 
 ```
 
-Note that the command ```SUBSTRING``` has overloaded equivalents that accept POSIX expressions. The above example shows you the simple use of ```SUBSTRING``` which can also be used as ```SUBSTR```. therefore it is recommended to only use the full ```SUBSTRING``` command when using POSIX. 
+{{< note title="Note" >}}
+The command ```SUBSTRING``` has overloaded equivalents that accept POSIX expressions. The above example shows you the simple use of ```SUBSTRING``` which can also be used as ```SUBSTR```. therefore it is recommended to only use the full ```SUBSTRING``` command when using POSIX.
+{{< /note >}}
 
-As stated above for ```REGEXP_REPLACE```, the full explanation of regular expressions requires its own comprehensive documentation that is not covered here. Below is an example illustrating its use.
+As stated above for ```REGEXP_REPLACE```, the full explanation of regular expressions requires its own comprehensive documentation that is not covered here. Here is an example illustrating its use.
 
 ```
-yb_demo=# select name as Fullname, regexp_match(name, '(.*)(\s+)(.*)') AS "REGEXED Name", 
-          (regexp_match(name, '(.*)(\s+)(.*)'))[1] AS "First Name", 
-          (regexp_match(name, '(.*)(\s+)(.*)'))[3] AS "Last Name" 
+yb_demo=# select name as Fullname, regexp_match(name, '(.*)(\s+)(.*)') AS "REGEXED Name",
+          (regexp_match(name, '(.*)(\s+)(.*)'))[1] AS "First Name",
+          (regexp_match(name, '(.*)(\s+)(.*)'))[3] AS "Last Name"
           from users limit 5;
 
-    fullname    |     REGEXED Name     | First Name | Last Name 
+    fullname    |     REGEXED Name     | First Name | Last Name
 ----------------+----------------------+------------+-----------
  Jacinthe Rowe  | {Jacinthe," ",Rowe}  | Jacinthe   | Rowe
  Walter Mueller | {Walter," ",Mueller} | Walter     | Mueller
@@ -512,9 +520,11 @@ yb_demo=# select name as Fullname, regexp_match(name, '(.*)(\s+)(.*)') AS "REGEX
  Mellie Wolf    | {Mellie," ",Wolf}    | Mellie     | Wolf
 ```
 
-Note that in the above example, we are asking the 'name' column to be segmented by the existence of a space (`\s`) and then reporting the first and third set of text reported by the match. The regular expression returns a text array, not a text value, and thus we have to reference the array index to access the value as text. Note that this SQL would be very vulnerable to errors caused by data entry, including a middle name or missing either a first or last name would cause errors.
+{{< note title="Note" >}}
+In the example abov, we are asking the 'name' column to be segmented by the existence of a space (`\s`) and then reporting the first and third set of text reported by the match. The regular expression returns a text array, not a text value, and thus you have to reference the array index to access the value as text. Note that this SQL would be very vulnerable to errors caused by data entry, including a middle name or missing either a first or last name would cause errors.
+{{< /note >}}
 
-Now we are going to look at some manipulation and splitting of text so that you can process it in pieces. For this example I will be using a sample extract from a bank file that is used for processing payments. This example could apply if the entire file was uploaded as a single text entry into a table and you select it and then process it.
+Now, let's look at some manipulation and splitting of text so that you can process it in pieces. For this example, I will be using a sample extract from a bank file that is used for processing payments. This example could apply if the entire file was uploaded as a single text entry into a table and you select it and then process it.
 
 ```
 yb_demo=# create table bank_payments(bank_file text);
@@ -531,7 +541,7 @@ INSERT 0 1
 
 yb_demo=# select regexp_split_to_table(bank_file, chr(10)) from bank_payments;
 
-                                                                                                     regexp_split_to_table                                                                                                      
+                                                                                                     regexp_split_to_table
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  "CMGB","1.0","95012141352105","999999","30128193018492","20","","GBP","B","Beneficiary name18","Txt on senders acc","Txt for credit acc","","","","","","909170/1","AB"
  "CMGB","1.0","95012141352105","999999","95012113864863","10.00","","GBP","B","Beneficiary name18","Txt on senders acc","Txt for credit acc","","","","","Remitters name  18","Tech ref for automatic processing5","AT","/t.x",
@@ -539,11 +549,11 @@ yb_demo=# select regexp_split_to_table(bank_file, chr(10)) from bank_payments;
  "CMGB","1.0","95012141352105","","30128193018492","22","","GBP","I","Beneficiary name18","Txt on senders acc","text","","","","","","909175/1","AB"
  "CMGB","1.0","95012141352105","","30128193018492","23","","GBP","F","Beneficiary name18","Txt on senders acc","Txt for credit acc","","","","","","909171/0","AB"
 
-yb_demo=# select split_part(f.line, ',' , 8) AS "currency", 
+yb_demo=# select split_part(f.line, ',' , 8) AS "currency",
                  split_part(f.line, ',' , 5) AS "Account"
                  from (select regexp_split_to_table(bank_file, chr(10)) AS "line" from bank_payments) AS f;
-                 
- currency |     Account      
+
+ currency |     Account
 ----------+------------------
  "GBP"    | "30128193018492"
  "GBP"    | "95012113864863"
@@ -555,12 +565,12 @@ yb_demo=# select split_part(f.line, ',' , 8) AS "currency",
 _Remember to drop the table 'bank_payments' if it is no longer required._
 
 ```
-yb_demo=# select reverse(translate(replace(lower(i.input), ' ', ''), 
-                         'abcdefghijklmnopqrstuvwxyz', 
-                         'A8Cd349h172!mN0pQr$TuVw*yZ')) AS "simplePWD" 
+yb_demo=# select reverse(translate(replace(lower(i.input), ' ', ''),
+                         'abcdefghijklmnopqrstuvwxyz',
+                         'A8Cd349h172!mN0pQr$TuVw*yZ')) AS "simplePWD"
           from (select 'type a word here' AS "input") AS i;
 
-   simplePWD   
+   simplePWD
 ---------------
  3r3hdr0wA3pyT
 ```
@@ -569,14 +579,14 @@ The `TRANSLATE` command above will replace multiple different characters in a si
 
 ### Obtaining information of text
 
-Rather than format or change the contents of text, we often want to understand particular attributes of the text. Below are some examples of using commands to return information of the text.
+Rather than format or change the contents of text, you often might want to understand particular attributes of the text. Below are some examples of using commands to return information of the text.
 
 ```
 yb_demo=# select x.c AS CHAR, ascii(x.c) AS ASCII
           from (select regexp_split_to_table(i.input, '') AS "c"
                 from (select 'hello' AS input) AS i) AS x;
   
- char | ascii 
+ char | ascii
 ------+-------
  h    |   104
  e    |   101
@@ -586,7 +596,7 @@ yb_demo=# select x.c AS CHAR, ascii(x.c) AS ASCII
 
 yb_demo=# select bit_length('hello'), char_length('hello'), octet_length('hello');
 
- bit_length | char_length | octet_length 
+ bit_length | char_length | octet_length
 ------------+-------------+--------------
          40 |           5 |            5
 
@@ -594,13 +604,13 @@ yb_demo=# select array_agg(chr(ascii(x.c))) AS "CHAR"
           from (select regexp_split_to_table(i.input, '') AS "c"
                 from (select 'hello' AS input) AS i) AS x;
   
-    CHAR     
+    CHAR
 -------------
  {h,e,l,l,o}
 
 yb_demo=# select avg(length(name))::int AS AVG_LENGTH from users;
 
- avg_length 
+ avg_length
 ------------
          14
 
@@ -609,7 +619,7 @@ yb_demo=# select name from users
           and position('p' in name) = length(name)
           order by name;
 
-      name       
+      name
 -----------------
  Cory Tromp
  Demario Tromp
@@ -633,7 +643,7 @@ yb_demo=# select name, position('ar' in name) AS posn, strpos(name, 'ar') as str
           where strpos(name, 'ark') > 0
           order by name desc limit 10;
 
-      name      | posn | strpos 
+      name      | posn | strpos
 ----------------+------+--------
  Yasmin Stark   |   10 |     10
  Veronica Stark |   12 |     12
@@ -651,31 +661,30 @@ yb_demo=# select m.name
                 from generate_series(current_date-364, current_date, '1 month')) AS m
           where starts_with(m.name, 'J');
 
-   name    
+   name
 -----------
  January  
- June     
+ June
  July  
 ```
 
 ## Something a bit more advanced
 
-For those that like a bit of a challenge, below is an example that URL escapes a string. There is still some more room for tweaking in its current form, that is left for you to do.
+If you like a bit of a challenge, below is an example that URL escapes a string. There is still some more room for tweaking in its current form, that is left for you to do.
 
 ```
-postgres=# select string_agg(case 
+postgres=# select string_agg(case
                               when to_hex(ascii(x.arr::text))::text
-                                   in('20','23','24','25','26','40','60','2b','2c','2f','3a','3b','3c','3d','3e','3f', 
-                                   '5b','5c','5d','5e','7b','7c','7d') then '%' || to_hex(ascii(x.arr::text))::text 
-                              else x.arr 
+                                   in('20','23','24','25','26','40','60','2b','2c','2f','3a','3b','3c','3d','3e','3f',
+                                   '5b','5c','5d','5e','7b','7c','7d') then '%' || to_hex(ascii(x.arr::text))::text
+                              else x.arr
                               end, '') AS "url_escaped"
            from (select regexp_split_to_table('www.url.com/form?name="My name"&dob="1/1/2000"&email="hello@example.com"', '')) AS x (arr);
-           
-                                          url_escaped                                           
+                             url_escaped
 ------------------------------------------------------------------------------------------------
  www.url.com%2fform%3fname%3d"My%20name"%26dob%3d"1%2f1%2f2000"%26email%3d"hello%40example.com"
 ```
 
 ## Conclusion
 
-Text or strings are part of every conceivable system. YugaByte provides you with comprehensive capability to manage and manipulate all your text within the database.  
+Text or strings are part of every conceivable system. YugaByte DB provides you with comprehensive capabilities to manage and manipulate all your text within the database.
