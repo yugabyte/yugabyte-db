@@ -4,8 +4,7 @@ See instructions to install [`php-pgsql`](https://www.php.net/manual/en/pgsql.in
 
 For example, for CentOS, use `sudo yum install php-pgsql` or Ubuntu use `sudo apt-get install php-pgsql`.
 
-
-## Sample PHP Code
+## Sample PHP code
 
 Create a file `yb-sql-sample.php` with the following content.
 
@@ -62,9 +61,9 @@ try {
 }
 ```
 
-## Run the app
+## Run the application
 
-To run the application
+To run the application:
 
 ```sh
 $ php yb-sql-sample.php

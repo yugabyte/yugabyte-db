@@ -1,7 +1,7 @@
 ---
-title: Datatypes
-description: Datatypes
-summary: YSQL datatype overview and specification.
+title: Data types
+description: Data types
+summary: YSQL data type overview and specification.
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -16,8 +16,8 @@ showAsideToc: true
 
 The following table lists the primitive types in YSQL.
 
-| Datatype | Alias | Description |
-|----------|-------|-------------|
+| Data type | Alias | Description |
+|-----------|-------|-------------|
 | [`BIGINT`](type_numeric) | [`INT8`](type_numeric) | Signed 8-byte integer |
 | [`BIGSERIAL`](type_serial) | [`SERIAL8`](type_serial) | Autoincrement 8-byte integer |
 | `BIT [(n)]` <sup>1</sup> | | Fixed-length bit string |

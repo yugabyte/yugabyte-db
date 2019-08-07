@@ -16,7 +16,6 @@ isTocNested: false
 showAsideToc: true
 ---
 
-
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="/latest/deploy/docker/docker-swarm" class="nav-link">
@@ -44,10 +43,10 @@ Pull the container from docker hub registry
 $ docker pull yugabytedb/yugabyte
 ```
 
-
 ### Create a docker-compose.yaml file
 
 <div class='copy'></div>
+
 ```sh
 version: '2'
 
@@ -87,7 +86,6 @@ services:
 
 ### Start the cluster
 
-
 ```sh
 $ docker-compose up -d
 ```
@@ -117,4 +115,3 @@ Follow the instructions in the [Quick Start](../../quick-start/) section with Do
 ```sh
 $ docker-compose down
 ```
-

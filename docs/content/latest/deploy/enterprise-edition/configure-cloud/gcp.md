@@ -23,7 +23,6 @@ The following shows the steps involved in creating this cloud provider.
 
 ![GCP Configuration -- in progress](/images/ee/gcp-setup/gcp-configure-inprogress.png)
 
-
 If all went well, you should see something like:
 
 ![GCP Configuration -- success](/images/ee/gcp-setup/gcp-configure-success.png)

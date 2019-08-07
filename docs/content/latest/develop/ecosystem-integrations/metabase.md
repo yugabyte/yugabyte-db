@@ -15,19 +15,19 @@ showAsideToc: true
 
 [Metabase](https://www.metabase.com/) is an extremly easy-to-use Business Intelligence (BI) tool. It bills itself as `the easy, open source way for everyone in your company to ask questions and learn from data`. This page shows how Metabase can be setup to integrate with YugaByte DB's PostgreSQL compatible API.
 
-## 1. Start Local Cluster with YSQL API Enabled
+## 1. Start local cluster with YSQL API enabled
 
 Follow [Quick Start](../../../quick-start/) instructions to run a local YugaByte DB cluster. Test YugaByte DB's PostgreSQL compatible YSQL API as [documented](../../../quick-start/test-postgresql/) so that you can confirm that you have a PostgresSQL compatible service running on `localhost:5433`. 
 
-## 2. Load Data
+## 2. Load data
 
-### Download the Sample Schema
+### Download the sample schema
 
 ```sh
 $ wget https://raw.githubusercontent.com/YugaByte/yb-sql-workshop/master/query-using-bi-tools/schema.sql
 ```
 
-### Download the Sample Data
+### Download the sample data
 
 ```sh
 $ wget https://github.com/YugaByte/yb-sql-workshop/raw/master/query-using-bi-tools/sample-data.tgz
@@ -60,7 +60,7 @@ Type "help" for help.
 postgres=#
 ```
 
-### Create a Database
+### Create a database
 
 ```sql
 postgres=> CREATE DATABASE yb_demo;
@@ -74,7 +74,7 @@ postgres=> GRANT ALL ON DATABASE yb_demo to postgres;
 postgres=> \c yb_demo;
 ```
 
-### Create Schema and Load Data
+### Create schema and load data
 
 First create the 4 tables necessary to store the data.
 
@@ -100,7 +100,7 @@ postgres=> \i 'data/orders.sql'
 postgres=> \i 'data/reviews.sql'
 ```
 
-## 3. Download and Configure Metabase
+## 3. Download and configure Metabase
 
 Detailed steps for setting up Metabase are available [here](https://www.metabase.com/docs/latest/setting-up-metabase.html). The following are the minimal setup steps for getting started.
 
@@ -114,7 +114,7 @@ $ java -jar metabase.jar
 
 Go to http://localhost:3000 to configure your Metabase server and point it to the YSQL API endpoint at `localhost:5433`.
 
-## 4. Run Complex Queries with Metabase
+## 4. Run complex queries with Metabase
 
 Detailed steps on how to use Metabase are available [here](https://www.metabase.com/docs/latest/getting-started.html). For this doc, we will specifically focus on asking questions that require RDBMS capabilities.
 

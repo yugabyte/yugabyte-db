@@ -14,12 +14,14 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`STRLEN key`</b><br>
 This command finds the length of the string value that is associated with the given `key`.
 <li> If `key` is associated with a non-string value, an error is raised.</li>
 <li> If `key` does not exist, 0 is returned.</li>
 
-## Return Value
+## Return value
+
 Returns length of the specified string.
 
 ## Examples
@@ -48,5 +50,6 @@ $ STRLEN undefined_key
 0
 ```
 
-## See Also
+## See also
+
 [`append`](../append/), [`get`](../get/), [`getrange`](../getrange/), [`getset`](../getset/), [`incr`](../incr/), [`incrby`](../incrby/), [`set`](../set/), [`setrange`](../setrange/)

@@ -15,9 +15,10 @@ showAsideToc: true
 
 ## Synopsis
 
-`BOOLEAN` datatype is used to specify values of either `true` or `false`.
+`BOOLEAN` data type is used to specify values of either `true` or `false`.
 
 ## Syntax
+
 ```
 type_specification ::= BOOLEAN
 
@@ -29,7 +30,7 @@ boolean_literal ::= TRUE | FALSE
 - Columns of type `BOOLEAN` cannot be part of the `PRIMARY KEY`.
 - Columns of type `BOOLEAN` can be set, inserted, and compared.
 - In `WHERE` and `IF` clause, `BOOLEAN` columns cannot be used as a standalone expression. They must be compared with either `true` or `false`. For example, `WHERE boolean_column = TRUE` is valid while `WHERE boolean_column` is not.
-- Implicitly, `BOOLEAN` is neither comparable nor convertible to any other datatypes.
+- Implicitly, `BOOLEAN` is neither comparable nor convertible to any other data types.
 
 ## Examples
 
@@ -60,6 +61,6 @@ id | finished
   1 |    False
 ```
 
-## See Also
+## See also
 
-[Data Types](..#datatypes)
+[Data Types](..#data-types)

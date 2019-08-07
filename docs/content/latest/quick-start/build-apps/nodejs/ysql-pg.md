@@ -23,7 +23,7 @@ showAsideToc: true
   <li >
     <a href="/latest/quick-start/build-apps/nodejs/ysql-pg" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - PG Driver
+      YSQL - PG driver
     </a>
   </li>
   <li >

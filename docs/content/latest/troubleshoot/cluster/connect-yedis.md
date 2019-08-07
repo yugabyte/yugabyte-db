@@ -1,7 +1,7 @@
 ---
-title: YEDIS Connection Issues
-linkTitle: YEDIS Connection Issues
-description: Cannot Connect to YEDIS API
+title: YEDIS connection Issues
+linkTitle: YEDIS connection Issues
+description: Cannot connect to YEDIS API
 aliases:
   - /troubleshoot/cluster/connect-redis/
   - /latest/troubleshoot/cluster/connect-yedis/
@@ -27,6 +27,7 @@ If the tserver process is running, make sure the the YEDIS API is enabled and li
 ```sh
 $ lsof -i :6379
 ```
+
 ```
 COMMAND     PID   USER   FD   TYPE     DEVICE SIZE/OFF NODE NAME
 yb-tserve 81590 centos   92u  IPv4 0xdeadbeef      0t0  TCP localhost:6379 (LISTEN)
@@ -39,12 +40,14 @@ When running a local cluster with `yb-ctl` you should see all the nodes here wit
 ```sh
 $ lsof -i :6379
 ```
+
 ```
 COMMAND     PID   USER   FD   TYPE     DEVICE SIZE/OFF NODE NAME
 yb-tserve 81590 centos   92u  IPv4 0xdeadbeef      0t0  TCP localhost:6379 (LISTEN)
 yb-tserve 81593 centos   92u  IPv4 0xdeadbeef      0t0  TCP 127.0.0.2:6379 (LISTEN)
 yb-tserve 81596 centos   92u  IPv4 0xdeadbeef      0t0  TCP 127.0.0.3:6379 (LISTEN)
 ```
+
 If there is another process using this port you might need to stop that and restart the tserver process.
 Otherwise, if no process is listening but the tserver is running, check the value of the `--redis_proxy_bind_address` flag passed to the 
 tserver process.
@@ -58,6 +61,7 @@ Try running:
 ```sh
 $ ./redis-cli -h <yb-local-address>
 ```
+
 where `<yb-local-address>` is the address where the YEDIS service is listening (e.g. as returned by `lsof`). For instance, in the example above, it is `localhost` (or, additionally, `127.0.0.2` and `127.0.0.3` for the `yb-ctl` case).
 
 If `redis-cli` can connect, the issue is likely a network issue with the original client not being able to access this node where YugaByte DB is running. See also [Cannot access Master or TServer Endpoints](#cannot-access-master-or-tserver-endpoints) below.

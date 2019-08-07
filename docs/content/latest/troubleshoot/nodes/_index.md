@@ -1,7 +1,7 @@
 ---
-title: Node Level Issues
-linkTitle: Node Level Issues
-description: Node Level Issues
+title: Node level issues
+linkTitle: Node level issues
+description: Node level issues
 image: /images/section_icons/quick_start/create_cluster.png
 headcontent: Diagnose and solve issues on an individual YugaByte DB node.
 aliases:
@@ -18,7 +18,7 @@ menu:
     <a class="section-link icon-offset" href="check-processes">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Check Processes</div>
+        <div class="title">Check processes</div>
       </div>
       <div class="body">
         Check the status and accessibility of YugaByte DB nodes.
@@ -30,7 +30,7 @@ menu:
     <a class="section-link icon-offset" href="check-logs">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />  
-        <div class="title">Inspect Logs</div>
+        <div class="title">Inspect logs</div>
       </div>
       <div class="body">
         Diagnose issues by inspecting the YugaByte DB logs.
@@ -42,7 +42,7 @@ menu:
     <a class="section-link icon-offset" href="check-stats">
       <div class="head">
         <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Get System Stats</div>
+        <div class="title">Get system stats</div>
       </div>
       <div class="body">
         Get state information and metrics for YugaByte DB processes.

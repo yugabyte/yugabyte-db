@@ -130,7 +130,7 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 (2 rows)
 ```
 
-## See Also
+## See also
 
 [`SET`](../txn_set)
 [Other YSQL Statements](..)

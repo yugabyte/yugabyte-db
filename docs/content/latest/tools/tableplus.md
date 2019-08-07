@@ -74,7 +74,7 @@ Now you have connected to all the YugaByte DB APIs and can start exploring them 
 
 Follow the instructions from [TablePlus Getting Started](https://tableplus.io/blog/2018/04/getting-started-with-tableplus.html) on how to best use TablePlus.
 
-## Known Issue
+## Known issue
 
 Following is a known issue that we hope to address soon. You can track the issue directly on GitHub.
 

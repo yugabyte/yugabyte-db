@@ -19,20 +19,21 @@ showAsideToc: true
 
 ## Introduction
 
-YCQL is a SQL-based flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. It has its roots in the [ Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). 
+YCQL is a SQL-based, flexible-schema API that is best fit for internet-scale OLTP apps needing a semi-relational API highly optimized for write-intensive applications as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes, and a native JSON column type. It has its roots in the [Cassandra Query Language (CQL)](http://cassandra.apache.org/doc/latest/cql/index.html). 
 
 YCQL supports the following features.
 
 - Data definition language (DDL) statements.
 - Data manipulation language (DML) statements.
 - Builtin functions and Expression operators.
-- Primitive user-defined datatypes.
+- Primitive user-defined data types.
 
 ## Quick Start
 
 You can explore the basics of the YCQL API using the [Quick Start](quick-start/) steps.
 
-## DDL Statements
+## DDL statements
+
 Data definition language (DDL) statements are instructions for the following database operations.
 
 - Create, alter, and drop database objects
@@ -45,14 +46,15 @@ Statement | Description |
 [`CREATE INDEX`](ddl_create_index) | Create a new index on a table |
 [`CREATE KEYSPACE`](ddl_create_keyspace) | Create a new keyspace |
 [`CREATE TABLE`](ddl_create_table) | Create a new table |
-[`CREATE TYPE`](ddl_create_type) | Create a user-defined datatype |
+[`CREATE TYPE`](ddl_create_type) | Create a user-defined data type |
 [`DROP INDEX`](ddl_drop_index) | Remove an index |
 [`DROP KEYSPACE`](ddl_drop_keyspace) | Remove a keyspace |
 [`DROP TABLE`](ddl_drop_table) | Remove a table |
-[`DROP TYPE`](ddl_drop_type) | Remove a user-defined datatype |
+[`DROP TYPE`](ddl_drop_type) | Remove a user-defined data type |
 [`USE`](ddl_use) | Use an existing keyspace for subsequent commands |
 
-## DDL Security Statements
+## DDL security statements
+
 Security statements are instructions for managing and restricting operations on the database objects.
 
 This feature is enabled by setting the yb-tserver gflag [`use_cassandra_authentication`](../../admin/yb-tserver/#config-flags) to `true`.
@@ -77,7 +79,8 @@ Primitive Type |
 `LIST ROLES` |
 `LIST PERMISSIONS` |
 
-## DML Statements
+## DML statements
+
 Data manipulation language (DML) statements are used to read from and write to the existing database objects. YugaByte DB implicitly commits any updates by DML statements (similar to how Apache Cassandra behaves).
 
 Statement | Description |
@@ -90,6 +93,7 @@ Statement | Description |
 [`TRUNCATE`](dml_truncate) | Remove all rows from a table |
 
 ## Expressions
+
 An expression is a finite combination of one or more values, operators, functions, and expressions that specifies a computation. Expression can be used in the following components.
 
 - The select list of [`SELECT`](dml_select) statement. For example, `SELECT id + 1 FROM sample_table;`.
@@ -103,11 +107,12 @@ Currently, the following expressions are supported.
 Expression | Description |
 -----------|-------------|
 [Simple Value](expr_simple) | Column, constant, or null. Column alias cannot be used in expression yet. |
-[Subscript `[]`](expr_subscript) | Subscripting columns of collection datatypes |
+[Subscript `[]`](expr_subscript) | Subscripting columns of collection data types |
 [Operator Call](expr_ocall) | Builtin operators only |
 [Function Call](expr_fcall) | Builtin function calls only |
 
-## Data Types
+## Data types
+
 - The following table lists all supported primitive types.
 
 Primitive Type | Allowed in Key | Type Parameters | Description |
@@ -134,9 +139,9 @@ Primitive Type | Allowed in Key | Type Parameters | Description |
 [`TINYINT`](type_int) | Yes | - | 8-bit signed integer |
 [`UUID`](type_uuid) | Yes | - | Standard UUID |
 [`VARINT`](type_integer) | Yes | - | Arbitrary-precision integer |
-[`JSONB`](type_jsonb) | No | - | Json datatype similar to postgresql jsonb |
+[`JSONB`](type_jsonb) | No | - | JSON data type similar to PostgreSQL jsonb |
 
-- [User-defined datatypes](ddl_create_type) are also supported.
+- [User-defined data types](ddl_create_type) are also supported.
 
 - The following table lists all CQL primitive types that are not yet implemented.
 

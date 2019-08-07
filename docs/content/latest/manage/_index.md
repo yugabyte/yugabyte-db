@@ -18,10 +18,10 @@ menu:
     <a class="section-link icon-offset" href="backup-restore/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Backup and Restore</div>
+        <div class="title">Backup and restore</div>
       </div>
       <div class="body">
-        Backup & restore data in YugaByte DB.
+        Back up and restore data in YugaByte DB.
       </div>
     </a>
   </div>
@@ -30,7 +30,7 @@ menu:
     <a class="section-link icon-offset" href="data-migration/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
-        <div class="title">Data Migration</div>
+        <div class="title">Data migration</div>
       </div>
       <div class="body">
         Bulk data import and export in the context of YugaByte DB.
@@ -42,7 +42,7 @@ menu:
     <a class="section-link icon-offset" href="./change-cluster-config/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
-        <div class="title">Change Cluster Config</div>
+        <div class="title">Change cluster config</div>
       </div>
       <div class="body">
           Move universe data to a new set of machines.
@@ -54,7 +54,7 @@ menu:
     <a class="section-link icon-offset" href="./upgrade-deployment/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
-        <div class="title">Upgrade Deployment</div>
+        <div class="title">Upgrade deployment</div>
       </div>
       <div class="body">
           Upgrade the YB software deployment.
@@ -66,7 +66,7 @@ menu:
     <a class="section-link icon-offset" href="diagnostics-reporting/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
-        <div class="title">Diagnostics Reporting</div>
+        <div class="title">Diagnostics reporting</div>
       </div>
       <div class="body">
         Configure collection and reporting of diagnostics data.

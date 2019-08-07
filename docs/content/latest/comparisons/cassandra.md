@@ -16,9 +16,9 @@ Application developers choosing Apache Cassandra as their default operational da
 
 For use cases that simultaneously need strong consistency, low latency and high density, the right path is to use a database that is not simply Cassandra compatible but is also transactional. This is exactly what YugaByte DB offers. Each of the problems highlighted here are solved by YugaByte DB at the core of its architecture.
 
-- Single-key writes go through Raft (which also uses quorum) in YugaByte DB but reads are quorumless and hence can be served off a single node both for strongly consistent and timeline-consistent (aka bounded staleness) cases. 
+- Single-key writes go through Raft (which also uses quorum) in YugaByte DB but reads are quorumless and hence can be served off a single node both for strongly consistent and timeline-consistent (aka bounded staleness) cases.
 
-- Multi-key transactions are also supported through the use of a transaction manager that uses an enhanced 2-phase commit protocol. 
+- Multi-key transactions are also supported through the use of a transaction manager that uses an enhanced 2-phase commit protocol.
 
 - Lightweight transactions are obviated altogether in YugaByte DB since the Raft-based writes on a single key are automatically linearizable.
 
@@ -26,7 +26,7 @@ For use cases that simultaneously need strong consistency, low latency and high 
 
 Following are the details of the key differences between YugaByte DB and [Apache Cassandra](http://cassandra.apache.org/).
 
-## Data Consistency
+## Data consistency
 
 YugaByte DB is a strongly consistent system that avoids several pitfalls of an eventually consistent database.
 
@@ -34,27 +34,27 @@ YugaByte DB is a strongly consistent system that avoids several pitfalls of an e
 replication. To work around this, many Apache Cassandra deployments use quorum read/write modes, but
 even those do NOT offer [clean rollback semantics on write failures](https://stackoverflow.com/questions/12156517/whats-the-difference-between-paxos-and-wr-n-in-cassandra) and hence can still lead to dirty reads.
 
-2. Deletes resurfacing: Another problem due to an eventually consistent core is [deleted values resurfacing](https://stackoverflow.com/questions/35392430/cassandra-delete-not-working). 
+2. Deletes resurfacing: Another problem due to an eventually consistent core is [deleted values resurfacing](https://stackoverflow.com/questions/35392430/cassandra-delete-not-working).
 
 YugaByte DB avoids these pitfalls by using a theoretically sound replication model based on RAFT, with
 strong-consistency on writes and tunable consistency options for reads.
 
-## High Read Latency of Eventual Consistency
+## High read latency of eventual consistency
 
 In eventually consistent systems, anti-entropy, read-repairs, etc. hurt performance and increase cost. But even in steady state, read operations read from a quorum to serve closer to correct responses and fix inconsistencies. For a replication factor of the 3, such a system’s read throughput is essentially ⅓.
 
 With YugaByte DB, strongly consistent reads (from leaders), as well as timeline consistent/async reads
 from followers perform the read operation on only 1 node (and not 3).
 
-## Lightweight Transactions 
+## Lightweight transactions
 
 In Apache Cassandra, simple read-modify-write operations (aka compare-and-swap) such as “increment”, conditional updates, “INSERT …  IF NOT EXISTS” or “UPDATE ... IF EXISTS” use a scheme known as lightweight transactions [which incurs a 4-round-trip cost](https://teddyma.gitbooks.io/learncassandra/content/concurrent/concurrency_control.html) between replicas. With YugaByte DB, these operations only involve 1-round trip between the quorum members.
 
-## Secondary Indexes
+## Secondary indexes
 
 Local secondary indexes in Apache Cassandra ([see blog](https://pantheon.io/blog/cassandra-scale-problem-secondary-indexes)) require a fan-out read to all nodes, i.e. index performance keeps dropping as cluster size increases. With YugaByte DB’s distributed transactions, secondary indexes are both strongly-consistent and point-reads rather than a read from all nodes/shards in the cluster.
 
-## Data Modeling
+## Data modeling
 
 Apache Cassandra is a flexi-schema database that supports single key data modeling. On the other hand, YugaByte DB is a multi-model and multi-API database that supports multiple different types of data modeling including flexi-schema and document data (with the native JSON data type support in the Cassandra-compatible YCQL API). Additionally, YugaByte DB supports key-value (with the Redis-compatible YEDIS API) and relational (with the PostgreSQL-compatible YSQL API) data modeling.
 
@@ -62,7 +62,7 @@ Some further details on the document data modeling of both databases is warrante
 
 With YugaByte DB’s native JSON support, developers can now benefit from the structured query language of Cassandra and the document data modeling of MongoDB in a single database.
 
-## Operational Stability / Add Node Challenges
+## Operational stability / Add node challenges
 
 1. Apache Cassandra’s eventually consistent core implies that a new node trying to join a cluster cannot simply copy data files from current “leader”. A logical read (quorum read) across multiple surviving peers is needed with Apache Cassandra to build the correct copy of the data to bootstrap a new node with. These reads need to uncompress/recompress the data back too. With YugaByte, a new node can be bootstrapped by simply copying already compressed data files from the leader of the corresponding shard.
 
@@ -72,22 +72,22 @@ With YugaByte DB’s native JSON support, developers can now benefit from the st
 
 4. Apache Cassandra needs constant tuning of compactions (because of Java implementation, non-scalable, non-partitioned bloom filters and index-metadata, lack of scan-resistant caches, and so on.).
 
-## Operational Flexibility 
+## Operational flexibility
 
 At times, you may need to move your database infrastructure to new hardware or you may want to add a sync/async replica in another region or in public cloud. With YugaByte DB, these operations are simple 1-click intent based operations that are handled seamlessly by the system in a completely online manner. YugaByte’s core data fabric and its consensus based replication model enables the "data tier” to be very agile/recomposable much like containers/VMs have done for the application or stateless tier.
 
-## Need to Scale Beyond Single or 2-DC Deployments
+## Need to scale beyond single or 2-DC deployments
 
-The current RDBMS solutions (using async replication) and NoSQL solutions work up to 2-DC deployments; but in a very restrictive manner. With Apache Cassandra’s 2-DC deployments, one has to chose between write unavailability on a partition between the DCs, or cope with async replication model where on a DC failure some inflight data is lost. 
+The current RDBMS solutions (using async replication) and NoSQL solutions work up to 2 data center deployments; but in a very restrictive manner. With Apache Cassandra’s 2-DC deployments, one has to chose between write unavailability on a partition between the DCs, or cope with async replication model where on a DC failure some inflight data is lost.
 
 YugaByte DB’s distributed consensus based replication design, in 3-DC deployments for example, enables enterprise to “have their cake and eat it too”. It gives use cases the choice to be highly available for reads and writes even on a complete DC outage, without having to take a down time or resort to an older/asynchronous copy of the data (which may not have all the changes to the system).
 
-## Relevant Blog Posts
+## Relevant blog posts
 
 A few blog posts that highlight how YugaByte DB differs from Apache Cassandra are below.
 
 - [Apache Cassandra: The Truth Behind Tunable Consistency, Lightweight Transactions & Secondary Indexes](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/)
-- [Building a Strongly Consistent Cassandra with Better Performance](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance) 
+- [Building a Strongly Consistent Cassandra with Better Performance](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance)
 - [DynamoDB vs MongoDB vs Cassandra for Fast Growing Geo-Distributed Apps](https://blog.yugabyte.com/dynamodb-vs-mongodb-vs-cassandra-for-fast-growing-geo-distributed-apps/)
 - [YugaByte DB 1.1 New Feature: Document Data Modeling with the JSON Data Type](https://blog.yugabyte.com/yugabyte-db-1-1-new-feature-document-data-modeling-with-json-data-type/)
-- [YugaByte DB 1.1 New Feature: Speeding Up Queries with Secondary Indexes](https://blog.yugabyte.com/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/) 
+- [YugaByte DB 1.1 New Feature: Speeding Up Queries with Secondary Indexes](https://blog.yugabyte.com/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/)

@@ -41,7 +41,6 @@ by just adding one key/value pair to RocksDB. Read hooks automatically recognize
 suppress expired data. Expired values within the subdocument are cleaned up/garbage collected by our
 customized compaction hooks.
 
-
 ### Raft vs RocksDB WAL logs
 
 DocDB uses Raft for replication. Changes to the distributed system are already recorded/journalled as part of Raft logs. When a change is accepted by a majority of peers, it is applied to each tablet peer’s DocDB, but the additional WAL mechanism in RocksDB (under DocDB) is unnecessary and adds overhead.
@@ -50,7 +49,7 @@ For correctness, in addition to disabling the WAL mechanism in RocksDB, YugaByte
 ensures that we can correctly garbage collect the Raft WAL logs as well as replay the minimal number
 of records from Raft WAL logs on a server crash or restart.
 
-### MVCC at a higher layer 
+### MVCC at a higher layer
 
 Multi-version concurrency control (MVCC) in DocDB is done at a higher layer, and does not use the MVCC mechanism of RocksDB.
 
@@ -60,12 +59,12 @@ of MVCC as implemented in a vanilla RocksDB (using sequence ids) is not necessar
 overhead. YugaByte does not use RocksDB’s sequence ids, and instead uses hybrid-timestamps that are
 part of the encoded key to implement MVCC.
 
-### Backups/Snapshots
+### Backups and snapshots
+
 These need to be higher level operations that take into consideration data in
   DocDB as well as in the Raft logs to get a consistent cut of the state of the system
 
-
-## Data Model Aware Bloom Filters
+## Data model aware Bloom filters
 
 The keys stored by DocDB in RocksDB consist of a number of components, where the first component is a "document key", followed by a few scalar components, and finally followed by a timestamp (sorted in reverse order).
 
@@ -73,7 +72,7 @@ The bloom filter needs to be aware of what components of the key need be added t
 
 In a traditional KV store, range scans do not make use of bloom filters because exact keys that fall in the range are unknown. However, we have implemented a data-model aware bloom filter, where range scans within keys that share the same hash component can also benefit from bloom filters. For example, a scan to get all the columns within row or all the elements of a collection can also benefit from bloom filters.
 
-## Range Query Optimizations
+## Range query optimizations
 
  The ordered (or range) components of the compound-keys in DocDB frequently have a natural order. For example, it may be an int that represents a message id (for a messaging like application) or a timestamp (for a IoT/Timeseries like use case). See example below. By keeping hints with each SSTable file in the LSM store about the min/max values for these components of the “key”, range queries can intelligently prune away the lookup of irrelevant SSTable files during the read operation.
 
@@ -98,7 +97,6 @@ WHERE metric_name = ’system.cpu’
 
 There are two instances where memory usage across components in a manner that is global to the server yields benefits, as described below.
 
-
 ### Server-global block cache
 
 A shared block cache is used across the
@@ -118,5 +116,3 @@ therefore are holding up Raft logs and preventing them from being garbage collec
 ## Scan-resistant block cache
 
 We have enhanced RocksDB’s block cache to be scan resistant. The motivation was to prevent operations such as long-running scans (e.g., due to an occasional large query or background Spark jobs) from polluting the entire cache with poor quality data and wiping out useful/hot data.
-
-

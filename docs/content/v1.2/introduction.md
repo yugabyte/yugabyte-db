@@ -30,31 +30,31 @@ YugaByte DB is a transactional database that brings together three must-have nee
 
 YugaByte DB feature highlights are listed below.
 
-### 1. SQL and ACID Transactions
+### 1. SQL and ACID transactions
 
 - SQL [JOINs](../quick-start/explore-ysql/#3-joins) and [distributed transactions](../quick-start/explore-ysql/#4-distributed-transactions) that allow multi-row access across any number of shards at any scale.
 
 - Transactional [document store](../architecture/concepts/docdb/) backed by self-healing, strongly consistent [replication](../architecture/concepts/docdb/replication/).
 
-### 2. High Performance & Massive Scalability
+### 2. High performance and massive scalability
 
 - Low latency for geo-distributed applications with multiple [read consistency levels](../architecture/concepts/docdb/replication/#tunable-read-consistency) and [read-only replicas](../architecture/concepts/docdb/replication/#read-only-replicas).
 
 - Linearly scalable throughput for ingesting and serving ever-growing datasets.
 
-### 3. Global Data Consistency
+### 3. Global data consistency
 
 - [Global data distribution](../explore/global-distribution/) that brings consistent data close to users through multi-region and multi-cloud deployments.
 
 - [Auto-sharding & auto-rebalancing](../explore/auto-sharding/) to ensure uniform load across all nodes even for very large clusters.
 
-### 4. Cloud Native
+### 4. Cloud native
 
 - Built for the container era with [highly elastic scaling](../explore/linear-scalability/) and infrastructure portability, including [Kubernetes-driven orchestration](../quick-start/install/#kubernetes).
 
 - [Self-healing database](../explore/fault-tolerance/) that automatically tolerates any failures common in the inherently unreliable modern cloud infrastructure.
 
-### 5. Open Source
+### 5. Open source
 
 - Fully functional distributed database available under [Apache 2.0 open source license](https://github.com/YugaByte/yugabyte-db/). Upgrade to [Enterprise Edition](https://www.yugabyte.com/product/compare/) anytime.
 
@@ -132,7 +132,7 @@ Examples: MongoDB, Amazon DynamoDB, FoundationDB, Azure Cosmos DB.
 
 Learn more: [Why are NoSQL Databases Becoming Transactional?](https://blog.yugabyte.com/nosql-databases-becoming-transactional-mongodb-dynamodb-faunadb-cosmosdb/)
 
-### Eventually Consistent NoSQL
+### Eventually consistent NoSQL
 
 Examples: Apache Cassandra, Couchbase.
 

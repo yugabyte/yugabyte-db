@@ -134,7 +134,6 @@ cqlsh> DESCRIBE KEYSPACES;
 system_schema  system_auth  system
 ```
 
-
 ## 5. Destroy the YugaByte DB cluster (optional)
 
 Destroy the YugaByte DB cluster we created above by running the following.

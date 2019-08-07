@@ -1,4 +1,4 @@
-## 1. Create a 1 node cluster with replication factor 1 
+## 1. Create a 1 node cluster with replication factor 1
 
 ```sh
 $ kubectl apply -f yugabyte-statefulset-rf-1.yaml
@@ -80,13 +80,13 @@ http://192.168.99.100:31283
 
 Now, you can view the [yb-master-0 Admin UI](../../admin/yb-master/#admin-ui) is available at the above URL.
 
-### 5.1 Overview and Master status
+### 5.1 Overview and master status
 
-The yb-master-0 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugaByte DB version is also shown for your reference. 
+The yb-master-0 home page shows that we have a cluster (aka a Universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is 0 since there are no user tables created yet. YugaByte DB version is also shown for your reference.
 
 ![master-home](/images/admin/master-home-kubernetes-rf1.png)
 
-The Masters section highlights the 1 yb-master along its corresponding cloud, region and zone placement information. 
+The Masters section highlights the 1 yb-master along its corresponding cloud, region and zone placement information.
 
 ### 5.2 TServer status
 

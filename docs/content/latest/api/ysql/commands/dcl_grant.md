@@ -12,7 +12,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Synopsis 
+## Synopsis
 
 `GRANT` allows access privileges.
 
@@ -50,6 +50,6 @@ postgres=# GRANT ALL ON DATABASE postgres TO John;
 postgres=# REVOKE ALL ON DATABASE postgres FROM John;
 ```
 
-## See Also
+## See also
 
 [Other YSQL Statements](..)

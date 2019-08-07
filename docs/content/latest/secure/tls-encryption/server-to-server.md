@@ -1,7 +1,7 @@
 ---
-title: 2. Server-Server Encryption
-linkTitle: 2. Server-Server Encryption
-description: 2. Server-Server Encryption
+title: 2. Server-server encryption
+linkTitle: 2. Server-server encryption
+description: 2. Server-server encryption
 headcontent: Enable server to server encryption between YB-Masters and YB-TServers.
 image: /images/section_icons/secure/tls-encryption/server-to-server.png
 aliases:
@@ -15,16 +15,13 @@ isTocNested: true
 showAsideToc: true
 ---
 
-
 To enable server to server encryption, bring up the YB-Master and YB-TServer processes with the appropriate flags as shown below.
-
 
 Flag                           | Process                  | Description                  |
 -------------------------------|--------------------------|------------------------------|
 `use_node_to_node_encryption`  | YB-Master, YB-TServer | Optional, default value is `false`. Set to `true` to enable encryption between the various YugaByte DB server processes. |
 `allow_insecure_connections`   | YB-Master only           | Optional, defaults to `true`. Set to `false` to disallow any process with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires the `use_node_to_node_encryption` to be enabled. |
 `certs_dir`                    | YB-Master, YB-TServer | Optional. This directory should contain the configuration that was prepared in the a step for this node to perform encrypted communication with the other nodes. Default value for YB-Masters is `<data drive>/yb-data/master/data/certs` and for YB-TServers this location is `<data drive>/yb-data/tserver/data/certs` |
-
 
 ## Start the master process
 
@@ -41,7 +38,6 @@ bin/yb-master                               \
 
 You can read more about bringing up the YB-Masters for a deployment in the section on [manual deployment of a YugaByte DB cluster](../../../deploy/manual-deployment/start-masters/).
 
-
 ## Start the tserver process
 
 You can enable access control by starting the `yb-tserver` processes minimally with the `--use_node_to_node_encryption=true` flag as described above. Your command should look similar to that shown below:
@@ -55,7 +51,6 @@ bin/yb-tserver                                  \
 ```
 
 You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugaByte DB cluster](../../../deploy/manual-deployment/start-tservers/).
-
 
 ## Connect to the cluster
 

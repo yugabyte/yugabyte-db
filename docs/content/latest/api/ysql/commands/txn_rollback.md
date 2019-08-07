@@ -130,7 +130,7 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 (2 rows)
 ```
 
-## See Also
+## See also
 
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)

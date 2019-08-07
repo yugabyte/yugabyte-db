@@ -1,12 +1,11 @@
 
-## 1. Create a new project (optional)
+## 1. [Optional] Create a new project
 
 A project forms the basis for creating, enabling and using all GCP services, managing APIs, enabling billing, adding and removing collaborators, and managing permissions. You would need browse to the [GCP cloud resource manager](https://console.cloud.google.com/cloud-resource-manager) and click on create project to get started. You can follow these instructions to [create a new GCP project](https://cloud.google.com/resource-manager/docs/creating-managing-projects).
 
 Give the project a suitable name (eg: `yugabyte-gcp`) and note the project ID (eg: `yugabyte-gcp`). You should see a dialog that looks like the screenshot below.
 
 ![Creating a GCP project](/images/ee/gcp-setup/project-create.png)
-
 
 ## 2. Set up a new service account
 
@@ -24,7 +23,6 @@ Here is a screenshot with the above values in the form, click create once the va
 
 **NOTE**: Your browser would have downloaded the respective JSON format key. It is important to store it safely. This JSON key is needed to configure the YugaWare Admin Console.
 
-
 ## 3. Give permissions to the service account
 
 - Find the email address associated with the service account by going to `IAM & admin` -> `Service accounts`. Copy this value. The screen should look as shown below.
@@ -34,7 +32,6 @@ Here is a screenshot with the above values in the form, click create once the va
 - Next, browse to `IAM & admin` -> `IAM` and click on `ADD`. Add the compute admin role for this service account. A screenshot is shown below.
 
 ![Service Account Add Roles](/images/ee/gcp-setup/gcp-service-account-permissions.png)
-
 
 ## 4. Creating a firewall rule
 
@@ -65,7 +62,6 @@ Click on the `CREATE FIREWALL RULE` button and fill in the following.
 You should see something like the screenshot below, click `Create` next.
 
 ![Firewall -- create full](/images/ee/gcp-setup/firewall-create-full.png)
-
 
 ## 5. Provision instance for YugaWare
 

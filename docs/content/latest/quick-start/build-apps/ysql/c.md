@@ -7,7 +7,7 @@ The tutorial assumes that you have:
 - have a 32-bit (x86) or 64-bit (x64) architecture machine.
 - have gcc 4.1.2+, clang 3.4+ installed.
 
-## Install the C Driver (libpq)
+## Install the C driver (libpq)
 
 The C driver is already available as part of the YugaByte DB installation. You can use it by setting the LD_LIBRARY_PATH as follows :- 
   
@@ -17,9 +17,9 @@ $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 
 Alternatively, you can download the postgres binaries or build the driver from source as documented [here](https://www.postgresql.org/download/).
 
-## Working Example
+## Working example
 
-### Sample C Code
+### Sample C code
 
 Create a file `ybsql_hello_world.c` and copy the contents below:
 

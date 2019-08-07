@@ -1,7 +1,7 @@
 ---
-title: Build a Go App
-linkTitle: Build a Go App
-description: Build a Go App
+title: Build a Go application
+linkTitle: Build a Go application
+description: Build a Go application
 aliases:
   - /develop/client-drivers/go/
   - /latest/develop/client-drivers/go/
@@ -46,15 +46,15 @@ This tutorial assumes that you have:
 - installed YugaByte DB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../quick-start/explore-ysql/).
 - installed Go version 1.8+
 
-## Install Go PostgreSQL Driver
+## Install the Go PostgreSQL driver
 
-To install the driver locally run:
+To install the driver locally, run:
 
 ```sh
 $ go get github.com/lib/pq
 ```
 
-## Sample app
+## Sample application
 
 Create a file `ybsql_hello_world.go` and copy the contents below.
 
@@ -129,7 +129,7 @@ func main() {
 }
 ```
 
-## Running the app
+## Running the application
 
 To execute the file, run the following command:
 

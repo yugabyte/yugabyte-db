@@ -14,12 +14,13 @@ showAsideToc: true
 ---
 
 ## Synopsis
+
 <b>`ZSCORE key member`</b><br>
 Returns the score of the member in the sorted set at key. If member does not exist in the sorted set, 
 or key does not exist, null is returned. If `key` is associated with non sorted set data, 
 an error is returned.
 
-## Return Value
+## Return value
 
 The score of member (a double precision floating point number), represented as string.
 
@@ -49,6 +50,6 @@ $ ZSCORE z_key v2
 (null)
 ```
 
-## See Also
+## See also
 
 [`zadd`](../zadd/), [`zcard`](../zcard/), [`zrange`](../zrange/), [`zrangebyscore`](../zrangebyscore/), [`zrem`](../zrem/), [`zrevrange`](../zrevrange)

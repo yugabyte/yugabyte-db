@@ -1,19 +1,19 @@
-## Pre-requisites
+## Prerequisites
 
 This tutorial assumes that you have:
 
 - installed YugaByte DB, created a universe and are able to interact with it using the Redis shell. If not, please follow these steps in the [quick start guide](../../../quick-start/test-redis/).
 - installed Go version 1.8+
 
-## Install Go Redis Driver
+## Install the Go Redis driver
 
-To install the driver locally run:
+To install the driver, locally run the following `go get` command.
 
 ```sh
 $ go get github.com/go-redis/redis
 ```
 
-## Writing a HelloWorld Redis app
+## Writing a HelloWorld Redis application
 
 Create a file `ybredis_hello_world.go` and copy the contents below.
 
@@ -54,9 +54,9 @@ func main() {
 }
 ```
 
-## Running the app
+## Running the application
 
-To execute the file, run the following command:
+To execute the file, run the following command.
 
 ```sh
 $ go run ybredis_hello_world.go
