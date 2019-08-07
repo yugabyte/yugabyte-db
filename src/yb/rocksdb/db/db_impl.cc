@@ -2887,13 +2887,14 @@ bool DBImpl::IsEmptyCompactionQueue() {
 bool DBImpl::AddToCompactionQueue(ColumnFamilyData* cfd) {
   assert(!cfd->pending_compaction());
 
-  LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
   const MutableCFOptions* mutable_cf_options = cfd->GetLatestMutableCFOptions();
   std::unique_ptr<Compaction> c;
 
   if (!mutable_cf_options->disable_auto_compactions && !cfd->IsDropped()
         && !(HasExclusiveManualCompaction() || HaveManualCompaction(cfd))) {
+    LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
     c = cfd->PickCompaction(*cfd->GetLatestMutableCFOptions(), &log_buffer);
+    log_buffer.FlushBufferToLog();
     if (c) {
       cfd->Ref();
       if (db_options_.priority_thread_pool_for_compactions_and_flushes &&
