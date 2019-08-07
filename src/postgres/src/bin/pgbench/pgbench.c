@@ -100,7 +100,7 @@ static int	pthread_join(pthread_t th, void **thread_return);
 #define MAXCLIENTS	1024
 #endif
 
-#define DEFAULT_INIT_STEPS "dtgvp"	/* default -I setting */
+#define DEFAULT_INIT_STEPS "dtgp"	/* default -I setting */
 
 #define LOG_STEP_SECONDS	5	/* seconds between log messages */
 #define DEFAULT_NXACTS	10		/* default nxacts */
@@ -125,6 +125,7 @@ int			scale = 1;
  * space during inserts and leave 10 percent free.
  */
 int			fillfactor = 100;
+bool			set_fillfactor = false;
 
 /*
  * use unlogged tables?
@@ -545,7 +546,7 @@ usage(void)
 		   "  %s [OPTION]... [DBNAME]\n"
 		   "\nInitialization options:\n"
 		   "  -i, --initialize         invokes initialization mode\n"
-		   "  -I, --init-steps=[dtgvpf]+ (default \"dtgvp\")\n"
+		   "  -I, --init-steps=[dtgvpf]+ (default \"dtgp\")\n"
 		   "                           run selected initialization steps\n"
 		   "  -F, --fillfactor=NUM     set fill factor\n"
 		   "  -n, --no-vacuum          do not run VACUUM during initialization\n"
@@ -3479,7 +3480,7 @@ initDropTables(PGconn *con)
  * Create pgbench's standard tables
  */
 static void
-initCreateTables(PGconn *con)
+initCreateTables(PGconn *con, bool use_primary_key)
 {
 	/*
 	 * The scale factor at/beyond which 32-bit integers are insufficient for
@@ -3507,6 +3508,7 @@ initCreateTables(PGconn *con)
 		const char *table;		/* table name */
 		const char *smcols;		/* column decls if accountIDs are 32 bits */
 		const char *bigcols;	/* column decls if accountIDs are 64 bits */
+		const char *pkey;     /* optional use primary key for the table */
 		int			declare_fillfactor;
 	};
 	static const struct ddlinfo DDLs[] = {
@@ -3514,30 +3516,34 @@ initCreateTables(PGconn *con)
 			"pgbench_history",
 			"tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22)",
 			"tid int,bid int,aid bigint,delta int,mtime timestamp,filler char(22)",
+			"",
 			0
 		},
 		{
 			"pgbench_tellers",
 			"tid int not null,bid int,tbalance int,filler char(84)",
 			"tid int not null,bid int,tbalance int,filler char(84)",
+      ",PRIMARY KEY(tid)",
 			1
 		},
 		{
 			"pgbench_accounts",
 			"aid    int not null,bid int,abalance int,filler char(84)",
 			"aid bigint not null,bid int,abalance int,filler char(84)",
+      ",PRIMARY KEY(aid)",
 			1
 		},
 		{
 			"pgbench_branches",
 			"bid int not null,bbalance int,filler char(88)",
 			"bid int not null,bbalance int,filler char(88)",
+      ",PRIMARY KEY(bid)",
 			1
 		}
 	};
 	int			i;
 
-	fprintf(stderr, "creating tables...\n");
+	fprintf(stderr, "creating tables%s...\n", use_primary_key ? " (with primary keys)" : "");
 
 	for (i = 0; i < lengthof(DDLs); i++)
 	{
@@ -3548,7 +3554,7 @@ initCreateTables(PGconn *con)
 
 		/* Construct new create table statement. */
 		opts[0] = '\0';
-		if (ddl->declare_fillfactor)
+		if (ddl->declare_fillfactor && set_fillfactor)
 			snprintf(opts + strlen(opts), sizeof(opts) - strlen(opts),
 					 " with (fillfactor=%d)", fillfactor);
 		if (tablespace != NULL)
@@ -3564,9 +3570,11 @@ initCreateTables(PGconn *con)
 
 		cols = (scale >= SCALE_32BIT_THRESHOLD) ? ddl->bigcols : ddl->smcols;
 
-		snprintf(buffer, sizeof(buffer), "create%s table %s(%s)%s",
+		snprintf(buffer, sizeof(buffer), "create%s table %s(%s%s)%s",
 				 unlogged_tables ? " unlogged" : "",
-				 ddl->table, cols, opts);
+				 ddl->table, cols,
+				 use_primary_key ? ddl->pkey : "",
+				 opts);
 
 		executeStatement(con, buffer);
 	}
@@ -3724,41 +3732,6 @@ initVacuum(PGconn *con)
 }
 
 /*
- * Create primary keys on the standard tables
- */
-static void
-initCreatePKeys(PGconn *con)
-{
-	static const char *const DDLINDEXes[] = {
-		"alter table pgbench_branches add primary key (bid)",
-		"alter table pgbench_tellers add primary key (tid)",
-		"alter table pgbench_accounts add primary key (aid)"
-	};
-	int			i;
-
-	fprintf(stderr, "creating primary keys...\n");
-	for (i = 0; i < lengthof(DDLINDEXes); i++)
-	{
-		char		buffer[256];
-
-		strlcpy(buffer, DDLINDEXes[i], sizeof(buffer));
-
-		if (index_tablespace != NULL)
-		{
-			char	   *escape_tablespace;
-
-			escape_tablespace = PQescapeIdentifier(con, index_tablespace,
-												   strlen(index_tablespace));
-			snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer),
-					 " using index tablespace %s", escape_tablespace);
-			PQfreemem(escape_tablespace);
-		}
-
-		executeStatement(con, buffer);
-	}
-}
-
-/*
  * Create foreign key constraints between the standard tables
  */
 static void
@@ -3822,6 +3795,11 @@ runInitSteps(const char *initialize_steps)
 	if ((con = doConnect()) == NULL)
 		exit(1);
 
+  bool use_primary_key = false;
+  for (step = initialize_steps; *step != '\0'; step++)
+  {
+    use_primary_key |= (*step == 'p');
+  }
 	for (step = initialize_steps; *step != '\0'; step++)
 	{
 		switch (*step)
@@ -3830,7 +3808,7 @@ runInitSteps(const char *initialize_steps)
 				initDropTables(con);
 				break;
 			case 't':
-				initCreateTables(con);
+				initCreateTables(con, use_primary_key);
 				break;
 			case 'g':
 				initGenerateData(con);
@@ -3839,8 +3817,8 @@ runInitSteps(const char *initialize_steps)
 				initVacuum(con);
 				break;
 			case 'p':
-				initCreatePKeys(con);
-				break;
+          // handled via 'use_primary_key' in conjunction with 't'
+          break;
 			case 'f':
 				initCreateFKeys(con);
 				break;
@@ -5055,6 +5033,7 @@ main(int argc, char **argv)
 			case 'F':
 				initialization_option_set = true;
 				fillfactor = atoi(optarg);
+				set_fillfactor = true;
 				if (fillfactor < 10 || fillfactor > 100)
 				{
 					fprintf(stderr, "invalid fillfactor: \"%s\"\n", optarg);
