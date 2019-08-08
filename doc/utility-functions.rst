@@ -79,8 +79,7 @@ Examples
 ``alter_graph()``
 -----------------
 
-Alters a graph characteristic. Currently, the only operation supported is
-``rename``.
+Alters a graph characteristic. Currently, the only operation supported is ``rename``.
 
 Prototype
 ~~~~~~~~~
@@ -120,3 +119,49 @@ Examples
   -------------
   
   (1 row)
+
+``get_cypher_keywords()``
+-------------------------
+
+Returns the list of keywords in Cypher and their categories.
+
+Prototype
+~~~~~~~~~
+
+``get_cypher_keywords() SETOF record``
+
+Parameters
+~~~~~~~~~~
+
+N/A
+
+Return Value
+~~~~~~~~~~~~
+
+The list of keywords in Cypher and their categories.
+
+Examples
+~~~~~~~~
+
+.. code-block:: postgresql
+
+  =# SELECT * FROM get_cypher_keywords();
+      word    | catcode | catdesc
+  ------------+---------+----------
+   as         | R       | reserved
+   asc        | R       | reserved
+   ascending  | R       | reserved
+   by         | R       | reserved
+   desc       | R       | reserved
+   descending | R       | reserved
+   distinct   | R       | reserved
+   false      | R       | reserved
+   limit      | R       | reserved
+   null       | R       | reserved
+   order      | R       | reserved
+   return     | R       | reserved
+   skip       | R       | reserved
+   true       | R       | reserved
+   where      | R       | reserved
+   with       | R       | reserved
+  (16 rows)
