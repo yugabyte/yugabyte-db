@@ -8,6 +8,8 @@
 
 # Session specific API
 POST    /login                                    com.yugabyte.yw.controllers.SessionController.login()
+GET     /insecure_login                           com.yugabyte.yw.controllers.SessionController.insecure_login()
+PUT     /customers/:cUUID/security                com.yugabyte.yw.controllers.SessionController.set_security(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/api_token               com.yugabyte.yw.controllers.SessionController.api_token(cUUID: java.util.UUID)
 GET     /logout                                   com.yugabyte.yw.controllers.SessionController.logout()
 POST    /register                                 com.yugabyte.yw.controllers.SessionController.register()
@@ -56,7 +58,7 @@ POST    /customers/:cUUID/releases                com.yugabyte.yw.controllers.Re
 PUT     /customers/:cUUID/releases/:name          com.yugabyte.yw.controllers.ReleaseController.update(cUUID: java.util.UUID, name: String)
 
 # Certificate API
-POST	/customers/:cUUID/certificates			  com.yugabyte.yw.controllers.CertificateController.upload(cUUID: java.util.UUID)
+POST    /customers/:cUUID/certificates            com.yugabyte.yw.controllers.CertificateController.upload(cUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates            com.yugabyte.yw.controllers.CertificateController.list(cUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates/:name      com.yugabyte.yw.controllers.CertificateController.get(cUUID: java.util.UUID, name: String)
 
@@ -123,5 +125,5 @@ GET    /metadata/gcp_types                        com.yugabyte.yw.controllers.In
 
 # Schedule Management API
 GET    /customers/:cUUID/schedules                com.yugabyte.yw.controllers.ScheduleController.list(cUUID: java.util.UUID)
-DELETE /customers/:cUUID/schedules/:sUUID		  com.yugabyte.yw.controllers.ScheduleController.delete(cUUID: java.util.UUID, sUUID: java.util.UUID)
+DELETE /customers/:cUUID/schedules/:sUUID         com.yugabyte.yw.controllers.ScheduleController.delete(cUUID: java.util.UUID, sUUID: java.util.UUID)
 

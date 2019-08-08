@@ -101,7 +101,7 @@ export const IMPORT_UNIVERSE_RESET = 'IMPORT_UNIVERSE_RESET';
 
 
 export function createUniverse(formValues) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
   return {
     type: CREATE_UNIVERSE,
@@ -117,7 +117,7 @@ export function createUniverseResponse(response) {
 }
 
 export function fetchUniverseInfo(universeUUID) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`);
   return {
     type: FETCH_UNIVERSE_INFO,
@@ -153,7 +153,7 @@ export function fetchUniverseInfoResponse(response) {
 }
 
 export function fetchUniverseList() {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
 
   return {
@@ -190,7 +190,7 @@ export function resetUniverseList() {
 }
 
 export function deleteUniverse(universeUUID, isForceDelete) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const deleteRequestPayload = {isForceDelete: isForceDelete};
   const request = axios.delete(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}`, {params: deleteRequestPayload});
   return {
@@ -208,7 +208,7 @@ export function deleteUniverseResponse(response) {
 
 
 export function editUniverse(formValues, universeUUID) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`, formValues);
   return {
     type: EDIT_UNIVERSE,
@@ -224,7 +224,7 @@ export function editUniverseResponse(response) {
 }
 
 export function addUniverseReadReplica(formValues, universeUUID) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/cluster`, formValues);
   return {
     type: ADD_READ_REPLICA,
@@ -240,7 +240,7 @@ export function addUniverseReadReplicaResponse(response) {
 }
 
 export function editUniverseReadReplica(formValues, universeUUID) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`, formValues);
   return {
     type: EDIT_READ_REPLICA,
@@ -256,7 +256,7 @@ export function editUniverseReadReplicaResponse(response) {
 }
 
 export function deleteUniverseReadReplica(clusterUUID, universeUUID, isForceDelete) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const deleteRequestPayload = {isForceDelete: isForceDelete};
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/cluster/${clusterUUID}`, {params: deleteRequestPayload});
   return {
@@ -273,7 +273,7 @@ export function deleteUniverseReadReplicaResponse(response) {
 }
 
 export function fetchUniverseTasks(universeUUID) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/tasks`);
   return {
     type: FETCH_UNIVERSE_TASKS,
@@ -301,7 +301,7 @@ export function closeUniverseDialog() {
 }
 
 export function rollingUpgrade(values, universeUUID) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade`, values);
   return {
     type: ROLLING_UPGRADE,
@@ -323,7 +323,7 @@ export function configureUniverseTemplateLoading() {
 }
 
 export function configureUniverseTemplate(values) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universe_configure`, values);
   return {
     type: CONFIGURE_UNIVERSE_TEMPLATE,
@@ -346,7 +346,7 @@ export function configureUniverseTemplateSuccess(result) {
 }
 
 export function configureUniverseResources(values) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universe_resources`, values);
   return {
     type: CONFIGURE_UNIVERSE_RESOURCES,
@@ -416,7 +416,7 @@ export function resetMasterLeader() {
 }
 
 export function checkIfUniverseExists(universeName) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/find/${universeName}`;
   const request = axios.get(requestUrl);
   return {
@@ -458,7 +458,7 @@ export function fetchUniverseMetadata() {
 }
 
 export function fetchUniverseBackups(universeUUID) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/backups`);
   return {
     type: FETCH_UNIVERSE_BACKUPS,
@@ -480,7 +480,7 @@ export function resetUniverseBackups() {
 }
 
 export function getHealthCheck(universeUUID) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/health_check`);
   return {
     type: GET_HEALTH_CHECK,
@@ -502,7 +502,7 @@ export function importUniverseInit() {
 }
 
 export function importUniverse(values) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes/import`, values);
   return {
     type: IMPORT_UNIVERSE,
