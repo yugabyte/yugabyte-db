@@ -459,11 +459,10 @@ void InitRocksDBOptions(
     const shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options) {
   AutoInitRocksDBFlags(options);
+  SetLogPrefix(options, log_prefix);
   options->create_if_missing = true;
   options->disableDataSync = true;
   options->statistics = statistics;
-  options->log_prefix = log_prefix;
-  options->info_log = std::make_shared<YBRocksDBLogger>(options->log_prefix);
   options->info_log_level = YBRocksDBLogger::ConvertToRocksDBLogLevel(FLAGS_minloglevel);
   options->initial_seqno = FLAGS_initial_seqno;
   options->boundary_extractor = DocBoundaryValuesExtractorInstance();
@@ -561,6 +560,12 @@ void InitRocksDBOptions(
   options->memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
       0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);
 }
+
+void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix) {
+  options->log_prefix = log_prefix;
+  options->info_log = std::make_shared<YBRocksDBLogger>(options->log_prefix);
+}
+
 
 }  // namespace docdb
 }  // namespace yb
