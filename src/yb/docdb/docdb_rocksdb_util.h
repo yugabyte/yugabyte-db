@@ -139,6 +139,9 @@ void InitRocksDBOptions(
     const std::shared_ptr<rocksdb::Statistics>& statistics,
     const tablet::TabletOptions& tablet_options);
 
+// Sets logs prefix for RocksDB options. This will also reinitialize options->info_log.
+void SetLogPrefix(rocksdb::Options* options, const std::string& log_prefix);
+
 }  // namespace docdb
 }  // namespace yb
 
