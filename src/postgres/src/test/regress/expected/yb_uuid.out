@@ -133,7 +133,5 @@ SELECT COUNT(*) FROM guid1 g1 LEFT JOIN guid2 g2 ON g1.guid_field = g2.guid_fiel
      1
 (1 row)
 
--- clean up: DROP TABLE is not yet working correctly.
--- DROP TABLE guid1, guid2 CASCADE;
-DROP TABLE guid1;
-DROP TABLE guid2;
+-- clean up
+DROP TABLE guid1, guid2 CASCADE;
