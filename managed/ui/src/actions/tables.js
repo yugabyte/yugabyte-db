@@ -26,7 +26,7 @@ export const RESTORE_TABLE_BACKUP_RESPONSE = 'RESTORE_TABLE_BACKUP_RESPONSE';
 
 
 export function fetchUniverseTables(universeUUID) {
-  const customerId = localStorage.getItem("customer_id");
+  const customerId = localStorage.getItem("customerId");
   const request =
     axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`);
   return {
@@ -51,7 +51,7 @@ export function fetchUniverseTablesFailure(error) {
 
 
 export function fetchTableDetail(universeUUID, tableUUID) {
-  const customerId = localStorage.getItem("customer_id");
+  const customerId = localStorage.getItem("customerId");
   const request =
     axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables/${tableUUID}`);
   return {
@@ -111,7 +111,7 @@ export function resetTablesList() {
 }
 
 export function bulkImport(universeUUID, tableUUID, formValues) {
-  const customerId = localStorage.getItem("customer_id");
+  const customerId = localStorage.getItem("customerId");
   const request = axios.put(
     `${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables/${tableUUID}/bulk_import`,
     formValues

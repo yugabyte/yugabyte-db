@@ -4,11 +4,13 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
+import com.yugabyte.yw.forms.SetSecurityFormData;
 import com.yugabyte.yw.models.Customer;
 
 import org.apache.commons.io.input.ReversedLinesFileReader;
@@ -24,8 +26,11 @@ import play.mvc.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 import java.util.UUID;
 import javax.persistence.PersistenceException;
+
+import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
 
 public class SessionController extends Controller {
   public static final Logger LOG = LoggerFactory.getLogger(SessionController.class);
@@ -72,6 +77,61 @@ public class SessionController extends Controller {
     authTokenJson.put(CUSTOMER_UUID, cust.uuid.toString());
     response().setCookie(Http.Cookie.builder(AUTH_TOKEN, authToken).withSecure(ctx().request().secure()).build());
     return ok(authTokenJson);
+  }
+
+  public Result insecure_login() {
+    ObjectNode responseJson = Json.newObject();
+
+    String securityLevel = (String) configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
+    if (securityLevel != null && securityLevel.equals("insecure")) {
+      List<Customer> custs = Customer.find.all();
+      if (custs.isEmpty()) {
+        responseJson.put("error", "No customers exist.");
+        return unauthorized(responseJson);
+      }
+      Customer cust = custs.get(0);
+      if (cust == null) {
+        responseJson.put("error", "Invalid customer saved.");
+        return unauthorized(responseJson);
+      }
+      String apiToken = cust.getApiToken();
+      if (apiToken == null || apiToken.isEmpty()) {
+        apiToken = cust.upsertApiToken();
+      }
+
+      ObjectNode apiTokenJson = Json.newObject();
+      apiTokenJson.put(API_TOKEN, apiToken);
+      apiTokenJson.put(CUSTOMER_UUID, cust.uuid.toString());
+      response().setCookie(Http.Cookie.builder(API_TOKEN, apiToken).withSecure(ctx().request().secure()).build());
+      return ok(apiTokenJson);
+    }
+    responseJson.put("error", "Insecure login unavailable.");
+    return unauthorized(responseJson);
+  }
+
+  // Any changes to security should be authenticated.
+  @With(TokenAuthenticator.class)
+  public Result set_security(UUID customerUUID) {
+    Form<SetSecurityFormData> formData = formFactory.form(SetSecurityFormData.class).bindFromRequest();
+    ObjectNode responseJson = Json.newObject();
+
+    if (formData.hasErrors()) {
+      responseJson.set("error", formData.errorsAsJson());
+      return badRequest(responseJson);
+    }
+
+    SetSecurityFormData data = formData.get();
+    configHelper.loadConfigToDB(Security, ImmutableMap.of("level", data.level));
+    if (data.level.equals("insecure")) {
+      List<Customer> custs = Customer.find.all();
+      for (Customer cust: custs) {
+        String apiToken = cust.getApiToken();
+        if (apiToken == null || apiToken.isEmpty()) {
+          cust.upsertApiToken();
+        }
+      }
+    }
+    return ok();
   }
 
   @With(TokenAuthenticator.class)
