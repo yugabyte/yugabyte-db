@@ -4,7 +4,7 @@ import Cookies from 'js-cookie';
 import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 
-import { validateToken, validateFromTokenResponse, fetchCustomerCount, customerTokenError, resetCustomer } from './actions/customers';
+import { validateToken, validateFromTokenResponse, fetchCustomerCount, customerTokenError, resetCustomer, insecureLogin } from './actions/customers';
 import App from './app/App';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -27,17 +27,24 @@ import Releases from './pages/Releases';
 
 const clearCredentials = () => {
   localStorage.clear();
-  Cookies.remove("api_token");
-  Cookies.remove("customer_token");
-  Cookies.remove("customer_id");
+  Cookies.remove("apiToken");
+  Cookies.remove("authToken");
+  Cookies.remove("customerId");
   browserHistory.push('/login');
 };
 
 function validateSession(store, replacePath, callback) {
-  const authToken = Cookies.get("customer_token") || localStorage.getItem('customer_token');
-  const apiToken = Cookies.get("api_token") || localStorage.getItem('api_token');
+  const authToken = Cookies.get("authToken") || localStorage.getItem('authToken');
+  const apiToken = Cookies.get("apiToken") || localStorage.getItem('apiToken');
   // If the token is null or invalid, we just re-direct to login page
   if((!apiToken || apiToken === '') && (!authToken || authToken === '')) {
+    store.dispatch(insecureLogin()).then((response) => {
+      if (response.payload.status === 200) {
+        localStorage.setItem('apiToken', response.payload.data.apiToken);
+        localStorage.setItem('customerId', response.payload.data.customerUUID);
+        browserHistory.push('/');
+      }
+    });
     store.dispatch(fetchCustomerCount()).then((response) => {
       if (!response.error) {
         const responseData = response.payload.data;
@@ -71,7 +78,7 @@ function validateSession(store, replacePath, callback) {
           clearCredentials();
           callback();
         } else if ("uuid" in response.payload.data) {
-          localStorage.setItem("customer_id", response.payload.data["uuid"]);
+          localStorage.setItem("customerId", response.payload.data["uuid"]);
         }
       });
   }

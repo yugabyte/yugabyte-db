@@ -1,7 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import LoginForm from './LoginForm';
-import { login, loginResponse, resetCustomerError } from '../../../../actions/customers';
+import { login, loginResponse, resetCustomerError }
+  from '../../../../actions/customers';
 import { connect } from 'react-redux';
 
 const mapDispatchToProps = (dispatch) => {
@@ -9,8 +10,8 @@ const mapDispatchToProps = (dispatch) => {
     loginCustomer: (formValues) => {
       dispatch(login(formValues)).then((response) => {
         if (response.payload.status === 200) {
-          localStorage.setItem('customer_token', response.payload.data.authToken);
-          localStorage.setItem('customer_id',response.payload.data.customerUUID);
+          localStorage.setItem('authToken', response.payload.data.authToken);
+          localStorage.setItem('customerId',response.payload.data.customerUUID);
         }
         dispatch(loginResponse(response.payload));
       });

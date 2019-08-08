@@ -232,6 +232,18 @@ public class Customer extends Model {
   }
 
   /**
+   * Get current apiToken.
+   *
+   * @return apiToken
+   */
+  public String getApiToken() {
+    if (apiToken == null) {
+      return null;
+    }
+    return apiToken.toString();
+  }
+
+  /**
    * Authenticate with Token, would check if the authToken is valid.
    *
    * @param authToken

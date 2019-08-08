@@ -6,7 +6,7 @@
 create table access_key (
   key_code                      varchar(255) not null,
   provider_uuid                 uuid not null,
-  key_info                      clob not null,
+  key_info                      TEXT not null,
   constraint pk_access_key primary key (key_code,provider_uuid)
 );
 
@@ -17,7 +17,7 @@ create table availability_zone (
   region_uuid                   uuid,
   active                        boolean default true not null,
   subnet                        varchar(50),
-  config                        clob,
+  config                        TEXT,
   constraint pk_availability_zone primary key (uuid)
 );
 
@@ -25,7 +25,7 @@ create table backup (
   backup_uuid                   uuid not null,
   customer_uuid                 uuid not null,
   state                         varchar(11) not null,
-  backup_info                   clob not null,
+  backup_info                   TEXT not null,
   task_uuid                     uuid,
   create_time                   timestamp not null,
   update_time                   timestamp not null,
@@ -57,21 +57,21 @@ create table customer (
   auth_token                    varchar(255),
   auth_token_issue_date         timestamp,
   api_token                     varchar(255),
-  features                      clob,
+  features                      TEXT,
   universe_uuids                TEXT not null,
   constraint uq_customer_uuid unique (uuid),
   constraint uq_customer_code unique (code),
   constraint uq_customer_email unique (email),
   constraint pk_customer primary key (id)
 );
-create sequence customer_seq;
+create sequence customer_id_seq increment by 1;
 
 create table customer_config (
   config_uuid                   uuid not null,
   customer_uuid                 uuid not null,
   type                          varchar(25) not null,
   name                          varchar(100) not null,
-  data                          clob not null,
+  data                          TEXT not null,
   constraint ck_customer_config_type check (type in ('STORAGE','OTHER','CALLHOME','ALERTS')),
   constraint pk_customer_config primary key (config_uuid)
 );
@@ -90,7 +90,7 @@ create table customer_task (
   constraint ck_customer_task_type check (type in ('Delete','Add','Stop','Start','Create','UpgradeSoftware','Remove','Update','Restore','Release','UpgradeGflags','BulkImportData')),
   constraint pk_customer_task primary key (id)
 );
-create sequence customer_task_seq;
+create sequence customer_task_id_seq increment by 1;
 
 create table health_check (
   universe_uuid                 uuid not null,
@@ -105,14 +105,14 @@ create table instance_type (
   instance_type_code            varchar(255) not null,
   active                        boolean default true not null,
   num_cores                     integer not null,
-  mem_size_gb                   double not null,
+  mem_size_gb                   float not null,
   instance_type_details_json    TEXT,
   constraint pk_instance_type primary key (provider_code,instance_type_code)
 );
 
 create table metric_config (
   config_key                    varchar(100) not null,
-  config                        clob not null,
+  config                        TEXT not null,
   constraint pk_metric_config primary key (config_key)
 );
 
@@ -140,7 +140,7 @@ create table provider (
   name                          varchar(255) not null,
   active                        boolean default true not null,
   customer_uuid                 uuid not null,
-  config                        clob not null,
+  config                        TEXT not null,
   constraint pk_provider primary key (uuid)
 );
 
@@ -149,12 +149,12 @@ create table region (
   code                          varchar(25) not null,
   name                          varchar(100) not null,
   yb_image                      varchar(255),
-  longitude                     double,
-  latitude                      double,
+  longitude                     float,
+  latitude                      float,
   provider_uuid                 uuid,
   active                        boolean default true not null,
-  details                       clob,
-  config                        clob,
+  details                       TEXT,
+  config                        TEXT,
   constraint pk_region primary key (uuid)
 );
 
@@ -163,7 +163,7 @@ create table schedule (
   customer_uuid                 uuid not null,
   failure_count                 integer default 0 not null,
   frequency                     bigint not null,
-  task_params                   clob not null,
+  task_params                   TEXT not null,
   task_type                     varchar(29) not null,
   status                        varchar(7) not null,
   constraint ck_schedule_task_type check (task_type in ('CloudBootstrap','CloudCleanup','CreateCassandraTable','CreateUniverse','ReadOnlyClusterCreate','ReadOnlyClusterDelete','CreateKubernetesUniverse','DestroyUniverse','DestroyKubernetesUniverse','DeleteTable','BackupUniverse','EditUniverse','EditKubernetesUniverse','KubernetesProvision','ImportIntoTable','UpgradeUniverse','UpgradeKubernetesUniverse','DeleteNodeFromUniverse','StopNodeInUniverse','StartNodeInUniverse','AddNodeToUniverse','RemoveNodeFromUniverse','ReleaseInstanceFromUniverse','AnsibleClusterServerCtl','AnsibleConfigureServers','AnsibleDestroyServer','AnsibleSetupServer','AnsibleUpdateNodeInfo','BulkImport','ChangeMasterConfig','CreateTable','DeleteNode','UpdateNodeProcess','DeleteTableFromUniverse','LoadBalancerStateChange','ModifyBlackList','ManipulateDnsRecordTask','RemoveUniverseEntry','SetNodeState','SwamperTargetsFileUpdate','UniverseUpdateSucceeded','UpdateAndPersistGFlags','UpdatePlacementInfo','UpdateSoftwareVersion','WaitForDataMove','WaitForLoadBalance','WaitForMasterLeader','WaitForServer','WaitForTServerHeartBeats','DeleteClusterFromUniverse','InstanceActions','WaitForServerReady','CloudAccessKeyCleanup','CloudAccessKeySetup','CloudInitializer','CloudProviderCleanup','CloudRegionCleanup','CloudRegionSetup','CloudSetup','BackupTable','WaitForLeadersOnPreferredOnly','KubernetesCommandExecutor','KubernetesWaitForPod')),
@@ -187,7 +187,7 @@ create table task_info (
   task_state                    varchar(12) not null,
   sub_task_group_type           varchar(25),
   percent_done                  integer default 0,
-  details                       clob not null,
+  details                       TEXT default '{}' not null,
   owner                         varchar(255) not null,
   create_time                   timestamp not null,
   update_time                   timestamp not null,
@@ -241,12 +241,12 @@ drop table if exists backup;
 drop table if exists certificate_info;
 
 drop table if exists customer;
-drop sequence if exists customer_seq;
+drop sequence if exists customer_id_seq;
 
 drop table if exists customer_config;
 
 drop table if exists customer_task;
-drop sequence if exists customer_task_seq;
+drop sequence if exists customer_task_id_seq;
 
 drop table if exists health_check;
 

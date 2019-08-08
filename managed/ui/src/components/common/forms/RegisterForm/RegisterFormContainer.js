@@ -9,8 +9,8 @@ const mapDispatchToProps = (dispatch) => {
     registerCustomer: (formVals)=> {
       dispatch(register(formVals)).then((response) => {
         if (response.payload.status === 200) {
-          localStorage.setItem('customer_token', response.payload.data.authToken);
-          localStorage.setItem('customer_id', response.payload.data.customerUUID);
+          localStorage.setItem('authToken', response.payload.data.authToken);
+          localStorage.setItem('customerId', response.payload.data.customerUUID);
         }
         dispatch(registerResponse(response.payload));
       });

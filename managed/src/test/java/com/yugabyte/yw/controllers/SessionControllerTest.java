@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertUnauthorized;
 import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
@@ -105,6 +106,34 @@ public class SessionControllerTest {
     assertEquals(BAD_REQUEST, result.status());
     assertThat(json.get("error").toString(),
                allOf(notNullValue(), containsString("{\"password\":[\"This field is required\"]}")));
+  }
+
+  @Test
+  public void testInsecureLoginValid() {
+    startApp(false);
+    ModelFactory.testCustomer("foo@bar.com");
+    ConfigHelper configHelper = new ConfigHelper();
+    configHelper.loadConfigToDB(ConfigHelper.ConfigType.Security,
+        ImmutableMap.of("level", "insecure"));
+
+    Result result = route(fakeRequest("GET", "/api/insecure_login"));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertEquals(OK, result.status());
+    assertNotNull(json.get("apiToken"));
+    assertNotNull(json.get("customerUUID"));
+  }
+
+  @Test
+  public void testInsecureLoginInvalid() {
+    startApp(false);
+    ModelFactory.testCustomer("foo@bar.com");
+    ConfigHelper configHelper = new ConfigHelper();
+
+    Result result = route(fakeRequest("GET", "/api/insecure_login"));
+    JsonNode json = Json.parse(contentAsString(result));
+
+    assertUnauthorized(result, "Insecure login unavailable.");
   }
 
   @Test

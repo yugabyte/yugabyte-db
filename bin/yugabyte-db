@@ -168,7 +168,6 @@ class YugaByteProcessManager(object):
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         if ysql_proxy.db_exists(db_name):
-            # TODO: Add more commands.
             website = Output.make_underline(
                 "https://docs.yugabyte.com/latest/quick-start/explore-ysql/")
             Output.print_out(Configs.get_demo_info()[demo_db]["examples"])
@@ -277,7 +276,7 @@ class YugaByteProcessManager(object):
         yw_cmd = [
             os.path.join(BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
             "-Dplay.evolutions.db.default.autoApply=true",
-            "-Dhttp.port={}".format(self.configs.saved_data.get("webserver_port")),
+            "-Dhttp.port={}".format(self.configs.saved_data.get("api_port")),
         ]
 
         self.processes = {
@@ -332,28 +331,19 @@ class YugaByteProcessManager(object):
                             "{} died unexpectedly. Restarting...".format(p.name), logging.ERROR)
                     should_callhome = True
 
-<<<<<<< HEAD
-            # Start or iniitialize yugaware.
-            if self.wait_yb_master() and self.configs.saved_data.get("webserver_enabled"):
-                yw_proxy = YugaWareProxy(self.configs.saved_data.get("api_port"))
-                if not self.is_yw_initialized():
-                    Output.log("Initiating webserver...")
-                    self.init_yw()
-                    process = self.processes.get("yugaware")
-                    process.start()
-=======
             if self.wait_yb_master():
                 # Start or iniitialize yugaware after setting YSQL default isolation level.
                 # This if required to start YW because of
                 # https://github.com/YugaByte/yugabyte-db/issues/1199.
-                if self.configs.saved_data.get("webserver_enabled") and self.set_isolation_level():
+                if self.configs.saved_data.get("webserver_enabled"):
                     yw_proxy = YugaWareProxy(self.configs.saved_data.get("api_port"))
-                    if not self.is_yw_initialized():
+                    if not self.is_yw_initialized() and self.set_isolation_level():
                         Output.log("Initiating webserver...")
-                        self.init_yw()
+                        if not self.init_yw():
+                            Output.log_error_and_exit("Failed to initialize webserver.")
+
                         process = self.processes.get("yugaware")
                         process.start()
->>>>>>> Package YW to be compatible with yugabyte-db
 
                         err = self.wait_yw_login(yw_proxy)
                         if err:
@@ -362,6 +352,8 @@ class YugaByteProcessManager(object):
                         err = yw_proxy.import_universe(self.configs.saved_data.get("master_port"))
                         if err:
                             Output.log_error_and_exit(err)
+
+                        err = yw_proxy.set_security("insecure")
 
                         # Should yugabyte-db exit if features aren't disabled properly? Retry?
                         err = yw_proxy.update_features()
@@ -411,19 +403,19 @@ class YugaByteProcessManager(object):
         # Create YW database.
         create_yw_db = [
             os.path.join(BIN_DIR, "ysqlsh"), "-c", "create database {};".format(WEBSERVER_DB)]
+        Output.log("Creating system_wbsvr database...")
         _, err, ret_code = run_process(create_yw_db)
         if err or ret_code:
+            Output.log("Failed to create system_wbsvr: {}".format(err), logging.ERROR)
             return False
 
         # Create Play evolutions table. Required for YugaWare to start up properly.
         create_play_table = [
-            os.path.join(BIN_DIR, "ysqlsh"), "-d", WEBSERVER_DB, "-c",
-            "create table play_evolutions (id int not null, hash varchar(255) not null, "
-            "applied_at TIMESTAMP WITHOUT TIME ZONE not null, "
-            "apply_script text, revert_script text, state varchar(255), last_problem text)"
+            os.path.join(BIN_DIR, "yugaware"), "-Dconfig.file=" + YUGAWARE_CONF
         ]
-        _, err, ret_code = run_process(create_play_table)
-        return not err and not ret_code
+        Output.log("Initializing play tables...")
+        run_process(create_play_table)
+        return True
 
     # Returns if yb-master and yb-tserver were properly initialized before.
     def is_yb_initialized(self):
@@ -449,19 +441,29 @@ class YugaByteProcessManager(object):
 
     # Sets YSQL default isolation level.
     def set_isolation_level(self):
+        Output.log("Setting transaction isolation to serializable.")
         pg_conf = os.path.join(self.configs.saved_data.get("data_dir"), "pg_data/postgresql.conf")
         iso_config = "default_transaction_isolation = 'serializable'"
         pattern = "^\s*{}$".format(iso_config)
+        changed = False
         if os.path.exists(pg_conf):
-            with open(pg_conf, "a+") as f:
+            with open(pg_conf, "r+") as f:
                 for line in f:
                     if re.match(pattern, line):
                         return True
                 f.write(iso_config)
-                return True
-        return False
+                changed = True
+        if changed:
+            # tserver must be restarted for conf changes to go through.
+            Output.log("Restarting tserver...", logging.DEBUG)
+            tserver = self.processes.get("tserver")
+            tserver.kill()
+            tserver.start()
+            self.wait_yb_master()
+            Output.log("Restarted tserver.", logging.DEBUG)
+        return changed
 
-    # Rudimentary yb-admin call. TODO: update.
+    # Rudimentary yb-admin call.
     def get_universe_uuid(self):
         saved_uuid = self.configs.saved_data.get("universe_uuid")
         if saved_uuid:
@@ -486,6 +488,7 @@ class YugaByteProcessManager(object):
         while time.time() - start_time < timeout:
             cur_num_tservers = YBAdminProxy.get_num_tservers(master_addr)
             if cur_num_tservers is not None and cur_num_tservers == num_tservers:
+                time.sleep(2)
                 return True
             time.sleep(2)
         return False
@@ -703,7 +706,6 @@ class YugaByteProcessManager(object):
         all_parsers["demo"] = demo
         demo_subparser = demo.add_subparsers()
 
-        # TODO: Make below code readable...
         create_help = "Create sample database if it does not exist yet."
         create_demo = demo_subparser.add_parser("create", help=create_help)
         create_demo_subparser = create_demo.add_subparsers(dest="demo_db")
@@ -863,7 +865,6 @@ class ProcessManager(object):
         self.data_dir = data_dir
         self.pidfile = os.path.join(self.data_dir, "{}.pid".format(name))
         self.process = None
-        # TODO: Get uptime of process.
         self.start_time = None
 
     # Start process. Creates pidfile and corresponding output logs.
@@ -1319,6 +1320,33 @@ class YugaWareProxy(object):
         else:
             Output.log(err_msg, logging.ERROR)
         return err_msg
+
+    # Sets YugaWare to input security level.
+    def set_security(self, level):
+        target = "{}/customers/{}/security".format(self.url, self.cust_uuid)
+        headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "User-Agent": "Mozilla",
+            "Content-Type": "application/json",
+        }
+        data = {"level": level}
+        err_msg = None
+        Output.log("Updating YW security to {}...".format(level))
+        try:
+            req = Request(target, headers=headers, data=json.dumps(data))
+            req.get_method = lambda: "PUT"
+            resp = urlopen(req).read()
+            if resp.code != 200:
+                err_msg = "Failed to set security level: YW returned code: " + resp.code
+        except (ValueError, HTTPError, URLError, KeyError) as e:
+            err_msg = "Failed to set security level: {}".format(e)
+
+        if not err_msg:
+            Output.log("Sucesssfully set YW security to {}".format(level))
+        else:
+            Output.log(err_msg, logging.ERROR)
+        return err_msg
+
 
 # Class that handles any output operations. Use print for what users should see.
 # Use log for logging. ANSI escape characters should not be used for logging.

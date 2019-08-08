@@ -86,7 +86,7 @@ export const EDIT_PROVIDER = 'EDIT_PROVIDER';
 export const EDIT_PROVIDER_RESPONSE = 'EDIT_PROVIDER_RESPONSE';
 
 export function getProviderList() {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers`);
   return {
     type: GET_PROVIDER_LIST,
@@ -161,7 +161,7 @@ export function createInstanceTypeResponse(responsePayload) {
 }
 
 export function getSupportedRegionData() {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/regions`);
   return {
     type: GET_SUPPORTED_REGION_DATA,
@@ -183,7 +183,7 @@ export function resetProviderList() {
 }
 
 export function createProvider(type, name, config) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const provider = PROVIDER_TYPES.find( (providerType) => providerType.code === type );
   const formValues = {
     'code': provider.code,
@@ -197,12 +197,12 @@ export function createProvider(type, name, config) {
   };
 }
 
-/** 
+/**
  *  New create provider API for multi-region and multi-zone configurations.
  *  Currently, only supports Kubernetes.
  */
 export function createMultiRegionKubernetesProvider(name, config, regions) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const formValues = {
     code: 'kubernetes',
     name: name,
@@ -261,7 +261,7 @@ export function createZonesResponse(result) {
 }
 
 export function createNodeInstances(zoneUUID, nodes) {
-  const customerUUID = localStorage.getItem("customer_id");
+  const customerUUID = localStorage.getItem("customerId");
   const url = `${ROOT_URL}/customers/${customerUUID}/zones/${zoneUUID}/nodes`;
   const formValues = { "nodes": nodes };
   const request = axios.post(url, formValues);
@@ -327,7 +327,7 @@ export function initializeProviderFailure(error) {
 }
 
 export function deleteProvider(providerUUID) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request =
     axios.delete(`${ROOT_URL}/customers/${cUUID}/providers/${providerUUID}`);
   return {
@@ -410,7 +410,7 @@ export function getGCPTypeListResponse(responsePayload) {
 }
 
 export function createDockerProvider() {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/providers/setup_docker`);
   return {
     type: CREATE_DOCKER_PROVIDER,
@@ -439,7 +439,7 @@ export function setOnPremConfigData(configData) {
 }
 
 export function getNodeInstancesForProvider(pUUID) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/nodes/list`);
   return {
     type: GET_NODE_INSTANCE_LIST,
@@ -512,7 +512,7 @@ export function deleteInstanceResponse(response) {
 }
 
 export function editProvider(payload) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const pUUID = payload.accountUUID;
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/edit`, payload);
   return {
