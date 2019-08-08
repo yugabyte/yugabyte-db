@@ -7985,7 +7985,7 @@ index_elem:	ColId opt_collate opt_class opt_yb_index_sort_order opt_nulls_order
 yb_index_elem: index_elem
 				{
 					$$ = $1;
-					if ($$->expr)
+					if ($$->expr && $$->expr->type == T_ColumnRef)
 					{
 						YBINDEXELEM_EXPR_TO_COLREF($$, $$->expr, @1);
 					}
