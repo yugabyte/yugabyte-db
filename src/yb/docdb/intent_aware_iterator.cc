@@ -373,6 +373,13 @@ void IntentAwareIterator::SeekToLastDocKey() {
   SeekToLatestDocKeyInternal();
 }
 
+template <class T>
+void Assign(const T& value, T* out) {
+  if (out) {
+    *out = value;
+  }
+}
+
 // If we reach a different key, stop seeking.
 Status IntentAwareIterator::NextFullValue(
     DocHybridTime* latest_record_ht,
@@ -384,23 +391,23 @@ Status IntentAwareIterator::NextFullValue(
   RETURN_NOT_OK(status_);
   Slice v;
   if (!valid() || !IsMergeRecord(v = value())) {
-    auto key = VERIFY_RESULT(FetchKey(latest_record_ht));
-    if (final_key)
-      *final_key = key;
+    auto key_data = VERIFY_RESULT(FetchKey());
+    Assign(key_data.key, final_key);
+    Assign(key_data.write_time, latest_record_ht);
     *result_value = v;
     return status_;
   }
 
   *latest_record_ht = DocHybridTime::kMin;
-  const auto curr_key = VERIFY_RESULT(FetchKey());
-  const size_t key_size = curr_key.size();
-  auto key = curr_key;
+  const auto key_data = VERIFY_RESULT(FetchKey());
+  auto key = key_data.key;
+  const size_t key_size = key.size();
   bool found_record = false;
 
   // The condition specifies that the first type is the flags type,
   // And that the key is still the same.
   while ((found_record = iter_.Valid() &&
-          (key = iter_.key()).starts_with(curr_key) &&
+          (key = iter_.key()).starts_with(key_data.key) &&
           (ValueType)(key[key_size]) == ValueType::kHybridTime) &&
          IsMergeRecord(v = iter_.value())) {
     iter_.Next();
@@ -409,13 +416,12 @@ Status IntentAwareIterator::NextFullValue(
   if (found_record) {
     *result_value = v;
     *latest_record_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&key));
-    if (final_key)
-      *final_key = key;
+    Assign(key, final_key);
   }
 
   found_record = false;
   if (intent_iter_.Initialized()) {
-    while ((found_record = IsIntentForTheSameKey(intent_iter_.key(), curr_key)) &&
+    while ((found_record = IsIntentForTheSameKey(intent_iter_.key(), key_data.key)) &&
            IsMergeRecord(v = intent_iter_.value())) {
       intent_iter_.Next();
     }
@@ -424,8 +430,7 @@ Status IntentAwareIterator::NextFullValue(
         (doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&key))) >= *latest_record_ht) {
       *latest_record_ht = doc_ht;
       *result_value = v;
-      if (final_key)
-        *final_key = key;
+      Assign(key, final_key);
     }
   }
 
@@ -581,26 +586,25 @@ bool IntentAwareIterator::IsEntryRegular() {
   return true;
 }
 
-Result<Slice> IntentAwareIterator::FetchKey(DocHybridTime* doc_ht) {
+Result<FetchKeyResult> IntentAwareIterator::FetchKey() {
   RETURN_NOT_OK(status_);
-  Slice result;
-  DocHybridTime doc_ht_seen;
+  FetchKeyResult result;
   if (IsEntryRegular()) {
-    result = iter_.key();
-    doc_ht_seen = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&result));
-    DCHECK(result.ends_with(ValueTypeAsChar::kHybridTime)) << result.ToDebugString();
-    result.remove_suffix(1);
+    result.key = iter_.key();
+    result.write_time = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&result.key));
+    DCHECK(result.key.ends_with(ValueTypeAsChar::kHybridTime)) << result.key.ToDebugString();
+    result.key.remove_suffix(1);
+    result.same_transaction = false;
+    max_seen_ht_.MakeAtLeast(result.write_time.hybrid_time());
   } else {
     DCHECK_EQ(ResolvedIntentState::kValid, resolved_intent_state_);
-    result = resolved_intent_key_prefix_.AsSlice();
-    doc_ht_seen = resolved_intent_txn_dht_;
+    result.key = resolved_intent_key_prefix_.AsSlice();
+    result.write_time = GetIntentDocHybridTime();
+    result.same_transaction = ResolvedIntentFromSameTransaction();
+    max_seen_ht_.MakeAtLeast(resolved_intent_txn_dht_.hybrid_time());
   }
-  if (doc_ht) {
-    *doc_ht = doc_ht_seen;
-  }
-  max_seen_ht_.MakeAtLeast(doc_ht_seen.hybrid_time());
-  VLOG(4) << "Fetched key " << SubDocKey::DebugSliceToString(result)
-          << ", with time: " << doc_ht_seen
+  VLOG(4) << "Fetched key " << SubDocKey::DebugSliceToString(result.key)
+          << ", with time: " << result.write_time
           << ", while read bounds are: " << read_time_;
   return result;
 }
@@ -762,12 +766,12 @@ void IntentAwareIterator::DebugDump() {
   }
   LOG(INFO) << "valid(): " << is_valid;
   if (valid()) {
-    DocHybridTime doc_ht;
-    auto key = FetchKey(&doc_ht);
-    if (key.ok()) {
-      LOG(INFO) << "key(): " << DebugDumpKeyToStr(*key) << ", doc_ht: " << doc_ht;
+    auto key_data = FetchKey();
+    if (key_data.ok()) {
+      LOG(INFO) << "key(): " << DebugDumpKeyToStr(key_data->key)
+                << ", doc_ht: " << key_data->write_time;
     } else {
-      LOG(INFO) << "key(): fetch failed: " << key.status();
+      LOG(INFO) << "key(): fetch failed: " << key_data.status();
     }
   }
   LOG(INFO) << "<< IntentAwareIterator dump";
@@ -780,11 +784,14 @@ Status IntentAwareIterator::FindLatestIntentRecord(
   const auto intent_prefix = GetIntentPrefixForKeyWithoutHt(key_without_ht);
   SeekForwardToSuitableIntent(intent_prefix);
   RETURN_NOT_OK(status_);
-  if (resolved_intent_state_ == ResolvedIntentState::kValid &&
-      resolved_intent_txn_dht_ > *latest_record_ht &&
-      resolved_intent_key_prefix_.CompareTo(intent_prefix) == 0) {
-    *latest_record_ht = resolved_intent_txn_dht_;
-    max_seen_ht_.MakeAtLeast(latest_record_ht->hybrid_time());
+  if (resolved_intent_state_ != ResolvedIntentState::kValid) {
+    return Status::OK();
+  }
+
+  auto time = GetIntentDocHybridTime();
+  if (time > *latest_record_ht && resolved_intent_key_prefix_.CompareTo(intent_prefix) == 0) {
+    *latest_record_ht = time;
+    max_seen_ht_.MakeAtLeast(resolved_intent_txn_dht_.hybrid_time());
     *found_later_intent_result = true;
   }
   return Status::OK();

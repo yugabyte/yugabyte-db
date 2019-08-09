@@ -63,6 +63,12 @@ class TransactionStatusCache {
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> cache_;
 };
 
+struct FetchKeyResult {
+  Slice key;
+  DocHybridTime write_time;
+  bool same_transaction;
+};
+
 // Provides a way to iterate over DocDB (sub)keys with respect to committed intents transparently
 // for caller. Implementation relies on intents order in RocksDB, which is determined by intent key
 // format. If (sub)key A goes before/after (sub)key B, all intents for A should go before/after all
@@ -138,7 +144,7 @@ class IntentAwareIterator {
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
-  Result<Slice> FetchKey(DocHybridTime* doc_ht = nullptr);
+  Result<FetchKeyResult> FetchKey();
 
   bool valid();
   Slice value();
@@ -251,6 +257,15 @@ class IntentAwareIterator {
   void SeekIntentIterIfNeeded();
 
   bool SatisfyBounds(const Slice& slice);
+
+  bool ResolvedIntentFromSameTransaction() const {
+    return intent_dht_from_same_txn_ != DocHybridTime::kMin;
+  }
+
+  DocHybridTime GetIntentDocHybridTime() const {
+    return ResolvedIntentFromSameTransaction() ? intent_dht_from_same_txn_
+                                               :  resolved_intent_txn_dht_;
+  }
 
   const ReadHybridTime read_time_;
   const string encoded_read_time_local_limit_;
