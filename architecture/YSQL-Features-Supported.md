@@ -93,6 +93,7 @@ Here are the features currently supported as of YugaByte DB v1.3, Jul 15 2019. T
     - [ ] Advanced Spring support ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
 - [ ] Tools support
     - [x] psql
+    - [ ] pgAdmin ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
     - [ ] TablePlus
     - [ ] pg_dump ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
     - [ ] pgbench ![Generic badge](https://img.shields.io/badge/Target-v2.0-green.svg)
