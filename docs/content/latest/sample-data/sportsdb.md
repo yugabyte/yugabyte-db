@@ -1,7 +1,7 @@
 ---
 title: SportsDB sample database 
 linkTitle: SportsDB
-description: Use the classic Northwind sample database to begin exploring YugaByte DB.
+description: SportsDB sample database
 menu:
   latest:
     identifier: sportsdb
@@ -11,19 +11,21 @@ isTocNested: true
 showAsideToc: true
 ---
 
-## Introduction
+Install the PostgreSQL-compatible version of SportsDB on the YugaByte DB distributed SQL database.
 
-In this post we are going to walk you through how to download and install the PostgreSQL-compatible version of Northwind on the YugaByte DB distributed SQL database.
+## About the SportsDB sample database
 
-[SportsDB](http://www.sportsdb.org/sd) is a sample dataset compiled from multiple sources, encompassing a variety of sports, including football, baseball, ice hockey, and more. It also cross-references many different types of content media. It is capable of supporting queries for the most intense of sports data applications, yet is simple enough for use by those with minimal database experience. The database itself is comprised of over 100 tables and just as many sequences, unique constraints, foreign keys, and indexes. The dataset also includes almost 80k rows of data. It has been ported to MySQL, SQL Server and PostgreSQL. If you like details, check out the [detailed entity relationship (ER) diagram](http://www.sportsdb.org/modules/sd/assets/downloads/sportsdb-27.jpg).
+[SportsDB](http://www.sportsdb.org/sd) is a sample dataset compiled from multiple sources, encompassing a variety of sports, including football, baseball, ice hockey, and more. It also cross-references many different types of content media. It is capable of supporting queries for the most intense of sports data applications, yet is simple enough for use by those with minimal database experience. The database itself is comprised of over 100 tables and just as many sequences, unique constraints, foreign keys, and indexes. The dataset also includes almost 80k rows of data. It has been ported to MySQL, SQL Server and PostgreSQL.
 
-## Before you begin
-
-To use the SportsDB sample database, you must have installed and configured YugaByte DB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
+If you like details, check out the [detailed entity relationship (ER) diagram](http://www.sportsdb.org/modules/sd/assets/downloads/sportsdb-27.jpg).
 
 ## Install the SportsDB sample database
 
 The following sections guide you through downloading and installing the SportsDB sample database.
+
+### Before you begin
+
+To use the SportsDB sample database, you must have installed and configured YugaByte DB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
 
 ### 1. Download the SportsDB scripts
 
@@ -37,7 +39,7 @@ The SQL scripts you need to create the SportsDB sample database (YugaByte DB=com
 
 ### 2. Open the YugaByte SQL (YSQL) shell
 
-To open the YSQL shell, run the `ysqlsh` command.
+To open the YugaByte SQL (YSQL) shell, run the `ysqlsh` command.
 
 ```sh
 ysqlsh (11.2)
@@ -123,27 +125,6 @@ To create the indexes, run the following command.
 sportsdb=# \i /Users/yugabyte/sportsdb_indexes.sql
 ```
 
+## Explore the SportsDB database
 
-
-## Explore the Northwind dataset
-
-The `northwind` dataset consists of 14 tables and the table relationships are showcased in the entity relationship diagram below:
-
-[add e-r diagram]
-
-The dataset contains the following:
-
-- Suppliers: Suppliers and vendors of Northwind
-- Customers: Customers who buy products from Northwind
-- Employees: Employee details of Northwind traders
-- Products: Product information
-- Shippers: The details of the shippers who ship the products from the traders to the end-customers
-- Orders and Order_Details: Sales Order transactions taking place between the customers & the company
-
-That’s it! Using the command line or your favorite PostgreSQL development or administration tool, you are now ready to start exploring the Northwind database and YugaByte DB features.
-
-## What to do next
-
-- Compare YugaByte DB in depth to databases like CockroachDB, Google Cloud Spanner and MongoDB.
-- Get started with YugaByte DB on macOS, Linux, Docker, and Kubernetes.
-- Contact us to learn more about licensing, pricing or to schedule a technical overview.
+That’s it! Using the command line or your favorite PostgreSQL development or administration tool, you are now ready to start exploring the SportsDB database and YugaByte DB features.
