@@ -19,7 +19,16 @@ This feature will support the following:
 
 * In the initial version, we assume that schema changes are run on both the universes independently. This will eventually be automated to the extent possible. Note that some combinations of schema changes and update operations are inherently unsafe. Identifying all of these cases and making the database safe in all scenarios (by throwing a user facing error out or through some other such mechanism) will be a follow on task to harden this feature.
 
-* Note that it will be possible to perform replication to multiple target slave clusters. 
+* Design will support active-active replication, with both data centers accepting writes and replicating them to the other data center.
+
+* Note that it will be possible to perform replication to multiple target clusters. Similarly, it will be possible to consume replicated data from multiple source clusters.
+
+* Updates will be timeline consistent. That is, target data center will receive updates for a row in the same order in which they occurred on the source.
+
+* Transactions will be applied atomically on the consumer. That is, either all changes in a transaction should be visible or none.
+
+* Target data center will know the data consistency timestamp. Since YB data is distributed across multiple nodes, (and data is replicated from multiple nodes), target data center should be able to tell that all tablets have received data at least until timestamp x, that is, it has received all the writes that happened at source data center(s) until timestamp x.
+
 
 # Supported Deployment Scenarios
 
