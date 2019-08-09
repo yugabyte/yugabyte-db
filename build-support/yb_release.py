@@ -57,6 +57,7 @@ def main():
                         help='Save the newly built release path to a file with this name. '
                              'This allows to post-process / upload the newly generated release '
                              'in an enclosing script.')
+    parser.add_argument('--skip_yw', action='store_true', help='Skip packaging YugaWare.')
     add_common_arguments(parser)
     args = parser.parse_args()
 
@@ -211,6 +212,14 @@ def main():
     if os.path.exists(build_target) and os.listdir(build_target):
         raise RuntimeError("Directory '{}' exists and is non-empty".format(build_target))
     release_util.create_distribution(build_target)
+
+    if not args.skip_yw:
+        managed_dir = os.path.join(YB_SRC_ROOT, "managed")
+        package_yw_cmd = [
+            os.path.join(managed_dir, "yb_release"),
+            "--destination", build_target, "--unarchived"
+        ]
+        subprocess.check_call(package_yw_cmd, cwd=managed_dir)
 
     if args.build_archive:
         release_file = os.path.realpath(release_util.generate_release())
