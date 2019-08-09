@@ -682,8 +682,9 @@ CHECKED_STATUS BuildSubDocument(
     }
     // Since we modify num_values_observed on recursive calls, we keep a local copy of the value.
     int64 current_values_observed = *num_values_observed;
-    DocHybridTime write_time;
-    auto key = VERIFY_RESULT(iter->FetchKey(&write_time));
+    auto key_data = VERIFY_RESULT(iter->FetchKey());
+    auto key = key_data.key;
+    const auto write_time = key_data.write_time;
     VLOG(4) << "iter: " << SubDocKey::DebugSliceToString(key)
             << ", key: " << SubDocKey::DebugSliceToString(data.subdocument_key);
     DCHECK(key.starts_with(data.subdocument_key))
@@ -695,8 +696,11 @@ CHECKED_STATUS BuildSubDocument(
     key = key_copy.AsSlice();
     rocksdb::Slice value = iter->value();
     // Checking that IntentAwareIterator returns an entry with correct time.
-    DCHECK_GE(iter->read_time().global_limit, write_time.hybrid_time())
-        << "Found key: " << SubDocKey::DebugSliceToString(key);
+    DCHECK(key_data.same_transaction ||
+           iter->read_time().global_limit >= write_time.hybrid_time())
+        << "Bad key: " << SubDocKey::DebugSliceToString(key)
+        << ", global limit: " << iter->read_time().global_limit
+        << ", write time: " << write_time.hybrid_time();
 
     if (low_ts > write_time) {
       VLOG(3) << "SeekPastSubKey: " << SubDocKey::DebugSliceToString(key);
@@ -764,7 +768,6 @@ CHECKED_STATUS BuildSubDocument(
           return STATUS_FORMAT(Corruption,
               "Expected primitive value type, got $0", value_type);
         }
-        DCHECK_GE(iter->read_time().global_limit, write_time.hybrid_time());
         // TODO: the ttl_seconds in primitive value is currently only in use for CQL. At some
         // point streamline by refactoring CQL to use the mutable Expiration in GetSubDocumentData.
         if (data.exp.ttl == Value::kMaxTtl) {
@@ -1101,16 +1104,15 @@ yb::Status GetTtl(const Slice& encoded_subdoc_key,
   iter->Seek(key_slice);
   if (!iter->valid())
     return Status::OK();
-  DocHybridTime doc_ht;
-  auto key = VERIFY_RESULT(iter->FetchKey(&doc_ht));
-  if ((*doc_found = (!key.compare(key_slice)))) {
+  auto key_data = VERIFY_RESULT(iter->FetchKey());
+  if ((*doc_found = (!key_data.key.compare(key_slice)))) {
     Value doc_value = Value(PrimitiveValue(ValueType::kInvalid));
     RETURN_NOT_OK(doc_value.Decode(iter->value()));
     if (doc_value.value_type() == ValueType::kTombstone) {
       *doc_found = false;
     } else {
       exp->ttl = doc_value.ttl();
-      exp->write_ht = doc_ht.hybrid_time();
+      exp->write_ht = key_data.write_time.hybrid_time();
     }
   }
   return Status::OK();

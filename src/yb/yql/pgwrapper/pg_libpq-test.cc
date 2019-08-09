@@ -677,5 +677,26 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
   holder.WaitAndStop(60s);
 }
 
+void AssertRows(PGconn *conn, int expected_num_rows) {
+  auto res = ASSERT_RESULT(Fetch(conn, "SELECT * FROM test"));
+  ASSERT_EQ(PQntuples(res.get()), expected_num_rows);
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(InTxnDelete)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(Execute(conn.get(), "CREATE TABLE test (pk int PRIMARY KEY)"));
+  ASSERT_OK(Execute(conn.get(), "BEGIN"));
+  ASSERT_OK(Execute(conn.get(), "INSERT INTO test VALUES (1)"));
+  ASSERT_NO_FATALS(AssertRows(conn.get(), 1));
+  ASSERT_OK(Execute(conn.get(), "DELETE FROM test"));
+  ASSERT_NO_FATALS(AssertRows(conn.get(), 0));
+  ASSERT_OK(Execute(conn.get(), "INSERT INTO test VALUES (1)"));
+  ASSERT_NO_FATALS(AssertRows(conn.get(), 1));
+  ASSERT_OK(Execute(conn.get(), "COMMIT"));
+
+  ASSERT_NO_FATALS(AssertRows(conn.get(), 1));
+}
+
 } // namespace pgwrapper
 } // namespace yb
