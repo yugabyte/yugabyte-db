@@ -5724,8 +5724,16 @@ UserFrontierPtr DBImpl::GetMutableMemTableSmallestFrontier() {
       const auto* mem = cfd->mem();
       if (mem) {
         if (!cfd->IsDropped() && cfd->imm()->NumNotFlushed() == 0 && !mem->IsEmpty()) {
-          UserFrontier::Update(
-              mem->GetSmallestFrontierLocked().get(), UpdateUserValueType::kSmallest, &accumulated);
+          auto smallest_frontier = mem->GetSmallestFrontierLocked();
+          if (smallest_frontier) {
+            UserFrontier::Update(
+                smallest_frontier.get(), UpdateUserValueType::kSmallest, &accumulated);
+          } else {
+            const auto error = "smallest frontier is not initialized for non-empty MemTable";
+            YB_LOG_EVERY_N_SECS(WARNING, 5) << db_options_.log_prefix << "[" << cfd->GetName()
+                                            << "] " << error;
+            LOG(DFATAL) << error;
+          }
         }
       } else {
         YB_LOG_EVERY_N_SECS(WARNING, 5) << db_options_.log_prefix
