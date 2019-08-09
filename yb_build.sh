@@ -812,6 +812,9 @@ while [[ $# -gt 0 ]]; do
       if [[ ${#make_targets[@]} -eq 0 ]]; then
         fatal "Failed to identify the set of targets to build for the release package"
       fi
+      # Explicitly recreate the snapshot for releasing the code!
+      export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=1
+      make_targets+=( "initial_sys_catalog_snapshot" )
     ;;
     --skip-build|--sb)
       set_flags_to_skip_build
