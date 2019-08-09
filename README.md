@@ -23,7 +23,7 @@ YugaByte DB is a high-performance, cloud-native distributed SQL database. Here a
 * Has a pluggable query layer, and supports two distributed SQL APIs:
     * **[YugaByte SQL (YSQL)](https://docs.yugabyte.com/latest/api/ysql/)** - PostgreSQL-compatible fully relational API
     * **[YugaByte Cloud QL (YCQL)](https://docs.yugabyte.com/latest/api/ycql/)** - Semi-relational SQL-like API with documents/indexing support and Apache Cassandra QL roots 
-* Automated sharding, Raft consensus replication and distributed transactions architecture based on the Google Spanner design
+* Automated sharding, Raft consensus replication and distributed transactions, based on the Google Spanner architecture
 * Offers horizontal write scalability, strong write consistency and tunable read consistency (strong reads by default with follower & observer reads as options)
 * Extremely resilient with native failover and repair - can tolerate disk, node, zone and region failures automatically
 * Supports geo-distributed deployments (multi-zone, multi-region, multi-cloud)
@@ -63,7 +63,7 @@ YugaByte DB supports a number of languages and client drivers. Below is a brief 
 
 # Architecture
 
-<img src="https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/architecture/images/yb-architecture.png" align="center" alt="YugaByte DB Architecture"/>
+<img src="https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/architecture/images/yb-architecture.jpg" align="center" alt="YugaByte DB Architecture"/>
 
 Review detailed architecture in our [Docs](https://docs.yugabyte.com/latest/architecture/).
 
