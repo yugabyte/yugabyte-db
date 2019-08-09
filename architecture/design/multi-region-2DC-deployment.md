@@ -242,3 +242,16 @@ This combination of `WAITING_TO_COMMIT` status and `tablets_received_applying_re
   * Future: Detect such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default.
 
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/multi-region-2DC-deployment.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+
+# Impact on Application Design
+Since 2DC replication is done asynchronously and by replicating the WAL (and thereby bypassing the query layer), application design needs to follow these patterns:
+
+* **Avoid UNIQUE indexes / constraints (only for active-active mode)**:
+  * Since replication is done at the WAL level, we don’t have a way to check for unique constraints. It’s possible to have two conflicting writes on separate universes which will violate the unique constraint and will cause the main table to contain both rows but the index to contain just 1 row, resulting in an inconsistent state.
+  
+* **Avoid triggers**: 
+  * Since we bypass the query layer for replicated records, DB triggers will not be fired for those and can result in unexpected behavior.
+  
+* **Avoid serial columns in primary key (only for active-active mode)**:
+  * Since both universes will generate the same sequence numbers, this can result in conflicting rows. It’s better to use UUIDs  instead.
+
