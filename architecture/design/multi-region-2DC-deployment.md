@@ -216,6 +216,16 @@ Upon receiving a `ReplicateMsg` that is a part of a multi-row transaction, the *
 
 This combination of `WAITING_TO_COMMIT` status and `tablets_received_applying_record` field will be used to ensure that transaction records are applied atomically on the replicated universe.
 
+# What’s supported in the initial version?
+* **Active-active (multi-master) replication**:
+  * If there is a write conflict (i.e. same row is updated on both universes), then we’ll follow the “last writer wins” semantics and the write with the latest timestamp will eventually persist on both data centers.
+
+* **Replicating newly added tables**:
+  * Support setting up replication on new tables that are added after 2DC is setup. In this situation, users will need to run yb-admin command and list the new table to consume from.
+  
+* **Setting up replication on empty tables**:
+  * Setup replication when the table has no data. We cannot handle setting up replication on a table with existing data.
+
 
 # Future Work
 
