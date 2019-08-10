@@ -183,7 +183,7 @@ class Messenger : public ProxyContext {
   friend class MessengerBuilder;
   friend class Proxy;
   friend class Reactor;
-  typedef std::unordered_map<std::string, scoped_refptr<RpcService> > RpcServicesMap;
+  typedef std::unordered_map<std::string, scoped_refptr<RpcService>> RpcServicesMap;
 
   ~Messenger();
 
