@@ -56,6 +56,10 @@ bool MasterTabletServiceImpl::GetTabletOrRespond(
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
                                     tserver::WriteResponsePB* resp,
                                     rpc::RpcContext context) {
+  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
+    return;
+  }
   for (const auto& pg_req : req->pgsql_write_batch()) {
     if (pg_req.is_ysql_catalog_change()) {
       const auto &res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
