@@ -30,7 +30,7 @@ const clearCredentials = () => {
   Cookies.remove("apiToken");
   Cookies.remove("authToken");
   Cookies.remove("customerId");
-  browserHistory.push('/login');
+  browserHistory.push('/');
 };
 
 function validateSession(store, replacePath, callback) {
@@ -42,7 +42,6 @@ function validateSession(store, replacePath, callback) {
       if (response.payload.status === 200) {
         localStorage.setItem('apiToken', response.payload.data.apiToken);
         localStorage.setItem('customerId', response.payload.data.customerUUID);
-        browserHistory.push('/');
       }
     });
     store.dispatch(fetchCustomerCount()).then((response) => {
