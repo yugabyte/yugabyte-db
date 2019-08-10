@@ -23,9 +23,6 @@ from ybops.common.exceptions import YBOpsRuntimeError
 parser = argparse.ArgumentParser()
 parser.add_argument('--destination', help='Copy release to Destination folder.')
 parser.add_argument('--tag', help='Release tag name')
-parser.add_argument(
-    '--unarchived', action='store_true',
-    help='Untar release in "target/universal" directory or in --destination if specified.')
 # IMPORTANT: DO NOT REMOVE THIS FLAG. REQUIRED BY INTERNAL INFRA.
 parser.add_argument('--force', help='Force no user input', action="store_true")
 args = parser.parse_args()
@@ -38,22 +35,17 @@ try:
     output = check_output(["sbt", "clean"])
     log_message(logging.INFO, "Kick off SBT universal packaging")
     output = check_output(["sbt", "universal:packageZipTarball"])
+    log_message(logging.INFO, "Get a release file name based on the current commit sha")
+    release_file = get_release_file(script_dir, "yugaware")
     packaged_files = glob.glob(os.path.join(script_dir, "target", "universal", "yugaware*.tgz"))
-    if args.unarchived:
-        package_tar = packaged_files[0]
-        tar = tarfile.open(package_tar)
-        tar.extractall(args.destination) if args.destination else tar.extractall()
-    else:
-        log_message(logging.INFO, "Get a release file name based on the current commit sha")
-        release_file = get_release_file(script_dir, "yugaware")
-        if len(packaged_files) == 0:
-            raise YBOpsRuntimeError("Yugaware packaging failed")
-        log_message(logging.INFO, "Rename the release file to have current commit sha")
-        shutil.copyfile(packaged_files[0], release_file)
-        if args.destination:
-            if not os.path.exists(args.destination):
-                raise YBOpsRuntimeError("Destination {} not a directory.".format(args.destination))
-            shutil.copy(release_file, args.destination)
+    if len(packaged_files) == 0:
+        raise YBOpsRuntimeError("Yugaware packaging failed")
+    log_message(logging.INFO, "Rename the release file to have current commit sha")
+    shutil.copyfile(packaged_files[0], release_file)
+    if args.destination:
+        if not os.path.exists(args.destination):
+            raise YBOpsRuntimeError("Destination {} not a directory.".format(args.destination))
+        shutil.copy(release_file, args.destination)
 except (CalledProcessError, OSError, RuntimeError, TypeError, NameError) as e:
     log_message(logging.ERROR, e)
     log_message(logging.ERROR, output)
