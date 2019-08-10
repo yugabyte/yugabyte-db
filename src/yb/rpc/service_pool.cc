@@ -135,14 +135,18 @@ class ServicePoolImpl final : public InboundCallHandler {
   }
 
   ~ServicePoolImpl() {
-    Shutdown();
+    StartShutdown();
+    CompleteShutdown();
+  }
+
+  void CompleteShutdown() {
     shutdown_complete_latch_.Wait();
     while (scheduled_tasks_.load(std::memory_order_acquire) != 0) {
       std::this_thread::sleep_for(10ms);
     }
   }
 
-  void Shutdown() {
+  void StartShutdown() {
     bool closing_state = false;
     if (closing_.compare_exchange_strong(closing_state, true)) {
       service_->Shutdown();
@@ -440,8 +444,12 @@ ServicePool::ServicePool(size_t max_tasks,
 ServicePool::~ServicePool() {
 }
 
-void ServicePool::Shutdown() {
-  impl_->Shutdown();
+void ServicePool::StartShutdown() {
+  impl_->StartShutdown();
+}
+
+void ServicePool::CompleteShutdown() {
+  impl_->CompleteShutdown();
 }
 
 void ServicePool::QueueInboundCall(InboundCallPtr call) {
