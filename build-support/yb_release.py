@@ -215,9 +215,12 @@ def main():
 
     if not args.skip_yw:
         managed_dir = os.path.join(YB_SRC_ROOT, "managed")
+        yw_dir = os.path.join(build_target, "ui")
+        if not os.path.exists(yw_dir):
+            os.makedirs(yw_dir)
         package_yw_cmd = [
             os.path.join(managed_dir, "yb_release"),
-            "--destination", build_target, "--unarchived"
+            "--destination", yw_dir, "--unarchived"
         ]
         subprocess.check_call(package_yw_cmd, cwd=managed_dir)
 

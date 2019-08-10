@@ -38,6 +38,9 @@ yugabyte
 +-- bin
 |   |   +-- yb-master
 |   |   +-- yb-tserver
++-- ui
+|   |   +-- bin...
+|   |   +-- ...
 +-- logs
 |   |   +-- master & tserver logfiles, unify these if possible
 +-- yugabyte-data
@@ -63,7 +66,11 @@ YUGABYTE_API_CLIENT_PROGRAMS = {
     "ysql": "ysqlsh",
     "ycql": "cqlsh",
 }
-YUGAWARE_CONF = os.path.join(DEFAULT_CONF_DIR, "application.default.conf")
+
+# YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
+YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
+YUGAWARE_BIN_DIR = os.path.join(YUGAWARE_DIR, "bin")
+YUGAWARE_CONF = os.path.join(YUGAWARE_DIR, "conf/application.default.conf")
 WEBSERVER_DB = "system_wbsvr"
 DEMO_DB_PREFIX = "yb_demo_"
 
@@ -113,7 +120,7 @@ class YugaByteProcessManager(object):
         if self.get_failed_processes():
             Output.log_error_and_exit("YugaByte DB is not running. Cannot connect to YCQL.")
         path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
-        cmd = [path, "127.0.0.1", self.configs.saved_data.get("ycql_port")]
+        cmd = [path, "127.0.0.1", str(self.configs.saved_data.get("ycql_port"))]
         os.execv(path, cmd)
 
     # Create target demo database if it does not exist.
@@ -274,7 +281,7 @@ class YugaByteProcessManager(object):
                     self.configs.saved_data.get("tserver_flags").split(",")])
 
         yw_cmd = [
-            os.path.join(BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
+            os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file={}".format(YUGAWARE_CONF),
             "-Dplay.evolutions.db.default.autoApply=true",
             "-Dhttp.port={}".format(self.configs.saved_data.get("api_port")),
         ]
@@ -411,7 +418,7 @@ class YugaByteProcessManager(object):
 
         # Create Play evolutions table. Required for YugaWare to start up properly.
         create_play_table = [
-            os.path.join(BIN_DIR, "yugaware"), "-Dconfig.file=" + YUGAWARE_CONF
+            os.path.join(YUGAWARE_BIN_DIR, "yugaware"), "-Dconfig.file=" + YUGAWARE_CONF
         ]
         Output.log("Initializing play tables...")
         run_process(create_play_table)
@@ -507,7 +514,7 @@ class YugaByteProcessManager(object):
     # Returns pretty output table.
     def get_status_string(self):
         if self.configs.saved_data.get("webserver_enabled"):
-            yw_status = "http://127.0.0.1:{}".format(self.configs.saved_data.get("webserver_port"))
+            yw_status = "http://localhost:{}".format(self.configs.saved_data.get("webserver_port"))
         else:
             yw_status = "Disabled"
 
@@ -1335,7 +1342,7 @@ class YugaWareProxy(object):
         try:
             req = Request(target, headers=headers, data=json.dumps(data))
             req.get_method = lambda: "PUT"
-            resp = urlopen(req).read()
+            resp = urlopen(req)
             if resp.code != 200:
                 err_msg = "Failed to set security level: YW returned code: " + resp.code
         except (ValueError, HTTPError, URLError, KeyError) as e:
