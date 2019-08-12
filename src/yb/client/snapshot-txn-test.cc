@@ -11,8 +11,6 @@
 // under the License.
 //
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
@@ -24,6 +22,7 @@
 #include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -53,11 +52,11 @@ class SnapshotTxnTest : public TransactionTestBase {
 void SnapshotTxnTest::TestBankAccountsThread(
     int accounts, std::atomic<bool>* stop, std::atomic<int64_t>* updates, TransactionPool* pool) {
   bool failure = true;
-  BOOST_SCOPE_EXIT(&failure, stop) {
+  auto se = ScopeExit([&failure, stop] {
     if (failure) {
       stop->store(true, std::memory_order_release);
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
   auto session = CreateSession();
   YBTransactionPtr txn;
   int32_t key1 = 0, key2 = 0;
@@ -207,8 +206,8 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
 
   std::atomic<int64_t> updates(0);
   std::vector<std::thread> threads;
-  BOOST_SCOPE_EXIT(
-      &stop, &threads, &updates, &strobe_thread, duration, minimal_updates_per_second) {
+  auto se = ScopeExit(
+      [&stop, &threads, &updates, &strobe_thread, duration, minimal_updates_per_second] {
     stop.store(true, std::memory_order_release);
 
     for (auto& thread : threads) {
@@ -222,7 +221,7 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
     LOG(INFO) << "Total updates: " << updates.load(std::memory_order_acquire);
     ASSERT_GT(updates.load(std::memory_order_acquire),
               minimal_updates_per_second * duration / 1s);
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   while (threads.size() != kThreads) {
     threads.emplace_back(std::bind(

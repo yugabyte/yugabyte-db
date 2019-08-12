@@ -39,8 +39,6 @@
 
 #include <boost/asio/strand.hpp>
 
-#include <boost/scope_exit.hpp>
-
 #include <glog/logging.h>
 
 #include "yb/gutil/gscoped_ptr.h"
@@ -55,6 +53,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
@@ -288,15 +287,16 @@ class ServicePoolImpl final : public InboundCallHandler {
   }
 
   void CheckTimeout(ScheduledTaskId task_id, CoarseTimePoint time, const Status& status) {
-    BOOST_SCOPE_EXIT(this_, task_id, time) {
+    auto se = ScopeExit([this, task_id, time] {
       auto expected_duration = time.time_since_epoch();
-      this_->next_check_timeout_.compare_exchange_strong(
+      next_check_timeout_.compare_exchange_strong(
           expected_duration, CoarseTimePoint::max().time_since_epoch(),
           std::memory_order_acq_rel);
-      this_->check_timeout_task_.compare_exchange_strong(
-          task_id, kUninitializedScheduledTaskId, std::memory_order_acq_rel);
-      this_->scheduled_tasks_.fetch_sub(1, std::memory_order_acq_rel);
-    } BOOST_SCOPE_EXIT_END;
+      auto expected_task_id = task_id;
+      check_timeout_task_.compare_exchange_strong(
+          expected_task_id, kUninitializedScheduledTaskId, std::memory_order_acq_rel);
+      scheduled_tasks_.fetch_sub(1, std::memory_order_acq_rel);
+    });
     if (!status.ok()) {
       return;
     }

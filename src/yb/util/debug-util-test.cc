@@ -37,14 +37,13 @@
 #include <regex>
 #include <sstream>
 
-#include <boost/scope_exit.hpp>
-
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
@@ -292,9 +291,9 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
   const auto kLongDuration = 500ms * kTimeMultiplier;
   TestLogSink log_sink;
   google::AddLogSink(&log_sink);
-  BOOST_SCOPE_EXIT(&log_sink) {
+  auto se = ScopeExit([&log_sink] {
     google::RemoveLogSink(&log_sink);
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   {
     LongOperationTracker tracker("Op1", kLongDuration);

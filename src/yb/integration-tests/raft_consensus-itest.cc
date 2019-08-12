@@ -34,7 +34,6 @@
 #include <unordered_set>
 
 #include <boost/optional.hpp>
-#include <boost/scope_exit.hpp>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -67,6 +66,7 @@
 #include "yb/server/server_base.pb.h"
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 
@@ -2275,13 +2275,13 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
   {
     std::atomic<bool> finish(false);
     vector<scoped_refptr<Thread> > threads;
-    BOOST_SCOPE_EXIT(&threads, &finish) {
+    auto se = ScopeExit([&threads, &finish] {
       LOG(INFO) << "Joining writer threads...";
       finish = true;
       for (const scoped_refptr<Thread> &thread : threads) {
         ASSERT_OK(ThreadJoiner(thread.get()).Join());
       }
-    } BOOST_SCOPE_EXIT_END;
+    });
 
     int num_threads = FLAGS_num_client_threads;
     for (int i = 0; i < num_threads; i++) {

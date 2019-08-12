@@ -10,9 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
@@ -276,10 +276,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
     }
   });
 
-  BOOST_SCOPE_EXIT(&stop, &write_thread) {
+  auto se = ScopeExit([&stop, &write_thread] {
     stop.store(true, std::memory_order_release);
     write_thread.join();
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   auto deadline = CoarseMonoClock::now() + 30s;
 
@@ -342,12 +342,12 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
     });
   }
 
-  BOOST_SCOPE_EXIT(&stop, &write_threads) {
+  auto se = ScopeExit([&stop, &write_threads] {
     stop.store(true, std::memory_order_release);
     for (auto& thread : write_threads) {
       thread.join();
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   std::this_thread::sleep_for(30s);
 }
@@ -366,11 +366,11 @@ Result<int64_t> ReadSumBalance(
     std::atomic<int>* counter) {
   RETURN_NOT_OK(Execute(conn, begin_transaction_statement));
   bool failed = true;
-  BOOST_SCOPE_EXIT(conn, &failed) {
+  auto se = ScopeExit([conn, &failed] {
     if (failed) {
       EXPECT_OK(Execute(conn, "ROLLBACK"));
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   int64_t sum = 0;
   for (int i = 1; i <= accounts; ++i) {

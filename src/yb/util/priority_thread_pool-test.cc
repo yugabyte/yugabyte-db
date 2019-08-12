@@ -14,12 +14,11 @@
 #include <algorithm>
 #include <thread>
 
-#include <boost/scope_exit.hpp>
-
 #include <gtest/gtest.h>
 
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -114,13 +113,13 @@ void TestRandom(int divisor) {
   std::vector<int> running_vector;
   std::vector<int> expected_running;
 
-  BOOST_SCOPE_EXIT(&share, scheduled, &thread_pool) {
+  auto se = ScopeExit([&share, &thread_pool] {
     thread_pool.StartShutdown();
     for (int idx = 0; idx != kTasks; ++idx) {
       share.Stop(idx);
     }
     thread_pool.CompleteShutdown();
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   while (stopped.size() != kTasks) {
     if (schedule_idx < kTasks && RandomUniformInt<int>(0, 2 + scheduled.size()) == 0) {

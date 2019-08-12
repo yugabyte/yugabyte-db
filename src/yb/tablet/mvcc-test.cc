@@ -32,16 +32,15 @@
 
 #include <vector>
 
-#include <boost/scope_exit.hpp>
-
 #include <gtest/gtest.h>
 #include <glog/logging.h>
 
 #include "yb/server/logical_clock.h"
 #include "yb/tablet/mvcc.h"
-#include "yb/util/random_util.h"
-#include "yb/util/test_util.h"
 #include "yb/util/enums.h"
+#include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/test_util.h"
 
 using namespace std::literals;
 using std::vector;
@@ -168,10 +167,10 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
     }
   });
 
-  BOOST_SCOPE_EXIT(&stopped, &safetime_query_thread) {
+  auto se = ScopeExit([&stopped, &safetime_query_thread] {
     stopped = true;
     safetime_query_thread.join();
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   vector<std::pair<Op, HybridTime>> ops;
   ops.reserve(kTotalOperations);
