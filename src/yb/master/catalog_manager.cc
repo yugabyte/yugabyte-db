@@ -5037,9 +5037,12 @@ void CatalogManager::ExtractTabletsToProcess(
     auto table_lock = tablet->table()->LockForRead();
 
     // If the table is deleted or the tablet was replaced at table creation time.
-    if (table_lock->data().started_deleting() &&
-        table_ids_map_.find(tablet->table()->id()) != table_ids_map_.end()) {
-      tablets_to_delete->push_back(tablet);
+    if (tablet_lock->data().is_deleted() || table_lock->data().started_deleting()) {
+      // Process this table deletion only once (tombstones for table may remain longer).
+      if (table_ids_map_.find(tablet->table()->id()) != table_ids_map_.end()) {
+        tablets_to_delete->push_back(tablet);
+      }
+      // Don't process deleted tables regardless.
       continue;
     }
 
