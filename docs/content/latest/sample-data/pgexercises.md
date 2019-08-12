@@ -40,7 +40,7 @@ To use the PgExercises sample database, you must have installed and configured Y
 
 ### 1. Download the SQL scripts
 
-You can download the PGExercise SQL scripts that is compatible with YugaByte DB from our GitHub repo. 
+You can download the PGExercise SQL scripts that is compatible with YugaByte DB from our GitHub repository.
 
 Here are the two files you’ll need:
 

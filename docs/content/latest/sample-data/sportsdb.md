@@ -44,7 +44,7 @@ The SQL scripts you need to create the SportsDB sample database (YugaByte DB=com
 - [`sportsdb_fks.sql`](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/sample/sportsdb_fks.sql) — Creates the foreign key constraints
 - [`sportsdb_indexes.sql`](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/sample/sportsdb_indexes.sql) — Creates the indexes
 
-### 2. Open the YugaByte SQL (YSQL) shell
+### 2. Open the YSQL shell
 
 To open the YugaByte SQL (YSQL) shell, run the `ysqlsh` command.
 
@@ -75,7 +75,7 @@ Connect to the SportsDB database.
 ```
 postgres=# \c sportsdb
 You are now connected to database "sportsdb" as user "postgres".
-sportsdb=# 
+sportsdb=#
 ```
 
 ### 4. Build the SportsDB tables and sequences

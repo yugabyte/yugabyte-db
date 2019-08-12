@@ -81,7 +81,7 @@ Connect to the Northwind database.
 ```
 postgres=# \c northwind
 You are now connected to database "northwind" as user "postgres".
-northwind=# 
+northwind=#
 ```
 
 ### 4. Build the tables and objects
