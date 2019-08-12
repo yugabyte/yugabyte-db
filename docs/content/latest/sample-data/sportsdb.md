@@ -4,18 +4,17 @@ linkTitle: SportsDB
 description: SportsDB sample database
 menu:
   latest:
-    identifier: sportsdb
     parent: sample-data
-    weight: 2654
+    weight: 2740
 isTocNested: true
 showAsideToc: true
 ---
 
-Install the PostgreSQL-compatible version of SportsDB on the YugaByte DB distributed SQL database.
+If you like sports statistics, you can install the PostgreSQL-compatible version of SportsDB on the YugaByte DB distributed SQL database and explore statistics for your favorite sport.
 
 ## About the SportsDB sample database
 
-[SportsDB](http://www.sportsdb.org/sd) is a sample sports statistics dataset compiled from multiple sources and encompassing a variety of sports, including football, baseball, basketball, and ice hockey. It also cross-references many different types of content media. It is capable of supporting queries for the most intense of sports data applications, yet is simple enough for use by those with minimal database experience. The database includes over 100 tables and just as many sequences, unique constraints, foreign keys, and indexes. The dataset also includes almost 80,000 rows of data. It has been ported to MySQL, SQL Server and PostgreSQL.
+[SportsDB](http://www.sportsdb.org/sd) is a sample sports statistics dataset compiled from multiple sources and encompassing a variety of sports, including football, baseball, basketball, ice hockey, and soccer. It also cross-references many different types of content media. It is capable of supporting queries for the most intense of sports data applications, yet is simple enough for use by those with minimal database experience. The database includes over 100 tables and just as many sequences, unique constraints, foreign keys, and indexes. The dataset also includes almost 80,000 rows of data. It has been ported to MySQL, SQL Server and PostgreSQL.
 
 If you like details, check out the detailed entity relationship (ER) diagram.
 
@@ -37,7 +36,7 @@ To use the SportsDB sample database, you must have installed and configured Yuga
 
 ### 1. Download the SportsDB scripts
 
-The SQL scripts you need to create the SportsDB sample database (YugaByte DB=compatible) are available in the [`sample` directory of the YugaByte DB GitHub repository](https://github.com/YugaByte/yugabyte-db/tree/master/sample). Download the following five files.
+The SQL scripts that you need to create the SportsDB sample database (YugaByte DB-compatible) are available in the [`sample` directory of the YugaByte DB GitHub repository](https://github.com/YugaByte/yugabyte-db/tree/master/sample). Download the following five files.
 
 - [`sportsdb_tables.sql`](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/sample/sportsdb_tables.sql) — Creates the tables and sequences
 - [`sportsdb_inserts.sql`](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/sample/sportsdb_inserts.sql) — Loads the sample data into the `sportsdb` database
@@ -57,13 +56,13 @@ postgres=#
 
 ### 3. Create the SportsDB database
 
-To create the `northwind` database, run the following YSQL command
+To create the `sportsdb` database, run the following YSQL command
 
 ```sql
 CREATE DATABASE sportsdb;
 ```
 
-Confirm that you have the SportsDB database by listing out the databases on your cluster.
+Confirm that you have the `sportsdb` database by listing out the databases on your cluster.
 
 ```
 postgres=# \l
@@ -71,7 +70,7 @@ postgres=# \l
 
 [Add screenshot.]
 
-Connect to the SportsDB database.
+Connect to the `sportsdb` database.
 
 ```
 postgres=# \c sportsdb
@@ -87,13 +86,11 @@ To build the tables and database objects, run the following command.
 sportsdb=# \i /Users/yugabyte/sportsdb_tables.sql
 ```
 
-You can verify that all 203 tables and sequences have been created.
+You can verify that all 203 tables and sequences have been created by running the `\d` command.
 
 ```
 sportsdb=# \d
 ```
-
-[Add screenshot]
 
 ### 5. Load sample data into the SportsDB database
 
@@ -108,8 +105,6 @@ To verify that you have some data to work with, you can run the following simple
 ```
 sportsdb=# SELECT * FROM basketball_defensive_stats WHERE steals_total = '5';
 ```
-
-[Add image]
 
 ### 6. Create unique constraints and foreign key
 

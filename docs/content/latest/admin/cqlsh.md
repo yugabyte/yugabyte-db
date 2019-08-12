@@ -1,7 +1,7 @@
 ---
 title: cqlsh
 linkTitle: cqlsh
-description: Use the "cqlsh" command line shell to interact with YugaByteDB using YCQL.
+description: cqlsh
 aliases:
   - /develop/tools/cqlsh/
   - /latest/develop/tools/cqlsh/

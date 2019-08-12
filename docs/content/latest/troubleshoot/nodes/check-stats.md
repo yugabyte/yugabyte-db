@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Host resource usage
 
-To check the CPU, Memory and Disk usage on a Linux machine you can run:
+To check the CPU, memory, and disk usage on a Linux machine, you can run the following command.
 
 ```sh
 $ sudo echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem; 
@@ -38,7 +38,7 @@ Generally, common tools like `top` or `iostat` may be useful.
 
 ### Auditd
 
-If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used YugaByte which can significantly affect performance. You can try temporarily disabling `audit` by running (on each YugaByte node):
+If `top` reports high CPU usage for the `auditd` process, it may have some rules auditing some system calls frequently used YugaByte which can significantly affect performance. You can try temporarily disabling `audit` by running (on each YugaByte node).
 
 ```sh
 $ auditctl -e 0
@@ -54,9 +54,7 @@ $ auditctl -e 1
 
 ## YugaByte processes state
 
-YugaByte DB provides web endpoints where the current state of each process is aggregated. 
-This includes logs, gflags as well as memory, disk, and network usage metrics.
-Additionally, it provides dedicated metrics endpoints for CQL and, respectively, Redis requests.
+YugaByte DB provides web endpoints where the current state of each process is aggregated. This includes logs, gflags as well as memory, disk, and network usage metrics. Additionally, it provides dedicated metrics endpoints for CQL and, respectively, Redis requests.
 
 | Description | URL |
 |-------------|-----|

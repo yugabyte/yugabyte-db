@@ -4,14 +4,13 @@ linkTitle: Chinook
 description: Chinook sample database
 menu:
   latest:
-    identifier: chinook
     parent: sample-data
-    weight: 2651
+    weight: 2710
 isTocNested: true
 showAsideToc: true
 ---
 
-The Chinook sample database is a sample database for a digital media store that you can use to explore and learn YugaByte DB.
+The Chinook sample database for a digital media store can be used to explore and learn YugaByte DB.
 
 ## About the Chinook database
 
@@ -47,7 +46,7 @@ To install and use the Chinook sample database, you need to have installed and c
 
 ### 1. Download the SQL scripts
 
-You can download the Chinook database that is compatible with YugaByte DB from the sample directory of the [YugaByte DB GitHub repository](https://github.com/YugaByte/yugabyte-db). Download the following three files.
+You can download the Chinook database that is compatible with YugaByte DB from the [`sample` directory of the YugaByte DB GitHub repository](https://github.com/YugaByte/yugabyte-db/tree/master/sample). Download the following three files.
 
 - [`chinook_ddl.sql`](https://raw.githubusercontent.com/YugaByte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_ddl.sql) — Creates the tables and constraints
 - [`chinook_genres_artists_albums.sql`](https://raw.githubusercontent.com/YugaByte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_genres_artists_albums.sql) — Loads artist and album information
@@ -65,7 +64,7 @@ postgres=#
 
 ### 3. Create the Chinook database
 
-To create the Chinook database, run the following command.
+To create the `chinook` database, run the following command.
 
 ```sql
 CREATE DATABASE chinook;
@@ -115,7 +114,7 @@ Next, run the SQL script to load the songs.
 chinook=# \i /Users/yugabyte/chinook_songs.sql
 ```
 
-Verify that you have data by running a simple `SELECT` statement to pull some data from the `Track` table.
+Now verify that you have data by running a simple `SELECT` statement to pull some data from the `Track` table.
 
 ```sql
 chinook=# SELECT "Name", "Composer" FROM "Track" LIMIT 10;

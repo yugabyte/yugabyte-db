@@ -4,14 +4,13 @@ linkTitle: PgExercises
 description: PgExercises sample database
 menu:
   latest:
-    identifier: pgexercises
     parent: sample-data
-    weight: 2653
+    weight: 2730
 isTocNested: true
 showAsideToc: true
 ---
 
-You can use the PgExercises sample database running on YugaByte DB to work through 81 exercises for learning SQL or testing your knowledge.
+Download and install the PostgreSQL-compatible version of PgExercises on the YugaByte DB distributed SQL database. Work through 81 exercises to learn SQL or test your knowledge.
 
 ## About the PgExercises sample database
 
@@ -21,7 +20,7 @@ The PostgreSQL Exercises website includes 81 exercises designed to be used as a 
 
 For further details about the data, see the [PosgresSQL Exercises' Getting Started page](https://pgexercises.com/gettingstarted.html).
 
-The `exercises` database consists of three tables (members, bookings, and facilities) and the table relationships as shown in the entity relationship diagram.
+The `exercises` database consists of three tables (for members, bookings, and facilities) and the table relationships as shown in the entity relationship diagram.
 
 <details>
 
@@ -41,9 +40,9 @@ To use the PgExercises sample database, you must have installed and configured Y
 
 ### 1. Download the SQL scripts
 
-You can download the PGExercise SQL scripts that is compatible with YugaByte DB from our GitHub repository.
+You can download the PGExercise SQL scripts that is compatible with YugaByte DB from the [`sample` directory of the YugaByte DB GitHub repository](https://github.com/YugaByte/yugabyte-db/tree/master/sample).
 
-Here are the two files you’ll need:
+Here are the two files you’ll need.
 
 - [`clubdata_ddl.sql`](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/sample/clubdata_ddl.sql) — Creates the tables and other database objects
 - [`clubdata_data.sql`](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/sample/clubdata_data.sql) — Loads the sample data
@@ -110,7 +109,7 @@ exercises=# SELECT * FROM bookings LIMIT 5;
 
 ## Explore the PgExercises database
 
-You are ready to start working through the PgExercises tutorial with YugaByte DB as the backend. PgExercises is made up of 81 exercises and broken into the following major sections:
+You are now ready to start working through the [PostgreSQL Exercises](https://pgexercises.com/) exercises using YugaByte DB as the backend. The 81 exercises at the PostgreSQL Exercises website are broken into the following major sections.
 
 - [Simple SQL Queries](https://pgexercises.com/questions/basic/)
 - [JOINs and Subqueries](https://pgexercises.com/questions/joins/)

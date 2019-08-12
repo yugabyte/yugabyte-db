@@ -4,14 +4,13 @@ linkTitle: Northwind
 description: Northwind sample database
 menu:
   latest:
-    identifier: northwind
     parent: sample-data
-    weight: 2652
+    weight: 2720
 isTocNested: true
 showAsideToc: true
 ---
 
-Learn how to download and install the PostgreSQL-compatible version of Northwind on the YugaByte DB distributed SQL database.
+Download and install the PostgreSQL-compatible version of Northwind on the YugaByte DB distributed SQL database.
 
 ## About the Northwind sample database
 
@@ -46,7 +45,7 @@ To use the Northwind sample database, you must have installed and configured Yug
 
 ### 1. Download the SQL scripts
 
-You can download the Northwind database that is compatible with YugaByte DB from our GitHub repo. Here’s the two files you’ll need:
+You can download the Northwind database files, which are compatible with YugaByte DB, from the [`sample` directory of the YugaByte DB GitHub repository](https://github.com/YugaByte/yugabyte-db/tree/master/sample). Here are the two files you’ll need.
 
 [northwind_ddl.sql](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/sample/northwind_ddl.sql) — Creates tables and other database objects
 [northwind_data.sql](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/sample/northwind_data.sql) — Loads the sample data
@@ -63,7 +62,7 @@ postgres=#
 
 ### 3. Create the Northwind database
 
-To create the `northwind` database, run the following CREATE DATABASE command.
+To create the Northwind database, run the following CREATE DATABASE command.
 
 ```sql
 CREATE DATABASE northwind;
