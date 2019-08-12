@@ -15,6 +15,8 @@ export const REGISTER_RESPONSE = 'REGISTER_RESPONSE';
 // Sign In Customer
 export const LOGIN = 'LOGIN';
 export const LOGIN_RESPONSE = 'LOGIN_RESPONSE';
+export const INSECURE_LOGIN = 'INSECURE_LOGIN';
+export const INSECURE_LOGIN_RESPONSE = 'INSECURE_LOGIN_RESPONSE';
 
 export const RESET_CUSTOMER = 'RESET_CUSTOMER';
 
@@ -74,17 +76,17 @@ export const UPDATE_RELEASE = 'UPDATE_RELEASE';
 export const UPDATE_RELEASE_RESPONSE = 'UPDATE_RELEASE_RESPONSE';
 
 export function validateToken() {
-  let cUUID = Cookies.get("customer_id");
+  let cUUID = Cookies.get("customerId");
   if (cUUID) {
-    localStorage.setItem("customer_id", cUUID);
+    localStorage.setItem("customerId", cUUID);
   } else {
-    cUUID = localStorage.getItem("customer_id");
+    cUUID = localStorage.getItem("customerId");
   }
-  const auth_token = Cookies.get("customer_token") || localStorage.getItem("customer_token");
-  axios.defaults.headers.common['X-AUTH-TOKEN'] = auth_token;
-  const api_token = Cookies.get("api_token") || localStorage.getItem("api_token");
-  if (api_token && api_token !== '') {
-    axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = api_token;
+  const authToken = Cookies.get("authToken") || localStorage.getItem("authToken");
+  axios.defaults.headers.common['X-AUTH-TOKEN'] = authToken;
+  const apiToken = Cookies.get("apiToken") || localStorage.getItem("apiToken");
+  if (apiToken && apiToken !== '') {
+    axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
   }
   const request = axios(`${ROOT_URL}/customers/${cUUID}`);
   return {
@@ -129,6 +131,22 @@ export function loginResponse(response) {
     payload: response
   };
 }
+
+export function insecureLogin() {
+  const request = axios.get(`${ROOT_URL}/insecure_login`);
+  return {
+    type: INSECURE_LOGIN,
+    payload: request
+  };
+}
+
+export function insecureLoginResponse(response) {
+  return {
+    type: INSECURE_LOGIN_RESPONSE,
+    payload: response
+  };
+}
+
 export function logout() {
   const request = axios.get(`${ROOT_URL}/logout`);
   return {
@@ -169,7 +187,7 @@ export function resetCustomerError() {
 }
 
 export function updateProfile(values) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}`, values);
   return {
     type: UPDATE_PROFILE,
@@ -192,7 +210,7 @@ export function updateProfileFailure(error) {
 }
 
 export function fetchSoftwareVersions() {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases`);
   return {
     type: FETCH_SOFTWARE_VERSIONS,
@@ -215,7 +233,7 @@ export function fetchSoftwareVersionsFailure(error) {
 }
 
 export function getTlsCertificates() {
-  const cUUID = localStorage.getItem('customer_id');
+  const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/certificates`);
   return {
     type: FETCH_TLS_CERTS,
@@ -231,7 +249,7 @@ export function getTlsCertificatesResponse(result) {
 }
 
 export function fetchHostInfo() {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/host_info`);
   return {
     type: FETCH_HOST_INFO,
@@ -252,7 +270,6 @@ export function fetchHostInfoFailure(error) {
     payload: error
   };
 }
-
 
 export function fetchCustomerCount() {
   const request = axios.get(`${ROOT_URL}/customer_count`);
@@ -278,7 +295,7 @@ export function fetchYugaWareVersionResponse(response) {
 }
 
 export function addCustomerConfig(config) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/configs`, config);
   return {
     type: ADD_CUSTOMER_CONFIG,
@@ -294,7 +311,7 @@ export function addCustomerConfigResponse(response) {
 }
 
 export function deleteCustomerConfig(configUUID) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/configs/${configUUID}`);
   return {
     type: DELETE_CUSTOMER_CONFIG,
@@ -310,7 +327,7 @@ export function deleteCustomerConfigResponse(response) {
 }
 
 export function fetchCustomerConfigs() {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/configs`);
   return {
     type: FETCH_CUSTOMER_CONFIGS,
@@ -349,7 +366,7 @@ export function getLogsFailure(error) {
 }
 
 export function getYugaByteReleases() {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/releases?includeMetadata=true`);
   return {
     type: GET_RELEASES,
@@ -365,7 +382,7 @@ export function getYugaByteReleasesResponse(response) {
 }
 
 export function refreshYugaByteReleases() {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/releases`);
   return {
     type: REFRESH_RELEASES,
@@ -381,7 +398,7 @@ export function refreshYugaByteReleasesResponse(response) {
 }
 
 export function importYugaByteRelease(payload) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.post(`${ROOT_URL}/customers/${cUUID}/releases`, payload);
   return {
     type: IMPORT_RELEASE,
@@ -397,7 +414,7 @@ export function importYugaByteReleaseResponse(response) {
 }
 
 export function updateYugaByteRelease(version, payload) {
-  const cUUID = localStorage.getItem("customer_id");
+  const cUUID = localStorage.getItem("customerId");
   const request = axios.put(`${ROOT_URL}/customers/${cUUID}/releases/${version}`, payload);
   return {
     type: UPDATE_RELEASE,

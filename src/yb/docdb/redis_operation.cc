@@ -1897,7 +1897,7 @@ Status RedisReadOperation::ExecuteKeys() {
     if (deadline_info_.get_ptr() && deadline_info_->CheckAndSetDeadlinePassed()) {
       return STATUS(Expired, "Deadline for query passed.");
     }
-    auto key = VERIFY_RESULT(iterator_->FetchKey());
+    auto key = VERIFY_RESULT(iterator_->FetchKey()).key;
     DocKey doc_key;
     RETURN_NOT_OK(doc_key.FullyDecodeFrom(key));
     const PrimitiveValue& key_primitive = doc_key.hashed_group().front();

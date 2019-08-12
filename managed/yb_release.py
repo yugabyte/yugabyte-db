@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 # Copyright (c) YugaByte, Inc.
 
-import os
-import logging
-import shutil
 import argparse
 import glob
+import logging
+import os
+import shutil
+import tarfile
 from subprocess import check_output, CalledProcessError
 from ybops.utils import init_env, log_message, get_release_file
 from ybops.common.exceptions import YBOpsRuntimeError

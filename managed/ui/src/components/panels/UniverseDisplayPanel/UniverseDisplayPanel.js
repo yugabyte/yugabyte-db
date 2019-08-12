@@ -137,14 +137,16 @@ export default class UniverseDisplayPanel extends Component {
             </Col>
             <Col className="universe-table-header-action dashboard-universe-actions">
               {isNotHidden(currentCustomer.data.features, "universe.import") &&
-              <Link to="/importer"><YBButton btnClass="universe-button btn btn-lg btn-default"
-                disabled={isDisabled(currentCustomer.data.features, "universe.import")}
-                btnText="Import Universe" btnIcon="fa fa-mail-forward"/></Link>}
+                <Link to="/universes/import"><YBButton btnClass="universe-button btn btn-lg btn-default"
+                  disabled={isDisabled(currentCustomer.data.features, "universe.import")}
+                  btnText="Import Universe" btnIcon="fa fa-mail-forward"/></Link>}
               {isNotHidden(currentCustomer.data.features, "universe.create") &&
-                <YBButton btnClass="universe-button btn btn-lg btn-orange"
-                  disabled={isDisabled(currentCustomer.data.features, "universe.create")}
-                  btnText="Create Universe" btnIcon="fa fa-plus"
-                  onClick={this.createNewUniverse} />}
+                <Link to="/universes/create">
+                  <YBButton btnClass="universe-button btn btn-lg btn-orange"
+                    disabled={isDisabled(currentCustomer.data.features, "universe.create")}
+                    btnText="Create Universe" btnIcon="fa fa-plus" />
+                </Link>
+              }
             </Col>
           </Row>
           <Row className="list-group">

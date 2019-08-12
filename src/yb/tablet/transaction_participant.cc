@@ -25,7 +25,6 @@
 #include <boost/optional/optional.hpp>
 
 #include <boost/uuid/uuid_io.hpp>
-#include <boost/scope_exit.hpp>
 
 #include "yb/rocksdb/write_batch.h"
 
@@ -45,6 +44,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/thread_restrictions.h"
 
 DECLARE_uint64(aborted_intent_cleanup_ms);
@@ -118,10 +118,10 @@ class Delayer {
         if (it != queue_.begin()) {
           queue_.erase(queue_.begin(), it);
           lock.unlock();
-          BOOST_SCOPE_EXIT(&lock, &actions) {
+          auto se = ScopeExit([&lock, &actions] {
             actions.clear();
             lock.lock();
-          } BOOST_SCOPE_EXIT_END;
+          });
           for (auto& action : actions) {
             action();
           }

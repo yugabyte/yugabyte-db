@@ -10,9 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
@@ -276,10 +276,10 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReadRestart)) {
     }
   });
 
-  BOOST_SCOPE_EXIT(&stop, &write_thread) {
+  auto se = ScopeExit([&stop, &write_thread] {
     stop.store(true, std::memory_order_release);
     write_thread.join();
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   auto deadline = CoarseMonoClock::now() + 30s;
 
@@ -342,12 +342,12 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentIndexInsert)) {
     });
   }
 
-  BOOST_SCOPE_EXIT(&stop, &write_threads) {
+  auto se = ScopeExit([&stop, &write_threads] {
     stop.store(true, std::memory_order_release);
     for (auto& thread : write_threads) {
       thread.join();
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   std::this_thread::sleep_for(30s);
 }
@@ -366,11 +366,11 @@ Result<int64_t> ReadSumBalance(
     std::atomic<int>* counter) {
   RETURN_NOT_OK(Execute(conn, begin_transaction_statement));
   bool failed = true;
-  BOOST_SCOPE_EXIT(conn, &failed) {
+  auto se = ScopeExit([conn, &failed] {
     if (failed) {
       EXPECT_OK(Execute(conn, "ROLLBACK"));
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   int64_t sum = 0;
   for (int i = 1; i <= accounts; ++i) {
@@ -584,11 +584,11 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
   }
 }
 
-TEST_F(PgLibPqTest, TestParallelCounterSerializable) {
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestParallelCounterSerializable)) {
   TestParallelCounter(IsolationLevel::SERIALIZABLE_ISOLATION);
 }
 
-TEST_F(PgLibPqTest, TestParallelCounterRepeatableRead) {
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestParallelCounterRepeatableRead)) {
   TestParallelCounter(IsolationLevel::SNAPSHOT_ISOLATION);
 }
 
@@ -624,12 +624,113 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation) {
   ASSERT_EQ(row_val, kThreads * kIncrements);
 }
 
-TEST_F(PgLibPqTest, TestConcurrentCounterSerializable) {
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestConcurrentCounterSerializable)) {
   TestConcurrentCounter(IsolationLevel::SERIALIZABLE_ISOLATION);
 }
 
-TEST_F(PgLibPqTest, TestConcurrentCounterRepeatableRead) {
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestConcurrentCounterRepeatableRead)) {
   TestConcurrentCounter(IsolationLevel::SNAPSHOT_ISOLATION);
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
+  constexpr int kThreads = 4;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(Execute(conn.get(), "CREATE TABLE t (a INT PRIMARY KEY, b INT)"));
+  ASSERT_OK(Execute(conn.get(), "CREATE INDEX ON t (b, a)"));
+
+  TestThreadHolder holder;
+  std::array<std::atomic<int>, kThreads> written;
+  for (auto& w : written) {
+    w.store(0, std::memory_order_release);
+  }
+
+  for (int i = 0; i != kThreads; ++i) {
+    holder.AddThread([this, i, &stop = holder.stop_flag(), &written] {
+      auto conn = ASSERT_RESULT(Connect());
+      SetFlagOnExit set_flag_on_exit(&stop);
+      int key = 0;
+
+      while (!stop.load(std::memory_order_acquire)) {
+        if (RandomUniformBool()) {
+          int a = i * 1000000 + key;
+          int b = key;
+          ASSERT_OK(Execute(conn.get(), Format("INSERT INTO t (a, b) VALUES ($0, $1)", a, b)));
+          written[i].store(++key, std::memory_order_release);
+        } else {
+          int writer_index = RandomUniformInt(0, kThreads - 1);
+          int num_written = written[writer_index].load(std::memory_order_acquire);
+          if (num_written == 0) {
+            continue;
+          }
+          int read_key = num_written - 1;
+          int b = read_key;
+          int read_a = ASSERT_RESULT(FetchValue<int32_t>(
+              conn.get(), Format("SELECT a FROM t WHERE b = $0 LIMIT 1", b)));
+          ASSERT_EQ(read_a % 1000000, read_key);
+        }
+      }
+    });
+  }
+
+  holder.WaitAndStop(60s);
+}
+
+void AssertRows(PGconn *conn, int expected_num_rows) {
+  auto res = ASSERT_RESULT(Fetch(conn, "SELECT * FROM test"));
+  ASSERT_EQ(PQntuples(res.get()), expected_num_rows);
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(InTxnDelete)) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(Execute(conn.get(), "CREATE TABLE test (pk int PRIMARY KEY)"));
+  ASSERT_OK(Execute(conn.get(), "BEGIN"));
+  ASSERT_OK(Execute(conn.get(), "INSERT INTO test VALUES (1)"));
+  ASSERT_NO_FATALS(AssertRows(conn.get(), 1));
+  ASSERT_OK(Execute(conn.get(), "DELETE FROM test"));
+  ASSERT_NO_FATALS(AssertRows(conn.get(), 0));
+  ASSERT_OK(Execute(conn.get(), "INSERT INTO test VALUES (1)"));
+  ASSERT_NO_FATALS(AssertRows(conn.get(), 1));
+  ASSERT_OK(Execute(conn.get(), "COMMIT"));
+
+  ASSERT_NO_FATALS(AssertRows(conn.get(), 1));
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {
+  constexpr int kWriters = 5;
+  constexpr int kKeys = 20;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(Execute(conn.get(), "CREATE TABLE test (k int PRIMARY KEY, v TEXT)"));
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i != kWriters; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+      SetFlagOnExit set_flag_on_exit(&stop);
+      auto conn = ASSERT_RESULT(Connect());
+      char value[2] = "0";
+      while (!stop.load(std::memory_order_acquire)) {
+        int key = RandomUniformInt(1, kKeys);
+        value[0] = RandomUniformInt('A', 'Z');
+        auto status = Execute(
+            conn.get(),
+            Format(
+                "INSERT INTO test (k, v) VALUES ($0, '$1') ON CONFLICT (K) DO "
+                "UPDATE SET v = CONCAT(test.v, '$1')",
+                key,
+                value));
+        if (status.ok() || TransactionalFailure(status)) {
+          continue;
+        }
+        ASSERT_OK(status);
+      }
+    });
+  }
+
+  thread_holder.WaitAndStop(30s);
+  LogResult(ASSERT_RESULT(Fetch(conn.get(), "SELECT * FROM test ORDER BY k")).get());
 }
 
 } // namespace pgwrapper

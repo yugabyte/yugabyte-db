@@ -31,22 +31,22 @@ $ ./bin/yb-ctl status
 | Node Count: 1 | Replication Factor: 1                                                            |
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
-| YSQL Shell          : build/latest/bin/ysqlsh                                                    |
-| YCQL Shell          : build/latest/bin/cqlsh                                                     |
-| YEDIS Shell         : build/latest/bin/redis-cli                                                 |
+| YSQL Shell          : bin/ysqlsh                                                                 |
+| YCQL Shell          : bin/cqlsh                                                                  |
+| YEDIS Shell         : bin/redis-cli                                                              |
 | Web UI              : http://127.0.0.1:7000/                                                     |
-| Cluster Data        : /Users/jason/yugabyte-data                                                 |
+| Cluster Data        : /Users/yugabyte/yugabyte-data                                             |
 ----------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
-| Node 1: yb-tserver (pid 68412), yb-master (pid 68409)                                            |
+| Node 1: yb-tserver (pid 20696), yb-master (pid 20693)                                            |
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
-| YSQL Shell          : build/latest/bin/ysqlsh                                                    |
-| YCQL Shell          : build/latest/bin/cqlsh                                                     |
-| YEDIS Shell         : build/latest/bin/redis-cli                                                 |
-| data-dir[0]         : /Users/jason/yugabyte-data/node-1/disk-1/yb-data                           |
-| yb-tserver Logs     : /Users/jason/yugabyte-data/node-1/disk-1/yb-data/tserver/logs              |
-| yb-master Logs      : /Users/jason/yugabyte-data/node-1/disk-1/yb-data/master/logs               |
+| YSQL Shell          : bin/ysqlsh                                                                 |
+| YCQL Shell          : bin/cqlsh                                                                  |
+| YEDIS Shell         : bin/redis-cli                                                              |
+| data-dir[0]         : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data                       |
+| yb-tserver Logs     : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/tserver/logs          |
+| yb-master Logs      : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/master/logs           |
 ----------------------------------------------------------------------------------------------------
 ```
 

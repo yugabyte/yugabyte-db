@@ -19,7 +19,16 @@ This feature will support the following:
 
 * In the initial version, we assume that schema changes are run on both the universes independently. This will eventually be automated to the extent possible. Note that some combinations of schema changes and update operations are inherently unsafe. Identifying all of these cases and making the database safe in all scenarios (by throwing a user facing error out or through some other such mechanism) will be a follow on task to harden this feature.
 
-* Note that it will be possible to perform replication to multiple target slave clusters. 
+* Design will support active-active replication, with both data centers accepting writes and replicating them to the other data center.
+
+* Note that it will be possible to perform replication to multiple target clusters. Similarly, it will be possible to consume replicated data from multiple source clusters.
+
+* Updates will be timeline consistent. That is, target data center will receive updates for a row in the same order in which they occurred on the source.
+
+* Transactions will be applied atomically on the consumer. That is, either all changes in a transaction should be visible or none.
+
+* Target data center will know the data consistency timestamp. Since YB data is distributed across multiple nodes, (and data is replicated from multiple nodes), target data center should be able to tell that all tablets have received data at least until timestamp x, that is, it has received all the writes that happened at source data center(s) until timestamp x.
+
 
 # Supported Deployment Scenarios
 
@@ -207,6 +216,16 @@ Upon receiving a `ReplicateMsg` that is a part of a multi-row transaction, the *
 
 This combination of `WAITING_TO_COMMIT` status and `tablets_received_applying_record` field will be used to ensure that transaction records are applied atomically on the replicated universe.
 
+# What’s supported in the initial version?
+* **Active-active (multi-master) replication**:
+  * If there is a write conflict (i.e. same row is updated on both universes), then we’ll follow the “last writer wins” semantics and the write with the latest timestamp will eventually persist on both data centers.
+
+* **Replicating newly added tables**:
+  * Support setting up replication on new tables that are added after 2DC is setup. In this situation, users will need to run yb-admin command and list the new table to consume from.
+  
+* **Setting up replication on empty tables**:
+  * Setup replication when the table has no data. We cannot handle setting up replication on a table with existing data.
+
 
 # Future Work
 
@@ -223,3 +242,16 @@ This combination of `WAITING_TO_COMMIT` status and `tablets_received_applying_re
   * Future: Detect such unsafe combinations and warn the user. Such combinations should possibly be disallowed by default.
 
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/multi-region-2DC-deployment.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
+
+# Impact on Application Design
+Since 2DC replication is done asynchronously and by replicating the WAL (and thereby bypassing the query layer), application design needs to follow these patterns:
+
+* **Avoid UNIQUE indexes / constraints (only for active-active mode)**:
+  * Since replication is done at the WAL level, we don’t have a way to check for unique constraints. It’s possible to have two conflicting writes on separate universes which will violate the unique constraint and will cause the main table to contain both rows but the index to contain just 1 row, resulting in an inconsistent state.
+  
+* **Avoid triggers**: 
+  * Since we bypass the query layer for replicated records, DB triggers will not be fired for those and can result in unexpected behavior.
+  
+* **Avoid serial columns in primary key (only for active-active mode)**:
+  * Since both universes will generate the same sequence numbers, this can result in conflicting rows. It’s better to use UUIDs  instead.
+

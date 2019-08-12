@@ -1,7 +1,7 @@
 ---
 title: yb-ctl
 linkTitle: yb-ctl
-description: yb-ctl
+description: Use the "yb-ctl" command line interface to administer local clusters for development and learning.
 menu:
   latest:
     identifier: yb-ctl

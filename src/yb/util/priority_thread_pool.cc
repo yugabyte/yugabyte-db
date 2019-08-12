@@ -18,13 +18,13 @@
 #include <set>
 
 #include <boost/container/stable_vector.hpp>
-#include <boost/scope_exit.hpp>
 #include <boost/thread/reverse_lock.hpp>
 
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/priority_queue.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"
 
 using namespace std::placeholders;
@@ -88,9 +88,9 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
         continue;
       }
       running_task_ = true;
-      BOOST_SCOPE_EXIT(&running_task_) {
+      auto se = ScopeExit([this] {
         running_task_ = false;
-      } BOOST_SCOPE_EXIT_END;
+      });
       {
         yb::ReverseLock<decltype(lock)> rlock(lock);
         for (;;) {

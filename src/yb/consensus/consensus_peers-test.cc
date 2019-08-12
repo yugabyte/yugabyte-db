@@ -34,8 +34,6 @@
 
 #include <gtest/gtest.h>
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus_peers.h"
@@ -48,10 +46,11 @@
 #include "yb/rpc/messenger.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/metrics.h"
+#include "yb/util/opid.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
-#include "yb/util/opid.h"
 
 using namespace std::chrono_literals;
 
@@ -186,10 +185,10 @@ TEST_F(ConsensusPeersTest, TestRemotePeer) {
   // in addition to our real local log.
 
   std::shared_ptr<Peer> remote_peer;
-  BOOST_SCOPE_EXIT(&remote_peer) {
+  auto se = ScopeExit([&remote_peer] {
     // This guarantees that the Peer object doesn't get destroyed if there is a pending request.
     remote_peer->Close();
-  } BOOST_SCOPE_EXIT_END
+  });
 
   DelayablePeerProxy<NoOpTestPeerProxy>* proxy = NewRemotePeer(kFollowerUuid, &remote_peer);
 
@@ -218,20 +217,20 @@ TEST_F(ConsensusPeersTest, TestLocalAppendAndRemotePeerDelay) {
   DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer2_proxy =
       NewRemotePeer("peer-2", &remote_peer2);
 
-  BOOST_SCOPE_EXIT(&remote_peer1, &remote_peer2) {
+  auto se = ScopeExit([&remote_peer1, &remote_peer2] {
     // This guarantees that the Peer objects don't get destroyed if there is a pending request.
     remote_peer1->Close();
     remote_peer2->Close();
-  } BOOST_SCOPE_EXIT_END
+  });
 
   // Delay the response from the second remote peer.
   const auto kAppendDelayTime = 1s;
   log_->TEST_SetSleepDuration(kAppendDelayTime);
   remote_peer2_proxy->DelayResponse();
-  BOOST_SCOPE_EXIT(&log_, &remote_peer2_proxy) {
+  auto se2 = ScopeExit([this, &remote_peer2_proxy] {
     log_->TEST_SetSleepDuration(0s);
     remote_peer2_proxy->Respond(TestPeerProxy::kUpdate);
-  } BOOST_SCOPE_EXIT_END
+  });
 
   // Append one message to the queue.
   const auto start_time = MonoTime::Now();
@@ -260,11 +259,11 @@ TEST_F(ConsensusPeersTest, TestRemotePeers) {
   DelayablePeerProxy<NoOpTestPeerProxy>* remote_peer2_proxy =
       NewRemotePeer("peer-2", &remote_peer2);
 
-  BOOST_SCOPE_EXIT(&remote_peer1, &remote_peer2) {
+  auto se = ScopeExit([&remote_peer1, &remote_peer2] {
     // This guarantees that the Peer objects don't get destroyed if there is a pending request.
     remote_peer1->Close();
     remote_peer2->Close();
-  } BOOST_SCOPE_EXIT_END
+  });
 
   // Delay the response from the second remote peer.
   remote_peer2_proxy->DelayResponse();
@@ -352,10 +351,10 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
       raft_pool_token_.get(), PeerProxyPtr(mock_proxy), nullptr /* consensus */,
       messenger_.get()));
 
-  BOOST_SCOPE_EXIT(&peer) {
+  auto se = ScopeExit([&peer] {
     // This guarantees that the Peer object doesn't get destroyed if there is a pending request.
     peer->Close();
-  } BOOST_SCOPE_EXIT_END
+  });
 
   // Initial response has to be successful -- otherwise we'll consider the peer "new" and only send
   // heartbeat RPCs.

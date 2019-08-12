@@ -19,11 +19,10 @@
 #include <mutex>
 #include <thread>
 
-#include <boost/scope_exit.hpp>
-
 #include <cds/container/basket_queue.h>
 #include <cds/gc/dhp.h>
 
+#include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"
 
 namespace yb {
@@ -111,9 +110,9 @@ class Worker {
     }
     std::unique_lock<std::mutex> lock(mutex_);
     waiting_task_ = true;
-    BOOST_SCOPE_EXIT(&waiting_task_) {
-        waiting_task_ = false;
-    } BOOST_SCOPE_EXIT_END;
+    auto se = ScopeExit([this] {
+      waiting_task_ = false;
+    });
 
     while (!stop_requested_) {
       AddToWaitingWorkers();

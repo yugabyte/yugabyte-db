@@ -1722,7 +1722,12 @@ setup_depend(FILE *cmdfd)
 	};
 
 	for (line = pg_depend_setup; *line != NULL; line++)
+	{
+		/* Skip VACUUM commands in YugaByte mode */
+		if (IsYugaByteGlobalClusterInitdb() && strncmp(*line, "VACUUM", 6) == 0)
+			continue;
 		PG_CMD_PUTS(*line);
+	}
 }
 
 /*
@@ -3144,8 +3149,7 @@ initialize_data_directory(void)
 
 	setup_auth(cmdfd);
 
-	if (!IsYugaByteGlobalClusterInitdb())
-		setup_depend(cmdfd);
+	setup_depend(cmdfd);
 
 	/*
 	 * Note that no objects created after setup_depend() will be "pinned".

@@ -16,11 +16,6 @@ import { isAvailable, showOrRedirect } from 'utils/LayoutUtils';
 
 
 class DataCenterConfiguration extends Component {
-  configProviderSelect = item => {
-    const currentLocation = this.props.location;
-    currentLocation.query = { provider: item };
-    this.props.router.push(currentLocation);
-  };
 
   render() {
     const { customer: { currentCustomer }, params: { tab, section }, params } = this.props;

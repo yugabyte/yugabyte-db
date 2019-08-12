@@ -486,6 +486,12 @@ body {
       margin-left: 5px;
     }
 
+    @media screen and (max-width: 1100px) {
+      .social-link-text {
+        display: none;
+      }
+    }
+
     @media screen and (max-width: 991px) {
       background-color: #fff;
       flex-direction: column;

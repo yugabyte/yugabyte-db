@@ -43,8 +43,6 @@
 #include <string>
 #include <thread>
 
-#include <boost/scope_exit.hpp>
-
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -69,6 +67,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
@@ -425,19 +424,33 @@ void Messenger::UnregisterAllServices() {
     rpc_services_.swap(rpc_services_copy);
     UpdateServicesCache(&guard);
   }
+
+  for (const auto& p : rpc_services_copy) {
+    p.second->StartShutdown();
+  }
+  for (const auto& p : rpc_services_copy) {
+    p.second->CompleteShutdown();
+  }
   rpc_services_copy.clear();
 }
 
 // Unregister an RpcService.
 Status Messenger::UnregisterService(const string& service_name) {
-  std::lock_guard<percpu_rwlock> guard(lock_);
-  if (rpc_services_.erase(service_name)) {
+  scoped_refptr<RpcService> service;
+  {
+    std::lock_guard<percpu_rwlock> guard(lock_);
+    auto it = rpc_services_.find(service_name);
+    if (it == rpc_services_.end()) {
+      return STATUS(ServiceUnavailable, Substitute("service $0 not registered on $1",
+                   service_name, name_));
+    }
+    service = it->second;
+    rpc_services_.erase(it);
     UpdateServicesCache(&guard);
-    return Status::OK();
-  } else {
-    return STATUS(ServiceUnavailable, Substitute("service $0 not registered on $1",
-                 service_name, name_));
   }
+  service->StartShutdown();
+  service->CompleteShutdown();
+  return Status::OK();
 }
 
 class NotifyDisconnectedReactorTask : public ReactorTask {

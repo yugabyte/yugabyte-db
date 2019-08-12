@@ -32,8 +32,6 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
-#include <boost/scope_exit.hpp>
-
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -63,6 +61,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/rate_limiter.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 
 using namespace yb::size_literals;
@@ -772,12 +771,12 @@ Status RemoteBootstrapClient::DownloadWAL(uint64_t wal_segment_seqno) {
   const string dest_path = fs_manager_->GetWalSegmentFileName(meta_->wal_dir(), wal_segment_seqno);
   const auto temp_dest_path = dest_path + ".tmp";
   bool ok = false;
-  BOOST_SCOPE_EXIT(this_, &temp_dest_path, &ok) {
+  auto se = ScopeExit([this, &temp_dest_path, &ok] {
     if (!ok) {
-      WARN_NOT_OK(this_->fs_manager_->env()->DeleteFile(temp_dest_path),
+      WARN_NOT_OK(fs_manager_->env()->DeleteFile(temp_dest_path),
                   "Failed to delete temporary WAL segment");
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   WritableFileOptions opts;
   opts.sync_on_close = true;

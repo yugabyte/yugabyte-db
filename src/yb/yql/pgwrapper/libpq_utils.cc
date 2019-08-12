@@ -87,5 +87,35 @@ Result<std::string> GetString(PGresult* result, int row, int column) {
   return std::string(value, len);
 }
 
+Result<std::string> AsString(PGresult* result, int row, int column) {
+  constexpr Oid INT4OID = 23;
+  constexpr Oid TEXTOID = 25;
+
+  auto type = PQftype(result, column);
+  switch (type) {
+    case INT4OID:
+      return std::to_string(VERIFY_RESULT(GetInt32(result, row, column)));
+    case TEXTOID:
+      return VERIFY_RESULT(GetString(result, row, column));
+    default:
+      return Format("Type not supported: $0", type);
+  }
+}
+
+void LogResult(PGresult* result) {
+  int cols = PQnfields(result);
+  int rows = PQntuples(result);
+  for (int row = 0; row != rows; ++row) {
+    std::string line;
+    for (int col = 0; col != cols; ++col) {
+      if (col) {
+        line += ", ";
+      }
+      line += CHECK_RESULT(AsString(result, row, col));
+    }
+    LOG(INFO) << line;
+  }
+}
+
 } // namespace pgwrapper
 } // namespace yb

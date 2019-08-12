@@ -37,7 +37,7 @@
 #include <thread>
 
 #include <boost/thread/shared_mutex.hpp>
-#include <boost/scope_exit.hpp>
+
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_metrics.h"
@@ -62,6 +62,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/taskstream.h"
@@ -259,14 +260,14 @@ void Log::Appender::GroupWork() {
   }
   TRACE_EVENT1("log", "batch", "batch_size", sync_batch_.size());
 
-  BOOST_SCOPE_EXIT(this_) {
-    if (this_->log_->metrics_) {
+  auto se = ScopeExit([this] {
+    if (log_->metrics_) {
       MonoTime time_now = MonoTime::Now();
-      this_->log_->metrics_->group_commit_latency->Increment(
-          time_now.GetDeltaSince(this_->time_started_).ToMicroseconds());
+      log_->metrics_->group_commit_latency->Increment(
+          time_now.GetDeltaSince(time_started_).ToMicroseconds());
     }
-    this_->sync_batch_.clear();
-  } BOOST_SCOPE_EXIT_END;
+    sync_batch_.clear();
+  });
 
   Status s = log_->Sync();
   if (PREDICT_FALSE(!s.ok())) {

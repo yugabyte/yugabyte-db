@@ -66,8 +66,8 @@ class ServicePool : public RpcService {
               const scoped_refptr<MetricEntity>& metric_entity);
   virtual ~ServicePool();
 
-  // Shut down the queue and the thread pool.
-  virtual void Shutdown();
+  void StartShutdown() override;
+  void CompleteShutdown() override;
 
   void QueueInboundCall(InboundCallPtr call) override;
   void Handle(InboundCallPtr call) override;

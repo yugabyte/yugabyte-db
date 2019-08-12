@@ -1,7 +1,7 @@
 ---
 title: ysqlsh
 linkTitle: ysqlsh
-description: ysqlsh (YSQL command line shell)
+description: ysqlsh
 aliases:
   - /develop/tools/ysqlsh/
   - /latest/develop/tools/ysqlsh/

@@ -37,8 +37,6 @@
 #include <string>
 #include <vector>
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
@@ -77,6 +75,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
@@ -1350,10 +1349,10 @@ Result<ReadHybridTime> TabletServiceImpl::DoRead(ReadContext* read_context) {
       // Update the remote endpoint.
       ql_read_req.set_allocated_remote_endpoint(read_context->host_port_pb);
       ql_read_req.set_allocated_proxy_uuid(mutable_req->mutable_proxy_uuid());
-      BOOST_SCOPE_EXIT(&ql_read_req) {
+      auto se = ScopeExit([&ql_read_req] {
         ql_read_req.release_remote_endpoint();
         ql_read_req.release_proxy_uuid();
-      } BOOST_SCOPE_EXIT_END;
+      });
 
       tablet::QLReadRequestResult result;
       TRACE("Start HandleQLReadRequest");

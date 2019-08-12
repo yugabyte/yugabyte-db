@@ -12,8 +12,6 @@
 
 #include <gtest/gtest.h>
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
@@ -35,6 +33,7 @@
 
 #include "yb/util/cast.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -444,22 +443,22 @@ TEST_F(SnapshotTest, SnapshotRemoteBootstrap) {
 
   // Shutdown one node, so remote bootstrap will be required after its start.
   ts0->Shutdown();
-  BOOST_SCOPE_EXIT(ts0) {
+  auto se = ScopeExit([ts0] {
     // Restart the node in the end, because we need to perform table deletion, etc.
     LOG(INFO) << "Restarting the stopped tserver";
     ASSERT_OK(ts0->RestartStoppedServer());
     ASSERT_OK(ts0->WaitStarted());
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   SnapshotId snapshot_id;
   {
     LOG(INFO) << "Setting up workload";
     TestWorkload workload = SetupWorkload();
     workload.Start();
-    BOOST_SCOPE_EXIT(&workload) {
+    auto se = ScopeExit([&workload] {
       LOG(INFO) << "Stopping workload";
       workload.StopAndJoin();
-    } BOOST_SCOPE_EXIT_END;
+    });
     LOG(INFO) << "Waiting for data to be inserted";
     workload.WaitInserted(1000);
 

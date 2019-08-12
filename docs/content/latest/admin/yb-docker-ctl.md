@@ -1,7 +1,7 @@
 ---
 title: yb-docker-ctl
 linkTitle: yb-docker-ctl
-description: yb-docker-ctl
+description: Use the "yb-docker-ctl" command line interface to administer local Docker clusters.
 menu:
   latest:
     identifier: yb-docker-ctl

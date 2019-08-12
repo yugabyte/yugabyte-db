@@ -9,7 +9,7 @@ export function getFeatureState(features, feature_name) {
 
 export function isNonAvailable(features, feature_name) {
   const featureState =  getFeatureState(features, feature_name);
-  return (featureState !== "enabled" && featureState !== "visible");
+  return (featureState === "disabled" || featureState === "hidden");
 }
 
 export function isAvailable(features, feature_name) {

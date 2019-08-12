@@ -53,6 +53,7 @@
 #include "yb/common/ql_storage_interface.h"
 
 #include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
@@ -575,6 +576,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   util::ScopedPendingOperationPause PauseReadWriteOperations();
 
   std::string LogPrefix() const;
+
+  std::string LogPrefix(docdb::StorageDbType db_type) const;
 
   // Lock protecting schema_ and key_schema_.
   //

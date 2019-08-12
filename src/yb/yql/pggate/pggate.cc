@@ -684,6 +684,7 @@ Status PgApiImpl::ExecDelete(PgStatement *handle) {
 Status PgApiImpl::NewSelect(PgSession *pg_session,
                             const PgObjectId& table_id,
                             const PgObjectId& index_id,
+                            PreventRestart prevent_restart,
                             PgStatement **handle) {
   DCHECK(pg_session) << "Invalid session handle";
   *handle = nullptr;
@@ -691,7 +692,7 @@ Status PgApiImpl::NewSelect(PgSession *pg_session,
   if (index_id.IsValid()) {
     stmt->UseIndex(index_id);
   }
-  RETURN_NOT_OK(stmt->Prepare());
+  RETURN_NOT_OK(stmt->Prepare(prevent_restart));
   *handle = stmt.detach();
   return Status::OK();
 }

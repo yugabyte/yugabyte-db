@@ -26,6 +26,7 @@ import os
 import re
 from six import iteritems
 
+UUID_LEN = 32
 UUID_RE_STR = '[0-9a-f]{32}'
 UUID_ONLY_RE = re.compile('^' + UUID_RE_STR + '$')
 NEW_OLD_UUID_RE = re.compile(UUID_RE_STR + '[ ]*\t' + UUID_RE_STR)
@@ -33,14 +34,18 @@ LEADING_UUID_RE = re.compile('^(' + UUID_RE_STR + r')\b')
 FS_DATA_DIRS_ARG_PREFIX = '--fs_data_dirs='
 IMPORTED_TABLE_RE = re.compile('Table being imported: ([^\.]*)\.(.*)')
 
-# TODO: change the above for the new layout (with ".snapshot").
-SNAPSHOT_DIR_GLOB = '*/yb-data/tserver/data/rocksdb/table-*/tablet-*.snapshots/*'
+ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
+
+SNAPSHOT_DIR_GLOB = '*' + ROCKSDB_PATH_PREFIX + '/table-*/tablet-*.snapshots/*'
 SNAPSHOT_DIR_DEPTH = 7
 SNAPSHOT_DIR_SUFFIX_RE = re.compile(
     '^.*/tablet-({})[.]snapshots/({})$'.format(UUID_RE_STR, UUID_RE_STR))
 
-TABLE_DIR_GLOB = '*/yb-data/tserver/data/rocksdb/table-{}'
-TABLE_DIR_DEPTH = 5
+TABLE_PATH_PREFIX_TEMPLATE = ROCKSDB_PATH_PREFIX + '/table-{}'
+
+TABLET_MASK = 'tablet-????????????????????????????????'
+TABLET_DIR_GLOB = '*' + TABLE_PATH_PREFIX_TEMPLATE + '/' + TABLET_MASK
+TABLET_DIR_DEPTH = 6
 
 METADATA_FILE_NAME = 'SnapshotInfoPB'
 S3_CFG_FILE_NAME = 's3cfg'
@@ -674,7 +679,7 @@ class YBBackup:
                 logging.info("Uploading {} to server {} done: {}".format(
                     self.s3_cfg_file_path, server_ip, output))
 
-    def run_ssh_cmd(self, cmd, server_ip, upload_s3_cfg=True, num_ssh_retry=1):
+    def run_ssh_cmd(self, cmd, server_ip, upload_s3_cfg=True, num_ssh_retry=3):
         """
         Runs the given command on the given remote server over SSH.
         :param cmd: either a string, or a list of arguments. In the latter case, each argument
@@ -765,41 +770,50 @@ class YBBackup:
         tserver_ip_to_tablet_id_to_snapshot_dirs = {}
 
         for tserver_ip, tablets in tablets_by_tserver_ip.iteritems():
-            table_dirs = []
+            tablet_dirs = []
             data_dirs = data_dir_by_tserver[tserver_ip]
 
             for data_dir in data_dirs:
-                # Find this table on this TS in this data_dir:
+                # Find all tablets for this table on this TS in this data_dir:
                 output = self.run_ssh_cmd(
                     ['find', data_dir,
-                     '-mindepth', TABLE_DIR_DEPTH,
-                     '-maxdepth', TABLE_DIR_DEPTH,
-                     '-name', 'table-' + table_id, '-and',
-                     '-wholename', TABLE_DIR_GLOB.format(table_id)],
+                     '-mindepth', TABLET_DIR_DEPTH,
+                     '-maxdepth', TABLET_DIR_DEPTH,
+                     '-name', TABLET_MASK,
+                     '-and',
+                     '-wholename', TABLET_DIR_GLOB.format(table_id)],
                     tserver_ip)
-                table_dirs += [line.strip() for line in output.split("\n") if line.strip()]
+                tablet_dirs += [line.strip() for line in output.split("\n") if line.strip()]
 
             if self.args.verbose:
-                logging.info("Found table '{}' directories on  tablet server '{}': {}".format(
-                    table_id, tserver_ip, table_dirs))
+                logging.info("Found tablet directories for table '{}' on  tablet server '{}': {}"
+                             .format(table_id, tserver_ip, tablet_dirs))
 
-            if not table_dirs:
-                logging.error("No table directory found for table '{}' on "
+            if not tablet_dirs:
+                logging.error("No tablet directory found for table '{}' on "
                               "tablet server '{}'.".format(table_id, tserver_ip))
-                raise BackupException("Table " + table_id
+                raise BackupException("Tablets for table " + table_id
                                       + " not found on tablet server " + tserver_ip)
 
-            table_dir = table_dirs[0]  # Use first found table dir.
             tablet_id_to_snapshot_dirs =\
                 tserver_ip_to_tablet_id_to_snapshot_dirs.setdefault(tserver_ip, {})
 
+            tablet_dir_by_id = {}
+            for tablet_dir in tablet_dirs:
+                tablet_dir_by_id[tablet_dir[-UUID_LEN:]] = tablet_dir
+
             for tablet_id in tablets:
-                snapshot_dir = '{}/tablet-{}.snapshots/{}'.format(
-                    table_dir, tablet_id, snapshot_id)
+                if tablet_id not in tablet_dir_by_id:
+                    logging.error("Tablet '{}' directory in table '{}' was not found on "
+                                  "tablet server '{}'.".format(tablet_id, table_id, tserver_ip))
+                    raise BackupException("Not found tablet " + tablet_id + " directory in table "
+                                          + table_id + " on tablet server " + tserver_ip)
+
+                snapshot_dir = tablet_dir_by_id[tablet_id] + '.snapshots/' + snapshot_id
                 tablet_id_to_snapshot_dirs.setdefault(tablet_id, set()).add(snapshot_dir)
 
             if self.args.verbose:
-                logging.info('Downloading list for tablet server {}: {}'.format(
+                logging.info("Downloading list for tablet server '{}': {}".format(
                     tserver_ip, tablet_id_to_snapshot_dirs))
 
             # Sanity check. In fact lists 'tablets' and 'tablets_with_dirs' must be

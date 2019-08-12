@@ -43,7 +43,6 @@
 #include <vector>
 
 #include <boost/optional.hpp>
-#include <boost/scope_exit.hpp>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
@@ -114,6 +113,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
@@ -496,12 +496,32 @@ std::string Tablet::LogPrefix() const {
   return Format("T $0$1: ", tablet_id(), log_prefix_suffix_);
 }
 
+namespace {
+
+std::string LogDbTypePrefix(docdb::StorageDbType db_type) {
+  switch (db_type) {
+    case docdb::StorageDbType::kRegular:
+      return "R";
+    case docdb::StorageDbType::kIntents:
+      return "I";
+  }
+  FATAL_INVALID_ENUM_VALUE(docdb::StorageDbType, db_type);
+}
+
+} // namespace
+
+std::string Tablet::LogPrefix(docdb::StorageDbType db_type) const {
+  return Format("T $0$1 [$2]: ", tablet_id(), log_prefix_suffix_, LogDbTypePrefix(db_type));
+}
+
 Status Tablet::OpenKeyValueTablet() {
   static const std::string kRegularDB = "RegularDB"s;
   static const std::string kIntentsDB = "IntentsDB"s;
 
   rocksdb::Options rocksdb_options;
-  docdb::InitRocksDBOptions(&rocksdb_options, LogPrefix(), rocksdb_statistics_, tablet_options_);
+  docdb::InitRocksDBOptions(
+      &rocksdb_options, LogPrefix(docdb::StorageDbType::kRegular), rocksdb_statistics_,
+      tablet_options_);
   rocksdb_options.mem_tracker = MemTracker::FindOrCreateTracker(kRegularDB, mem_tracker_);
   rocksdb_options.block_based_table_mem_tracker = MemTracker::FindOrCreateTracker(
       Format("$0-$1", kRegularDB, tablet_id()), block_based_table_mem_tracker_);
@@ -542,6 +562,8 @@ Status Tablet::OpenKeyValueTablet() {
 
   if (transaction_participant_) {
     LOG_WITH_PREFIX(INFO) << "Opening intents DB at: " << db_dir + kIntentsDBSuffix;
+    docdb::SetLogPrefix(&rocksdb_options, LogPrefix(docdb::StorageDbType::kIntents));
+
     rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
       return std::bind(&Tablet::IntentsDbFlushFilter, this, _1);
     });
@@ -1557,9 +1579,9 @@ Status Tablet::ModifyFlushedFrontier(
         "$0/test_checkpoint_$1_$2", test_data_dir, tablet_id(), MonoTime::Now().ToUint64());
     RETURN_NOT_OK(
         rocksdb::checkpoint::CreateCheckpoint(regular_db_.get(), checkpoint_dir_for_test));
-    BOOST_SCOPE_EXIT(checkpoint_dir_for_test) {
+    auto se = ScopeExit([checkpoint_dir_for_test] {
       CHECK_OK(Env::Default()->DeleteRecursively(checkpoint_dir_for_test));
-    } BOOST_SCOPE_EXIT_END;
+    });
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
         &rocksdb_options, LogPrefix(), /* statistics */ nullptr, tablet_options_);

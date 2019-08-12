@@ -13,7 +13,7 @@ const mapDispatchToProps = (dispatch) => {
         if (response.payload.status !== 200) {
           dispatch(logoutFailure(response.payload));
         } else {
-          localStorage.removeItem('customer_token');
+          localStorage.removeItem('authToken');
           dispatch(logoutSuccess());
         }
       });

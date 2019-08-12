@@ -17,8 +17,6 @@
 #include <memory>
 #include <sstream>
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/statistics.h"
 
@@ -34,6 +32,7 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
@@ -601,9 +600,9 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
 void DocDBRocksDBFixture::FullyCompactHistoryBefore(HybridTime history_cutoff) {
   LOG(INFO) << "Major-compacting history before hybrid_time " << history_cutoff;
   SetHistoryCutoffHybridTime(history_cutoff);
-  BOOST_SCOPE_EXIT(this_) {
-    this_->SetHistoryCutoffHybridTime(HybridTime::kMin);
-  } BOOST_SCOPE_EXIT_END;
+  auto se = ScopeExit([this] {
+    SetHistoryCutoffHybridTime(HybridTime::kMin);
+  });
 
   ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_OK(FullyCompactDB(rocksdb_.get()));
@@ -616,9 +615,9 @@ void DocDBRocksDBFixture::MinorCompaction(
 
   ASSERT_OK(FlushRocksDbAndWait());
   SetHistoryCutoffHybridTime(history_cutoff);
-  BOOST_SCOPE_EXIT(this_) {
-    this_->SetHistoryCutoffHybridTime(HybridTime::kMin);
-  } BOOST_SCOPE_EXIT_END;
+  auto se = ScopeExit([this] {
+    SetHistoryCutoffHybridTime(HybridTime::kMin);
+  });
 
   rocksdb::ColumnFamilyMetaData cf_meta;
   rocksdb_->GetColumnFamilyMetaData(&cf_meta);

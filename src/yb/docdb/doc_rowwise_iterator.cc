@@ -584,26 +584,26 @@ Result<bool> DocRowwiseIterator::HasNext() const {
       return false;
     }
 
-    const auto fetched_key = db_iter_->FetchKey();
-    if (!fetched_key.ok()) {
-      has_next_status_ = fetched_key.status();
+    const auto key_data = db_iter_->FetchKey();
+    if (!key_data.ok()) {
+      has_next_status_ = key_data.status();
       return has_next_status_;
     }
 
-    VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(*fetched_key);
+    VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(key_data->key);
 
     // The iterator is positioned by the previous GetSubDocument call (which places the iterator
     // outside the previous doc_key). Ensure the iterator is pushed forward/backward indeed. We
     // check it here instead of after GetSubDocument() below because we want to avoid the extra
     // expensive FetchKey() call just to fetch and validate the key.
     if (!iter_key_.data().empty() &&
-        (is_forward_scan_ ? iter_key_.CompareTo(*fetched_key) >= 0
-                          : iter_key_.CompareTo(*fetched_key) <= 0)) {
+        (is_forward_scan_ ? iter_key_.CompareTo(key_data->key) >= 0
+                          : iter_key_.CompareTo(key_data->key) <= 0)) {
       has_next_status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
-                                           FormatRocksDBSliceAsStr(*fetched_key));
+                                           FormatRocksDBSliceAsStr(key_data->key));
       return has_next_status_;
     }
-    iter_key_.Reset(*fetched_key);
+    iter_key_.Reset(key_data->key);
     VLOG(4) << " Current iter_key_ is " << iter_key_;
 
     const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(iter_key_);

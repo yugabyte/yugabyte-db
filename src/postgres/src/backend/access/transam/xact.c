@@ -2837,7 +2837,11 @@ YBCCommitTransactionAndUpdateBlockState() {
 		CommitTransaction();
 		s->blockState = TBLOCK_DEFAULT;
 	} else {
-		s->blockState = TBLOCK_ABORT;
+    /*
+     * TBLOCK_STARTED means that we aren't in a transaction block, so should switch to
+     * default state in this case.
+     */
+		s->blockState = s->blockState == TBLOCK_STARTED ? TBLOCK_DEFAULT : TBLOCK_ABORT;
 		YBCHandleCommitError();
 	}
 }

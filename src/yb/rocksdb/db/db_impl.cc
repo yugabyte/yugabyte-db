@@ -2887,13 +2887,14 @@ bool DBImpl::IsEmptyCompactionQueue() {
 bool DBImpl::AddToCompactionQueue(ColumnFamilyData* cfd) {
   assert(!cfd->pending_compaction());
 
-  LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
   const MutableCFOptions* mutable_cf_options = cfd->GetLatestMutableCFOptions();
   std::unique_ptr<Compaction> c;
 
   if (!mutable_cf_options->disable_auto_compactions && !cfd->IsDropped()
         && !(HasExclusiveManualCompaction() || HaveManualCompaction(cfd))) {
+    LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, db_options_.info_log.get());
     c = cfd->PickCompaction(*cfd->GetLatestMutableCFOptions(), &log_buffer);
+    log_buffer.FlushBufferToLog();
     if (c) {
       cfd->Ref();
       if (db_options_.priority_thread_pool_for_compactions_and_flushes &&
@@ -5723,8 +5724,16 @@ UserFrontierPtr DBImpl::GetMutableMemTableSmallestFrontier() {
       const auto* mem = cfd->mem();
       if (mem) {
         if (!cfd->IsDropped() && cfd->imm()->NumNotFlushed() == 0 && !mem->IsEmpty()) {
-          UserFrontier::Update(
-              mem->GetSmallestFrontierLocked().get(), UpdateUserValueType::kSmallest, &accumulated);
+          auto smallest_frontier = mem->GetSmallestFrontierLocked();
+          if (smallest_frontier) {
+            UserFrontier::Update(
+                smallest_frontier.get(), UpdateUserValueType::kSmallest, &accumulated);
+          } else {
+            const auto error = "smallest frontier is not initialized for non-empty MemTable";
+            YB_LOG_EVERY_N_SECS(WARNING, 5) << db_options_.log_prefix << "[" << cfd->GetName()
+                                            << "] " << error;
+            LOG(DFATAL) << error;
+          }
         }
       } else {
         YB_LOG_EVERY_N_SECS(WARNING, 5) << db_options_.log_prefix

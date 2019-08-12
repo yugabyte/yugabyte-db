@@ -944,13 +944,11 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
       ReadHybridTime::FromMicros(1000), boost::none);
   iter.Seek(DocKey());
   ASSERT_TRUE(iter.valid());
-  DocHybridTime doc_ht;
-  Result<Slice> key = iter.FetchKey(&doc_ht);
-  ASSERT_OK(key);
+  auto key_data = ASSERT_RESULT(iter.FetchKey());
   SubDocKey subdoc_key;
-  ASSERT_OK(subdoc_key.FullyDecodeFrom(*key, HybridTimeRequired::kFalse));
+  ASSERT_OK(subdoc_key.FullyDecodeFrom(key_data.key, HybridTimeRequired::kFalse));
   ASSERT_EQ(subdoc_key.ToString(), R"#(SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]))#");
-  ASSERT_EQ(doc_ht.ToString(), "HT{ physical: 1000 }");
+  ASSERT_EQ(key_data.write_time.ToString(), "HT{ physical: 1000 }");
 }
 
 TEST_F(DocRowwiseIteratorTest, SeekTwiceWithinTheSameTxn) {
