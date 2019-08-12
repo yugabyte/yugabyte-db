@@ -12,7 +12,7 @@ import AuthenticatedComponent from './pages/AuthenticatedComponent';
 import Dashboard from './pages/Dashboard';
 import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
-import {Tasks, TasksList, TaskDetail} from './pages/tasks';
+import { Tasks, TasksList, TaskDetail } from './pages/tasks';
 import Alerts from './pages/Alerts';
 import ListUniverse from './pages/ListUniverse';
 import Metrics from './pages/Metrics';
@@ -103,7 +103,13 @@ export default (store) => {
         <IndexRoute component={Dashboard} />
         <Route path="/universes" component={Universes} >
           <IndexRoute component={ListUniverse} />
+          <Route path="/universes/import" component={Importer} />
+          <Route path="/universes/create" component={UniverseDetail} />
           <Route path="/universes/:uuid" component={UniverseDetail} />
+          <Route path="/universes/:uuid/edit" component={UniverseDetail} >
+            <Route path="/universes/:uuid/edit/:type" component={UniverseDetail} />
+          </Route>
+          <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail}/>
         </Route>
         <Route path="/tasks" component={Tasks} >
@@ -120,7 +126,6 @@ export default (store) => {
         <Route path="/help" component={Help}/>
         <Route path="/profile" component={Profile}/>
         <Route path="/logs" component={YugawareLogs}/>
-        <Route path="/importer" component={Importer} />
         <Route path="/releases" component={Releases}/>
         <Route path="/certificates" component={Certificates}/>
       </Route>
