@@ -5,8 +5,8 @@ description: SportsDB sample database
 menu:
   latest:
     identifier: sportsdb
-    parent: datasets
-    weight: 2710
+    parent: sample-data
+    weight: 2654
 isTocNested: true
 showAsideToc: true
 ---

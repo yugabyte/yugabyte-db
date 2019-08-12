@@ -5,8 +5,8 @@ description: Chinook sample database
 menu:
   latest:
     identifier: chinook
-    parent: datasets
-    weight: 2710
+    parent: sample-data
+    weight: 2651
 isTocNested: true
 showAsideToc: true
 ---

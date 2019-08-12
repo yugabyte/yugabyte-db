@@ -5,8 +5,8 @@ description: PgExercises sample database
 menu:
   latest:
     identifier: pgexercises
-    parent: datasets
-    weight: 2710
+    parent: sample-data
+    weight: 2653
 isTocNested: true
 showAsideToc: true
 ---

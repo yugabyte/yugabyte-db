@@ -5,8 +5,8 @@ description: Use the classic Northwind sample database to explore YugaByte DB.
 menu:
   latest:
     identifier: northwind
-    parent: datasets
-    weight: 2710
+    parent: sample-data
+    weight: 2652
 isTocNested: true
 showAsideToc: true
 ---
@@ -31,7 +31,7 @@ The Northwind sample database includes 14 tables and the table relationships are
 <details>
 <summary>Northwind E-R diagram</summary>
 
-![Northwind E-R diagram](/images/datasets/northwind/northwind-er-diagram.jpeg)
+![Northwind E-R diagram](/images/datasets/northwind/northwind-er-diagram.jpg)
 
 </details>
 
