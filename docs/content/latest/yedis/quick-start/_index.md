@@ -1,7 +1,7 @@
 ---
-title: Quick Start
-linkTitle: Quick Start
-description: Quick Start
+title: Quick start
+linkTitle: Quick start
+description: Quick start
 image: /images/section_icons/quick_start/explore_yedis.png
 aliases:
   - /quick-start/test-redis/
