@@ -13,8 +13,6 @@
 
 #include "yb/docdb/conflict_resolution.h"
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 
@@ -26,6 +24,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -136,10 +135,10 @@ class ConflictResolver {
       char value = 1 << kStrongIntentFlag;
       intent_key_prefix->AppendRawBytes(&value, 1);
     }
-    BOOST_SCOPE_EXIT(intent_key_prefix, original_size, &intent_key_upperbound_) {
+    auto se = ScopeExit([this, intent_key_prefix, original_size] {
       intent_key_prefix->Truncate(original_size);
       intent_key_upperbound_.clear();
-    } BOOST_SCOPE_EXIT_END;
+    });
     Slice prefix_slice(intent_key_prefix->AsSlice().data(), original_size);
     intent_iter_.Seek(intent_key_prefix->AsSlice());
     while (intent_iter_.Valid()) {

@@ -19,16 +19,16 @@
 #include <random>
 #include <fstream>
 
-#include <boost/scope_exit.hpp>
 #include <gflags/gflags.h>
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/env_util.h"
-#include "yb/util/path_util.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/errno.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
 
 DEFINE_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
 DEFINE_bool(pg_transactions_enabled, true,
@@ -179,7 +179,7 @@ Status PgWrapper::InitDbForYSQL(const string& master_addresses, const string& tm
   conf.pg_port = 0;  // We should not use this port.
   std::mt19937 rng{std::random_device()()};
   conf.data_dir = Format("$0/tmp_pg_data_$1", tmp_dir_base, rng());
-  BOOST_SCOPE_EXIT(&conf) {
+  auto se = ScopeExit([&conf] {
     auto is_dir = Env::Default()->IsDirectory(conf.data_dir);
     if (is_dir.ok()) {
       if (is_dir.get()) {
@@ -192,7 +192,7 @@ Status PgWrapper::InitDbForYSQL(const string& master_addresses, const string& tm
       LOG(WARNING) << "Failed to check directory existence for " << conf.data_dir << ": "
                    << is_dir.status();
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
   PgWrapper pg_wrapper(conf);
   auto start_time = std::chrono::steady_clock::now();
   Status initdb_status = pg_wrapper.InitDb(/* yb_enabled */ true);

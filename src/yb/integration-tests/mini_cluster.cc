@@ -34,8 +34,6 @@
 
 #include <algorithm>
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/client/client.h"
 
 #include "yb/consensus/consensus.h"
@@ -61,6 +59,7 @@
 
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
@@ -205,15 +204,15 @@ Status MiniCluster::StartMasters() {
   }
 
   bool started = false;
-  BOOST_SCOPE_EXIT(this_, &started) {
+  auto se = ScopeExit([this, &started] {
     if (!started) {
-      for (const auto& master : this_->mini_masters_) {
+      for (const auto& master : mini_masters_) {
         if (master) {
           master->Shutdown();
         }
       }
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   for (int i = 0; i < num_masters_initial_; i++) {
     mini_masters_[i] = std::make_shared<MiniMaster>(

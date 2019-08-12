@@ -19,12 +19,11 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/rpc/outbound_data.h"
 
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 
 using namespace std::literals;
@@ -772,9 +771,9 @@ bool SecureStream::Verify(bool preverified, X509_STORE_CTX* store_context) {
   X509* cert = X509_STORE_CTX_get_current_cert(store_context);
 
   auto gens = static_cast<GENERAL_NAMES*>(X509_get_ext_d2i(cert, NID_subject_alt_name, 0, 0));
-  BOOST_SCOPE_EXIT(gens) {
+  auto se = ScopeExit([gens] {
     GENERAL_NAMES_free(gens);
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   auto address = Remote().address();
 

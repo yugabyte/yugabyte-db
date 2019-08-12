@@ -38,7 +38,6 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <boost/scope_exit.hpp>
 
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus-test-util.h"
@@ -51,6 +50,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
 
@@ -378,9 +378,7 @@ TEST_F(LogCacheTest, TestMTReadAndWrite) {
     }
   };
 
-  BOOST_SCOPE_EXIT(&stop_workload) {
-    stop_workload();
-  } BOOST_SCOPE_EXIT_END;
+  auto se = ScopeExit(stop_workload);
 
   // Add a writer thread.
   threads.emplace_back([&] {

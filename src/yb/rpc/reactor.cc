@@ -43,8 +43,6 @@
 #include <mutex>
 #include <string>
 
-#include <boost/scope_exit.hpp>
-
 #include <ev++.h>
 
 #include <glog/logging.h>
@@ -62,11 +60,12 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
-#include "yb/util/status.h"
 #include "yb/util/net/socket.h"
 
 using namespace std::literals;
@@ -343,9 +342,9 @@ void Reactor::CheckReadyToStop() {
 void Reactor::AsyncHandler(ev::async &watcher, int revents) {
   DCHECK(IsCurrentThread());
 
-  BOOST_SCOPE_EXIT(&async_handler_tasks_) {
+  auto se = ScopeExit([this] {
     async_handler_tasks_.clear();
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   if (PREDICT_FALSE(DrainTaskQueueAndCheckIfClosing())) {
     ShutdownInternal();

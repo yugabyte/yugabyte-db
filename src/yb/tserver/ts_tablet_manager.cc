@@ -39,7 +39,6 @@
 #include <vector>
 
 #include <boost/optional/optional.hpp>
-#include <boost/scope_exit.hpp>
 
 #include <glog/logging.h>
 
@@ -90,6 +89,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
@@ -784,9 +784,9 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   MarkTabletBeingRemoteBootstrapped(tablet_peer->tablet_id());
 
   // TODO: If we ever make this method asynchronous, we need to move this code somewhere else.
-  BOOST_SCOPE_EXIT(this_, tablet_peer) {
-    this_->UnmarkTabletBeingRemoteBootstrapped(tablet_peer->tablet_id());
-  } BOOST_SCOPE_EXIT_END
+  auto se = ScopeExit([this, tablet_peer] {
+    UnmarkTabletBeingRemoteBootstrapped(tablet_peer->tablet_id());
+  });
 
   // Download all of the remote files.
   TOMBSTONE_NOT_OK(rb_client->FetchAll(tablet_peer->status_listener()),

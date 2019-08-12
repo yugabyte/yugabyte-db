@@ -15,8 +15,6 @@
 
 #include "yb/client/txn-test-base.h"
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/transaction.h"
@@ -35,6 +33,7 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
@@ -136,20 +135,20 @@ void QLTransactionTest::TestReadRestart(bool commit) {
     if (commit) {
       ASSERT_OK(write_txn->CommitFuture().get());
     }
-    BOOST_SCOPE_EXIT(write_txn, commit) {
+    auto se = ScopeExit([write_txn, commit] {
       if (!commit) {
         write_txn->Abort();
       }
-    } BOOST_SCOPE_EXIT_END;
+    });
 
     server::SkewedClockDeltaChanger delta_changer(-100ms, skewed_clock_);
 
     auto txn1 = CreateTransaction2(SetReadTime::kTrue);
-    BOOST_SCOPE_EXIT(txn1, commit) {
+    auto se2 = ScopeExit([txn1, commit] {
       if (!commit) {
         txn1->Abort();
       }
-    } BOOST_SCOPE_EXIT_END;
+    });
     auto session = CreateSession(txn1);
     if (commit) {
       for (size_t r = 0; r != kNumRows; ++r) {
@@ -159,9 +158,9 @@ void QLTransactionTest::TestReadRestart(bool commit) {
                       << "Bad row: " << row;
       }
       auto txn2 = ASSERT_RESULT(txn1->CreateRestartedTransaction());
-      BOOST_SCOPE_EXIT(txn2) {
+      auto se = ScopeExit([txn2] {
         txn2->Abort();
-      } BOOST_SCOPE_EXIT_END;
+      });
       session->SetTransaction(txn2);
       VerifyRows(session);
       VerifyData();
