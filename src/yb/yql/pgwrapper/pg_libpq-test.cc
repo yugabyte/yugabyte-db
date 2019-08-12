@@ -698,5 +698,40 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(InTxnDelete)) {
   ASSERT_NO_FATALS(AssertRows(conn.get(), 1));
 }
 
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {
+  constexpr int kWriters = 5;
+  constexpr int kKeys = 20;
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(Execute(conn.get(), "CREATE TABLE test (k int PRIMARY KEY, v TEXT)"));
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i != kWriters; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+      SetFlagOnExit set_flag_on_exit(&stop);
+      auto conn = ASSERT_RESULT(Connect());
+      char value[2] = "0";
+      while (!stop.load(std::memory_order_acquire)) {
+        int key = RandomUniformInt(1, kKeys);
+        value[0] = RandomUniformInt('A', 'Z');
+        auto status = Execute(
+            conn.get(),
+            Format(
+                "INSERT INTO test (k, v) VALUES ($0, '$1') ON CONFLICT (K) DO "
+                "UPDATE SET v = CONCAT(test.v, '$1')",
+                key,
+                value));
+        if (status.ok() || TransactionalFailure(status)) {
+          continue;
+        }
+        ASSERT_OK(status);
+      }
+    });
+  }
+
+  thread_holder.WaitAndStop(30s);
+  LogResult(ASSERT_RESULT(Fetch(conn.get(), "SELECT * FROM test ORDER BY k")).get());
+}
+
 } // namespace pgwrapper
 } // namespace yb
