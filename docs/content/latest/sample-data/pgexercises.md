@@ -23,7 +23,12 @@ For further details about the data, see the [PosgresSQL Exercises' Getting Start
 
 The `exercises` database consists of three tables (members, bookings, and facilities) and the table relationships as shown in the entity relationship diagram.
 
+<details>
+<summary>PgExercises E-R diagram</summary>
+
 ![PgExercises E-R diagram](/images/datasets/pgexercises/pgexercises-er-diagram.png)
+
+</details>
 
 ## Install the PgExercises sample database
 

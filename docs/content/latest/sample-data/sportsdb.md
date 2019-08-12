@@ -17,7 +17,14 @@ Install the PostgreSQL-compatible version of SportsDB on the YugaByte DB distrib
 
 [SportsDB](http://www.sportsdb.org/sd) is a sample dataset compiled from multiple sources, encompassing a variety of sports, including football, baseball, ice hockey, and more. It also cross-references many different types of content media. It is capable of supporting queries for the most intense of sports data applications, yet is simple enough for use by those with minimal database experience. The database itself is comprised of over 100 tables and just as many sequences, unique constraints, foreign keys, and indexes. The dataset also includes almost 80k rows of data. It has been ported to MySQL, SQL Server and PostgreSQL.
 
-If you like details, check out the [detailed entity relationship (ER) diagram](http://www.sportsdb.org/modules/sd/assets/downloads/sportsdb-27.jpg).
+If you like details, check out the detailed entity relationship (ER) diagram.
+
+<details>
+<summary>SportsDB E-R diagram</summary>
+
+![SportsDB E-R diagram](/images/datasets/sportsdb/sportsdb-er-diagram.jpeg)
+
+</details>
 
 ## Install the SportsDB sample database
 
