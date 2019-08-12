@@ -38,6 +38,8 @@ For details, see the entity relationship diagram of the Chinook data model.
 
 ## Install the Chinook database
 
+Follow the steps here to download and install the Chinook sample database.
+
 ### Before you begin
 
 To install and use the Chinook sample database, you need to have installed and configured YugaByte DB. To get up and running quickly, see [Quick Start](/latest/quick-start/).

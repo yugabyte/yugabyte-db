@@ -32,6 +32,8 @@ The `exercises` database consists of three tables (members, bookings, and facili
 
 ## Install the PgExercises sample database
 
+Follow the steps here to download and install the PgExercises sample database.
+
 ### Before you begin
 
 To use the PgExercises sample database, you must have installed and configured YugaByte DB. To get up and running quickly, see [Quick Start](/latest/quick-start/).

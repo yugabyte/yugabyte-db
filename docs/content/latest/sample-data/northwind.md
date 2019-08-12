@@ -37,6 +37,8 @@ The Northwind sample database includes 14 tables and the table relationships are
 
 ## Install the Northwind sample database
 
+Follow the steps here to download and install the Northwind sample database.
+
 ### Before you begin
 
 To use the Northwind sample database, you must have installed and configured YugaByte DB. To get up and running quickly, see [Quick Start](/latest/quick-start/).
