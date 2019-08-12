@@ -39,8 +39,6 @@
 #include <thread>
 #include <vector>
 
-#include <boost/scope_exit.hpp>
-
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
@@ -52,12 +50,13 @@
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
 #include "yb/gutil/sysinfo.h"
-#include "yb/util/threadpool.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/trace.h"
 
 #include "yb/util/locks.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/trace.h"
 
 using std::atomic;
 using std::shared_ptr;
@@ -188,9 +187,9 @@ TEST_F(TestThreadPool, TestThreadPoolWithNoMinimum) {
   ASSERT_EQ(0, thread_pool->num_threads_);
   // We get up to 3 threads when submitting work.
   CountDownLatch latch(1);
-  BOOST_SCOPE_EXIT(&latch) {
+  auto se = ScopeExit([&latch] {
       latch.CountDown();
-  } BOOST_SCOPE_EXIT_END;
+  });
   ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_OK(thread_pool->Submit(SlowTask::NewSlowTask(&latch)));
   ASSERT_EQ(2, thread_pool->num_threads_);
@@ -219,9 +218,9 @@ TEST_F(TestThreadPool, TestThreadPoolWithNoMaxThreads) {
                 .set_max_threads(std::numeric_limits<int>::max())
                 .Build(&thread_pool));
   CountDownLatch latch(1);
-  BOOST_SCOPE_EXIT(&latch) {
+  auto se = ScopeExit([&latch] {
     latch.CountDown();
-    } BOOST_SCOPE_EXIT_END;
+    });
 
   // Submit tokenless tasks. Each should create a new thread.
   for (int i = 0; i < kNumCPUs * 2; i++) {
@@ -477,9 +476,9 @@ TEST_P(TestThreadPoolTokenTypes, TestTokenSubmitsProcessedConcurrently) {
   // A violation to the tested invariant would yield a deadlock, so let's set
   // up an alarm to bail us out.
   alarm(60);
-  BOOST_SCOPE_EXIT(void) {
-      alarm(0); // Disable alarm on test exit.
-    } BOOST_SCOPE_EXIT_END;
+  auto se = ScopeExit([] {
+    alarm(0); // Disable alarm on test exit.
+  });
   shared_ptr<Barrier> b = std::make_shared<Barrier>(kNumTokens + 1);
   for (int i = 0; i < kNumTokens; i++) {
     tokens.emplace_back(thread_pool->NewToken(GetParam()));
@@ -502,9 +501,9 @@ TEST_F(TestThreadPool, TestTokenSubmitsNonSequential) {
   // A violation to the tested invariant would yield a deadlock, so let's set
   // up an alarm to bail us out.
   alarm(60);
-  BOOST_SCOPE_EXIT(void) {
-                     alarm(0); // Disable alarm on test exit.
-  } BOOST_SCOPE_EXIT_END;
+  auto se = ScopeExit([] {
+    alarm(0); // Disable alarm on test exit.
+  });
   shared_ptr<Barrier> b = std::make_shared<Barrier>(kNumSubmissions + 1);
   unique_ptr<ThreadPoolToken> t = thread_pool->NewToken(ThreadPool::ExecutionMode::CONCURRENT);
   for (int i = 0; i < kNumSubmissions; i++) {
@@ -531,9 +530,9 @@ TEST_P(TestThreadPoolTokenTypes, TestTokenShutdown) {
   // A violation to the tested invariant would yield a deadlock, so let's set
   // up an alarm to bail us out.
   alarm(60);
-  BOOST_SCOPE_EXIT(void) {
-                     alarm(0); // Disable alarm on test exit.
-  } BOOST_SCOPE_EXIT_END;
+  auto se = ScopeExit([] {
+    alarm(0); // Disable alarm on test exit.
+  });
 
   for (int i = 0; i < 3; i++) {
     ASSERT_OK(t1->SubmitFunc([&]() {
@@ -688,9 +687,9 @@ TEST_P(TestThreadPoolTokenTypes, TestTokenSubmissionsAdhereToMaxQueueSize) {
 
   CountDownLatch latch(1);
   unique_ptr<ThreadPoolToken> t = thread_pool->NewToken(GetParam());
-  BOOST_SCOPE_EXIT(&latch) {
+  auto se = ScopeExit([&latch] {
                      latch.CountDown();
-    } BOOST_SCOPE_EXIT_END;
+    });
   // We will be able to submit two tasks: one for max_threads == 1 and one for
   // max_queue_size == 1.
   ASSERT_OK(t->Submit(SlowTask::NewSlowTask(&latch)));

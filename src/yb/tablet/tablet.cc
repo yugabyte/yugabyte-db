@@ -43,7 +43,6 @@
 #include <vector>
 
 #include <boost/optional.hpp>
-#include <boost/scope_exit.hpp>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
@@ -114,6 +113,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/slice.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
@@ -1579,9 +1579,9 @@ Status Tablet::ModifyFlushedFrontier(
         "$0/test_checkpoint_$1_$2", test_data_dir, tablet_id(), MonoTime::Now().ToUint64());
     RETURN_NOT_OK(
         rocksdb::checkpoint::CreateCheckpoint(regular_db_.get(), checkpoint_dir_for_test));
-    BOOST_SCOPE_EXIT(checkpoint_dir_for_test) {
+    auto se = ScopeExit([checkpoint_dir_for_test] {
       CHECK_OK(Env::Default()->DeleteRecursively(checkpoint_dir_for_test));
-    } BOOST_SCOPE_EXIT_END;
+    });
     rocksdb::Options rocksdb_options;
     docdb::InitRocksDBOptions(
         &rocksdb_options, LogPrefix(), /* statistics */ nullptr, tablet_options_);

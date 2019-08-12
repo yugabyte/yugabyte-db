@@ -33,8 +33,6 @@
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/consensus/consensus_queue.h"
@@ -50,6 +48,7 @@
 #include "yb/fs/fs_manager.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"

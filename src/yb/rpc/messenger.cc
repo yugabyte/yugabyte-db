@@ -43,8 +43,6 @@
 #include <string>
 #include <thread>
 
-#include <boost/scope_exit.hpp>
-
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -69,6 +67,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"

@@ -12,14 +12,13 @@
 
 #include "yb/tablet/tablet.h"
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/tablet/operations/snapshot_operation.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/stopwatch.h"
 
 ////////////////////////////////////////////////////////////
@@ -78,16 +77,16 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
 
   bool exit_on_failure = true;
   // Delete snapshot (RocksDB checkpoint) directories on exit.
-  BOOST_SCOPE_EXIT(env, &exit_on_failure, &snapshot_dir, &tmp_snapshot_dir, &top_snapshots_dir,
-                   this_) {
+  auto se = ScopeExit(
+      [this, env, &exit_on_failure, &snapshot_dir, &tmp_snapshot_dir, &top_snapshots_dir] {
     bool do_sync = false;
 
     if (env->FileExists(tmp_snapshot_dir)) {
       do_sync = true;
       const Status deletion_status = env->DeleteRecursively(tmp_snapshot_dir);
       if (PREDICT_FALSE(!deletion_status.ok())) {
-        LOG(WARNING)
-            << this_->LogPrefix() << "Cannot recursively delete temp snapshot dir "
+        LOG_WITH_PREFIX(WARNING)
+            << "Cannot recursively delete temp snapshot dir "
             << tmp_snapshot_dir << ": " << deletion_status;
       }
     }
@@ -96,19 +95,19 @@ Status Tablet::CreateSnapshot(SnapshotOperationState* tx_state) {
       do_sync = true;
       const Status deletion_status = env->DeleteRecursively(snapshot_dir);
       if (PREDICT_FALSE(!deletion_status.ok())) {
-        LOG(WARNING) << this_->LogPrefix() << "Cannot recursively delete snapshot dir "
-                     << snapshot_dir << ": " << deletion_status;
+        LOG_WITH_PREFIX(WARNING)
+            << "Cannot recursively delete snapshot dir " << snapshot_dir << ": " << deletion_status;
       }
     }
 
     if (do_sync) {
       const Status sync_status = env->SyncDir(top_snapshots_dir);
       if (PREDICT_FALSE(!sync_status.ok())) {
-        LOG(WARNING) << this_->LogPrefix() << "Cannot sync top snapshots dir " << top_snapshots_dir
-                     << ": " << sync_status;
+        LOG_WITH_PREFIX(WARNING)
+            << "Cannot sync top snapshots dir " << top_snapshots_dir << ": " << sync_status;
       }
     }
-  } BOOST_SCOPE_EXIT_END;
+  });
 
   // Note: checkpoint::CreateCheckpoint() calls DisableFileDeletions()/EnableFileDeletions()
   //       for the RocksDB object.

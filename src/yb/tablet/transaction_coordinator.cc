@@ -23,8 +23,6 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/tag.hpp>
 
-#include <boost/scope_exit.hpp>
-
 #include <boost/uuid/uuid_io.hpp>
 
 #include "yb/client/client.h"
@@ -52,6 +50,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
@@ -952,9 +951,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   void Poll(const Status& status) {
     ++running_polls_;
-    BOOST_SCOPE_EXIT(&running_polls_) {
+    auto se = ScopeExit([this] {
       --running_polls_;
-    } BOOST_SCOPE_EXIT_END;
+    });
     auto now = context_.clock().Now();
 
     auto leader_term = context_.LeaderTerm();
