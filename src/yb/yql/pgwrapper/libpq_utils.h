@@ -71,6 +71,9 @@ Result<T> FetchValue(PGconn* conn, const std::string& command) {
   return GetValue<T>(res.get(), 0, 0);
 }
 
+Result<std::string> AsString(PGresult* result, int row, int column);
+void LogResult(PGresult* result);
+
 } // namespace pgwrapper
 } // namespace yb
 
