@@ -30,9 +30,10 @@ The Chinook sample database includes:
 For details, see the entity relationship diagram of the Chinook data model.
 
 <details>
-<summary>Chinook E-R diagram</summary>
 
-![Chinook E-R diagram](/images/datasets/chinook/chinook-er-diagram.png)
+<summary>Chinook E-R diagram</summary>
+
+![Chinook E-R diagram](/images/datasets/chinook/chinook-er-diagram.png)
 
 </details>
 

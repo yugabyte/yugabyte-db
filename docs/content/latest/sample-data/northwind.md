@@ -1,7 +1,7 @@
 ---
 title: Northwind sample database
 linkTitle: Northwind
-description: Use the classic Northwind sample database to explore YugaByte DB.
+description: Northwind sample database
 menu:
   latest:
     identifier: northwind
@@ -29,9 +29,10 @@ The Northwind dataset includes sample data for the following.
 The Northwind sample database includes 14 tables and the table relationships are showcased in the following entity relationship diagram.
 
 <details>
-<summary>Northwind E-R diagram</summary>
 
-![Northwind E-R diagram](/images/datasets/northwind/northwind-er-diagram.jpg)
+<summary>Northwind E-R diagram</summary>
+
+![Northwind E-R diagram](/images/datasets/northwind/northwind-er-diagram.jpg)
 
 </details>
 
@@ -113,8 +114,6 @@ To verify that you have some data to work with, you can run a simple SELECT stat
 ```
 northwind=# SELECT * FROM customers LIMIT 2;
 ```
-
-![SELECT statement](/images/datasets/northwind/northwind-sql-select.png)
 
 ## Explore the Northwind database
 

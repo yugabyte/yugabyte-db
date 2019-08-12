@@ -20,6 +20,7 @@ Install the PostgreSQL-compatible version of SportsDB on the YugaByte DB distrib
 If you like details, check out the detailed entity relationship (ER) diagram.
 
 <details>
+
 <summary>SportsDB E-R diagram</summary>
 
 ![SportsDB E-R diagram](/images/datasets/sportsdb/sportsdb-er-diagram.jpeg)
