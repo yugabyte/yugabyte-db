@@ -159,6 +159,13 @@ public class MetaMasterControllerTest extends FakeDBApplication {
       "/redisservers", 6379
   );
 
+  Map<String, Integer> endpointPortYSQL = ImmutableMap.of(
+      "/masters", 7100,
+      "/yqlservers", 9042,
+      "/redisservers", 6379,
+      "/ysqlservers", 5433
+  );
+
   @Test
   public void testServerAddressForKuberenetesServiceFailure() {
     Universe universe = getKubernetesUniverse(false);
@@ -189,7 +196,7 @@ public class MetaMasterControllerTest extends FakeDBApplication {
     re.message = "12.13.14.15||";
     when(mockKubernetesManager.getServiceIPs(any(), anyString(), anyBoolean())).thenReturn(re);
 
-    endpointPort.entrySet().forEach((endpoint) -> {
+    endpointPortYSQL.entrySet().forEach((endpoint) -> {
       String expectedHostString = "12.13.14.15:" + endpoint.getValue();
       Result r = route(fakeRequest("GET", "/api/customers/" + defaultCustomer.uuid + "/universes/" +
           universe.universeUUID + endpoint.getKey()));
