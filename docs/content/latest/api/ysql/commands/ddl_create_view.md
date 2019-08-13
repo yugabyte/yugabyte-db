@@ -18,17 +18,29 @@ The `CREATE VIEW` command creates a new view in a database. It defines the view 
 
 ## Syntax
 
-### Diagrams
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-#### create_view
-
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="755" height="49" viewbox="0 0 755 49"><path class="connector" d="M0 21h5m67 0h30m37 0h10m74 0h20m-156 0q5 0 5 5v8q0 5 5 5h131q5 0 5-5v-8q0-5 5-5m5 0h10m50 0h10m114 0h30m25 0h10m89 0h10m25 0h20m-194 0q5 0 5 5v8q0 5 5 5h169q5 0 5-5v-8q0-5 5-5m5 0h10m36 0h10m58 0h5"/><rect class="literal" x="5" y="5" width="67" height="24" rx="7"/><text class="text" x="15" y="21">CREATE</text><rect class="literal" x="102" y="5" width="37" height="24" rx="7"/><text class="text" x="112" y="21">OR</text><rect class="literal" x="149" y="5" width="74" height="24" rx="7"/><text class="text" x="159" y="21">REPLACE</text><rect class="literal" x="253" y="5" width="50" height="24" rx="7"/><text class="text" x="263" y="21">VIEW</text><a xlink:href="../../grammar_diagrams#qualified-name"><rect class="rule" x="313" y="5" width="114" height="24"/><text class="text" x="323" y="21">qualified_name</text></a><rect class="literal" x="457" y="5" width="25" height="24" rx="7"/><text class="text" x="467" y="21">(</text><a xlink:href="../../grammar_diagrams#column-list"><rect class="rule" x="492" y="5" width="89" height="24"/><text class="text" x="502" y="21">column_list</text></a><rect class="literal" x="591" y="5" width="25" height="24" rx="7"/><text class="text" x="601" y="21">)</text><rect class="literal" x="646" y="5" width="36" height="24" rx="7"/><text class="text" x="656" y="21">AS</text><a xlink:href="../../grammar_diagrams#query"><rect class="rule" x="692" y="5" width="58" height="24"/><text class="text" x="702" y="21">query</text></a></svg>
-
-### Grammar
-
-```
-create_view ::= CREATE [ OR REPLACE ] VIEW qualified_name [ ( column_list ) ] AS query ;
-```
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/create_view.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/create_view.diagram.md" /%}}
+  </div>
+</div>
 
 Where
 

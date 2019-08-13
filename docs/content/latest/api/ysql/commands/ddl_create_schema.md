@@ -19,15 +19,30 @@ showAsideToc: true
 
 ## Syntax
 
-### Diagrams
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="700" height="64" viewbox="0 0 700 64"><path class="connector" d="M0 36h5m67 0h10m71 0h30m30 0h10m45 0h10m61 0h20m-191 0q5 0 5 5v8q0 5 5 5h166q5 0 5-5v-8q0-5 5-5m5 0h10m110 0h50m-5 0q-5 0-5-5v-16q0-5 5-5h136q5 0 5 5v16q0 5-5 5m-5 0h40m-201 0q5 0 5 5v8q0 5 5 5h176q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="20" width="67" height="24" rx="7"/><text class="text" x="15" y="36">CREATE</text><rect class="literal" x="82" y="20" width="71" height="24" rx="7"/><text class="text" x="92" y="36">SCHEMA</text><rect class="literal" x="183" y="20" width="30" height="24" rx="7"/><text class="text" x="193" y="36">IF</text><rect class="literal" x="223" y="20" width="45" height="24" rx="7"/><text class="text" x="233" y="36">NOT</text><rect class="literal" x="278" y="20" width="61" height="24" rx="7"/><text class="text" x="288" y="36">EXISTS</text><a xlink:href="../../grammar_diagrams#schema-name"><rect class="rule" x="369" y="20" width="110" height="24"/><text class="text" x="379" y="36">schema_name</text></a><a xlink:href="../../grammar_diagrams#schema-element"><rect class="rule" x="529" y="20" width="126" height="24"/><text class="text" x="539" y="36">schema_element</text></a></svg>
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-### Grammar
-
-```
-create_schema ::= CREATE SCHEMA [ IF NOT EXISTS ] schema_name [ schema_element [...] ]
-```
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/create_schema.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/create_schema.diagram.md" /%}}
+  </div>
+</div>
 
 Where
 

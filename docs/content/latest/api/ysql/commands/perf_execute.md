@@ -18,15 +18,29 @@ showAsideToc: true
 
 ## Syntax
 
-### Diagrams
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="398" height="78" viewbox="0 0 398 78"><path class="connector" d="M0 50h5m75 0h10m55 0h30m25 0h30m-5 0q-5 0-5-5v-19q0-5 5-5h37m24 0h37q5 0 5 5v19q0 5-5 5m-5 0h30m25 0h20m-233 0q5 0 5 5v8q0 5 5 5h208q5 0 5-5v-8q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="34" width="75" height="24" rx="7"/><text class="text" x="15" y="50">EXECUTE</text><a xlink:href="../../grammar_diagrams#name"><rect class="rule" x="90" y="34" width="55" height="24"/><text class="text" x="100" y="50">name</text></a><rect class="literal" x="175" y="34" width="25" height="24" rx="7"/><text class="text" x="185" y="50">(</text><rect class="literal" x="262" y="5" width="24" height="24" rx="7"/><text class="text" x="272" y="21">,</text><a xlink:href="../../grammar_diagrams#expression"><rect class="rule" x="230" y="34" width="88" height="24"/><text class="text" x="240" y="50">expression</text></a><rect class="literal" x="348" y="34" width="25" height="24" rx="7"/><text class="text" x="358" y="50">)</text></svg>
-
-### Grammar
-
-```
-EXECUTE name [ ( expression [, ...] ) ]
-```
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/execute_statement.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/execute_statement.diagram.md" /%}}
+  </div>
+</div>
 
 ## Semantics
 

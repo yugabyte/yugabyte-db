@@ -16,17 +16,32 @@ showAsideToc: true
 
 `COMMIT` command commits the current transaction. All changes made by the transaction become visible to others and are guaranteed to be durable if a crash occurs.
 
-## Grammar
+## Syntax
 
-### Diagrams
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="231" height="68" viewbox="0 0 231 68"><path class="connector" d="M0 21h5m67 0h30m104 0h20m-134 24q0 5 5 5h5m55 0h54q5 0 5-5m-129-24q5 0 5 5v32q0 5 5 5h114q5 0 5-5v-32q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="67" height="24" rx="7"/><text class="text" x="15" y="21">COMMIT</text><rect class="literal" x="102" y="5" width="104" height="24" rx="7"/><text class="text" x="112" y="21">TRANSACTION</text><rect class="literal" x="102" y="34" width="55" height="24" rx="7"/><text class="text" x="112" y="50">WORK</text></svg>
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-### Syntax
-
-```
-commit_transaction ::= COMMIT [ TRANSACTION | WORK ] ;
-```
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/commit.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/commit.diagram.md" /%}}
+  </div>
+</div>
 
 ## Semantics
 
