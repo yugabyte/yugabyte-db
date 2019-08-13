@@ -1,7 +1,7 @@
 ---
 title: ysqlsh
 linkTitle: ysqlsh
-description: Use the "ysqlsh" command line shell to interact with YugaByte DB.
+description: ysqlsh
 aliases:
   - /develop/tools/ysqlsh/
   - /latest/develop/tools/ysqlsh/

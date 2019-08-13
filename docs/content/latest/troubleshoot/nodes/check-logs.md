@@ -1,7 +1,7 @@
 ---
 title: Inspect logs
 linkTitle: Inspect logs
-description: Inspect logs
+description: Inspect YugaByte DB logs
 aliases:
   - /troubleshoot/nodes/check-logs/
 menu:
