@@ -50,7 +50,7 @@ class UniverseConnectModal extends Component {
       const { universeDetails: { clusters }} = universeInfo;
       const primaryCluster = getPrimaryCluster(clusters);
       const userIntent = primaryCluster && primaryCluster.userIntent;
-      
+
       const ycqlServiceUrl = getUniverseEndpoint(universeUUID) + "/yqlservers";
       // check if there's a Hosted Zone
       if (userIntent.providerType === "aws" && universeInfo.dnsName) {
@@ -75,7 +75,7 @@ class UniverseConnectModal extends Component {
   }
 
   render() {
-    const { 
+    const {
       showOverviewConnectModal,
       closeModal,
       modal: { showModal, visibleModal },
@@ -105,15 +105,15 @@ class UniverseConnectModal extends Component {
           </FlexContainer>
           <YBCodeBlock className={"endpoint-output" + (this.state.endpointPayload === "" ? " empty" : "")}>
             <YBCopyButton text={this.state.endpointPayload}/>
-            {this.state.endpointPayload} {this.state.endpointError} 
+            {this.state.endpointPayload} {this.state.endpointError}
           </YBCodeBlock>
         </Fragment>
-        ); 
+        );
       const connectIp = this.state.connectIp;
       content = (<Fragment>
         <h4>Services</h4>
         <YBCodeBlock>
-          JDBC : postgresql://postgres@{connectIp}:5433<br/>
+          JDBC : jdbc:postgresql//{connectIp}:5433/postgres<br/>
           YSQL : ./bin/psql -U postgres -h {connectIp} -p 5433<br/>
           {userIntent.enableYSQL && `YCQL : ./bin/cqlsh ${connectIp} 9042<br/>`}
           YEDIS : ./bin/redis-cli -h {connectIp} -p 6379<br/>
