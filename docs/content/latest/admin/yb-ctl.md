@@ -15,7 +15,7 @@ showAsideToc: true
 
 The `yb-ctl` utility, located in the bin directory of YugaByte home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-master`](../admin/yb-master/) and [`yb-tserver`](../admin/yb-tserver/) binaries to perform the necessary administration.
 
-Use the **-\-help** option to see all the commands supported.
+Use the `-\-help` option to see all the commands supported.
 
 ```sh
 $ ./bin/yb-ctl --help
@@ -82,11 +82,11 @@ Optional argument | Default | Description
 
 Use the `yb-ctl create` command to quickly create a local YugaByte DB cluster for development and learning.
 
-The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. Use the [add_node](#add-nodes) and [remove_node](#stop-remove-nodes) commands to expand or shrink the cluster.
+The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. Use the [`add_node`](#add-nodes) and [`remove_node`](#stop-remove-nodes) commands to expand or shrink the cluster.
 
 Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal the replication factor for the cluster to be considered operating normally.
 
-### Create a local cluster with replication factor 1
+### Create a local cluster with replication factor of 1
 
 ```sh
 $ ./bin/yb-ctl create
@@ -94,21 +94,21 @@ $ ./bin/yb-ctl create
 
 Note that the default replication factor is 1.
 
-### Create a 4 node cluster with replication factor 3
+### Create a 4-node cluster with replication factor of 3
 
-First create 3 node cluster with replication factor 3.
+First create 3-node cluster with replication factor of 3.
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
 ```
 
-Add a node to make it a 4 node cluster.
+Add a node to make it a 4-node cluster.
 
 ```sh
 $ ./bin/yb-ctl add_node
 ```
 
-### Create a 5 node cluster with replication factor 5
+### Create a 5-node cluster with replication factor of 5
 
 ```sh
 $ ./bin/yb-ctl --rf 5 create
