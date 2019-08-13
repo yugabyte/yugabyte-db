@@ -198,19 +198,6 @@ Datum YBCBinaryToDatum(const void *data, int64 bytes, const YBCPgTypeAttrs *type
 }
 
 /*
- * TEXT type conversion.
- */
-void YBCDatumToText(Datum datum, char **data, int64 *bytes) {
-	*data = VARDATA_ANY(datum);
-	*bytes = VARSIZE_ANY_EXHDR(datum);
-}
-
-Datum YBCTextToDatum(const char *data, int64 bytes, const YBCPgTypeAttrs *type_attrs) {
-	/* While reading back TEXT from storage, we don't need to check for data length. */
-	return PointerGetDatum(cstring_to_text_with_len(data, bytes));
-}
-
-/*
  * CHAR type conversion.
  */
 void YBCDatumToChar(Datum datum, char *data, int64 *bytes) {
@@ -585,9 +572,12 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToOid,
 		(YBCPgDatumFromData)YBCOidToDatum },
 
-	{ TEXTOID, YB_YQL_DATA_TYPE_STRING, true, -1,
-		(YBCPgDatumToData)YBCDatumToText,
-		(YBCPgDatumFromData)YBCTextToDatum },
+	/*
+	 * TODO(neil) We need to change TEXT to char-based datatype to be the same with PostgreSQL.
+	 */
+	{ TEXTOID, YB_YQL_DATA_TYPE_BINARY, true, -1,
+		(YBCPgDatumToData)YBCDatumToBinary,
+		(YBCPgDatumFromData)YBCBinaryToDatum },
 
 	{ OIDOID, YB_YQL_DATA_TYPE_UINT32, true, sizeof(Oid),
 		(YBCPgDatumToData)YBCDatumToOid,
