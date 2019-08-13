@@ -1,7 +1,7 @@
 ---
 title: TablePlus
 linkTitle: TablePlus
-description: TablePlus
+description: TablePlus 
 aliases:
   - /develop/tools/tableplus/
   - /latest/develop/tools/tableplus/
@@ -9,7 +9,7 @@ menu:
   latest:
     identifier: tableplus
     parent: tools
-    weight: 2710
+    weight: 2810
 isTocNested: true
 showAsideToc: true
 ---

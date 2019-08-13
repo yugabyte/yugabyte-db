@@ -4,7 +4,7 @@ An “airgapped” host has either no or a restricted path to inbound or outboun
 
 ### 1. Whitelist endpoints
 
-In order to install Replicated and YugaWare on a host with no Internet connectivity at all, we have to first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation.
+In order to install Replicated and YugaWare on a host with no Internet connectivity at all, you have to first download the binaries on a machine that has Internet connectivity and then copy the files over to the appropriate host. In case of restricted connectivity, the following endpoints have to be whitelisted to ensure that they are accessible from the host marked for installation.
 
 ```sh
 https://downloads.yugabyte.com
@@ -25,7 +25,7 @@ Make a directory for downloading the binaries.
 $ sudo mkdir /opt/downloads
 ```
 
-Change the owner user for the directory
+Change the owner user for the directory.
 
 ```sh
 $ sudo chown -R ubuntu:ubuntu /opt/downloads

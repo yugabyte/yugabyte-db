@@ -16,13 +16,13 @@ showAsideToc: true
 
 Connect to the local node where YugaByte DB is running. 
 
-On the local setup, this is your local machine (or a docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the YugaByte node(s) are running.
+On the local setup, this is your local machine (or a Docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the YugaByte nodes are running.
 
 ```sh
 $ ps aux | grep yb-tserver
 ```
 
-If you are expecting a master process on this node you can also do: 
+If you are expecting a master process on this node, you can also do the following.
 
 ```sh
 $ ps aux | grep yb-master
@@ -38,7 +38,7 @@ Once the processes are running, if they are not accessible from your client mach
 
 ## 2. Are the yb-master and yb-tserver endpoints accessible?
 
-Generally the endpoints are: 
+Generally, the endpoints are: 
 
 |      Description |                       URL |
 |------------------|---------------------------|
@@ -49,7 +49,7 @@ Generally the endpoints are:
 | Redis Server     | `<node-ip>:6379`          |
 | CQL Server       | `<node-ip>:9042`          |
 
-However, in some setups these endpoints may not be accessible, depending on the configuration on your physical machines or on your cloud-provider account:
+However, in some setups these endpoints may not be accessible, depending on the configuration on your physical machines or on your cloud-provider account.
 
 ### IP not accessible
 
