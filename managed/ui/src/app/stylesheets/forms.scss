@@ -29,15 +29,15 @@
     text-align: center;
 
     .logo {
-      height: 40px;
+      height: 56px;
       margin: 0 auto 50px auto;
-      margin-bottom: 20px !important;
+      margin-bottom: 35px !important;
       display: block;
     }
     span {
-      color: #fff;
+      color: rgba($YB_SIDEBAR_TEXT, 0.5);
       display: inline-block;
-      margin: 0 0 25px 0;
+      margin: 0 0 10px 0;
     }
   }
 }

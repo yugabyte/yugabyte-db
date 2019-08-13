@@ -1,11 +1,14 @@
 /* Copyright (c) YugaByte, Inc. */
 
+@import "_style/colors.scss";
+
 .yb-region-map {
   width: 100%;
   min-height: 30vw;
-  border-color: #d3d3d3;
-  border-style: solid;
-  border-width: 2px 1px;
+  border-radius: 7px;
+  border: none;
+  overflow: hidden;
+  box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
 }
 
 .yb-map-labels {
@@ -19,6 +22,10 @@
       font-weight: 700;
     }
   }
+}
+
+.universe-detail .yb-region-map {
+  border-radius: 0 0 7px 7px;
 }
 
 .root-default-marker {
