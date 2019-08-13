@@ -99,6 +99,37 @@
   strong {
     margin: 0 3px;
   }
+  .form-group, .yb-field-group, input {
+    display: inline-block;
+    padding-bottom: 0;
+    vertical-align: middle;
+  }
+
+  .btn-orange {
+    margin-left: 2px;
+  }
+
+  .btn-default {
+    margin-left: 10px;
+  }
+
+  .btn-default.btn-edit-universe-name {
+    &, &:hover, &:focus, &:active {
+      border: none;
+      color: $YB_ORANGE;
+      font-weight: 600;
+      padding: 5px 8px 7px;
+      margin-left: 5px;
+      margin-right: 10px;
+      margin-top: 6px;
+      float: left;
+
+      i {
+        color: $YB_ORANGE;
+        margin-right: 2px;
+      }
+    }
+  }
 }
 .universe-detail {
   .content-title {
@@ -345,6 +376,8 @@ h2 {
   }
 
   #universe-tab-panel-pane-overview {
+    margin-bottom: -25px;
+
     .row {
       margin-left: -12px;
       margin-right: -12px;
