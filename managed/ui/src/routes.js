@@ -36,12 +36,16 @@ const clearCredentials = () => {
 function validateSession(store, replacePath, callback) {
   const authToken = Cookies.get("authToken") || localStorage.getItem('authToken');
   const apiToken = Cookies.get("apiToken") || localStorage.getItem('apiToken');
-  // If the token is null or invalid, we just re-direct to login page
-  if((!apiToken || apiToken === '') && (!authToken || authToken === '')) {
+  const cUUID = Cookies.get("customerId") || localStorage.getItem("customerId");
+  // Attempt to route to dashboard if tokens and cUUID exists or if insecure mode is on.
+  // Otherwise, go to login/register.
+  if((!cUUID || cUUID === '') ||
+      ((!apiToken || apiToken === '') && (!authToken || authToken === ''))) {
     store.dispatch(insecureLogin()).then((response) => {
       if (response.payload.status === 200) {
         localStorage.setItem('apiToken', response.payload.data.apiToken);
         localStorage.setItem('customerId', response.payload.data.customerUUID);
+        browserHistory.push('/');
       }
     });
     store.dispatch(fetchCustomerCount()).then((response) => {
