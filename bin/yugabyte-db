@@ -1281,7 +1281,8 @@ class YugaWareProxy(object):
             "email": "admin@yugabyte.com",
             "features": {
                 "universe": {
-                    "import": "disabled"
+                    "import": "disabled",
+                    "create": "disabled"
                 },
                 "config": {
                     "infra": "hidden"
@@ -1296,7 +1297,8 @@ class YugaWareProxy(object):
                     "landing_page": "universes"
                 },
                 "menu": {
-                    "dashboard": "hidden"
+                    "dashboard": "hidden",
+                    "configs": "disabled"
                 },
                 "universes": {
                     "details": {
@@ -1304,7 +1306,11 @@ class YugaWareProxy(object):
                         "backups": "disabled",
                         "health": "disabled",
                         "overview": {
-                            "costs": "hidden"
+                            "costs": "hidden",
+                            "upgradeSoftware": "disabled",
+                            "editGFlags": "disabled",
+                            "readReplica": "disabled",
+                            "deleteUniverse": "disabled",
                         }
                     }
                 }
