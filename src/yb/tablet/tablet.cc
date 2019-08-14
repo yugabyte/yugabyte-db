@@ -1418,6 +1418,9 @@ Status Tablet::ApplyIntents(const TransactionApplyData& data) {
 
 template <class Ids>
 CHECKED_STATUS Tablet::RemoveIntentsImpl(const RemoveIntentsData& data, const Ids& ids) {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  RETURN_NOT_OK(scoped_read_operation);
+
   rocksdb::WriteBatch intents_write_batch;
   for (const auto& id : ids) {
     RETURN_NOT_OK(docdb::PrepareApplyIntentsBatch(
