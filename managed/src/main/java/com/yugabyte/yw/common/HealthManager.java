@@ -77,6 +77,10 @@ public class HealthManager extends DevopsBase {
     if (emailPassword != null) {
       extraEnvVars.put("YB_ALERTS_PASSWORD", emailPassword);
     }
+    String email = appConfig.getString("yb.health.default_email");
+    if (email != null) {
+      extraEnvVars.put("YB_ALERTS_EMAIL", email);
+    }
 
     LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
     return shellProcessHandler.run(commandArgs, extraEnvVars);

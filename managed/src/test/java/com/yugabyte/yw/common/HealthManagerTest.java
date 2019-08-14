@@ -94,6 +94,7 @@ public class HealthManagerTest extends FakeDBApplication {
           for (String envVal : envVarOptions) {
             when(appConfig.getString("yb.health.ses_email_username")).thenReturn(envVal);
             when(appConfig.getString("yb.health.ses_email_password")).thenReturn(envVal);
+            when(appConfig.getString("yb.health.default_email")).thenReturn(envVal);
             List<String> expectedCommand = healthCheckCommand(
                 provider, ImmutableList.of(cluster), universeName, customerTag, d, startTime,
                 sendStatus);
@@ -104,6 +105,7 @@ public class HealthManagerTest extends FakeDBApplication {
             if (envVal != null) {
               extraEnvVars.put("YB_ALERTS_USERNAME", envVal);
               extraEnvVars.put("YB_ALERTS_PASSWORD", envVal);
+              extraEnvVars.put("YB_ALERTS_EMAIL", envVal);
             }
             verify(shellProcessHandler, times(1)).run(expectedCommand, extraEnvVars);
           }
