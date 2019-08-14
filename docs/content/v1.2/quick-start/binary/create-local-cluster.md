@@ -29,7 +29,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | Node Count: 1 | Replication Factor: 1                                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql//127.0.0.1:5433/postgres                                   |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL Shell          : ./bin/ysqlsh                                                               |
 | YCQL Shell          : ./bin/cqlsh 127.0.0.1 9042                                                 |
 | YEDIS Shell         : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |
@@ -39,7 +39,7 @@ $ ./bin/yb-ctl status
 ----------------------------------------------------------------------------------------------------
 | Node 1: yb-tserver (pid 68412), yb-master (pid 68409)                                            |
 ----------------------------------------------------------------------------------------------------
-| JDBC                : jdbc:postgresql//127.0.0.1:5433/postgres                                   |
+| JDBC                : jdbc:postgresql://127.0.0.1:5433/postgres                                  |
 | YSQL Shell          : ./bin/ysqlsh                                                               |
 | YCQL Shell          : ./bin/cqlsh 127.0.0.1 9042                                                 |
 | YEDIS Shell         : ./bin/redis-cli -h 127.0.0.1 -p 6379                                       |

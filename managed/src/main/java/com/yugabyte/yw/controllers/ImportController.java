@@ -677,8 +677,12 @@ public class ImportController extends Controller {
 
     // Create the universe definition task params.
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    // We will assign this universe a random UUID.
-    taskParams.universeUUID = UUID.randomUUID();
+    // We will assign this universe a random UUID if not given one.
+    if (importForm.universeUUID == null) {
+      taskParams.universeUUID = UUID.randomUUID();
+    } else {
+      taskParams.universeUUID = importForm.universeUUID;
+    }
     taskParams.nodePrefix = nodePrefix;
     taskParams.importedState = ImportedState.STARTED;
     taskParams.capability = Capability.READ_ONLY;
@@ -692,6 +696,7 @@ public class ImportController extends Controller {
     userIntent.regionList.add(region.uuid);
     userIntent.providerType = importForm.providerType;
     userIntent.instanceType = importForm.instanceType;
+    userIntent.replicationFactor = importForm.replicationFactor;
     // Currently using YW version instead of YB version.
     // TODO: #1842: Create YBClient endpoint for getting ybSoftwareVersion.
     userIntent.ybSoftwareVersion = (String) configHelper.getConfig(
