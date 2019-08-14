@@ -19,6 +19,7 @@
 
 
 #define DEFAULT_INDEX_TYPE	"btree"
+#define DEFAULT_YB_INDEX_TYPE	"lsm"
 
 /* Typedef for callback function for IndexBuildHeapScan */
 typedef void (*IndexBuildCallback) (Relation index,
