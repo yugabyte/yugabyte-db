@@ -1,5 +1,5 @@
 ## 1. Create a local cluster
-  
+
 We will use the [`yb-ctl`](../../admin/yb-ctl/) utility located in the `bin` directory of the YugaByte DB package to create and administer a local cluster. The default data directory used is `$HOME/yugabyte-data`. You can change this directory with the `--data_dir` option. Detailed output for the *create* command is available in [yb-ctl Reference](../../admin/yb-ctl/#create-cluster).
 
 ```sh
@@ -35,7 +35,7 @@ $ ./bin/yb-ctl status
 | YCQL Shell          : bin/cqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | Web UI              : http://127.0.0.1:7000/                                                     |
-| Cluster Data        : /Users/yugabyte/yugabyte-data                                             |
+| Cluster Data        : /Users/yugabyte/yugabyte-data                                              |
 ----------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------
 | Node 1: yb-tserver (pid 20696), yb-master (pid 20693)                                            |
@@ -44,9 +44,9 @@ $ ./bin/yb-ctl status
 | YSQL Shell          : bin/ysqlsh                                                                 |
 | YCQL Shell          : bin/cqlsh                                                                  |
 | YEDIS Shell         : bin/redis-cli                                                              |
-| data-dir[0]         : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data                       |
-| yb-tserver Logs     : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/tserver/logs          |
-| yb-master Logs      : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/master/logs           |
+| data-dir[0]         : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data                        |
+| yb-tserver Logs     : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/tserver/logs           |
+| yb-master Logs      : /Users/yugabyte/yugabyte-data/node-1/disk-1/yb-data/master/logs            |
 ----------------------------------------------------------------------------------------------------
 ```
 

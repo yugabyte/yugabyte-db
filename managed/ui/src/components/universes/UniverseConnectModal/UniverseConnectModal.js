@@ -113,8 +113,8 @@ class UniverseConnectModal extends Component {
       content = (<Fragment>
         <h4>Services</h4>
         <YBCodeBlock>
-          JDBC : jdbc:postgresql//{connectIp}:5433/postgres<br/>
-          YSQL : ./bin/psql -U postgres -h {connectIp} -p 5433<br/>
+          JDBC : jdbc:postgresql://{connectIp}:5433/postgres<br/>
+          YSQL : ./bin/ysqlsh -U postgres -h {connectIp} -p 5433<br/>
           {userIntent.enableYSQL && `YCQL : ./bin/cqlsh ${connectIp} 9042<br/>`}
           YEDIS : ./bin/redis-cli -h {connectIp} -p 6379<br/>
           Web UI : http://{connectIp}:7000/
