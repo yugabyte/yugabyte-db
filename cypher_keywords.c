@@ -15,19 +15,27 @@
  * locate entries.
  */
 const ScanKeyword cypher_keywords[] = {
+    {"and", AND, RESERVED_KEYWORD},
     {"as", AS, RESERVED_KEYWORD},
     {"asc", ASC, RESERVED_KEYWORD},
     {"ascending", ASCENDING, RESERVED_KEYWORD},
     {"by", BY, RESERVED_KEYWORD},
+    {"contains", CONTAINS, RESERVED_KEYWORD},
     {"desc", DESC, RESERVED_KEYWORD},
     {"descending", DESCENDING, RESERVED_KEYWORD},
     {"distinct", DISTINCT, RESERVED_KEYWORD},
+    {"ends", ENDS, RESERVED_KEYWORD},
     {"false", FALSE_P, RESERVED_KEYWORD},
+    {"in", IN, RESERVED_KEYWORD},
+    {"is", IS, RESERVED_KEYWORD},
     {"limit", LIMIT, RESERVED_KEYWORD},
+    {"not", NOT, RESERVED_KEYWORD},
     {"null", NULL_P, RESERVED_KEYWORD},
+    {"or", OR, RESERVED_KEYWORD},
     {"order", ORDER, RESERVED_KEYWORD},
     {"return", RETURN, RESERVED_KEYWORD},
     {"skip", SKIP, RESERVED_KEYWORD},
+    {"starts", STARTS, RESERVED_KEYWORD},
     {"true", TRUE_P, RESERVED_KEYWORD},
     {"where", WHERE, RESERVED_KEYWORD},
     {"with", WITH, RESERVED_KEYWORD}

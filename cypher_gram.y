@@ -1,9 +1,12 @@
 %{
 #include "postgres.h"
 
+#include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
+#include "nodes/primnodes.h"
+#include "nodes/value.h"
 #include "parser/parser.h"
 
 #include "cypher_gram.h"
@@ -34,18 +37,19 @@
 %parse-param {cypher_yy_extra *extra}
 
 %union {
-    /* basic types */
+    /* types in cypher_yylex() */
     int integer;
     char *string;
+    const char *keyword;
+
+    /* extra types */
     bool boolean;
     Node *node;
-
-    /* specific types */
     List *list;
 }
 
 %token <integer> INTEGER
-%token <string> DECIMAL_P STRING
+%token <string> DECIMAL STRING
 
 %token <string> IDENTIFIER
 %token <string> PARAMETER
@@ -54,18 +58,21 @@
 %token NOT_EQ LT_EQ GT_EQ DOT_DOT PLUS_EQ EQ_TILDE
 
 /* keywords in alphabetical order */
-%token AS ASC ASCENDING
-       BY
-       DESC DESCENDING DISTINCT
-       FALSE_P
-       LIMIT
-       NULL_P
-       ORDER
-       RETURN
-       SKIP
-       TRUE_P
-       WHERE
-       WITH
+%token <keyword> AND AS ASC ASCENDING
+                 BY
+                 CONTAINS
+                 DESC DESCENDING DISTINCT
+                 ENDS
+                 FALSE_P
+                 IN IS
+                 LIMIT
+                 NOT NULL_P
+                 OR ORDER
+                 RETURN
+                 SKIP STARTS
+                 TRUE_P
+                 WHERE
+                 WITH
 
 /* query */
 %type <list> single_query
@@ -81,21 +88,46 @@
 %type <node> where_opt
 
 /* expression */
-%type <node> expr atom literal var
+%type <node> expr expr_opt atom literal var
+
+/* identifier */
+%type <string> name
+%type <keyword> reserved_keyword
 
 /* precedence: lowest to highest */
+%left OR
+%left AND
+%right NOT
 %nonassoc '=' NOT_EQ '<' LT_EQ '>' GT_EQ
 %left '+' '-'
 %left '*' '/' '%'
 %left '^'
-%right UNARY_OP
+%nonassoc IN IS
+%right UNARY_MINUS
+%nonassoc STARTS ENDS CONTAINS
+%left '[' ']' '(' ')'
+%left '.'
 
 %{
+// logical operators
+static Node *make_or_expr(Node *lexpr, Node *rexpr, int location);
+static Node *make_and_expr(Node *lexpr, Node *rexpr, int location);
+static Node *make_not_expr(Node *expr, int location);
+
+// arithmetic operators
+static Node *do_negate(Node *n, int location);
+static void do_negate_float(Value *v);
+
+// indirection
+static Node *append_indirection(Node *expr, Node *selector);
+
+// literals
 static Node *make_int_const(int i, int location);
 static Node *make_float_const(char *s, int location);
 static Node *make_string_const(char *s, int location);
 static Node *make_bool_const(bool b, int location);
 static Node *make_null_const(int location);
+
 static Node *make_type_cast(Node *arg, TypeName *typename, int location);
 %}
 
@@ -128,9 +160,6 @@ with_chain_opt:
             $$ = NIL;
         }
     | with_chain
-        {
-            $$ = $1;
-        }
     ;
 
 with_chain:
@@ -319,20 +348,149 @@ where_opt:
     ;
 
 expr:
-    atom
+    expr OR expr
         {
-            $$ = $1;
+            $$ = make_or_expr($1, $3, @2);
         }
+    | expr AND expr
+        {
+            $$ = make_and_expr($1, $3, @2);
+        }
+    | NOT expr
+        {
+            $$ = make_not_expr($2, @1);
+        }
+    | expr '=' expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "=", $1, $3, @2);
+        }
+    | expr NOT_EQ expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "<>", $1, $3, @2);
+        }
+    | expr '<' expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "<", $1, $3, @2);
+        }
+    | expr LT_EQ expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "<=", $1, $3, @2);
+        }
+    | expr '>' expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, ">", $1, $3, @2);
+        }
+    | expr GT_EQ expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, ">=", $1, $3, @2);
+        }
+    | expr '+' expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "+", $1, $3, @2);
+        }
+    | expr '-' expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "-", $1, $3, @2);
+        }
+    | expr '*' expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "*", $1, $3, @2);
+        }
+    | expr '/' expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "/", $1, $3, @2);
+        }
+    | expr '%' expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "%", $1, $3, @2);
+        }
+    | expr '^' expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_OP, "^", $1, $3, @2);
+        }
+    | expr IN expr
+        {
+            $$ = (Node *)makeSimpleA_Expr(AEXPR_IN, "=", $1, $3, @2);
+        }
+    | expr IS NULL_P %prec IS
+        {
+            NullTest *n;
+
+            n = makeNode(NullTest);
+            n->arg = (Expr *)$1;
+            n->nulltesttype = IS_NULL;
+            n->location = @2;
+            $$ = (Node *)n;
+        }
+    | expr IS NOT NULL_P %prec IS
+        {
+            NullTest *n;
+
+            n = makeNode(NullTest);
+            n->arg = (Expr *)$1;
+            n->nulltesttype = IS_NOT_NULL;
+            n->location = @2;
+            $$ = (Node *)n;
+        }
+    | '-' expr %prec UNARY_MINUS
+        {
+            $$ = do_negate($2, @1);
+        }
+    | expr STARTS WITH expr %prec STARTS
+        {
+            $$ = NULL;
+        }
+    | expr ENDS WITH expr %prec ENDS
+        {
+            $$ = NULL;
+        }
+    | expr CONTAINS expr
+        {
+            $$ = NULL;
+        }
+    | expr '[' expr ']'
+        {
+            A_Indices *i;
+
+            i = makeNode(A_Indices);
+            i->is_slice = false;
+            i->lidx = NULL;
+            i->uidx = $3;
+
+            $$ = append_indirection($1, (Node *)i);
+        }
+    | expr '[' expr_opt DOT_DOT expr_opt ']'
+        {
+            A_Indices *i;
+
+            i = makeNode(A_Indices);
+            i->is_slice = true;
+            i->lidx = $3;
+            i->uidx = $5;
+
+            $$ = append_indirection($1, (Node *)i);
+        }
+    | expr '.' name
+        {
+            $$ = append_indirection($1, (Node *)makeString($3));
+        }
+    | atom
+    ;
+
+expr_opt:
+    /* empty */
+        {
+            $$ = NULL;
+        }
+    | expr
     ;
 
 atom:
     literal
-        {
-            $$ = $1;
-        }
     | var
+    | '(' expr ')'
         {
-            $$ = $1;
+            $$ = $2;
         }
     ;
 
@@ -341,7 +499,7 @@ literal:
         {
             $$ = make_int_const($1, @1);
         }
-    | DECIMAL_P
+    | DECIMAL
         {
             $$ = make_float_const($1, @1);
         }
@@ -376,7 +534,133 @@ var:
         }
     ;
 
+name:
+    IDENTIFIER
+    | reserved_keyword
+        {
+            $$ = pstrdup($1);
+        }
+    ;
+
+reserved_keyword:
+    AND
+    | AS
+    | ASC
+    | ASCENDING
+    | BY
+    | DESC
+    | DESCENDING
+    | DISTINCT
+    | FALSE_P
+    | LIMIT
+    | NOT
+    | NULL_P
+    | OR
+    | ORDER
+    | RETURN
+    | SKIP
+    | TRUE_P
+    | WHERE
+    | WITH
+    ;
+
 %%
+
+static Node *make_or_expr(Node *lexpr, Node *rexpr, int location)
+{
+    // flatten "a OR b OR c ..." to a single BoolExpr on sight
+    if (IsA(lexpr, BoolExpr))
+    {
+        BoolExpr *bexpr = (BoolExpr *)lexpr;
+
+        if (bexpr->boolop == OR_EXPR)
+        {
+            bexpr->args = lappend(bexpr->args, rexpr);
+
+            return (Node *)bexpr;
+        }
+    }
+
+    return (Node *)makeBoolExpr(OR_EXPR, list_make2(lexpr, rexpr), location);
+}
+
+static Node *make_and_expr(Node *lexpr, Node *rexpr, int location)
+{
+    // flatten "a AND b AND c ..." to a single BoolExpr on sight
+    if (IsA(lexpr, BoolExpr))
+    {
+        BoolExpr *bexpr = (BoolExpr *)lexpr;
+
+        if (bexpr->boolop == AND_EXPR)
+        {
+            bexpr->args = lappend(bexpr->args, rexpr);
+
+            return (Node *)bexpr;
+        }
+    }
+
+    return (Node *)makeBoolExpr(AND_EXPR, list_make2(lexpr, rexpr), location);
+}
+
+static Node *make_not_expr(Node *expr, int location)
+{
+    return (Node *)makeBoolExpr(NOT_EXPR, list_make1(expr), location);
+}
+
+static Node *do_negate(Node *n, int location)
+{
+    if (IsA(n, A_Const))
+    {
+        A_Const *c = (A_Const *)n;
+
+        // report the constant's location as that of the '-' sign
+        c->location = location;
+
+        if (c->val.type == T_Integer)
+        {
+            c->val.val.ival = -c->val.val.ival;
+            return n;
+        }
+        else if (c->val.type == T_Float)
+        {
+            do_negate_float(&c->val);
+            return n;
+        }
+    }
+
+    return (Node *)makeSimpleA_Expr(AEXPR_OP, "-", NULL, n, location);
+}
+
+static void do_negate_float(Value *v)
+{
+    Assert(IsA(v, Float));
+
+    if (v->val.str[0] == '-')
+        v->val.str = v->val.str + 1; // just strip the '-'
+    else
+        v->val.str = psprintf("-%s", v->val.str);
+}
+
+static Node *append_indirection(Node *expr, Node *selector)
+{
+    A_Indirection *indir;
+
+    if (IsA(expr, A_Indirection))
+    {
+        indir = (A_Indirection *)expr;
+        indir->indirection = lappend(indir->indirection, selector);
+
+        return expr;
+    }
+    else
+    {
+        indir = makeNode(A_Indirection);
+        indir->arg = expr;
+        indir->indirection = list_make1(selector);
+
+        return (Node *)indir;
+    }
+}
 
 static Node *make_int_const(int i, int location)
 {

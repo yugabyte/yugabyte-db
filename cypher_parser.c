@@ -17,7 +17,7 @@ int cypher_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ag_scanner_t scanner)
     const int type_map[] = {
         0,
         INTEGER,
-        DECIMAL_P,
+        DECIMAL,
         STRING,
         IDENTIFIER,
         PARAMETER,
@@ -55,11 +55,10 @@ int cypher_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ag_scanner_t scanner)
             lvalp->string = pstrdup(token.value.s);
             break;
         }
-        else
-        {
-            *llocp = token.location;
-            return keyword->value;
-        }
+
+        lvalp->keyword = token.value.s;
+        *llocp = token.location;
+        return keyword->value;
     }
     case AG_TOKEN_PARAMETER:
         lvalp->string = pstrdup(token.value.s);
