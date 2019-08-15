@@ -1329,92 +1329,94 @@ setup_config(void)
 
 	free(conflines);
 
+	/* Do not create pg_hba.conf in yugabyte */
+	if (!IsYugaByteGlobalClusterInitdb() && !IsYugaByteLocalNodeInitdb()) {
+		/* pg_hba.conf */
 
-	/* pg_hba.conf */
-
-	conflines = readfile(hba_file);
+		conflines = readfile(hba_file);
 
 #ifndef HAVE_UNIX_SOCKETS
-	conflines = filter_lines_with_token(conflines, "@remove-line-for-nolocal@");
+		conflines = filter_lines_with_token(conflines, "@remove-line-for-nolocal@");
 #else
-	conflines = replace_token(conflines, "@remove-line-for-nolocal@", "");
+		conflines = replace_token(conflines, "@remove-line-for-nolocal@", "");
 #endif
 
 #ifdef HAVE_IPV6
 
-	/*
-	 * Probe to see if there is really any platform support for IPv6, and
-	 * comment out the relevant pg_hba line if not.  This avoids runtime
-	 * warnings if getaddrinfo doesn't actually cope with IPv6.  Particularly
-	 * useful on Windows, where executables built on a machine with IPv6 may
-	 * have to run on a machine without.
-	 */
-	{
-		struct addrinfo *gai_result;
-		struct addrinfo hints;
-		int			err = 0;
+		/*
+		* Probe to see if there is really any platform support for IPv6, and
+		* comment out the relevant pg_hba line if not.  This avoids runtime
+		* warnings if getaddrinfo doesn't actually cope with IPv6.  Particularly
+		* useful on Windows, where executables built on a machine with IPv6 may
+		* have to run on a machine without.
+		*/
+		{
+			struct addrinfo *gai_result;
+			struct addrinfo hints;
+			int			err = 0;
 
 #ifdef WIN32
-		/* need to call WSAStartup before calling getaddrinfo */
-		WSADATA		wsaData;
+			/* need to call WSAStartup before calling getaddrinfo */
+			WSADATA		wsaData;
 
-		err = WSAStartup(MAKEWORD(2, 2), &wsaData);
+			err = WSAStartup(MAKEWORD(2, 2), &wsaData);
 #endif
 
-		/* for best results, this code should match parse_hba() */
-		hints.ai_flags = AI_NUMERICHOST;
-		hints.ai_family = AF_UNSPEC;
-		hints.ai_socktype = 0;
-		hints.ai_protocol = 0;
-		hints.ai_addrlen = 0;
-		hints.ai_canonname = NULL;
-		hints.ai_addr = NULL;
-		hints.ai_next = NULL;
+			/* for best results, this code should match parse_hba() */
+			hints.ai_flags = AI_NUMERICHOST;
+			hints.ai_family = AF_UNSPEC;
+			hints.ai_socktype = 0;
+			hints.ai_protocol = 0;
+			hints.ai_addrlen = 0;
+			hints.ai_canonname = NULL;
+			hints.ai_addr = NULL;
+			hints.ai_next = NULL;
 
-		if (err != 0 ||
-			getaddrinfo("::1", NULL, &hints, &gai_result) != 0)
-		{
-			conflines = replace_token(conflines,
-									  "host    all             all             ::1",
-									  "#host    all             all             ::1");
-			conflines = replace_token(conflines,
-									  "host    replication     all             ::1",
-									  "#host    replication     all             ::1");
+			if (err != 0 ||
+				getaddrinfo("::1", NULL, &hints, &gai_result) != 0)
+			{
+				conflines = replace_token(conflines,
+											"host    all             all             ::1",
+											"#host    all             all             ::1");
+				conflines = replace_token(conflines,
+											"host    replication     all             ::1",
+											"#host    replication     all             ::1");
+			}
 		}
-	}
 #else							/* !HAVE_IPV6 */
-	/* If we didn't compile IPV6 support at all, always comment it out */
-	conflines = replace_token(conflines,
-							  "host    all             all             ::1",
-							  "#host    all             all             ::1");
-	conflines = replace_token(conflines,
-							  "host    replication     all             ::1",
-							  "#host    replication     all             ::1");
+		/* If we didn't compile IPV6 support at all, always comment it out */
+		conflines = replace_token(conflines,
+									"host    all             all             ::1",
+									"#host    all             all             ::1");
+		conflines = replace_token(conflines,
+									"host    replication     all             ::1",
+									"#host    replication     all             ::1");
 #endif							/* HAVE_IPV6 */
 
-	/* Replace default authentication methods */
-	conflines = replace_token(conflines,
-							  "@authmethodhost@",
-							  authmethodhost);
-	conflines = replace_token(conflines,
-							  "@authmethodlocal@",
-							  authmethodlocal);
+		/* Replace default authentication methods */
+		conflines = replace_token(conflines,
+									"@authmethodhost@",
+									authmethodhost);
+		conflines = replace_token(conflines,
+									"@authmethodlocal@",
+									authmethodlocal);
 
-	conflines = replace_token(conflines,
-							  "@authcomment@",
-							  (strcmp(authmethodlocal, "trust") == 0 || strcmp(authmethodhost, "trust") == 0) ? AUTHTRUST_WARNING : "");
+		conflines = replace_token(conflines,
+									"@authcomment@",
+									(strcmp(authmethodlocal, "trust") == 0 || strcmp(authmethodhost, "trust") == 0) ? AUTHTRUST_WARNING : "");
 
-	snprintf(path, sizeof(path), "%s/pg_hba.conf", pg_data);
+		snprintf(path, sizeof(path), "%s/pg_hba.conf", pg_data);
 
-	writefile(path, conflines);
-	if (chmod(path, pg_file_create_mode) != 0)
-	{
-		fprintf(stderr, _("%s: could not change permissions of \"%s\": %s\n"),
-				progname, path, strerror(errno));
-		exit_nicely();
+		writefile(path, conflines);
+		if (chmod(path, pg_file_create_mode) != 0)
+		{
+			fprintf(stderr, _("%s: could not change permissions of \"%s\": %s\n"),
+					progname, path, strerror(errno));
+			exit_nicely();
+		}
+
+		free(conflines);
 	}
-
-	free(conflines);
 
 	/* pg_ident.conf */
 
