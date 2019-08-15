@@ -1742,8 +1742,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                    rpc::RpcContext* rpc) {
   RETURN_NOT_OK(CheckOnline());
 
-  const bool is_pg_catalog_table =
-      orig_req->table_type() == PGSQL_TABLE_TYPE && orig_req->is_pg_catalog_table();
+  const bool is_pg_table = orig_req->table_type() == PGSQL_TABLE_TYPE;
+  const bool is_pg_catalog_table = is_pg_table && orig_req->is_pg_catalog_table();
   if (!is_pg_catalog_table || !FLAGS_hide_pg_catalog_table_creation_logs) {
     LOG(INFO) << "CreateTable from " << RequestorString(rpc)
                 << ":\n" << orig_req->DebugString();
@@ -1820,12 +1820,18 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   if (num_tablets <= 0) {
     // Use default as client could have gotten the value before any tserver had heartbeated
     // to (a new) master leader.
-    TSDescriptorVector ts_descs;
-    master_->ts_manager()->GetAllLiveDescriptorsInCluster(
-        &ts_descs, replication_info.live_replicas().placement_uuid(), blacklistState.tservers_);
-    num_tablets = ts_descs.size() * FLAGS_yb_num_shards_per_tserver;
-    LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
-              << ts_descs.size() << " primary servers";
+    if (IsSystemNamespace(ns->name())) {
+      num_tablets = 1;
+      LOG(INFO) << "Setting default tablets to " << num_tablets << " for table in system namespace";
+    } else {
+      TSDescriptorVector ts_descs;
+      master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+          &ts_descs, replication_info.live_replicas().placement_uuid(), blacklistState.tservers_);
+      num_tablets = ts_descs.size() * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
+                                                   : FLAGS_yb_num_shards_per_tserver);
+      LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
+                << ts_descs.size() << " primary servers";
+    }
   }
 
   // Create partitions.
@@ -1878,7 +1884,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     // Assign column-ids that have just been computed and assigned to "index_info".
-    if (orig_req->table_type() != PGSQL_TABLE_TYPE) {
+    if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
         << "Number of columns are not the same between index_info and index_schema";
       // int colidx = 0;
@@ -1974,8 +1980,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TRACE("Wrote table to system table");
 
   // For index table, insert index info in the indexed table.
-  if ((req.has_index_info() || req.has_indexed_table_id()) &&
-      orig_req->table_type() != PGSQL_TABLE_TYPE) {
+  if ((req.has_index_info() || req.has_indexed_table_id()) && !is_pg_table) {
     s = AddIndexInfoToTable(indexed_table, index_info);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(table.get(), tablets,

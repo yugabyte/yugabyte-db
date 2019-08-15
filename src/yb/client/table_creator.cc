@@ -17,13 +17,13 @@
 #include "yb/client/client-internal.h"
 
 #include "yb/common/wire_protocol.h"
+#include "yb/common/common_flags.h"
 
 #include "yb/util/flag_tags.h"
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
 DECLARE_bool(client_suppress_created_logs);
-DECLARE_int32(yb_num_shards_per_tserver);
 
 namespace yb {
 namespace client {
@@ -225,17 +225,6 @@ Status YBTableCreator::Create() {
 
   SchemaToPB(internal::GetSchema(*schema_), req.mutable_schema());
 
-  // Setup the number splits (i.e. number of tablets).
-  if (num_tablets_ <= 0) {
-    if (table_name_.is_system()) {
-      num_tablets_ = 1;
-      VLOG(1) << "num_tablets=1: using one tablet for a system table";
-    } else {
-      num_tablets_ = VERIFY_RESULT(client_->NumTabletsForUserTable());
-    }
-  } else {
-    VLOG(1) << "num_tablets: number of tablets explicitly specified: " << num_tablets_;
-  }
   req.set_num_tablets(num_tablets_);
   req.mutable_partition_schema()->CopyFrom(partition_schema_);
 
