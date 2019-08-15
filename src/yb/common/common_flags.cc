@@ -25,6 +25,9 @@ DEFINE_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per table per tablet server when a table is created. If the "
     "value is -1, the system automatically determines the number of tablets.");
 
+DEFINE_int32(ysql_num_shards_per_tserver, 2,
+    "The default number of shards per YSQL table per tablet server when a table is created.");
+
 namespace yb {
 
 void InitCommonFlags() {
