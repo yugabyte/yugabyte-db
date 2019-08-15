@@ -35,6 +35,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
 public class ReleaseControllerTest extends WithApplication {
@@ -156,7 +157,10 @@ public class ReleaseControllerTest extends WithApplication {
     ObjectNode body = Json.newObject();
     UUID randomUUID = UUID.randomUUID();
     Result result = createRelease(randomUUID, body);
-    assertBadRequest(result, "Invalid Customer UUID: " + randomUUID);
+    assertEquals(FORBIDDEN, result.status());
+
+    String resultString = contentAsString(result);
+    assertEquals(resultString, "Unable To Authenticate Customer");
   }
 
   @Test
@@ -306,7 +310,10 @@ public class ReleaseControllerTest extends WithApplication {
   public void testRefreshReleaseInvalidCustomer() {
     UUID randomUUID = UUID.randomUUID();
     Result result = refreshReleases(randomUUID);
-    assertBadRequest(result, "Invalid Customer UUID: " + randomUUID);
+    assertEquals(FORBIDDEN, result.status());
+
+    String resultString = contentAsString(result);
+    assertEquals(resultString, "Unable To Authenticate Customer");
   }
 
   @Test

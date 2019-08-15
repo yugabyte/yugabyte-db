@@ -263,7 +263,9 @@ public class ImportController extends Controller {
     //---------------------------------------------------------------------------------------------
     Universe universe = null;
     try {
-      universe = createNewUniverseForImport(customer, importForm, "yb-" + universeName,
+      universe = createNewUniverseForImport(customer, importForm,
+                                            Util.getNodePrefix(customer.getCustomerId(),
+                                                               universeName),
                                             universeName, userMasterIps);
       results.with("checks").put("create_db_entry", "OK");
       results.put("universeUUID", universe.universeUUID.toString());

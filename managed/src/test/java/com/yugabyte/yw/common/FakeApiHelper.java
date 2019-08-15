@@ -19,7 +19,7 @@ import static play.test.Helpers.route;
 
 public class FakeApiHelper {
   private static String getAuthToken() {
-    Customer customer = Customer.find.where().eq("code", "vc").findUnique();
+    Customer customer = Customer.find.where().eq("code", "tc").findUnique();
     if (customer == null) {
       customer = Customer.create("vc", "Valid Customer", "foo@bar.com", "password");
     }
