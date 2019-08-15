@@ -51,6 +51,8 @@ void CopyRegistration(consensus::RaftPeerPB source, TSInfoPB* dest);
 void TakeRegistration(ServerRegistrationPB* source, TSInfoPB* dest);
 void CopyRegistration(ServerRegistrationPB source, TSInfoPB* dest);
 
+bool IsSystemNamespace(const std::string& namespace_name);
+
 } // namespace master
 } // namespace yb
 

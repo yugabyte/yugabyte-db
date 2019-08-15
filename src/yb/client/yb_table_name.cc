@@ -16,6 +16,7 @@
 #include <boost/functional/hash/hash.hpp>
 
 #include "yb/master/master_defaults.h"
+#include "yb/master/master_util.h"
 #include "yb/master/master.pb.h"
 
 namespace yb {
@@ -63,12 +64,8 @@ void YBTableName::GetFromNamespaceIdentifierPB(const master::NamespaceIdentifier
   }
 }
 
-bool YBTableName::IsSystemNamespace(const std::string& namespace_name) {
-  return (namespace_name == master::kSystemNamespaceName            ||
-          namespace_name == master::kSystemAuthNamespaceName        ||
-          namespace_name == master::kSystemDistributedNamespaceName ||
-          namespace_name == master::kSystemSchemaNamespaceName      ||
-          namespace_name == master::kSystemTracesNamespaceName);
+bool YBTableName::is_system() const {
+  return master::IsSystemNamespace(resolved_namespace_name());
 }
 
 size_t hash_value(const YBTableName& table_name) {

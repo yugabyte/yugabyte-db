@@ -19,6 +19,7 @@
 static constexpr int kAutoDetectNumShardsPerTServer = -1;
 
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(ysql_num_shards_per_tserver);
 DECLARE_bool(enable_ysql);
 
 namespace yb {

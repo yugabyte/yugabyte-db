@@ -24,7 +24,6 @@
 
 #include "yb/common/redis_constants_common.h"
 
-
 namespace yb {
 
 namespace master {
@@ -111,9 +110,7 @@ class YBTableName {
     return table_id_; // Can be empty
   }
 
-  bool is_system() const {
-    return IsSystemNamespace(resolved_namespace_name());
-  }
+  bool is_system() const;
 
   bool is_redis_namespace() const {
     return ((has_namespace() && resolved_namespace_name() == common::kRedisKeyspaceName));
@@ -155,8 +152,6 @@ class YBTableName {
 
   void SetIntoNamespaceIdentifierPB(master::NamespaceIdentifierPB* id) const;
   void GetFromNamespaceIdentifierPB(const master::NamespaceIdentifierPB& id);
-
-  static bool IsSystemNamespace(const std::string& namespace_name);
 
  private:
   std::string namespace_id_; // Optional. Can be set when the client knows the namespace id also.

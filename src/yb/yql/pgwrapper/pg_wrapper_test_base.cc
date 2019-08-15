@@ -45,9 +45,9 @@ void PgWrapperTestBase::SetUp() {
 
   opts.extra_tserver_flags.emplace_back(rpc_flag_str);
 
-  // With yb_num_shards_per_tserver=1 and 3 tservers we'll be creating 3 tablets per table, which
+  // With ysql_num_shards_per_tserver=1 and 3 tservers we'll be creating 3 tablets per table, which
   // is enough for most tests.
-  opts.extra_tserver_flags.emplace_back("--yb_num_shards_per_tserver=1");
+  opts.extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
 
   // Collect old records very aggressively to catch bugs with old readpoints.
   opts.extra_tserver_flags.emplace_back("--timestamp_history_retention_interval_sec=0");

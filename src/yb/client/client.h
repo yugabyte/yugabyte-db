@@ -506,10 +506,6 @@ class YBClient {
 
   bool IsMultiMaster() const;
 
-  // Get the number of tablets to be created for a new user table.
-  // This will be based on --num_shards_per_tserver and number of tservers.
-  Result<int> NumTabletsForUserTable();
-
   void TEST_set_admin_operation_timeout(const MonoDelta& timeout);
 
   const MonoDelta& default_admin_operation_timeout() const;
