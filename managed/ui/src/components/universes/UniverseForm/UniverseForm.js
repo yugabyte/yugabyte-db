@@ -68,9 +68,8 @@ class UniverseForm extends Component {
     this.setState({currentView: 'Primary'});
   }
 
-  handleCancelButtonClick = () => {
-    this.setState(initialState);
-    this.props.reset();
+  transitionToDefaultRoute = () => {
+    const {universe: {currentUniverse: {data: {universeUUID}}}} = this.props;
     if (this.props.type === "Create") {
       if (this.context.prevPath) {
         browserHistory.push(this.context.prevPath);
@@ -79,15 +78,22 @@ class UniverseForm extends Component {
       }
     } else {
       if (this.props.location && this.props.location.pathname) {
-        browserHistory.push(this.props.location.pathname);
+        browserHistory.push(`/universes/${universeUUID}`);
       }
     }
+  }
+
+  handleCancelButtonClick = () => {
+    this.setState(initialState);
+    this.transitionToDefaultRoute();
+    this.props.reset();
   }
 
   handleSubmitButtonClick = () => {
     const { type } = this.props;
     if (type === "Create") {
       this.createUniverse();
+      this.transitionToDefaultRoute();
     } else if (type === "Async") {
       const {universe: {currentUniverse: {data: {universeDetails}}}} = this.props;
       const readOnlyCluster = universeDetails && getReadOnlyCluster(universeDetails.clusters);
@@ -96,8 +102,10 @@ class UniverseForm extends Component {
       } else {
         this.addReadReplica();
       }
+      this.transitionToDefaultRoute();
     } else {
       this.editUniverse();
+      this.transitionToDefaultRoute();
     }
   }
 
@@ -348,7 +356,7 @@ class UniverseForm extends Component {
     let asyncReplicaBtn = <span/>;
 
     if (this.state.currentView === "Async" && type !== "Edit" && type !== "Async") {
-      primaryReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Previous"} onClick={this.configurePrimaryCluster}/>;
+      primaryReplicaBtn = <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText={"Back to Primary cluster"} onClick={this.configurePrimaryCluster}/>;
     }
 
     if (this.state.currentView === "Primary" && type !== "Edit" && type !== "Async") {
@@ -423,7 +431,7 @@ class UniverseForm extends Component {
           
           <YBModal visible={showModal && visibleModal === "fullMoveModal"}
                 onHide={ closeModal } submitLabel={'Proceed'} cancelLabel={'Cancel'} showCancelButton={true} title={ "Confirm Full Move Update" } onFormSubmit={ handleSubmit(this.handleSubmitButtonClick) } >
-            This operation will migrate this universe and all it’s data to a completely new set of nodes. Would like to proceed?
+            This operation will migrate this universe and all it's data to a completely new set of nodes. Would like to proceed?
           </YBModal>
         </Fragment>);
 
@@ -436,14 +444,14 @@ class UniverseForm extends Component {
           {clusterForm}
           <div className="form-action-button-container">
             <UniverseResources resources={universe.universeResourceTemplate.data}>
-              {primaryReplicaBtn}
               <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText="Cancel" onClick={this.handleCancelButtonClick}/>
+              {primaryReplicaBtn}
               {asyncReplicaBtn}
               {submitControl}
             </UniverseResources>
             <div className="mobile-view-btn-container">
-              {primaryReplicaBtn}
               <YBButton btnClass="btn btn-default universe-form-submit-btn" btnText="Cancel" onClick={this.handleCancelButtonClick}/>
+              {primaryReplicaBtn}
               {asyncReplicaBtn}
               <YBButton btnClass="btn btn-orange universe-form-submit-btn" btnText={submitTextLabel} btnType={"submit"} />
             </div>
