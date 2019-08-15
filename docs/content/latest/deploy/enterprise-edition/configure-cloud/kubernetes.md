@@ -1,44 +1,59 @@
-Go to the `Configuration` nav on the left-side and then click on the GCP tab. You should see
-something like this:
+## Pick appropriate k8s tab
+For Kubernetes, you have two options, one is to using Pivotal Container Service  or Managed Kubernetes Service, depending on what you
+are using click on the appropriate tab.
+<img title="K8s Configuration -- Tabs" alt="K8s Configuration -- Tabs" class="expandable-image" src="/images/ee/k8s-setup/k8s-provider-tabs.png" />
+
+Once you go to the appropriate tab, You should see configuration form something like this:
 
 <img title="K8s Configuration -- empty" alt="K8s Configuration -- empty" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-empty.png" />
 
-Select the Kubernetes provider type from the Type dropdown.
-Give a meaningful name for your config.
+Select the Kubernetes provider type from the Type dropdown, in case of Pivotal Container Service this would be default to that option.
 
-Service Account, provide the name of the service account which has necessary access to manage
+## Configure the provider
+
+Take note of the following for configuring your K8s provider:
+
+- Give a meaningful name for your config.
+
+- `Service Account` provide the name of the service account which has necessary access to manage
 the cluster, refer to [Create Service Account](/deploy/kubernetes/helm-chart/#create-service-account).
 
-Kube Config, there are two ways to specify the kube config for an Availability Zone. One is through the provider form as shown above. If specified, this config file will be used for all AZ's in all regions. The other way is to specify the kube config at the zone level as shown in the screenshot below.
+- `Kube Config` there are two ways to specify the kube config for an Availability Zone.
+  * Specify at **provider level** in the provider form as shown above. If specified, this config file will be used for all AZ's in all regions.
+  * Specify at **zone level** inside of the region form as described below, this is especially needed for **multi-az** or **multi-region** deployments.
 
-<img title="K8s Configuration -- zone config" alt="K8s Configuration -- zone config" class="expandable-image" src="/images/ee/k8s-setup/k8s-az-kubeconfig.png" />
+- `Image Registry` specifies where to pull YugaByte image from leave this to default, unless you are hosting the registry on your end.
 
-Image Registry allows you to pull a Docker image from an image registry like [Quay.io](https://quay.io/).
+- `Pull Secret`, Our Enterprise YugaByte image is in a private repo and we need to upload the pull secret to download the image, your sales representative should have provided this secret.
 
-Pull Secret, a secret token file to allow YugaByte to pull the container image from an image registry.
-
-Fill in the couple of pieces of data and you should get something like:
+A filled in form looks something like this:
 
 <img title="K8s Configuration -- filled" alt="K8s Configuration -- filled" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-filled.png" />
 
-Click on Add Region to open the modal to add zones for a new region.
+## Configure the region/zones
 
-Specify a Region and the dialog will expand to show the zone form.
+Click on Add Region to open the modal.
 
-You are required to add a Zone label for each AZ.
+- Specify a Region and the dialog will expand to show the zone form.
 
-Storage Classes allow you to describe the class of storage. This field accepts comma-delimited values and defaults to `standard` if left blank.
+- `Zone`, enter a zone label, keep in mind this label should match with your failure domain zone label `failure-domain.beta.kubernetes.io/zone`
 
-The zone-level Kube Config allows you to specify a config and override the global Kube Config described earlier.
+-  `Storage Class` is *optional*, it takes a comma delimited value, if not specified would default to standard, please make sure this storage class exists in your k8s cluster.
 
-Overrides, a YAML configuration where you can pass in custom annotations to override default values for internal load balancers. An example is shown here:
+-  `Kube Config` is *optional* if specified at provider level or else `required`
+
+<img title="K8s Configuration -- zone config" alt="K8s Configuration -- zone config" class="expandable-image" src="/images/ee/k8s-setup/k8s-az-kubeconfig.png" />
+
+- `Overrides` is *optional*, if not specified YugaByte Platform would use defaults specified inside the helm chart,
+
+* Overrides to add Service level annotations
 
 ```
 serviceEndpoints:
   - name: "yb-master-service"
     type: "LoadBalancer"
     annotations:
-        service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0
+      service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
     app: "yb-master"
     ports:
       ui: "7000"
@@ -46,7 +61,7 @@ serviceEndpoints:
   - name: "yb-tserver-service"
     type: "LoadBalancer"
     annotations:
-        service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0
+      service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
     app: "yb-tserver"
     ports:
       ycql-port: "9042"
@@ -54,12 +69,30 @@ serviceEndpoints:
       ysql-port: "5433"
 ```
 
-Add a new AZ by clicking on Add Zone button on the bottom left of the zone form.
+* Overrides to disable LoadBalancer
+
+```
+enableLoadBalancer: False
+```
+
+* Overrides to change the cluster domain name
+```
+domainName: my.cluster
+```
+
+* Overrides to add annotations at StatefulSet level
+```
+networkAnnotation:
+  annotation1: 'foo'
+  annotation2: 'bar'
+```
+
+Add a new Zone by clicking on `Add Zone` button on the bottom left of the zone form.
 
 Your form may have multiple AZ's as shown below.
 
 <img title="K8s Configuration -- region" alt="K8s Configuration -- region" class="expandable-image" src="/images/ee/k8s-setup/k8s-add-region-flow.png" />
 
-Click Add Region to add the region and close the modal.
+Click `Add Region` to add the region and close the modal.
 
-Hit Save to save the configuration. If successful, it will redirect you to the table view of all configs.
+Hit `Save` to save the configuration. If successful, it will redirect you to the table view of all configs.
