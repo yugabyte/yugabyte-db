@@ -223,6 +223,13 @@ public class Universe extends Model {
     return universes;
   }
 
+  public static Universe getUniverseByName(String universeName) {
+    if (checkIfUniverseExists(universeName)) {
+      return find.where().eq("name", universeName).findUnique();
+    }
+    return null;
+  }
+
   /**
    * Interface using which we specify a callback to update the universe object. This is passed into
    * the save method.

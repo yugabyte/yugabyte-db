@@ -24,23 +24,20 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
 
   private ApiHelper apiHelper;
   private Configuration appConfig;
+  private YBMetricQueryComponent ybMetricQueryComponent;
 
   private Map<String, String> queryParam = new HashMap<>();
   private Map<String, String> additionalFilters = new HashMap<>();
   private String queryUrl;
 
   public MetricQueryExecutor(Configuration appConfig, ApiHelper apiHelper,
-                             Map<String, String> queryParam, Map<String, String> additionalFilters) {
+                             Map<String, String> queryParam, Map<String, String> additionalFilters,
+                             YBMetricQueryComponent ybMetricQueryComponent) {
     this.apiHelper = apiHelper;
     this.appConfig = appConfig;
     this.queryParam.putAll(queryParam);
     this.additionalFilters.putAll(additionalFilters);
-
-    if (queryParam.containsKey("end")) {
-      this.queryUrl = this.getMetricsUrl() + "/query_range";
-    } else {
-      this.queryUrl = this.getMetricsUrl() + "/query";
-    }
+    this.ybMetricQueryComponent = ybMetricQueryComponent;
 
     // LOG.info("Executing metric query {}: {}", queryUrl, queryParam);
   }
@@ -55,6 +52,20 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       throw new RuntimeException("yb.metrics.url not set");
     }
     return metricsUrl;
+  }
+
+  private JsonNode getMetrics() {
+    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative");
+    if (useNativeMetrics) {
+      return ybMetricQueryComponent.query(queryParam);
+    } else {
+        if (queryParam.containsKey("end")) {
+        this.queryUrl = this.getMetricsUrl() + "/query_range";
+      } else {
+        this.queryUrl = this.getMetricsUrl() + "/query";
+      }
+      return apiHelper.getRequest(queryUrl, new HashMap<String, String>(), queryParam);
+    }
   }
 
   @Override
@@ -72,8 +83,11 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       for (Map.Entry<String, String> e : queries.entrySet()) {
         String metric = e.getKey();
         queryParam.put("query", e.getValue());
-        JsonNode queryResponseJson =
-          apiHelper.getRequest(queryUrl, new HashMap<String, String>(), queryParam);
+        JsonNode queryResponseJson = getMetrics();
+        if (queryResponseJson == null) {
+          responseJson.set("data", Json.toJson(new ArrayList()));
+          return responseJson;
+        }
         MetricQueryResponse queryResponse =
           Json.fromJson(queryResponseJson, MetricQueryResponse.class);
         if (queryResponse.error != null) {
