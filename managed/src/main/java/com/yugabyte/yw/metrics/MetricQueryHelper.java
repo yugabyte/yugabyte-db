@@ -36,6 +36,9 @@ public class MetricQueryHelper {
 
   @Inject
   ApiHelper apiHelper;
+
+  @Inject
+  YBMetricQueryComponent ybMetricQueryComponent;
   /**
    * Query prometheus for a given metricType and query params
    * @param params, Query params like start, end timestamps, even filters
@@ -79,7 +82,9 @@ public class MetricQueryHelper {
     for (String metricKey : metricKeys) {
       Map<String, String> queryParams = params;
       queryParams.put("queryKey", metricKey);
-      Callable<JsonNode> callable = new MetricQueryExecutor(appConfig, apiHelper, queryParams, additionalFilters);
+      Callable<JsonNode> callable = new MetricQueryExecutor(appConfig, apiHelper,
+                                                            queryParams, additionalFilters,
+                                                            ybMetricQueryComponent);
       Future<JsonNode> future = threadPool.submit(callable);
       futures.add(future);
     }

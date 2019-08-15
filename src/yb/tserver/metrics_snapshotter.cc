@@ -264,7 +264,7 @@ Status MetricsSnapshotter::Thread::DoPrometheusMetricsSnapshot(const client::Tab
   QLAddStringRangeValue(req, entity_id);
   QLAddStringRangeValue(req, metric_name);
   QLAddTimestampRangeValue(req, DateTime::TimestampNow().ToInt64());
-  table.AddInt32ColumnValue(req, "value", metric_val);
+  table.AddInt64ColumnValue(req, "value", metric_val);
 
   req->set_ttl(FLAGS_metrics_snapshotter_ttl_ms);
   return session->Apply(op);

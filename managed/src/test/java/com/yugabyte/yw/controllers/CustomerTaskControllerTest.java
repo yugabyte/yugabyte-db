@@ -43,6 +43,7 @@ import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 import static play.test.Helpers.route;
@@ -331,10 +332,10 @@ public class CustomerTaskControllerTest extends WithApplication {
     Result result = FakeApiHelper.doRequestWithAuthToken("GET", "/api/customers/" +
         customerUUID + "/tasks/" + taskUUID, authToken);
 
-    assertEquals(BAD_REQUEST, result.status());
+    assertEquals(FORBIDDEN, result.status());
 
-    JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.get("error").asText(), allOf(notNullValue(),
-        equalTo("Invalid Customer UUID: " + customerUUID)));
+    String resultString = contentAsString(result);
+    assertThat(resultString, allOf(notNullValue(),
+        equalTo("Unable To Authenticate Customer")));
   }
 }

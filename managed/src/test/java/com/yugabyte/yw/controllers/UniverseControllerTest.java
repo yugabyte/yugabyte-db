@@ -30,6 +30,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
+import static play.mvc.Http.Status.FORBIDDEN;
 
 import java.io.File;
 import java.io.IOException;
@@ -198,7 +199,11 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseListWithInvalidUUID() {
     UUID invalidUUID = UUID.randomUUID();
     Result result = doRequestWithAuthToken("GET", "/api/customers/" + invalidUUID + "/universes", authToken);
-    assertBadRequest(result, "Invalid Customer UUID: " + invalidUUID);
+    assertEquals(FORBIDDEN, result.status());
+
+    String resultString = contentAsString(result);
+    assertThat(resultString, allOf(notNullValue(),
+        equalTo("Unable To Authenticate Customer")));
   }
 
   @Test
@@ -206,7 +211,11 @@ public class UniverseControllerTest extends WithApplication {
     UUID invalidUUID = UUID.randomUUID();
     String url = "/api/customers/" + invalidUUID + "/universes/" + UUID.randomUUID();
     Result result = doRequestWithAuthToken("GET", url, authToken);
-    assertBadRequest(result, "Invalid Customer UUID: " + invalidUUID);
+    assertEquals(FORBIDDEN, result.status());
+
+    String resultString = contentAsString(result);
+    assertThat(resultString, allOf(notNullValue(),
+        equalTo("Unable To Authenticate Customer")));
   }
 
   @Test
@@ -697,10 +706,10 @@ public class UniverseControllerTest extends WithApplication {
 
   private ObjectNode getValidPayload(UUID univUUID, boolean isRolling) {
     ObjectNode bodyJson = Json.newObject()
-       .put("universeUUID", univUUID.toString())
-       .put("taskType", "Software")
-       .put("rollingUpgrade", isRolling)
-	   .put("ybSoftwareVersion", "0.0.1");
+                              .put("universeUUID", univUUID.toString())
+                              .put("taskType", "Software")
+                              .put("rollingUpgrade", isRolling)
+                              .put("ybSoftwareVersion", "0.0.1");
     ObjectNode userIntentJson = Json.newObject()
        .put("universeName", "Single UserUniverse")
        .put("ybSoftwareVersion", "0.0.1");
