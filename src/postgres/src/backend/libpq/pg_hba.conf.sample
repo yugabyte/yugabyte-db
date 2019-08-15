@@ -76,10 +76,6 @@
 
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
 
-# YugaByte-specific rules to trust all incoming connections.
-host all all 0.0.0.0/0 trust
-host all all ::0/0 trust
-
 @remove-line-for-nolocal@# "local" is for Unix domain socket connections only
 @remove-line-for-nolocal@local   all             all                                     @authmethodlocal@
 # IPv4 local connections:

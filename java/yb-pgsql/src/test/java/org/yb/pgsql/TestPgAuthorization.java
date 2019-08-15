@@ -24,10 +24,6 @@ import org.yb.pgsql.cleaners.DatabaseCleaner;
 import org.yb.pgsql.cleaners.RoleCleaner;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -62,37 +58,16 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
   // Host-based authentication config which requires a password for the pass_role user.
   private static final String CUSTOM_PG_HBA_CONFIG = "" +
-      "host    all    pass_role    0.0.0.0/0    password\n" +
-      "host    all    pass_role    ::0/0        password\n" +
-      "host    all    all          0.0.0.0/0    trust\n" +
-      "host    all    all          ::0/0        trust\n";
+      "host    all    pass_role    0.0.0.0/0    password," +
+      "host    all    pass_role    ::0/0        password," +
+      "host    all    all          0.0.0.0/0    trust," +
+      "host    all    all          ::0/0        trust";
 
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flags = super.getTServerFlags();
-
-    try {
-      flags.put("pgsql_hba_conf_file", String.format("%s", createPgHBAConf().getName()));
-    } catch (IOException ioe) {
-      throw new RuntimeException("Failed to write custom pg_hba.conf", ioe);
-    }
-
+    flags.put("ysql_hba_conf", CUSTOM_PG_HBA_CONFIG);
     return flags;
-  }
-
-  private static File createPgHBAConf() throws IOException {
-    File hbaFile = File.createTempFile(
-        "yb_pg_hba_conf_",
-        "",
-        new File(System.getProperty("user.dir"))
-    );
-    hbaFile.deleteOnExit();
-
-    try (BufferedWriter writer = new BufferedWriter(new FileWriter(hbaFile))) {
-      writer.write(CUSTOM_PG_HBA_CONFIG);
-    }
-
-    return hbaFile;
   }
 
   @Override
