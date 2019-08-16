@@ -805,6 +805,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     universe = Universe.get(universe.universeUUID);
 
     UniverseDefinitionTaskParams editTestUTD = universe.getUniverseDetails();
+    PlacementInfo testPlacement = editTestUTD.getPrimaryCluster().placementInfo;
     editTestUTD.getPrimaryCluster().userIntent.numNodes = 4;
     PlacementInfoUtil.updateUniverseDefinition(editTestUTD, customer.getCustomerId(),
         editTestUTD.getPrimaryCluster().uuid, EDIT);
@@ -812,6 +813,18 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertTrue(azUUIDSet.contains(az1.uuid));
     assertFalse(azUUIDSet.contains(az2.uuid));
     assertFalse(azUUIDSet.contains(az3.uuid));
+
+    // Add new placement zone
+    PlacementInfoUtil.addPlacementZoneHelper(az2.uuid, testPlacement);
+    assertEquals(2, testPlacement.cloudList.get(0).regionList.get(0).azList.size());
+    testPlacement.cloudList.get(0).regionList.get(0).azList.get(1).numNodesInAZ = 2;
+    PlacementInfoUtil.updateUniverseDefinition(editTestUTD, customer.getCustomerId(),
+            editTestUTD.getPrimaryCluster().uuid, EDIT);
+    // Reset config
+    editTestUTD.resetAZConfig = true;
+    PlacementInfoUtil.updateUniverseDefinition(editTestUTD, customer.getCustomerId(),
+            editTestUTD.getPrimaryCluster().uuid, EDIT);
+    assertEquals(1, testPlacement.cloudList.get(0).regionList.get(0).azList.size());
   }
 
   @Test

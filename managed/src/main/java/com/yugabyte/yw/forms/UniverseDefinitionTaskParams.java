@@ -75,6 +75,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // In Edit Universe if this flag is set we go through the NEW_CONFIG_FROM_PLACEMENT_INFO path
   public boolean userAZSelected = false;
 
+  // Set to true if resetting Universe form (in EDIT mode), false otherwise.
+  public boolean resetAZConfig = false;
+
   // The set of nodes that are part of this universe. Should contain nodes in both primary and
   // readOnly clusters.
   public Set<NodeDetails> nodeDetailsSet = null;
