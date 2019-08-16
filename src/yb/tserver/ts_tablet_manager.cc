@@ -246,6 +246,11 @@ METRIC_DEFINE_histogram(server, op_read_run_time, "Operation Read op Run Time",
                             "that operations consist of very large batches.",
                         10000000, 2);
 
+METRIC_DEFINE_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
+                        MetricUnit::kMicroseconds,
+                        "Time that the tablet server takes to bootstrap all of its tablets.",
+                        10000000, 2);
+
 using consensus::ConsensusMetadata;
 using consensus::ConsensusStatePB;
 using consensus::OpId;
@@ -501,8 +506,14 @@ Status TSTabletManager::Init() {
     }
     LOG(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
+  ThreadPoolMetrics metrics = {
+          NULL,
+          NULL,
+          METRIC_ts_bootstrap_time.Instantiate(server_->metric_entity())
+  };
   RETURN_NOT_OK(ThreadPoolBuilder("tablet-bootstrap")
                 .set_max_threads(max_bootstrap_threads)
+                .set_metrics(std::move(metrics))
                 .Build(&open_tablet_pool_));
 
   CleanupCheckpoints();

@@ -75,6 +75,12 @@ DEFINE_bool(force_recover_flushed_frontier, false,
 TAG_FLAG(force_recover_flushed_frontier, hidden);
 TAG_FLAG(force_recover_flushed_frontier, advanced);
 
+DEFINE_bool(skip_flushed_entries, false,
+            "Only replay WAL entries that are not flushed to RocksDB or within the retryable "
+            "request timeout.");
+
+DECLARE_int32(retryable_request_timeout_secs);
+
 namespace yb {
 namespace tablet {
 
@@ -845,10 +851,58 @@ Status TabletBootstrap::PlaySegments(ConsensusBootstrapInfo* consensus_info) {
   // old log.
   RETURN_NOT_OK_PREPEND(OpenNewLog(), "Failed to open new log");
 
+  // Find the earliest log segment we need to read, so the rest can be ignored
+  auto iter = FLAGS_skip_flushed_entries ? segments.end() : segments.begin();
+  if (FLAGS_skip_flushed_entries) {
+      // Lower bound on op IDs that need to be replayed
+      yb::OpId regular_op_id = yb::OpId::FromPB(state.regular_stored_op_id);
+      yb::OpId intents_op_id = yb::OpId::FromPB(state.intents_stored_op_id);
+      yb::OpId op_id_replay_lowest = regular_op_id;
+      if (tablet_->doc_db().intents) {
+        op_id_replay_lowest = std::min(regular_op_id,
+                                       intents_op_id);
+      }
+      LOG(INFO) << "Bootstrap optimizer: op_id_replay_lowest=" << op_id_replay_lowest;
+
+      // Time point of the last WAL entry and
+      //    how far back in time from it we should retain other entries
+      bool read_last_time = false;
+      RestartSafeCoarseTimePoint last_time;
+      RestartSafeCoarseDuration retain_limit =
+              std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+
+      while (iter != segments.begin()) {
+          --iter;
+          const scoped_refptr <ReadableLogSegment>& segment = *iter;
+
+          Result<std::pair<yb::OpId, RestartSafeCoarseTimePoint>> res =
+                  segment->ReadFirstEntryMetadata();
+          if (res.ok()) {
+              yb::OpId op_id = res->first;
+              RestartSafeCoarseTimePoint time = res->second;
+
+              // This is the first entry
+              if (!read_last_time) {
+                  last_time = time;
+                  read_last_time = true;
+              }
+
+              // Previous segment would have op_id and time less than required,
+              // so we can ignore it.
+              if (op_id <= op_id_replay_lowest &&
+                  time <= last_time - retain_limit) {
+                  break;
+              }
+          }
+      }
+  }
+
   int segment_count = 0;
   yb::OpId last_committed_op_id;
   RestartSafeCoarseTimePoint last_entry_time;
-  for (const scoped_refptr<ReadableLogSegment>& segment : segments) {
+  for (; iter != segments.end(); ++iter) {
+    const scoped_refptr<ReadableLogSegment>& segment = *iter;
+
     auto read_result = segment->ReadEntries();
     last_committed_op_id = std::max(last_committed_op_id, read_result.committed_op_id);
     for (int entry_idx = 0; entry_idx < read_result.entries.size(); ++entry_idx) {

@@ -184,6 +184,9 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // In case of failure status field of result is not ok.
   ReadEntriesResult ReadEntries();
 
+  // Reads the op ID and time of the first entry in the segment
+  Result<std::pair<yb::OpId, RestartSafeCoarseTimePoint>> ReadFirstEntryMetadata();
+
   // Rebuilds this segment's footer by scanning its entries.
   // This is an expensive operation as it reads and parses the whole segment
   // so it should be only used in the case of a crash, where the footer is
