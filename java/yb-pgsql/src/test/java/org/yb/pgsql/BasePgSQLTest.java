@@ -659,7 +659,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   protected Comparable toComparable(Object obj) {
-    if (obj instanceof Comparable) {
+    if (obj == null) {
+      return null;
+    } else if (obj instanceof Comparable) {
       return (Comparable)obj;
     } else if (obj instanceof PGobject) {
       return ((PGobject) obj).getValue(); // For PG_LSN type.
