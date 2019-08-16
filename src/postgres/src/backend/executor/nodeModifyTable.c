@@ -498,7 +498,10 @@ ExecInsert(ModifyTableState *mtstate,
 					 * snapshot at higher isolation levels.
 					 */
 					Assert(onconflict == ONCONFLICT_NOTHING);
-					ExecCheckTIDVisible(estate, resultRelInfo, &conflictTid);
+					if (!IsYBRelation(resultRelationDesc)) {
+						// YugaByte does not use Postgres transaction control code.
+						ExecCheckTIDVisible(estate, resultRelInfo, &conflictTid);
+					}
 					InstrCountTuples2(&mtstate->ps, 1);
 					result = NULL;
 					goto conflict_resolved;
