@@ -178,6 +178,8 @@ class PgApiImpl {
                                       const YBCPgTypeEntity *attr_type, bool is_hash,
                                       bool is_range, bool is_desc, bool is_nulls_first);
 
+  CHECKED_STATUS CreateTableSetNumTablets(PgStatement *handle, int32_t num_tablets);
+
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
 
   CHECKED_STATUS NewAlterTable(PgSession *pg_session,
