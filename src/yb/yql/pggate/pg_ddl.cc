@@ -90,6 +90,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
     : PgDdl(pg_session),
       table_name_(GetPgsqlNamespaceId(table_id.database_oid), database_name, table_name),
       table_id_(table_id),
+      num_tablets_(-1),
       is_pg_catalog_table_(strcmp(schema_name, "pg_catalog") == 0 ||
                            strcmp(schema_name, "information_schema") == 0),
       is_shared_table_(is_shared_table),
@@ -133,6 +134,15 @@ Status PgCreateTable::AddColumnImpl(const char *attr_name,
   return Status::OK();
 }
 
+Status PgCreateTable::SetNumTablets(int32_t num_tablets) {
+  // TODO: make gflag
+  if (num_tablets > 50) {
+    return STATUS(InvalidArgument, "num_tablets exceeds system limit");
+  }
+  num_tablets_ = num_tablets;
+  return Status::OK();
+}
+
 Status PgCreateTable::Exec() {
   // Construct schema.
   client::YBSchema schema;
@@ -155,6 +165,7 @@ Status PgCreateTable::Exec() {
   shared_ptr<client::YBTableCreator> table_creator(pg_session_->NewTableCreator());
   table_creator->table_name(table_name_).table_type(client::YBTableType::PGSQL_TABLE_TYPE)
                 .table_id(table_id_.GetYBTableId())
+                .num_tablets(num_tablets_)
                 .schema(&schema);
   if (is_pg_catalog_table_) {
     table_creator->is_pg_catalog_table();
