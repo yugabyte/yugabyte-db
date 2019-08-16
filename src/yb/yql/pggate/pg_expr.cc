@@ -117,12 +117,28 @@ void PgExpr::TranslateText(Slice *yb_cursor, const PgWireDataHeader& header, int
     return pg_tuple->WriteNull(index, header);
   }
 
-  int64_t text_size;
-  size_t read_size = PgDocData::ReadNumber(yb_cursor, &text_size);
+  // Get data from RPC buffer.
+  int64_t data_size;
+  size_t read_size = PgDocData::ReadNumber(yb_cursor, &data_size);
   yb_cursor->remove_prefix(read_size);
 
-  pg_tuple->WriteDatum(index, type_entity->yb_to_datum(yb_cursor->cdata(), text_size, type_attrs));
-  yb_cursor->remove_prefix(text_size);
+  // Expects data from DocDB matches the following format.
+  // - Right trim spaces for CHAR type. This should be done by DocDB when evaluate SELECTed or
+  //   RETURNed expression. Note that currently, Postgres layer (and not DocDB) evaluate
+  //   expressions, so DocDB doesn't trim for CHAR type.
+  // - NULL terminated string. This should be done by DocDB when serializing.
+  // - Text size == strlen(). When sending data over the network, RPC layer would use the actual
+  //   size of data being serialized including the '\0' character. This is not necessarily be the
+  //   length of a string.
+  // Find strlen() of STRING by right-trimming all '\0' characters.
+  const char* text = yb_cursor->cdata();
+  int64_t text_len = data_size - 1;
+
+  DCHECK(text_len >= 0 && text[text_len] == '\0' && (text_len == 0 || text[text_len - 1] != '\0'))
+    << "Data received from DocDB does not have expected format";
+
+  pg_tuple->WriteDatum(index, type_entity->yb_to_datum(text, text_len, type_attrs));
+  yb_cursor->remove_prefix(data_size);
 }
 
 void PgExpr::TranslateBinary(Slice *yb_cursor, const PgWireDataHeader& header, int index,
