@@ -308,6 +308,14 @@ Status PgApiImpl::CreateTableAddColumn(PgStatement *handle, const char *attr_nam
       is_hash, is_range, is_desc, is_nulls_first);
 }
 
+Status PgApiImpl::CreateTableSetNumTablets(PgStatement *handle, int32_t num_tablets) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  return down_cast<PgCreateTable*>(handle)->SetNumTablets(num_tablets);
+}
+
 Status PgApiImpl::ExecCreateTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_CREATE_TABLE)) {
     // Invalid handle.

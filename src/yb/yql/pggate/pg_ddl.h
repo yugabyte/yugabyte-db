@@ -136,6 +136,9 @@ class PgCreateTable : public PgDdl {
     return AddColumnImpl(attr_name, attr_num, attr_type->yb_type, is_hash, is_range, sorting_type);
   }
 
+  // Specify the number of tablets explicitly.
+  virtual CHECKED_STATUS SetNumTablets(int32_t num_tablets);
+
   // Execute.
   virtual CHECKED_STATUS Exec();
 
@@ -151,6 +154,7 @@ class PgCreateTable : public PgDdl {
  private:
   client::YBTableName table_name_;
   const PgObjectId table_id_;
+  int32_t num_tablets_;
   bool is_pg_catalog_table_;
   bool is_shared_table_;
   bool if_not_exist_;
