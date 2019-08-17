@@ -252,13 +252,14 @@ typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 class WriteOperationCompletionCallback : public OperationCompletionCallback {
  public:
   WriteOperationCompletionCallback(
+      tablet::TabletPeerPtr tablet_peer,
       std::shared_ptr<rpc::RpcContext> context,
       WriteResponsePB* response,
       tablet::WriteOperationState* state,
       const server::ClockPtr& clock,
       bool trace = false)
-      : context_(std::move(context)), response_(response), state_(state), clock_(clock),
-        include_trace_(trace) {}
+      : tablet_peer_(std::move(tablet_peer)), context_(std::move(context)), response_(response),
+        state_(state), clock_(clock), include_trace_(trace) {}
 
   void OperationCompleted() override {
     // When we don't need to return any data, we could return success on duplicate request.
@@ -269,7 +270,30 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
       status_ = Status::OK();
     }
 
+    if (status_.ok() && state_->request()->write_batch().has_transaction()) {
+      bool has_failure = false;
+      for (const auto& pgsql_write_op : *state_->pgsql_write_ops()) {
+        if (pgsql_write_op->response()->status() != PgsqlResponsePB::PGSQL_STATUS_OK) {
+          has_failure = true;
+          break;
+        }
+      }
+      if (has_failure) {
+        auto participant = tablet_peer_->tablet()->transaction_participant();
+        if (participant) {
+          auto txn_id = FullyDecodeTransactionId(
+              state_->request()->write_batch().transaction().transaction_id());
+          if (txn_id.ok()) {
+            status_ = participant->CheckAborted(*txn_id);
+          } else {
+            LOG(DFATAL) << "Unable to decode transaction id: " << txn_id.status();
+          }
+        }
+      }
+    }
+
     if (!status_.ok()) {
+      LOG(INFO) << "Write failed: " << status_;
       SetupErrorAndRespond(get_error(), status_, code_, context_.get());
       return;
     }
@@ -320,6 +344,7 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
     return response_->mutable_error();
   }
 
+  tablet::TabletPeerPtr tablet_peer_;
   const std::shared_ptr<rpc::RpcContext> context_;
   WriteResponsePB* const response_;
   tablet::WriteOperationState* const state_;
@@ -746,9 +771,29 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
+#if defined(DUMP_WRITE)
   if (req->has_write_batch() && req->write_batch().has_transaction()) {
     VLOG(1) << "Write with transaction: " << req->write_batch().transaction().ShortDebugString();
+    if (req->pgsql_write_batch_size() != 0) {
+      auto txn_id = CHECK_RESULT(FullyDecodeTransactionId(
+          req->write_batch().transaction().transaction_id()));
+      for (const auto& entry : req->pgsql_write_batch()) {
+        if (entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
+          auto key = entry.column_new_values(0).expr().value().int32_value();
+          LOG(INFO) << txn_id << " UPDATE: " << key << " = "
+                    << entry.column_new_values(1).expr().value().string_value();
+        } else if (entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT) {
+          docdb::DocKey doc_key;
+          CHECK_OK(doc_key.FullyDecodeFrom(entry.ybctid_column_value().value().binary_value()));
+          LOG(INFO) << txn_id << " INSERT: " << doc_key.hashed_group()[0].GetInt32() << " = "
+                    << entry.column_values(0).expr().value().string_value();
+        } else if (entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_DELETE) {
+          LOG(INFO) << txn_id << " DELETE: " << entry.ShortDebugString();
+        }
+      }
+    }
   }
+#endif
 
   if (PREDICT_FALSE(req->has_write_batch() &&
       (!req->write_batch().write_pairs().empty() || !req->write_batch().read_pairs().empty()))) {
@@ -797,7 +842,8 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   } else {
     operation_state->set_completion_callback(
         std::make_unique<WriteOperationCompletionCallback>(
-            context_ptr, resp, operation_state.get(), server_->Clock(), req->include_trace()));
+            tablet.peer, context_ptr, resp, operation_state.get(), server_->Clock(),
+            req->include_trace()));
   }
   tablet.peer->WriteAsync(
       std::move(operation_state), tablet.leader_term, context_ptr->GetClientDeadline());
@@ -1089,6 +1135,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
       isolation_level = *isolation_level_result;
     }
     serializable_isolation = isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION;
+#if defined(DUMP_READ)
+    if (req->pgsql_batch().size() > 0) {
+      LOG(INFO) << CHECK_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()))
+                << " READ: " << req->pgsql_batch(0).partition_column_values(0).value().int32_value()
+                << ", " << isolation_level;
+    }
+#endif
   }
 
   LeaderTabletPeer leader_peer;
@@ -1262,10 +1315,21 @@ void TabletServiceImpl::CompleteRead(ReadContext* read_context) {
       read_context->req->pgsql_batch()[0].partition_column_values().size() == 1 &&
       read_context->resp->pgsql_batch().size() == 1 &&
       read_context->resp->pgsql_batch()[0].rows_data_sidecar() == 0) {
-    auto txn_id = FullyDecodeTransactionId(read_context->req->transaction().transaction_id());
-    auto result = BigEndian::Load64(read_context->context->RpcSidecar(0).data() + 14);
-    const auto& key = read_context->req->pgsql_batch()[0].partition_column_values()[0].value();
-    LOG(INFO) << "Read " << txn_id << ": " << key.int32_value() << " => " << result;
+    auto txn_id = CHECK_RESULT(FullyDecodeTransactionId(
+        read_context->req->transaction().transaction_id()));
+    auto value_slice = read_context->context->RpcSidecar(0).as_slice();
+    auto num = BigEndian::Load64(value_slice.data());
+    std::string result;
+    if (num == 0) {
+      result = "<NONE>";
+    } else if (num == 1) {
+      auto len = BigEndian::Load64(value_slice.data() + 14) - 1;
+      result = Slice(value_slice.data() + 22, len).ToBuffer();
+    } else {
+      result = value_slice.ToDebugHexString();
+    }
+    auto key = read_context->req->pgsql_batch(0).partition_column_values(0).value().int32_value();
+    LOG(INFO) << txn_id << " READ DONE: " << key << " = " << result;
   }
 #endif
 

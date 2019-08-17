@@ -1018,7 +1018,7 @@ void TabletBootstrap::PlayWriteRequest(ReplicateMsg* replicate_msg) {
   // Use committed OpId for mem store anchoring.
   operation_state.mutable_op_id()->CopyFrom(replicate_msg->id());
 
-  tablet_->ApplyRowOperations(&operation_state);
+  WARN_NOT_OK(tablet_->ApplyRowOperations(&operation_state), "ApplyRowOperations failed: ");
 
   tablet_->mvcc_manager()->Replicated(operation_state.hybrid_time());
 }

@@ -16,6 +16,7 @@
 #ifndef YB_COMMON_TRANSACTION_H
 #define YB_COMMON_TRANSACTION_H
 
+#include <boost/container/small_vector.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/optional.hpp>
 #include <boost/uuid/uuid.hpp>
@@ -125,11 +126,17 @@ class TransactionStatusManager {
   // 4. Any kind of network/timeout errors would be reflected in error passed to callback.
   virtual void RequestStatusAt(const StatusRequest& request) = 0;
 
-  virtual boost::optional<TransactionMetadata> Metadata(const TransactionId& id) = 0;
+  // Prepares metadata for provided protobuf. Either trying to extract it from pb, or fetch
+  // from existing metadatas.
+  virtual Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) = 0;
 
   virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
 
   virtual void Cleanup(TransactionIdSet&& set) = 0;
+
+  // For each pair fills second with priority of transaction with id equals to first.
+  virtual void FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) = 0;
 
  private:
   friend class RequestScope;

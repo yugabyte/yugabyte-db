@@ -329,8 +329,7 @@ void OperationDriver::HandleFailure(Status status) {
     {
       VLOG_WITH_PREFIX(1) << "Operation " << ToString() << " failed prior to "
           "replication success: " << status;
-      operation_->Finish(Operation::ABORTED);
-      mutable_state()->CompleteWithStatus(status);
+      operation_->Aborted(status);
       operation_tracker_->Release(this);
       return;
     }
@@ -446,20 +445,10 @@ void OperationDriver::ApplyTask(int64_t leader_term) {
   scoped_refptr<OperationDriver> ref(this);
 
   {
-    CHECK_OK(operation_->Apply(leader_term));
-
-    Finalize();
+    CHECK_OK(operation_->Replicated(leader_term));
+    operation_tracker_->Release(this);
   }
 }
-
-void OperationDriver::Finalize() {
-  ADOPT_TRACE(trace());
-
-  operation_->Finish(Operation::COMMITTED);
-  mutable_state()->CompleteWithStatus(Status::OK());
-  operation_tracker_->Release(this);
-}
-
 
 std::string OperationDriver::StateString(ReplicationState repl_state,
                                            PrepareState prep_state) {

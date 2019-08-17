@@ -37,8 +37,8 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
         << " has been already committed.";
   }
 
-  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override {
-    return boost::none;
+  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) override {
+    return STATUS(Expired, "");
   }
 
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override {
@@ -53,6 +53,9 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
 
   void UnregisterRequest(int64_t) override {
   }
+
+  void FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {}
 
  private:
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> txn_commit_time_;

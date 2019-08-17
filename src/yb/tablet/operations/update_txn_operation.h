@@ -72,9 +72,9 @@ class UpdateTxnOperation : public Operation {
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
   CHECKED_STATUS Prepare() override;
   void DoStart() override;
-  CHECKED_STATUS Apply(int64_t leader_term) override;
+  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
+  CHECKED_STATUS DoAborted(const Status& status) override;
   std::string ToString() const override;
-  void Finish(OperationResult result) override;
 };
 
 } // namespace tablet
