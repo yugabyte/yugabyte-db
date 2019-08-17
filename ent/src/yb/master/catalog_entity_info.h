@@ -14,7 +14,10 @@
 #define ENT_SRC_YB_MASTER_CATALOG_ENTITY_INFO_H
 
 #include "../../../../src/yb/master/catalog_entity_info.h"
+#include "yb/master/cdc_rpc_tasks.h"
 #include "yb/master/master_backup.pb.h"
+
+#include "yb/client/table.h"
 
 namespace yb {
 namespace master {
@@ -49,6 +52,49 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   const CDCStreamId stream_id_;
 
   DISALLOW_COPY_AND_ASSIGN(CDCStreamInfo);
+};
+
+// This wraps around the proto containing universe replication information. It will be used for
+// CowObject managed access.
+struct PersistentUniverseReplicationInfo :
+    public Persistent<SysUniverseReplicationEntryPB, SysRowEntry::UNIVERSE_REPLICATION> {
+
+  bool is_deleted_or_failed() const {
+    return pb.state() == SysUniverseReplicationEntryPB::DELETED
+      || pb.state() == SysUniverseReplicationEntryPB::DELETED_ERROR
+      || pb.state() == SysUniverseReplicationEntryPB::FAILED;
+  }
+
+  bool is_active() const {
+    return pb.state() == SysUniverseReplicationEntryPB::ACTIVE;
+  }
+};
+
+class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationInfo>,
+                                public MetadataCowWrapper<PersistentUniverseReplicationInfo> {
+ public:
+  explicit UniverseReplicationInfo(std::string producer_id)
+      : producer_id_(std::move(producer_id)) {}
+
+  const std::string& id() const override { return producer_id_; }
+
+  std::string ToString() const override;
+
+  Result<std::shared_ptr<CDCRpcTasks>> GetOrCreateCDCRpcTasks(
+      google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
+
+ private:
+  friend class RefCountedThreadSafe<UniverseReplicationInfo>;
+  ~UniverseReplicationInfo() = default;
+
+  const std::string producer_id_;
+
+  std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks_;
+
+  // Protects cdc_rpc_tasks_.
+  mutable rw_spinlock lock_;
+
+  DISALLOW_COPY_AND_ASSIGN(UniverseReplicationInfo);
 };
 
 // The data related to a snapshot which is persisted on disk.

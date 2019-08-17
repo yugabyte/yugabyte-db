@@ -232,6 +232,7 @@ message SysRowEntry {
     REDIS_CONFIG = 8;
     SYS_CONFIG = 9;
     CDC_STREAM = 10;
+    UNIVERSE_REPLICATION = 11;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot
@@ -384,6 +385,46 @@ message SysRedisConfigEntryPB {
 message SysCDCStreamEntryPB {
   optional string table_id = 1;
   repeated CDCStreamOptionsPB options = 2;
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for a universe replication record.
+message SysUniverseReplicationEntryPB {
+  enum State {
+    // Setting up replication.
+    INITIALIZING = 0;
+    // Validated table schemas.
+    VALIDATED = 1;
+    // Active.
+    ACTIVE = 2;
+    // Failed.
+    // Setting up universe replication consists of a sequence of steps like validating schemas,
+    // creating CDC streams, starting subscribers. If any of these fail, we set the universe
+    // replication state to FAILED.
+    FAILED = 3;
+    // Deleted.
+    DELETED = 4;
+    // Error while cleaning up state of deleted entry. This indicates that universe replication has
+    // been deleted but there is still some uncleaned up state - for example, there may be left over
+    // CDC streams.
+    DELETED_ERROR = 5;
+  }
+
+  optional string producer_id = 1;
+  repeated HostPortPB producer_master_addresses = 2;
+
+  // producer table IDs.
+  repeated string tables = 3;
+
+  optional State state = 4 [default = INITIALIZING];
+
+  // producer table ID -> consumer table ID map.
+  map<string, string> validated_tables = 5;
+
+  // producer table ID -> producer CDC stream map.
+  map<string, string> table_streams = 6;
+
+  // resolved producer table map: table ID -> table identifier information.
+  map<string, TableIdentifierPB> resolved_tables = 7;
 }
 
 message ChangeEncryptionInfoRequestPB {
@@ -1482,6 +1523,35 @@ message IsInitDbDoneResponsePB {
   optional string initdb_error = 5;
 }
 
+message SetupUniverseReplicationRequestPB {
+  optional string producer_id = 1;
+  repeated HostPortPB producer_master_addresses = 2;
+  repeated string producer_table_ids = 3;
+}
+
+message SetupUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message DeleteUniverseReplicationRequestPB {
+  optional string producer_id = 1;
+}
+
+message DeleteUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message GetUniverseReplicationRequestPB {
+  optional string producer_id = 1;
+}
+
+message GetUniverseReplicationResponsePB {
+  optional MasterErrorPB error = 1;
+  optional string producer_id = 2;
+  repeated HostPortPB producer_master_addresses = 3;
+  repeated TableIdentifierPB producer_tables = 4;
+}
+
 service MasterService {
   // TS->Master RPCs
   rpc TSHeartbeat(TSHeartbeatRequestPB) returns (TSHeartbeatResponsePB);
@@ -1578,4 +1648,11 @@ service MasterService {
 
   rpc ChangeEncryptionInfo(ChangeEncryptionInfoRequestPB) returns (ChangeEncryptionInfoResponsePB);
   rpc IsEncryptionEnabled(IsEncryptionEnabledRequestPB) returns (IsEncryptionEnabledResponsePB);
+
+  rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)
+      returns (SetupUniverseReplicationResponsePB);
+  rpc DeleteUniverseReplication(DeleteUniverseReplicationRequestPB)
+      returns (DeleteUniverseReplicationResponsePB);
+  rpc GetUniverseReplication(GetUniverseReplicationRequestPB)
+      returns (GetUniverseReplicationResponsePB);
 }

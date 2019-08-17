@@ -97,6 +97,11 @@ class TabletServerServiceProxy;
 }
 
 namespace client {
+namespace internal {
+class ClientMasterRpc;
+class CreateCDCStreamRpc;
+class DeleteCDCStreamRpc;
+}
 
 // This needs to be called by a client app before performing any operations that could result in
 // logging.
@@ -288,6 +293,9 @@ class YBClient {
                                 YBSchema* schema,
                                 PartitionSchema* partition_schema);
 
+  CHECKED_STATUS GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
+                                    StatusCallback callback);
+
   // Namespace related methods.
 
   // Create a new namespace with the given name.
@@ -406,8 +414,14 @@ class YBClient {
   Result<CDCStreamId> CreateCDCStream(const TableId& table_id,
                                       const std::unordered_map<std::string, std::string>& options);
 
+  void CreateCDCStream(const TableId& table_id,
+                       const std::unordered_map<std::string, std::string>& options,
+                       CreateCDCStreamCallback callback);
+
   // Delete a CDC stream.
   CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id);
+
+  void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
 
   // Retrieve a CDC stream.
   CHECKED_STATUS GetCDCStream(const CDCStreamId &stream_id,
@@ -582,6 +596,9 @@ class YBClient {
   friend class internal::RemoteTabletServer;
   friend class internal::AsyncRpc;
   friend class internal::TabletInvoker;
+  friend class internal::ClientMasterRpc;
+  friend class internal::CreateCDCStreamRpc;
+  friend class internal::DeleteCDCStreamRpc;
   friend class PlacementInfoTest;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);

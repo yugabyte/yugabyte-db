@@ -42,15 +42,42 @@ class TestCDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
   vector<CDCStreamInfo*> streams;
 };
 
+class TestUniverseReplicationLoader : public Visitor<PersistentUniverseReplicationInfo> {
+ public:
+  TestUniverseReplicationLoader() {}
+  ~TestUniverseReplicationLoader() { Reset(); }
+
+  void Reset() {
+    for (UniverseReplicationInfo* universe : universes) {
+      universe->Release();
+    }
+    universes.clear();
+  }
+
+  Status Visit(
+      const std::string& producer_id, const SysUniverseReplicationEntryPB& metadata) override {
+    // Setup the universe replication info.
+    UniverseReplicationInfo* const universe = new UniverseReplicationInfo(producer_id);
+    auto l = universe->LockForWrite();
+    l->mutable_data()->pb.CopyFrom(metadata);
+    l->Commit();
+    universe->AddRef();
+    universes.push_back(universe);
+    return Status::OK();
+  }
+
+  vector<UniverseReplicationInfo*> universes;
+};
+
 // Test the sys-catalog CDC stream basic operations (add, delete, visit).
 TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
   SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
 
-  std::unique_ptr<TestCDCStreamLoader> loader(new TestCDCStreamLoader());
+  auto loader = std::make_unique<TestCDCStreamLoader>();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
 
   // 1. CHECK ADD_CDCSTREAM.
-  scoped_refptr<CDCStreamInfo> stream(new CDCStreamInfo("deadbeafdeadbeafdeadbeafdeadbeaf"));
+  auto stream = make_scoped_refptr<CDCStreamInfo>("deadbeafdeadbeafdeadbeafdeadbeaf");
   {
     auto l = stream->LockForWrite();
     l->mutable_data()->pb.set_table_id("test_table");
@@ -72,6 +99,38 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_EQ(0, loader->streams.size());
+}
+
+// Test the sys-catalog universe replication basic operations (add, delete, visit).
+TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
+  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
+
+  auto loader = std::make_unique<TestUniverseReplicationLoader>();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+
+  // 1. CHECK ADD_UNIVERSE_REPLICATION.
+  auto universe = make_scoped_refptr<UniverseReplicationInfo>("deadbeafdeadbeafdeadbeafdeadbeaf");
+  {
+    auto l = universe->LockForWrite();
+    l->mutable_data()->pb.add_tables("producer_table_id");
+    // Add the universe replication info.
+    ASSERT_OK(sys_catalog->AddItem(universe.get(), kLeaderTerm));
+    l->Commit();
+  }
+
+  // Verify it showed up.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(1, loader->universes.size());
+  ASSERT_TRUE(MetadatasEqual(universe.get(), loader->universes[0]));
+
+  // 2. CHECK DELETE_UNIVERSE_REPLICATION.
+  ASSERT_OK(sys_catalog->DeleteItem(universe.get(), kLeaderTerm));
+
+  // Verify the result.
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(0, loader->universes.size());
 }
 
 } // namespace enterprise
