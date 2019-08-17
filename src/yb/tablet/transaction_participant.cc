@@ -395,6 +395,10 @@ class CleanupIntentsTask : public rpc::ThreadPoolTask {
   std::shared_ptr<CleanupIntentsTask> retain_self_;
 };
 
+CHECKED_STATUS MakeAbortedStatus(const TransactionId& id) {
+  return STATUS_FORMAT(TryAgain, "Transaction aborted: $0", id);
+}
+
 class RunningTransaction : public std::enable_shared_from_this<RunningTransaction> {
  public:
   RunningTransaction(TransactionMetadata metadata,
@@ -465,18 +469,40 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
     VLOG_WITH_PREFIX(4) << Format(
         "Existing status knowledge ($0, $1) does not satisfy requested: $2, sending: $3",
-        last_known_status_, last_known_status_hybrid_time_, request, request_id);
+        TransactionStatus_Name(last_known_status_), last_known_status_hybrid_time_, request,
+        request_id);
 
     lock->unlock();
     SendStatusRequest(client, request_id, shared_self);
   }
 
+  bool WasAborted() const {
+    return last_known_status_ == TransactionStatus::ABORTED;
+  }
+
+  CHECKED_STATUS CheckAborted() const {
+    if (WasAborted()) {
+      return MakeAbortedStatus(id());
+    }
+    return Status::OK();
+  }
+
   void Abort(client::YBClient* client,
              TransactionStatusCallback callback,
              std::unique_lock<std::mutex>* lock) {
+    if (last_known_status_ == TransactionStatus::ABORTED ||
+        last_known_status_ == TransactionStatus::COMMITTED) {
+      // Transaction is already in final state, so no reason to send abort request.
+      VLOG_WITH_PREFIX(3) << "Abort shortcut: " << last_known_status_;
+      TransactionStatusResult status{last_known_status_, last_known_status_hybrid_time_};
+      lock->unlock();
+      callback(status);
+      return;
+    }
     bool was_empty = abort_waiters_.empty();
     abort_waiters_.push_back(std::move(callback));
     lock->unlock();
+    VLOG_WITH_PREFIX(3) << "Abort request: " << was_empty;
     if (!was_empty) {
       return;
     }
@@ -694,12 +720,21 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     }
 
     decltype(abort_waiters_) abort_waiters;
+    auto result = MakeAbortResult(status, response);
+
+    VLOG_WITH_PREFIX(3) << "AbortReceived: " << yb::ToString(result);
+
     {
       std::lock_guard<std::mutex> lock(context_.mutex_);
       context_.rpcs_.Unregister(&abort_handle_);
       abort_waiters_.swap(abort_waiters);
+      // kMax status_time means taht this status is not yet replicated and could be rejected.
+      // So we could use it as reply to Abort, but cannot store it as transaction status.
+      if (result.ok() && result->status_time != HybridTime::kMax) {
+        last_known_status_ = result->status;
+        last_known_status_hybrid_time_ = result->status_time;
+      }
     }
-    auto result = MakeAbortResult(status, response);
     for (const auto& waiter : abort_waiters) {
       waiter(result);
     }
@@ -826,14 +861,27 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     return count;
   }
 
-  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) {
+  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) {
+    if (pb.has_isolation()) {
+      auto metadata = VERIFY_RESULT(TransactionMetadata::FromPB(pb));
+      std::unique_lock<std::mutex> lock(mutex_);
+      auto it = transactions_.find(metadata.transaction_id);
+      if (it != transactions_.end()) {
+        RETURN_NOT_OK((**it).CheckAborted());
+      }
+      return metadata;
+    }
+
+    auto id = VERIFY_RESULT(FullyDecodeTransactionId(pb.transaction_id()));
+
     // We are not trying to cleanup intents here because we don't know whether this transaction
-    // has intents of not.
+    // has intents or not.
     auto lock_and_iterator = LockAndFindOrLoad(
         id, "metadata"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (!lock_and_iterator.found()) {
-      return boost::none;
+      return STATUS_FORMAT(TryAgain, "Unknown transaction, could be recently aborted: $0", id);
     }
+    RETURN_NOT_OK(lock_and_iterator.transaction().CheckAborted());
     return lock_and_iterator.transaction().metadata();
   }
 
@@ -923,6 +971,30 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       return;
     }
     lock_and_iterator.transaction().Abort(client(), std::move(callback), &lock_and_iterator.lock);
+  }
+
+  CHECKED_STATUS CheckAborted(const TransactionId& id) {
+    // We are not trying to cleanup intents here because we don't know whether this transaction
+    // has intents of not.
+    auto lock_and_iterator = LockAndFindOrLoad(id, "check aborted"s, TransactionLoadFlags{});
+    if (!lock_and_iterator.found()) {
+      return MakeAbortedStatus(id);
+    }
+    return lock_and_iterator.transaction().CheckAborted();
+  }
+
+  void FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) {
+    // TODO(dtxn) optimize locking
+    for (auto& pair : *inout) {
+      auto lock_and_iterator = LockAndFindOrLoad(
+          pair.first, "fill priorities"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
+      if (!lock_and_iterator.found() || lock_and_iterator.transaction().WasAborted()) {
+        pair.second = 0; // Minimal priority for already aborted transactions
+      } else {
+        pair.second = lock_and_iterator.transaction().metadata().priority;
+      }
+    }
   }
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> state, int64_t term) {
@@ -1342,8 +1414,9 @@ bool TransactionParticipant::Add(const TransactionMetadataPB& data, bool may_hav
   return impl_->Add(data, may_have_metadata, write_batch);
 }
 
-boost::optional<TransactionMetadata> TransactionParticipant::Metadata(const TransactionId& id) {
-  return impl_->Metadata(id);
+Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
+    const TransactionMetadataPB& pb) {
+  return impl_->PrepareMetadata(pb);
 }
 
 boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>>
@@ -1390,12 +1463,21 @@ void TransactionParticipant::Cleanup(TransactionIdSet&& set) {
   return impl_->Cleanup(std::move(set), this);
 }
 
-CHECKED_STATUS TransactionParticipant::ProcessApply(const TransactionApplyData& data) {
+Status TransactionParticipant::ProcessApply(const TransactionApplyData& data) {
   return impl_->ProcessApply(data);
 }
 
 Status TransactionParticipant::ProcessReplicated(const ReplicatedData& data) {
   return impl_->ProcessReplicated(data);
+}
+
+Status TransactionParticipant::CheckAborted(const TransactionId& id) {
+  return impl_->CheckAborted(id);
+}
+
+void TransactionParticipant::FillPriorities(
+    boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) {
+  return impl_->FillPriorities(inout);
 }
 
 void TransactionParticipant::SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds) {
