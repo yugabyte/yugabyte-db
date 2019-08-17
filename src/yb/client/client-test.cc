@@ -1329,6 +1329,74 @@ TEST_F(ClientTest, TestGetTableSchema) {
   ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
 }
 
+TEST_F(ClientTest, TestGetTableSchemaByIdAsync) {
+  Synchronizer sync;
+  auto table_info = std::make_shared<YBTableInfo>();
+  ASSERT_OK(client_->GetTableSchemaById(
+      client_table_.table()->id(), table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_TRUE(schema_.Equals(table_info->schema));
+}
+
+TEST_F(ClientTest, TestGetTableSchemaByIdMissingTable) {
+  // Verify that a get schema request for a missing table throws not found.
+  Synchronizer sync;
+  auto table_info = std::make_shared<YBTableInfo>();
+  ASSERT_OK(client_->GetTableSchemaById("MissingTableId", table_info, sync.AsStatusCallback()));
+  Status s = sync.Wait();
+  ASSERT_TRUE(s.IsNotFound());
+  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
+}
+
+void CreateCDCStreamCallbackSuccess(Synchronizer* sync, const Result<CDCStreamId>& stream) {
+  ASSERT_TRUE(stream.ok());
+  ASSERT_FALSE(stream->empty());
+  sync->StatusCB(Status::OK());
+}
+
+void CreateCDCStreamCallbackFailure(Synchronizer* sync, const Result<CDCStreamId>& stream) {
+  ASSERT_FALSE(stream.ok());
+  sync->StatusCB(stream.status());
+}
+
+TEST_F(ClientTest, TestCreateCDCStreamAsync) {
+  Synchronizer sync;
+  std::unordered_map<std::string, std::string> options;
+  client_->CreateCDCStream(
+      client_table_.table()->id(), options, std::bind(&CreateCDCStreamCallbackSuccess, &sync,
+                                                      std::placeholders::_1));
+  ASSERT_OK(sync.Wait());
+}
+
+TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
+  Synchronizer sync;
+  std::unordered_map<std::string, std::string> options;
+  client_->CreateCDCStream(
+      "MissingTableId", options, std::bind(&CreateCDCStreamCallbackFailure, &sync,
+                                           std::placeholders::_1));
+  Status s = sync.Wait();
+  ASSERT_TRUE(s.IsNotFound());
+}
+
+TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
+  std::unordered_map<std::string, std::string> options;
+  auto result = client_->CreateCDCStream(client_table_.table()->id(), options);
+  ASSERT_TRUE(result.ok());
+
+  // Delete the created CDC stream.
+  Synchronizer sync;
+  client_->DeleteCDCStream(*result, sync.AsStatusCallback());
+  ASSERT_OK(sync.Wait());
+}
+
+TEST_F(ClientTest, TestDeleteCDCStreamMissingId) {
+  // Try to delete a non-existent CDC stream.
+  Synchronizer sync;
+  client_->DeleteCDCStream("MissingStreamId", sync.AsStatusCallback());
+  Status s = sync.Wait();
+  ASSERT_TRUE(s.IsNotFound());
+}
+
 TEST_F(ClientTest, TestStaleLocations) {
   string tablet_id = GetFirstTabletId(client_table2_.get());
 

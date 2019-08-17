@@ -28,28 +28,6 @@ DECLARE_bool(client_suppress_created_logs);
 namespace yb {
 namespace client {
 
-namespace {
-
-TableType ClientToPBTableType(YBTableType table_type) {
-  switch (table_type) {
-    case YBTableType::YQL_TABLE_TYPE:
-      return TableType::YQL_TABLE_TYPE;
-    case YBTableType::REDIS_TABLE_TYPE:
-      return TableType::REDIS_TABLE_TYPE;
-    case YBTableType::PGSQL_TABLE_TYPE:
-      return TableType::PGSQL_TABLE_TYPE;
-    case YBTableType::TRANSACTION_STATUS_TABLE_TYPE:
-      return TableType::TRANSACTION_STATUS_TABLE_TYPE;
-    case YBTableType::UNKNOWN_TABLE_TYPE:
-      break;
-  }
-  FATAL_INVALID_ENUM_VALUE(YBTableType, table_type);
-  // Returns a dummy value to avoid compilation warning.
-  return TableType::DEFAULT_TABLE_TYPE;
-}
-
-} // namespace
-
 YBTableCreator::YBTableCreator(YBClient* client)
   : client_(client) {
 }
@@ -63,7 +41,7 @@ YBTableCreator& YBTableCreator::table_name(const YBTableName& name) {
 }
 
 YBTableCreator& YBTableCreator::table_type(YBTableType table_type) {
-  table_type_ = ClientToPBTableType(table_type);
+  table_type_ = YBTable::ClientToPBTableType(table_type);
   return *this;
 }
 

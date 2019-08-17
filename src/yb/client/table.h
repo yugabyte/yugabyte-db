@@ -41,6 +41,7 @@ struct YBTableInfo {
   PartitionSchema partition_schema;
   IndexMap index_map;
   boost::optional<IndexInfo> index_info;
+  YBTableType table_type;
 };
 
 // A YBTable represents a table on a particular cluster. It holds the current
@@ -54,6 +55,9 @@ struct YBTableInfo {
 class YBTable : public std::enable_shared_from_this<YBTable> {
  public:
   ~YBTable();
+
+  static Status PBToClientTableType(TableType table_type_from_pb, YBTableType* client_table_type);
+  static TableType ClientToPBTableType(YBTableType table_type);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.

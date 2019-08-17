@@ -56,7 +56,13 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   CHECKED_STATUS IsEncryptionEnabled();
 
-CHECKED_STATUS CreateCDCStream(const TableId& table_id);
+  CHECKED_STATUS CreateCDCStream(const TableId& table_id);
+
+  CHECKED_STATUS SetupUniverseReplication(const std::string& producer_uuid,
+                                          const std::vector<std::string>& producer_addresses,
+                                          const std::vector<TableId>& tables);
+
+  CHECKED_STATUS DeleteUniverseReplication(const std::string& producer_id);
 
  private:
 

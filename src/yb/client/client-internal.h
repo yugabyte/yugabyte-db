@@ -157,6 +157,22 @@ class YBClient::Data {
                                 const TableId& table_id,
                                 CoarseTimePoint deadline,
                                 YBTableInfo* info);
+  CHECKED_STATUS GetTableSchemaById(YBClient* client,
+                                    const TableId& table_id,
+                                    CoarseTimePoint deadline,
+                                    std::shared_ptr<YBTableInfo> info,
+                                    StatusCallback callback);
+
+  void CreateCDCStream(YBClient* client,
+                       const TableId& table_id,
+                       const std::unordered_map<std::string, std::string>& options,
+                       CoarseTimePoint deadline,
+                       CreateCDCStreamCallback callback);
+
+  void DeleteCDCStream(YBClient* client,
+                       const CDCStreamId& stream_id,
+                       CoarseTimePoint deadline,
+                       StatusCallback callback);
 
   CHECKED_STATUS InitLocalHostNames();
 

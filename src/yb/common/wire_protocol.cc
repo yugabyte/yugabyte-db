@@ -208,6 +208,13 @@ void HostPortsToPBs(const std::vector<HostPort>& addrs, RepeatedPtrField<HostPor
   }
 }
 
+void HostPortsFromPBs(const RepeatedPtrField<HostPortPB>& pbs, std::vector<HostPort>* addrs) {
+  addrs->reserve(pbs.size());
+  for (const auto& pb : pbs) {
+    addrs->push_back(HostPortFromPB(pb));
+  }
+}
+
 Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
                       RepeatedPtrField<HostPortPB>* pbs) {
   for (const auto& addr : addrs) {

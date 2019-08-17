@@ -424,9 +424,7 @@ Status CheckIfTableDeletedOrNotRunning(TableInfo::lock_type* lock, RespClass* re
 // CatalogManager
 ////////////////////////////////////////////////////////////
 
-namespace {
-
-YQLDatabase GetDatabaseTypeForTable(const TableType table_type) {
+YQLDatabase CatalogManager::GetDatabaseTypeForTable(const TableType table_type) {
   switch (table_type) {
     case TableType::YQL_TABLE_TYPE: return YQLDatabase::YQL_DATABASE_CQL;
     case TableType::REDIS_TABLE_TYPE: return YQLDatabase::YQL_DATABASE_REDIS;
@@ -437,8 +435,6 @@ YQLDatabase GetDatabaseTypeForTable(const TableType table_type) {
   }
   return YQL_DATABASE_UNKNOWN;
 }
-
-}  // anonymous namespace
 
 CatalogManager::CatalogManager(Master* master)
     : master_(master),
@@ -2362,12 +2358,13 @@ std::string CatalogManager::GenerateId(boost::optional<const SysRowEntry::Type> 
       case SysRowEntry::SNAPSHOT:
         return id;
       case SysRowEntry::CDC_STREAM:
-        if (!CDCStreamExists(id)) return id;
+        if (!CDCStreamExistsUnlocked(id)) return id;
         break;
       case SysRowEntry::UNKNOWN: FALLTHROUGH_INTENDED;
       case SysRowEntry::CLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntry::ROLE: FALLTHROUGH_INTENDED;
       case SysRowEntry::REDIS_CONFIG: FALLTHROUGH_INTENDED;
+      case SysRowEntry::UNIVERSE_REPLICATION: FALLTHROUGH_INTENDED;
       case SysRowEntry::SYS_CONFIG:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -4529,7 +4526,7 @@ Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table) {
   return Status::OK();
 }
 
-bool CatalogManager::CDCStreamExists(const CDCStreamId& stream_id) {
+bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
   return false;
 }
 

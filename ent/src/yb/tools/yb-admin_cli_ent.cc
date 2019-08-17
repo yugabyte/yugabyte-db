@@ -14,6 +14,8 @@
 
 #include <iostream>
 
+#include <boost/algorithm/string.hpp>
+
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/tostring.h"
 
@@ -192,6 +194,42 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         const string table_id = args[2];
         RETURN_NOT_OK_PREPEND(client->CreateCDCStream(table_id),
                               Substitute("Unable to create CDC stream for table $0", table_id));
+        return Status::OK();
+      });
+
+  Register(
+      "setup_universe_replication",
+      " <producer_universe_uuid> <producer_master_addresses> <comma_separated_list_of_table_ids>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 5) {
+          UsageAndExit(args[0]);
+        }
+        const string producer_uuid = args[2];
+
+        vector<string> producer_addresses;
+        boost::split(producer_addresses, args[3], boost::is_any_of(","));
+
+        vector<string> table_uuids;
+        boost::split(table_uuids, args[4], boost::is_any_of(","));
+
+        RETURN_NOT_OK_PREPEND(client->SetupUniverseReplication(producer_uuid,
+                                                               producer_addresses,
+                                                               table_uuids),
+                              Substitute("Unable to setup replication from universe $0",
+                                         producer_uuid));
+        return Status::OK();
+      });
+
+  Register(
+      "delete_universe_replication", " <producer_universe_uuid>",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() < 3) {
+          UsageAndExit(args[0]);
+        }
+        const string producer_id = args[2];
+        RETURN_NOT_OK_PREPEND(client->DeleteUniverseReplication(producer_id),
+                              Substitute("Unable to delete replication for universe $0",
+                              producer_id));
         return Status::OK();
       });
 }

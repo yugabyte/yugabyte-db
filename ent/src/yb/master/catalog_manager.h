@@ -14,6 +14,7 @@
 #define ENT_SRC_YB_MASTER_CATALOG_MANAGER_H
 
 #include "../../../../src/yb/master/catalog_manager.h"
+#include "yb/master/cdc_rpc_tasks.h"
 
 namespace yb {
 namespace master {
@@ -103,10 +104,26 @@ class CatalogManager : public yb::master::CatalogManager {
   // Delete CDC streams for a table.
   CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) override;
 
+  // Setup Universe Replication to consume data from another YB universe.
+  CHECKED_STATUS SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
+                                          SetupUniverseReplicationResponsePB* resp,
+                                          rpc::RpcContext* rpc);
+
+  // Delete Universe Replication.
+  CHECKED_STATUS DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
+                                           DeleteUniverseReplicationResponsePB* resp,
+                                           rpc::RpcContext* rpc);
+
+  // Get Universe Replication.
+  CHECKED_STATUS GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
+                                        GetUniverseReplicationResponsePB* resp,
+                                        rpc::RpcContext* rpc);
+
  private:
   friend class SnapshotLoader;
   friend class ClusterLoadBalancer;
   friend class CDCStreamLoader;
+  friend class UniverseReplicationLoader;
 
   CHECKED_STATUS RestoreEntry(const SysRowEntry& entry, const SnapshotId& snapshot_id);
 
@@ -169,7 +186,7 @@ class CatalogManager : public yb::master::CatalogManager {
   // Find CDC streams for a table.
   std::vector<scoped_refptr<CDCStreamInfo>> FindCDCStreamsForTable(const TableId& table_id);
 
-  bool CDCStreamExists(const CDCStreamId& stream_id) override;
+  bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override;
 
   template <class Collection>
   typename Collection::value_type::second_type LockAndFindPtrOrNull(
@@ -182,6 +199,17 @@ class CatalogManager : public yb::master::CatalogManager {
   scoped_refptr<ClusterConfigInfo> GetClusterConfigInfo() const {
     return cluster_config_;
   }
+
+  void GetTableSchemaCallback(
+      const std::string& universe_id, const std::shared_ptr<client::YBTableInfo>& info,
+      const Status& s);
+  void CreateCDCStreamCallback(const std::string& universe_id, const TableId& table,
+                               const Result<CDCStreamId>& stream_id);
+  void DeleteCDCStreamCallback(const std::string& universe_id, const TableId& table,
+                               const Status& s);
+
+  void DeleteUniverseReplicationUnlocked(scoped_refptr<UniverseReplicationInfo> info);
+  void MarkUniverseReplicationFailed(scoped_refptr<UniverseReplicationInfo> universe);
 
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo> > SnapshotInfoMap;
@@ -197,6 +225,10 @@ class CatalogManager : public yb::master::CatalogManager {
   // CDC Stream map: CDCStreamId -> CDCStreamInfo.
   typedef std::unordered_map<CDCStreamId, scoped_refptr<CDCStreamInfo>> CDCStreamInfoMap;
   CDCStreamInfoMap cdc_stream_map_;
+
+  typedef std::unordered_map<std::string, scoped_refptr<UniverseReplicationInfo>>
+      UniverseReplicationInfoMap;
+  UniverseReplicationInfoMap universe_replication_map_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

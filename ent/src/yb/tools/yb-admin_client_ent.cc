@@ -14,6 +14,8 @@
 
 #include <iostream>
 
+#include <boost/algorithm/string.hpp>
+
 #include "yb/common/wire_protocol.h"
 
 #include "yb/rpc/messenger.h"
@@ -25,6 +27,7 @@
 #include "yb/util/string_util.h"
 #include "yb/cdc/cdc_service.h"
 #include "yb/client/client.h"
+#include "yb/master/master_defaults.h"
 
 DECLARE_string(certs_dir);
 DECLARE_bool(use_client_to_server_encryption);
@@ -559,6 +562,56 @@ Status ClusterAdminClient::CreateCDCStream(const TableId& table_id) {
   }
 
   cout << "CDC Stream ID: " << resp.stream_id() << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::SetupUniverseReplication(
+    const std::string& producer_uuid, const std::vector<std::string>& producer_addresses,
+    const std::vector<TableId>& tables) {
+  master::SetupUniverseReplicationRequestPB req;
+  master::SetupUniverseReplicationResponsePB resp;
+  req.set_producer_id(producer_uuid);
+
+  req.mutable_producer_master_addresses()->Reserve(producer_addresses.size());
+  for (const auto& addr : producer_addresses) {
+    // HostPort::FromString() expects a default port.
+    auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
+    HostPortToPB(hp, req.add_producer_master_addresses());
+  }
+
+  req.mutable_producer_table_ids()->Reserve(tables.size());
+  for (const auto& table :  tables) {
+    req.add_producer_table_ids(table);
+  }
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->SetupUniverseReplication(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    cout << "Error setting up universe replication: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Replication setup successfully" << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::DeleteUniverseReplication(const std::string& producer_id) {
+  master::DeleteUniverseReplicationRequestPB req;
+  master::DeleteUniverseReplicationResponsePB resp;
+  req.set_producer_id(producer_id);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  master_proxy_->DeleteUniverseReplication(req, &resp, &rpc);
+
+  if (resp.has_error()) {
+    cout << "Error deleting universe replication: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Replication deleted successfully" << endl;
   return Status::OK();
 }
 

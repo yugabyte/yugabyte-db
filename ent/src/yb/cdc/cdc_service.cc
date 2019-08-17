@@ -39,7 +39,7 @@ DEFINE_int32(cdc_rpc_timeout_ms, 30 * 1000,
              "Timeout used for CDC->{master,tserver} async rpc calls.");
 TAG_FLAG(cdc_rpc_timeout_ms, advanced);
 
-DEFINE_int32(cdc_ybclient_reactor_threads, 24,
+DEFINE_int32(cdc_ybclient_reactor_threads, 50,
              "The number of reactor threads to be used for processing ybclient "
              "requests for CDC.");
 TAG_FLAG(cdc_ybclient_reactor_threads, advanced);

@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/common/wire_protocol.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master.pb.h"
 
@@ -30,6 +31,34 @@ const TableId& CDCStreamInfo::table_id() const {
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
   return strings::Substitute("$0 [table=$1] {metadata=$2} ", id(), l->data().pb.table_id(),
+                             l->data().pb.DebugString());
+}
+
+// ================================================================================================
+// UniverseReplicationInfo
+// ================================================================================================
+
+Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfo::GetOrCreateCDCRpcTasks(
+    google::protobuf::RepeatedPtrField<HostPortPB> producer_masters) {
+  std::vector<HostPort> hp;
+  HostPortsFromPBs(producer_masters, &hp);
+  std::string master_addrs = HostPort::ToCommaSeparatedString(hp);
+
+  std::lock_guard<rw_spinlock> l(lock_);
+  if (cdc_rpc_tasks_ != nullptr) {
+    return cdc_rpc_tasks_;
+  }
+
+  auto result = CDCRpcTasks::CreateWithMasterAddrs(master_addrs);
+  if (result.ok()) {
+    cdc_rpc_tasks_ = *result;
+  }
+  return result;
+}
+
+std::string UniverseReplicationInfo::ToString() const {
+  auto l = LockForRead();
+  return strings::Substitute("$0 [data=$1] ", id(),
                              l->data().pb.DebugString());
 }
 
