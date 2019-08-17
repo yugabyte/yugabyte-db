@@ -700,5 +700,23 @@ void MasterServiceImpl::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* 
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsEncryptionEnabled);
 }
 
+void MasterServiceImpl::SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
+                                                 SetupUniverseReplicationResponsePB* resp,
+                                                 rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::SetupUniverseReplication);
+}
+
+void MasterServiceImpl::DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
+                                                  DeleteUniverseReplicationResponsePB* resp,
+                                                  rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteUniverseReplication);
+}
+
+void MasterServiceImpl::GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
+                                               GetUniverseReplicationResponsePB* resp,
+                                               rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::GetUniverseReplication);
+}
+
 } // namespace master
 } // namespace yb

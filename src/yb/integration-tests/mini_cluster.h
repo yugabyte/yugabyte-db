@@ -91,6 +91,9 @@ struct MiniClusterOptions {
   // Default: "", which auto-generates a unique path for this cluster.
   // The default may only be used from a gtest unit test.
   std::string data_root;
+
+  // Cluster id used to create fs path when we create tests with multiple clusters.
+  std::string cluster_id = "";
 };
 
 // An in-process cluster with a MiniMaster and a configurable
@@ -174,6 +177,9 @@ class MiniCluster : public MiniClusterBase {
   std::string GetMasterFsRoot(int indx);
 
   std::string GetTabletServerFsRoot(int idx);
+
+  // The comma separated string of the master adresses host/ports from current list of masters.
+  string GetMasterAddresses() const;
 
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(int idx);
 

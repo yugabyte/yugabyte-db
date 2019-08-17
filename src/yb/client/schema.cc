@@ -39,6 +39,7 @@
 #include "yb/client/schema-internal.h"
 #include "yb/client/value-internal.h"
 #include "yb/common/partial_row.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -466,6 +467,14 @@ Status YBSchema::Reset(const vector<YBColumnSchema>& columns, int key_columns,
 bool YBSchema::Equals(const YBSchema& other) const {
   return this == &other ||
          (schema_.get() && other.schema_.get() && schema_->Equals(*other.schema_));
+}
+
+Result<bool> YBSchema::Equals(const SchemaPB& other) const {
+  Schema schema;
+  RETURN_NOT_OK(SchemaFromPB(other, &schema));
+
+  YBSchema yb_schema(schema);
+  return Equals(yb_schema);
 }
 
 const TableProperties& YBSchema::table_properties() const {

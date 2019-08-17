@@ -156,6 +156,9 @@ struct ExternalMiniClusterOptions {
   // So it could be used with test certificates.
   bool use_even_ips = false;
 
+  // Cluster id used to create fs path when we create tests with multiple clusters.
+  std::string cluster_id = "";
+
   CHECKED_STATUS RemovePort(const uint16_t port);
   CHECKED_STATUS AddPort(const uint16_t port);
 
@@ -403,6 +406,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   CHECKED_STATUS DeduceBinRoot(std::string* ret);
   CHECKED_STATUS HandleOptions();
+
+  std::string GetClusterDataDirName() const;
 
   // Helper function to get a leader or (random) follower index
   CHECKED_STATUS GetPeerMasterIndex(int* idx, bool is_leader);
