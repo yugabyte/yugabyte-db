@@ -74,9 +74,9 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
-  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override {
+  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) override {
     Fail();
-    return boost::none;
+    return STATUS(Expired, "");
   }
 
   int64_t RegisterRequest() override {
@@ -93,6 +93,11 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
   }
 
   void Cleanup(TransactionIdSet&& set) override {
+    Fail();
+  }
+
+  void FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {
     Fail();
   }
 

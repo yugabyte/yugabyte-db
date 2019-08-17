@@ -127,7 +127,7 @@ void ChangeMetadataOperation::DoStart() {
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status ChangeMetadataOperation::Apply(int64_t leader_term) {
+Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY CHANGE-METADATA: Starting");
 
   Tablet* tablet = state()->tablet();
@@ -176,7 +176,7 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term) {
         LOG_WITH_PREFIX(INFO)
             << "Already running schema version " << tablet->metadata()->schema_version()
             << " got alter request for version " << state()->schema_version();
-        return Status::OK();
+        break;
       }
       DCHECK_EQ(1, num_operations) << "Invalid number of alter operations: " << num_operations;
       RETURN_NOT_OK(tablet->AlterSchema(state()));
@@ -194,16 +194,6 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term) {
       break;
   }
 
-  return Status::OK();
-}
-
-void ChangeMetadataOperation::Finish(OperationResult result) {
-  if (PREDICT_FALSE(result == Operation::ABORTED)) {
-    TRACE("AlterSchemaCommitCallback: transaction aborted");
-    state()->Finish();
-    return;
-  }
-
   // The schema lock was acquired by Tablet::CreatePreparedChangeMetadata.
   // Normally, we would release it in tablet.cc after applying the operation,
   // but currently we need to wait until after the COMMIT message is logged
@@ -211,11 +201,18 @@ void ChangeMetadataOperation::Finish(OperationResult result) {
   // Tablet::AlterSchema().
   state()->ReleaseSchemaLock();
 
-  DCHECK_EQ(result, Operation::COMMITTED);
   // Now that all of the changes have been applied and the commit is durable
   // make the changes visible to readers.
   TRACE("AlterSchemaCommitCallback: making alter schema visible");
   state()->Finish();
+
+  return Status::OK();
+}
+
+Status ChangeMetadataOperation::DoAborted(const Status& status) {
+  TRACE("AlterSchemaCommitCallback: transaction aborted");
+  state()->Finish();
+  return status;
 }
 
 string ChangeMetadataOperation::ToString() const {

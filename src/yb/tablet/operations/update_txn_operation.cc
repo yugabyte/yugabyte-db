@@ -58,8 +58,9 @@ TransactionCoordinator& UpdateTxnOperation::transaction_coordinator() const {
   return *state()->tablet()->transaction_coordinator();
 }
 
-Status UpdateTxnOperation::Apply(int64_t leader_term) {
-  VLOG_WITH_PREFIX(2) << "Apply";
+Status UpdateTxnOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
+  VLOG_WITH_PREFIX(2) << "Replicated";
+
   auto* state = this->state();
   // APPLYING is handled separately, because it is received for transactions not managed by
   // this tablet as a transaction status tablet, but tablets that are involved in the data
@@ -88,9 +89,8 @@ string UpdateTxnOperation::ToString() const {
   return Format("UpdateTxnOperation { state: $0 }", *state());
 }
 
-void UpdateTxnOperation::Finish(OperationResult result) {
-  if (result == OperationResult::ABORTED &&
-      state()->tablet()->transaction_coordinator()) {
+Status UpdateTxnOperation::DoAborted(const Status& status) {
+  if (state()->tablet()->transaction_coordinator()) {
     LOG_WITH_PREFIX(INFO) << "Aborted";
     TransactionCoordinator::AbortedData data = {
       *state()->request(),
@@ -98,6 +98,8 @@ void UpdateTxnOperation::Finish(OperationResult result) {
     };
     transaction_coordinator().ProcessAborted(data);
   }
+
+  return status;
 }
 
 } // namespace tablet
