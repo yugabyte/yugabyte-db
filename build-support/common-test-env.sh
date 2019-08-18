@@ -14,6 +14,8 @@
 
 # Common bash code for test scripts/
 
+declare -i global_exit_code=0
+
 if [[ $BASH_SOURCE == $0 ]]; then
   echo "$BASH_SOURCE must be sourced, not executed" >&2
   exit 1
@@ -1683,9 +1685,32 @@ run_all_java_test_methods_separately() {
   (
     export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
     export YB_REDIRECT_MVN_OUTPUT_TO_FILE=1
+    declare -i num_successes=0
+    declare -i num_failures=0
+    declare -i total_tests=0
     collect_java_tests
+    declare -i start_time_sec=$(date +%s)
     for java_test_name in $( cat "$java_test_list_path" | sort ); do
-      resolve_and_run_java_test "$java_test_name"
+      if resolve_and_run_java_test "$java_test_name"; then
+        log "Java test succeeded: $java_test_name"
+        let num_successes+=1
+      else
+        log "Java test failed: $java_test_name"
+        global_exit_code=1
+        let num_failures+=1
+      fi
+      let total_tests+=1
+      declare -i success_pct=$(( $num_successes * 100 / $total_tests ))
+      declare -i current_time_sec=$(date +%s)
+      declare -i elapsed_time_sec=$(( $current_time_sec - $start_time_sec ))
+      declare -i avg_test_time_sec=$(( $elapsed_time_sec / $total_tests ))
+      heading "Current Java test stats: " \
+              "$num_successes successful," \
+              "$num_failures failed," \
+              "$total_tests total," \
+              "success rate: $success_pct%," \
+              "elapsed time: $elapsed_time_sec sec," \
+              "avg test time: $avg_test_time_sec sec"
     done
   )
 }
@@ -1703,7 +1728,8 @@ run_python_doctest() {
     local basename=${python_file##*/}
     if [[ $python_file == managed/* ||
           $python_file == cloud/* ||
-          $python_file == src/postgres/src/test/locale/sort-test.py ]]; then
+          $python_file == src/postgres/src/test/locale/sort-test.py ||
+          $python_file == bin/test_bsopt.py ]]; then
       continue
     fi
     if [[ $basename == .ycm_extra_conf.py ||
