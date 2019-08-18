@@ -1248,7 +1248,10 @@ if "$build_java"; then
   unset java_project_dir
 
   if "$run_java_tests" && should_run_java_test_methods_separately; then
-    run_all_java_test_methods_separately
+    if ! run_all_java_test_methods_separately; then
+      log "Some Java tests failed"
+      global_exit_code=1
+    fi
   elif should_run_java_test_methods_separately; then
     collect_java_tests
   fi
@@ -1281,3 +1284,5 @@ if ! "$ran_tests_remotely"; then
     capture_sec_timestamp ctest_end
   fi
 fi
+
+exit $global_exit_code
