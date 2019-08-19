@@ -18,19 +18,29 @@ The `DROP SEQUENCE` command deletes a sequence in the current schema.
 
 ## Syntax
 
-### Diagrams
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="573" height="70" viewbox="0 0 573 70"><path class="connector" d="M0 22h5m53 0h10m87 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h10m118 0h30m77 0h22m-109 25q0 5 5 5h5m79 0h5q5 0 5-5m-104-25q5 0 5 5v33q0 5 5 5h89q5 0 5-5v-33q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="53" height="25" rx="7"/><text class="text" x="15" y="22">DROP</text><rect class="literal" x="68" y="5" width="87" height="25" rx="7"/><text class="text" x="78" y="22">SEQUENCE</text><rect class="literal" x="185" y="5" width="32" height="25" rx="7"/><text class="text" x="195" y="22">IF</text><rect class="literal" x="227" y="5" width="64" height="25" rx="7"/><text class="text" x="237" y="22">EXISTS</text><a xlink:href="../../grammar_diagrams#sequence-name"><rect class="rule" x="321" y="5" width="118" height="25"/><text class="text" x="331" y="22">sequence_name</text></a><rect class="literal" x="469" y="5" width="77" height="25" rx="7"/><text class="text" x="479" y="22">CASCADE</text><rect class="literal" x="469" y="35" width="79" height="25" rx="7"/><text class="text" x="479" y="52">RESTRICT</text></svg>
-
-### sequence_name
-
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="117" height="35" viewbox="0 0 117 35"><path class="connector" d="M0 22h5m107 0h5"/><rect class="literal" x="5" y="5" width="107" height="25" rx="7"/><text class="text" x="15" y="22">&lt;Text Literal&gt;</text></svg>
-
-### Grammar
-
-```
-drop_sequence ::= DROP SEQUENCE [ IF EXISTS ] sequence_name [ CASCADE | RESTRICT ];
-```
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/drop_sequence.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/drop_sequence.diagram.md" /%}}
+  </div>
+</div>
 
 Where
 
