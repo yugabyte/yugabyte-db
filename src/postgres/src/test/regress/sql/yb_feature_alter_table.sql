@@ -161,6 +161,44 @@ SELECT * FROM tmp;		-- should fail
 
 DROP TABLE tmp_new;
 
+-- alter table / alter column [set/drop] not null tests
+-- try altering system catalogs, should fail
+alter table pg_class alter column relname drop not null;
+alter table pg_class alter relname set not null;
+
+-- try altering non-existent table, should fail
+alter table non_existent alter column bar set not null;
+alter table non_existent alter column bar drop not null;
+
+-- test setting columns to null and not null and vice versa
+-- test checking for null values and primary key
+create table atacc1tmp (test int not null PRIMARY KEY);
+alter table atacc1tmp alter column test drop not null;
+drop table atacc1tmp;
+
+create table atacc1 (test int not null);
+alter table atacc1 alter column test drop not null;
+insert into atacc1 values (null);
+alter table atacc1 alter test set not null;
+delete from atacc1;
+alter table atacc1 alter test set not null;
+
+-- try altering a non-existent column, should fail
+alter table atacc1 alter bar set not null;
+alter table atacc1 alter bar drop not null;
+
+-- -- try altering the oid column, should fail
+-- alter table atacc1 alter oid set not null;
+-- alter table atacc1 alter oid drop not null;
+
+-- try creating a view and altering that, should fail
+create view myview as select * from atacc1;
+alter table myview alter column test drop not null;
+alter table myview alter column test set not null;
+drop view myview;
+
+drop table atacc1;
+
 -- test setting and removing default values
 create table def_test (
 	c1	int4 default 5,
