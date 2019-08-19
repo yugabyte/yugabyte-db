@@ -16,17 +16,31 @@ showAsideToc: true
 
 YSQL API currently supports the following transactions-related SQL commands `BEGIN`, `ABORT`, `ROLLBACK`, `END`, `COMMIT`. Additionally the `SET` and `SHOW` commands can be used to set and, respectively, show the current transaction isolation level.
 
-## Grammar
+## Syntax
 
-### Diagrams
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="339" height="34" viewbox="0 0 339 34"><path class="connector" d="M0 21h5m57 0h10m104 0h10m82 0h10m56 0h5"/><rect class="literal" x="5" y="5" width="57" height="24" rx="7"/><text class="text" x="15" y="21">SHOW</text><rect class="literal" x="72" y="5" width="104" height="24" rx="7"/><text class="text" x="82" y="21">TRANSACTION</text><rect class="literal" x="186" y="5" width="82" height="24" rx="7"/><text class="text" x="196" y="21">ISOLATION</text><rect class="literal" x="278" y="5" width="56" height="24" rx="7"/><text class="text" x="288" y="21">LEVEL</text></svg>
-
-### Syntax
-
-```
-show ::= SHOW TRANSACTION ISOLATION LEVEL
-```
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/show_transaction.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/show_transaction.diagram.md" /%}}
+  </div>
+</div>
 
 ## Semantics
 
