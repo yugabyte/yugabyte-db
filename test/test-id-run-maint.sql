@@ -1,5 +1,5 @@
 -- ########## ID TESTS ##########
--- Other tests: Single column Foreign Key, Use run_maintenance(), with OIDs, additional constraint single column, rows that hit dynamic fallback
+-- Other tests: Single column Foreign Key, Use run_maintenance(), additional constraint single column, rows that hit dynamic fallback
 -- This test not really needed as of 3.0.0 since all ID partitions now use automatic_maintenance. 
 -- Instead, this is a test with automatic_maintenance = off
 
@@ -21,7 +21,7 @@ INSERT INTO partman_test.fk_test_reference VALUES ('stuff');
 CREATE TABLE partman_test.id_taptest_table (
     col1 int primary key
     , col2 text not null default 'stuff' references partman_test.fk_test_reference (col2) ON UPDATE CASCADE DEFERRABLE INITIALLY IMMEDIATE
-    , col3 timestamptz DEFAULT now()) WITH OIDs;
+    , col3 timestamptz DEFAULT now());
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.id_taptest_table TO partman_revoke;

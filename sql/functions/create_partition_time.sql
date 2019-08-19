@@ -172,15 +172,19 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                                                 , v_partition_timestamp_end-'1sec'::interval));
     END IF;
 
+    v_sql := 'CREATE';
+
+    -- As of PG12, the unlogged/logged status of a native parent table cannot be changed via an ALTER TABLE in order to affect its children.
+    -- As of v4.2x, the unlogged state will be managed via the template table    
     SELECT relpersistence INTO v_unlogged 
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
     WHERE c.relname = v_parent_tablename::name
     AND n.nspname = v_parent_schema::name;
-    v_sql := 'CREATE';
-    IF v_unlogged = 'u' THEN
+    IF v_unlogged = 'u' and v_partition_type != 'native'  THEN
         v_sql := v_sql || ' UNLOGGED';
     END IF;
+
     -- Close parentheses on LIKE are below due to differing requirements of native subpartitioning
     -- Same INCLUDING list is used in create_parent()
     v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS '
@@ -200,14 +204,18 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         v_sql := v_sql || format(' INCLUDING INDEXES) ', v_sub_control);
     END IF;
 
-    SELECT relhasoids INTO v_hasoids 
-    FROM pg_catalog.pg_class c
-    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-    WHERE c.relname = v_parent_tablename::name
-    AND n.nspname = v_parent_schema::name;
-    IF v_hasoids IS TRUE THEN
-        v_sql := v_sql || ' WITH (OIDS)';
+    IF current_setting('server_version_num')::int < 120000 THEN
+        -- column removed from pgclass in pg12
+        SELECT relhasoids INTO v_hasoids 
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+        WHERE c.relname = v_parent_tablename::name
+        AND n.nspname = v_parent_schema::name;
+        IF v_hasoids IS TRUE THEN
+            v_sql := v_sql || ' WITH (OIDS)';
+        END IF;
     END IF;
+
     IF p_debug THEN
         RAISE NOTICE 'create_partition_time v_sql: %', v_sql;
     END IF;
@@ -344,6 +352,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , sub_trigger_exception_handling
             , sub_template_table
             , sub_inherit_privileges
+            , sub_constraint_valid
         FROM @extschema@.part_config_sub
         WHERE sub_parent = p_parent_table
     LOOP
@@ -387,6 +396,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , infinite_time_partitions = v_row.sub_infinite_time_partitions
             , trigger_exception_handling = v_row.sub_trigger_exception_handling
             , inherit_privileges = v_row.sub_inherit_privileges
+            , constraint_valid = v_row.sub_constraint_valid
         WHERE parent_table = v_parent_schema||'.'||v_partition_name;
 
     END LOOP; -- end sub partitioning LOOP

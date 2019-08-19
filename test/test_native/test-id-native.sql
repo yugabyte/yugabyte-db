@@ -28,7 +28,7 @@ CREATE TABLE partman_test.undo_taptest (LIKE partman_test.id_taptest_table INCLU
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_taptest_table TO partman_basic, PUBLIC;
 GRANT ALL ON partman_test.id_taptest_table TO partman_revoke;
 -- Template table
-CREATE TABLE partman_test.template_id_taptest_table (LIKE partman_test.id_taptest_table);
+CREATE UNLOGGED TABLE partman_test.template_id_taptest_table (LIKE partman_test.id_taptest_table);
 -- Regular unique indexes do not work on native in PG11 if the partition key isn't included
 CREATE UNIQUE INDEX ON partman_test.template_id_taptest_table (col4);
 

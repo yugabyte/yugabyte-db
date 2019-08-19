@@ -15,7 +15,7 @@ CREATE INDEX template_test_reindex_stuff_idx ON template_test_reindex (stuff);
 CREATE INDEX template_test_reindex_upper_stuff_idx ON template_test_reindex(upper(stuff));
 
 SELECT plan(25);
-SELECT has_partition('partman_reindex_test', 'test_reindex', 'Check test_reindex exists and is partition parent');
+SELECT is_partitioned('partman_reindex_test', 'test_reindex', 'Check test_reindex exists and is partition parent');
 SELECT has_table('partman_reindex_test', 'template_test_reindex', 'Check template table exists');
 SELECT col_is_pk('partman_reindex_test', 'template_test_reindex', ARRAY['id'], 'Check for primary key in template_test_reindex');
 SELECT has_index('partman_reindex_test', 'template_test_reindex', 'template_test_reindex_stuff_idx', ARRAY['stuff'], 'Check for stuff index in template_test_reindex');

@@ -198,6 +198,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
     ARRAY[15], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'));
 
 UPDATE part_config SET premake = 5 WHERE parent_table = 'partman_test.time_taptest_table';
+
 -- Run to create proper future partitions
 SELECT run_maintenance();
 -- Insert after maintenance since native fails with no child
@@ -656,7 +657,7 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMES
 
 SELECT hasnt_table('partman', 'template_partman_test_time_taptest_table', 'Check that template table was dropped');
 
-SELECT * FROM finish();
 
+SELECT * FROM finish();
 ROLLBACK;
 

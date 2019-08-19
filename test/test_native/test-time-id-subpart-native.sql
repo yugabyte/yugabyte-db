@@ -11,13 +11,12 @@ SELECT plan(306);
 CREATE SCHEMA partman_test;
 
 -- Add back primary key when native supports it
---CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now()) WITH (OIDS);
+--CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 CREATE TABLE partman_test.time_taptest_table (
     col1 int 
     , col2 text
     , col3 timestamptz NOT NULL DEFAULT now()) 
-    PARTITION BY RANGE (col3)
-    WITH (OIDS);
+    PARTITION BY RANGE (col3);
 CREATE TABLE partman_test.undo_taptest (LIKE partman_test.time_taptest_table INCLUDING ALL);
 
 SELECT create_parent('partman_test.time_taptest_table', 'col3', 'native', 'daily');

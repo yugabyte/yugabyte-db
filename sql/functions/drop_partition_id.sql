@@ -137,6 +137,7 @@ LOOP
 END LOOP;
 
 -- Loop through child tables of the given parent
+-- Must go in ascending order to avoid dropping what may be the "last" partition in the set after dropping tables that match retention period
 FOR v_row IN 
     SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'ASC')
 LOOP
@@ -283,5 +284,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

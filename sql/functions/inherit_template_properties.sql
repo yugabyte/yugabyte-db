@@ -6,6 +6,7 @@ DECLARE
 v_child_relkind         char;
 v_child_schema          text;
 v_child_tablename       text;
+v_child_unlogged        char;
 v_dupe_found            boolean := false;
 v_fk_list               record;
 v_index_list            record;
@@ -15,8 +16,11 @@ v_parent_oid            oid;
 v_parent_table          text;
 v_sql                   text;
 v_template_oid          oid;
+v_template_schemaname   text;
 v_template_table        text;
-v_template_tablespace   text;
+v_template_tablename    name;
+v_template_tablespace   name;
+v_template_unlogged     char;
 
 BEGIN
 /*
@@ -34,7 +38,7 @@ IF v_parent_table IS NULL THEN
 ELSIF v_template_table IS NULL THEN
     RAISE EXCEPTION 'No template table set in configuration for given parent table: %', p_parent_table;
 END IF;
- 
+
 SELECT c.oid INTO v_parent_oid
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
@@ -59,12 +63,15 @@ IF v_child_relkind = 'p' THEN
     RETURN false;
 END IF;
 
-SELECT c.oid, ts.spcname INTO v_template_oid, v_template_tablespace
+v_template_schemaname := split_part(v_template_table, '.', 1)::name;
+v_template_tablename :=  split_part(v_template_table, '.', 2)::name;
+
+ SELECT c.oid, ts.spcname INTO v_template_oid, v_template_tablespace
 FROM pg_catalog.pg_class c
 JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
 LEFT OUTER JOIN pg_catalog.pg_tablespace ts ON c.reltablespace = ts.oid
-WHERE n.nspname = split_part(v_template_table, '.', 1)::name
-AND c.relname = split_part(v_template_table, '.', 2)::name;
+WHERE n.nspname = v_template_schemaname
+AND c.relname = v_template_tablename;
     IF v_template_oid IS NULL THEN
         RAISE EXCEPTION 'Unable to find configured template table in system catalogs: %', v_template_table;
     END IF;
@@ -177,8 +184,32 @@ END IF;
 -- Tablespace inheritance
 IF v_template_tablespace IS NOT NULL THEN
     v_sql := format('ALTER TABLE %I.%I SET TABLESPACE %I', v_child_schema, v_child_tablename, v_template_tablespace);
-    EXECUTE v_sql;
     RAISE DEBUG 'Alter tablespace: %', v_sql;
+    EXECUTE v_sql;
+END IF;
+
+-- UNLOGGED status. Currently waiting on final stance of how native will handle this property being changed for its children. 
+-- See release notes for v4.2.0
+SELECT relpersistence INTO v_template_unlogged
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = v_template_schemaname
+AND c.relname = v_template_tablename;
+
+SELECT relpersistence INTO v_child_unlogged
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE n.nspname = v_child_schema::name
+AND c.relname = v_child_tablename::name;
+
+IF v_template_unlogged = 'u' AND v_child_unlogged = 'p'  THEN
+    v_sql := format ('ALTER TABLE %I.%I SET UNLOGGED', v_child_schema, v_child_tablename);
+    RAISE DEBUG 'Alter UNLOGGED: %', v_sql;
+    EXECUTE v_sql;     
+ELSIF v_template_unlogged = 'p' AND v_child_unlogged = 'u'  THEN
+    v_sql := format ('ALTER TABLE %I.%I SET LOGGED', v_child_schema, v_child_tablename);
+    RAISE DEBUG 'Alter UNLOGGED: %', v_sql;
+    EXECUTE v_sql;     
 END IF;
 
 RETURN true;

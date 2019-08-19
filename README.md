@@ -19,7 +19,7 @@ If you're still trying to evaluate whether partitioning is a good choice for you
 
 INSTALLATION
 ------------
-Requirement: PostgreSQL >= 9.4
+Requirement: PostgreSQL >= 9.5
 
 Recommended: pg_jobmon (>=v1.4.0). PG Job Monitor will automatically be used if it is installed and setup properly.
 https://github.com/omniti-labs/pg_jobmon
@@ -73,23 +73,12 @@ If you are doing a pg_dump/restore and you've upgraded pg_partman in place from 
 
 If upgrading between any major versions of pg_partman (2.x -> 3.x, etc), please carefully read all intervening version notes in the CHANGELOG, especially those notes for the major version. There are often additional instructions (Ex. updating trigger functions) and other important considerations for the updates.
 
-EXAMPLE
--------
+EXAMPLES
+--------
 
-First create a parent table with an appropriate column type for the partitioning type you will do. Apply all defaults, indexes, constraints, privileges & ownership to the parent table and they will be inherited to newly created child tables automatically (not already existing partitions, see docs for how to fix that). Here's one with columns that can be used for either
+Please see the [pg_partman_howto.md file](doc/pg_partman_howto.md) in the doc folder for examples on how to setup partitioning. 
 
-    CREATE schema test;
-    CREATE TABLE test.part_test (col1 serial, col2 text, col3 timestamptz NOT NULL DEFAULT now());
-
-Then just run the create_parent() function with the appropriate parameters
-
-    SELECT partman.create_parent('test.part_test', 'col3', 'partman', 'daily');
-    or
-    SELECT partman.create_parent('test.part_test', 'col1', 'native', '100000');
-
-This will turn your table into a parent table and premake 4 future partitions and also make 4 past partitions. To make new partitions, schedule the run_maintenance() function to run periodically or use the background worker settings in postgresql.conf (the latter is recommended). 
-
-This should be enough to get you started. Please see the [pg_partman.md file](doc/pg_partman.md) in the doc folder for more information on the types of partitioning supported and what the parameters in the create_parent() function mean. 
+See the [pg_partman.md file](doc/pg_partman.md) in the doc folder for full details on all commands and options for pg_partman.
 
 
 TESTING

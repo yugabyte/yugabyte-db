@@ -117,6 +117,10 @@ AND a.attname = p_control::name;
 SELECT general_type, exact_type INTO v_control_type, v_control_exact_type
 FROM @extschema@.check_control_type(v_parent_schema, v_parent_tablename, p_control);
 
+IF v_control_type IS NULL THEN
+    RAISE EXCEPTION 'pg_partman only supports partitioning of data types that are integer or date/timestamp. Supplied column is of type %', v_control_exact_type;
+END IF;
+
 IF (p_epoch <> 'none' AND v_control_type <> 'id') THEN
     RAISE EXCEPTION 'p_epoch can only be used with an integer based control column and does not work for native partitioning';
 END IF;
@@ -288,6 +292,7 @@ FOR v_row IN
         , sub_trigger_return_null
         , sub_template_table
         , sub_inherit_privileges
+        , sub_constraint_valid
     FROM @extschema@.part_config_sub a
     JOIN sibling_children b on a.sub_parent = b.tablename LIMIT 1
 LOOP
@@ -313,7 +318,8 @@ LOOP
         , sub_upsert
         , sub_trigger_return_null
         , sub_template_table
-        , sub_inherit_privileges)
+        , sub_inherit_privileges
+        , sub_constraint_valid)
     VALUES (
         p_parent_table
         , v_row.sub_partition_type
@@ -336,7 +342,8 @@ LOOP
         , v_row.sub_upsert
         , v_row.sub_trigger_return_null
         , v_row.sub_template_table
-        , v_row.sub_inherit_privileges);
+        , v_row.sub_inherit_privileges
+        , v_row.sub_constraint_valid);
 
     -- Set this equal to sibling configs so that newly created child table 
     -- privileges are set properly below during initial setup.
@@ -689,9 +696,15 @@ IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 TH
 
     v_default_partition := @extschema@.check_name_length(v_parent_tablename, '_default', FALSE);
     v_sql := 'CREATE'; 
+
+    -- Left this here as reminder to revisit once native figures out how it is handling changing unlogged stats
+    -- Currently handed via template table below
+    /* 
     IF v_unlogged = 'u' THEN
-        v_sql := v_sql ||' UNLOGGED';
+         v_sql := v_sql ||' UNLOGGED';
     END IF;
+    */
+
     -- Same INCLUDING list is used in create_partition_*()
     v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS)'
         , v_parent_schema, v_default_partition, v_parent_schema, v_parent_tablename);
@@ -699,6 +712,9 @@ IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 TH
     v_sql := format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I DEFAULT'
         , v_parent_schema, v_parent_tablename, v_parent_schema, v_default_partition);
     EXECUTE v_sql;
+
+    -- Ensure any primary/unique keys on premade template tables are applied 
+    PERFORM @extschema@.inherit_template_properties(p_parent_table, v_parent_schema, v_default_partition);
 
     IF v_parent_tablespace IS NOT NULL THEN
         EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE %I', v_parent_schema, v_default_partition, v_parent_tablespace);

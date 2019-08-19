@@ -1,5 +1,5 @@
 -- ########## TIME TESTS WITH BACKGROUND WORKER RUNNING ##########
--- Other tests: larger than necessary p_batch_count to partition_data_time(), create_parent() returns true, with OIDs, retention to new schema, retention keep indexes
+-- Other tests: larger than necessary p_batch_count to partition_data_time(), create_parent() returns true, retention to new schema, retention keep indexes
 -- Set the pg_partman_bgw.interval setting in postgresql.conf to 10 seconds (or less) in order for this test suite to pass successfully.
 -- Cannot run this test inside a transaction since then the BGW would not see this partition set exists
 
@@ -17,7 +17,7 @@ CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;
 
-CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now()) WITH OIDS;
+CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;

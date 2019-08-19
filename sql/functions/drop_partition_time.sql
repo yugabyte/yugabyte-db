@@ -135,8 +135,9 @@ WHERE schemaname = split_part(p_parent_table, '.', 1)::name
 AND tablename = split_part(p_parent_table, '.', 2)::name;
 
 -- Loop through child tables of the given parent
+-- Must go in ascending order to avoid dropping what may be the "last" partition in the set after dropping tables that match retention period
 FOR v_row IN 
-    SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'DESC')
+    SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'ASC')
 LOOP
     -- pull out datetime portion of partition's tablename to make the next one
      SELECT child_start_time INTO v_partition_timestamp FROM @extschema@.show_partition_info(v_row.partition_schemaname||'.'||v_row.partition_tablename
@@ -288,5 +289,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

@@ -1,5 +1,5 @@
 -- ########## TIME STATIC TESTS ##########
--- Other tests: With OIDS, run_maintenance(p_analyze := false), check that maintenance catches up if tables are missing
+-- Other tests: run_maintenance(p_analyze := false), check that maintenance catches up if tables are missing
 -- Do not set the search path before running tests. Requires that pg_partman is installed to partman schema.
     -- This test it to ensure that all internal functions properly use the @extschema@ macro
 
@@ -15,7 +15,7 @@ CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;
 
-CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now()) WITH (OIDS);
+CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;

@@ -13,6 +13,7 @@ v_col                           text;
 v_constraint_cols               text[];
 v_constraint_col_type           text;
 v_constraint_name               text;
+v_constraint_valid              boolean;
 v_constraint_values             record;
 v_control                       text;
 v_control_type                  text;
@@ -56,6 +57,7 @@ SELECT parent_table
     , datetime_string
     , constraint_cols
     , jobmon
+    , constraint_valid
 INTO v_parent_table
     , v_type
     , v_control
@@ -66,6 +68,7 @@ INTO v_parent_table
     , v_datetime_string
     , v_constraint_cols
     , v_jobmon
+    , v_constraint_valid
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table
 AND constraint_cols IS NOT NULL;
@@ -199,6 +202,11 @@ LOOP
                             , v_constraint_values.min
                             , v_col
                             , v_constraint_values.max);
+
+        IF v_constraint_valid = false THEN
+            v_sql := format('%s NOT VALID', v_sql);
+        END IF;
+
         IF p_debug THEN
             RAISE NOTICE 'Constraint creation query: %', v_sql;
         END IF;
@@ -261,4 +269,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

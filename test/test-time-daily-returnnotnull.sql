@@ -11,7 +11,7 @@ SELECT set_config('search_path','partman, public',false);
 SELECT plan(46);
 CREATE SCHEMA partman_test;
 
-CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now()) WITH (OIDS);
+CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 
 SELECT create_parent('partman_test.time_taptest_table', 'col3', 'partman', 'daily');

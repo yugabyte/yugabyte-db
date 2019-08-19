@@ -46,7 +46,14 @@ static volatile sig_atomic_t got_sigterm = false;
 /* GUC variables */
 static int pg_partman_bgw_interval = 3600; // Default hourly
 static char *pg_partman_bgw_role = "postgres"; // Default to postgres role
+
+// Do not analyze by default on PG11+
+#if (PG_VERSION_NUM >= 110000)
+static char *pg_partman_bgw_analyze = "off";
+#else
 static char *pg_partman_bgw_analyze = "on";
+#endif
+
 static char *pg_partman_bgw_jobmon = "on";
 static char *pg_partman_bgw_dbname = NULL;
 
@@ -111,6 +118,18 @@ _PG_init(void)
                             NULL,
                             NULL);
 
+    #if (PG_VERSION_NUM >= 110000)
+    DefineCustomStringVariable("pg_partman_bgw.analyze",
+                            "Whether to run an analyze on a partition set whenever a new partition is created during run_maintenance(). Set to 'on' to send TRUE (default). Set to 'off' to send FALSE.",
+                            NULL,
+                            &pg_partman_bgw_analyze,
+                            "off",
+                            PGC_SIGHUP,
+                            0,
+                            NULL,
+                            NULL,
+                            NULL);
+    #else
     DefineCustomStringVariable("pg_partman_bgw.analyze",
                             "Whether to run an analyze on a partition set whenever a new partition is created during run_maintenance(). Set to 'on' to send TRUE (default). Set to 'off' to send FALSE.",
                             NULL,
@@ -121,6 +140,7 @@ _PG_init(void)
                             NULL,
                             NULL,
                             NULL);
+    #endif  
 
     DefineCustomStringVariable("pg_partman_bgw.dbname",
                             "CSV list of specific databases in the cluster to run pg_partman BGW on. This setting is not required and when not set, pg_partman will dynamically figure out which ones to run on. If set, forces the BGW to only run on these specific databases and never any others. Recommend leaving this unset unless necessary.",

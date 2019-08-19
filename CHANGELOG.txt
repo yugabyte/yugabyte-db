@@ -1,3 +1,29 @@
+4.2.0
+-- Preliminary compatability with PostgreSQL 12.
+
+-- IMPORTANT SUPPORT CHANGE: As of PostgreSQL 12's stable release, version 9.4 of PostgreSQL will no longer officially be supported by pg_partman. It will likely continue to function without any issue, but any bugs tied specifically to that version and lower will no longer be fixed and new features that are not compatible with 9.4 may be introduced.
+
+-- IMPORTANT CHANGE: The UNLOGGED status of a partition set in native partitioning has changed to be managed via the template table, no longer the parent table. 
+    -- Currently setting a natively partitioned parent table as UNLOGGED/LOGGED is not a property that can be changed with an ALTER TABLE. So if the state is later changed to LOGGED (or vice versa), this property will not change for future child tables. Current child tables were never handled via this manner before and always had to be fixed manually. 
+    -- If any of your native partition sets are UNLOGGED, be sure to set this property on the template table before upgrading to this version. Otherwise new child tables may be created as LOGGED.
+    -- pg_partman will maintain this behavior until core PostgreSQL determines a definative way that UNLOGGED changes will be handled.
+    -- See reported bug at https://www.postgresql.org/message-id/flat/15954-b61523bed4b110c4%40postgresql.org
+
+-- As of PostgreSQL 12, pg_partman will no longer support inheriting OIDs since the special column behavior has been removed. See the release notes for PG12 for more information on this change. The feature has not been deprecated from pg_partman for older versions of PostgreSQL, but all tests involving the feature have been removed and any bugs involving it will likely not be fixed unless it is a compatability issue with 12+. It is recommended to remove any dependencies on special OID behavior that you previously had in your partition sets at this time.
+    -- Fixed bug that prevented pg_partman from creating child tables in PG12+ due to useage of pg_class.relhasoids column. (Github Issue #256)
+
+-- A new configuration option, "constraint_valid", has been added to the part_config(_sub) table to control whether the additonal constraints that pg_partman can manage (see "Constraint Exclusion" section in pg_partman.md) are added in a NOT VALID state. By default the constraints are added as VALID as they were before. Note that if this config is changed to "false", constraint exclusion will not work until the constraints are validated.
+
+-- Fixed bug where primary key/unique indexes applied to pre-existing template tables were not being applied to the DEFAULT partition created in PG11+ native partitioning. Thanks to @dtseiler on Github for testing and reporting this. (Github Issue #266)
+
+-- Fixed bug that was causing error in the retention management of time-based partitioning sets. If retention would attempt to remove the last child table, maintenance would throw an error about a missing table instead of just a warning about the last table attempting to be dropped. Thanks to @LaVoCG on Github for the examples to reproduce this scenario. (Github Issues #227 & #237)
+
+-- Changed default option to false on PG11+ for whether the maintenance background worker will run an ANALYZE whenever a child table is created. If this is desired, please set the option pg_partman_bgw.analyze to true in your postgresql.conf. (Github Issue #262)
+
+-- Properly throw an error with create_parent() when the data type of the partition column is numeric. Previously would not report any errors but would also not add the proper data to the part_config table so future maintenance would not work. Currently testing to see if numeric partitioning can be properly supported in pg_partman. (Github Issue #265)
+
+
+
 4.1.0
 -- For PostgreSQL 10+ and native partitioning, privilege inheritance is now optional and turned off by default. This now allows pg_partman to run fully as a non-superuser when using native partitioning. (Github Issue #231)
     -- This means that all interaction with these partition sets must be done through the parent table.
