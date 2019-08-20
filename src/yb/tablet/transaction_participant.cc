@@ -868,6 +868,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
       auto it = transactions_.find(metadata.transaction_id);
       if (it != transactions_.end()) {
         RETURN_NOT_OK((**it).CheckAborted());
+      } else if (WasTransactionRecentlyRemoved(metadata.transaction_id)) {
+        return MakeAbortedStatus(metadata.transaction_id);
       }
       return metadata;
     }
@@ -1347,7 +1349,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
     auto now = CoarseMonoClock::now();
     CleanupRecentlyRemovedTransactions(now);
     auto& transaction = **it;
-    recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 5s});
+    recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
         << "Transaction removed twice: " << transaction.id();
     transactions_.erase(it);

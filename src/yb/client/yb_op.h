@@ -100,7 +100,10 @@ class YBOperation {
   virtual bool succeeded() = 0;
   virtual bool returns_sidecar() = 0;
 
-  virtual bool wrote_data() { return succeeded() && !read_only(); }
+  virtual bool wrote_data(IsolationLevel isolation_level) {
+    return succeeded() &&
+           (!read_only() || isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION);
+  }
 
   virtual void SetHashCode(uint16_t hash_code) = 0;
 
@@ -429,7 +432,9 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
     is_single_row_txn_ = is_single_row_txn;
   }
 
-  bool wrote_data() override { return succeeded() && !read_only() && !response().skipped(); }
+  bool wrote_data(IsolationLevel isolation_level) override {
+    return YBOperation::wrote_data(isolation_level) && !response().skipped();
+  }
 
  protected:
   virtual Type type() const override {
