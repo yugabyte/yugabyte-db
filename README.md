@@ -19,9 +19,14 @@ If you're still trying to evaluate whether partitioning is a good choice for you
 
 INSTALLATION
 ------------
-Requirement: PostgreSQL >= 9.5
+Requirement: 
 
-Recommended: pg_jobmon (>=v1.4.0). PG Job Monitor will automatically be used if it is installed and setup properly.
+ * PostgreSQL >= 9.5. 
+
+Recommended: 
+
+ * Native partitioning is highly recommended over trigger-based and PG11+ is HIGHLY recommended over PG10.
+ * pg_jobmon (>=v1.4.0). PG Job Monitor will automatically be used if it is installed and setup properly.
 https://github.com/omniti-labs/pg_jobmon
 
 In the directory where you downloaded pg_partman, run
