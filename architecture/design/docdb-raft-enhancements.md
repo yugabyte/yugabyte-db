@@ -10,12 +10,12 @@ YugaByte DB uses Raft consensus without any atomic clocks in order to achieve si
 * If operation A completes before operation B begins, then B should logically take effect after A.
 
 
-| Feature/Enhancement Name | Purpose       |
-| ------------------------ | ------------- |
-| Leader leases            | Improves read performance by decreasing latency of read queries. |
-| Group commits            | Improves write performance by increasing write throughput. |
-| Raft leader balancing    | Improves read and write performance with optimal utilization of nodes in the cluster. |
-| Affinitized Raft Leaders | Improves read and write performance in geo-distributed scenarios by allowing placing leaders closer to the the location of the app. |
+| Feature/Enhancement Name                        | Purpose       |
+| ----------------------------------------------- | ------------- |
+| [Leader leases](#leader-leases)                 | Improves read performance by decreasing latency of read queries. |
+| [Group commits](#group-commits)                 | Improves write performance by increasing write throughput. |
+| [Leader balancing](#leader-balancing) | Improves read and write performance with optimal utilization of nodes in the cluster. |
+| [Affinitized Leaders](#affinitized-leaders) | Improves read and write performance in geo-distributed scenarios by allowing placing leaders closer to the the location of the app. |
 | Configurable missed heartbeats    | Enables multi-region and hybrid-cloud deployments where network latency between nodes is high. |
 | Integrating Hybrid Logical Clocks | Enables cross-shard transactions as a building block for a software-defined atomic clock for a cluster. |
 | MVCC Fencing             | Guarantee safety of writes in leader failure scenarios. |
@@ -59,8 +59,32 @@ Node C                                 ╔════════╩═══�
 
 In the figure above, the cause of the high latency is the step 4b, which introduces a network hop in the read path by forcing the Raft leader to wait for the heartbeat response from  one of the Raft followers.
 
-> **NOTE**: If the nodes A, B and C are in different regions, the network latency between them is often very large. In this scenario, the read latencies would be very high. 
+> **NOTE**: If the nodes A, B and C are in different regions, the network latency between them is often very large. In this scenario, the read latencies would be very high.
 
+
+### How do leader leases work?
+
+Leader leases eliminate the need for the extra heartbeat from the remote peers (step 4b in the diagram above), without sacrificing safety.
+
+In YugaByte DB, a newly elected leader cannot serve reads (or initiate writing a no-op Raft operation which is a prerequisite to accepting writes) until it has acquired a leader lease. During a leader election, a voter must propagate the longest remaining duration time of an old leader’s lease known to that voter to the new candidate it is voting for. Upon receiving a majority of votes, the new leader must wait out the old leader’s lease duration before considers itself as having the lease. The old leader, upon the expiry of its leader lease, steps down and no longer functions as a leader. The new leader continuously extends its leader lease as a part of Raft replication. Typically, leader leases have a short duration, for example the default in YugaByte DB is 2 seconds.
+
+The sequence of steps is as follows:
+
+* A leader computes a leader lease time interval
+* The timer for this time interval starts counting down on the existing leader
+* The leader sends the lease time interval to the followers using an RPC as a part of Raft replication. The RPC message itself incurs a time delay.
+* Only after the RPC delay do the followers receive the lease time interval and start their countdown.
+* Each node performs a countdown based on its monotonic clock.
+* It is easy to adjust the time delta by the max rate of clock drift on each node to take care of the variation between monotonic clock rates on different nodes.
+
+This is shown diagrammatically in the diagram below.
+![Raft leader leases timing sequence](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/architecture/design/images/docdb-raft-leader-leases-timing-sequence.png)
+
+> **NOTE**: The above sequence creates a time window where the old leader steps down and the new leader does not step up, causing an unavailability window. In practice, however, this may not be hugely impactful since the unavailability window occurs only during failure scenarios (which are comparatively rare events) and the time window itself is quite “small” as observed by the end user. The unavailability window is bounded by the following equation:
+
+  ```
+  max-unavailability = max-drift-between-nodes * leader-lease-interval + rpc-message-delay
+  ```
 
 ## Group Commits
 
@@ -68,7 +92,7 @@ Per the Raft algorithm, each new entry being appended into the Raft log is assig
 
 To utilize the network better, DocDB batches multiple outstanding updates into a single record. This batching of updates in order to commit them to the Raft log is referred to as a **group commit**.
 
-## Raft Leader Balancing
+## Leader Balancing
 
 YugaByte DB uses the Raft algorithm to implement a consistent and fault-tolerant write-ahead log. Per the Raft consensus algorithm, the various nodes that host the different Raft replicas (called tablet peers) first elect a leader. This results in one of the nodes becoming the leader of the tablet, and the others become followers. There could now arise scenarios where the distribution of Raft leaders and followers per node is uneven.
 
@@ -77,8 +101,7 @@ YugaByte DB tries to balance the Raft leaders and followers evenly across the no
 > **NOTE**: This is the default behavior. There are user defined policies that change the distribution of leaders, see the *affinitized leaders* section for more details.
 
 
-
-## Affinitized Raft Leaders
+## Affinitized Leaders
 
 ## Configurable missed heartbeats
 
