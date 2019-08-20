@@ -27,7 +27,7 @@ params:
   algolia:
     index: ALGOLIA_INDEX_NAME
     appID: ALGOLIA_APP_ID
-    apiKey: ALOGLIA_API_KEY
+    apiKey: ALGOLIA_API_KEY
   bigpicture:
     projectId: BIGPICTURE_PROJECT_ID
 social: {}
