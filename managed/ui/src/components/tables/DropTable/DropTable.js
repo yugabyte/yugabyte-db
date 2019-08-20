@@ -20,7 +20,7 @@ export default class DropTable extends Component {
     } = this.props;
     dropTable(universeUUID, tableID);
     onHide();
-    browserHistory.push('/universes/' + universeUUID + "?tab=tables");
+    browserHistory.push('/universes/' + universeUUID + "/tables");
   };
 
   render() {
