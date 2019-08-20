@@ -33,7 +33,7 @@ export default class RestoreBackup extends Component {
       };
       onHide();
       restoreTableBackup(restoreToUniverseUUID, payload);
-      browserHistory.push('/universes/' + restoreToUniverseUUID + "?tab=backups");
+      browserHistory.push('/universes/' + restoreToUniverseUUID + "/backups");
     }
   }
   hasBackupInfo = () => {
@@ -101,7 +101,7 @@ export default class RestoreBackup extends Component {
                 }}
                 initialValues= {initialValues}
                 validationSchema={validationSchema}>
-          
+
           <Field name="storageConfigUUID" {...(hasBackupInfo ? {type: "hidden"} : null)} component={YBFormSelect}
                  label={"Storage"} options={storageOptions} />
           <Field name="storageLocation" {...(hasBackupInfo ? {type: "hidden"} : null)} component={YBFormInput}

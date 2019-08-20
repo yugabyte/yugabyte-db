@@ -108,8 +108,14 @@ class HealthInfoPanel extends PureComponent {
       let errorSpan = <span className="text-red text-light">{errorText}</span>;
       let errorHeader = <span className="fa fa-exclamation-triangle text-red" />;
       if (errorNodesCounter && isNonEmptyObject(universeInfo)) {
-        errorSpan = <Link className="text-red text-regular" to={`/universes/${universeInfo.universeUUID}?tab=health`}>{errorText}</Link>;
-        errorHeader = <Link className="fa fa-exclamation-triangle text-red" to={`/universes/${universeInfo.universeUUID}?tab=health`}/>;
+        errorSpan = (<Link
+          className="text-red text-regular"
+          to={`/universes/${universeInfo.universeUUID}/health`}>
+          {errorText}
+        </Link>);
+        errorHeader = (<Link
+          className="fa fa-exclamation-triangle text-red"
+          to={`/universes/${universeInfo.universeUUID}/health`}/>);
       }
 
       const healthCheckInfoItems = [
@@ -133,7 +139,9 @@ class HealthInfoPanel extends PureComponent {
         headerLeft={
           "Health Check"
         }
-        headerRight={errorNodesCounter ? errorHeader : <Link to={`/universes/${universeInfo.universeUUID}?tab=health`}>Details</Link>}
+        headerRight={errorNodesCounter
+          ? errorHeader
+          : <Link to={`/universes/${universeInfo.universeUUID}/health`}>Details</Link>}
         body={
           <FlexContainer className={"centered health-heart-cnt"} direction={"row"}>
             <FlexGrow>
@@ -258,6 +266,7 @@ export default class UniverseOverviewNew extends Component {
         }
       });
     }
+
     return (
       <YBWidget
         size={1}
@@ -266,7 +275,12 @@ export default class UniverseOverviewNew extends Component {
           "Tables"
         }
         headerRight={
-          isNonEmptyObject(universeInfo) ? <Link to={`/universes/${universeInfo.universeUUID}?tab=tables`}>Details</Link> : null
+          isNonEmptyObject(universeInfo)
+          ? <Link onClick={(e) => {
+            e.preventDefault();
+            window.location.pathname = `/universes/${universeInfo.universeUUID}/tables`
+          }}>Details</Link>
+          : null
         }
         body={
           <FlexContainer className={"centered"}>
@@ -300,7 +314,9 @@ export default class UniverseOverviewNew extends Component {
           return (<YBWidget
             noMargin
             headerRight={
-              isNonEmptyObject(universeInfo) ? <Link to={`/universes/${universeInfo.universeUUID}?tab=metrics&subtab=` + subTab}>Details</Link> : null
+              isNonEmptyObject(universeInfo)
+              ? <Link to={`/universes/${universeInfo.universeUUID}/metrics?subtab=${subTab}`}>Details</Link>
+              : null
             }
             headerLeft={props.metric.layout.title}
             body={
@@ -327,7 +343,10 @@ export default class UniverseOverviewNew extends Component {
           return (<YBWidget
             noMargin
             headerLeft={"CPU Usage"}
-            headerRight={<Link to={`/universes/${universeInfo.universeUUID}?tab=metrics&subtab=server`}>Details</Link>}
+            headerRight={<Link
+                          to={`/universes/${universeInfo.universeUUID}/metrics?subtab=server`}>
+                          Details
+                        </Link>}
             body={
               <CpuUsagePanel
                  metric={props.metric}
