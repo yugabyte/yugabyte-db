@@ -4,8 +4,9 @@ linkTitle: PgExercises
 description: PgExercises sample database
 menu:
   latest:
+    identifier: pgexercises
     parent: sample-data
-    weight: 2730
+    weight: 2753
 isTocNested: true
 showAsideToc: true
 ---

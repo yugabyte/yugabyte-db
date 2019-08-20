@@ -4,8 +4,9 @@ linkTitle: Chinook
 description: Chinook sample database
 menu:
   latest:
+    identifier: chinook
     parent: sample-data
-    weight: 2710
+    weight: 2751
 isTocNested: true
 showAsideToc: true
 ---
