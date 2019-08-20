@@ -738,8 +738,13 @@ Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
 
   docdb::ConsensusFrontiers frontiers;
   set_op_id({operation_state->op_id().term(), operation_state->op_id().index()}, &frontiers);
-  set_hybrid_time(operation_state->hybrid_time(), &frontiers);
-  return ApplyKeyValueRowOperations(put_batch, &frontiers, operation_state->hybrid_time());
+
+  auto hybrid_time = operation_state->request()->has_external_hybrid_time() ?
+      HybridTime(operation_state->request()->external_hybrid_time()) :
+      operation_state->hybrid_time();
+
+  set_hybrid_time(hybrid_time, &frontiers);
+  return ApplyKeyValueRowOperations(put_batch, &frontiers, hybrid_time);
 }
 
 Status Tablet::CreateCheckpoint(const std::string& dir) {
@@ -883,6 +888,9 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
     write_request->set_client_id2(batch_request->client_id2());
     write_request->set_request_id(batch_request->request_id());
     write_request->set_min_running_request_id(batch_request->min_running_request_id());
+  }
+  if (batch_request->has_external_hybrid_time()) {
+    write_request->set_external_hybrid_time(batch_request->external_hybrid_time());
   }
 }
 
