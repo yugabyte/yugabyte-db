@@ -178,7 +178,6 @@ class UniverseDetail extends Component {
 
     const defaultTab = isNotHidden(currentCustomer.data.features, "universes.details.overview") ? "overview" : "overview";
     const activeTab = tab || defaultTab;
-
     const tabElements = [
       //common tabs for every universe
       ...[
@@ -194,7 +193,8 @@ class UniverseDetail extends Component {
               width={width}
               universe={universe}
               updateAvailable={updateAvailable}
-              showSoftwareUpgradesModal={showSoftwareUpgradesModal} />
+              showSoftwareUpgradesModal={showSoftwareUpgradesModal}
+              tabRef={this.ybTabPanel} />
           </Tab.Pane>,
 
         isNotHidden(currentCustomer.data.features, "universes.details.tables") &&
@@ -269,7 +269,7 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, "universes.details.health") &&
           <Tab.Pane
             eventKey={"health"}
-            title="Health"
+            title="Health"x
             key="health-tab"
             mountOnEnter={true}
             unmountOnExit={true}
@@ -307,7 +307,7 @@ class UniverseDetail extends Component {
           {/* UNIVERSE EDIT */}
           <div className="universe-detail-btn-group">
 
-            <UniverseConnectModal/> 
+            <UniverseConnectModal/>
 
             <DropdownButton title="More" className={this.showUpgradeMarker() ? "btn-marked": ""} id="bg-nested-dropdown" pullRight>
               <YBMenuItem eventKey="1" onClick={showSoftwareUpgradesModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.upgradeSoftware")}>
@@ -316,7 +316,7 @@ class UniverseDetail extends Component {
                 </YBLabelWithIcon>
                 { this.showUpgradeMarker() ? <span className="badge badge-pill badge-red pull-right">{updateAvailable}</span> : ""}
               </YBMenuItem>
-              {!isReadOnlyUniverse && isNotHidden(currentCustomer.data.features, "universes.details.metrics") && 
+              {!isReadOnlyUniverse && isNotHidden(currentCustomer.data.features, "universes.details.metrics") &&
                 <YBMenuItem eventKey="2" to={`/universes/${uuid}/edit/primary`} availability={getFeatureState(currentCustomer.data.features, "universes.details.metrics")}>
                   <YBLabelWithIcon icon="fa fa-pencil">
                   Edit Universe

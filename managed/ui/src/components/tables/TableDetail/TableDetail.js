@@ -116,7 +116,7 @@ export default class TableDetail extends Component {
               </Link>
               <span>
                 <i className="fa fa-chevron-right"></i>
-                <Link to={`/universes/${currentUniverse.data.universeUUID}?tab=tables`}>
+                <Link to={`/universes/${currentUniverse.data.universeUUID}/tables`}>
                   Tables
                 </Link>
                 <i className="fa fa-chevron-right"></i>

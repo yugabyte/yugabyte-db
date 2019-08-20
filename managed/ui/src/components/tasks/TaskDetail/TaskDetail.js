@@ -127,7 +127,7 @@ class TaskDetail extends Component {
           </Link>
           <span>
             <i className="fa fa-chevron-right"></i>
-            <Link to={`/universes/${universe.universeUUID}?tab=tasks`}>
+            <Link to={`/universes/${universe.universeUUID}/tasks`}>
               Tasks
             </Link>
           </span>
@@ -163,7 +163,7 @@ class TaskDetail extends Component {
           header={
             <h2>Task details</h2>
           }
-          body={     
+          body={
             <div className="task-detail-container">
               <Row className="task-heading-row">
                 <Col xs={4}>Task</Col>
