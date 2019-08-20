@@ -9,6 +9,7 @@
 #include "yb/client/session.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/client-test-util.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -303,6 +304,114 @@ TEST_F(CDCServiceTest, TestListTablets) {
     ASSERT_EQ(resp.tablets_size(), 1);
     ASSERT_EQ(resp.tablets(0).tablet_id(), tablet_id);
   }
+}
+
+TEST_F(CDCServiceTest, TestOnlyGetLocalChanges) {
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+
+  std::string tablet_id;
+  GetTablet(&tablet_id);
+
+  const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
+
+  {
+    // Insert local test rows.
+    tserver::WriteRequestPB write_req;
+    tserver::WriteResponsePB write_resp;
+    write_req.set_tablet_id(tablet_id);
+    RpcController rpc;
+    AddTestRowInsert(1, 11, "key1", &write_req);
+    AddTestRowInsert(2, 22, "key2", &write_req);
+
+    SCOPED_TRACE(write_req.DebugString());
+    ASSERT_OK(proxy->Write(write_req, &write_resp, &rpc));
+    SCOPED_TRACE(write_resp.DebugString());
+    ASSERT_FALSE(write_resp.has_error());
+  }
+
+  {
+    // Insert remote test rows.
+    tserver::WriteRequestPB write_req;
+    tserver::WriteResponsePB write_resp;
+    write_req.set_tablet_id(tablet_id);
+    // Apply at the lowest possible hybrid time.
+    write_req.set_external_hybrid_time(yb::kInitialHybridTimeValue);
+
+    RpcController rpc;
+    AddTestRowInsert(1, 11, "key1_ext", &write_req);
+    AddTestRowInsert(3, 33, "key3_ext", &write_req);
+
+    SCOPED_TRACE(write_req.DebugString());
+    ASSERT_OK(proxy->Write(write_req, &write_resp, &rpc));
+    SCOPED_TRACE(write_resp.DebugString());
+    ASSERT_FALSE(write_resp.has_error());
+  }
+
+  auto CheckChangesAndTable = [&]() {
+    // Get CDC changes.
+    GetChangesRequestPB change_req;
+    GetChangesResponsePB change_resp;
+
+    change_req.set_tablet_id(tablet_id);
+    change_req.set_stream_id(stream_id);
+    change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+    change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+
+    {
+      // Make sure only the two local test rows show up.
+      RpcController rpc;
+      SCOPED_TRACE(change_req.DebugString());
+      ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp, &rpc));
+      SCOPED_TRACE(change_resp.DebugString());
+      ASSERT_FALSE(change_resp.has_error());
+      ASSERT_EQ(change_resp.records_size(), 2);
+
+      std::pair<int, std::string> expected_results[2] =
+          {std::make_pair(11, "key1"), std::make_pair(22, "key2")};
+      for (int i = 0; i < change_resp.records_size(); i++) {
+        ASSERT_EQ(change_resp.records(i).operation(), CDCRecordPB::WRITE);
+
+        // Check the key.
+        ASSERT_NO_FATALS(AssertIntKey(change_resp.records(i).key(), i + 1));
+
+        // Check the change records.
+        ASSERT_NO_FATALS(AssertChangeRecords(change_resp.records(i).changes(),
+                                             expected_results[i].first,
+                                             expected_results[i].second));
+      }
+    }
+
+    // Now, fetch the entire table and ensure that we fetch all the keys inserted.
+    client::TableHandle table;
+    EXPECT_OK(table.Open(table_.table()->name(), client_.get()));
+    auto result = ScanTableToStrings(table);
+    std::sort(result.begin(), result.end());
+
+    ASSERT_EQ(3, result.size());
+
+    // Make sure that key1 and not key1_ext shows up, since we applied key1_ext at a lower hybrid
+    // time.
+    ASSERT_EQ("{ int32:1, int32:11, string:\"key1\" }", result[0]);
+    ASSERT_EQ("{ int32:2, int32:22, string:\"key2\" }", result[1]);
+    ASSERT_EQ("{ int32:3, int32:33, string:\"key3_ext\" }", result[2]);
+  };
+
+  ASSERT_NO_FATALS(CheckChangesAndTable());
+
+  ASSERT_OK(cluster_->RestartSync());
+
+  ASSERT_OK(WaitFor([&](){
+    std::shared_ptr<tablet::TabletPeer> tablet_peer;
+    if (!cluster_->mini_tablet_server(0)->server()->tablet_manager()->
+        LookupTablet(tablet_id, &tablet_peer)) {
+      return false;
+    }
+    return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+  }, MonoDelta::FromSeconds(30), "Wait until tablet has a leader."));
+
+  ASSERT_NO_FATALS(CheckChangesAndTable());
+
 }
 
 } // namespace cdc
