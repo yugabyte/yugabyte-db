@@ -2,6 +2,7 @@
 title: PgExercises sample database 
 linkTitle: PgExercises
 description: PgExercises sample database
+image: /images/sample-data/pgexercises/pgsql.png
 menu:
   latest:
     identifier: pgexercises

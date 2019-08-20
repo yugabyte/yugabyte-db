@@ -2,6 +2,7 @@
 title: Chinook sample database
 linkTitle: Chinook
 description: Chinook sample database
+image: 
 menu:
   latest:
     identifier: chinook
