@@ -1265,6 +1265,30 @@ bool YBClient::IsMultiMaster() const {
   return addrs.size() > 1;
 }
 
+Result<int> YBClient::NumTabletsForUserTable(TableType table_type) {
+  if (FLAGS_yb_num_total_tablets > 0) {
+    VLOG(1) << "num_tablets=" << FLAGS_yb_num_total_tablets
+            << ": --yb_num_total_tablets is specified.";
+    return FLAGS_yb_num_total_tablets;
+  } else {
+    int tserver_count = 0;
+    RETURN_NOT_OK(TabletServerCount(&tserver_count, true /* primary_only */));
+    int num_tablets = 0;
+    if (table_type == TableType::PGSQL_TABLE_TYPE) {
+      num_tablets = tserver_count * FLAGS_ysql_num_shards_per_tserver;
+      VLOG(1) << "num_tablets = " << num_tablets << ": "
+              << "calculated as tserver_count * FLAGS_ysql_num_shards_per_tserver ("
+              << tserver_count << " * " << FLAGS_ysql_num_shards_per_tserver << ")";
+    } else {
+      num_tablets = tserver_count * FLAGS_yb_num_shards_per_tserver;
+      VLOG(1) << "num_tablets = " << num_tablets << ": "
+              << "calculated as tserver_count * FLAGS_yb_num_shards_per_tserver ("
+              << tserver_count << " * " << FLAGS_yb_num_shards_per_tserver << ")";
+    }
+    return num_tablets;
+  }
+}
+
 void YBClient::TEST_set_admin_operation_timeout(const MonoDelta& timeout) {
   data_->default_admin_operation_timeout_ = timeout;
 }
