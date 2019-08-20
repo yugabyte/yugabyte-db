@@ -1862,7 +1862,7 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
   LogFlush(db_options_.info_log);
 
   {
-    InstrumentedMutexLock l(&mutex_);
+    InstrumentedMutexLock lock(&mutex_);
     // an automatic compaction that has been scheduled might have been
     // preempted by the manual compactions. Need to schedule it back.
     if (exclusive) {
@@ -2885,6 +2885,8 @@ bool DBImpl::IsEmptyCompactionQueue() {
 }
 
 bool DBImpl::AddToCompactionQueue(ColumnFamilyData* cfd) {
+  mutex_.AssertHeld();
+
   assert(!cfd->pending_compaction());
 
   const MutableCFOptions* mutable_cf_options = cfd->GetLatestMutableCFOptions();
@@ -2964,7 +2966,10 @@ void DBImpl::SchedulePendingFlush(ColumnFamilyData* cfd) {
 }
 
 void DBImpl::SchedulePendingCompaction(ColumnFamilyData* cfd) {
-  if (!cfd->pending_compaction() && cfd->NeedsCompaction()) {
+  mutex_.AssertHeld();
+
+  if (!cfd->pending_compaction() && cfd->NeedsCompaction() &&
+      !shutting_down_.load(std::memory_order_acquire)) {
     if (AddToCompactionQueue(cfd)) {
       ++unscheduled_compactions_;
     }
