@@ -270,7 +270,7 @@ class YBTransaction::Impl final {
       }
       TabletStates::iterator it = tablets_.end();
       for (const auto& op : ops) {
-        if (op->yb_op->wrote_data()) {
+        if (op->yb_op->wrote_data(metadata_.isolation)) {
           const std::string& tablet_id = op->tablet->tablet_id();
           // Usually all ops belong to the same tablet. So we can avoid repeating lookup.
           if (it == tablets_.end() || it->first != tablet_id) {

@@ -56,6 +56,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     // TODO: test for error codes here when we move to more PostgreSQL-friendly transaction errors.
     return (
         msg.contains("Conflicts with higher priority transaction") ||
+        msg.contains("Transaction aborted") ||
         msg.contains("Transaction expired") ||
         msg.contains("Restart read required") ||
         msg.contains("Conflicts with committed transaction") ||

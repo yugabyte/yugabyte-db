@@ -270,28 +270,6 @@ class WriteOperationCompletionCallback : public OperationCompletionCallback {
       status_ = Status::OK();
     }
 
-    if (status_.ok() && state_->request()->write_batch().has_transaction()) {
-      bool has_failure = false;
-      for (const auto& pgsql_write_op : *state_->pgsql_write_ops()) {
-        if (pgsql_write_op->response()->status() != PgsqlResponsePB::PGSQL_STATUS_OK) {
-          has_failure = true;
-          break;
-        }
-      }
-      if (has_failure) {
-        auto participant = tablet_peer_->tablet()->transaction_participant();
-        if (participant) {
-          auto txn_id = FullyDecodeTransactionId(
-              state_->request()->write_batch().transaction().transaction_id());
-          if (txn_id.ok()) {
-            status_ = participant->CheckAborted(*txn_id);
-          } else {
-            LOG(DFATAL) << "Unable to decode transaction id: " << txn_id.status();
-          }
-        }
-      }
-    }
-
     if (!status_.ok()) {
       LOG(INFO) << "Write failed: " << status_;
       SetupErrorAndRespond(get_error(), status_, code_, context_.get());
