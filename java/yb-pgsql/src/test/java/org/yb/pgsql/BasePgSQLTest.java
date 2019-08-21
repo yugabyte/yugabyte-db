@@ -12,11 +12,15 @@
 //
 package org.yb.pgsql;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.postgresql.core.TransactionState;
+import org.postgresql.jdbc.PgArray;
 import org.postgresql.jdbc.PgConnection;
 import org.postgresql.util.PGobject;
 import org.postgresql.util.PSQLException;
@@ -55,11 +59,6 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
-
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonParser;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.yb.AssertionWrappers.assertArrayEquals;
@@ -730,6 +729,21 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       return (Comparable)obj;
     } else if (obj instanceof PGobject) {
       return ((PGobject) obj).getValue(); // For PG_LSN type.
+    } else if (obj instanceof PgArray) {
+      try {
+        Object arr = ((PgArray) obj).getArray();
+        if (arr instanceof Comparable[]) {
+          return new ComparableArray((Comparable[])arr);
+        } else {
+          throw new IllegalArgumentException(String.format(
+              "Cannot cast to Comparable[] %s: %s",
+              arr.getClass().getSimpleName(),
+              obj
+          ));
+        }
+      } catch (SQLException sqle) {
+        throw new RuntimeException(sqle);
+      }
     } else if (obj instanceof byte[]) {
       return Arrays.toString((byte[])obj); // For BYTEA type.
     }
@@ -1051,8 +1065,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         try {
           connection = checkNotNull(DriverManager.getConnection(url, user, password));
 
-          connection.setTransactionIsolation(isolationLevel.pgIsolationLevel);
-          connection.setAutoCommit(autoCommit.enabled);
+          if (isolationLevel != null) {
+            connection.setTransactionIsolation(isolationLevel.pgIsolationLevel);
+          }
+          if (autoCommit != null) {
+            connection.setAutoCommit(autoCommit.enabled);
+          }
 
           ConnectionCleaner.register(connection);
           return connection;
