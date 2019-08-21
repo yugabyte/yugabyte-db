@@ -109,16 +109,5 @@ YugaByte DB tries to balance the Raft leaders and followers evenly across the no
 > **NOTE**: This is the default behavior. There are user defined policies that change the distribution of leaders, see the *affinitized leaders* section for more details.
 
 
-## Affinitized Leaders
-
-## Configurable missed heartbeats
-
-
-## Integrating Hybrid Logical Clocks
-
-
-## MVCC Fencing
-
-## Non-Voting Observer Nodes
 
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-raft-enhancements.md?pixel&useReferer)](https://github.com/YugaByte/ga-beacon)
