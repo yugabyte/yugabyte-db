@@ -298,7 +298,7 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
     // TODO: for backward compatibility only, so previous metrics data is shown in UI.
     {CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE, "rocksdb_total_uncompressed_size"},
 
-    {CURRENT_VERSION_NUM_SST_FILES, "rocksdb_num_sst_files"},
+    {CURRENT_VERSION_NUM_SST_FILES, "rocksdb_current_version_num_sst_files"},
     {MERGE_OPERATION_TOTAL_TIME, "rocksdb_merge_operation_time_nanos"},
     {FILTER_OPERATION_TOTAL_TIME, "rocksdb_filter_operation_time_nanos"},
     {ROW_CACHE_HIT, "rocksdb_row_cache_hit"},
