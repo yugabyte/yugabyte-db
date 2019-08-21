@@ -808,16 +808,19 @@ TEST_F(MasterTest, TestDeletingNonEmptyNamespace) {
   const Schema kTableSchema({ ColumnSchema("key", INT32) }, 1);
 
   ASSERT_OK(CreateTable(other_ns_name, kTableName, kTableSchema));
-  ASSERT_OK(CreatePgsqlTable(other_ns_pgsql_id, kTableNamePgsql, kTableSchema));
+  ASSERT_OK(CreatePgsqlTable(other_ns_pgsql_id, kTableNamePgsql + "_1", kTableSchema));
+  ASSERT_OK(CreatePgsqlTable(other_ns_pgsql_id, kTableNamePgsql + "_2", kTableSchema));
 
   {
     ListTablesResponsePB tables;
     ASSERT_NO_FATALS(DoListAllTables(&tables));
-    ASSERT_EQ(2 + kNumSystemTables, tables.tables_size());
+    ASSERT_EQ(3 + kNumSystemTables, tables.tables_size());
     CheckTables(
         {
             std::make_tuple(kTableName, other_ns_name, other_ns_id, USER_TABLE_RELATION),
-            std::make_tuple(kTableNamePgsql, other_ns_pgsql_name, other_ns_pgsql_id,
+            std::make_tuple(kTableNamePgsql + "_1", other_ns_pgsql_name, other_ns_pgsql_id,
+                USER_TABLE_RELATION),
+            std::make_tuple(kTableNamePgsql + "_2", other_ns_pgsql_name, other_ns_pgsql_id,
                 USER_TABLE_RELATION),
             EXPECTED_SYSTEM_TABLES
         }, tables);

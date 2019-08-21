@@ -2696,6 +2696,8 @@ Status CatalogManager::DeleteIndexInfoFromTable(const TableId& indexed_table_id,
 //  - If a table is DELETING and it has no tasks on it, then it is safe to mark DELETED.
 //
 // We are lazy about deletions.
+//
+// IMPORTANT: If modifying, consider updating DeleteYsqlDBTables(), the bulk deletion API.
 Status CatalogManager::DeleteTable(const DeleteTableRequestPB* req,
                                    DeleteTableResponsePB* resp,
                                    rpc::RpcContext* rpc) {
@@ -4101,7 +4103,7 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
 
   // Delete all user tables in the database.
   TRACE("Delete all tables in YSQL database");
-  RETURN_NOT_OK(DeleteYsqlDBTables(database, rpc));
+  RETURN_NOT_OK(DeleteYsqlDBTables(database, resp, rpc));
 
   // Dropping database.
   TRACE("Updating metadata on disk");
@@ -4117,12 +4119,11 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
 
   // Remove it from the maps.
   {
+    TRACE("Removing from maps");
+    std::lock_guard<LockType> l_map(lock_);
     CHECK(FindPtrOrNull(namespace_names_map_, database->name()) == nullptr)
       << "YSQL database name should not be included in namespace_names_map_. "
       << "If included, its name must be removed from map here when dropping";
-
-    TRACE("Removing from maps");
-    std::lock_guard<LockType> l_map(lock_);
     if (namespace_ids_map_.erase(database->id()) < 1) {
       PANIC_RPC(rpc, "Could not remove namespace from map, name=" + l->data().name());
     }
@@ -4139,12 +4140,12 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
 }
 
 Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
+                                          DeleteNamespaceResponsePB* resp,
                                           rpc::RpcContext* rpc) {
-  vector<scoped_refptr<TableInfo>> tables;
-
-  // First, delete all tablets of user tables in the database.
+  vector<pair<scoped_refptr<TableInfo>, unique_ptr<TableInfo::lock_type>>> user_tables;
+  vector<scoped_refptr<TableInfo>> sys_tables;
   {
-    // Lock the catalog.
+    // Lock the catalog to iterate over table_ids_map_.
     boost::shared_lock<LockType> catalog_lock(lock_);
 
     // Delete tablets for each of user tables.
@@ -4156,43 +4157,53 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
       }
 
       if (IsSystemTableUnlocked(*table)) {
-        RETURN_NOT_OK(sys_catalog_->DeleteYsqlSystemTable(table->id()));
-        continue;
-      }
-
-      TRACE("Updating metadata on disk");
-      // Update the metadata for the on-disk state.
-      l->mutable_data()->set_state(SysTablesEntryPB::DELETING,
-                                   Substitute("Started deleting at $0", LocalTimeAsString()));
-
-      // Update sys-catalog with the removed table state.
-      Status s = sys_catalog_->UpdateItem(table.get(), leader_ready_term_);
-      if (!s.ok()) {
-        // The mutation will be aborted when 'l' exits the scope on early return.
-        s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
-                                         s.ToString()));
-        LOG(WARNING) << s.ToString();
-      }
-
-      table->AbortTasks();
-
-      // For regular (indexed) table, insert table info and lock in the front of the list. Else for
-      // index table, append them to the end. We do so so that we will commit and delete the indexed
-      // table first before its indexes.
-      if (PROTO_IS_TABLE(l->data().pb)) {
-        tables.insert(tables.begin(), table);
+        sys_tables.push_back(table);
       } else {
-        tables.push_back(table);
+        // For regular (indexed) table, insert table info and lock in the front of the list. Else
+        // for index table, append them to the end. We do so so that we will commit and delete the
+        // indexed table first before its indexes.
+        if (PROTO_IS_TABLE(l->data().pb)) {
+          user_tables.insert(user_tables.begin(), {table, std::move(l)});
+        } else {
+          user_tables.push_back({table, std::move(l)});
+        }
       }
-      // Update the in-memory state.
-      l->Commit();
     }
   }
+  // Remove the system tables from RAFT.
+  TRACE("Sending system table delete RPCs");
+  for (auto &table : sys_tables) {
+    RETURN_NOT_OK(sys_catalog_->DeleteYsqlSystemTable(table->id()));
+  }
+  // Delete all tablets of user tables in the database as 1 batch RPC call.
+  TRACE("Sending delete table batch RPC to sys catalog");
+  vector<TableInfo *> user_tables_rpc;
+  user_tables_rpc.reserve(user_tables.size());
+  for (auto &tbl : user_tables) {
+    user_tables_rpc.push_back(tbl.first.get());
+  }
+  Status s = sys_catalog_->UpdateItems(user_tables_rpc, leader_ready_term_);
+  if (!s.ok()) {
+    // The mutation will be aborted when 'l' exits the scope on early return.
+    s = s.CloneAndPrepend(Substitute("An error occurred while updating sys tables: $0",
+                                     s.ToString()));
+    LOG(WARNING) << s.ToString();
+    return CheckIfNoLongerLeaderAndSetupError(s, resp);
+  }
+  for (auto &table_and_lock : user_tables) {
+    auto &table = table_and_lock.first;
+    auto &l = table_and_lock.second;
+    // cancel all table busywork and mark the table state as DELETING tablets.
+    l->mutable_data()->set_state(SysTablesEntryPB::DELETING,
+        Substitute("Started deleting at $0", LocalTimeAsString()));
+    l->Commit();
+    table->AbortTasks();
+  }
 
-  // Now, delete all tables.
-  for (int i = 0; i < tables.size(); i++) {
-    // Send a DeleteTablet() request to each tablet replica in the table.
-    DeleteTabletsAndSendRequests(tables[i]);
+  // Send a DeleteTablet() RPC request to each tablet replica in the table.
+  for (auto &table_and_lock : user_tables) {
+    auto &table = table_and_lock.first;
+    DeleteTabletsAndSendRequests(table);
   }
 
   // Invoke any background tasks and return (notably, table cleanup).
