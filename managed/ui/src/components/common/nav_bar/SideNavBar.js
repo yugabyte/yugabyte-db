@@ -3,7 +3,6 @@
 import React, { Component } from 'react';
 import { Link, IndexLink, withRouter } from 'react-router';
 import { NavDropdown } from 'react-bootstrap';
-import gitterIcon from '../../help/HelpItem/images/gitter.svg';
 import './stylesheets/SideNavBar.scss';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { isNotHidden, getFeatureState } from 'utils/LayoutUtils';
@@ -73,12 +72,13 @@ export default class SideNavBar extends Component {
                       </a>
                     </li>
                     <li>
-                      <a href="https://gitter.im/YugaByte/Lobby" target="_blank" rel="noopener noreferrer">
-                        <object data={gitterIcon} type="image/svg+xml" width="16">Icon</object> Gitter
+                      <a href="https://www.yugabyte.com/slack" target="_blank" rel="noopener noreferrer">
+                        <i className="fa fa-slack"></i> Slack
                       </a>
                     </li>
                     <li>
-                      <a href="https://www.youtube.com/channel/UCL9BhSLRowqQ1TyBndhiCEw" target="_blank" rel="noopener noreferrer">
+                      <a href="https://www.youtube.com/channel/UCL9BhSLRowqQ1TyBndhiCEw"
+                        target="_blank" rel="noopener noreferrer">
                         <i className="fa fa-youtube"></i> YouTube
                       </a>
                     </li>
