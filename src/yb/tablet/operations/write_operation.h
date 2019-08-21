@@ -222,30 +222,6 @@ class WriteOperation : public Operation {
   // affected rows.
   CHECKED_STATUS Prepare() override;
 
-  // Executes an Apply for a write transaction.
-  //
-  // Actually applies inserts/mutates into the tablet. After these start being
-  // applied, the transaction must run to completion as there is currently no
-  // means of undoing an update.
-  //
-  // After completing the inserts/mutates, the row locks and the mvcc transaction
-  // can be released, allowing other transactions to update the same rows.
-  // However the component lock must not be released until the commit msg, which
-  // indicates where each of the inserts/mutates were applied, is persisted to
-  // stable storage. Because of this ApplyTask must enqueue a CommitTask before
-  // releasing both the row locks and deleting the MvccTransaction as we need to
-  // make sure that Commits that touch the same set of rows are persisted in
-  // order, for recovery.
-  // This, of course, assumes that commits are executed in the same order they
-  // are placed in the queue (but not necessarily in the same order of the
-  // original requests) which is already a requirement of the consensus
-  // algorithm.
-  CHECKED_STATUS Apply(int64_t leader_term) override;
-
-  // If result == COMMITTED, commits the mvcc transaction and updates
-  // the metrics, if result == ABORTED aborts the mvcc transaction.
-  void Finish(OperationResult result) override;
-
   std::string ToString() const override;
 
   tserver::WriteRequestPB* request() {
@@ -283,9 +259,35 @@ class WriteOperation : public Operation {
   }
 
  private:
+  friend class DelayedApplyOperation;
+
   // Actually starts the Mvcc transaction and assigns a hybrid_time to this transaction.
   void DoStart() override;
   void DoStartSynchronization(const Status& status);
+
+  // Executes an Apply for a write transaction.
+  //
+  // Actually applies inserts/mutates into the tablet. After these start being
+  // applied, the transaction must run to completion as there is currently no
+  // means of undoing an update.
+  //
+  // After completing the inserts/mutates, the row locks and the mvcc transaction
+  // can be released, allowing other transactions to update the same rows.
+  // However the component lock must not be released until the commit msg, which
+  // indicates where each of the inserts/mutates were applied, is persisted to
+  // stable storage. Because of this ApplyTask must enqueue a CommitTask before
+  // releasing both the row locks and deleting the MvccTransaction as we need to
+  // make sure that Commits that touch the same set of rows are persisted in
+  // order, for recovery.
+  // This, of course, assumes that commits are executed in the same order they
+  // are placed in the queue (but not necessarily in the same order of the
+  // original requests) which is already a requirement of the consensus
+  // algorithm.
+  // Commits the mvcc transaction and updates the metrics.
+  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
+
+  // Aborts the mvcc transaction.
+  CHECKED_STATUS DoAborted(const Status& status) override;
 
   WriteOperationContext& context_;
   const int64_t term_;

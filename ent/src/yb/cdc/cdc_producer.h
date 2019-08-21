@@ -20,10 +20,12 @@
 #include <boost/unordered_map.hpp>
 
 #include "yb/cdc/cdc_service.service.h"
+#include "yb/client/client.h"
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/docdb/docdb.pb.h"
+#include "yb/tablet/transaction_participant.h"
 
 namespace yb {
 namespace cdc {
@@ -35,46 +37,48 @@ typedef boost::unordered_map<
     TransactionId, TransactionStatusResult, TransactionIdHash> TxnStatusMap;
 typedef std::pair<uint64_t, size_t> RecordTimeIndex;
 
-struct CDCRecordMetadata {
+struct StreamMetadata {
+  TableId table_id;
   CDCRecordType record_type;
   CDCRecordFormat record_format;
 
-  CDCRecordMetadata(CDCRecordType record_type, CDCRecordFormat record_format)
-      : record_type(record_type), record_format(record_format) {
+  StreamMetadata() = default;
+
+  StreamMetadata(TableId table_id, CDCRecordType record_type, CDCRecordFormat record_format)
+      : table_id(table_id), record_type(record_type), record_format(record_format) {
   }
 };
 
 class CDCProducer {
  public:
-  explicit CDCProducer(const std::shared_ptr<tablet::TabletPeer>& tablet_peer)
-      : tablet_peer_(tablet_peer) {
-  }
+  CDCProducer() = default;
 
   CDCProducer(const CDCProducer&) = delete;
   void operator=(const CDCProducer&) = delete;
 
   // Get Changes for tablet since given OpId.
-  CHECKED_STATUS GetChanges(const GetChangesRequestPB& req,
-                            GetChangesResponsePB* resp);
-
-  // Get CDC record type and format for a given subscriber.
-  Result<CDCRecordMetadata> GetRecordMetadataForSubscriber(
-      const std::string& subscriber_uuid);
+  static CHECKED_STATUS GetChanges(const std::string& stream_id,
+                                   const std::string& tablet_id,
+                                   const OpIdPB& op_id,
+                                   const StreamMetadata& record,
+                                   const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                                   GetChangesResponsePB* resp);
 
  private:
   // Populate CDC record corresponding to WAL batch in ReplicateMsg.
-  CHECKED_STATUS PopulateWriteRecord(const consensus::ReplicateMsgPtr& write_msg,
-                                     const TxnStatusMap& txn_map,
-                                     const CDCRecordMetadata& metadata,
-                                     GetChangesResponsePB* resp);
+  static CHECKED_STATUS PopulateWriteRecord(const consensus::ReplicateMsgPtr& write_msg,
+                                            const TxnStatusMap& txn_map,
+                                            const StreamMetadata& metadata,
+                                            const Schema& schema,
+                                            GetChangesResponsePB* resp);
 
   // Populate CDC record corresponding to WAL UPDATE_TRANSACTION_OP entry.
-  CHECKED_STATUS PopulateTransactionRecord(const consensus::ReplicateMsgPtr& replicate_msg,
-                                           CDCRecordPB* records);
+  static CHECKED_STATUS PopulateTransactionRecord(const consensus::ReplicateMsgPtr& replicate_msg,
+                                                  CDCRecordPB* records);
 
-  CHECKED_STATUS SetRecordTxnAndTime(const TransactionId& txn_id,
-                                     const TxnStatusMap& txn_map,
-                                     CDCRecordPB* record);
+  static CHECKED_STATUS SetRecordTxnAndTime(const TransactionId& txn_id,
+                                            const TxnStatusMap& txn_map,
+                                            CDCRecordPB* record);
 
   // Order WAL records based on transaction commit time.
   // Records in WAL don't represent the exact order in which records are written in DB due to delay
@@ -88,23 +92,22 @@ class CDCProducer {
   // T5: APPLYING TXN1
   // T6: WRITE K4
   // The order in which keys are written to DB in this example is K0, K3, K2, K1, K4.
-  Result<consensus::ReplicateMsgs> SortWrites(const consensus::ReplicateMsgs& msgs,
-                                              const TxnStatusMap& txn_map);
+  static Result<consensus::ReplicateMsgs> SortWrites(const consensus::ReplicateMsgs& msgs,
+                                                     const TxnStatusMap& txn_map);
 
-  Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
+  static Result<std::vector<RecordTimeIndex>> GetCommittedRecordIndexes(
       const consensus::ReplicateMsgs& msgs,
       const TxnStatusMap& txn_map);
 
-  OpIdPB GetLastCheckpoint(const std::string& subscriber_uuid);
-
   // Build transaction status as of hybrid_time.
-  Result<TxnStatusMap> BuildTxnStatusMap(const consensus::ReplicateMsgs& messages,
-                                         const HybridTime& hybrid_time);
+  static Result<TxnStatusMap> BuildTxnStatusMap(const consensus::ReplicateMsgs& messages,
+                                                const HybridTime& hybrid_time,
+                                                tablet::TransactionParticipant* txn_participant);
 
-  Result<TransactionStatusResult> GetTransactionStatus(const TransactionId& transaction_id,
-                                                       const HybridTime& hybrid_time);
-
-  std::shared_ptr<tablet::TabletPeer> tablet_peer_;
+  static Result<TransactionStatusResult> GetTransactionStatus(
+      const TransactionId& transaction_id,
+      const HybridTime& hybrid_time,
+      tablet::TransactionParticipant* txn_participant);
 };
 
 }  // namespace cdc

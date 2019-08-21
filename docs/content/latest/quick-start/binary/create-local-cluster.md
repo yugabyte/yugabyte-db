@@ -1,5 +1,5 @@
 ## 1. Create a local cluster
-  
+
 We will use the [`yb-ctl`](../../admin/yb-ctl/) utility located in the `bin` directory of the YugaByte DB package to create and administer a local cluster. The default data directory used is `$HOME/yugabyte-data`. You can change this directory with the `--data_dir` option. Detailed output for the *create* command is available in [yb-ctl Reference](../../admin/yb-ctl/#create-cluster).
 
 ```sh

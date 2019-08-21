@@ -40,7 +40,7 @@ struct TransactionData {
   TransactionId id;
   TransactionStatus status;
   HybridTime commit_time;
-  TransactionMetadata metadata;
+  uint64_t priority;
   Status failure;
 
   void ProcessStatus(const TransactionStatusResult& result) {
@@ -53,18 +53,17 @@ struct TransactionData {
   }
 
   std::string ToString() const {
-    return Format("{ id: $0 status: $1 commit_time: $2 metadata: $3 failure: $4 }",
-                  id, TransactionStatus_Name(status), commit_time, metadata, failure);
+    return Format("{ id: $0 status: $1 commit_time: $2 priority: $3 failure: $4 }",
+                  id, TransactionStatus_Name(status), commit_time, priority, failure);
   }
 };
 
-CHECKED_STATUS MakeConflictStatus(const TransactionId& id, const char* reason,
-                                  Counter* conflicts_metric) {
+CHECKED_STATUS MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
+                                  const char* reason, Counter* conflicts_metric) {
   conflicts_metric->Increment();
   return STATUS_FORMAT(TryAgain,
-                       "Conflicts with $0 transaction: $1",
-                       reason,
-                       FullyDecodeTransactionId(Slice(id.data, id.size())));
+                       "$0 Conflicts with $1 transaction: $2",
+                       our_id, reason, other_id);
 }
 
 class ConflictResolver;
@@ -109,8 +108,13 @@ class ConflictResolver {
     return doc_db_;
   }
 
-  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) {
-    return status_manager_.Metadata(id);
+  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) {
+    return status_manager_.PrepareMetadata(pb);
+  }
+
+  void FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) {
+    return status_manager_.FillPriorities(inout);
   }
 
   CHECKED_STATUS Resolve() {
@@ -384,17 +388,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
 
     VLOG(3) << "Resolve conflicts: " << transaction_id_;
 
-    if (write_batch_.transaction().has_isolation()) {
-      metadata_ = VERIFY_RESULT(TransactionMetadata::FromPB(write_batch_.transaction()));
-    } else {
-      // If write request does not contain metadata it means that metadata is stored in
-      // local cache.
-      auto stored_metadata = resolver->Metadata(*transaction_id_);
-      if (!stored_metadata) {
-        return STATUS_FORMAT(IllegalState, "Unknown transaction: $0", *transaction_id_);
-      }
-      metadata_ = std::move(*stored_metadata);
-    }
+    metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
 
     boost::container::small_vector<RefCntPrefix, 8> paths;
 
@@ -496,20 +490,22 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
   CHECKED_STATUS CheckPriority(ConflictResolver* resolver,
                                std::vector<TransactionData>* transactions) override {
     auto our_priority = metadata_.priority;
-    for (auto& transaction : *transactions) {
-      if (!fetched_metadata_for_transactions_) {
-        auto their_metadata = resolver->Metadata(transaction.id);
-        if (!their_metadata) {
-          // This should not really happen.
-          return STATUS_FORMAT(IllegalState,
-                               "Does not have metadata for conflicting transaction: $0",
-                               transaction.id);
-        }
-        transaction.metadata = std::move(*their_metadata);
+    if (!fetched_metadata_for_transactions_) {
+      boost::container::small_vector<std::pair<TransactionId, uint64_t>, 8> ids_and_priorities;
+      ids_and_priorities.reserve(transactions->size());
+      for (auto& transaction : *transactions) {
+        ids_and_priorities.emplace_back(transaction.id, 0);
       }
-      auto their_priority = transaction.metadata.priority;
+      resolver->FillPriorities(&ids_and_priorities);
+      for (size_t i = 0; i != transactions->size(); ++i) {
+        (*transactions)[i].priority = ids_and_priorities[i].second;
+      }
+    }
+    for (auto& transaction : *transactions) {
+      auto their_priority = transaction.priority;
       if (our_priority < their_priority) {
-        return MakeConflictStatus(transaction.id, "higher priority", conflicts_metric_);
+        return MakeConflictStatus(
+            metadata_.transaction_id, transaction.id, "higher priority", conflicts_metric_);
       }
     }
     fetched_metadata_for_transactions_ = true;
@@ -521,7 +517,8 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
       const TransactionId& id, HybridTime commit_time) override {
     DSCHECK(commit_time.is_valid(), Corruption, "Invalid transaction commit time");
 
-    VLOG(4) << "Committed: " << id << ", " << commit_time;
+    VLOG(4) << ToString() << ", committed: " << id << ", commit_time: " << commit_time
+            << ", read_time: " << read_time_;
 
     // commit_time equals to HybridTime::kMax means that transaction is not actually committed,
     // but is being committed. I.e. status tablet is trying to replicate COMMITTED state.
@@ -535,7 +532,7 @@ class TransactionConflictResolverContext : public ConflictResolverContext {
     // In all other cases we have concrete read time and should conflict with transactions
     // that were committed after this point.
     if (commit_time >= read_time_) {
-      return MakeConflictStatus(id, "committed", conflicts_metric_);
+      return MakeConflictStatus(*transaction_id_, id, "committed", conflicts_metric_);
     }
 
     return Status::OK();

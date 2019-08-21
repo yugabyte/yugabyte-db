@@ -54,9 +54,12 @@ public class TestPgSortChar extends BasePgSortingOrder {
     { "NULL" }
   };
 
-  // Testing sorting order for the listed numeric types.
+  // Testing sorting order for the listed types.
   @Test
-  public void testSortChar() throws Exception {
+  public void testSort() throws Exception {
     RunTest(testTypes, testValues, testInvalidValues);
+
+    // Test invalid type names.
+    createTablesWithInvalidPrimaryKey("BIT", "VARBIT", "TSQUERY", "TSVECTOR");
   }
 }

@@ -385,6 +385,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
     std::vector<shared_ptr<yb::tablet::TabletPeer> > tablet_peers;
     uint64_t total_file_sizes = 0;
     uint64_t uncompressed_file_sizes = 0;
+    uint64_t num_files = 0;
     server_->tablet_manager()->GetTabletPeers(&tablet_peers);
     for (auto it = tablet_peers.begin(); it != tablet_peers.end(); it++) {
       shared_ptr<yb::tablet::TabletPeer> tablet_peer = *it;
@@ -394,10 +395,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
             ? tablet_class->GetCurrentVersionSstFilesSize() : 0;
         uncompressed_file_sizes += (tablet_class)
             ? tablet_class->GetCurrentVersionSstFilesUncompressedSize() : 0;
+        num_files += (tablet_class) ? tablet_class->GetCurrentVersionNumSSTFiles() : 0;
       }
     }
     req.mutable_metrics()->set_total_sst_file_size(total_file_sizes);
     req.mutable_metrics()->set_uncompressed_sst_file_size(uncompressed_file_sizes);
+    req.mutable_metrics()->set_num_sst_files(num_files);
 
     // Get the total number of read and write operations.
     scoped_refptr<Histogram> reads_hist = server_->GetMetricsHistogram

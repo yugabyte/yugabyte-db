@@ -91,7 +91,13 @@ void SnapshotOperation::DoStart() {
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status SnapshotOperation::Apply(int64_t leader_term) {
+Status SnapshotOperation::DoAborted(const Status& status) {
+  TRACE("SnapshotOperation: operation aborted");
+  state()->Finish();
+  return status;
+}
+
+Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY SNAPSHOT: Starting");
   TabletClass* const tablet = down_cast<TabletClass*>(state()->tablet());
   bool handled = false;
@@ -119,16 +125,6 @@ Status SnapshotOperation::Apply(int64_t leader_term) {
     FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation, state()->operation());
   }
 
-  return Status::OK();
-}
-
-void SnapshotOperation::Finish(OperationResult result) {
-  if (PREDICT_FALSE(result == Operation::ABORTED)) {
-    TRACE("SnapshotOperation: operation aborted");
-    state()->Finish();
-    return;
-  }
-
   // The schema lock was acquired by Tablet::PrepareForCreateSnapshot.
   // Normally, we would release it in tablet.cc after applying the operation,
   // but currently we need to wait until after the COMMIT message is logged
@@ -136,11 +132,12 @@ void SnapshotOperation::Finish(OperationResult result) {
   // AlterSchemaOperation().
   state()->ReleaseSchemaLock();
 
-  DCHECK_EQ(result, Operation::COMMITTED);
   // Now that all of the changes have been applied and the commit is durable
   // make the changes visible to readers.
   TRACE("SnapshotOperation: making snapshot visible");
   state()->Finish();
+
+  return Status::OK();
 }
 
 string SnapshotOperation::ToString() const {

@@ -160,3 +160,83 @@ SELECT * FROM tmp_new;
 SELECT * FROM tmp;		-- should fail
 
 DROP TABLE tmp_new;
+
+-- alter table / alter column [set/drop] not null tests
+-- try altering system catalogs, should fail
+alter table pg_class alter column relname drop not null;
+alter table pg_class alter relname set not null;
+
+-- try altering non-existent table, should fail
+alter table non_existent alter column bar set not null;
+alter table non_existent alter column bar drop not null;
+
+-- test setting columns to null and not null and vice versa
+-- test checking for null values and primary key
+create table atacc1tmp (test int not null PRIMARY KEY);
+alter table atacc1tmp alter column test drop not null;
+drop table atacc1tmp;
+
+create table atacc1 (test int not null);
+alter table atacc1 alter column test drop not null;
+insert into atacc1 values (null);
+alter table atacc1 alter test set not null;
+delete from atacc1;
+alter table atacc1 alter test set not null;
+
+-- try altering a non-existent column, should fail
+alter table atacc1 alter bar set not null;
+alter table atacc1 alter bar drop not null;
+
+-- -- try altering the oid column, should fail
+-- alter table atacc1 alter oid set not null;
+-- alter table atacc1 alter oid drop not null;
+
+-- try creating a view and altering that, should fail
+create view myview as select * from atacc1;
+alter table myview alter column test drop not null;
+alter table myview alter column test set not null;
+drop view myview;
+
+drop table atacc1;
+
+-- test setting and removing default values
+create table def_test (
+	c1	int4 default 5,
+	c2	text default 'initial_default'
+);
+insert into def_test default values;
+alter table def_test alter column c1 drop default;
+insert into def_test default values;
+alter table def_test alter column c2 drop default;
+insert into def_test default values;
+alter table def_test alter column c1 set default 10;
+alter table def_test alter column c2 set default 'new_default';
+insert into def_test default values;
+select * from def_test order by c1, c2;
+
+-- set defaults to an incorrect type: this should fail
+alter table def_test alter column c1 set default 'wrong_datatype';
+alter table def_test alter column c2 set default 20;
+
+-- set defaults on a non-existent column: this should fail
+alter table def_test alter column c3 set default 30;
+
+-- TODO: enable following section after https://github.com/YugaByte/yugabyte-db/issues/1981
+---- set defaults on views: we need to create a view, add a rule
+---- to allow insertions into it, and then alter the view to add
+---- a default
+--create view def_view_test as select * from def_test;
+--create rule def_view_test_ins as
+--	on insert to def_view_test
+--	do instead insert into def_test select new.*;
+--insert into def_view_test default values;
+--alter table def_view_test alter column c1 set default 45;
+--insert into def_view_test default values;
+--alter table def_view_test alter column c2 set default 'view_default';
+--insert into def_view_test default values;
+--select * from def_view_test;
+
+--drop rule def_view_test_ins on def_view_test;
+--drop view def_view_test;
+drop table def_test;
+

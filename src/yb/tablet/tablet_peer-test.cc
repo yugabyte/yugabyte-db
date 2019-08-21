@@ -308,12 +308,12 @@ class DelayedApplyOperation : public WriteOperation {
         apply_continue_(DCHECK_NOTNULL(apply_continue)) {
   }
 
-  Status Apply(int64_t leader_term) override {
+  Status DoReplicated(int64_t leader_term, Status* completion_status) override {
     apply_started_->CountDown();
     LOG(INFO) << "Delaying apply...";
     apply_continue_->Wait();
     LOG(INFO) << "Apply proceeding";
-    return WriteOperation::Apply(leader_term);
+    return WriteOperation::DoReplicated(leader_term, completion_status);
   }
 
  private:

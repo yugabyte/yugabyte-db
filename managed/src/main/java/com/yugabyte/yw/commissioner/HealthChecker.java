@@ -213,7 +213,7 @@ public class HealthChecker {
       providerCode = provider.code;
       if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
         info.namespaceToConfig = PlacementInfoUtil.getConfigPerNamespace(
-            cluster.placementInfo, details.nodePrefix);
+            cluster.placementInfo, details.nodePrefix, provider);
       }
 
       // TODO(bogdan): We do not have access to the default port constant at this level, as it is

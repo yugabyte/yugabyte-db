@@ -12,6 +12,7 @@
 
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/size_literals.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
@@ -20,6 +21,7 @@
 
 using namespace std::literals;
 
+DECLARE_int64(external_mini_cluster_max_log_bytes);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
@@ -31,6 +33,12 @@ namespace pgwrapper {
 
 class PgLibPqTest : public PgWrapperTestBase {
  protected:
+  void SetUp() override {
+    // postgres has very verbose logging in case of conflicts
+    FLAGS_external_mini_cluster_max_log_bytes = 256_MB;
+    PgWrapperTestBase::SetUp();
+  }
+
   Result<PGConnPtr> Connect() {
     auto deadline = CoarseMonoClock::now() + 15s;
     for (;;) {
@@ -356,6 +364,10 @@ bool TransactionalFailure(const Status& status) {
   auto message = status.ToString();
   return message.find("Restart read required at") != std::string::npos ||
          message.find("Transaction expired") != std::string::npos ||
+         message.find("Transaction aborted") != std::string::npos ||
+         message.find("Unknown transaction") != std::string::npos ||
+         message.find("Transaction metadata missing") != std::string::npos ||
+         message.find("Transaction was recently aborted") != std::string::npos ||
          message.find("Conflicts with committed transaction") != std::string::npos ||
          message.find("Value write after transaction start") != std::string::npos ||
          message.find("Conflicts with higher priority transaction") != std::string::npos;
@@ -696,6 +708,127 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(InTxnDelete)) {
   ASSERT_OK(Execute(conn.get(), "COMMIT"));
 
   ASSERT_NO_FATALS(AssertRows(conn.get(), 1));
+}
+
+struct OnConflictKey {
+  int key;
+  int operation_index = 0;
+};
+
+class OnConflictHelper {
+ public:
+  explicit OnConflictHelper(size_t concurrent_keys)
+      : concurrent_keys_(concurrent_keys), active_keys_(concurrent_keys) {
+    for(size_t i = 0; i != concurrent_keys; ++i) {
+      active_keys_[i].key = ++next_key_;
+    }
+    for (auto i = 'A'; i <= 'Z'; ++i) {
+      chars_.push_back(i);
+    }
+  }
+
+  std::pair<int, char> RandomPair() {
+    size_t i = RandomUniformInt<size_t>(0, concurrent_keys_ - 1);
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto& key = active_keys_[i];
+    std::pair<int, char> result(key.key, chars_[key.operation_index]);
+    if (++key.operation_index == chars_.size()) {
+      key.key = ++next_key_;
+      key.operation_index = 0;
+    }
+    return result;
+  }
+ private:
+  const size_t concurrent_keys_;
+  std::string chars_;
+
+  std::mutex mutex_;
+  int next_key_ = 0;
+  std::vector<OnConflictKey> active_keys_;
+};
+
+// Check that INSERT .. ON CONFLICT .. does not generate duplicate key errors.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(OnConflict)) {
+  constexpr int kWriters = RegularBuildVsSanitizers(25, 5);
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(Execute(conn.get(), "CREATE TABLE test (k int PRIMARY KEY, v TEXT)"));
+
+  std::atomic<int> processed(0);
+  TestThreadHolder thread_holder;
+  OnConflictHelper helper(3);
+  for (int i = 0; i != kWriters; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), &processed, &helper] {
+      SetFlagOnExit set_flag_on_exit(&stop);
+      auto conn = ASSERT_RESULT(Connect());
+      char value[2] = "0";
+      while (!stop.load(std::memory_order_acquire)) {
+        int batch_size = RandomUniformInt(1, 5);
+        bool ok = false;
+        if (batch_size != 1) {
+          ASSERT_OK(Execute(conn.get(), "START TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+        }
+        auto se = ScopeExit([&conn, batch_size, &ok, &processed] {
+          if (batch_size != 1) {
+            if (ok) {
+              auto status = Execute(conn.get(), "COMMIT");
+              if (status.ok()) {
+                ++processed;
+                return;
+              }
+              auto msg = status.message().ToBuffer();
+              if (msg.find("Transaction expired") == std::string::npos) {
+                ASSERT_OK(status);
+              }
+            }
+            ASSERT_OK(Execute(conn.get(), "ROLLBACK"));
+          } else if (ok) {
+            ++processed;
+          }
+        });
+        ok = true;
+        for (int j = 0; j != batch_size; ++j) {
+          auto p = helper.RandomPair();
+          value[0] = p.second;
+          auto status = Execute(
+              conn.get(),
+              Format(
+                  "INSERT INTO test (k, v) VALUES ($0, '$1') ON CONFLICT (K) DO "
+                  "UPDATE SET v = CONCAT(test.v, '$1')",
+                  p.first,
+                  value));
+          if (status.ok()) {
+            continue;
+          }
+          ok = false;
+          if (TransactionalFailure(status)) {
+            break;
+          }
+          auto msg = status.message().ToBuffer();
+          if (msg.find("Snapshot too old: Snapshot too old.") != std::string::npos ||
+              msg.find("Commit of expired transaction") != std::string::npos ||
+              msg.find("Missing metadata for transaction") != std::string::npos) {
+            break;
+          }
+
+          ASSERT_OK(status);
+        }
+      }
+    });
+  }
+
+  thread_holder.WaitAndStop(120s);
+  auto res = ASSERT_RESULT(Fetch(conn.get(), "SELECT * FROM test ORDER BY k"));
+  int cols = PQnfields(res.get());
+  ASSERT_EQ(cols, 2);
+  int rows = PQntuples(res.get());
+  for (int i = 0; i != rows; ++i) {
+    auto key = GetInt32(res.get(), i, 0);
+    auto value = GetString(res.get(), i, 1);
+    LOG(INFO) << "  " << key << ": " << value;
+  }
+  LOG(INFO) << "Total processed: " << processed.load(std::memory_order_acquire);
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {

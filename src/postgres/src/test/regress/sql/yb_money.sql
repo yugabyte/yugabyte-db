@@ -73,6 +73,82 @@ DELETE FROM money_data;
 INSERT INTO money_data VALUES ('$123.459');
 SELECT * FROM money_data;
 
+--
+-- Test various formats
+--
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('0');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('-100');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('2.0001');
+SELECT * FROM money_data;
+SELECT m + '0.0099' FROM money_data;
+SELECT m + '0.0098' FROM money_data;
+SELECT m + '0.0050' FROM money_data;
+SELECT m + '0.0049' FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('5,.06');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('$3.0001');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('$40');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('1,2');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('1,23');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('100,120');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('100,23');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('1000,23');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('1,000,000.12');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('2,000.00012');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('$3,000.00012');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('$4,000,000.12');
+SELECT * FROM money_data;
+
+-- documented minimums and maximums
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('-92233720368547758.08');
+SELECT * FROM money_data;
+
+DELETE FROM money_data;
+INSERT INTO money_data VALUES ('92233720368547758.07');
+SELECT * FROM money_data;
+
 -- input checks
 SELECT '1234567890'::money;
 SELECT '12345678901234567'::money;

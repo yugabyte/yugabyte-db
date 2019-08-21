@@ -53,9 +53,11 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/retryable_requests.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 
@@ -114,6 +116,17 @@ TAG_FLAG(tablet_start_warn_threshold_ms, hidden);
 DEFINE_int32(db_block_cache_num_shard_bits, 4,
              "Number of bits to use for sharding the block cache (defaults to 4 bits)");
 TAG_FLAG(db_block_cache_num_shard_bits, advanced);
+
+DEFINE_bool(enable_log_cache_gc, true,
+            "Set to true to enable log cache garbage collector.");
+
+DEFINE_bool(log_cache_gc_evict_only_over_allocated, true,
+            "If set to true, log cache garbage collection would evict only memory that was "
+            "allocated over limit for log cache. Otherwise it will try to evict requested number "
+            "of bytes.");
+
+DEFINE_bool(enable_block_based_table_cache_gc, false,
+            "Set to true to enable block based table garbage collector.");
 
 DEFINE_test_flag(double, fault_crash_after_blocks_deleted, 0.0,
                  "Fraction of the time when the tablet will crash immediately "
@@ -233,6 +246,11 @@ METRIC_DEFINE_histogram(server, op_read_run_time, "Operation Read op Run Time",
                             "that operations consist of very large batches.",
                         10000000, 2);
 
+METRIC_DEFINE_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
+                        MetricUnit::kMicroseconds,
+                        "Time that the tablet server takes to bootstrap all of its tablets.",
+                        10000000, 2);
+
 using consensus::ConsensusMetadata;
 using consensus::ConsensusStatePB;
 using consensus::OpId;
@@ -316,6 +334,45 @@ TabletPeerPtr TSTabletManager::TabletToFlush() {
   return tablet_to_flush;
 }
 
+namespace {
+
+class LRUCacheGC : public GarbageCollector {
+ public:
+  explicit LRUCacheGC(std::shared_ptr<rocksdb::Cache> cache) : cache_(std::move(cache)) {}
+
+  void CollectGarbage(size_t required) {
+    if (!FLAGS_enable_block_based_table_cache_gc) {
+      return;
+    }
+
+    auto evicted = cache_->Evict(required);
+    LOG(INFO) << "Evicted from table cache: " << HumanReadableNumBytes::ToString(evicted)
+              << ", new usage: " << HumanReadableNumBytes::ToString(cache_->GetUsage())
+              << ", required: " << HumanReadableNumBytes::ToString(required);
+  }
+
+  virtual ~LRUCacheGC() = default;
+
+ private:
+  std::shared_ptr<rocksdb::Cache> cache_;
+};
+
+class FunctorGC : public GarbageCollector {
+ public:
+  explicit FunctorGC(std::function<void(size_t)> impl) : impl_(std::move(impl)) {}
+
+  void CollectGarbage(size_t required) {
+    impl_(required);
+  }
+
+  virtual ~FunctorGC() = default;
+
+ private:
+  std::function<void(size_t)> impl_;
+};
+
+} // namespace
+
 TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  TabletServer* server,
                                  MetricRegistry* metric_registry)
@@ -383,7 +440,14 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
     tablet_options_.block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
                                                        FLAGS_db_block_cache_num_shard_bits);
     tablet_options_.block_cache->SetMetrics(server_->metric_entity());
+    block_based_table_gc_ = std::make_shared<LRUCacheGC>(tablet_options_.block_cache);
+    block_based_table_mem_tracker_->AddGarbageCollector(block_based_table_gc_);
   }
+
+  auto log_cache_mem_tracker = consensus::LogCache::GetServerMemTracker(server_->mem_tracker());
+  log_cache_gc_ = std::make_shared<FunctorGC>(
+      std::bind(&TSTabletManager::LogCacheGC, this, log_cache_mem_tracker.get(), _1));
+  log_cache_mem_tracker->AddGarbageCollector(log_cache_gc_);
 
   // Calculate memstore_size_bytes
   bool should_count_memory = FLAGS_global_memstore_size_percentage > 0;
@@ -442,8 +506,14 @@ Status TSTabletManager::Init() {
     }
     LOG(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
+  ThreadPoolMetrics metrics = {
+          NULL,
+          NULL,
+          METRIC_ts_bootstrap_time.Instantiate(server_->metric_entity())
+  };
   RETURN_NOT_OK(ThreadPoolBuilder("tablet-bootstrap")
                 .set_max_threads(max_bootstrap_threads)
+                .set_metrics(std::move(metrics))
                 .Build(&open_tablet_pool_));
 
   CleanupCheckpoints();
@@ -1698,6 +1768,56 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
                    << wal_root_dir << "for table " << table_id;
     }
   }
+}
+
+size_t GetLogCacheSize(TabletPeer* peer) {
+  return down_cast<consensus::RaftConsensus*>(peer->consensus())->LogCacheSize();
+}
+
+void TSTabletManager::LogCacheGC(MemTracker* log_cache_mem_tracker, size_t bytes_to_evict) {
+  if (!FLAGS_enable_log_cache_gc) {
+    return;
+  }
+
+  if (FLAGS_log_cache_gc_evict_only_over_allocated) {
+    if (!log_cache_mem_tracker->has_limit()) {
+      return;
+    }
+    auto limit = log_cache_mem_tracker->limit();
+    auto consumption = log_cache_mem_tracker->consumption();
+    if (consumption <= limit) {
+      return;
+    }
+    bytes_to_evict = std::min<size_t>(bytes_to_evict, consumption - limit);
+  }
+
+  std::vector<TabletPeerPtr> peers;
+  {
+    boost::shared_lock<RWMutex> shared_lock(lock_);
+    peers.reserve(tablet_map_.size());
+    for (const auto& pair : tablet_map_) {
+      if (GetLogCacheSize(pair.second.get()) > 0) {
+        peers.push_back(pair.second);
+      }
+    }
+  }
+  std::sort(peers.begin(), peers.end(), [](const auto& lhs, const auto& rhs) {
+    // Note inverse order.
+    return GetLogCacheSize(lhs.get()) > GetLogCacheSize(rhs.get());
+  });
+
+  size_t total_evicted = 0;
+  for (const auto& peer : peers) {
+    size_t evicted = down_cast<consensus::RaftConsensus*>(
+        peer->consensus())->EvictLogCache(bytes_to_evict - total_evicted);
+    total_evicted += evicted;
+    if (total_evicted >= bytes_to_evict) {
+      break;
+    }
+  }
+
+  LOG(INFO) << "Evicted from log cache: " << HumanReadableNumBytes::ToString(total_evicted)
+            << ", required: " << HumanReadableNumBytes::ToString(bytes_to_evict);
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,

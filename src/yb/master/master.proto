@@ -231,6 +231,7 @@ message SysRowEntry {
     SNAPSHOT = 7;
     REDIS_CONFIG = 8;
     SYS_CONFIG = 9;
+    CDC_STREAM = 10;
   }
 
   // The type of entry we are storing. Since the data is serialized, we cannot
@@ -373,10 +374,16 @@ message SysUDTypeEntryPB {
   repeated QLTypePB field_types = 4;
 }
 
-// The data part of a SysRowEntry in the sys.catalog table for a User Defined Type.
+// The data part of a SysRowEntry in the sys.catalog table for Redis Config.
 message SysRedisConfigEntryPB {
   optional string key = 1;
   repeated bytes args = 2;
+}
+
+// The data part of a SysRowEntry in the sys.catalog table for a CDC stream.
+message SysCDCStreamEntryPB {
+  optional string table_id = 1;
+  repeated CDCStreamOptionsPB options = 2;
 }
 
 message ChangeEncryptionInfoRequestPB {
@@ -528,6 +535,7 @@ message TServerMetricsPB {
   optional double write_ops_per_sec = 4;
   optional int64 uncompressed_sst_file_size = 5;
   optional uint64 uptime_seconds = 6;
+  optional uint64 num_sst_files = 7;
 }
 
 // Heartbeat sent from the tablet-server to the master
@@ -1348,6 +1356,65 @@ message UDTypeInfoPB {
   optional NamespaceIdentifierPB namespace = 5;
 }
 
+// ============================================================================
+//  CDC Stream
+// ============================================================================
+
+message CreateCDCStreamRequestPB {
+  optional string table_id = 1;
+  repeated CDCStreamOptionsPB options = 2;
+}
+
+// Options for CDC stream. This will include details such as:
+// Stream sink: YB Universe / Kafka / Elastic Search.
+// Log retention time: Amount of time to retain logs for CDC.
+// Sink details: For example, Kafka cluster IP, port.
+message CDCStreamOptionsPB {
+  optional string key = 1;
+  optional bytes value = 2;
+}
+
+message CreateCDCStreamResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  optional bytes stream_id = 2;
+}
+
+message DeleteCDCStreamRequestPB {
+  optional bytes stream_id = 1;
+}
+
+message DeleteCDCStreamResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+}
+
+message ListCDCStreamsRequestPB {
+  optional string table_id = 1;
+}
+
+message ListCDCStreamsResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  repeated CDCStreamInfoPB streams = 2;
+}
+
+message GetCDCStreamRequestPB {
+  optional bytes stream_id = 1;
+}
+
+message GetCDCStreamResponsePB {
+  // The error, if an error occurred with this request.
+  optional MasterErrorPB error = 1;
+  optional CDCStreamInfoPB stream = 2;
+}
+
+message CDCStreamInfoPB {
+  optional bytes stream_id = 1;
+  optional bytes table_id = 2;
+  repeated CDCStreamOptionsPB options = 3;
+}
+
 // TODO: rename to FlushOrCompact TablesRequestPB
 // https://github.com/YugaByte/yugabyte-db/issues/729
 message FlushTablesRequestPB {
@@ -1459,6 +1526,12 @@ service MasterService {
   rpc DeleteUDType(DeleteUDTypeRequestPB) returns (DeleteUDTypeResponsePB);
   rpc ListUDTypes(ListUDTypesRequestPB) returns (ListUDTypesResponsePB);
   rpc GetUDTypeInfo(GetUDTypeInfoRequestPB) returns (GetUDTypeInfoResponsePB);
+
+  // CDC stream RPCs.
+  rpc CreateCDCStream(CreateCDCStreamRequestPB) returns (CreateCDCStreamResponsePB);
+  rpc DeleteCDCStream(DeleteCDCStreamRequestPB) returns (DeleteCDCStreamResponsePB);
+  rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
+  rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
 
   // Redis Config
   rpc RedisConfigSet(RedisConfigSetRequestPB) returns (RedisConfigSetResponsePB);

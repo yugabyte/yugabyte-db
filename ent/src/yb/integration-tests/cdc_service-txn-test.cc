@@ -38,7 +38,6 @@ class CDCServiceTxnTest : public TransactionTestBase {
     return IsolationLevel::SERIALIZABLE_ISOLATION;
   }
 
- protected:
   void SetUp() override {
     mini_cluster_opt_.num_masters = 1;
     mini_cluster_opt_.num_tablet_servers = 1;
@@ -54,6 +53,13 @@ class CDCServiceTxnTest : public TransactionTestBase {
 
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;
 };
+
+void AssertValue(const google::protobuf::Map<string, QLValuePB>& changes, int32_t expected_value) {
+  ASSERT_EQ(changes.size(), 1);
+  const auto& value = changes.find("value");
+  ASSERT_NE(value, changes.end());
+  ASSERT_EQ(value->second.int32_value(), expected_value);
+}
 
 TEST_F(CDCServiceTxnTest, TestGetChanges) {
   // Consider the following writes:
@@ -94,11 +100,15 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
   ASSERT_OK(client_->GetTablets(table_->name(), 0, &tablets));
   ASSERT_EQ(tablets.size(), 1);
 
+  // Create CDC stream on table.
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;
 
+  change_req.set_stream_id(stream_id);
   change_req.set_tablet_id(tablets.Get(0).tablet_id());
-  change_req.set_subscriber_uuid("subscriber_test");
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 

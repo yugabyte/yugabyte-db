@@ -49,12 +49,6 @@ The prerequisites for YugaByte Platform data nodes are same as that of [YugaByte
     </a>
   </li>
   <li>
-    <a href="#configure-pks" class="nav-link" id="configure-pks-tab" data-toggle="tab" role="tab" aria-controls="configure-pks" aria-selected="false">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      PKS
-    </a>
-  </li>
-  <li>
     <a href="#configure-k8s" class="nav-link" id="configure-k8s-tab" data-toggle="tab" role="tab" aria-controls="configure-k8s" aria-selected="false">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
@@ -77,9 +71,6 @@ The prerequisites for YugaByte Platform data nodes are same as that of [YugaByte
   </div>
   <div id="configure-azure" class="tab-pane fade" role="tabpanel" aria-labelledby="configure-azure-tab">
     {{% includeMarkdown "configure-cloud/azure.md" /%}}
-  </div>
-  <div id="configure-pks" class="tab-pane fade" role="tabpanel" aria-labelledby="configure-pks-tab">
-    {{% includeMarkdown "configure-cloud/pks.md" /%}}
   </div>
   <div id="configure-k8s" class="tab-pane fade" role="tabpanel" aria-labelledby="configure-k8s-tab">
     {{% includeMarkdown "configure-cloud/kubernetes.md" /%}}

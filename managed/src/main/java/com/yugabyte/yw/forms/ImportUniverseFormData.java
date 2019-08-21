@@ -44,4 +44,5 @@ public class ImportUniverseFormData {
   public final String zoneCode = "zone-1";
 
   public final String instanceType = DEFAULT_INSTANCE;
+  public final int replicationFactor = 1;
 }

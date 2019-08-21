@@ -400,6 +400,20 @@ class YBClient {
                            const std::string &type_name,
                            std::shared_ptr<QLType> *ql_type);
 
+  // CDC Stream related methods.
+
+  // Create a new CDC stream.
+  Result<CDCStreamId> CreateCDCStream(const TableId& table_id,
+                                      const std::unordered_map<std::string, std::string>& options);
+
+  // Delete a CDC stream.
+  CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id);
+
+  // Retrieve a CDC stream.
+  CHECKED_STATUS GetCDCStream(const CDCStreamId &stream_id,
+                              TableId* table_id,
+                              std::unordered_map<std::string, std::string>* options);
+
   // Find the number of tservers. This function should not be called frequently for reading or
   // writing actual data. Currently, it is called only for SQL DDL statements.
   // If primary_only is set to true, we expect the primary/sync cluster tserver count only.
@@ -491,6 +505,11 @@ class YBClient {
   };
 
   bool IsMultiMaster() const;
+
+  // Get the number of tablets to be created for a new user table.
+  // This will be based on --num_shards_per_tserver or --ysql_num_shards_per_tserver
+  // and number of tservers.
+  Result<int> NumTabletsForUserTable(TableType table_type);
 
   void TEST_set_admin_operation_timeout(const MonoDelta& timeout);
 

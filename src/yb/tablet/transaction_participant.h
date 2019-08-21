@@ -128,7 +128,7 @@ class TransactionParticipant : public TransactionStatusManager {
   MUST_USE_RESULT bool Add(
       const TransactionMetadataPB& data, bool may_have_metadata, rocksdb::WriteBatch *write_batch);
 
-  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override;
+  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& id) override;
 
   boost::optional<std::pair<TransactionMetadata, IntraTxnWriteId>> MetadataWithWriteId(
       const TransactionId& id);
@@ -159,6 +159,11 @@ class TransactionParticipant : public TransactionStatusManager {
   CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
 
   void SetDB(rocksdb::DB* db, const docdb::KeyBounds* key_bounds);
+
+  CHECKED_STATUS CheckAborted(const TransactionId& id);
+
+  void FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
 
   TransactionParticipantContext* context() const;
 

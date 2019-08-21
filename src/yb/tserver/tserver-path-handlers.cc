@@ -131,6 +131,7 @@ using yb::tablet::MaintenanceManagerStatusPB;
 using yb::tablet::MaintenanceManagerStatusPB_CompletedOpPB;
 using yb::tablet::MaintenanceManagerStatusPB_MaintenanceOpPB;
 using yb::tablet::Tablet;
+using yb::tablet::TabletDataState;
 using yb::tablet::TabletPeer;
 using yb::tablet::TabletStatusPB;
 using yb::tablet::Operation;
@@ -263,6 +264,19 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
     TabletStatusPB status;
     peer->GetTabletStatusPB(&status);
 
+    if (status.tablet_data_state() != TabletDataState::TABLET_DATA_COPYING &&
+        status.tablet_data_state() != TabletDataState::TABLET_DATA_READY) {
+      continue;
+    }
+
+    auto consensus = peer->shared_consensus();
+    auto raft_role = RaftPeerPB::UNKNOWN_ROLE;
+    if (consensus) {
+      raft_role = consensus->role();
+    } else if (status.tablet_data_state() == TabletDataState::TABLET_DATA_COPYING) {
+      raft_role = RaftPeerPB::LEARNER;
+    }
+
     auto identifer = TableIdentifier {
       .uuid = std::move(status.table_id()),
       .state = peer->HumanReadableState()
@@ -271,7 +285,7 @@ std::map<TableIdentifier, TableInfo> GetTablesInfo(
       .name = std::move(status.table_name()),
       .on_disk_size = status.has_estimated_on_disk_size() ? status.estimated_on_disk_size() : 0,
       .has_on_disk_size = status.has_estimated_on_disk_size(),
-      .raft_role = peer->shared_consensus()->role()
+      .raft_role = raft_role,
     };
 
     auto table_iter = table_map.find(identifer);

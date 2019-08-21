@@ -42,6 +42,7 @@ public class MetaMasterController extends Controller {
   public static final int MASTER_RPC_PORT = 7100;
   public static final int YEDIS_SERVER_RPC_PORT = 6379;
   public static final int YCQL_SERVER_RPC_PORT = 9042;
+  public static final int YSQL_SERVER_RPC_PORT = 5433;
 
   @Inject
   KubernetesManager kubernetesManager;
@@ -163,9 +164,22 @@ public class MetaMasterController extends Controller {
         }
         List<String> ips = Arrays.stream(r.message.split("\\|"))
             .filter((ip) -> !ip.isEmpty()).collect(Collectors.toList());
-        int rpcPort = MASTER_RPC_PORT;
-        if (!type.equals(ServerType.MASTER)) {
-          rpcPort = type == ServerType.YQLSERVER ? YCQL_SERVER_RPC_PORT : YEDIS_SERVER_RPC_PORT;
+        int rpcPort;
+        switch (type) {
+          case MASTER:
+            rpcPort = MASTER_RPC_PORT;
+            break;
+          case YSQLSERVER:
+            rpcPort = YSQL_SERVER_RPC_PORT;
+            break;
+          case YQLSERVER:
+            rpcPort = YCQL_SERVER_RPC_PORT;
+            break;
+          case REDISSERVER:
+            rpcPort = YEDIS_SERVER_RPC_PORT;
+            break;
+          default:
+            throw new IllegalArgumentException("Unexpected type " + type);
         }
         allIPs.add(String.format("%s:%d", ips.get(ips.size() - 1), rpcPort));
       }

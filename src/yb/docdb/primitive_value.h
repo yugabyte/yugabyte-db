@@ -243,6 +243,7 @@ class PrimitiveValue {
   static PrimitiveValue SystemColumnId(SystemColumnIds system_column_id);
   static PrimitiveValue Int32(int32_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue UInt32(uint32_t v, SortOrder sort_order = SortOrder::kAscending);
+  static PrimitiveValue UInt64(uint64_t v, SortOrder sort_order = SortOrder::kAscending);
   static PrimitiveValue TransactionId(Uuid transaction_id);
   static PrimitiveValue TableId(Uuid table_id);
   static PrimitiveValue Jsonb(const std::string& json);
@@ -309,6 +310,11 @@ class PrimitiveValue {
   int64_t GetInt64() const {
     DCHECK(ValueType::kInt64 == type_ || ValueType::kInt64Descending == type_);
     return int64_val_;
+  }
+
+  uint64_t GetUInt64() const {
+    DCHECK(ValueType::kUInt64 == type_ || ValueType::kUInt64Descending == type_);
+    return uint64_val_;
   }
 
   uint16_t GetUInt16() const {
@@ -436,6 +442,7 @@ class PrimitiveValue {
     int32_t int32_val_;
     uint32_t uint32_val_;
     int64_t int64_val_;
+    uint64_t uint64_val_;
     uint16_t uint16_val_;
     DocHybridTime hybrid_time_val_;
     std::string str_val_;

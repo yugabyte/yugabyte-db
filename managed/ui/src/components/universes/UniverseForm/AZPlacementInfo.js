@@ -32,7 +32,7 @@ export default class AZPlacementInfo extends Component {
       currentStatusType = placementInfo.error.type;
     } else if (placementInfo.replicationFactor === 1) {
       currentStatusType = "singleRF";
-    } else if (placementInfo.numUniqueAzs <= 2) {
+    } else if (placementInfo.numUniqueAzs < 2) {
       currentStatusType = "azWarning";
     } else if (placementInfo.numUniqueRegions < 2) {
       currentStatusType = "regionWarning";

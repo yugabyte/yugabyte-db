@@ -14,7 +14,7 @@ import sys
 import time
 import uuid
 from datetime import datetime
-from signal import SIGABRT, SIGINT, SIGTERM, SIG_DFL, signal
+from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, signal
 from threading import Thread
 
 # Version-dependent imports
@@ -71,7 +71,7 @@ YUGABYTE_API_CLIENT_PROGRAMS = {
 YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
 YUGAWARE_BIN_DIR = os.path.join(YUGAWARE_DIR, "bin")
 YUGAWARE_CONF = os.path.join(YUGAWARE_DIR, "conf/application.default.conf")
-WEBSERVER_DB = "system_wbsvr"
+WEBSERVER_DB = "system_platform"
 DEMO_DB_PREFIX = "yb_demo_"
 
 class YugaByteProcessManager(object):
@@ -91,8 +91,6 @@ class YugaByteProcessManager(object):
     # Prints status of YugaByte DB.
     def status(self):
         if os.path.isdir(self.configs.saved_data.get("data_dir")):
-            if self.get_failed_processes():
-                Output.print_out("YugaByte DB is not running.")
             Output.print_out(self.get_status_string())
         else:
             Output.print_out("YugaByte DB is not running.")
@@ -102,22 +100,35 @@ class YugaByteProcessManager(object):
         title = "YugaByte DB Information"
         with open(VERSION_METADATA_PATH) as metadata:
             data = json.load(metadata)
-            info_kv_list = [
-                ("Version", "{}-b{}".format(data.get("version_number"), data.get("build_number"))),
-                ("Build Time", data.get("build_timestamp")),
-                ("Build Hash", data.get("git_hash"))]
-            Output.print_out(self.get_status_string())
+            title = "YugaByte DB Version"
+            output = "\n" + "-" * 70 + "\n"
+            output += ("| {:^66} |\n").format(title)
+            output += "-" * 70 + "\n"
+            build = data.get("build_number")
+            try:
+                version = "{}-b{}".format(data.get("version_number"), int(build))
+            except ValueError as e:
+                version = "{} ({})".format(data.get("version_number"), build)
+            for k, v in [
+                    ("Version", version),
+                    ("Build Time", data.get("build_timestamp")),
+                    ("Build Hash", data.get("git_hash"))]:
+                output_k = Output.make_yellow(k)
+                extra_len = len(Output.make_yellow(""))
+                output += ("| {:" + str(15 + extra_len) + "}: {:<49} |\n").format(output_k, v)
+            output += "-" * 70 + "\n"
+            Output.print_out(output)
 
     # Starts an interactive YSQL shell.
     def connect_ysql(self):
-        if self.get_failed_processes():
+        if self.get_failed_node_processes():
             Output.log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         ysql_proxy.connect()
 
     # Starts an interactive YCQL shell.
     def connect_ycql(self):
-        if self.get_failed_processes():
+        if self.get_failed_node_processes():
             Output.log_error_and_exit("YugaByte DB is not running. Cannot connect to YCQL.")
         path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
         cmd = [path, "127.0.0.1", str(self.configs.saved_data.get("ycql_port"))]
@@ -125,7 +136,7 @@ class YugaByteProcessManager(object):
 
     # Create target demo database if it does not exist.
     def create_demo(self):
-        if self.get_failed_processes():
+        if self.get_failed_node_processes():
             Output.log_error_and_exit("YugaByte DB is not running. Cannot create sample database.")
 
         demo_db = self.configs.temp_data.get("demo_db")
@@ -168,7 +179,7 @@ class YugaByteProcessManager(object):
 
     # Run YSQL shell in target demo database.
     def run_demo(self):
-        if self.get_failed_processes():
+        if self.get_failed_node_processes():
             Output.log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
 
         demo_db = self.configs.temp_data.get("demo_db")
@@ -189,7 +200,7 @@ class YugaByteProcessManager(object):
 
     # Destroy target demo database if it exists.
     def destroy_demo(self):
-        if self.get_failed_processes():
+        if self.get_failed_node_processes():
             Output.log_error_and_exit("YugaByte DB is not running. Cannot destroy sample database.")
 
         demo_db = self.configs.temp_data.get("demo_db")
@@ -207,7 +218,7 @@ class YugaByteProcessManager(object):
 
     # Checks yb-master and yb-tserver are running. Returns failed processes.
     # TODO: Check postmaster.pid.
-    def get_failed_processes(self):
+    def get_failed_node_processes(self):
         failed_processes = []
         for process in ("master", "tserver"):
             if not ProcessManager.is_process_running(
@@ -233,8 +244,9 @@ class YugaByteProcessManager(object):
 
         try:
             # Kill process group instead of self.processes to ensure
-            # any spawned child processes are killed
-            os.killpg(pgid, SIGTERM)
+            # any spawned child processes are killed. Use SIGKILL because YugaWare
+            # requires KILL signal to terminate and nodes currently do not gracefully terminate.
+            os.killpg(pgid, SIGKILL)
             Output.log_error_and_exit(
                 "YugaByte DB may not have terminated properly... "
                 "Please check PGID {}.".format(pgid))
@@ -338,6 +350,7 @@ class YugaByteProcessManager(object):
                             "{} died unexpectedly. Restarting...".format(p.name), logging.ERROR)
                     should_callhome = True
 
+            yw_logged_in = False
             if self.wait_yb_master():
                 # Start or iniitialize yugaware after setting YSQL default isolation level.
                 # This if required to start YW because of
@@ -355,8 +368,10 @@ class YugaByteProcessManager(object):
                         err = self.wait_yw_login(yw_proxy)
                         if err:
                             Output.log_error_and_exit(err)
+                        yw_logged_in = True
 
-                        err = yw_proxy.import_universe(self.configs.saved_data.get("master_port"))
+                        err = yw_proxy.import_universe(
+                            self.configs.saved_data.get("master_port"), self.get_universe_uuid())
                         if err:
                             Output.log_error_and_exit(err)
 
@@ -369,13 +384,16 @@ class YugaByteProcessManager(object):
                         process = self.processes.get("yugaware")
                         if not process.is_running():
                             process.start()
-                            self.wait_yw_login(yw_proxy)
+                            yw_logged_in = not self.wait_yw_login(yw_proxy)
                             Output.print_and_log(
                                 "Webserver died unexpectedly. Restarting...", logging.ERROR)
                             should_callhome = True
+                        else:
+                            yw_logged_in = False
 
                 # Print startup information and start callhome thread on first successful startup.
-                if is_first_run:
+                if is_first_run and (
+                        not self.configs.saved_data.get("webserver_enabled") or yw_logged_in):
                     first_run_success = True
                     for p in self.processes.values():
                         if not p.is_running():
@@ -410,10 +428,10 @@ class YugaByteProcessManager(object):
         # Create YW database.
         create_yw_db = [
             os.path.join(BIN_DIR, "ysqlsh"), "-c", "create database {};".format(WEBSERVER_DB)]
-        Output.log("Creating system_wbsvr database...")
+        Output.log("Creating {} database...".format(WEBSERVER_DB))
         _, err, ret_code = run_process(create_yw_db)
         if err or ret_code:
-            Output.log("Failed to create system_wbsvr: {}".format(err), logging.ERROR)
+            Output.log("Failed to create {}: {}".format(WEBSERVER_DB, err), logging.ERROR)
             return False
 
         # Create Play evolutions table. Required for YugaWare to start up properly.
@@ -475,7 +493,7 @@ class YugaByteProcessManager(object):
         saved_uuid = self.configs.saved_data.get("universe_uuid")
         if saved_uuid:
             return saved_uuid
-        elif not self.get_failed_processes():
+        elif not self.get_failed_node_processes():
             cmd = [os.path.join(BIN_DIR, "yb-admin"), "get_universe_config"]
             stdout, _, _ = run_process(cmd)
             if stdout:
@@ -518,11 +536,15 @@ class YugaByteProcessManager(object):
         else:
             yw_status = "Disabled"
 
-        title = Output.make_bold(Output.make_green("YugaByte DB"))
         # Make sure ascii escape characters for color encoding do not count towards char limit.
-        extra_len = len(Output.make_bold(Output.make_green("")))
+        if self.get_failed_node_processes():
+            title = Output.make_bold(Output.make_red("YugaByte DB (DOWN)"))
+            extra_len = len(Output.make_bold(Output.make_red("")))
+        else:
+            title = Output.make_bold(Output.make_green("YugaByte DB (UP)"))
+            extra_len = len(Output.make_bold(Output.make_green("")))
         status_info = [
-            (Output.make_yellow("JDBC"), "jdbc:postgresql//127.0.0.1:{}/postgres".format(
+            (Output.make_yellow("JDBC"), "jdbc:postgresql://127.0.0.1:{}/postgres".format(
                 self.configs.saved_data.get("ysql_port"))),
             (Output.make_yellow("YSQL"), "yugabyte-db connect ysql"),
             (Output.make_yellow("YCQL"), "yugabyte-db connect ycql"),
@@ -546,9 +568,10 @@ class YugaByteProcessManager(object):
         initial_interval = 60
         final_interval = 3600
         while not self.stop_callhome:
+            # Sometimes our callhome server returns a malformed response (raises BadStatusLine).
             try:
                 self.callhome()
-            except URLError as e:
+            except Exception as e:
                 Output.log("Failed to send callhome: {}".format(e), logging.ERROR)
             num_times_called += 1
             # Send callhome data more often in initial hour.
@@ -1209,7 +1232,7 @@ class YugaWareProxy(object):
             return "Failed to log into webserver. {}".format(e)
 
     # Import local universe into YW. Returns error, if any.
-    def import_universe(self, master_port):
+    def import_universe(self, master_port, universeUUID):
         target = "{}/customers/{}/universes/import".format(self.url, self.cust_uuid)
         headers = {
             "X-AUTH-YW-API-TOKEN": self.api_token,
@@ -1221,7 +1244,7 @@ class YugaWareProxy(object):
             "currentState": "BEGIN",
             "masterAddresses": "127.0.0.1:{}".format(master_port),
             "universeName": self.univ_name,
-            "universeUUID": "",
+            "universeUUID": universeUUID,
         }
 
         Output.log("Importing YugaByte into webserver...")
@@ -1231,12 +1254,10 @@ class YugaWareProxy(object):
             resp = json.loads(urlopen(req).read())
             checks = resp.get("checks")
             Output.log("Import master payload: {}".format(resp), logging.DEBUG)
-            if checks and not all(check == 'OK' for check in checks.values()):
+            if universeUUID == resp.get("universeUUID") and checks and not all(
+                    check == 'OK' for check in checks.values()):
                 Output.log_error_and_exit(
                     "Failed to import local universe into webserver: checks failed.")
-
-            # Set the universeUUID that YW returns.
-            data["universeUUID"] = resp.get("universeUUID")
 
             Output.log("Importing tserver.", logging.DEBUG)
             data["currentState"] = "IMPORTED_MASTERS"
@@ -1281,7 +1302,8 @@ class YugaWareProxy(object):
             "email": "admin@yugabyte.com",
             "features": {
                 "universe": {
-                    "import": "disabled"
+                    "import": "disabled",
+                    "create": "disabled"
                 },
                 "config": {
                     "infra": "hidden"
@@ -1296,7 +1318,8 @@ class YugaWareProxy(object):
                     "landing_page": "universes"
                 },
                 "menu": {
-                    "dashboard": "hidden"
+                    "dashboard": "hidden",
+                    "configs": "disabled"
                 },
                 "universes": {
                     "details": {
@@ -1304,7 +1327,11 @@ class YugaWareProxy(object):
                         "backups": "disabled",
                         "health": "disabled",
                         "overview": {
-                            "costs": "hidden"
+                            "costs": "hidden",
+                            "upgradeSoftware": "disabled",
+                            "editGFlags": "disabled",
+                            "readReplica": "disabled",
+                            "deleteUniverse": "disabled",
                         }
                     }
                 }

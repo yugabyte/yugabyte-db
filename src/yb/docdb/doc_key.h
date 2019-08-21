@@ -454,7 +454,7 @@ class SubDocKey {
     return subkeys_;
   }
 
-  std::vector<PrimitiveValue> subkeys() {
+  std::vector<PrimitiveValue>& subkeys() {
     return subkeys_;
   }
 

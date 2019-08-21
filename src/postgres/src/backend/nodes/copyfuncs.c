@@ -3318,6 +3318,18 @@ _copyCopyStmt(const CopyStmt *from)
 	return newnode;
 }
 
+static OptSplit *
+_copyOptSplit(const OptSplit *from)
+{
+	OptSplit *newnode = makeNode(OptSplit);
+
+	COPY_SCALAR_FIELD(split_type);
+	COPY_SCALAR_FIELD(num_tablets);
+	COPY_NODE_FIELD(split_points);
+
+	return newnode;
+}
+
 /*
  * CopyCreateStmtFields
  *
@@ -3338,6 +3350,7 @@ CopyCreateStmtFields(const CreateStmt *from, CreateStmt *newnode)
 	COPY_SCALAR_FIELD(oncommit);
 	COPY_STRING_FIELD(tablespacename);
 	COPY_SCALAR_FIELD(if_not_exists);
+	COPY_NODE_FIELD(split_options);
 }
 
 static CreateStmt *
@@ -5645,6 +5658,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_PartitionCmd:
 			retval = _copyPartitionCmd(from);
+			break;
+		case T_OptSplit:
+			retval = _copyOptSplit(from);
 			break;
 
 			/*

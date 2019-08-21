@@ -14,9 +14,18 @@
     position: absolute;
     background: $YB_VIOLET;
     .logo {
-      height: 39px;
+      height: 46px;
       margin: 8px auto;
       pointer-events: none;
+
+      @media screen and (max-height: 610px) {
+        height: 40px;
+        margin: 11px auto;
+      }
+      @media screen and (max-height: 460px) {
+        height: 36px;
+        margin: 13px auto;
+      }
     }
 
     &.menu_fixed {

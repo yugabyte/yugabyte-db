@@ -18,15 +18,30 @@ The `DROP TABLE` command removes a table and all of its data from the database.
 
 ## Syntax
 
-### Diagrams
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="385" height="49" viewbox="0 0 385 49"><path class="connector" d="M0 21h5m54 0h10m57 0h30m30 0h10m61 0h20m-136 0q5 0 5 5v8q0 5 5 5h111q5 0 5-5v-8q0-5 5-5m5 0h10m93 0h5"/><rect class="literal" x="5" y="5" width="54" height="24" rx="7"/><text class="text" x="15" y="21">DROP</text><rect class="literal" x="69" y="5" width="57" height="24" rx="7"/><text class="text" x="79" y="21">TABLE</text><rect class="literal" x="156" y="5" width="30" height="24" rx="7"/><text class="text" x="166" y="21">IF</text><rect class="literal" x="196" y="5" width="61" height="24" rx="7"/><text class="text" x="206" y="21">EXISTS</text><a xlink:href="../../grammar_diagrams#table-name"><rect class="rule" x="287" y="5" width="93" height="24"/><text class="text" x="297" y="21">table_name</text></a></svg>
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/drop_table.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/drop_table.diagram.md" /%}}
+  </div>
+</div>
 
-### Grammar
-
-```
-drop_table ::= DROP TABLE [ IF EXISTS ] qualified_name;
-```
 
 Where
 

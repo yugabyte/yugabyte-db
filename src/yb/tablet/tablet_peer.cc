@@ -516,8 +516,7 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
     }
   }
   if (!status.ok()) {
-    operation->Finish(Operation::ABORTED);
-    operation->state()->CompleteWithStatus(status);
+    operation->Aborted(status);
   }
 
   if (operation_type == OperationType::kWrite) {

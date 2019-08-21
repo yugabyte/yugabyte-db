@@ -123,12 +123,8 @@ Status PgDml::BindColumn(int attr_num, PgExpr *attr_value) {
   RETURN_NOT_OK(FindColumn(attr_num, &col));
 
   // Check datatype.
-  // TODO(neil) Current code combine TEXT and BINARY datatypes into ONE representation.  Once that
-  // is fixed, we can remove the special if() check for BINARY type.
-  if (col->internal_type() != InternalType::kBinaryValue) {
-    SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
-              "Attribute value type does not match column type");
-  }
+  SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
+            "Attribute value type does not match column type");
 
   // Alloc the protobuf.
   PgsqlExpressionPB *bind_pb = col->bind_pb();
@@ -182,12 +178,8 @@ Status PgDml::AssignColumn(int attr_num, PgExpr *attr_value) {
   RETURN_NOT_OK(FindColumn(attr_num, &col));
 
   // Check datatype.
-  // TODO(neil) Current code combine TEXT and BINARY datatypes into ONE representation.  Once that
-  // is fixed, we can remove the special if() check for BINARY type.
-  if (col->internal_type() != InternalType::kBinaryValue) {
-    SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
-              "Attribute value type does not match column type");
-  }
+  SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
+            "Attribute value type does not match column type");
 
   // Alloc the protobuf.
   PgsqlExpressionPB *assign_pb = col->assign_pb();

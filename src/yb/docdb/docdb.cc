@@ -1400,13 +1400,19 @@ CHECKED_STATUS IntentToWriteRequest(
 
     // Useful when debugging transaction failure.
 #if defined(DUMP_APPLY)
-    auto int_value = BigEndian::Load64(intent_value.data() + 1);
     SubDocKey sub_doc_key;
     CHECK_OK(sub_doc_key.FullyDecodeFrom(intent.doc_path, HybridTimeRequired::kFalse));
-    auto txn_id = FullyDecodeTransactionId(transaction_id_slice);
-    LOG(INFO) << "Apply: " << sub_doc_key.doc_key().hashed_group().front() << " = " << int_value
-              << ", time: " << commit_ht << ", txn: " << txn_id
-              << ", raw: " << intent_iter->key().ToDebugHexString();
+    if (!sub_doc_key.subkeys().empty() && sub_doc_key.subkeys().front().GetColumnId() == 11) {
+      CHECK_OK(value.DecodeFromValue(intent_value));
+      auto txn_id = FullyDecodeTransactionId(transaction_id_slice);
+      LOG(INFO) << "Apply: " << sub_doc_key.doc_key().hashed_group().front()
+                << ", time: " << commit_ht << ", txn: " << txn_id
+                << ", raw: " << intent_iter->key().ToDebugHexString()
+                << ", value: " << value.GetString()
+                << ", subkey: " << sub_doc_key.subkeys().front();
+      LOG(INFO) << txn_id << " APPLY: " << sub_doc_key.doc_key().hashed_group().front().GetInt32()
+                << " = " << value.GetString();
+    }
 #endif
 
     regular_batch->Put(key_parts, value_parts);

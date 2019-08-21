@@ -17,6 +17,7 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master.service.h"
 #include "yb/util/flag_tags.h"
@@ -108,6 +109,14 @@ void TakeRegistration(ServerRegistrationPB* source, TSInfoPB* dest) {
 
 void CopyRegistration(ServerRegistrationPB source, TSInfoPB* dest) {
   TakeRegistration(&source, dest);
+}
+
+bool IsSystemNamespace(const std::string& namespace_name) {
+  return namespace_name == master::kSystemNamespaceName ||
+      namespace_name == master::kSystemAuthNamespaceName ||
+      namespace_name == master::kSystemDistributedNamespaceName ||
+      namespace_name == master::kSystemSchemaNamespaceName ||
+      namespace_name == master::kSystemTracesNamespaceName;
 }
 
 } // namespace master

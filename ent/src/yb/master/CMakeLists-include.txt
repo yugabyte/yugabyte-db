@@ -52,9 +52,12 @@ set(MASTER_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/cluster_balance.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/ts_descriptor.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/universe_key_registry_service.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/catalog_entity_info.cc
   PARENT_SCOPE)
 
 set(MASTER_ADDITIONAL_TESTS
     catalog_manager-test_ent
+    sys_catalog-test_ent
+    master-test_ent
     PARENT_SCOPE)
 set(CMAKE_CURRENT_LIST_DIR ${YB_ENT_CURRENT_SOURCE_DIR})

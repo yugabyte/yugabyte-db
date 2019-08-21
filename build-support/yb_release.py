@@ -57,6 +57,7 @@ def main():
                         help='Save the newly built release path to a file with this name. '
                              'This allows to post-process / upload the newly generated release '
                              'in an enclosing script.')
+    parser.add_argument('--yw', action='store_true', help='Package YugaWare too.')
     add_common_arguments(parser)
     args = parser.parse_args()
 
@@ -211,6 +212,17 @@ def main():
     if os.path.exists(build_target) and os.listdir(build_target):
         raise RuntimeError("Directory '{}' exists and is non-empty".format(build_target))
     release_util.create_distribution(build_target)
+
+    if args.yw:
+        managed_dir = os.path.join(YB_SRC_ROOT, "managed")
+        yw_dir = os.path.join(build_target, "ui")
+        if not os.path.exists(yw_dir):
+            os.makedirs(yw_dir)
+        package_yw_cmd = [
+            os.path.join(managed_dir, "yb_release"),
+            "--destination", yw_dir, "--unarchived"
+        ]
+        subprocess.check_call(package_yw_cmd, cwd=managed_dir)
 
     if args.build_archive:
         release_file = os.path.realpath(release_util.generate_release())

@@ -16,17 +16,31 @@ showAsideToc: true
 
 `ROLLBACK` command rolls back the current transactions. All changes included in this transactions will be discarded.
 
-## Grammar
+## Syntax
 
-### Diagrams
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="244" height="68" viewbox="0 0 244 68"><path class="connector" d="M0 21h5m80 0h30m104 0h20m-134 24q0 5 5 5h5m55 0h54q5 0 5-5m-129-24q5 0 5 5v32q0 5 5 5h114q5 0 5-5v-32q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="80" height="24" rx="7"/><text class="text" x="15" y="21">ROLLBACK</text><rect class="literal" x="115" y="5" width="104" height="24" rx="7"/><text class="text" x="125" y="21">TRANSACTION</text><rect class="literal" x="115" y="34" width="55" height="24" rx="7"/><text class="text" x="125" y="50">WORK</text></svg>
-
-### Syntax
-
-```
-rollback_transaction ::= { 'ROLLBACK' } [ 'TRANSACTION' | 'WORK' ] ;
-```
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/rollback.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/rollback.diagram.md" /%}}
+  </div>
+</div>
 
 ## Semantics
 

@@ -1988,7 +1988,9 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 
 	index->relation = cxt->relation;
 	index->accessMethod = constraint->access_method ? constraint->access_method :
-			(IsYugaByteEnabled() ? NULL : DEFAULT_INDEX_TYPE);
+			(IsYugaByteEnabled() && index->relation->relpersistence != RELPERSISTENCE_TEMP
+					? DEFAULT_YB_INDEX_TYPE
+					: DEFAULT_INDEX_TYPE);
 	index->options = constraint->options;
 	index->tableSpace = constraint->indexspace;
 	index->whereClause = constraint->where_clause;

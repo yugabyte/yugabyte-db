@@ -272,6 +272,10 @@ YB_CLIENT_SPECIALIZE_SIMPLE(GrantRevokePermission);
 YB_CLIENT_SPECIALIZE_SIMPLE(GetPermissions);
 YB_CLIENT_SPECIALIZE_SIMPLE(RedisConfigSet);
 YB_CLIENT_SPECIALIZE_SIMPLE(RedisConfigGet);
+YB_CLIENT_SPECIALIZE_SIMPLE(CreateCDCStream);
+YB_CLIENT_SPECIALIZE_SIMPLE(DeleteCDCStream);
+YB_CLIENT_SPECIALIZE_SIMPLE(ListCDCStreams);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetCDCStream);
 // These are not actually exposed outside, but it's nice to auto-add using directive.
 YB_CLIENT_SPECIALIZE_SIMPLE(AlterTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ChangeMasterClusterConfig);

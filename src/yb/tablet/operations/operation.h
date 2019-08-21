@@ -69,11 +69,6 @@ class Operation {
     TRACE_TXNS = 1
   };
 
-  enum OperationResult {
-    COMMITTED,
-    ABORTED
-  };
-
   Operation(std::unique_ptr<OperationState> state,
             OperationType operation_type);
 
@@ -101,16 +96,13 @@ class Operation {
   // The OpId is provided for debuggability purposes.
   void Start();
 
-  // Executes the Apply() phase of the transaction, the actual actions of this phase depend on the
-  // transaction type, but usually this is the method where data-structures are changed.
-  virtual CHECKED_STATUS Apply(int64_t leader_term) = 0;
+  // Applies replicated operation, the actual actions of this phase depend on the
+  // operation type, but usually this is the method where data-structures are changed.
+  // Also it should notify callback if necessary.
+  CHECKED_STATUS Replicated(int64_t leader_term);
 
-  // Executed after the transaction has been applied and the commit message has been appended to the
-  // log (though it might not be durable yet), or if the transaction was aborted.  Implementations
-  // are expected to perform cleanup on this method, the driver will reply to the client after this
-  // method call returns.  'result' will be either COMMITTED or ABORTED, letting implementations
-  // know what was the final status of the transaction.
-  virtual void Finish(OperationResult result) {}
+  // Abort operation. Release resources and notify callbacks.
+  void Aborted(const Status& status);
 
   // Each implementation should have its own ToString() method.
   virtual std::string ToString() const = 0;
@@ -120,6 +112,14 @@ class Operation {
   virtual ~Operation() {}
 
  private:
+  // Actual implementation of Replicated.
+  // complete_status could be used to change completion status, i.e. callback will be invoked
+  // with this status.
+  virtual CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) = 0;
+
+  // Actual implementation of Aborted, should return status that should be passed to callback.
+  virtual CHECKED_STATUS DoAborted(const Status& status) = 0;
+
   virtual void DoStart() = 0;
 
   // A private version of this transaction's transaction state so that we can use base
