@@ -259,23 +259,27 @@ return_items:
     ;
 
 return_item:
-    expr AS var
+    expr AS name
         {
-            cypher_return_item *n;
+            ResTarget *n;
 
-            n = make_ag_node(cypher_return_item);
-            n->expr = $1;
-            n->name = (ColumnRef *)$3;
+            n = makeNode(ResTarget);
+            n->name = $3;
+            n->indirection = NIL;
+            n->val = $1;
+            n->location = @1;
 
             $$ = (Node *)n;
         }
     | expr
         {
-            cypher_return_item *n;
+            ResTarget *n;
 
-            n = make_ag_node(cypher_return_item);
-            n->expr = $1;
+            n = makeNode(ResTarget);
             n->name = NULL;
+            n->indirection = NIL;
+            n->val = $1;
+            n->location = @1;
 
             $$ = (Node *)n;
         }
@@ -306,11 +310,14 @@ sort_items:
 sort_item:
     expr order_opt
         {
-            cypher_sort_item *n;
+            SortBy *n;
 
-            n = make_ag_node(cypher_sort_item);
-            n->expr = $1;
-            n->order = $2;
+            n = makeNode(SortBy);
+            n->node = $1;
+            n->sortby_dir = $2;
+            n->sortby_nulls = SORTBY_NULLS_DEFAULT;
+            n->useOp = NIL;
+            n->location = -1; // no operator
 
             $$ = (Node *)n;
         }
@@ -319,23 +326,23 @@ sort_item:
 order_opt:
     /* empty */
         {
-            $$ = CYPHER_ORDER_ASC;
+            $$ = SORTBY_DEFAULT; // is the same with SORTBY_ASC
         }
     | ASC
         {
-            $$ = CYPHER_ORDER_ASC;
+            $$ = SORTBY_ASC;
         }
     | ASCENDING
         {
-            $$ = CYPHER_ORDER_ASC;
+            $$ = SORTBY_ASC;
         }
     | DESC
         {
-            $$ = CYPHER_ORDER_DESC;
+            $$ = SORTBY_DESC;
         }
     | DESCENDING
         {
-            $$ = CYPHER_ORDER_DESC;
+            $$ = SORTBY_DESC;
         }
     ;
 
@@ -544,6 +551,7 @@ expr:
             n->arg = (Expr *)$1;
             n->nulltesttype = IS_NULL;
             n->location = @2;
+
             $$ = (Node *)n;
         }
     | expr IS NOT NULL_P %prec IS
@@ -554,6 +562,7 @@ expr:
             n->arg = (Expr *)$1;
             n->nulltesttype = IS_NOT_NULL;
             n->location = @2;
+
             $$ = (Node *)n;
         }
     | '-' expr %prec UNARY_MINUS

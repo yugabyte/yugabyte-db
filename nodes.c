@@ -13,8 +13,6 @@ static void read_ag_node(ExtensibleNode *node);
 // This list must match ag_node_tag.
 const char *node_names[] = {
     "cypher_return",
-    "cypher_return_item",
-    "cypher_sort_item",
     "cypher_with",
     "cypher_set_clause",
     "cypher_set_prop"
@@ -32,8 +30,6 @@ const char *node_names[] = {
 
 const ExtensibleNodeMethods node_methods[] = {
     DEFINE_NODE_METHODS(cypher_return),
-    DEFINE_NODE_METHODS(cypher_return_item),
-    DEFINE_NODE_METHODS(cypher_sort_item),
     DEFINE_NODE_METHODS(cypher_with),
     DEFINE_NODE_METHODS(cypher_set_clause),
     DEFINE_NODE_METHODS(cypher_set_prop)

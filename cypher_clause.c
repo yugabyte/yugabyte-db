@@ -25,9 +25,9 @@ Query *transform_cypher_stmt(ParseState *pstate, List *stmt)
     clause = (cypher_return *)linitial(stmt);
     foreach (li, clause->items)
     {
-        cypher_return_item *item = lfirst(li);
+        ResTarget *item = lfirst(li);
 
-        values = lappend(values, item->expr);
+        values = lappend(values, item->val);
     }
 
     sel = makeNode(SelectStmt);

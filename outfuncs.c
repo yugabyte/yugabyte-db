@@ -42,22 +42,6 @@ void out_cypher_return(StringInfo str, const ExtensibleNode *node)
     write_node_field(limit);
 }
 
-void out_cypher_return_item(StringInfo str, const ExtensibleNode *node)
-{
-    DEFINE_AG_NODE(cypher_return_item);
-
-    write_node_field(expr);
-    write_node_field(name);
-}
-
-void out_cypher_sort_item(StringInfo str, const ExtensibleNode *node)
-{
-    DEFINE_AG_NODE(cypher_sort_item);
-
-    write_node_field(expr);
-    write_enum_field(order, cypher_order);
-}
-
 void out_cypher_with(StringInfo str, const ExtensibleNode *node)
 {
     DEFINE_AG_NODE(cypher_with);

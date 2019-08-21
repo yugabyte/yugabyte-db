@@ -19,26 +19,6 @@ typedef struct cypher_return
     Node *limit;
 } cypher_return;
 
-typedef struct cypher_return_item
-{
-    ExtensibleNode extensible;
-    Node *expr;
-    ColumnRef *name;
-} cypher_return_item;
-
-typedef enum cypher_order
-{
-    CYPHER_ORDER_ASC,
-    CYPHER_ORDER_DESC
-} cypher_order;
-
-typedef struct cypher_sort_item
-{
-    ExtensibleNode extensible;
-    Node *expr;
-    cypher_order order;
-} cypher_sort_item;
-
 typedef struct cypher_with
 {
     ExtensibleNode extensible;
@@ -66,7 +46,6 @@ typedef struct cypher_set_prop
 } cypher_set_prop;
 
 void out_cypher_return(StringInfo str, const ExtensibleNode *node);
-void out_cypher_return_item(StringInfo str, const ExtensibleNode *node);
 void out_cypher_sort_item(StringInfo str, const ExtensibleNode *node);
 void out_cypher_with(StringInfo str, const ExtensibleNode *node);
 void out_cypher_set_clause(StringInfo str, const ExtensibleNode *node);
