@@ -44,7 +44,7 @@ class PgsqlRSRowDesc {
       return ql_type_->main();
     }
    private:
-    const string name_;
+    const std::string name_;
     QLType::SharedPtr ql_type_;
   };
 

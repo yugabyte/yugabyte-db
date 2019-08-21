@@ -87,40 +87,41 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/backfill_index.h"
+#include "yb/master/catalog_loaders.h"
+#include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/cluster_balance.h"
+#include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master.pb.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/master/system_tablet.h"
+#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/system_tablet.h"
+#include "yb/master/tasks_tracker.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-#include "yb/master/async_rpc_tasks.h"
-#include "yb/master/yql_auth_roles_vtable.h"
-#include "yb/master/yql_auth_role_permissions_vtable.h"
+#include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
+#include "yb/master/yql_auth_role_permissions_vtable.h"
+#include "yb/master/yql_auth_roles_vtable.h"
 #include "yb/master/yql_columns_vtable.h"
 #include "yb/master/yql_empty_vtable.h"
-#include "yb/master/yql_keyspaces_vtable.h"
-#include "yb/master/yql_local_vtable.h"
-#include "yb/master/yql_peers_vtable.h"
-#include "yb/master/yql_tables_vtable.h"
-#include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_functions_vtable.h"
 #include "yb/master/yql_indexes_vtable.h"
+#include "yb/master/yql_keyspaces_vtable.h"
+#include "yb/master/yql_local_vtable.h"
+#include "yb/master/yql_partitions_vtable.h"
+#include "yb/master/yql_peers_vtable.h"
+#include "yb/master/yql_size_estimates_vtable.h"
+#include "yb/master/yql_tables_vtable.h"
 #include "yb/master/yql_triggers_vtable.h"
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
-#include "yb/master/yql_partitions_vtable.h"
-#include "yb/master/yql_size_estimates_vtable.h"
-#include "yb/master/catalog_manager_bg_tasks.h"
-#include "yb/master/catalog_loaders.h"
-#include "yb/master/sys_catalog_initialization.h"
-#include "yb/master/tasks_tracker.h"
-#include "yb/master/encryption_manager.h"
 
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/rpc/messenger.h"
@@ -132,6 +133,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/crypt.h"
+#include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
@@ -243,6 +245,11 @@ DEFINE_bool(master_enable_metrics_snapshotter, false, "Should metrics snapshotte
 DEFINE_uint64(metrics_snapshots_table_num_tablets, 0,
     "Number of tablets to use when creating the metrics snapshots table."
     "0 to use the same default num tablets as for regular tables.");
+
+DEFINE_bool(disable_index_backfill, true,  // Temporarily disabled until all diffs land.
+    "A kill switch to disable multi-stage backfill for the created indices.");
+TAG_FLAG(disable_index_backfill, runtime);
+TAG_FLAG(disable_index_backfill, hidden);
 
 DEFINE_bool(
     hide_pg_catalog_table_creation_logs, false,
@@ -366,6 +373,7 @@ namespace {
 class IndexInfoBuilder {
  public:
   explicit IndexInfoBuilder(IndexInfoPB* index_info) : index_info_(*index_info) {
+    DVLOG(3) << " After " << __PRETTY_FUNCTION__ << " index_info_ is " << yb::ToString(index_info_);
   }
 
   void ApplyProperties(const TableId& indexed_table_id, bool is_local, bool is_unique) {
@@ -373,6 +381,7 @@ class IndexInfoBuilder {
     index_info_.set_version(0);
     index_info_.set_is_local(is_local);
     index_info_.set_is_unique(is_unique);
+    DVLOG(3) << " After " << __PRETTY_FUNCTION__ << " index_info_ is " << yb::ToString(index_info_);
   }
 
   CHECKED_STATUS ApplyColumnMapping(const Schema& indexed_schema, const Schema& index_schema) {
@@ -396,6 +405,7 @@ class IndexInfoBuilder {
         i++) {
       index_info_.add_indexed_range_column_ids(indexed_schema.column_id(i));
     }
+    DVLOG(3) << " After " << __PRETTY_FUNCTION__ << " index_info_ is " << yb::ToString(index_info_);
     return Status::OK();
   }
 
@@ -647,7 +657,7 @@ Status CatalogManager::VisitSysCatalog(int64_t term) {
 
   LOG(INFO) << __func__ << ": Acquire catalog manager lock_ before loading sys catalog..";
   std::lock_guard<LockType> lock(lock_);
-  VLOG(1) << __func__ << ": Acquired the catalog manager lock_";
+  VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
 
   // Abort any outstanding tasks. All TableInfos are orphaned below, so
   // it's important to end their tasks now; otherwise Shutdown() will
@@ -1410,6 +1420,8 @@ Status CatalogManager::ValidateTableReplicationInfo(const ReplicationInfoPB& rep
 Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& indexed_table,
                                            const IndexInfoPB& index_info,
                                            CreateTableResponsePB* resp) {
+  LOG(INFO) << "AddIndexInfoToTable to " << indexed_table->ToString() << "  IndexInfo "
+            << yb::ToString(index_info);
   TRACE("Locking indexed table");
   auto l = DCHECK_NOTNULL(indexed_table)->LockForWrite();
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
@@ -1784,6 +1796,7 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
 Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                    CreateTableResponsePB* resp,
                                    rpc::RpcContext* rpc) {
+  DVLOG(3) << __PRETTY_FUNCTION__ << " Begin. " << orig_req->DebugString();
   RETURN_NOT_OK(CheckOnline());
 
   const bool is_pg_table = orig_req->table_type() == PGSQL_TABLE_TYPE;
@@ -1984,6 +1997,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // For index table, populate the index info.
   IndexInfoPB index_info;
 
+  // Fetch the runtime flag to prevent any issues from the updates to flag while processing.
+  const bool disable_index_backfill = GetAtomicFlag(&FLAGS_disable_index_backfill);
   if (req.has_index_info()) {
     // Current message format.
     index_info.CopyFrom(req.index_info());
@@ -2009,6 +2024,14 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
+  if ((req.has_index_info() || req.has_indexed_table_id()) && !disable_index_backfill) {
+    // Start off the index table with major compactions disabled. We need this to preserve
+    // the delete markers until the backfill process is completed.
+    // No need to set index_permissions in the index table.
+    schema.SetIsBackfilling(true);
+  }
+
+  LOG(INFO) << "CreateTable with IndexInfo " << yb::ToString(index_info);
   TSDescriptorVector all_ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&all_ts_descs);
   s = CheckValidReplicationInfo(replication_info, all_ts_descs, partitions, resp);
@@ -2115,6 +2138,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   // For index table, insert index info in the indexed table.
   if ((req.has_index_info() || req.has_indexed_table_id()) && !is_pg_table) {
+    if (!disable_index_backfill) {
+      index_info.set_index_permissions(INDEX_PERM_DELETE_ONLY);
+    }
     s = AddIndexInfoToTable(indexed_table, index_info, resp);
     if (PREDICT_FALSE(!s.ok())) {
       return AbortTableCreation(table.get(), tablets,
@@ -2166,6 +2192,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
   }
 
+  DVLOG(3) << __PRETTY_FUNCTION__ << " Done.";
   return Status::OK();
 }
 
@@ -3300,6 +3327,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   RETURN_NOT_OK(CheckIfTableDeletedOrNotRunning(l.get(), resp));
 
   bool has_changes = false;
+  auto& table_pb = l->mutable_data()->pb;
   const TableName table_name = l->data().name();
   const NamespaceId namespace_id = l->data().namespace_id();
   const TableName new_table_name = req->has_new_table_name() ? req->new_table_name() : table_name;
@@ -3328,6 +3356,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     }
 
     std::lock_guard<LockType> catalog_lock(lock_);
+    VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
 
     TRACE("Acquired catalog manager lock");
 
@@ -3343,8 +3372,8 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
     // Acquire the new table name (now we have 2 name for the same table).
     table_names_map_[{new_namespace_id, new_table_name}] = table;
-    l->mutable_data()->pb.set_namespace_id(new_namespace_id);
-    l->mutable_data()->pb.set_name(new_table_name);
+    table_pb.set_namespace_id(new_namespace_id);
+    table_pb.set_name(new_table_name);
 
     has_changes = true;
   }
@@ -3359,7 +3388,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     }
     // TODO(hector): Handle co-partitioned tables:
     // https://github.com/YugaByte/yugabyte-db/issues/1905.
-    l->mutable_data()->pb.set_wal_retention_secs(req->wal_retention_secs());
+    table_pb.set_wal_retention_secs(req->wal_retention_secs());
     has_changes = true;
   }
 
@@ -3371,21 +3400,30 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   // Serialize the schema Increment the version number.
   if (new_schema.initialized()) {
     if (!l->data().pb.has_fully_applied_schema()) {
-      l->mutable_data()->pb.mutable_fully_applied_schema()->CopyFrom(l->data().pb.schema());
+      table_pb.mutable_fully_applied_schema()->CopyFrom(l->data().pb.schema());
+      // The idea here is that if we are in the middle of updating the schema
+      // from one state to another, then YBClients will be given the older
+      // version until the schema is updated on all the tablets.
+      // As of Dec 2019, this may lead to some rejected operations/retries during
+      // the index backfill. See #3284 for possible optimizations.
+      table_pb.set_fully_applied_schema_version(l->data().pb.version());
+      table_pb.mutable_fully_applied_indexes()->CopyFrom(l->data().pb.indexes());
+      if (l->data().pb.has_index_info()) {
+        table_pb.mutable_fully_applied_index_info()->CopyFrom(l->data().pb.index_info());
+      }
     }
-    SchemaToPB(new_schema, l->mutable_data()->pb.mutable_schema());
+    SchemaToPB(new_schema, table_pb.mutable_schema());
   }
 
   // Only increment the version number if it is a schema change (AddTable change goes through a
   // different path and it's not processed here).
   if (!req->has_wal_retention_secs()) {
-    l->mutable_data()->pb.set_version(l->mutable_data()->pb.version() + 1);
+    table_pb.set_version(table_pb.version() + 1);
   }
-  l->mutable_data()->pb.set_next_column_id(next_col_id);
-  l->mutable_data()->set_state(SysTablesEntryPB::ALTERING,
-                               Substitute("Alter table version=$0 ts=$1",
-                                          l->mutable_data()->pb.version(),
-                                          LocalTimeAsString()));
+  table_pb.set_next_column_id(next_col_id);
+  l->mutable_data()->set_state(
+      SysTablesEntryPB::ALTERING,
+      Substitute("Alter table version=$0 ts=$1", table_pb.version(), LocalTimeAsString()));
 
   // Update sys-catalog with the new table schema.
   TRACE("Updating metadata on disk");
@@ -3398,6 +3436,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     if (table->GetTableType() != PGSQL_TABLE_TYPE &&
         (req->has_new_namespace() || req->has_new_table_name())) {
       std::lock_guard<LockType> catalog_lock(lock_);
+      VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
       CHECK_EQ(table_names_map_.erase({new_namespace_id, new_table_name}), 1);
     }
     // TableMetadaLock follows RAII paradigm: when it leaves scope,
@@ -3478,9 +3517,28 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
     // schema that has reached every TS.
     CHECK(l->data().pb.state() == SysTablesEntryPB::ALTERING);
     resp->mutable_schema()->CopyFrom(l->data().pb.fully_applied_schema());
+    resp->set_version(l->data().pb.fully_applied_schema_version());
+    resp->mutable_indexes()->CopyFrom(l->data().pb.fully_applied_indexes());
+    if (l->data().pb.has_fully_applied_index_info()) {
+      *resp->mutable_index_info() = l->data().pb.fully_applied_index_info();
+      resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->data().pb));
+    }
+    VLOG(1) << " Returning "
+            << " fully_applied_schema with version " << l->data().pb.fully_applied_schema_version()
+            << " : \n"
+            << yb::ToString(l->data().pb.fully_applied_indexes()) << "\n instead of version "
+            << l->data().pb.version() << "\n"
+            << yb::ToString(l->data().pb.indexes());
   } else {
     // There's no AlterTable, the regular schema is "fully applied".
     resp->mutable_schema()->CopyFrom(l->data().pb.schema());
+    resp->set_version(l->data().pb.version());
+    resp->mutable_indexes()->CopyFrom(l->data().pb.indexes());
+    if (l->data().pb.has_index_info()) {
+      *resp->mutable_index_info() = l->data().pb.index_info();
+      resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->data().pb));
+    }
+    VLOG(1) << " Returning pb.schema() ";
   }
   // TODO(bogdan): add back in replication_info once we allow overrides!
   resp->mutable_partition_schema()->CopyFrom(l->data().pb.partition_schema());
@@ -3495,12 +3553,6 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   if (FindNamespace(nsid, &nsinfo).ok()) {
     resp->mutable_identifier()->mutable_namespace_()->set_name(nsinfo->name());
   }
-  resp->set_version(l->data().pb.version());
-  resp->mutable_indexes()->CopyFrom(l->data().pb.indexes());
-  if (l->data().pb.has_index_info()) {
-    *resp->mutable_index_info() = l->data().pb.index_info();
-    resp->set_obsolete_indexed_table_id(PROTO_GET_INDEXED_TABLE_ID(l->data().pb));
-  }
 
   // Get namespace name by id.
   SharedLock<LockType> l_map(lock_);
@@ -3508,13 +3560,15 @@ Status CatalogManager::GetTableSchema(const GetTableSchemaRequestPB* req,
   const scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, table->namespace_id());
 
   if (ns == nullptr) {
-    Status s = STATUS_SUBSTITUTE(NotFound,
-        "Could not find namespace by namespace id $0 for request $1.",
+    Status s = STATUS_SUBSTITUTE(
+        NotFound, "Could not find namespace by namespace id $0 for request $1.",
         table->namespace_id(), req->DebugString());
     return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND, s);
   }
 
   resp->mutable_identifier()->mutable_namespace_()->set_name(ns->name());
+  VLOG(1) << "Serviced GetTableSchema request for " << req->ShortDebugString() << " with "
+          << yb::ToString(*resp);
   return Status::OK();
 }
 
@@ -4272,6 +4326,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   TRACE("Looking for tables in the namespace");
   {
     SharedLock<LockType> catalog_lock(lock_);
+    VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
 
     for (const TableInfoMap::value_type& entry : *table_ids_map_) {
       auto ltm = entry.second->LockForRead();
@@ -4290,6 +4345,7 @@ Status CatalogManager::DeleteNamespace(const DeleteNamespaceRequestPB* req,
   TRACE("Looking for types in the namespace");
   {
     SharedLock<LockType> catalog_lock(lock_);
+    VLOG(3) << __func__ << ": Acquired the catalog manager lock_";
 
     for (const UDTypeInfoMap::value_type& entry : udtype_ids_map_) {
       auto ltm = entry.second->LockForRead();
@@ -5532,33 +5588,48 @@ void CatalogManager::HandleAssignCreatingTablet(TabletInfo* tablet,
 Status CatalogManager::HandleTabletSchemaVersionReport(TabletInfo *tablet, uint32_t version) {
   // Update the schema version if it's the latest.
   tablet->set_reported_schema_version(version);
+  VLOG(1) << "Tablet " << tablet->tablet_id() << " reported version " << version;
 
   // Verify if it's the last tablet report, and the alter completed.
   TableInfo *table = tablet->table().get();
-  auto l = table->LockForWrite();
-  if (l->data().pb.state() != SysTablesEntryPB::ALTERING) {
-    return Status::OK();
+  {
+    auto l = table->LockForRead();
+    if (l->data().pb.state() != SysTablesEntryPB::ALTERING) {
+      VLOG(2) << "Table " << table->ToString() << " is not altering";
+      return Status::OK();
+    }
+
+    uint32_t current_version = l->data().pb.version();
+    if (table->IsAlterInProgress(current_version)) {
+      VLOG(2) << "Table " << table->ToString() << " has IsAlterInProgress ("
+              << current_version << ")";
+      return Status::OK();
+    }
   }
 
-  uint32_t current_version = l->data().pb.version();
-  if (table->IsAlterInProgress(current_version)) {
-    return Status::OK();
+  if (!MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, tablet->table())) {
+    // If there aren't any "next steps" to launch,
+    // Update the state from altering to running and remove the last fully
+    // applied schema information (if it exists).
+    auto l = table->LockForWrite();
+    uint32_t current_version = l->data().pb.version();
+    l->mutable_data()->pb.clear_fully_applied_schema();
+    l->mutable_data()->pb.clear_fully_applied_schema_version();
+    l->mutable_data()->pb.clear_fully_applied_indexes();
+    l->mutable_data()->pb.clear_fully_applied_index_info();
+    l->mutable_data()->set_state(
+        SysTablesEntryPB::RUNNING, Substitute("Current schema version=$0", current_version));
+
+    Status s = sys_catalog_->UpdateItem(table, leader_ready_term_);
+    if (!s.ok()) {
+      LOG(WARNING) << "An error occurred while updating sys-tables: " << s.ToString()
+                   << ". This master may not be the leader anymore.";
+      return Status::OK();
+    }
+
+    l->Commit();
+    LOG(INFO) << table->ToString() << " - Alter table completed version=" << current_version;
   }
-
-  // Update the state from altering to running and remove the last fully
-  // applied schema (if it exists).
-  l->mutable_data()->pb.clear_fully_applied_schema();
-  l->mutable_data()->set_state(SysTablesEntryPB::RUNNING,
-                              Substitute("Current schema version=$0", current_version));
-
-  Status s = sys_catalog_->UpdateItem(table, leader_ready_term_);
-  if (!s.ok()) {
-    LOG(WARNING) << "An error occurred while updating sys-tables: " << s.ToString();
-    return s;
-  }
-
-  l->Commit();
-  LOG(INFO) << table->ToString() << " - Alter table completed version=" << current_version;
   return Status::OK();
 }
 
@@ -5651,6 +5722,7 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
   TSDescriptorVector ts_descs;
   master_->ts_manager()->GetAllLiveDescriptors(&ts_descs, blacklistState.tservers_);
   Status s;
+  unordered_set<TableInfo*> ok_status_tables;
   for (TabletInfo *tablet : deferred.needs_create_rpc) {
     // NOTE: if we fail to select replicas on the first pass (due to
     // insufficient Tablet Servers being online), we will still try
@@ -5662,11 +5734,20 @@ Status CatalogManager::ProcessPendingAssignments(const TabletInfos& tablets) {
           tablet->tablet_id(), s.ToString()));
       tablet->table()->SetCreateTableErrorStatus(s);
       break;
+    } else {
+      ok_status_tables.emplace(tablet->table().get());
     }
   }
 
   // Update the sys catalog with the new set of tablets/metadata.
   if (s.ok()) {
+    // If any of the ok_status_tables had an error in the previous iterations, we
+    // need to clear up the error status to reflect that all the create tablets have now
+    // succeded.
+    for (TableInfo* table : ok_status_tables) {
+      table->SetCreateTableErrorStatus(Status::OK());
+    }
+
     s = sys_catalog_->AddAndUpdateItems(deferred.tablets_to_add,
                                         deferred.tablets_to_update,
                                         leader_ready_term_);
@@ -6656,11 +6737,11 @@ Status CatalogManager::GetLoadMoveCompletionPercent(GetLoadMovePercentResponsePB
 
 void CatalogManager::AbortAndWaitForAllTasks(const vector<scoped_refptr<TableInfo>>& tables) {
   for (const auto& t : tables) {
-    VLOG(1) << "Aborting tasks for table " << t;
+    VLOG(1) << "Aborting tasks for table " << t->ToString();
     t->AbortTasksAndClose();
   }
   for (const auto& t : tables) {
-    VLOG(1) << "Waiting on Aborting tasks for table " << t;
+    VLOG(1) << "Waiting on Aborting tasks for table " << t->ToString();
     t->WaitTasksCompletion();
   }
   VLOG(1) << "Waiting on Aborting tasks done";

@@ -114,9 +114,22 @@ bool YBTable::IsIndex() const {
   return info_.index_info != boost::none;
 }
 
+bool YBTable::IsUniqueIndex() const {
+  return info_.index_info.is_initialized() && info_.index_info->is_unique();
+}
+
 const IndexInfo& YBTable::index_info() const {
-  CHECK(info_.index_info);
-  return *info_.index_info;
+  static IndexInfo kEmptyIndexInfo;
+  if (info_.index_info) {
+    return *info_.index_info;
+  }
+  return kEmptyIndexInfo;
+}
+
+std::string YBTable::ToString() const {
+  return strings::Substitute(
+      "$0 $1 IndexInfo: $2 IndexMap $3", (IsIndex() ? "Index Table" : "Normal Table"), id(),
+      yb::ToString(index_info()), yb::ToString(index_map()));
 }
 
 const PartitionSchema& YBTable::partition_schema() const {

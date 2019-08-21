@@ -498,20 +498,27 @@ Status YBClient::IsAlterTableInProgress(const YBTableName& table_name,
   return data_->IsAlterTableInProgress(this, table_name, table_id, deadline, alter_in_progress);
 }
 
+Result<YBTableInfo> YBClient::GetYBTableInfo(const YBTableName& table_name) {
+  YBTableInfo info;
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
+  return info;
+}
+
 Status YBClient::GetTableSchema(const YBTableName& table_name,
                                 YBSchema* schema,
                                 PartitionSchema* partition_schema) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  YBTableInfo info;
-  RETURN_NOT_OK(data_->GetTableSchema(this, table_name, deadline, &info));
-
+  Result<YBTableInfo> info = GetYBTableInfo(table_name);
+  if (!info.ok()) {
+    return info.status();
+  }
   // Verify it is not an index table.
-  if (info.index_info) {
+  if (info->index_info) {
     return STATUS(NotFound, "The table does not exist");
   }
 
-  *schema = std::move(info.schema);
-  *partition_schema = std::move(info.partition_schema);
+  *schema = std::move(info->schema);
+  *partition_schema = std::move(info->partition_schema);
   return Status::OK();
 }
 

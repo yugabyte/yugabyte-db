@@ -75,6 +75,7 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
       range_column_count_(pb.range_column_count()),
       indexed_hash_column_ids_(ColumnIdsFromPB(pb.indexed_hash_column_ids())),
       indexed_range_column_ids_(ColumnIdsFromPB(pb.indexed_range_column_ids())),
+      index_permissions_(pb.index_permissions()),
       use_mangled_column_name_(pb.use_mangled_column_name()) {
   for (const IndexInfo::IndexColumn &index_col : columns_) {
     covered_column_ids_.insert(index_col.indexed_column_id);
@@ -99,6 +100,7 @@ void IndexInfo::ToPB(IndexInfoPB* pb) const {
     pb->add_indexed_range_column_ids(id);
   }
   pb->set_use_mangled_column_name(use_mangled_column_name_);
+  pb->set_index_permissions(index_permissions_);
 }
 
 vector<ColumnId> IndexInfo::index_key_column_ids() const {

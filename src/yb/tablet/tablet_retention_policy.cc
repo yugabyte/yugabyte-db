@@ -50,11 +50,10 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     }
   }
 
-  return {
-    history_cutoff,
-    std::move(deleted_before_history_cutoff),
-    TableTTL(tablet_->metadata()->schema())
-  };
+  return {history_cutoff, std::move(deleted_before_history_cutoff),
+          TableTTL(tablet_->metadata()->schema()),
+          docdb::ShouldRetainDeleteMarkersInMajorCompaction(
+              tablet_->ShouldRetainDeleteMarkersInMajorCompaction())};
 }
 
 }  // namespace tablet

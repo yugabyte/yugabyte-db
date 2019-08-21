@@ -2053,9 +2053,18 @@ Status Executor::AddIndexWriteOps(const PTDmlStmt *tnode,
   }
 
   // Create the write operation for each index and populate it using the original operation.
+  // CQL does not allow the primary key to be updated, so PK-only index rows will be either
+  // deleted when the row in the main table is deleted, or it will be inserted into the index
+  // when a row is inserted into the main table or updated (for a non-pk column).
   for (const auto& index_table : tnode->pk_only_indexes()) {
     const IndexInfo* index =
         VERIFY_RESULT(tnode->table()->index_map().FindIndex(index_table->id()));
+    const bool index_ready_to_accept = (is_upsert ? index->AllowWrites() : index->AllowDelete());
+    if (!index_ready_to_accept) {
+      // We are in the process of backfilling the index. It should not be updated with a
+      // write/delete yet. The backfill stage will update the index for such entries.
+      continue;
+    }
     YBqlWriteOpPtr index_op(is_upsert ? index_table->NewQLInsert() : index_table->NewQLDelete());
     index_op->set_writes_primary_row(true);
     QLWriteRequestPB *index_req = index_op->mutable_request();

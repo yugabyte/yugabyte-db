@@ -477,7 +477,9 @@ CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context) {
   selectivities.reserve(table_->index_map().size() + 1);
   selectivities.emplace_back(sem_context->PTempMem(), *this);
   for (const std::pair<TableId, IndexInfo>& index : table_->index_map()) {
-    selectivities.emplace_back(sem_context->PTempMem(), *this, index.second);
+    if (index.second.AllowReads()) {
+      selectivities.emplace_back(sem_context->PTempMem(), *this, index.second);
+    }
   }
   std::sort(selectivities.begin(), selectivities.end(), std::greater<Selectivity>());
   if (VLOG_IS_ON(3)) {

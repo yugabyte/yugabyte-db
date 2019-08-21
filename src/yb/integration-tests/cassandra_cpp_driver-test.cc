@@ -15,12 +15,19 @@
 
 #include <tuple>
 
+#include "yb/client/client-internal.h"
+#include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
+#include "yb/client/table_handle.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
-#include "yb/util/metrics.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/jsonreader.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 
@@ -35,6 +42,11 @@ using std::get;
 
 using rapidjson::Value;
 using strings::Substitute;
+
+using yb::client::YBTableName;
+using yb::client::YBTableInfo;
+using yb::CoarseBackoffWaiter;
+using yb::YQLDatabase;
 
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_histogram(handler_latency_yb_client_write_remote);
@@ -327,7 +339,22 @@ class CassandraSession {
     return future.Result();
   }
 
+  CassandraFuture ExecuteGetFuture(const CassandraStatement& statement) {
+    return CassandraFuture(
+        cass_session_execute(cass_session_.get(), statement.cass_statement_.get()));
+  }
+
+  CassandraFuture ExecuteGetFuture(const string& query) {
+    LOG(INFO) << "Execute query: " << query;
+    return ExecuteGetFuture(CassandraStatement(query));
+  }
+
   CHECKED_STATUS ExecuteQuery(const string& query) {
+    LOG(INFO) << "Execute query: " << query;
+    return Execute(CassandraStatement(query));
+  }
+
+  Result<CassandraResult> ExecuteWithResult(const string& query) {
     LOG(INFO) << "Execute query: " << query;
     return Execute(CassandraStatement(query));
   }
@@ -426,7 +453,7 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
 
     LOG(INFO) << "Starting YB ExternalMiniCluster...";
     // Start up with 3 (default) tablet servers.
-    ASSERT_NO_FATALS(StartCluster(ExtraTServerFlags(), {}, 3, NumMasters()));
+    ASSERT_NO_FATALS(StartCluster(ExtraTServerFlags(), ExtraMasterFlags(), 3, NumMasters()));
 
     driver_.reset(CHECK_NOTNULL(new CppCassandraDriver(*cluster_, UsePartitionAwareRouting())));
 
@@ -455,6 +482,10 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
     return {};
   }
 
+  virtual std::vector<std::string> ExtraMasterFlags() {
+    return {};
+  }
+
   virtual int NumMasters() {
     return 1;
   }
@@ -466,6 +497,19 @@ class CppCassandraDriverTest : public ExternalMiniClusterITestBase {
  protected:
   unique_ptr<CppCassandraDriver> driver_;
   CassandraSession session_;
+};
+
+class CppCassandraDriverTestIndex : public CppCassandraDriverTest {
+ public:
+  virtual std::vector<std::string> ExtraTServerFlags() {
+    return {"--allow_index_table_read_write=true"};
+  }
+
+  virtual std::vector<std::string> ExtraMasterFlags() {
+    return {"--enable_load_balancing=false",
+            "--disable_index_backfill=false",
+            "--TEST_slowdown_backfill_alter_table_rpcs_ms=500"};
+  }
 };
 
 //------------------------------------------------------------------------------
@@ -1081,6 +1125,73 @@ TEST_F(CppCassandraDriverTest, TestLongJson) {
 
     VerifyLongJson(json);
   }
+}
+
+Result<IndexPermissions> GetIndexPermissions(
+    client::YBClient* client, const YBTableName& table_name, const YBTableName& index_table_name) {
+  Result<YBTableInfo> table_info = client->GetYBTableInfo(table_name);
+  if (!table_info) {
+    RETURN_NOT_OK_PREPEND(table_info.status(),
+                          "Unable to fetch table info for the main table " +
+                              table_name.ToString());
+  }
+  Result<YBTableInfo> index_table_info = client->GetYBTableInfo(index_table_name);
+  if (!index_table_info) {
+    RETURN_NOT_OK_PREPEND(index_table_info.status(),
+        "Unable to fetch table info for the index table " + index_table_name.ToString());
+  }
+
+  IndexInfoPB index_info_pb;
+  table_info->index_map[index_table_info->table_id].ToPB(&index_info_pb);
+  LOG(INFO) << "The index info for " << index_table_name.ToString() << " is "
+            << yb::ToString(index_info_pb);
+
+  if (!index_info_pb.has_index_permissions()) {
+    return STATUS(NotFound, "IndexPermissions not found in index info.");
+  }
+
+  return index_info_pb.index_permissions();
+}
+
+IndexPermissions WaitUntilIndexPermissionIsAtLeast(
+    client::YBClient* client, const YBTableName& table_name, const YBTableName& index_table_name,
+    IndexPermissions min_permission, bool exponential_backoff = true) {
+  CoarseBackoffWaiter waiter(CoarseMonoClock::Now() + 90s,
+                             (exponential_backoff ? CoarseMonoClock::Duration::max() : 50ms));
+  Result<IndexPermissions> result = GetIndexPermissions(client, table_name, index_table_name);
+  while (!result || *result < min_permission) {
+    LOG(INFO) << "Waiting since GetIndexPermissions returned " << result.ToString();
+    waiter.Wait();
+    result = GetIndexPermissions(client, table_name, index_table_name);
+  }
+  return *result;
+}
+
+TEST_F_EX(CppCassandraDriverTest, TestCreateIndex, CppCassandraDriverTestIndex) {
+  ASSERT_OK(
+      session_.ExecuteQuery("create table test_table (k int primary key, v text) "
+                            "with transactions = {'enabled' : true};"));
+
+  LOG(INFO) << "Inserting one row";
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (1, 'one');"));
+  LOG(INFO) << "Creating index";
+  ASSERT_OK(session_.ExecuteQuery("create index test_table_index_by_v on test_table (v);"));
+
+  LOG(INFO) << "Inserting one row";
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (2, 'two');"));
+  ASSERT_OK(session_.ExecuteQuery("insert into test_table (k, v) values (3, 'three');"));
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v");
+  IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
+      client_.get(), table_name, index_table_name,
+      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
+  LOG(INFO) << "Selecting one row from the main table";
+  ASSERT_OK(session_.ExecuteQuery("select * from test_table where v = 'one';"));
+  LOG(INFO) << "Done selecting row(s) from the main table.";
 }
 
 TEST_F(CppCassandraDriverTest, TestPrepare) {
