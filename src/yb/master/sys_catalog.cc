@@ -724,8 +724,8 @@ Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
   const tablet::TableInfo* target_table_info = VERIFY_RESULT(meta->GetTableInfo(target_table_id));
 
   const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
-  std::unique_ptr<common::YQLRowwiseIteratorIf> iter =
-      VERIFY_RESULT(tablet->NewRowIterator(source_projection, boost::none, source_table_id));
+  std::unique_ptr<common::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
+      tablet->NewRowIterator(source_projection, boost::none, {}, source_table_id));
   QLTableRow source_row;
   std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
   while (VERIFY_RESULT(iter->HasNext())) {
@@ -762,8 +762,8 @@ Status SysCatalogTable::CopyPgsqlTables(
     const tablet::TableInfo* target_table_info = VERIFY_RESULT(meta->GetTableInfo(target_table_id));
 
     const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
-    std::unique_ptr<common::YQLRowwiseIteratorIf> iter =
-        VERIFY_RESULT(tablet->NewRowIterator(source_projection, boost::none, source_table_id));
+    std::unique_ptr<common::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
+        tablet->NewRowIterator(source_projection, boost::none, {}, source_table_id));
     QLTableRow source_row;
     int count = 0;
     while (VERIFY_RESULT(iter->HasNext())) {

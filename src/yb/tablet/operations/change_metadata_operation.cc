@@ -141,6 +141,7 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
     WAL_RETENTION_SECS,
     ADD_TABLE,
     REMOVE_TABLE,
+    BACKFILL_DONE,
   };
 
   MetadataChange metadata_change = MetadataChange::NONE;
@@ -171,6 +172,13 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
     metadata_change = MetadataChange::NONE;
     if (++num_operations == 1) {
       metadata_change = MetadataChange::REMOVE_TABLE;
+    }
+  }
+
+  if (state()->request()->has_is_backfilling()) {
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::BACKFILL_DONE;
     }
   }
 
@@ -207,6 +215,10 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
       DCHECK_EQ(1, num_operations) << "Invalid number of change metadata operations: "
                                    << num_operations;
       RETURN_NOT_OK(tablet->RemoveTable(state()->request()->remove_table_id()));
+      break;
+    case MetadataChange::BACKFILL_DONE:
+      DCHECK_EQ(1, num_operations) << "Invalid number of alter operations: " << num_operations;
+      RETURN_NOT_OK(tablet->MarkBackfillDone(state()->request()->is_backfilling()));
       break;
   }
 

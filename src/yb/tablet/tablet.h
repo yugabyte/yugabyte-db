@@ -210,6 +210,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS EnableCompactions();
 
+  CHECKED_STATUS BackfillIndexes(const std::vector<IndexInfo> &indexes,
+                                 HybridTime read_time);
+
+  bool ShouldRetainDeleteMarkersInMajorCompaction() const;
+
   // Mark that the tablet has finished bootstrapping.
   // This transitions from kBootstrapping to kOpen state.
   void MarkFinishedBootstrapping();
@@ -329,7 +334,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // state of this tablet.
   // The returned iterator is not initialized.
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
-      const Schema &projection, const boost::optional<TransactionId>& transaction_id,
+      const Schema &projection,
+      const boost::optional<TransactionId>& transaction_id,
+      const ReadHybridTime read_hybrid_time = {},
       const TableId& table_id = "") const;
   Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> NewRowIterator(
       const TableId& table_id) const;
@@ -351,6 +358,10 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Apply the Schema of the specified operation.
   CHECKED_STATUS AlterSchema(ChangeMetadataOperationState* operation_state);
+
+  // Used to update the tablets on the index table that the index has been backfilled.
+  // This means that major compactions can now garbage collect delete markers.
+  CHECKED_STATUS MarkBackfillDone(bool done);
 
   // Change wal_retention_secs in the metadata.
   CHECKED_STATUS AlterWalRetentionSecs(ChangeMetadataOperationState* operation_state);

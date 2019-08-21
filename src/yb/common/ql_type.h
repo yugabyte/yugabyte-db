@@ -37,15 +37,15 @@ class UDTypeInfo {
       : keyspace_name_(keyspace_name), name_(name) {
   }
 
-  const string& keyspace_name() const {
+  const std::string& keyspace_name() const {
     return keyspace_name_;
   }
 
-  const string& name() const {
+  const std::string& name() const {
     return name_;
   }
 
-  const string& id() const {
+  const std::string& id() const {
     return id_;
   }
 
@@ -53,7 +53,7 @@ class UDTypeInfo {
     return field_names_;
   }
 
-  const string& field_name(int index) const {
+  const std::string& field_name(int index) const {
     return field_names_[index];
   }
 
@@ -150,7 +150,7 @@ class QLType {
   }
 
   // Constructor for user-defined types
-  QLType(const string& keyspace_name, const string& type_name)
+  QLType(const std::string& keyspace_name, const std::string& type_name)
       : id_(USER_DEFINED_TYPE), params_(0) {
     udtype_info_ = std::make_shared<UDTypeInfo>(keyspace_name, type_name);
   }
@@ -231,19 +231,19 @@ class QLType {
     return udtype_info_->field_names();
   }
 
-  const string& udtype_field_name(int index) const {
+  const std::string& udtype_field_name(int index) const {
     return udtype_info_->field_name(index);
   }
 
-  const string& udtype_keyspace_name() const {
+  const std::string& udtype_keyspace_name() const {
     return udtype_info_->keyspace_name();
   }
 
-  const string& udtype_name() const {
+  const std::string& udtype_name() const {
     return udtype_info_->name();
   }
 
-  const string& udtype_id() const {
+  const std::string& udtype_id() const {
     return udtype_info_->id();
   }
 
@@ -255,7 +255,7 @@ class QLType {
   }
 
   // returns position of "field_name" in udtype_field_names() vector if found, otherwise -1
-  const int GetUDTypeFieldIdxByName(const string &field_name) const {
+  const int GetUDTypeFieldIdxByName(const std::string &field_name) const {
     const std::vector<string>& field_names = udtype_field_names();
     int i = 0;
     while (i != field_names.size()) {
@@ -410,9 +410,9 @@ class QLType {
 
   //------------------------------------------------------------------------------------------------
   // Logging supports.
-  const string ToString() const;
+  const std::string ToString() const;
   void ToString(std::stringstream& os) const;
-  static const string ToCQLString(const DataType& datatype);
+  static const std::string ToCQLString(const DataType& datatype);
 
   //------------------------------------------------------------------------------------------------
   // static methods

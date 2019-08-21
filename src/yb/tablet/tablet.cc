@@ -359,6 +359,8 @@ Tablet::Tablet(
       is_sys_catalog_(is_sys_catalog),
       txns_enabled_(txns_enabled) {
   CHECK(schema()->has_column_ids());
+  LOG_WITH_PREFIX(INFO) << " Schema version for  " << metadata_->table_name() << " is "
+                        << metadata_->schema_version();
 
   if (metric_registry) {
     MetricEntity::AttributeMap attrs;
@@ -805,7 +807,9 @@ Status Tablet::ResetRocksDBs(bool destroy) {
 }
 
 Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
-    const Schema &projection, const boost::optional<TransactionId>& transaction_id,
+    const Schema &projection,
+    const boost::optional<TransactionId>& transaction_id,
+    const ReadHybridTime read_hybrid_time,
     const TableId& table_id) const {
   if (state_ != kOpen) {
     return STATUS_FORMAT(IllegalState, "Tablet in wrong state: $0", state_);
@@ -827,7 +831,9 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
   auto txn_op_ctx = CreateTransactionOperationContext(
       transaction_id, schema.table_properties().is_ysql_catalog_table());
-  auto read_time = ReadHybridTime::SingleTime(SafeTime(RequireLease::kFalse));
+  const auto read_time =
+      (read_hybrid_time ? read_hybrid_time
+                        : ReadHybridTime::SingleTime(SafeTime(RequireLease::kFalse)));
   auto result = std::make_unique<DocRowwiseIterator>(
       std::move(mapped_projection), schema, txn_op_ctx, doc_db(),
       CoarseTimePoint::max() /* deadline */, read_time, &pending_op_counter_);
@@ -838,7 +844,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const TableId& table_id) const {
   const tablet::TableInfo* table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  return NewRowIterator(table_info->schema, boost::none, table_id);
+  return NewRowIterator(table_info->schema, boost::none, {}, table_id);
 }
 
 void Tablet::StartOperation(WriteOperationState* operation_state) {
@@ -1639,6 +1645,17 @@ Status Tablet::RemoveTable(const std::string& table_id) {
   return Status::OK();
 }
 
+Status Tablet::MarkBackfillDone(bool done) {
+  LOG_WITH_PREFIX(INFO) << "Setting backfill as done. Current schema  "
+                        << metadata_->schema().ToString();
+  const vector<DeletedColumn> empty_deleted_cols;
+  Schema new_schema = metadata_->schema();
+  new_schema.SetIsBackfilling(done);
+  metadata_->SetSchema(
+      new_schema, metadata_->index_map(), empty_deleted_cols, metadata_->schema_version());
+  return metadata_->Flush();
+}
+
 Status Tablet::AlterSchema(ChangeMetadataOperationState *operation_state) {
   DCHECK(key_schema_.KeyEquals(*DCHECK_NOTNULL(operation_state->schema())))
       << "Schema keys cannot be altered";
@@ -1703,6 +1720,19 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperationState* operation_sta
   }
   return STATUS_SUBSTITUTE(InvalidArgument, "Invalid ChangeMetadataOperationState: $0",
       operation_state->ToString());
+}
+
+bool Tablet::ShouldRetainDeleteMarkersInMajorCompaction() const {
+  // If the index table is in the process of being backfilled, then we
+  // want to retain delete markers until the backfill process is complete.
+  return !schema()->table_properties().IsBackfilling();
+}
+
+// Should backfill the indexes for the records contained in this tablet.
+// Assume that we are already in the Backfilling mode.
+Status Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexes,
+                               HybridTime read_time) {
+  return Status::OK();
 }
 
 ScopedPendingOperationPause Tablet::PauseReadWriteOperations() {
