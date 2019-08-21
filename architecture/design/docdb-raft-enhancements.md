@@ -88,9 +88,17 @@ This is shown diagrammatically in the diagram below.
 
 ## Group Commits
 
-Per the Raft algorithm, each new entry being appended into the Raft log is assigned a monotonically increasing operation id. This operation id is a tuple consisting of (term, index). If each client issued update operation is treated as a separate Raft record entry, this would lead to a lot of RPCs between the Raft members. This means that the network would not be optimally utilized since there would be a lot of small packets.
+Per the Raft algorithm:
 
-To utilize the network better, DocDB batches multiple outstanding updates into a single record. This batching of updates in order to commit them to the Raft log is referred to as a **group commit**.
+> Each new entry being appended into the Raft log is assigned a monotonically increasing operation id, which is a tuple consisting of (term, index).
+
+Let us assume the scenario where term does not change. This implies that in a naive implementation, each client issued update operation is treated as a separate Raft record entry, leading to a lot of RPCs between the Raft members. In turn, this would result in reduced write throughput in scenarios with highly concurrent updates because each write operation to a tablet (Raft group) would have to wait for all the previous write operations to complete. Additinoally, cases when each update is small (in terms of the total payload size) would result in the network might not be being optimally utilized since there would be a lot of small packets.
+
+To utilize the network better, DocDB batches multiple outstanding updates into a single record. This batching of updates in order to commit them to the Raft log is referred to as a **group commit**. The idea here is to group all the incoming update requests from the client into a new Raft message batch and send them over the network together. While one Raft replica batch is being replicated to a majority, all new incoming updates are grouped into a new Raft message batch. This is shown in the diagram below. 
+
+![Group commits in Raft](https://raw.githubusercontent.com/YugaByte/yugabyte-db/master/architecture/design/images/docdb-raft-group-commit.png)
+
+The entries inside a single Raft message batch are required to be ordered as well. This is done by introducing another entry into the Raft id tuple called the *op id*, which preserves the order of the client updates.
 
 ## Leader Balancing
 
