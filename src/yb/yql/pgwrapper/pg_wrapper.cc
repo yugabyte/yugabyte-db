@@ -40,6 +40,23 @@ DECLARE_string(metric_node_name);
 TAG_FLAG(pg_transactions_enabled, advanced);
 TAG_FLAG(pg_transactions_enabled, hidden);
 
+// Top-level postgres configuration flags.
+DEFINE_bool(ysql_enable_auth, false,
+              "True to enforce password authentication for all connections");
+DEFINE_string(ysql_timezone, "",
+              "Overrides the default ysql timezone for displaying and interpreting timestamps");
+DEFINE_string(ysql_datestyle, "",
+              "Overrides the default ysql display format for date and time values");
+DEFINE_int32(ysql_max_connections, 0,
+              "Overrides the maximum number of concurrent ysql connections");
+DEFINE_string(ysql_default_transaction_isolation, "",
+              "Overrides the default ysql transaction isolation level");
+DEFINE_string(ysql_log_statement, "",
+              "Sets which types of ysql statements should be logged");
+DEFINE_string(ysql_log_min_messages, "",
+              "Sets the lowest ysql message level to log");
+
+// Catch-all postgres configuration flags.
 DEFINE_string(ysql_pg_conf, "",
               "Comma separated list of postgres setting assignments");
 DEFINE_string(ysql_hba_conf, "",
@@ -107,6 +124,30 @@ Result<string> WritePostgresConfig(const string& data_dir) {
     ReadCSVConfigValues(FLAGS_ysql_pg_conf, &lines);
   }
 
+  if (!FLAGS_ysql_timezone.empty()) {
+    lines.push_back("timezone=" + FLAGS_ysql_timezone);
+  }
+
+  if (!FLAGS_ysql_datestyle.empty()) {
+    lines.push_back("datestyle=" + FLAGS_ysql_datestyle);
+  }
+
+  if (FLAGS_ysql_max_connections > 0) {
+    lines.push_back("max_connections=" + std::to_string(FLAGS_ysql_max_connections));
+  }
+
+  if (!FLAGS_ysql_default_transaction_isolation.empty()) {
+    lines.push_back("default_transaction_isolation=" + FLAGS_ysql_default_transaction_isolation);
+  }
+
+  if (!FLAGS_ysql_log_statement.empty()) {
+    lines.push_back("log_statement=" + FLAGS_ysql_log_statement);
+  }
+
+  if (!FLAGS_ysql_log_min_messages.empty()) {
+    lines.push_back("log_min_messages=" + FLAGS_ysql_log_min_messages);
+  }
+
   string conf_path = JoinPathSegments(data_dir, "ysql_pg.conf");
   RETURN_NOT_OK(WriteConfigFile(conf_path, lines));
   return "config_file=" + conf_path;
@@ -114,6 +155,12 @@ Result<string> WritePostgresConfig(const string& data_dir) {
 
 Result<string> WritePgHbaConfig(const string& data_dir) {
   vector<string> lines;
+
+  if (FLAGS_ysql_enable_auth) {
+    lines.push_back("host all all 0.0.0.0/0 md5");
+    lines.push_back("host all all ::0/0 md5");
+  }
+
   if (!FLAGS_ysql_hba_conf.empty()) {
     ReadCSVConfigValues(FLAGS_ysql_hba_conf, &lines);
   }
