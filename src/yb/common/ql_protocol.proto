@@ -149,6 +149,9 @@ message QLWriteRequestPB {
 
   // Whether to return a status row reporting applied status and execution errors (if any).
   optional bool returns_status = 18 [default = false];
+
+  // Does this request correspond to backfilling an index table?
+  optional bool is_backfilling = 19 [default = false];
 }
 
 //-------------------------------------- Read request ----------------------------------------

@@ -87,6 +87,8 @@ message GetSafeTimeRequestPB {
   optional uint32 schema_version = 3;
 
   optional fixed64 propagated_hybrid_time = 4;
+
+  optional fixed64 min_hybrid_time_for_backfill = 5;
 }
 
 message GetSafeTimeResponsePB {

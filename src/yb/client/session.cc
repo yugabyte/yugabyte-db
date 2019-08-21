@@ -36,7 +36,8 @@ YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock)
     : client_(client),
       read_point_(clock ? std::make_unique<ConsistentReadPoint>(clock) : nullptr),
       error_collector_(new ErrorCollector()),
-      timeout_(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms)) {
+      timeout_(MonoDelta::FromMilliseconds(FLAGS_client_read_write_timeout_ms)),
+      hybrid_time_for_write_(HybridTime::kInvalid) {
   const auto metric_entity = client_->metric_entity();
   async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
 }
@@ -185,6 +186,13 @@ ConsistentReadPoint* YBSession::read_point() {
   return transaction_ ? &transaction_->read_point() : read_point_.get();
 }
 
+void YBSession::WriteWithHybridTime(HybridTime ht) {
+  hybrid_time_for_write_ = ht;
+  if (batcher_) {
+    batcher_->WriteWithHybridTime(hybrid_time_for_write_);
+  }
+}
+
 internal::Batcher& YBSession::Batcher() {
   if (!batcher_) {
     batcher_.reset(new internal::Batcher(
@@ -194,6 +202,9 @@ internal::Batcher& YBSession::Batcher() {
       batcher_->SetTimeout(timeout_);
     }
     batcher_->SetRejectionScoreSource(rejection_score_source_);
+    if (hybrid_time_for_write_.is_valid()) {
+      batcher_->WriteWithHybridTime(hybrid_time_for_write_);
+    }
   }
   return *batcher_;
 }
