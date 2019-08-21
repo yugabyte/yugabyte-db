@@ -3,7 +3,6 @@
 import React, { Component } from 'react';
 import {Row, Col} from 'react-bootstrap';
 
-import gitterIcon from './images/gitter.svg';
 import './HelpItems.scss';
 
 export default class HelpItems extends Component {
@@ -36,8 +35,8 @@ export default class HelpItems extends Component {
           </Col>
           <Col lg={6}>
             <p>
-              <a href="https://gitter.im/YugaByte/Lobby" target="_blank" rel="noopener noreferrer">
-                <object className="logo svg-logo" data={gitterIcon} type="image/svg+xml" width="16">Icon</object> Gitter
+              <a href="https://www.yugabyte.com/slack" target="_blank" rel="noopener noreferrer">
+                <i className="fa fa-slack"></i> Slack
               </a>
             </p>
             <p>
