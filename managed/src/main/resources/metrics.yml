@@ -1133,7 +1133,7 @@ lsm_rocksdb_total_sst_per_node:
       tickformat: ".2f"
 
 lsm_rocksdb_avg_num_sst_per_node:
-  metric: "rocksdb_num_sst_files"
+  metric: "rocksdb_current_version_num_sst_files"
   function: "sum without (table_id, table_name)|avg"
   filters:
     export_type: "tserver_export"
@@ -1143,7 +1143,7 @@ lsm_rocksdb_avg_num_sst_per_node:
       type: "date"
     yaxis:
       alias:
-        "rocksdb_num_sst_files": "Average SSTables / Node"
+        "rocksdb_current_version_num_sst_files": "Average SSTables / Node"
 
 lsm_rocksdb_blooms_checked_and_useful:
   metric: ""
