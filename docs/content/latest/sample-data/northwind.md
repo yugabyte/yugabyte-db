@@ -4,8 +4,9 @@ linkTitle: Northwind
 description: Northwind sample database
 menu:
   latest:
+    identifier: northwind
     parent: sample-data
-    weight: 2720
+    weight: 2752
 isTocNested: true
 showAsideToc: true
 ---
