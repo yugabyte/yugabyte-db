@@ -140,7 +140,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   std::atomic_bool done_;
   std::atomic<size_t> tablets_pending_;
   mutable simple_spinlock mutex_;
-  HybridTime read_time_for_backfill_ GUARDED_BY(mutex_){HybridTime::kMax};
+  HybridTime read_time_for_backfill_ GUARDED_BY(mutex_){HybridTime::kMin};
 };
 
 // A background task which is responsible for backfilling rows from a given
@@ -193,12 +193,15 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 class GetSafeTimeForTablet : public RetryingTSRpcTask {
  public:
   GetSafeTimeForTablet(
-      std::shared_ptr<BackfillTable> backfill_table, const scoped_refptr<TabletInfo>& tablet)
+      std::shared_ptr<BackfillTable> backfill_table,
+      const scoped_refptr<TabletInfo>& tablet,
+      HybridTime min_cutoff)
       : RetryingTSRpcTask(
             backfill_table->master(), backfill_table->threadpool(),
             gscoped_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get()),
         backfill_table_(backfill_table),
-        tablet_(tablet) {
+        tablet_(tablet),
+        min_cutoff_(min_cutoff) {
     deadline_ = MonoTime::Max();  // Never time out.
   }
 
@@ -229,8 +232,9 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
   }
 
   tserver::GetSafeTimeResponsePB resp_;
-  std::shared_ptr<BackfillTable> backfill_table_;
+  const std::shared_ptr<BackfillTable> backfill_table_;
   const scoped_refptr<TabletInfo> tablet_;
+  const HybridTime min_cutoff_;
 };
 
 // A background task which is responsible for backfilling rows in the partitions

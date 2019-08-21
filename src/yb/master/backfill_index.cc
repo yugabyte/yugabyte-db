@@ -326,8 +326,10 @@ void BackfillTable::LaunchComputeSafeTimeForRead() {
 
   done_.store(false, std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
+  auto min_cutoff = master()->clock()->Now();
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    auto get_safetime = std::make_shared<GetSafeTimeForTablet>(shared_from_this(), tablet);
+    auto get_safetime = std::make_shared<GetSafeTimeForTablet>(
+        shared_from_this(), tablet, min_cutoff);
     get_safetime->Launch();
   }
 }
@@ -355,9 +357,10 @@ void BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
   // Need to guard this.
   {
     std::lock_guard<simple_spinlock> l(mutex_);
-    VLOG(2) << " Updating read_time_for_backfill_ to min{ " << read_time_for_backfill_.ToString()
-            << ", " << ht.ToString() << " }.";
-    read_time_for_backfill_.MakeAtMost(ht);
+    VLOG(2) << " Updating read_time_for_backfill_ to max{ "
+            << read_time_for_backfill_.ToString() << ", " << ht.ToString()
+            << " }.";
+    read_time_for_backfill_.MakeAtLeast(ht);
   }
 
   // If OK then move on to READ permissions.
@@ -585,7 +588,7 @@ void BackfillTablet::Done(const Status& status) {
 
   // This is the last chunk.
   if (chunk_start_ == chunk_end_) {
-    VLOG(1) << "Done backfilling the tablet " << yb::ToString(tablet_);
+    LOG(INFO) << "Done backfilling the tablet " << yb::ToString(tablet_);
     backfill_table_->Done(status);
     return;
   }
@@ -614,7 +617,9 @@ bool GetSafeTimeForTablet::SendRequest(int attempt) {
   tserver::GetSafeTimeRequestPB req;
   req.set_dest_uuid(permanent_uuid());
   req.set_tablet_id(tablet_->tablet_id());
-  req.set_propagated_hybrid_time(backfill_table_->master()->clock()->Now().ToUint64());
+  auto now = backfill_table_->master()->clock()->Now().ToUint64();
+  req.set_min_hybrid_time_for_backfill(min_cutoff_.ToUint64());
+  req.set_propagated_hybrid_time(now);
 
   ts_admin_proxy_->GetSafeTimeAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send " << description() << " to " << permanent_uuid()

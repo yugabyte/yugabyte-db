@@ -166,6 +166,20 @@ DEFINE_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
 DEFINE_bool(delete_intents_sst_files, true,
             "Delete whole intents .SST files when possible.");
 
+DEFINE_int32(backfill_index_write_batch_size, 128, "The batch size for backfilling the index.");
+TAG_FLAG(backfill_index_write_batch_size, advanced);
+TAG_FLAG(backfill_index_write_batch_size, runtime);
+
+DEFINE_int32(backfill_index_rate_rows_per_sec, 0, "Rate of at which the "
+             "indexed table's entries are populated into the index table during index "
+             "backfill. This is a per-tablet flag, i.e. a tserver responsible for "
+             "multiple tablets could be processing more than this.");
+TAG_FLAG(backfill_index_rate_rows_per_sec, advanced);
+TAG_FLAG(backfill_index_rate_rows_per_sec, runtime);
+
+DEFINE_test_flag(int32, TEST_slowdown_backfill_by_ms, 0,
+                 "If set > 0, slows down the backfill process by this amount.");
+
 DEFINE_test_flag(
     bool, tablet_verify_flushed_frontier_after_modifying, false,
     "After modifying the flushed frontier in RocksDB, verify that the restored value of it "
@@ -854,7 +868,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
-  VLOG_WITH_PREFIX(2) << "Created new Iterator";
+  VLOG_WITH_PREFIX(2) << "Created new Iterator reading at " << read_hybrid_time.ToString();
 
   const tablet::TableInfo* table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
   const Schema& schema = table_info->schema;
@@ -882,6 +896,7 @@ Result<std::unique_ptr<common::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 void Tablet::StartOperation(WriteOperationState* operation_state) {
   // If the state already has a hybrid_time then we're replaying a transaction that occurred
   // before a crash or at another node.
+  DVLOG(4) << __PRETTY_FUNCTION__ << " for " << yb::ToString(operation_state->request());
   HybridTime ht = operation_state->hybrid_time_even_if_unset();
   bool was_valid = ht.is_valid();
   if (!was_valid) {
@@ -1103,6 +1118,7 @@ Status Tablet::HandleQLReadRequest(
   ScopedTabletMetricsTracker metrics_tracker(metrics_->ql_read_latency);
 
   if (metadata()->schema_version() != ql_read_request.schema_version()) {
+    DVLOG(1) << "Setting status for read as YQL_STATUS_SCHEMA_VERSION_MISMATCH";
     result->response.set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     return Status::OK();
   }
@@ -1158,6 +1174,8 @@ CHECKED_STATUS Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_r
 }
 
 void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> operation) {
+  DVLOG(2) << " Schema version for  " << metadata_->table_name() << " is "
+           << metadata_->schema_version();
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   if (!scoped_read_operation.ok()) {
     WriteOperation::StartSynchronization(std::move(operation), MoveStatus(scoped_read_operation));
@@ -1183,8 +1201,14 @@ void Tablet::KeyValueBatchFromQLWriteBatch(std::unique_ptr<WriteOperation> opera
     QLWriteRequestPB* req = ql_write_batch->Mutable(i);
     QLResponsePB* resp = operation->response()->add_ql_response_batch();
     if (metadata_->schema_version() != req->schema_version()) {
+      DVLOG(3) << " On " << metadata_->table_name()
+               << " Setting status for write as YQL_STATUS_SCHEMA_VERSION_MISMATCH tserver's: "
+               << metadata_->schema_version() << " vs req's : " << req->schema_version()
+               << " for " << yb::ToString(req);
       resp->set_status(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH);
     } else {
+      DVLOG(3) << "Version matches : " << metadata_->schema_version() << " for "
+               << yb::ToString(req);
       auto write_op = std::make_unique<QLWriteOperation>(
           metadata_->schema(), metadata_->index_map(), unique_index_key_schema_.get_ptr(),
           *txn_op_ctx);
@@ -1232,6 +1256,8 @@ void Tablet::CompleteQLWriteBatch(std::unique_ptr<WriteOperation> operation, con
       ql_write_op->response()->set_status(QLResponsePB::YQL_STATUS_USAGE_ERROR);
       ql_write_op->response()->set_error_message(
           Format("Duplicate value disallowed by unique index $0", metadata_->table_name()));
+      DVLOG(1) << "Could not apply the given operation " << yb::ToString(ql_write_op->request())
+               << " due to " << yb::ToString(ql_write_op->response());
     } else if (ql_write_op->rowblock() != nullptr) {
       // If the QL write op returns a rowblock, move the op to the transaction state to return the
       // rows data as a sidecar after the transaction completes.
@@ -1355,6 +1381,7 @@ void Tablet::UpdateQLIndexes(std::unique_ptr<WriteOperation> operation) {
       auto* index_response = index_op->mutable_response();
 
       if (index_response->status() != QLResponsePB::YQL_STATUS_OK) {
+        DVLOG(1) << "Got status " << index_response->status() << " for " << yb::ToString(index_op);
         response->set_status(index_response->status());
         response->set_error_message(std::move(*index_response->mutable_error_message()));
       }
@@ -1760,10 +1787,164 @@ bool Tablet::ShouldRetainDeleteMarkersInMajorCompaction() const {
   return !schema()->table_properties().IsBackfilling();
 }
 
-// Should backfill the indexes for the records contained in this tablet.
+// Should backfill the index with the information contained in this tablet.
 // Assume that we are already in the Backfilling mode.
 Status Tablet::BackfillIndexes(const std::vector<IndexInfo> &indexes,
                                HybridTime read_time) {
+  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
+    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
+  }
+  DVLOG(3) << __PRETTY_FUNCTION__;
+
+  // For the specific index that we are interested in, set up a scan job to scan all the
+  // rows in this tablet and update the index accordingly.
+  std::unordered_set<yb::ColumnId> col_ids_set;
+  std::vector<yb::ColumnSchema> columns;
+
+  for (auto idx : schema()->column_ids()) {
+    if (schema()->is_key_column(idx)) {
+      col_ids_set.insert(idx);
+      auto res = schema()->column_by_id(idx);
+      if (res) {
+        columns.push_back(*res);
+      } else {
+        LOG(DFATAL) << "Unexpected : Cannot find the column in the main table for "
+            << idx;
+      }
+    }
+  }
+  for (const IndexInfo& idx : indexes) {
+    for (const auto& idx_col : idx.columns()) {
+      if (col_ids_set.find(idx_col.indexed_column_id) == col_ids_set.end()) {
+        col_ids_set.insert(idx_col.indexed_column_id);
+        auto res = schema()->column_by_id(idx_col.indexed_column_id);
+        if (res) {
+          columns.push_back(*res);
+        } else {
+          LOG(DFATAL) << "Unexpected : Cannot find the column in the main table for "
+              << idx_col.indexed_column_id;
+        }
+      }
+    }
+  }
+  Schema projection(columns, {}, schema()->num_key_columns());
+  auto iter =
+      VERIFY_RESULT(NewRowIterator(projection, boost::none, ReadHybridTime::SingleTime(read_time)));
+
+  QLTableRow row;
+  std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests;
+  int num_rows = 0;
+  while (VERIFY_RESULT((*iter).HasNext())) {
+    RETURN_NOT_OK((*iter).NextRow(&row));
+
+    DVLOG(2) << "Building index for fetched row: " << row.ToString();
+    constexpr auto kProgressInterval = 1000;
+    if (++num_rows % kProgressInterval == 0) {
+      VLOG(1) << "Processed " << num_rows << " rows";
+    }
+
+    RETURN_NOT_OK(UpdateIndexInBatches(row, indexes, &index_requests));
+  }
+  VLOG(1) << "Processed " << num_rows << " rows";
+  return FlushIndexBatchIfRequired(&index_requests, /* forced */ true);
+}
+
+Status Tablet::UpdateIndexInBatches(
+    const QLTableRow& row, const std::vector<IndexInfo>& indexes,
+    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests) {
+  const QLTableRow kEmptyRow;
+  QLExprExecutor expr_executor;
+
+  for (const IndexInfo& index : indexes) {
+    bool ignored_key_changed;
+    index_requests->emplace_back(&index, QLWriteRequestPB());
+    QLWriteRequestPB* index_request = &index_requests->back().second;
+    index_request->set_type(QLWriteRequestPB::QL_STMT_INSERT);
+    RETURN_NOT_OK(docdb::PrepareIndexWriteAndCheckIfIndexKeyChanged(
+        &expr_executor, kEmptyRow, row, &index, index_request, &ignored_key_changed));
+    index_request->set_is_backfilling(true);
+  }
+
+  // Update the index write op.
+  return FlushIndexBatchIfRequired(index_requests, false);
+}
+
+Status Tablet::FlushIndexBatchIfRequired(
+    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests, bool force_flush) {
+  if (!force_flush && index_requests->size() < FLAGS_backfill_index_write_batch_size) {
+    return Status::OK();
+  }
+
+  if (!client_future_.valid()) {
+    return STATUS_FORMAT(IllegalState, "Client future is not set up for $0", tablet_id());
+  } else if (!metadata_cache_) {
+    return STATUS(IllegalState, "Table metadata cache is not present for index update");
+  }
+
+  auto client = client_future_.get();
+  auto session = std::make_shared<YBSession>(client);
+  const HybridTime kBackfillAt(50);
+  session->WriteWithHybridTime(kBackfillAt);
+
+  std::unordered_set<
+      client::YBqlWriteOpPtr, client::YBqlWriteOp::PrimaryKeyComparator,
+      client::YBqlWriteOp::PrimaryKeyComparator>
+      ops_by_primary_key;
+  std::vector<shared_ptr<client::YBqlWriteOp>> write_ops;
+  for (auto& pair : *index_requests) {
+    // TODO create async version of GetTable.
+    // It is ok to have sync call here, because we use cache and it should not take too long.
+    client::YBTablePtr index_table;
+    bool cache_used_ignored = false;
+    RETURN_NOT_OK(
+        metadata_cache_->GetTable(pair.first->table_id(), &index_table, &cache_used_ignored));
+
+    shared_ptr<client::YBqlWriteOp> index_op(index_table->NewQLWrite());
+    index_op->mutable_request()->Swap(&pair.second);
+    if (index_table->IsUniqueIndex()) {
+      if (ops_by_primary_key.count(index_op) > 0) {
+        VLOG(2) << "Splitting the batch of writes because " << index_op->ToString()
+                << " collides with an existing update in this batch.";
+        VLOG(1) << "Flushing " << ops_by_primary_key.size() << " ops to the index";
+        RETURN_NOT_OK_PREPEND(session->Flush(), "Flush failed.");
+        VLOG(3) << "Done flushing ops to the index";
+        ops_by_primary_key.clear();
+      }
+      ops_by_primary_key.insert(index_op);
+    }
+    RETURN_NOT_OK_PREPEND(session->Apply(index_op), "Could not Apply.");
+    write_ops.push_back(index_op);
+  }
+
+  VLOG(1) << "Flushing " << ops_by_primary_key.size() << " ops to the index";
+  RETURN_NOT_OK_PREPEND(session->Flush(), "Flush failed.");
+  VLOG(3) << "Done flushing ops to the index";
+  for (auto write_op : write_ops) {
+    if (write_op->response().status() != QLResponsePB::YQL_STATUS_OK) {
+      VLOG(2) << "Got response " << yb::ToString(write_op->response()) << " for "
+              << yb::ToString(write_op->request());
+      return STATUS_SUBSTITUTE(
+          IllegalState, "Backfilling op failed: request : $0 response : $1",
+          yb::ToString(write_op->request()), yb::ToString(write_op->response()));
+    }
+  }
+
+  auto now = CoarseMonoClock::Now();
+  if (FLAGS_backfill_index_rate_rows_per_sec > 0) {
+    auto duration_since_last_batch = MonoDelta(now - last_backfill_flush_at_);
+    auto expected_duration_ms = MonoDelta::FromMilliseconds(
+        index_requests->size() * 1000 / FLAGS_backfill_index_rate_rows_per_sec);
+    DVLOG(3) << "Duration since last batch " << duration_since_last_batch
+             << " expected duration " << expected_duration_ms
+             << " extra time so sleep: " << expected_duration_ms - duration_since_last_batch;
+    if (duration_since_last_batch < expected_duration_ms) {
+      SleepFor(expected_duration_ms - duration_since_last_batch);
+    }
+  }
+  last_backfill_flush_at_ = now;
+
+  index_requests->clear();
   return Status::OK();
 }
 
@@ -2125,7 +2306,6 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
       ? read_op.read_time()
       // When need_read_snapshot is false, this time is used only to write TTL field of record.
       : ReadHybridTime::SingleTime(clock_->Now());
-
 
   // We expect all read operations for this transaction to be done in ExecuteDocWriteOperation.
   // Once read_txn goes out of scope, the read point is deregistered.
