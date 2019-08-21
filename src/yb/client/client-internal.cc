@@ -1264,7 +1264,7 @@ Status YBClient::Data::ReinitializeMasterAddresses() {
 
 // Remove a given master from the list of master_server_addrs_.
 Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
-  vector<HostPort> new_list;
+  std::string updated_addrs;
 
   {
     auto str = addr.ToString();
@@ -1273,10 +1273,13 @@ Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
     if (it != master_server_addrs_.end()) {
       master_server_addrs_.erase(it);
     }
+
+    for(const auto& a : master_server_addrs_) {
+        updated_addrs += a;
+    }
   }
 
-  RETURN_NOT_OK(SetMasterAddresses(HostPort::ToCommaSeparatedString(new_list)));
-
+  RETURN_NOT_OK(SetMasterAddresses(updated_addrs));
   return Status::OK();
 }
 
