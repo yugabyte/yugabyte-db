@@ -291,6 +291,10 @@ message SysTabletsEntryPB {
 
   // True if the tablet is colocated.
   optional bool colocated = 9 [ default = false ];
+
+  // If the tablet is in the backfilling state, this is used to keep track
+  // of how far along backfill has completed. Encoded like the partition key.
+  optional bytes backfilled_until = 10;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -360,6 +364,13 @@ message SysTablesEntryPB {
   optional uint32 wal_retention_secs = 24;
 
   optional bool colocated = 25 [ default = false ]; // Is this a colocated table?
+
+  // For index backfill/schema related changes.
+  // When a schema change is going on, we want to make sure that the master returns the "older"
+  // fully applied version until all the tablets have moved on to the newer version.
+  optional uint32 fully_applied_schema_version = 23;
+  repeated IndexInfoPB fully_applied_indexes = 26;
+  optional IndexInfoPB fully_applied_index_info = 27;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.

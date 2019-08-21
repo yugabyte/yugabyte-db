@@ -256,7 +256,7 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
   if (has_expired) {
     // This is consistent with the condition we're testing for deletes at the bottom of the function
     // because ht_at_or_below_cutoff is implied by has_expired.
-    if (is_major_compaction_) {
+    if (is_major_compaction_ && !retention_.retain_delete_markers_in_major_compaction) {
       return FilterDecision::kDiscard;
     }
 
@@ -284,12 +284,20 @@ Result<FilterDecision> DocDBCompactionFilter::DoFilter(
     within_merge_block_ = false;
   }
 
+  // If we are backfilling an index table, we want to preserve the delete markers in the table
+  // until the backfill process is completed. For other normal use cases, delete markers/tombstones
+  // can be cleaned up on a major compaction.
+  // retention_.retain_delete_markers_in_major_compaction will be set to true until the index
+  // backfill is complete.
+  //
   // Tombstones at or below the history cutoff hybrid_time can always be cleaned up on full (major)
   // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid times.
-  return value_type == ValueType::kTombstone && is_major_compaction_ ? FilterDecision::kDiscard
-                                                                     : FilterDecision::kKeep;
+  return value_type == ValueType::kTombstone && is_major_compaction_ &&
+                 !retention_.retain_delete_markers_in_major_compaction
+             ? FilterDecision::kDiscard
+             : FilterDecision::kKeep;
 }
 
 void DocDBCompactionFilter::AssignPrevSubDocKey(
@@ -336,11 +344,9 @@ const char* DocDBCompactionFilterFactory::Name() const {
 
 HistoryRetentionDirective ManualHistoryRetentionPolicy::GetRetentionDirective() {
   std::lock_guard<std::mutex> lock(deleted_cols_mtx_);
-  return {
-    history_cutoff_.load(std::memory_order_acquire),
-    std::make_shared<ColumnIds>(deleted_cols_),
-    table_ttl_.load(std::memory_order_acquire)
-  };
+  return {history_cutoff_.load(std::memory_order_acquire),
+          std::make_shared<ColumnIds>(deleted_cols_), table_ttl_.load(std::memory_order_acquire),
+          ShouldRetainDeleteMarkersInMajorCompaction::kFalse};
 }
 
 void ManualHistoryRetentionPolicy::SetHistoryCutoff(HybridTime history_cutoff) {

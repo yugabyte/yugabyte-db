@@ -160,6 +160,11 @@ YBTableCreator& YBTableCreator::wait(bool wait) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::TEST_use_old_style_create_request() {
+  TEST_use_old_style_create_request_ = true;
+  return *this;
+}
+
 Status YBTableCreator::Create() {
   const char *object_type = index_info_.has_indexed_table_id() ? "index" : "table";
   if (table_name_.table_name().empty()) {
@@ -234,7 +239,9 @@ Status YBTableCreator::Create() {
 
   // Index mapping with data-table being indexed.
   if (index_info_.has_indexed_table_id()) {
-    req.mutable_index_info()->CopyFrom(index_info_);
+    if (!TEST_use_old_style_create_request_) {
+      req.mutable_index_info()->CopyFrom(index_info_);
+    }
 
     // For compatibility reasons, set the old fields just in case we have new clients talking to
     // old master server during rolling upgrade.

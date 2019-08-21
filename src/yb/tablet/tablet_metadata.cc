@@ -633,6 +633,9 @@ void RaftGroupMetadata::SetSchema(const Schema& schema,
                                                           index_map,
                                                           deleted_cols,
                                                           version));
+  VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating to Schema version " << version
+                      << " from \n" << yb::ToString(kv_store_.tables[primary_table_id_])
+                      << " to \n" << yb::ToString(new_table_info);
   kv_store_.tables[primary_table_id_].swap(new_table_info);
   if (new_table_info) {
     kv_store_.old_tables.push_back(std::move(new_table_info));
@@ -689,6 +692,9 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
           << new_table_info->ToString() << ", old table info: " << existing_table.ToString();
     }
   }
+  VLOG_WITH_PREFIX(1) << " Updating to Schema version " << schema_version
+                      << " from \n" << yb::ToString(tables[table_id])
+                      << " to \n" << yb::ToString(new_table_info);
   tables[table_id].swap(new_table_info);
 }
 

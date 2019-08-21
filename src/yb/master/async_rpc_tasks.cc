@@ -43,6 +43,10 @@ DEFINE_int32(unresponsive_ts_rpc_retry_limit, 20,
              "to perform operations such as deleting a tablet.");
 TAG_FLAG(unresponsive_ts_rpc_retry_limit, advanced);
 
+DEFINE_int32(retrying_ts_rpc_max_delay_ms, 60 * 1000,
+             "Maximum delay between successive attempts to contact an unresponsive tablet server");
+TAG_FLAG(retrying_ts_rpc_max_delay_ms, advanced);
+
 DEFINE_test_flag(
     int32, slowdown_master_async_rpc_tasks_by_ms, 0,
     "For testing purposes, slow down the run method to take longer.");
@@ -145,9 +149,7 @@ Status RetryingTSRpcTask::Run() {
   }
 
   // Calculate and set the timeout deadline.
-  MonoTime timeout = MonoTime::Now();
-  timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
-  const MonoTime& deadline = MonoTime::Earliest(timeout, deadline_);
+  const MonoTime deadline = ComputeDeadline();
   rpc_.set_deadline(deadline);
 
   if (!PerformStateTransition(MonitoredTaskState::kWaiting, MonitoredTaskState::kRunning)) {
@@ -175,6 +177,12 @@ Status RetryingTSRpcTask::Run() {
     }
   }
   return Status::OK();
+}
+
+MonoTime RetryingTSRpcTask::ComputeDeadline() {
+  MonoTime timeout = MonoTime::Now();
+  timeout.AddDelta(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms));
+  return MonoTime::Earliest(timeout, deadline_);
 }
 
 // Abort this task and return its value before it was successfully aborted. If the task entered
@@ -225,6 +233,12 @@ void RetryingTSRpcTask::DoRpcCallback() {
   UnregisterAsyncTask();  // May call 'delete this'.
 }
 
+int RetryingTSRpcTask::num_max_retries() { return FLAGS_unresponsive_ts_rpc_retry_limit; }
+
+int RetryingTSRpcTask::max_delay_ms() {
+  return FLAGS_retrying_ts_rpc_max_delay_ms;
+}
+
 bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
   auto task_state = state();
   if (task_state != MonitoredTaskState::kRunning) {
@@ -238,7 +252,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
   if (NoRetryTaskType()) {
     attempt_threshold = 0;
   } else if (RetryLimitTaskType()) {
-    attempt_threshold = FLAGS_unresponsive_ts_rpc_retry_limit;
+    attempt_threshold = num_max_retries();
   }
 
   if (attempt_ > attempt_threshold) {
@@ -258,7 +272,7 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
   if (attempt_ <= 12) {
     base_delay_ms = 1 << (attempt_ + 3);  // 1st retry delayed 2^4 ms, 2nd 2^5, etc.
   } else {
-    base_delay_ms = 60 * 1000;  // cap at 1 minute
+    base_delay_ms = max_delay_ms();
   }
   // Normal rand is seeded by default with 1. Using the same for rand_r seed.
   unsigned int seed = 1;
@@ -522,9 +536,7 @@ AsyncAlterTable::AsyncAlterTable(Master *master,
     tablet_(tablet) {
 }
 
-string AsyncAlterTable::description() const {
-  return tablet_->ToString() + " Alter Table RPC";
-}
+string AsyncAlterTable::description() const { return tablet_->ToString() + type_name() + " RPC"; }
 
 TabletId AsyncAlterTable::tablet_id() const {
   return tablet_->tablet_id();
@@ -543,33 +555,48 @@ void AsyncAlterTable::HandleResponse(int attempt) {
       case TabletServerErrorPB::TABLET_NOT_FOUND:
       case TabletServerErrorPB::MISMATCHED_SCHEMA:
       case TabletServerErrorPB::TABLET_HAS_A_NEWER_SCHEMA:
-        LOG(WARNING) << "TS " << permanent_uuid() << ": alter failed for tablet "
-                     << tablet_->ToString() << " no further retry: " << status.ToString();
+        LOG(WARNING) << "TS " << permanent_uuid() << ": failed "
+                     << description() << ". " << status.ToString()
+                     << " for version " << schema_version_;
         TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
         break;
       default:
-        LOG(WARNING) << "TS " << permanent_uuid() << ": alter failed for tablet "
-                     << tablet_->ToString() << ": " << status.ToString();
+        LOG(WARNING) << "TS " << permanent_uuid() << ": failed "
+                     << description() << ". " << status.ToString()
+                     << " for version " << schema_version_;
         break;
     }
   } else {
     TransitionToTerminalState(MonitoredTaskState::kRunning, MonitoredTaskState::kComplete);
-    VLOG(1) << "TS " << permanent_uuid() << ": alter complete on tablet " << tablet_->ToString();
+    VLOG(1) << "TS " << permanent_uuid() << ": completed " << description()
+            << " for version " << schema_version_;
   }
 
   server::UpdateClock(resp_, master_->clock());
 
   if (state() == MonitoredTaskState::kComplete) {
     // TODO: proper error handling here.
-    CHECK_OK(master_->catalog_manager()->HandleTabletSchemaVersionReport(
+    auto s = (master_->catalog_manager()->HandleTabletSchemaVersionReport(
         tablet_.get(), schema_version_));
+    if (!s.ok()) {
+      LOG(FATAL) << "Check failed " << s << " failed for "
+                 << tablet_->ToString() << " description " << description()
+                 << " while running "
+                 << "AsyncAlterTable::HandleResponse"
+                 << " with response " << resp_.DebugString();
+    }
   } else {
-    VLOG(1) << "Task is not completed";
+    VLOG(1) << "Task is not completed" << tablet_->ToString() << " for version "
+            << schema_version_;
   }
 }
 
 bool AsyncAlterTable::SendRequest(int attempt) {
+  VLOG(1) << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
+          << "version " << schema_version_ << " waiting for a read lock.";
   auto l = table_->LockForRead();
+  VLOG(1) << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
+          << "version " << schema_version_ << " obtained the read lock.";
 
   tserver::ChangeMetadataRequestPB req;
   req.set_schema_version(l->data().pb.version());
@@ -590,7 +617,29 @@ bool AsyncAlterTable::SendRequest(int attempt) {
   l->Unlock();
 
   ts_admin_proxy_->AlterSchemaAsync(req, &resp_, &rpc_, BindRpcCallback());
-  VLOG(1) << "Send alter table request to " << permanent_uuid()
+  VLOG(1) << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
+          << " (attempt " << attempt << "):\n"
+          << req.DebugString();
+  return true;
+}
+
+bool AsyncBackfillDone::SendRequest(int attempt) {
+  VLOG(1) << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
+          << "version " << schema_version_ << " waiting for a read lock.";
+  auto l = table_->LockForRead();
+  VLOG(1) << "Send alter table request to " << permanent_uuid() << " for " << tablet_->tablet_id()
+          << "version " << schema_version_ << " obtained the read lock.";
+
+  tserver::ChangeMetadataRequestPB req;
+  req.set_dest_uuid(permanent_uuid());
+  req.set_tablet_id(tablet_->tablet_id());
+  req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+  req.set_is_backfilling(false);
+  schema_version_ = l->data().pb.version();
+  l->Unlock();
+
+  ts_admin_proxy_->BackfillDoneAsync(req, &resp_, &rpc_, BindRpcCallback());
+  VLOG(1) << "Send backfill done request to " << permanent_uuid() << " for " << tablet_->tablet_id()
           << " (attempt " << attempt << "):\n"
           << req.DebugString();
   return true;
