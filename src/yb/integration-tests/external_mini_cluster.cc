@@ -1175,7 +1175,8 @@ void ExternalMiniCluster::AssertNoCrashes() {
   vector<ExternalDaemon*> daemons = this->daemons();
   for (ExternalDaemon* d : daemons) {
     if (d->IsShutdown()) continue;
-    EXPECT_TRUE(d->IsProcessAlive()) << "At least one process crashed";
+    EXPECT_TRUE(d->IsProcessAlive()) << "At least one process crashed. viz: "
+                                     << d->id();
   }
 }
 
