@@ -15,16 +15,16 @@ YugaByte DB docs are based on the Hugo framework and use the Material Docs theme
 
 ## Step 1. Initial setup
 
-Follow these steps if this is the first time you are setting up the YugaByte docs repo locally.
+Follow these steps if this is the first time you are setting up for working on the docs locally.
 
 1. Fork this repository on GitHub and create a local clone of your fork. This should look something like below:
 ```
-git clone git@github.com:<YOUR_GITHUB_ID>/docs.git
+git clone git@github.com:<YOUR_GITHUB_ID>/yugabyte-db.git
 ```
 
-Add the master as a remote branch by running the following:
+Add the original repository as an upstream remote:
 ```
-$ git remote add --track master upstream https://github.com/YugaByte/docs.git
+$ git remote add --track master upstream https://github.com/YugaByte/yugabyte-db.git
 ```
 
 2. Install Hugo. For example, on a Mac, you can run the following commands:
@@ -44,7 +44,7 @@ cp config.yaml.example config.yaml
 $ npm ci
 ```
 
-## Step 2. Update your docs repo and start the local webserver
+## Step 2. Update your repo and start the local webserver
 
 The assumption here is that you are working on a local clone of your fork. See the previous step.
 
