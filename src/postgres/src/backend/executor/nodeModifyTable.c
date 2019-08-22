@@ -74,6 +74,7 @@
 #include "catalog/pg_database.h"
 #include "executor/ybcModifyTable.h"
 #include "pg_yb_utils.h"
+#include "optimizer/ybcplan.h"
 
 static bool ExecOnConflictUpdate(ModifyTableState *mtstate,
 					 ResultRelInfo *resultRelInfo,
@@ -777,7 +778,15 @@ ExecDelete(ModifyTableState *mtstate,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
-		YBCExecuteDelete(resultRelationDesc, planSlot);
+		bool row_found = YBCExecuteDelete(resultRelationDesc, planSlot, estate, mtstate);
+		if (!row_found)
+		{
+			/*
+			 * No row was found. This is possible if it's a single row txn
+			 * and there is no row to delete (since we do not first do a scan).
+			 */
+			return NULL;
+		}
 
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
 		{
@@ -955,7 +964,15 @@ ldelete:;
 		}
 		else if (IsYBRelation(resultRelationDesc))
 		{
-			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+			if (mtstate->yb_mt_is_single_row_update_or_delete)
+			{
+				slot = planSlot;
+			}
+			else
+			{
+				slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+			}
+
 			delbuffer = InvalidBuffer;
 		}
 		else
@@ -1106,7 +1123,15 @@ ExecUpdate(ModifyTableState *mtstate,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
-		YBCExecuteUpdate(resultRelationDesc, planSlot, tuple);
+		bool row_found = YBCExecuteUpdate(resultRelationDesc, planSlot, tuple, estate, mtstate);
+		if (!row_found)
+		{
+			/*
+			 * No row was found. This is possible if it's a single row txn
+			 * and there is no row to update (since we do not first do a scan).
+			 */
+			return NULL;
+		}
 
 		/*
 		 * Prepare the updated tuple in inner slot for RETURNING clause execution.
@@ -2428,6 +2453,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	mtstate->mt_plans = (PlanState **) palloc0(sizeof(PlanState *) * nplans);
 	mtstate->resultRelInfo = estate->es_result_relations + node->resultRelIndex;
+	mtstate->yb_mt_is_single_row_update_or_delete = YBCIsSingleRowUpdateOrDelete(node);
+	mtstate->yb_mt_update_attrs = node->ybUpdateAttrs;
 
 	/* If modifying a partitioned table, initialize the root table info */
 	if (node->rootResultRelIndex >= 0)
@@ -2480,7 +2507,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 * execution also needs to process primary key index.
 		 */
 		if ((IsYBRelation(resultRelInfo->ri_RelationDesc) ?
-				 (YBCRelHasSecondaryIndices(resultRelInfo->ri_RelationDesc) ||
+				 (YBRelHasSecondaryIndices(resultRelInfo->ri_RelationDesc) ||
 					node->onConflictAction != ONCONFLICT_NONE) :
 				 (resultRelInfo->ri_RelationDesc->rd_rel->relhasindex &&
 					operation != CMD_DELETE)) &&
@@ -2781,7 +2808,12 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 				break;
 			case CMD_UPDATE:
 			case CMD_DELETE:
-				junk_filter_needed = true;
+				/*
+				 * If it's a YB single row UPDATE/DELETE we do not perform an
+				 * initial scan to populate the ybctid, so there is no junk
+				 * attribute to extract.
+				 */
+				junk_filter_needed = !mtstate->yb_mt_is_single_row_update_or_delete;
 				break;
 			default:
 				elog(ERROR, "unknown operation");

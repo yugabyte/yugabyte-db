@@ -25,8 +25,10 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.BaseMiniClusterTest;
+import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.minicluster.MiniYBDaemon;
 import org.yb.pgsql.cleaners.ClusterCleaner;
 import org.yb.pgsql.cleaners.ConnectionCleaner;
 import org.yb.pgsql.cleaners.UserObjectCleaner;
@@ -35,6 +37,7 @@ import org.yb.util.SanitizerUtil;
 
 import java.io.File;
 import java.net.InetSocketAddress;
+import java.net.URL;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -46,11 +49,17 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonParser;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.yb.AssertionWrappers.assertArrayEquals;
@@ -73,6 +82,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
   private static final String PG_DATA_FLAG = "PGDATA";
   private static final String YB_ENABLED_IN_PG_ENV_VAR_NAME = "YB_ENABLED_IN_POSTGRES";
+
+  // Metric names.
+  protected static final String METRIC_PREFIX = "handler_latency_yb_ysqlserver_SQLProcessor_";
+  protected static final String SELECT_STMT_METRIC = METRIC_PREFIX + "SelectStmt";
+  protected static final String INSERT_STMT_METRIC = METRIC_PREFIX + "InsertStmt";
+  protected static final String DELETE_STMT_METRIC = METRIC_PREFIX + "DeleteStmt";
+  protected static final String UPDATE_STMT_METRIC = METRIC_PREFIX + "UpdateStmt";
+  protected static final String OTHER_STMT_METRIC = METRIC_PREFIX + "OtherStmts";
+  protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
 
   // CQL and Redis settings.
   protected static boolean startCqlProxy = false;
@@ -437,6 +455,53 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected static int getPgBackendPid(Connection connection) {
     return toPgConnection(connection).getBackendPID();
+  }
+
+  protected int getMetricCounter(String metricName) throws Exception {
+    int value = 0;
+    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
+      URL url = new URL(String.format("http://%s:%d/metrics",
+                                      ts.getLocalhostIP(),
+                                      ts.getPgsqlWebPort()));
+      Scanner scanner = new Scanner(url.openConnection().getInputStream());
+      JsonParser parser = new JsonParser();
+      JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
+      JsonObject obj = tree.getAsJsonArray().get(0).getAsJsonObject();
+      assertEquals(obj.get("type").getAsString(), "server");
+      assertEquals(obj.get("id").getAsString(), "yb.ysqlserver");
+      value += new Metrics(obj).getYSQLMetric(metricName).count;
+    }
+    return value;
+  }
+
+  protected void verifyStatementMetric(Statement statement, String stmt, String metricName,
+                                       int stmtMetricDelta, int txnMetricDelta,
+                                       boolean validStmt) throws Exception {
+    int oldValue = 0;
+    if (metricName != null) {
+      oldValue = getMetricCounter(metricName);
+    }
+    int oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+
+    if (validStmt) {
+      statement.execute(stmt);
+    } else {
+      runInvalidQuery(statement, stmt);
+    }
+
+    int newValue = 0;
+    if (metricName != null) {
+      newValue = getMetricCounter(metricName);
+    }
+    int newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+
+    assertEquals(oldValue + stmtMetricDelta, newValue);
+    assertEquals(oldTxnValue + txnMetricDelta, newTxnValue);
+  }
+
+  protected void verifyStatementTxnMetric(Statement statement, String stmt,
+                                          int txnMetricDelta) throws Exception {
+    verifyStatementMetric(statement, stmt, null, 0, txnMetricDelta, true);
   }
 
   protected void executeWithTimeout(Statement statement, String sql)

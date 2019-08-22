@@ -58,6 +58,10 @@ class PgDocOp {
   }
   Result<bool> EndOfResult() const;
 
+  int32_t GetRowsAffectedCount() {
+    return rows_affected_count_;
+  }
+
  protected:
   virtual void InitUnlocked(std::unique_lock<std::mutex>* lock);
   virtual CHECKED_STATUS SendRequestUnlocked() = 0;
@@ -108,6 +112,9 @@ class PgDocOp {
 
   // Exec control parameters.
   PgExecParameters exec_params_;
+
+  // Number of rows affected by the operation.
+  int32_t rows_affected_count_ = 0;
 };
 
 class PgDocReadOp : public PgDocOp {

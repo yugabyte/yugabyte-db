@@ -34,7 +34,7 @@ class PgInsert : public PgDmlWrite {
   typedef std::unique_ptr<const PgInsert> UniPtrConst;
 
   // Constructors.
-  PgInsert(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_single_op_txn);
+  PgInsert(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_single_row_txn);
   virtual ~PgInsert();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_INSERT; }

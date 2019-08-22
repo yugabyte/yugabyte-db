@@ -1079,6 +1079,10 @@ typedef struct ModifyTableState
 
 	/* Per plan map for tuple conversion from child to root */
 	TupleConversionMap **mt_per_subplan_tupconv_maps;
+
+	/* YB specific attributes. */
+	bool yb_mt_is_single_row_update_or_delete;
+	Bitmapset *yb_mt_update_attrs;
 } ModifyTableState;
 
 /* ----------------

@@ -37,6 +37,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Random;
 
 import static org.yb.AssertionWrappers.*;
@@ -606,5 +607,127 @@ public class TestPgTransactions extends BasePgSQLTest {
 
     }
 
+  }
+
+  private void testSingleRowTransactionGuards(List<String> stmts, List<String> guard_start_stmts,
+                                              List<String> guard_end_stmts) throws Exception {
+    Statement statement = connection.createStatement();
+
+    // With guard (e.g. BEGIN/END, secondary index, trigger, etc.), statements should use txn path.
+    for (String guard_start_stmt : guard_start_stmts) {
+      statement.execute(guard_start_stmt);
+    }
+    for (String stmt : stmts) {
+      verifyStatementTxnMetric(statement, stmt, 1);
+    }
+
+    // After ending guard, statements should go back to using non-txn path.
+    for (String guard_end_stmt : guard_end_stmts) {
+      statement.execute(guard_end_stmt);
+    }
+    for (String stmt : stmts) {
+      verifyStatementTxnMetric(statement, stmt, 0);
+    }
+  }
+
+  private void testSingleRowTransactionGuards(List<String> stmts, String guard_start_stmt,
+                                              String guard_end_stmt) throws Exception {
+    testSingleRowTransactionGuards(stmts,
+                                   Arrays.asList(guard_start_stmt),
+                                   Arrays.asList(guard_end_stmt));
+  }
+
+  private void testSingleRowStatements(List<String> stmts) throws Exception {
+    // Verify standalone statements use non-txn path.
+    Statement statement = connection.createStatement();
+    for (String stmt : stmts) {
+      verifyStatementTxnMetric(statement, stmt, 0);
+    }
+
+    // Test in txn block.
+    testSingleRowTransactionGuards(
+        stmts,
+        "BEGIN",
+        "END");
+
+    // Test with secondary index.
+    testSingleRowTransactionGuards(
+        stmts,
+        "CREATE INDEX test_index ON test (v)",
+        "DROP INDEX test_index");
+
+    // Test with trigger.
+    testSingleRowTransactionGuards(
+        stmts,
+        "CREATE TRIGGER test_trigger BEFORE UPDATE ON test " +
+        "FOR EACH ROW EXECUTE PROCEDURE suppress_redundant_updates_trigger()",
+        "DROP TRIGGER test_trigger ON test");
+
+    // Test with foreign key.
+    testSingleRowTransactionGuards(
+        stmts,
+        Arrays.asList(
+            "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+            "DROP TABLE IF EXISTS foreign_table",
+            "CREATE TABLE foreign_table (v int PRIMARY KEY)",
+            "INSERT INTO foreign_table VALUES (1), (2)",
+            "DROP TABLE IF EXISTS test",
+            "CREATE TABLE test (k int PRIMARY KEY, v int references foreign_table(v))"),
+        Arrays.asList(
+            "DROP TABLE test",
+            "DROP TABLE foreign_table",
+            "CREATE TABLE test (k int PRIMARY KEY, v int)",
+            "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+  }
+
+  @Test
+  public void testSingleRowNoTransaction() throws Exception {
+    Statement statement = connection.createStatement();
+    statement.execute("CREATE TABLE test (k int PRIMARY KEY, v int)");
+
+    // Test regular INSERT/UPDATE/DELETE single-row statements.
+    testSingleRowStatements(
+        Arrays.asList(
+            "INSERT INTO test VALUES (1, 1)",
+            "UPDATE test SET v = 2 WHERE k = 1",
+            "DELETE FROM test WHERE k = 1"));
+
+    // Test INSERT/UPDATE/DELETE single-row prepared statements.
+    statement.execute("PREPARE insert_stmt (int, int) AS INSERT INTO test VALUES ($1, $2)");
+    statement.execute("PREPARE delete_stmt (int) AS DELETE FROM test WHERE k = $1");
+    statement.execute("PREPARE update_stmt (int, int) AS UPDATE test SET v = $2 WHERE k = $1");
+    testSingleRowStatements(
+        Arrays.asList(
+            "EXECUTE insert_stmt (1, 1)",
+            "EXECUTE update_stmt (1, 2)",
+            "EXECUTE delete_stmt (1)"));
+
+    // Verify statements with WITH clause use txn path.
+    verifyStatementTxnMetric(statement,
+                             "WITH test2 AS (UPDATE test SET v = 2 WHERE k = 1) " +
+                             "UPDATE test SET v = 3 WHERE k = 1", 1);
+
+    // Verify JDBC single-row prepared statements use non-txn path.
+    int oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+
+    PreparedStatement insertStatement =
+      connection.prepareStatement("INSERT INTO test VALUES (?, ?)");
+    insertStatement.setInt(1, 1);
+    insertStatement.setInt(2, 1);
+    insertStatement.executeUpdate();
+
+    PreparedStatement deleteStatement =
+      connection.prepareStatement("DELETE FROM test WHERE k = ?");
+    deleteStatement.setInt(1, 1);
+    deleteStatement.executeUpdate();
+
+    PreparedStatement updateStatement =
+      connection.prepareStatement("UPDATE test SET v = ? WHERE k = ?");
+    updateStatement.setInt(1, 1);
+    updateStatement.setInt(2, 1);
+    updateStatement.executeUpdate();
+
+    int newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    assertEquals(oldTxnValue, newTxnValue);
   }
 }

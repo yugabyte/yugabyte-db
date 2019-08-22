@@ -104,6 +104,11 @@ extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation);
 
 /*
+ * Check if a relation has secondary indices.
+ */
+extern bool YBRelHasSecondaryIndices(Relation relation);
+
+/*
  * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed
  * transactions.
  */

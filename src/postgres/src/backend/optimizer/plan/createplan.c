@@ -21,6 +21,7 @@
 
 #include "access/sysattr.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_type.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "nodes/extensible.h"
@@ -110,6 +111,8 @@ static SetOp *create_setop_plan(PlannerInfo *root, SetOpPath *best_path,
 static RecursiveUnion *create_recursiveunion_plan(PlannerInfo *root, RecursiveUnionPath *best_path);
 static LockRows *create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 					 int flags);
+static bool yb_single_row_update_or_delete_path(PlannerInfo *root, ModifyTablePath *path,
+												List **tlist, Bitmapset **update_attrs);
 static ModifyTable *create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path);
 static Limit *create_limit_plan(PlannerInfo *root, LimitPath *best_path,
 				  int flags);
@@ -283,7 +286,8 @@ static ModifyTable *make_modifytable(PlannerInfo *root,
 				 bool partColsUpdated,
 				 List *resultRelations, List *subplans, List *subroots,
 				 List *withCheckOptionLists, List *returningLists,
-				 List *rowMarks, OnConflictExpr *onconflict, int epqParam);
+				 List *rowMarks, OnConflictExpr *onconflict, int epqParam,
+				 Bitmapset *yb_update_attrs);
 static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 						 GatherMergePath *best_path);
 
@@ -346,12 +350,6 @@ create_plan(PlannerInfo *root, Path *best_path)
 	 * re-used later
 	 */
 	root->plan_params = NIL;
-
-	/* Run any YugaByte-specific logic on this plan */
-	if (IsYugaByteEnabled())
-	{
-		ybcAnalyzePlan(plan);
-	}
 
 	return plan;
 }
@@ -2368,6 +2366,286 @@ create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 }
 
 /*
+ * Returns whether a path can support a YB single row modify. This will be
+ * non-transactional if execution time criteria are met, otherwise it just
+ * avoids an unnecessary scan.
+ *
+ * This is currently used for UPDATE/DELETE to determine whether to substitute
+ * the index scan with a direct result node containing the primary key values
+ * and any UPDATE SET values.
+ *
+ * This also populates the tlist with the final target list for the result plan
+ * (including primary key, SET (for UPDATE), and unspecified column values), and
+ * populates update_attrs with the attribute numbers of the columns specified
+ * in the UPDATE clause.
+ */
+static bool
+yb_single_row_update_or_delete_path(PlannerInfo *root,
+									ModifyTablePath *path,
+									List **tlist,
+									Bitmapset **update_attrs)
+{
+	RelOptInfo *relInfo;
+	Oid relid;
+	Relation relation;
+	Path *subpath;
+	PlannerInfo *subroot;
+	IndexPath *index_path;
+	Bitmapset *primary_key_attrs = NULL;
+	ListCell *values;
+	ListCell *indexqual_values;
+	ListCell *subpath_tlist_values;
+	List *subpath_tlist = NIL;
+	List *indexqual = NIL;
+	int attr_num;
+
+	*tlist = NIL;
+	*update_attrs = NULL;
+
+	/* Verify YB is enabled. */
+	if (!IsYugaByteEnabled())
+		return false;
+
+	/*
+	 * Only UPDATE/DELETE are supported in this particular path. Single row INSERT
+	 * is handled through a separate mechanism.
+	 */
+	if (path->operation != CMD_UPDATE && path->operation != CMD_DELETE)
+		return false;
+
+	/*
+	 * Multi-relation implies multi-shard.
+	 * Note that simple_rel_array is one-based, so size of two implies one entry.
+	 */
+	if (list_length(path->resultRelations) != 1 || root->simple_rel_array_size != 2)
+		return false;
+
+	/* ON CONFLICT clause is not supported here yet. */
+	if (path->onconflict)
+		return false;
+
+	/* Only allow one source. */
+	if (list_length(path->subpaths) != 1)
+		return false;
+
+	/* Only allow at most one returning list. */
+	if (list_length(path->returningLists) > 1)
+		return false;
+
+	/* Extract the relation. Must be first entry since we only have one relation (one-based). */
+	relInfo = root->simple_rel_array[1];
+	relid = root->simple_rte_array[1]->relid;
+
+	/* Verify we're a YB relation. */
+	if (!IsYBRelationById(relid))
+		return false;
+
+	/* Ensure we close the relation before returning. */
+	relation = RelationIdGetRelation(relid);
+
+	/*
+	 * Cannot support secondary indices, as we will need to retrieve the row to get the old
+	 * secondary index values to update/delete from the index, requiring the scan.
+	 */
+	if (YBRelHasSecondaryIndices(relation))
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/*
+	 * Cannot support before row triggers, as the old row will need to be passed to the trigger,
+	 * requiring the scan.
+	 */
+	if (YBRelHasOldRowTriggers(relation, path->operation))
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/* Close the relation now in case we return early. */
+	RelationClose(relation);
+	relation = NULL;
+
+	subroot = linitial_node(PlannerInfo, path->subroots);
+	subpath = (Path *) linitial(path->subpaths);
+	index_path = (IndexPath *) subpath;
+
+	if (path->operation == CMD_UPDATE)
+	{
+		ProjectionPath *projection_path;
+
+		/*
+		 * UPDATE contains projection for SET values on top of index scan.
+		 */
+		if (!IsA(subpath, ProjectionPath))
+			return false;
+		projection_path = (ProjectionPath *) subpath;
+
+		/*
+		 * The index path is the subpath of the projection for UPDATE, whereas for DELETE
+		 * the index path is the direct subpath of the ModifyTablePath.
+		 */
+		index_path = (IndexPath *) projection_path->subpath;
+
+		/*
+		 * Iterate through projection_path tlist, identify true user write columns from unspecified
+		 * columns. If true user write expression is not a supported single row write expression
+		 * then return false.
+		 */
+		foreach(values, build_path_tlist(subroot, subpath))
+		{
+			TargetEntry *tle;
+
+			tle = lfirst_node(TargetEntry, values);
+
+			/* Ignore unspecified columns. */
+			if (IsA(tle->expr, Var) && castNode(Var, tle->expr)->vartypmod == -1)
+				continue;
+
+			/* Verify expression is supported. */
+			if (!YBCIsSupportedSingleRowModifyWriteExpr(tle->expr))
+				return false;
+
+			subpath_tlist = lappend(subpath_tlist, tle);
+			*update_attrs = bms_add_member(*update_attrs, tle->resno);
+		}
+	}
+
+	/* Ensure the subpath is an index path. */
+	if (!IsA(index_path, IndexPath))
+		return false;
+
+	/* Verify no non-primary-key filters are specified. */
+	foreach(values, index_path->indexinfo->indrestrictinfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, values);
+
+		if (!list_member_ptr(index_path->indexquals, rinfo))
+			return false;
+	}
+
+	/* Add WHERE clauses from index scan quals to list, verify they are supported write exprs. */
+	foreach(values, fix_indexqual_references(subroot, index_path))
+	{
+		Expr *clause;
+		Expr *expr;
+		Var *var;
+		TargetEntry *tle;
+
+		clause = (Expr *) lfirst(values);
+
+		/* Make sure we're an operator expression. */
+		if (!IsA(clause, OpExpr))
+			return false;
+
+		expr = (Expr *) get_rightop(clause);
+		var = castNode(Var, get_leftop(clause));
+
+		/* Verify expression is supported. */
+		if (!YBCIsSupportedSingleRowModifyWriteExpr(expr))
+			return false;
+
+		/*
+		 * If const expression has a different type than the column (var), wrap in a relabel
+		 * expression with the proper type so it is coerced at execution time.
+		 */
+		if (IsA(expr, Const) && castNode(Const, expr)->consttype != var->vartype)
+		{
+			expr = (Expr *) makeRelabelType(expr,
+											var->vartype,
+											-1,
+											get_typcollation(var->vartype),
+											COERCE_IMPLICIT_CAST);
+		}
+
+		tle = makeNode(TargetEntry);
+		tle->expr = expr;
+		/*
+		 * Get the attribute number in base relation (varoattno), not attribute number
+		 * in index relation (varattno).
+		 */
+		tle->resno = var->varoattno;
+		tle->resorigcol = 0;
+
+		indexqual = lappend(indexqual, tle);
+		primary_key_attrs = bms_add_member(primary_key_attrs, tle->resno);
+	}
+
+	/* Verify RETURNING columns are either primary key columns or UPDATE's SET columns. */
+	if (list_length(path->returningLists) > 0)
+	{
+		foreach(values, linitial(path->returningLists))
+		{
+			TargetEntry *tle;
+
+			tle = lfirst_node(TargetEntry, values);
+			if (!bms_is_member(tle->resorigcol, *update_attrs) &&
+				!bms_is_member(tle->resorigcol, primary_key_attrs))
+				return false;
+		}
+	}
+
+	/*
+	 * Verify all YB primary keys are specified in the WHERE clause.
+	 */
+	if (!YBCAllPrimaryKeysProvided(relid, primary_key_attrs))
+		return false;
+
+	/*
+	 * Construct final target list from subpath target list and primary-key (indexqual) values.
+	 * The subpath target list contains SET values in the case of UPDATE.
+	 */
+	indexqual_values = list_head(indexqual);
+	subpath_tlist_values = list_head(subpath_tlist);
+	for (attr_num = 1; attr_num <= relInfo->max_attr; ++attr_num)
+	{
+		TargetEntry *indexqual_tle = NULL;
+		TargetEntry *subpath_tlist_tle = NULL;
+		TargetEntry *null_tle;
+
+		if (indexqual_values)
+			indexqual_tle = lfirst_node(TargetEntry, indexqual_values);
+		if (subpath_tlist_values)
+			subpath_tlist_tle = lfirst_node(TargetEntry, subpath_tlist_values);
+
+		if (indexqual_values && indexqual_tle->resno == attr_num)
+		{
+			/* Use the primary-key indexqual value. */
+			*tlist = lappend(*tlist, indexqual_tle);
+			indexqual_values = lnext(indexqual_values);
+		}
+		else if (subpath_tlist_values && subpath_tlist_tle->resno == attr_num)
+		{
+			/* Use the SET value from the projection target list. */
+			*tlist = lappend(*tlist, subpath_tlist_tle);
+			subpath_tlist_values = lnext(subpath_tlist_values);
+		}
+		else
+		{
+			/*
+			 * It is necessary to include the unspecified columns in the final Result target
+			 * list as it is expected to contain all rel columns, even those that are not
+			 * directly used in the statement, however we substitute in NULL const values so
+			 * all expressions are still valid single row write expressions.
+			 */
+			null_tle = makeNode(TargetEntry);
+			null_tle->resno = attr_num;
+			null_tle->expr = (Expr *) makeConst(INT4OID /* consttype */,
+												-1 /* consttypmod */,
+												InvalidOid /* constcollid */,
+												sizeof(int32) /* constlen */,
+												(Datum) 0 /* constvalue */,
+												true /* constisnull */,
+												true /* constbyval */);
+			*tlist = lappend(*tlist, null_tle);
+		}
+	}
+
+	return true;
+}
+
+/*
  * create_modifytable_plan
  *	  Create a ModifyTable plan for 'best_path'.
  *
@@ -2380,32 +2658,52 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	List	   *subplans = NIL;
 	ListCell   *subpaths,
 			   *subroots;
+	List       *tlist = NIL;
+	Bitmapset  *yb_update_attrs_param = NULL;
+	Bitmapset  *yb_update_attrs = NULL;
 
-	/* Build the plan for each input path */
-	forboth(subpaths, best_path->subpaths,
-			subroots, best_path->subroots)
+	/*
+	 * If we are a single row UPDATE/DELETE in a YB relation, add Result subplan
+	 * instead of IndexScan. It is necessary to avoid the scan since we will be
+	 * running outside of a transaction and thus cannot rely on the results from a
+	 * seperately executed operation.
+	 */
+	if (yb_single_row_update_or_delete_path(root, best_path, &tlist, &yb_update_attrs_param))
 	{
-		Path	   *subpath = (Path *) lfirst(subpaths);
-		PlannerInfo *subroot = (PlannerInfo *) lfirst(subroots);
-		Plan	   *subplan;
-
-		/*
-		 * In an inherited UPDATE/DELETE, reference the per-child modified
-		 * subroot while creating Plans from Paths for the child rel.  This is
-		 * a kluge, but otherwise it's too hard to ensure that Plan creation
-		 * functions (particularly in FDWs) don't depend on the contents of
-		 * "root" matching what they saw at Path creation time.  The main
-		 * downside is that creation functions for Plans that might appear
-		 * below a ModifyTable cannot expect to modify the contents of "root"
-		 * and have it "stick" for subsequent processing such as setrefs.c.
-		 * That's not great, but it seems better than the alternative.
-		 */
-		subplan = create_plan_recurse(subroot, subpath, CP_EXACT_TLIST);
-
-		/* Transfer resname/resjunk labeling, too, to keep executor happy */
-		apply_tlist_labeling(subplan->targetlist, subroot->processed_tlist);
+		Plan *subplan = (Plan *) make_result(tlist, NULL, NULL);
+		copy_generic_path_info(subplan, linitial(best_path->subpaths));
 
 		subplans = lappend(subplans, subplan);
+		yb_update_attrs = yb_update_attrs_param;
+	}
+	else
+	{
+		/* Build the plan for each input path */
+		forboth(subpaths, best_path->subpaths,
+				subroots, best_path->subroots)
+		{
+			Path	   *subpath = (Path *) lfirst(subpaths);
+			PlannerInfo *subroot = (PlannerInfo *) lfirst(subroots);
+			Plan	   *subplan;
+
+			/*
+			 * In an inherited UPDATE/DELETE, reference the per-child modified
+			 * subroot while creating Plans from Paths for the child rel.  This is
+			 * a kluge, but otherwise it's too hard to ensure that Plan creation
+			 * functions (particularly in FDWs) don't depend on the contents of
+			 * "root" matching what they saw at Path creation time.  The main
+			 * downside is that creation functions for Plans that might appear
+			 * below a ModifyTable cannot expect to modify the contents of "root"
+			 * and have it "stick" for subsequent processing such as setrefs.c.
+			 * That's not great, but it seems better than the alternative.
+			 */
+			subplan = create_plan_recurse(subroot, subpath, CP_EXACT_TLIST);
+
+			/* Transfer resname/resjunk labeling, too, to keep executor happy */
+			apply_tlist_labeling(subplan->targetlist, subroot->processed_tlist);
+
+			subplans = lappend(subplans, subplan);
+		}
 	}
 
 	plan = make_modifytable(root,
@@ -2421,7 +2719,8 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 							best_path->returningLists,
 							best_path->rowMarks,
 							best_path->onconflict,
-							best_path->epqParam);
+							best_path->epqParam,
+							yb_update_attrs);
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
@@ -6355,7 +6654,8 @@ make_modifytable(PlannerInfo *root,
 				 bool partColsUpdated,
 				 List *resultRelations, List *subplans, List *subroots,
 				 List *withCheckOptionLists, List *returningLists,
-				 List *rowMarks, OnConflictExpr *onconflict, int epqParam)
+				 List *rowMarks, OnConflictExpr *onconflict, int epqParam,
+				 Bitmapset *yb_update_attrs)
 {
 	ModifyTable *node = makeNode(ModifyTable);
 	List	   *fdw_private_list;
@@ -6486,6 +6786,8 @@ make_modifytable(PlannerInfo *root,
 	}
 	node->fdwPrivLists = fdw_private_list;
 	node->fdwDirectModifyPlans = direct_modify_plans;
+
+	node->ybUpdateAttrs = yb_update_attrs;
 
 	return node;
 }

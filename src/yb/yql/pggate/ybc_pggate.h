@@ -273,7 +273,7 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
                         YBCPgSysColumns *syscols, bool *has_data);
 
 // Utility method that checks stmt type and calls either exec insert, update, or delete internally.
-YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle);
+YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count);
 
 // This function adds a primary column to be used in the construction of the tuple id (ybctid).
 YBCStatus YBCPgDmlAddYBTupleIdColumn(YBCPgStatement handle, int attr_num, uint64_t datum,
@@ -310,6 +310,7 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 YBCStatus YBCPgNewUpdate(YBCPgSession pg_session,
                          YBCPgOid database_oid,
                          YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
@@ -318,6 +319,7 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
                          YBCPgOid database_oid,
                          YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle);
