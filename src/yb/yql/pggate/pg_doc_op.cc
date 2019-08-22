@@ -312,6 +312,8 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
   if (!is_canceled_ && exec_status_.ok()) {
     // Save it to cache.
     WriteToCacheUnlocked(write_op_);
+    // Save the number of rows affected by the write operation.
+    rows_affected_count_ = write_op_.get()->response().rows_affected_count();
   }
   end_of_data_ = true;
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;

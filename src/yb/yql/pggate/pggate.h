@@ -290,7 +290,7 @@ class PgApiImpl {
                           PgSysColumns *syscols, bool *has_data);
 
   // Utility method that checks stmt type and calls exec insert, update, or delete internally.
-  CHECKED_STATUS DmlExecWriteOp(PgStatement *handle);
+  CHECKED_STATUS DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count);
 
   // This function adds a primary column to be used in the construction of the tuple id (ybctid).
   CHECKED_STATUS DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
@@ -325,13 +325,19 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Update.
-  CHECKED_STATUS NewUpdate(PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle);
+  CHECKED_STATUS NewUpdate(PgSession *pg_session,
+                           const PgObjectId& table_id,
+                           bool is_single_row_txn,
+                           PgStatement **handle);
 
   CHECKED_STATUS ExecUpdate(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Delete.
-  CHECKED_STATUS NewDelete(PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle);
+  CHECKED_STATUS NewDelete(PgSession *pg_session,
+                           const PgObjectId& table_id,
+                           bool is_single_row_txn,
+                           PgStatement **handle);
 
   CHECKED_STATUS ExecDelete(PgStatement *handle);
 

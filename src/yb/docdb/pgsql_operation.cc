@@ -158,6 +158,12 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data) {
 Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = std::make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row));
+  if (table_row->IsEmpty()) {
+    // Row not found.
+    response_->set_skipped(true);
+    return Status::OK();
+  }
+
   // skipped is set to false if this operation produces some data to write.
   bool skipped = true;
 
@@ -244,6 +250,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   if (skipped) {
     response_->set_skipped(true);
   }
+  response_->set_rows_affected_count(1);
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }
@@ -251,6 +258,11 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
 Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
   QLTableRow::SharedPtr table_row = std::make_shared<QLTableRow>();
   RETURN_NOT_OK(ReadColumns(data, table_row));
+  if (table_row->IsEmpty()) {
+    // Row not found.
+    response_->set_skipped(true);
+    return Status::OK();
+  }
 
   // TODO(neil) Add support for WHERE clause.
   CHECK(request_.column_values_size() == 0) << "WHERE clause condition is not yet fully supported";
@@ -261,6 +273,7 @@ Status PgsqlWriteOperation::ApplyDelete(const DocOperationApplyData& data) {
 
   RETURN_NOT_OK(PopulateResultSet(table_row));
 
+  response_->set_rows_affected_count(1);
   response_->set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
   return Status::OK();
 }

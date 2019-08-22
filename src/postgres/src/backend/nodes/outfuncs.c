@@ -395,7 +395,7 @@ _outModifyTable(StringInfo str, const ModifyTable *node)
 	WRITE_NODE_FIELD(onConflictWhere);
 	WRITE_UINT_FIELD(exclRelRTI);
 	WRITE_NODE_FIELD(exclRelTlist);
-	WRITE_BOOL_FIELD(ybIsSingleRowWrite);
+	WRITE_BITMAPSET_FIELD(ybUpdateAttrs);
 }
 
 static void
