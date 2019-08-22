@@ -126,7 +126,6 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 
-#include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/util/crypt.h"
@@ -152,6 +151,9 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/tserver/remote_bootstrap_client.h"
+
+#include "yb/yql/redis/redisserver/redis_constants.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using namespace std::literals;
 

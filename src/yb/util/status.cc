@@ -126,25 +126,35 @@ Status::Status(Code code, const char* file_name, int line_number, TimeoutError e
              "",
              static_cast<int>(error)) {}
 
-namespace {
+Status::Status(YBCStatusStruct* state, AddRef add_ref)
+    : state_(pointer_cast<State*>(state), add_ref) {
+}
+
+YBCStatusStruct* Status::RetainStruct() const {
+  if (state_) {
+    intrusive_ptr_add_ref(state_.get());
+  }
+  return pointer_cast<YBCStatusStruct*>(state_.get());
+}
+
+YBCStatusStruct* Status::DetachStruct() {
+  return pointer_cast<YBCStatusStruct*>(state_.detach());
+}
 
 #define YB_STATUS_RETURN_MESSAGE(name, pb_name, value, message) \
     case Status::BOOST_PP_CAT(k, name): \
       return message;
 
-const char* CodeAsCString(Status::Code code) {
-  switch (code) {
+const char* Status::CodeAsCString() const {
+  switch (code()) {
     BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_STATUS_RETURN_MESSAGE, YB_STATUS_CODES)
   }
   return nullptr;
 }
 
-} // namespace
-
 std::string Status::CodeAsString() const {
-  auto code = this->code();
-  auto* cstr = CodeAsCString(code);
-  return cstr != nullptr ? cstr : "Incorrect status code " + std::to_string(code);
+  auto* cstr = CodeAsCString();
+  return cstr != nullptr ? cstr : "Incorrect status code " + std::to_string(code());
 }
 
 std::string Status::ToUserMessage(bool include_code) const {

@@ -13,8 +13,8 @@
 // Utilities for implementations of C wrappers around YugaByte C++ code. This file is not intended
 // to be included
 
-#ifndef YB_UTIL_YBC_INTERNAL_H
-#define YB_UTIL_YBC_INTERNAL_H
+#ifndef YB_COMMON_YBC_INTERNAL_H
+#define YB_COMMON_YBC_INTERNAL_H
 
 #ifndef __cplusplus
 #error "This header can only be included in C++ code"
@@ -23,13 +23,14 @@
 #include <cstddef>
 #include <string>
 
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 #include "yb/util/status.h"
 
 namespace yb {
 
 // Convert our C++ status to YBCStatus, which can be returned to PostgreSQL C code.
 YBCStatus ToYBCStatus(const Status& status);
+YBCStatus ToYBCStatus(Status&& status);
 void FreeYBCStatus(YBCStatus status);
 
 void YBCSetPAllocFn(YBCPAllocFn pg_palloc_fn);
@@ -47,4 +48,4 @@ const char* YBCPAllocStdString(const std::string& s);
 
 } // namespace yb
 
-#endif // YB_UTIL_YBC_INTERNAL_H
+#endif // YB_COMMON_YBC_INTERNAL_H

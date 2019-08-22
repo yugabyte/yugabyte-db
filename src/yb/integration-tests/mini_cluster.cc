@@ -715,4 +715,28 @@ Result<scoped_refptr<master::TableInfo>> FindTable(
   return table_info;
 }
 
+Status WaitForInitDb(MiniCluster* cluster) {
+  const auto start_time = CoarseMonoClock::now();
+  const auto kTimeout = NonTsanVsTsan(600s, 1800s);
+  while (CoarseMonoClock::now() <= start_time + kTimeout) {
+    auto* catalog_manager = cluster->leader_mini_master()->master()->catalog_manager();
+    master::IsInitDbDoneRequestPB req;
+    master::IsInitDbDoneResponsePB resp;
+    auto status = catalog_manager->IsInitDbDone(&req, &resp);
+    if (!status.ok()) {
+      LOG(INFO) << "IsInitDbDone failure: " << status;
+      continue;
+    }
+    if (resp.done()) {
+      return Status::OK();
+    }
+    if (resp.has_initdb_error()) {
+      return STATUS_FORMAT(RuntimeError, "Init DB failed: $0", resp.initdb_error());
+    }
+    std::this_thread::sleep_for(500ms);
+  }
+
+  return STATUS_FORMAT(TimedOut, "Unable to init db in $0", kTimeout);
+}
+
 }  // namespace yb

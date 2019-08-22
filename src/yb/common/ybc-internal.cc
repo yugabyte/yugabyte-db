@@ -10,7 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
 
 #include "yb/util/logging.h"
 
@@ -42,20 +42,17 @@ void* YBCCStringToTextWithLen(const char* c, int size) {
 }
 
 YBCStatus ToYBCStatus(const Status& status) {
-  if (status.ok()) {
-    return nullptr;
-  }
-  std::string status_str = status.ToUserMessage(/* include_code */ true);
-  size_t status_msg_buf_size = status_str.size() + 1;
-  YBCStatus ybc_status = reinterpret_cast<YBCStatus>(
-      malloc(sizeof(YBCStatusStruct) + status_msg_buf_size));
-  ybc_status->code = status.code();
-  strncpy(ybc_status->msg, status_str.c_str(), status_msg_buf_size);
-  return ybc_status;
+  return status.RetainStruct();
+}
+
+YBCStatus ToYBCStatus(Status&& status) {
+  return status.DetachStruct();
 }
 
 void FreeYBCStatus(YBCStatus status) {
-  free(status);
+  // Create Status object that receives control over provided status, so it will be destoyed with
+  // yb_status.
+  Status yb_status(status, AddRef::kFalse);
 }
 
 YBCStatus YBCStatusOK() {

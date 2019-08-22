@@ -136,6 +136,12 @@
 #define YB_LOG              LOG
 #define YB_CHECK            CHECK
 
+extern "C" {
+
+struct YBCStatusStruct;
+
+}
+
 namespace yb {
 
 #define YB_STATUS_CODES \
@@ -191,6 +197,7 @@ enum class TimeoutError {
 };
 
 YB_STRONGLY_TYPED_BOOL(DupFileName);
+YB_STRONGLY_TYPED_BOOL(AddRef);
 
 class Status {
  public:
@@ -217,6 +224,9 @@ class Status {
   // Return a string representation of the status code, without the message
   // text or posix code information.
   std::string CodeAsString() const;
+
+  // Returned string has unlimited lifetime, and should NOT be released by the caller.
+  const char* CodeAsCString() const;
 
   // Return the message portion of the Status. This is similar to ToString,
   // except that it does not include the stringified error code or posix code.
@@ -274,6 +284,16 @@ class Status {
   Code code() const {
     return (state_ == nullptr) ? kOk : static_cast<Code>(state_->code);
   }
+
+  // Adopt status that was previously exported to C interface.
+  explicit Status(YBCStatusStruct* state, AddRef add_ref);
+
+  // Increments state ref count and returns pointer that could be used in C interface.
+  YBCStatusStruct* RetainStruct() const;
+
+  // Reset state w/o touching ref count. Return detached pointer that could be used in C interface.
+  YBCStatusStruct* DetachStruct();
+
  private:
   struct State {
     State(const State&) = delete;

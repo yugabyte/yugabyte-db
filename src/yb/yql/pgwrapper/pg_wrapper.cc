@@ -191,7 +191,7 @@ Status PgWrapper::Start() {
     "-k", ""
   };
 
-  if (!FLAGS_logtostderr) {
+  if (!FLAGS_logtostderr && !FLAGS_log_dir.empty()) {
     argv.push_back("-c");
     argv.push_back("logging_collector=on");
     // FLAGS_log_dir should already be set by tserver during startup.
@@ -220,6 +220,10 @@ Status PgWrapper::Start() {
   RETURN_NOT_OK(pg_proc_->Start());
   LOG(INFO) << "PostgreSQL server running as pid " << pg_proc_->pid();
   return Status::OK();
+}
+
+void PgWrapper::Kill() {
+  WARN_NOT_OK(pg_proc_->Kill(SIGQUIT), "Kill PostgreSQL server failed");
 }
 
 Status PgWrapper::InitDb(bool yb_enabled) {
@@ -465,6 +469,17 @@ void PgSupervisor::RunThread() {
       }
     }
   }
+}
+
+void PgSupervisor::Stop() {
+  {
+    std::lock_guard<std::mutex> lock(mtx_);
+    state_ = PgProcessState::kStopping;
+    if (pg_wrapper_) {
+      pg_wrapper_->Kill();
+    }
+  }
+  supervisor_thread_->Join();
 }
 
 }  // namespace pgwrapper
