@@ -1,0 +1,19 @@
+# src/test/regress/yb_arrays_schedule
+#
+####################################################################################################
+# This suite includes tests on array datatypes.  Some are ported from PostgreSQL original tests;
+# others are created from Yugabyte.
+####################################################################################################
+# Dependencies for `yb_pg_arrays`
+test: yb_pg_int8
+test: yb_point
+
+# Chain of dependencies for `yb_pg_arrays`
+test: yb_pg_create_function_1
+test: yb_pg_create_type
+test: yb_pg_create_table
+test: yb_pg_copy
+
+test: yb_pg_arrays
+test: yb_int2_array
+test: yb_int4_array

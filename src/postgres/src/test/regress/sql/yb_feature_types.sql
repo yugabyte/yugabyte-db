@@ -78,23 +78,57 @@ CREATE TABLE feature_tab_array_int (feature_col INTEGER[]);
 CREATE TABLE feature_tab_array_text (feature_col TEXT[]);
 --
 -- Composite Types
-CREATE TYPE feature_struct AS(id INTEGER, name TEXT)
+CREATE TYPE feature_struct AS(id INTEGER, name TEXT);
 CREATE TABLE feature_tab_struct (feature_col feature_struct);
 --
 -- JSON Types
--- Need Test
+CREATE TABLE feature_tab_json (feature_col JSON);
 --
 -- Range Types
--- Need Test
+CREATE TYPE feature_range AS RANGE(subtype=INTEGER);
+CREATE TABLE feature_tab_range (feature_col feature_range);
 --
 -- Domain Types
--- Need Test
+CREATE DOMAIN feature_domain AS INTEGER CHECK (VALUE > 0);
+CREATE TABLE feature_tab_domain (feature_col feature_domain);
 --
 -- Object Identifier Types
--- Need Test
+CREATE TABLE feature_tab_oid (feature_col OID);
+CREATE TABLE feature_tab_regproc (feature_col REGPROC);
+CREATE TABLE feature_tab_regprocedure (feature_col REGPROCEDURE);
+CREATE TABLE feature_tab_regoper (feature_col REGOPER);
+CREATE TABLE feature_tab_regoperator (feature_col REGOPERATOR);
+CREATE TABLE feature_tab_regclass (feature_col REGCLASS);
+CREATE TABLE feature_tab_regtype (feature_col REGTYPE);
+CREATE TABLE feature_tab_regrole (feature_col REGROLE);
+CREATE TABLE feature_tab_regnamespace (feature_col REGNAMESPACE);
+CREATE TABLE feature_tab_regconfig (feature_col REGCONFIG);
+CREATE TABLE feature_tab_regdictionary (feature_col REGDICTIONARY);
+CREATE TABLE feature_tab_xid (feature_col XID);
+CREATE TABLE feature_tab_cid (feature_col CID);
+CREATE TABLE feature_tab_tid (feature_col TID);
 --
 -- pg_lsn Type
--- Need Test
+CREATE TABLE feature_tab_pg_lsn (feature_col PG_LSN);
 --
 -- Pseudo-Types
--- Need Test
+CREATE TABLE feature_tab_any (feature_col ANY);
+CREATE TABLE feature_tab_anyelement (feature_col ANYELEMENT);
+CREATE TABLE feature_tab_anyarray (feature_col ANYARRAY);
+CREATE TABLE feature_tab_anynonarray (feature_col ANYNONARRAY);
+CREATE TABLE feature_tab_anyenum (feature_col ANYENUM);
+CREATE TABLE feature_tab_anyrange (feature_col ANYRANGE);
+CREATE TABLE feature_tab_cstring (feature_col CSTRING);
+CREATE TABLE feature_tab_internal (feature_col INTERNAL);
+CREATE TABLE feature_tab_language_handler (feature_col LANGUAGE_HANDLER);
+CREATE TABLE feature_tab_fdw_handler (feature_col FDW_HANDLER);
+CREATE TABLE feature_tab_index_am_handler (feature_col INDEX_AM_HANDLER);
+CREATE TABLE feature_tab_tsm_handler (feature_col TSM_HANDLER);
+CREATE TABLE feature_tab_record (feature_col RECORD);
+CREATE TABLE feature_tab_trigger (feature_col TRIGGER);
+CREATE TABLE feature_tab_event_trigger (feature_col EVENT_TRIGGER);
+CREATE TABLE feature_tab_pg_ddl_command (feature_col PG_DDL_COMMAND);
+CREATE TABLE feature_tab_void (feature_col VOID);
+-- TODO(jason): uncomment when issue #1975 is closed.
+-- CREATE TABLE feature_tab_unknown (feature_col UNKNOWN);
+CREATE TABLE feature_tab_opaque (feature_col OPAQUE);

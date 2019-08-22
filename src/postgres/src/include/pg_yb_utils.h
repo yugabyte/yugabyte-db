@@ -181,6 +181,12 @@ extern bool YBIsPgLockingEnabled();
 extern const char* YBPgTypeOidToStr(Oid type_id);
 
 /*
+ * Return a string representation of the given PgDataType, or say it is unknown.
+ * What is returned is always a static C string constant.
+ */
+extern const char* YBCPgDataTypeToStr(YBCPgDataType yb_type);
+
+/*
  * Report an error saying the given type as not supported by YugaByte.
  */
 extern void YBReportTypeNotSupported(Oid type_id);
