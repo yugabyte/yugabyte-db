@@ -15,16 +15,16 @@ YugaByte DB docs are based on the Hugo framework and use the Material Docs theme
 
 ## Step 1. Initial setup
 
-Follow these steps if this is the first time you are setting up the YugaByte docs repo locally.
+Follow these steps if this is the first time you are setting up for working on the docs locally.
 
 1. Fork this repository on GitHub and create a local clone of your fork. This should look something like below:
 ```
-git clone git@github.com:<YOUR_GITHUB_ID>/docs.git
+git clone git@github.com:<YOUR_GITHUB_ID>/yugabyte-db.git
 ```
 
-Add the master as a remote branch by running the following:
+Add the original repository as an upstream remote:
 ```
-$ git remote add --track master upstream https://github.com/YugaByte/docs.git
+$ git remote add --track master upstream https://github.com/YugaByte/yugabyte-db.git
 ```
 
 2. Install Hugo. For example, on a Mac, you can run the following commands:
@@ -34,9 +34,9 @@ brew install hugo
 brew install npm
 ```
 
-3. Copy the config.yaml.sample to config.yaml.
+3. Copy `config.yaml.example` to `config.yaml`.
 ```
-cp config.yaml.sample config.yaml
+cp config.yaml.example config.yaml
 ```
 
 4. Install node modules as shown below:
@@ -44,7 +44,7 @@ cp config.yaml.sample config.yaml
 $ npm ci
 ```
 
-## Step 2. Update your docs repo and start the local webserver
+## Step 2. Update your repo and start the local webserver
 
 The assumption here is that you are working on a local clone of your fork. See the previous step.
 
@@ -83,12 +83,18 @@ You can now share the following link: `http://<YOUR_IP_OR_HOSTNAME>:1313`
 
 ## Step 3. Make changes
 
+It is suggested that you create and checkout a feature branch off `master` for your changes:
+```
+$ git branch <feature branch name> master
+$ git checkout <feature branch name>
+```
+
 Make the changes locally and test them on the browser.
 
 Once you are satisfied with your changes, commit them to your local branch. You can do this by running the following command:
 ```
-# Add all files you have made changes to.
-$ git add -A
+# Add files you have made changes to.
+$ git add ...
 
 # Commit these changes.
 $ git commit
@@ -107,8 +113,7 @@ We will review your changes, add any feedback and once everything looks good mer
 
 To update the documentation with new grammars and syntax diagrams, follow these steps:
 
-_Note: Modifications will typically be added to the `ysql` or `ycql` subdirectories of the `docs/content/latest/api/` directory.
-In the examples below, the subdirectory is `docs/content/latest/api/ysql` and the target file is `commands/cmd_copy.md`._
+_Note: Modifications will typically be added to the `ysql` or `ycql` subdirectories of the `docs/content/latest/api/` directory._
 
 1. Update the appropriate EBNF source grammar file (`<source>_grammar.ebnf`) with your changes, for example, adding support for a new statement or clause.
 
@@ -119,7 +124,7 @@ In the examples below, the subdirectory is `docs/content/latest/api/ysql` and th
 
     _Example: for the YSQL `COPY` command the source file is `./content/latest/api/ysql/commands/cmd_copy.md`._
 
-3. Inside of the syntax_resources directory, create the following two empty files:
+3. Inside of the `syntax_resources/commands` directory, create the following two **empty** files:
     - `<name>.grammar.md`
     - `<name>.diagram.md`
 
@@ -145,12 +150,14 @@ In the examples below, the subdirectory is `docs/content/latest/api/ysql` and th
     java -jar rrdiagram.jar <input-file.ebnf> <output-folder>
     ```
 
+    `<output-folder>` should end in `syntax_resources`, not `commands`, to get helpful `WARNING`s.
+
     _Example: To generate the syntax diagrams for the YSQL API, run the following command:_
-    ```
+    ```bash
     java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf content/latest/api/ysql/syntax_resources/
     ```
 
-    All of the Markdown (`.md`) files in the `./ysql/syntax_resources` directory will be generated as needed.
+    All of the Markdown (`.md`) files in the `./ysql/syntax_resources/commands` directory will be generated as needed.
 
     _Note: To see help, run `java -jar rrdiagram.jar` (without arguments)._
 
