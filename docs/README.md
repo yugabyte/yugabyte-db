@@ -34,9 +34,9 @@ brew install hugo
 brew install npm
 ```
 
-3. Copy the config.yaml.sample to config.yaml.
+3. Copy `config.yaml.example` to `config.yaml`.
 ```
-cp config.yaml.sample config.yaml
+cp config.yaml.example config.yaml
 ```
 
 4. Install node modules as shown below:
