@@ -306,6 +306,7 @@ initscan(HeapScanDesc scan, ScanKey key, bool keep_startblock)
 	scan->rs_inited = false;
 	scan->rs_ctup.t_data = NULL;
 	ItemPointerSetInvalid(&scan->rs_ctup.t_self);
+	scan->rs_ctup.t_ybctid = (Datum) 0;
 	scan->rs_cbuf = InvalidBuffer;
 	scan->rs_cblock = InvalidBlockNumber;
 

@@ -232,5 +232,3 @@ FROM (VALUES (-2.5::numeric),
              (0.5::numeric),
              (1.5::numeric),
              (2.5::numeric)) t(x);
-
-DROP TABLE INT8_TBL;

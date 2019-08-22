@@ -2151,3 +2151,5 @@ drop table self_ref;
 drop function dump_insert();
 drop function dump_update();
 drop function dump_delete();
+-- TODO(jason): remove when issue #1721 is closed or closing.
+DISCARD TEMP;
