@@ -1325,7 +1325,7 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 		 * the whole row.
 		 */	
 		if (YBRelHasOldRowTriggers(target_relation, parsetree->commandType) ||
-		    YBCRelHasSecondaryIndices(target_relation))
+		    YBRelHasSecondaryIndices(target_relation))
 		{
 			var = makeWholeRowVar(target_rte,
 								  parsetree->resultRelation,

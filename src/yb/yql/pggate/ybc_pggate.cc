@@ -425,8 +425,8 @@ YBCStatus YBCPgFlushBufferedWriteOperations(YBCPgSession pg_session) {
   return ToYBCStatus(pgapi->FlushBufferedWriteOperations(pg_session));
 }
 
-YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->DmlExecWriteOp(handle));
+YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
+  return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
 }
 
 YBCStatus YBCPgDmlAddYBTupleIdColumn(YBCPgStatement handle, int attr_num, uint64_t datum,
@@ -456,9 +456,10 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
 YBCStatus YBCPgNewUpdate(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewUpdate(pg_session, table_id, handle));
+  return ToYBCStatus(pgapi->NewUpdate(pg_session, table_id, is_single_row_txn, handle));
 }
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
@@ -469,9 +470,10 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
 YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewDelete(pg_session, table_id, handle));
+  return ToYBCStatus(pgapi->NewDelete(pg_session, table_id, is_single_row_txn, handle));
 }
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle) {

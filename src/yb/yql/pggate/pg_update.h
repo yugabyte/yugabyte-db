@@ -31,7 +31,7 @@ class PgUpdate : public PgDmlWrite {
   typedef scoped_refptr<PgUpdate> ScopedRefPtr;
 
   // Constructors.
-  PgUpdate(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
+  PgUpdate(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_single_row_txn);
   virtual ~PgUpdate();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_UPDATE; }

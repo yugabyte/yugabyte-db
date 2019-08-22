@@ -1,0 +1,817 @@
+-- Regression tests for UPDATE/DELETE single row operations.
+--
+-- Test that single-row UPDATE/DELETEs bypass scan.
+--
+CREATE TABLE single_row (k int primary key, v1 int, v2 int);
+-- Below statements should all USE single-row.
+EXPLAIN DELETE FROM single_row WHERE k = 1;
+                       QUERY PLAN
+---------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.11 rows=1 width=32)
+   ->  Result  (cost=0.00..4.11 rows=1 width=32)
+(2 rows)
+
+EXPLAIN DELETE FROM single_row WHERE k = 1 RETURNING k;
+                       QUERY PLAN
+---------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+EXPLAIN DELETE FROM single_row WHERE k IN (1);
+                       QUERY PLAN
+---------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.11 rows=1 width=32)
+   ->  Result  (cost=0.00..4.11 rows=1 width=32)
+(2 rows)
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN DELETE FROM single_row;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Delete on single_row  (cost=0.00..100.00 rows=1000 width=32)
+   ->  Foreign Scan on single_row  (cost=0.00..100.00 rows=1000 width=32)
+(2 rows)
+
+EXPLAIN DELETE FROM single_row WHERE k = 1 and v1 = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.12 rows=1 width=32)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.12 rows=1 width=32)
+         Index Cond: (k = 1)
+         Filter: (v1 = 1)
+(4 rows)
+
+EXPLAIN DELETE FROM single_row WHERE v1 = 1 and v2 = 1;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Delete on single_row  (cost=0.00..105.00 rows=1000 width=32)
+   ->  Foreign Scan on single_row  (cost=0.00..105.00 rows=1000 width=32)
+         Filter: ((v1 = 1) AND (v2 = 1))
+(3 rows)
+
+EXPLAIN DELETE FROM single_row WHERE k = 1 RETURNING v1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.11 rows=1 width=44)
+         Index Cond: (k = 1)
+(3 rows)
+
+EXPLAIN DELETE FROM single_row WHERE k > 1;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Delete on single_row  (cost=0.00..102.50 rows=1000 width=32)
+   ->  Foreign Scan on single_row  (cost=0.00..102.50 rows=1000 width=32)
+         Filter: (k > 1)
+(3 rows)
+
+EXPLAIN DELETE FROM single_row WHERE k != 1;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Delete on single_row  (cost=0.00..102.50 rows=1000 width=32)
+   ->  Foreign Scan on single_row  (cost=0.00..102.50 rows=1000 width=32)
+         Filter: (k <> 1)
+(3 rows)
+
+EXPLAIN DELETE FROM single_row WHERE k IN (1, 2);
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Delete on single_row  (cost=0.00..102.50 rows=1000 width=32)
+   ->  Foreign Scan on single_row  (cost=0.00..102.50 rows=1000 width=32)
+         Filter: (k = ANY ('{1,2}'::integer[]))
+(3 rows)
+
+-- Below statements should all USE single-row.
+EXPLAIN UPDATE single_row SET v1 = 1 WHERE k = 1;
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING k, v1;
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 1, v2 = 1 + 2 WHERE k = 1;
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING k, v1, v2;
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING *;
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 1 WHERE k IN (1);
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN UPDATE single_row SET v1 = 1;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..100.00 rows=1000 width=44)
+   ->  Foreign Scan on single_row  (cost=0.00..100.00 rows=1000 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row SET v1 = v1 + 1 WHERE k = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..4.12 rows=1 width=44)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.12 rows=1 width=44)
+         Index Cond: (k = 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 1 WHERE k = 1 and v2 = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..4.12 rows=1 width=44)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.12 rows=1 width=44)
+         Index Cond: (k = 1)
+         Filter: (v2 = 1)
+(4 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING v2;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.11 rows=1 width=44)
+         Index Cond: (k = 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING *;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.11 rows=1 width=44)
+         Index Cond: (k = 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 1 WHERE k > 1;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..102.50 rows=1000 width=44)
+   ->  Foreign Scan on single_row  (cost=0.00..102.50 rows=1000 width=44)
+         Filter: (k > 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 1 WHERE k != 1;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..102.50 rows=1000 width=44)
+   ->  Foreign Scan on single_row  (cost=0.00..102.50 rows=1000 width=44)
+         Filter: (k <> 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row SET v1 = 1 WHERE k IN (1, 2);
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..102.50 rows=1000 width=44)
+   ->  Foreign Scan on single_row  (cost=0.00..102.50 rows=1000 width=44)
+         Filter: (k = ANY ('{1,2}'::integer[]))
+(3 rows)
+
+--
+-- Test single-row UPDATE/DELETE execution.
+--
+INSERT INTO single_row VALUES (1, 1, 1);
+UPDATE single_row SET v1 = 2 WHERE k = 1;
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+ 1 |  2 |  1
+(1 row)
+
+DELETE FROM single_row WHERE k = 1;
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+(0 rows)
+
+--
+-- Test UPDATE/DELETEs of non-existent data return no rows.
+--
+UPDATE single_row SET v1 = 1 WHERE k = 100 RETURNING k;
+ k
+---
+(0 rows)
+
+DELETE FROM single_row WHERE k = 100 RETURNING k;
+ k
+---
+(0 rows)
+
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+(0 rows)
+
+--
+-- Test prepared statements.
+--
+INSERT INTO single_row VALUES (1, 1, 1);
+PREPARE single_row_update (int, int, int) AS
+  UPDATE single_row SET v1 = $2, v2 = $3 WHERE k = $1;
+PREPARE single_row_delete (int) AS
+  DELETE FROM single_row WHERE k = $1;
+EXPLAIN EXECUTE single_row_update (1, 2, 2);
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+EXECUTE single_row_update (1, 2, 2);
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+ 1 |  2 |  2
+(1 row)
+
+EXPLAIN EXECUTE single_row_delete (1);
+                       QUERY PLAN
+---------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.11 rows=1 width=32)
+   ->  Result  (cost=0.00..4.11 rows=1 width=32)
+(2 rows)
+
+EXECUTE single_row_delete (1);
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+(0 rows)
+
+--
+-- Test returning clauses.
+--
+INSERT INTO single_row VALUES (1, 1, 1);
+UPDATE single_row SET v1 = 2, v2 = 2 WHERE k = 1 RETURNING v1, v2, k;
+ v1 | v2 | k
+----+----+---
+  2 |  2 | 1
+(1 row)
+
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+ 1 |  2 |  2
+(1 row)
+
+UPDATE single_row SET v1 = 3, v2 = 3 WHERE k = 1 RETURNING *;
+ k | v1 | v2
+---+----+----
+ 1 |  3 |  3
+(1 row)
+
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+ 1 |  3 |  3
+(1 row)
+
+DELETE FROM single_row WHERE k = 1 RETURNING k;
+ k
+---
+ 1
+(1 row)
+
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+(0 rows)
+
+---
+--- Test in transaction block.
+---
+INSERT INTO single_row VALUES (1, 1, 1);
+BEGIN;
+EXPLAIN DELETE FROM single_row WHERE k = 1;
+                       QUERY PLAN
+---------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.11 rows=1 width=32)
+   ->  Result  (cost=0.00..4.11 rows=1 width=32)
+(2 rows)
+
+DELETE FROM single_row WHERE k = 1;
+END;
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+(0 rows)
+
+-- Test UPDATE/DELETE of non-existing rows.
+BEGIN;
+DELETE FROM single_row WHERE k = 1;
+UPDATE single_row SET v1 = 2 WHERE k = 1;
+END;
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+(0 rows)
+
+---
+--- Test WITH clause.
+---
+INSERT INTO single_row VALUES (1, 1, 1);
+EXPLAIN WITH temp AS (UPDATE single_row SET v1 = 2 WHERE k = 1)
+  UPDATE single_row SET v1 = 2 WHERE k = 1;
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Update on single_row  (cost=4.11..8.22 rows=1 width=44)
+   CTE temp
+     ->  Update on single_row single_row_1  (cost=0.00..4.11 rows=1 width=44)
+           ->  Result  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(5 rows)
+
+WITH temp AS (UPDATE single_row SET v1 = 2 WHERE k = 1)
+  UPDATE single_row SET v1 = 2 WHERE k = 1;
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+ 1 |  2 |  1
+(1 row)
+
+-- Update row that doesn't exist.
+WITH temp AS (UPDATE single_row SET v1 = 2 WHERE k = 2)
+  UPDATE single_row SET v1 = 2 WHERE k = 2;
+SELECT * FROM single_row;
+ k | v1 | v2
+---+----+----
+ 1 |  2 |  1
+(1 row)
+
+-- Adding secondary index should force re-planning, which would
+-- then not choose single-row plan due to the secondary index.
+EXPLAIN EXECUTE single_row_delete (1);
+                       QUERY PLAN
+---------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.11 rows=1 width=32)
+   ->  Result  (cost=0.00..4.11 rows=1 width=32)
+(2 rows)
+
+CREATE INDEX single_row_index ON single_row (v1);
+EXPLAIN EXECUTE single_row_delete (1);
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.11 rows=1 width=68)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.11 rows=1 width=68)
+         Index Cond: (k = 1)
+(3 rows)
+
+DROP INDEX single_row_index;
+-- Same as above but for UPDATE.
+EXPLAIN EXECUTE single_row_update (1, 1, 1);
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+CREATE INDEX single_row_index ON single_row (v1);
+EXPLAIN EXECUTE single_row_update (1, 1, 1);
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=80)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.11 rows=1 width=80)
+         Index Cond: (k = 1)
+(3 rows)
+
+DROP INDEX single_row_index;
+-- Adding BEFORE DELETE row triggers should do the same as secondary index.
+EXPLAIN EXECUTE single_row_delete (1);
+                       QUERY PLAN
+---------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.11 rows=1 width=32)
+   ->  Result  (cost=0.00..4.11 rows=1 width=32)
+(2 rows)
+
+CREATE TRIGGER single_row_delete_trigger BEFORE DELETE ON single_row
+  FOR EACH ROW EXECUTE PROCEDURE suppress_redundant_updates_trigger();
+EXPLAIN EXECUTE single_row_delete (1);
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.11 rows=1 width=68)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.11 rows=1 width=68)
+         Index Cond: (k = $1)
+(3 rows)
+
+-- UPDATE should still use single-row since trigger does not apply to it.
+EXPLAIN EXECUTE single_row_update (1, 1, 1);
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+DROP TRIGGER single_row_delete_trigger ON single_row;
+-- Adding BEFORE UPDATE row triggers should do the same as secondary index.
+EXPLAIN EXECUTE single_row_update (1, 1, 1);
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=44)
+   ->  Result  (cost=0.00..4.11 rows=1 width=44)
+(2 rows)
+
+CREATE TRIGGER single_row_update_trigger BEFORE UPDATE ON single_row
+  FOR EACH ROW EXECUTE PROCEDURE suppress_redundant_updates_trigger();
+EXPLAIN EXECUTE single_row_update (1, 1, 1);
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row  (cost=0.00..4.11 rows=1 width=80)
+   ->  Index Scan using single_row_pkey on single_row  (cost=0.00..4.11 rows=1 width=80)
+         Index Cond: (k = $1)
+(3 rows)
+
+-- DELETE should still use single-row since trigger does not apply to it.
+EXPLAIN EXECUTE single_row_delete (1);
+                       QUERY PLAN
+---------------------------------------------------------
+ Delete on single_row  (cost=0.00..4.11 rows=1 width=32)
+   ->  Result  (cost=0.00..4.11 rows=1 width=32)
+(2 rows)
+
+DROP TRIGGER single_row_update_trigger ON single_row;
+--
+-- Test table with composite primary key.
+--
+CREATE TABLE single_row_comp_key (v int, k1 int, k2 int, PRIMARY KEY (k1, k2));
+-- Below statements should all USE single-row.
+EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 and k2 = 1;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Delete on single_row_comp_key  (cost=0.00..4.12 rows=1 width=32)
+   ->  Result  (cost=0.00..4.12 rows=1 width=32)
+(2 rows)
+
+EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 and k2 = 1 RETURNING k1, k2;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Delete on single_row_comp_key  (cost=0.00..4.12 rows=1 width=44)
+   ->  Result  (cost=0.00..4.12 rows=1 width=44)
+(2 rows)
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN DELETE FROM single_row_comp_key;
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Delete on single_row_comp_key  (cost=0.00..100.00 rows=1000 width=32)
+   ->  Foreign Scan on single_row_comp_key  (cost=0.00..100.00 rows=1000 width=32)
+(2 rows)
+
+EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1;
+                                                 QUERY PLAN
+------------------------------------------------------------------------------------------------------------
+ Delete on single_row_comp_key  (cost=0.00..5.04 rows=10 width=32)
+   ->  Index Scan using single_row_comp_key_pkey on single_row_comp_key  (cost=0.00..5.04 rows=10 width=32)
+         Index Cond: (k1 = 1)
+(3 rows)
+
+EXPLAIN DELETE FROM single_row_comp_key WHERE k2 = 1;
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Delete on single_row_comp_key  (cost=0.00..102.50 rows=1000 width=32)
+   ->  Foreign Scan on single_row_comp_key  (cost=0.00..102.50 rows=1000 width=32)
+         Filter: (k2 = 1)
+(3 rows)
+
+EXPLAIN DELETE FROM single_row_comp_key WHERE v = 1 and k1 = 1 and k2 = 1;
+                                                QUERY PLAN
+-----------------------------------------------------------------------------------------------------------
+ Delete on single_row_comp_key  (cost=0.00..4.12 rows=1 width=32)
+   ->  Index Scan using single_row_comp_key_pkey on single_row_comp_key  (cost=0.00..4.12 rows=1 width=32)
+         Index Cond: ((k1 = 1) AND (k2 = 1))
+         Filter: (v = 1)
+(4 rows)
+
+EXPLAIN DELETE FROM single_row_comp_key WHERE k1 = 1 and k2 = 1 RETURNING v;
+                                                QUERY PLAN
+-----------------------------------------------------------------------------------------------------------
+ Delete on single_row_comp_key  (cost=0.00..4.12 rows=1 width=44)
+   ->  Index Scan using single_row_comp_key_pkey on single_row_comp_key  (cost=0.00..4.12 rows=1 width=44)
+         Index Cond: ((k1 = 1) AND (k2 = 1))
+(3 rows)
+
+-- Below statements should all USE single-row.
+EXPLAIN UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Update on single_row_comp_key  (cost=0.00..4.12 rows=1 width=44)
+   ->  Result  (cost=0.00..4.12 rows=1 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1 RETURNING k1, k2, v;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Update on single_row_comp_key  (cost=0.00..4.12 rows=1 width=44)
+   ->  Result  (cost=0.00..4.12 rows=1 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row_comp_key SET v = 1 + 2 WHERE k1 = 1 and k2 = 1;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Update on single_row_comp_key  (cost=0.00..4.12 rows=1 width=44)
+   ->  Result  (cost=0.00..4.12 rows=1 width=44)
+(2 rows)
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN UPDATE single_row_comp_key SET v = 1;
+                                    QUERY PLAN
+-----------------------------------------------------------------------------------
+ Update on single_row_comp_key  (cost=0.00..100.00 rows=1000 width=44)
+   ->  Foreign Scan on single_row_comp_key  (cost=0.00..100.00 rows=1000 width=44)
+(2 rows)
+
+EXPLAIN UPDATE single_row_comp_key SET v = v + 1 WHERE k1 = 1 and k2 = 1;
+                                                QUERY PLAN
+-----------------------------------------------------------------------------------------------------------
+ Update on single_row_comp_key  (cost=0.00..4.12 rows=1 width=44)
+   ->  Index Scan using single_row_comp_key_pkey on single_row_comp_key  (cost=0.00..4.12 rows=1 width=44)
+         Index Cond: ((k1 = 1) AND (k2 = 1))
+(3 rows)
+
+EXPLAIN UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1 and v = 1;
+                                                QUERY PLAN
+-----------------------------------------------------------------------------------------------------------
+ Update on single_row_comp_key  (cost=0.00..4.12 rows=1 width=44)
+   ->  Index Scan using single_row_comp_key_pkey on single_row_comp_key  (cost=0.00..4.12 rows=1 width=44)
+         Index Cond: ((k1 = 1) AND (k2 = 1))
+         Filter: (v = 1)
+(4 rows)
+
+-- Test execution.
+INSERT INTO single_row_comp_key VALUES (1, 2, 3);
+UPDATE single_row_comp_key SET v = 2 WHERE k1 = 2 and k2 = 3;
+SELECT * FROM single_row_comp_key;
+ v | k1 | k2
+---+----+----
+ 2 |  2 |  3
+(1 row)
+
+-- try switching around the order, reversing value/key
+DELETE FROM single_row_comp_key WHERE 2 = k2 and 3 = k1;
+SELECT * FROM single_row_comp_key;
+ v | k1 | k2
+---+----+----
+ 2 |  2 |  3
+(1 row)
+
+DELETE FROM single_row_comp_key WHERE 3 = k2 and 2 = k1;
+SELECT * FROM single_row_comp_key;
+ v | k1 | k2
+---+----+----
+(0 rows)
+
+--
+-- Test table with non-standard const type.
+--
+CREATE TABLE single_row_complex (k bigint PRIMARY KEY, v float);
+-- Below statements should all USE single-row.
+EXPLAIN DELETE FROM single_row_complex WHERE k = 1;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Delete on single_row_complex  (cost=0.00..4.11 rows=1 width=32)
+   ->  Result  (cost=0.00..4.11 rows=1 width=32)
+(2 rows)
+
+EXPLAIN DELETE FROM single_row_complex WHERE k = 1 RETURNING k;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Delete on single_row_complex  (cost=0.00..4.11 rows=1 width=48)
+   ->  Result  (cost=0.00..4.11 rows=1 width=48)
+(2 rows)
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN DELETE FROM single_row_complex;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Delete on single_row_complex  (cost=0.00..100.00 rows=1000 width=32)
+   ->  Foreign Scan on single_row_complex  (cost=0.00..100.00 rows=1000 width=32)
+(2 rows)
+
+EXPLAIN DELETE FROM single_row_complex WHERE k = 1 and v = 1;
+                                               QUERY PLAN
+---------------------------------------------------------------------------------------------------------
+ Delete on single_row_complex  (cost=0.00..4.12 rows=1 width=32)
+   ->  Index Scan using single_row_complex_pkey on single_row_complex  (cost=0.00..4.12 rows=1 width=32)
+         Index Cond: (k = 1)
+         Filter: (v = '1'::double precision)
+(4 rows)
+
+EXPLAIN DELETE FROM single_row_complex WHERE v = 1;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Delete on single_row_complex  (cost=0.00..102.50 rows=1000 width=32)
+   ->  Foreign Scan on single_row_complex  (cost=0.00..102.50 rows=1000 width=32)
+         Filter: (v = '1'::double precision)
+(3 rows)
+
+EXPLAIN DELETE FROM single_row_complex WHERE k = 1 RETURNING v;
+                                               QUERY PLAN
+---------------------------------------------------------------------------------------------------------
+ Delete on single_row_complex  (cost=0.00..4.11 rows=1 width=48)
+   ->  Index Scan using single_row_complex_pkey on single_row_complex  (cost=0.00..4.11 rows=1 width=48)
+         Index Cond: (k = 1)
+(3 rows)
+
+-- Below statements should all USE single-row.
+EXPLAIN UPDATE single_row_complex SET v = 1 WHERE k = 1;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Update on single_row_complex  (cost=0.00..4.11 rows=1 width=48)
+   ->  Result  (cost=0.00..4.11 rows=1 width=48)
+(2 rows)
+
+EXPLAIN UPDATE single_row_complex SET v = 1 WHERE k = 1 RETURNING k, v;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Update on single_row_complex  (cost=0.00..4.11 rows=1 width=48)
+   ->  Result  (cost=0.00..4.11 rows=1 width=48)
+(2 rows)
+
+EXPLAIN UPDATE single_row_complex SET v = 1 + 2 WHERE k = 1;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Update on single_row_complex  (cost=0.00..4.11 rows=1 width=48)
+   ->  Result  (cost=0.00..4.11 rows=1 width=48)
+(2 rows)
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN UPDATE single_row_complex SET v = 1;
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Update on single_row_complex  (cost=0.00..100.00 rows=1000 width=48)
+   ->  Foreign Scan on single_row_complex  (cost=0.00..100.00 rows=1000 width=48)
+(2 rows)
+
+EXPLAIN UPDATE single_row_complex SET v = v + 1 WHERE k = 1;
+                                               QUERY PLAN
+---------------------------------------------------------------------------------------------------------
+ Update on single_row_complex  (cost=0.00..4.12 rows=1 width=48)
+   ->  Index Scan using single_row_complex_pkey on single_row_complex  (cost=0.00..4.12 rows=1 width=48)
+         Index Cond: (k = 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row_complex SET v = 1 WHERE k = 1 and v = 1;
+                                               QUERY PLAN
+---------------------------------------------------------------------------------------------------------
+ Update on single_row_complex  (cost=0.00..4.12 rows=1 width=48)
+   ->  Index Scan using single_row_complex_pkey on single_row_complex  (cost=0.00..4.12 rows=1 width=48)
+         Index Cond: (k = 1)
+         Filter: (v = '1'::double precision)
+(4 rows)
+
+-- Test execution.
+INSERT INTO single_row_complex VALUES (1, 1);
+UPDATE single_row_complex SET v = 2 WHERE k = 1;
+SELECT * FROM single_row_complex;
+ k | v
+---+---
+ 1 | 2
+(1 row)
+
+DELETE FROM single_row_complex WHERE k = 1;
+SELECT * FROM single_row_complex;
+ k | v
+---+---
+(0 rows)
+
+--
+-- Test table with non-const type.
+--
+CREATE TABLE single_row_array (k int primary key, arr int []);
+-- Below statements should all USE single-row.
+EXPLAIN DELETE FROM single_row_array WHERE k = 1;
+                          QUERY PLAN
+---------------------------------------------------------------
+ Delete on single_row_array  (cost=0.00..4.11 rows=1 width=32)
+   ->  Result  (cost=0.00..4.11 rows=1 width=32)
+(2 rows)
+
+EXPLAIN DELETE FROM single_row_array WHERE k = 1 RETURNING k;
+                          QUERY PLAN
+---------------------------------------------------------------
+ Delete on single_row_array  (cost=0.00..4.11 rows=1 width=68)
+   ->  Result  (cost=0.00..4.11 rows=1 width=68)
+(2 rows)
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN DELETE FROM single_row_array;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Delete on single_row_array  (cost=0.00..100.00 rows=1000 width=32)
+   ->  Foreign Scan on single_row_array  (cost=0.00..100.00 rows=1000 width=32)
+(2 rows)
+
+EXPLAIN DELETE FROM single_row_array WHERE k = 1 and arr[1] = 1;
+                                             QUERY PLAN
+-----------------------------------------------------------------------------------------------------
+ Delete on single_row_array  (cost=0.00..4.12 rows=1 width=32)
+   ->  Index Scan using single_row_array_pkey on single_row_array  (cost=0.00..4.12 rows=1 width=32)
+         Index Cond: (k = 1)
+         Filter: (arr[1] = 1)
+(4 rows)
+
+EXPLAIN DELETE FROM single_row_array WHERE arr[1] = 1;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Delete on single_row_array  (cost=0.00..102.50 rows=1000 width=32)
+   ->  Foreign Scan on single_row_array  (cost=0.00..102.50 rows=1000 width=32)
+         Filter: (arr[1] = 1)
+(3 rows)
+
+EXPLAIN DELETE FROM single_row_array WHERE k = 1 RETURNING arr;
+                                             QUERY PLAN
+-----------------------------------------------------------------------------------------------------
+ Delete on single_row_array  (cost=0.00..4.11 rows=1 width=68)
+   ->  Index Scan using single_row_array_pkey on single_row_array  (cost=0.00..4.11 rows=1 width=68)
+         Index Cond: (k = 1)
+(3 rows)
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN UPDATE single_row_array SET arr[1] = 1 WHERE k = 1;
+                                             QUERY PLAN
+-----------------------------------------------------------------------------------------------------
+ Update on single_row_array  (cost=0.00..4.11 rows=1 width=68)
+   ->  Index Scan using single_row_array_pkey on single_row_array  (cost=0.00..4.11 rows=1 width=68)
+         Index Cond: (k = 1)
+(3 rows)
+
+-- Test execution.
+INSERT INTO single_row_array VALUES (1, ARRAY [1, 2, 3]);
+DELETE FROM single_row_array WHERE k = 1;
+SELECT * FROM single_row_array;
+ k | arr
+---+-----
+(0 rows)
+
+--
+-- Test table without a primary key.
+--
+CREATE TABLE single_row_no_primary_key (a int, b int);
+-- Below statements should all NOT USE single-row.
+EXPLAIN DELETE FROM single_row_no_primary_key;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Delete on single_row_no_primary_key  (cost=0.00..100.00 rows=1000 width=32)
+   ->  Foreign Scan on single_row_no_primary_key  (cost=0.00..100.00 rows=1000 width=32)
+(2 rows)
+
+EXPLAIN DELETE FROM single_row_no_primary_key WHERE a = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Delete on single_row_no_primary_key  (cost=0.00..102.50 rows=1000 width=32)
+   ->  Foreign Scan on single_row_no_primary_key  (cost=0.00..102.50 rows=1000 width=32)
+         Filter: (a = 1)
+(3 rows)
+
+EXPLAIN DELETE FROM single_row_no_primary_key WHERE a = 1 and b = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Delete on single_row_no_primary_key  (cost=0.00..105.00 rows=1000 width=32)
+   ->  Foreign Scan on single_row_no_primary_key  (cost=0.00..105.00 rows=1000 width=32)
+         Filter: ((a = 1) AND (b = 1))
+(3 rows)
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN UPDATE single_row_no_primary_key SET a = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row_no_primary_key  (cost=0.00..100.00 rows=1000 width=40)
+   ->  Foreign Scan on single_row_no_primary_key  (cost=0.00..100.00 rows=1000 width=40)
+(2 rows)
+
+EXPLAIN UPDATE single_row_no_primary_key SET b = 1 WHERE a = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row_no_primary_key  (cost=0.00..102.50 rows=1000 width=40)
+   ->  Foreign Scan on single_row_no_primary_key  (cost=0.00..102.50 rows=1000 width=40)
+         Filter: (a = 1)
+(3 rows)
+
+EXPLAIN UPDATE single_row_no_primary_key SET b = 1 WHERE b = 1;
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Update on single_row_no_primary_key  (cost=0.00..102.50 rows=1000 width=40)
+   ->  Foreign Scan on single_row_no_primary_key  (cost=0.00..102.50 rows=1000 width=40)
+         Filter: (b = 1)
+(3 rows)

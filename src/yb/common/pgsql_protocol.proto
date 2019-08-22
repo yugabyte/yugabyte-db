@@ -334,4 +334,7 @@ message PgsqlResponsePB {
 
   // Paging state for continuing the read in the next QLReadRequestPB fetch.
   optional PgsqlPagingStatePB paging_state = 5;
+
+  // Number of rows affected by the operation. Currently only used for update and delete.
+  optional int32 rows_affected_count = 7;
 }

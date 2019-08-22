@@ -45,9 +45,18 @@
 
 PG_MODULE_MAGIC;
 
-typedef enum statementType{Select, Insert, Delete, Update, Other} statementType;
+typedef enum statementType
+{
+	Select,
+	Insert,
+	Delete,
+	Update,
+	Other,
+	Transaction,
+	kMaxStatementType
+} statementType;
+int num_entries = kMaxStatementType;
 ybpgmEntry *ybpgm_table = NULL;
-int num_entries = 5;
 static int statement_nesting_level = 0;
 char *metric_node_name = NULL;
 struct WebserverWrapper *webserver = NULL;
@@ -100,6 +109,7 @@ set_metric_names(void)
   strcpy(ybpgm_table[Delete].name, YSQL_METRIC_PREFIX "DeleteStmt");
   strcpy(ybpgm_table[Update].name, YSQL_METRIC_PREFIX "UpdateStmt");
   strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
+  strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
 }
 
 void
@@ -442,8 +452,15 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
   }
 
   if (isTopLevelStatement()) {
-    InstrEndLoop(queryDesc->totaltime);
-    ybpgm_Store(type, (uint64_t) (queryDesc->totaltime->total * 1000000.0));
+	uint64_t time;
+
+	InstrEndLoop(queryDesc->totaltime);
+	time = (uint64_t) (queryDesc->totaltime->total * 1000000.0);
+
+	ybpgm_Store(type, time);
+
+	if (!queryDesc->estate->es_yb_is_single_row_modify_txn)
+		ybpgm_Store(Transaction, time);
   }
 
   if (prev_ExecutorEnd)
