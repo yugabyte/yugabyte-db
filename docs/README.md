@@ -107,8 +107,7 @@ We will review your changes, add any feedback and once everything looks good mer
 
 To update the documentation with new grammars and syntax diagrams, follow these steps:
 
-_Note: Modifications will typically be added to the `ysql` or `ycql` subdirectories of the `docs/content/latest/api/` directory.
-In the examples below, the subdirectory is `docs/content/latest/api/ysql` and the target file is `commands/cmd_copy.md`._
+_Note: Modifications will typically be added to the `ysql` or `ycql` subdirectories of the `docs/content/latest/api/` directory._
 
 1. Update the appropriate EBNF source grammar file (`<source>_grammar.ebnf`) with your changes, for example, adding support for a new statement or clause.
 
