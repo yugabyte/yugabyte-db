@@ -79,7 +79,8 @@ void
 CheckIsYBSupportedRelationByKind(char relkind)
 {
 	if (!(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
-		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE))
+		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE ||
+		  relkind == RELKIND_COMPOSITE_TYPE))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("This feature is not supported in YugaByte.")));
@@ -502,6 +503,45 @@ YBPgTypeOidToStr(Oid type_id) {
 		case TSM_HANDLEROID: return "TSM_HANDLER";
 		case ANYRANGEOID: return "ANYRANGE";
 		default: return "user_defined_type";
+	}
+}
+
+const char*
+YBCPgDataTypeToStr(YBCPgDataType yb_type) {
+	switch (yb_type) {
+		case YB_YQL_DATA_TYPE_NOT_SUPPORTED: return "NOT_SUPPORTED";
+		case YB_YQL_DATA_TYPE_UNKNOWN_DATA: return "UNKNOWN_DATA";
+		case YB_YQL_DATA_TYPE_NULL_VALUE_TYPE: return "NULL_VALUE_TYPE";
+		case YB_YQL_DATA_TYPE_INT8: return "INT8";
+		case YB_YQL_DATA_TYPE_INT16: return "INT16";
+		case YB_YQL_DATA_TYPE_INT32: return "INT32";
+		case YB_YQL_DATA_TYPE_INT64: return "INT64";
+		case YB_YQL_DATA_TYPE_STRING: return "STRING";
+		case YB_YQL_DATA_TYPE_BOOL: return "BOOL";
+		case YB_YQL_DATA_TYPE_FLOAT: return "FLOAT";
+		case YB_YQL_DATA_TYPE_DOUBLE: return "DOUBLE";
+		case YB_YQL_DATA_TYPE_BINARY: return "BINARY";
+		case YB_YQL_DATA_TYPE_TIMESTAMP: return "TIMESTAMP";
+		case YB_YQL_DATA_TYPE_DECIMAL: return "DECIMAL";
+		case YB_YQL_DATA_TYPE_VARINT: return "VARINT";
+		case YB_YQL_DATA_TYPE_INET: return "INET";
+		case YB_YQL_DATA_TYPE_LIST: return "LIST";
+		case YB_YQL_DATA_TYPE_MAP: return "MAP";
+		case YB_YQL_DATA_TYPE_SET: return "SET";
+		case YB_YQL_DATA_TYPE_UUID: return "UUID";
+		case YB_YQL_DATA_TYPE_TIMEUUID: return "TIMEUUID";
+		case YB_YQL_DATA_TYPE_TUPLE: return "TUPLE";
+		case YB_YQL_DATA_TYPE_TYPEARGS: return "TYPEARGS";
+		case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE: return "USER_DEFINED_TYPE";
+		case YB_YQL_DATA_TYPE_FROZEN: return "FROZEN";
+		case YB_YQL_DATA_TYPE_DATE: return "DATE";
+		case YB_YQL_DATA_TYPE_TIME: return "TIME";
+		case YB_YQL_DATA_TYPE_JSONB: return "JSONB";
+		case YB_YQL_DATA_TYPE_UINT8: return "UINT8";
+		case YB_YQL_DATA_TYPE_UINT16: return "UINT16";
+		case YB_YQL_DATA_TYPE_UINT32: return "UINT32";
+		case YB_YQL_DATA_TYPE_UINT64: return "UINT64";
+		default: return "unknown";
 	}
 }
 

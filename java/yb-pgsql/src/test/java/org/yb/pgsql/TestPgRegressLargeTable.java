@@ -66,7 +66,7 @@ public class TestPgRegressLargeTable extends BasePgSQLTest {
   public void testPgRegressLargeTable() throws Exception {
     // Run schedule, check time for release build.
     runPgRegressTest("yb_large_table_serial_schedule",
-                     getPerfMaxRuntime(45000, 0, 0, 0, 0) /* maxRuntimeMillis */);
+                     getPerfMaxRuntime(60000, 0, 0, 0, 0) /* maxRuntimeMillis */);
 
     // Due to reconnecting to server, we avoid checking the first query elapsed time.
     timeQuery("SELECT 1 FROM airports LIMIT 1",

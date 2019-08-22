@@ -82,6 +82,12 @@
 
 #include "pg_yb_utils.h"
 
+Datum YBCDocdbToDatum(const uint8 *data, int64 bytes, const YBCPgTypeAttrs *type_attrs);
+static const YBCPgTypeEntity YBCFixedLenByValTypeEntity;
+static const YBCPgTypeEntity YBCNullTermByRefTypeEntity;
+static const YBCPgTypeEntity YBCVarLenByRefTypeEntity;
+void YBCDatumToDocdb(Datum datum, uint8 **data, int64 *bytes);
+
 /***************************************************************************************************
  * Find YugaByte storage type for each PostgreSQL datatype.
  * NOTE: Because YugaByte network buffer can be deleted after it is processed, Postgres layer must
@@ -125,16 +131,63 @@ YBCDataTypeFromOidMod(int attnum, Oid type_id)
 	const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(type_id);
 	YBCPgDataType yb_type = YBCPgGetType(type_entity);
 
-	/* Find the basetype if the actual type does not have any entry */
+	/* For non-primitive types, we need to look up the definition */
 	if (yb_type == YB_YQL_DATA_TYPE_UNKNOWN_DATA) {
 		HeapTuple type = typeidType(type_id);
 		Form_pg_type tp = (Form_pg_type) GETSTRUCT(type);
 		Oid basetp_oid = tp->typbasetype;
 		ReleaseSysCache(type);
 
-		if (basetp_oid == InvalidOid)
-		{
-			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
+		switch (tp->typtype) {
+			case TYPTYPE_BASE:
+				if (tp->typbyval) {
+					/* fixed-length, pass-by-value base type */
+					return &YBCFixedLenByValTypeEntity;
+				} else {
+					switch (tp->typlen) {
+						case -2:
+							/* null-terminated, pass-by-reference base type */
+							return &YBCNullTermByRefTypeEntity;
+							break;
+						case -1:
+							/* variable-length, pass-by-reference base type */
+							return &YBCVarLenByRefTypeEntity;
+							break;
+						default:;
+							/* fixed-length, pass-by-reference base type */
+							YBCPgTypeEntity *fixed_ref_type_entity = (YBCPgTypeEntity *)palloc(
+									sizeof(YBCPgTypeEntity));
+							fixed_ref_type_entity->type_oid = InvalidOid;
+							fixed_ref_type_entity->yb_type = YB_YQL_DATA_TYPE_BINARY;
+							fixed_ref_type_entity->allow_for_primary_key = false;
+							fixed_ref_type_entity->datum_fixed_size = tp->typlen;
+							fixed_ref_type_entity->datum_to_yb = (YBCPgDatumToData)YBCDatumToDocdb;
+							fixed_ref_type_entity->yb_to_datum =
+								(YBCPgDatumFromData)YBCDocdbToDatum;
+							return fixed_ref_type_entity;
+							break;
+					}
+				}
+				break;
+			case TYPTYPE_COMPOSITE:
+				basetp_oid = RECORDOID;
+				break;
+			case TYPTYPE_DOMAIN:
+				break;
+			case TYPTYPE_ENUM:
+				/*
+				 * TODO(jason): use the following line instead once user-defined enums can be
+				 * primary keys:
+				 *   basetp_oid = ANYENUMOID;
+				 */
+				return &YBCFixedLenByValTypeEntity;
+				break;
+			case TYPTYPE_RANGE:
+				basetp_oid = ANYRANGEOID;
+				break;
+			default:
+				YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
+				break;
 		}
 		return YBCDataTypeFromOidMod(InvalidAttrNumber, basetp_oid);
 	}
@@ -1199,6 +1252,31 @@ static const YBCPgTypeEntity YBCTypeEntityTable[] = {
 		(YBCPgDatumToData)YBCDatumToDocdb,
 		(YBCPgDatumFromData)YBCDocdbToDatum },
 };
+
+/* Special type entity used for fixed-length, pass-by-value user-defined types.
+ * TODO(jason): When user-defined types as primary keys are supported, change the below `false` to
+ * `true`.
+ */
+static const YBCPgTypeEntity YBCFixedLenByValTypeEntity =
+	{ InvalidOid, YB_YQL_DATA_TYPE_INT64, false, sizeof(int64),
+		(YBCPgDatumToData)YBCDatumToInt64,
+		(YBCPgDatumFromData)YBCInt64ToDatum };
+/* Special type entity used for null-terminated, pass-by-reference user-defined types.
+ * TODO(jason): When user-defined types as primary keys are supported, change the below `false` to
+ * `true`.
+ */
+static const YBCPgTypeEntity YBCNullTermByRefTypeEntity =
+	{ InvalidOid, YB_YQL_DATA_TYPE_BINARY, false, -2,
+		(YBCPgDatumToData)YBCDatumToCStr,
+		(YBCPgDatumFromData)YBCCStrToDatum };
+/* Special type entity used for variable-length, pass-by-reference user-defined types.
+ * TODO(jason): When user-defined types as primary keys are supported, change the below `false` to
+ * `true`.
+ */
+static const YBCPgTypeEntity YBCVarLenByRefTypeEntity =
+	{ InvalidOid, YB_YQL_DATA_TYPE_BINARY, false, -1,
+		(YBCPgDatumToData)YBCDatumToBinary,
+		(YBCPgDatumFromData)YBCBinaryToDatum };
 
 void YBCGetTypeTable(const YBCPgTypeEntity **type_table, int *count) {
 	*type_table = YBCTypeEntityTable;

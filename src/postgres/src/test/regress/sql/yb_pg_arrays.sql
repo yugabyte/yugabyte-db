@@ -124,9 +124,7 @@ UPDATE arrtest
   WHERE array_dims(c) is not null;
 
 -- test slices with empty lower and/or upper index
--- TODO(neil) TEMP not supported.
--- CREATE TEMP TABLE arrtest_s (
-CREATE TABLE arrtest_s (
+CREATE TEMP TABLE arrtest_s (
   id      int primary key,
   a       int2[],
   b       int2[][]
@@ -170,9 +168,7 @@ UPDATE point_tbl SET f1[3] = 10 WHERE f1::text = '(-10,-10)'::point::text RETURN
 --
 -- test array extension
 --
--- TODO(neil) TEMP not supported.
--- CREATE TEMP TABLE arrtest1 (i int[], t text[]);
-CREATE TABLE arrtest1 (i int[], t text[]);
+CREATE TEMP TABLE arrtest1 (i int[], t text[]);
 insert into arrtest1 values(array[1,2,null,4], array['one','two',null,'four']);
 select * from arrtest1;
 update arrtest1 set i[2] = 22, t[2] = 'twenty-two';
@@ -210,9 +206,7 @@ select * from arrtest1;
 --
 
 -- table creation and INSERTs
--- TODO(neil) TEMP not supported.
--- CREATE TEMP TABLE arrtest2 (i integer ARRAY[4], f float8[], n numeric[], t text[], d timestamp[]);
-CREATE TABLE arrtest2 (i integer ARRAY[4], f float8[], n numeric[], t text[], d timestamp[]);
+CREATE TEMP TABLE arrtest2 (i integer ARRAY[4], f float8[], n numeric[], t text[], d timestamp[]);
 INSERT INTO arrtest2 VALUES(
   ARRAY[[[113,142],[1,147]]],
   ARRAY[1.1,1.2,1.3]::float8[],
@@ -222,9 +216,7 @@ INSERT INTO arrtest2 VALUES(
 );
 
 -- some more test data
--- TODO(neil) TEMP not supported.
--- CREATE TEMP TABLE arrtest_f (f0 int, f1 text, f2 float8);
-CREATE TABLE arrtest_f (f0 int, f1 text, f2 float8);
+CREATE TEMP TABLE arrtest_f (f0 int, f1 text, f2 float8);
 insert into arrtest_f values(1,'cat1',1.21);
 insert into arrtest_f values(2,'cat1',1.24);
 insert into arrtest_f values(3,'cat1',1.18);
@@ -235,9 +227,7 @@ insert into arrtest_f values(7,'cat2',1.26);
 insert into arrtest_f values(8,'cat2',1.32);
 insert into arrtest_f values(9,'cat2',1.30);
 
--- TODO(neil) TEMP not supported.
--- CREATE TEMP TABLE arrtest_i (f0 int, f1 text, f2 int);
-CREATE TABLE arrtest_i (f0 int, f1 text, f2 int);
+CREATE TEMP TABLE arrtest_i (f0 int, f1 text, f2 int);
 insert into arrtest_i values(1,'cat1',21);
 insert into arrtest_i values(2,'cat1',24);
 insert into arrtest_i values(3,'cat1',18);
@@ -387,25 +377,23 @@ select 33 = all ('{33,null,33}');
 SELECT -1 != ALL(ARRAY(SELECT NULLIF(g.i, 900) FROM generate_series(1,1000) g(i)));
 
 -- test indexes on arrays
--- TODO(neil) TEMP & UNIQUE not supported.
--- create temp table arr_tbl (f1 int[] unique);
--- create table arr_tbl (f1 int[]);
--- insert into arr_tbl values ('{1,2,3}');
--- insert into arr_tbl values ('{1,2}');
+create temp table arr_tbl (f1 int[] unique);
+insert into arr_tbl values ('{1,2,3}');
+insert into arr_tbl values ('{1,2}');
 -- failure expected:
--- insert into arr_tbl values ('{1,2,3}');
--- insert into arr_tbl values ('{2,3,4}');
--- insert into arr_tbl values ('{1,5,3}');
--- insert into arr_tbl values ('{1,2,10}');
+insert into arr_tbl values ('{1,2,3}');
+insert into arr_tbl values ('{2,3,4}');
+insert into arr_tbl values ('{1,5,3}');
+insert into arr_tbl values ('{1,2,10}');
 
--- set enable_seqscan to off;
--- set enable_bitmapscan to off;
--- select * from arr_tbl where f1 > '{1,2,3}' and f1 <= '{1,5,3}';
--- select * from arr_tbl where f1 >= '{1,2,3}' and f1 < '{1,5,3}';
+set enable_seqscan to off;
+set enable_bitmapscan to off;
+select * from arr_tbl where f1 > '{1,2,3}' and f1 <= '{1,5,3}';
+select * from arr_tbl where f1 >= '{1,2,3}' and f1 < '{1,5,3}';
 
 -- test ON CONFLICT DO UPDATE with arrays
--- TODO(neil) TEMP not supported.
--- create temp table arr_pk_tbl (pk int4 primary key, f1 int[]);
+-- TODO(jason) Change the below to `create temp table` when issue #1999 is
+-- resolved.
 create table arr_pk_tbl (pk int4 primary key, f1 int[]);
 insert into arr_pk_tbl values (1, '{1,2,3}');
 insert into arr_pk_tbl values (1, '{3,4,5}') on conflict (pk)
@@ -461,9 +449,7 @@ select '[0:1]={1.1,2.2}'::float8[];
 -- all of the above should be accepted
 
 -- tests for array aggregates
--- TODO(neil) TEMP not supported.
--- CREATE TEMP TABLE arraggtest ( f1 INT[], f2 TEXT[][], f3 FLOAT[]);
-CREATE TABLE arraggtest ( f1 INT[], f2 TEXT[][], f3 FLOAT[]);
+CREATE TEMP TABLE arraggtest ( f1 INT[], f2 TEXT[][], f3 FLOAT[]);
 
 INSERT INTO arraggtest (f1, f2, f3) VALUES
 ('{1,2,3,4}','{{grey,red},{blue,blue}}','{1.6, 0.0}');
@@ -489,169 +475,164 @@ SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
 
 -- A few simple tests for arrays of composite types
 
--- create type comptype as (f1 int, f2 text);
--- 
--- create table comptable (c1 comptype, c2 comptype[]);
--- 
--- -- XXX would like to not have to specify row() construct types here ...
--- insert into comptable
---   values (row(1,'foo'), array[row(2,'bar')::comptype, row(3,'baz')::comptype]);
--- 
--- -- check that implicitly named array type _comptype isn't a problem
--- create type _comptype as enum('fooey');
--- 
--- select * from comptable;
--- select c2[2].f2 from comptable;
--- 
--- drop type _comptype;
--- drop table comptable;
--- drop type comptype;
--- 
--- create or replace function unnest1(anyarray)
--- returns setof anyelement as $$
--- select $1[s] from generate_subscripts($1,1) g(s);
--- $$ language sql immutable;
--- 
--- create or replace function unnest2(anyarray)
--- returns setof anyelement as $$
--- select $1[s1][s2] from generate_subscripts($1,1) g1(s1),
---                    generate_subscripts($1,2) g2(s2);
--- $$ language sql immutable;
--- 
--- select * from unnest1(array[1,2,3]);
--- select * from unnest2(array[[1,2,3],[4,5,6]]);
--- 
--- drop function unnest1(anyarray);
--- drop function unnest2(anyarray);
--- 
--- select array_fill(null::integer, array[3,3],array[2,2]);
--- select array_fill(null::integer, array[3,3]);
--- select array_fill(null::text, array[3,3],array[2,2]);
--- select array_fill(null::text, array[3,3]);
--- select array_fill(7, array[3,3],array[2,2]);
--- select array_fill(7, array[3,3]);
--- select array_fill('juhu'::text, array[3,3],array[2,2]);
--- select array_fill('juhu'::text, array[3,3]);
--- select a, a = '{}' as is_eq, array_dims(a)
---   from (select array_fill(42, array[0]) as a) ss;
--- select a, a = '{}' as is_eq, array_dims(a)
---   from (select array_fill(42, '{}') as a) ss;
--- select a, a = '{}' as is_eq, array_dims(a)
---   from (select array_fill(42, '{}', '{}') as a) ss;
--- -- raise exception
--- select array_fill(1, null, array[2,2]);
--- select array_fill(1, array[2,2], null);
--- select array_fill(1, array[2,2], '{}');
--- select array_fill(1, array[3,3], array[1,1,1]);
--- select array_fill(1, array[1,2,null]);
--- select array_fill(1, array[[1,2],[3,4]]);
--- 
--- select string_to_array('1|2|3', '|');
--- select string_to_array('1|2|3|', '|');
--- select string_to_array('1||2|3||', '||');
--- select string_to_array('1|2|3', '');
--- select string_to_array('', '|');
--- select string_to_array('1|2|3', NULL);
--- select string_to_array(NULL, '|') IS NULL;
--- select string_to_array('abc', '');
--- select string_to_array('abc', '', 'abc');
--- select string_to_array('abc', ',');
--- select string_to_array('abc', ',', 'abc');
--- select string_to_array('1,2,3,4,,6', ',');
--- select string_to_array('1,2,3,4,,6', ',', '');
--- select string_to_array('1,2,3,4,*,6', ',', '*');
--- 
--- select array_to_string(NULL::int4[], ',') IS NULL;
--- select array_to_string('{}'::int4[], ',');
--- select array_to_string(array[1,2,3,4,NULL,6], ',');
--- select array_to_string(array[1,2,3,4,NULL,6], ',', '*');
--- select array_to_string(array[1,2,3,4,NULL,6], NULL);
--- select array_to_string(array[1,2,3,4,NULL,6], ',', NULL);
--- 
--- select array_to_string(string_to_array('1|2|3', '|'), '|');
--- 
--- select array_length(array[1,2,3], 1);
--- select array_length(array[[1,2,3], [4,5,6]], 0);
--- select array_length(array[[1,2,3], [4,5,6]], 1);
--- select array_length(array[[1,2,3], [4,5,6]], 2);
--- select array_length(array[[1,2,3], [4,5,6]], 3);
--- 
--- select cardinality(NULL::int[]);
--- select cardinality('{}'::int[]);
--- select cardinality(array[1,2,3]);
--- select cardinality('[2:4]={5,6,7}'::int[]);
--- select cardinality('{{1,2}}'::int[]);
--- select cardinality('{{1,2},{3,4},{5,6}}'::int[]);
--- select cardinality('{{{1,9},{5,6}},{{2,3},{3,4}}}'::int[]);
--- 
--- -- array_agg(anynonarray)
--- select array_agg(unique1) from (select unique1 from tenk1 where unique1 < 15 order by unique1) ss;
--- select array_agg(ten) from (select ten from tenk1 where unique1 < 15 order by unique1) ss;
--- select array_agg(nullif(ten, 4)) from (select ten from tenk1 where unique1 < 15 order by unique1) ss;
--- select array_agg(unique1) from tenk1 where unique1 < -15;
--- 
--- -- array_agg(anyarray)
--- select array_agg(ar)
---   from (values ('{1,2}'::int[]), ('{3,4}'::int[])) v(ar);
--- select array_agg(distinct ar order by ar desc)
---   from (select array[i / 2] from generate_series(1,10) a(i)) b(ar);
--- select array_agg(ar)
---   from (select array_agg(array[i, i+1, i-1])
---         from generate_series(1,2) a(i)) b(ar);
--- select array_agg(array[i+1.2, i+1.3, i+1.4]) from generate_series(1,3) g(i);
--- select array_agg(array['Hello', i::text]) from generate_series(9,11) g(i);
--- select array_agg(array[i, nullif(i, 3), i+1]) from generate_series(1,4) g(i);
--- -- errors
--- select array_agg('{}'::int[]) from generate_series(1,2);
--- select array_agg(null::int[]) from generate_series(1,2);
--- select array_agg(ar)
---   from (values ('{1,2}'::int[]), ('{3}'::int[])) v(ar);
--- 
--- select unnest(array[1,2,3]);
--- select * from unnest(array[1,2,3]);
--- select unnest(array[1,2,3,4.5]::float8[]);
--- select unnest(array[1,2,3,4.5]::numeric[]);
--- select unnest(array[1,2,3,null,4,null,null,5,6]);
--- select unnest(array[1,2,3,null,4,null,null,5,6]::text[]);
--- select abs(unnest(array[1,2,null,-3]));
--- select array_remove(array[1,2,2,3], 2);
--- select array_remove(array[1,2,2,3], 5);
--- select array_remove(array[1,NULL,NULL,3], NULL);
--- select array_remove(array['A','CC','D','C','RR'], 'RR');
--- select array_remove('{{1,2,2},{1,4,3}}', 2); -- not allowed
--- select array_remove(array['X','X','X'], 'X') = '{}';
--- select array_replace(array[1,2,5,4],5,3);
--- select array_replace(array[1,2,5,4],5,NULL);
--- select array_replace(array[1,2,NULL,4,NULL],NULL,5);
--- select array_replace(array['A','B','DD','B'],'B','CC');
--- select array_replace(array[1,NULL,3],NULL,NULL);
--- select array_replace(array['AB',NULL,'CDE'],NULL,'12');
--- 
--- -- array(select array-value ...)
--- select array(select array[i,i/2] from generate_series(1,5) i);
--- select array(select array['Hello', i::text] from generate_series(9,11) i);
--- 
--- -- Insert/update on a column that is array of composite
--- 
--- -- TODO(neil) TEMP not supported.
--- -- create temp table t1 (f1 int8_tbl[]);
--- create table t1 (f1 int8_tbl[]);
--- insert into t1 (f1[5].q1) values(42);
--- select * from t1;
--- update t1 set f1[5].q2 = 43;
--- select * from t1;
--- 
--- -- Check that arrays of composites are safely detoasted when needed
--- 
--- -- TODO(neil) TEMP not supported.
--- -- create temp table src (f1 text);
--- create table src (f1 text);
+create type comptype as (f1 int, f2 text);
+
+create table comptable (c1 comptype, c2 comptype[]);
+
+-- XXX would like to not have to specify row() construct types here ...
+insert into comptable
+  values (row(1,'foo'), array[row(2,'bar')::comptype, row(3,'baz')::comptype]);
+
+-- check that implicitly named array type _comptype isn't a problem
+create type _comptype as enum('fooey');
+
+select * from comptable;
+select c2[2].f2 from comptable;
+
+drop type _comptype;
+drop table comptable;
+drop type comptype;
+
+create or replace function unnest1(anyarray)
+returns setof anyelement as $$
+select $1[s] from generate_subscripts($1,1) g(s);
+$$ language sql immutable;
+
+create or replace function unnest2(anyarray)
+returns setof anyelement as $$
+select $1[s1][s2] from generate_subscripts($1,1) g1(s1),
+                   generate_subscripts($1,2) g2(s2);
+$$ language sql immutable;
+
+select * from unnest1(array[1,2,3]);
+select * from unnest2(array[[1,2,3],[4,5,6]]);
+
+drop function unnest1(anyarray);
+drop function unnest2(anyarray);
+
+select array_fill(null::integer, array[3,3],array[2,2]);
+select array_fill(null::integer, array[3,3]);
+select array_fill(null::text, array[3,3],array[2,2]);
+select array_fill(null::text, array[3,3]);
+select array_fill(7, array[3,3],array[2,2]);
+select array_fill(7, array[3,3]);
+select array_fill('juhu'::text, array[3,3],array[2,2]);
+select array_fill('juhu'::text, array[3,3]);
+select a, a = '{}' as is_eq, array_dims(a)
+  from (select array_fill(42, array[0]) as a) ss;
+select a, a = '{}' as is_eq, array_dims(a)
+  from (select array_fill(42, '{}') as a) ss;
+select a, a = '{}' as is_eq, array_dims(a)
+  from (select array_fill(42, '{}', '{}') as a) ss;
+-- raise exception
+select array_fill(1, null, array[2,2]);
+select array_fill(1, array[2,2], null);
+select array_fill(1, array[2,2], '{}');
+select array_fill(1, array[3,3], array[1,1,1]);
+select array_fill(1, array[1,2,null]);
+select array_fill(1, array[[1,2],[3,4]]);
+
+select string_to_array('1|2|3', '|');
+select string_to_array('1|2|3|', '|');
+select string_to_array('1||2|3||', '||');
+select string_to_array('1|2|3', '');
+select string_to_array('', '|');
+select string_to_array('1|2|3', NULL);
+select string_to_array(NULL, '|') IS NULL;
+select string_to_array('abc', '');
+select string_to_array('abc', '', 'abc');
+select string_to_array('abc', ',');
+select string_to_array('abc', ',', 'abc');
+select string_to_array('1,2,3,4,,6', ',');
+select string_to_array('1,2,3,4,,6', ',', '');
+select string_to_array('1,2,3,4,*,6', ',', '*');
+
+select array_to_string(NULL::int4[], ',') IS NULL;
+select array_to_string('{}'::int4[], ',');
+select array_to_string(array[1,2,3,4,NULL,6], ',');
+select array_to_string(array[1,2,3,4,NULL,6], ',', '*');
+select array_to_string(array[1,2,3,4,NULL,6], NULL);
+select array_to_string(array[1,2,3,4,NULL,6], ',', NULL);
+
+select array_to_string(string_to_array('1|2|3', '|'), '|');
+
+select array_length(array[1,2,3], 1);
+select array_length(array[[1,2,3], [4,5,6]], 0);
+select array_length(array[[1,2,3], [4,5,6]], 1);
+select array_length(array[[1,2,3], [4,5,6]], 2);
+select array_length(array[[1,2,3], [4,5,6]], 3);
+
+select cardinality(NULL::int[]);
+select cardinality('{}'::int[]);
+select cardinality(array[1,2,3]);
+select cardinality('[2:4]={5,6,7}'::int[]);
+select cardinality('{{1,2}}'::int[]);
+select cardinality('{{1,2},{3,4},{5,6}}'::int[]);
+select cardinality('{{{1,9},{5,6}},{{2,3},{3,4}}}'::int[]);
+
+-- array_agg(anynonarray)
+select array_agg(unique1) from (select unique1 from tenk1 where unique1 < 15 order by unique1) ss;
+select array_agg(ten) from (select ten from tenk1 where unique1 < 15 order by unique1) ss;
+select array_agg(nullif(ten, 4)) from (select ten from tenk1 where unique1 < 15 order by unique1) ss;
+select array_agg(unique1) from tenk1 where unique1 < -15;
+
+-- array_agg(anyarray)
+select array_agg(ar)
+  from (values ('{1,2}'::int[]), ('{3,4}'::int[])) v(ar);
+select array_agg(distinct ar order by ar desc)
+  from (select array[i / 2] from generate_series(1,10) a(i)) b(ar);
+select array_agg(ar)
+  from (select array_agg(array[i, i+1, i-1])
+        from generate_series(1,2) a(i)) b(ar);
+select array_agg(array[i+1.2, i+1.3, i+1.4]) from generate_series(1,3) g(i);
+select array_agg(array['Hello', i::text]) from generate_series(9,11) g(i);
+select array_agg(array[i, nullif(i, 3), i+1]) from generate_series(1,4) g(i);
+-- errors
+select array_agg('{}'::int[]) from generate_series(1,2);
+select array_agg(null::int[]) from generate_series(1,2);
+select array_agg(ar)
+  from (values ('{1,2}'::int[]), ('{3}'::int[])) v(ar);
+
+select unnest(array[1,2,3]);
+select * from unnest(array[1,2,3]);
+select unnest(array[1,2,3,4.5]::float8[]);
+select unnest(array[1,2,3,4.5]::numeric[]);
+select unnest(array[1,2,3,null,4,null,null,5,6]);
+select unnest(array[1,2,3,null,4,null,null,5,6]::text[]);
+select abs(unnest(array[1,2,null,-3]));
+select array_remove(array[1,2,2,3], 2);
+select array_remove(array[1,2,2,3], 5);
+select array_remove(array[1,NULL,NULL,3], NULL);
+select array_remove(array['A','CC','D','C','RR'], 'RR');
+select array_remove('{{1,2,2},{1,4,3}}', 2); -- not allowed
+select array_remove(array['X','X','X'], 'X') = '{}';
+select array_replace(array[1,2,5,4],5,3);
+select array_replace(array[1,2,5,4],5,NULL);
+select array_replace(array[1,2,NULL,4,NULL],NULL,5);
+select array_replace(array['A','B','DD','B'],'B','CC');
+select array_replace(array[1,NULL,3],NULL,NULL);
+select array_replace(array['AB',NULL,'CDE'],NULL,'12');
+
+-- array(select array-value ...)
+select array(select array[i,i/2] from generate_series(1,5) i);
+select array(select array['Hello', i::text] from generate_series(9,11) i);
+
+-- Insert/update on a column that is array of composite
+
+create temp table t1 (f1 int8_tbl[]);
+insert into t1 (f1[5].q1) values(42);
+select * from t1;
+update t1 set f1[5].q2 = 43;
+select * from t1;
+
+-- Check that arrays of composites are safely detoasted when needed
+
+-- TODO(jason): uncomment this section when issue #2003 is closed.
+-- create temp table src (f1 text);
 -- insert into src
 --   select string_agg(random()::text,'') from generate_series(1,10000);
 -- create type textandtext as (c1 text, c2 text);
--- -- TODO(neil) TEMP not supported.
--- -- create temp table dest (f1 textandtext[]);
--- create table dest (f1 textandtext[]);
+-- create temp table dest (f1 textandtext[]);
 -- insert into dest select array[row(f1,f1)::textandtext] from src;
 -- select length(md5((f1[1]).c2)) from dest;
 -- delete from src;
@@ -661,66 +642,68 @@ SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
 -- select length(md5((f1[1]).c2)) from dest;
 -- drop table dest;
 -- drop type textandtext;
--- 
--- -- Tests for polymorphic-array form of width_bucket()
--- 
--- -- this exercises the varwidth and float8 code paths
--- SELECT
---     op,
---     width_bucket(op::numeric, ARRAY[1, 3, 5, 10.0]::numeric[]) AS wb_n1,
---     width_bucket(op::numeric, ARRAY[0, 5.5, 9.99]::numeric[]) AS wb_n2,
---     width_bucket(op::numeric, ARRAY[-6, -5, 2.0]::numeric[]) AS wb_n3,
---     width_bucket(op::float8, ARRAY[1, 3, 5, 10.0]::float8[]) AS wb_f1,
---     width_bucket(op::float8, ARRAY[0, 5.5, 9.99]::float8[]) AS wb_f2,
---     width_bucket(op::float8, ARRAY[-6, -5, 2.0]::float8[]) AS wb_f3
--- FROM (VALUES
---   (-5.2),
---   (-0.0000000001),
---   (0.000000000001),
---   (1),
---   (1.99999999999999),
---   (2),
---   (2.00000000000001),
---   (3),
---   (4),
---   (4.5),
---   (5),
---   (5.5),
---   (6),
---   (7),
---   (8),
---   (9),
---   (9.99999999999999),
---   (10),
---   (10.0000000000001)
--- ) v(op);
--- 
--- -- ensure float8 path handles NaN properly
--- SELECT
---     op,
---     width_bucket(op, ARRAY[1, 3, 9, 'NaN', 'NaN']::float8[]) AS wb
--- FROM (VALUES
---   (-5.2::float8),
---   (4::float8),
---   (77::float8),
---   ('NaN'::float8)
--- ) v(op);
--- 
--- -- these exercise the generic fixed-width code path
--- SELECT
---     op,
---     width_bucket(op, ARRAY[1, 3, 5, 10]) AS wb_1
--- FROM generate_series(0,11) as op;
--- 
--- SELECT width_bucket(now(),
---                     array['yesterday', 'today', 'tomorrow']::timestamptz[]);
--- 
--- -- corner cases
--- SELECT width_bucket(5, ARRAY[3]);
--- SELECT width_bucket(5, '{}');
--- 
--- -- error cases
--- SELECT width_bucket('5'::text, ARRAY[3, 4]::integer[]);
--- SELECT width_bucket(5, ARRAY[3, 4, NULL]);
--- SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]]);
--- 
+
+-- Tests for polymorphic-array form of width_bucket()
+
+-- this exercises the varwidth and float8 code paths
+SELECT
+    op,
+    width_bucket(op::numeric, ARRAY[1, 3, 5, 10.0]::numeric[]) AS wb_n1,
+    width_bucket(op::numeric, ARRAY[0, 5.5, 9.99]::numeric[]) AS wb_n2,
+    width_bucket(op::numeric, ARRAY[-6, -5, 2.0]::numeric[]) AS wb_n3,
+    width_bucket(op::float8, ARRAY[1, 3, 5, 10.0]::float8[]) AS wb_f1,
+    width_bucket(op::float8, ARRAY[0, 5.5, 9.99]::float8[]) AS wb_f2,
+    width_bucket(op::float8, ARRAY[-6, -5, 2.0]::float8[]) AS wb_f3
+FROM (VALUES
+  (-5.2),
+  (-0.0000000001),
+  (0.000000000001),
+  (1),
+  (1.99999999999999),
+  (2),
+  (2.00000000000001),
+  (3),
+  (4),
+  (4.5),
+  (5),
+  (5.5),
+  (6),
+  (7),
+  (8),
+  (9),
+  (9.99999999999999),
+  (10),
+  (10.0000000000001)
+) v(op);
+
+-- ensure float8 path handles NaN properly
+SELECT
+    op,
+    width_bucket(op, ARRAY[1, 3, 9, 'NaN', 'NaN']::float8[]) AS wb
+FROM (VALUES
+  (-5.2::float8),
+  (4::float8),
+  (77::float8),
+  ('NaN'::float8)
+) v(op);
+
+-- these exercise the generic fixed-width code path
+SELECT
+    op,
+    width_bucket(op, ARRAY[1, 3, 5, 10]) AS wb_1
+FROM generate_series(0,11) as op;
+
+SELECT width_bucket(now(),
+                    array['yesterday', 'today', 'tomorrow']::timestamptz[]);
+
+-- corner cases
+SELECT width_bucket(5, ARRAY[3]);
+SELECT width_bucket(5, '{}');
+
+-- error cases
+SELECT width_bucket('5'::text, ARRAY[3, 4]::integer[]);
+SELECT width_bucket(5, ARRAY[3, 4, NULL]);
+SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]]);
+
+-- TODO(jason): remove when issue #1721 is closed or closing.
+DISCARD TEMP;

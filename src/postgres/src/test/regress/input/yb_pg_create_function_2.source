@@ -61,7 +61,6 @@ CREATE FUNCTION equipment_named_ambiguous_2b(hobby text)
    AS 'select * from equipment_r where equipment_r.hobby = hobby'
    LANGUAGE SQL;
 
--- TODO requires 'CREATE TYPE' which is not supported.
 CREATE FUNCTION pt_in_widget(point, widget)
    RETURNS bool
    AS '@libdir@/regress@DLSUFFIX@'

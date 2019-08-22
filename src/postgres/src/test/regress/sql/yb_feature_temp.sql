@@ -297,3 +297,6 @@ DELETE FROM temptest WHERE k = 4;
 SELECT * FROM temptest WHERE k IN (1, 4) ORDER BY k;
 
 DROP TABLE temptest;
+
+-- TODO(jason): remove when issue #1721 is closed or closing.
+DISCARD TEMP;
