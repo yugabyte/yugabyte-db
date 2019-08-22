@@ -87,8 +87,8 @@ Make the changes locally and test them on the browser.
 
 Once you are satisfied with your changes, commit them to your local branch. You can do this by running the following command:
 ```
-# Add all files you have made changes to.
-$ git add -A
+# Add files you have made changes to.
+$ git add ...
 
 # Commit these changes.
 $ git commit
