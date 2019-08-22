@@ -195,6 +195,10 @@ class MiniCluster : public MiniClusterBase {
   CHECKED_STATUS WaitForTabletServerCount(int count,
                                   std::vector<std::shared_ptr<master::TSDescriptor> >* descs);
 
+  uint16_t AllocateFreePort() {
+    return port_picker_.AllocateFreePort();
+  }
+
  private:
 
   enum {
@@ -279,6 +283,8 @@ int NumRunningFlushes(MiniCluster* cluster);
 
 Result<scoped_refptr<master::TableInfo>> FindTable(
     MiniCluster* cluster, const client::YBTableName& table_name);
+
+CHECKED_STATUS WaitForInitDb(MiniCluster* cluster);
 
 }  // namespace yb
 

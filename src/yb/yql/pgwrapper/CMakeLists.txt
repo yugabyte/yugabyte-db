@@ -32,6 +32,7 @@ set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_ba
    ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(pg_wrapper-test)
 ADD_YB_TEST(pg_libpq-test)
+ADD_YB_TEST(pg_mini-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

@@ -64,7 +64,7 @@
 #include "fe_utils/connect.h"
 #include "fe_utils/string_utils.h"
 
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 
 typedef struct
 {

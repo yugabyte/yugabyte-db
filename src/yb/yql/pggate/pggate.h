@@ -24,7 +24,7 @@
 
 #include "yb/util/metrics.h"
 #include "yb/util/mem_tracker.h"
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"

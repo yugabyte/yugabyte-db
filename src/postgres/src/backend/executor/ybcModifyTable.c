@@ -318,7 +318,7 @@ static void YBCHandleInsertStatus(YBCStatus status, Relation rel, YBCPgStatement
 
 	HandleYBStatus(YBCPgDeleteStatement(stmt));
 
-	if (YBCStatusIsAlreadyPresent(status))
+	if (YBCStatusIsDuplicateKey(status))
 	{
 		char *constraint;
 

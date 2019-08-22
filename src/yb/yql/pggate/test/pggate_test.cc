@@ -35,13 +35,7 @@ PggateTest::~PggateTest() {
 //--------------------------------------------------------------------------------------------------
 // Error handling routines.
 void PggateTest::CheckYBCStatus(YBCStatus status, const char* file_name, int line_number) {
-  if (!status) {
-    return;
-  }
-
-  auto code = static_cast<Status::Code>(status->code);
-  Status s(code, file_name, line_number, status->msg);
-  CHECK_OK(s);
+  CHECK_OK(Status(status, AddRef::kTrue));
 }
 
 void *PggateTestAlloc(size_t bytes) {

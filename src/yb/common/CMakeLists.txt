@@ -119,7 +119,10 @@ set(COMMON_SRCS
   ql_expr.cc
   common_flags.cc
   pgsql_resultset.cc
-  roles_permissions.cc)
+  roles_permissions.cc
+  ybc_util.cc
+  ybc-internal.cc
+  )
 
 # Workaround for clang bug https://llvm.org/bugs/show_bug.cgi?id=23757
 # in which it incorrectly optimizes row_key-util.cc and causes incorrect results.
