@@ -33,9 +33,9 @@
 						{{ $latestUrl := path.Join "latest" (after 2 $urlArray) }}
 						{{ $latestUrl = add (add "/" $latestUrl) "/" }}
 						{{ if ne (index $urlArray 1) "latest" }}
-						<div class="admonition note">
-							<p class="admonition-title">Note</p>
-							Click <a href="{{ $latestUrl }}">here</a> to go to documentation for the latest version of YugaByte DB.
+						<div class="admonition warning">
+							<p class="admonition-title">Attention</p>
+							This page is from an older version. Click <a href="{{ $latestUrl }}">here</a> to go the latest version.
 						</div>
 						{{ end }}
 						<br />
