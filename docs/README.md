@@ -119,7 +119,7 @@ In the examples below, the subdirectory is `docs/content/latest/api/ysql` and th
 
     _Example: for the YSQL `COPY` command the source file is `./content/latest/api/ysql/commands/cmd_copy.md`._
 
-3. Inside of the syntax_resources directory, create the following two empty files:
+3. Inside of the `syntax_resources/commands` directory, create the following two **empty** files:
     - `<name>.grammar.md`
     - `<name>.diagram.md`
 
@@ -145,12 +145,14 @@ In the examples below, the subdirectory is `docs/content/latest/api/ysql` and th
     java -jar rrdiagram.jar <input-file.ebnf> <output-folder>
     ```
 
+    `<output-folder>` should end in `syntax_resources`, not `commands`, to get helpful `WARNING`s.
+
     _Example: To generate the syntax diagrams for the YSQL API, run the following command:_
-    ```
+    ```bash
     java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf content/latest/api/ysql/syntax_resources/
     ```
 
-    All of the Markdown (`.md`) files in the `./ysql/syntax_resources` directory will be generated as needed.
+    All of the Markdown (`.md`) files in the `./ysql/syntax_resources/commands` directory will be generated as needed.
 
     _Note: To see help, run `java -jar rrdiagram.jar` (without arguments)._
 
