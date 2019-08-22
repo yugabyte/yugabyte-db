@@ -83,6 +83,12 @@ You can now share the following link: `http://<YOUR_IP_OR_HOSTNAME>:1313`
 
 ## Step 3. Make changes
 
+It is suggested that you create and checkout a feature branch off `master` for your changes:
+```
+$ git branch <feature branch name> master
+$ git checkout <feature branch name>
+```
+
 Make the changes locally and test them on the browser.
 
 Once you are satisfied with your changes, commit them to your local branch. You can do this by running the following command:
