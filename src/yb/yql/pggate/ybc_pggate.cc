@@ -12,7 +12,7 @@
 
 #include <cds/init.h>
 
-#include "yb/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
 #include "yb/util/atomic.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"

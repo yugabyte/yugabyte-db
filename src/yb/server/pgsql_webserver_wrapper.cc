@@ -16,7 +16,7 @@
 #include "yb/server/pgsql_webserver_wrapper.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/gutil/map-util.h"
-#include "yb/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
 #include "yb/util/metrics.h"
 
 DECLARE_string(metric_node_name);

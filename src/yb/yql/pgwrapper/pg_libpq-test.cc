@@ -23,7 +23,6 @@ using namespace std::literals;
 
 DECLARE_int64(external_mini_cluster_max_log_bytes);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
-DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(transaction_not_found);

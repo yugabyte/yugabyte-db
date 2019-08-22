@@ -20,7 +20,7 @@ using std::atomic_ullong;
 #include <stdatomic.h>
 #endif
 
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 
 #ifdef __cplusplus
 extern "C" {

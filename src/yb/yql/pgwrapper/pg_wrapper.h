@@ -60,6 +60,8 @@ class PgWrapper {
 
   CHECKED_STATUS Start();
 
+  void Kill();
+
   // Calls initdb if the data directory does not exist. This is intended to use during tablet server
   // initialization.
   CHECKED_STATUS InitDbLocalOnlyIfNeeded();

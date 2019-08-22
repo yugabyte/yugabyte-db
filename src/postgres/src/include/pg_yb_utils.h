@@ -29,7 +29,7 @@
 #include "utils/relcache.h"
 
 #include "common/pg_yb_common.h"
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "access/reloptions.h"
 

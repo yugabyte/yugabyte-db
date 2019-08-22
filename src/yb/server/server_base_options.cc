@@ -130,8 +130,18 @@ MasterAddressesPtr ServerBaseOptions::GetMasterAddresses() const {
 }
 
 template <class It>
-Result<HostPort> MasterHostPortFromIterators(const It& begin, const It& end) {
-  return HostPort::FromString(std::string(begin, end), master::kMasterDefaultPort);
+Result<std::vector<HostPort>> MasterHostPortsFromIterators(It begin, const It& end) {
+  std::vector<HostPort> result;
+  for (;;) {
+    auto split = std::find(begin, end, ',');
+    result.push_back(VERIFY_RESULT(HostPort::FromString(
+        std::string(begin, split), master::kMasterDefaultPort)));
+    if (split == end) {
+      break;
+    }
+    begin = ++split;
+  }
+  return result;
 }
 
 Result<MasterAddresses> ParseMasterAddresses(const std::string& source) {
@@ -148,7 +158,7 @@ Result<MasterAddresses> ParseMasterAddresses(const std::string& source) {
       if (token_end == end) {
         return STATUS_FORMAT(InvalidArgument, "'{' is not terminated in $0", source);
       }
-      result.push_back({VERIFY_RESULT(MasterHostPortFromIterators(i, token_end))});
+      result.push_back(VERIFY_RESULT(MasterHostPortsFromIterators(i, token_end)));
       i = token_end;
       ++i;
       token_begin = i;
@@ -160,13 +170,13 @@ Result<MasterAddresses> ParseMasterAddresses(const std::string& source) {
       }
       ++token_begin;
     } else if (*i == ',') {
-      result.push_back({VERIFY_RESULT(MasterHostPortFromIterators(token_begin, i))});
+      result.push_back(VERIFY_RESULT(MasterHostPortsFromIterators(token_begin, i)));
       token_begin = i;
       ++token_begin;
     }
   }
   if (token_begin != end) {
-    result.push_back({VERIFY_RESULT(MasterHostPortFromIterators(token_begin, end))});
+    result.push_back(VERIFY_RESULT(MasterHostPortsFromIterators(token_begin, end)));
   }
   return std::move(result);
 }

@@ -13,8 +13,8 @@
 // C wrappers around some YB utilities. Suitable for inclusion into C codebases such as our modified
 // version of PostgreSQL.
 
-#ifndef YB_UTIL_YBC_UTIL_H
-#define YB_UTIL_YBC_UTIL_H
+#ifndef YB_COMMON_YBC_UTIL_H
+#define YB_COMMON_YBC_UTIL_H
 
 #include <stddef.h>
 
@@ -25,18 +25,17 @@ struct varlena;
 
 #endif
 
-typedef struct YBCStatusStruct {
-  int code;
-  char msg[0];
-} YBCStatusStruct;
-
 typedef struct YBCStatusStruct* YBCStatus;
 
 extern YBCStatus YBCStatusOK;
 bool YBCStatusIsOK(YBCStatus s);
 bool YBCStatusIsNotFound(YBCStatus s);
-bool YBCStatusIsAlreadyPresent(YBCStatus s);
+bool YBCStatusIsDuplicateKey(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);
+
+size_t YBCStatusMessageLen(YBCStatus s);
+const char* YBCStatusMessageBegin(YBCStatus s);
+const char* YBCStatusCodeAsCString(YBCStatus s);
 
 #define CHECKED_YBCSTATUS __attribute__ ((warn_unused_result)) YBCStatus
 
@@ -106,4 +105,4 @@ const char* YBCGetStackTrace();
 } // extern "C"
 #endif
 
-#endif  // YB_UTIL_YBC_UTIL_H
+#endif  // YB_COMMON_YBC_UTIL_H

@@ -10,11 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 
 #include <stdarg.h>
 
-#include "yb/util/ybc-internal.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ybc-internal.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/init.h"
 #include "yb/util/version_info.h"
@@ -79,20 +81,62 @@ Status InitInternal(const char* argv0) {
 extern "C" {
 
 YBCStatus YBCStatus_OK = nullptr;
+
+// Wraps Status object created by YBCStatus.
+// Uses trick with AddRef::kFalse and DetachStruct, to avoid incrementing and decrementing
+// ref counter.
+class StatusWrapper {
+ public:
+  explicit StatusWrapper(YBCStatus s) : status_(s, AddRef::kFalse) {}
+
+  ~StatusWrapper() {
+    status_.DetachStruct();
+  }
+
+  Status* operator->() {
+    return &status_;
+  }
+
+  Status& operator*() {
+    return status_;
+  }
+
+ private:
+  Status status_;
+};
+
 bool YBCStatusIsOK(YBCStatus s) {
-  return (s == nullptr || s->code == Status::Code::kOk);
+  return StatusWrapper(s)->IsOk();
 }
 
 bool YBCStatusIsNotFound(YBCStatus s) {
-  return (s->code == Status::Code::kNotFound);
+  return StatusWrapper(s)->IsNotFound();
 }
 
-bool YBCStatusIsAlreadyPresent(YBCStatus s) {
-  return (s->code == Status::Code::kAlreadyPresent);
+bool IsQLError(YBCStatus s, PgsqlResponsePB::RequestStatus ec) {
+  StatusWrapper status(s);
+  return status->IsQLError() &&
+         static_cast<PgsqlResponsePB::RequestStatus>(status->error_code()) == ec;
+}
+
+bool YBCStatusIsDuplicateKey(YBCStatus s) {
+  return IsQLError(s, PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
 }
 
 void YBCFreeStatus(YBCStatus s) {
   FreeYBCStatus(s);
+}
+
+size_t YBCStatusMessageLen(YBCStatus s) {
+  return StatusWrapper(s)->message().size();
+}
+
+const char* YBCStatusMessageBegin(YBCStatus s) {
+  return StatusWrapper(s)->message().cdata();
+}
+
+const char* YBCStatusCodeAsCString(YBCStatus s) {
+  return StatusWrapper(s)->CodeAsCString();
 }
 
 YBCStatus YBCInit(const char* argv0,
