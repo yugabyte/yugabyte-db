@@ -3,6 +3,7 @@
 var path = require('path');
 var srcPath = path.resolve(__dirname, './src');
 var eslintConfigPath = path.resolve(__dirname, '.eslintrc.yml');
+const HtmlWebpackPlugin = require("html-webpack-plugin");
 
 const ExtractTextPlugin = require("extract-text-webpack-plugin");
 
@@ -17,6 +18,11 @@ const ExtractTextPlugin = require("extract-text-webpack-plugin");
 //     includePaths: [path.resolve(__dirname, "./src")]
 //   }
 // }
+
+// get git info from command line
+var commitHash = require('child_process')
+  .execSync('git rev-parse HEAD')
+  .toString().trim();
 
 function loaderMatch(matchString) {
   return function (conf) {
@@ -82,6 +88,13 @@ function rewireSass(config, env) {
 
 module.exports = function override(config, env) {
   config = rewireSass(config, env);
+
+  config.plugins.push(
+    new HtmlWebpackPlugin({
+      template: 'public/index.html',
+      version: commitHash
+    })
+  );
 
   if (!config.resolve) config.resolve = {};
   if (!config.resolve.modules) config.resolve.modules = [];
