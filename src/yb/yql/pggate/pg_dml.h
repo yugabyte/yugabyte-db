@@ -46,7 +46,9 @@ class PgDml : public PgStatement {
 
   // Bind a column with an expression.
   CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
-  CHECKED_STATUS BindIntervalColumn(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end);
+  CHECKED_STATUS BindColumnCondEq(int attr_num, PgExpr *attr_value);
+  CHECKED_STATUS BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end);
+  CHECKED_STATUS BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
 
   // Assign an expression to a column.
   CHECKED_STATUS AssignColumn(int attnum, PgExpr *attr_value);

@@ -125,7 +125,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   CHECK_YBC_STATUS(YBCTestNewConstantInt8Op(pg_stmt, A, false, &expr_r1_A, true /* is_gt */));
   YBCPgExpr expr_r1_B;
   CHECK_YBC_STATUS(YBCTestNewConstantInt8Op(pg_stmt, B, false, &expr_r1_B, false /* is_gt */));
-  CHECK_YBC_STATUS(YBCPgDmlBindIntervalColumn(pg_stmt, 2, expr_r1_A, expr_r1_B));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumnCondBetween(pg_stmt, 2, expr_r1_A, expr_r1_B));
 
   // Execute select statement.
   YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
@@ -192,7 +192,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_id));
   expr_r1_A = nullptr;
   CHECK_YBC_STATUS(YBCTestNewConstantInt8Op(pg_stmt, A, false, &expr_r1_A, true /* is_gt */));
-  CHECK_YBC_STATUS(YBCPgDmlBindIntervalColumn(pg_stmt, 2, expr_r1_A, nullptr));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumnCondBetween(pg_stmt, 2, expr_r1_A, nullptr));
 
   // Execute select statement.
   YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
@@ -258,7 +258,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_id));
   expr_r1_B = nullptr;
   CHECK_YBC_STATUS(YBCTestNewConstantInt8Op(pg_stmt, B, false, &expr_r1_B, false /* is_gt */));
-  CHECK_YBC_STATUS(YBCPgDmlBindIntervalColumn(pg_stmt, 2, nullptr, expr_r1_B));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumnCondBetween(pg_stmt, 2, nullptr, expr_r1_B));
 
   // Execute select statement.
   YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
@@ -326,7 +326,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   CHECK_YBC_STATUS(YBCTestNewConstantInt8Op(pg_stmt, A, false, &expr_r1_A, true /* is_gt */));
   expr_r1_B = nullptr;
   CHECK_YBC_STATUS(YBCTestNewConstantInt8Op(pg_stmt, B, false, &expr_r1_B, false /* is_gt */));
-  CHECK_YBC_STATUS(YBCPgDmlBindIntervalColumn(pg_stmt, 2, expr_r1_A, expr_r1_B));
+  CHECK_YBC_STATUS(YBCPgDmlBindColumnCondBetween(pg_stmt, 2, expr_r1_A, expr_r1_B));
 
   // Execute select statement.
   YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);

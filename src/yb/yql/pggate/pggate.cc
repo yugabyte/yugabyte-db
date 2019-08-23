@@ -569,9 +569,18 @@ Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
 
-Status PgApiImpl::DmlBindIntervalColumn(PgStatement *handle, int attr_num, PgExpr *attr_value,
+Status PgApiImpl::DmlBindColumnCondEq(PgStatement *handle, int attr_num, PgExpr *attr_value) {
+  return down_cast<PgSelect*>(handle)->BindColumnCondEq(attr_num, attr_value);
+}
+
+Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num, PgExpr *attr_value,
     PgExpr *attr_value_end) {
-  return down_cast<PgSelect*>(handle)->BindIntervalColumn(attr_num, attr_value, attr_value_end);
+  return down_cast<PgSelect*>(handle)->BindColumnCondBetween(attr_num, attr_value, attr_value_end);
+}
+
+Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, int attr_num, int n_attr_values,
+    PgExpr **attr_values) {
+  return down_cast<PgSelect*>(handle)->BindColumnCondIn(attr_num, n_attr_values, attr_values);
 }
 
 Status PgApiImpl::DmlBindIndexColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {

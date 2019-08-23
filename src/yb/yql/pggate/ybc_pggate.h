@@ -258,8 +258,11 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 //     contain bind-variables (placeholders) and contants whose values can be updated for each
 //     execution of the same allocated statement.
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
-YBCStatus YBCPgDmlBindIntervalColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
+YBCStatus YBCPgDmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
     YBCPgExpr attr_value_end);
+YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
+    YBCPgExpr *attr_values);
 YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
 // API for SET clause.
