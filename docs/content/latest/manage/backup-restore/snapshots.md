@@ -1,41 +1,70 @@
 ``---
-title: Backing Up Data using Snapshot Api
-linkTitle: Backing Up Data using Snapshot Api
-description: Backing Up Data using Snapshot Api
+title: Backing Up Data using Snapshots
+linkTitle: Backing Up Data using Snapshots
+description: Backing Up Data using Snapshots
 image: /images/section_icons/manage/enterprise.png
-headcontent: Backing up data using Snapshot Api in YugaByte DB.
+headcontent: Backing up data using Snapshots
+aliases:
+  - manage/backup-restore/snapshots
+
 menu:
-  v1.2:
-    identifier: manage-backup-restore-backing-up-data-snapshot
-    parent: manage-backup-restore-snapshot
-    weight: 703
+  latest:
+    identifier: manage-change-cluster-config
+    parent: manage/backup-restore
+    weight: 704
 ---
 
 This page covers backups for YugaByte DB using snapshots. Here are some points to keep in mind.
 
-- Distributed backups using snapshots notes
+- Distributed backups using snapshots
   - Massively parallel, efficient for very large data sets
+  - Snapshot does a rocksdb flush and hardlinks the files in a `.snapshots` directory on each tablet
   - Snapshots are not transactional across the whole table but only on each tablet [#2086](https://github.com/YugaByte/yugabyte-db/issues/2086)
   - Multi table transactional snapshot is in the roadmap [#2084](https://github.com/YugaByte/yugabyte-db/issues/2084) 
   - Snapshoting is broken in YSQL [#2083](https://github.com/YugaByte/yugabyte-db/issues/2083)
   - The platform edition (enterprise) automates all this for you
 
+### Example scenario tutorial
 
-In this tutorial we'll be using YCQL but the same apis are used in YSQL.
+In this tutorial we'll be using YCQL but the same apis are used in YSQL. 
+1. We will create a single-node cluster
+2. Insert data
+3. Make a snapshot
+4. Destroy the cluster & create a different cluster(3 replicas)
+5. Restore the snapshot
+6. Verifying the data and deleting the snapshot
 
-## Step 0: Create a 1=node local cluster
+#### Step 1: Create a 1=node local cluster
 Read {{< ref "../../quick-start/create-local-cluster.md" >}} how to quickstart a a local cluster.
 
-`./bin/yb-ctl create`
+```
+$ ./bin/yb-ctl create
+Creating cluster.
+Waiting for cluster to be ready.
+----------------------------------------------------------------------------------------------------
+| Node Count: 1 | Replication Factor: 1                                                            |
+----------------------------------------------------------------------------------------------------
+| JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
+| YSQL Shell          : bin/ysqlsh                                                                 |
+| YCQL Shell          : bin/cqlsh                                                                  |
+| YEDIS Shell         : bin/redis-cli                                                              |
+| Web UI              : http://127.0.0.1:7000/                                                     |
+| Cluster Data        : /home/guru/yugabyte-data                                                   |
+----------------------------------------------------------------------------------------------------
+
+For more info, please use: yb-ctl status
+```
 
 See {{< ref "../../admin/yb-ctl.md" >}} for yb-ctl reference
 
-## Step 1: Creating a table with data
+### Step 2: Creating a table with data
 Read {{< ref "/api/ycql/quick-start.md" >}} for a quick start on YCQL api.
 
 Log into cqlsh. 
 
-```$ ./bin/cqlsh```
+```
+$ ./bin/cqlsh
+```
 
 Create a keyspace, table & insert test data and verify we have data in the db by doing a simple select:
 ```
@@ -52,7 +81,7 @@ cqlsh> SELECT * FROM ydb.test_tb;
 
 ```
 
-## Step 2: Creating a snapshot
+### Step 3: Creating a snapshot
 
 Create a snapshot from `yb-admin` binary:
 
@@ -65,7 +94,6 @@ Flushing complete: SUCCESS
 Started snapshot creation: 4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
-The snapshot does a rocksdb flush and hardlinks the files in a snapshots folder.
 We can see when it finishes by listing snapshots:
 
 ```
@@ -74,7 +102,7 @@ Snapshot UUID                    	State
 4963ed18fc1e4f1ba38c8fcf4058b295 	COMPLETE
 ```
 
-## Step 3: Exporting the snapshot
+### Step 3.1: Exporting the snapshot
 
 First we need to export a meta data file that describes the snapshot. 
 
@@ -100,22 +128,11 @@ have to use a script that copies all data. The filepath structure is:
 * `<snapshot_id>` there is a directory for each snapshot since you can have multiple completed snapshots on each server
 
 When snapshoting a multi-node cluster, we need to go into each node and copy 
-the folders of ONLY the lead tablets on that node.
+the folders of ONLY the lead tablets on that node. No need to keep a copy for each replica, since each tablet will 
+have the same data.
 
 
-## Step 4: Deleting data and restoring a snapshot
-First we delete the row from the table and verify it's no longer there.
-```
-cqlsh> DELETE FROM ydb.test_tb WHERE user_id=5;
-cqlsh> SELECT * FROM ydb.test_tb;
-
- user_id
----------
-
-(0 rows)
-```
-
-## Step 5: Copying snapshot data to another directory
+### Step 3.2: Copying snapshot data to another directory
 
 First we need to get the `table_id` UUID that we're snapshoting. We can get this in 
 the WEB UI [http://127.0.0.1:7000/tables](http://127.0.0.1:7000/tables) under "User Tables".
@@ -133,13 +150,37 @@ Using this information we can construct the full path of all directories where s
 
 We can create a small script to manually copy/move the folders to a backup directory/filesystem or external storage.
 
+### Step 4: Destroying cluster and creating a new one
+First we destroy the cluster. 
+```
+$ ./bin/yb-ctl destroy
+Destroying cluster.
+```
+And spin up a new one with 3 nodes in replicated setup.
 
-## Step 6: Triggering snapshot import
-Use a script to move the `.snapshot` folders to the new cluster. Make sure they are in every replica server and not just the leaders for the tablet. 
-This way each node will restore by just reading from the local filesystem
+```
+./bin/yb-ctl --rf 3 create
+Creating cluster.
+Waiting for cluster to be ready.
+----------------------------------------------------------------------------------------------------
+| Node Count: 3 | Replication Factor: 3                                                            |
+----------------------------------------------------------------------------------------------------
+| JDBC                : postgresql://postgres@127.0.0.1:5433                                       |
+| YSQL Shell          : bin/ysqlsh                                                                 |
+| YCQL Shell          : bin/cqlsh                                                                  |
+| YEDIS Shell         : bin/redis-cli                                                              |
+| Web UI              : http://127.0.0.1:7000/                                                     |
+| Cluster Data        : /home/guru/yugabyte-data                                                   |
+----------------------------------------------------------------------------------------------------
+
+For more info, please use: yb-ctl status
+```
+{{< note title="Tip" >}}
+Make sure to get the master ip from `$ ./bin/yb-ctl status` since we have multiple nodes on different ips
+{{< /note >}}
+
+### Step 5: Triggering snapshot import
 First we need to import the snapshot file into yugabyte.
-
-
 ```
 $ ./bin/yb-admin import_snapshot test_tb.snapshot ydb test_tb
 Read snapshot meta file test_tb.snapshot
@@ -155,8 +196,22 @@ Tablet 1         	e509cf8eedba410ba3b60c7e9138d479 	e509cf8eedba410ba3b60c7e9138
 Snapshot         	4963ed18fc1e4f1ba38c8fcf4058b295 	49b539f60f7d493794132c2fd76e2e81
 ```
 
-We get the New ID of the snapshot. Then we can use this id to restore it:
+After importing the `metadata file` we see some changes:
+ 
+1. `Old ID` and `New ID` for table and tablets.
+2. Snapshot has changed the `id` so we need to use the new one when restoring or deleting.
+3. `table_id` and `tablet_id` have chaged so we have a different paths from previously
+4. Each `tablet_id` has changed, so we have different `tablet-<tablet_id>` directories.
+5. When restoring we have to use the new IDs to get the right paths to move data.
 
+Using these new IDs, we can restore the previous `.snapshot` folders to the new paths. 
+
+{{< note title="Tip" >}}
+For each tablet we have to copy the snapshots folder on all replicas.
+{{< /note >}}
+
+
+We get the New ID of the snapshot. Then we can use this id to restore it:
 ```
 $ ./bin/yb-admin restore_snapshot 49b539f60f7d493794132c2fd76e2e81
 Started restoring snapshot: 49b539f60f7d493794132c2fd76e2e81
@@ -168,7 +223,12 @@ Snapshot UUID                    	State
 49b539f60f7d493794132c2fd76e2e81 	COMPLETE
 ```
 
-Verifying we have the same data as previously:
+### Step 6: Verifying the data
+
+```
+$ ./bin/cqlsh
+```
+
 ```
 cqlsh> SELECT * FROM ydb.test_tb;
 
@@ -177,45 +237,11 @@ cqlsh> SELECT * FROM ydb.test_tb;
        5
 
 ```
-
-At last we can delete the snapshot so we can free disk space if no longer need it.
-
+Finally we can delete the snapshot so we can free disk space if no longer need it.
 ```
 $ ./bin/yb-admin delete_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295
 Deleted snapshot: 4963ed18fc1e4f1ba38c8fcf4058b295
 ```
 
-
- 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#cassandra" class="nav-link active" id="cassandra-tab" data-toggle="tab" role="tab" aria-controls="cassandra" aria-selected="true">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="cassandra" class="tab-pane fade show active" role="tabpanel" aria-labelledby="cassandra-tab">
-    {{% includeMarkdown "ycql/backing-up-data.md" /%}}
-  </div>
-</div>
-
-
-
-
+This was a guide on how snapshoting works on Yugabyte. While some manual steps need to be followed, all of this
+is automated in Yugabyte Platform and Yugabyte Cloud.
