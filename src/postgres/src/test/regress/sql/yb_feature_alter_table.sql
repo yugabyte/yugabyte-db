@@ -240,3 +240,37 @@ alter table def_test alter column c3 set default 30;
 --drop view def_view_test;
 drop table def_test;
 
+-- test ADD COLUMN IF NOT EXISTS
+CREATE TABLE test_add_column(c1 integer);
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer;
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer; -- fail because c2 already exists
+ALTER TABLE ONLY test_add_column
+	ADD COLUMN c2 integer; -- fail because c2 already exists
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
+ALTER TABLE ONLY test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer, -- fail because c2 already exists
+	ADD COLUMN c3 integer;
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN c3 integer; -- fail because c3 already exists
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN IF NOT EXISTS c3 integer; -- skipping because c3 already exists
+\d test_add_column
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN IF NOT EXISTS c3 integer, -- skipping because c3 already exists
+	ADD COLUMN c4 integer;
+\d test_add_column
+DROP TABLE test_add_column;

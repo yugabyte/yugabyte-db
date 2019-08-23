@@ -3064,6 +3064,30 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 				{
 					ColumnDef  *def = castNode(ColumnDef, cmd->def);
 
+					/*
+					 * Report an error for constraint types which YB does not yet support in
+					 * ALTER TABLE ... ADD COLUMN statements.
+					 */
+					ListCell *clist;
+					foreach(clist, def->constraints)
+					{
+						Constraint *constraint = lfirst_node(Constraint, clist);
+
+						switch (constraint->contype)
+						{
+							case CONSTR_DEFAULT:
+							case CONSTR_IDENTITY:
+							case CONSTR_PRIMARY:
+							case CONSTR_UNIQUE:
+								ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+											errmsg("This ALTER TABLE command is not yet supported.")));
+								break;
+
+							default:
+								break;
+						}
+					}
+
 					transformColumnDefinition(&cxt, def);
 
 					/*
