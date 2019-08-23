@@ -317,6 +317,8 @@ public class TestPgInequality extends BasePgSQLTest {
     int riDelta, rsDelta, A, B, C, D, expectedRowCount;
     String CTmp, DTmp;
 
+    // Inequality only -----------------------------------------------------------------------------
+
     // A < ri < B.
     riDelta = 1;
     A = riMax / 2;
@@ -352,6 +354,136 @@ public class TestPgInequality extends BasePgSQLTest {
         "SELECT * FROM %s WHERE h = %d AND ri > %d AND ri < %d AND rs > '%s' AND rs < '%s'",
         tableName, h, A, B, CTmp, DTmp);
     expectedRowCount = riDelta * rsDelta;
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    assertEquals(expectedRowCount, 100);
+
+    // In only -------------------------------------------------------------------------------------
+
+    // IN scans that should return 100 rows each.
+
+    String AtoB, CtoD;
+
+    // ri IN {A ... B}.
+    riDelta = 1;
+    A = riMax / 2;
+    B = A + riDelta + 1;
+    AtoB = String.format("%d", A + 1);
+    for (int i = A + 2; i < B; i++) {
+      AtoB += String.format(",%d", i);
+    }
+    query = String.format("SELECT * FROM %s WHERE h = %d AND ri IN (%s)", tableName, h, AtoB);
+    expectedRowCount = riDelta * rsMax;
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    assertEquals(expectedRowCount, 100);
+
+    // rs IN {C ... D}.
+    rsDelta = 2;
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CtoD = String.format("'range_%d'", rsBase + C + 1);
+    for (int i = C + 2; i < D; i++) {
+      CtoD += String.format(",'range_%d'", rsBase + i);
+    }
+    query = String.format("SELECT * FROM %s WHERE h = %d AND rs IN (%s)", tableName, h, CtoD);
+    expectedRowCount = riMax * rsDelta;
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    assertEquals(expectedRowCount, 100);
+
+    // ri IN {A ... B}    AND    rs IN {C ... D}.
+    riDelta = 10;
+    rsDelta = 10;
+    A = riMax / 2;
+    B = A + riDelta + 1;
+    AtoB = String.format("%d", A + 1);
+    for (int i = A + 2; i < B; i++) {
+      AtoB += String.format(",%d", i);
+    }
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CtoD = String.format("'range_%d'", rsBase + C + 1);
+    for (int i = C + 2; i < D; i++) {
+      CtoD += String.format(",'range_%d'", rsBase + i);
+    }
+    query = String.format(
+        "SELECT * FROM %s WHERE h = %d AND ri IN (%s) AND rs IN (%s)", tableName, h, AtoB, CtoD);
+    expectedRowCount = riDelta * rsDelta;
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    assertEquals(expectedRowCount, 100);
+
+    // Inequality AND IN on different columns ------------------------------------------------------
+
+    // Scans that should return 100 rows each.
+
+    // A < ri < B    AND    rs IN {C ... D}.
+    riDelta = 10;
+    rsDelta = 10;
+    A = riMax / 2;
+    B = A + riDelta + 1;
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CtoD = String.format("'range_%d'", rsBase + C + 1);
+    for (int i = C + 2; i < D; i++) {
+      CtoD += String.format(",'range_%d'", rsBase + i);
+    }
+    query = String.format(
+        "SELECT * FROM %s WHERE h = %d AND ri > %d AND ri < %d AND rs IN (%s)", tableName, h, A,
+        B, CtoD);
+    expectedRowCount = riDelta * rsDelta;
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    assertEquals(expectedRowCount, 100);
+
+    // ri IN {A ... B}    AND    C < rs < D.
+    riDelta = 10;
+    rsDelta = 10;
+    A = riMax / 2;
+    B = A + riDelta + 1;
+    AtoB = String.format("%d", A + 1);
+    for (int i = A + 2; i < B; i++) {
+      AtoB += String.format(",%d", i);
+    }
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CTmp = String.format("range_%d", rsBase + C);
+    DTmp = String.format("range_%d", rsBase + D);
+    query = String.format(
+        "SELECT * FROM %s WHERE h = %d AND ri IN (%s) AND rs > '%s' AND rs < '%s'", tableName, h,
+        AtoB, CTmp, DTmp);
+    expectedRowCount = riDelta * rsDelta;
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    assertEquals(expectedRowCount, 100);
+
+    // Inequality AND IN on same column ------------------------------------------------------------
+
+    // Scans that should return 100 rows each.
+
+    // A < ri < B    AND    ri IN {A ... B}.
+    riDelta = 1;
+    A = riMax / 2;
+    B = A + riDelta + 1;
+    AtoB = String.format("%d", A + 1);
+    for (int i = A + 2; i < B; i++) {
+      AtoB += String.format(",%d", i);
+    }
+    query = String.format("SELECT * FROM %s WHERE h = %d AND ri > %d AND ri < %d AND ri IN (%s)",
+        tableName, h, A, B, AtoB);
+    expectedRowCount = riDelta * rsMax;
+    timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
+    assertEquals(expectedRowCount, 100);
+
+    // C < rs < D    AND    rs IN {C ... D}.
+    rsDelta = 2;
+    C = rsMax / 2;
+    D = C + rsDelta + 1;
+    CTmp = String.format("range_%d", rsBase + C);
+    DTmp = String.format("range_%d", rsBase + D);
+    CtoD = String.format("'range_%d'", rsBase + C + 1);
+    for (int i = C + 2; i < D; i++) {
+      CtoD += String.format(",'range_%d'", rsBase + i);
+    }
+    query = String.format(
+        "SELECT * FROM %s WHERE h = %d AND rs IN (%s) AND rs > '%s' AND rs < '%s'", tableName,
+        h, CtoD, CTmp, DTmp);
+    expectedRowCount = riMax * rsDelta;
     timeQueryWithRowCount(query, expectedRowCount, intervalScanMaxRuntimeMillis);
     assertEquals(expectedRowCount, 100);
   }
