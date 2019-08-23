@@ -4,7 +4,7 @@ languageCode: en-us
 title: YugaByte DB Docs
 metadataformat: yaml
 canonifyurls: false
-googleAnalytics: GOOGLE_ANALYTICS_ID
+googleAnalytics: UA-104956980-3
 
 params:
   author: Team YugaByte
@@ -25,11 +25,11 @@ params:
     text: Open Sans
     code: Inconsolata
   algolia:
-    index: ALGOLIA_INDEX_NAME
-    appID: ALGOLIA_APP_ID
-    apiKey: ALGOLIA_API_KEY
+    index: docs
+    appID: 4LBMOWH4F9
+    apiKey: 76cc3c40acc9719f5cd0d45bc07e2aeb
   bigpicture:
-    projectId: BIGPICTURE_PROJECT_ID
+    projectId: 1064
 social: {}
 menu:
   main:
