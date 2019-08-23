@@ -1273,9 +1273,13 @@ Status YBClient::Data::RemoveMasterAddress(const HostPort& addr) {
     if (it != master_server_addrs_.end()) {
       master_server_addrs_.erase(it);
     }
-
+    bool need_comma = false;
     for(const auto& a : master_server_addrs_) {
+        if (need_comma) {
+            updated_addrs +=',';
+        }
         updated_addrs += a;
+        need_comma = true;
     }
   }
 
