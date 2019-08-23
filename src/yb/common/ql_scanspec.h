@@ -62,7 +62,7 @@ class QLScanRange {
   };
 
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
-  QLScanRange(const Schema& schema, const PgsqlExpressionPB *intervals_expr);
+  QLScanRange(const Schema& schema, const PgsqlConditionPB& condition);
 
   // Return the inclusive lower and upper range values to scan.
   std::vector<QLValuePB> range_values(bool lower_bound) const;

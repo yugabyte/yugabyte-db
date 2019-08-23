@@ -45,19 +45,6 @@ message PgsqlConditionPB {
   repeated PgsqlExpressionPB operands = 2;
 }
 
-// Interval of values for a range column.
-message PgsqlIntervalPB {
-  optional int32 column_id = 1;
-  optional QLValuePB start = 2; // Inclusive.
-  optional QLValuePB end = 3;   // Inclusive.
-}
-
-// Logical expression for compounding AND.
-// - expr [ AND expr [ AND ... ] ]
-message PgsqlAndCompundPB {
-  repeated PgsqlExpressionPB exprs = 1;
-}
-
 // An expression in a WHERE condition.
 // - Bind values would be given by client and grouped into a repeated field that can be accessed
 //   by their indexes.
@@ -74,8 +61,6 @@ message PgsqlExpressionPB {
     PgsqlBCallPB tscall = 6;                   // Tablet server builtin calls.
     PgsqlBCallPB bocall = 7;                   // Builtin operator calls.
     PgsqlConditionPB condition = 8;            // Logical condition that evaluates to true/false.
-    PgsqlIntervalPB interval = 9;              // Range column interval.
-    PgsqlAndCompundPB and_compound = 10;       // AND compound of exprs.
   }
 }
 
@@ -268,8 +253,8 @@ message PgsqlReadRequestPB {
   // Where clause condition
   optional PgsqlExpressionPB where_expr = 8;
 
-  // Intervals for range columns.
-  optional PgsqlExpressionPB intervals_expr = 22;
+  // Conditions for range columns.
+  optional PgsqlExpressionPB condition_expr = 22;
 
   //------------------------------------------------------------------------------------------------
   // Listing of all columns that this operation is referencing. TServers will need to read these

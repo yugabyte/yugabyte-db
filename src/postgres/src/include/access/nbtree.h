@@ -602,6 +602,8 @@ extern bool btproperty(Oid index_oid, int attno,
 		   bool *res, bool *isnull);
 extern IndexTuple _bt_nonkey_truncate(Relation rel, IndexTuple itup);
 extern bool _bt_check_natts(Relation rel, Page page, OffsetNumber offnum);
+extern int _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
+    bool reverse, Datum *elems, int nelems);
 
 /*
  * prototypes for functions in nbtvalidate.c

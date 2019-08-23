@@ -397,9 +397,18 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
-YBCStatus YBCPgDmlBindIntervalColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
+YBCStatus YBCPgDmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondEq(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
     YBCPgExpr attr_value_end) {
-  return ToYBCStatus(pgapi->DmlBindIntervalColumn(handle, attr_num, attr_value, attr_value_end));
+  return ToYBCStatus(pgapi->DmlBindColumnCondBetween(handle, attr_num, attr_value, attr_value_end));
+}
+
+YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
+    YBCPgExpr *attr_values) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
 }
 
 YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {

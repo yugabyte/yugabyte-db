@@ -96,6 +96,29 @@ class DiscreteScanChoices : public ScanChoices {
     }
   }
 
+  DiscreteScanChoices(const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
+                      const KeyBytes& upper_doc_key)
+      : ScanChoices(doc_spec.is_forward_scan()) {
+    range_cols_scan_options_ = doc_spec.range_options();
+    current_scan_target_idxs_.resize(range_cols_scan_options_->size());
+    for (int i = 0; i < range_cols_scan_options_->size(); i++) {
+      current_scan_target_idxs_[i] = range_cols_scan_options_->at(i).begin();
+    }
+
+    // Initialize target doc key.
+    if (is_forward_scan_) {
+      current_scan_target_ = lower_doc_key;
+      if (CHECK_RESULT(ClearRangeComponents(&current_scan_target_))) {
+        CHECK_OK(SkipTargetsUpTo(lower_doc_key));
+      }
+    } else {
+      current_scan_target_ = upper_doc_key;
+      if (CHECK_RESULT(ClearRangeComponents(&current_scan_target_))) {
+        CHECK_OK(SkipTargetsUpTo(upper_doc_key));
+      }
+    }
+  }
+
   CHECKED_STATUS DoneWithCurrentTarget() override;
   CHECKED_STATUS SkipTargetsUpTo(const Slice& new_target) override;
   CHECKED_STATUS SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
@@ -295,6 +318,31 @@ class RangeBasedScanChoices : public ScanChoices {
     }
   }
 
+  RangeBasedScanChoices(const Schema& schema, const DocPgsqlScanSpec& doc_spec)
+      : ScanChoices(doc_spec.is_forward_scan()) {
+    DCHECK(doc_spec.range_bounds());
+    lower_.reserve(schema.num_range_key_columns());
+    upper_.reserve(schema.num_range_key_columns());
+    int idx = 0;
+    for (idx = schema.num_hash_key_columns(); idx < schema.num_key_columns(); idx++) {
+      const ColumnId col_idx = schema.column_id(idx);
+      const auto col_sort_type = schema.column(idx).sorting_type();
+      const common::QLScanRange::QLRange range = doc_spec.range_bounds()->RangeFor(col_idx);
+      const bool desc_col = (col_sort_type == ColumnSchema::kDescending ||
+          col_sort_type == ColumnSchema::kDescendingNullsLast);
+      // for ASC col: lower -> min_value; upper -> max_value
+      // for DESC   :       -> max_value;       -> min_value
+      const auto& lower = (desc_col ? range.max_value : range.min_value);
+      lower_.emplace_back(
+          IsNull(lower) ? PrimitiveValue(ValueType::kLowest)
+                        : PrimitiveValue::FromQLValuePB(lower, col_sort_type));
+      const auto& upper = (desc_col ? range.min_value : range.max_value);
+      upper_.emplace_back(
+          IsNull(upper) ? PrimitiveValue(ValueType::kHighest)
+                        : PrimitiveValue::FromQLValuePB(upper, schema.column(idx).sorting_type()));
+    }
+  }
+
   CHECKED_STATUS SkipTargetsUpTo(const Slice& new_target) override;
   CHECKED_STATUS DoneWithCurrentTarget() override;
   CHECKED_STATUS SeekToCurrentTarget(IntentAwareIterator* db_iter) override;
@@ -480,6 +528,17 @@ Result<bool> DocRowwiseIterator::InitScanChoices(
 Result<bool> DocRowwiseIterator::InitScanChoices(
     const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key) {
+  if (doc_spec.range_options()) {
+    scan_choices_.reset(new DiscreteScanChoices(doc_spec, lower_doc_key, upper_doc_key));
+    // Let's not seek to the lower doc key or upper doc key. We know exactly what we want.
+    RETURN_NOT_OK(AdvanceIteratorToNextDesiredRow());
+    return true;
+  }
+
+  if (doc_spec.range_bounds()) {
+    scan_choices_.reset(new RangeBasedScanChoices(schema_, doc_spec));
+  }
+
   return false;
 }
 

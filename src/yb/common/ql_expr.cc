@@ -365,14 +365,6 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
     case PgsqlExpressionPB::ExprCase::kCondition:
       return EvalCondition(ql_expr.condition(), table_row, result);
 
-    case PgsqlExpressionPB::ExprCase::kInterval:
-      LOG(WARNING) << "Internal error: unexpected interval " << ql_expr.DebugString();
-      return Status::OK();
-
-    case PgsqlExpressionPB::ExprCase::kAndCompound:
-      LOG(WARNING) << "Internal error: unexpected and compound " << ql_expr.DebugString();
-      return Status::OK();
-
     case PgsqlExpressionPB::ExprCase::kBocall: FALLTHROUGH_INTENDED;
     case PgsqlExpressionPB::ExprCase::kBindId: FALLTHROUGH_INTENDED;
     case PgsqlExpressionPB::ExprCase::kAliasId: FALLTHROUGH_INTENDED;

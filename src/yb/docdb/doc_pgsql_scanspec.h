@@ -37,10 +37,10 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
                    const std::vector<PrimitiveValue>& hashed_components,
+                   const PgsqlConditionPB* condition,
                    boost::optional<int32_t> hash_code,
                    boost::optional<int32_t> max_hash_code,
                    const PgsqlExpressionPB *where_expr,
-                   const PgsqlExpressionPB *intervals_expr,
                    const DocKey& start_doc_key = DocKey(),
                    bool is_forward_scan = true);
 
@@ -74,6 +74,10 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
     return range_bounds_.get();
   }
 
+  const std::shared_ptr<std::vector<std::vector<PrimitiveValue>>>& range_options() const {
+    return range_options_;
+  }
+
  private:
   // Return inclusive lower/upper range doc key considering the start_doc_key.
   Result<KeyBytes> Bound(const bool lower_bound) const;
@@ -83,6 +87,14 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
 
   // The scan range within the hash key when a WHERE condition is specified.
   const std::unique_ptr<const common::QLScanRange> range_bounds_;
+
+  // Initialize range_options_ if hashed_components_ in set and all range columns have one or more
+  // options (i.e. using EQ/IN conditions). Otherwise range_options_ will stay null and we will
+  // only use the range_bounds for scanning.
+  void InitRangeOptions(const PgsqlConditionPB& condition);
+
+  // The range value options if set. (possibly more than one due to IN conditions).
+  std::shared_ptr<std::vector<std::vector<PrimitiveValue>>> range_options_;
 
   // Schema of the columns to scan.
   const Schema& schema_;
