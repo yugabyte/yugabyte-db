@@ -590,10 +590,6 @@ insert into testoids values(2, '2') on conflict (key) do update set data = exclu
 
 -- remove oids again, test
 alter table testoids set without oids;
-ERROR:  ALTER TABLE SET WITHOUT OIDS not supported yet
-LINE 1: alter table testoids set without oids;
-                             ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 insert into testoids values(1, '4') on conflict (key) do update set data = excluded.data RETURNING *;
  key | data
 -----+------

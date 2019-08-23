@@ -1415,20 +1415,16 @@ delete from defp where f1 = 0; -- fail
 ERROR:  update or delete on table "defp" violates foreign key constraint "defc_f1_fkey" on table "defc"
 DETAIL:  Key (f1)=(0) is still referenced from table "defc".
 alter table defc alter column f1 set default 1;
-ERROR:  ALTER TABLE ALTER column not supported yet
-LINE 1: alter table defc alter column f1 set default 1;
-                         ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1124. Click '+' on the description to raise its priority
 delete from defp where f1 = 0;
-ERROR:  update or delete on table "defp" violates foreign key constraint "defc_f1_fkey" on table "defc"
-DETAIL:  Key (f1)=(0) is still referenced from table "defc".
 select * from defc;
  f1
 ----
-  0
+  1
 (1 row)
 
 delete from defp where f1 = 1; -- fail
+ERROR:  update or delete on table "defp" violates foreign key constraint "defc_f1_fkey" on table "defc"
+DETAIL:  Key (f1)=(1) is still referenced from table "defc".
 --
 -- Test the difference between NO ACTION and RESTRICT
 --
