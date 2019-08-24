@@ -1857,9 +1857,14 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
       if (!read_time) {
         auto safe_time = SafeTime(RequireLease::kTrue);
         read_time = ReadHybridTime::FromHybridTimeRange({safe_time, clock_->NowRange().second});
-      } else if (prepare_result.need_read_snapshot) {
-        DSCHECK_NE(isolation_level, IsolationLevel::SERIALIZABLE_ISOLATION, InvalidArgument,
-                   "Read time should NOT be specified for serializable isolation level");
+      } else if (prepare_result.need_read_snapshot &&
+                 isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION) {
+        auto status = STATUS_FORMAT(
+            InvalidArgument,
+            "Read time should NOT be specified for serializable isolation level: $0",
+            read_time);
+        LOG(DFATAL) << status;
+        return status;
       }
     }
   }
