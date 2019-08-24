@@ -384,37 +384,37 @@ LINE 1: SELECT * FROM cypher($$RETURN "high surrogate \uD835$$) AS t...
 SELECT * FROM cypher($$
 RETURN _$09A_z
 $$) AS t(id text);
-ERROR:  column "_$09A_z" does not exist
+ERROR:  unrecognized node type: 341
 LINE 1: SELECT * FROM cypher($$
                               ^
 SELECT * FROM cypher($$
 RETURN A
 $$) AS t(id text);
-ERROR:  column "A" does not exist
+ERROR:  unrecognized node type: 341
 LINE 1: SELECT * FROM cypher($$
                               ^
 SELECT * FROM cypher($$
 RETURN z
 $$) AS t(id text);
-ERROR:  column "z" does not exist
+ERROR:  unrecognized node type: 341
 LINE 1: SELECT * FROM cypher($$
                               ^
 SELECT * FROM cypher($$
 RETURN `$`
 $$) AS t(id text);
-ERROR:  column "$" does not exist
+ERROR:  unrecognized node type: 341
 LINE 1: SELECT * FROM cypher($$
                               ^
 SELECT * FROM cypher($$
 RETURN `0`
 $$) AS t(id text);
-ERROR:  column "0" does not exist
+ERROR:  unrecognized node type: 341
 LINE 1: SELECT * FROM cypher($$
                               ^
 SELECT * FROM cypher($$
 RETURN ````
 $$) AS t(id text);
-ERROR:  column "`" does not exist
+ERROR:  unrecognized node type: 341
 LINE 1: SELECT * FROM cypher($$
                               ^
 -- zero-length quoted identifier

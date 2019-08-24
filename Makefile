@@ -6,6 +6,7 @@ OBJS = ag_catalog.o \
        analyze.o \
        commands.o \
        cypher_clause.o \
+       cypher_expr.o \
        cypher_gram.o \
        cypher_keywords.o \
        cypher_parser.o \
