@@ -724,7 +724,7 @@ void Tablet::StartOperation(WriteOperationState* operation_state) {
   }
 }
 
-void Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
+Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
   last_committed_write_index_.store(operation_state->op_id().index(), std::memory_order_release);
   const KeyValueWriteBatchPB& put_batch =
       operation_state->consensus_round() && operation_state->consensus_round()->replicate_msg()
@@ -736,7 +736,7 @@ void Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
   docdb::ConsensusFrontiers frontiers;
   set_op_id({operation_state->op_id().term(), operation_state->op_id().index()}, &frontiers);
   set_hybrid_time(operation_state->hybrid_time(), &frontiers);
-  ApplyKeyValueRowOperations(put_batch, &frontiers, operation_state->hybrid_time());
+  return ApplyKeyValueRowOperations(put_batch, &frontiers, operation_state->hybrid_time());
 }
 
 Status Tablet::CreateCheckpoint(const std::string& dir) {
@@ -781,7 +781,7 @@ Status Tablet::CreateCheckpoint(const std::string& dir) {
   return Status::OK();
 }
 
-void Tablet::PrepareTransactionWriteBatch(
+Status Tablet::PrepareTransactionWriteBatch(
     const KeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
     rocksdb::WriteBatch* rocksdb_write_batch) {
@@ -791,17 +791,16 @@ void Tablet::PrepareTransactionWriteBatch(
     // Store transaction metadata (status tablet, isolation level etc.)
     if (!transaction_participant()->Add(
             put_batch.transaction(), put_batch.may_have_metadata(), rocksdb_write_batch)) {
-      LOG_WITH_PREFIX(INFO) << "Transaction was recently aborted: " << transaction_id
-                            << ", don't write intents for it";
+      return STATUS_FORMAT(TryAgain, "Transaction was recently aborted: $0", transaction_id);
     }
   }
   auto metadata_with_write_id = transaction_participant()->MetadataWithWriteId(transaction_id);
   if (!metadata_with_write_id) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
-    LOG_WITH_PREFIX(INFO) << "Transaction metadata missing: " << transaction_id
-                          << ", looks like it was just aborted";
-    return;
+    return STATUS_FORMAT(
+        TryAgain, "Transaction metadata missing: $0, looks like it was just aborted",
+        transaction_id);
   }
 
   auto isolation_level = metadata_with_write_id->first.isolation;
@@ -810,24 +809,32 @@ void Tablet::PrepareTransactionWriteBatch(
       put_batch, hybrid_time, rocksdb_write_batch, transaction_id, isolation_level,
       UsePartialRangeKeyIntents(metadata_.get()), &write_id);
   transaction_participant()->UpdateLastWriteId(transaction_id, write_id);
+
+  return Status::OK();
 }
 
-void Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
-                                        const rocksdb::UserFrontiers* frontiers,
-                                        const HybridTime hybrid_time) {
+Status Tablet::ApplyKeyValueRowOperations(const KeyValueWriteBatchPB& put_batch,
+                                          const rocksdb::UserFrontiers* frontiers,
+                                          const HybridTime hybrid_time) {
   if (put_batch.write_pairs().empty() && put_batch.read_pairs().empty()) {
-    return;
+    return Status::OK();
   }
+
+  // Could return failure only for cases where it is safe to skip applying operations to DB.
+  // For instance where aborted transaction intents are written.
+  // In all other cases we should crash instead of skipping apply.
 
   rocksdb::WriteBatch write_batch;
   if (put_batch.has_transaction()) {
     RequestScope request_scope(transaction_participant_.get());
-    PrepareTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
+    RETURN_NOT_OK(PrepareTransactionWriteBatch(put_batch, hybrid_time, &write_batch));
     WriteBatch(frontiers, &write_batch, intents_db_.get());
   } else {
     PrepareNonTransactionWriteBatch(put_batch, hybrid_time, &write_batch);
     WriteBatch(frontiers, &write_batch, regular_db_.get());
   }
+
+  return Status::OK();
 }
 
 void Tablet::WriteBatch(const rocksdb::UserFrontiers* frontiers,
@@ -1850,9 +1857,14 @@ Status Tablet::StartDocWriteOperation(WriteOperation* operation) {
       if (!read_time) {
         auto safe_time = SafeTime(RequireLease::kTrue);
         read_time = ReadHybridTime::FromHybridTimeRange({safe_time, clock_->NowRange().second});
-      } else if (prepare_result.need_read_snapshot) {
-        DSCHECK_NE(isolation_level, IsolationLevel::SERIALIZABLE_ISOLATION, InvalidArgument,
-                   "Read time should NOT be specified for serializable isolation level");
+      } else if (prepare_result.need_read_snapshot &&
+                 isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION) {
+        auto status = STATUS_FORMAT(
+            InvalidArgument,
+            "Read time should NOT be specified for serializable isolation level: $0",
+            read_time);
+        LOG(DFATAL) << status;
+        return status;
       }
     }
   }
@@ -2080,6 +2092,18 @@ uint64_t Tablet::GetCurrentVersionSstFilesUncompressedSize() const {
   return regular_db_->GetCurrentVersionSstFilesUncompressedSize();
 }
 
+uint64_t Tablet::GetCurrentVersionNumSSTFiles() const {
+  ScopedPendingOperation scoped_operation(&pending_op_counter_);
+  std::lock_guard<rw_spinlock> lock(component_lock_);
+
+  // In order to get actual stats we would have to wait.
+  // This would give us correct stats but would make this request slower.
+  if (!pending_op_counter_.IsReady() || !regular_db_) {
+    return 0;
+  }
+  return regular_db_->GetCurrentVersionNumSSTFiles();
+}
+
 // ------------------------------------------------------------------------------------------------
 
 Result<TransactionOperationContextOpt> Tablet::CreateTransactionOperationContext(
@@ -2269,12 +2293,7 @@ Result<IsolationLevel> Tablet::GetIsolationLevel(const TransactionMetadataPB& tr
   if (transaction.has_isolation()) {
     return transaction.isolation();
   }
-  auto id = VERIFY_RESULT(FullyDecodeTransactionId(transaction.transaction_id()));
-  auto stored_metadata = transaction_participant_->Metadata(id);
-  if (!stored_metadata) {
-    return STATUS_FORMAT(NotFound, "Missing metadata for transaction: $0", id);
-  }
-  return stored_metadata->isolation;
+  return VERIFY_RESULT(transaction_participant_->PrepareMetadata(transaction)).isolation;
 }
 
 

@@ -14,7 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/test/pggate_test.h"
-#include "yb/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
 
 namespace yb {
 namespace pggate {
@@ -109,7 +109,8 @@ TEST_F(PggateTestDelete, TestDelete) {
 
   // DELETE ----------------------------------------------------------------------------------------
   // Allocate new delete.
-  CHECK_YBC_STATUS(YBCPgNewDelete(pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewDelete(pg_session_, kDefaultDatabaseOid, tab_oid,
+                                  false /* is_single_row_txn */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.

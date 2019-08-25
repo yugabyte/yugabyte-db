@@ -4,8 +4,9 @@ linkTitle: SportsDB
 description: SportsDB sample database
 menu:
   latest:
+    identifier: sportsdb
     parent: sample-data
-    weight: 2740
+    weight: 2754
 isTocNested: true
 showAsideToc: true
 ---

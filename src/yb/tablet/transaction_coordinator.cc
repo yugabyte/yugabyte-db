@@ -273,7 +273,10 @@ class TransactionState {
   }
 
   TransactionStatusResult Abort(TransactionAbortCallback* callback) {
-    if (ShouldBeCommitted()) {
+    if (status_ == TransactionStatus::COMMITTED ||
+        status_ == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
+      return TransactionStatusResult(TransactionStatus::COMMITTED, commit_time_);
+    } else if (ShouldBeCommitted()) {
       return TransactionStatusResult(TransactionStatus::COMMITTED, HybridTime::kMax);
     } else if (status_ == TransactionStatus::ABORTED) {
       return TransactionStatusResult::Aborted();

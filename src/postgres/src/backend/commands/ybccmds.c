@@ -647,6 +647,16 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 				HeapTuple	typeTuple;
 				int order;
 
+				/* Skip yb alter for IF NOT EXISTS with existing column */
+				if (cmd->missing_ok)
+				{
+					HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel), colDef->colname);
+					if (HeapTupleIsValid(tuple)) {
+						ReleaseSysCache(tuple);
+						break;
+					}
+				}
+
 				typeTuple = typenameType(NULL, colDef->typeName, &typmod);
 				typeOid = HeapTupleGetOid(typeTuple);
 				order = RelationGetNumberOfAttributes(rel) + col;
@@ -664,12 +674,19 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 			}
 			case AT_DropColumn:
 			{
+				/* Skip yb alter for IF EXISTS with non-existent column */
+				if (cmd->missing_ok)
+				{
+					HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel), cmd->name);
+					if (!HeapTupleIsValid(tuple))
+						break;
+					ReleaseSysCache(tuple);
+				}
 
 				HandleYBStmtStatus(YBCPgAlterTableDropColumn(handle, cmd->name), handle);
 				needsYBAlter = true;
 
 				break;
-
 			}
 
 			case AT_AddIndex:
@@ -686,6 +703,7 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 
 			case AT_AddConstraint:
 			case AT_DropConstraint:
+			case AT_DropOids:
 			case AT_EnableTrig:
 			case AT_EnableAlwaysTrig:
 			case AT_EnableReplicaTrig:
@@ -696,6 +714,8 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 			case AT_DisableTrigUser:
 			case AT_ChangeOwner:
 			case AT_ColumnDefault:
+      case AT_DropNotNull:
+      case AT_SetNotNull:
 				/* For these cases a YugaByte alter isn't required, so we do nothing. */
 				break;
 

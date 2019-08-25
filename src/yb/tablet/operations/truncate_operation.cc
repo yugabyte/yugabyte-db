@@ -58,12 +58,17 @@ void TruncateOperation::DoStart() {
         server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status TruncateOperation::Apply(int64_t leader_term) {
+Status TruncateOperation::DoAborted(const Status& status) {
+  return status;
+}
+
+Status TruncateOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY TRUNCATE: started");
 
   RETURN_NOT_OK(state()->tablet()->Truncate(state()));
 
   TRACE("APPLY TRUNCATE: finished");
+
   return Status::OK();
 }
 

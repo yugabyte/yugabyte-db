@@ -183,7 +183,8 @@ inline void MasterPathHandlers::TServerTable(std::stringstream* output) {
           << "      <th>Status & Uptime</th>\n"
           << "      <th>User Tablet-Peers / Leaders</th>\n"
           << "      <th>RAM Used</th>\n"
-          << "      <th>SST Files Size</th>\n"
+          << "      <th>Num SST Files</th>\n"
+          << "      <th>Total SST Files Size</th>\n"
           << "      <th>Uncompressed SST </br>Files Size</th>\n"
           << "      <th>Read ops/sec</th>\n"
           << "      <th>Write ops/sec</th>\n"
@@ -250,6 +251,7 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
               : tserver->second.user_tablet_leaders + tserver->second.user_tablet_followers)
               << " / " << (no_tablets ? 0 : tserver->second.user_tablet_leaders) << "</td>";
       *output << "    <td>" << BytesToHumanReadable(desc->total_memory_usage()) << "</td>";
+      *output << "    <td>" << desc->num_sst_files() << "</td>";
       *output << "    <td>" << BytesToHumanReadable(desc->total_sst_file_size()) << "</td>";
       *output << "    <td>" << BytesToHumanReadable(desc->uncompressed_sst_file_size()) << "</td>";
       *output << "    <td>" << desc->read_ops_per_sec() << "</td>";
@@ -487,7 +489,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
           jw.String(kTserverAlive);
 
           jw.String("uptime_seconds");
-          jw.Uint(desc->uptime_seconds());
+          jw.Uint64(desc->uptime_seconds());
         } else {
           jw.String("status");
           jw.String(kTserverDead);
@@ -498,6 +500,9 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         jw.String("ram_used");
         jw.String(BytesToHumanReadable(desc->total_memory_usage()));
+
+        jw.String("num_sst_files");
+        jw.Uint64(desc->num_sst_files());
 
         jw.String("total_sst_file_size");
         jw.String(BytesToHumanReadable(desc->total_sst_file_size()));

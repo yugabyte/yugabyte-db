@@ -624,8 +624,10 @@ class DBImpl : public DB {
 
   uint64_t GetCurrentVersionDataSstFilesSize() override;
 
+  uint64_t GetCurrentVersionNumSSTFiles() override;
+
   // Updates stats_ object with SST files size metrics.
-  void SetSSTFileSizeTickers();
+  void SetSSTFileTickers();
 
   void PrintStatistics();
 

@@ -253,11 +253,11 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void StartOperation(WriteOperationState* operation_state);
 
   // Apply all of the row operations associated with this transaction.
-  void ApplyRowOperations(WriteOperationState* operation_state);
+  CHECKED_STATUS ApplyRowOperations(WriteOperationState* operation_state);
 
   // Apply a set of RocksDB row operations.
   // If rocksdb_write_batch is specified it could contain preencoded RocksDB operations.
-  void ApplyKeyValueRowOperations(
+  CHECKED_STATUS ApplyKeyValueRowOperations(
       const docdb::KeyValueWriteBatchPB& put_batch,
       const rocksdb::UserFrontiers* frontiers,
       HybridTime hybrid_time);
@@ -479,6 +479,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   uint64_t GetCurrentVersionSstFilesSize() const;
   uint64_t GetCurrentVersionSstFilesUncompressedSize() const;
+  uint64_t GetCurrentVersionNumSSTFiles() const;
 
   void SetHybridTimeLeaseProvider(HybridTimeLeaseProvider provider) {
     ht_lease_provider_ = std::move(provider);
@@ -561,7 +562,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   CHECKED_STATUS RegisterReaderTimestamp(HybridTime read_point) override;
   void UnregisterReader(HybridTime read_point) override;
 
-  void PrepareTransactionWriteBatch(
+  CHECKED_STATUS PrepareTransactionWriteBatch(
       const docdb::KeyValueWriteBatchPB& put_batch,
       HybridTime hybrid_time,
       rocksdb::WriteBatch* rocksdb_write_batch);

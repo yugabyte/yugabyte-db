@@ -16,17 +16,32 @@ showAsideToc: true
 
 `BEGIN` starts a new transaction with the default (or given) isolation level.
 
-## Grammar
+## Syntax
 
-### Diagrams
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="221" height="68" viewbox="0 0 221 68"><path class="connector" d="M0 21h5m57 0h30m104 0h20m-134 24q0 5 5 5h5m55 0h54q5 0 5-5m-129-24q5 0 5 5v32q0 5 5 5h114q5 0 5-5v-32q0-5 5-5m5 0h5"/><rect class="literal" x="5" y="5" width="57" height="24" rx="7"/><text class="text" x="15" y="21">BEGIN</text><rect class="literal" x="92" y="5" width="104" height="24" rx="7"/><text class="text" x="102" y="21">TRANSACTION</text><rect class="literal" x="92" y="34" width="55" height="24" rx="7"/><text class="text" x="102" y="50">WORK</text></svg>
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
+    </a>
+  </li>
+  <li>
+    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
+    </a>
+  </li>
+</ul>
 
-### Syntax
-
-```
-transaction ::= 'BEGIN' [ 'TRANSACTION' | 'WORK' ] ;
-```
+<div class="tab-content">
+  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+    {{% includeMarkdown "../syntax_resources/commands/begin.grammar.md" /%}}
+  </div>
+  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+    {{% includeMarkdown "../syntax_resources/commands/begin.diagram.md" /%}}
+  </div>
+</div>
 
 ## Semantics
 

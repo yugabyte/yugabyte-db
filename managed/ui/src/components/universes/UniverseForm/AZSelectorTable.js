@@ -1,7 +1,11 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Field } from 'redux-form';
-import { YBControlledSelect, YBControlledNumericInput, YBCheckBox } from '../../common/forms/fields';
+import {
+  YBControlledSelect,
+  YBControlledNumericInput,
+  YBCheckBox,
+  YBButton } from '../../common/forms/fields';
 import { Row, Col } from 'react-bootstrap';
 import _ from 'lodash';
 import { isNonEmptyArray, isDefinedNotNull, areUniverseConfigsEqual, isEmptyObject, isNonEmptyObject} from '../../../utils/ObjectUtils';
@@ -43,7 +47,7 @@ export default class AZSelectorTable extends Component {
         }
       });
     }
-    currentTemplate.userAZSelected = true;
+    currentTemplate.resetAZConfig = true;
     currentTemplate.currentClusterType = clusterType.toUpperCase();
     if (isEmptyObject(this.props.universe.currentUniverse.data)) {
       currentTemplate.clusterOperation = 'CREATE';
@@ -151,12 +155,15 @@ export default class AZSelectorTable extends Component {
       if (isEmptyObject(currentUniverse.data)) {
         newTaskParams.currentClusterType = clusterType.toUpperCase();
         newTaskParams.clusterOperation = "CREATE";
+        newTaskParams.resetAZConfig = false;
         this.props.submitConfigureUniverse(newTaskParams);
       } else if (!areUniverseConfigsEqual(newTaskParams, currentUniverse.data.universeDetails)) {
         newTaskParams.universeUUID = currentUniverse.data.universeUUID;
         newTaskParams.currentClusterType = clusterType.toUpperCase();
         newTaskParams.clusterOperation = "EDIT";
         newTaskParams.expectedUniverseVersion = currentUniverse.data.version;
+        newTaskParams.userAZSelected = true;
+        newTaskParams.resetAZConfig = false;
         this.props.submitConfigureUniverse(newTaskParams);
       } else {
         const placementStatusObject = {
@@ -305,12 +312,16 @@ export default class AZSelectorTable extends Component {
           !_.isEqual(universeConfigTemplate, this.props.universe.universeConfigTemplate)) {
         const uniqueAZs = [ ...new Set(azGroups.map(item => item.value)) ];
         const totalNodes = placementInfo.groups.reduce((acc, obj) => acc + obj.count, 0);
-        if (isNonEmptyObject(uniqueAZs) && (type === "Create" || (type === "Async" && !isDefinedNotNull(currentCluster)) || currentCluster.userIntent.numNodes !== totalNodes)) {
-          const placementStatusObject = {
-            numUniqueRegions: placementInfo.uniqueRegions,
-            numUniqueAzs: placementInfo.uniqueAzs,
-            replicationFactor: configTemplateCurrentCluster.userIntent.replicationFactor
-          };
+        const placementStatusObject = {
+          numUniqueRegions: placementInfo.uniqueRegions,
+          numUniqueAzs: placementInfo.uniqueAzs,
+          replicationFactor: configTemplateCurrentCluster.userIntent.replicationFactor
+        };
+        if (isNonEmptyObject(uniqueAZs) &&
+          (type === "Create" ||
+          (type === "Async" && !isDefinedNotNull(currentCluster)) ||
+          currentCluster.userIntent.numNodes !== totalNodes ||
+          !_.isEqual(totalNodes, this.props.universe.currentPlacementStatus))) {
           this.props.setPlacementStatus(placementStatusObject);
         }
       }
@@ -339,6 +350,28 @@ export default class AZSelectorTable extends Component {
         <option key={azIdx} value={azItem.uuid}>{azItem.code}</option>
       ));
     }
+
+    const addNewAZField = () => {
+      const unusedAZList = [...azListForSelectedRegions];
+      azGroups.forEach(azGroup => {
+        for (let i = 0; i < unusedAZList.length; i++) {
+          if (unusedAZList[i].uuid === azGroup.value) {
+            unusedAZList.splice(i, 1);
+            break;
+          }
+        }
+      });
+      if (unusedAZList.length) {
+        const newAZState = [...this.state.azItemState, {
+          count: 1,
+          value: unusedAZList[0].uuid,
+          isAffinitized: true,
+        }];
+        this.setState({ azItemState: newAZState });
+        const universeTemplate = _.clone(universeConfigTemplate.data);
+        this.updatePlacementInfo(newAZState, universeTemplate);
+      }
+    };
     const azGroups = self.state.azItemState;
     let azList = [];
     if (isNonEmptyArray(azGroups) && isNonEmptyArray(azListForSelectedRegions)) {
@@ -387,6 +420,17 @@ export default class AZSelectorTable extends Component {
             </FlexShrink>}
           </FlexContainer>
           {azList}
+          {isNonEmptyArray(azListForSelectedRegions) &&
+            azList.length < 3 &&
+            azList.length < azListForSelectedRegions.length &&
+              <Row>
+                <Col xs={4}>
+                  <YBButton btnText="Add Zone" btnIcon="fa fa-plus"
+                    btnClass={"btn btn-orange universe-form-add-az-btn"}
+                    onClick={addNewAZField}></YBButton>
+                </Col>
+              </Row>
+          }
         </div>
       );
     }

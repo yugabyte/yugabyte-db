@@ -94,7 +94,7 @@ class DocKeyTest : public YBTest {
     return yb::Format(
         "Encoded SubDocKey: $0; encoded input binary data: $1",
         sub_doc_key,
-        sub_doc_key.Encode()
+        sub_doc_key.Encode().AsSlice().ToDebugHexString()
     );
   }
 
@@ -412,6 +412,12 @@ struct CollectedIntent {
   IntentStrength strength;
   KeyBytes intent_key;
   Slice value;
+
+  std::string ToString() const {
+    return Format("{ strength: $0 intent_key: $1 value: $2 }",
+                  strength, SubDocKey::DebugSliceToString(intent_key.AsSlice()),
+                  value.ToDebugHexString());
+  }
 };
 
 class IntentCollector {
@@ -454,7 +460,7 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
     if (doc_key.has_hash()) {
       cur_key.doc_key() = DocKey(doc_key.hash(), doc_key.hashed_group());
       // Subtract one to avoid counting the final kGroupEnd, unless this is the entire key.
-      if (doc_key.range_group().empty() && sub_doc_key.subkeys().empty()) {
+      if (doc_key.range_group().empty()) {
         expected_prefix_lengths.push_back(cur_key.Encode().size());
       } else {
         expected_prefix_lengths.push_back(cur_key.Encode().size() - 1);
@@ -534,9 +540,11 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
         }
       }
 
-      for (const auto& subkey : sub_doc_key.subkeys()) {
-        current_expected_intent.AppendSubKey(subkey);
-        expected_intents.push_back(current_expected_intent);
+      if (!sub_doc_key.doc_key().empty()) {
+        for (const auto& subkey : sub_doc_key.subkeys()) {
+          current_expected_intent.AppendSubKey(subkey);
+          expected_intents.push_back(current_expected_intent);
+        }
       }
 
       {
@@ -558,7 +566,9 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
             << "hash_part_only: " << hash_part_only;
       }
 
-      EXPECT_EQ(expected_intents.size(), collected_intents.size());
+      EXPECT_EQ(expected_intents.size(), collected_intents.size())
+          << "Expected: " << yb::ToString(expected_intents)
+          << ", collected: " << yb::ToString(collected_intents);
       const size_t num_intents = std::min(expected_intents.size(), collected_intents.size());
       for (size_t i = 0; i < num_intents; ++i) {
         SubDocKey decoded_intent_key;

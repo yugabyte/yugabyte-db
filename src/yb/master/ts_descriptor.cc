@@ -252,6 +252,7 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
   ts_metrics_.total_memory_usage = metrics.total_ram_usage();
   ts_metrics_.total_sst_file_size = metrics.total_sst_file_size();
   ts_metrics_.uncompressed_sst_file_size = metrics.uncompressed_sst_file_size();
+  ts_metrics_.num_sst_files = metrics.num_sst_files();
   ts_metrics_.read_ops_per_sec = metrics.read_ops_per_sec();
   ts_metrics_.write_ops_per_sec = metrics.write_ops_per_sec();
   ts_metrics_.uptime_seconds = metrics.uptime_seconds();

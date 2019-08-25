@@ -2163,9 +2163,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ADD <coldef> */
 			ADD_P columnDef
 				{
-					if (((ColumnDef * ) $2)->constraints != NIL) {
-						parser_ybc_signal_unsupported(@1, "ALTER TABLE ADD COLUMN with constraints", 1124);
-					}
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddColumn;
 					n->def = $2;
@@ -2175,7 +2172,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ADD IF NOT EXISTS <coldef> */
 			| ADD_P IF_P NOT EXISTS columnDef
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ADD IF NOT EXISTS", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddColumn;
 					n->def = $5;
@@ -2185,9 +2181,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ADD COLUMN <coldef> */
 			| ADD_P COLUMN columnDef
 				{
-					if (((ColumnDef * ) $3)->constraints != NIL) {
-						parser_ybc_signal_unsupported(@1, "ALTER TABLE ADD COLUMN with constraints", 1124);
- 					}
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddColumn;
 					n->def = $3;
@@ -2197,7 +2190,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ADD COLUMN IF NOT EXISTS <coldef> */
 			| ADD_P COLUMN IF_P NOT EXISTS columnDef
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ADD COLUMN IF NOT EXISTS", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_AddColumn;
 					n->def = $6;
@@ -2216,7 +2208,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> DROP NOT NULL */
 			| ALTER opt_column ColId DROP NOT NULL_P
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ALTER column", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropNotNull;
 					n->name = $3;
@@ -2225,7 +2216,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET NOT NULL */
 			| ALTER opt_column ColId SET NOT NULL_P
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE ALTER column", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_SetNotNull;
 					n->name = $3;
@@ -2338,7 +2328,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> DROP [COLUMN] IF EXISTS <colname> [RESTRICT|CASCADE] */
 			| DROP opt_column IF_P EXISTS ColId opt_drop_behavior
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE DROP COLUMN IF EXISTS", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropColumn;
 					n->name = $5;
@@ -2449,7 +2438,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> SET WITHOUT OIDS  */
 			| SET WITHOUT OIDS
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER TABLE SET WITHOUT OIDS", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DropOids;
 					$$ = (Node *)n;
@@ -9264,7 +9252,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER TABLE IF_P EXISTS relation_expr RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER TABLE IF EXISTS");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TABLE;
 					n->relation = $5;

@@ -381,6 +381,30 @@ public class PlacementInfoUtil {
         taskParams.getPrimaryCluster().userIntent.universeName :
         universe.getUniverseDetails().getPrimaryCluster().userIntent.universeName;
 
+    // Reset the config and AZ configuration
+    if (taskParams.resetAZConfig) {
+
+      if (clusterOpType.equals(ClusterOperationType.EDIT)) {
+        UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+        // Set AZ and clusters to original values prior to editing
+        taskParams.clusters = details.clusters;
+        taskParams.nodeDetailsSet = details.nodeDetailsSet;
+        // Set this flag to false to avoid continuous resetting of the form
+        taskParams.resetAZConfig = false;
+        return;
+      } else if (clusterOpType.equals(ClusterOperationType.CREATE)) {
+        taskParams.nodeDetailsSet.removeIf(n -> n.isInPlacement(placementUuid));
+        // Set node count equal to RF
+        cluster.userIntent.numNodes = cluster.userIntent.replicationFactor;
+        cluster.placementInfo = cluster.placementInfo == null ?
+                getPlacementInfo(cluster.clusterType, cluster.userIntent) :
+                cluster.placementInfo;
+        LOG.info("Placement created={}.", cluster.placementInfo);
+        configureNodeStates(taskParams, null, ConfigureNodesMode.NEW_CONFIG, cluster);
+        return;
+      }
+    }
+
     // Compose a default prefix for the nodes. This can be overwritten by instance tags (on AWS).
     taskParams.nodePrefix = Util.getNodePrefix(customerId, universeName);
 
@@ -910,6 +934,12 @@ public class PlacementInfoUtil {
     return placements;
   }
 
+  /**
+   * Returns a map of the AZ UUID's to number of nodes in each AZ taken from the Universe
+   * placement info, the desired setup the user intends to place each AZ.
+   * @param placement Structure containing list of cloud providers, regions, and zones
+   * @return HashMap of UUID to number of nodes
+   */
   public static Map<UUID, Integer> getAzUuidToNumNodes(PlacementInfo placement) {
     Map<UUID, Integer> azUuidToNumNodes = new HashMap<UUID, Integer>();
 
@@ -926,6 +956,11 @@ public class PlacementInfoUtil {
     return azUuidToNumNodes;
   }
 
+  /**
+   * Returns a map of the AZ UUID's to total number of nodes in each AZ, active and inactive.
+   * @param nodeDetailsSet Set of NodeDetails for a Universe
+   * @return HashMap of UUID to total number of nodes
+   */
   public static Map<UUID, Integer> getAzUuidToNumNodes(Collection<NodeDetails> nodeDetailsSet) {
     return getAzUuidToNumNodes(nodeDetailsSet, false /* onlyActive */);
   }
@@ -984,7 +1019,7 @@ public class PlacementInfoUtil {
   private static LinkedHashSet<PlacementIndexes> getDeltaPlacementIndices(
       PlacementInfo placementInfo, Collection<NodeDetails> nodes) {
     LinkedHashSet<PlacementIndexes> placements = new LinkedHashSet<PlacementIndexes>();
-    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes);
+    Map<UUID, Integer> azUuidToNumNodes = getAzUuidToNumNodes(nodes, true);
 
     for (int cIdx = 0; cIdx < placementInfo.cloudList.size(); cIdx++) {
       PlacementCloud cloud = placementInfo.cloudList.get(cIdx);
@@ -1240,7 +1275,8 @@ public class PlacementInfoUtil {
    * @param nodes   The nodes in this cluster.
    */
   private static void finalSanityCheckConfigure(Cluster cluster,
-                                                Collection<NodeDetails> nodes) {
+                                                Collection<NodeDetails> nodes,
+                                                boolean resetConfig) {
     PlacementInfo placementInfo = cluster.placementInfo;
     CloudType cloudType = cluster.userIntent.providerType;
     String instanceType = cluster.userIntent.instanceType;
@@ -1248,7 +1284,7 @@ public class PlacementInfoUtil {
     if (cloudType != CloudType.onprem) {
       Map<UUID, Integer> placementAZToNodeMap = getAzUuidToNumNodes(placementInfo);
       Map<UUID, Integer> nodesAZToNodeMap = getAzUuidToNumNodes(nodes, true);
-      if (!nodesAZToNodeMap.equals(placementAZToNodeMap)) {
+      if (!nodesAZToNodeMap.equals(placementAZToNodeMap) && !resetConfig) {
         String msg = "Nodes are in different AZs compared to placement";
         LOG.error("{}. PlacementAZ={}, nodesAZ={}", msg, placementAZToNodeMap, nodesAZToNodeMap);
         throw new IllegalStateException(msg);
@@ -1304,7 +1340,9 @@ public class PlacementInfoUtil {
 
     LOG.info("Set of nodes after node configure: {}.", taskParams.nodeDetailsSet);
     LOG.info("Placement info: {}.", cluster.placementInfo);
-    finalSanityCheckConfigure(cluster, taskParams.getNodesInCluster(cluster.uuid));
+    finalSanityCheckConfigure(cluster,
+            taskParams.getNodesInCluster(cluster.uuid),
+            taskParams.resetAZConfig);
   }
 
   /**

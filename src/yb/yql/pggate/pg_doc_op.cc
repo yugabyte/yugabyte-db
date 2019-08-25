@@ -162,9 +162,6 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
         return true;
       }
     }
-  } else if (op->response().status() == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
-    // We're doing this to eventually replace error message by a one mentioning index name
-    exec_status_ = STATUS(AlreadyPresent, op->response().error_message());
   } else {
     exec_status_ = STATUS(QLError, op->response().error_message(), Slice(),
                           static_cast<int64_t>(op->response().status()));
@@ -315,6 +312,8 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
   if (!is_canceled_ && exec_status_.ok()) {
     // Save it to cache.
     WriteToCacheUnlocked(write_op_);
+    // Save the number of rows affected by the write operation.
+    rows_affected_count_ = write_op_.get()->response().rows_affected_count();
   }
   end_of_data_ = true;
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;

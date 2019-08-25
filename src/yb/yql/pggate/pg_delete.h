@@ -34,7 +34,7 @@ class PgDelete : public PgDmlWrite {
   typedef std::unique_ptr<const PgDelete> UniPtrConst;
 
   // Constructors.
-  PgDelete(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id);
+  PgDelete(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_single_row_txn);
   virtual ~PgDelete();
 
   StmtOp stmt_op() const override { return StmtOp::STMT_DELETE; }

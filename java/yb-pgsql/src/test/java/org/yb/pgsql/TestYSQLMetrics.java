@@ -13,7 +13,6 @@
 
 package org.yb.pgsql;
 
-import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBDaemon;
 
 
@@ -23,79 +22,56 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
-import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.net.URL;
 import java.net.MalformedURLException;
-import java.util.Scanner;
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.yb.AssertionWrappers.*;
-
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestYSQLMetrics extends BasePgSQLTest {
-      private static final Logger LOG = LoggerFactory.getLogger(MiniYBDaemon.class);
-
-  public int getMetricCounter(String metricName) throws Exception {
-    int value = 0;
-    for (MiniYBDaemon ts : miniCluster.getTabletServers().values()) {
-      URL url = new URL(String.format("http://%s:%d/metrics",
-                                      ts.getLocalhostIP(),
-                                      ts.getPgsqlWebPort()));
-      Scanner scanner = new Scanner(url.openConnection().getInputStream());
-      JsonParser parser = new JsonParser();
-      JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
-      JsonObject obj = tree.getAsJsonArray().get(0).getAsJsonObject();
-      assertEquals(obj.get("type").getAsString(), "server");
-      assertEquals(obj.get("id").getAsString(), "yb.ysqlserver");
-      value += new Metrics(obj).getYSQLMetric(metricName).count;
-    }
-    return value;
-  }
+  private static final Logger LOG = LoggerFactory.getLogger(MiniYBDaemon.class);
 
   @Test
   public void testMetrics() throws Exception {
     Statement statement = connection.createStatement();
 
-    String metric_prefix = "handler_latency_yb_ysqlserver_SQLProcessor_";
+    // DDL is non-txn.
+    verifyStatementMetric(statement, "CREATE TABLE test (k int PRIMARY KEY, v int)",
+                          OTHER_STMT_METRIC, 1, 0, true);
 
-    int oldvalue = getMetricCounter(metric_prefix + "OtherStmts");
-    statement.execute("CREATE TABLE test (col int)");
-    int newvalue = getMetricCounter(metric_prefix + "OtherStmts");
-    assertEquals(newvalue, oldvalue + 1);
+    // Select uses txn.
+    verifyStatementMetric(statement, "SELECT * FROM test",
+                          SELECT_STMT_METRIC, 1, 1, true);
 
-    oldvalue = getMetricCounter(metric_prefix + "SelectStmt");
-    statement.execute("SELECT * FROM test");
-    newvalue = getMetricCounter(metric_prefix + "SelectStmt");
-    assertEquals(newvalue, oldvalue + 1);
+    // Non-txn insert.
+    verifyStatementMetric(statement, "INSERT INTO test VALUES (1, 1)",
+                          INSERT_STMT_METRIC, 1, 0, true);
+    // Txn insert.
+    statement.execute("BEGIN");
+    verifyStatementMetric(statement, "INSERT INTO test VALUES (2, 2)",
+                          INSERT_STMT_METRIC, 1, 1, true);
+    statement.execute("END");
 
-    oldvalue = getMetricCounter(metric_prefix + "InsertStmt");
-    statement.execute("INSERT INTO test VALUES (1)");
-    newvalue = getMetricCounter(metric_prefix + "InsertStmt");
-    assertEquals(newvalue, oldvalue + 1);
+    // Non-txn update.
+    verifyStatementMetric(statement, "UPDATE test SET v = 2 WHERE k = 1",
+                          UPDATE_STMT_METRIC, 1, 0, true);
+    // Txn update.
+    verifyStatementMetric(statement, "UPDATE test SET v = 3",
+                          UPDATE_STMT_METRIC, 1, 1, true);
 
-    oldvalue = getMetricCounter(metric_prefix + "UpdateStmt");
-    statement.execute("UPDATE test SET col = 2 WHERE col = 1");
-    newvalue = getMetricCounter(metric_prefix + "UpdateStmt");
-    assertEquals(newvalue, oldvalue + 1);
+    // Non-txn delete.
+    verifyStatementMetric(statement, "DELETE FROM test WHERE k = 2",
+                          DELETE_STMT_METRIC, 1, 0, true);
+    // Txn delete.
+    verifyStatementMetric(statement, "DELETE FROM test",
+                          DELETE_STMT_METRIC, 1, 1, true);
 
-    oldvalue = getMetricCounter(metric_prefix + "DeleteStmt");
-    statement.execute("DELETE FROM test");
-    newvalue = getMetricCounter(metric_prefix + "DeleteStmt");
-    assertEquals(newvalue, oldvalue + 1);
-
-    oldvalue = getMetricCounter(metric_prefix + "InsertStmt");
-    runInvalidQuery(statement, "INSERT INTO invalid_table VALUES (1)");
-    newvalue = getMetricCounter(metric_prefix + "InsertStmt");
-    assertEquals(newvalue, oldvalue);
+    // Invalid statement should not update metrics.
+    verifyStatementMetric(statement, "INSERT INTO invalid_table VALUES (1)",
+                          INSERT_STMT_METRIC, 0, 0, false);
   }
 }

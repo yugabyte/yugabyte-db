@@ -192,6 +192,10 @@ class TSDescriptor {
     ts_metrics_.uncompressed_sst_file_size = uncompressed_sst_file_size;
   }
 
+  void set_num_sst_files (uint64_t num_sst_files) {
+    std::lock_guard<rw_spinlock> l(lock_);
+    ts_metrics_.num_sst_files = num_sst_files;
+  }
 
   uint64_t total_sst_file_size() {
     std::shared_lock<rw_spinlock> l(lock_);
@@ -201,6 +205,11 @@ class TSDescriptor {
   uint64_t uncompressed_sst_file_size() {
     std::shared_lock<rw_spinlock> l(lock_);
     return ts_metrics_.uncompressed_sst_file_size;
+  }
+
+  uint64_t num_sst_files() {
+    std::shared_lock<rw_spinlock> l(lock_);
+    return ts_metrics_.num_sst_files;
   }
 
   void set_read_ops_per_sec(double read_ops_per_sec) {
@@ -285,6 +294,7 @@ class TSDescriptor {
     // Stores the total size of all the sst files in a tserver
     uint64_t total_sst_file_size = 0;
     uint64_t uncompressed_sst_file_size = 0;
+    uint64_t num_sst_files = 0;
 
     double read_ops_per_sec = 0;
 
@@ -296,6 +306,7 @@ class TSDescriptor {
       total_memory_usage = 0;
       total_sst_file_size = 0;
       uncompressed_sst_file_size = 0;
+      num_sst_files = 0;
       read_ops_per_sec = 0;
       write_ops_per_sec = 0;
       uptime_seconds = 0;

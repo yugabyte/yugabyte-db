@@ -12,7 +12,7 @@
 
 #include <cds/init.h>
 
-#include "yb/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
 #include "yb/util/atomic.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -397,9 +397,18 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
-YBCStatus YBCPgDmlBindIntervalColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
+YBCStatus YBCPgDmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondEq(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
     YBCPgExpr attr_value_end) {
-  return ToYBCStatus(pgapi->DmlBindIntervalColumn(handle, attr_num, attr_value, attr_value_end));
+  return ToYBCStatus(pgapi->DmlBindColumnCondBetween(handle, attr_num, attr_value, attr_value_end));
+}
+
+YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
+    YBCPgExpr *attr_values) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
 }
 
 YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
@@ -425,8 +434,8 @@ YBCStatus YBCPgFlushBufferedWriteOperations(YBCPgSession pg_session) {
   return ToYBCStatus(pgapi->FlushBufferedWriteOperations(pg_session));
 }
 
-YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->DmlExecWriteOp(handle));
+YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
+  return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
 }
 
 YBCStatus YBCPgDmlAddYBTupleIdColumn(YBCPgStatement handle, int attr_num, uint64_t datum,
@@ -456,9 +465,10 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
 YBCStatus YBCPgNewUpdate(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewUpdate(pg_session, table_id, handle));
+  return ToYBCStatus(pgapi->NewUpdate(pg_session, table_id, is_single_row_txn, handle));
 }
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
@@ -469,9 +479,10 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
 YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewDelete(pg_session, table_id, handle));
+  return ToYBCStatus(pgapi->NewDelete(pg_session, table_id, is_single_row_txn, handle));
 }
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle) {

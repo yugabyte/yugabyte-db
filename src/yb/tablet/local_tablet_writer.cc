@@ -67,7 +67,7 @@ void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t ter
   state->mutable_op_id()->set_term(term);
   state->mutable_op_id()->set_index(Singleton<AutoIncrementingCounter>::get()->GetAndIncrement());
 
-  tablet_->ApplyRowOperations(state);
+  CHECK_OK(tablet_->ApplyRowOperations(state));
 
   state->Commit();
   state->ReleaseDocDbLocks();

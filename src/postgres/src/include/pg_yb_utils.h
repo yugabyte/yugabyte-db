@@ -29,7 +29,7 @@
 #include "utils/relcache.h"
 
 #include "common/pg_yb_common.h"
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "access/reloptions.h"
 
@@ -102,6 +102,11 @@ extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
  * Specifically for an update/delete DML (where there actually is an old row).
  */
 extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation);
+
+/*
+ * Check if a relation has secondary indices.
+ */
+extern bool YBRelHasSecondaryIndices(Relation relation);
 
 /*
  * Whether to route BEGIN / COMMIT / ROLLBACK to YugaByte's distributed

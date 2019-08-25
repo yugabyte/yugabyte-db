@@ -17,7 +17,7 @@
 
 #include <stdint.h>
 
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/pg_if_c_decl.h"
 
@@ -258,8 +258,11 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 //     contain bind-variables (placeholders) and contants whose values can be updated for each
 //     execution of the same allocated statement.
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
-YBCStatus YBCPgDmlBindIntervalColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
+YBCStatus YBCPgDmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
     YBCPgExpr attr_value_end);
+YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
+    YBCPgExpr *attr_values);
 YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
 
 // API for SET clause.
@@ -273,7 +276,7 @@ YBCStatus YBCPgDmlFetch(YBCPgStatement handle, int32_t natts, uint64_t *values, 
                         YBCPgSysColumns *syscols, bool *has_data);
 
 // Utility method that checks stmt type and calls either exec insert, update, or delete internally.
-YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle);
+YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count);
 
 // This function adds a primary column to be used in the construction of the tuple id (ybctid).
 YBCStatus YBCPgDmlAddYBTupleIdColumn(YBCPgStatement handle, int attr_num, uint64_t datum,
@@ -310,6 +313,7 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle);
 YBCStatus YBCPgNewUpdate(YBCPgSession pg_session,
                          YBCPgOid database_oid,
                          YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
@@ -318,6 +322,7 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
                          YBCPgOid database_oid,
                          YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle);
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle);

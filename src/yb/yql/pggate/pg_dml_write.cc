@@ -132,6 +132,8 @@ Status PgDmlWrite::Exec() {
        RETURN_NOT_OK(PgDocData::LoadCache(row_batch_, &row_count, &cursor_));
        accumulated_row_count_ += row_count;
      }
+     // Save the number of rows affected by the op.
+     rows_affected_count_ = doc_op_->GetRowsAffectedCount();
   }
 
   return Status::OK();

@@ -152,6 +152,29 @@ extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
 }
 
 bool
+YBRelHasSecondaryIndices(Relation relation)
+{
+	if (!relation->rd_rel->relhasindex)
+		return false;
+
+	bool	 has_indices = false;
+	List	 *indexlist = RelationGetIndexList(relation);
+	ListCell *lc;
+
+	foreach(lc, indexlist)
+	{
+		if (lfirst_oid(lc) == relation->rd_pkindex)
+			continue;
+		has_indices = true;
+		break;
+	}
+
+	list_free(indexlist);
+
+	return has_indices;
+}
+
+bool
 YBTransactionsEnabled()
 {
 	static int cached_value = -1;
@@ -183,18 +206,34 @@ YBShouldReportErrorStatus()
 	return cached_value;
 }
 
+char* DupYBStatusMessage(YBCStatus status) {
+  const char* code_as_cstring = YBCStatusCodeAsCString(status);
+  size_t code_strlen = strlen(code_as_cstring);
+	size_t status_len = YBCStatusMessageLen(status);
+	char* msg_buf = palloc(code_strlen + status_len + 3);
+	char* pos = msg_buf;
+	memcpy(msg_buf, code_as_cstring, code_strlen);
+	pos += code_strlen;
+	*pos++ = ':';
+	*pos++ = ' ';
+	memcpy(pos, YBCStatusMessageBegin(status), status_len);
+	pos[status_len] = 0;
+	return msg_buf;
+}
+
 void
 HandleYBStatus(YBCStatus status)
 {
-	if (!status)
-		return;
-	if (YBShouldReportErrorStatus()) {
-		YBC_LOG_ERROR("HandleYBStatus: %s", status->msg);
-	}
+	if (!status) {
+    return;
+  }
 	/* Copy the message to the current memory context and free the YBCStatus. */
-	size_t status_len = strlen(status->msg);
-	char* msg_buf = palloc(status_len + 1);
-	strncpy(msg_buf, status->msg, status_len + 1);
+	char* msg_buf = DupYBStatusMessage(status);
+
+	if (YBShouldReportErrorStatus()) {
+		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
+	}
+
 	YBCFreeStatus(status);
 	/* TODO: consider creating PostgreSQL error codes for YB statuses. */
 	ereport(ERROR,
@@ -341,8 +380,7 @@ YBCHandleCommitError()
 {
 	YBCStatus status = ybc_commit_status;
 	if (status != NULL) {
-		char* msg = palloc(strlen(status->msg) + 1);
-		strcpy(msg, status->msg);
+    char* msg = DupYBStatusMessage(status);
 		YBCResetCommitStatus();
 		ereport(ERROR,
 				(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),

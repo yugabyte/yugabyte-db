@@ -2,10 +2,12 @@
 title: Chinook sample database
 linkTitle: Chinook
 description: Chinook sample database
+image: 
 menu:
   latest:
+    identifier: chinook
     parent: sample-data
-    weight: 2710
+    weight: 2751
 isTocNested: true
 showAsideToc: true
 ---

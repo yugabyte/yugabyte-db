@@ -569,9 +569,18 @@ Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
 
-Status PgApiImpl::DmlBindIntervalColumn(PgStatement *handle, int attr_num, PgExpr *attr_value,
+Status PgApiImpl::DmlBindColumnCondEq(PgStatement *handle, int attr_num, PgExpr *attr_value) {
+  return down_cast<PgSelect*>(handle)->BindColumnCondEq(attr_num, attr_value);
+}
+
+Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num, PgExpr *attr_value,
     PgExpr *attr_value_end) {
-  return down_cast<PgSelect*>(handle)->BindIntervalColumn(attr_num, attr_value, attr_value_end);
+  return down_cast<PgSelect*>(handle)->BindColumnCondBetween(attr_num, attr_value, attr_value_end);
+}
+
+Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, int attr_num, int n_attr_values,
+    PgExpr **attr_values) {
+  return down_cast<PgSelect*>(handle)->BindColumnCondIn(attr_num, n_attr_values, attr_values);
 }
 
 Status PgApiImpl::DmlBindIndexColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
@@ -611,12 +620,18 @@ Status PgApiImpl::FlushBufferedWriteOperations(PgSession *pg_session) {
   return pg_session->FlushBufferedWriteOperations();
 }
 
-Status PgApiImpl::DmlExecWriteOp(PgStatement *handle) {
+Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count) {
   switch (handle->stmt_op()) {
     case StmtOp::STMT_INSERT:
     case StmtOp::STMT_UPDATE:
     case StmtOp::STMT_DELETE:
-      return down_cast<PgDmlWrite *>(handle)->Exec();
+      {
+        Status status = down_cast<PgDmlWrite *>(handle)->Exec();
+        if (rows_affected_count) {
+          *rows_affected_count = down_cast<PgDmlWrite *>(handle)->GetRowsAffectedCount();
+        }
+        return status;
+      }
     default:
       break;
   }
@@ -649,10 +664,11 @@ Status PgApiImpl::ExecInsert(PgStatement *handle) {
 
 Status PgApiImpl::NewUpdate(PgSession *pg_session,
                             const PgObjectId& table_id,
+                            const bool is_single_row_txn,
                             PgStatement **handle) {
   DCHECK(pg_session) << "Invalid session handle";
   *handle = nullptr;
-  auto stmt = make_scoped_refptr<PgUpdate>(pg_session, table_id);
+  auto stmt = make_scoped_refptr<PgUpdate>(pg_session, table_id, is_single_row_txn);
   RETURN_NOT_OK(stmt->Prepare());
   *handle = stmt.detach();
   return Status::OK();
@@ -670,10 +686,11 @@ Status PgApiImpl::ExecUpdate(PgStatement *handle) {
 
 Status PgApiImpl::NewDelete(PgSession *pg_session,
                             const PgObjectId& table_id,
+                            const bool is_single_row_txn,
                             PgStatement **handle) {
   DCHECK(pg_session) << "Invalid session handle";
   *handle = nullptr;
-  auto stmt = make_scoped_refptr<PgDelete>(pg_session, table_id);
+  auto stmt = make_scoped_refptr<PgDelete>(pg_session, table_id, is_single_row_txn);
   RETURN_NOT_OK(stmt->Prepare());
   *handle = stmt.detach();
   return Status::OK();

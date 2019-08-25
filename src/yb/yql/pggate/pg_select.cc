@@ -95,8 +95,8 @@ PgsqlExpressionPB *PgSelect::AllocColumnBindPB(PgColumn *col) {
   return col->AllocBindPB(read_req_);
 }
 
-PgsqlExpressionPB *PgSelect::AllocColumnBindIntervalPB(PgColumn *col) {
-  return col->AllocBindIntervalPB(read_req_);
+PgsqlExpressionPB *PgSelect::AllocColumnBindConditionExprPB(PgColumn *col) {
+  return col->AllocBindConditionExprPB(read_req_);
 }
 
 PgsqlExpressionPB *PgSelect::AllocIndexColumnBindPB(PgColumn *col) {
@@ -242,7 +242,40 @@ Status PgSelect::Exec(const PgExecParameters *exec_params) {
   return Status::OK();
 }
 
-Status PgSelect::BindIntervalColumn(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end) {
+Status PgSelect::BindColumnCondEq(int attr_num, PgExpr *attr_value) {
+  // Find column.
+  PgColumn *col = nullptr;
+  RETURN_NOT_OK(FindColumn(attr_num, &col));
+
+  // Check datatype.
+  if (attr_value) {
+    SCHECK_EQ(col->internal_type(), attr_value->internal_type(), Corruption,
+              "Attribute value type does not match column type");
+  }
+
+  // Alloc the protobuf.
+  PgsqlExpressionPB *condition_expr_pb = AllocColumnBindConditionExprPB(col);
+
+  if (attr_value != nullptr) {
+    condition_expr_pb->mutable_condition()->set_op(QL_OP_EQUAL);
+
+    auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
+    auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
+
+    op1_pb->set_column_id(attr_num - 1);
+
+    RETURN_NOT_OK(attr_value->Eval(this, op2_pb->mutable_value()));
+  }
+
+  if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+    CHECK(attr_value->is_constant()) << "Column ybctid must be bound to constant";
+    ybctid_bind_ = true;
+  }
+
+  return Status::OK();
+}
+
+Status PgSelect::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end) {
   // Find column.
   PgColumn *col = nullptr;
   RETURN_NOT_OK(FindColumn(attr_num, &col));
@@ -259,42 +292,99 @@ Status PgSelect::BindIntervalColumn(int attr_num, PgExpr *attr_value, PgExpr *at
   }
 
   // Alloc the protobuf.
-  PgsqlExpressionPB *bind_interval_pb = col->bind_interval_pb();
-  if (bind_interval_pb == nullptr) {
-    bind_interval_pb = AllocColumnBindIntervalPB(col);
-  }
+  PgsqlExpressionPB *condition_expr_pb = AllocColumnBindConditionExprPB(col);
 
-  // Link the expression and protobuf. During execution, expr will write result to the pb.
-  if (attr_value) {
-    RETURN_NOT_OK(attr_value->PrepareForRead(this, bind_interval_pb));
-  }
-  if (attr_value_end) {
-    RETURN_NOT_OK(attr_value_end->PrepareForRead(this, bind_interval_pb));
-  }
+  if (attr_value != nullptr) {
+    if (attr_value_end != nullptr) {
+      condition_expr_pb->mutable_condition()->set_op(QL_OP_BETWEEN);
 
-  // Link the given expression "attr_value" with the allocated protobuf. Note that except for
-  // constants and place_holders, all other expressions can be setup just one time during prepare.
-  // Examples:
-  // - Bind values for primary columns in where clause.
-  //     WHERE hash = ?
-  // - Bind values for a column in INSERT statement.
-  //     INSERT INTO a_table(hash, key, col) VALUES(?, ?, ?)
+      auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
+      auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
+      auto op3_pb = condition_expr_pb->mutable_condition()->add_operands();
 
-  auto interval_pb = bind_interval_pb->mutable_interval();
-  interval_pb->set_column_id(attr_num);
+      op1_pb->set_column_id(attr_num - 1);
 
-  if (attr_value) {
-    RETURN_NOT_OK(attr_value->Eval(this, interval_pb->mutable_start()));
-  }
+      RETURN_NOT_OK(attr_value->Eval(this, op2_pb->mutable_value()));
+      RETURN_NOT_OK(attr_value_end->Eval(this, op3_pb->mutable_value()));
+    } else {
+      condition_expr_pb->mutable_condition()->set_op(QL_OP_GREATER_THAN_EQUAL);
 
-  if (attr_value_end) {
-    RETURN_NOT_OK(attr_value_end->Eval(this, interval_pb->mutable_end()));
+      auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
+      auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
+
+      op1_pb->set_column_id(attr_num - 1);
+
+      RETURN_NOT_OK(attr_value->Eval(this, op2_pb->mutable_value()));
+    }
+  } else {
+    if (attr_value_end != nullptr) {
+      condition_expr_pb->mutable_condition()->set_op(QL_OP_LESS_THAN_EQUAL);
+
+      auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
+      auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
+
+      op1_pb->set_column_id(attr_num - 1);
+
+      RETURN_NOT_OK(attr_value_end->Eval(this, op2_pb->mutable_value()));
+    } else {
+      // Unreachable.
+    }
   }
 
   if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
     CHECK(attr_value->is_constant()) << "Column ybctid must be bound to constant";
     CHECK(attr_value_end->is_constant()) << "Column ybctid must be bound to constant";
     ybctid_bind_ = true;
+  }
+
+  return Status::OK();
+}
+
+Status PgSelect::BindColumnCondIn(int attr_num, int n_attr_values, PgExpr **attr_values) {
+  // Find column.
+  PgColumn *col = nullptr;
+  RETURN_NOT_OK(FindColumn(attr_num, &col));
+
+  // Check datatype.
+  // TODO(neil) Current code combine TEXT and BINARY datatypes into ONE representation.  Once that
+  // is fixed, we can remove the special if() check for BINARY type.
+  if (col->internal_type() != InternalType::kBinaryValue) {
+    for (int i = 0; i < n_attr_values; i++) {
+      if (attr_values[i]) {
+        SCHECK_EQ(col->internal_type(), attr_values[i]->internal_type(), Corruption,
+            "Attribute value type does not match column type");
+      }
+    }
+  }
+
+  // Alloc the protobuf.
+  PgsqlExpressionPB *condition_expr_pb = AllocColumnBindConditionExprPB(col);
+
+  condition_expr_pb->mutable_condition()->set_op(QL_OP_IN);
+
+  auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
+  auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
+
+  op1_pb->set_column_id(attr_num - 1);
+
+  for (int i = 0; i < n_attr_values; i++) {
+    // Link the given expression "attr_value" with the allocated protobuf. Note that except for
+    // constants and place_holders, all other expressions can be setup just one time during prepare.
+    // Examples:
+    // - Bind values for primary columns in where clause.
+    //     WHERE hash = ?
+    // - Bind values for a column in INSERT statement.
+    //     INSERT INTO a_table(hash, key, col) VALUES(?, ?, ?)
+
+    if (attr_values[i]) {
+      RETURN_NOT_OK(attr_values[i]->Eval(this,
+            op2_pb->mutable_value()->mutable_list_value()->add_elems()));
+    }
+
+    if (attr_num == static_cast<int>(PgSystemAttrNum::kYBTupleId)) {
+      CHECK(attr_values[i]->is_constant()) << "Column ybctid must be bound to constant";
+      ybctid_bind_ = true;
+    }
   }
 
   return Status::OK();

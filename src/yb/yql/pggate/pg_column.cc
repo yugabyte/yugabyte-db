@@ -121,11 +121,12 @@ PgsqlExpressionPB *PgColumn::AllocBindPB(PgsqlReadRequestPB *read_req) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgsqlExpressionPB *PgColumn::AllocBindIntervalPB(PgsqlReadRequestPB *read_req) {
-  if (bind_interval_pb_ == nullptr) {
-    bind_interval_pb_ = read_req->mutable_intervals_expr()->mutable_and_compound()->add_exprs();
+PgsqlExpressionPB *PgColumn::AllocBindConditionExprPB(PgsqlReadRequestPB *read_req) {
+  if (bind_condition_expr_pb_ == nullptr) {
+    bind_condition_expr_pb_ = read_req->mutable_condition_expr();
+    bind_condition_expr_pb_->mutable_condition()->set_op(QL_OP_AND);
   }
-  return bind_interval_pb_;
+  return bind_condition_expr_pb_->mutable_condition()->add_operands();
 }
 
 }  // namespace pggate
