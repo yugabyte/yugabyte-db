@@ -4,7 +4,7 @@ import React, { Component } from 'react';
 import './UniverseStatus.scss';
 import {ProgressBar} from 'react-bootstrap';
 import { isNonEmptyObject, isNonEmptyArray, isDefinedNotNull } from '../../../utils/ObjectUtils';
-import { YBLoadingIcon } from '../../common/indicators';
+import { YBLoadingCircleIcon } from '../../common/indicators';
 
 export default class UniverseStatus extends Component {
   hasPendingTasksForUniverse = customerTaskList => {
@@ -40,7 +40,7 @@ export default class UniverseStatus extends Component {
       statusText = "Loading";
     }
     let statusDisplay = (
-      <div className="status-pending-display-container"><YBLoadingIcon size="small" />
+      <div className="status-pending-display-container"><YBLoadingCircleIcon size="small" />
         <span className="status-pending-name">{statusText}</span>
       </div>
     );
@@ -60,7 +60,7 @@ export default class UniverseStatus extends Component {
           statusDisplay = (
             <div className="status-pending">
               <div className="status-pending-display-container">
-                <YBLoadingIcon size="small"/>
+                <YBLoadingCircleIcon size="small"/>
                 <span className="status-pending-name">
                   Pending&hellip;
                   {universePendingTask.percentComplete}%
@@ -72,7 +72,7 @@ export default class UniverseStatus extends Component {
             </div>
           );
         } else {
-          statusDisplay = <div className={"yb-orange"}><YBLoadingIcon size="small"/></div>;
+          statusDisplay = <div className={"yb-orange"}><YBLoadingCircleIcon size="small"/></div>;
         }
         statusClassName = 'pending';
       } else if(!updateInProgress && !updateSucceeded) {

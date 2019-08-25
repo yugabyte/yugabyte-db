@@ -263,6 +263,13 @@
   .Select-menu-outer {
     z-index: 2;
   }
+
+  .DayPickerInput {
+    .yb-field-group {
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+  }
 }
 
 .help-block {
