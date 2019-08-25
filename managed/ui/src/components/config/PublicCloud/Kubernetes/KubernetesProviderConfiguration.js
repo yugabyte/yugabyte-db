@@ -2,7 +2,7 @@
 
 import React, {Component} from 'react';
 import { getPromiseState } from 'utils/PromiseUtils';
-import { YBLoadingIcon } from '../../../common/indicators';
+import { YBLoadingCircleIcon } from '../../../common/indicators';
 import { withRouter } from 'react-router';
 import { isNonEmptyArray, isDefinedNotNull } from 'utils/ObjectUtils';
 import ListKubernetesConfigurations from './ListKubernetesConfigurations';
@@ -32,7 +32,7 @@ class KubernetesProviderConfiguration extends Component {
 
     if (getPromiseState(providers).isLoading() ||
         getPromiseState(providers).isInit()) {
-      return <YBLoadingIcon size="medium" />;
+      return <YBLoadingCircleIcon size="medium" />;
     }
 
     const kubernetesRegions = regions.data.filter((region) => region.provider.code === PROVIDER_TYPE);

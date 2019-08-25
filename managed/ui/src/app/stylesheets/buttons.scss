@@ -11,6 +11,7 @@
   border-radius: 7px;
   z-index: 1 !important;
   box-sizing: border-box;
+
   &, &:hover, &:focus, &:active {
     border-color: transparent;
   }
@@ -68,6 +69,12 @@
   }
   .btn-disabled {
     color: rgba(white, 0.5) !important;
+  }
+
+  &[disabled], &[disabled]:focus, &[disabled]:active {
+    background-color: $YB_ORANGE;
+    opacity: 1;
+    cursor: not-allowed;
   }
 }
 
