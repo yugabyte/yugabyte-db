@@ -7,7 +7,7 @@ import { DropdownButton } from 'react-bootstrap';
 import { YBPanelItem } from 'components/panels';
 import { YBButton } from 'components/common/forms/fields';
 import { TableAction } from 'components/tables';
-import { YBLoadingIcon } from 'components/common/indicators';
+import { YBLoadingCircleIcon } from 'components/common/indicators';
 import { getPromiseState } from 'utils/PromiseUtils';
 
 import { showOrRedirect } from 'utils/LayoutUtils';
@@ -38,7 +38,7 @@ export default class ReleaseList extends Component {
 
     if (getPromiseState(releases).isLoading() ||
         getPromiseState(releases).isInit()) {
-      return <YBLoadingIcon size="medium" />;
+      return <YBLoadingCircleIcon size="medium" />;
     }
     const releaseInfos = Object.keys(releases.data).map((version) => {
       const releaseInfo = releases.data[version];

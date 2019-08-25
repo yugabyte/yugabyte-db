@@ -16,7 +16,7 @@ export default class YBFormDropZone extends Component {
   }
 
   render() {
-    const { title, field: {name}, form } = this.props;
+    const { title, field: {name}, form, accept } = this.props;
     const { errors, values, touched } = form;
     const error = _.get(errors, name);
     const value = _.get(values, name);
@@ -27,6 +27,7 @@ export default class YBFormDropZone extends Component {
           <Dropzone
             className={this.props.className}
             name={name}
+            accept={accept}
             onDrop={this.onDrop}
             >
             {title && (

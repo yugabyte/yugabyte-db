@@ -7,7 +7,7 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { timeFormatter, successStringFormatter } from 'utils/TableFormatters';
-import { YBLoadingIcon } from '../../common/indicators';
+import { YBLoadingCircleIcon } from '../../common/indicators';
 import { TableAction } from '../../tables';
 
 import './ListBackups.scss';
@@ -34,7 +34,7 @@ export default class ListBackups extends Component {
     const { universeBackupList, universeTableTypes, title } = this.props;
     if (getPromiseState(universeBackupList).isLoading() ||
         getPromiseState(universeBackupList).isInit()) {
-      return <YBLoadingIcon size="medium" />;
+      return <YBLoadingCircleIcon size="medium" />;
     }
     const backupInfos = universeBackupList.data.map((b) => {
       const backupInfo = b.backupInfo;

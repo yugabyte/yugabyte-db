@@ -17,14 +17,13 @@
       height: 46px;
       margin: 8px auto;
       pointer-events: none;
+      @include transition(0.3s);
 
       @media screen and (max-height: 610px) {
-        height: 40px;
-        margin: 11px auto;
+        transform: scale(0.88, 0.88);
       }
       @media screen and (max-height: 460px) {
-        height: 36px;
-        margin: 13px auto;
+        transform: scale(0.75, 0.75);
       }
     }
 
