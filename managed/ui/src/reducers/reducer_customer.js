@@ -4,7 +4,8 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          REGISTER, REGISTER_RESPONSE, LOGIN, LOGIN_RESPONSE, INSECURE_LOGIN, INSECURE_LOGIN_RESPONSE,
          INVALID_CUSTOMER_TOKEN, RESET_TOKEN_ERROR, RESET_CUSTOMER, LOGOUT, LOGOUT_SUCCESS,
          LOGOUT_FAILURE, FETCH_SOFTWARE_VERSIONS_FAILURE, FETCH_SOFTWARE_VERSIONS_SUCCESS,
-         FETCH_SOFTWARE_VERSIONS, FETCH_TLS_CERTS, FETCH_TLS_CERTS_RESPONSE, FETCH_HOST_INFO,
+         FETCH_SOFTWARE_VERSIONS, FETCH_TLS_CERTS, FETCH_TLS_CERTS_RESPONSE,
+         ADD_TLS_CERT, ADD_TLS_CERT_RESPONSE, ADD_TLS_CERT_RESET, FETCH_HOST_INFO,
          FETCH_HOST_INFO_SUCCESS, FETCH_HOST_INFO_FAILURE, FETCH_CUSTOMER_COUNT,
          FETCH_YUGAWARE_VERSION, FETCH_YUGAWARE_VERSION_RESPONSE, UPDATE_PROFILE,
          UPDATE_PROFILE_SUCCESS, UPDATE_PROFILE_FAILURE, ADD_CUSTOMER_CONFIG,
@@ -15,7 +16,7 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          UPDATE_RELEASE_RESPONSE, GET_ALERTS, GET_ALERTS_SUCCESS, GET_ALERTS_FAILURE
        } from '../actions/customers';
 
-import {sortVersionStrings} from '../utils/ObjectUtils';
+import { sortVersionStrings, isDefinedNotNull } from '../utils/ObjectUtils';
 import { getInitialState, setLoadingState, setSuccessState, setFailureState, setPromiseResponse }  from '../utils/PromiseUtils';
 
 import ossConfig from './configs/ossConfig';
@@ -40,6 +41,7 @@ const INITIAL_STATE = {
   refreshReleases: getInitialState({}),
   importRelease: getInitialState({}),
   updateRelease: getInitialState({}),
+  addCertificate: getInitialState({}),
   userCertificates: getInitialState({}),
 };
 
@@ -100,6 +102,19 @@ export default function(state = INITIAL_STATE, action) {
       return setLoadingState(state, "userCertificates", []);
     case FETCH_TLS_CERTS_RESPONSE:
       return setPromiseResponse(state, "userCertificates", action);
+    case ADD_TLS_CERT:
+      return setLoadingState(state, "addCertificate", {});
+    case ADD_TLS_CERT_RESPONSE:
+      if (action.payload.status !== 200) {
+        if (isDefinedNotNull(action.payload.data)) {
+          return setFailureState(state, "addCertificate", action.payload.data.error);
+        } else {
+          return state;
+        }
+      }
+      return setPromiseResponse(state, "addCertificate", action);
+    case ADD_TLS_CERT_RESET:
+      return setLoadingState(state, "addCertificate", getInitialState({}));
     case FETCH_HOST_INFO:
       return {...state, hostInfo: null};
     case FETCH_HOST_INFO_SUCCESS:

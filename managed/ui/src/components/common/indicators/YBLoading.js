@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 
-import YBLoadingIcon from './YBLoadingIcon';
+import YBLoadingCircleIcon from './YBLoadingCircleIcon';
 
 export default class YBLoading extends Component {
   static propTypes = {
@@ -13,7 +13,7 @@ export default class YBLoading extends Component {
   render() {
     return (
       <div className="text-center loading-icon-container">
-        <YBLoadingIcon size={this.props.size}/>
+        <YBLoadingCircleIcon size={this.props.size}/>
         <div>Loading</div>
       </div>
     );
