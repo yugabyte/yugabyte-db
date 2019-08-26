@@ -180,7 +180,7 @@ class AddRegionList extends Component {
               <Fragment>
                 {modal.showModal && modal.visibleModal === "addRegionConfig" &&
                   <YBModal formName={'addRegionConfig'}
-                    visible={true} 
+                    visible={true}
                     submitLabel={'Add Region'}
                     showCancelButton={true}
                     disableSubmit={disableRegionSubmit}
@@ -193,7 +193,7 @@ class AddRegionList extends Component {
                       arrayHelpers.replace(regionIndex, {
                         ...regionList[regionIndex],
                         isValid: true,
-                      });                      
+                      });
                       closeModal();
                     }}
                   >
@@ -226,7 +226,7 @@ class AddRegionList extends Component {
                                   <TableHeaderColumn dataField="actions" dataFormat={this.actionFormatter(zoneArrayHelpers)} width="40px"/>
                                 </BootstrapTable>
                               }
-                              {showZoneForm && 
+                              {showZoneForm &&
                                 <div className="zone-form-wrapper">
                                   <Row className="config-provider-row">
                                     <Col lg={3}>
@@ -236,7 +236,7 @@ class AddRegionList extends Component {
                                       <Field name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneLabel`}
                                         placeholder="Zone Label"
                                         component={YBFormInput}
-                                        className={"kube-provider-input-field"} /> 
+                                        className={"kube-provider-input-field"} />
                                       {typeof getIn(formik.errors, `regionList[${regionIndex}].zoneList`) === 'string' ?
                                         <div className="input-feedback">
                                           <ErrorMessage name={`regionList[${regionIndex}].zoneList`} />
@@ -255,15 +255,15 @@ class AddRegionList extends Component {
                                         className={"kube-provider-input-field"} />
                                     </Col>
                                     <Col lg={1} className="config-zone-tooltip">
-                                      <YBInfoTip title="Storage Classes" 
-                                        content={"Default is 'standard'. This field is accepts comma-delimited values."} />  
+                                      <YBInfoTip title="Storage Classes"
+                                        content={"Default is 'standard'. This field is accepts comma-delimited values."} />
                                     </Col>
                                   </Row>
                                   <Row className="config-provider-row">
                                     <Col lg={3}>
                                       <div className="form-item-custom-label">Kube Config</div>
                                     </Col>
-                                    <Col lg={7}>                         
+                                    <Col lg={7}>
                                       <Field name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneKubeConfig`} component={YBFormDropZone}
                                         className="upload-file-button"
                                         title={"Upload Kube Config file"}/>
@@ -335,7 +335,7 @@ class AddRegionList extends Component {
                           className="delete-provider"
                           onClick={(e) => {
                             arrayHelpers.remove(index);
-                            e.stopPropagation(); 
+                            e.stopPropagation();
                           }}
                         ><i className="fa fa-times fa-fw delete-row-btn" /></button>
                       </div>
@@ -352,7 +352,7 @@ class AddRegionList extends Component {
                 </button>
               </Fragment>
             )}
-          />         
+          />
         </Col>
       </Row>
     );

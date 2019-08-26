@@ -26,7 +26,7 @@ export default class NodeDetails extends Component {
       return <span />;
     }
     const isReadOnlyUniverse = getPromiseState(currentUniverse).isSuccess() && currentUniverse.data.universeDetails.capability === "READ_ONLY";
-    
+
     const universeCreated = universeDetails.updateInProgress;
     const sortedNodeDetails = nodeDetails.sort((a, b) => nodeComparisonFunction(a, b, currentUniverse.data.universeDetails.clusters));
     const nodeDetailRows = sortedNodeDetails.map((nodeDetail) => {
