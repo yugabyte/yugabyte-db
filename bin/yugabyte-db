@@ -89,6 +89,7 @@ class YugaByteProcessManager(object):
         Output.print_and_log("Starting YugaByte DB...")
         self.set_signals(self.kill_yugabyte)
         atexit.register(self.kill_yugabyte)
+        self.install_yb()
         self.start_processes()
 
     # Prints status of YugaByte DB.
@@ -426,6 +427,31 @@ class YugaByteProcessManager(object):
         # Stop callhome. Useful in future if we do anything after quitting.
         self.stop_callhome = True
         callhome_thread.join()
+
+    # Runs post_install script for linux computers.
+    def install_yb(self):
+        if not sys.platform.startswith('linux'):
+            return
+
+        post_install_script_path = os.path.join(YUGABYTE_DIR, 'bin', 'post_install.sh')
+        post_install_completion_flag_path = post_install_script_path + '.completed'
+        if os.path.exists(post_install_completion_flag_path):
+            return
+
+        Output.log("Running the post-installation script {}".format(post_install_script_path))
+        process = subprocess.Popen(
+                post_install_script_path, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        std_out, std_err = process.communicate()
+        if process.returncode != 0:
+            Output.log_error_and_exit(
+                "Failed running {} (exit code: {}). Standard output:\n{}\n. "
+                "Standard error:\n{}".format(
+                    post_install_script_path, process.returncode, std_out, std_err))
+        Output.log("Successfully ran the post-installation script.")
+
+        with open(post_install_completion_flag_path, 'w'):
+            # Write an empty file.
+            pass
 
     # Initialize YW process. Creates all necessary tables. Returns false if init failed.
     def init_yw(self):
