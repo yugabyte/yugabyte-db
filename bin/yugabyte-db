@@ -26,7 +26,7 @@ else:
     from urllib.error import URLError, HTTPError
 
 """
-Run `yugabyte-db` to start a single-node YugaByte DB process. If no options are specified,
+Run `yugabyte-db` to start a single-node Yugabyte DB process. If no options are specified,
 `yugabyte-db` will assume the following default directory tree:
 
 yugabyte
@@ -46,7 +46,7 @@ yugabyte
 +-- yugabyte-data
 """
 
-# YugaByte DB configs.
+# Yugabyte DB configs.
 YUGABYTE_DIR = os.path.dirname(os.path.realpath(__file__))
 DEFAULT_CONF_DIR = os.path.join(YUGABYTE_DIR, "conf")
 BIN_DIR = os.path.join(YUGABYTE_DIR, "bin")
@@ -76,35 +76,35 @@ DEMO_DB_PREFIX = "yb_demo_"
 
 ALERT_WARNING = "Warning"
 
-class YugaByteProcessManager(object):
+class YugabyteProcessManager(object):
     def __init__(self):
         self.configs = None
         self.processes = {}
         self.stop_callhome = False
         self.alerts = []
 
-    # Starts YugaByte DB node.
+    # Starts Yugabyte DB node.
     def start(self):
         self.validate_resources()
-        Output.print_and_log("Starting YugaByte DB...")
+        Output.print_and_log("Starting Yugabyte DB...")
         self.set_signals(self.kill_yugabyte)
         atexit.register(self.kill_yugabyte)
         self.install_yb()
         self.start_processes()
 
-    # Prints status of YugaByte DB.
+    # Prints status of Yugabyte DB.
     def status(self):
         if os.path.isdir(self.configs.saved_data.get("data_dir")):
             Output.print_out(self.get_status_string())
         else:
-            Output.print_out("YugaByte DB is not running.")
+            Output.print_out("Yugabyte DB is not running.")
 
-    # Prints YugaByte DB version.
+    # Prints Yugabyte DB version.
     def version(self):
-        title = "YugaByte DB Information"
+        title = "Yugabyte DB Information"
         with open(VERSION_METADATA_PATH) as metadata:
             data = json.load(metadata)
-            title = "YugaByte DB Version"
+            title = "Yugabyte DB Version"
             output = "\n" + "-" * 70 + "\n"
             output += ("| {:^66} |\n").format(title)
             output += "-" * 70 + "\n"
@@ -126,14 +126,14 @@ class YugaByteProcessManager(object):
     # Starts an interactive YSQL shell.
     def connect_ysql(self):
         if self.get_failed_node_processes():
-            Output.log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
+            Output.log_error_and_exit("Yugabyte DB is not running. Cannot connect to YSQL.")
         ysql_proxy = YsqlProxy(self.configs.saved_data.get("ysql_port"))
         ysql_proxy.connect()
 
     # Starts an interactive YCQL shell.
     def connect_ycql(self):
         if self.get_failed_node_processes():
-            Output.log_error_and_exit("YugaByte DB is not running. Cannot connect to YCQL.")
+            Output.log_error_and_exit("Yugabyte DB is not running. Cannot connect to YCQL.")
         path = os.path.join(BIN_DIR, YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
         cmd = [path, "127.0.0.1", str(self.configs.saved_data.get("ycql_port"))]
         os.execv(path, cmd)
@@ -141,7 +141,7 @@ class YugaByteProcessManager(object):
     # Create target demo database if it does not exist.
     def create_demo(self):
         if self.get_failed_node_processes():
-            Output.log_error_and_exit("YugaByte DB is not running. Cannot create sample database.")
+            Output.log_error_and_exit("Yugabyte DB is not running. Cannot create sample database.")
 
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
@@ -184,7 +184,7 @@ class YugaByteProcessManager(object):
     # Run YSQL shell in target demo database.
     def run_demo(self):
         if self.get_failed_node_processes():
-            Output.log_error_and_exit("YugaByte DB is not running. Cannot connect to YSQL.")
+            Output.log_error_and_exit("Yugabyte DB is not running. Cannot connect to YSQL.")
 
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
@@ -205,7 +205,7 @@ class YugaByteProcessManager(object):
     # Destroy target demo database if it exists.
     def destroy_demo(self):
         if self.get_failed_node_processes():
-            Output.log_error_and_exit("YugaByte DB is not running. Cannot destroy sample database.")
+            Output.log_error_and_exit("Yugabyte DB is not running. Cannot destroy sample database.")
 
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
@@ -239,7 +239,7 @@ class YugaByteProcessManager(object):
         pgid = os.getpgid(cur_pid)
         if not pgid:
             Output.log_error_and_exit(
-                "PGID could not be found for PID {}. Is YugaByte DB running?".format(cur_pid))
+                "PGID could not be found for PID {}. Is Yugabyte DB running?".format(cur_pid))
 
         self.set_signals(SIG_DFL)
 
@@ -252,11 +252,11 @@ class YugaByteProcessManager(object):
             # requires KILL signal to terminate and nodes currently do not gracefully terminate.
             os.killpg(pgid, SIGKILL)
             Output.log_error_and_exit(
-                "YugaByte DB may not have terminated properly... "
+                "Yugabyte DB may not have terminated properly... "
                 "Please check PGID {}.".format(pgid))
         except OSError as err:
             Output.log_error_and_exit(
-                "Failed to kill PGID {}... Is YugaByte DB running?\n{}".format(pgid, str(err)))
+                "Failed to kill PGID {}... Is Yugabyte DB running?\n{}".format(pgid, str(err)))
 
     # Starts yb-master, yb-tserver, and yugaware processes.
     # After initializing, creates a callhome thread.
@@ -319,7 +319,7 @@ class YugaByteProcessManager(object):
         for p in self.processes.values():
             pid = p.get_pid()
             if pid:
-                Output.print_out("YugaByte DB is already running!")
+                Output.print_out("Yugabyte DB is already running!")
                 # Clear self.processes so kill_yugabyte() doesn't kill existing processes.
                 self.processes = {}
                 return
@@ -358,7 +358,7 @@ class YugaByteProcessManager(object):
             if self.wait_yb_master():
                 # Start or iniitialize yugaware after setting YSQL default isolation level.
                 # This if required to start YW because of
-                # https://github.com/YugaByte/yugabyte-db/issues/1199.
+                # https://github.com/Yugabyte/yugabyte-db/issues/1199.
                 if self.configs.saved_data.get("webserver_enabled"):
                     yw_process = self.processes.get("yugaware")
                     yw_proxy = YugaWareProxy(self.configs.saved_data.get("api_port"))
@@ -409,7 +409,7 @@ class YugaByteProcessManager(object):
                             not self.configs.saved_data.get("webserver_enabled")
                             or self.is_yw_initialized()):
                         status = self.get_status_string() + \
-                            Output.make_green("YugaByte DB started successfully!\n") + \
+                            Output.make_green("Yugabyte DB started successfully!\n") + \
                             Output.make_magenta(
                                     "Join us on Slack at {}".format(
                                         Output.make_underline("https://www.yugabyte.com/slack\n")))
@@ -571,16 +571,18 @@ class YugaByteProcessManager(object):
 
         # Make sure ascii escape characters for color encoding do not count towards char limit.
         if self.get_failed_node_processes():
-            title = Output.make_bold(Output.make_red("YugaByte DB (DOWN)"))
+            title = Output.make_bold(Output.make_red("Yugabyte DB (DOWN)"))
             extra_len = len(Output.make_bold(Output.make_red("")))
         else:
-            title = Output.make_bold(Output.make_green("YugaByte DB (UP)"))
+            title = Output.make_bold(Output.make_green("Yugabyte DB (UP)"))
             extra_len = len(Output.make_bold(Output.make_green("")))
+        ysql_port = self.configs.saved_data.get("ysql_port")
+        ycql_port = self.configs.saved_data.get("ycql_port")
         status_info = [
             (Output.make_yellow("JDBC"), "jdbc:postgresql://127.0.0.1:{}/postgres".format(
-                self.configs.saved_data.get("ysql_port"))),
-            (Output.make_yellow("YSQL"), "yugabyte-db connect ysql"),
-            (Output.make_yellow("YCQL"), "yugabyte-db connect ycql"),
+                ysql_port)),
+            (Output.make_yellow("YSQL"), "bin/ysqlsh -p {}".format(ysql_port)),
+            (Output.make_yellow("YCQL"), "bin/cqlsh 127.0.0.1 {}".format(ycql_port)),
             (Output.make_yellow("Webserver UI"), yw_status),
             (Output.make_yellow("Data Dir"), self.configs.saved_data.get("data_dir")),
             (Output.make_yellow("Log Dir"), self.configs.saved_data.get("log_dir")),
@@ -715,7 +717,7 @@ class YugaByteProcessManager(object):
             if args.webserver_enabled:
                 if not self.java_installed():
                     Output.print_out(
-                        "ERROR: Java 1.8 or higher is required by YugaByte DB UI. You can:"
+                        "ERROR: Java 1.8 or higher is required by Yugabyte DB UI. You can:"
                         "   - Install Java 1.8 or higher (recommended)"
                         "   - Continue without the UI by passing the --disable_ui flag.")
                     has_errors = True
@@ -743,17 +745,17 @@ class YugaByteProcessManager(object):
             "--config", default=DEFAULT_CONF, help="Yugabyte DB configuration file")
         # TODO: Refactor data_dir to be a list for multi-node.
         common_parser.add_argument(
-            "--data_dir", help="Directory where YugaByte DB will store data.")
+            "--data_dir", help="Directory where Yugabyte DB will store data.")
 
-        start_msg = "To start YugaByte DB, run '{}'.\n\n".format(
+        start_msg = "To start Yugabyte DB, run '{}'.\n\n".format(
             Output.make_green("yugabyte-db start"))
         parser = PrettyArgParser(description=start_msg)
         all_parsers = {"default": parser}
         subparsers = parser.add_subparsers(dest="parser")
         for cmd, description in (
-                ("start", "Start YugaByte DB."),
-                ("status", "Print status of YugaByte DB."),
-                ("version", "Version of YugaByte DB."),):
+                ("start", "Start Yugabyte DB."),
+                ("status", "Print status of Yugabyte DB."),
+                ("version", "Version of Yugabyte DB."),):
             subparser = subparsers.add_parser(cmd, help=description, parents=[common_parser])
             func = getattr(self, cmd, None)
             subparser.set_defaults(func=func)
@@ -804,7 +806,7 @@ class YugaByteProcessManager(object):
         for cmd in ("start",):
             cur_parser = all_parsers[cmd]
             cur_parser.add_argument(
-                "--log_dir", help="Directory to store YugaByte DB logs.")
+                "--log_dir", help="Directory to store Yugabyte DB logs.")
             cur_parser.add_argument(
                 "--ycql_port", help="Port on which YCQL will run.")
             cur_parser.add_argument(
@@ -1296,7 +1298,7 @@ class YugaWareProxy(object):
             "universeUUID": universeUUID,
         }
 
-        Output.log("Importing YugaByte into webserver...")
+        Output.log("Importing Yugabyte into webserver...")
         try:
             Output.log("Importing master.", logging.DEBUG)
             req = Request(target, headers=headers, data=json.dumps(data))
@@ -1354,7 +1356,8 @@ class YugaWareProxy(object):
                     "create": "disabled"
                 },
                 "config": {
-                    "infra": "hidden"
+                    "infra": "hidden",
+                    "backup": "disabled"
                 },
                 "costs": {
                     "universe_list": "hidden",
@@ -1367,11 +1370,12 @@ class YugaWareProxy(object):
                 },
                 "menu": {
                     "dashboard": "hidden",
-                    "configs": "disabled"
+                    "configs": "disabled",
+                    "config": "disabled"
                 },
                 "universes": {
                     "details": {
-                        "tasks": "disabled",
+                        "tasks": "hidden",
                         "backups": "disabled",
                         "health": "disabled",
                         "overview": {
@@ -1381,7 +1385,8 @@ class YugaWareProxy(object):
                             "readReplica": "disabled",
                             "deleteUniverse": "disabled",
                         }
-                    }
+                    },
+                    "tableActions": "disabled"
                 }
             }
         }
@@ -1566,4 +1571,4 @@ def run_process(cmd):
     return out.decode('utf-8'), err.decode('utf-8'), proc.returncode
 
 if __name__ == '__main__':
-    YugaByteProcessManager().run()
+    YugabyteProcessManager().run()

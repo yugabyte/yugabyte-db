@@ -27,7 +27,7 @@ public class ImportUniverseFormData {
   public String masterAddresses;
 
   // The cloud provider type.
-  public String cloudProviderType = CloudType.other.name();
+  public String cloudProviderType = CloudType.local.name();
 
   // State of the import.
   public State currentState = State.BEGIN;
@@ -36,8 +36,8 @@ public class ImportUniverseFormData {
   public UUID universeUUID;
 
   // Default values of cloud, region and zone for importing a universe.
-  public final String cloudName = "My Cloud";
-  public final CloudType providerType = CloudType.other;
+  public final String cloudName = "Cloud-1";
+  public final CloudType providerType = CloudType.local;
   public final String regionName = "Region 1";
   public final String regionCode = "region-1";
   public final String zoneName = "Zone 1";

@@ -8,7 +8,7 @@ export default class YBButton extends PureComponent {
     const {btnClass, btnText, btnIcon, btnSize, btnType, btnStyle, disabled, ...otherProps} = this.props;
     return (
       <Button bsClass={btnClass} type={btnType}
-              onClick={this.props.onClick} bsSize={btnSize} 
+              onClick={this.props.onClick} bsSize={btnSize}
               bsStyle={btnStyle} disabled={disabled}
               {...otherProps}
       >
