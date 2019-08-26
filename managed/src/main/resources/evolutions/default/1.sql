@@ -10,6 +10,15 @@ create table access_key (
   constraint pk_access_key primary key (key_code,provider_uuid)
 );
 
+create table alert (
+  uuid                          uuid not null,
+  customer_uuid                 uuid not null,
+  create_time                   timestamp not null,
+  type                          varchar(255),
+  message                       TEXT not null,
+  constraint pk_alert primary key (uuid)
+);
+
 create table availability_zone (
   uuid                          uuid not null,
   code                          varchar(25) not null,
@@ -60,7 +69,6 @@ create table customer (
   features                      TEXT,
   universe_uuids                TEXT not null,
   constraint uq_customer_uuid unique (uuid),
-  constraint uq_customer_code unique (code),
   constraint uq_customer_email unique (email),
   constraint pk_customer primary key (id)
 );
@@ -233,6 +241,8 @@ alter table region drop constraint if exists fk_region_provider_uuid;
 drop index if exists ix_region_provider_uuid;
 
 drop table if exists access_key;
+
+drop table if exists alert;
 
 drop table if exists availability_zone;
 

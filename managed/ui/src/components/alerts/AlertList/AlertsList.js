@@ -4,10 +4,15 @@ import React, { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { YBPanelItem } from '../../panels';
 import { showOrRedirect } from 'utils/LayoutUtils';
+import { alertTypeFormatter } from '../../../utils/TableFormatters';
 
 export default class AlertsList extends Component {
+  componentDidMount() {
+    this.props.getAlertsList();
+  }
+
   render() {
-    const { customer: { currentCustomer }} = this.props;
+    const { customer: { currentCustomer, alertsList }} = this.props;
     showOrRedirect(currentCustomer.data.features, "menu.alerts");
 
     const tableBodyContainer = {marginBottom: "1%", paddingBottom: "1%"};
@@ -16,15 +21,20 @@ export default class AlertsList extends Component {
         <h2 className="content-title">Alerts</h2>
         <YBPanelItem
           body={
-            <BootstrapTable data={[]} bodyStyle={tableBodyContainer} pagination={true}>
-              <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
-              <TableHeaderColumn dataField="createTime" columnClassName="no-border" className="no-border" dataAlign="left">
+            <BootstrapTable data={alertsList} bodyStyle={tableBodyContainer} pagination={true}>
+              <TableHeaderColumn dataField="uuid" isKey={true} hidden={true}/>
+              <TableHeaderColumn dataField="createTime" columnClassName="no-border"
+                                className="no-border" dataAlign="left" width={'15%'}>
                 Time
               </TableHeaderColumn>
-              <TableHeaderColumn dataField="type" columnClassName="no-border name-column" className="no-border">
+              <TableHeaderColumn dataField="type" columnClassName="no-border name-column"
+                                className="no-border" dataFormat={alertTypeFormatter}
+                                width={'10%'}>
                 Type
               </TableHeaderColumn>
-              <TableHeaderColumn dataField="message" columnClassName="no-border name-column" className="no-border">
+              <TableHeaderColumn dataField="message" columnClassName="no-border name-column"
+                                className="no-border" width={'75%'}
+                                tdStyle={ { whiteSpace: 'normal' } }>
                 Message
               </TableHeaderColumn>
             </BootstrapTable>

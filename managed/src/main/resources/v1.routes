@@ -62,6 +62,10 @@ POST    /customers/:cUUID/certificates            com.yugabyte.yw.controllers.Ce
 GET     /customers/:cUUID/certificates            com.yugabyte.yw.controllers.CertificateController.list(cUUID: java.util.UUID)
 GET     /customers/:cUUID/certificates/:name      com.yugabyte.yw.controllers.CertificateController.get(cUUID: java.util.UUID, name: String)
 
+# Alerts API
+GET     /customers/:cUUID/alerts                  com.yugabyte.yw.controllers.AlertController.list(cUUID: java.util.UUID)
+POST    /customers/:cUUID/alerts                  com.yugabyte.yw.controllers.AlertController.insert(cUUID: java.util.UUID)
+
 # Access Key API
 GET     /customers/:cUUID/providers/:pUUID/access_keys/:keyCode    com.yugabyte.yw.controllers.AccessKeyController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, keyCode: java.lang.String)
 GET     /customers/:cUUID/providers/:pUUID/access_keys             com.yugabyte.yw.controllers.AccessKeyController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
