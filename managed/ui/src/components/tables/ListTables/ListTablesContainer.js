@@ -6,7 +6,8 @@ import { ListTables } from '..';
 function mapStateToProps(state) {
   return {
     universe: state.universe,
-    tables: state.tables
+    tables: state.tables,
+    customer: state.customer
   };
 }
 

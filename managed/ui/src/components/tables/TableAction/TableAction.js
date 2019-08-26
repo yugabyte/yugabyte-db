@@ -52,7 +52,7 @@ export default class TableAction extends Component {
   }
 
   render() {
-    const { actionType, isMenuItem } = this.props;
+    const { actionType, isMenuItem, disabled } = this.props;
     let modalContainer = null;
     let btnLabel = null;
     let btnIcon = null;
@@ -130,7 +130,8 @@ export default class TableAction extends Component {
     if (isMenuItem) {
       return (
         <Fragment>
-          <MenuItem eventKey={btnId} onClick={this.openModal}>
+          <MenuItem eventKey={btnId} onClick={disabled ? null : this.openModal}
+                    disabled={disabled}>
             <YBLabelWithIcon icon={btnIcon}>
               {btnLabel}
             </YBLabelWithIcon>
