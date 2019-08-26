@@ -68,14 +68,15 @@
                  LIMIT
                  NOT NULL_P
                  OR ORDER
-                 RETURN
-                 SKIP STARTS
+                 REMOVE RETURN
+                 SET SKIP STARTS
                  TRUE_P
                  WHERE
                  WITH
 
 /* query */
-%type <list> single_query
+%type <list> single_query multi_part_query
+%type <list> set_chain_opt set_chain
 %type <list> with_chain_opt with_chain
 
 /* RETURN and WITH clause */
@@ -83,6 +84,10 @@
 %type <boolean> distinct_opt
 %type <list> return_items order_by_opt sort_items
 %type <integer> order_opt
+
+/* SET clause */
+%type <node> set set_item remove remove_item
+%type <list> set_item_list remove_item_list
 
 /* common */
 %type <node> where_opt
@@ -141,16 +146,53 @@ stmt:
     ;
 
 single_query:
-    with_chain_opt return
+    multi_part_query return
         {
             if ($1)
-            {
                 $$ = lappend($1, $2);
-            }
             else
-            {
                 $$ = list_make1($2);
-            }
+        }
+    ;
+
+multi_part_query:
+    set_chain_opt with_chain_opt
+        {
+            if ($1 && $2)
+                $$ = lappend($1, $2);
+            else if ($1)
+                $$ = list_make1($1);
+            else if ($2)
+                $$ = list_make1($2);
+            else
+                $$ = NIL;
+        }
+    ;
+
+set_chain_opt:
+    /* empty */
+        {
+            $$ = NIL;
+        }
+    | set_chain
+    ;
+
+set_chain:
+    set
+        {
+            $$ = list_make1($1);
+        }
+    | remove
+        {
+            $$ = list_make1($1);
+        }
+    | set_chain set
+        {
+            $$ = lappend($1, $2);
+        }
+    | set_chain remove
+        {
+            $$ = lappend($1, $2);
         }
     ;
 
@@ -333,6 +375,88 @@ with:
             n->where = $7;
 
             $$ = (Node *)n;
+        }
+    ;
+
+set:
+    SET set_item_list
+        {
+            cypher_set_clause *n;
+
+            n = make_ag_node(cypher_set_clause);
+            n->is_remove = false;
+            n->items = $2;
+            $$ = (Node *)n;
+        }
+    ;
+
+set_item_list:
+    set_item
+        {
+            $$ = list_make1($1);
+        }
+    | set_item_list ',' set_item
+        {
+            $$ = lappend($1, $3);
+        }
+    ;
+
+set_item:
+    expr '=' expr
+        {
+            cypher_set_prop *n;
+
+            n = make_ag_node(cypher_set_prop);
+            n->prop = $1;
+            n->expr = $3;
+            n->add = false;
+            $$ = (Node *)n;
+        }
+   | expr PLUS_EQ expr
+        {
+            cypher_set_prop *n;
+
+            n = make_ag_node(cypher_set_prop);
+            n->prop = $1;
+            n->expr = $3;
+            n->add = true;
+            $$ = (Node *)n;
+        }
+    ;
+
+remove:
+    REMOVE remove_item_list
+        {
+            cypher_set_clause *n;
+
+            n = make_ag_node(cypher_set_clause);
+            n->is_remove = true;
+            n->items = $2;
+            $$ = (Node *) n;
+        }
+    ;
+
+remove_item_list:
+    remove_item
+        {
+            $$ = list_make1($1);
+        }
+    | remove_item_list ',' remove_item
+        {
+            $$ = lappend($1, $3);
+        }
+    ;
+
+remove_item:
+    expr
+        {
+            cypher_set_prop *n;
+
+            n = make_ag_node(cypher_set_prop);
+            n->prop = $1;
+            n->expr = make_null_const(-1);
+            n->add = false;
+            $$ = (Node *) n;
         }
     ;
 
@@ -557,7 +681,9 @@ reserved_keyword:
     | NULL_P
     | OR
     | ORDER
+    | REMOVE
     | RETURN
+    | SET
     | SKIP
     | TRUE_P
     | WHERE
