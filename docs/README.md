@@ -146,7 +146,7 @@ _Note: Modifications will typically be added to the `ysql` or `ycql` subdirector
           | grep browser_download_url | cut -d \" -f 4)
    ```
 
-   _Note: Alternatively, build manually as described in the [build
+   _Note: Alternatively, you can manually build the jar file as described in the [build
    section](https://github.com/YugaByte/RRDiagram/README.md#build) of the `RRDiagram` repo (and
    move/rename the resulting jar from the target folder)._
 
