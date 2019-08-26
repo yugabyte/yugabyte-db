@@ -12,7 +12,7 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          DELETE_CUSTOMER_CONFIG, DELETE_CUSTOMER_CONFIG_RESPONSE, GET_LOGS, GET_LOGS_SUCCESS,
          GET_LOGS_FAILURE, GET_RELEASES, GET_RELEASES_RESPONSE, REFRESH_RELEASES,
          REFRESH_RELEASES_RESPONSE, IMPORT_RELEASE, IMPORT_RELEASE_RESPONSE, UPDATE_RELEASE,
-         UPDATE_RELEASE_RESPONSE
+         UPDATE_RELEASE_RESPONSE, GET_ALERTS, GET_ALERTS_SUCCESS, GET_ALERTS_FAILURE
        } from '../actions/customers';
 import {sortVersionStrings} from '../utils/ObjectUtils';
 import { getInitialState, setLoadingState, setSuccessState, setFailureState, setPromiseResponse }  from '../utils/PromiseUtils';
@@ -25,6 +25,7 @@ const INITIAL_STATE = {
   error: null,
   loading: false,
   softwareVersions: [],
+  alertsList: [],
   hostInfo: null,
   customerCount: {},
   yugawareVersion: getInitialState({}),
@@ -98,6 +99,12 @@ export default function(state = INITIAL_STATE, action) {
       return setFailureState(state, "profile", action.payload.data.error);
     case FETCH_CUSTOMER_COUNT:
       return setLoadingState(state, "customerCount");
+    case GET_ALERTS:
+      return {...state, alertsList: []};
+    case GET_ALERTS_SUCCESS:
+      return {...state, alertsList: action.payload.data};
+    case GET_ALERTS_FAILURE:
+      return {...state, alertsList: []};
     case FETCH_YUGAWARE_VERSION:
       return setLoadingState(state, "yugawareVersion", {});
     case FETCH_YUGAWARE_VERSION_RESPONSE:
