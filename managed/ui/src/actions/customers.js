@@ -41,6 +41,10 @@ export const FETCH_HOST_INFO_FAILURE = 'FETCH_HOST_INFO_FAILURE';
 
 export const FETCH_CUSTOMER_COUNT = 'FETCH_CUSTOMER_COUNT';
 
+export const GET_ALERTS = 'GET_ALERTS';
+export const GET_ALERTS_SUCCESS = 'GET_ALERTS_SUCCESS';
+export const GET_ALERTS_FAILURE = 'GET_ALERTS_FAILURE';
+
 export const FETCH_YUGAWARE_VERSION = 'FETCH_YUGAWARE_VERSION';
 export const FETCH_YUGAWARE_VERSION_RESPONSE = 'FETCH_YUGAWARE_VERSION_RESPONSE';
 
@@ -276,6 +280,29 @@ export function fetchCustomerCount() {
   return {
     type: FETCH_CUSTOMER_COUNT,
     payload: request
+  };
+}
+
+export function getAlerts() {
+  const cUUID = localStorage.getItem("customerId");
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/alerts`);
+  return {
+    type: GET_ALERTS,
+    payload: request
+  };
+}
+
+export function getAlertsSuccess(response) {
+  return {
+    type: GET_ALERTS_SUCCESS,
+    payload: response
+  };
+}
+
+export function getAlertsFailure(error) {
+  return {
+    type: GET_ALERTS_FAILURE,
+    payload: error
   };
 }
 

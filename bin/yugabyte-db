@@ -74,11 +74,14 @@ YUGAWARE_CONF = os.path.join(YUGAWARE_DIR, "conf/application.default.conf")
 WEBSERVER_DB = "system_platform"
 DEMO_DB_PREFIX = "yb_demo_"
 
+ALERT_WARNING = "Warning"
+
 class YugaByteProcessManager(object):
     def __init__(self):
         self.configs = None
         self.processes = {}
         self.stop_callhome = False
+        self.alerts = []
 
     # Starts YugaByte DB node.
     def start(self):
@@ -356,40 +359,42 @@ class YugaByteProcessManager(object):
                 # This if required to start YW because of
                 # https://github.com/YugaByte/yugabyte-db/issues/1199.
                 if self.configs.saved_data.get("webserver_enabled"):
+                    yw_process = self.processes.get("yugaware")
                     yw_proxy = YugaWareProxy(self.configs.saved_data.get("api_port"))
                     if not self.is_yw_initialized() and self.set_isolation_level():
                         Output.log("Initiating webserver...")
                         if not self.init_yw():
                             Output.log_error_and_exit("Failed to initialize webserver.")
-
-                        process = self.processes.get("yugaware")
-                        process.start()
-
+                        yw_process.start()
                         err = self.wait_yw_login(yw_proxy)
                         if err:
                             Output.log_error_and_exit(err)
                         yw_logged_in = True
+
+                        yw_proxy.set_security("insecure")
+                        yw_proxy.insecure_login()
 
                         err = yw_proxy.import_universe(
                             self.configs.saved_data.get("master_port"), self.get_universe_uuid())
                         if err:
                             Output.log_error_and_exit(err)
 
-                        err = yw_proxy.set_security("insecure")
 
                         # Should yugabyte-db exit if features aren't disabled properly? Retry?
                         err = yw_proxy.update_features()
                         should_callhome = True
                     else:
-                        process = self.processes.get("yugaware")
-                        if not process.is_running():
-                            process.start()
-                            yw_logged_in = not self.wait_yw_login(yw_proxy)
-                            Output.print_and_log(
-                                "Webserver died unexpectedly. Restarting...", logging.ERROR)
+                        if not yw_process.is_running():
+                            yw_process.start()
+                            yw_logged_in = not self.wait_yw_login(yw_proxy, insecure=True)
+                            if not is_first_run:
+                                Output.print_and_log(
+                                    "Webserver died unexpectedly. Restarting...", logging.ERROR)
                             should_callhome = True
                         else:
                             yw_logged_in = False
+                    if self.alerts and yw_process.is_running() and yw_logged_in:
+                        yw_proxy.send_alerts(self.alerts)
 
                 # Print startup information and start callhome thread on first successful startup.
                 if is_first_run and (
@@ -399,7 +404,6 @@ class YugaByteProcessManager(object):
                         if not p.is_running():
                             first_run_success = False
                             break
-
                     if first_run_success and self.is_yb_initialized() and (
                             not self.configs.saved_data.get("webserver_enabled")
                             or self.is_yw_initialized()):
@@ -518,15 +522,18 @@ class YugaByteProcessManager(object):
             time.sleep(2)
         return False
 
-    def wait_yw_login(self, yw_proxy, timeout=30):
+    def wait_yw_login(self, yw_proxy, timeout=30, insecure=False):
+        Output.log("Attempting to log in...")
         start_time = time.time()
         # Only the last error message is recorded if timed out.
         err = ""
         while time.time() - start_time < timeout:
-            err = yw_proxy.login()
+            err = yw_proxy.insecure_login() if insecure else yw_proxy.login()
             if not err:
+                Output.log("Login succeeded.")
                 return ""
             time.sleep(.5)
+        Output.log("Failed to login.")
         return "Timeout: " + err
 
     # Returns pretty output table.
@@ -626,14 +633,20 @@ class YugaByteProcessManager(object):
                 if value < recommended_value:
                     failed.append((res, value, recommended_value, flag))
         if failed:
-            msg = "{}: Did not meet recommended system resource limits.\n".format(
-                Output.make_red("WARNING"))
+            msg = "Did not meet recommended system resource limits.\n"
+            yw_alert = "{}The following ulimits are too low: {}".format(
+                msg, ", ".join(list(zip(*failed))[0]))
             for name, value, recommended_value, flag in failed:
                 if recommended_value == resource.RLIM_INFINITY:
                     recommended_value = "unlimited"
                 msg += "{0}: {1}. {2}: {3}. Use 'ulimit {4} {3}' to set.\n".format(
                     Output.make_yellow("Current " + name), value,
                     Output.make_green("Recommended"), recommended_value, flag)
+            extra_info = "For more info, see " \
+                "https://docs.yugabyte.com/latest/deploy/manual-deployment/system-config/"
+            msg += extra_info
+            yw_alert += ". " + extra_info
+            self.alerts.append((ALERT_WARNING, yw_alert))
             Output.print_and_log(msg, logging.WARNING)
 
     # Parse config file and input args. Validate them and save any new configs.
@@ -1205,10 +1218,9 @@ class YugaWareProxy(object):
     # Retrieves permanent api_token. Returns error, if any.
     def login(self):
         try:
-            target = self.url + "/login"
+            target = "{}/login".format(self.url)
             headers = {
                 "Content-Type": "application/json",
-                "User-Agent": "Mozilla",
             }
             data = '{"email": "admin", "password": "admin"}'
             req = Request(target, headers=headers, data=data)
@@ -1220,7 +1232,6 @@ class YugaWareProxy(object):
             target = "{}/customers/{}/api_token".format(self.url, self.cust_uuid)
             headers = {
                 "X-Auth-Token": auth_token,
-                "User-Agent": "Mozilla",
             }
             req = Request(target, headers=headers)
             req.get_method = lambda: "PUT"
@@ -1231,12 +1242,24 @@ class YugaWareProxy(object):
         except (ValueError, HTTPError, URLError, KeyError) as e:
             return "Failed to log into webserver. {}".format(e)
 
+    # Attempts insecure login. Returns error, if any.
+    def insecure_login(self):
+        try:
+            target = "{}/insecure_login".format(self.url)
+            req = Request(target)
+            resp = urlopen(req)
+            session_data = json.loads(resp.read())
+            self.api_token = session_data["apiToken"]
+            self.cust_uuid = session_data["customerUUID"]
+            return None
+        except (ValueError, HTTPError, URLError, KeyError) as e:
+            return "Failed to log into webserver. {}".format(e)
+
     # Import local universe into YW. Returns error, if any.
     def import_universe(self, master_port, universeUUID):
         target = "{}/customers/{}/universes/import".format(self.url, self.cust_uuid)
         headers = {
             "X-AUTH-YW-API-TOKEN": self.api_token,
-            "User-Agent": "Mozilla",
             "Content-Type": "application/json",
         }
         data = {
@@ -1293,7 +1316,6 @@ class YugaWareProxy(object):
         target = "{}/customers/{}".format(self.url, self.cust_uuid)
         headers = {
             "X-AUTH-YW-API-TOKEN": self.api_token,
-            "User-Agent": "Mozilla",
             "Content-Type": "application/json",
         }
         data = {
@@ -1360,7 +1382,6 @@ class YugaWareProxy(object):
         target = "{}/customers/{}/security".format(self.url, self.cust_uuid)
         headers = {
             "X-AUTH-YW-API-TOKEN": self.api_token,
-            "User-Agent": "Mozilla",
             "Content-Type": "application/json",
         }
         data = {"level": level}
@@ -1380,6 +1401,30 @@ class YugaWareProxy(object):
         else:
             Output.log(err_msg, logging.ERROR)
         return err_msg
+
+    # Add alerts to YugaWare.
+    def send_alerts(self, alerts):
+        target = "{}/customers/{}/alerts".format(self.url, self.cust_uuid)
+        headers = {
+            "X-AUTH-YW-API-TOKEN": self.api_token,
+            "Content-Type": "application/json",
+        }
+        Output.log("Adding alerts: {}".format(alerts))
+        for alert in alerts:
+            data = {
+                "type": alert[0],
+                "message": alert[1]
+            }
+            try:
+                req = Request(target, headers=headers, data=json.dumps(data))
+                resp = urlopen(req)
+                if resp.code != 200:
+                    Output.log(
+                        "Got error code {} when adding alert: {}".format(resp.code, alert),
+                        logging.ERROR)
+            except (ValueError, HTTPError, URLError, KeyError) as e:
+                Output.log("Failed adding alert {} with error: {}".format(alert, e), logging.ERROR)
+        del alerts[:]
 
 
 # Class that handles any output operations. Use print for what users should see.

@@ -52,7 +52,7 @@ public class Customer extends Model {
   @GeneratedValue(strategy = GenerationType.SEQUENCE, generator="customer_id_seq")  private Long id;
   public Long getCustomerId() { return id; }
 
-  @Column(length = 15, unique = true, nullable = false)
+  @Column(length = 15, nullable = false)
   @Constraints.Required
   public String code;
 
@@ -290,7 +290,7 @@ public class Customer extends Model {
   }
 
   /**
-   * Get features for this customer;
+   * Get features for this customer.
    */
   public JsonNode getFeatures() {
     return features == null ? Json.newObject() : features;

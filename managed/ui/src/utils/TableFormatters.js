@@ -48,3 +48,14 @@ export function successStringFormatter(cell, row) {
       return <span className="yb-fail-color"><i className="fa fa-warning" />Unknown</span>;
   }
 }
+
+export function alertTypeFormatter(cell, row) {
+  switch (row.type) {
+    case "Error":
+      return <span className="yb-fail-color"><i className='fa fa-warning'/> Error</span>;
+    case "Warning":
+      return <span className="yb-warn-color"><i className='fa fa-warning'/> Warning</span>;
+    default:
+      return <span>{row.type}</span>;
+  }
+}
