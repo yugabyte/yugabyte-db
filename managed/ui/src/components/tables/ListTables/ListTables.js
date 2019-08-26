@@ -13,6 +13,7 @@ import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import _ from 'lodash';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBResourceCount } from '../../common/descriptors';
+import { isDisabled } from '../../../utils/LayoutUtils';
 
 class TableTitle extends Component {
   render() {
@@ -89,7 +90,7 @@ export default class ListTables extends Component {
 class ListTableGrid extends Component {
   render(){
     const self = this;
-    const {universe: {universeTasks}} = this.props;
+    const {universe: {universeTasks}, customer: {currentCustomer}} = this.props;
     const currentUniverse = this.props.universe.currentUniverse.data;
     const getTableIcon = function(tableType) {
       if (tableType === "YQL_TABLE_TYPE") {
@@ -112,15 +113,18 @@ class ListTableGrid extends Component {
     const formatKeySpace = function(cell) {
       return <div>{cell}</div>;
     };
-
-    const formatActionButtons = function(item, row) {
+    const actions_disabled = isDisabled(currentCustomer.data.features, "universes.tableActions");
+    const formatActionButtons = function(item, row, disabled) {
       const actions = [
-        <TableAction key={`${row.tableName}-backup-btn`} currentRow={row} actionType="create-backup" />
+        <TableAction key={`${row.tableName}-backup-btn`} currentRow={row} actionType="create-backup"
+                    disabled={actions_disabled} />
       ];
       if (row.tableType !== "REDIS_TABLE_TYPE") {
         actions.push([
-          <TableAction key={`${row.tableName}-import-btn`} currentRow={row} actionType="import" />,
-          <TableAction key={`${row.tableName}-drop-btn`} currentRow={row} actionType="drop" />
+          <TableAction key={`${row.tableName}-import-btn`} currentRow={row} actionType="import"
+                      disabled={actions_disabled} />,
+          <TableAction key={`${row.tableName}-drop-btn`} currentRow={row}
+                      actionType="drop" disabled={actions_disabled} />
         ]);
       }
       return (

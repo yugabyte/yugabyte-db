@@ -48,10 +48,10 @@ public class Region extends Model {
   public String ybImage;
 
   @Column(columnDefinition = "float")
-  public double longitude;
+  public double longitude = -90;
 
   @Column(columnDefinition = "float")
-  public double latitude;
+  public double latitude = -90;
 
   public void setLatLon(double latitude, double longitude) {
     if (latitude < -90 || latitude > 90) {
