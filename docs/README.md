@@ -142,13 +142,13 @@ _Note: Modifications will typically be added to the `ysql` or `ycql` subdirector
    command.
 
    ```bash
-   wget $(curl -s https://api.github.com/repos/YugaByte/RRDiagram/releases/latest | grep
-   browser_download_url | cut -d \" -f 4)
+   wget $(curl -s https://api.github.com/repos/YugaByte/RRDiagram/releases/latest \
+          | grep browser_download_url | cut -d \" -f 4)
    ```
 
    _Note: Alternatively, build manually as described in the [build
-   section](YugaByte/RRDiagram/README.md#build) of the `RRDiagram` repo (and move/rename the
-   resulting jar from the target folder)._
+   section](https://github.com/YugaByte/RRDiagram/README.md#build) of the `RRDiagram` repo (and
+   move/rename the resulting jar from the target folder)._
 
 5. Run the diagram generator using the following command:
 
