@@ -89,4 +89,4 @@ test_failures.json
 .metadata/
 
 # Diagram generator for docs
-rrdiagram.jar*
+rrdiagram*.jar*
