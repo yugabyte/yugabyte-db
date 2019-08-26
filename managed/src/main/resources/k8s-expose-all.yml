@@ -15,7 +15,7 @@ serviceEndpoints:
 
 storage:
   master:
-    count: 2
+    count: 1
     size: 50Gi
   tserver:
     count: 2
