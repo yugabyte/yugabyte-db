@@ -70,6 +70,8 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/version_info.h"
+#include "yb/util/version_info.pb.h"
 
 DEFINE_int64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");
@@ -247,6 +249,35 @@ static void WriteForPrometheus(const MetricRegistry* const metrics,
   WARN_NOT_OK(metrics->WriteForPrometheus(&writer), "Couldn't write text metrics for Prometheus");
 }
 
+static void HandleGetVersionInfo(
+    const Webserver::WebRequest& req, std::stringstream* output) {
+
+  VersionInfoPB version_info;
+  VersionInfo::GetVersionInfoPB(&version_info);
+
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  jw.StartObject();
+
+  jw.String("build_id");
+  jw.String(version_info.build_id());
+  jw.String("build_type");
+  jw.String(version_info.build_type());
+  jw.String("build_number");
+  jw.String(version_info.build_number());
+  jw.String("build_timestamp");
+  jw.String(version_info.build_timestamp());
+  jw.String("build_username");
+  jw.String(version_info.build_username());
+  jw.String("version_number");
+  jw.String(version_info.version_number());
+  jw.String("build_hostname");
+  jw.String(version_info.build_hostname());
+  jw.String("git_revision");
+  jw.String(version_info.git_hash());
+
+  jw.EndObject();
+}
+
 } // anonymous namespace
 
 void AddDefaultPathHandlers(Webserver* webserver) {
@@ -256,6 +287,8 @@ void AddDefaultPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
   webserver->RegisterPathHandler("/mem-trackers", "Memory (detail)",
                                  MemTrackersHandler, true, false);
+  webserver->RegisterPathHandler("/api/v1/version-info", "Build Version Info",
+                                 HandleGetVersionInfo, false, false);
 
   AddPprofPathHandlers(webserver);
 }
