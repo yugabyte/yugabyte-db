@@ -14,8 +14,11 @@ import { VALIDATE_FROM_TOKEN, VALIDATE_FROM_TOKEN_RESPONSE,
          REFRESH_RELEASES_RESPONSE, IMPORT_RELEASE, IMPORT_RELEASE_RESPONSE, UPDATE_RELEASE,
          UPDATE_RELEASE_RESPONSE, GET_ALERTS, GET_ALERTS_SUCCESS, GET_ALERTS_FAILURE
        } from '../actions/customers';
+
 import {sortVersionStrings} from '../utils/ObjectUtils';
 import { getInitialState, setLoadingState, setSuccessState, setFailureState, setPromiseResponse }  from '../utils/PromiseUtils';
+
+import ossConfig from './configs/ossConfig';
 
 const INITIAL_STATE = {
   currentCustomer: getInitialState({}),
@@ -58,10 +61,23 @@ export default function(state = INITIAL_STATE, action) {
       return setPromiseResponse(state, "authToken", action);
 
     case INSECURE_LOGIN:
-      return setLoadingState(state, "apiToken", {});
+      return {
+        ...state,
+        INSECURE_apiToken: null,
+      };
     case INSECURE_LOGIN_RESPONSE:
-      return setPromiseResponse(state, "apiToken", action);
-
+      const currentCustomer = {
+        ...state.currentCustomer,
+        data: {
+          ...state.currentCustomer.data,
+          features: ossConfig.features
+        }
+      };
+      return {
+        ...state,
+        currentCustomer,
+        INSECURE_apiToken: action.payload.data.apiToken
+      };
     case LOGOUT:
       return {...state};
     case LOGOUT_SUCCESS:

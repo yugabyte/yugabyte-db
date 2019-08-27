@@ -9,17 +9,27 @@ import { browserHistory } from 'react-router';
 import { YBModal } from '../components/common/forms/fields';
 import { Table } from 'react-bootstrap';
 
+import slackLogo from '../components/common/footer/images/slack-logo-full.svg';
+import githubLogo from '../components/common/footer/images/github-light-small.png';
+
 class AuthenticatedComponent extends Component {
   constructor(props) {
     super(props);
-    this.state = { showKeyboardShortcuts: false };
-  }
-
-  componentWillMount() {
-    this.props.bindShortcut(['ctrl+shift+n', 'ctrl+shift+m', 'ctrl+shift+t',
+    props.bindShortcut(['ctrl+shift+n', 'ctrl+shift+m', 'ctrl+shift+t',
       'ctrl+shift+l', 'ctrl+shift+c', 'ctrl+shift+d'],
                             this._keyEvent);
-    this.props.bindShortcut('?', this._toggleShortcutsHelp);
+    props.bindShortcut('?', this._toggleShortcutsHelp);
+    this.state = {
+      showKeyboardShortcuts: false,
+      showIntroModal: false
+    };
+  }
+
+  componentDidMount() {
+    if (!localStorage.getItem('__yb-visited__')) {
+      localStorage.setItem('__yb-visited__', 'true');
+      this.setState({ showIntroModal: true });
+    }
   }
 
   _toggleShortcutsHelp = () => {
@@ -51,14 +61,46 @@ class AuthenticatedComponent extends Component {
     }
   };
 
+  closeIntroModal = () => {
+    this.setState({ showIntroModal: false });
+  }
+
   render() {
+    const { showKeyboardShortcuts, showIntroModal } = this.state;
+
+    const socialMediaLinks = (
+      <div className="footer-accessory-wrapper">
+        <div>
+          <a className="social-media-btn"
+            href="https://www.yugabyte.com/slack"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span>Join us on</span>
+            <img alt="YugaByte DB Slack" src={slackLogo} width="65"/>
+          </a>
+        </div>
+        <div>
+          <a className="social-media-btn"
+            href="https://github.com/yugabyte"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span>Star us on</span>
+            <img alt="YugaByte DB GitHub"
+              className="social-media-logo"
+              src={githubLogo} width="18"/> <b>GitHub</b>
+          </a>
+        </div>
+      </div>
+    );
     return (
       <AuthenticatedComponentContainer>
         <NavBarContainer />
         <div className="container-body">
           {this.props.children}
           <YBModal title={"Keyboard Shortcut"}
-                   visible={this.state.showKeyboardShortcuts}
+                   visible={showKeyboardShortcuts}
                    onHide={this._toggleShortcutsHelp}>
             <Table responsive>
               <thead>
@@ -74,6 +116,21 @@ class AuthenticatedComponent extends Component {
                 <tr><td>CTRL + SHIFT +l</td><td>View universes</td></tr>
               </tbody>
             </Table>
+          </YBModal>
+          <YBModal title="Welcome to YugaByte DB!"
+                 visible={showIntroModal}
+                 onHide={this.closeIntroModal}
+                 showCancelButton={true}
+                 cancelLabel={"Close"}
+                 footerAccessory={socialMediaLinks}
+          >
+            <p>Thank you for downloading YugaByte DB.</p>
+            <p>Documentation can be found <a
+              href="https://docs.yugabyte.com/latest/manage/enterprise-edition/"
+              target="_blank" rel="noopener noreferrer">
+                here.
+              </a>
+            </p>
           </YBModal>
         </div>
         <Footer />

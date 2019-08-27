@@ -11,11 +11,21 @@ export default class TasksList extends Component {
   }
 
   render() {
-    const {tasks: {customerTaskList}, customer: { currentCustomer }} = this.props;
+    const {
+      tasks: { customerTaskList },
+      customer: { currentCustomer, INSECURE_apiToken }
+    } = this.props;
     showOrRedirect(currentCustomer.data.features, "menu.tasks");
+    const errorPlatformMessage = (
+      <div className="oss-unavailable-warning">
+        Only available on YugaByte Platform.
+      </div>
+    );
 
     return (
-      <TaskListTable taskList={customerTaskList || []}/>
+      <TaskListTable taskList={customerTaskList || []}
+        overrideContent={INSECURE_apiToken && errorPlatformMessage}
+      />
     );
   }
 }

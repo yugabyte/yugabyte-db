@@ -12,27 +12,20 @@ import { isKubernetesUniverse } from 'utils/UniverseUtils';
 import './UniverseAppsModal.scss';
 
 const appTypes = [
-  { code: "CassandraKeyValue", type: "cassandra", title: "Cassandra Key Value",
+  { code: "SqlInserts", type: "ysql", title: "YSQL",
+    description: "This app writes out 1M unique string keys each with a string value. There are multiple "+
+        "readers and writers that write these keys and read them indefinitely. Note that the number of " +
+        "reads and writes to perform can be specified as a parameter.",
+    options: [{"num_unique_keys": "1000000"}, {"num_reads": "-1"}, {"num_writes": "-1"},
+        {"num_threads_read": "32"}, {"num_threads_write": "2"}]
+  },
+  { code: "CassandraKeyValue", type: "cassandra", title: "YCQL",
     description: "This app writes out 1M unique string keys " +
     "each with a string value. There are multiple readers and writers that update these " +
 		"keys and read them indefinitely. Note that the number of reads and writes to " +
 		"perform can be specified as a parameter.",
     options: [{"num_unique_keys": "1000000"}, {"num_reads": "-1"}, {"num_writes": "-1"},
     {"num_threads_read": "24"}, {"num_threads_write": "2"}, {"table_ttl_seconds": "-1"}]
-  },
-  { code: "RedisKeyValue", type: "redis", title: "Redis Key Value",
-    description: "This app writes out 1M unique string keys each with a string value. There are multiple "+
-    "readers and writers that update these keys and read them indefinitely. Note that the number of " +
-    "reads and writes to perform can be specified as a parameter.",
-    options: [{"num_unique_keys": "1000000"}, {"num_reads": "-1"}, {"num_writes": "-1"},
-    {"num_threads_read": "32"}, {"num_threads_write": "2"}]
-  },
-  { code: "SqlInserts", type: "ysql", title: "Sql Inserts",
-    description: "This app writes out 1M unique string keys each with a string value. There are multiple "+
-        "readers and writers that write these keys and read them indefinitely. Note that the number of " +
-        "reads and writes to perform can be specified as a parameter.",
-    options: [{"num_unique_keys": "1000000"}, {"num_reads": "-1"}, {"num_writes": "-1"},
-        {"num_threads_read": "32"}, {"num_threads_write": "2"}]
   }
 ];
 
@@ -81,7 +74,7 @@ export default class UniverseAppsModal extends Component {
         case "ysql":
           hostPorts = ysqlHosts;
           if (!enableYSQL)
-            betaFeature = "NOTE: This is a beta feature. If you want to try out the Sql Inserts app, " +
+            betaFeature = "NOTE: This is a beta feature. If you want to try out the app, " +
                           "create a universe with YSQL enabled.";
           break;
         default:

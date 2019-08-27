@@ -15,7 +15,7 @@ import { fetchColumnTypes, fetchColumnTypesSuccess, fetchColumnTypesFailure }
 import { fetchSoftwareVersions, fetchSoftwareVersionsSuccess,
   fetchSoftwareVersionsFailure, fetchYugaWareVersion, fetchYugaWareVersionResponse,
   fetchCustomerConfigs, fetchCustomerConfigsResponse, getTlsCertificates,
-  getTlsCertificatesResponse }
+  getTlsCertificatesResponse, insecureLogin, insecureLoginResponse }
   from 'actions/customers';
 import {fetchCustomerTasks, fetchCustomerTasksSuccess, fetchCustomerTasksFailure} from '../../actions/tasks';
 import {setUniverseMetrics} from '../../actions/universe';
@@ -125,6 +125,14 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(fetchCustomerTasksSuccess(response.payload));
         } else {
           dispatch(fetchCustomerTasksFailure(response.payload));
+        }
+      });
+    },
+
+    fetchInsecureLogin: () => {
+      dispatch(insecureLogin()).then((response) => {
+        if (response.payload.status === 200) {
+          dispatch(insecureLoginResponse(response));
         }
       });
     },

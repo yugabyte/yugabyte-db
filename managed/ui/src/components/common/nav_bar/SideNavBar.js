@@ -3,6 +3,7 @@
 import React, { Component } from 'react';
 import { Link, IndexLink, withRouter } from 'react-router';
 import { NavDropdown } from 'react-bootstrap';
+import slackIcon from './images/slack-monochrome-black.svg';
 import './stylesheets/SideNavBar.scss';
 import { getPromiseState } from 'utils/PromiseUtils';
 import { isNotHidden, getFeatureState } from 'utils/LayoutUtils';
@@ -54,6 +55,22 @@ export default class SideNavBar extends Component {
                 {isNotHidden(currentCustomer.data.features, "menu.help") &&
                 <ul className="nav side-menu position-bottom">
                   <NavDropdown dropup eventKey="2" title={<div><i className="fa fa-question"></i><span>Help</span></div>} id="help-dropdown">
+                    <h4>Talk to Community</h4>
+                    <li>
+                      <a href="https://www.yugabyte.com/slack" target="_blank" rel="noopener noreferrer">
+                        <object data={slackIcon} type="image/svg+xml" width="16">Icon</object> Slack
+                      </a>
+                    </li>
+                    <li>
+                      <a href="https://forum.yugabyte.com/" target="_blank" rel="noopener noreferrer">
+                        <i className="fa fa-comment"></i> Forum
+                      </a>
+                    </li>
+                    <li>
+                      <a href="https://stackoverflow.com/questions/tagged/yugabyte-db" target="_blank" rel="noopener noreferrer">
+                        <i className="fa fa-stack-overflow"></i> StackOverflow
+                      </a>
+                    </li>
                     <h4>Resources</h4>
                     <li>
                       <a href="https://docs.yugabyte.com/" target="_blank" rel="noopener noreferrer">
@@ -64,26 +81,6 @@ export default class SideNavBar extends Component {
                       <a href="https://github.com/yugabyte" target="_blank" rel="noopener noreferrer">
                         <i className="fa fa-github"></i> GitHub
                       </a>
-                    </li>
-                    <h4>Support</h4>
-                    <li>
-                      <a href="https://forum.yugabyte.com/" target="_blank" rel="noopener noreferrer">
-                        <i className="fa fa-university"></i> Forum
-                      </a>
-                    </li>
-                    <li>
-                      <a href="https://www.yugabyte.com/slack" target="_blank" rel="noopener noreferrer">
-                        <i className="fa fa-slack"></i> Slack
-                      </a>
-                    </li>
-                    <li>
-                      <a href="https://www.youtube.com/channel/UCL9BhSLRowqQ1TyBndhiCEw"
-                        target="_blank" rel="noopener noreferrer">
-                        <i className="fa fa-youtube"></i> YouTube
-                      </a>
-                    </li>
-                    <li>
-                      <a href="mailto:support@yugabyte.com"><i className="fa fa-envelope-o"></i> Email</a>
                     </li>
                   </NavDropdown>
                 </ul>}
