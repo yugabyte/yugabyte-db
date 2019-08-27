@@ -414,11 +414,13 @@ aggregate_signature ::= (
 
 (* Supporting rules *)
 
-where_expression ::= boolean_expression ;
+qualified_name ::= [ [ database_name '.' ] schema_name '.' ] '<Text Literal>' ;
 
 database_name ::= '<Text Literal>' ;
 
-table_name ::= [ database_name '.' ] '<Text Literal>' ;
+schema_name ::= '<Text Literal>' ;
+
+table_name ::= qualified_name ;
 
 column_name ::= '<Text Literal>' ;
 
@@ -460,6 +462,63 @@ name ::= '<Text Literal>' ;
 
 column_names ::= column_name { ',' column_name } ;
 
+where_expression ::= boolean_expression ;
+
 expression ::= '<expression>' ;
 
 boolean ::= 'TRUE' | 'FALSE' ;
+
+(* TODO(jason): change the below when issue #1557 is closed or closing *)
+collation ::= ( '"default"' | '"C"' | '"POSIX"' | '"ucs_basic"' ) ;
+
+type_name ::= qualified_name ;
+
+attribute_name ::= '<Text Literal>' ;
+
+data_type ::= type_name ;
+
+label ::= '<Text Literal>' ;
+
+subtype ::= type_name ;
+
+operator_class_name ::= qualified_name ;
+
+subtype_operator_class ::= operator_class_name ;
+
+function_name ::= qualified_name ;
+
+canonical_function ::= function_name ;
+
+subtype_diff_function ::= function_name ;
+
+input_function ::= function_name ;
+
+output_function ::= function_name ;
+
+receive_function ::= function_name ;
+
+send_function ::= function_name ;
+
+type_modifier_input_function ::= function_name ;
+
+type_modifier_output_function ::= function_name ;
+
+internallength ::= ( '-2' | '-1' | '<non-negative integer>' ) ;
+
+alignment ::= ( 'CHAR' | 'INT2' | 'INT4' | 'DOUBLE' ) ;
+
+storage ::= ( 'PLAIN' | 'EXTERNAL' | 'EXTENDED' | 'MAIN' ) ;
+
+like_type ::= type_name ;
+
+category ::= '<character>' ;
+
+preferred ::= boolean ;
+
+default ::= '<type value>' ;
+
+element ::= type_name ;
+
+delimiter ::= '<character>' ;
+
+collatable ::= boolean ;
