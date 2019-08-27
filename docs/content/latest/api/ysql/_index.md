@@ -41,6 +41,7 @@ DDL commands define structures in the database, change their definitions, as wel
 | [`CREATE SEQUENCE`](commands/ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](commands/ddl_create_table) | Create a new table |
 | [`CREATE TABLE AS`](commands/ddl_create_table_as) | Create a new table |
+| [`CREATE TYPE`](commands/ddl_create_type) | Create a new type |
 | [`CREATE VIEW`](commands/ddl_create_view) | Create a new view |
 | [`DROP DATABASE`](commands/ddl_drop_database) | Delete a database from the system |
 | [`DROP SEQUENCE`](commands/ddl_drop_sequence) | Delete a sequence generator |

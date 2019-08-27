@@ -31,6 +31,7 @@ The following table lists the commands in YSQL.
 | [`CREATE SEQUENCE`](ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](ddl_create_table) | Create a new table |
 | [`CREATE TABLE AS`](ddl_create_table_as) | Create a new table |
+| [`CREATE TYPE`](ddl_create_type) | Create a new type |
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
 | [`CREATE VIEW`](ddl_create_view) | Create a new view |
 | [`DEALLOCATE`](perf_deallocate) | Deallocate a prepared statement |
