@@ -15,7 +15,7 @@ menu:
 ---
 
 {{< note title="Note" >}}
-The local cluster setup on a single host is not intended for production deployments or performance benchmarking. For production deployment or performance benchmarking, deploying a true multi-node on multi-host setup, see [Deploy YugaByte DB](../../latest/deploy).
+The local cluster setup on a single host is intended for development and learning. For production deployment or performance benchmarking, deploying a true multi-node on multi-host setup, see [Deploy YugaByte DB](../../latest/deploy).
 {{< /note >}}
 
 ## Get started yourself

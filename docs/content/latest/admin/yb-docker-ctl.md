@@ -60,11 +60,11 @@ optional arguments:
 
 ## Create a cluster
 
-Use the `yb-docker-ctl create` command to create a local YugaByte DB cluster with Docker containers. This cluster is intended for development and learning.
+Use the `yb-docker-ctl create` command to create a local Docker-based cluster for development and learning.
 
-The number of nodes created when you use the `yb-dockter-ctl create` command is always equal to the replication factor (RF), ensureing that all of the replicas for a given tablet can be placed on different nodes. With the [`add_node`](#add-a-node) and [`remove_node`](#remove-a-node) commands, the size of the cluster can thereafter be expanded or shrunk as needed.
+The number of nodes created when you use the `yb-dockter-ctl create` command is always equal to the replication factor (RF), ensuring that all of the replicas for a given tablet can be placed on different nodes. With the [`add_node`](#add-a-node) and [`remove_node`](#remove-a-node) commands, the size of the cluster can thereafter be expanded or shrunk as needed.
 
-### Create a 1-node local cluster with replication factor of 1
+### Create a 1-node local cluster with RF of 1
 
 To create a 1-node local cluster for development and learning YugaByte DB, run the default `yb-docker-ctl` command. By default, this creates a 1-node cluster with a replication factor (RF) of 1. Note that the `yb-docker-ctl create` command pulls the latest `yugabytedb/yugabyte` image at the outset, in case the image has not yet downloaded or is not the latest version.
 
@@ -72,9 +72,11 @@ To create a 1-node local cluster for development and learning YugaByte DB, run t
 $ ./yb-docker-ctl create
 ```
 
-### Create a 3-node local cluster with replication factor of 3
+### Create a 3-node local cluster with RF of 3
 
-Each of these initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of yb-masters in a cluster has to equal to the replication factor for the cluster to be considered as operating normally and the number of YB-TServers is equal to be the number of nodes.
+When you create a 3-node local Docker-based cluster using the `yb-docker-ctl create` command, each of the initial nodes run a `yb-tserver` process and a `yb-master` process. Note that the number of YB-Masters in a cluster has to equal to the replication factor (RF) for the cluster to be considered as operating normally and the number of YB-TServers is equal to be the number of nodes.
+
+To create a 3-node local Docker-based cluster for development and learning, run the following `yb-docker-ctl` command.
 
 ```sh
 $ ./yb-docker-ctl create --rf 3
@@ -110,7 +112,7 @@ $ ./yb-docker-ctl create --rf 5
 
 ## Check cluster status
 
-Get the status of your local cluster, including the URLs for the admin UIs for the YB-Master and YB-TServer.
+Get the status of your local cluster, including the URLs for the Admin UI for each YB-Master and YB-TServer.
 
 ```sh
 $ ./yb-docker-ctl status
