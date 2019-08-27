@@ -65,9 +65,20 @@ postgres=# DROP TYPE IF EXISTS feature_shell;
 `CASCADE` example
 
 ```sql
-postgres=# CREATE TYPE feature_enum AS ENUM('one', 'two', 'three');
+postgres=# CREATE TYPE feature_enum AS ENUM ('one', 'two', 'three');
 postgres=# CREATE TABLE feature_tab_enum (feature_col feature_enum);
 postgres=# DROP TYPE feature_tab_enum CASCADE;
+```
+
+`RESTRICT` example
+
+```sql
+postgres=# CREATE TYPE feature_range AS RANGE (subtype=INTEGER);
+postgres=# CREATE TABLE feature_tab_range (feature_col feature_range);
+postgres=# -- The following should error:
+postgres=# DROP TYPE feature_range RESTRICT;
+postgres=# DROP TABLE feature_tab_range;
+postgres=# DROP TYPE feature_range RESTRICT;
 ```
 
 ## See also

@@ -96,8 +96,37 @@ postgres=# CREATE TABLE feature_tab_struct (feature_col feature_struct);
 Enumerated type
 
 ```sql
-postgres=# CREATE TYPE feature_enum AS ENUM('one', 'two', 'three');
+postgres=# CREATE TYPE feature_enum AS ENUM ('one', 'two', 'three');
 postgres=# CREATE TABLE feature_tab_enum (feature_col feature_enum);
+```
+
+Range type
+
+```sql
+postgres=# CREATE TYPE feature_range AS RANGE (subtype=INTEGER);
+postgres=# CREATE TABLE feature_tab_range (feature_col feature_range);
+```
+
+Base type
+
+```sql
+postgres=# CREATE TYPE int4_type;
+postgres=# CREATE FUNCTION int4_type_in(cstring) RETURNS int4_type
+               LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int4in';
+postgres=# CREATE FUNCTION int4_type_out(int4_type) RETURNS cstring
+               LANGUAGE internal IMMUTABLE STRICT PARALLEL SAFE AS 'int4out';
+postgres=# CREATE TYPE int4_type (
+               INPUT = int4_type_in,
+               OUTPUT = int4_type_out,
+               LIKE = int4
+           );
+postgres=# CREATE TABLE int4_table (t int4_type);
+```
+
+Shell type
+
+```sql
+postgres=# CREATE TYPE shell_type;
 ```
 
 ## See also
