@@ -357,7 +357,15 @@ class NodePicker extends Component {
     let nodeItems =[];
     if (isNonEmptyObject(selectedUniverse) && selectedUniverse!== "all") {
       nodeItems = selectedUniverse.universeDetails.nodeDetailsSet
-        .sort((a, b) => a.nodeName.toLowerCase() < b.nodeName.toLowerCase() ? -1 : 1)
+        .sort((a, b) => {
+          if (a.nodeName === null) {
+            return -1;
+          } else if (b.nodeName === null) {
+            return 1;
+          } else {
+            return a.nodeName.toLowerCase() < b.nodeName.toLowerCase() ? -1 : 1;
+          }
+        })
         .map((nodeItem, nodeIdx) => (
           <option key={nodeIdx} value={nodeItem.nodeName}>
             {nodeItem.nodeName}

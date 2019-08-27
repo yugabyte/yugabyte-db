@@ -271,13 +271,13 @@ export default class UniverseOverviewNew extends Component {
         body={
           <FlexContainer className={"centered"}>
             <FlexGrow>
+              <YBResourceCount size={numPostgresTables} kind="YSQL" />
+            </FlexGrow>
+            <FlexGrow>
               <YBResourceCount size={numCassandraTables} kind="YCQL" />
             </FlexGrow>
             <FlexGrow>
               <YBResourceCount size={numRedisTables} kind="YEDIS" />
-            </FlexGrow>
-            <FlexGrow>
-              <YBResourceCount size={numPostgresTables} kind="YSQL" />
             </FlexGrow>
           </FlexContainer>
         }

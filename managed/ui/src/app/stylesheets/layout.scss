@@ -108,6 +108,10 @@ pre {
 .modal-backdrop {
   top: -50%;
   bottom: -50%;
+  z-index: 3000;
+}
+.fade.in.modal {
+  z-index: 3100;
 }
 .text-align-right {
   text-align: right !important;

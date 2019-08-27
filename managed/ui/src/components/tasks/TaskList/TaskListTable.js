@@ -14,10 +14,11 @@ export default class TaskListTable extends Component {
     title : "Tasks"
   }
   static propTypes  = {
-    taskList : PropTypes.array.isRequired
+    taskList : PropTypes.array.isRequired,
+    overrideContent: PropTypes.object,
   }
   render() {
-    const {taskList, title} = this.props;
+    const {taskList, title, overrideContent} = this.props;
 
     function nameFormatter(cell, row) {
       return <span>{row.title.replace(/.*:\s*/, '')}</span>;
@@ -41,35 +42,37 @@ export default class TaskListTable extends Component {
           <h2 className="task-list-header content-title">{title}</h2>
         }
         body={
-          <BootstrapTable data={taskList} bodyStyle={tableBodyContainer} pagination={true}
-                          search multiColumnSearch searchPlaceholder='Search by Name or Type'>
-            <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
-            <TableHeaderColumn dataField="type" dataFormat={typeFormatter}
-                              columnClassName="no-border name-column" className="no-border">
-              Type
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="title" dataFormat={nameFormatter} dataSort
-                              columnClassName="no-border name-column" className="no-border">
-              Name
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="percentComplete" dataSort
-                              columnClassName="no-border name-column" className="no-border"
-                              dataFormat={successStringFormatter}>
-              Status
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter} dataSort
-                              columnClassName="no-border " className="no-border"
-                              dataAlign="left">
-              Start Time
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="completionTime" dataFormat={timeFormatter} dataSort
-                              columnClassName="no-border name-column" className="no-border">
-              End Time
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort>
-              Notes
-            </TableHeaderColumn>
-          </BootstrapTable>
+          !!overrideContent ?
+            overrideContent :
+            <BootstrapTable data={taskList} bodyStyle={tableBodyContainer} pagination={true}
+                            search multiColumnSearch searchPlaceholder='Search by Name or Type'>
+              <TableHeaderColumn dataField="id" isKey={true} hidden={true}/>
+              <TableHeaderColumn dataField="type" dataFormat={typeFormatter}
+                                columnClassName="no-border name-column" className="no-border">
+                Type
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="title" dataFormat={nameFormatter} dataSort
+                                columnClassName="no-border name-column" className="no-border">
+                Name
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="percentComplete" dataSort
+                                columnClassName="no-border name-column" className="no-border"
+                                dataFormat={successStringFormatter}>
+                Status
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="createTime" dataFormat={timeFormatter} dataSort
+                                columnClassName="no-border " className="no-border"
+                                dataAlign="left">
+                Start Time
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="completionTime" dataFormat={timeFormatter} dataSort
+                                columnClassName="no-border name-column" className="no-border">
+                End Time
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort>
+                Notes
+              </TableHeaderColumn>
+            </BootstrapTable>
         }
       />
     );

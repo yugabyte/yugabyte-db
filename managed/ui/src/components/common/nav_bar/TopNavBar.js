@@ -34,10 +34,12 @@ class YBMenuItem extends Component {
 
 export default class TopNavBar extends Component {
   handleLogout = event => {
-    localStorage.clear();
-    Cookies.remove("authToken");
-    Cookies.remove("apiToken");
-    Cookies.remove("customerId");
+    // Don't remove all localStorage items
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('apiToken');
+    Cookies.remove('authToken');
+    Cookies.remove('apiToken');
+    Cookies.remove('customerId');
     this.props.logoutProfile();
   };
 

@@ -195,36 +195,43 @@ class GraphPanel extends Component {
   }
 
   render() {
-    const { type, selectedUniverse, graph: { metrics }} = this.props;
+    const { type, selectedUniverse, insecureLoginToken, graph: { metrics }} = this.props;
 
-    let panelItem = <YBLoading />;
-    if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
-      /* Logic here is, since there will be multiple instances of GraphPanel
-      we basically would have metrics data keyed off panel type. So we
-      loop through all the possible panel types in the metric data fetched
-      and group metrics by panel type and filter out anything that is empty.
-      */
-      const width = this.props.width;
-      panelItem = panelTypes[type].metrics.map(function(metricKey, idx) {
-        return (isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error) ?
-          <MetricsPanel metricKey={metricKey} key={idx}
-                        metric={metrics[type][metricKey]}
-                        className={"metrics-panel-container"}
-                        width={width} />
-          : null;
-      }).filter(Boolean);
-    }
-    const invalidPanelType = selectedUniverse && isKubernetesUniverse(selectedUniverse) ?
-      panelTypes[type].title === 'Node' :
-      panelTypes[type].title === 'Container';
-    if (invalidPanelType) {
-      return null;
+    let panelData = <YBLoading />;
+
+    if (insecureLoginToken && type !== 'proxies') {
+      panelData = (<div className="oss-unavailable-warning">
+        Only available on YugaByte Platform.
+      </div>);
+    } else {
+      if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
+        /* Logic here is, since there will be multiple instances of GraphPanel
+        we basically would have metrics data keyed off panel type. So we
+        loop through all the possible panel types in the metric data fetched
+        and group metrics by panel type and filter out anything that is empty.
+        */
+        const width = this.props.width;
+        panelData = panelTypes[type].metrics.map(function(metricKey, idx) {
+          return (isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error) ?
+            <MetricsPanel metricKey={metricKey} key={idx}
+                          metric={metrics[type][metricKey]}
+                          className={"metrics-panel-container"}
+                          width={width} />
+            : null;
+        }).filter(Boolean);
+      }
+      const invalidPanelType = selectedUniverse && isKubernetesUniverse(selectedUniverse) ?
+        panelTypes[type].title === 'Node' :
+        panelTypes[type].title === 'Container';
+      if (invalidPanelType) {
+        return null;
+      }
+
+      if (isEmptyArray(panelData)) {
+        panelData = 'Error receiving response from Graph Server';
+      }
     }
 
-    let panelData = panelItem;
-    if (isEmptyArray(panelItem)) {
-      panelData = "Error receiving response from Graph Server";
-    }
     return (
       <Panel id={panelTypes[type].title} key={panelTypes[type]} eventKey={this.props.eventKey} defaultExpanded={this.state.isOpen} className="metrics-container">
         <Panel.Heading>
