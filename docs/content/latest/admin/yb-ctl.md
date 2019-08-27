@@ -1,7 +1,7 @@
 ---
 title: yb-ctl
 linkTitle: yb-ctl
-description: yb-ctl utility
+description: yb-ctl
 menu:
   latest:
     identifier: yb-ctl

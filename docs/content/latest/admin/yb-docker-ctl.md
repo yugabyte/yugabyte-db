@@ -1,7 +1,7 @@
 ---
 title: yb-docker-ctl
 linkTitle: yb-docker-ctl
-description: yb-docker-ctl utility
+description: yb-docker-ctl
 menu:
   latest:
     identifier: yb-docker-ctl
