@@ -40,6 +40,7 @@ The following table lists the commands in YSQL.
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
+| [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
 | [`END TRANSACTION`](txn_end) | Commit a transaction |
 | [`EXECUTE`](perf_execute) | Execute a prepared statement |
 | [`EXPLAIN`](perf_explain) | Display execution plan for a statement |

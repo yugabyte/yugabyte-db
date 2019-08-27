@@ -102,4 +102,5 @@ postgres=# CREATE TABLE feature_tab_enum (feature_col feature_enum);
 
 ## See also
 
+- [`DROP TYPE`](../ddl_drop_type)
 - [Other YSQL Statements](..)

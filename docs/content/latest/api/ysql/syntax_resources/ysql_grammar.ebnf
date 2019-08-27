@@ -216,6 +216,10 @@ drop_database ::= 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
 (* 'DROP' 'TABLE' *)
 drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name ;
 
+(* 'DROP' 'TYPE' *)
+drop_type ::= 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
+              [ 'CASCADE' | 'RESTRICT' ] ;
+
 (* 'DROP' 'SEQUENCE' *)
 drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
 

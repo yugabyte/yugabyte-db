@@ -46,6 +46,7 @@ DDL commands define structures in the database, change their definitions, as wel
 | [`DROP DATABASE`](commands/ddl_drop_database) | Delete a database from the system |
 | [`DROP SEQUENCE`](commands/ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](commands/ddl_drop_table) | Delete a table from a database |
+| [`DROP TYPE`](commands/ddl_drop_type) | Delete a user-defined type |
 | [`TRUNCATE`](commands/ddl_truncate) | Clear all rows from a table |
 
 ## Data manipulation language (DML)
