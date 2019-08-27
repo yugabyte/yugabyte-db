@@ -23,15 +23,15 @@ class TableTitle extends Component {
           <h2>Tables</h2>
           <div className="table-type-count">
             <Image src={tableIcon} className="table-type-logo"/>
+            <YBResourceCount kind="YSQL" size={numPostgresTables}/>
+          </div>
+          <div className="table-type-count">
+            <Image src={tableIcon} className="table-type-logo"/>
             <YBResourceCount kind="YCQL" size={numCassandraTables}/>
           </div>
           <div className="table-type-count">
             <Image src={tableIcon} className="table-type-logo"/>
             <YBResourceCount kind="YEDIS" size={numRedisTables}/>
-          </div>
-          <div className="table-type-count">
-            <Image src={tableIcon} className="table-type-logo"/>
-            <YBResourceCount kind="YSQL" size={numPostgresTables}/>
           </div>
         </div>
       </div>

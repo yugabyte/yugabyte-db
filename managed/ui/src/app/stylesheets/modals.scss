@@ -37,6 +37,32 @@
     min-width: 110px;
     margin-left: 14px !important;
   }
+  .footer-accessory-wrapper {
+    margin-top: 4px;
+  }
+  .footer-accessory-wrapper > div {
+    display: inline-block;
+    margin-right: 10px;
+  }
+  .social-media-btn {
+    border: 1px solid #cbcdd0;
+    color: #202951;
+    text-decoration: none;
+    padding: 10px 15px;
+    height: 42px;
+    border-radius: 7px;
+    margin-right: 15px;
+    font-size: 14px;
+    background: #fff;
+
+    img {
+      margin-left: 6px;
+    }
+  }
+  .social-media-btn:hover {
+    background-color: #e5e5e9;
+    color: #000;
+  }
 }
 
 .modal-accessory {

@@ -244,8 +244,13 @@ class UniverseDetail extends Component {
             key="tasks-tab"
             mountOnEnter={true}
             unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, "universes.details.tasks")} >
-            <UniverseTaskList universe={universe} tasks={tasks} />
+            disabled={isDisabled(currentCustomer.data.features, "universes.details.tasks")}
+          >
+            <UniverseTaskList
+              universe={universe}
+              tasks={tasks}
+              isCommunityEdition={!!customer.INSECURE_apiToken}
+            />
           </Tab.Pane>
       ],
       //tabs relevant for non-imported universes only
@@ -412,7 +417,7 @@ class UniverseTaskList extends Component {
   };
 
   render() {
-    const {universe: {currentUniverse}, tasks: {customerTaskList}} = this.props;
+    const {universe: {currentUniverse}, tasks: {customerTaskList}, isCommunityEdition} = this.props;
     const currentUniverseTasks = this.tasksForUniverse();
     let universeTaskUUIDs = [];
     const universeTaskHistoryArray = [];
@@ -429,7 +434,17 @@ class UniverseTaskList extends Component {
       }).filter(Boolean);
     }
     if (isNonEmptyArray(universeTaskHistoryArray)) {
-      universeTaskHistory = <TaskListTable taskList={universeTaskHistoryArray} title={"Task History"}/>;
+      const errorPlatformMessage = (
+        <div className="oss-unavailable-warning">
+          Only available on YugaByte Platform.
+        </div>
+      );
+      universeTaskHistory = (
+        <TaskListTable taskList={universeTaskHistoryArray || []}
+          overrideContent={isCommunityEdition && errorPlatformMessage}
+          title={"Task History"}
+        />
+      );
     }
     if (isNonEmptyArray(customerTaskList) && isNonEmptyArray(universeTaskUUIDs)) {
       currentTaskProgress = <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar" timeoutInterval={TASK_SHORT_TIMEOUT}/>;

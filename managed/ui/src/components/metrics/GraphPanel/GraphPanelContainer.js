@@ -25,6 +25,7 @@ const mapDispatchToProps = (dispatch) => {
 };
 const mapStateToProps = (state) => {
   return {
+    insecureLoginToken: state.customer.INSECURE_apiToken,
     graph: state.graph
   };
 };

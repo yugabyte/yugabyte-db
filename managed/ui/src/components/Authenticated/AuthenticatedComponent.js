@@ -28,6 +28,7 @@ class AuthenticatedComponent extends Component {
     this.props.fetchCustomerTasks();
     this.props.fetchCustomerCertificates();
     this.props.fetchCustomerConfigs();
+    this.props.fetchInsecureLogin();
   }
 
   componentWillUnmount() {

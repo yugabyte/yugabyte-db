@@ -147,7 +147,7 @@ export function insecureLogin() {
 export function insecureLoginResponse(response) {
   return {
     type: INSECURE_LOGIN_RESPONSE,
-    payload: response
+    payload: response.payload
   };
 }
 
