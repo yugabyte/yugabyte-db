@@ -15,7 +15,9 @@ showAsideToc: true
 
 ## Synopsis
 
-The `CREATE TYPE` command creates a new type in a database.
+The `CREATE TYPE` command creates a new user-defined type in a database.  There are five kinds of
+types: composite, enumerated, range, base, and shell.  They each have their own `CREATE TYPE`
+syntax.
 
 ## Syntax
 
@@ -51,7 +53,7 @@ Where
 - `collation` specifies the collation to use for this type.  In case this is a composite type, the
   attribute data type must be collatable.  In case this is a range type, the subtype must be
   collatable.
-- `label` specifies a quoted label to be a vaule of this enumerated type.
+- `label` specifies a quoted label to be a value of this enumerated type.
 - `subtype` specifies the type to use for this range type.
 - `subtype_operator_class` specifies the operator class to use for the subtype of this range type.
 - `canonical_function` specifies the canonical function used when converting range values of this
@@ -83,6 +85,11 @@ Where
   representation of values of this type.
 - `collatable` specifies whether collation information may be passed to operations that use this
   type.
+
+## Semantics
+
+- The order of options in creating range types and base types does not matter.  Even the mandatory
+  options `SUBTYPE`, `INPUT`, and `OUTPUT` may appear in any order.
 
 ## Examples
 
