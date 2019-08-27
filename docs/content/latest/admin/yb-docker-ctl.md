@@ -1,7 +1,7 @@
 ---
 title: yb-docker-ctl
 linkTitle: yb-docker-ctl
-description: Use the "yb-docker-ctl" command line interface to administer local Docker clusters.
+description: yb-docker-ctl utility
 menu:
   latest:
     identifier: yb-docker-ctl
@@ -11,9 +11,10 @@ aliases:
   - admin/yb-docker-ctl
 isTocNested: false
 showAsideToc: true
+
 ---
 
-The `yb-docker-ctl` is a simple command line interface for administering local Docker clusters for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.
+The `yb-docker-ctl` utility provides a simple command line interface (CLI), or shell, for administering local Docker-based clusters for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.
 
 ## Download
 
@@ -61,11 +62,11 @@ optional arguments:
 
 Use the `yb-docker-ctl create` command to create a local YugaByte DB cluster with Docker containers. This cluster is intended for development and learning.
 
-The number of nodes created with the initial create command is always equal to the replication factor in order to ensure that all the replicas for a given tablet can be placed on different nodes. With the [`add_node`](#add-a-node) and [`remove_node`](#remove-a-node) commands, the size of the cluster can thereafter be expanded or shrunk as needed.
+The number of nodes created when you use the `yb-dockter-ctl create` command is always equal to the replication factor (RF), ensureing that all of the replicas for a given tablet can be placed on different nodes. With the [`add_node`](#add-a-node) and [`remove_node`](#remove-a-node) commands, the size of the cluster can thereafter be expanded or shrunk as needed.
 
 ### Create a 1-node local cluster with replication factor of 1
 
-Note that the create command pulls the latest `yugabytedb/yugabyte` image at the outset in case the image is not yet downloaded or is not the latest.
+To create a 1-node local cluster for development and learning YugaByte DB, run the default `yb-docker-ctl` command. By default, this creates a 1-node cluster with a replication factor (RF) of 1. Note that the `yb-docker-ctl create` command pulls the latest `yugabytedb/yugabyte` image at the outset, in case the image has not yet downloaded or is not the latest version.
 
 ```sh
 $ ./yb-docker-ctl create
@@ -174,6 +175,7 @@ The `yb-docker-ctl destroy` command below destroys the local cluster, including 
 
 ```sh
 $ ./yb-docker-ctl destroy
+
 ```
 
 ## Upgrade container image

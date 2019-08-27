@@ -1,14 +1,22 @@
 ## 1. Create a local cluster
 
-We will use the [`yb-ctl`](../../admin/yb-ctl/) utility located in the `bin` directory of the YugaByte DB package to create and administer a local cluster. The default data directory used is `$HOME/yugabyte-data`. You can change this directory with the `--data_dir` option. Detailed output for the *create* command is available in [yb-ctl Reference](../../admin/yb-ctl/#create-cluster).
+You can use the [`yb-ctl`](../../admin/yb-ctl/) utility, located in the `bin` directory of the YugaByte DB package, to create and administer a local cluster. The default data directory is `$HOME/yugabyte-data`. You can change the location of the data directory by using the `--data_dir` option.
+
+To quickly create a 1-node or 3-node local cluster, follow the steps below. For details on using the `yb-ctl create` command and the cluster configuration, see [Create a local cluster](../../admin/yb-ctl/#create-cluster) in the utility reference.
+
+### Create a 1-node cluster with RF=1
+
+To create a 1-node cluster with a replication factor (RF) of 1, run the following `yb-ctl create` command. 
 
 ```sh
 $ ./bin/yb-ctl create
 ```
 
-By default, the above command will create a 1 node cluster with Replication Factor (RF) 1. The initial cluster creation may take a minute or so **without any output** on the prompt.
+The initial cluster creation may take a minute or so **without any output** on the prompt.
 
-You can create a 3 node cluster with RF 3 by using the command below.
+### Create a 3-node cluster with RF=3
+
+To run a distributed SQL cluster locally, you can quickly create a 3-node cluster with RF of 3 by running the following command.
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create
@@ -20,7 +28,11 @@ Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `local
 
 ## 2. Check cluster status with yb-ctl
 
-Run the command below to see that we now have 1 `yb-master` process and 1 `yb-tserver` process running on this localhost. Roles played by these processes in a YugaByte cluster (aka Universe) is explained in detail [here](../../architecture/concepts/universe/).
+Run the `yb-ctl status` command to see the `yb-master` and `yb-tserver` processes running locally.
+
+### Example
+
+For a 1-node cluster, the `yb-ctl status` command will show that you have 1 `yb-master` process and 1 `yb-tserver` process running on the localhost. For details about the roles of these processes in a YugaByte DB cluster (aka Universe), see [Universe](../../architecture/concepts/universe/).
 
 ```sh
 $ ./bin/yb-ctl status

@@ -13,7 +13,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-`yb-master`, located in the bin directory of YugaByte home, is the [YB-Master](../../architecture/concepts/universe/#yb-master-process) binary.
+`yb-master`, located in the `bin` directory of YugaByte home, is the [YB-Master](../../architecture/concepts/universe/#yb-master-process) binary.
 
 ## Example
 
