@@ -1,7 +1,7 @@
 ---
 title: yb-ctl
 linkTitle: yb-ctl
-description: Use the "yb-ctl" command line interface to administer local clusters for development and learning.
+description: yb-ctl
 menu:
   latest:
     identifier: yb-ctl
@@ -11,6 +11,7 @@ aliases:
   - admin/yb-ctl
 isTocNested: false
 showAsideToc: true
+
 ---
 
 The `yb-ctl` utility, located in the bin directory of YugaByte home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-master`](../admin/yb-master/) and [`yb-tserver`](../admin/yb-tserver/) binaries to perform the necessary administration.
@@ -70,13 +71,13 @@ optional arguments:
 
 Here are the default values for all the optional arguments.
 
-Optional argument | Default | Description
-----------------------------|-----------|---------------------------------------
-`--binary_dir` | Same directory as the `yb-ctl` binary | Location of the `yb-master` and the `yb-tserver` binaries
-`--data_dir` | `/tmp/yugabyte-local-cluster` | Location of the data directory for the YugaByte DB
-`--replication_factor` or `--rf`| `1` | Number of replicas for each tablet, should be an odd number (e.g. `1`,`3`,`5`) so that majority consensus can be established
-`--require_clock_sync`| `false` | Tells YugaByte DB whether to depend on clock synchronization between the nodes in the cluster
-`--num_shards_per_tserver`| `2` | Number of shards (tablets) per tablet server for each table
+| Optional argument                | Default                               | Description                                                  |
+| -------------------------------- | ------------------------------------- | ------------------------------------------------------------ |
+| `--binary_dir`                   | Same directory as the `yb-ctl` binary | Location of the `yb-master` and the `yb-tserver` binaries    |
+| `--data_dir`                     | `/tmp/yugabyte-local-cluster`         | Location of the data directory for the YugaByte DB           |
+| `--replication_factor` or `--rf` | `1`                                   | Number of replicas for each tablet, should be an odd number (e.g. `1`,`3`,`5`) so that majority consensus can be established |
+| `--require_clock_sync`           | `false`                               | Tells YugaByte DB whether to depend on clock synchronization between the nodes in the cluster |
+| `--num_shards_per_tserver`       | `2`                                   | Number of shards (tablets) per tablet server for each table  |
 
 ## Create a cluster
 
@@ -150,6 +151,7 @@ yb-master logs are located at
 ```sh
 yugabyte-data/node-#/disk-#/yb-data/master.out
 yugabyte-data/node-#/disk-#/yb-data/master/logs
+
 ```
 
 yb-tserver logs are located at
@@ -157,6 +159,7 @@ yb-tserver logs are located at
 ```sh
 yugabyte-data/node-#/disk-#/yb-data/tserver.out
 yugabyte-data/node-#/disk-#/yb-data/tserver/logs
+
 ```
 
 ## Start and stop an existing cluster
@@ -165,12 +168,14 @@ Create a new cluster, or start an existing cluster if it already exists.
 
 ```sh
 $ ./bin/yb-ctl start
+
 ```
 
 Stop a cluster so that you can start it later.
 
 ```sh
 $ ./bin/yb-ctl stop
+
 ```
 
 ## Check cluster status
@@ -179,6 +184,7 @@ You can get the status of the local cluster including the URLs for the admin UIs
 
 ```sh
 $ ./bin/yb-ctl status
+
 ```
 
 ## Initialize the YEDIS API
@@ -187,6 +193,7 @@ The `setup_redis` command to initialize YugaByte DB's Redis-compatible YEDIS API
 
 ```sh
 $ ./bin/yb-ctl setup_redis
+
 ```
 
 ## Add and remove nodes
@@ -197,6 +204,7 @@ $ ./bin/yb-ctl setup_redis
 
 ```sh
 $ ./bin/yb-ctl add_node
+
 ```
 
 ### Stop and remove nodes
@@ -206,6 +214,7 @@ that has to be removed as input. Stop node command expects a node id which denot
 
 ```sh
 $ ./bin/yb-ctl stop_node 4
+
 ```
 
 At this point of time `remove_node` and `stop_node` do the same thing. So they can be used interchangeably.
@@ -217,6 +226,7 @@ deletes the data directory of the cluster.
 
 ```sh
 $ ./bin/yb-ctl destroy
+
 ```
 
 ## Advanced commands
@@ -227,19 +237,23 @@ You can pass the placement information for nodes in a cluster from the command l
 
 ```sh
 $ ./bin/yb-ctl --rf 3 create --placement_info "cloud1.region1.zone1,cloud2.region2.zone2"
+
 ```
 
 The total number of placement information entries cannot be more than the replication factor (this is because we would not be able to satisfy the data placement constraints for this replication factor).
 If the total number of placement information entries is lesser than the replication factor, the placement information is passed down to the node in a round robin fashion.
 
 To add a node:
+
 ```sh
 $ ./bin/yb-ctl add_node --placement_info "cloud1.region1.zone1"
+
 ```
 
 ### Create a cluster with custom flags
 
 You can also pass custom flags to the masters and tservers.
+
 ```sh
 $ ./bin/yb-ctl --rf 1 create --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20,master_backup_svc_queue_length=70" --tserver_flags "log_inject_latency=false,log_segment_size_mb=128,raft_heartbeat_interval_ms=1000"
 ```
@@ -284,6 +298,7 @@ The `restart` first stops the node and then starts it again. At this point of ti
 
 ```sh
 $ ./bin/yb-ctl restart_node 2
+
 ```
 
 - Restart node with placement info
