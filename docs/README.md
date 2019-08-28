@@ -108,31 +108,37 @@ We will review your changes, add any feedback and once everything looks good mer
 
 To update the documentation with new grammars and syntax diagrams, follow these steps:
 
-_Note: Modifications will typically be added to the `ysql` or `ycql` subdirectories of the `docs/content/latest/api/` directory._
+_Note: Modifications will typically be added to the `ysql` or `ycql` subdirectories of the
+`docs/content/latest/api/` directory._
 
-1. Update the appropriate EBNF source grammar file (`<source>_grammar.ebnf`) with your changes, for example, adding support for a new statement or clause.
+1. Update the appropriate EBNF source grammar file (`<source>_grammar.ebnf`) with your changes, for
+   example, adding support for a new statement or clause.
 
-    - YSQL API: `./content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf`
-    - YCQL API: `./content/latest/api/ycql/syntax_resources/ycql_grammar.ebnf`
+   - YSQL API: `./content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf`
+   - YCQL API: `./content/latest/api/ycql/syntax_resources/ycql_grammar.ebnf`
 
-2. If you are adding a new file (for example for a new statement), use the template `includeMarkdown` macro (see `cmd_copy.md` file mentioned below as an example).
+1. If you are adding a new file (for example for a new statement), use the template
+   `includeMarkdown` macro (see `cmd_copy.md` file mentioned below as an example).
 
-    _Example: for the YSQL `COPY` command the source file is `./content/latest/api/ysql/commands/cmd_copy.md`._
+   _Example: for the YSQL `COPY` command the source file is
+   `./content/latest/api/ysql/commands/cmd_copy.md`._
 
-3. Inside of the `syntax_resources/commands` directory, create the following two **empty** files:
-    - `<name>.grammar.md`
-    - `<name>.diagram.md`
+1. Inside of the `syntax_resources/commands` directory, create the following two **empty** files:
 
-    For `<name>`, use a comma-separated list of rule names from the EBNF file that you want in your new file.
-    The two new files must be added into a directory structure that matches the top-level directory (`ysql` or `ycql`) — if needed, create any required parent directories.
+   - `<name>.grammar.md`
+   - `<name>.diagram.md`
 
-    _Example: For the commands/cmd_copy.md case, the new files would be named as follows:_
-    ```
-    ./content/latest/api/ysql/syntax_resources/commands/copy_from,copy_to,copy_option.grammar.md
-    ./content/latest/api/ycql/syntax_resources/commands/copy_from,copy_to,copy_option.diagram.md
-    ```
+   For `<name>`, use a comma-separated list of rule names from the EBNF file that you want in your
+   new file.  The two new files must be added into a directory structure that matches the top-level
+   directory (`ysql` or `ycql`) — if needed, create any required parent directories.
 
-4. Download the latest RRDiagram JAR file (`rrdiagram.jar`).  You can find it on the [release
+   _Example: For the commands/cmd_copy.md case, the new files would be named as follows:_
+   ```
+   ./content/latest/api/ysql/syntax_resources/commands/copy_from,copy_to,copy_option.grammar.md
+   ./content/latest/api/ycql/syntax_resources/commands/copy_from,copy_to,copy_option.diagram.md
+   ```
+
+1. Download the latest RRDiagram JAR file (`rrdiagram.jar`).  You can find it on the [release
    page](https://github.com/YugaByte/RRDiagram/releases/), or you can try running the following
    command.
 
@@ -145,22 +151,25 @@ _Note: Modifications will typically be added to the `ysql` or `ycql` subdirector
    section](https://github.com/YugaByte/RRDiagram/README.md#build) of the `RRDiagram` repo (and
    move/rename the resulting jar from the target folder)._
 
-5. Run the diagram generator using the following command:
+1. Run the diagram generator using the following command:
 
-    ```bash
-    java -jar rrdiagram.jar <input-file.ebnf> <output-folder>
-    ```
+   ```bash
+   java -jar rrdiagram.jar <input-file.ebnf> <output-folder>
+   ```
 
-    `<output-folder>` should end in `syntax_resources`, not `commands`, to get helpful `WARNING`s.
+   `<output-folder>` should end in `syntax_resources`, not `commands`, to get helpful `WARNING`s.
 
-    _Example: To generate the syntax diagrams for the YSQL API, run the following command:_
-    ```bash
-    java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf content/latest/api/ysql/syntax_resources/
-    ```
+   _Example: To generate the syntax diagrams for the YSQL API, run the following command:_
 
-    All of the Markdown (`.md`) files in the `./ysql/syntax_resources/commands` directory will be generated as needed.
+   ```bash
+   java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf \
+     content/latest/api/ysql/syntax_resources/
+   ```
 
-    _Note: To see help, run `java -jar rrdiagram.jar` (without arguments)._
+   All of the Markdown (`.md`) files in the `./ysql/syntax_resources/commands` directory will be
+   generated as needed.
 
-6. Check that the output file looks fine.
-    You may need to save the main Markdown (`.md`) file (for example `commands/cmd_copy.md`) to force the page to be rerendered.
+   _Note: To see help, run `java -jar rrdiagram.jar` (without arguments)._
+
+1. Check that the output file looks fine.  You may need to save the main Markdown (`.md`) file (for
+   example `commands/cmd_copy.md`) to force the page to be rerendered.
