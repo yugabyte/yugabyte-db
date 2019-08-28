@@ -2316,6 +2316,25 @@ Status Tablet::CreateSubtablet(
   return CreateCheckpoint(metadata->rocksdb_dir());
 }
 
+Result<int64_t> Tablet::CountIntents() {
+  ScopedPendingOperation pending_op(&pending_op_counter_);
+  RETURN_NOT_OK(pending_op);
+
+  if (!intents_db_) {
+    return 0;
+  }
+  rocksdb::ReadOptions read_options;
+  auto intent_iter = std::unique_ptr<rocksdb::Iterator>(
+      intents_db_->NewIterator(read_options));
+  int64_t num_intents = 0;
+  intent_iter->SeekToFirst();
+  while (intent_iter->Valid()) {
+    num_intents++;
+    intent_iter->Next();
+  }
+  return num_intents;
+}
+
 // ------------------------------------------------------------------------------------------------
 
 Result<ScopedReadOperation> ScopedReadOperation::Create(
