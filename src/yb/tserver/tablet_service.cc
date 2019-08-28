@@ -725,6 +725,28 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceAdminImpl::CountIntents(
+    const CountIntentsRequestPB* req,
+    CountIntentsResponsePB* resp,
+    rpc::RpcContext context) {
+  auto tablet_peers = server_->tablet_manager()->GetTabletPeers();
+  int64_t total_intents = 0;
+  // TODO: do this in parallel.
+  // TODO: per-tablet intent counts.
+  for (const auto& peer : tablet_peers) {
+    auto num_intents = peer->tablet()->CountIntents();
+    if (!num_intents.ok()) {
+      SetupErrorAndRespond(
+          resp->mutable_error(), num_intents.status(), TabletServerErrorPB_Code_UNKNOWN_ERROR,
+          &context);
+      return;
+    }
+    total_intents += *num_intents;
+  }
+  resp->set_num_intents(total_intents);
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::Write(const WriteRequestPB* req,
                               WriteResponsePB* resp,
                               rpc::RpcContext context) {
