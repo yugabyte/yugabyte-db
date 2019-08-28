@@ -315,6 +315,60 @@ update_item ::= ( column_name '=' column_value
 
 column_value ::= expression | 'DEFAULT' ;
 
+(* 'COMMENT' *)
+comment_on ::= 'COMMENT' 'ON' \
+(
+  'ACCESS' 'METHOD' object_name |
+  'AGGREGATE' aggregate_name '(' aggregate_signature ')' |
+  'CAST' '(' source_type 'AS' target_type ')' |
+  'COLLATION' object_name |
+  'COLUMN' relation_name '.' column_name |
+  'CONSTRAINT' constraint_name 'ON' table_name |
+  'CONSTRAINT' constraint_name 'ON' 'DOMAIN' domain_name |
+  'CONVERSION' object_name |
+  'DATABASE' object_name |
+  'DOMAIN' object_name |
+  'EXTENSION' object_name |
+  'EVENT' 'TRIGGER' object_name |
+  'FOREIGN' 'DATA' 'WRAPPER' object_name |
+  'FOREIGN' 'TABLE' object_name |
+  'FUNCTION' function_name [ '(' [ [ argmode ] [ argname ] argtype { ',' argtype } ] ')' ] |
+  'INDEX' object_name |
+  'LARGE' 'OBJECT' large_object_oid |
+  'MATERIALIZED' 'VIEW' object_name |
+  'OPERATOR' operator_name '(' left_type ',' right_type ')' |
+  'OPERATOR' 'CLASS' object_name 'USING' index_method |
+  'OPERATOR' 'FAMILY' object_name 'USING' index_method |
+  'POLICY' policy_name 'ON' table_name |
+  [ 'PROCEDURAL' ] 'LANGUAGE' object_name |
+  'PROCEDURE' procedure_name [ '(' [ [ argmode ] [ argname ] argtype { ',' argtype } ] ')' ] |
+  'PUBLICATION' object_name |
+  'ROLE' object_name |
+  'ROUTINE' routine_name [ '(' [ [ argmode ] [ argname ] argtype { ',' argtype } ] ')' ] |
+  'RULE' rule_name 'ON' table_name |
+  'SCHEMA' object_name |
+  'SEQUENCE' object_name |
+  'SERVER' object_name |
+  'STATISTICS' object_name |
+  'SUBSCRIPTION' object_name |
+  'TABLE' object_name |
+  'TABLESPACE' object_name |
+  'TEXT' 'SEARCH' 'CONFIGURATION' object_name |
+  'TEXT' 'SEARCH' 'DICTIONARY' object_name |
+  'TEXT' 'SEARCH' 'PARSER' object_name |
+  'TEXT' 'SEARCH' 'TEMPLATE' object_name |
+  'TRANSFORM' 'FOR' type_name 'LANGUAGE' lang_name |
+  'TRIGGER' trigger_name 'ON' table_name |
+  'TYPE' object_name |
+  'VIEW' object_name
+) \ 'IS' ( '<Text Literal>' | 'NULL' ) ;
+
+aggregate_signature ::= (
+  '*' |
+  [ argmode ] [ argname ] argtype { ',' argtype } |
+  [ [ argmode ] [ argname ] argtype { ',' argtype } ] 'ORDER' 'BY' [ argmode ] [ argname ] argtype { ',' argtype }
+) ;
+
 (* Supporting rules *)
 
 where_expression ::= boolean_expression ;
@@ -324,6 +378,40 @@ database_name ::= '<Text Literal>' ;
 table_name ::= [ database_name '.' ] '<Text Literal>' ;
 
 column_name ::= '<Text Literal>' ;
+
+object_name ::= name ;
+relation_name ::= qualified_name ;
+aggregate_name ::= qualified_name ;
+constraint_name ::= qualified_name ;
+function_name ::= qualified_name ;
+operator_name ::= qualified_name ;
+policy_name ::= qualified_name ;
+procedure_name ::= qualified_name ;
+routine_name ::= qualified_name ;
+rule_name ::= qualified_name ;
+trigger_name ::= qualified_name ;
+
+domain_name ::= qualified_name ;
+
+index_method ::= '<Text Literal>';
+
+source_type ::= '<Text Literal>' ;
+
+target_type ::= '<Text Literal>' ;
+
+argmode ::= ( 'IN' | 'OUT' | 'INOUT' | 'VARIADIC' ) ;
+
+argname ::= name ;
+
+argtype ::= '<Text Literal>' ;
+
+large_object_oid ::= '<Integer Literal>' ;
+
+left_type ::= ( qualified_name | 'NONE' ) ;
+right_type ::= ( qualified_name | 'NONE' ) ;
+
+type_name ::= name ;
+lang_name ::= name ;
 
 name ::= '<Text Literal>' ;
 
