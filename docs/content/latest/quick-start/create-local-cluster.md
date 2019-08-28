@@ -14,7 +14,7 @@ type: page
 After [installing YugaByte DB](../install/), follow the instructions below to create a local cluster.
 
 {{< note title="Note" >}}
-We do not recommend a local cluster setup on a single host for production deployments or performance benchmarking. Deploy a true multi-node on multi-host setup using the <a href="../../deploy">manual or orchestrated deployment steps</a> for such needs.
+The local cluster setup on a single host is intended for development and learning. For production deployment or performance benchmarking, deploying a true multi-node on multi-host setup, see [Deploy YugaByte DB](../../latest/deploy).
 {{< /note >}}
 
 <ul class="nav nav-tabs nav-tabs-yb">
