@@ -15,7 +15,7 @@ menu:
 ---
 
 {{< note title="Note" >}}
-We do not recommend a local cluster setup on a single host for production deployments or performance benchmarking. For those, consider deploying a true multi-node on multi-host setup using the <a href="../../latest/deploy">manual or orchestrated deployment steps</a>.
+The local cluster setup on a single host is intended for development and learning. For production deployment or performance benchmarking, deploying a true multi-node on multi-host setup, see [Deploy YugaByte DB](../../latest/deploy).
 {{< /note >}}
 
 ## Get started yourself
@@ -28,7 +28,7 @@ We do not recommend a local cluster setup on a single host for production deploy
         <div class="title">1. Install YugaByte DB</div>
       </div>
       <div class="body">
-        Install the binary on macOS/Linux or use Docker/Kubernetes to run on any OS of choice.
+        Install the binary on macOS or Linux or use a Docker image to run on the operating system of your choice.
       </div>
     </a>
   </div>
