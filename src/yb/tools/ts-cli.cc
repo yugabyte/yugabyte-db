@@ -68,6 +68,8 @@ using yb::tserver::DeleteTabletRequestPB;
 using yb::tserver::DeleteTabletResponsePB;
 using yb::tserver::ListTabletsRequestPB;
 using yb::tserver::ListTabletsResponsePB;
+using yb::tserver::CountIntentsRequestPB;
+using yb::tserver::CountIntentsResponsePB;
 using yb::tserver::TabletServerAdminServiceProxy;
 using yb::tserver::TabletServerServiceProxy;
 using std::ostringstream;
@@ -82,6 +84,7 @@ const char* const kDumpTabletOp = "dump_tablet";
 const char* const kDeleteTabletOp = "delete_tablet";
 const char* const kCurrentHybridTime = "current_hybrid_time";
 const char* const kStatus = "status";
+const char* const kCountIntents = "count_intents";
 
 DEFINE_string(server_address, "localhost",
               "Address of server to run against");
@@ -159,6 +162,10 @@ class TsAdminClient {
 
   // Get the server status
   Status GetStatus(ServerStatusPB* pb);
+
+  // Count write intents on all tablets.
+  Status CountIntents(int64_t* num_intents);
+
  private:
   std::string addr_;
   MonoDelta timeout_;
@@ -328,6 +335,16 @@ Status TsAdminClient::GetStatus(ServerStatusPB* pb) {
   return Status::OK();
 }
 
+Status TsAdminClient::CountIntents(int64_t* num_intents) {
+  CountIntentsRequestPB req;
+  CountIntentsResponsePB resp;
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(ts_admin_proxy_->CountIntents(req, &resp, &rpc));
+  *num_intents = resp.num_intents();
+  return Status::OK();
+}
+
 namespace {
 
 void SetUsage(const char* argv0) {
@@ -341,7 +358,8 @@ void SetUsage(const char* argv0) {
       << "  " << kDumpTabletOp << " <tablet_id>\n"
       << "  " << kDeleteTabletOp << " <tablet_id> <reason string>\n"
       << "  " << kCurrentHybridTime << "\n"
-      << "  " << kStatus;
+      << "  " << kStatus << "\n"
+      << "  " << kCountIntents << "\n";
   google::SetUsageMessage(str.str());
 }
 
@@ -456,6 +474,14 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.GetStatus(&status),
                                     "Unable to get status");
     std::cout << status.DebugString() << std::endl;
+  } else if (op == kCountIntents) {
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 2);
+    int64_t num_intents = 0;
+
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.CountIntents(&num_intents),
+                                    "Unable to count intents");
+
+    std::cout << num_intents << std::endl;
   } else {
     std::cerr << "Invalid operation: " << op << std::endl;
     google::ShowUsageWithFlagsRestrict(argv[0], __FILE__);
