@@ -347,6 +347,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Delete CDC streams for a table.
   virtual CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id);
+  virtual CHECKED_STATUS DeleteCDCStreamsForTables(const vector<const TableId>& table_ids);
 
   virtual CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
