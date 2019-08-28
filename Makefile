@@ -2,7 +2,9 @@ MODULE_big = agensgraph
 
 OBJS = ag_catalog.o \
        ag_graph.o \
-       agensgraph.o \
+       ag_jsonbx.o \
+       ag_jsonbx_util.o \
+	   agensgraph.o \
        analyze.o \
        commands.o \
        cypher_clause.o \
