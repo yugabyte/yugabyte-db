@@ -54,19 +54,19 @@ void out_cypher_with(StringInfo str, const ExtensibleNode *node)
     write_node_field(where);
 }
 
-void out_cypher_set_clause(StringInfo str, const ExtensibleNode *node)
+void out_cypher_set(StringInfo str, const ExtensibleNode *node)
 {
-    DEFINE_AG_NODE(cypher_set_clause);
+    DEFINE_AG_NODE(cypher_set);
 
-    write_bool_field(is_remove);
     write_node_field(items);
+    write_bool_field(is_remove);
 }
 
-void out_cypher_set_prop(StringInfo str, const ExtensibleNode *node)
+void out_cypher_set_item(StringInfo str, const ExtensibleNode *node)
 {
-    DEFINE_AG_NODE(cypher_set_prop);
+    DEFINE_AG_NODE(cypher_set_item);
 
     write_node_field(prop);
     write_node_field(expr);
-    write_bool_field(add);
+    write_bool_field(is_add);
 }

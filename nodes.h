@@ -10,8 +10,8 @@ typedef enum ag_node_tag
 {
     cypher_return_t,
     cypher_with_t,
-    cypher_set_clause_t,
-    cypher_set_prop_t
+    cypher_set_t,
+    cypher_set_item_t
 } ag_node_tag;
 
 void register_ag_nodes(void);

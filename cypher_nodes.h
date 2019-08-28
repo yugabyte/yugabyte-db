@@ -30,25 +30,25 @@ typedef struct cypher_with
     Node *where;
 } cypher_with;
 
-typedef struct cypher_set_clause
+typedef struct cypher_set
 {
     ExtensibleNode extensible;
-    bool is_remove;
     List *items;
-} cypher_set_clause;
+    bool is_remove;
+} cypher_set;
 
-typedef struct cypher_set_prop
+typedef struct cypher_set_item
 {
     ExtensibleNode extensible;
-    Node       *prop;
-    Node       *expr;
-    bool        add;
-} cypher_set_prop;
+    Node *prop;
+    Node *expr;
+    bool is_add;
+} cypher_set_item;
 
 void out_cypher_return(StringInfo str, const ExtensibleNode *node);
 void out_cypher_sort_item(StringInfo str, const ExtensibleNode *node);
 void out_cypher_with(StringInfo str, const ExtensibleNode *node);
-void out_cypher_set_clause(StringInfo str, const ExtensibleNode *node);
-void out_cypher_set_prop(StringInfo str, const ExtensibleNode *node);
+void out_cypher_set(StringInfo str, const ExtensibleNode *node);
+void out_cypher_set_item(StringInfo str, const ExtensibleNode *node);
 
 #endif

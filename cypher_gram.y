@@ -85,7 +85,7 @@
 %type <list> return_items order_by_opt sort_items
 %type <integer> order_opt
 
-/* SET clause */
+/* SET and REMOVE clause */
 %type <node> set set_item remove remove_item
 %type <list> set_item_list remove_item_list
 
@@ -388,11 +388,12 @@ with:
 set:
     SET set_item_list
         {
-            cypher_set_clause *n;
+            cypher_set *n;
 
-            n = make_ag_node(cypher_set_clause);
-            n->is_remove = false;
+            n = make_ag_node(cypher_set);
             n->items = $2;
+            n->is_remove = false;
+
             $$ = (Node *)n;
         }
     ;
@@ -411,22 +412,24 @@ set_item_list:
 set_item:
     expr '=' expr
         {
-            cypher_set_prop *n;
+            cypher_set_item *n;
 
-            n = make_ag_node(cypher_set_prop);
+            n = make_ag_node(cypher_set_item);
             n->prop = $1;
             n->expr = $3;
-            n->add = false;
+            n->is_add = false;
+
             $$ = (Node *)n;
         }
    | expr PLUS_EQ expr
         {
-            cypher_set_prop *n;
+            cypher_set_item *n;
 
-            n = make_ag_node(cypher_set_prop);
+            n = make_ag_node(cypher_set_item);
             n->prop = $1;
             n->expr = $3;
-            n->add = true;
+            n->is_add = true;
+
             $$ = (Node *)n;
         }
     ;
@@ -434,12 +437,13 @@ set_item:
 remove:
     REMOVE remove_item_list
         {
-            cypher_set_clause *n;
+            cypher_set *n;
 
-            n = make_ag_node(cypher_set_clause);
-            n->is_remove = true;
+            n = make_ag_node(cypher_set);
             n->items = $2;
-            $$ = (Node *) n;
+            n->is_remove = true;
+
+            $$ = (Node *)n;
         }
     ;
 
@@ -457,12 +461,13 @@ remove_item_list:
 remove_item:
     expr
         {
-            cypher_set_prop *n;
+            cypher_set_item *n;
 
-            n = make_ag_node(cypher_set_prop);
+            n = make_ag_node(cypher_set_item);
             n->prop = $1;
             n->expr = make_null_const(-1);
-            n->add = false;
+            n->is_add = false;
+
             $$ = (Node *) n;
         }
     ;
