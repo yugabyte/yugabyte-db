@@ -538,6 +538,10 @@ class YugabyteProcessManager(object):
         return None
 
     def wait_yb_master(self, timeout=30):
+        if (not self.processes.get("master").is_running()
+                or not self.processes.get("tserver").is_running()):
+            return False
+
         num_tservers = 1
         master_addr = "127.0.0.1:{}".format(self.configs.saved_data.get("master_port"))
 
