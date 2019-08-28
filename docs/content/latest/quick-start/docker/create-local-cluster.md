@@ -1,12 +1,20 @@
 ## 1. Create a local cluster
-  
-We will use the [`yb-docker-ctl`](../../admin/yb-docker-ctl/) utility downloaded in the previous step to create and administer a containerized local cluster. Detailed output for the *create* command is available in [yb-docker-ctl Reference](../../admin/yb-docker-ctl/#create-cluster).
-  
+
+You can use the [`yb-docker-ctl`](../../admin/yb-docker-ctl/) utility, downloaded in the previous step, to create and administer a containerized local cluster.
+
+To quickly create a 1-node or 3-node local cluster using Docker, follow the steps below. For details on using the `yb-docker-ctl create` command and the cluster configuration, see [Create a local cluster](../../admin/yb-docker-ctl/#create-cluster) in the utility reference.
+
+### Create a 1-node cluster with RF=1
+
+To create a 1-node cluster with a replication factor (RF) of 1, run the default `yb-ctl create` command.
+
 ```sh
 $ ./yb-docker-ctl create
 ```
 
-By default, the above command will create a 1 node cluster with Replication Factor (RF) 1. You can create run a 3 node cluster with RF 3 by using the command below.
+### Create a 3-node cluster with RF=3
+
+To run a distributed SQL cluster locally, run the following `yb-docker-ctl` command to create a 3-node YugaByte DB cluster with a replication factor (RF) of 3.
 
 ```sh
 $ ./yb-docker-ctl create --rf 3
