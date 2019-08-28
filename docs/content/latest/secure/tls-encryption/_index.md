@@ -2,7 +2,7 @@
 title: TLS encryption
 linkTitle: TLS encryption
 description: TLS encryption
-headcontent: Enable TLS encryption over the wire in YugaByte DB (enterprise edition only).
+headcontent: Enable TLS encryption over the wire in YugaByte DB (YugaByte Platform only).
 image: /images/section_icons/secure/tls-encryption.png
 aliases:
   - /secure/tls-encryption/
@@ -13,16 +13,18 @@ menu:
     weight: 720
 ---
 
+YugaByte DB supports Transport Layer Security (TLS) encryption using [OpenSSL](https://www.openssl.org), which is natively available for Linux, BSD, and macOS operating systems. You can configure YugaByte DB to encrypt network communication, including:
+
+* Server-server — between YB-Masters and YB-TServers
+* Client-server — using CLIs and APIs for YSQL and YCQL
+
 {{< note title="Note" >}}
 
-YugaByte DB uses OpenSSL (native to Linux/BSD operating systems) in order to perform TLS encryption. You can configure YugaByte DB to encrypt all network communication. The following communication is encrypted: 
+YEDIS does not include support for client-server TLS encryption.
 
-* Server to server (for example, between YB-Masters and YB-TServers)
-* Client to server (including connecting to the cluster using a command line shell)
+{{</note>}}
 
-Note that YEDIS does not currently support TLS encryption, however this is on the roadmap. Please [open a GitHub issue](https://github.com/YugaByte/yugabyte-db/issues) if this is of interest.
-
-In this section, we will look at how to setup a 3 node YugaByte DB cluster with TLS encryption enabled.
+In this section, we will look at how to set up a 3-node YugaByte DB cluster with TLS encryption enabled.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -32,7 +34,7 @@ In this section, we will look at how to setup a 3 node YugaByte DB cluster with 
         <div class="title">1. Prepare nodes</div>
       </div>
       <div class="body">
-          Generate the per-node config and prepare the nodes with the config data.
+          Generate the per-node configuration and prepare the nodes with the configuration data.
       </div>
     </a>
   </div>
@@ -43,7 +45,7 @@ In this section, we will look at how to setup a 3 node YugaByte DB cluster with 
         <div class="title">2. Server-server encryption</div>
       </div>
       <div class="body">
-          Enable server to server encryption between YB-Masters and YB-TServers.
+          Enable server-server encryption between YB-Masters and YB-TServers.
       </div>
     </a>
   </div>
@@ -54,7 +56,7 @@ In this section, we will look at how to setup a 3 node YugaByte DB cluster with 
         <div class="title">3. Client-server encryption</div>
       </div>
       <div class="body">
-          Enable client to server encryption.
+          Enable client-server encryption for YSQL and YCQL.
       </div>
     </a>
   </div>
@@ -65,7 +67,7 @@ In this section, we will look at how to setup a 3 node YugaByte DB cluster with 
         <div class="title">4. Connect to cluster</div>
       </div>
       <div class="body">
-          Connecting to a YugaByte DB cluster with TLS encryption enabled.
+          Connect to a YugaByte DB cluster with TLS encryption enabled.
       </div>
     </a>
   </div>
