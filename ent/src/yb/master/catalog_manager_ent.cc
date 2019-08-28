@@ -1391,9 +1391,22 @@ Status CatalogManager::IsCdcStateTableCreated(IsCreateTableDoneResponsePB* resp)
 }
 
 Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table_id) {
-  LOG(INFO) << "Deleting CDC streams for table: " << table_id;
+  return DeleteCDCStreamsForTables({table_id});
+}
 
-  auto streams = FindCDCStreamsForTable(table_id);
+Status CatalogManager::DeleteCDCStreamsForTables(const vector<const TableId>& table_ids) {
+  std::ostringstream tid_stream;
+  for (const auto& tid : table_ids) {
+    tid_stream << " " << tid;
+  }
+  LOG(INFO) << "Deleting CDC streams for tables:" << tid_stream.str();
+
+  std::vector<scoped_refptr<CDCStreamInfo>> streams;
+  for (const auto& tid : table_ids) {
+    auto newstreams = FindCDCStreamsForTable(tid);
+    streams.insert(streams.end(), newstreams.begin(), newstreams.end());
+  }
+
   if (streams.empty()) {
     return Status::OK();
   }
