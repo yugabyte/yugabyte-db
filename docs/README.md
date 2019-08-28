@@ -111,17 +111,16 @@ To update the documentation with new grammars and syntax diagrams, follow these 
 _Note: Modifications will typically be added to the `ysql` or `ycql` subdirectories of the
 `docs/content/latest/api/` directory._
 
-1. Update the appropriate EBNF source grammar file (`<source>_grammar.ebnf`) with your changes, for
-   example, adding support for a new statement or clause.
+1. Update the appropriate EBNF source grammar file with your changes:
 
-   - YSQL API: `./content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf`
-   - YCQL API: `./content/latest/api/ycql/syntax_resources/ycql_grammar.ebnf`
+   - YSQL API: `content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf`
+   - YCQL API: `content/latest/api/ycql/syntax_resources/ycql_grammar.ebnf`
 
 1. If you are adding a new file (for example for a new statement), use the template
    `includeMarkdown` macro (see `cmd_copy.md` file mentioned below as an example).
 
-   _Example: for the YSQL `COPY` command the source file is
-   `./content/latest/api/ysql/commands/cmd_copy.md`._
+   _Example: for the YSQL `COPY` command, the source file is
+   `content/latest/api/ysql/commands/cmd_copy.md`._
 
 1. Inside of the `syntax_resources/commands` directory, create the following two **empty** files:
 
@@ -132,11 +131,10 @@ _Note: Modifications will typically be added to the `ysql` or `ycql` subdirector
    new file.  The two new files must be added into a directory structure that matches the top-level
    directory (`ysql` or `ycql`) — if needed, create any required parent directories.
 
-   _Example: For the commands/cmd_copy.md case, the new files would be named as follows:_
-   ```
-   ./content/latest/api/ysql/syntax_resources/commands/copy_from,copy_to,copy_option.grammar.md
-   ./content/latest/api/ycql/syntax_resources/commands/copy_from,copy_to,copy_option.diagram.md
-   ```
+   _Example: for the YSQL 'COPY' command, the generated files are as follows:_
+
+   - `content/latest/api/ysql/syntax_resources/commands/copy_from,copy_to,copy_option.diagram.md`
+   - `content/latest/api/ysql/syntax_resources/commands/copy_from,copy_to,copy_option.grammar.md`
 
 1. Download the latest RRDiagram JAR file (`rrdiagram.jar`).  You can find it on the [release
    page](https://github.com/YugaByte/RRDiagram/releases/), or you can try running the following
@@ -166,7 +164,7 @@ _Note: Modifications will typically be added to the `ysql` or `ycql` subdirector
      content/latest/api/ysql/syntax_resources/
    ```
 
-   All of the Markdown (`.md`) files in the `./ysql/syntax_resources/commands` directory will be
+   All of the Markdown (`.md`) files in the `ysql/syntax_resources/commands` directory will be
    generated as needed.
 
    _Note: To see help, run `java -jar rrdiagram.jar` (without arguments)._
