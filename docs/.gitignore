@@ -4,6 +4,7 @@
 public/*
 npm-debug.log
 node_modules
+package-lock.json
 
 # VIM/emacs stuff
 *.swp
