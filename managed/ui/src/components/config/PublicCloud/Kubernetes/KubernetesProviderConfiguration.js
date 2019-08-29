@@ -67,6 +67,9 @@ class KubernetesProviderConfiguration extends Component {
           activeProviderUUID={uuid}
           universeList={universeList}
           deleteProviderConfig={this.props.deleteProviderConfig}
+          closeModal={this.props.closeModal}
+          showDeleteConfirmationModal={this.props.showDeleteConfirmationModal}
+          modal={this.props.modal}
           type={type} />
       );
     } else {
