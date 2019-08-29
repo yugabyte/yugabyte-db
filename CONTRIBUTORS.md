@@ -2,6 +2,11 @@
 
 This is a list of people who have contributed code to the [YugaByte DB](https://github.com/YugaByte).
 
+> **NOTE**: The entries have the following format:
+```
+* [GITHUB_USER](https://github.com/GITHUB_USER)
+```
+
 
 * [mbautin](https://github.com/mbautin)
 * [spolitov](https://github.com/spolitov)
