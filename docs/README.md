@@ -108,13 +108,13 @@ We will review your changes, add any feedback and once everything looks good mer
 
 To update the documentation with new grammars and syntax diagrams, follow these steps:
 
-_Note: Modifications will typically be added to the `ysql` or `ycql` subdirectories of the
-`docs/content/latest/api/` directory._
+_Note: Modifications will typically be added to the `ycql` or `ysql` subdirectories of the
+`content/latest/api` directory._
 
 1. Update the appropriate EBNF source grammar file with your changes:
 
-   - YSQL API: `content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf`
    - YCQL API: `content/latest/api/ycql/syntax_resources/ycql_grammar.ebnf`
+   - YSQL API: `content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf`
 
 1. If you are adding a new file (for example for a new statement), use the template
    `includeMarkdown` macro (see `cmd_copy.md` file mentioned below as an example).
@@ -128,10 +128,9 @@ _Note: Modifications will typically be added to the `ysql` or `ycql` subdirector
    - `<name>.diagram.md`
 
    For `<name>`, use a comma-separated list of rule names from the EBNF file that you want in your
-   new file.  The two new files must be added into a directory structure that matches the top-level
-   directory (`ysql` or `ycql`) — if needed, create any required parent directories.
+   new file.
 
-   _Example: for the YSQL 'COPY' command, the generated files are as follows:_
+   _Example: for the YSQL 'COPY' command, the generated files are the following:_
 
    - `content/latest/api/ysql/syntax_resources/commands/copy_from,copy_to,copy_option.diagram.md`
    - `content/latest/api/ysql/syntax_resources/commands/copy_from,copy_to,copy_option.grammar.md`
@@ -140,7 +139,7 @@ _Note: Modifications will typically be added to the `ysql` or `ycql` subdirector
    page](https://github.com/YugaByte/RRDiagram/releases/), or you can try running the following
    command.
 
-   ```bash
+   ```sh
    wget $(curl -s https://api.github.com/repos/YugaByte/RRDiagram/releases/latest \
           | grep browser_download_url | cut -d \" -f 4)
    ```
@@ -151,7 +150,7 @@ _Note: Modifications will typically be added to the `ysql` or `ycql` subdirector
 
 1. Run the diagram generator using the following command:
 
-   ```bash
+   ```sh
    java -jar rrdiagram.jar <input-file.ebnf> <output-folder>
    ```
 
@@ -159,7 +158,7 @@ _Note: Modifications will typically be added to the `ysql` or `ycql` subdirector
 
    _Example: To generate the syntax diagrams for the YSQL API, run the following command:_
 
-   ```bash
+   ```sh
    java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf \
      content/latest/api/ysql/syntax_resources/
    ```
