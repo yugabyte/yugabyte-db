@@ -401,7 +401,7 @@ export default class UniverseOverviewNew extends Component {
               <DatabasePanel universeInfo={universeInfo} tasks={tasks}/>
             </FlexGrow>
             <FlexShrink>
-              {lastUpdateDate && <div className="text-lightgray text-light"><span className={"fa fa-clock-o"}></span> Upgrated <span className={"text-dark text-normal"}><FormattedDate
+              {lastUpdateDate && <div className="text-lightgray text-light"><span className={"fa fa-clock-o"}></span> Upgraded <span className={"text-dark text-normal"}><FormattedDate
                 value={lastUpdateDate}
                 year='numeric'
                 month='short'
