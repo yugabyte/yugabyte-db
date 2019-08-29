@@ -3,7 +3,8 @@
 ## New Contributors
 
 * If you have contributed to the YugaByte DB codebase, you will be asked to add yourself to this file.
-* Please send a pull request with your name added to the end of this list.
+* Check if your name is already in this file. If so, you do not need to do anything further.
+* If your name is not in this list, please send a pull request with your name added to the end of this list.
 * Each entry in the list below has the following format:
   ```
   * [GITHUB_USER](https://github.com/GITHUB_USER)
