@@ -1967,47 +1967,30 @@ void CatalogManager::CreateCDCStreamCallback(
   auto map = l->mutable_data()->pb.mutable_table_streams();
   (*map)[table_id] = *stream_id;
 
-  bool subscriber_error = false;
   if (l->mutable_data()->pb.table_streams_size() == l->data().pb.tables_size()) {
     // Register CDC consumers for all tables and start replication.
-    LOG(INFO) << "Registering CDC subscribers for universe " << universe->id();
+    LOG(INFO) << "Registering CDC consumers for universe " << universe->id();
 
-    // TODO: Enable after #1481
-    #if 0
-    auto resolved_tables = l->data().pb.resolved_tables();
     auto validated_tables = l->data().pb.validated_tables();
-    for (const auto& table : tables) {
-      RegisterSubscriberRequestPB req;
-      RegisterSubscriberResponsePB resp;
 
-      std::vector<HostPort> hp;
-      HostPortsFromPBs(l->data().pb.producer_master_addresses(), &hp);
-      req.set_master_addrs(HostPort::ToCommaSeparatedString(hp));
-      const auto& rpair = table.second;
-
-      auto* producer = req.mutable_producer_table();
-      producer->set_table_id(table.first);
-      producer->set_table_name(resolved_tables[table.first].table_name());
-      producer->mutable_namespace_()->set_name(resolved_tables[table.first].namespace_().name());
-
-      auto* consumer = req.mutable_consumer_table();
-      consumer->set_table_id(table.second);
-      consumer->set_table_name(resolved_tables[table.first].table_name());
-      consumer->mutable_namespace_()->set_name(resolved_tables[table.first].namespace_().name());
-
-      universe->GetStreamForTable(table.first, req.mutable_stream_id());
-
-      Status s = RegisterSubscriber(&req, &resp);
-      if (!s.ok() || resp.has_error()) {
-        LOG(ERROR) << "Error registering subscriber: " << resp.DebugString() << " : "
-                   << s.message();
-        subscriber_error = true;
-        break;
-      }
+    std::vector<CDCConsumerStreamInfo> consumer_info;
+    consumer_info.reserve(l->data().pb.tables_size());
+    for (const auto& table : validated_tables) {
+      CDCConsumerStreamInfo info;
+      info.producer_table_id = table.first;
+      info.consumer_table_id = table.second;
+      info.stream_id = (*map)[info.producer_table_id];
+      consumer_info.push_back(info);
     }
-    #endif
 
-    if (subscriber_error) {
+    std::vector<HostPort> hp;
+    HostPortsFromPBs(l->data().pb.producer_master_addresses(), &hp);
+
+    Status s = InitCDCConsumer(consumer_info, HostPort::ToCommaSeparatedString(hp),
+                               l->data().pb.producer_id());
+
+    if (!s.ok()) {
+      LOG(ERROR) << "Error registering subscriber: " << s.ToString();
       l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
     } else {
       l->mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::ACTIVE);

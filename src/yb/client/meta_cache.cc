@@ -32,8 +32,8 @@
 
 #include "yb/client/meta_cache.h"
 
-#include <mutex>
 #include <shared_mutex>
+#include <mutex>
 
 #include <glog/logging.h>
 
@@ -184,6 +184,16 @@ const std::string& RemoteTabletServer::permanent_uuid() const {
 
 const CloudInfoPB& RemoteTabletServer::cloud_info() const {
   return cloud_info_pb_;
+}
+
+const google::protobuf::RepeatedPtrField<HostPortPB>&
+    RemoteTabletServer::public_rpc_hostports() const {
+  return public_rpc_hostports_;
+}
+
+const google::protobuf::RepeatedPtrField<HostPortPB>&
+    RemoteTabletServer::private_rpc_hostports() const {
+  return private_rpc_hostports_;
 }
 
 shared_ptr<TabletServerServiceProxy> RemoteTabletServer::proxy() const {

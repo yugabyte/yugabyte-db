@@ -1349,7 +1349,12 @@ void Tablet::AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteOperation>
   }
 
   if (key_value_write_request->has_write_batch()) {
-    auto status = StartDocWriteOperation(operation.get());
+    Status status;
+    if (!key_value_write_request->write_batch().read_pairs().empty()) {
+      status = StartDocWriteOperation(operation.get());
+    } else {
+      DCHECK(key_value_write_request->has_external_hybrid_time());
+    }
     WriteOperation::StartSynchronization(std::move(operation), status);
     return;
   }

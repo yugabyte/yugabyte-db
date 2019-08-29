@@ -25,6 +25,8 @@
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 
+DECLARE_int32(cdc_rpc_timeout_ms);
+
 using namespace std::chrono_literals;
 
 namespace yb {
@@ -35,24 +37,44 @@ namespace enterprise {
 Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     std::function<bool(const std::string&)> is_leader_for_tablet,
     rpc::ProxyCache* proxy_cache,
-    const string& ts_uuid) {
-  auto cdc_consumer = std::unique_ptr<CDCConsumer>(
-      new CDCConsumer(std::move(is_leader_for_tablet), proxy_cache, ts_uuid));
+    TabletServer* tserver) {
+
+  auto master_addrs = tserver->options().GetMasterAddresses();
+  std::vector<std::string> hostport_strs;
+  hostport_strs.reserve(master_addrs->size());
+  for (const auto& hp : *master_addrs) {
+    hostport_strs.push_back(HostPort::ToCommaSeparatedString(hp));
+  }
+
+  auto client = VERIFY_RESULT(client::YBClientBuilder()
+      .master_server_addrs(hostport_strs)
+      .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms))
+      .Build());
+
+  auto cdc_consumer = std::make_unique<CDCConsumer>(
+      std::move(is_leader_for_tablet), proxy_cache, tserver->permanent_uuid(), std::move(client));
+
   RETURN_NOT_OK(yb::Thread::Create(
       "CDCConsumer", "Poll", &CDCConsumer::RunThread, cdc_consumer.get(),
       &cdc_consumer->run_trigger_poll_thread_));
-  RETURN_NOT_OK(ThreadPoolBuilder("Handle").Build(&cdc_consumer->thread_pool_));
+  RETURN_NOT_OK(ThreadPoolBuilder("CDCConsumerHandler").Build(&cdc_consumer->thread_pool_));
   return cdc_consumer;
 }
 
 CDCConsumer::CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
                          rpc::ProxyCache* proxy_cache,
-                         const string& ts_uuid) :
+                         const string& ts_uuid,
+                         std::unique_ptr<client::YBClient> client) :
   is_leader_for_tablet_(std::move(is_leader_for_tablet)),
   proxy_manager_(std::make_unique<cdc::CDCConsumerProxyManager>(proxy_cache)),
-  log_prefix_(Format("[TS $0]:", ts_uuid)) {}
+  log_prefix_(Format("[TS $0]:", ts_uuid)),
+  client_(std::move(client)) {}
 
 CDCConsumer::~CDCConsumer() {
+  Shutdown();
+}
+
+void CDCConsumer::Shutdown() {
   {
     std::unique_lock<std::mutex> l(should_run_mutex_);
     should_run_ = false;
@@ -61,6 +83,11 @@ CDCConsumer::~CDCConsumer() {
 
   if (run_trigger_poll_thread_) {
     WARN_NOT_OK(ThreadJoiner(run_trigger_poll_thread_.get()).Join(), "Could not join thread");
+  }
+
+  {
+    std::unique_lock<rw_spinlock> lock(master_data_mutex_);
+    producer_consumer_tablet_map_from_master_.clear();
   }
 
   if (thread_pool_) {
@@ -130,15 +157,17 @@ void CDCConsumer::TriggerPollForNewTablets() {
     if (start_polling) {
       // This is a new tablet, trigger a poll.
       std::unique_lock<rw_spinlock> pollers_lock(producer_pollers_map_mutex_);
-      producer_pollers_map_[entry.first] = std::make_unique<CDCPoller>(
+      auto cdc_poller = std::make_shared<CDCPoller>(
           entry.first, entry.second,
           std::bind(&CDCConsumer::ShouldContinuePolling, this, entry.first),
           std::bind(&cdc::CDCConsumerProxyManager::GetProxy, proxy_manager_.get(), entry.first),
           std::bind(&CDCConsumer::RemoveFromPollersMap, this, entry.first),
-          thread_pool_.get());
+          thread_pool_.get(),
+          client_);
       LOG_WITH_PREFIX(INFO) << Format("Start polling for producer tablet $0",
                                       entry.first.tablet_id);
-      producer_pollers_map_[entry.first]->Poll();
+      producer_pollers_map_[entry.first] = cdc_poller;
+      cdc_poller->Poll();
     }
   }
 }
