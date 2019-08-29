@@ -17,11 +17,21 @@
 #define ENT_SRC_YB_TSERVER_TWODC_OUTPUT_CLIENT_H
 
 namespace yb {
+
+class ThreadPool;
+
+namespace client {
+
+class YBClient;
+
+} // client
+
 namespace tserver {
 namespace enterprise {
 
 std::unique_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
     const cdc::ConsumerTabletInfo& consumer_tablet_info,
+    const std::shared_ptr<client::YBClient>& client,
     std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk);
 
 } // namespace enterprise

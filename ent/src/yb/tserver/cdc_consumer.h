@@ -17,7 +17,6 @@
 #include <unordered_map>
 
 #include "yb/cdc/cdc_consumer_util.h"
-
 #include "yb/util/locks.h"
 
 namespace yb {
@@ -38,19 +37,33 @@ class ConsumerRegistryPB;
 
 } // namespace cdc
 
+namespace client {
+
+class YBClient;
+
+} // namespace client
+
 namespace tserver {
 namespace enterprise {
 
 class CDCPoller;
-
+class TabletServer;
 
 class CDCConsumer {
  public:
   static Result<std::unique_ptr<CDCConsumer>> Create(
       std::function<bool(const std::string&)> is_leader_for_tablet,
       rpc::ProxyCache* proxy_cache,
-      const std::string& ts_uuid);
+      TabletServer* tserver);
+
+  CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
+      rpc::ProxyCache* proxy_cache,
+      const std::string& ts_uuid,
+      std::unique_ptr<client::YBClient> client);
+
   ~CDCConsumer();
+  void Shutdown();
+
   // Refreshes the in memory state when we receive a new registry from master.
   void RefreshWithNewRegistryFromMaster(const cdc::ConsumerRegistryPB& consumer_registry);
 
@@ -59,10 +72,6 @@ class CDCConsumer {
   std::string LogPrefix();
 
  private:
-  CDCConsumer(std::function<bool(const std::string&)> is_leader_for_tablet,
-              rpc::ProxyCache* proxy_cache,
-              const std::string& ts_uuid);
-
   // Runs a thread that periodically polls for any new threads.
   void RunThread();
 
@@ -96,12 +105,13 @@ class CDCConsumer {
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
 
-  std::unordered_map<cdc::ProducerTabletInfo, std::unique_ptr<CDCPoller>,
+  std::unordered_map<cdc::ProducerTabletInfo, std::shared_ptr<CDCPoller>,
                      cdc::ProducerTabletInfo::Hash> producer_pollers_map_;
 
   std::unique_ptr<ThreadPool> thread_pool_;
 
   std::string log_prefix_;
+  std::shared_ptr<client::YBClient> client_;
 
   bool should_run_ = true;
 

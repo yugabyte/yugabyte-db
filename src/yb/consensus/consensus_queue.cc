@@ -523,18 +523,26 @@ Status PeerMessageQueue::ReadFromLogCache(int64_t from_index,
   return s;
 }
 
-Status PeerMessageQueue::ReadReplicatedMessages(const OpId& last_op_id, ReplicateMsgs *msgs) {
+// Read majority replicated messages from cache for CDC.
+// CDC producer will use this to get the messages to send in response to cdc::GetChanges RPC.
+Status PeerMessageQueue::ReadReplicatedMessagesForCDC(const OpId& last_op_id, ReplicateMsgs *msgs) {
   // The batch of messages read from cache.
   ReplicateMsgs messages;
   bool have_more_messages = false;
   OpIdPB preceding_id;
 
-  if (last_op_id.index() >= local_peer_->last_known_committed_idx) {
-    // Nothing to read
+  int64_t to_index;
+  {
+    LockGuard lock(queue_lock_);
+    to_index = queue_state_.majority_replicated_opid.index();
+  }
+
+  if (last_op_id.index() >= to_index) {
+    // Nothing to read.
     return Status::OK();
   }
 
-  Status s = ReadFromLogCache(last_op_id.index(), local_peer_->last_known_committed_idx,
+  Status s = ReadFromLogCache(last_op_id.index(), to_index,
                               FLAGS_consensus_max_batch_size_bytes,
                               local_peer_uuid_, &messages, &preceding_id, &have_more_messages);
   if (PREDICT_FALSE(!s.ok())) {
