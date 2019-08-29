@@ -579,6 +579,8 @@ class YBClient {
   // Id of this client instance.
   const ClientId& id() const;
 
+  const CloudInfoPB& cloud_info() const;
+
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId(
       const TabletId& tablet_id);
   void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
