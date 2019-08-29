@@ -15,6 +15,7 @@
 
 #include "yb/cdc/cdc_consumer_util.h"
 #include "yb/cdc/cdc_output_client_interface.h"
+#include "yb/tserver/tablet_server.h"
 
 #ifndef ENT_SRC_YB_TSERVER_CDC_POLLER_H
 #define ENT_SRC_YB_TSERVER_CDC_POLLER_H
@@ -35,6 +36,12 @@ class CDCServiceProxy;
 
 } // namespace cdc
 
+namespace client {
+
+class YBClient;
+
+} // namespace client
+
 namespace tserver {
 namespace enterprise {
 
@@ -48,10 +55,12 @@ class CDCPoller {
             std::function<bool(void)> should_continue_polling,
             std::function<cdc::CDCServiceProxy*(void)> get_proxy,
             std::function<void(void)> remove_self_from_pollers_map,
-            ThreadPool* thread_pool);
+            ThreadPool* thread_pool,
+            const std::shared_ptr<client::YBClient>& client);
 
   // Begins poll process for a producer tablet.
   void Poll();
+
  private:
   void DoPoll();
   // Async handler for Poll.

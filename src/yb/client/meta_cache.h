@@ -147,6 +147,10 @@ class RemoteTabletServer {
 
   const CloudInfoPB& cloud_info() const;
 
+  const google::protobuf::RepeatedPtrField<HostPortPB>& public_rpc_hostports() const;
+
+  const google::protobuf::RepeatedPtrField<HostPortPB>& private_rpc_hostports() const;
+
   bool HasCapability(CapabilityId capability) const;
 
  private:

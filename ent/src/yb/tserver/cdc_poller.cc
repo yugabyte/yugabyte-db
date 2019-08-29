@@ -17,6 +17,7 @@
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
+#include "yb/client/client.h"
 
 #include "yb/consensus/opid_util.h"
 #include "yb/util/threadpool.h"
@@ -35,7 +36,8 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
                      std::function<bool(void)> should_continue_polling,
                      std::function<cdc::CDCServiceProxy*(void)> get_proxy,
                      std::function<void(void)> remove_self_from_pollers_map,
-                     ThreadPool* thread_pool) :
+                     ThreadPool* thread_pool,
+                     const std::shared_ptr<client::YBClient>& client) :
     producer_tablet_info_(producer_tablet_info),
     consumer_tablet_info_(consumer_tablet_info),
     should_continue_polling_(std::move(should_continue_polling)),
@@ -46,6 +48,7 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
     rpc_(std::make_unique<rpc::RpcController>()),
     output_client_(CreateTwoDCOutputClient(
         consumer_tablet_info,
+        client,
         std::bind(&CDCPoller::HandleApplyChanges, this, std::placeholders::_1))),
     thread_pool_(thread_pool) {}
 
@@ -80,7 +83,9 @@ void CDCPoller::DoHandlePoll() {
     return remove_self_from_pollers_map_();
   }
 
-  if (!rpc_->status().ok() || resp_->has_error()) {
+  if (!rpc_->status().ok() || resp_->has_error() || !resp_->has_checkpoint()) {
+    // In case of errors, try polling again.
+    // TODO: Set a max limit on polling.
     return Poll();
   }
 

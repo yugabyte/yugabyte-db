@@ -46,6 +46,8 @@ class TabletServer : public yb::tserver::TabletServer {
 
   Env* GetEnv() override;
   rocksdb::Env* GetRocksDBEnv() override;
+  void Shutdown() override;
+
   yb::enterprise::UniverseKeyManager* GetUniverseKeyManager();
   CHECKED_STATUS SetUniverseKeyRegistry(
       const yb::UniverseKeyRegistryPB& universe_key_registry) override;

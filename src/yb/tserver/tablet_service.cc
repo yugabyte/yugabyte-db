@@ -795,7 +795,7 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
   }
 #endif
 
-  if (PREDICT_FALSE(req->has_write_batch() &&
+  if (PREDICT_FALSE(req->has_write_batch() && !req->has_external_hybrid_time() &&
       (!req->write_batch().write_pairs().empty() || !req->write_batch().read_pairs().empty()))) {
     Status s = STATUS(NotSupported, "Write Request contains write batch. This field should be "
         "used only for post-processed write requests during "
@@ -808,7 +808,9 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 
   bool has_operations = (req->ql_write_batch_size() != 0 ||
                          req->redis_write_batch_size() != 0 ||
-                         req->pgsql_write_batch_size());
+                         req->pgsql_write_batch_size() != 0 ||
+                         (req->write_batch().write_pairs_size() != 0 &&
+                          req->has_external_hybrid_time()));
   if (!has_operations && tablet.peer->tablet()->table_type() != TableType::REDIS_TABLE_TYPE) {
     // An empty request. This is fine, can just exit early with ok status instead of working hard.
     // This doesn't need to go to Raft log.
