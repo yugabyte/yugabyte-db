@@ -149,6 +149,7 @@ typedef uint32 JXEntry;
 #define JXENTRY_ISBOOL_TRUE		0x30000000
 #define JXENTRY_ISNULL			0x40000000
 #define JXENTRY_ISCONTAINER		0x50000000	/* array or object */
+#define JXENTRY_ISJSONBX		0x70000000  // out type designator
 
 /* Access macros.  Note possible multiple evaluations */
 #define JBXE_OFFLENFLD(je_)		((je_) & JXENTRY_OFFLENMASK)
@@ -160,6 +161,7 @@ typedef uint32 JXEntry;
 #define JBXE_ISBOOL_TRUE(je_)	(((je_) & JXENTRY_TYPEMASK) == JXENTRY_ISBOOL_TRUE)
 #define JBXE_ISBOOL_FALSE(je_)	(((je_) & JXENTRY_TYPEMASK) == JXENTRY_ISBOOL_FALSE)
 #define JBXE_ISBOOL(je_)		(JBXE_ISBOOL_TRUE(je_) || JBXE_ISBOOL_FALSE(je_))
+#define JBXE_ISJSONBX(je_)      (((je_) & JXENTRY_TYPEMASK) == JXENTRY_ISJSONBX)
 
 /* Macro for advancing an offset variable to the next JXEntry */
 #define JBXE_ADVANCE_OFFSET(offset, je) \
