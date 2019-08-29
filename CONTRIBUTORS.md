@@ -1,12 +1,17 @@
 # <img src="https://github.com/YugaByte/yugabyte-db/raw/master/architecture/images/ybDB_horizontal.jpg" align="center" alt="YugaByte DB"/> CONTRIBUTORS
 
+## New Contributors
+
+* If you have contributed to the YugaByte DB codebase, you will be asked to add yourself to this file.
+* Please send a pull request with your name added to the end of this list.
+* Each entry in the list below has the following format:
+  ```
+  * [GITHUB_USER](https://github.com/GITHUB_USER)
+  ```
+
+## Current Contributors
+
 This is a list of people who have contributed code to the [YugaByte DB](https://github.com/YugaByte).
-
-> **NOTE**: The entries have the following format:
-```
-* [GITHUB_USER](https://github.com/GITHUB_USER)
-```
-
 
 * [mbautin](https://github.com/mbautin)
 * [spolitov](https://github.com/spolitov)
