@@ -15,6 +15,13 @@ import { YBTextInput, YBModal } from '../../../common/forms/fields';
 import { getPromiseState } from 'utils/PromiseUtils';
 
 export default class ListKubernetesConfigurations extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      providerToDelete: null,
+    };
+  }
+
   static propTypes  = {
     providers: PropTypes.array.isRequired,
     onCreate: PropTypes.func.isRequired,
@@ -31,7 +38,11 @@ export default class ListKubernetesConfigurations extends Component {
     const {
       providers,
       activeProviderUUID,
-      type
+      type,
+      closeModal,
+      deleteProviderConfig,
+      showDeleteConfirmationModal,
+      modal: { showModal, visibleModal },
     } = this.props;
 
     const providerLinkFormatter = function(cell, row) {
@@ -55,14 +66,37 @@ export default class ListKubernetesConfigurations extends Component {
         </FlexContainer>
       );
     };
+
     const actionList = (item, row) => {
       const disabled = !this.deleteProviderEnabled(row.uuid);
       return (
-        <Button disabled={disabled} title={disabled ? "Cannot delete provider with associated clusters" : "Delete provider" } bsClass="btn btn-default btn-config pull-right" onClick={this.props.deleteProviderConfig.bind(this, row.uuid)}>
+        <Button
+          disabled={disabled}
+          title={disabled ? "Cannot delete provider with associated clusters" : "Delete provider" }
+          bsClass="btn btn-default btn-config pull-right"
+          onClick={showDeletePopup.bind(this, {uuid: row.uuid, name: row.name})}>
           Delete Configuration
         </Button>
       );
     };
+
+    const showDeletePopup = provider => {
+      this.setState({
+        providerToDelete: provider
+      });
+      showDeleteConfirmationModal();
+    };
+
+    const confirmDelete = () => {
+      if (this.state.providerToDelete) {
+        deleteProviderConfig(this.state.providerToDelete.uuid);
+        closeModal();
+        this.setState({
+          providerToDelete: null
+        });
+      }
+    };
+
     const providerTypeMetadata = KUBERNETES_PROVIDERS.find((providerType) => providerType.code === type);
     const onModalHide = () => {
       const { type } = this.props;
@@ -88,32 +122,46 @@ export default class ListKubernetesConfigurations extends Component {
 
           }
           body={
-            <BootstrapTable data={providers} pagination={true} className="backup-list-table middle-aligned-table">
-              <TableHeaderColumn dataField="uuid" isKey={true} hidden={true}/>
-              <TableHeaderColumn dataField="name" dataSort dataFormat={providerLinkFormatter}
-                                columnClassName="no-border name-column" className="no-border">
-                Name
-              </TableHeaderColumn>
-              <TableHeaderColumn dataField="type" dataSort
-                                columnClassName="no-border name-column" className="no-border">
-                Provider Type
-              </TableHeaderColumn>
-              <TableHeaderColumn dataField="region" dataSort
-                                columnClassName="no-border name-column" className="no-border">
-                Region
-              </TableHeaderColumn>
-              <TableHeaderColumn dataField="zones" dataSort
-                                columnClassName="no-border name-column" className="no-border">
-                Zones
-              </TableHeaderColumn>
-              <TableHeaderColumn dataField="configPath" dataSort dataFormat={formatConfigPath}
-                                columnClassName="no-border name-column" className="no-border">
-                Config Path
-              </TableHeaderColumn>
-              <TableHeaderColumn dataField="configActions" dataFormat={actionList}
-                                columnClassName="no-border name-column no-side-padding" className="no-border">
-              </TableHeaderColumn>
-            </BootstrapTable>
+            <Fragment>
+              <BootstrapTable data={providers} pagination={true} className="backup-list-table middle-aligned-table">
+                <TableHeaderColumn dataField="uuid" isKey={true} hidden={true}/>
+                <TableHeaderColumn dataField="name" dataSort dataFormat={providerLinkFormatter}
+                                  columnClassName="no-border name-column" className="no-border">
+                  Name
+                </TableHeaderColumn>
+                <TableHeaderColumn dataField="type" dataSort
+                                  columnClassName="no-border name-column" className="no-border">
+                  Provider Type
+                </TableHeaderColumn>
+                <TableHeaderColumn dataField="region" dataSort
+                                  columnClassName="no-border name-column" className="no-border">
+                  Region
+                </TableHeaderColumn>
+                <TableHeaderColumn dataField="zones" dataSort
+                                  columnClassName="no-border name-column" className="no-border">
+                  Zones
+                </TableHeaderColumn>
+                <TableHeaderColumn dataField="configPath" dataSort dataFormat={formatConfigPath}
+                                  columnClassName="no-border name-column" className="no-border">
+                  Config Path
+                </TableHeaderColumn>
+                <TableHeaderColumn dataField="configActions" dataFormat={actionList}
+                                  columnClassName="no-border name-column no-side-padding" className="no-border">
+                </TableHeaderColumn>
+              </BootstrapTable>
+
+              <YBModal
+                visible={ showModal && visibleModal === "confirmDeleteProviderModal" }
+                formName={"DeleteProviderForm"}
+                onHide={ closeModal }
+                submitLabel={'Yes'}
+                cancelLabel={'No'}
+                showCancelButton={true}
+                title={ "Confirm provider delete" }
+                onFormSubmit={ confirmDelete }>
+                Are you sure you want to delete <strong>{this.state.providerToDelete && this.state.providerToDelete.name}</strong> provider?
+              </YBModal>
+            </Fragment>
           }
           noBackground
         />
