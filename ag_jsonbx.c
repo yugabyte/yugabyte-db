@@ -19,9 +19,9 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/json.h"
-#include "utils/jsonapi.h"
 #include "utils/typcache.h"
 
+#include "ag_jsonapi.h"
 #include "ag_jsonbx.h"
 
 typedef struct JsonbXInState
@@ -135,12 +135,12 @@ jsonbx_from_cstring(char *json, int len)
 static size_t
 checkStringLen(size_t len)
 {
-	if (len > JENTRY_OFFLENMASK)
+	if (len > JXENTRY_OFFLENMASK)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("string too long to represent as jsonbx string"),
 				 errdetail("Due to an implementation restriction, jsonbx strings cannot exceed %d bytes.",
-						   JENTRY_OFFLENMASK)));
+						   JXENTRY_OFFLENMASK)));
 
 	return len;
 }
