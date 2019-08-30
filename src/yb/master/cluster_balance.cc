@@ -483,19 +483,17 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   if (state_->options_->kAllowLimitStartingTablets &&
       get_total_starting_tablets() >= state_->options_->kMaxTabletRemoteBootstraps) {
-    LOG(INFO) << Substitute(
+    return STATUS_SUBSTITUTE(TryAgain,
         "Cannot add replicas. Currently remote bootstrapping $0 tablets, "
         "when our max allowed is $1",
         get_total_starting_tablets(), state_->options_->kMaxTabletRemoteBootstraps);
-    return false;
   }
 
   if (state_->options_->kAllowLimitOverReplicatedTablets &&
       get_total_over_replication() >= state_->options_->kMaxOverReplicatedTablets) {
-    LOG(INFO) << Substitute(
+    return STATUS_SUBSTITUTE(TryAgain,
         "Cannot add replicas. Currently have a total overreplication of $0, when max allowed is $1",
         get_total_over_replication(), state_->options_->kMaxOverReplicatedTablets);
-    return false;
   }
 
   // Handle missing placements with highest priority, as it means we're potentially
