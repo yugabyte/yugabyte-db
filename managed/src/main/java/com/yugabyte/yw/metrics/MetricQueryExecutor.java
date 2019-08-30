@@ -55,7 +55,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
   }
 
   private JsonNode getMetrics() {
-    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative");
+    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative", false);
     if (useNativeMetrics) {
       return ybMetricQueryComponent.query(queryParam);
     } else {
