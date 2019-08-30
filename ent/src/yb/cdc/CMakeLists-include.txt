@@ -41,5 +41,6 @@ target_link_libraries(cdc
   tablet
   yb_util
   ql_util
-  gutil)
+  gutil
+  yb_client)
 
