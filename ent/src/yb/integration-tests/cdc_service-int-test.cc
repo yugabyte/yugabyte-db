@@ -24,6 +24,8 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+DECLARE_int32(cdc_wal_retention_time_secs);
+
 namespace yb {
 namespace cdc {
 
@@ -73,6 +75,9 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
   void CreateTable(int num_tablets, TableHandle* table);
   void GetTablet(std::string* tablet_id);
 
+  void VerifyWalRetentionTime(const TableId& table_id,
+                              const uint32_t expected_wal_retention_secs);
+
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;
   std::unique_ptr<client::YBClient> client_;
   TableHandle table_;
@@ -91,6 +96,25 @@ void CDCServiceTest::CreateTable(int num_tablets, TableHandle* table) {
   builder.SetTableProperties(table_properties);
 
   ASSERT_OK(table->Create(kTableName, num_tablets, client_.get(), &builder));
+}
+
+void CDCServiceTest::VerifyWalRetentionTime(const TableId& table_id,
+                                            const uint32_t expected_wal_retention_secs) {
+  vector<std::shared_ptr<tablet::TabletPeer> > peers;
+  cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers(&peers);
+
+  bool wal_retention_time_checked = false;
+  // Find the right tablet peer.
+  for (const auto& peer : peers) {
+    if (peer->tablet_metadata()->table_id() == table_id) {
+      LOG(INFO) << "Checking wal retention time for tablet " << peer->tablet()->tablet_id();
+      ASSERT_EQ(peer->log()->wal_retention_secs(), expected_wal_retention_secs);
+      ASSERT_EQ(peer->tablet_metadata()->wal_retention_secs(), expected_wal_retention_secs);
+      wal_retention_time_checked = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(wal_retention_time_checked);
 }
 
 void AssertChangeRecords(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& changes,
@@ -112,7 +136,7 @@ void CDCServiceTest::GetTablet(std::string* tablet_id) {
 
 TEST_F(CDCServiceTest, TestCreateCDCStream) {
   CDCStreamId stream_id;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), boost::none /* retention time */, &stream_id);
 
   TableId table_id;
   std::unordered_map<std::string, std::string> options;
@@ -120,9 +144,42 @@ TEST_F(CDCServiceTest, TestCreateCDCStream) {
   ASSERT_EQ(table_id, table_.table()->id());
 }
 
+TEST_F(CDCServiceTest, TestCreateCDCStreamWithDefaultRententionTime) {
+  // Set default WAL retention time to 10 hours.
+  FLAGS_cdc_wal_retention_time_secs = 36000;
+
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), boost::none /* retention time */, &stream_id);
+
+  TableId table_id;
+  std::unordered_map<std::string, std::string> options;
+  ASSERT_OK(client_->GetCDCStream(stream_id, &table_id, &options));
+
+  // Verify that the wal retention time was set at the tablet level.
+  VerifyWalRetentionTime(table_id, FLAGS_cdc_wal_retention_time_secs);
+}
+
+TEST_F(CDCServiceTest, TestCreateCDCStreamWithSpecifiedtRententionTime) {
+  // Set default WAL retention time to 10 hours.
+  FLAGS_cdc_wal_retention_time_secs = 36000;
+
+  // Set WAL retention time to 1 hour.
+  constexpr uint32_t wal_retention_secs = 3600;
+
+  CDCStreamId stream_id;
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), wal_retention_secs, &stream_id);
+
+  TableId table_id;
+  std::unordered_map<std::string, std::string> options;
+  ASSERT_OK(client_->GetCDCStream(stream_id, &table_id, &options));
+
+  // Verify that the wal retention time was set at the tablet level.
+  VerifyWalRetentionTime(table_id, wal_retention_secs);
+}
+
 TEST_F(CDCServiceTest, TestDeleteCDCStream) {
   CDCStreamId stream_id;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), boost::none /* retention time */, &stream_id);
 
   TableId table_id;
   std::unordered_map<std::string, std::string> options;
@@ -140,7 +197,7 @@ TEST_F(CDCServiceTest, TestDeleteCDCStream) {
 
 TEST_F(CDCServiceTest, TestGetChanges) {
   CDCStreamId stream_id;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), boost::none /* retention time */, &stream_id);
 
   std::string tablet_id;
   GetTablet(&tablet_id);
@@ -260,7 +317,7 @@ TEST_F(CDCServiceTest, TestGetChanges) {
 
 TEST_F(CDCServiceTest, TestGetCheckpoint) {
   CDCStreamId stream_id;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), boost::none /* retention time */, &stream_id);
 
   std::string tablet_id;
   GetTablet(&tablet_id);
@@ -284,7 +341,7 @@ TEST_F(CDCServiceTest, TestGetCheckpoint) {
 
 TEST_F(CDCServiceTest, TestListTablets) {
   CDCStreamId stream_id;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), boost::none /* retention time */, &stream_id);
 
   std::string tablet_id;
   GetTablet(&tablet_id);
@@ -308,7 +365,7 @@ TEST_F(CDCServiceTest, TestListTablets) {
 
 TEST_F(CDCServiceTest, TestOnlyGetLocalChanges) {
   CDCStreamId stream_id;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), boost::none /* retention time */, &stream_id);
 
   std::string tablet_id;
   GetTablet(&tablet_id);
