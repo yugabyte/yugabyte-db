@@ -48,6 +48,7 @@
 #include "yb/master/master_defaults.h"
 
 #include "yb/util/net/net_util.h"
+#include "yb/util/port_picker.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
@@ -276,5 +277,14 @@ TEST_F(AdminCliTest, BlackList) {
   ASSERT_OK(checker(hosts));
 }
 
+TEST_F(AdminCliTest, InvalidMasterAddresses) {
+  int port = AllocateFreePort();
+  string unreachable_host = Substitute("127.0.0.1:$0", port);
+  std::string error_string;
+  ASSERT_NOK(Subprocess::Call(ToStringVector(
+      GetAdminToolPath(), "-master_addresses", unreachable_host,
+      "-timeout_ms", "1000", "list_tables"), &error_string, true /*read_stderr*/));
+  ASSERT_STR_CONTAINS(error_string, "verify the addresses");
+}
 }  // namespace tools
 }  // namespace yb

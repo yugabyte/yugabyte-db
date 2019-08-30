@@ -473,19 +473,31 @@ Status Subprocess::Call(const vector<string>& argv) {
   }
 }
 
-Status Subprocess::Call(const vector<string>& argv, string* stdout_out) {
+Status Subprocess::Call(const vector<string>& argv, string* output, bool read_stderr) {
   Subprocess p(argv[0], argv);
-  p.ShareParentStdout(false);
+  if (read_stderr) {
+    p.ShareParentStderr(false);
+  } else {
+    p.ShareParentStdout(false);
+  }
+
   RETURN_NOT_OK_PREPEND(p.Start(), "Unable to fork " + argv[0]);
   int err = close(p.ReleaseChildStdinFd());
   if (PREDICT_FALSE(err != 0)) {
     return STATUS(IOError, "Unable to close child process stdin", Errno(errno));
   }
 
-  stdout_out->clear();
+  output->clear();
   char buf[1024];
+  int fd = -1;
+  if (read_stderr) {
+    fd = p.from_child_stderr_fd();
+  } else {
+    fd = p.from_child_stdout_fd();
+  }
+
   while (true) {
-    ssize_t n = read(p.from_child_stdout_fd(), buf, arraysize(buf));
+    ssize_t n = read(fd, buf, arraysize(buf));
     if (n == 0) {
       // EOF
       break;
@@ -495,7 +507,7 @@ Status Subprocess::Call(const vector<string>& argv, string* stdout_out) {
       return STATUS(IOError, "IO error reading from " + argv[0], Errno(errno));
     }
 
-    stdout_out->append(buf, n);
+    output->append(buf, n);
   }
 
   int retcode = 0;
