@@ -27,6 +27,7 @@ void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>&
 
 void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
                      const TableId& table_id,
+                     boost::optional<uint32_t> wal_retention_secs,
                      CDCStreamId* stream_id);
 
 } // namespace cdc
