@@ -61,7 +61,7 @@
 %token <keyword> AND AS ASC ASCENDING
                  BY
                  CONTAINS
-                 DESC DESCENDING DISTINCT
+                 DELETE DESC DESCENDING DETACH DISTINCT
                  ENDS
                  FALSE_P
                  IN IS
@@ -76,7 +76,8 @@
 
 /* query */
 %type <list> single_query multi_part_query
-%type <list> set_chain_opt set_chain
+%type <list> updating_clause
+%type <list> updating_clause_chain_opt updating_clause_chain
 %type <list> with_chain_opt with_chain
 
 /* RETURN and WITH clause */
@@ -89,11 +90,16 @@
 %type <node> set set_item remove remove_item
 %type <list> set_item_list remove_item_list
 
+/* DELETE clause */
+%type <node> delete
+%type <boolean> detach_opt
+
 /* common */
 %type <node> where_opt
 
 /* expression */
 %type <node> expr expr_opt atom literal var
+%type <list> expr_comma_list
 
 /* identifier */
 %type <string> name
@@ -156,7 +162,7 @@ single_query:
     ;
 
 multi_part_query:
-    set_chain_opt with_chain_opt
+    updating_clause_chain_opt with_chain_opt
         {
             if ($1 && $2)
                 $$ = lappend($1, $2);
@@ -169,30 +175,37 @@ multi_part_query:
         }
     ;
 
-set_chain_opt:
+updating_clause_chain_opt:
     /* empty */
         {
             $$ = NIL;
         }
-    | set_chain
+    | updating_clause_chain
     ;
 
-set_chain:
-    set
+updating_clause_chain:
+    updating_clause
+        {
+            $$ = list_make1($1);
+        }
+    | updating_clause_chain updating_clause
+        {
+            $$ = lappend($1, $2);
+        }
+    ;
+
+updating_clause:
+    delete
+        {
+            $$ = list_make1($1);
+        }
+    | set
         {
             $$ = list_make1($1);
         }
     | remove
         {
             $$ = list_make1($1);
-        }
-    | set_chain set
-        {
-            $$ = lappend($1, $2);
-        }
-    | set_chain remove
-        {
-            $$ = lappend($1, $2);
         }
     ;
 
@@ -472,6 +485,29 @@ remove_item:
         }
     ;
 
+delete:
+    detach_opt DELETE expr_comma_list
+        {
+            cypher_delete *n;
+
+            n = make_ag_node(cypher_delete);
+            n->detach = $1;
+            n->exprs = $3;
+            $$ = (Node *) n;
+        }
+    ;
+
+detach_opt:
+    DETACH
+        {
+            $$ = true;
+        }
+    | /* EMPTY */
+        {
+            $$ = false;
+        }
+    ;
+
 where_opt:
     /* empty */
         {
@@ -622,6 +658,17 @@ expr_opt:
         }
     | expr
     ;
+
+expr_comma_list:
+            expr
+                    {
+                        $$ = list_make1($1);
+                    }
+            | expr_comma_list ',' expr
+                    {
+                        $$ = lappend($1, $3);
+                    }
+        ;
 
 atom:
     literal

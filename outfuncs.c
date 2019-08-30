@@ -70,3 +70,11 @@ void out_cypher_set_item(StringInfo str, const ExtensibleNode *node)
     write_node_field(expr);
     write_bool_field(is_add);
 }
+
+void out_cypher_delete(StringInfo str, const ExtensibleNode *node)
+{
+    DEFINE_AG_NODE(cypher_delete);
+
+    write_node_field(exprs);
+    write_bool_field(detach);
+}

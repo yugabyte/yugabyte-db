@@ -45,10 +45,18 @@ typedef struct cypher_set_item
     bool is_add;
 } cypher_set_item;
 
+typedef struct cypher_delete
+{
+    ExtensibleNode extensible;
+    bool        detach;
+    List       *exprs;
+} cypher_delete;
+
 void out_cypher_return(StringInfo str, const ExtensibleNode *node);
 void out_cypher_sort_item(StringInfo str, const ExtensibleNode *node);
 void out_cypher_with(StringInfo str, const ExtensibleNode *node);
 void out_cypher_set(StringInfo str, const ExtensibleNode *node);
 void out_cypher_set_item(StringInfo str, const ExtensibleNode *node);
+void out_cypher_delete(StringInfo str, const ExtensibleNode *node);
 
 #endif

@@ -15,7 +15,8 @@ const char *node_names[] = {
     "cypher_return",
     "cypher_with",
     "cypher_set",
-    "cypher_set_item"
+    "cypher_set_item",
+    "cypher_delete",
 };
 
 #define DEFINE_NODE_METHODS(type) \
@@ -32,7 +33,8 @@ const ExtensibleNodeMethods node_methods[] = {
     DEFINE_NODE_METHODS(cypher_return),
     DEFINE_NODE_METHODS(cypher_with),
     DEFINE_NODE_METHODS(cypher_set),
-    DEFINE_NODE_METHODS(cypher_set_item)
+    DEFINE_NODE_METHODS(cypher_set_item),
+    DEFINE_NODE_METHODS(cypher_delete),
 };
 
 static void copy_ag_node(ExtensibleNode *newnode,
