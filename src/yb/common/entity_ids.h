@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "yb/util/result.h"
+#include "yb/util/strongly_typed_string.h"
 
 namespace yb {
 
@@ -32,10 +33,16 @@ using RoleName = std::string;
 using NamespaceId = std::string;
 using TableId = std::string;
 using UDTypeId = std::string;
+using CDCStreamId = std::string;
 
 using PeerId = std::string;
 using TabletServerId = PeerId;
 using TabletId = std::string;
+
+YB_STRONGLY_TYPED_STRING(KvStoreId);
+
+// TODO(#79): switch to YB_STRONGLY_TYPED_STRING
+using RaftGroupId = std::string;
 
 using NamespaceIdTableNamePair = std::pair<NamespaceId, TableName>;
 
@@ -45,6 +52,8 @@ using RedisConfigKey = std::string;
 
 static const uint32_t kPgSequencesDataTableOid = 0xFFFF;
 static const uint32_t kPgSequencesDataDatabaseOid = 0xFFFF;
+
+extern const TableId kPgProcTableId;
 
 // Get YB namespace id for a Postgres database.
 NamespaceId GetPgsqlNamespaceId(uint32_t database_oid);

@@ -1,0 +1,51 @@
+-- Testing pgcrypto.
+create extension pgcrypto;
+select digest('xyz', 'sha1');
+                   digest
+--------------------------------------------
+ \x66b27417d37e024c46526c2f6d358a754fc552f3
+(1 row)
+
+-- Using fixed salt to make test repeatable.
+select crypt('new password', '$1$7kF93Vc4');
+               crypt
+------------------------------------
+ $1$7kF93Vc4$p7Y6w2vEsvRiDdvLjaQI4/
+(1 row)
+
+-- Using count to make test repeatable.
+select count(gen_random_uuid());
+ count
+-------
+     1
+(1 row)
+
+-- Testing fuzzystrmatch.
+create extension fuzzystrmatch;
+select levenshtein('YugaByte', 'yugabyte');
+ levenshtein
+-------------
+           2
+(1 row)
+
+select metaphone('yugabyte', 8);
+ metaphone
+-----------
+ YKBT
+(1 row)
+
+-- Clean up.
+drop extension pgcrypto;
+-- Expect failure since function should be removed.
+select digest('xyz', 'sha1');
+ERROR:  function digest(unknown, unknown) does not exist
+LINE 1: select digest('xyz', 'sha1');
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+drop extension fuzzystrmatch;
+-- Expect failure since function should be removed.
+select levenshtein('YugaByte', 'yugabyte');
+ERROR:  function levenshtein(unknown, unknown) does not exist
+LINE 1: select levenshtein('YugaByte', 'yugabyte');
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.

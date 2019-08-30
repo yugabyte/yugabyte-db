@@ -74,11 +74,23 @@ import org.jboss.netty.channel.socket.SocketChannel;
 import org.jboss.netty.channel.socket.SocketChannelConfig;
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.jboss.netty.handler.timeout.ReadTimeoutHandler;
+import org.jboss.netty.handler.ssl.SslHandler;
 import org.jboss.netty.util.HashedWheelTimer;
 import org.jboss.netty.util.Timeout;
 import org.jboss.netty.util.TimerTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.KeyStore;
+
+import java.io.FileInputStream;
 
 import javax.annotation.concurrent.GuardedBy;
 import java.net.InetAddress;
@@ -248,6 +260,8 @@ public class AsyncYBClient implements AutoCloseable {
 
   private final long defaultSocketReadTimeoutMs;
 
+  private final String certFile;
+
   private volatile boolean closed;
 
   private AsyncYBClient(AsyncYBClientBuilder b) {
@@ -257,6 +271,7 @@ public class AsyncYBClient implements AutoCloseable {
         MASTER_TABLE_NAME_PLACEHOLDER, null, null);
     this.defaultOperationTimeoutMs = b.defaultOperationTimeoutMs;
     this.defaultAdminOperationTimeoutMs = b.defaultAdminOperationTimeoutMs;
+    this.certFile = b.certFile;
     this.defaultSocketReadTimeoutMs = b.defaultSocketReadTimeoutMs;
   }
 
@@ -323,22 +338,25 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
-   * Check if the tserver is ready to serve requests.
-   * @param hp host port of the tablet server.
-   * @return a deferred object for the response from tablet server.
+   * Check if the server is ready to serve requests.
+   * @param hp host port of the server.
+   * @param isTserver true if host/port is for tserver, else its master.
+   * @return a deferred object for the response from server.
    */
-  public Deferred<IsTabletServerReadyResponse> isTServerReady(final HostAndPort hp) {
+  public Deferred<IsServerReadyResponse> isServerReady(final HostAndPort hp, boolean isTserver) {
     checkIsClosed();
     TabletClient client = newSimpleClient(hp);
     if (client == null) {
       throw new IllegalStateException("Could not create a client to " + hp.toString());
     }
-    IsTabletServerReadyRequest rpc = new IsTabletServerReadyRequest();
+
+    IsServerReadyRequest rpc =
+        isTserver ? new IsTabletServerReadyRequest() : new IsMasterReadyRequest();
     // TODO: Allow these two to be paramters in all such user API's.
     rpc.maxAttempts = 1;
     rpc.setTimeoutMillis(5000);
 
-    Deferred<IsTabletServerReadyResponse> d = rpc.getDeferred();
+    Deferred<IsServerReadyResponse> d = rpc.getDeferred();
     rpc.attempt++;
     client.sendRpc(rpc);
     return d;
@@ -540,12 +558,33 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Check if the tablet load is balanced as per the master leader.
+   * @return a deferred object that yields if the load is balanced.
+   */
+  public Deferred<IsLoadBalancerIdleResponse> getIsLoadBalancerIdle() {
+    checkIsClosed();
+    IsLoadBalancerIdleRequest rpc = new IsLoadBalancerIdleRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Check if the tablet leader load is balanced as per the master leader.
    * @return a deferred object that yields if the leader load is balanced.
    */
   public Deferred<AreLeadersOnPreferredOnlyResponse> getAreLeadersOnPreferredOnly() {
     checkIsClosed();
     AreLeadersOnPreferredOnlyRequest rpc = new AreLeadersOnPreferredOnlyRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
+   * Check if initdb executed by the master is done running.
+   */
+  public Deferred<IsInitDbDoneResponse> getIsInitDbDone() {
+    checkIsClosed();
+    IsInitDbDoneRequest rpc = new IsInitDbDoneRequest(this.masterTable);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -652,10 +691,24 @@ public class AsyncYBClient implements AutoCloseable {
    * Get a list of table names. Passing a null filter returns all the tables. When a filter is
    * specified, it only returns tables that satisfy a substring match.
    * @param nameFilter an optional table name filter
-   * @return a deferred that yields the list of table names
+   * @return a deferred that yields the list of non-system table names
    */
   public Deferred<ListTablesResponse> getTablesList(String nameFilter) {
-    ListTablesRequest rpc = new ListTablesRequest(this.masterTable, nameFilter);
+    return getTablesList(nameFilter, false, null);
+  }
+
+  /**
+   * Get a list of table names. Passing a null filter returns all the tables. When a filter is
+   * specified, it only returns tables that satisfy a substring match.
+   * @param nameFilter an optional table name filter
+   * @param excludeSystemTables an optional filter to search only non-system tables
+   * @param namespace an optional filter to search tables in specific namespace
+   * @return a deferred that yields the list of table names
+   */
+  public Deferred<ListTablesResponse> getTablesList(
+      String nameFilter, boolean excludeSystemTables, String namespace) {
+    ListTablesRequest rpc = new ListTablesRequest(
+      this.masterTable, nameFilter, excludeSystemTables, namespace);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(rpc);
   }
@@ -1862,6 +1915,13 @@ public class AsyncYBClient implements AutoCloseable {
 
     TabletClient init(String uuid) {
       final TabletClient client = new TabletClient(AsyncYBClient.this, uuid);
+      if (certFile != null) {
+        SslHandler sslHandler = this.createSslHandler(certFile);
+        if (sslHandler != null) {
+          sslHandler.setIssueHandshake(true);
+          super.addFirst("ssl", sslHandler);
+        }
+      }
       if (defaultSocketReadTimeoutMs > 0) {
         super.addLast("timeout-handler",
             new ReadTimeoutHandler(timer,
@@ -1887,6 +1947,42 @@ public class AsyncYBClient implements AutoCloseable {
         handleDisconnect((ChannelStateEvent) event);
       }
       super.sendUpstream(event);
+    }
+
+    private SslHandler createSslHandler(String certfile) {
+      try {
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        FileInputStream fis = new FileInputStream(certFile);
+        X509Certificate ca;
+        try {
+          ca = (X509Certificate) cf.generateCertificate(fis);
+        } catch (Exception e) {
+          log.error("Exception generating certificate from input file: ", e);
+          return null;
+        } finally {
+          fis.close();
+        }
+
+        // Create a KeyStore containing our trusted CAs
+        String keyStoreType = KeyStore.getDefaultType();
+        KeyStore keyStore = KeyStore.getInstance(keyStoreType);
+        keyStore.load(null, null);
+        keyStore.setCertificateEntry("ca", ca);
+
+        // Create a TrustManager that trusts the CAs in our KeyStore
+        String tmfAlgorithm = TrustManagerFactory.getDefaultAlgorithm();
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(tmfAlgorithm);
+        tmf.init(keyStore);
+
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(null, tmf.getTrustManagers(), null);
+        SSLEngine sslEngine = sslContext.createSSLEngine();
+        sslEngine.setUseClientMode(true);
+        return new SslHandler(sslEngine);
+      } catch (Exception e) {
+        log.error("Exception creating sslContext: ", e);
+        return null;
+      }
     }
 
     private void handleDisconnect(final ChannelStateEvent state_event) {
@@ -2234,6 +2330,8 @@ public class AsyncYBClient implements AutoCloseable {
     private long defaultOperationTimeoutMs = DEFAULT_OPERATION_TIMEOUT_MS;
     private long defaultSocketReadTimeoutMs = DEFAULT_SOCKET_READ_TIMEOUT_MS;
 
+    private String certFile = null;
+
     private Executor bossExecutor;
     private Executor workerExecutor;
     private int bossCount = DEFAULT_BOSS_COUNT;
@@ -2310,6 +2408,19 @@ public class AsyncYBClient implements AutoCloseable {
      */
     public AsyncYBClientBuilder defaultSocketReadTimeoutMs(long timeoutMs) {
       this.defaultSocketReadTimeoutMs = timeoutMs;
+      return this;
+    }
+
+    /**
+     * Sets the certificate file in case SSL is enabled.
+     * Optional.
+     * If not provided, defaults to null.
+     * A value of null disables an SSL connection.
+     * @param certFile the path to the certificate.
+     * @return this builder
+     */
+    public AsyncYBClientBuilder sslCertFile(String certFile) {
+      this.certFile = certFile;
       return this;
     }
 

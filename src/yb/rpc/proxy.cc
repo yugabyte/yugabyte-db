@@ -72,9 +72,8 @@ using std::shared_ptr;
 namespace yb {
 namespace rpc {
 
-Proxy::Proxy(std::shared_ptr<ProxyContext> context, const HostPort& remote,
-             const Protocol* protocol)
-    : context_(std::move(context)),
+Proxy::Proxy(ProxyContext* context, const HostPort& remote, const Protocol* protocol)
+    : context_(context),
       remote_(remote),
       protocol_(protocol ? protocol : context_->DefaultProtocol()),
       outbound_call_metrics_(context_->metric_entity() ?
@@ -88,6 +87,10 @@ Proxy::Proxy(std::shared_ptr<ProxyContext> context, const HostPort& remote,
       num_connections_to_server_(context_->num_connections_to_server()) {
   VLOG(1) << "Create proxy to " << remote << " with num_connections_to_server="
           << num_connections_to_server_;
+  if (context_->parent_mem_tracker()) {
+    mem_tracker_ = MemTracker::FindOrCreateTracker(
+        "Queueing", context_->parent_mem_tracker());
+  }
 }
 
 Proxy::~Proxy() {
@@ -112,6 +115,32 @@ void Proxy::AsyncRequest(const RemoteMethod* method,
                          google::protobuf::Message* resp,
                          RpcController* controller,
                          ResponseCallback callback) {
+  DoAsyncRequest(
+      method, req, resp, controller, std::move(callback),
+      false /* force_run_callback_on_reactor */);
+}
+
+ThreadPool* Proxy::GetCallbackThreadPool(
+    bool force_run_callback_on_reactor, InvokeCallbackMode invoke_callback_mode) {
+  if (force_run_callback_on_reactor) {
+    return nullptr;
+  }
+  switch (invoke_callback_mode) {
+    case InvokeCallbackMode::kReactorThread:
+      return nullptr;
+      break;
+    case InvokeCallbackMode::kThreadPool:
+      return &context_->CallbackThreadPool();
+  }
+  FATAL_INVALID_ENUM_VALUE(InvokeCallbackMode, invoke_callback_mode);
+}
+
+void Proxy::DoAsyncRequest(const RemoteMethod* method,
+                           const google::protobuf::Message& req,
+                           google::protobuf::Message* resp,
+                           RpcController* controller,
+                           ResponseCallback callback,
+                           bool force_run_callback_on_reactor) {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
   is_started_.store(true, std::memory_order_release);
 
@@ -128,9 +157,12 @@ void Proxy::AsyncRequest(const RemoteMethod* method,
                                      resp,
                                      controller,
                                      &context_->rpc_metrics(),
-                                     std::move(callback));
+                                     std::move(callback),
+                                     GetCallbackThreadPool(
+                                         force_run_callback_on_reactor,
+                                         controller->invoke_callback_mode()));
   auto call = controller->call_.get();
-  Status s = call->SetRequestParam(req);
+  Status s = call->SetRequestParam(req, mem_tracker_);
   if (PREDICT_FALSE(!s.ok())) {
     // Failed to serialize request: likely the request is missing a required
     // field.
@@ -224,31 +256,18 @@ void Proxy::HandleResolve(
 
 void Proxy::ResolveDone(
     const boost::system::error_code& error, const Resolver::results_type& entries) {
-  if (error) {
-    NotifyAllFailed(STATUS_FORMAT(
-        NetworkError, "Resolve failed $0: $1", remote_.host(), error.message()));
+  auto address = PickResolvedAddress(remote_.host(), error, entries);
+  if (!address.ok()) {
+    NotifyAllFailed(address.status());
     return;
-  }
-  std::vector<Endpoint> endpoints, endpoints_v6;
-  for (const auto& entry : entries) {
-    auto& dest = entry.endpoint().address().is_v4() ? endpoints : endpoints_v6;
-    dest.emplace_back(entry.endpoint().address(), remote_.port());
-  }
-  endpoints.insert(endpoints.end(), endpoints_v6.begin(), endpoints_v6.end());
-  if (endpoints.empty()) {
-    NotifyAllFailed(STATUS_FORMAT(NetworkError, "No endpoints resolved for: $0", remote_.host()));
-    return;
-  }
-  if (endpoints.size() > 1) {
-    LOG(WARNING) << "Peer address '" << remote_.ToString() << "' "
-                 << "resolves to " << yb::ToString(endpoints) << " different addresses. Using "
-                 << endpoints.front();
   }
 
+  Endpoint endpoint(address->address(), remote_.port());
+  resolved_ep_.Store(endpoint);
+
   RpcController* controller = nullptr;
-  resolved_ep_.Store(endpoints.front());
   while (resolve_waiters_.pop(controller)) {
-    QueueCall(controller, endpoints.front());
+    QueueCall(controller, endpoint);
   }
 }
 
@@ -270,8 +289,11 @@ Status Proxy::SyncRequest(const RemoteMethod* method,
                           google::protobuf::Message* resp,
                           RpcController* controller) {
   CountDownLatch latch(1);
-  AsyncRequest(method, req, DCHECK_NOTNULL(resp), controller, [&latch]() { latch.CountDown(); });
-
+  // We want to execute this fast callback in reactor thread to avoid overhead on putting in
+  // separate pool.
+  DoAsyncRequest(
+      method, req, DCHECK_NOTNULL(resp), controller, [&latch]() { latch.CountDown(); },
+      true /* force_run_callback_on_reactor */);
   latch.Wait();
   return controller->status();
 }

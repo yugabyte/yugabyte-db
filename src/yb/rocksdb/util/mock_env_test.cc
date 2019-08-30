@@ -106,7 +106,7 @@ TEST_F(MockEnvTest, ReadWrite) {
   unique_ptr<SequentialFile> seq_file;
   unique_ptr<RandomAccessFile> rand_file;
   Slice result;
-  char scratch[100];
+  uint8_t scratch[100];
 
   ASSERT_OK(env_->CreateDir("/dir"));
 
@@ -166,7 +166,7 @@ TEST_F(MockEnvTest, Misc) {
 
 TEST_F(MockEnvTest, LargeWrite) {
   const size_t kWriteSize = 300 * 1024;
-  char* scratch = new char[kWriteSize * 2];
+  uint8_t* scratch = new uint8_t[kWriteSize * 2];
 
   std::string write_data;
   for (size_t i = 0; i < kWriteSize; ++i) {
@@ -207,31 +207,30 @@ TEST_F(MockEnvTest, Corrupt) {
 
   std::string scratch;
   scratch.resize(kGood.size() + kCorrupted.size() + 16);
+  uint8_t* read_buf = reinterpret_cast<uint8_t*>(&(scratch[0]));
   Slice result;
   unique_ptr<RandomAccessFile> rand_file;
   ASSERT_OK(env_->NewRandomAccessFile(kFileName, &rand_file, soptions_));
-  ASSERT_OK(rand_file->Read(0, kGood.size(), &result, &(scratch[0])));
+  ASSERT_OK(rand_file->Read(0, kGood.size(), &result, read_buf));
   ASSERT_EQ(result.compare(kGood), 0);
 
   // Sync + corrupt => no change
   ASSERT_OK(writable_file->Fsync());
   ASSERT_OK(dynamic_cast<MockEnv*>(env_)->CorruptBuffer(kFileName));
   result.clear();
-  ASSERT_OK(rand_file->Read(0, kGood.size(), &result, &(scratch[0])));
+  ASSERT_OK(rand_file->Read(0, kGood.size(), &result, read_buf));
   ASSERT_EQ(result.compare(kGood), 0);
 
   // Add new data and corrupt it
   ASSERT_OK(writable_file->Append(kCorrupted));
   ASSERT_TRUE(writable_file->GetFileSize() == kGood.size() + kCorrupted.size());
   result.clear();
-  ASSERT_OK(rand_file->Read(kGood.size(), kCorrupted.size(),
-            &result, &(scratch[0])));
+  ASSERT_OK(rand_file->Read(kGood.size(), kCorrupted.size(), &result, read_buf));
   ASSERT_EQ(result.compare(kCorrupted), 0);
   // Corrupted
   ASSERT_OK(dynamic_cast<MockEnv*>(env_)->CorruptBuffer(kFileName));
   result.clear();
-  ASSERT_OK(rand_file->Read(kGood.size(), kCorrupted.size(),
-            &result, &(scratch[0])));
+  ASSERT_OK(rand_file->Read(kGood.size(), kCorrupted.size(), &result, read_buf));
   ASSERT_NE(result.compare(kCorrupted), 0);
 }
 

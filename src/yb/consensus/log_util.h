@@ -101,7 +101,20 @@ struct LogOptions {
   // Whether the allocation should happen asynchronously.
   bool async_preallocate_segments;
 
+  uint32_t retention_secs = 0;
+
+  // Env for log file operations.
+  Env* env;
+
+  std::string peer_uuid;
+
   LogOptions();
+};
+
+struct LogEntryMetadata {
+  RestartSafeCoarseTimePoint entry_time;
+  int64_t offset;
+  uint64_t active_segment_sequence_number;
 };
 
 // A sequence of segments, ordered by increasing sequence number.
@@ -112,8 +125,8 @@ struct ReadEntriesResult {
   // Read entries
   LogEntries entries;
 
-  // Time of respective entry
-  std::vector<RestartSafeCoarseTimePoint> entry_times;
+  // Time, offset in WAL, and sequence number of respective entry
+  std::vector<LogEntryMetadata> entry_metadata;
 
   // Where we finished reading
   int64_t end_offset;
@@ -171,6 +184,9 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // In case of failure status field of result is not ok.
   ReadEntriesResult ReadEntries();
 
+  // Reads the op ID and time of the first entry in the segment
+  Result<std::pair<yb::OpId, RestartSafeCoarseTimePoint>> ReadFirstEntryMetadata();
+
   // Rebuilds this segment's footer by scanning its entries.
   // This is an expensive operation as it reads and parses the whole segment
   // so it should be only used in the case of a crash, where the footer is
@@ -214,12 +230,20 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
     return readable_file_;
   }
 
+  const std::shared_ptr<RandomAccessFile> readable_file_checkpoint() const {
+    return readable_file_checkpoint_;
+  }
+
   const int64_t file_size() const {
     return file_size_.Load();
   }
 
   const int64_t first_entry_offset() const {
     return first_entry_offset_;
+  }
+
+  const int64_t get_header_size() const {
+    return readable_file_->GetEncryptionHeaderSize();
   }
 
   // Returns the full size of the file, if the segment is closed and has
@@ -317,6 +341,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // a readable file for a log segment (used on replay)
   const std::shared_ptr<RandomAccessFile> readable_file_;
 
+  std::shared_ptr<RandomAccessFile> readable_file_checkpoint_;
+
   bool is_initialized_;
 
   LogSegmentHeaderPB header_;
@@ -326,7 +352,7 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // True if the footer was rebuilt, rather than actually found on disk.
   bool footer_was_rebuilt_;
 
-  // the offset of the first entry in the log
+  // the offset of the first entry in the log.
   int64_t first_entry_offset_;
 
   DISALLOW_COPY_AND_ASSIGN(ReadableLogSegment);

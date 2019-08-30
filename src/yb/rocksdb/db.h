@@ -103,6 +103,8 @@ struct Range {
   Range(const Slice& s, const Slice& l) : start(s), limit(l) { }
 };
 
+YB_DEFINE_ENUM(FlushAbility, (kNoNewData)(kHasNewData)(kAlreadyFlushing))
+
 // A collections of table properties objects, where
 //  key: is the table's file name.
 //  value: the table properties object of the given table.
@@ -690,6 +692,8 @@ class DB {
   // Get Env object from the DB
   virtual Env* GetEnv() const = 0;
 
+  virtual Env* GetCheckpointEnv() const = 0;
+
   // Get DB Options that we use.  During the process of opening the
   // column family, the options provided when calling DB::Open() or
   // DB::CreateColumnFamily() will have been "sanitized" and transformed
@@ -785,12 +789,20 @@ class DB {
   // path relative to the db directory. eg. 000001.sst, /archive/000003.log
   virtual Status DeleteFile(std::string name) = 0;
 
-  // Returns the total combined size of all the SST Files in the rocksdb instance.
-  virtual uint64_t GetTotalSSTFileSize() { return 0; }
-  virtual uint64_t GetUncompressedSSTFileSize() { return 0; }
+  // Returns the total combined size of all the SST Files for the current version in the rocksdb
+  // instance.
+  virtual uint64_t GetCurrentVersionSstFilesSize() { return 0; }
+  virtual uint64_t GetCurrentVersionSstFilesUncompressedSize() { return 0; }
 
-  // Returns a list of all table files with their level, start key
-  // and end key
+  // Returns total number of SST Files.
+  virtual uint64_t GetCurrentVersionNumSSTFiles() { return 0; }
+
+  // Returns the combined size of all the SST Files data blocks for the current version in the
+  // rocksdb instance.
+  virtual uint64_t GetCurrentVersionDataSstFilesSize() { return 0; }
+
+  // Returns a list of all table files for the current version with their level, start key and end
+  // key.
   virtual void GetLiveFilesMetaData(std::vector<LiveFileMetaData>* /*metadata*/) {}
 
   std::vector<LiveFileMetaData> GetLiveFilesMetaData() {
@@ -807,7 +819,9 @@ class DB {
     return Status::OK();
   }
 
-  virtual bool HasSomethingToFlush() { return true; }
+  virtual FlushAbility GetFlushAbility() { return FlushAbility::kHasNewData; }
+
+  virtual UserFrontierPtr GetMutableMemTableSmallestFrontier() { return nullptr; }
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
@@ -878,6 +892,8 @@ class DB {
   virtual CHECKED_STATUS Import(const std::string& source_dir) {
     return STATUS(NotSupported, "");
   }
+
+  virtual bool NeedsDelay() { return false; }
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}

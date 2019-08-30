@@ -40,7 +40,6 @@ class MemTracker;
 namespace rocksdb {
 
 class Block;
-class RandomAccessFile;
 struct ReadOptions;
 
 // the length of the magic number in bytes.

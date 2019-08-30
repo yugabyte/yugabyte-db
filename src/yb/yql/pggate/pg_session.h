@@ -14,6 +14,8 @@
 #ifndef YB_YQL_PGGATE_PG_SESSION_H_
 #define YB_YQL_PGGATE_PG_SESSION_H_
 
+#include <boost/optional.hpp>
+
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/schema.h"
@@ -31,11 +33,22 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb {
+
+namespace tserver {
+
+class TServerSharedMemory;
+
+}  // namespace tserver
+
 namespace pggate {
 
 YB_STRONGLY_TYPED_BOOL(OpBuffered);
+YB_STRONGLY_TYPED_BOOL(PreventRestart);
 
 class PgTxnManager;
+
+// Convenience typedefs.
+typedef std::vector<std::shared_ptr<client::YBPgsqlOp>> PgsqlOpBuffer;
 
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.
@@ -45,7 +58,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   typedef scoped_refptr<PgSession> ScopedRefPtr;
 
   // Constructors.
-  PgSession(std::shared_ptr<client::YBClient> client,
+  PgSession(client::YBClient* client,
             const string& database_name,
             scoped_refptr<PgTxnManager> pg_txn_manager,
             scoped_refptr<server::HybridClock> clock);
@@ -68,7 +81,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                 PgOid database_oid,
                                 PgOid source_database_oid,
                                 PgOid nexte_oid);
-  CHECKED_STATUS DropDatabase(const std::string& database_name, bool if_exist);
+  CHECKED_STATUS DropDatabase(const std::string& database_name, PgOid database_oid);
 
   CHECKED_STATUS ReserveOids(PgOid database_oid,
                              PgOid nexte_oid,
@@ -82,25 +95,29 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CHECKED_STATUS CreateSequencesDataTable();
 
   CHECKED_STATUS InsertSequenceTuple(int64_t db_oid,
-      int64_t seq_oid,
-      int64_t last_val,
-      bool is_called);
-
+                                     int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
+                                     int64_t last_val,
+                                     bool is_called);
 
   CHECKED_STATUS UpdateSequenceTuple(int64_t db_oid,
                                      int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
                                      int64_t last_val,
                                      bool is_called,
-                                     int64_t expected_last_val,
-                                     bool expected_is_called,
+                                     boost::optional<int64_t> expected_last_val,
+                                     boost::optional<bool> expected_is_called,
                                      bool* skipped);
 
   CHECKED_STATUS ReadSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
+                                   uint64_t ysql_catalog_version,
                                    int64_t *last_val,
                                    bool *is_called);
 
   CHECKED_STATUS DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
+
+  CHECKED_STATUS DeleteDBSequences(int64_t db_oid);
 
   // API for schema operations.
   // TODO(neil) Schema should be a sub-database that have some specialized property.
@@ -174,6 +191,15 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     table_cache_.clear();
   }
 
+  // Check if initdb has already been run before. Needed to make initdb idempotent.
+  CHECKED_STATUS IsInitDbDone(bool* initdb_done);
+
+  // Returns the local tserver's catalog version stored in shared memory, or an error if
+  // the shared memory has not been initialized (e.g. in initdb).
+  Result<uint64_t> GetSharedCatalogVersion();
+
+  PgTxnManager* pg_txn_manager() { return pg_txn_manager_.get(); }
+
  private:
   // Returns the appropriate session to use, in most cases the one used by the current transaction.
   // read_only_op - whether this is being done in the context of a read-only operation. For
@@ -190,8 +216,15 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // that is later passed to PostgreSQL and further converted into a more specific error code.
   Status CombineErrorsToStatus(client::CollectedErrors errors, Status status);
 
+  // Given two statuses, include messages from the first status in front and take state
+  // from whichever is not OK (if there is one), otherwise return the first status.
+  Status CombineStatuses(Status first_status, Status second_status);
+
+  // Flush buffered write operations from the given buffer.
+  Status FlushBufferedWriteOperations(PgsqlOpBuffer* write_ops, bool transactional);
+
   // YBClient, an API that SQL engine uses to communicate with all servers.
-  std::shared_ptr<client::YBClient> client_;
+  client::YBClient* const client_;
 
   // YBSession to execute operations.
   std::shared_ptr<client::YBSession> session_;
@@ -214,11 +247,16 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   std::unordered_map<TableId, std::shared_ptr<client::YBTable>> table_cache_;
 
   // Should write operations be buffered?
-  bool buffer_write_ops_ = false;
-  std::vector<std::shared_ptr<client::YBPgsqlOp>> buffered_write_ops_;
+  uint buffer_write_ops_ = 0;
+  PgsqlOpBuffer buffered_write_ops_;
+  PgsqlOpBuffer buffered_txn_write_ops_;
 
   bool has_txn_ops_ = false;
   bool has_non_txn_ops_ = false;
+
+  // Local tablet-server shared memory segment handle. This has a value of nullptr
+  // if the shared memory has not been initialized (e.g. during initdb).
+  std::unique_ptr<tserver::TServerSharedMemory> tserver_shared_memory_;
 };
 
 }  // namespace pggate

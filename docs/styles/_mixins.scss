@@ -1,0 +1,17 @@
+// Copyright (c) YugaByte, Inc.
+
+/* Copyright (c) YugaByte, Inc. */
+
+@mixin transition ($duration) {
+  -webkit-transition: $duration cubic-bezier(0.375, 0.885, 0.60, 1) all;
+     -moz-transition: $duration cubic-bezier(0.375, 0.885, 0.60, 1) all;
+       -o-transition: $duration cubic-bezier(0.375, 0.885, 0.60, 1) all;
+          transition: $duration cubic-bezier(0.375, 0.885, 0.60, 1) all;
+}
+
+@mixin transition-property ($duration, $property, $delay) {
+  -webkit-transition: $property $duration cubic-bezier(0.375, 0.885, 0.60, 1) $delay;
+     -moz-transition: $property $duration cubic-bezier(0.375, 0.885, 0.60, 1) $delay;
+       -o-transition: $property $duration cubic-bezier(0.375, 0.885, 0.60, 1) $delay;
+          transition: $property $duration cubic-bezier(0.375, 0.885, 0.60, 1) $delay;
+}

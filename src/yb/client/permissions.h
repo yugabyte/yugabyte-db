@@ -76,7 +76,7 @@ enum class CacheCheckMode {
 
 class PermissionsCache {
  public:
-  explicit PermissionsCache(std::shared_ptr<client::YBClient> client,
+  explicit PermissionsCache(client::YBClient* client,
                             bool automatically_update_cache = true);
 
   ~PermissionsCache();
@@ -116,7 +116,7 @@ class PermissionsCache {
   boost::optional<uint64_t> version_;
 
   // Client used to send the request to the master.
-  std::shared_ptr<client::YBClient> client_;
+  client::YBClient* const client_;
 
   // role name -> RolePermissions.
   std::shared_ptr<RolesPermissionsMap> roles_permissions_map_;

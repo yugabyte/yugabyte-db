@@ -59,7 +59,8 @@ target_link_libraries(integration-tests
   yb-redisserver-test
   yb_test_util
   yb-redis
-  yb_pgwrapper)
+  yb_pgwrapper
+  ${INTEGRATION_TESTS_LIB_EXTENSIONS})
 
 add_dependencies(integration-tests
   yb-tserver
@@ -68,6 +69,7 @@ add_dependencies(integration-tests
 # Tests
 set(YB_TEST_LINK_LIBS
     integration-tests yb_client yb_tools_util ql-dml-test-base ${YB_MIN_TEST_LIBS})
+
 ADD_YB_TEST(alter_table-test)
 ADD_YB_TEST(alter_table-randomized-test)
 ADD_YB_TEST(registration-test)
@@ -81,6 +83,7 @@ ADD_YB_TEST(cluster_trace-test)
 # ADD_YB_TEST(non_gtest_failures-test.sh)
 
 # Not sure if we really need RUN_SERIAL here as this might not be a resource-intensive test.
+ADD_YB_TEST(compaction-test)
 ADD_YB_TEST(master_replication-itest)
 ADD_YB_TEST(master_sysnamespace-itest)
 ADD_YB_TEST(master_path_handlers-itest)

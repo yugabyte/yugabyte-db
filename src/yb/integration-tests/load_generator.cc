@@ -21,6 +21,8 @@
 #include <gflags/gflags_declare.h>
 
 #include "yb/client/client.h"
+#include "yb/client/error.h"
+#include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 

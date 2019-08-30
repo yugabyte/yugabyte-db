@@ -35,6 +35,7 @@
 
 #include <atomic>
 #include <string>
+#include <thread>
 
 #include <gtest/gtest.h>
 
@@ -45,6 +46,7 @@
 #include "yb/util/result.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 
 #define ASSERT_EVENTUALLY(expr) do { \
@@ -210,6 +212,14 @@ void AssertLoggedWaitFor(
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
+CHECKED_STATUS LoggedWaitFor(
+    std::function<Result<bool>()> condition,
+    MonoDelta timeout,
+    const string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
+
 // Return the path of a yb-tool.
 std::string GetToolPath(const std::string& tool_name);
 
@@ -238,6 +248,76 @@ class StopOnFailure {
 
 // Waits specified duration or when stop switches to true.
 void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop);
+
+class SetFlagOnExit {
+ public:
+  explicit SetFlagOnExit(std::atomic<bool>* stop_flag)
+      : stop_flag_(stop_flag) {}
+
+  ~SetFlagOnExit() {
+    stop_flag_->store(true, std::memory_order_release);
+  }
+
+ private:
+  std::atomic<bool>* stop_flag_;
+};
+
+// Holds vector of threads, and provides convenient utilities. Such as JoinAll, Wait etc.
+class TestThreadHolder {
+ public:
+  ~TestThreadHolder() {
+    stop_flag_.store(true, std::memory_order_release);
+    JoinAll();
+  }
+
+  template <class... Args>
+  void AddThread(Args&&... args) {
+    threads_.emplace_back(std::forward<Args>(args)...);
+  }
+
+  void AddThread(std::thread thread) {
+    threads_.push_back(std::move(thread));
+  }
+
+  template <class Functor>
+  void AddThreadFunctor(const Functor& functor) {
+    AddThread([&stop = stop_flag_, functor] {
+      CDSAttacher attacher;
+      SetFlagOnExit set_stop_on_exit(&stop);
+      functor();
+    });
+  }
+
+  void Wait(const CoarseDuration& duration) {
+    yb::WaitStopped(duration, &stop_flag_);
+  }
+
+  void JoinAll() {
+    for (auto& thread : threads_) {
+      if (thread.joinable()) {
+        thread.join();
+      }
+    }
+  }
+
+  void WaitAndStop(const CoarseDuration& duration) {
+    yb::WaitStopped(duration, &stop_flag_);
+    Stop();
+  }
+
+  void Stop() {
+    stop_flag_.store(true, std::memory_order_release);
+    JoinAll();
+  }
+
+  std::atomic<bool>& stop_flag() {
+    return stop_flag_;
+  }
+
+ private:
+  std::atomic<bool> stop_flag_{false};
+  std::vector<std::thread> threads_;
+};
 
 } // namespace yb
 

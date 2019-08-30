@@ -988,8 +988,12 @@ PostmasterMain(int argc, char *argv[])
 	 * it needs to be called before InitializeMaxBackends(), and it's probably
 	 * a good idea to call it before any modules had chance to take the
 	 * background worker slots.
+	 *
+	 * Logical replication is not supported in YugaByte mode currently and the
+	 * registration is disabled.
 	 */
-	ApplyLauncherRegister();
+	if (!YBIsEnabledInPostgresEnvVar())
+		ApplyLauncherRegister();
 
 	/*
 	 * process any libraries that should be preloaded at postmaster start
@@ -5879,12 +5883,6 @@ maybe_start_bgworkers(void)
 	/* Don't need to be called again unless we find a reason for it below */
 	StartWorkerNeeded = false;
 	HaveCrashedWorker = false;
-
-	/* Do not need any bgworkers in YugaByte mode at this point. */
-	if (YBIsEnabledInPostgresEnvVar())
-	{
-		return;
-	}
 
 	slist_foreach_modify(iter, &BackgroundWorkerList)
 	{

@@ -30,8 +30,8 @@
 #define YB_COMMON_QL_BFUNC_H_
 
 #include "yb/common/ql_value.h"
-#include "yb/util/bfql/bfql.h"
-#include "yb/util/bfpg/bfpg.h"
+#include "yb/util/bfql/gen_opcodes.h"
+#include "yb/util/bfpg/gen_opcodes.h"
 
 namespace yb {
 

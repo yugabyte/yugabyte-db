@@ -43,6 +43,7 @@
 #include "yb/master/master.h"
 #include "yb/server/server_base.h"
 #include "yb/server/webserver_options.h"
+#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/tserver.pb.h"
@@ -51,9 +52,14 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/master/master.pb.h"
+
+namespace rocksdb {
+class Env;
+}
 
 namespace yb {
-
+class Env;
 class MaintenanceManager;
 
 namespace tserver {
@@ -61,6 +67,7 @@ namespace tserver {
 constexpr const char* const kTcMallocMaxThreadCacheBytes = "tcmalloc.max_total_thread_cache_bytes";
 
 class Heartbeater;
+class MetricsSnapshotter;
 class TabletServerPathHandlers;
 class TSTabletManager;
 
@@ -96,6 +103,8 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   TabletPeerLookupIf* tablet_peer_lookup() override { return tablet_manager_.get(); }
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
+
+  MetricsSnapshotter* metrics_snapshotter() { return metrics_snapshotter_.get(); }
 
   void set_fail_heartbeats_for_tests(bool fail_heartbeats_for_tests) {
     base::subtle::NoBarrier_Store(&fail_heartbeats_for_tests_, 1);
@@ -159,25 +168,26 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
     return publish_service_ptr_.get();
   }
 
-  void set_ysql_catalog_version(uint64_t new_version) {
-    std::lock_guard<simple_spinlock> l(lock_);
-    DCHECK(new_version >= ysql_catalog_version_);
-    ysql_catalog_version_ = new_version;
-  }
+  void SetYSQLCatalogVersion(uint64_t new_version);
 
   uint64_t ysql_catalog_version() const override {
     std::lock_guard<simple_spinlock> l(lock_);
     return ysql_catalog_version_;
   }
 
+  virtual Env* GetEnv();
+
+  virtual rocksdb::Env* GetRocksDBEnv();
+
+  virtual CHECKED_STATUS SetUniverseKeyRegistry(
+      const yb::UniverseKeyRegistryPB& universe_key_registry);
+
+  // Returns the file descriptor of this tablet server's shared memory segment.
+  int GetSharedMemoryFd();
+
  protected:
   virtual CHECKED_STATUS RegisterServices();
 
- private:
-  // Auto initialize some of the service flags that are defaulted to -1.
-  void AutoInitServiceFlags();
-
- protected:
   friend class TabletServerTestBase;
 
   void DisplayRpcIcons(std::stringstream* output) override;
@@ -201,6 +211,9 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // Thread responsible for heartbeating to the master.
   gscoped_ptr<Heartbeater> heartbeater_;
 
+  // Thread responsible for collecting metrics snapshots for native storage.
+  gscoped_ptr<MetricsSnapshotter> metrics_snapshotter_;
+
   // Webserver path handlers
   gscoped_ptr<TabletServerPathHandlers> path_handlers_;
 
@@ -219,7 +232,7 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // Proxy to call this tablet server locally.
   std::shared_ptr<TabletServerServiceProxy> proxy_;
 
-  // Cluster uuid. This is sent by the master leader during the first hearbeat.
+  // Cluster uuid. This is sent by the master leader during the first heartbeat.
   std::string cluster_uuid_;
 
   // Latest known version from the YSQL catalog (as reported by last heartbeat response).
@@ -230,6 +243,12 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   TabletServiceImpl* tablet_server_service_;
 
  private:
+  // Auto initialize some of the service flags that are defaulted to -1.
+  void AutoInitServiceFlags();
+
+  // Shared memory owned by the tablet server.
+  TServerSharedMemory shared_memory_;
+
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };
 

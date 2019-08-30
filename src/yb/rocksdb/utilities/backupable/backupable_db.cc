@@ -1221,10 +1221,10 @@ Status BackupEngineImpl::CopyOrCreateFile(
   unique_ptr<WritableFileWriter> dest_writer(
       new WritableFileWriter(std::move(dst_file), env_options));
   unique_ptr<SequentialFileReader> src_reader;
-  unique_ptr<char[]> buf;
+  unique_ptr<uint8_t[]> buf;
   if (!src.empty()) {
     src_reader.reset(new SequentialFileReader(std::move(src_file)));
-    buf.reset(new char[copy_file_buffer_size_]);
+    buf.reset(new uint8_t[copy_file_buffer_size_]);
   }
 
   Slice data;
@@ -1408,7 +1408,7 @@ Status BackupEngineImpl::CalculateChecksum(const std::string& src, Env* src_env,
 
   unique_ptr<SequentialFileReader> src_reader(
       new SequentialFileReader(std::move(src_file)));
-  std::unique_ptr<char[]> buf(new char[copy_file_buffer_size_]);
+  std::unique_ptr<uint8_t[]> buf(new uint8_t[copy_file_buffer_size_]);
   Slice data;
 
   do {
@@ -1598,7 +1598,7 @@ Status BackupEngineImpl::BackupMeta::LoadFromFile(
 
   unique_ptr<SequentialFileReader> backup_meta_reader(
       new SequentialFileReader(std::move(backup_meta_file)));
-  unique_ptr<char[]> buf(new char[max_backup_meta_file_size_ + 1]);
+  unique_ptr<uint8_t[]> buf(new uint8_t[max_backup_meta_file_size_ + 1]);
   Slice data;
   s = backup_meta_reader->Read(max_backup_meta_file_size_, &data, buf.get());
 

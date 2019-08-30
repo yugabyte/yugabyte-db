@@ -65,8 +65,10 @@ class TransactionTestBase : public KeyValueTableTest {
 
   void WriteDataWithRepetition();
 
+  // Create a new transaction using transaction_manager_.
   YBTransactionPtr CreateTransaction(SetReadTime set_read_time = SetReadTime::kFalse);
 
+  // Create a new transaction using transaction_manager2_.
   YBTransactionPtr CreateTransaction2(SetReadTime set_read_time = SetReadTime::kFalse);
 
   void VerifyRows(const YBSessionPtr& session,
@@ -81,7 +83,7 @@ class TransactionTestBase : public KeyValueTableTest {
   void VerifyData(size_t num_transactions = 1, const WriteOpType op_type = WriteOpType::INSERT,
                   const std::string& column = kValueColumn);
 
-  size_t CountTransactions();
+  bool HasTransactions();
 
   size_t CountIntents();
 
@@ -96,6 +98,8 @@ class TransactionTestBase : public KeyValueTableTest {
   server::ClockPtr clock_{new server::HybridClock(skewed_clock_)};
   boost::optional<TransactionManager> transaction_manager_;
   boost::optional<TransactionManager> transaction_manager2_;
+
+  bool create_table_ = true;
 };
 
 } // namespace client

@@ -23,8 +23,6 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/tag.hpp>
 
-#include <boost/scope_exit.hpp>
-
 #include <boost/uuid/uuid_io.hpp>
 
 #include "yb/client/client.h"
@@ -52,6 +50,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
@@ -274,7 +273,10 @@ class TransactionState {
   }
 
   TransactionStatusResult Abort(TransactionAbortCallback* callback) {
-    if (ShouldBeCommitted()) {
+    if (status_ == TransactionStatus::COMMITTED ||
+        status_ == TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS) {
+      return TransactionStatusResult(TransactionStatus::COMMITTED, commit_time_);
+    } else if (ShouldBeCommitted()) {
       return TransactionStatusResult(TransactionStatus::COMMITTED, HybridTime::kMax);
     } else if (status_ == TransactionStatus::ABORTED) {
       return TransactionStatusResult::Aborted();
@@ -871,7 +873,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           *handle = UpdateTransaction(
               deadline,
               nullptr /* remote_tablet */,
-              context_.client_future().get().get(),
+              context_.client_future().get(),
               &req,
               [this, handle](const Status& status, HybridTime propagated_hybrid_time) {
                 if (propagated_hybrid_time.is_valid()) {
@@ -952,9 +954,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   void Poll(const Status& status) {
     ++running_polls_;
-    BOOST_SCOPE_EXIT(&running_polls_) {
+    auto se = ScopeExit([this] {
       --running_polls_;
-    } BOOST_SCOPE_EXIT_END;
+    });
     auto now = context_.clock().Now();
 
     auto leader_term = context_.LeaderTerm();

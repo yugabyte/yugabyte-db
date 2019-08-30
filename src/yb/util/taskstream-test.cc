@@ -34,12 +34,6 @@
 #include <functional>
 #include <limits>
 #include <memory>
-#include <mutex>
-#include <string>
-#include <thread>
-#include <vector>
-
-#include <boost/scope_exit.hpp>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
@@ -49,16 +43,14 @@
 #include "yb/gutil/bind.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
-#include "yb/util/promise.h"
-#include "yb/util/random.h"
 #include "yb/gutil/sysinfo.h"
-#include "yb/util/threadpool.h"
+
 #include "yb/util/taskstream.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
 #include "yb/util/locks.h"
-#include "yb/util/test_util.h"
 
 using std::atomic;
 using std::shared_ptr;

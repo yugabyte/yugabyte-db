@@ -49,7 +49,6 @@ using yb::util::TrimTrailingWhitespaceFromEveryLine;
 using yb::util::LeftShiftTextBlock;
 using yb::client::YBTableName;
 using yb::rpc::RpcController;
-using yb::client::YBClientPtr;
 
 using namespace std::literals;
 
@@ -64,7 +63,7 @@ class PgWrapperTest : public PgWrapperTestBase {
     std::string tmp_dir;
     ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
 
-    gscoped_ptr<WritableFile> tmp_file;
+    std::unique_ptr<WritableFile> tmp_file;
     std::string tmp_file_name;
     ASSERT_OK(
         Env::Default()->NewTempWritableFile(
@@ -76,7 +75,7 @@ class PgWrapperTest : public PgWrapperTestBase {
     ASSERT_OK(tmp_file->Close());
 
     vector<string> argv {
-        GetPostgresInstallRoot() + "/bin/psql",
+        GetPostgresInstallRoot() + "/bin/ysqlsh",
         "-h", pg_ts->bind_host(),
         "-p", std::to_string(pg_ts->pgsql_rpc_port()),
         "-U", "postgres",
@@ -188,8 +187,7 @@ TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(TestCompactHistoryWithTxn)) {
   string table_id;
   LOG(INFO) << "Preparing to force a compaction on the table we created";
   {
-    YBClientPtr client;
-    ASSERT_OK(cluster_->CreateClient(&client));
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
 
     vector<std::pair<string, YBTableName>> tables;
     ASSERT_OK(client->ListTablesWithIds(&tables));
@@ -271,6 +269,93 @@ TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(InsertSelect)) {
      ASSERT_NO_FATALS(InsertRows(
          "INSERT INTO mytbl SELECT * FROM mytbl", 1 << i /* expected_rows */));
   }
+}
+
+class PgWrapperOneNodeClusterTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
+ public:
+  void SetUp() {
+    YBMiniClusterTestBase::SetUp();
+
+    ExternalMiniClusterOptions opts;
+    opts.start_pgsql_proxy = true;
+    opts.num_tablet_servers = 1;
+
+    cluster_.reset(new ExternalMiniCluster(opts));
+    ASSERT_OK(cluster_->Start());
+
+    pg_ts_ = cluster_->tablet_server(0);
+
+    // TODO: fix cluster verification for PostgreSQL tables.
+    DontVerifyClusterBeforeNextTearDown();
+  }
+
+ protected:
+  ExternalTabletServer* pg_ts_ = nullptr;
+
+};
+
+TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
+  MonoDelta timeout = 15s;
+  int tserver_count = 1;
+
+  std::string pid_file = JoinPathSegments(pg_ts_->GetDataDir(), "pg_data", "postmaster.pid");
+  // Wait for postgres server to start and setup postmaster.pid file
+  AssertLoggedWaitFor(
+      [this, &pid_file] {
+        return env_->FileExists(pid_file);
+      }, timeout, "Waiting for postgres server to create postmaster.pid file");
+  ASSERT_TRUE(env_->FileExists(pid_file));
+
+  // Shutdown tserver and wait for postgres server to shut down and delete postmaster.pid file
+  pg_ts_->Shutdown();
+  AssertLoggedWaitFor(
+      [this, &pid_file] {
+        return !env_->FileExists(pid_file);
+      }, timeout, "Waiting for postgres server to shutdown");
+  ASSERT_FALSE(env_->FileExists(pid_file));
+
+  // Create empty postmaster.pid file and ensure that tserver can start up
+  // Use sync_on_close flag to ensure that the file is flushed to disk when tserver tries to read it
+  std::unique_ptr<RWFile> file;
+  RWFileOptions opts;
+  opts.sync_on_close = true;
+  opts.mode = Env::CREATE_IF_NON_EXISTING_TRUNCATE;
+
+  ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
+  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */, true /* start_pgsql_proxy */));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
+
+  // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
+  pg_ts_->Shutdown();
+  AssertLoggedWaitFor(
+      [this, &pid_file] {
+        return !env_->FileExists(pid_file);
+      }, timeout, "Waiting for postgres server to shutdown", 100ms);
+  ASSERT_FALSE(env_->FileExists(pid_file));
+
+  // Create postmaster.pid file with string pid (invalid) and ensure that tserver can start up
+  ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
+  ASSERT_OK(file->Write(0, "abcde\n" + pid_file));
+  ASSERT_OK(file->Close());
+
+  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */, true /* start_pgsql_proxy */));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
+
+  // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
+  pg_ts_->Shutdown();
+  AssertLoggedWaitFor(
+      [this, &pid_file] {
+        return !env_->FileExists(pid_file);
+      }, timeout, "Waiting for postgres server to shutdown", 100ms);
+  ASSERT_FALSE(env_->FileExists(pid_file));
+
+  // Create postgres pid file with integer pid (valid) and ensure that tserver can start up
+  ASSERT_OK(env_->NewRWFile(opts, pid_file, &file));
+  ASSERT_OK(file->Write(0, "1002\n" + pid_file));
+  ASSERT_OK(file->Close());
+
+  ASSERT_OK(pg_ts_->Start(false /* start_cql_proxy */, true /* start_pgsql_proxy */));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(tserver_count, timeout));
 }
 
 }  // namespace pgwrapper

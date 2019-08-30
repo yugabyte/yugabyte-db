@@ -1008,6 +1008,7 @@ typedef struct PgBackendStatus
 	Oid			st_userid;
 	SockAddr	st_clientaddr;
 	char	   *st_clienthostname;	/* MUST be null-terminated */
+	char 		*st_databasename; /* Used in YB Mode */
 
 	/* Information about SSL connection */
 	bool		st_ssl;
@@ -1351,5 +1352,6 @@ extern PgStat_StatFuncEntry *pgstat_fetch_stat_funcentry(Oid funcid);
 extern int	pgstat_fetch_stat_numbackends(void);
 extern PgStat_ArchiverStats *pgstat_fetch_stat_archiver(void);
 extern PgStat_GlobalStats *pgstat_fetch_global(void);
+extern PgBackendStatus **getBackendStatusArrayPointer(void);
 
 #endif							/* PGSTAT_H */

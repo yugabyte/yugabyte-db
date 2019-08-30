@@ -43,3 +43,15 @@ import "yb/util/proto_container_test.proto";
 message ProtoContainerTest2PB {
   required yb.ProtoContainerTestPB record = 1;
 }
+
+message TestObjectRequiredPB {
+  required string string1 = 1;
+  required TestStringRequiredPB record = 2;
+  required string string2 = 3;
+}
+
+message TestObjectRepeatedPB {
+  repeated string string1 = 1;
+  repeated TestStringRepeatedPB record = 2;
+  repeated string string2 = 3;
+}

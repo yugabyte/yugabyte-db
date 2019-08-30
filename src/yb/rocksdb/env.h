@@ -39,10 +39,12 @@
 #include <vector>
 
 #include "yb/rocksdb/file.h"
-#include "yb/util/result.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/thread_status.h"
+
+#include "yb/util/file_system.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 #ifdef _WIN32
 // Windows API macro interference
@@ -74,8 +76,6 @@ namespace rocksdb {
 
 class FileLock;
 class Logger;
-class RandomAccessFile;
-class SequentialFile;
 class WritableFile;
 class Directory;
 struct DBOptions;
@@ -83,24 +83,21 @@ class RateLimiter;
 class ThreadStatusUpdater;
 struct ThreadStatus;
 
+typedef yb::SequentialFile SequentialFile;
+typedef yb::RandomAccessFile RandomAccessFile;
+
 using std::unique_ptr;
 using std::shared_ptr;
 
 
 // Options while opening a file to read/write
-struct EnvOptions {
+struct EnvOptions : public yb::FileSystemOptions {
 
   // construct with default Options
   EnvOptions();
 
   // construct from Options
   explicit EnvOptions(const DBOptions& options);
-
-  // If true, then allow caching of data in environment buffers
-  bool use_os_buffer = true;
-
-  // If true, then use mmap to read data
-  bool use_mmap_reads = false;
 
   // If true, then use mmap to write data
   bool use_mmap_writes = true;
@@ -138,6 +135,69 @@ struct EnvOptions {
   RateLimiter* rate_limiter = nullptr;
 };
 
+// RocksDBFileFactory is the implementation of all NewxxxFile Env methods as well as any methods
+// that are used to create new files. This class is created to allow easy definition of how we
+// create new files without inheriting the whole env.
+class RocksDBFileFactory {
+ public:
+  virtual ~RocksDBFileFactory() {}
+  virtual CHECKED_STATUS NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
+                                           const EnvOptions& options) = 0;
+  virtual CHECKED_STATUS NewRandomAccessFile(const std::string& f,
+                                             unique_ptr<RandomAccessFile>* r,
+                                             const EnvOptions& options) = 0;
+  virtual CHECKED_STATUS NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+                                         const EnvOptions& options) = 0;
+  virtual CHECKED_STATUS ReuseWritableFile(const std::string& fname,
+                                   const std::string& old_fname,
+                                   unique_ptr<WritableFile>* result,
+                                   const EnvOptions& options) = 0;
+  virtual CHECKED_STATUS GetFileSize(const std::string& fname, uint64_t* size) = 0;
+
+  // Does the file factory produce plaintext files.
+  virtual bool IsPlainText() const = 0;
+};
+
+class RocksDBFileFactoryWrapper : public rocksdb::RocksDBFileFactory {
+ public:
+  explicit RocksDBFileFactoryWrapper(rocksdb::RocksDBFileFactory* t) : target_(t) {}
+
+  virtual ~RocksDBFileFactoryWrapper() {}
+
+  // The following text is boilerplate that forwards all methods to target()
+  Status NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
+                           const rocksdb::EnvOptions& options) override {
+    return target_->NewSequentialFile(f, r, options);
+  }
+  Status NewRandomAccessFile(const std::string& f,
+                             unique_ptr <rocksdb::RandomAccessFile>* r,
+                             const EnvOptions& options) override {
+    return target_->NewRandomAccessFile(f, r, options);
+  }
+  Status NewWritableFile(const std::string& f, unique_ptr <rocksdb::WritableFile>* r,
+                         const EnvOptions& options) override {
+    return target_->NewWritableFile(f, r, options);
+  }
+
+  Status ReuseWritableFile(const std::string& fname,
+                           const std::string& old_fname,
+                           unique_ptr<WritableFile>* result,
+                           const EnvOptions& options) override {
+    return target_->ReuseWritableFile(fname, old_fname, result, options);
+  }
+
+  Status GetFileSize(const std::string& fname, uint64_t* size) override {
+    return target_->GetFileSize(fname, size);
+  }
+
+  bool IsPlainText() const override {
+    return target_->IsPlainText();
+  }
+
+ private:
+  rocksdb::RocksDBFileFactory* target_;
+};
+
 class Env {
  public:
   struct FileAttributes {
@@ -159,6 +219,11 @@ class Env {
   // The result of Default() belongs to rocksdb and must never be deleted.
   static Env* Default();
 
+  static RocksDBFileFactory* DefaultFileFactory();
+
+  static std::unique_ptr<Env> NewRocksDBDefaultEnv(
+      std::unique_ptr<RocksDBFileFactory> file_factory);
+
   // Create a brand new sequentially-readable file with the specified name.
   // On success, stores a pointer to the new file in *result and returns OK.
   // On failure stores nullptr in *result and returns non-OK.  If the file does
@@ -166,7 +231,7 @@ class Env {
   //
   // The returned file will only be accessed by one thread at a time.
   virtual Status NewSequentialFile(const std::string& fname,
-                                   unique_ptr<SequentialFile>* result,
+                                   std::unique_ptr<SequentialFile>* result,
                                    const EnvOptions& options)
                                    = 0;
 
@@ -178,7 +243,7 @@ class Env {
   //
   // The returned file may be concurrently accessed by multiple threads.
   virtual Status NewRandomAccessFile(const std::string& fname,
-                                     unique_ptr<RandomAccessFile>* result,
+                                     std::unique_ptr<RandomAccessFile>* result,
                                      const EnvOptions& options)
                                      = 0;
 
@@ -248,6 +313,8 @@ class Env {
 
   // Store the size of fname in *file_size.
   virtual Status GetFileSize(const std::string& fname, uint64_t* file_size) = 0;
+
+  yb::Result<uint64_t> GetFileSize(const std::string& fname);
 
   // Store the last modification time of fname in *file_mtime.
   virtual Status GetFileModificationTime(const std::string& fname,
@@ -400,6 +467,10 @@ class Env {
     return thread_status_updater_;
   }
 
+  virtual bool IsPlainText() const {
+    return true;
+  }
+
   // Returns the ID of the current thread.
   virtual uint64_t GetThreadID() const;
 
@@ -419,89 +490,10 @@ class Env {
 // constructor to initialize thread_status_updater_.
 ThreadStatusUpdater* CreateThreadStatusUpdater();
 
-// A file abstraction for reading sequentially through a file
-class SequentialFile {
- public:
-  SequentialFile() { }
-  virtual ~SequentialFile();
-
-  // Read up to "n" bytes from the file.  "scratch[0..n-1]" may be
-  // written by this routine.  Sets "*result" to the data that was
-  // read (including if fewer than "n" bytes were successfully read).
-  // May set "*result" to point at data in "scratch[0..n-1]", so
-  // "scratch[0..n-1]" must be live when "*result" is used.
-  // If an error was encountered, returns a non-OK status.
-  //
-  // REQUIRES: External synchronization
-  virtual Status Read(size_t n, Slice* result, char* scratch) = 0;
-
-  // Skip "n" bytes from the file. This is guaranteed to be no
-  // slower that reading the same data, but may be faster.
-  //
-  // If end of file is reached, skipping will stop at the end of the
-  // file, and Skip will return OK.
-  //
-  // REQUIRES: External synchronization
-  virtual Status Skip(uint64_t n) = 0;
-
-  // Remove any kind of caching of data from the offset to offset+length
-  // of this file. If the length is 0, then it refers to the end of file.
-  // If the system is not caching the file contents, then this is a noop.
-  virtual Status InvalidateCache(size_t offset, size_t length) {
-    return STATUS(NotSupported, "InvalidateCache not supported.");
-  }
-};
-
-// A file abstraction for randomly reading the contents of a file.
-class RandomAccessFile : public File {
- public:
-  RandomAccessFile() { }
-  virtual ~RandomAccessFile();
-
-  // Read up to "n" bytes from the file starting at "offset".
-  // "scratch[0..n-1]" may be written by this routine.  Sets "*result"
-  // to the data that was read (including if fewer than "n" bytes were
-  // successfully read).  May set "*result" to point at data in
-  // "scratch[0..n-1]", so "scratch[0..n-1]" must be live when
-  // "*result" is used.  If an error was encountered, returns a non-OK
-  // status.
-  //
-  // Safe for concurrent use by multiple threads.
-  virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      char* scratch) const = 0;
-
-  // Used by the file_reader_writer to decide if the ReadAhead wrapper
-  // should simply forward the call and do not enact buffering or locking.
-  virtual bool ShouldForwardRawRequest() const {
-    return false;
-  }
-
-  // For cases when read-ahead is implemented in the platform dependent
-  // layer
-  virtual void EnableReadAhead() {}
-
-  // For documentation, refer to File::GetUniqueId()
-  virtual size_t GetUniqueId(char* id, size_t max_size) const override {
-    return 0; // Default implementation to prevent issues with backwards
-              // compatibility.
-  }
-
-  enum AccessPattern { NORMAL, RANDOM, SEQUENTIAL, WILLNEED, DONTNEED };
-
-  virtual void Hint(AccessPattern pattern) {}
-
-  // Remove any kind of caching of data from the offset to offset+length
-  // of this file. If the length is 0, then it refers to the end of file.
-  // If the system is not caching the file contents, then this is a noop.
-  virtual Status InvalidateCache(size_t offset, size_t length) {
-    return STATUS(NotSupported, "InvalidateCache not supported.");
-  }
-};
-
 // A file abstraction for sequential writing.  The implementation
 // must provide buffering since callers may append small fragments
 // at a time to the file.
-class WritableFile : public File {
+class WritableFile : public yb::FileWithUniqueId {
  public:
   WritableFile()
     : last_preallocated_block_(0),
@@ -597,7 +589,7 @@ class WritableFile : public File {
   }
 
   // For documentation, refer to File::GetUniqueId()
-  virtual size_t GetUniqueId(char* id, size_t max_size) const override {
+  virtual size_t GetUniqueId(char* id) const override {
     return 0; // Default implementation to prevent issues with backwards
   }
 
@@ -730,6 +722,11 @@ class Logger {
     log_level_ = log_level;
   }
 
+  virtual const std::string& Prefix() const {
+    static const std::string kEmptyString;
+    return kEmptyString;
+  }
+
  private:
   // No copying allowed
   Logger(const Logger&);
@@ -858,7 +855,7 @@ class EnvWrapper : public Env {
   Env* target() const { return target_; }
 
   // The following text is boilerplate that forwards all methods to target()
-  Status NewSequentialFile(const std::string& f, unique_ptr<SequentialFile>* r,
+  Status NewSequentialFile(const std::string& f, std::unique_ptr<SequentialFile>* r,
                            const EnvOptions& options) override {
     return target_->NewSequentialFile(f, r, options);
   }
@@ -993,6 +990,10 @@ class EnvWrapper : public Env {
     return target_->GetThreadID();
   }
 
+  bool IsPlainText() const override {
+    return target_->IsPlainText();
+  }
+
  private:
   Env* target_;
 };
@@ -1004,7 +1005,7 @@ class EnvWrapper : public Env {
 // protected virtual methods.
 class WritableFileWrapper : public WritableFile {
  public:
-  explicit WritableFileWrapper(WritableFile* t) : target_(t) { }
+  explicit WritableFileWrapper(std::unique_ptr<WritableFile> t) : target_(std::move(t)) { }
 
   Status Append(const Slice& data) override { return target_->Append(data); }
   Status PositionedAppend(const Slice& data, uint64_t offset) override {
@@ -1025,8 +1026,8 @@ class WritableFileWrapper : public WritableFile {
                               size_t* last_allocated_block) override {
     target_->GetPreallocationStatus(block_size, last_allocated_block);
   }
-  size_t GetUniqueId(char* id, size_t max_size) const override {
-    return target_->GetUniqueId(id, max_size);
+  size_t GetUniqueId(char* id) const override {
+    return target_->GetUniqueId(id);
   }
   Status InvalidateCache(size_t offset, size_t length) override {
     return target_->InvalidateCache(offset, length);
@@ -1041,7 +1042,7 @@ class WritableFileWrapper : public WritableFile {
   }
 
  private:
-  WritableFile* target_;
+  std::unique_ptr<WritableFile> target_;
 };
 
 // Returns a new environment that stores its data in memory and delegates

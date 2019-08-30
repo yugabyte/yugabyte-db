@@ -35,6 +35,7 @@
 #include "catalog/ybctype.h"
 
 #include "catalog/catalog.h"
+#include "catalog/index.h"
 #include "access/htup_details.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
@@ -46,8 +47,35 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
+#include "access/nbtree.h"
+#include "catalog/pg_am.h"
+#include "commands/defrem.h"
+#include "nodes/nodeFuncs.h"
 #include "parser/parser.h"
+#include "parser/parse_coerce.h"
 #include "parser/parse_type.h"
+
+/* Utility function to calculate column sorting options */
+static void
+ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_nulls_first)
+{
+  if (dir == SORTBY_DESC) {
+	/*
+	 * From postgres doc NULLS FIRST is the default for DESC order.
+	 * So SORTBY_NULLS_DEFAULT is equal to SORTBY_NULLS_FIRST here.
+	 */
+	*is_desc = true;
+	*is_nulls_first = (nulls != SORTBY_NULLS_LAST);
+  } else {
+	/*
+	 * From postgres doc ASC is the default sort order and NULLS LAST is the default for it.
+	 * So SORTBY_DEFAULT is equal to SORTBY_ASC and SORTBY_NULLS_DEFAULT is equal
+	 * to SORTBY_NULLS_LAST here.
+	 */
+	*is_desc = false;
+	*is_nulls_first = (nulls == SORTBY_NULLS_FIRST);
+  }
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Database Functions. */
@@ -73,9 +101,9 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropDatabase(ybc_pg_session,
-	                                    dbname,
-	                                    false,    /* if_exists */
-	                                    &handle));
+										dbname,
+																			dboid,
+										&handle));
 	HandleYBStmtStatus(YBCPgExecDropDatabase(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
@@ -84,11 +112,11 @@ void
 YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid, Oid *end_oid)
 {
 	HandleYBStatus(YBCPgReserveOids(ybc_pg_session,
-	                                dboid,
-	                                next_oid,
-	                                count,
-	                                begin_oid,
-	                                end_oid));
+									dboid,
+									next_oid,
+									count,
+									begin_oid,
+									end_oid));
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -101,38 +129,40 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 								  bool include_hash,
 								  bool include_primary)
 {
-	int      i;
-
-	for (i = 0; i < desc->natts; i++)
+	for (int i = 0; i < desc->natts; i++)
 	{
-		Form_pg_attribute att = TupleDescAttr(desc, i);
-		char              *attname = NameStr(att->attname);
-		AttrNumber        attnum = att->attnum;			
-		bool              is_primary = false;
-		bool              is_first   = true;
+		Form_pg_attribute att            = TupleDescAttr(desc, i);
+		char              *attname       = NameStr(att->attname);
+		AttrNumber        attnum         = att->attnum;
+		bool              is_hash        = false;
+		bool              is_primary     = false;
+		bool              is_desc        = false;
+		bool              is_nulls_first = false;
+
 
 		if (primary_key != NULL)
 		{
 			ListCell *cell;
 
-			foreach(cell, primary_key->keys)
+			int key_col_idx = 0;
+			foreach(cell, primary_key->yb_index_params)
 			{
-				char *kattname = strVal(lfirst(cell));
+				IndexElem *index_elem = (IndexElem *)lfirst(cell);
 
-				if (strcmp(attname, kattname) == 0)
+				if (strcmp(attname, index_elem->name) == 0)
 				{
+					SortByDir order = index_elem->ordering;
+					/* In YB mode first column defaults to HASH if not set */
+					is_hash = (order == SORTBY_HASH) ||
+							  (key_col_idx == 0 && order == SORTBY_DEFAULT);
 					is_primary = true;
+		  ColumnSortingOptions(order, index_elem->nulls_ordering, &is_desc, &is_nulls_first);
 					break;
 				}
-				if (is_first)
-				{
-					is_first = false;
-				}
+				key_col_idx++;
 			}
 		}
 
-		/* TODO For now, assume the first primary key column is the hash. */
-		bool is_hash = is_primary && is_first;
 		if (include_hash == is_hash && include_primary == is_primary)
 		{
 			if (is_primary && !YBCDataTypeIsValidForKey(att->atttypid)) {
@@ -143,12 +173,240 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 			}
 			const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum, att->atttypid);
 			HandleYBStmtStatus(YBCPgCreateTableAddColumn(handle,
-			                                             attname,
-			                                             attnum,
-			                                             col_type,
-			                                             is_hash,
-			                                             is_primary), handle);
+														 attname,
+														 attnum,
+														 col_type,
+														 is_hash,
+														 is_primary,
+														 is_desc,
+														 is_nulls_first), handle);
 		}
+	}
+}
+
+/* Utility function to handle split points */
+static void CreateTableHandleSplitOptions(YBCPgStatement handle,
+										  TupleDesc desc,
+										  OptSplit *split_options,
+										  Constraint *primary_key)
+{
+	/* Address both types of split options */
+	switch (split_options->split_type)
+	{
+		case NUM_TABLETS: ;
+			/* Make sure we have HASH columns */
+			ListCell *head = list_head(primary_key->yb_index_params);
+			IndexElem *index_elem = (IndexElem*) lfirst(head);
+			if (!index_elem ||
+				!(index_elem->ordering == SORTBY_HASH ||
+				  index_elem->ordering == SORTBY_DEFAULT))
+			{
+				ereport(ERROR, (errmsg("HASH columns must be present to "
+									   "split by number of tablets")));
+			}
+
+			/* Tell pggate about it */
+			YBCPgCreateTableSetNumTablets(handle, split_options->num_tablets);
+			break;
+		case SPLIT_POINTS: ;
+			/* Number of columns used in the primary key */
+			int num_key_cols = list_length(primary_key->keys);
+
+			/* Get the type information on each column of the primary key,
+			 * and verify none are HASH columns */
+			Oid *col_attrtypes = palloc(sizeof(Oid) * num_key_cols);
+			int32 *col_attrtypmods = palloc(sizeof(int32) * num_key_cols);
+			ScanKeyData *col_comparators = palloc(sizeof(ScanKeyData) * num_key_cols);
+
+			bool *skips = palloc0(sizeof(bool) * desc->natts);
+			int col_num = 0;
+			ListCell *cell;
+			foreach(cell, primary_key->yb_index_params)
+			{
+				/* Column constraint for the primary key */
+				IndexElem *index_elem = (IndexElem *) lfirst(cell);
+
+				/* Locate the table column that matches */
+				for (int i = 0; i < desc->natts; i++)
+				{
+					if (skips[i]) continue;
+
+					Form_pg_attribute att = TupleDescAttr(desc, i);
+					char *attname = NameStr(att->attname);
+
+					/* Found it */
+					if (strcmp(attname, index_elem->name) == 0)
+					{
+						/* Prohibit the use of HASH columns */
+						if (index_elem->ordering == SORTBY_HASH ||
+							(col_num == 0 && index_elem->ordering == SORTBY_DEFAULT))
+						{
+							ereport(ERROR, (errmsg("HASH columns cannot be used for "
+												   "split points")));
+						}
+
+						/* Record information on the attribute */
+						col_attrtypes[col_num] = att->atttypid;
+						col_attrtypmods[col_num] = att->atttypmod;
+
+						/* Get the comparator */
+						Oid opclass = GetDefaultOpClass(att->atttypid, BTREE_AM_OID);
+						Oid opfamily = get_opclass_family(opclass);
+						Oid type = att->atttypid;
+						RegProcedure cmp_proc = get_opfamily_proc(opfamily,
+																  type,
+																  type,
+																  BTORDER_PROC);
+						ScanKeyInit(&col_comparators[col_num], 0, BTEqualStrategyNumber,
+									cmp_proc, 0);
+
+						/* Know to skip this in any future searches */
+						skips[i] = true;
+						break;
+					}
+				}
+
+				/* Next primary key column */
+				col_num++;
+			}
+
+			/* Array of per-column splits from the previous split point */
+			PartitionRangeDatum **prev_splits = palloc0(sizeof(PartitionRangeDatum*)
+														* num_key_cols);
+
+			/* Parser state for type conversion and validation */
+			ParseState *pstate = make_parsestate(NULL);
+
+			/* Ensure that each split point matches the primary key columns
+			 * in number and type, and are in order */
+			ListCell *cell1;
+			foreach(cell1, split_options->split_points)
+			{
+				List *split_point = (List *) lfirst(cell1);
+				if (list_length(split_point) != num_key_cols)
+				{
+					ereport(ERROR, (errmsg("Split points must specify a split at "
+										   "each primary key column")));
+				}
+
+				/* So far, is the current split point less (-1), equal (0), or greater (1)
+				 * than the previous split point */
+				int curall_vs_prev = -1;
+
+				/* Within a split point, go through the splits for each column */
+				int split_num = 0;
+				ListCell *cell2;
+				foreach(cell2, split_point)
+				{
+					/* Get the column's split */
+					PartitionRangeDatum *split = (PartitionRangeDatum*) lfirst(cell2);
+
+					/* If it contains a value, convert that value */
+					if (split->kind == PARTITION_RANGE_DATUM_VALUE)
+					{
+						A_Const *aconst = (A_Const*) split->value;
+						Node *value = (Node *) make_const(pstate, &aconst->val, aconst->location);
+						value = coerce_to_target_type(pstate,
+													  value, exprType(value),
+													  col_attrtypes[split_num],
+													  col_attrtypmods[split_num],
+													  COERCION_ASSIGNMENT,
+													  COERCE_IMPLICIT_CAST,
+													  -1);
+						if (value == NULL || ((Const*)value)->consttype == 0)
+						{
+							ereport(ERROR, (errmsg("Type mismatch in split point")));
+						}
+
+						split->value = value;
+					}
+					/* TODO (george): maybe we'll allow MINVALUE/MAXVALUE in the future,
+					 * but for now it is illegal */
+					else
+					{
+						ereport(ERROR, (errmsg("Split points must specify finite values")));
+					}
+
+					/* Compare current value to previous value
+					 * If current split < previous corresponding split, could be a problem */
+					PartitionRangeDatum *prev_split = prev_splits[split_num];
+					int curcol_vs_prev = 1;
+					if (prev_split)
+					{
+						/* Comparing to MINIMUM */
+						if (prev_split->kind == PARTITION_RANGE_DATUM_MINVALUE)
+						{
+							curcol_vs_prev = (split->kind == PARTITION_RANGE_DATUM_MINVALUE) ?
+											 0 : 1;
+						}
+							/* Comparing to a specified value */
+						else if (prev_split->kind == PARTITION_RANGE_DATUM_VALUE)
+						{
+							if (split->kind == PARTITION_RANGE_DATUM_MINVALUE)
+							{
+								curcol_vs_prev = -1;
+							}
+							else if (split->kind == PARTITION_RANGE_DATUM_VALUE)
+							{
+								/* First check <, then ==, and if neither it is > */
+								ScanKey comparator = &col_comparators[split_num];
+								Datum cmp_op = ((Const*)(split->value))->constvalue;
+								Datum cmp_ref = ((Const*)(prev_split->value))->constvalue;
+								curcol_vs_prev = FunctionCall2Coll(&comparator->sk_func,
+																   comparator->sk_collation,
+																   cmp_op,
+																   cmp_ref);
+							}
+							else if (split->kind == PARTITION_RANGE_DATUM_MAXVALUE)
+							{
+								curcol_vs_prev = 1;
+							}
+						}
+							/* Comparing to MAXIMUM */
+						else if (prev_split->kind == PARTITION_RANGE_DATUM_MAXVALUE)
+						{
+							curcol_vs_prev = (split->kind == PARTITION_RANGE_DATUM_MAXVALUE) ?
+											 0 : -1;
+						}
+					}
+
+					/* Make sure we maintain sorted order */
+					if (curcol_vs_prev >= 0)
+					{
+						/* Haven't compared any columns yet */
+						if (curall_vs_prev == -1)
+						{
+							curall_vs_prev = curcol_vs_prev;
+						}
+
+						/* Equal so far, now greater */
+						if (curall_vs_prev == 0 && curcol_vs_prev == 1)
+						{
+							curall_vs_prev = 1;
+						}
+					}
+					else if (curcol_vs_prev == -1)
+					{
+						/* If greater so far, in earlier columns which take precedence, fine.
+						 * Otherwise we are out of order. */
+						if (curall_vs_prev != 1)
+						{
+							ereport(ERROR, (errmsg("Split points must be in sorted order")));
+						}
+					}
+
+					/* Finished handling this particular column split */
+					prev_splits[split_num++] = split;
+				}
+
+				/* TODO (george): Add split point with pggate */
+			}
+
+			ereport(WARNING, (errmsg("Range split points are not supported, ignoring")));
+			break;
+		default:
+			ereport(ERROR, (errmsg("Illegal memory state for SPLIT options")));
+			break;
 	}
 }
 
@@ -193,22 +451,23 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 	}
 
 	HandleYBStatus(YBCPgNewCreateTable(ybc_pg_session,
-	                                   db_name,
-	                                   schema_name,
-	                                   stmt->relation->relname,
-	                                   MyDatabaseId,
-	                                   relationId,
-	                                   false, /* is_shared_table */
-	                                   false, /* if_not_exists */
-	                                   primary_key == NULL /* add_primary_key */,
-	                                   &handle));
+									   db_name,
+									   schema_name,
+									   stmt->relation->relname,
+									   MyDatabaseId,
+									   relationId,
+									   false, /* is_shared_table */
+									   false, /* if_not_exists */
+									   primary_key == NULL /* add_primary_key */,
+									   &handle));
 
 	/*
 	 * Process the table columns. They need to be sent in order, first hash
 	 * columns, then rest of primary key columns, then regular columns. If
 	 * no primary key is specified, an internal primary key is added above.
 	 */
-	if (primary_key != NULL) {
+	if (primary_key != NULL)
+	{
 		CreateTableAddColumns(handle,
 							  desc,
 							  primary_key,
@@ -222,11 +481,24 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc, Oid relationId, O
 							  true /* is_primary */);
 	}
 
-    CreateTableAddColumns(handle,
-                          desc,
-                          primary_key,
-                          false /* is_hash */,
-                          false /* is_primary */);
+	CreateTableAddColumns(handle,
+						  desc,
+						  primary_key,
+						  false /* is_hash */,
+						  false /* is_primary */);
+
+	/* Handle SPLIT statement, if present */
+	OptSplit *split_options = stmt->split_options;
+	if (split_options)
+	{
+		/* Illegal without primary key */
+		if (primary_key == NULL)
+		{
+			ereport(ERROR, (errmsg("Cannot have SPLIT options in the absence of a primary key")));
+		}
+
+		CreateTableHandleSplitOptions(handle, desc, split_options, primary_key);
+	}
 
 	/* Create the table. */
 	HandleYBStmtStatus(YBCPgExecCreateTable(handle), handle);
@@ -242,8 +514,8 @@ YBCDropTable(Oid relationId)
 	HandleYBStatus(YBCPgNewDropTable(ybc_pg_session,
 									 MyDatabaseId,
 									 relationId,
-	                                 false,    /* if_exists */
-	                                 &handle));
+									 false,    /* if_exists */
+									 &handle));
 	HandleYBStmtStatus(YBCPgExecDropTable(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
@@ -253,15 +525,38 @@ YBCTruncateTable(Relation rel) {
 	YBCPgStatement handle;
 	Oid relationId = RelationGetRelid(rel);
 
+	/* Truncate the base table */
 	HandleYBStatus(YBCPgNewTruncateTable(ybc_pg_session, MyDatabaseId, relationId, &handle));
 	HandleYBStmtStatus(YBCPgExecTruncateTable(handle), handle);
 	HandleYBStatus(YBCPgDeleteStatement(handle));
+
+	if (!rel->rd_rel->relhasindex)
+		return;
+
+	/* Truncate the associated secondary indexes */
+	List	 *indexlist = RelationGetIndexList(rel);
+	ListCell *lc;
+
+	foreach(lc, indexlist)
+	{
+		Oid indexId = lfirst_oid(lc);
+
+		if (indexId == rel->rd_pkindex)
+			continue;
+
+		HandleYBStatus(YBCPgNewTruncateTable(ybc_pg_session, MyDatabaseId, indexId, &handle));
+		HandleYBStmtStatus(YBCPgExecTruncateTable(handle), handle);
+		HandleYBStatus(YBCPgDeleteStatement(handle));
+	}
+
+	list_free(indexlist);
 }
 
 void
 YBCCreateIndex(const char *indexName,
 			   IndexInfo *indexInfo,			   
 			   TupleDesc indexTupleDesc,
+			   int16 *coloptions,
 			   Oid indexId,
 			   Relation rel)
 {
@@ -288,30 +583,36 @@ YBCCreateIndex(const char *indexName,
 									   false, /* if_not_exists */
 									   &handle));
 
-	int	 i;
-	bool is_hash = true;
-
-	for (i = 0; i < indexTupleDesc->natts; i++)
+	for (int i = 0; i < indexTupleDesc->natts; i++)
 	{
-		Form_pg_attribute att	   = TupleDescAttr(indexTupleDesc, i);
-		char			  *attname = NameStr(att->attname);
-		AttrNumber		  attnum   = att->attnum;			
-		const YBCPgTypeEntity *col_type = YBCDataTypeFromOidMod(attnum, att->atttypid);
+		Form_pg_attribute     att         = TupleDescAttr(indexTupleDesc, i);
+		char                  *attname    = NameStr(att->attname);
+		AttrNumber            attnum      = att->attnum;
+		const YBCPgTypeEntity *col_type   = YBCDataTypeFromOidMod(attnum, att->atttypid);
+		const bool            is_key      = (i < indexInfo->ii_NumIndexKeyAttrs);
 
-		if (!YBCDataTypeIsValidForKey(att->atttypid)) {
-			ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("INDEX on column of type '%s' not yet supported",
-											YBPgTypeOidToStr(att->atttypid))));
+		if (is_key)
+		{
+			if (!YBCDataTypeIsValidForKey(att->atttypid))
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("INDEX on column of type '%s' not yet supported",
+								YBPgTypeOidToStr(att->atttypid))));
 		}
+
+	const int16 options        = coloptions[i];
+	const bool  is_hash        = options & INDOPTION_HASH;
+	const bool  is_desc        = options & INDOPTION_DESC;
+	const bool  is_nulls_first = options & INDOPTION_NULLS_FIRST;
+
 		HandleYBStmtStatus(YBCPgCreateIndexAddColumn(handle,
 													 attname,
 													 attnum,
 													 col_type,
 													 is_hash,
-													 true /* is_range */), handle);
-
-		is_hash = false;
+													 is_key,
+													 is_desc,
+													 is_nulls_first), handle);
 	}
 
 	/* Create the index. */
@@ -320,7 +621,9 @@ YBCCreateIndex(const char *indexName,
 	HandleYBStatus(YBCPgDeleteStatement(handle));
 }
 
-void YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId) {
+YBCPgStatement
+YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
+{
 	YBCPgStatement handle = NULL;
 	HandleYBStatus(YBCPgNewAlterTable(ybc_pg_session,
 									  MyDatabaseId,
@@ -331,16 +634,28 @@ void YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId) {
 	int col = 1;
 	bool needsYBAlter = false;
 
-	foreach(lcmd, stmt->cmds){
+	foreach(lcmd, stmt->cmds)
+	{
 		AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
-		switch (cmd->subtype) {
-			case AT_AddColumn: {
-
+		switch (cmd->subtype)
+		{
+			case AT_AddColumn:
+			{
 				ColumnDef* colDef = (ColumnDef *) cmd->def;
 				Oid			typeOid;
 				int32		typmod;
 				HeapTuple	typeTuple;
 				int order;
+
+				/* Skip yb alter for IF NOT EXISTS with existing column */
+				if (cmd->missing_ok)
+				{
+					HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel), colDef->colname);
+					if (HeapTupleIsValid(tuple)) {
+						ReleaseSysCache(tuple);
+						break;
+					}
+				}
 
 				typeTuple = typenameType(NULL, colDef->typeName, &typmod);
 				typeOid = HeapTupleGetOid(typeTuple);
@@ -357,16 +672,50 @@ void YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId) {
 
 				break;
 			}
-			case AT_DropColumn: {
+			case AT_DropColumn:
+			{
+				/* Skip yb alter for IF EXISTS with non-existent column */
+				if (cmd->missing_ok)
+				{
+					HeapTuple tuple = SearchSysCacheAttName(RelationGetRelid(rel), cmd->name);
+					if (!HeapTupleIsValid(tuple))
+						break;
+					ReleaseSysCache(tuple);
+				}
 
 				HandleYBStmtStatus(YBCPgAlterTableDropColumn(handle, cmd->name), handle);
 				needsYBAlter = true;
 
 				break;
-
 			}
+
+			case AT_AddIndex:
+			case AT_AddIndexConstraint: {
+				IndexStmt *index = (IndexStmt *) cmd->def;
+				// Only allow adding indexes when it is a unique non-primary-key constraint
+				if (!index->unique || index->primary || !index->isconstraint) {
+					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("This ALTER TABLE command is not yet supported.")));
+				}
+
+				break;
+			}
+
 			case AT_AddConstraint:
 			case AT_DropConstraint:
+			case AT_DropOids:
+			case AT_EnableTrig:
+			case AT_EnableAlwaysTrig:
+			case AT_EnableReplicaTrig:
+			case AT_EnableTrigAll:
+			case AT_EnableTrigUser:
+			case AT_DisableTrig:
+			case AT_DisableTrigAll:
+			case AT_DisableTrigUser:
+			case AT_ChangeOwner:
+			case AT_ColumnDefault:
+      case AT_DropNotNull:
+      case AT_SetNotNull:
 				/* For these cases a YugaByte alter isn't required, so we do nothing. */
 				break;
 
@@ -377,13 +726,28 @@ void YBCAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId) {
 		}
 	}
 
-	if (needsYBAlter) {
+	if (!needsYBAlter)
+	{
+		HandleYBStatus(YBCPgDeleteStatement(handle));
+		return NULL;
+	}
+
+	return handle;
+}
+
+void
+YBCExecAlterTable(YBCPgStatement handle)
+{
+	if (handle)
+	{
 		HandleYBStmtStatus(YBCPgExecAlterTable(handle), handle);
 		HandleYBStatus(YBCPgDeleteStatement(handle));
 	}
 }
 
-void YBCRename(RenameStmt *stmt, Oid relationId) {
+void
+YBCRename(RenameStmt *stmt, Oid relationId)
+{
 	YBCPgStatement handle = NULL;
 	char *db_name	  = get_database_name(MyDatabaseId);
 

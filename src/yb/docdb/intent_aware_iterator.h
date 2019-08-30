@@ -19,6 +19,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/util/trilean.h"
 
+#include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/key_bytes.h"
 
@@ -60,6 +61,12 @@ class TransactionStatusCache {
   ReadHybridTime read_time_;
   CoarseTimePoint deadline_;
   std::unordered_map<TransactionId, HybridTime, TransactionIdHash> cache_;
+};
+
+struct FetchKeyResult {
+  Slice key;
+  DocHybridTime write_time;
+  bool same_transaction;
 };
 
 // Provides a way to iterate over DocDB (sub)keys with respect to committed intents transparently
@@ -126,6 +133,7 @@ class IntentAwareIterator {
   // This method positions the iterator at the beginning of the DocKey found before the doc_key
   // provided.
   void PrevDocKey(const DocKey& doc_key);
+  void PrevDocKey(const Slice& encoded_doc_key);
 
   // Adds new value to prefix stack. The top value of this stack is used to filter returned entries.
   void PushPrefix(const Slice& prefix);
@@ -136,7 +144,7 @@ class IntentAwareIterator {
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
   // contain the DocHybridTime but is returned separately and optionally.
-  Result<Slice> FetchKey(DocHybridTime* doc_ht = nullptr);
+  Result<FetchKeyResult> FetchKey();
 
   bool valid();
   Slice value();
@@ -161,6 +169,10 @@ class IntentAwareIterator {
       const Slice& key_without_ht,
       DocHybridTime* max_overwrite_time,
       Slice* result_value = nullptr);
+
+  void SetUpperbound(const Slice& upperbound) {
+    upperbound_ = upperbound;
+  }
 
   void DebugDump();
 
@@ -244,17 +256,31 @@ class IntentAwareIterator {
 
   void SeekIntentIterIfNeeded();
 
+  bool SatisfyBounds(const Slice& slice);
+
+  bool ResolvedIntentFromSameTransaction() const {
+    return intent_dht_from_same_txn_ != DocHybridTime::kMin;
+  }
+
+  DocHybridTime GetIntentDocHybridTime() const {
+    return ResolvedIntentFromSameTransaction() ? intent_dht_from_same_txn_
+                                               :  resolved_intent_txn_dht_;
+  }
+
   const ReadHybridTime read_time_;
   const string encoded_read_time_local_limit_;
   const string encoded_read_time_global_limit_;
   const TransactionOperationContextOpt txn_op_context_;
-  std::unique_ptr<rocksdb::Iterator> intent_iter_;
-  std::unique_ptr<rocksdb::Iterator> iter_;
+  docdb::BoundedRocksDbIterator intent_iter_;
+  docdb::BoundedRocksDbIterator iter_;
   // iter_valid_ is true if and only if iter_ is positioned at key which matches top prefix from
   // the stack and record time satisfies read_time_ criteria.
   bool iter_valid_ = false;
   Status status_;
   HybridTime max_seen_ht_ = HybridTime::kMin;
+
+  // Upperbound for seek. If we see regular or intent record past this bound, it will be ignored.
+  Slice upperbound_;
 
   // Exclusive upperbound of the intent key.
   KeyBytes intent_upperbound_keybytes_;

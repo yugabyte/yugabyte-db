@@ -126,6 +126,7 @@ TEST_F(ThreadPoolTest, TestMultiProducers) {
   for (size_t i = 0; i != kProducers; ++i) {
     size_t end = kTotalTasks * (i + 1) / kProducers;
     threads.emplace_back([&pool, &latch, &tasks, begin, end] {
+      CDSAttacher attacher;
       for (size_t i = begin; i != end; ++i) {
         tasks[i].SetLatch(&latch);
         ASSERT_TRUE(pool.Enqueue(&tasks[i]));
@@ -156,6 +157,7 @@ TEST_F(ThreadPoolTest, TestQueueOverflow) {
   for (size_t i = 0; i != kProducers; ++i) {
     size_t end = kTotalTasks * (i + 1) / kProducers;
     threads.emplace_back([&pool, &latch, &tasks, &enqueue_failed, begin, end] {
+      CDSAttacher attacher;
       for (size_t i = begin; i != end; ++i) {
         tasks[i].SetLatch(&latch);
         if(!pool.Enqueue(&tasks[i])) {
@@ -192,6 +194,7 @@ TEST_F(ThreadPoolTest, TestShutdown) {
   for (size_t i = 0; i != kProducers; ++i) {
     size_t end = kTotalTasks * (i + 1) / kProducers;
     threads.emplace_back([&pool, &latch, &tasks, begin, end] {
+      CDSAttacher attacher;
       for (size_t i = begin; i != end; ++i) {
         tasks[i].SetLatch(&latch);
         pool.Enqueue(&tasks[i]);

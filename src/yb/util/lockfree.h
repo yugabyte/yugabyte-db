@@ -14,7 +14,11 @@
 #ifndef YB_UTIL_LOCKFREE_H
 #define YB_UTIL_LOCKFREE_H
 
-#include <atomic>
+#include <boost/atomic.hpp>
+
+#include <glog/logging.h>
+
+#include "yb/gutil/dynamic_annotations.h"
 
 namespace yb {
 
@@ -90,6 +94,52 @@ template <class T>
 T* GetNext(const MPSCQueueEntry<T>* entry) {
   return entry->GetNext();
 }
+
+// Intrusive stack implementation based on linked list.
+template <class T>
+class LockFreeStack {
+ public:
+  LockFreeStack() {
+    CHECK(head_.is_lock_free());
+  }
+
+  void Push(T* value) {
+    Head old_head = head_.load(boost::memory_order_acquire);
+    for (;;) {
+      ANNOTATE_IGNORE_WRITES_BEGIN();
+      SetNext(value, old_head.pointer);
+      ANNOTATE_IGNORE_WRITES_END();
+      Head new_head{value, old_head.version + 1};
+      if (head_.compare_exchange_weak(old_head, new_head, boost::memory_order_acq_rel)) {
+        break;
+      }
+    }
+  }
+
+  T* Pop() {
+    Head old_head = head_.load(boost::memory_order_acquire);
+    for (;;) {
+      if (!old_head.pointer) {
+        break;
+      }
+      ANNOTATE_IGNORE_READS_BEGIN();
+      Head new_head{GetNext(old_head.pointer), old_head.version + 1};
+      ANNOTATE_IGNORE_READS_END();
+      if (head_.compare_exchange_weak(old_head, new_head, boost::memory_order_acq_rel)) {
+        break;
+      }
+    }
+    return old_head.pointer;
+  }
+
+ private:
+  struct Head {
+    T* pointer;
+    size_t version;
+  };
+
+  boost::atomic<Head> head_{Head{nullptr, 0}};
+};
 
 } // namespace yb
 

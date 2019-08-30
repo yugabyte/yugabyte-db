@@ -1,0 +1,7 @@
+# src/test/regress/yb_transactions_schedule
+#
+####################################################################################################
+# YB Transaction Testsuite: Used for reporting supported/unsupported operations in context
+# of different transaction types.
+####################################################################################################
+test: yb_transactions

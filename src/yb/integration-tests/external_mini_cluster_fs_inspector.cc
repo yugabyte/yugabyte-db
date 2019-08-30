@@ -56,7 +56,7 @@ using std::vector;
 using consensus::ConsensusMetadataPB;
 using strings::Substitute;
 using tablet::TabletDataState;
-using tablet::TabletSuperBlockPB;
+using tablet::RaftGroupReplicaSuperBlockPB;
 
 ExternalMiniClusterFsInspector::ExternalMiniClusterFsInspector(ExternalMiniCluster* cluster)
     : env_(Env::Default()),
@@ -87,7 +87,7 @@ int ExternalMiniClusterFsInspector::CountFilesInDir(const string& path) {
 }
 
 int ExternalMiniClusterFsInspector::CountWALSegmentsOnTS(int index) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
   string ts_wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
   vector<string> tablets;
   vector<string> tables;
@@ -115,15 +115,16 @@ vector<string> ExternalMiniClusterFsInspector::ListTablets() {
 }
 
 vector<string> ExternalMiniClusterFsInspector::ListTabletsOnTS(int index) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
-  string meta_dir = JoinPathSegments(data_dir, FsManager::kTabletMetadataDirName);
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
+  string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
   vector<string> tablets;
   CHECK_OK(ListFilesInDir(meta_dir, &tablets));
   return tablets;
 }
 
 vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(int index) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
+  static const std::string kTabletDirPrefix = "tablet-";
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
   string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
   vector<string> tables;
   vector<string> tablets;
@@ -132,14 +133,17 @@ vector<string> ExternalMiniClusterFsInspector::ListTabletsWithDataOnTS(int index
   for (const auto& table : tables) {
     auto table_wal_dir = JoinPathSegments(wal_dir, table);
     CHECK_OK(ListFilesInDir(table_wal_dir, &table_tablets));
-    tablets.insert(tablets.end(), table_tablets.begin(), table_tablets.end());
+    for (const auto& tablet : table_tablets) {
+      CHECK(Slice(tablet).starts_with(kTabletDirPrefix));
+      tablets.push_back(tablet.substr(kTabletDirPrefix.size()));
+    }
   }
   return tablets;
 }
 
 int ExternalMiniClusterFsInspector::CountWALSegmentsForTabletOnTS(int index,
                                                                   const string& tablet_id) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
   string wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
   vector<string> tables;
   vector<string> tablets;
@@ -172,21 +176,21 @@ int ExternalMiniClusterFsInspector::CountReplicasInMetadataDirs() {
   // tablet servers isn't easy.
   int count = 0;
   for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
-    string data_dir = cluster_->tablet_server(i)->data_dir();
-    count += CountFilesInDir(JoinPathSegments(data_dir, FsManager::kTabletMetadataDirName));
+    string data_dir = cluster_->tablet_server(i)->GetFullDataDir();
+    count += CountFilesInDir(FsManager::GetRaftGroupMetadataDir(data_dir));
   }
   return count;
 }
 
 Status ExternalMiniClusterFsInspector::CheckNoDataOnTS(int index) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
-  if (CountFilesInDir(JoinPathSegments(data_dir, FsManager::kTabletMetadataDirName)) > 0) {
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
+  if (CountFilesInDir(FsManager::GetRaftGroupMetadataDir(data_dir)) > 0) {
     return STATUS(IllegalState, "tablet metadata blocks still exist", data_dir);
   }
   if (CountWALSegmentsOnTS(index) > 0) {
     return STATUS(IllegalState, "wals still exist", data_dir);
   }
-  if (CountFilesInDir(JoinPathSegments(data_dir, FsManager::kConsensusMetadataDirName)) > 0) {
+  if (CountFilesInDir(FsManager::GetConsensusMetadataDir(data_dir)) > 0) {
     return STATUS(IllegalState, "consensus metadata still exists", data_dir);
   }
   return Status::OK();;
@@ -201,9 +205,9 @@ Status ExternalMiniClusterFsInspector::CheckNoData() {
 
 Status ExternalMiniClusterFsInspector::ReadTabletSuperBlockOnTS(int index,
                                                                 const string& tablet_id,
-                                                                TabletSuperBlockPB* sb) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
-  string meta_dir = JoinPathSegments(data_dir, FsManager::kTabletMetadataDirName);
+                                                                RaftGroupReplicaSuperBlockPB* sb) {
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
+  string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
   string superblock_path = JoinPathSegments(meta_dir, tablet_id);
   return pb_util::ReadPBContainerFromPath(env_, superblock_path, sb);
 }
@@ -211,8 +215,8 @@ Status ExternalMiniClusterFsInspector::ReadTabletSuperBlockOnTS(int index,
 Status ExternalMiniClusterFsInspector::ReadConsensusMetadataOnTS(int index,
                                                                  const string& tablet_id,
                                                                  ConsensusMetadataPB* cmeta_pb) {
-  string data_dir = cluster_->tablet_server(index)->data_dir();
-  string cmeta_dir = JoinPathSegments(data_dir, FsManager::kConsensusMetadataDirName);
+  string data_dir = cluster_->tablet_server(index)->GetFullDataDir();
+  string cmeta_dir = FsManager::GetConsensusMetadataDir(data_dir);
   string cmeta_file = JoinPathSegments(cmeta_dir, tablet_id);
   if (!env_->FileExists(cmeta_file)) {
     return STATUS(NotFound, "Consensus metadata file not found", cmeta_file);
@@ -223,7 +227,7 @@ Status ExternalMiniClusterFsInspector::ReadConsensusMetadataOnTS(int index,
 Status ExternalMiniClusterFsInspector::CheckTabletDataStateOnTS(int index,
                                                                 const string& tablet_id,
                                                                 TabletDataState state) {
-  TabletSuperBlockPB sb;
+  RaftGroupReplicaSuperBlockPB sb;
   RETURN_NOT_OK(ReadTabletSuperBlockOnTS(index, tablet_id, &sb));
   if (PREDICT_FALSE(sb.tablet_data_state() != state)) {
     return STATUS(IllegalState, "Tablet data state != " + TabletDataState_Name(state),
@@ -329,7 +333,7 @@ Status ExternalMiniClusterFsInspector::WaitForFilePatternInTabletWalDirOnTs(
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);
 
-  string data_dir = cluster_->tablet_server(ts_index)->data_dir();
+  string data_dir = cluster_->tablet_server(ts_index)->GetFullDataDir();
   string ts_wal_dir = JoinPathSegments(data_dir, FsManager::kWalDirName);
   vector<string> tables;
   RETURN_NOT_OK_PREPEND(ListFilesInDir(ts_wal_dir, &tables),

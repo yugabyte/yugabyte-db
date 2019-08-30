@@ -39,7 +39,6 @@
 # May be relative or absolute.
 
 # Portions Copyright (c) YugaByte, Inc.
-
 set -euo pipefail
 readonly YB_COMPLETED_TEST_FLAG_DIR=/tmp/yb_completed_tests
 
@@ -63,6 +62,7 @@ cleanup() {
   if [[ $exit_code -eq 0 ]] && "$killed_stuck_processes"; then
     exit_code=1
   fi
+  rm -rf "$TEST_TMPDIR"
 
   exit "$exit_code"
 }
@@ -80,8 +80,6 @@ yb_readonly_virtualenv=true
 
 activate_virtualenv
 
-detect_edition
-
 if [[ -n ${YB_LIST_CTEST_TESTS_ONLY:-} ]]; then
   # This has to match CTEST_TEST_PROGRAM_RE in run_tests_on_spark.py.
   echo "ctest test: \"$1\""
@@ -95,6 +93,8 @@ echo "Test is running on host $HOSTNAME, arguments: $*"
 
 set_java_home
 set_test_invocation_id
+
+create_test_tmpdir
 
 trap cleanup EXIT
 
@@ -117,9 +117,10 @@ if [[ -z ${BUILD_ROOT:-} ]]; then
 else
   preset_build_root=$BUILD_ROOT
   set_build_root --no-readonly
-  if [[ $preset_build_root != $BUILD_ROOT ]]; then
+  if [[ $preset_build_root != $BUILD_ROOT ]] &&
+     ! "$YB_BUILD_SUPPORT_DIR/is_same_path.py" "$preset_build_root" "$BUILD_ROOT"; then
     fatal "Build root was already set to $preset_build_root, but we determined it must be set" \
-          "to $BUILD_ROOT"
+          "to $BUILD_ROOT, and these two paths do not point to the same location."
   fi
   readonly BUILD_ROOT
   unset preset_build_root
@@ -270,8 +271,8 @@ for test_descriptor in "${tests[@]}"; do
     else
       test_attempt_index=""
     fi
-    prepare_for_running_test
-    run_test_and_process_results
+    prepare_for_running_cxx_test
+    run_cxx_test_and_process_results
   done
 done
 

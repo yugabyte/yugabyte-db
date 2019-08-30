@@ -27,7 +27,7 @@
 #include "yb/util/logging.h"
 
 // Include all builtin function templates.
-#include "yb/util/bfql/bfunc_standard.h"
 #include "yb/util/bfql/bfunc_convert.h"
+#include "yb/util/bfql/bfunc_standard.h"
 
 #endif  // YB_UTIL_BFQL_BFUNC_H_

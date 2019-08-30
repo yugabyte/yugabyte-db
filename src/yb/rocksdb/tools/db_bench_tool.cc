@@ -880,7 +880,7 @@ class ReportFileOpEnv : public EnvWrapper {
                    ReportFileOpCounters* counters)
           : target_(std::move(target)), counters_(counters) {}
 
-      Status Read(size_t n, Slice* result, char* scratch) override {
+      Status Read(size_t n, Slice* result, uint8_t* scratch) override {
         counters_->read_counter_.fetch_add(1, std::memory_order_relaxed);
         Status rv = target_->Read(n, result, scratch);
         counters_->bytes_read_.fetch_add(result->size(),
@@ -889,6 +889,8 @@ class ReportFileOpEnv : public EnvWrapper {
       }
 
       Status Skip(uint64_t n) override { return target_->Skip(n); }
+
+      const std::string& filename() const override { return target_->filename(); }
     };
 
     Status s = target()->NewSequentialFile(f, r, soptions);
@@ -902,23 +904,21 @@ class ReportFileOpEnv : public EnvWrapper {
   Status NewRandomAccessFile(const std::string& f,
                              unique_ptr<RandomAccessFile>* r,
                              const EnvOptions& soptions) override {
-    class CountingFile : public RandomAccessFile {
-     private:
-      unique_ptr<RandomAccessFile> target_;
-      ReportFileOpCounters* counters_;
-
+    class CountingFile : public yb::RandomAccessFileWrapper {
      public:
-      CountingFile(unique_ptr<RandomAccessFile>&& target,
+      CountingFile(std::unique_ptr<RandomAccessFile>&& target,
                    ReportFileOpCounters* counters)
-          : target_(std::move(target)), counters_(counters) {}
-      virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                          char* scratch) const override {
+          : RandomAccessFileWrapper(std::move(target)), counters_(counters) {}
+
+      Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
         counters_->read_counter_.fetch_add(1, std::memory_order_relaxed);
-        Status rv = target_->Read(offset, n, result, scratch);
-        counters_->bytes_read_.fetch_add(result->size(),
-                                         std::memory_order_relaxed);
+        Status rv = RandomAccessFileWrapper::Read(offset, n, result, scratch);
+        counters_->bytes_read_.fetch_add(result->size(), std::memory_order_relaxed);
         return rv;
       }
+
+     private:
+      ReportFileOpCounters* counters_;
     };
 
     Status s = target()->NewRandomAccessFile(f, r, soptions);
@@ -1238,6 +1238,7 @@ class Stats {
 
   void Start(int id) {
     id_ = id;
+    start_ = FLAGS_env->NowMicros();
     next_report_ = FLAGS_stats_interval ? FLAGS_stats_interval : 100;
     last_op_finish_ = start_;
     hist_.clear();
@@ -1245,7 +1246,6 @@ class Stats {
     last_report_done_ = 0;
     bytes_ = 0;
     seconds_ = 0;
-    start_ = FLAGS_env->NowMicros();
     finish_ = start_;
     last_report_finish_ = start_;
     message_.clear();
@@ -1711,7 +1711,7 @@ class Benchmark {
     }
   }
 
-// Current the following isn't equivalent to OS_LINUX.
+// Current the following isn't equivalent to __linux__.
 #if defined(__linux)
   static Slice TrimSpace(Slice s) {
     unsigned int start = 0;

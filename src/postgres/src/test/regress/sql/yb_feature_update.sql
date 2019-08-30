@@ -55,3 +55,52 @@ UPDATE feature_tab_dml
 -- Select updated rows.
 --
 SELECT * FROM feature_tab_dml WHERE col_smallint = 77;
+--
+-- INSERT empty row to check updating null values.
+--
+INSERT INTO feature_tab_dml VALUES(78);
+UPDATE feature_tab_dml
+			 SET
+								col_integer = 78,
+			 					col_bigint = 78,
+			 					col_real = 78.78,
+			 					col_double = 78.78,
+			 					col_char = 'eight',
+			 					col_varchar = 'eight',
+			 					col_text = 'eight',
+			 					col_bytea = E'\\x78F1E2D3C4B5A6079889706A5B4C3D2E1F',
+			 					col_timestamp = 'July 8, 2019 08:08:08.7878',
+			 					col_timestamp_tz = 'July 8, 2019 08:08:08.7878 PST AD',
+			 					col_bool = FALSE,
+			 					col_array_int = '{ 78, 78, 78 }',
+			 					col_array_text = '{ "eight", "eight", "eight" }'
+			 WHERE
+								col_smallint = 78;
+--
+--  Select updated rows.
+--
+SELECT * FROM feature_tab_dml WHERE col_smallint = 78;
+--
+-- UPDATE existing values to null.
+--
+UPDATE feature_tab_dml
+			 SET
+								col_integer = null,
+			 					col_bigint = null,
+			 					col_real = null,
+			 					col_double = null,
+			 					col_char = null,
+			 					col_varchar = null,
+			 					col_text = null,
+			 					col_bytea = null,
+			 					col_timestamp = null,
+			 					col_timestamp_tz = null,
+			 					col_bool = null,
+			 					col_array_int = null,
+			 					col_array_text = null
+			 WHERE
+								col_smallint = 78;
+--
+--  Select updated rows.
+--
+SELECT * FROM feature_tab_dml WHERE col_smallint = 78;

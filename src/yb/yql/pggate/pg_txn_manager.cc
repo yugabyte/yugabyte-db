@@ -13,14 +13,16 @@
 
 #include "yb/yql/pggate/pggate.h"
 #include "yb/util/status.h"
+
+#include "yb/client/session.h"
 #include "yb/client/transaction.h"
+
 #include "yb/common/common.pb.h"
 
 namespace yb {
 namespace pggate {
 
 using client::YBTransaction;
-using client::YBClientPtr;
 using client::AsyncClientInitialiser;
 using client::TransactionManager;
 using client::YBTransactionPtr;
@@ -28,8 +30,7 @@ using client::YBSession;
 using client::YBSessionPtr;
 using client::LocalTabletFilter;
 
-// Transaction isolation levels from xact.h
-constexpr int kRepeatableRead = 2;
+// This should match XACT_SERIALIZABLE from xact.h.
 constexpr int kSerializable = 3;
 
 PgTxnManager::PgTxnManager(
@@ -47,12 +48,13 @@ PgTxnManager::~PgTxnManager() {
   ResetTxnAndSession();
 }
 
-Status PgTxnManager::BeginTransaction() {
+Status PgTxnManager::BeginTransaction(int isolation_level) {
   VLOG(2) << "BeginTransaction: txn_in_progress_=" << txn_in_progress_;
   if (txn_in_progress_) {
     return STATUS(IllegalState, "Transaction is already in progress");
   }
   ResetTxnAndSession();
+  isolation_level_ = isolation_level;
   txn_in_progress_ = true;
   StartNewSession();
   return Status::OK();
@@ -73,17 +75,24 @@ Status PgTxnManager::BeginWriteTransactionIfNecessary(bool read_only_op) {
   VLOG(2) << "BeginWriteTransactionIfNecessary: txn_in_progress_="
           << txn_in_progress_;
 
-  auto isolation = isolation_level_ == kRepeatableRead || isolation_level_ == kSerializable
+  auto isolation = isolation_level_ == kSerializable
       ? IsolationLevel::SERIALIZABLE_ISOLATION : IsolationLevel::SNAPSHOT_ISOLATION;
+  // Sanity check, query layer should ensure this does not happen.
+  if (txn_ && txn_->isolation() != isolation) {
+    return STATUS(IllegalState, "Changing txn isolation level in the middle of a transaction");
+  }
   if (read_only_op && isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
     return Status::OK();
   }
-
   if (txn_) {
     return Status::OK();
   }
   txn_ = std::make_shared<YBTransaction>(GetOrCreateTransactionManager());
-  RETURN_NOT_OK(txn_->Init(isolation));
+  if (session_ && isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+    txn_->InitWithReadPoint(isolation, std::move(*session_->read_point()));
+  } else {
+    RETURN_NOT_OK(txn_->Init(isolation));
+  }
   if (!session_) {
     StartNewSession();
   }
@@ -102,16 +111,12 @@ Status PgTxnManager::RestartTransaction() {
   if (!txn_->IsRestartRequired()) {
     return STATUS(IllegalState, "Attempted to restart when transaction does not require restart");
   }
-  auto new_txn = VERIFY_RESULT(txn_->CreateRestartedTransaction());
-  ResetTxnAndSession();
-  txn_ = std::move(new_txn);
-  StartNewSession();
+  txn_ = VERIFY_RESULT(txn_->CreateRestartedTransaction());
   session_->SetTransaction(txn_);
-  return Status::OK();
-}
 
-bool PgTxnManager::HasAppliedOperations() {
-  return txn_ && txn_->HasOperations();
+  DCHECK(can_restart_.load(std::memory_order_acquire));
+
+  return Status::OK();
 }
 
 Status PgTxnManager::CommitTransaction() {
@@ -164,7 +169,7 @@ TransactionManager* PgTxnManager::GetOrCreateTransactionManager() {
 
 Result<client::YBSession*> PgTxnManager::GetTransactionalSession() {
   if (!txn_in_progress_) {
-    RETURN_NOT_OK(BeginTransaction());
+    RETURN_NOT_OK(BeginTransaction(isolation_level_));
   }
   return session_.get();
 }
@@ -173,6 +178,11 @@ void PgTxnManager::ResetTxnAndSession() {
   txn_in_progress_ = false;
   session_ = nullptr;
   txn_ = nullptr;
+  can_restart_.store(true, std::memory_order_release);
+}
+
+void PgTxnManager::PreventRestart() {
+  can_restart_.store(false, std::memory_order_release);
 }
 
 }  // namespace pggate

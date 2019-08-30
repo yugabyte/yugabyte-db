@@ -40,6 +40,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/table_creator.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
@@ -69,7 +70,7 @@ using yb::tablet::TABLET_DATA_DELETED;
 using yb::tablet::TABLET_DATA_READY;
 using yb::tablet::TABLET_DATA_TOMBSTONED;
 using yb::tablet::TabletDataState;
-using yb::tablet::TabletSuperBlockPB;
+using yb::tablet::RaftGroupReplicaSuperBlockPB;
 using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::TabletServerErrorPB;
 using std::numeric_limits;
@@ -173,7 +174,7 @@ Status DeleteTableTest::CheckTabletTombstonedOrDeletedOnTS(
   if (is_superblock_expected == SUPERBLOCK_EXPECTED) {
     RETURN_NOT_OK(inspect_->CheckTabletDataStateOnTS(index, tablet_id, data_state));
   } else {
-    TabletSuperBlockPB superblock_pb;
+    RaftGroupReplicaSuperBlockPB superblock_pb;
     Status s = inspect_->ReadTabletSuperBlockOnTS(index, tablet_id, &superblock_pb);
     if (!s.IsNotFound()) {
       return STATUS(IllegalState, "Found unexpected superblock for tablet " + tablet_id);
@@ -260,6 +261,30 @@ void DeleteTableTest::DeleteTabletWithRetries(const TServerDetails* ts,
   ASSERT_OK(s);
 }
 
+TEST_F(DeleteTableTest, TestPendingDeleteStateClearedOnFailure) {
+  vector<string> tserver_flags, master_flags;
+  master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=5000");
+  // Disable tablet delete operations.
+  tserver_flags.push_back("--rpc_delete_tablet_fail=true");
+  ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, 3));
+  // Create a table on the cluster. We're just using TestWorkload
+  // as a convenient way to create it.
+  auto test_workload = TestWorkload(cluster_.get());
+  test_workload.Setup();
+
+  // The table should have replicas on all three tservers.
+  ASSERT_OK(inspect_->WaitForReplicaCount(3));
+
+  client_->TEST_set_admin_operation_timeout(MonoDelta::FromSeconds(10));
+
+  // Delete the table.
+  DeleteTable(TestWorkloadOptions::kDefaultTableName);
+
+  // Wait for the load balancer to report no pending deletes after the delete table fails.
+  ASSERT_OK(WaitFor([&] () { return client_->IsLoadBalanced(3); },
+            MonoDelta::FromSeconds(30), "IsLoadBalanced"));
+}
+
 // Test deleting an empty table, and ensure that the tablets get removed,
 // and the master no longer shows the table as existing.
 TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
@@ -291,7 +316,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
 
   // 1) Should not list it in ListTables.
   vector<YBTableName> table_names;
-  ASSERT_OK(client_->ListTables(&table_names));
+  ASSERT_OK(client_->ListTables(&table_names, /* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables, table_names.size());
 
   // 2) Should respond to GetTableSchema with a NotFound error.
@@ -452,6 +477,37 @@ TEST_F(DeleteTableTest, TestDeleteTableWithConcurrentWrites) {
     cluster_->Shutdown();
     ASSERT_OK(cluster_->Restart());
     ASSERT_OK(inspect_->WaitForNoData());
+  }
+}
+
+TEST_F(DeleteTableTest, DeleteTableWithConcurrentWritesNoRestarts) {
+  ASSERT_NO_FATALS(StartCluster());
+  constexpr auto kNumIters = 10;
+  for (int iter = 0; iter < kNumIters; iter++) {
+    TestWorkload workload(cluster_.get());
+    workload.set_table_name(YBTableName("my_keyspace", Format("table-$0", iter)));
+
+    // We'll delete the table underneath the writers, so we expect a NotFound error during the
+    // writes.
+    workload.set_not_found_allowed(true);
+    workload.Setup();
+    workload.Start();
+
+    AssertLoggedWaitFor(
+        [&workload] { return workload.rows_inserted() > 100; }, 60s,
+        "Waiting until we have inserted some data...", 10ms);
+
+    auto tablets = inspect_->ListTabletsWithDataOnTS(1);
+    ASSERT_EQ(1, tablets.size());
+    const auto& tablet_id = tablets[0];
+
+    ASSERT_NO_FATALS(DeleteTable(workload.table_name()));
+    for (int ts_idx = 0; ts_idx < cluster_->num_tablet_servers(); ts_idx++) {
+      ASSERT_NO_FATALS(WaitForTabletDeletedOnTS(ts_idx, tablet_id, SUPERBLOCK_EXPECTED));
+    }
+
+    workload.StopAndJoin();
+    cluster_->AssertNoCrashes();
   }
 }
 
@@ -872,7 +928,7 @@ TEST_F(DeleteTableTest, TestOrphanedBlocksClearedOnDelete) {
   ASSERT_OK(itest::DeleteTablet(follower_ts, tablet_id, TABLET_DATA_TOMBSTONED,
                                 boost::none, timeout));
   ASSERT_NO_FATALS(WaitForTabletTombstonedOnTS(kFollowerIndex, tablet_id, CMETA_EXPECTED));
-  TabletSuperBlockPB superblock_pb;
+  RaftGroupReplicaSuperBlockPB superblock_pb;
   ASSERT_OK(inspect_->ReadTabletSuperBlockOnTS(kFollowerIndex, tablet_id, &superblock_pb));
 }
 

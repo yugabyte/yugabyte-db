@@ -1,0 +1,20 @@
+# Copyright (c) YugaByte, Inc.
+
+# This is a template for auto-generated file for prometheus alert manager configuration
+
+global:
+
+route:
+  group_by: ['alertname', 'cluster']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+  continue: true
+  receiver: 'yugaware-webhook'
+
+
+receivers:
+  - name: 'yugaware-webhook'
+    webhook_configs:
+      - url: 'http://localhost:9000/api/swamper'
+        send_resolved: true

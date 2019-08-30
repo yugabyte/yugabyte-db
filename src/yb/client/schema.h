@@ -99,6 +99,10 @@ class YBColumnSchema {
         return InternalType::kInt32Value;
       case INT64:
         return InternalType::kInt64Value;
+      case UINT32:
+        return InternalType::kUint32Value;
+      case UINT64:
+        return InternalType::kUint64Value;
       case FLOAT:
         return InternalType::kFloatValue;
       case DOUBLE:
@@ -144,9 +148,7 @@ class YBColumnSchema {
 
       case TYPEARGS: FALLTHROUGH_INTENDED;
       case UINT8: FALLTHROUGH_INTENDED;
-      case UINT16: FALLTHROUGH_INTENDED;
-      case UINT32: FALLTHROUGH_INTENDED;
-      case UINT64:
+      case UINT16:
         break;
     }
     LOG(FATAL) << "Internal error: unsupported type " << ql_type->ToString();
@@ -165,9 +167,7 @@ class YBColumnSchema {
                  bool is_static = false,
                  bool is_counter = false,
                  int32_t order = 0,
-                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified,
-                 const ColumnSchema::QLJsonOperations& json_ops =
-                     ColumnSchema::QLJsonOperations());
+                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified);
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
 
@@ -186,7 +186,6 @@ class YBColumnSchema {
   bool is_counter() const;
   int32_t order() const;
   ColumnSchema::SortingType sorting_type() const;
-  const ColumnSchema::QLJsonOperations& json_ops() const;
 
  private:
   friend class YBColumnSpec;
@@ -209,6 +208,10 @@ class YBColumnSchema {
 // TODO(KUDU-861): this API will also be used for an improved AlterTable API.
 class YBColumnSpec {
  public:
+  explicit YBColumnSpec(const std::string& col_name);
+
+  ~YBColumnSpec();
+
   // Operations only relevant for Create Table
   // ------------------------------------------------------------
 
@@ -270,12 +273,6 @@ class YBColumnSpec {
   class Data;
   friend class YBSchemaBuilder;
   friend class YBTableAlterer;
-
-  // This class should always be owned and deleted by one of its friends,
-  // not the user.
-  ~YBColumnSpec();
-
-  explicit YBColumnSpec(const std::string& col_name);
 
   CHECKED_STATUS ToColumnSchema(YBColumnSchema* col) const;
 
@@ -353,6 +350,8 @@ class YBSchema {
   void Reset(std::unique_ptr<Schema> schema);
 
   bool Equals(const YBSchema& other) const;
+
+  Result<bool> Equals(const SchemaPB& pb_schema) const;
 
   const TableProperties& table_properties() const;
 

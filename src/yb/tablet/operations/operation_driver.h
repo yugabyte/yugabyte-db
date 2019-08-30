@@ -241,10 +241,6 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // results from the Apply().
   void ApplyTask(int64_t leader_term);
 
-  // Called on Operation::Apply() after the CommitMsg has been successfully
-  // appended to the WAL.
-  void Finalize();
-
   // Returns the mutable state of the operation being executed by
   // this driver.
   OperationState* mutable_state();

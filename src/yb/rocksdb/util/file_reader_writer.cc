@@ -28,14 +28,21 @@
 
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/histogram.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/util/sync_point.h"
+#include "yb/rocksdb/util/stop_watch.h"
+#include "yb/util/stats/iostats_context_imp.h"
+
+#include "yb/util/priority_thread_pool.h"
+
+DEFINE_bool(allow_preempting_compactions, true,
+            "Whether a compaction may be preempted in favor of another compaction with higher "
+            "priority");
 
 namespace rocksdb {
 
-Status SequentialFileReader::Read(size_t n, Slice* result, char* scratch) {
+Status SequentialFileReader::Read(size_t n, Slice* result, uint8_t* scratch) {
   Status s = file_->Read(n, result, scratch);
   IOSTATS_ADD(bytes_read, result->size());
   return s;
@@ -269,6 +276,9 @@ Status WritableFileWriter::RangeSync(uint64_t offset, uint64_t nbytes) {
 }
 
 size_t WritableFileWriter::RequestToken(size_t bytes, bool align) {
+  if (suspender_ && FLAGS_allow_preempting_compactions) {
+    suspender_->PauseIfNecessary();
+  }
   Env::IOPriority io_priority;
   if (rate_limiter_ && (io_priority = writable_file_->GetIOPriority()) <
       Env::IO_TOTAL) {
@@ -388,20 +398,21 @@ Status WritableFileWriter::WriteUnbuffered() {
 
 
 namespace {
-class ReadaheadRandomAccessFile : public RandomAccessFile {
+
+class ReadaheadRandomAccessFile : public yb::RandomAccessFileWrapper {
  public:
   ReadaheadRandomAccessFile(std::unique_ptr<RandomAccessFile>&& file,
                             size_t readahead_size)
-      : file_(std::move(file)),
+      : RandomAccessFileWrapper(std::move(file)),
         readahead_size_(readahead_size),
-        forward_calls_(file_->ShouldForwardRawRequest()),
+        forward_calls_(ShouldForwardRawRequest()),
         buffer_(),
         buffer_offset_(0),
         buffer_len_(0) {
     if (!forward_calls_) {
-      buffer_.reset(new char[readahead_size_]);
+      buffer_.reset(new uint8_t[readahead_size_]);
     } else if (readahead_size_ > 0) {
-      file_->EnableReadAhead();
+      EnableReadAhead();
     }
   }
 
@@ -409,10 +420,9 @@ class ReadaheadRandomAccessFile : public RandomAccessFile {
 
   ReadaheadRandomAccessFile& operator=(const ReadaheadRandomAccessFile&) = delete;
 
-  virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      char* scratch) const override {
+  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
     if (n >= readahead_size_) {
-      return file_->Read(offset, n, result, scratch);
+      return RandomAccessFileWrapper::Read(offset, n, result, scratch);
     }
 
     // On Windows in unbuffered mode this will lead to double buffering
@@ -420,7 +430,7 @@ class ReadaheadRandomAccessFile : public RandomAccessFile {
     // In normal mode Windows caches so much data from disk that we do
     // not need readahead.
     if (forward_calls_) {
-      return file_->Read(offset, n, result, scratch);
+      return RandomAccessFileWrapper::Read(offset, n, result, scratch);
     }
 
     std::unique_lock<std::mutex> lk(lock_);
@@ -438,7 +448,7 @@ class ReadaheadRandomAccessFile : public RandomAccessFile {
       }
     }
     Slice readahead_result;
-    Status s = file_->Read(offset + copied, readahead_size_, &readahead_result,
+    Status s = RandomAccessFileWrapper::Read(offset + copied, readahead_size_, &readahead_result,
       buffer_.get());
     if (!s.ok()) {
       return s;
@@ -448,7 +458,7 @@ class ReadaheadRandomAccessFile : public RandomAccessFile {
     memcpy(scratch + copied, readahead_result.data(), left_to_copy);
     *result = Slice(scratch, copied + left_to_copy);
 
-    if (readahead_result.cdata() == buffer_.get()) {
+    if (readahead_result.data() == buffer_.get()) {
       buffer_offset_ = offset + copied;
       buffer_len_ = readahead_result.size();
     } else {
@@ -458,23 +468,12 @@ class ReadaheadRandomAccessFile : public RandomAccessFile {
     return Status::OK();
   }
 
-  size_t GetUniqueId(char* id, size_t max_size) const override {
-    return file_->GetUniqueId(id, max_size);
-  }
-
-  void Hint(AccessPattern pattern) override { file_->Hint(pattern); }
-
-  Status InvalidateCache(size_t offset, size_t length) override {
-    return file_->InvalidateCache(offset, length);
-  }
-
  private:
-  std::unique_ptr<RandomAccessFile> file_;
   size_t               readahead_size_;
   const bool           forward_calls_;
 
   mutable std::mutex   lock_;
-  mutable std::unique_ptr<char[]> buffer_;
+  mutable std::unique_ptr<uint8_t[]> buffer_;
   mutable uint64_t     buffer_offset_;
   mutable size_t       buffer_len_;
 };

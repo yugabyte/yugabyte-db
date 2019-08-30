@@ -46,9 +46,14 @@
 
 #include "utils/resowner_private.h"
 
+#include "fmgr.h"
+#include "access/htup.h"
+#include "access/htup_details.h"
+#include "access/tupdesc.h"
+
 YBCPgSession ybc_pg_session = NULL;
 
-uint64 ybc_catalog_cache_version = 0;
+uint64 yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
 /** These values are lazily initialized based on corresponding environment variables. */
 int ybc_pg_double_write = -1;
@@ -63,13 +68,37 @@ IsYugaByteEnabled()
 	return ybc_pg_session != NULL;
 }
 
+void
+CheckIsYBSupportedRelation(Relation relation)
+{
+	const char relkind = relation->rd_rel->relkind;
+	CheckIsYBSupportedRelationByKind(relkind);
+}
+
+void
+CheckIsYBSupportedRelationByKind(char relkind)
+{
+	if (!(relkind == RELKIND_RELATION || relkind == RELKIND_INDEX ||
+		  relkind == RELKIND_VIEW || relkind == RELKIND_SEQUENCE ||
+		  relkind == RELKIND_COMPOSITE_TYPE))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("This feature is not supported in YugaByte.")));
+}
+
 bool
 IsYBRelation(Relation relation)
 {
+	if (!IsYugaByteEnabled()) return false;
+
 	const char relkind = relation->rd_rel->relkind;
 
-	/* Currently only support regular tables and indexes */
-	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX);
+	CheckIsYBSupportedRelationByKind(relkind);
+
+	/* Currently only support regular tables and indexes.
+	 * Temp tables and views are supported, but they are not YB relations. */
+	return (relkind == RELKIND_RELATION || relkind == RELKIND_INDEX)
+				 && relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP;
 }
 
 bool
@@ -82,9 +111,11 @@ IsYBRelationById(Oid relid)
 }
 
 bool
-IsYBRelationByKind(char relKind)
+IsYBBackedRelation(Relation relation) 
 {
-  return (relKind == RELKIND_RELATION || relKind == RELKIND_INDEX);
+	return IsYBRelation(relation) ||
+		(relation->rd_rel->relkind == RELKIND_VIEW &&
+		relation->rd_rel->relpersistence != RELPERSISTENCE_TEMP);
 }
 
 bool
@@ -96,7 +127,7 @@ YBNeedRetryAfterCacheRefresh(ErrorData *edata)
 
 AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation)
 {
-	return IsYugaByteEnabled() && IsYBRelation(relation)
+	return IsYBRelation(relation)
 	       ? YBFirstLowInvalidAttributeNumber
 	       : FirstLowInvalidHeapAttributeNumber;
 }
@@ -107,6 +138,41 @@ AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
 	AttrNumber attr_num = YBGetFirstLowInvalidAttributeNumber(relation);
 	RelationClose(relation);
 	return attr_num;
+}
+
+extern bool YBRelHasOldRowTriggers(Relation rel, CmdType operation)
+{
+	TriggerDesc *trigdesc = rel->trigdesc;
+	return (trigdesc &&
+		((operation == CMD_UPDATE &&
+			(trigdesc->trig_update_after_row ||
+			trigdesc->trig_update_before_row)) ||
+		(operation == CMD_DELETE &&
+			(trigdesc->trig_delete_after_row || 
+			trigdesc->trig_delete_before_row))));
+}
+
+bool
+YBRelHasSecondaryIndices(Relation relation)
+{
+	if (!relation->rd_rel->relhasindex)
+		return false;
+
+	bool	 has_indices = false;
+	List	 *indexlist = RelationGetIndexList(relation);
+	ListCell *lc;
+
+	foreach(lc, indexlist)
+	{
+		if (lfirst_oid(lc) == relation->rd_pkindex)
+			continue;
+		has_indices = true;
+		break;
+	}
+
+	list_free(indexlist);
+
+	return has_indices;
 }
 
 bool
@@ -141,18 +207,34 @@ YBShouldReportErrorStatus()
 	return cached_value;
 }
 
+char* DupYBStatusMessage(YBCStatus status) {
+  const char* code_as_cstring = YBCStatusCodeAsCString(status);
+  size_t code_strlen = strlen(code_as_cstring);
+	size_t status_len = YBCStatusMessageLen(status);
+	char* msg_buf = palloc(code_strlen + status_len + 3);
+	char* pos = msg_buf;
+	memcpy(msg_buf, code_as_cstring, code_strlen);
+	pos += code_strlen;
+	*pos++ = ':';
+	*pos++ = ' ';
+	memcpy(pos, YBCStatusMessageBegin(status), status_len);
+	pos[status_len] = 0;
+	return msg_buf;
+}
+
 void
 HandleYBStatus(YBCStatus status)
 {
-	if (!status)
-		return;
-	if (YBShouldReportErrorStatus()) {
-		YBC_LOG_ERROR("HandleYBStatus: %s", status->msg);
-	}
+	if (!status) {
+    return;
+  }
 	/* Copy the message to the current memory context and free the YBCStatus. */
-	size_t status_len = strlen(status->msg);
-	char* msg_buf = palloc(status_len + 1);
-	strncpy(msg_buf, status->msg, status_len + 1);
+	char* msg_buf = DupYBStatusMessage(status);
+
+	if (YBShouldReportErrorStatus()) {
+		YBC_LOG_ERROR("HandleYBStatus: %s", msg_buf);
+	}
+
 	YBCFreeStatus(status);
 	/* TODO: consider creating PostgreSQL error codes for YB statuses. */
 	ereport(ERROR,
@@ -299,8 +381,7 @@ YBCHandleCommitError()
 {
 	YBCStatus status = ybc_commit_status;
 	if (status != NULL) {
-		char* msg = palloc(strlen(status->msg) + 1);
-		strcpy(msg, status->msg);
+    char* msg = DupYBStatusMessage(status);
 		YBCResetCommitStatus();
 		ereport(ERROR,
 				(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
@@ -425,6 +506,45 @@ YBPgTypeOidToStr(Oid type_id) {
 	}
 }
 
+const char*
+YBCPgDataTypeToStr(YBCPgDataType yb_type) {
+	switch (yb_type) {
+		case YB_YQL_DATA_TYPE_NOT_SUPPORTED: return "NOT_SUPPORTED";
+		case YB_YQL_DATA_TYPE_UNKNOWN_DATA: return "UNKNOWN_DATA";
+		case YB_YQL_DATA_TYPE_NULL_VALUE_TYPE: return "NULL_VALUE_TYPE";
+		case YB_YQL_DATA_TYPE_INT8: return "INT8";
+		case YB_YQL_DATA_TYPE_INT16: return "INT16";
+		case YB_YQL_DATA_TYPE_INT32: return "INT32";
+		case YB_YQL_DATA_TYPE_INT64: return "INT64";
+		case YB_YQL_DATA_TYPE_STRING: return "STRING";
+		case YB_YQL_DATA_TYPE_BOOL: return "BOOL";
+		case YB_YQL_DATA_TYPE_FLOAT: return "FLOAT";
+		case YB_YQL_DATA_TYPE_DOUBLE: return "DOUBLE";
+		case YB_YQL_DATA_TYPE_BINARY: return "BINARY";
+		case YB_YQL_DATA_TYPE_TIMESTAMP: return "TIMESTAMP";
+		case YB_YQL_DATA_TYPE_DECIMAL: return "DECIMAL";
+		case YB_YQL_DATA_TYPE_VARINT: return "VARINT";
+		case YB_YQL_DATA_TYPE_INET: return "INET";
+		case YB_YQL_DATA_TYPE_LIST: return "LIST";
+		case YB_YQL_DATA_TYPE_MAP: return "MAP";
+		case YB_YQL_DATA_TYPE_SET: return "SET";
+		case YB_YQL_DATA_TYPE_UUID: return "UUID";
+		case YB_YQL_DATA_TYPE_TIMEUUID: return "TIMEUUID";
+		case YB_YQL_DATA_TYPE_TUPLE: return "TUPLE";
+		case YB_YQL_DATA_TYPE_TYPEARGS: return "TYPEARGS";
+		case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE: return "USER_DEFINED_TYPE";
+		case YB_YQL_DATA_TYPE_FROZEN: return "FROZEN";
+		case YB_YQL_DATA_TYPE_DATE: return "DATE";
+		case YB_YQL_DATA_TYPE_TIME: return "TIME";
+		case YB_YQL_DATA_TYPE_JSONB: return "JSONB";
+		case YB_YQL_DATA_TYPE_UINT8: return "UINT8";
+		case YB_YQL_DATA_TYPE_UINT16: return "UINT16";
+		case YB_YQL_DATA_TYPE_UINT32: return "UINT32";
+		case YB_YQL_DATA_TYPE_UINT64: return "UINT64";
+		default: return "unknown";
+	}
+}
+
 void
 YBReportIfYugaByteEnabled()
 {
@@ -524,4 +644,78 @@ Oid
 YBCGetDatabaseOid(Relation rel)
 {
 	return rel->rd_rel->relisshared ? TemplateDbOid : MyDatabaseId;
+}
+
+void
+YBRaiseNotSupported(const char *msg, int issue_no)
+{
+	int signal_level = YBUnsupportedFeatureSignalLevel();
+	if (issue_no > 0)
+	{
+		ereport(signal_level,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s", msg),
+				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
+						 "Click '+' on the description to raise its priority", issue_no)));
+	}
+	else
+	{
+		ereport(signal_level,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("%s", msg),
+				 errhint("Please report the issue on "
+						 "https://github.com/YugaByte/yugabyte-db/issues")));
+	}
+}
+
+//------------------------------------------------------------------------------
+// YB Debug utils.
+
+bool yb_debug_mode = false;
+
+const char*
+YBDatumToString(Datum datum, Oid typid)
+{
+	Oid			typoutput = InvalidOid;
+	bool		typisvarlena = false;
+
+	getTypeOutputInfo(typid, &typoutput, &typisvarlena);
+	return OidOutputFunctionCall(typoutput, datum);
+}
+
+const char*
+YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc)
+{
+	Datum attr = (Datum) 0;
+	int natts = tupleDesc->natts;
+	bool isnull = false;
+	StringInfoData buf;
+	initStringInfo(&buf);
+
+	appendStringInfoChar(&buf, '(');
+	for (int attnum = 1; attnum <= natts; ++attnum) {
+		attr = heap_getattr(tuple, attnum, tupleDesc, &isnull);
+		if (isnull) 
+		{
+			appendStringInfoString(&buf, "null");
+		}
+		else
+		{
+			Oid typid = TupleDescAttr(tupleDesc, attnum - 1)->atttypid;
+			appendStringInfoString(&buf, YBDatumToString(attr, typid));
+		}
+		if (attnum != natts) {
+			appendStringInfoString(&buf, ", ");
+		}
+	}
+	appendStringInfoChar(&buf, ')');
+	return buf.data;
+}
+
+bool
+YBIsInitDbAlreadyDone()
+{
+	bool done = false;
+	HandleYBStatus(YBCPgIsInitDbDone(ybc_pg_session, &done));
+	return done;
 }

@@ -218,8 +218,7 @@ class PeerMessageQueue {
   // we update committed op id.
   virtual CHECKED_STATUS AppendOperations(
       const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
-      RestartSafeCoarseTimePoint batch_mono_time,
-      const StatusCallback& log_append_callback);
+      RestartSafeCoarseTimePoint batch_mono_time);
 
   // Assembles a request for a peer, adding entries past 'op_id' up to
   // 'consensus_max_batch_size_bytes'.
@@ -239,7 +238,7 @@ class PeerMessageQueue {
   virtual CHECKED_STATUS RequestForPeer(
       const std::string& uuid,
       ConsensusRequestPB* request,
-      ReplicateMsgs* msg_refs,
+      ReplicateMsgsHolder* msgs_holder,
       bool* needs_remote_bootstrap,
       RaftPeerPB::MemberType* member_type = nullptr,
       bool* last_exchange_successful = nullptr);
@@ -312,6 +311,12 @@ class PeerMessageQueue {
   const CloudInfoPB& local_cloud_info() const {
     return local_peer_pb_.cloud_info();
   }
+
+  // Read replicated log records starting from the OpId immediately after last_op_id.
+  CHECKED_STATUS ReadReplicatedMessages(const OpId& last_op_id, ReplicateMsgs *msgs);
+
+  size_t LogCacheSize();
+  size_t EvictLogCache(size_t bytes_to_evict);
 
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
@@ -420,7 +425,6 @@ class PeerMessageQueue {
 
   // Callback when a REPLICATE message has finished appending to the local log.
   void LocalPeerAppendFinished(const OpId& id,
-                               const StatusCallback& callback,
                                const Status& status);
 
   // Updates op id replicated on each node.
@@ -435,6 +439,14 @@ class PeerMessageQueue {
   CoarseTimePoint LeaderLeaseExpirationWatermark();
   MicrosTime HybridTimeLeaseExpirationWatermark();
   OpId OpIdWatermark();
+
+  CHECKED_STATUS ReadFromLogCache(int64_t from_index,
+                                  int64_t to_index,
+                                  int max_batch_size,
+                                  const std::string& peer_uuid,
+                                  ReplicateMsgs* messages,
+                                  OpId* preceding_id,
+                                  bool* have_more_messages);
 
   std::vector<PeerMessageQueueObserver*> observers_;
 

@@ -80,8 +80,8 @@ class GetMasterRegistrationRpc: public rpc::Rpc {
   // Invokes 'user_cb' upon failure or success of the RPC call.
   GetMasterRegistrationRpc(StatusFunctor user_cb,
                            const HostPort& addr,
-                           const MonoTime& deadline,
-                           const std::shared_ptr<rpc::Messenger>& messenger,
+                           CoarseTimePoint deadline,
+                           rpc::Messenger* messenger,
                            rpc::ProxyCache* proxy_cache,
                            ServerEntryPB* out)
       : Rpc(deadline, messenger, proxy_cache),
@@ -151,8 +151,8 @@ void GetMasterRegistrationRpc::Finished(const Status& status) {
 
 GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
                                        const server::MasterAddresses& addrs,
-                                       MonoTime deadline,
-                                       const shared_ptr<Messenger>& messenger,
+                                       CoarseTimePoint deadline,
+                                       Messenger* messenger,
                                        rpc::ProxyCache* proxy_cache,
                                        rpc::Rpcs* rpcs,
                                        bool should_timeout_to_follower)
@@ -160,7 +160,7 @@ GetLeaderMasterRpc::GetLeaderMasterRpc(LeaderCallback user_cb,
       user_cb_(std::move(user_cb)),
       rpcs_(*rpcs),
       should_timeout_to_follower_(should_timeout_to_follower) {
-  DCHECK(deadline.Initialized());
+  DCHECK(deadline != CoarseTimePoint::max());
 
   for (const auto& list : addrs) {
     addrs_.insert(addrs_.end(), list.begin(), list.end());
@@ -216,9 +216,12 @@ void GetLeaderMasterRpc::Finished(const Status& status) {
   if (status.IsNetworkError() || status.IsNotFound()) {
     // TODO (KUDU-573): Allow cancelling delayed tasks on reactor so
     // that we can safely use DelayedRetry here.
-    auto status = mutable_retrier()->DelayedRetry(this, Status::OK());
-    LOG_IF(DFATAL, !status.ok()) << "Retry failed: " << status;
-    return;
+    auto retry_status = mutable_retrier()->DelayedRetry(this, Status::OK());
+    if (!retry_status.ok()) {
+      LOG(WARNING) << "Failed to schedule retry: " << retry_status;
+    } else {
+      return;
+    }
   }
   {
     std::lock_guard<simple_spinlock> l(lock_);

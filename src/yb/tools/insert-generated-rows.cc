@@ -40,6 +40,9 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/error.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
@@ -93,10 +96,9 @@ static int WriteRandomDataToTable(int argc, char** argv) {
 
   // Set up client.
   LOG(INFO) << "Connecting to YB Master...";
-  shared_ptr<YBClient> client;
-  CHECK_OK(YBClientBuilder()
-           .master_server_addrs(addrs)
-           .Build(&client));
+  auto client = CHECK_RESULT(YBClientBuilder()
+      .master_server_addrs(addrs)
+      .Build());
 
   LOG(INFO) << "Opening table...";
   client::TableHandle table;

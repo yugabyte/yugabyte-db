@@ -127,9 +127,9 @@ class RaftConsensusQuorumTest : public YBTest {
 
       scoped_refptr<Log> log;
       RETURN_NOT_OK(Log::Open(LogOptions(),
-                              fs_manager.get(),
                               kTestTablet,
                               fs_manager->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
+                              fs_manager->uuid(),
                               schema_,
                               0, // schema_version
                               nullptr, // metric_entity
@@ -283,7 +283,7 @@ class RaftConsensusQuorumTest : public YBTest {
     while (true) {
       {
         auto lock = state->LockForRead();
-        if (OpIdCompare(state->GetLastReceivedOpIdUnlocked(), to_wait_for) >= 0) {
+        if (state->GetLastReceivedOpIdUnlocked().index >= to_wait_for.index()) {
           return;
         }
       }
@@ -309,7 +309,7 @@ class RaftConsensusQuorumTest : public YBTest {
     while (true) {
       {
         auto lock = state->LockForRead();
-        committed_op_id = state->GetCommittedOpIdUnlocked();
+        state->GetCommittedOpIdUnlocked().ToPB(&committed_op_id);
         if (OpIdCompare(committed_op_id, to_wait_for) >= 0) {
           return;
         }
@@ -392,11 +392,12 @@ class RaftConsensusQuorumTest : public YBTest {
     EXPECT_OK(log->WaitUntilAllFlushed());
     EXPECT_OK(log->Close());
     std::unique_ptr<LogReader> log_reader;
-    EXPECT_OK(log::LogReader::Open(fs_managers_[idx],
+    EXPECT_OK(log::LogReader::Open(fs_managers_[idx]->env(),
                                    scoped_refptr<log::LogIndex>(),
                                    kTestTablet,
                                    fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTable,
                                                                                 kTestTablet),
+                                   fs_managers_[idx]->uuid(),
                                    metric_entity_.get(),
                                    &log_reader));
     log::LogEntries ret;
@@ -871,20 +872,23 @@ TEST_F(RaftConsensusQuorumTest, TestReplicasEnforceTheLogMatchingProperty) {
   OpId* id = replicate->mutable_id();
   id->set_term(last_op_id.term());
   id->set_index(last_op_id.index() + 1);
+  // Make a copy of the OpId to be TSAN friendly.
+  auto req_copy = req;
+  auto id_copy = req_copy.mutable_ops(0)->mutable_id();
   replicate->set_op_type(NO_OP);
 
   // Appending this message to peer0 should work and update
   // its 'last_received' to 'id'.
-  ASSERT_OK(follower->Update(&req, &resp));
+  ASSERT_OK(follower->Update(&req, &resp, CoarseBigDeadline()));
   ASSERT_TRUE(OpIdEquals(resp.status().last_received(), *id));
 
   // Now skip one message in the same term. The replica should
   // complain with the right error message.
-  req.mutable_preceding_id()->set_index(id->index() + 1);
-  id->set_index(id->index() + 2);
+  req_copy.mutable_preceding_id()->set_index(id_copy->index() + 1);
+  id_copy->set_index(id_copy->index() + 2);
   // Appending this message to peer0 should return a Status::OK
   // but should contain an error referring to the log matching property.
-  ASSERT_OK(follower->Update(&req, &resp));
+  ASSERT_OK(follower->Update(&req_copy, &resp, CoarseBigDeadline()));
   ASSERT_TRUE(resp.has_status());
   ASSERT_TRUE(resp.status().has_error());
   ASSERT_EQ(resp.status().error().code(), ConsensusErrorPB::PRECEDING_ENTRY_DIDNT_MATCH);
@@ -1001,7 +1005,7 @@ TEST_F(RaftConsensusQuorumTest, TestRequestVote) {
   req.set_caller_uuid("peer-0");
   req.mutable_committed_index()->CopyFrom(last_op_id);
   ConsensusResponsePB res;
-  Status s = peer->Update(&req, &res);
+  Status s = peer->Update(&req, &res, CoarseBigDeadline());
   ASSERT_EQ(last_op_id.term() + 3, res.responder_term());
   ASSERT_TRUE(res.status().has_error());
   ASSERT_EQ(ConsensusErrorPB::INVALID_TERM, res.status().error().code());

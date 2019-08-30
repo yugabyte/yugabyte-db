@@ -55,6 +55,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
+#include "yb/rpc/yb_rpc.h"
 #include "yb/server/rpc_server.h"
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/server/default-path-handlers.h"
@@ -80,7 +81,7 @@ using std::vector;
 using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
-using yb::tserver::YB_EDITION_NS_PREFIX RemoteBootstrapServiceImpl;
+using yb::tserver::enterprise::RemoteBootstrapServiceImpl;
 using strings::Substitute;
 
 DEFINE_int32(master_tserver_svc_num_threads, 10,
@@ -125,7 +126,7 @@ Master::Master(const MasterOptions& opts)
         "Master", opts, "yb.master", server::CreateMemTrackerForServer()),
     state_(kStopped),
     ts_manager_(new TSManager()),
-    catalog_manager_(new YB_EDITION_NS_PREFIX CatalogManager(this)),
+    catalog_manager_(new enterprise::CatalogManager(this)),
     path_handlers_(new MasterPathHandlers(this)),
     flush_manager_(new FlushManager(this, catalog_manager())),
     opts_(opts),
@@ -141,9 +142,6 @@ Master::Master(const MasterOptions& opts)
 
 Master::~Master() {
   Shutdown();
-  if (messenger_) {
-    messenger_->Shutdown();
-  }
 }
 
 string Master::ToString() const {
@@ -194,6 +192,12 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_remote_bootstrap_svc_queue_length,
                                                      std::move(remote_bootstrap_service)));
   return Status::OK();
+}
+
+void Master::DisplayGeneralInfoIcons(std::stringstream* output) {
+  server::RpcAndWebServerBase::DisplayGeneralInfoIcons(output);
+  // Tasks.
+  DisplayIconTile(output, "fa-list-ul", "Tasks", "/tasks");
 }
 
 Status Master::StartAsync() {
@@ -262,6 +266,10 @@ void Master::Shutdown() {
     string name = ToString();
     LOG(INFO) << name << " shutting down...";
     maintenance_manager_->Shutdown();
+    // We shutdown RpcAndWebServerBase here in order to shutdown messenger and reactor threads
+    // before shutting down catalog manager. This is needed to prevent async calls callbacks
+    // (running on reactor threads) from trying to use catalog manager thread pool which would be
+    // already shutdown.
     RpcAndWebServerBase::Shutdown();
     catalog_manager_->Shutdown();
     LOG(INFO) << name << " shutdown complete.";

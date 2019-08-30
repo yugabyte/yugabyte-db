@@ -14,7 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/test/pggate_test.h"
-#include "yb/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
 
 namespace yb {
 namespace pggate {
@@ -114,8 +114,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
-                                  nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
+                                  true /* prevent_restart */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -144,7 +144,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_id));
 
   // Execute select statement.
-  YBCPgExecSelect(pg_stmt);
+  YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
 
   // Fetching rows and check their contents.
   uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));
@@ -195,8 +195,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
-                                  nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
+                                  true /* prevent_restart */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref);
@@ -219,7 +219,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, 1, expr_hash));
 
   // Execute select statement.
-  YBCPgExecSelect(pg_stmt);
+  YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
 
   // Fetching rows and check their contents.
   values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));

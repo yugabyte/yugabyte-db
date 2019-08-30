@@ -52,7 +52,11 @@ CHECKED_STATUS PTDropStmt::Analyze(SemContext *sem_context) {
 
   if (FLAGS_use_cassandra_authentication) {
     switch (drop_type()) {
-      case OBJECT_INDEX: FALLTHROUGH_INTENDED;
+      case OBJECT_INDEX: {
+        // The permissions for dropping an index get checked in the master because we don't know
+        // for which table this index was created for.
+        break;
+      }
       case OBJECT_TABLE: {
         RETURN_NOT_OK(sem_context->CheckHasTablePermission(loc(), PermissionType::DROP_PERMISSION,
             yb_table_name()));

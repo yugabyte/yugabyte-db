@@ -223,26 +223,6 @@ class LibraryPackager:
         self.installed_dyn_linked_binaries.append(installed_binary_path)
         return installed_binary_path
 
-    def copy_file_or_tree(self, src_dir, src_rel_path, dest_dir):
-        """
-        Does recursive copy of <src_dir>/<src_rel_path> to <dest_dir>/<src_rel_path>. Expects
-        <dest_dir> to be already existing directory. If <src_dir>/<src_rel_path> is a symlink
-        it will be copied as a symlink with the same target.
-        """
-        if not os.path.isdir(dest_dir):
-            raise RuntimeError("Not a directory: '{}'".format(dest_dir))
-        src_path = os.path.join(src_dir, src_rel_path)
-        dst_path = os.path.join(dest_dir, src_rel_path)
-        src_is_link = os.path.islink(src_path)
-        if os.path.isdir(src_path) and not src_is_link:
-            shutil.copytree(src_path, dst_path)
-        else:
-            mkdir_p(os.path.dirname(dst_path))
-            if src_is_link:
-                os.symlink(os.readlink(src_path), dst_path)
-            else:
-                shutil.copy(src_path, dst_path)
-
     def find_elf_dependencies(self, elf_file_path):
         """
         Run ldd on the given ELF file and find libraries that it depends on. Also run patchelf and
@@ -411,8 +391,16 @@ class LibraryPackager:
         # Add other files used by glibc at runtime.
         linuxbrew_glibc_real_path = os.path.normpath(
             os.path.join(os.path.realpath(LINUXBREW_LDD_PATH), '..', '..'))
+
         linuxbrew_glibc_rel_path = os.path.relpath(
             linuxbrew_glibc_real_path, os.path.realpath(LINUXBREW_HOME))
+        # We expect glibc to live under a path like "Cellar/glibc/2.23" in LINUXBREW_HOME.
+        if not linuxbrew_glibc_rel_path.startswith('Cellar/glibc/'):
+            raise ValueError(
+                "Expected to find glibc under Cellar/glibc/<version> in Linuxbrew, but found it "
+                "at: '%s'" % linuxbrew_glibc_rel_path)
+
+        rel_paths = []
         for glibc_rel_path in [
             'etc/ld.so.cache',
             'etc/localtime',
@@ -422,7 +410,18 @@ class LibraryPackager:
             'share/locale',
             'share/zoneinfo',
         ]:
-            rel_path = os.path.join(linuxbrew_glibc_rel_path, glibc_rel_path)
+            rel_paths.append(os.path.join(linuxbrew_glibc_rel_path, glibc_rel_path))
+
+        terminfo_glob_pattern = os.path.join(LINUXBREW_HOME, 'Cellar/ncurses/*/share/terminfo')
+        terminfo_paths = glob.glob(terminfo_glob_pattern)
+        if len(terminfo_paths) != 1:
+            raise ValueError(
+                "Failed to find the terminfo directory using glob pattern %s. "
+                "Found: %s" % (terminfo_glob_pattern, terminfo_paths))
+        terminfo_rel_path = os.path.relpath(terminfo_paths[0], LINUXBREW_HOME)
+        rel_paths.append(terminfo_rel_path)
+
+        for rel_path in rel_paths:
             src = os.path.join(LINUXBREW_HOME, rel_path)
             dst = os.path.join(linuxbrew_dest_dir, rel_path)
             copy_deep(src, dst, create_dst_dir=True)

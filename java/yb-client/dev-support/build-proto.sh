@@ -42,7 +42,13 @@
 # In case we are on NFS, try to use the shared thirdparty, if possible.
 find_thirdparty_dir
 
-PROTOC_BIN=$YB_THIRDPARTY_DIR/installed/uninstrumented/bin/protoc
+if is_mac; then
+  THIRDPARTY_BUILD_TYPE=clang_uninstrumented
+else
+  THIRDPARTY_BUILD_TYPE=uninstrumented
+fi
+
+PROTOC_BIN="$YB_THIRDPARTY_DIR/installed/$THIRDPARTY_BUILD_TYPE/bin/protoc"
 if [[ ! -f $PROTOC_BIN ]]; then
   if which protoc > /dev/null; then
     PROTOC_BIN=$( which protoc )

@@ -26,8 +26,8 @@ AsyncClientInitialiser::AsyncClientInitialiser(
     const std::string& tserver_uuid, const yb::server::ServerBaseOptions* opts,
     scoped_refptr<MetricEntity> metric_entity,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
-    const std::shared_ptr<rpc::Messenger>& messenger)
-    : client_future_(client_promise_.get_future()) {
+    rpc::Messenger* messenger)
+    : messenger_(messenger), client_future_(client_promise_.get_future()) {
   client_builder_.set_client_name(client_name);
   client_builder_.default_rpc_timeout(MonoDelta::FromSeconds(timeout_seconds));
   // Client does not care about master replication factor, it only needs endpoint of master leader.
@@ -52,10 +52,6 @@ AsyncClientInitialiser::AsyncClientInitialiser(
   if (!tserver_uuid.empty()) {
     client_builder_.set_tserver_uuid(tserver_uuid);
   }
-
-  if (messenger) {
-    client_builder_.use_messenger(messenger);
-  }
 }
 
 AsyncClientInitialiser::~AsyncClientInitialiser() {
@@ -69,23 +65,22 @@ void AsyncClientInitialiser::Start() {
   init_client_thread_ = std::thread(std::bind(&AsyncClientInitialiser::InitClient, this));
 }
 
-const std::shared_ptr<client::YBClient>& AsyncClientInitialiser::client() const {
+YBClient* AsyncClientInitialiser::client() const {
   return client_future_.get();
 }
 
 void AsyncClientInitialiser::InitClient() {
   LOG(INFO) << "Starting to init ybclient";
   while (!stopping_) {
-    client::YBClientPtr client;
-
-    auto status = client_builder_.Build(&client);
-    if (status.ok()) {
+    auto result = client_builder_.Build(messenger_);
+    if (result.ok()) {
       LOG(INFO) << "Successfully built ybclient";
-      client_promise_.set_value(client);
+      client_holder_.reset(result->release());
+      client_promise_.set_value(client_holder_.get());
       break;
     }
 
-    LOG(ERROR) << "Failed to initialize client: " << status;
+    LOG(ERROR) << "Failed to initialize client: " << result.status();
     std::this_thread::sleep_for(1s);
   }
 }

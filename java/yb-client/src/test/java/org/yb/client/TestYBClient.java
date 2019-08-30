@@ -96,6 +96,17 @@ public class TestYBClient extends BaseYBClientTest {
   }
 
   /**
+   * Test load balancer idle check.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testIsLoadBalancerIdle() throws Exception {
+    LOG.info("Starting testIsLoadBalancerIdle");
+    IsLoadBalancerIdleResponse resp = syncClient.getIsLoadBalancerIdle();
+    assertFalse(resp.hasError());
+  }
+
+  /**
    * Test that we can create and destroy client objects (to catch leaking resources).
    * @throws Exception
    */
@@ -124,16 +135,71 @@ public class TestYBClient extends BaseYBClientTest {
   }
 
   /**
+   * Test Waiting for load balancer idle, with simulated errors.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testWaitForLoadBalancerIdle() throws Exception {
+    syncClient.injectWaitError();
+    boolean isIdle = syncClient.waitForLoadBalancerIdle(Long.MAX_VALUE);
+    assertTrue(isIdle);
+  }
+
+  private void testServerReady(HostAndPort hp, boolean isTserver) throws Exception {
+    testServerReady(hp, isTserver, false /* slowMaster */);
+  }
+
+  private void testServerReady(HostAndPort hp, boolean isTserver, boolean slowMaster)
+      throws Exception {
+    IsServerReadyResponse resp = syncClient.isServerReady(hp, isTserver);
+    assertFalse(resp.hasError());
+    assertEquals(resp.getNumNotRunningTablets(), slowMaster ? 1 : 0);
+    assertEquals(resp.getCode(), TabletServerErrorPB.Code.UNKNOWN_ERROR);
+    assertEquals(resp.getTotalTablets(), isTserver ? 0 : 1);
+  }
+
+  /**
    * Test to check tserver readiness status.
    * @throws Exception
    */
   @Test(timeout = 100000)
   public void testTServerReady() throws Exception {
-    HostAndPort thp = miniCluster.getTabletServers().entrySet().iterator().next().getKey();
-    IsTabletServerReadyResponse resp = syncClient.isTServerReady(thp);
-    assertFalse(resp.hasError());
-    assertEquals(resp.getNumNotRunningTablets(), 0);
-    assertEquals(resp.getCode(), TabletServerErrorPB.Code.UNKNOWN_ERROR);
+    for (HostAndPort thp : miniCluster.getTabletServers().keySet()) {
+      testServerReady(thp, true);
+    }
+  }
+
+  /**
+   * Test to check master readiness status.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testMasterReady() throws Exception {
+    for (HostAndPort mhp : miniCluster.getMasters().keySet()) {
+      testServerReady(mhp, false);
+    }
+  }
+
+  /**
+   * Test to check master not ready status.
+   * @throws Exception
+   */
+  @Test(timeout = 100000)
+  public void testMasterNotReady() throws Exception {
+    destroyMiniCluster();
+    List<String> masterArgs = new ArrayList<String>();
+    masterArgs.add("--simulate_slow_system_tablet_bootstrap_secs=20");
+    List<List<String>> tserverArgs = new ArrayList<List<String>>();
+    int numServers = 3;
+    for (int i = 1; i <= numServers; i++) {
+      tserverArgs.add(Arrays.asList());
+    }
+    createMiniCluster(numServers, masterArgs, tserverArgs);
+    miniCluster.restart(false /* waitForMasterLeader */);
+
+    for (HostAndPort mhp : miniCluster.getMasters().keySet()) {
+      testServerReady(mhp, false, true);
+    }
   }
 
   /**
@@ -499,5 +565,26 @@ public class TestYBClient extends BaseYBClientTest {
     // Check that we can open a table and see that it has the new schema.
     YBTable table = syncClient.openTable(DEFAULT_KEYSPACE_NAME, tableName);
     assertEquals(newSchema.getColumnCount(), table.getSchema().getColumnCount());
+  }
+
+  /**
+   * Test proper number of tables is returned by YBClient.
+   */
+  @Test(timeout = 100000)
+  public void testGetTablesList() throws Exception {
+    LOG.info("Starting testGetTablesList");
+    assertTrue(syncClient.getTablesList().getTableInfoList().isEmpty());
+
+    // Check that YEDIS tables are created and retrieved properly.
+    String redisTableName = YBClient.REDIS_DEFAULT_TABLE_NAME;
+    YBTable table = syncClient.createRedisTable(redisTableName);
+    assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
+    assertTrue(syncClient.getTablesList().getTablesList().contains(redisTableName));
+
+    // Check that non-YEDIS tables are created and retrieved properly.
+    syncClient.createTable(DEFAULT_KEYSPACE_NAME, tableName, hashKeySchema,
+                           new CreateTableOptions());
+    assertFalse(syncClient.getTablesList().getTablesList().isEmpty());
+    assertTrue(syncClient.getTablesList().getTablesList().contains(tableName));
   }
 }

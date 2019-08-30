@@ -16,6 +16,7 @@
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/client/callbacks.h"
+#include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/rpc/thread_pool.h"
 #include "yb/util/trace.h"

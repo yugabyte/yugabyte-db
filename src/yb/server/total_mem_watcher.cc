@@ -18,12 +18,11 @@
 #include <fstream>
 #include <chrono>
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/server/total_mem_watcher.h"
-#include "yb/util/status.h"
-#include "yb/util/mem_tracker.h"
 #include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>

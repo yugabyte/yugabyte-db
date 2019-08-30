@@ -19,9 +19,10 @@
 #include <mutex>
 #include <thread>
 
-#include <boost/lockfree/queue.hpp>
-#include <boost/scope_exit.hpp>
+#include <cds/container/basket_queue.h>
+#include <cds/gc/dhp.h>
 
+#include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"
 
 namespace yb {
@@ -31,8 +32,8 @@ namespace {
 
 class Worker;
 
-typedef boost::lockfree::queue<ThreadPoolTask*> TaskQueue;
-typedef boost::lockfree::queue<Worker*> WaitingWorkers;
+typedef cds::container::BasketQueue<cds::gc::DHP, ThreadPoolTask*> TaskQueue;
+typedef cds::container::BasketQueue<cds::gc::DHP, Worker*> WaitingWorkers;
 
 struct ThreadPoolShare {
   ThreadPoolOptions options;
@@ -40,10 +41,7 @@ struct ThreadPoolShare {
   WaitingWorkers waiting_workers;
 
   explicit ThreadPoolShare(ThreadPoolOptions o)
-      : options(std::move(o)),
-        task_queue(options.queue_limit),
-        waiting_workers(options.max_workers) {
-  }
+      : options(std::move(o)) {}
 };
 
 namespace {
@@ -112,9 +110,9 @@ class Worker {
     }
     std::unique_lock<std::mutex> lock(mutex_);
     waiting_task_ = true;
-    BOOST_SCOPE_EXIT(&waiting_task_) {
-        waiting_task_ = false;
-    } BOOST_SCOPE_EXIT_END;
+    auto se = ScopeExit([this] {
+      waiting_task_ = false;
+    });
 
     while (!stop_requested_) {
       AddToWaitingWorkers();
@@ -140,8 +138,8 @@ class Worker {
 
   void AddToWaitingWorkers() {
     if (!added_to_waiting_workers_) {
-      auto pushed = share_->waiting_workers.bounded_push(this);
-      CHECK(pushed);
+      auto pushed = share_->waiting_workers.push(this);
+      DCHECK(pushed); // BasketQueue always succeed.
       added_to_waiting_workers_ = true;
     }
   }
@@ -181,12 +179,9 @@ class ThreadPool::Impl {
       task->Done(shutdown_status_);
       return false;
     }
-    bool added = share_.task_queue.bounded_push(task);
+    bool added = share_.task_queue.push(task);
+    DCHECK(added); // BasketQueue always succeed.
     --adding_;
-    if (!added) {
-      task->Done(queue_full_status_);
-      return false;
-    }
     Worker* worker = nullptr;
     while (share_.waiting_workers.pop(worker)) {
       if (worker->Notify()) {

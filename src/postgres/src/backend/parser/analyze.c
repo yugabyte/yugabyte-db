@@ -25,6 +25,7 @@
 #include "postgres.h"
 
 #include "access/sysattr.h"
+#include "access/xact.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
@@ -117,6 +118,13 @@ parse_analyze(RawStmt *parseTree, const char *sourceText,
 
 	query = transformTopLevelStmt(pstate, parseTree);
 
+	if (pstate->p_target_relation &&
+		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
+		&& IsYugaByteEnabled())
+	{
+		SetTxnWithPGRel();
+	}
+
 	if (post_parse_analyze_hook)
 		(*post_parse_analyze_hook) (pstate, query);
 
@@ -146,6 +154,13 @@ parse_analyze_varparams(RawStmt *parseTree, const char *sourceText,
 	parse_variable_parameters(pstate, paramTypes, numParams);
 
 	query = transformTopLevelStmt(pstate, parseTree);
+
+	if (pstate->p_target_relation &&
+		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
+		&& IsYugaByteEnabled())
+	{
+		SetTxnWithPGRel();
+	}
 
 	/* make sure all is well with parameter types */
 	check_variable_parameters(pstate, query);
@@ -852,7 +867,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 		qry->targetList = lappend(qry->targetList, tle);
 
 		rte->insertedCols = bms_add_member(rte->insertedCols,
-										   attr_num - FirstLowInvalidHeapAttributeNumber);
+										   attr_num - YBGetFirstLowInvalidAttributeNumber(pstate->p_target_relation));
 
 		icols = lnext(icols);
 		attnos = lnext(attnos);
@@ -2347,14 +2362,8 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 							RelationGetRelationName(pstate->p_target_relation)),
 					 parser_errposition(pstate, origTarget->location)));
 
-		if (IsYugaByteEnabled())
+		if (IsYBRelation(pstate->p_target_relation))
 		{
-			if (!IsYBRelation(pstate->p_target_relation))
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("This relational object does not exist in YugaByte database")));
-			}
 
 			// Currently, YugaByte does not allow updating primary key columns that were specified
 			// when creating table.
@@ -2374,10 +2383,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 
 			if (is_hash || is_primary)
 			{
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("Update PRIMARY KEY columns are not yet supported"),
-						 errhint("Please contact YugaByte for its release schedule.")));
+				YBRaiseNotSupported("Update PRIMARY KEY columns are not yet supported", 659);
 			}
 		}
 
@@ -2388,7 +2394,7 @@ transformUpdateTargetList(ParseState *pstate, List *origTlist)
 
 		/* Mark the target column as requiring update permissions */
 		target_rte->updatedCols = bms_add_member(target_rte->updatedCols,
-												 attrno - FirstLowInvalidHeapAttributeNumber);
+												 attrno - YBGetFirstLowInvalidAttributeNumber(pstate->p_target_relation));
 
 		orig_tl = lnext(orig_tl);
 	}

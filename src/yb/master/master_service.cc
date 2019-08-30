@@ -46,7 +46,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/server/webserver.h"
-  #include "yb/util/flag_tags.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
 
 DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
@@ -138,6 +138,12 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
     resp->set_cluster_uuid(cluster_config.cluster_uuid());
   }
 
+  s = server_->catalog_manager()->FillHeartbeatResponse(req, resp);
+  if (!s.ok()) {
+    LOG(WARNING) << "Unable to fill heartbeat response: " << s.ToString();
+    rpc.RespondFailure(s);
+  }
+
   // TODO: KUDU-86 if something fails after this point the TS will not be able
   //       to register again.
 
@@ -188,7 +194,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
   std::vector<std::shared_ptr<TSDescriptor>> descs;
   server_->ts_manager()->GetAllLiveDescriptors(&descs);
   for (const auto& desc : descs) {
-    *resp->add_tservers() = desc->GetTSInformationPB();
+    *resp->add_tservers() = *desc->GetTSInformationPB();
   }
 
   // Retrieve the ysql catalog schema version.
@@ -345,41 +351,49 @@ void MasterServiceImpl::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB
   HandleIn(req, resp, &rpc, &CatalogManager::GetYsqlCatalogConfig);
 }
 
+// ------------------------------------------------------------------------------------------------
+// Permissions
+// ------------------------------------------------------------------------------------------------
+
 void MasterServiceImpl::CreateRole(const CreateRoleRequestPB* req,
                                    CreateRoleResponsePB* resp,
                                    rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::CreateRole);
+  HandleIn(req, resp, &rpc, &PermissionsManager::CreateRole);
 }
 
 void MasterServiceImpl::AlterRole(const AlterRoleRequestPB* req,
                                   AlterRoleResponsePB* resp,
                                   rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::AlterRole);
+  HandleIn(req, resp, &rpc, &PermissionsManager::AlterRole);
 }
 
 void MasterServiceImpl::DeleteRole(const DeleteRoleRequestPB* req,
                                    DeleteRoleResponsePB* resp,
                                    rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::DeleteRole);
+  HandleIn(req, resp, &rpc, &PermissionsManager::DeleteRole);
 }
 
 void MasterServiceImpl::GrantRevokeRole(const GrantRevokeRoleRequestPB* req,
                                         GrantRevokeRoleResponsePB* resp,
                                         rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GrantRevokeRole);
+  HandleIn(req, resp, &rpc, &PermissionsManager::GrantRevokeRole);
 }
 
 void MasterServiceImpl::GrantRevokePermission(const GrantRevokePermissionRequestPB* req,
                                               GrantRevokePermissionResponsePB* resp,
                                               rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GrantRevokePermission);
+  HandleIn(req, resp, &rpc, &PermissionsManager::GrantRevokePermission);
 }
 
 void MasterServiceImpl::GetPermissions(const GetPermissionsRequestPB* req,
                                        GetPermissionsResponsePB* resp,
                                        rpc::RpcContext rpc) {
-  HandleIn(req, resp, &rpc, &CatalogManager::GetPermissions);
+  HandleIn(req, resp, &rpc, &PermissionsManager::GetPermissions);
 }
+
+// ------------------------------------------------------------------------------------------------
+// Redis
+// ------------------------------------------------------------------------------------------------
 
 void MasterServiceImpl::RedisConfigSet(
     const RedisConfigSetRequestPB* req, RedisConfigSetResponsePB* resp, rpc::RpcContext rpc) {
@@ -390,6 +404,10 @@ void MasterServiceImpl::RedisConfigGet(
     const RedisConfigGetRequestPB* req, RedisConfigGetResponsePB* resp, rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &CatalogManager::RedisConfigGet);
 }
+
+// ------------------------------------------------------------------------------------------------
+// YCQL user-defined types
+// ------------------------------------------------------------------------------------------------
 
 void MasterServiceImpl::CreateUDType(const CreateUDTypeRequestPB* req,
                                      CreateUDTypeResponsePB* resp,
@@ -415,6 +433,38 @@ void MasterServiceImpl::GetUDTypeInfo(const GetUDTypeInfoRequestPB* req,
   HandleIn(req, resp, &rpc, &CatalogManager::GetUDTypeInfo);
 }
 
+// ------------------------------------------------------------------------------------------------
+// CDC Stream
+// ------------------------------------------------------------------------------------------------
+
+void MasterServiceImpl::CreateCDCStream(const CreateCDCStreamRequestPB* req,
+                                        CreateCDCStreamResponsePB* resp,
+                                        rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::CreateCDCStream);
+}
+
+void MasterServiceImpl::DeleteCDCStream(const DeleteCDCStreamRequestPB* req,
+                                        DeleteCDCStreamResponsePB* resp,
+                                        rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteCDCStream);
+}
+
+void MasterServiceImpl::ListCDCStreams(const ListCDCStreamsRequestPB* req,
+                                       ListCDCStreamsResponsePB* resp,
+                                       rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ListCDCStreams);
+}
+
+void MasterServiceImpl::GetCDCStream(const GetCDCStreamRequestPB* req,
+                                     GetCDCStreamResponsePB* resp,
+                                     rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::GetCDCStream);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Miscellaneous
+// ------------------------------------------------------------------------------------------------
+
 void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
                                           ListTabletServersResponsePB* resp,
                                           RpcContext rpc) {
@@ -434,7 +484,7 @@ void MasterServiceImpl::ListTabletServers(const ListTabletServersRequestPB* req,
 
   for (const std::shared_ptr<TSDescriptor>& desc : descs) {
     ListTabletServersResponsePB::Entry* entry = resp->add_servers();
-    auto ts_info = desc->GetTSInformationPB();
+    auto ts_info = *desc->GetTSInformationPB();
     *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
     *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
     entry->set_millis_since_heartbeat(desc->TimeSinceHeartbeat().ToMilliseconds());
@@ -608,6 +658,12 @@ void MasterServiceImpl::IsLoadBalanced(
   HandleIn(req, resp, &rpc, &CatalogManager::IsLoadBalanced);
 }
 
+void MasterServiceImpl::IsLoadBalancerIdle(
+    const IsLoadBalancerIdleRequestPB* req, IsLoadBalancerIdleResponsePB* resp,
+    RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::IsLoadBalancerIdle);
+}
+
 void MasterServiceImpl::AreLeadersOnPreferredOnly(
     const AreLeadersOnPreferredOnlyRequestPB* req, AreLeadersOnPreferredOnlyResponsePB* resp,
     RpcContext rpc) {
@@ -624,6 +680,42 @@ void MasterServiceImpl::IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
                                           IsFlushTablesDoneResponsePB* resp,
                                           RpcContext rpc) {
   HandleIn(req, resp, &rpc, &FlushManager::IsFlushTablesDone);
+}
+
+void MasterServiceImpl::IsInitDbDone(const IsInitDbDoneRequestPB* req,
+                                     IsInitDbDoneResponsePB* resp,
+                                     RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &CatalogManager::IsInitDbDone, HoldCatalogLock::kFalse);
+}
+
+void MasterServiceImpl::ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
+                                             ChangeEncryptionInfoResponsePB* resp,
+                                             rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::ChangeEncryptionInfo);
+}
+
+void MasterServiceImpl::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
+                                            IsEncryptionEnabledResponsePB* resp,
+                                            rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsEncryptionEnabled);
+}
+
+void MasterServiceImpl::SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
+                                                 SetupUniverseReplicationResponsePB* resp,
+                                                 rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::SetupUniverseReplication);
+}
+
+void MasterServiceImpl::DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
+                                                  DeleteUniverseReplicationResponsePB* resp,
+                                                  rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteUniverseReplication);
+}
+
+void MasterServiceImpl::GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
+                                               GetUniverseReplicationResponsePB* resp,
+                                               rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::GetUniverseReplication);
 }
 
 } // namespace master

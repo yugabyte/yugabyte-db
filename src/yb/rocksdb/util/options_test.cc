@@ -1507,7 +1507,7 @@ TEST_F(OptionsParserTest, EscapeOptionString) {
 
 // Only run the tests to verify new fields in options are settable through
 // string on limited platforms as it depends on behavior of compilers.
-#if defined(OS_LINUX) && !defined(__clang__)
+#if defined(__linux__) && !defined(__clang__)
 
 struct OffsetGap {
   size_t begin_offset;
@@ -1689,6 +1689,7 @@ Status GetFromString(DBOptions* source, DBOptions* destination) {
       "advise_random_on_open=true;"
       "fail_if_options_file_error=true;"
       "allow_concurrent_memtable_write=true;"
+      "in_memory_erase=true;"
       "wal_recovery_mode=kPointInTimeRecovery;"
       "enable_write_thread_adaptive_yield=true;"
       "write_thread_slow_yield_usec=5;"
@@ -1911,6 +1912,8 @@ TEST_F(OptionsParserTest, BlockBasedTableOptionsAllFieldsSettable) {
 TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
   const OffsetGaps kDBOptionsBlacklist = {
       BLACKLIST_ENTRY(DBOptions, env),
+      BLACKLIST_ENTRY(DBOptions, checkpoint_env),
+      BLACKLIST_ENTRY(DBOptions, priority_thread_pool_for_compactions_and_flushes),
       BLACKLIST_ENTRY(DBOptions, rate_limiter),
       BLACKLIST_ENTRY(DBOptions, sst_file_manager),
       BLACKLIST_ENTRY(DBOptions, info_log),
@@ -1926,6 +1929,7 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, mem_table_flush_filter_factory),
       BLACKLIST_ENTRY(DBOptions, log_prefix),
       BLACKLIST_ENTRY(DBOptions, mem_tracker),
+      BLACKLIST_ENTRY(DBOptions, block_based_table_mem_tracker),
   };
 
   TestAllFieldsSettable<DBOptions>(kDBOptionsBlacklist);
@@ -1957,7 +1961,7 @@ TEST_F(OptionsParserTest, ColumnFamilyOptionsAllFieldsSettable) {
 
   TestAllFieldsSettable<ColumnFamilyOptions>(kColumnFamilyOptionsBlacklist);
 }
-#endif // OS_LINUX && !clang
+#endif // __linux__ && !clang
 #endif // !ROCKSDB_LITE
 
 }  // namespace rocksdb

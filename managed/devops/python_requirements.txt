@@ -1,0 +1,48 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+#
+# This is the input of bin/freeze_python_requirements.sh that is used to generate the
+# python_requirements_frozen.txt file. In the most common workflow, you actually don't need to use
+# or modify this file (i.e. python_requirements.txt). Just run bin/install_python_requirements.sh to
+# install specific module versions according to python_requirements_frozen.txt.
+#
+# This file should be modified only when you need to add or remove Python dependencies or update
+# version constraints.
+#
+# A Ruby analogy would be that python_requirements_frozen.txt is Gemfile.lock and this is Gemfile.
+#
+# TODO: see if we can move to using Pundler (https://github.com/Deepwalker/pundler) instead.
+
+ansible==2.2.3.0
+ansible-vault==1.0.4
+apache-libcloud>=1.2.1
+auth0-python==3.0.0
+awscli==1.11.1
+boto>=2.42.0
+boto3>=1.4.0
+botocore>=1.4.59
+cryptography==1.7.2
+docker-compose==1.9.0
+docker-py==1.7.0
+fabric==2.2.1
+google-api-python-client
+graphviz
+ipaddr==2.1.11
+jmespath==0.9.0
+oauth2client<4.0.0  # GCP SDK seems to require version <4 of oauth2client: https://goo.gl/7uC34W
+pycodestyle>=2.2.0
+pycrypto
+python-dateutil==2.5.3
+python-dotenv==0.6.4
+pyyaml
+setuptools>=11.333
+six==1.10.0
+slackclient
+stormssh
+texttable
+web.py==0.38

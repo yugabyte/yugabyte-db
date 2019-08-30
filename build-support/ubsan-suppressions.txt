@@ -61,12 +61,7 @@ enum:Aws::Utils::Outcome*operator=
 alignment:crcutil::Crc32cSSE4::Crc32c
 
 # snappy works with unaligned data
-alignment:snappy::internal::CompressFragment
-alignment:snappy::EmitLiteral
-alignment:snappy::EmitCopyLessThan64
-alignment:snappy::internal::CompressFragment
-alignment:snappy::internal::FindMatchLength
-alignment:snappy::SnappyDecompressor::DecompressAllTags
+alignment:snappy::
 
 # https://goo.gl/AaE3P5
 pointer-overflow:google::*::DumpStackFrameInfo*
@@ -96,3 +91,9 @@ signed-integer-overflow:int8.c
 # is downcasted to B. It works since B does not have any extra fields etc. UBSAN correctly
 # detects this failure, but it is widely used across driver so we have to suppress it.
 vptr:libcassandra.so
+
+# UBSAN finds UndefinedBehaviorSanitizer error in case of 'float' value to 'double' type casting
+# with overflow. The result is 'Inf' and that's correct. Let's suppress the error because there
+# are such castings with overflow in a few tests. (For example: QLTestSelectedExpr.TestCastDecimal)
+# (See https://github.com/YugaByte/yugabyte-db/issues/1241 for details.)
+float-cast-overflow:yb::bfql::SetNumericResult

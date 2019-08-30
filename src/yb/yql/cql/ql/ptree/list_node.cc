@@ -16,6 +16,8 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/client/client.h"
+#include "yb/client/table.h"
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"

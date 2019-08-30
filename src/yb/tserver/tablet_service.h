@@ -136,19 +136,25 @@ class TabletServiceImpl : public TabletServerServiceIf {
 
   CHECKED_STATUS CheckPeerIsReady(const tablet::TabletPeer& tablet_peer);
 
+  // If tablet_peer is already set, we assume that LookupTabletPeerOrRespond has already been
+  // called, and only perform additional checks, such as readiness, leadership, bounded staleness,
+  // etc.
   template <class Req, class Resp>
-  bool DoGetTabletOrRespond(const Req* req, Resp* resp, rpc::RpcContext* context,
-                            std::shared_ptr<tablet::AbstractTablet>* tablet);
+  bool DoGetTabletOrRespond(
+      const Req* req, Resp* resp, rpc::RpcContext* context,
+      std::shared_ptr<tablet::AbstractTablet>* tablet,
+      tablet::TabletPeerPtr tablet_peer = nullptr);
 
   virtual WARN_UNUSED_RESULT bool GetTabletOrRespond(
       const ReadRequestPB* req,
       ReadResponsePB* resp,
       rpc::RpcContext* context,
-      std::shared_ptr<tablet::AbstractTablet>* tablet);
+      std::shared_ptr<tablet::AbstractTablet>* tablet,
+      tablet::TabletPeerPtr tablet_peer = nullptr);
 
   template<class Resp>
-  bool CheckMemoryPressure(
-      tablet::Tablet* tablet, Resp* resp, rpc::RpcContext* context);
+  bool CheckMemoryPressureOrRespond(
+      double score, tablet::Tablet* tablet, Resp* resp, rpc::RpcContext* context);
 
   // Read implementation. If restart is required returns restart time, in case of success
   // returns invalid ReadHybridTime. Otherwise returns error status.
@@ -183,6 +189,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   void FlushTablets(const FlushTabletsRequestPB* req,
                     FlushTabletsResponsePB* resp,
+                    rpc::RpcContext context) override;
+
+  void CountIntents(const CountIntentsRequestPB* req,
+                    CountIntentsResponsePB* resp,
                     rpc::RpcContext context) override;
 
  private:

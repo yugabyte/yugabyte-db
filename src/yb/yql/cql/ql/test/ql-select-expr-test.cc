@@ -4,16 +4,24 @@
 
 #include <thread>
 #include <cmath>
+#include <limits>
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/decimal.h"
+#include "yb/common/jsonb.h"
 
 DECLARE_bool(test_tserver_timeout);
 
 using std::string;
 using std::unique_ptr;
 using std::shared_ptr;
+using std::numeric_limits;
+
 using strings::Substitute;
+using yb::util::Decimal;
+using yb::util::DecimalFromComparable;
+using yb::util::VarInt;
 
 namespace yb {
 namespace ql {
@@ -726,6 +734,660 @@ TEST_F(QLTestSelectedExpr, TestQLSelectToken) {
   CHECK_EQ(row2.column(2).string_value(), "bc");
 }
 
+TEST_F(QLTestSelectedExpr, TestQLSelectToJson) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  std::shared_ptr<QLRowBlock> row_block;
+  LOG(INFO) << "Test selecting with ToJson() built-in.";
+
+  auto to_json_str = [](const QLValue& value) -> string {
+    common::Jsonb jsonb(value.jsonb_value());
+    string str;
+    CHECK_OK(jsonb.ToJsonString(&str));
+    return str;
+  };
+
+  // Test various selects.
+
+  // Create the user-defined-type, table with UDT & FROZEN and insert some value.
+  CHECK_VALID_STMT("CREATE TYPE udt(v1 int, v2 int)");
+  CHECK_VALID_STMT("CREATE TABLE test_udt (h int PRIMARY KEY, s SET<int>, u udt, "
+                   "f FROZEN<set<int>>, sf SET<FROZEN<set<int>>>, su SET<FROZEN<udt>>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt (h, s, u, f, sf, su) values (1, "
+                   "{1,2}, {v1:3,v2:4}, {5,6}, {{7,8}}, {{v1:9,v2:0}})");
+
+  // Apply ToJson() to the key column.
+  CHECK_VALID_STMT("SELECT tojson(h) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("1", to_json_str(row_block->row(0).column(0)));
+  // Apply ToJson() to the SET.
+  CHECK_VALID_STMT("SELECT tojson(s) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("[1,2]", to_json_str(row_block->row(0).column(0)));
+  // Apply ToJson() to the UDT column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"v1\":3,\"v2\":4}", to_json_str(row_block->row(0).column(0)));
+  // Apply ToJson() to the FROZEN<SET> column.
+  CHECK_VALID_STMT("SELECT tojson(f) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("[5,6]", to_json_str(row_block->row(0).column(0)));
+  // Apply ToJson() to the SET<FROZEN<SET>> column.
+  CHECK_VALID_STMT("SELECT tojson(sf) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("[[7,8]]", to_json_str(row_block->row(0).column(0)));
+  // Apply ToJson() to the SET<FROZEN<UDT>> column.
+  CHECK_VALID_STMT("SELECT tojson(su) FROM test_udt");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("[{\"v1\":9,\"v2\":0}]", to_json_str(row_block->row(0).column(0)));
+
+  CHECK_VALID_STMT("CREATE TABLE test_udt2 (h int PRIMARY KEY, u frozen<udt>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt2 (h, u) values (1, {v1:33,v2:44})");
+  // Apply ToJson() to the FROZEN<UDT> column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt2");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("{\"v1\":33,\"v2\":44}", to_json_str(row_block->row(0).column(0)));
+
+  CHECK_VALID_STMT("CREATE TABLE test_udt3 (h int PRIMARY KEY, u list<frozen<udt>>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt3 (h, u) values (1, [{v1:44,v2:55}, {v1:66,v2:77}])");
+  // Apply ToJson() to the LIST<UDT> column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt3");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ("[{\"v1\":44,\"v2\":55},{\"v1\":66,\"v2\":77}]",
+            to_json_str(row_block->row(0).column(0)));
+
+  CHECK_VALID_STMT("CREATE TABLE test_udt4 (h int PRIMARY KEY, "
+                   "u map<frozen<udt>, frozen<udt>>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt4 (h, u) values "
+                   "(1, {{v1:44,v2:55}:{v1:66,v2:77}, {v1:88,v2:99}:{v1:11,v2:22}})");
+  // Apply ToJson() to the MAP<FROZEN<UDT>:FROZEN<UDT>> column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt4");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(("{\"{\\\"v1\\\":44,\\\"v2\\\":55}\":{\"v1\":66,\"v2\":77},"
+             "\"{\\\"v1\\\":88,\\\"v2\\\":99}\":{\"v1\":11,\"v2\":22}}"),
+            to_json_str(row_block->row(0).column(0)));
+
+  CHECK_VALID_STMT("CREATE TABLE test_udt5 (h int PRIMARY KEY, "
+                   "u map<frozen<list<frozen<udt>>>, frozen<set<frozen<udt>>>>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt5 (h, u) values "
+                   "(1, {[{v1:44,v2:55}, {v1:66,v2:77}]:{{v1:88,v2:99},{v1:11,v2:22}}})");
+  // Apply ToJson() to the MAP<FROZEN<LIST<FROZEN<UDT>>>:FROZEN<SET<FROZEN<UDT>>>> column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt5");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(("{\"[{\\\"v1\\\":44,\\\"v2\\\":55},{\\\"v1\\\":66,\\\"v2\\\":77}]\":"
+             "[{\"v1\":11,\"v2\":22},{\"v1\":88,\"v2\":99}]}"),
+            to_json_str(row_block->row(0).column(0)));
+
+  CHECK_VALID_STMT("CREATE TABLE test_udt6 (h int PRIMARY KEY, "
+                   "u map<frozen<map<frozen<udt>, text>>, frozen<set<frozen<udt>>>>)");
+  CHECK_VALID_STMT("INSERT INTO test_udt6 (h, u) values "
+                   "(1, {{{v1:11,v2:22}:'text'}:{{v1:55,v2:66},{v1:77,v2:88}}})");
+  // Apply ToJson() to the MAP<FROZEN<MAP<FROZEN<UDT>:TEXT>>:FROZEN<SET<FROZEN<UDT>>>>
+  // column.
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt6");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(("{\"{\\\"{\\\\\\\"v1\\\\\\\":11,\\\\\\\"v2\\\\\\\":22}\\\":\\\"text\\\"}\":"
+             "[{\"v1\":55,\"v2\":66},{\"v1\":77,\"v2\":88}]}"),
+            to_json_str(row_block->row(0).column(0)));
+
+  // Test UDT with case-sensitive field names and names with spaces.
+  CHECK_VALID_STMT("CREATE TYPE udt7(v1 int, \"V2\" int, \"v  3\" int, \"V  4\" int)");
+  CHECK_VALID_STMT("CREATE TABLE test_udt7 (h int PRIMARY KEY, u udt7)");
+  CHECK_VALID_STMT("INSERT INTO test_udt7 (h, u) values "
+                   "(1, {v1:11,\"V2\":22,\"v  3\":33,\"V  4\":44})");
+  CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt7");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  // Verify that the column names in upper case are double quoted (see the case in Cassandra).
+  EXPECT_EQ("{\"\\\"V  4\\\"\":44,\"\\\"V2\\\"\":22,\"v  3\":33,\"v1\":11}",
+            to_json_str(row_block->row(0).column(0)));
+
+  // Feature Not Supported: UDT field types cannot refer to other user-defined types.
+  // https://github.com/YugaByte/yugabyte-db/issues/1630
+  CHECK_INVALID_STMT("CREATE TYPE udt8(i1 int, u1 udt)");
+  // CHECK_VALID_STMT("CREATE TABLE test_udt_in_udt (h int PRIMARY KEY, u udt8)");
+  // CHECK_VALID_STMT("INSERT INTO test_udt_in_udt (h, u) values (1, {i1:33,u1:{v1:44,v2:55}})");
+  // Apply ToJson() to the UDT<UDT> column.
+  // CHECK_VALID_STMT("SELECT tojson(u) FROM test_udt_in_udt");
+  // row_block = processor->row_block();
+  // CHECK_EQ(row_block->row_count(), 1);
+  // EXPECT_EQ("{\"i1\":33,\"u1\":{\"v1\":44,\"v2\":55}}",
+  //           to_json_str(row_block->row(0).column(0)));
+}
+
+TEST_F(QLTestSelectedExpr, TestCastDecimal) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  LOG(INFO) << "Test selecting with CAST.";
+
+  // Test conversions FROM DECIMAL TO numeric types.
+
+  // Create the table and insert some decimal value.
+  CHECK_VALID_STMT("CREATE TABLE num_decimal (pk int PRIMARY KEY, dc decimal)");
+
+  // Invalid values.
+  CHECK_INVALID_STMT("INSERT INTO num_decimal (pk, dc) values (1, NaN)");
+  CHECK_INVALID_STMT("INSERT INTO num_decimal (pk, dc) values (1, 'NaN')");
+  CHECK_INVALID_STMT("INSERT INTO num_decimal (pk, dc) values (1, Infinity)");
+  CHECK_INVALID_STMT("INSERT INTO num_decimal (pk, dc) values (1, 'Infinity')");
+  CHECK_INVALID_STMT("INSERT INTO num_decimal (pk, dc) values (1, 'a string')");
+
+  CHECK_VALID_STMT("INSERT INTO num_decimal (pk, dc) values (123, 456)");
+  // Test various selects.
+  {
+    CHECK_VALID_STMT("SELECT * FROM num_decimal");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 2);
+    ASSERT_EQ(row.column(0).int32_value(), 123);
+    EXPECT_EQ(DecimalFromComparable(row.column(1).decimal_value()), Decimal("456"));
+  }
+  {
+    CHECK_VALID_STMT("SELECT dc FROM num_decimal");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("456"));
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc as int) FROM num_decimal");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).int32_value(), 456);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc as double) FROM num_decimal");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).double_value(), 456.);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc as float) FROM num_decimal");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).float_value(), 456.f);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc as text) FROM num_decimal");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).string_value(), "456");
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc as decimal) FROM num_decimal");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("456"));
+  }
+
+  // Test value = MIN_BIGINT = -9,223,372,036,854,775,808 ~= -9.2E+18
+  // (Using -9223372036854775807 instead of -9223372036854775808 due to a compiler
+  // bug:  https://bugs.llvm.org/show_bug.cgi?id=21095)
+  CHECK_VALID_STMT("INSERT INTO num_decimal (pk, dc) values (1, -9223372036854775807)");
+  {
+    CHECK_VALID_STMT("SELECT dc FROM num_decimal where pk=1");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
+        Decimal("-9223372036854775807"));
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc AS bigint) FROM num_decimal where pk=1");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).int64_value(), -9223372036854775807LL);
+  }
+  {
+    // INT32 overflow.
+    CHECK_VALID_STMT("SELECT CAST(dc AS int) FROM num_decimal where pk=1");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).int32_value(), static_cast<int32_t>(-9223372036854775807LL));
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc AS decimal) FROM num_decimal where pk=1");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
+              Decimal("-9223372036854775807"));
+  }
+
+  // Test value 123.4E+18 > MAX_BIGINT = 9,223,372,036,854,775,807 ~= 9.2E+18
+  CHECK_VALID_STMT("INSERT INTO num_decimal (pk, dc) values (2, 123456789012345678901)");
+  {
+    CHECK_VALID_STMT("SELECT dc FROM num_decimal where pk=2");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
+        Decimal("123456789012345678901"));
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc AS decimal) FROM num_decimal where pk=2");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
+        Decimal("123456789012345678901"));
+  }
+  // INT64 overflow.
+  CHECK_INVALID_STMT("SELECT CAST(dc AS bigint) FROM num_decimal where pk=2");
+  // VARINT is not supported for CAST.
+  CHECK_INVALID_STMT("SELECT CAST(dc AS varint) FROM num_decimal where pk=2");
+
+  // Test an extrim DECIMAL value.
+  CHECK_VALID_STMT("INSERT INTO num_decimal (pk, dc) values "
+                   "(3, -123123123123456456456456.789789789789123123123123)");
+  {
+    CHECK_VALID_STMT("SELECT dc FROM num_decimal where pk=3");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
+        Decimal("-123123123123456456456456.789789789789123123123123"));
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc AS decimal) FROM num_decimal where pk=3");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
+        Decimal("-123123123123456456456456.789789789789123123123123"));
+  }
+  // INT64 overflow.
+  CHECK_INVALID_STMT("SELECT CAST(dc AS bigint) FROM num_decimal where pk=3");
+  CHECK_INVALID_STMT("SELECT CAST(dc AS int) FROM num_decimal where pk=3");
+
+  // Test a value > MAX_DOUBLE=1.79769e+308.
+  CHECK_VALID_STMT("INSERT INTO num_decimal (pk, dc) values (4, 5e+308)");
+  {
+    CHECK_VALID_STMT("SELECT dc FROM num_decimal where pk=4");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("5e+308"));
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc AS decimal) FROM num_decimal where pk=4");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("5e+308"));
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc AS float) FROM num_decimal where pk=4");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    // FLOAT overflow = Infinity.
+    EXPECT_EQ(row.column(0).float_value(), numeric_limits<float>::infinity());
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc AS double) FROM num_decimal where pk=4");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    // DOUBLE overflow = Infinity.
+    EXPECT_EQ(row.column(0).double_value(), numeric_limits<double>::infinity());
+  }
+  // Not supported.
+  CHECK_INVALID_STMT("SELECT CAST(dc AS varint) FROM num_decimal where pk=4");
+
+  // Test a value > MAX_FLOAT=3.40282e+38.
+  CHECK_VALID_STMT("INSERT INTO num_decimal (pk, dc) values (5, 5e+38)");
+  {
+    CHECK_VALID_STMT("SELECT dc FROM num_decimal where pk=5");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("5e+38"));
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc AS decimal) FROM num_decimal where pk=5");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("5e+38"));
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc AS double) FROM num_decimal where pk=5");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).double_value(), 5.e+38);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dc AS float) FROM num_decimal where pk=5");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    // FLOAT overflow = Infinity.
+    EXPECT_EQ(row.column(0).float_value(), numeric_limits<float>::infinity());
+  }
+  // VARINT is not supported for CAST.
+  CHECK_INVALID_STMT("SELECT CAST(dc AS varint) FROM num_decimal where pk=5");
+
+  // Test conversions FROM numeric types TO DECIMAL.
+
+  // Create the table and insert some float value.
+  CHECK_VALID_STMT("CREATE TABLE numbers (pk int PRIMARY KEY, flt float, dbl double, vari varint, "
+                                         "i8 tinyint, i16 smallint, i32 int, i64 bigint)");
+  CHECK_VALID_STMT("INSERT INTO numbers (pk, flt) values (1, 456.7)");
+  // Test various selects.
+  {
+    CHECK_VALID_STMT("SELECT flt FROM numbers");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).float_value(), 456.7f);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(flt as float) FROM numbers");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).float_value(), 456.7f);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(flt as decimal) FROM numbers");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    double num = EXPECT_RESULT(DecimalFromComparable(row.column(0).decimal_value()).ToDouble());
+    EXPECT_LT(fabs(num - 456.7), 0.001);
+  }
+  // Test -MAX_BIGINT=-9223372036854775807
+  CHECK_VALID_STMT("INSERT INTO numbers (pk, i64) values (2, -9223372036854775807)");
+  {
+    CHECK_VALID_STMT("SELECT i64 FROM numbers where pk=2");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).int64_value(), -9223372036854775807LL);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(i64 as bigint) FROM numbers where pk=2");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).int64_value(), -9223372036854775807LL);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(i64 as decimal) FROM numbers where pk=2");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
+        Decimal("-9223372036854775807"));
+  }
+  // Test VARINT:
+  CHECK_VALID_STMT("INSERT INTO numbers (pk, vari) values (3, "
+                   "-123456789012345678901234567890123456789012345678901234567890)");
+  {
+    CHECK_VALID_STMT("SELECT vari FROM numbers where pk=3");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).varint_value(), CHECK_RESULT(VarInt::CreateFromString(
+        "-123456789012345678901234567890123456789012345678901234567890")));
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(vari as decimal) FROM numbers where pk=3");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(DecimalFromComparable(row.column(0).decimal_value()),
+        Decimal("-123456789012345678901234567890123456789012345678901234567890"));
+  }
+  // VARINT is not supported for CAST.
+  CHECK_INVALID_STMT("SELECT CAST(vari as varint) FROM numbers where pk=3");
+
+  // Test MAX_FLOAT=3.40282e+38
+  CHECK_VALID_STMT("INSERT INTO numbers (pk, flt) values (4, 3.40282e+38)");
+  // Test various selects.
+  {
+    CHECK_VALID_STMT("SELECT flt FROM numbers where pk=4");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).float_value(), 3.40282e+38f);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(flt as float) FROM numbers where pk=4");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).float_value(), 3.40282e+38f);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(flt as decimal) FROM numbers where pk=4");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    double num = EXPECT_RESULT(DecimalFromComparable(row.column(0).decimal_value()).ToDouble());
+    EXPECT_LT(fabs(num - 3.40282e+38), 1e+31);
+  }
+
+  // Test MAX_DOUBLE=1.79769e+308
+  CHECK_VALID_STMT("INSERT INTO numbers (pk, dbl) values (5, 1.79769e+308)");
+  // Test various selects.
+  {
+    CHECK_VALID_STMT("SELECT dbl FROM numbers where pk=5");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).double_value(), 1.79769e+308);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dbl as double) FROM numbers where pk=5");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    EXPECT_EQ(row.column(0).double_value(), 1.79769e+308);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dbl as decimal) FROM numbers where pk=5");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    double num = EXPECT_RESULT(DecimalFromComparable(row.column(0).decimal_value()).ToDouble());
+    EXPECT_EQ(num, 1.79769e+308);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(dbl AS float) FROM numbers where pk=5");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    // FLOAT overflow = Infinity.
+    EXPECT_EQ(row.column(0).float_value(), numeric_limits<float>::infinity());
+  }
+  // VARINT is not supported for CAST.
+  CHECK_INVALID_STMT("SELECT CAST(dbl as varint) FROM numbers where pk=5");
+}
+
+TEST_F(QLTestSelectedExpr, TestCastTinyInt) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  LOG(INFO) << "Test selecting with CAST.";
+
+  // Try to convert FROM TINYINT TO a numeric type.
+
+  // Create the table and insert some decimal value.
+  CHECK_VALID_STMT("CREATE TABLE num_tinyint (pk int PRIMARY KEY, ti tinyint)");
+  CHECK_VALID_STMT("INSERT INTO num_tinyint (pk, ti) values (1, 123)");
+  // Test various selects.
+  {
+    CHECK_VALID_STMT("SELECT * FROM num_tinyint");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 2);
+    ASSERT_EQ(row.column(0).int32_value(), 1);
+    ASSERT_EQ(row.column(1).int8_value(), 123);
+  }
+  {
+    CHECK_VALID_STMT("SELECT ti FROM num_tinyint");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    ASSERT_EQ(row.column(0).int8_value(), 123);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(ti as smallint) FROM num_tinyint");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    ASSERT_EQ(row.column(0).int16_value(), 123);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(ti as int) FROM num_tinyint");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    ASSERT_EQ(row.column(0).int32_value(), 123);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(ti as bigint) FROM num_tinyint");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    ASSERT_EQ(row.column(0).int64_value(), 123);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(ti as double) FROM num_tinyint");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    ASSERT_EQ(row.column(0).double_value(), 123.);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(ti as float) FROM num_tinyint");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    ASSERT_EQ(row.column(0).float_value(), 123.f);
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(ti as text) FROM num_tinyint");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    ASSERT_EQ(row.column(0).string_value(), "123");
+  }
+  {
+    CHECK_VALID_STMT("SELECT CAST(ti as decimal) FROM num_tinyint");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    ASSERT_EQ(DecimalFromComparable(row.column(0).decimal_value()), Decimal("123"));
+  }
+  // VARINT is not supported for CAST.
+  CHECK_INVALID_STMT("SELECT CAST(ti AS varint) FROM num_tinyint");
+  // TINYINT is not supported for CAST.
+  CHECK_INVALID_STMT("SELECT CAST(ti as tinyint) FROM num_tinyint");
+
+  // Try value > MAX_TINYINT = 127
+  CHECK_INVALID_STMT("INSERT INTO num_tinyint (pk, ti) values (2, 256)");
+
+  // Try to convert FROM a numeric type TO TINYINT.
+
+  // Create the table and insert some float value.
+  CHECK_VALID_STMT("CREATE TABLE numbers (pk int PRIMARY KEY, flt float, dbl double, vari varint, "
+                                         "i8 tinyint, i16 smallint, i32 int, i64 bigint)");
+  CHECK_VALID_STMT("INSERT INTO numbers (pk, flt, dbl, vari, i8, i16, i32, i64) values "
+                                       "(1, 456.7, 123.456, 256, 123, 123, 123, 123)");
+  // Test various selects.
+  {
+    CHECK_VALID_STMT("SELECT i8 FROM numbers");
+    std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+    ASSERT_EQ(row_block->row_count(), 1);
+    const QLRow& row = row_block->row(0);
+    ASSERT_EQ(row.column_count(), 1);
+    ASSERT_EQ(row.column(0).int8_value(), 123);
+  }
+  // TINYINT is not supported for CAST.
+  CHECK_INVALID_STMT("SELECT CAST(i16 as tinyint) FROM numbers");
+  CHECK_INVALID_STMT("SELECT CAST(i32 as tinyint) FROM numbers");
+  CHECK_INVALID_STMT("SELECT CAST(i64 as tinyint) FROM numbers");
+  CHECK_INVALID_STMT("SELECT CAST(flt as tinyint) FROM numbers");
+  CHECK_INVALID_STMT("SELECT CAST(dbl as tinyint) FROM numbers");
+  CHECK_INVALID_STMT("SELECT CAST(vari as tinyint) FROM numbers");
+}
 
 TEST_F(QLTestSelectedExpr, TestTserverTimeout) {
   // Init the simulated cluster.

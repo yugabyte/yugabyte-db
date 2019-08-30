@@ -13,9 +13,16 @@
 
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/client/session.h"
+
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+
+using namespace std::literals;
+
+DECLARE_bool(use_priority_thread_pool_for_flushes);
+
 
 ///////////////////////////////////////////////////
 // YBMiniClusterTestBase
@@ -26,6 +33,7 @@ namespace yb {
 template <class T>
 void YBMiniClusterTestBase<T>::SetUp() {
   YBTest::SetUp();
+  FLAGS_use_priority_thread_pool_for_flushes = true;
   verify_cluster_before_next_tear_down_ = true;
 }
 
@@ -66,5 +74,30 @@ void YBMiniClusterTestBase<T>::DontVerifyClusterBeforeNextTearDown() {
 // implementation changes.
 template class YBMiniClusterTestBase<MiniCluster>;
 template class YBMiniClusterTestBase<ExternalMiniCluster>;
+
+template <class T>
+Status MiniClusterTestWithClient<T>::CreateClient() {
+  // Connect to the cluster.
+  client_ = VERIFY_RESULT(YBMiniClusterTestBase<T>::cluster_->CreateClient());
+  return Status::OK();
+}
+
+template <class T>
+void MiniClusterTestWithClient<T>::DoTearDown() {
+  client_.reset();
+  YBMiniClusterTestBase<T>::DoTearDown();
+}
+
+template <class T>
+client::YBSessionPtr MiniClusterTestWithClient<T>::NewSession() {
+  auto session = client_->NewSession();
+  session->SetTimeout(60s);
+  return session;
+}
+
+// Instantiate explicitly to avoid recompilation of a lot of dependent test classes due to template
+// implementation changes.
+template class MiniClusterTestWithClient<MiniCluster>;
+template class MiniClusterTestWithClient<ExternalMiniCluster>;
 
 } // namespace yb

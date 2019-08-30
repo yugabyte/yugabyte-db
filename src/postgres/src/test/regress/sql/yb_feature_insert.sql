@@ -379,7 +379,7 @@ SELECT * FROM feature_tab_dml ORDER BY col_smallint;
 --
 -- INSERT ON CONFLICT
 --
-INSERT INTO feature_tab_dml VALUES(
+INSERT INTO feature_tab_dml as t VALUES(
 			 10,
 			 0,
 			 0,
@@ -395,11 +395,11 @@ INSERT INTO feature_tab_dml VALUES(
 			 '{ 0, 0, 0 }',
 			 '{ "ten", "ten", "ten" }')
 
- 			 ON CONFLICT DO UPDATE SET
-			 		col_integer = col_integer + 10,
-			 		col_bigint = col_bigint + 10,
-			 		col_real = col_real + 10.10,
-			 		col_double = col_double + 10.10,
+ 			 ON CONFLICT (col_smallint) DO UPDATE SET
+			 		col_integer = t.col_integer + 10,
+			 		col_bigint = t.col_bigint + 10,
+			 		col_real = t.col_real + 10.10,
+			 		col_double = t.col_double + 10.10,
 			 		col_char = 'ten',
 			 		col_varchar = 'ten',
 			 		col_text = 'ten',
@@ -408,8 +408,12 @@ INSERT INTO feature_tab_dml VALUES(
 			 		col_timestamp_tz = 'October 10, 2019 10:10:10.0000 PST AD',
 			 		col_array_int = '{ 10, 10, 10 }',
 			 		col_array_text = '{ "ten", "ten", "ten" }'
-			 WHERE col_smallint = 10;
+			 WHERE t.* != excluded.*;
 INSERT INTO feature_tab_dml_identifier VALUES(10, 'ten');
+--
+-- Use SELECT To Validate INSERT ON CONFLICT
+--
+SELECT * FROM feature_tab_dml ORDER BY col_smallint;
 --
 -- INSERT WITH OVERRIDING
 -- Need testing once supported.

@@ -49,6 +49,9 @@
 #include <set>
 #include <vector>
 
+#include <cds/init.h>
+#include <cds/gc/dhp.h>
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/mathlimits.h"
@@ -143,9 +146,13 @@ class ThreadMgr {
       : metrics_enabled_(false),
         threads_started_metric_(0),
         threads_running_metric_(0) {
+    cds::Initialize();
+    cds::gc::dhp::GarbageCollector::construct();
+    cds::threading::Manager::attachThread();
   }
 
   ~ThreadMgr() {
+    cds::Terminate();
     MutexLock l(lock_);
     thread_categories_.clear();
   }
@@ -330,27 +337,48 @@ int Compare(const Result<StackTrace>& lhs, const Result<StackTrace>& rhs) {
 
 void ThreadMgr::PrintThreadCategoryRows(const ThreadCategory& category, stringstream* output) {
   struct ThreadData {
+    int64_t tid;
+    ThreadIdForStack tid_for_stack;
     const std::string* name;
     ThreadStats stats;
     Result<StackTrace> stack_trace = StackTrace();
     int rowspan = -1;
   };
   std::vector<ThreadData> threads;
+  std::vector<ThreadIdForStack> thread_ids;
   threads.resize(category.size());
-  auto* data = threads.data();
-  for (const ThreadCategory::value_type& thread : category) {
-    data->name = &thread.second.name();
-    Status status = GetThreadStats(thread.second.thread_id(), &data->stats);
-    if (!status.ok()) {
-      YB_LOG_EVERY_N(INFO, 100) << "Could not get per-thread statistics: "
-                              << status.ToString();
+  thread_ids.reserve(category.size());
+  {
+    auto* data = threads.data();
+    for (const ThreadCategory::value_type& thread : category) {
+      data->name = &thread.second.name();
+      data->tid = thread.second.thread_id();
+#if defined(__linux__)
+      data->tid_for_stack = data->tid;
+#else
+      data->tid_for_stack = thread.first;
+#endif
+      Status status = GetThreadStats(data->tid, &data->stats);
+      if (!status.ok()) {
+        YB_LOG_EVERY_N(INFO, 100) << "Could not get per-thread statistics: "
+                                  << status.ToString();
+      }
+      thread_ids.push_back(data->tid_for_stack);
+      ++data;
     }
-    data->stack_trace = ThreadStack(thread.second.thread_id());
-    ++data;
   }
 
   if (threads.empty()) {
     return;
+  }
+
+  std::sort(thread_ids.begin(), thread_ids.end());
+  auto stacks = ThreadStacks(thread_ids);
+
+  for (ThreadData& data : threads) {
+    auto it = std::lower_bound(thread_ids.begin(), thread_ids.end(), data.tid_for_stack);
+    DCHECK(it != thread_ids.end() && *it == data.tid_for_stack);
+    data.stack_trace = stacks[it - thread_ids.begin()];
   }
 
   std::sort(threads.begin(), threads.end(), [](const ThreadData& lhs, const ThreadData& rhs) {
@@ -571,13 +599,13 @@ std::string Thread::ToString() const {
 }
 
 Status Thread::StartThread(const std::string& category, const std::string& name,
-                           const ThreadFunctor& functor, scoped_refptr<Thread> *holder) {
+                           ThreadFunctor functor, scoped_refptr<Thread> *holder) {
   InitThreading();
   const string log_prefix = Substitute("$0 ($1) ", name, category);
   SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "starting thread");
 
   // Temporary reference for the duration of this function.
-  scoped_refptr<Thread> t(new Thread(category, name, functor));
+  scoped_refptr<Thread> t(new Thread(category, name, std::move(functor)));
 
   {
     SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "creating pthread");
@@ -653,6 +681,8 @@ void* Thread::SuperviseThread(void* arg) {
   thread_manager->SetThreadName(name, t->tid());
   thread_manager->AddThread(pthread_self(), name, t->category(), t->tid());
 
+  cds::threading::Manager::attachThread();
+
   // FinishThread() is guaranteed to run (even if functor_ throws an
   // exception) because pthread_cleanup_push() creates a scoped object
   // whose destructor invokes the provided callback.
@@ -664,6 +694,8 @@ void* Thread::SuperviseThread(void* arg) {
 }
 
 void Thread::FinishThread(void* arg) {
+  cds::threading::Manager::detachThread();
+
   Thread* t = static_cast<Thread*>(arg);
 
   for (Closure& c : t->exit_callbacks_) {
@@ -681,6 +713,14 @@ void Thread::FinishThread(void* arg) {
 
   VLOG(2) << "Ended thread " << t->tid() << " - "
           << t->category() << ":" << t->name();
+}
+
+CDSAttacher::CDSAttacher() {
+  cds::threading::Manager::attachThread();
+}
+
+CDSAttacher::~CDSAttacher() {
+  cds::threading::Manager::detachThread();
 }
 
 } // namespace yb

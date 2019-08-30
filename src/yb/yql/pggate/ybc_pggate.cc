@@ -10,11 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/util/ybc-internal.h"
+#include <cds/init.h>
+
+#include "yb/common/ybc-internal.h"
 #include "yb/util/atomic.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/pggate.h"
+#include "yb/yql/pggate/pggate_flags.h"
 
 DECLARE_bool(client_suppress_created_logs);
 
@@ -23,6 +26,8 @@ DEFINE_int32(pggate_num_connections_to_server, 1,
              "This overrides the value of --num_connections_to_server.");
 
 DECLARE_int32(num_connections_to_server);
+
+DECLARE_int32(delay_alter_sequence_sec);
 
 namespace yb {
 namespace pggate {
@@ -45,14 +50,11 @@ std::atomic<bool> pgapi_shutdown_done;
 extern "C" {
 
 void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count) {
-  const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
-  if (initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0) {
-    YBCSetInitDbMode();
-  }
+  InitThreading();
+
   CHECK(pgapi == nullptr) << ": " << __PRETTY_FUNCTION__ << " can only be called once";
 
-  SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
-                &FLAGS_num_connections_to_server);
+  YBCInitFlags();
 
   pgapi_shutdown_done.exchange(false);
   pgapi = new pggate::PgApiImpl(YBCDataTypeTable, count);
@@ -134,9 +136,9 @@ YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle) {
 
 YBCStatus YBCPgNewDropDatabase(YBCPgSession pg_session,
                                const char *database_name,
-                               bool if_exist,
+                               const YBCPgOid database_oid,
                                YBCPgStatement *handle) {
-  return ToYBCStatus(pgapi->NewDropDatabase(pg_session, database_name, if_exist, handle));
+  return ToYBCStatus(pgapi->NewDropDatabase(pg_session, database_name, database_oid, handle));
 }
 
 YBCStatus YBCPgExecDropDatabase(YBCPgStatement handle) {
@@ -157,7 +159,7 @@ YBCStatus YBCPgGetCatalogMasterVersion(YBCPgSession pg_session, uint64_t *versio
   return ToYBCStatus(pgapi->GetCatalogMasterVersion(pg_session, version));
 }
 
-// Schema Operations -------------------------------------------------------------------------------
+// Statement Operations ----------------------------------------------------------------------------
 
 YBCStatus YBCPgDeleteStatement(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->DeleteStatement(handle));
@@ -167,75 +169,51 @@ YBCStatus YBCPgClearBinds(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ClearBinds(handle));
 }
 
-// Schema Operations -------------------------------------------------------------------------------
-YBCStatus YBCPgNewCreateSchema(YBCPgSession pg_session,
-                               const char *database_name,
-                               const char *schema_name,
-                               bool if_not_exist,
-                               YBCPgStatement *handle) {
-  return YBCStatusNotSupport("SCHEMA");
-#if (0)
-  // TODO(neil) Turn this ON when schema is supported.
-  return ToYBCStatus(pgapi->NewCreateSchema(pg_session, schema_name, database_name,
-                                            if_not_exist, handle));
-#endif
-}
-
-YBCStatus YBCPgExecCreateSchema(YBCPgStatement handle) {
-  return YBCStatusNotSupport("SCHEMA");
-#if (0)
-  // TODO(neil) Turn this ON when schema is supported.
-  return ToYBCStatus(pgapi->ExecCreateSchema(handle));
-#endif
-}
-
-YBCStatus YBCPgNewDropSchema(YBCPgSession pg_session,
-                             const char *database_name,
-                             const char *schema_name,
-                             bool if_exist,
-                             YBCPgStatement *handle) {
-  return YBCStatusNotSupport("SCHEMA");
-#if (0)
-  // TODO(neil) Turn this ON when schema is supported.
-  return ToYBCStatus(pgapi->NewDropSchema(pg_session, database_name, schema_name,
-                                          if_exist, handle));
-#endif
-}
-
-YBCStatus YBCPgExecDropSchema(YBCPgStatement handle) {
-  return YBCStatusNotSupport("SCHEMA");
-#if (0)
-  // TODO(neil) Turn this ON when schema is supported.
-  return ToYBCStatus(pgapi->ExecDropSchema(handle));
-#endif
-}
+// Sequence Operations -----------------------------------------------------------------------------
 
 YBCStatus YBCInsertSequenceTuple(YBCPgSession pg_session,
                                  int64_t db_oid,
                                  int64_t seq_oid,
+                                 uint64_t ysql_catalog_version,
                                  int64_t last_val,
                                  bool is_called) {
-  return ToYBCStatus(pgapi->InsertSequenceTuple(pg_session, db_oid, seq_oid, last_val, is_called));
+  return ToYBCStatus(pgapi->InsertSequenceTuple(pg_session, db_oid, seq_oid, ysql_catalog_version,
+      last_val, is_called));
+}
+
+YBCStatus YBCUpdateSequenceTupleConditionally(YBCPgSession pg_session,
+                                              int64_t db_oid,
+                                              int64_t seq_oid,
+                                              uint64_t ysql_catalog_version,
+                                              int64_t last_val,
+                                              bool is_called,
+                                              int64_t expected_last_val,
+                                              bool expected_is_called,
+                                              bool *skipped) {
+  return ToYBCStatus(
+      pgapi->UpdateSequenceTupleConditionally(pg_session, db_oid, seq_oid, ysql_catalog_version,
+          last_val, is_called, expected_last_val, expected_is_called, skipped));
 }
 
 YBCStatus YBCUpdateSequenceTuple(YBCPgSession pg_session,
                                  int64_t db_oid,
                                  int64_t seq_oid,
+                                 uint64_t ysql_catalog_version,
                                  int64_t last_val,
                                  bool is_called,
-                                 int64_t expected_last_val,
-                                 bool expected_is_called,
                                  bool* skipped) {
-  return ToYBCStatus(pgapi->UpdateSequenceTuple(pg_session, db_oid, seq_oid, last_val, is_called,
-      expected_last_val, expected_is_called, skipped));
+  return ToYBCStatus(pgapi->UpdateSequenceTuple(pg_session, db_oid, seq_oid, ysql_catalog_version,
+      last_val, is_called, skipped));
 }
 
 YBCStatus YBCReadSequenceTuple(YBCPgSession pg_session,
                                int64_t db_oid,
                                int64_t seq_oid,
+                               uint64_t ysql_catalog_version,
                                int64_t *last_val,
                                bool *is_called) {
-  return ToYBCStatus(pgapi->ReadSequenceTuple(pg_session, db_oid, seq_oid, last_val, is_called));
+  return ToYBCStatus(pgapi->ReadSequenceTuple(pg_session, db_oid, seq_oid, ysql_catalog_version,
+      last_val, is_called));
 }
 
 YBCStatus YBCDeleteSequenceTuple(YBCPgSession pg_session, int64_t db_oid, int64_t seq_oid) {
@@ -261,9 +239,14 @@ YBCStatus YBCPgNewCreateTable(YBCPgSession pg_session,
 }
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
-                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range) {
+                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range,
+                                    bool is_desc, bool is_nulls_first) {
   return ToYBCStatus(pgapi->CreateTableAddColumn(handle, attr_name, attr_num, attr_type,
-                                                 is_hash, is_range));
+                                                 is_hash, is_range, is_desc, is_nulls_first));
+}
+
+YBCStatus YBCPgCreateTableSetNumTablets(YBCPgStatement handle, int32_t num_tablets) {
+  return ToYBCStatus(pgapi->CreateTableSetNumTablets(handle, num_tablets));
 }
 
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle) {
@@ -338,8 +321,12 @@ YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle,
   return ToYBCStatus(pgapi->SetCatalogCacheVersion(handle, catalog_cache_version));
 }
 
-YBCStatus YBCPgSetIsSystemCatalogChange(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->SetIsSystemCatalogChange(handle));
+YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row) {
+  return ToYBCStatus(pgapi->DmlModifiesRow(handle, modifies_row));
+}
+
+YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->SetIsSysCatalogVersionChange(handle));
 }
 
 YBCStatus YBCPgNewTruncateTable(YBCPgSession pg_session,
@@ -375,9 +362,10 @@ YBCStatus YBCPgNewCreateIndex(YBCPgSession pg_session,
 }
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
-                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range) {
+                                    const YBCPgTypeEntity *attr_type, bool is_hash, bool is_range,
+                                    bool is_desc, bool is_nulls_first) {
   return ToYBCStatus(pgapi->CreateIndexAddColumn(handle, attr_name, attr_num, attr_type,
-                                                 is_hash, is_range));
+                                                 is_hash, is_range, is_desc, is_nulls_first));
 }
 
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle) {
@@ -409,6 +397,20 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
+YBCStatus YBCPgDmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondEq(handle, attr_num, attr_value));
+}
+
+YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
+    YBCPgExpr attr_value_end) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondBetween(handle, attr_num, attr_value, attr_value_end));
+}
+
+YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
+    YBCPgExpr *attr_values) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondIn(handle, attr_num, n_attr_values, attr_values));
+}
+
 YBCStatus YBCPgDmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
   return ToYBCStatus(pgapi->DmlBindIndexColumn(handle, attr_num, attr_value));
 }
@@ -432,8 +434,17 @@ YBCStatus YBCPgFlushBufferedWriteOperations(YBCPgSession pg_session) {
   return ToYBCStatus(pgapi->FlushBufferedWriteOperations(pg_session));
 }
 
-YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->DmlExecWriteOp(handle));
+YBCStatus YBCPgDmlExecWriteOp(YBCPgStatement handle, int32_t *rows_affected_count) {
+  return ToYBCStatus(pgapi->DmlExecWriteOp(handle, rows_affected_count));
+}
+
+YBCStatus YBCPgDmlAddYBTupleIdColumn(YBCPgStatement handle, int attr_num, uint64_t datum,
+                                     bool is_null, const YBCPgTypeEntity *type_entity) {
+  return ToYBCStatus(pgapi->DmlAddYBTupleIdColumn(handle, attr_num, datum, is_null, type_entity));
+}
+
+YBCStatus YBCPgDmlGetYBTupleId(YBCPgStatement handle, uint64_t *ybctid) {
+  return ToYBCStatus(pgapi->DmlGetYBTupleId(handle, ybctid));
 }
 
 // INSERT Operations -------------------------------------------------------------------------------
@@ -454,9 +465,10 @@ YBCStatus YBCPgExecInsert(YBCPgStatement handle) {
 YBCStatus YBCPgNewUpdate(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewUpdate(pg_session, table_id, handle));
+  return ToYBCStatus(pgapi->NewUpdate(pg_session, table_id, is_single_row_txn, handle));
 }
 
 YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
@@ -467,9 +479,10 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
 YBCStatus YBCPgNewDelete(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
+                         bool is_single_row_txn,
                          YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
-  return ToYBCStatus(pgapi->NewDelete(pg_session, table_id, handle));
+  return ToYBCStatus(pgapi->NewDelete(pg_session, table_id, is_single_row_txn, handle));
 }
 
 YBCStatus YBCPgExecDelete(YBCPgStatement handle) {
@@ -481,15 +494,20 @@ YBCStatus YBCPgNewSelect(YBCPgSession pg_session,
                          const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
                          const YBCPgOid index_oid,
-                         YBCPgStatement *handle,
-                         uint64_t* read_time) {
+                         bool prevent_restart,
+                         YBCPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_oid);
   const PgObjectId index_id(database_oid, index_oid);
-  return ToYBCStatus(pgapi->NewSelect(pg_session, table_id, index_id, handle, read_time));
+  return ToYBCStatus(pgapi->NewSelect(
+      pg_session, table_id, index_id, PreventRestart(prevent_restart), handle));
 }
 
-YBCStatus YBCPgExecSelect(YBCPgStatement handle) {
-  return ToYBCStatus(pgapi->ExecSelect(handle));
+YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
+  return ToYBCStatus(pgapi->SetForwardScan(handle, is_forward_scan));
+}
+
+YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params) {
+  return ToYBCStatus(pgapi->ExecSelect(handle, exec_params));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -504,6 +522,11 @@ YBCStatus YBCPgNewColumnRef(YBCPgStatement stmt, int attr_num, const YBCPgTypeEn
 YBCStatus YBCPgNewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
                            uint64_t datum, bool is_null, YBCPgExpr *expr_handle) {
   return ToYBCStatus(pgapi->NewConstant(stmt, type_entity, datum, is_null, expr_handle));
+}
+
+YBCStatus YBCPgNewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                           uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt) {
+  return ToYBCStatus(pgapi->NewConstantOp(stmt, type_entity, datum, is_null, expr_handle, is_gt));
 }
 
 // Overwriting the expression's result with any desired values.
@@ -553,9 +576,44 @@ YBCPgTxnManager YBCGetPgTxnManager() {
   return pgapi->GetPgTxnManager();
 }
 
-void YBCSetInitDbMode() {
-  // Suppress log spew during initdb.
-  FLAGS_client_suppress_created_logs = true;
+bool YBCIsInitDbModeEnvVarSet() {
+  static bool cached_value = false;
+  static bool cached = false;
+
+  if (!cached) {
+    const char* initdb_mode_env_var_value = getenv("YB_PG_INITDB_MODE");
+    cached_value = initdb_mode_env_var_value && strcmp(initdb_mode_env_var_value, "1") == 0;
+    cached = true;
+  }
+
+  return cached_value;
+}
+
+void YBCInitFlags() {
+  if (YBCIsInitDbModeEnvVarSet()) {
+    // Suppress log spew during initdb.
+    FLAGS_client_suppress_created_logs = true;
+  }
+
+  SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
+                &FLAGS_num_connections_to_server);
+
+  // TODO(neil) Init a gflag for "YB_PG_TRANSACTIONS_ENABLED" here also.
+  // Mikhail agreed that this flag should just be initialized once at the beginning here.
+  // Currently, it is initialized for every CREATE statement.
+}
+
+YBCStatus YBCPgIsInitDbDone(YBCPgSession pg_session, bool* initdb_done) {
+  return ToYBCStatus(pg_session->IsInitDbDone(initdb_done));
+}
+
+YBCStatus YBCGetSharedCatalogVersion(YBCPgSession pg_session, uint64_t* catalog_version) {
+  auto result = pg_session->GetSharedCatalogVersion();
+  if (result.ok()) {
+    *catalog_version = *result;
+    return YBCStatusOK();
+  }
+  return ToYBCStatus(result.status());
 }
 
 } // extern "C"

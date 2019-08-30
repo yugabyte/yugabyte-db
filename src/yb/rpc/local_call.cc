@@ -29,15 +29,16 @@ LocalOutboundCall::LocalOutboundCall(
     google::protobuf::Message* response_storage, RpcController* controller,
     RpcMetrics* rpc_metrics, ResponseCallback callback)
     : OutboundCall(remote_method, outbound_call_metrics, response_storage, controller, rpc_metrics,
-                   std::move(callback)) {
+                   std::move(callback), nullptr /* callback_thread_pool */) {
 }
 
-Status LocalOutboundCall::SetRequestParam(const google::protobuf::Message& req) {
+Status LocalOutboundCall::SetRequestParam(
+    const google::protobuf::Message& req, const MemTrackerPtr& mem_tracker) {
   req_ = &req;
   return Status::OK();
 }
 
-void LocalOutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
+void LocalOutboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   LOG(FATAL) << "Local call should not require serialization";
 }
 

@@ -10,9 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <glog/logging.h>
 
 #include "yb/common/ql_bfunc.h"
-#include <glog/logging.h>
+#include "yb/util/bfql/bfql.h"
+#include "yb/util/bfpg/bfpg.h"
 
 namespace yb {
 

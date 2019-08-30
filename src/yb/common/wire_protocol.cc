@@ -208,6 +208,13 @@ void HostPortsToPBs(const std::vector<HostPort>& addrs, RepeatedPtrField<HostPor
   }
 }
 
+void HostPortsFromPBs(const RepeatedPtrField<HostPortPB>& pbs, std::vector<HostPort>* addrs) {
+  addrs->reserve(pbs.size());
+  for (const auto& pb : pbs) {
+    addrs->push_back(HostPortFromPB(pb));
+  }
+}
+
 Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
                       RepeatedPtrField<HostPortPB>* pbs) {
   for (const auto& addr : addrs) {
@@ -276,31 +283,15 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
     pb->set_is_key(true);
     pb->set_is_hash_key(true);
   }
-
-  // Set JSON attribute path (for c->'a'->>'b' case).
-  for (const auto& op : col_schema.json_ops()) {
-    QLJsonOperationPB* const json_op_pb = pb->add_json_operations();
-    json_op_pb->set_json_operator(op.first);
-    *(json_op_pb->mutable_operand()->mutable_value()) = op.second;
-  }
 }
 
-ColumnSchema::QLJsonOperations JsonOpsFromPB(
-    const RepeatedPtrField<QLJsonOperationPB>& json_ops) {
-  ColumnSchema::QLJsonOperations op_vec;
-  for (const QLJsonOperationPB& pb : json_ops) {
-    op_vec.push_back(ColumnSchema::QLJsonOperation(pb.json_operator(), pb.operand().value()));
-  }
-  return op_vec;
-}
 
 ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   // Only "is_hash_key" is used to construct ColumnSchema. The field "is_key" will be read when
   // processing SchemaPB.
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), pb.is_nullable(),
                       pb.is_hash_key(), pb.is_static(), pb.is_counter(), pb.order(),
-                      ColumnSchema::SortingType(pb.sorting_type()),
-                      JsonOpsFromPB(pb.json_operations()));
+                      ColumnSchema::SortingType(pb.sorting_type()));
 }
 
 CHECKED_STATUS ColumnPBsToColumnTuple(

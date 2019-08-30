@@ -49,6 +49,8 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/replicate_msgs_holder.h"
+
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
@@ -73,12 +75,12 @@ using namespace yb::size_literals;
 
 DECLARE_int32(rpc_max_message_size);
 
-// Since we intend to support three strings of sizes of up to 64MB,
-// with the additional overhead we limit the consensus batch size to 254 MB.
-// This gives us room for overhead in the rpc layer
-DEFINE_int32(consensus_max_batch_size_bytes, 254_MB,
+// We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
+// Otherwise such batch would be rejected by RPC layer.
+DEFINE_int32(consensus_max_batch_size_bytes, 32_MB,
              "The maximum per-tablet RPC batch size when updating peers.");
 TAG_FLAG(consensus_max_batch_size_bytes, advanced);
+TAG_FLAG(consensus_max_batch_size_bytes, runtime);
 
 DEFINE_int32(follower_unavailable_considered_failed_sec, 300,
              "Seconds that a leader is unable to successfully heartbeat to a "
@@ -92,8 +94,6 @@ DEFINE_int32(consensus_inject_latency_ms_in_notifications, 0,
              "consensus implementation.");
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, hidden);
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, unsafe);
-
-DECLARE_int32(rpc_max_message_size);
 
 DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
 
@@ -258,7 +258,6 @@ void PeerMessageQueue::CheckPeersInActiveConfigIfLeaderUnlocked() const {
 }
 
 void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
-                                               const StatusCallback& callback,
                                                const Status& status) {
   CHECK_OK(status);
 
@@ -281,20 +280,16 @@ void PeerMessageQueue::LocalPeerAppendFinished(const OpId& id,
   }
   bool junk;
   ResponseFromPeer(local_peer_uuid_, fake_response, &junk);
-
-  callback.Run(status);
 }
 
 Status PeerMessageQueue::TEST_AppendOperation(const ReplicateMsgPtr& msg) {
   return AppendOperations(
-      { msg }, yb::OpId::FromPB(msg->committed_op_id()), RestartSafeCoarseMonoClock().Now(),
-      Bind(DoNothingStatusCB));
+      { msg }, yb::OpId::FromPB(msg->committed_op_id()), RestartSafeCoarseMonoClock().Now());
 }
 
 Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
                                           const yb::OpId& committed_op_id,
-                                          RestartSafeCoarseTimePoint batch_mono_time,
-                                          const StatusCallback& log_append_callback) {
+                                          RestartSafeCoarseTimePoint batch_mono_time) {
   DFAKE_SCOPED_LOCK(append_fake_lock_);
   OpId last_id;
   if (!msgs.empty()) {
@@ -318,8 +313,7 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
   // be executed and queue_state_.last_appended will be updated correctly.
   RETURN_NOT_OK(log_cache_.AppendOperations(
       msgs, committed_op_id, batch_mono_time,
-      Bind(&PeerMessageQueue::LocalPeerAppendFinished, Unretained(this), last_id,
-           log_append_callback)));
+      Bind(&PeerMessageQueue::LocalPeerAppendFinished, Unretained(this), last_id)));
 
   if (!msgs.empty()) {
     std::unique_lock<simple_spinlock> lock(queue_lock_);
@@ -332,10 +326,12 @@ Status PeerMessageQueue::AppendOperations(const ReplicateMsgs& msgs,
 
 Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         ConsensusRequestPB* request,
-                                        ReplicateMsgs* msg_refs,
+                                        ReplicateMsgsHolder* msgs_holder,
                                         bool* needs_remote_bootstrap,
                                         RaftPeerPB::MemberType* member_type,
                                         bool* last_exchange_successful) {
+  DCHECK(request->ops().empty());
+
   OpId preceding_id;
   MonoDelta unreachable_time = MonoDelta::kMin;
   bool is_voter = false;
@@ -352,10 +348,17 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
 
-    const HybridTime now_ht = clock_->Now();
+    HybridTime now_ht;
 
     is_new = peer->is_new;
     if (!is_new) {
+      // Should be before now_ht, i.e. not greater than propagated_hybrid_time.
+      if (propagated_safe_time_provider_ && FLAGS_propagate_safe_time) {
+        propagated_safe_time = propagated_safe_time_provider_();
+      }
+
+      now_ht = clock_->Now();
+
       auto ht_lease_expiration_micros = now_ht.GetPhysicalValueMicros() +
                                         FLAGS_ht_lease_duration_ms * 1000;
       auto leader_lease_duration_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
@@ -377,20 +380,14 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
           CoarseMonoClock::Now() + leader_lease_duration_ms * 1ms - kCoarseClockPrecision * 2;
       peer->last_ht_lease_expiration_sent_to_follower = ht_lease_expiration_micros;
     } else {
+      now_ht = clock_->Now();
       request->clear_leader_lease_duration_ms();
       request->clear_ht_lease_expiration();
       peer->last_leader_lease_expiration_received_by_follower = CoarseTimePoint();
       peer->last_ht_lease_expiration_sent_to_follower = 0;
     }
 
-    if (propagated_safe_time_provider_ && FLAGS_propagate_safe_time) {
-      propagated_safe_time = propagated_safe_time_provider_();
-    }
-
     request->set_propagated_hybrid_time(now_ht.ToUint64());
-
-    // Clear the requests without deleting the entries, as they may be in use by other peers.
-    request->mutable_ops()->ExtractSubrange(0, request->ops_size(), /* elements */ nullptr);
 
     // This is initialized to the queue's last appended op but gets set to the id of the
     // log entry preceding the first one in 'messages' if messages are found for the peer.
@@ -425,7 +422,6 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   if (PREDICT_FALSE(*needs_remote_bootstrap)) {
       YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(INFO, 30)
           << "Peer needs remote bootstrap: " << uuid;
-    *needs_remote_bootstrap = true;
     return Status::OK();
   }
   *needs_remote_bootstrap = false;
@@ -434,41 +430,21 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   // status-only request. Otherwise, we grab requests from the log starting at the last_received
   // point.
   if (!is_new) {
-    DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
     // The batch of messages to send to the peer.
     ReplicateMsgs messages;
-    int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
     bool have_more_messages = false;
+    int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
 
-    // We try to get the follower's next_index from our log.
-    Status s = log_cache_.ReadOps(next_index - 1,
-                                  max_batch_size,
-                                  &messages,
-                                  &preceding_id,
-                                  &have_more_messages);
+    Status s = ReadFromLogCache(next_index - 1, 0 /* to_index */, max_batch_size, uuid,
+                                &messages, &preceding_id, &have_more_messages);
     if (PREDICT_FALSE(!s.ok())) {
       if (PREDICT_TRUE(s.IsNotFound())) {
-        // It's normal to have a NotFound() here if a follower falls behind where the leader has
-        // GCed its logs.
         string msg = Substitute("The logs necessary to catch up peer $0 have been "
                                 "garbage collected. The follower will never be able "
                                 "to catch up ($1)", uuid, s.ToString());
         NotifyObserversOfFailedFollower(uuid, queue_state_.current_term, msg);
-        return s;
-      } else if (s.IsIncomplete()) {
-        // IsIncomplete() means that we tried to read beyond the head of the log (in the future).
-        // KUDU-1078 points to a fix of this log spew issue that we've ported. This should not
-        // happen under normal circumstances.
-        LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Error trying to read ahead of the log "
-                                        << "while preparing peer request: "
-                                        << s.ToString() << ". Destination peer: "
-                                        << uuid;
-        return s;
-      } else {
-        LOG_WITH_PREFIX_UNLOCKED(FATAL) << "Error reading the log while preparing peer request: "
-                                        << s.ToString() << ". Destination peer: "
-                                        << uuid;
       }
+      return s;
     }
 
     // We use AddAllocated rather than copy, because we pin the log cache at the "all replicated"
@@ -477,14 +453,14 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     for (const auto& msg : messages) {
       request->mutable_ops()->AddAllocated(msg.get());
     }
+    *msgs_holder = ReplicateMsgsHolder(request->mutable_ops(), std::move(messages));
+
     if (propagated_safe_time && !have_more_messages) {
       // Get the current local safe time on the leader and propagate it to the follower.
       request->set_propagated_safe_time(propagated_safe_time.ToUint64());
     } else {
       request->clear_propagated_safe_time();
     }
-    msg_refs->swap(messages);
-    DCHECK_LE(request->ByteSize(), FLAGS_consensus_max_batch_size_bytes);
   }
 
   DCHECK(preceding_id.IsInitialized());
@@ -505,6 +481,73 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   }
 
   return Status::OK();
+}
+
+Status PeerMessageQueue::ReadFromLogCache(int64_t from_index,
+                                          int64_t to_index,
+                                          int max_batch_size,
+                                          const std::string& peer_uuid,
+                                          ReplicateMsgs* messages,
+                                          OpId* preceding_id,
+                                          bool* have_more_messages) {
+  DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
+  *have_more_messages = false;
+
+  // We try to get the follower's next_index from our log.
+  // Note this is not using "term" and needs to change
+  Status s = log_cache_.ReadOps(from_index,
+                                to_index,
+                                max_batch_size,
+                                messages,
+                                preceding_id,
+                                have_more_messages);
+  if (PREDICT_FALSE(!s.ok())) {
+    if (PREDICT_TRUE(s.IsNotFound())) {
+      return s;
+    } else if (s.IsIncomplete()) {
+      // IsIncomplete() means that we tried to read beyond the head of the log (in the future).
+      // KUDU-1078 points to a fix of this log spew issue that we've ported. This should not
+      // happen under normal circumstances.
+      LOG_WITH_PREFIX_UNLOCKED(ERROR) << "Error trying to read ahead of the log "
+                                      << "while preparing peer request: "
+                                      << s.ToString() << ". Destination peer: "
+                                      << peer_uuid;
+      return s;
+    } else {
+      LOG_WITH_PREFIX_UNLOCKED(FATAL) << "Error reading the log while preparing peer request: "
+                                      << s.ToString() << ". Destination peer: "
+                                      << peer_uuid;
+      return s;
+    }
+  }
+  return s;
+}
+
+Status PeerMessageQueue::ReadReplicatedMessages(const OpId& last_op_id, ReplicateMsgs *msgs) {
+  // The batch of messages read from cache.
+  ReplicateMsgs messages;
+  bool have_more_messages = false;
+  OpIdPB preceding_id;
+
+  if (last_op_id.index() >= local_peer_->last_known_committed_idx) {
+    // Nothing to read
+    return Status::OK();
+  }
+
+  Status s = ReadFromLogCache(last_op_id.index(), local_peer_->last_known_committed_idx,
+                              FLAGS_consensus_max_batch_size_bytes,
+                              local_peer_uuid_, &messages, &preceding_id, &have_more_messages);
+  if (PREDICT_FALSE(!s.ok())) {
+    if (PREDICT_TRUE(s.IsNotFound())) {
+      string msg = Format("The logs from index $0 have been garbage collected and cannot be read "
+                          "($1)", last_op_id.index(), s);
+      LOG_WITH_PREFIX_UNLOCKED(INFO) << msg;
+    }
+    return s;
+  }
+
+  msgs->swap(messages);
+  return s;
 }
 
 Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
@@ -1202,6 +1245,14 @@ string PeerMessageQueue::QueueState::ToString() const {
       /* 6 */ StateToStr(state),
       /* 7 */ ModeToStr(mode),
       /* 8 */ active_config ? ", active raft config: " + active_config->ShortDebugString() : "");
+}
+
+size_t PeerMessageQueue::LogCacheSize() {
+  return log_cache_.BytesUsed();
+}
+
+size_t PeerMessageQueue::EvictLogCache(size_t bytes_to_evict) {
+  return log_cache_.EvictThroughOp(std::numeric_limits<int64_t>::max(), bytes_to_evict);
 }
 
 }  // namespace consensus

@@ -79,6 +79,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/mutex.h"
 #include "yb/util/monotime.h"
+#include "yb/util/thread.h"
 #include "yb/util/threadlocal.h"
 
 #define SCOPED_WATCH_STACK(threshold_ms) \
@@ -188,7 +189,7 @@ class KernelStackWatchdog {
 
   DECLARE_STATIC_THREAD_LOCAL(TLS, tls_);
 
-  typedef std::unordered_map<pid_t, TLS*> TLSMap;
+  typedef std::unordered_map<ThreadIdForStack, TLS*> TLSMap;
   TLSMap tls_by_tid_;
 
   // If non-NULL, warnings will be emitted into this vector instead of glog.  Used by tests.

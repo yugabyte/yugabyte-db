@@ -63,9 +63,10 @@ using consensus::RaftPeerPB;
 using log::LogAnchorRegistry;
 using log::ReadableLogSegment;
 using strings::Substitute;
-using tablet::TabletMetadata;
+using tablet::RaftGroupMetadata;
+using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
-using tablet::TabletSuperBlockPB;
+using tablet::RaftGroupReplicaSuperBlockPB;
 
 RemoteBootstrapSession::RemoteBootstrapSession(
     const std::shared_ptr<TabletPeer>& tablet_peer, std::string session_id,
@@ -96,19 +97,18 @@ RemoteBootstrapSession::~RemoteBootstrapSession() {
 }
 
 Status RemoteBootstrapSession::ChangeRole() {
-  CHECK(succeeded_);
+  CHECK(Succeeded());
 
   shared_ptr<consensus::Consensus> consensus = tablet_peer_->shared_consensus();
   // This check fixes an issue with test TestDeleteTabletDuringRemoteBootstrap in which a tablet is
   // tombstoned while the bootstrap is happening. This causes the peer's consensus object to be
   // null.
   if (!consensus) {
-    tablet::TabletStatePB tablet_state = tablet_peer_->state();
-    return STATUS(IllegalState, Substitute("Unable to change role for server $0 in config for "
-                                           "tablet $1. Consensus is not available. "
-                                           "Tablet state: $2 ($3)",
-                                           requestor_uuid_, tablet_peer_->tablet_id(),
-                                           tablet::TabletStatePB_Name(tablet_state), tablet_state));
+    tablet::RaftGroupStatePB tablet_state = tablet_peer_->state();
+    return STATUS(IllegalState, Substitute(
+        "Unable to change role for server $0 in config for tablet $1. Consensus is not available. "
+        "Tablet state: $2 ($3)", requestor_uuid_, tablet_peer_->tablet_id(),
+        tablet::RaftGroupStatePB_Name(tablet_state), tablet_state));
   }
 
   // If peer being bootstrapped is already a VOTER, don't send the ChangeConfig request. This could
@@ -165,11 +165,11 @@ Status RemoteBootstrapSession::ChangeRole() {
 Status RemoteBootstrapSession::SetInitialCommittedState() {
   shared_ptr <consensus::Consensus> consensus = tablet_peer_->shared_consensus();
   if (!consensus) {
-    tablet::TabletStatePB tablet_state = tablet_peer_->state();
+    tablet::RaftGroupStatePB tablet_state = tablet_peer_->state();
     return STATUS(IllegalState,
                   Substitute("Unable to initialize remote bootstrap session "
                              "for tablet $0. Consensus is not available. Tablet state: $1 ($2)",
-                             tablet_peer_->tablet_id(), tablet::TabletStatePB_Name(tablet_state),
+                             tablet_peer_->tablet_id(), tablet::RaftGroupStatePB_Name(tablet_state),
                              tablet_state));
   }
   initial_committed_cstate_ = consensus->ConsensusState(consensus::CONSENSUS_CONFIG_COMMITTED);
@@ -206,12 +206,12 @@ Result<google::protobuf::RepeatedPtrField<tablet::FilePB>> ListFiles(const std::
   return result;
 }
 
+const std::string RemoteBootstrapSession::kCheckpointsDir = "checkpoints";
+
 Status RemoteBootstrapSession::Init() {
   // Take locks to support re-initialization of the same session.
-  boost::lock_guard<simple_spinlock> l(session_lock_);
+  std::lock_guard<std::mutex> lock(mutex_);
   RETURN_NOT_OK(UnregisterAnchorIfNeededUnlocked());
-
-  logs_.clear();
 
   const string& tablet_id = tablet_peer_->tablet_id();
 
@@ -221,7 +221,7 @@ Status RemoteBootstrapSession::Init() {
       MinimumOpId().index(), anchor_owner_token, &log_anchor_);
 
   // Read the SuperBlock from disk.
-  const scoped_refptr<TabletMetadata>& metadata = tablet_peer_->tablet_metadata();
+  const RaftGroupMetadataPtr& metadata = tablet_peer_->tablet_metadata();
   RETURN_NOT_OK_PREPEND(metadata->ReadSuperBlockFromDisk(&tablet_superblock_),
                         Substitute("Unable to access superblock for tablet $0",
                                    tablet_id));
@@ -238,17 +238,18 @@ Status RemoteBootstrapSession::Init() {
   }
 
   MonoTime now = MonoTime::Now();
-  auto checkpoints_dir = JoinPathSegments(tablet_superblock_.rocksdb_dir(), "checkpoints");
+  auto* kv_store = tablet_superblock_.mutable_kv_store();
+  const auto checkpoints_dir = JoinPathSegments(kv_store->rocksdb_dir(), kCheckpointsDir);
 
   auto session_checkpoint_dir = std::to_string(last_logged_opid.index) + "_" + now.ToString();
   checkpoint_dir_ = JoinPathSegments(checkpoints_dir, session_checkpoint_dir);
 
   // Clear any previous RocksDB files in the superblock. Each session should create a new list
   // based the checkpoint directory files.
-  tablet_superblock_.clear_rocksdb_files();
+  kv_store->clear_rocksdb_files();
   auto status = tablet->CreateCheckpoint(checkpoint_dir_);
   if (status.ok()) {
-    *tablet_superblock_.mutable_rocksdb_files() = VERIFY_RESULT(ListFiles(checkpoint_dir_));
+    *kv_store->mutable_rocksdb_files() = VERIFY_RESULT(ListFiles(checkpoint_dir_));
   } else if (!status.IsNotSupported()) {
     RETURN_NOT_OK(status);
   }
@@ -259,16 +260,13 @@ Status RemoteBootstrapSession::Init() {
   // The Log doesn't add the active segment to the log reader's list until
   // a header has been written to it (but it will not have a footer).
   RETURN_NOT_OK(tablet_peer_->log()->GetSegmentsSnapshot(&log_segments_));
-  for (const scoped_refptr<ReadableLogSegment>& segment : log_segments_) {
-    RETURN_NOT_OK(OpenLogSegmentUnlocked(segment->header().sequence_number()));
+  log_anchor_index_ = last_logged_opid.index;
+  for (const auto& log_segment : log_segments_) {
+    if (log_segment->HasFooter() && log_segment->footer().has_min_replicate_index()) {
+      log_anchor_index_ = log_segment->footer().min_replicate_index();
+      break;
+    }
   }
-  LOG(INFO) << "Got snapshot of " << log_segments_.size() << " log segments";
-
-  // Look up the committed consensus state.
-  // We do this after snapshotting the log for YB table types to avoid a scenario where the latest
-  // entry in the log has a term higher than the term stored in the consensus metadata, which
-  // will result in a CHECK failure on RaftConsensus init.
-  RETURN_NOT_OK(SetInitialCommittedState());
 
   // Re-anchor on the highest OpId that was in the log right before we
   // snapshotted the log segments. This helps ensure that we don't end up in a
@@ -276,7 +274,13 @@ Status RemoteBootstrapSession::Init() {
   // leader's log when remote bootstrap is slow. The remote controls when
   // this anchor is released by ending the remote bootstrap session.
   RETURN_NOT_OK(tablet_peer_->log_anchor_registry()->UpdateRegistration(
-      last_logged_opid.index, anchor_owner_token, &log_anchor_));
+      log_anchor_index_, &log_anchor_));
+
+  // Look up the committed consensus state.
+  // We do this after snapshotting the log for YB table types to avoid a scenario where the latest
+  // entry in the log has a term higher than the term stored in the consensus metadata, which
+  // will result in a CHECK failure on RaftConsensus init.
+  RETURN_NOT_OK(SetInitialCommittedState());
 
   start_time_ = MonoTime::Now();
 
@@ -284,8 +288,8 @@ Status RemoteBootstrapSession::Init() {
 }
 
 Status RemoteBootstrapSession::InitSnapshotFiles() {
-  // Snapshots are not supported in the community edition.
-  tablet_superblock_.clear_snapshot_files();
+  // Snapshots are implemented in enterprise::RemoteBootstrapSession. TODO: unify the two classes.
+  tablet_superblock_.mutable_kv_store()->clear_snapshot_files();
   return Status::OK();
 }
 
@@ -339,16 +343,15 @@ static Status GetResponseDataSize(int64_t total_size,
   return Status::OK();
 }
 
+namespace {
+
 // Read a chunk of a file into a buffer.
 // data_name provides a string for the block/log to be used in error messages.
-template <class Info>
-static Status ReadFileChunkToBuf(const Info* info,
-                                 uint64_t offset, int64_t client_maxlen,
-                                 const string& data_name,
-                                 string* data, int64_t* file_size,
-                                 RemoteBootstrapErrorPB::Code* error_code) {
+Status ReadFileChunkToBuf(RandomAccessFile* file, int64_t file_size,
+                          uint64_t offset, int64_t client_maxlen, const string& data_name,
+                          string* data, RemoteBootstrapErrorPB::Code* error_code) {
   int64_t response_data_size = 0;
-  RETURN_NOT_OK_PREPEND(GetResponseDataSize(info->size, offset, client_maxlen, error_code,
+  RETURN_NOT_OK_PREPEND(GetResponseDataSize(file_size, offset, client_maxlen, error_code,
                                             &response_data_size),
                         Substitute("Error reading $0", data_name));
 
@@ -361,7 +364,7 @@ static Status ReadFileChunkToBuf(const Info* info,
   data->resize(response_data_size);
   uint8_t* buf = reinterpret_cast<uint8_t*>(const_cast<char*>(data->data()));
   Slice slice;
-  Status s = info->ReadFully(offset, response_data_size, &slice, buf);
+  Status s = env_util::ReadFully(file, offset, response_data_size, &slice, buf);
   if (PREDICT_FALSE(!s.ok())) {
     s = s.CloneAndPrepend(
         Substitute("Unable to read existing file for $0", data_name));
@@ -378,19 +381,39 @@ static Status ReadFileChunkToBuf(const Info* info,
   TRACE("Remote bootstrap: $0: $1 total bytes read. Total time elapsed: $2",
         data_name, response_data_size, chunk_timer.elapsed().ToString());
 
-  *file_size = info->size;
   return Status::OK();
 }
+
+} // namespace
+
+// Caches file size and holds a shared_ptr reference to a RandomAccessFile.
+// Assumes that the file underlying the RandomAccessFile is immutable.
+struct ImmutableRandomAccessFileInfo {
+  std::shared_ptr<RandomAccessFile> readable;
+  int64_t size = 0;
+  uint64_t segment_seqno = 0;
+
+  ImmutableRandomAccessFileInfo(std::shared_ptr<RandomAccessFile> readable,
+                                int64_t size)
+      : readable(std::move(readable)), size(size) {}
+};
 
 Status RemoteBootstrapSession::GetLogSegmentPiece(uint64_t segment_seqno,
                                                   uint64_t offset, int64_t client_maxlen,
                                                   std::string* data, int64_t* block_file_size,
                                                   RemoteBootstrapErrorPB::Code* error_code) {
-  ImmutableRandomAccessFileInfo* file_info;
-  RETURN_NOT_OK(FindLogSegment(segment_seqno, &file_info, error_code));
-  RETURN_NOT_OK(ReadFileChunkToBuf(file_info, offset, client_maxlen,
-                                   Substitute("log segment $0", segment_seqno),
-                                   data, block_file_size, error_code));
+  std::shared_ptr<RandomAccessFile> file;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (opened_log_segment_seqno_ != segment_seqno) {
+      RETURN_NOT_OK(OpenLogSegment(segment_seqno, error_code));
+    }
+    *block_file_size = opened_log_segment_file_size_;
+    file = opened_log_segment_file_;
+  }
+  RETURN_NOT_OK(ReadFileChunkToBuf(
+      file.get(), *block_file_size, offset, client_maxlen,
+      Substitute("log segment $0", segment_seqno), data, error_code));
 
   // Note: We do not eagerly close log segment files, since we share ownership
   // of the LogSegment objects with the Log itself.
@@ -406,8 +429,8 @@ Status RemoteBootstrapSession::GetRocksDBFilePiece(const std::string file_name,
       checkpoint_dir_, file_name, offset, client_maxlen, data, log_file_size, error_code);
 }
 
-Status RemoteBootstrapSession::GetFilePiece(const std::string path,
-                                            const std::string file_name,
+Status RemoteBootstrapSession::GetFilePiece(const std::string& path,
+                                            const std::string& file_name,
                                             uint64_t offset, int64_t client_maxlen,
                                             std::string* data, int64_t* block_file_size,
                                             RemoteBootstrapErrorPB::Code* error_code) {
@@ -418,23 +441,18 @@ Status RemoteBootstrapSession::GetFilePiece(const std::string path,
                                        file_name, path));
   }
 
-  gscoped_ptr<RandomAccessFile> readable_file;
-  shared_ptr<RandomAccessFile> readable_file_shared_ptr;
+  std::unique_ptr<RandomAccessFile> readable_file;
 
   RETURN_NOT_OK(fs_manager_->env()->NewRandomAccessFile(file_path, &readable_file));
 
-  uint64 file_size = VERIFY_RESULT(readable_file->Size());
+  *block_file_size = VERIFY_RESULT(readable_file->Size());
   auto inode = VERIFY_RESULT(readable_file->INode());
-  VLOG(2) << "Reading RocksDB file. File path: " << file_path << ", file size: " << file_size
+  VLOG(2) << "Reading RocksDB file. File path: " << file_path << ", file size: " << *block_file_size
           << ", inode: " << inode;
 
-  readable_file_shared_ptr.reset(readable_file.release());
-
-  std::unique_ptr<ImmutableRandomAccessFileInfo> file_info(
-      new ImmutableRandomAccessFileInfo(readable_file_shared_ptr, file_size));
-  RETURN_NOT_OK(ReadFileChunkToBuf(file_info.get(), offset, client_maxlen,
+  RETURN_NOT_OK(ReadFileChunkToBuf(readable_file.get(), *block_file_size, offset, client_maxlen,
                                    Substitute("rocksdb file $0", file_name),
-                                   data, block_file_size, error_code));
+                                   data, error_code));
 
   return Status::OK();
 }
@@ -459,43 +477,38 @@ static Status AddImmutableFileToMap(Collection* const cache,
   return Status::OK();
 }
 
-Status RemoteBootstrapSession::OpenLogSegmentUnlocked(uint64_t segment_seqno) {
-  DCHECK(session_lock_.is_locked());
-
-  scoped_refptr<log::ReadableLogSegment> log_segment;
-  int position = -1;
-  if (!log_segments_.empty()) {
-    position = segment_seqno - log_segments_[0]->header().sequence_number();
-  }
-  if (position < 0 || position >= log_segments_.size()) {
-    return STATUS(NotFound, Substitute("Segment with sequence number $0 not found",
-                                       segment_seqno));
-  }
-  log_segment = log_segments_[position];
-  CHECK_EQ(log_segment->header().sequence_number(), segment_seqno);
-
-  uint64_t size = log_segment->readable_up_to();
-  Status s = AddImmutableFileToMap(&logs_, segment_seqno, log_segment->readable_file(), size);
-  if (!s.ok()) {
-    s = s.CloneAndPrepend(
-            Substitute("Error accessing data for log segment with seqno $0",
-                       segment_seqno));
-    LOG(INFO) << s.ToString();
-  }
-  return s;
-}
-
-Status RemoteBootstrapSession::FindLogSegment(uint64_t segment_seqno,
-                                              ImmutableRandomAccessFileInfo** file_info,
-                                              RemoteBootstrapErrorPB::Code* error_code) {
-  boost::lock_guard<simple_spinlock> l(session_lock_);
-  auto it = logs_.find(segment_seqno);
-  if (it == logs_.end()) {
+Status RemoteBootstrapSession::OpenLogSegment(
+    uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code) {
+  auto active_seqno = tablet_peer_->log()->active_segment_sequence_number();
+  auto log_segment = tablet_peer_->log()->GetSegmentBySequenceNumber(segment_seqno);
+  // Usually active log segment is extended, while sent of the wire. So we cannot send next segment,
+  // Otherwise entries at end of previously active log segment could be missing.
+  if (opened_log_segment_active_) {
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
-    return STATUS(NotFound, Substitute("Segment with sequence number $0 not found",
-                                       segment_seqno));
+    return STATUS_FORMAT(NotFound, "Already sent active log segment, don't send $0", segment_seqno);
   }
-  *file_info = it->second.get();
+  if (!log_segment) {
+    *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
+    return STATUS_FORMAT(NotFound, "Log segment $0 not found", segment_seqno);
+  }
+  opened_log_segment_file_size_ = log_segment->readable_up_to() + log_segment->get_header_size();
+  opened_log_segment_seqno_ = segment_seqno;
+  opened_log_segment_file_ = log_segment->readable_file_checkpoint();
+  opened_log_segment_active_ = active_seqno == segment_seqno;
+
+  if (log_segment->HasFooter() &&
+      log_segment->footer().min_replicate_index() > log_anchor_index_) {
+    log_anchor_index_ = log_segment->footer().min_replicate_index();
+
+    // Update log anchor, since we don't need older logs anymore.
+    auto status = tablet_peer_->log_anchor_registry()->UpdateRegistration(
+        log_anchor_index_, &log_anchor_);
+    if (!status.ok()) {
+      *error_code = RemoteBootstrapErrorPB::UNKNOWN_ERROR;
+      return status;
+    }
+  }
+
   return Status::OK();
 }
 
@@ -504,11 +517,12 @@ Status RemoteBootstrapSession::UnregisterAnchorIfNeededUnlocked() {
 }
 
 void RemoteBootstrapSession::SetSuccess() {
-  boost::lock_guard<simple_spinlock> l(session_lock_);
+  std::lock_guard<std::mutex> lock(mutex_);
   succeeded_ = true;
 }
 
 bool RemoteBootstrapSession::Succeeded() {
+  std::lock_guard<std::mutex> lock(mutex_);
   return succeeded_;
 }
 

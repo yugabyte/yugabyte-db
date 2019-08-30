@@ -58,6 +58,8 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#include "pg_yb_utils.h"
+
 
 /* ----------
  * Local definitions
@@ -242,6 +244,25 @@ static void ri_ReportViolation(const RI_ConstraintInfo *riinfo,
 				   int queryno) pg_attribute_noreturn();
 
 
+/*
+ * In YB mode we currently only support foreign key DMLs
+ * in serializable mode (for YB tables).
+ * TODO To be removed when we support all cases.
+ */
+static bool IsYBForeignKeyConstraint(Relation pk_relation)
+{
+	if (IsYBRelation(pk_relation))
+	{
+		if (!IsolationIsSerializable())
+		{
+			YBRaiseNotSupported("Operation only supported in SERIALIZABLE "
+								"isolation level", 1199);
+		}
+		return true;
+	}
+	return false;
+}
+
 /* ----------
  * RI_FKey_check -
  *
@@ -277,21 +298,25 @@ RI_FKey_check(TriggerData *trigdata)
 		new_row_buf = trigdata->tg_trigtuplebuf;
 	}
 
-	/*
-	 * We should not even consider checking the row if it is no longer valid,
-	 * since it was either deleted (so the deferred check should be skipped)
-	 * or updated (in which case only the latest version of the row should be
-	 * checked).  Test its liveness according to SnapshotSelf.  We need pin
-	 * and lock on the buffer to call HeapTupleSatisfiesVisibility.  Caller
-	 * should be holding pin, but not lock.
-	 */
-	LockBuffer(new_row_buf, BUFFER_LOCK_SHARE);
-	if (!HeapTupleSatisfiesVisibility(new_row, SnapshotSelf, new_row_buf))
+	/* For YB relations visibility will be handled by DocDB (storage layer). */
+	if (!IsYBRelation(trigdata->tg_relation))
 	{
+		/*
+		* We should not even consider checking the row if it is no longer valid,
+		* since it was either deleted (so the deferred check should be skipped)
+		* or updated (in which case only the latest version of the row should be
+		* checked).  Test its liveness according to SnapshotSelf.  We need pin
+		* and lock on the buffer to call HeapTupleSatisfiesVisibility.  Caller
+		* should be holding pin, but not lock.
+		*/
+		LockBuffer(new_row_buf, BUFFER_LOCK_SHARE);
+		if (!HeapTupleSatisfiesVisibility(new_row, SnapshotSelf, new_row_buf))
+		{
+			LockBuffer(new_row_buf, BUFFER_LOCK_UNLOCK);
+			return PointerGetDatum(NULL);
+		}
 		LockBuffer(new_row_buf, BUFFER_LOCK_UNLOCK);
-		return PointerGetDatum(NULL);
 	}
-	LockBuffer(new_row_buf, BUFFER_LOCK_UNLOCK);
 
 	/*
 	 * Get the relation descriptors of the FK and PK tables.
@@ -425,7 +450,15 @@ RI_FKey_check(TriggerData *trigdata)
 			querysep = "AND";
 			queryoids[i] = fk_type;
 		}
-		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+
+		/*
+		 * TODO In YB mode we currently only allow foreign key DMLs
+		 * in YB serializable mode -- so no need for key share here
+		 */
+		if (!IsYBForeignKeyConstraint(pk_rel))
+		{
+			appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+		}
 
 		/* Prepare and save the plan */
 		qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
@@ -560,8 +593,16 @@ ri_Check_Pk_Match(Relation pk_rel, Relation fk_rel,
 			querysep = "AND";
 			queryoids[i] = pk_type;
 		}
-		appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
 
+		/*
+		 * TODO In YB mode we currently only allow foreign key DMLs
+		 * in YB serializable mode -- so no need for key share here
+		 */
+		if (!IsYBForeignKeyConstraint(pk_rel))
+		{
+			appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+		}
+		
 		/* Prepare and save the plan */
 		qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
 							 &qkey, fk_rel, pk_rel, true);
@@ -821,7 +862,15 @@ ri_restrict(TriggerData *trigdata, bool is_no_action)
 					querysep = "AND";
 					queryoids[i] = pk_type;
 				}
-				appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+
+				/*
+				* TODO In YB mode we currently only allow foreign key DMLs
+				* in YB serializable mode -- so no need for key share here
+				*/
+				if (!IsYBForeignKeyConstraint(pk_rel))
+				{
+					appendStringInfoString(&querybuf, " FOR KEY SHARE OF x");
+				}
 
 				/* Prepare and save the plan */
 				qplan = ri_PlanCheck(querybuf.data, riinfo->nkeys, queryoids,
@@ -1890,10 +1939,10 @@ RI_Initial_Check(Trigger *trigger, Relation fk_rel, Relation pk_rel)
 	{
 		int			attno;
 
-		attno = riinfo->pk_attnums[i] - FirstLowInvalidHeapAttributeNumber;
+		attno = riinfo->pk_attnums[i] - YBGetFirstLowInvalidAttributeNumber(pk_rel);
 		pkrte->selectedCols = bms_add_member(pkrte->selectedCols, attno);
 
-		attno = riinfo->fk_attnums[i] - FirstLowInvalidHeapAttributeNumber;
+		attno = riinfo->fk_attnums[i] - YBGetFirstLowInvalidAttributeNumber(fk_rel);
 		fkrte->selectedCols = bms_add_member(fkrte->selectedCols, attno);
 	}
 
@@ -2568,7 +2617,7 @@ ri_PerformCheck(const RI_ConstraintInfo *riinfo,
 	 * that SPI_execute_snapshot will register the snapshots, so we don't need
 	 * to bother here.
 	 */
-	if (IsolationUsesXactSnapshot() && detectNewRows)
+	if (!IsYBRelation(pk_rel) && IsolationUsesXactSnapshot() && detectNewRows)
 	{
 		CommandCounterIncrement();	/* be sure all my own work is visible */
 		test_snapshot = GetLatestSnapshot();

@@ -33,7 +33,6 @@
 #ifndef YB_RPC_CONNECTION_H_
 #define YB_RPC_CONNECTION_H_
 
-
 #include <atomic>
 #include <cstdint>
 #include <limits>
@@ -51,12 +50,12 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/connection_context.h"
-#include "yb/rpc/outbound_call.h"
-#include "yb/rpc/inbound_call.h"
 #include "yb/rpc/server_event.h"
 #include "yb/rpc/stream.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/ev_util.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -112,6 +111,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   CoarseTimePoint last_activity_time() const {
     return last_activity_time_;
   }
+
+  void UpdateLastActivity() override;
 
   // Returns true if we are not in the process of receiving or sending a
   // message, and we have no outstanding calls.
@@ -188,12 +189,15 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   CHECKED_STATUS DoWrite();
 
   // Does actual outbound data queueing. Invoked in appropriate reactor thread.
-  void DoQueueOutboundData(OutboundDataPtr call, bool batch);
+  size_t DoQueueOutboundData(OutboundDataPtr call, bool batch);
 
   void ProcessResponseQueue();
 
   // Stream context implementation
-  void UpdateLastActivity() override;
+  void UpdateLastRead() override;
+
+  void UpdateLastWrite() override;
+
   void Transferred(const OutboundDataPtr& data, const Status& status) override;
   void Destroy(const Status& status) override;
   Result<ProcessDataResult> ProcessReceived(
@@ -229,19 +233,24 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // at connection level.
   scoped_refptr<Histogram> handler_latency_outbound_transfer_;
 
+  struct ExpirationEntry {
+    CoarseTimePoint time;
+    std::weak_ptr<OutboundCall> call;
+    // See Stream::Send for details.
+    size_t handle;
+  };
+
   struct CompareExpiration {
-    template<class Pair>
-    bool operator()(const Pair& lhs, const Pair& rhs) const {
-      return rhs.first < lhs.first;
+    bool operator()(const ExpirationEntry& lhs, const ExpirationEntry& rhs) const {
+      return rhs.time < lhs.time;
     }
   };
 
-  typedef std::pair<CoarseTimePoint, std::weak_ptr<OutboundCall>> ExpirationPair;
-
-  std::priority_queue<ExpirationPair,
-                      std::vector<ExpirationPair>,
+  std::priority_queue<ExpirationEntry,
+                      std::vector<ExpirationEntry>,
                       CompareExpiration> expiration_queue_;
-  ev::timer timer_;
+
+  EvTimerHolder timer_;
 
   simple_spinlock outbound_data_queue_lock_;
 

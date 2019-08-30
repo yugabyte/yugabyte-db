@@ -79,12 +79,10 @@
 #include "yb/util/logging.h"
 #include "yb/util/bfql/bfql_template.h"
 #include "yb/util/bfql/tserver_opcodes.h"
+#include "yb/util/bfql/bfunc_names.h"
 
 namespace yb {
 namespace bfql {
-
-const char *const kCastFuncName = "cast";
-const char *const kCqlCastFuncName = "cql_cast";
 
 //--------------------------------------------------------------------------------------------------
 // class BFCompileApi<PType, RType> has one main entry function - FindQLOpcode().

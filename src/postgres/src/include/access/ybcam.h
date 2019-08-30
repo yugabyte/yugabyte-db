@@ -28,6 +28,7 @@
 #include "skey.h"
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "nodes/relation.h"
 #include "utils/catcache.h"
 #include "utils/resowner.h"
 #include "utils/snapshot.h"
@@ -35,16 +36,39 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 #include "executor/ybcExpr.h"
-#include "executor/ybcScan.h"
 
-typedef struct YbSysScanDescData
+typedef struct YbScanDescData
 {
-	YbScanState state;
-	int nkeys;
-	ScanKey key;
-} YbSysScanDescData;
+#define YB_MAX_SCAN_KEYS (INDEX_MAX_KEYS * 2) /* A pair of lower/upper bounds per column max */
 
-typedef struct YbSysScanDescData *YbSysScanDesc;
+	int     nkeys;
+	ScanKey key;
+
+	/* Attribut numbers and tuple descriptor for the scan keys / target columns */
+	AttrNumber sk_attno[YB_MAX_SCAN_KEYS];
+	TupleDesc  tupdesc;
+
+	/* The handle for the internal YB Select statement. */
+	YBCPgStatement  handle;
+	ResourceOwner   stmt_owner;
+	bool			is_exec_done;
+
+	Relation index;
+
+	/* Oid of the table being scanned */
+	Oid tableOid;
+
+	/* Kept execution control to pass it to PgGate.
+	 * - When YBC-index-scan layer is called by Postgres IndexScan functions, it will read the
+	 *   "yb_exec_params" from Postgres IndexScan and kept the info in this attribute.
+	 *
+	 * - YBC-index-scan in-turn will passes this attribute to PgGate to control the index-scan
+	 *   execution in YB tablet server.
+	 */
+	YBCPgExecParameters *exec_params;
+} YbScanDescData;
+
+typedef struct YbScanDescData *YbScanDesc;
 
 /*
  * Access to YB-stored system catalogs (mirroring API from genam.c)
@@ -52,11 +76,11 @@ typedef struct YbSysScanDescData *YbSysScanDesc;
  * would do either heap scan or index scan depending on the params).
  */
 extern SysScanDesc ybc_systable_beginscan(Relation relation,
-                                          Oid indexId,
-                                          bool indexOK,
-                                          Snapshot snapshot,
-                                          int nkeys,
-                                          ScanKey key);
+										  Oid indexId,
+										  bool indexOK,
+										  Snapshot snapshot,
+										  int nkeys,
+										  ScanKey key);
 extern HeapTuple ybc_systable_getnext(SysScanDesc scanDesc);
 extern void ybc_systable_endscan(SysScanDesc scan_desc);
 
@@ -75,12 +99,39 @@ extern void ybc_heap_endscan(HeapScanDesc scanDesc);
 /*
  * Access to YB-stored index (mirroring API from indexam.c)
  * We will do a YugaByte scan instead of a heap scan.
+ * When the index is the primary key, the base table is scanned instead.
  */
-extern void ybc_index_beginscan(Relation relation,
+extern void ybc_pkey_beginscan(Relation relation,
+							   Relation index,
+							   IndexScanDesc scan_desc,
+							   int nkeys,
+							   ScanKey key);
+extern HeapTuple ybc_pkey_getnext(IndexScanDesc scan_desc, bool is_forward_scan);
+extern void ybc_pkey_endscan(IndexScanDesc scan_desc);
+
+extern void ybc_index_beginscan(Relation index,
 								IndexScanDesc scan_desc,
 								int nkeys,
 								ScanKey key);
-extern HeapTuple ybc_index_getnext(IndexScanDesc scan_desc);
+extern IndexTuple ybc_index_getnext(IndexScanDesc scan_desc, bool is_forward_scan);
 extern void ybc_index_endscan(IndexScanDesc scan_desc);
+
+/* Number of rows assumed for a YB table if no size estimates exist */
+#define YBC_DEFAULT_NUM_ROWS  1000
+
+#define YBC_SINGLE_KEY_SELECTIVITY	(1.0 / YBC_DEFAULT_NUM_ROWS)
+#define YBC_HASH_SCAN_SELECTIVITY	(10.0 / YBC_DEFAULT_NUM_ROWS)
+#define YBC_FULL_SCAN_SELECTIVITY	1.0
+
+extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
+							Cost *startup_cost, Cost *total_cost);
+extern void ybcIndexCostEstimate(IndexPath *path, Selectivity *selectivity,
+								 Cost *startup_cost, Cost *total_cost);
+
+/*
+ * Fetch a single tuple by the ybctid.
+ */
+extern HeapTuple YBCFetchTuple(Relation relation, Datum ybctid);
+
 
 #endif							/* YBCAM_H */

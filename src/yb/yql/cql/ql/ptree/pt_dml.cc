@@ -16,6 +16,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
+
+#include "yb/client/table.h"
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
 DECLARE_bool(use_cassandra_authentication);
@@ -52,7 +55,8 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
       column_refs_(memctx),
       static_column_refs_(memctx),
       pk_only_indexes_(memctx),
-      non_pk_only_indexes_(memctx) {
+      non_pk_only_indexes_(memctx),
+      filtering_exprs_(memctx) {
 }
 
 // Clone a DML tnode for re-analysis. Only the syntactic information populated by the parser should
@@ -77,10 +81,33 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other)
       column_refs_(memctx),
       static_column_refs_(memctx),
       pk_only_indexes_(memctx),
-      non_pk_only_indexes_(memctx) {
+      non_pk_only_indexes_(memctx),
+      filtering_exprs_(memctx) {
 }
 
 PTDmlStmt::~PTDmlStmt() {
+}
+
+int PTDmlStmt::num_columns() const {
+  return table_->schema().num_columns();
+}
+
+int PTDmlStmt::num_key_columns() const {
+  return table_->schema().num_key_columns();
+}
+
+int PTDmlStmt::num_hash_key_columns() const {
+  return table_->schema().num_hash_key_columns();
+}
+
+string PTDmlStmt::hash_key_columns() const {
+  std::stringstream s;
+  auto &schema = table_->schema();
+  for (int i = 0; i < schema.num_hash_key_columns(); ++i) {
+    if (i != 0) s << ", ";
+    s << schema.Column(i).name();
+  }
+  return s.str();
 }
 
 Status PTDmlStmt::LookupTable(SemContext *sem_context) {
@@ -228,7 +255,8 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
   ColumnOpCounter partition_key_counter;
   WhereExprState where_state(&where_ops_, &key_where_ops_, &subscripted_col_where_ops_,
                              &json_col_where_ops_, &partition_key_ops_, &op_counters,
-                             &partition_key_counter, opcode(), &func_ops_);
+                             &partition_key_counter, opcode(), &func_ops_,
+                             &filtering_exprs_);
 
   SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
   sem_state.SetWhereState(&where_state);
@@ -277,14 +305,13 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
   } else { // ReadOp
     // Add the hash to the where clause if the list is incomplete. Clear key_where_ops_ to do
     // whole-table scan.
-    bool has_incomplete_hash = false;
     for (int idx = 0; idx < num_hash_key_columns(); idx++) {
       if (!key_where_ops_[idx].IsInitialized()) {
-        has_incomplete_hash = true;
+        has_incomplete_hash_ = true;
         break;
       }
     }
-    if (has_incomplete_hash) {
+    if (has_incomplete_hash_) {
       for (int idx = num_hash_key_columns() - 1; idx >= 0; idx--) {
         if (key_where_ops_[idx].IsInitialized()) {
           where_ops_.push_front(key_where_ops_[idx]);
@@ -445,6 +472,9 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
                                        const ColumnDesc *col_desc,
                                        PTExpr::SharedPtr value,
                                        PTExprListNode::SharedPtr col_args) {
+  // Collecting all filtering expressions to help choosing INDEX when processing a DML.
+  filtering_exprs_->push_back(expr);
+
   // If this is a nested select from an uncovered index, ignore column that is uncovered.
   if (col_desc == nullptr && sem_context->IsUncoveredIndexSelect()) {
     return Status::OK();

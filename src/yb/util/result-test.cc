@@ -187,5 +187,44 @@ TEST_F(ResultTest, ReturnVariable) {
   ASSERT_EQ(42, *ptr);
 }
 
+Result<std::unique_ptr<int>> ReturnBadVariable() {
+  return STATUS(RuntimeError, "Just for test");
+}
+
+Status test_function(int* num_func_calls, std::unique_ptr<int> ptr) {
+  ++(*CHECK_NOTNULL(num_func_calls));
+  LOG(INFO) << "Called test_function() (call number " << *num_func_calls << ") with arg=" << *ptr;
+  EXPECT_EQ(42, *ptr);
+  return *num_func_calls == 1 ?
+      Status::OK() : STATUS(InternalError, "test_function() returned a error");
+}
+
+template<typename F, typename GetResult>
+Status GetStatus(int* num_func_calls, F f, GetResult get_result) {
+  RETURN_NOT_OK(f(num_func_calls, VERIFY_RESULT(get_result())));
+  return Status::OK();
+}
+
+TEST_F(ResultTest, VerifyResultMacro) {
+  int num_func_calls = 0;
+  // Good way - no returns from the macros.
+  Status s  = GetStatus(&num_func_calls, test_function, ReturnVariable);
+  LOG(INFO) << "GetStatus() returned status=" << s;
+  ASSERT_EQ(1, num_func_calls);
+  ASSERT_TRUE(s.ok());
+
+  // Bad way 1 - exit from VERIFY_RESULT().
+  s  = GetStatus(&num_func_calls, test_function, ReturnBadVariable);
+  LOG(INFO) << "GetStatus() returned status=" << s;
+  ASSERT_EQ(1, num_func_calls);
+  ASSERT_TRUE(s.IsRuntimeError());
+
+  // Bad way 2 - exit from RETURN_NOT_OK().
+  s  = GetStatus(&num_func_calls, test_function, ReturnVariable);
+  LOG(INFO) << "GetStatus() returned status=" << s;
+  ASSERT_EQ(2, num_func_calls);
+  ASSERT_TRUE(s.IsInternalError());
+}
+
 } // namespace test
 } // namespace yb

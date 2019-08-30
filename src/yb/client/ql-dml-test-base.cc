@@ -16,6 +16,11 @@
 #include "yb/client/ql-dml-test-base.h"
 
 #include "yb/client/client.h"
+#include "yb/client/error.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
+
+#include "yb/util/bfql/gen_opcodes.h"
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -51,20 +56,13 @@ void QLDmlTestBase::SetUp() {
   YBMiniClusterTestBase::SetUp();
 
   // Start minicluster and wait for tablet servers to connect to master.
-  MiniClusterOptions opts;
-  opts.num_tablet_servers = 3;
-  cluster_.reset(new MiniCluster(env_.get(), opts));
+  cluster_.reset(new MiniCluster(env_.get(), mini_cluster_opt_));
   ASSERT_OK(cluster_->Start());
 
   ASSERT_OK(CreateClient());
 
   // Create test table
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
-}
-
-Status QLDmlTestBase::CreateClient() {
-  // Connect to the cluster.
-  return cluster_->CreateClient(&client_);
 }
 
 void QLDmlTestBase::DoTearDown() {
@@ -77,20 +75,42 @@ void QLDmlTestBase::DoTearDown() {
   // if (table_) {
   //   ASSERT_OK(client_->DeleteTable(kTableName));
   // }
-  if (cluster_) {
-    cluster_->Shutdown();
-    cluster_.reset();
-  }
-  YBMiniClusterTestBase::DoTearDown();
-}
-
-std::shared_ptr<client::YBSession> QLDmlTestBase::NewSession() {
-  auto session = client_->NewSession();
-  session->SetTimeout(60s);
-  return session;
+  MiniClusterTestWithClient::DoTearDown();
 }
 
 void KeyValueTableTest::CreateTable(Transactional transactional) {
+  CreateTable(transactional, NumTablets(), client_.get(), &table_);
+}
+
+Result<YBqlWriteOpPtr> KeyValueTableTest::Increment(
+    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta) {
+  auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+  auto value_column_id = table->ColumnId(kValueColumn);
+
+  auto* const req = op->mutable_request();
+  QLAddInt32HashValue(req, key);
+  req->mutable_column_refs()->add_ids(value_column_id);
+  auto* column_value = req->add_column_values();
+  column_value->set_column_id(value_column_id);
+  auto* bfcall = column_value->mutable_expr()->mutable_bfcall();
+  bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_ConvertI64ToI32_18));
+  bfcall = bfcall->add_operands()->mutable_bfcall();
+
+  bfcall->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_AddI64I64_80));
+  auto column_op = bfcall->add_operands()->mutable_bfcall();
+  column_op->set_opcode(to_underlying(bfql::BFOpcode::OPCODE_ConvertI32ToI64_13));
+  column_op->add_operands()->set_column_id(value_column_id);
+  bfcall->add_operands()->mutable_value()->set_int64_value(delta);
+
+  RETURN_NOT_OK(session->Apply(op));
+
+  return op;
+}
+
+void KeyValueTableTest::CreateTable(
+    Transactional transactional, int num_tablets, YBClient* client, TableHandle* table) {
+  ASSERT_OK(client->CreateNamespaceIfNotExists(kTableName.namespace_name()));
+
   YBSchemaBuilder builder;
   builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
   builder.AddColumn(kValueColumn)->Type(INT32);
@@ -100,20 +120,24 @@ void KeyValueTableTest::CreateTable(Transactional transactional) {
     builder.SetTableProperties(table_properties);
   }
 
-  ASSERT_OK(table_.Create(kTableName, CalcNumTablets(3), client_.get(), &builder));
+  ASSERT_OK(table->Create(kTableName, num_tablets, client, &builder));
+}
+
+int KeyValueTableTest::NumTablets() {
+  return CalcNumTablets(3);
 }
 
 Result<YBqlWriteOpPtr> KeyValueTableTest::WriteRow(
-    const YBSessionPtr& session, int32_t key, int32_t value,
+    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t value,
     const WriteOpType op_type, Flush flush) {
   VLOG(4) << "Calling WriteRow key=" << key << " value=" << value << " op_type="
           << yb::ToString(op_type);
   const QLWriteRequestPB::QLStmtType stmt_type = GetQlStatementType(op_type);
-  const auto op = table_.NewWriteOp(stmt_type);
+  const auto op = table->NewWriteOp(stmt_type);
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, key);
   if (op_type != WriteOpType::DELETE) {
-    table_.AddInt32ColumnValue(req, kValueColumn, value);
+    table->AddInt32ColumnValue(req, kValueColumn, value);
   }
   RETURN_NOT_OK(session->Apply(op));
   if (flush) {
@@ -124,21 +148,21 @@ Result<YBqlWriteOpPtr> KeyValueTableTest::WriteRow(
 }
 
 Result<YBqlWriteOpPtr> KeyValueTableTest::DeleteRow(
-    const YBSessionPtr& session, int32_t key) {
-  return WriteRow(session, key, 0 /* value */, WriteOpType::DELETE);
+    TableHandle* table, const YBSessionPtr& session, int32_t key) {
+  return WriteRow(table, session, key, 0 /* value */, WriteOpType::DELETE);
 }
 
 Result<YBqlWriteOpPtr> KeyValueTableTest::UpdateRow(
-    const YBSessionPtr& session, int32_t key, int32_t value) {
-  return WriteRow(session, key, value, WriteOpType::UPDATE);
+    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t value) {
+  return WriteRow(table, session, key, value, WriteOpType::UPDATE);
 }
 
 Result<int32_t> KeyValueTableTest::SelectRow(
-    const YBSessionPtr& session, int32_t key, const std::string& column) {
-  const YBqlReadOpPtr op = table_.NewReadOp();
+    TableHandle* table, const YBSessionPtr& session, int32_t key, const std::string& column) {
+  const YBqlReadOpPtr op = table->NewReadOp();
   auto* const req = op->mutable_request();
   QLAddInt32HashValue(req, key);
-  table_.AddColumns({column}, req);
+  table->AddColumns({column}, req);
   auto status = session->ApplyAndFlush(op);
   if (status.IsIOError()) {
     for (const auto& error : session->GetPendingErrors()) {
@@ -154,16 +178,17 @@ Result<int32_t> KeyValueTableTest::SelectRow(
   return rowblock->row(0).column(0).int32_value();
 }
 
-Result<std::map<int32_t, int32_t>> KeyValueTableTest::SelectAllRows(const YBSessionPtr& session) {
+Result<std::map<int32_t, int32_t>> KeyValueTableTest::SelectAllRows(
+    TableHandle* table, const YBSessionPtr& session) {
   std::vector<YBqlReadOpPtr> ops;
-  auto partitions = table_.table()->GetPartitions();
+  auto partitions = table->table()->GetPartitions();
   partitions.push_back(std::string()); // Upper bound for last partition.
 
   uint16_t prev_code = 0;
   for (const auto& partition : partitions) {
-    const YBqlReadOpPtr op = table_.NewReadOp();
+    const YBqlReadOpPtr op = table->NewReadOp();
     auto* const req = op->mutable_request();
-    table_.AddColumns(table_.AllColumnNames(), req);
+    table->AddColumns(table->AllColumnNames(), req);
     if (prev_code) {
       req->set_hash_code(prev_code);
     }
@@ -197,7 +222,7 @@ Result<std::map<int32_t, int32_t>> KeyValueTableTest::SelectAllRows(const YBSess
 
 YBSessionPtr KeyValueTableTest::CreateSession(const YBTransactionPtr& transaction,
                                               const server::ClockPtr& clock) {
-  auto session = std::make_shared<YBSession>(client_, clock);
+  auto session = std::make_shared<YBSession>(client_.get(), clock);
   if (transaction) {
     session->SetTransaction(transaction);
   }

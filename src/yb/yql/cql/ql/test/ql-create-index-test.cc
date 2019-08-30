@@ -26,11 +26,7 @@ class Master;
 namespace ql {
 
 #define EXEC_DUPLICATE_OBJECT_CREATE_STMT(stmt)                                \
-  do {                                                                  \
-    Status s = processor->Run(stmt);                                    \
-    EXPECT_FALSE(s.ok());                                               \
-    EXPECT_FALSE(s.ToString().find("Duplicate Object. Object") == string::npos); \
-  } while (false)
+  EXEC_INVALID_STMT_WITH_ERROR(stmt, "Duplicate Object. Object")
 
 class TestQLCreateIndex : public QLTestBase {
  public:

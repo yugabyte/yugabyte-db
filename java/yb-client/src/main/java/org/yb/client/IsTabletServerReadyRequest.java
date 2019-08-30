@@ -21,41 +21,8 @@ import org.yb.util.Pair;
 import com.google.protobuf.Message;
 
 @InterfaceAudience.Public
-class IsTabletServerReadyRequest extends YRpc<IsTabletServerReadyResponse> {
+class IsTabletServerReadyRequest extends IsServerReadyRequest {
   public IsTabletServerReadyRequest() {
-    super(null);
-  }
-
-  @Override
-  ChannelBuffer serialize(Message header) {
-    assert header.isInitialized();
-    final Tserver.IsTabletServerReadyRequestPB.Builder builder =
-        Tserver.IsTabletServerReadyRequestPB.newBuilder();
-    return toChannelBuffer(header, builder.build());
-  }
-
-  @Override
-  String serviceName() {
-    return TABLET_SERVER_SERVICE_NAME;
-  }
-
-  @Override
-  String method() {
-    return "IsTabletServerReady";
-  }
-
-  @Override
-  Pair<IsTabletServerReadyResponse, Object> deserialize(
-      CallResponse callResponse, String uuid) throws Exception {
-    final Tserver.IsTabletServerReadyResponsePB.Builder respBuilder =
-        Tserver.IsTabletServerReadyResponsePB.newBuilder();
-    readProtobuf(callResponse.getPBMessage(), respBuilder);
-    boolean hasError = respBuilder.hasError();
-    IsTabletServerReadyResponse response =
-        new IsTabletServerReadyResponse(deadlineTracker.getElapsedMillis(), uuid,
-                                        hasError ? respBuilder.getErrorBuilder().build() : null,
-                                        respBuilder.getNumTabletsNotRunning());
-    return new Pair<IsTabletServerReadyResponse, Object>(response,
-                                                         hasError ? respBuilder.getError() : null);
+    super();
   }
 }

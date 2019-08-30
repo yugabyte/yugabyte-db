@@ -221,7 +221,7 @@ index_insert(Relation indexRelation,
 	 * For YugaByte-based index, call the variant of aminsert that takes the full tuple instead of
 	 * the tuple id.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && IsYBRelation(indexRelation))
 	{
 		CHECK_REL_PROCEDURE(yb_aminsert);
 		return indexRelation->rd_amroutine->yb_aminsert(indexRelation, values, isnull,
@@ -633,10 +633,20 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 HeapTuple
 index_fetch_heap(IndexScanDesc scan)
 {
-	/* For YugaByte index, we need to select from the base table using ybctid */
+	/*
+	 * For YugaByte secondary indexes, we need to select from the base table using
+	 * ybctid. For primary keys, the row is already prepared in "xs_hitup" that can
+	 * be returned directly.
+	 */
 	if (IsYugaByteEnabled())
 	{
-		return YBCIndexExecuteSelect(scan->heapRelation, scan->xs_ctup.t_ybctid);
+		if (scan->indexRelation->rd_index->indisprimary)
+		{
+			Assert(scan->xs_hitup != 0);
+			return scan->xs_hitup;
+		}
+
+		return YBCFetchTuple(scan->heapRelation, scan->xs_ctup.t_ybctid);
 	}
 
 	ItemPointer tid = &scan->xs_ctup.t_self;

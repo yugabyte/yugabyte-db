@@ -41,11 +41,11 @@ class DBTestCompactionFilter : public DBTestBase {
 
 class KeepFilter : public CompactionFilter {
  public:
-  virtual bool Filter(int level, const Slice& key, const Slice& value,
-                      std::string* new_value, bool* value_changed) const
+  FilterDecision Filter(int level, const Slice& key, const Slice& value,
+                        std::string* new_value, bool* value_changed)
       override {
     cfilter_count++;
-    return false;
+    return FilterDecision::kKeep;
   }
 
   const char* Name() const override { return "KeepFilter"; }
@@ -53,11 +53,10 @@ class KeepFilter : public CompactionFilter {
 
 class DeleteFilter : public CompactionFilter {
  public:
-  virtual bool Filter(int level, const Slice& key, const Slice& value,
-                      std::string* new_value, bool* value_changed) const
-      override {
+  FilterDecision Filter(int level, const Slice& key, const Slice& value,
+                      std::string* new_value, bool* value_changed) override {
     cfilter_count++;
-    return true;
+    return FilterDecision::kDiscard;
   }
 
   const char* Name() const override { return "DeleteFilter"; }
@@ -65,15 +64,15 @@ class DeleteFilter : public CompactionFilter {
 
 class DeleteISFilter : public CompactionFilter {
  public:
-  virtual bool Filter(int level, const Slice& key, const Slice& value,
-                      std::string* new_value,
-                      bool* value_changed) const override {
+  FilterDecision Filter(int level, const Slice& key, const Slice& value,
+                        std::string* new_value,
+                        bool* value_changed) override {
     cfilter_count++;
     int i = std::stoi(key.ToString());
     if (i > 5 && i <= 105) {
-      return true;
+      return FilterDecision::kDiscard;
     }
-    return false;
+    return FilterDecision::kKeep;
   }
 
   bool IgnoreSnapshots() const override { return true; }
@@ -84,11 +83,11 @@ class DeleteISFilter : public CompactionFilter {
 class DelayFilter : public CompactionFilter {
  public:
   explicit DelayFilter(DBTestBase* d) : db_test(d) {}
-  virtual bool Filter(int level, const Slice& key, const Slice& value,
-                      std::string* new_value,
-                      bool* value_changed) const override {
+  FilterDecision Filter(int level, const Slice& key, const Slice& value,
+                        std::string* new_value,
+                        bool* value_changed) override {
     db_test->env_->addon_time_.fetch_add(1000);
-    return true;
+    return FilterDecision::kDiscard;
   }
 
   const char* Name() const override { return "DelayFilter"; }
@@ -101,10 +100,9 @@ class ConditionalFilter : public CompactionFilter {
  public:
   explicit ConditionalFilter(const std::string* filtered_value)
       : filtered_value_(filtered_value) {}
-  virtual bool Filter(int level, const Slice& key, const Slice& value,
-                      std::string* new_value,
-                      bool* value_changed) const override {
-    return value.ToString() == *filtered_value_;
+  FilterDecision Filter(int level, const Slice& key, const Slice& value,
+                        std::string* new_value, bool* value_changed) override {
+    return value.ToBuffer() == *filtered_value_ ? FilterDecision::kDiscard : FilterDecision::kKeep;
   }
 
   const char* Name() const override { return "ConditionalFilter"; }
@@ -117,13 +115,12 @@ class ChangeFilter : public CompactionFilter {
  public:
   ChangeFilter() {}
 
-  virtual bool Filter(int level, const Slice& key, const Slice& value,
-                      std::string* new_value, bool* value_changed) const
-      override {
+  FilterDecision Filter(int level, const Slice& key, const Slice& value,
+                        std::string* new_value, bool* value_changed) override {
     assert(new_value != nullptr);
     *new_value = NEW_VALUE;
     *value_changed = true;
-    return false;
+    return FilterDecision::kKeep;
   }
 
   const char* Name() const override { return "ChangeFilter"; }

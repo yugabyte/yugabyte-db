@@ -223,7 +223,6 @@ static const char *const subdirs[] = {
 	"pg_logical/mappings"
 };
 
-
 /* path to 'initdb' binary directory */
 static char bin_path[MAXPGPATH];
 static char backend_exec[MAXPGPATH];
@@ -238,6 +237,7 @@ static char **readfile(const char *path);
 static void writefile(char *path, char **lines);
 static FILE *popen_check(const char *command, const char *mode);
 static void exit_nicely(void) pg_attribute_noreturn();
+static void exit_nicely_with_code(int) pg_attribute_noreturn();
 static char *get_id(void);
 static int	get_encoding_id(const char *encoding_name);
 static void set_input(char **dest, const char *filename);
@@ -272,6 +272,7 @@ static void check_locale_name(int category, const char *locale,
 static bool check_locale_encoding(const char *locale, int encoding);
 static void setlocales(void);
 static void usage(const char *progname);
+static int yb_pclose_check(FILE *stream);
 void		setup_pgdata(void);
 void		setup_bin_paths(const char *argv0);
 void		setup_data_file_paths(void);
@@ -297,8 +298,10 @@ do { \
 
 #define PG_CMD_CLOSE \
 do { \
-	if (pclose_check(cmdfd)) \
-		exit_nicely(); /* message already printed by pclose_check */ \
+  int exit_code = yb_pclose_check(cmdfd); \
+	/* message already printed by yb_pclose_check */ \
+	if (exit_code) \
+		exit_nicely_with_code(exit_code == YB_INITDB_ALREADY_DONE_EXIT_CODE ? 0 : 1); \
 } while (0)
 
 #define PG_CMD_PUTS(line) \
@@ -325,11 +328,59 @@ do { \
 		output_failed = true, output_errno = errno; \
 } while (0)
 
-static bool IsYugaByteEnabledInInitdb()
+static bool IsEnvSet(const char* name)
 {
-	const char* env_var_value = getenv("YB_ENABLED_IN_POSTGRES");
+	const char* env_var_value = getenv(name);
 	return env_var_value != NULL && strcmp(env_var_value, "1") == 0;
 }
+
+static bool IsYugaByteGlobalClusterInitdb()
+{
+	return IsEnvSet("YB_ENABLED_IN_POSTGRES");
+}
+
+static bool IsYugaByteLocalNodeInitdb()
+{
+	return IsEnvSet("YB_PG_LOCAL_NODE_INITDB");
+}
+
+/*
+ * pclose() plus useful error reporting
+ *
+ * YugaByte-specific version recognizes a special status indicating that initdb
+ * has already been run, or the cluster has been initialized from a sys catalog
+ * snapshot.
+ */
+static int
+yb_pclose_check(FILE *stream)
+{
+	int			exitstatus;
+	char	   *reason;
+
+	exitstatus = pclose(stream);
+
+	if (exitstatus == 0)
+		return 0;				/* all is well */
+
+	if (exitstatus == -1)
+	{
+		/* pclose() itself failed, and hopefully set errno */
+		fprintf(stderr, _("pclose failed: %s"), strerror(errno));
+		return 1;
+	}
+	else
+	{
+		if (WEXITSTATUS(exitstatus) == YB_INITDB_ALREADY_DONE_EXIT_CODE) {
+			fprintf(stderr, "initdb has already been run previously, nothing to do\n");
+		} else {
+			reason = wait_result_to_str(exitstatus);
+			fprintf(stderr, "%s", reason);
+			free(reason);
+		}
+	}
+	return WEXITSTATUS(exitstatus);
+}
+
 
 /*
  * Escape single quotes and backslashes, suitably for insertions into
@@ -599,7 +650,12 @@ popen_check(const char *command, const char *mode)
  * if we created the data directory remove it too
  */
 static void
-exit_nicely(void)
+exit_nicely(void) {
+	exit_nicely_with_code(1);
+}
+
+static void
+exit_nicely_with_code(int final_exit_code)
 {
 	if (!noclean)
 	{
@@ -653,7 +709,7 @@ exit_nicely(void)
 					progname, xlog_dir);
 	}
 
-	exit(1);
+	exit(final_exit_code);
 }
 
 /*
@@ -1273,92 +1329,94 @@ setup_config(void)
 
 	free(conflines);
 
+	/* Do not create pg_hba.conf in yugabyte */
+	if (!IsYugaByteGlobalClusterInitdb() && !IsYugaByteLocalNodeInitdb()) {
+		/* pg_hba.conf */
 
-	/* pg_hba.conf */
-
-	conflines = readfile(hba_file);
+		conflines = readfile(hba_file);
 
 #ifndef HAVE_UNIX_SOCKETS
-	conflines = filter_lines_with_token(conflines, "@remove-line-for-nolocal@");
+		conflines = filter_lines_with_token(conflines, "@remove-line-for-nolocal@");
 #else
-	conflines = replace_token(conflines, "@remove-line-for-nolocal@", "");
+		conflines = replace_token(conflines, "@remove-line-for-nolocal@", "");
 #endif
 
 #ifdef HAVE_IPV6
 
-	/*
-	 * Probe to see if there is really any platform support for IPv6, and
-	 * comment out the relevant pg_hba line if not.  This avoids runtime
-	 * warnings if getaddrinfo doesn't actually cope with IPv6.  Particularly
-	 * useful on Windows, where executables built on a machine with IPv6 may
-	 * have to run on a machine without.
-	 */
-	{
-		struct addrinfo *gai_result;
-		struct addrinfo hints;
-		int			err = 0;
+		/*
+		* Probe to see if there is really any platform support for IPv6, and
+		* comment out the relevant pg_hba line if not.  This avoids runtime
+		* warnings if getaddrinfo doesn't actually cope with IPv6.  Particularly
+		* useful on Windows, where executables built on a machine with IPv6 may
+		* have to run on a machine without.
+		*/
+		{
+			struct addrinfo *gai_result;
+			struct addrinfo hints;
+			int			err = 0;
 
 #ifdef WIN32
-		/* need to call WSAStartup before calling getaddrinfo */
-		WSADATA		wsaData;
+			/* need to call WSAStartup before calling getaddrinfo */
+			WSADATA		wsaData;
 
-		err = WSAStartup(MAKEWORD(2, 2), &wsaData);
+			err = WSAStartup(MAKEWORD(2, 2), &wsaData);
 #endif
 
-		/* for best results, this code should match parse_hba() */
-		hints.ai_flags = AI_NUMERICHOST;
-		hints.ai_family = AF_UNSPEC;
-		hints.ai_socktype = 0;
-		hints.ai_protocol = 0;
-		hints.ai_addrlen = 0;
-		hints.ai_canonname = NULL;
-		hints.ai_addr = NULL;
-		hints.ai_next = NULL;
+			/* for best results, this code should match parse_hba() */
+			hints.ai_flags = AI_NUMERICHOST;
+			hints.ai_family = AF_UNSPEC;
+			hints.ai_socktype = 0;
+			hints.ai_protocol = 0;
+			hints.ai_addrlen = 0;
+			hints.ai_canonname = NULL;
+			hints.ai_addr = NULL;
+			hints.ai_next = NULL;
 
-		if (err != 0 ||
-			getaddrinfo("::1", NULL, &hints, &gai_result) != 0)
-		{
-			conflines = replace_token(conflines,
-									  "host    all             all             ::1",
-									  "#host    all             all             ::1");
-			conflines = replace_token(conflines,
-									  "host    replication     all             ::1",
-									  "#host    replication     all             ::1");
+			if (err != 0 ||
+				getaddrinfo("::1", NULL, &hints, &gai_result) != 0)
+			{
+				conflines = replace_token(conflines,
+											"host    all             all             ::1",
+											"#host    all             all             ::1");
+				conflines = replace_token(conflines,
+											"host    replication     all             ::1",
+											"#host    replication     all             ::1");
+			}
 		}
-	}
 #else							/* !HAVE_IPV6 */
-	/* If we didn't compile IPV6 support at all, always comment it out */
-	conflines = replace_token(conflines,
-							  "host    all             all             ::1",
-							  "#host    all             all             ::1");
-	conflines = replace_token(conflines,
-							  "host    replication     all             ::1",
-							  "#host    replication     all             ::1");
+		/* If we didn't compile IPV6 support at all, always comment it out */
+		conflines = replace_token(conflines,
+									"host    all             all             ::1",
+									"#host    all             all             ::1");
+		conflines = replace_token(conflines,
+									"host    replication     all             ::1",
+									"#host    replication     all             ::1");
 #endif							/* HAVE_IPV6 */
 
-	/* Replace default authentication methods */
-	conflines = replace_token(conflines,
-							  "@authmethodhost@",
-							  authmethodhost);
-	conflines = replace_token(conflines,
-							  "@authmethodlocal@",
-							  authmethodlocal);
+		/* Replace default authentication methods */
+		conflines = replace_token(conflines,
+									"@authmethodhost@",
+									authmethodhost);
+		conflines = replace_token(conflines,
+									"@authmethodlocal@",
+									authmethodlocal);
 
-	conflines = replace_token(conflines,
-							  "@authcomment@",
-							  (strcmp(authmethodlocal, "trust") == 0 || strcmp(authmethodhost, "trust") == 0) ? AUTHTRUST_WARNING : "");
+		conflines = replace_token(conflines,
+									"@authcomment@",
+									(strcmp(authmethodlocal, "trust") == 0 || strcmp(authmethodhost, "trust") == 0) ? AUTHTRUST_WARNING : "");
 
-	snprintf(path, sizeof(path), "%s/pg_hba.conf", pg_data);
+		snprintf(path, sizeof(path), "%s/pg_hba.conf", pg_data);
 
-	writefile(path, conflines);
-	if (chmod(path, pg_file_create_mode) != 0)
-	{
-		fprintf(stderr, _("%s: could not change permissions of \"%s\": %s\n"),
-				progname, path, strerror(errno));
-		exit_nicely();
+		writefile(path, conflines);
+		if (chmod(path, pg_file_create_mode) != 0)
+		{
+			fprintf(stderr, _("%s: could not change permissions of \"%s\": %s\n"),
+					progname, path, strerror(errno));
+			exit_nicely();
+		}
+
+		free(conflines);
 	}
-
-	free(conflines);
 
 	/* pg_ident.conf */
 
@@ -1378,7 +1436,6 @@ setup_config(void)
 
 	check_ok();
 }
-
 
 /*
  * run the BKI script in bootstrap mode to create template1
@@ -1412,34 +1469,41 @@ bootstrap_template1(void)
 		exit_nicely();
 	}
 
-	/* Substitute for various symbols used in the BKI file */
+  /*
+   * Lines from BKI file are not actually used in initdb on local node.
+   * No need to substitute anything
+   */
+	if (!IsYugaByteLocalNodeInitdb())
+  {
+    /* Substitute for various symbols used in the BKI file */
 
-	sprintf(buf, "%d", NAMEDATALEN);
-	bki_lines = replace_token(bki_lines, "NAMEDATALEN", buf);
+    sprintf(buf, "%d", NAMEDATALEN);
+    bki_lines = replace_token(bki_lines, "NAMEDATALEN", buf);
 
-	sprintf(buf, "%d", (int) sizeof(Pointer));
-	bki_lines = replace_token(bki_lines, "SIZEOF_POINTER", buf);
+    sprintf(buf, "%d", (int) sizeof(Pointer));
+    bki_lines = replace_token(bki_lines, "SIZEOF_POINTER", buf);
 
-	bki_lines = replace_token(bki_lines, "ALIGNOF_POINTER",
-							  (sizeof(Pointer) == 4) ? "i" : "d");
+    bki_lines = replace_token(bki_lines, "ALIGNOF_POINTER",
+                  (sizeof(Pointer) == 4) ? "i" : "d");
 
-	bki_lines = replace_token(bki_lines, "FLOAT4PASSBYVAL",
-							  FLOAT4PASSBYVAL ? "true" : "false");
+    bki_lines = replace_token(bki_lines, "FLOAT4PASSBYVAL",
+                  FLOAT4PASSBYVAL ? "true" : "false");
 
-	bki_lines = replace_token(bki_lines, "FLOAT8PASSBYVAL",
-							  FLOAT8PASSBYVAL ? "true" : "false");
+    bki_lines = replace_token(bki_lines, "FLOAT8PASSBYVAL",
+                  FLOAT8PASSBYVAL ? "true" : "false");
 
-	bki_lines = replace_token(bki_lines, "POSTGRES",
-							  escape_quotes_bki(username));
+    bki_lines = replace_token(bki_lines, "POSTGRES",
+                  escape_quotes_bki(username));
 
-	bki_lines = replace_token(bki_lines, "ENCODING",
-							  encodingid_to_string(encodingid));
+    bki_lines = replace_token(bki_lines, "ENCODING",
+                  encodingid_to_string(encodingid));
 
-	bki_lines = replace_token(bki_lines, "LC_COLLATE",
-							  escape_quotes_bki(lc_collate));
+    bki_lines = replace_token(bki_lines, "LC_COLLATE",
+                  escape_quotes_bki(lc_collate));
 
-	bki_lines = replace_token(bki_lines, "LC_CTYPE",
-							  escape_quotes_bki(lc_ctype));
+    bki_lines = replace_token(bki_lines, "LC_CTYPE",
+                  escape_quotes_bki(lc_ctype));
+  }
 
 	/*
 	 * Pass correct LC_xxx environment to bootstrap.
@@ -1469,11 +1533,12 @@ bootstrap_template1(void)
 
 	PG_CMD_OPEN;
 
-	for (line = bki_lines; *line != NULL; line++)
-	{
-		PG_CMD_PUTS(*line);
-		free(*line);
-	}
+  for (line = bki_lines; *line != NULL; line++)
+  {
+    if (!IsYugaByteLocalNodeInitdb())
+      PG_CMD_PUTS(*line);
+    free(*line);
+  }
 
 	PG_CMD_CLOSE;
 
@@ -1659,7 +1724,12 @@ setup_depend(FILE *cmdfd)
 	};
 
 	for (line = pg_depend_setup; *line != NULL; line++)
+	{
+		/* Skip VACUUM commands in YugaByte mode */
+		if (IsYugaByteGlobalClusterInitdb() && strncmp(*line, "VACUUM", 6) == 0)
+			continue;
 		PG_CMD_PUTS(*line);
+	}
 }
 
 /*
@@ -1754,7 +1824,7 @@ setup_collation(FILE *cmdfd)
 				   BOOTSTRAP_SUPERUSERID, COLLPROVIDER_LIBC, PG_UTF8);
 
 	/* Now import all collations we can find in the operating system */
-	if (!IsYugaByteEnabledInInitdb())
+	if (!IsYugaByteGlobalClusterInitdb())
 		PG_CMD_PUTS("SELECT pg_import_system_collations('pg_catalog');\n\n");
 }
 
@@ -2084,7 +2154,7 @@ make_template0(FILE *cmdfd)
 	 * 14/12/2018.
 	 * TODO revert this change when we do support it.
 	 */
-	if (IsYugaByteEnabledInInitdb())
+	if (IsYugaByteGlobalClusterInitdb())
 	{
 		PG_CMD_PUTS(template0_setup[0]);
 		PG_CMD_PUTS(template0_setup[2]);
@@ -2353,6 +2423,23 @@ static void
 setlocales(void)
 {
 	char	   *canonname;
+
+	/* Use LC_COLLATE=C with everything else as en_US.UTF-8 as default locale in YB mode. */
+	/* This is because as of 06/15/2019 we don't support collation-aware string comparisons, */
+	/* but we still want to support storing UTF-8 strings. */
+	if (!locale && (IsYugaByteLocalNodeInitdb() || IsYugaByteGlobalClusterInitdb())) {
+		const char *kYBDefaultLocaleForSortOrder = "C";
+		const char *kYBDefaultLocaleForEncoding = "en_US.UTF-8";
+
+		locale = pg_strdup(kYBDefaultLocaleForEncoding);
+		lc_collate = pg_strdup(kYBDefaultLocaleForSortOrder);
+		fprintf(
+			stderr,
+			_("In YugaByte DB, setting LC_COLLATE to %s and all other locale settings to %s "
+			  "by default. Locale support will be enhanced as part of addressing "
+			  "https://github.com/YugaByte/yugabyte-db/issues/1557"),
+			lc_collate, locale);
+	}
 
 	/* set empty lc_* values to locale config if set */
 
@@ -2672,10 +2759,10 @@ setup_locale_encoding(void)
 void
 setup_data_file_paths(void)
 {
-	if (IsYugaByteEnabledInInitdb())
-		set_input(&bki_file, "yb_postgres.bki");
-	else
-		set_input(&bki_file, "postgres.bki");
+  if (IsYugaByteGlobalClusterInitdb())
+    set_input(&bki_file, "yb_postgres.bki");
+  else
+    set_input(&bki_file, "postgres.bki");
 	set_input(&desc_file, "postgres.description");
 	set_input(&shdesc_file, "postgres.shdescription");
 	set_input(&hba_file, "pg_hba.conf.sample");
@@ -2683,12 +2770,9 @@ setup_data_file_paths(void)
 	set_input(&conf_file, "postgresql.conf.sample");
 	set_input(&conversion_file, "conversion_create.sql");
 	set_input(&dictionary_file, "snowball_create.sql");
-	if (IsYugaByteEnabledInInitdb())
-		set_input(&info_schema_file, "yb_information_schema.sql");
-	else
-		set_input(&info_schema_file, "information_schema.sql");
+	set_input(&info_schema_file, "information_schema.sql");
 	set_input(&features_file, "sql_features.txt");
-	if (IsYugaByteEnabledInInitdb())
+	if (IsYugaByteGlobalClusterInitdb())
 		set_input(&system_views_file, "yb_system_views.sql");
 	else
 		set_input(&system_views_file, "system_views.sql");
@@ -3002,33 +3086,33 @@ initialize_data_directory(void)
 
 	create_data_directory();
 
-	create_xlog_or_symlink();
+  create_xlog_or_symlink();
 
-	/* Create required subdirectories (other than pg_wal) */
-	printf(_("creating subdirectories ... "));
-	fflush(stdout);
+  /* Create required subdirectories (other than pg_wal) */
+  printf(_("creating subdirectories ... "));
+  fflush(stdout);
 
-	for (i = 0; i < lengthof(subdirs); i++)
-	{
-		char     *path;
+  for (i = 0; i < lengthof(subdirs); i++)
+  {
+    char     *path;
 
-		path = psprintf("%s/%s", pg_data, subdirs[i]);
+    path = psprintf("%s/%s", pg_data, subdirs[i]);
 
-		/*
-		 * The parent directory already exists, so we only need mkdir() not
-		 * pg_mkdir_p() here, which avoids some failure modes; cf bug #13853.
-		 */
-		if (mkdir(path, pg_dir_create_mode) < 0)
-		{
-			fprintf(stderr, _("%s: could not create directory \"%s\": %s\n"),
-			        progname, path, strerror(errno));
-			exit_nicely();
-		}
+    /*
+     * The parent directory already exists, so we only need mkdir() not
+     * pg_mkdir_p() here, which avoids some failure modes; cf bug #13853.
+     */
+    if (mkdir(path, pg_dir_create_mode) < 0)
+    {
+      fprintf(stderr, _("%s: could not create directory \"%s\": %s\n"),
+              progname, path, strerror(errno));
+      exit_nicely();
+    }
 
-		free(path);
-	}
+    free(path);
+  }
 
-	check_ok();
+  check_ok();
 
 	/* Top level PG_VERSION is checked by bootstrapper, so make it first */
 	write_version_file(NULL);
@@ -3041,7 +3125,10 @@ initialize_data_directory(void)
 	setup_config();
 
 	/* Bootstrap template1 */
-	bootstrap_template1();
+  bootstrap_template1();
+
+  if (IsYugaByteLocalNodeInitdb())
+    return;
 
 	/*
 	 * Make the per-database PG_VERSION for template1 only after init'ing it
@@ -3064,8 +3151,7 @@ initialize_data_directory(void)
 
 	setup_auth(cmdfd);
 
-	if (!IsYugaByteEnabledInInitdb())
-		setup_depend(cmdfd);
+	setup_depend(cmdfd);
 
 	/*
 	 * Note that no objects created after setup_depend() will be "pinned".
@@ -3075,24 +3161,26 @@ initialize_data_directory(void)
 	setup_sysviews(cmdfd);
 
 	/* Do not support copy in YB yet */
-	if (!IsYugaByteEnabledInInitdb())
+	if (!IsYugaByteGlobalClusterInitdb())
 		setup_description(cmdfd);
 
 	setup_collation(cmdfd);
-	
-	if (!IsYugaByteEnabledInInitdb())
+
+	if (!IsYugaByteGlobalClusterInitdb())
 	{
 		setup_conversion(cmdfd);
 
 		setup_dictionary(cmdfd);
+	}
 
-		setup_privileges(cmdfd);
+	setup_privileges(cmdfd);
 
-		/* Do not support copy in YB yet */
-		setup_schema(cmdfd);
+	setup_schema(cmdfd);
 
-		load_plpgsql(cmdfd);
+  load_plpgsql(cmdfd);
 
+  if (!IsYugaByteGlobalClusterInitdb())
+  {
 		/* Do not need to vacuum in YB */
 		vacuum_db(cmdfd);
 	}
@@ -3110,9 +3198,9 @@ initialize_data_directory(void)
 int
 main(int argc, char *argv[])
 {
-	if (IsYugaByteEnabledInInitdb()) {
+	if (IsYugaByteGlobalClusterInitdb() || IsYugaByteLocalNodeInitdb())
 		YBSetInitDbModeEnvVar();
-	}
+
 	static struct option long_options[] = {
 		{"pgdata", required_argument, NULL, 'D'},
 		{"encoding", required_argument, NULL, 'E'},
@@ -3424,11 +3512,15 @@ main(int argc, char *argv[])
 	else
 		printf(_("\nSync to disk skipped.\nThe data directory might become corrupt if the operating system crashes.\n"));
 
-	if (authwarning != NULL && !IsYugaByteEnabledInInitdb())
+	if (IsYugaByteLocalNodeInitdb())
+		return 0;
+
+	if (authwarning != NULL && !IsYugaByteGlobalClusterInitdb())
 		fprintf(stderr, "%s", authwarning);
 
 	/* In YugaByte mode we only call this indirectly and manage starting the server automatically */
-	if (!IsYugaByteEnabledInInitdb()) {
+	if (!IsYugaByteGlobalClusterInitdb())
+	{
 
 		/*
      * Build up a shell command to tell the user how to start the server

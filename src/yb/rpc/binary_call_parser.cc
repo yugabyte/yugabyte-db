@@ -16,21 +16,23 @@
 
 #include "yb/gutil/endian.h"
 
+#include "yb/rpc/connection.h"
+
 namespace yb {
 namespace rpc {
 
 BinaryCallParser::BinaryCallParser(
     const MemTrackerPtr& parent_tracker,
     size_t header_size, size_t size_offset, size_t max_message_length, IncludeHeader include_header,
-    BinaryCallParserListener* listener)
+    SkipEmptyMessages skip_empty_messages, BinaryCallParserListener* listener)
     : buffer_(header_size), size_offset_(size_offset),
       max_message_length_(max_message_length), include_header_(include_header),
-      listener_(listener) {
+      skip_empty_messages_(skip_empty_messages), listener_(listener) {
   buffer_tracker_ = MemTracker::FindOrCreateTracker("Reading", parent_tracker);
 }
 
 Result<ProcessDataResult> BinaryCallParser::Parse(
-    const rpc::ConnectionPtr& connection, const IoVecs& data) {
+    const rpc::ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
   if (!call_data_.empty()) {
     RETURN_NOT_OK(listener_->HandleCall(connection, &call_data_));
     call_data_.Reset();
@@ -55,7 +57,8 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
     }
     if (consumed + total_length > full_size) {
       size_t call_data_size = header_size - body_offset + data_length;
-      if (buffer_tracker_->TryConsume(call_data_size)) {
+      MemTracker* blocking_mem_tracker = nullptr;
+      if (buffer_tracker_->TryConsume(call_data_size, &blocking_mem_tracker)) {
         call_data_consumption_ = ScopedTrackedConsumption(
             buffer_tracker_, call_data_size, AlreadyConsumed::kTrue);
         call_data_ = CallData(call_data_size);
@@ -63,13 +66,24 @@ Result<ProcessDataResult> BinaryCallParser::Parse(
         size_t received_size = full_size - (consumed + body_offset);
         Slice buffer(call_data_.data() + received_size, call_data_size - received_size);
         return ProcessDataResult{ full_size, buffer };
+      } else if (read_buffer_full && consumed == 0) {
+        auto consumption = blocking_mem_tracker ? blocking_mem_tracker->consumption() : -1;
+        auto limit = blocking_mem_tracker ? blocking_mem_tracker->limit() : -1;
+        LOG(WARNING) << "Unable to allocate read buffer because of limit, required: "
+                     << call_data_size << ", blocked by: " << yb::ToString(blocking_mem_tracker)
+                     << ", consumption: " << consumption << " of " << limit;
       }
       break;
     }
 
-    CallData call_data(total_length - body_offset);
-    IoVecsToBuffer(data, consumed + body_offset, consumed + total_length, call_data.data());
-    RETURN_NOT_OK(listener_->HandleCall(connection, &call_data));
+    // We might need to skip empty messages (we use them as low level heartbeats for inter-YB RPC
+    // connections, don't confuse with RAFT heartbeats which are higher level non-empty messages).
+    if (!skip_empty_messages_ || data_length > 0) {
+      connection->UpdateLastActivity();
+      CallData call_data(total_length - body_offset);
+      IoVecsToBuffer(data, consumed + body_offset, consumed + total_length, call_data.data());
+      RETURN_NOT_OK(listener_->HandleCall(connection, &call_data));
+    }
 
     consumed += total_length;
   }

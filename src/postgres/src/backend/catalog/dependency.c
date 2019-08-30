@@ -1130,8 +1130,15 @@ doDeletion(const ObjectAddress *object, int flags)
 
 					Assert(object->objectSubId == 0);
 
-					if (IsYugaByteEnabled() && IsYBRelationByKind(relKind))
-						YBCDropIndex(object->objectId);
+					if (IsYBRelationById(object->objectId))
+					{
+						Relation index = RelationIdGetRelation(object->objectId);
+
+						if (!index->rd_index->indisprimary)
+							YBCDropIndex(object->objectId);
+
+						RelationClose(index);
+					}
 					index_drop(object->objectId, concurrent);
 				}
 				else
@@ -1141,7 +1148,7 @@ doDeletion(const ObjectAddress *object, int flags)
 											object->objectSubId);
 					else
 					{
-						if (IsYugaByteEnabled() && IsYBRelationByKind(relKind))
+						if (IsYBRelationById(object->objectId))
 							YBCDropTable(object->objectId);
 						heap_drop_with_catalog(object->objectId);
 					}

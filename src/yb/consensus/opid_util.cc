@@ -33,8 +33,9 @@
 #include "yb/consensus/opid_util.h"
 
 #include <algorithm>
-#include <glog/logging.h>
 #include <limits>
+
+#include <glog/logging.h>
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/port.h"
@@ -167,10 +168,11 @@ std::string OpsRangeString(const ConsensusRequestPB& req) {
   return ret;
 }
 
-OpId MakeOpId(int term, int index) {
+OpId MakeOpId(int64_t term, int64_t index) {
   OpId ret;
   ret.set_index(index);
   ret.set_term(term);
+  LOG_IF(DFATAL, term < 0 || index < 0) << "MakeOpId: negative term/index: " << OpIdToString(ret);
   return ret;
 }
 

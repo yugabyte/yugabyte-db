@@ -45,12 +45,20 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/client_utils.h"
+#include "yb/client/error.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/tablet_server.h"
 #include "yb/client/value.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/partial_row.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/stl_util.h"
@@ -66,6 +74,7 @@
 #include "yb/server/metadata.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -156,9 +165,9 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(cluster_->Start());
 
     // Connect to the cluster.
-    ASSERT_OK(YBClientBuilder()
+    client_ = ASSERT_RESULT(YBClientBuilder()
         .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
-        .Build(&client_));
+        .Build());
 
     // Create a keyspace;
     ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
@@ -168,6 +177,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTearDown() override {
+    client_.reset();
     if (cluster_) {
       cluster_->Shutdown();
       cluster_.reset();
@@ -395,7 +405,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
   void DoApplyWithoutFlushTest(int sleep_micros);
 
-  Result<std::shared_ptr<rpc::Messenger>> CreateMessenger(const std::string& name) {
+  Result<std::unique_ptr<rpc::Messenger>> CreateMessenger(const std::string& name) {
     return rpc::MessengerBuilder(name).Build();
   }
 
@@ -408,7 +418,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   YBSchema schema_;
 
   gscoped_ptr<MiniCluster> cluster_;
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   TableHandle client_table_;
   TableHandle client_table2_;
 };
@@ -886,7 +896,7 @@ CHECKED_STATUS ApplyDeleteToSession(YBSession* session,
 TEST_F(ClientTest, TestWriteTimeout) {
   auto session = CreateSession();
 
-  // First time out the lookup on the master side.
+  LOG(INFO) << "Time out the lookup on the master side";
   {
     google::FlagSaver saver;
     FLAGS_master_inject_latency_on_tablet_lookups_ms = 110;
@@ -901,7 +911,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
             "timed out after deadline expired", client_table_->name().ToString()));
   }
 
-  // Next time out the actual write on the tablet server.
+  LOG(INFO) << "Time out the actual write on the tablet server";
   {
     google::FlagSaver saver;
     SetAtomicFlag(true, &FLAGS_log_inject_latency);
@@ -910,7 +920,7 @@ TEST_F(ClientTest, TestWriteTimeout) {
 
     ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
     Status s = session->Flush();
-    ASSERT_TRUE(s.IsIOError());
+    ASSERT_TRUE(s.IsIOError()) << s;
     auto error = GetSingleErrorFromSession(session.get());
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
     ASSERT_STR_CONTAINS(error->status().ToString(), "timed out");
@@ -1319,6 +1329,74 @@ TEST_F(ClientTest, TestGetTableSchema) {
   ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
 }
 
+TEST_F(ClientTest, TestGetTableSchemaByIdAsync) {
+  Synchronizer sync;
+  auto table_info = std::make_shared<YBTableInfo>();
+  ASSERT_OK(client_->GetTableSchemaById(
+      client_table_.table()->id(), table_info, sync.AsStatusCallback()));
+  ASSERT_OK(sync.Wait());
+  ASSERT_TRUE(schema_.Equals(table_info->schema));
+}
+
+TEST_F(ClientTest, TestGetTableSchemaByIdMissingTable) {
+  // Verify that a get schema request for a missing table throws not found.
+  Synchronizer sync;
+  auto table_info = std::make_shared<YBTableInfo>();
+  ASSERT_OK(client_->GetTableSchemaById("MissingTableId", table_info, sync.AsStatusCallback()));
+  Status s = sync.Wait();
+  ASSERT_TRUE(s.IsNotFound());
+  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
+}
+
+void CreateCDCStreamCallbackSuccess(Synchronizer* sync, const Result<CDCStreamId>& stream) {
+  ASSERT_TRUE(stream.ok());
+  ASSERT_FALSE(stream->empty());
+  sync->StatusCB(Status::OK());
+}
+
+void CreateCDCStreamCallbackFailure(Synchronizer* sync, const Result<CDCStreamId>& stream) {
+  ASSERT_FALSE(stream.ok());
+  sync->StatusCB(stream.status());
+}
+
+TEST_F(ClientTest, TestCreateCDCStreamAsync) {
+  Synchronizer sync;
+  std::unordered_map<std::string, std::string> options;
+  client_->CreateCDCStream(
+      client_table_.table()->id(), options, std::bind(&CreateCDCStreamCallbackSuccess, &sync,
+                                                      std::placeholders::_1));
+  ASSERT_OK(sync.Wait());
+}
+
+TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
+  Synchronizer sync;
+  std::unordered_map<std::string, std::string> options;
+  client_->CreateCDCStream(
+      "MissingTableId", options, std::bind(&CreateCDCStreamCallbackFailure, &sync,
+                                           std::placeholders::_1));
+  Status s = sync.Wait();
+  ASSERT_TRUE(s.IsNotFound());
+}
+
+TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
+  std::unordered_map<std::string, std::string> options;
+  auto result = client_->CreateCDCStream(client_table_.table()->id(), options);
+  ASSERT_TRUE(result.ok());
+
+  // Delete the created CDC stream.
+  Synchronizer sync;
+  client_->DeleteCDCStream(*result, sync.AsStatusCallback());
+  ASSERT_OK(sync.Wait());
+}
+
+TEST_F(ClientTest, TestDeleteCDCStreamMissingId) {
+  // Try to delete a non-existent CDC stream.
+  Synchronizer sync;
+  client_->DeleteCDCStream("MissingStreamId", sync.AsStatusCallback());
+  Status s = sync.Wait();
+  ASSERT_TRUE(s.IsNotFound());
+}
+
 TEST_F(ClientTest, TestStaleLocations) {
   string tablet_id = GetFirstTabletId(client_table2_.get());
 
@@ -1487,7 +1565,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 
   MiniTabletServer* new_leader = cluster_->mini_tablet_server(new_leader_idx);
   ASSERT_TRUE(new_leader != nullptr);
-  rpc::ProxyCache proxy_cache(client_messenger);
+  rpc::ProxyCache proxy_cache(client_messenger.get());
   consensus::ConsensusServiceProxy new_leader_proxy(
       &proxy_cache, HostPort::FromBoundEndpoint(new_leader->bound_rpc_addr()));
 
@@ -1692,7 +1770,7 @@ int CheckRowsEqual(const TableHandle& tbl, int32_t expected) {
 
 // Return a session "loaded" with updates. Sets the session timeout
 // to the parameter value. Larger timeouts decrease false positives.
-shared_ptr<YBSession> LoadedSession(const shared_ptr<YBClient>& client,
+shared_ptr<YBSession> LoadedSession(YBClient* client,
                                     const TableHandle& tbl,
                                     bool fwd, int max, MonoDelta timeout) {
   shared_ptr<YBSession> session = client->NewSession();
@@ -1718,10 +1796,9 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
 
   // Make reverse client who will make batches that update rows
   // in reverse order. Separate client used so rpc calls come in at same time.
-  shared_ptr<YBClient> rev_client;
-  ASSERT_OK(YBClientBuilder()
-                   .add_master_server_addr(ToString(cluster_->mini_master()->bound_rpc_addr()))
-                   .Build(&rev_client));
+  auto rev_client = ASSERT_RESULT(YBClientBuilder()
+      .add_master_server_addr(ToString(cluster_->mini_master()->bound_rpc_addr()))
+      .Build());
   TableHandle rev_table;
   ASSERT_OK(rev_table.Open(kTableName, client_.get()));
 
@@ -1744,8 +1821,8 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
   shared_ptr<YBSession> fwd_sessions[kNumSessions];
   shared_ptr<YBSession> rev_sessions[kNumSessions];
   for (int i = 0; i < kNumSessions; ++i) {
-    fwd_sessions[i] = LoadedSession(client_, client_table_, true, kNumRows, kTimeout);
-    rev_sessions[i] = LoadedSession(rev_client, rev_table, true, kNumRows, kTimeout);
+    fwd_sessions[i] = LoadedSession(client_.get(), client_table_, true, kNumRows, kTimeout);
+    rev_sessions[i] = LoadedSession(rev_client.get(), rev_table, true, kNumRows, kTimeout);
   }
 
   // Run async calls - one thread updates sequentially, another in reverse.
@@ -1801,9 +1878,9 @@ TEST_F(ClientTest, CreateTableWithoutTservers) {
   ASSERT_OK(cluster_->Start());
 
   // Connect to the cluster.
-  ASSERT_OK(YBClientBuilder()
+  client_ = ASSERT_RESULT(YBClientBuilder()
       .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
-      .Build(&client_));
+      .Build());
 
   gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   Status s = table_creator->table_name(YBTableName(kKeyspaceName, "foobar"))
@@ -1911,7 +1988,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
   ASSERT_EQ(cluster_->num_tablet_servers() - 1, followers.size());
 
   auto client_messenger = ASSERT_RESULT(CreateMessenger("client"));
-  rpc::ProxyCache proxy_cache(client_messenger);
+  rpc::ProxyCache proxy_cache(client_messenger.get());
   for (const master::TSInfoPB& ts_info : followers) {
     // Try to read from followers.
     auto tserver_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
@@ -1986,5 +2063,72 @@ TEST_F(ClientTest, Capability) {
   }
 }
 
+TEST_F(ClientTest, TestCreateTableWithRangePartition) {
+  gscoped_ptr <YBTableCreator> table_creator(client_->NewTableCreator());
+  const std::string kPgsqlKeyspaceID = "1234";
+  const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
+  const std::string kPgsqlTableName = "pgsqlrangepartitionedtable";
+  const std::string kPgsqlTableId = "pgsqlrangepartitionedtableid";
+  const size_t kColIdx = 1;
+  const int64_t kKeyValue = 48238;
+  auto pgsql_table_name = YBTableName(kPgsqlKeyspaceID, kPgsqlKeyspaceName, kPgsqlTableName);
+
+  auto yql_table_name = YBTableName(kKeyspaceName, "yqlrangepartitionedtable");
+
+  YBSchemaBuilder schemaBuilder;
+  schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::STRING)->NotNull();
+  schemaBuilder.AddColumn("value")->Type(yb::INT64)->NotNull();
+  YBSchema schema;
+  EXPECT_OK(client_->CreateNamespaceIfNotExists(kPgsqlKeyspaceName,
+                                                YQLDatabase::YQL_DATABASE_PGSQL,
+                                                "" /* creator_role_name */,
+                                                kPgsqlKeyspaceID));
+  // Create a PGSQL table using range partition.
+  EXPECT_OK(schemaBuilder.Build(&schema));
+  Status s = table_creator->table_name(pgsql_table_name)
+      .table_id(kPgsqlTableId)
+      .schema(&schema_)
+      .set_range_partition_columns({"key"})
+      .table_type(PGSQL_TABLE_TYPE)
+      .num_tablets(1)
+      .Create();
+  EXPECT_OK(s);
+
+  // Write to the PGSQL table.
+  shared_ptr<YBTable> pgsq_table;
+  EXPECT_OK(client_->OpenTable(kPgsqlTableId , &pgsq_table));
+  std::shared_ptr<YBPgsqlWriteOp> pgsql_write_op(pgsq_table->NewPgsqlInsert());
+  PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
+
+  psql_write_request->add_range_column_values()->mutable_value()->set_string_value("pgsql_key1");
+  PgsqlColumnValuePB* pgsql_column = psql_write_request->add_column_values();
+  // 1 is the index for column value.
+
+  pgsql_column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
+  pgsql_column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
+  std::shared_ptr<YBSession> session = CreateSession(client_.get());
+  EXPECT_OK(session->Apply(pgsql_write_op));
+
+  // Create a YQL table using range partition.
+  s = table_creator->table_name(yql_table_name)
+      .schema(&schema_)
+      .set_range_partition_columns({"key"})
+      .table_type(YQL_TABLE_TYPE)
+      .num_tablets(1)
+      .Create();
+  EXPECT_OK(s);
+
+  // Write to the YQL table.
+  client::TableHandle table;
+  EXPECT_OK(table.Open(yql_table_name, client_.get()));
+  std::shared_ptr<YBqlWriteOp> write_op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  QLWriteRequestPB* const req = write_op->mutable_request();
+  req->add_range_column_values()->mutable_value()->set_string_value("key1");
+  QLColumnValuePB* column = req->add_column_values();
+  // 1 is the index for column value.
+  column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
+  column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
+  EXPECT_OK(session->Apply(write_op));
+}
 }  // namespace client
 }  // namespace yb

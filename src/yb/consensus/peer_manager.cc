@@ -88,9 +88,6 @@ void PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
       return;
     }
 
-    auto status = (**remote_peer).SignalRequest(RequestTriggerMode::kNonEmptyOnly);
-    LOG_IF(WARNING, !status.ok()) << "Failed to send first request to peer "
-                                  << (**remote_peer).peer_pb().ShortDebugString() << ": " << status;
     peers_[peer_pb.permanent_uuid()] = std::move(*remote_peer);
   }
 }

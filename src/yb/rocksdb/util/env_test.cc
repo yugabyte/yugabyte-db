@@ -31,7 +31,7 @@
 #include <atomic>
 #include <list>
 
-#ifdef OS_LINUX
+#ifdef __linux__
 #include <fcntl.h>
 #include <linux/fs.h>
 #include <stdlib.h>
@@ -457,7 +457,7 @@ TEST_F(EnvPosixTest, DecreaseNumBgThreads) {
   ASSERT_TRUE(!tasks[5].IsSleeping());
 }
 
-#ifdef OS_LINUX
+#ifdef __linux__
 // Travis doesn't support fallocate or getting unique ID from files for whatever
 // reason.
 #ifndef TRAVIS
@@ -582,14 +582,14 @@ TEST_F(EnvPosixTest, RandomAccessUniqueID) {
 
   // Get Unique ID
   ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
-  size_t id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
+  size_t id_size = file->GetUniqueId(temp_id);
   ASSERT_GT(id_size, 0);
   std::string unique_id1(temp_id, id_size);
   ASSERT_TRUE(IsUniqueIDValid(unique_id1));
 
   // Get Unique ID again
   ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
-  id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
+  id_size = file->GetUniqueId(temp_id);
   ASSERT_GT(id_size, 0);
   std::string unique_id2(temp_id, id_size);
   ASSERT_TRUE(IsUniqueIDValid(unique_id2));
@@ -597,7 +597,7 @@ TEST_F(EnvPosixTest, RandomAccessUniqueID) {
   // Get Unique ID again after waiting some time.
   env_->SleepForMicroseconds(1000000);
   ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
-  id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
+  id_size = file->GetUniqueId(temp_id);
   ASSERT_GT(id_size, 0);
   std::string unique_id3(temp_id, id_size);
   ASSERT_TRUE(IsUniqueIDValid(unique_id3));
@@ -714,7 +714,7 @@ TEST_F(EnvPosixTest, RandomAccessUniqueIDConcurrent) {
     unique_ptr<RandomAccessFile> file;
     std::string unique_id;
     ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
-    size_t id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
+    size_t id_size = file->GetUniqueId(temp_id);
     ASSERT_GT(id_size, 0);
     unique_id = std::string(temp_id, id_size);
     ASSERT_TRUE(IsUniqueIDValid(unique_id));
@@ -752,7 +752,7 @@ TEST_F(EnvPosixTest, RandomAccessUniqueIDDeletes) {
     {
       unique_ptr<RandomAccessFile> file;
       ASSERT_OK(env_->NewRandomAccessFile(fname, &file, soptions));
-      size_t id_size = file->GetUniqueId(temp_id, MAX_ID_SIZE);
+      size_t id_size = file->GetUniqueId(temp_id);
       ASSERT_GT(id_size, 0);
       unique_id = std::string(temp_id, id_size);
     }
@@ -797,7 +797,7 @@ TEST_F(EnvPosixTest, InvalidateCache) {
   // Sequential Read
   {
     unique_ptr<SequentialFile> file;
-    char scratch[100];
+    uint8_t scratch[100];
     Slice result;
     ASSERT_OK(env_->NewSequentialFile(fname, &file, soptions));
     ASSERT_OK(file.get()->Read(11, &result, scratch));
@@ -809,7 +809,7 @@ TEST_F(EnvPosixTest, InvalidateCache) {
   ASSERT_OK(env_->DeleteFile(fname));
 }
 #endif  // not TRAVIS
-#endif  // OS_LINUX
+#endif  // __linux__
 
 class TestLogger : public Logger {
  public:
@@ -1029,7 +1029,7 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
                                 size_t* last_allocated_block) override {
       inc(8);
     }
-    size_t GetUniqueId(char* id, size_t max_size) const override {
+    size_t GetUniqueId(char* id) const override {
       inc(9);
       return 0;
     }
@@ -1056,7 +1056,8 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
 
   class Wrapper : public WritableFileWrapper {
    public:
-    explicit Wrapper(WritableFile* target) : WritableFileWrapper(target) {}
+    explicit Wrapper(std::unique_ptr<WritableFile> target) :
+    WritableFileWrapper(std::move(target)) {}
 
     void CallProtectedMethods() {
       Allocate(0, 0);
@@ -1067,8 +1068,8 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
   int step = 0;
 
   {
-    Base b(&step);
-    Wrapper w(&b);
+    auto b = std::make_unique<Base>(&step);
+    Wrapper w(std::move(b));
     w.Append(Slice());
     w.Close();
     w.Flush();
@@ -1077,7 +1078,7 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
     w.SetIOPriority(Env::IOPriority::IO_HIGH);
     w.GetFileSize();
     w.GetPreallocationStatus(nullptr, nullptr);
-    w.GetUniqueId(nullptr, 0);
+    w.GetUniqueId(nullptr);
     w.InvalidateCache(0, 0);
     w.CallProtectedMethods();
   }

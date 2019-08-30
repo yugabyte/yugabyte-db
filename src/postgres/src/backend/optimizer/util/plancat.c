@@ -279,9 +279,8 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 
 			/*
 			 * Fetch the ordering information for the index, if any.
-			 * TODO: support ordering with range-based index in YugaByte.
 			 */
-			if (info->relam == BTREE_AM_OID && !IsYugaByteEnabled())
+			if (info->relam == BTREE_AM_OID)
 			{
 				/*
 				 * If it's a btree index, we can use its opfamily OIDs
@@ -328,6 +327,24 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 					Oid			btopfamily;
 					Oid			btopcintype;
 					int16		btstrategy;
+
+					/*
+					 * If there is a hash column in the key, the key is not
+					 * end-to-end sorted.
+					 *
+					 * TODO: instead of treating the whole index as unordered,
+					 * we can try to examine the WHERE and JOIN predicates and
+					 * make use of the ordering of other range columns if the
+					 * predicate condition picks a specific hash column value.
+					 *
+					 */
+					if (IsYBRelation(relation) && (opt & INDOPTION_HASH) != 0)
+					{
+						info->sortopfamily = NULL;
+						info->reverse_sort = NULL;
+						info->nulls_first = NULL;
+						break;
+					}
 
 					info->reverse_sort[i] = (opt & INDOPTION_DESC) != 0;
 					info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
@@ -393,7 +410,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			 * a table, except we can be sure that the index is not larger
 			 * than the table.
 			 */
-			if (info->indpred == NIL && !IsYugaByteEnabled())
+			if (info->indpred == NIL && !IsYBRelation(indexRelation))
 			{
 				info->pages = RelationGetNumberOfBlocks(indexRelation);
 				info->tuples = rel->tuples;
@@ -410,18 +427,8 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 
 			if (info->relam == BTREE_AM_OID)
 			{
-				/*
-				 * For YugaByte-based index, set the tree height to "unknown".
-				 */
-				if (IsYugaByteEnabled())
-				{
-					info->tree_height = -1;
-				}
-				else
-				{
-					/* For btrees, get tree height while we have the index open */
-					info->tree_height = _bt_getrootheight(indexRelation);
-				}
+				/* For btrees, get tree height while we have the index open */
+				info->tree_height = _bt_getrootheight(indexRelation);
 			}
 			else
 			{

@@ -330,6 +330,10 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     }
 
     CallResponse response = new CallResponse(buf);
+    if (response.isEmpty()) {
+      // Skip empty messages which we are using as heartbeats.
+      return null;
+    }
 
     RpcHeader.ResponseHeader header = response.getHeader();
     if (!header.hasCallId()) {

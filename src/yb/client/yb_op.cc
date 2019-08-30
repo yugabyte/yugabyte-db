@@ -33,7 +33,9 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/client/client.h"
+#include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/table.h"
 
 #include "yb/common/row.h"
 #include "yb/common/wire_protocol.pb.h"
@@ -42,8 +44,15 @@
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
 
+#include "yb/docdb/doc_key.h"
+
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
+
+using namespace std::literals;
 
 namespace yb {
 namespace client {
@@ -92,7 +101,6 @@ RedisResponsePB* YBRedisOp::mutable_response() {
   }
   return redis_response_.get();
 }
-
 
 const RedisResponsePB& YBRedisOp::response() const {
   return *DCHECK_NOTNULL(redis_response_.get());
@@ -404,8 +412,22 @@ Status YBqlReadOp::GetPartitionKey(string* partition_key) const {
       ql_read_request_->paging_state().has_next_partition_key() &&
       !ql_read_request_->paging_state().next_partition_key().empty()) {
     *partition_key = ql_read_request_->paging_state().next_partition_key();
-    ql_read_request_->set_hash_code(
-        PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
+
+    // Check that the partition key we got from the paging state is within bounds.
+    uint16 paging_state_hash_code = PartitionSchema::DecodeMultiColumnHashValue(*partition_key);
+    if ((ql_read_request_->has_hash_code() &&
+            paging_state_hash_code < ql_read_request_->hash_code()) ||
+        (ql_read_request_->has_max_hash_code() &&
+            paging_state_hash_code > ql_read_request_->max_hash_code())) {
+    return STATUS_SUBSTITUTE(InternalError,
+                             "Out of bounds partition key found in paging state:"
+                             "Query's partition bounds: [%d, %d], paging state partition: %d",
+                             ql_read_request_->hash_code(),
+                             ql_read_request_->max_hash_code() ,
+                             paging_state_hash_code);
+    }
+
+    ql_read_request_->set_hash_code(paging_state_hash_code);
   }
 
   return Status::OK();
@@ -486,8 +508,11 @@ std::string YBPgsqlWriteOp::ToString() const {
 }
 
 Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
-  if (write_request_->has_hash_code() && write_request_->partition_column_values_size() == 0) {
-    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(write_request_->hash_code());
+  const auto& ybctid = write_request_->ybctid_column_value().value();
+  if (!IsNull(ybctid)) {
+    const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
+    write_request_->set_hash_code(hash_code);
+    *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
     return Status::OK();
   }
 
@@ -499,7 +524,6 @@ Status YBPgsqlWriteOp::GetPartitionKey(string* partition_key) const {
 void YBPgsqlWriteOp::SetHashCode(const uint16_t hash_code) {
   write_request_->set_hash_code(hash_code);
 }
-
 
 bool YBPgsqlWriteOp::IsTransactional() const {
   return !is_single_row_txn_ && table_->schema().table_properties().is_transactional();
@@ -565,8 +589,10 @@ Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
     } // else we are using no-hash scheme (e.g. for postgres syscatalog tables) -- nothing to do.
   } else {
     // Otherwise, set the partition key to the hash_code (lower bound of the token range).
-    if (read_request_->has_hash_code()) {
-      uint16 hash_code = static_cast<uint16>(read_request_->hash_code());
+    const auto& ybctid = read_request_->ybctid_column_value().value();
+    if (!IsNull(ybctid)) {
+      const uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid.binary_value()));
+      read_request_->set_hash_code(hash_code);
       *partition_key = PartitionSchema::EncodeMultiColumnHashValue(hash_code);
     } else {
       // Default to empty key, this will start a scan from the beginning.
@@ -581,8 +607,22 @@ Status YBPgsqlReadOp::GetPartitionKey(string* partition_key) const {
       read_request_->paging_state().has_next_partition_key() &&
       !read_request_->paging_state().next_partition_key().empty()) {
     *partition_key = read_request_->paging_state().next_partition_key();
-    read_request_->set_hash_code(
-        PartitionSchema::DecodeMultiColumnHashValue(*partition_key));
+
+    // Check that the partition key we got from the paging state is within bounds.
+    uint16 paging_state_hash_code = PartitionSchema::DecodeMultiColumnHashValue(*partition_key);
+    if ((read_request_->has_hash_code() &&
+            paging_state_hash_code < read_request_->hash_code()) ||
+        (read_request_->has_max_hash_code() &&
+            paging_state_hash_code > read_request_->max_hash_code())) {
+    return STATUS_SUBSTITUTE(InternalError,
+                             "Out of bounds partition key found in paging state:"
+                             "Query's partition bounds: [%d, %d], paging state partition: %d",
+                             read_request_->hash_code(),
+                             read_request_->max_hash_code() ,
+                             paging_state_hash_code);
+    }
+
+    read_request_->set_hash_code(paging_state_hash_code);
   }
 
   return Status::OK();
@@ -612,6 +652,97 @@ Result<QLRowBlock> YBPgsqlReadOp::MakeRowBlock() const {
     RETURN_NOT_OK(result.Deserialize(request().client(), &data));
   }
   return result;
+}
+
+////////////////////////////////////////////////////////////
+// YBNoOp
+////////////////////////////////////////////////////////////
+
+YBNoOp::YBNoOp(YBTable* table)
+  : table_(table) {
+}
+
+YBNoOp::~YBNoOp() {
+}
+
+Status YBNoOp::Execute(const YBPartialRow& key) {
+  string encoded_key;
+  RETURN_NOT_OK(table_->partition_schema().EncodeKey(key, &encoded_key));
+  CoarseTimePoint deadline = CoarseMonoClock::Now() + 5s;
+
+  tserver::NoOpRequestPB noop_req;
+  tserver::NoOpResponsePB noop_resp;
+
+  for (int attempt = 1; attempt < 11; attempt++) {
+    Synchronizer sync;
+    auto remote_ = VERIFY_RESULT(table_->client()->data_->meta_cache_->LookupTabletByKeyFuture(
+        table_, encoded_key, deadline).get());
+
+    internal::RemoteTabletServer *ts = nullptr;
+    std::vector<internal::RemoteTabletServer*> candidates;
+    std::set<string> blacklist;  // TODO: empty set for now.
+    Status lookup_status = table_->client()->data_->GetTabletServer(
+       table_->client(),
+       remote_,
+       YBClient::ReplicaSelection::LEADER_ONLY,
+       blacklist,
+       &candidates,
+       &ts);
+
+    // If we get ServiceUnavailable, this indicates that the tablet doesn't
+    // currently have any known leader. We should sleep and retry, since
+    // it's likely that the tablet is undergoing a leader election and will
+    // soon have one.
+    if (lookup_status.IsServiceUnavailable() && CoarseMonoClock::Now() < deadline) {
+      const int sleep_ms = attempt * 100;
+      VLOG(1) << "Tablet " << remote_->tablet_id() << " current unavailable: "
+              << lookup_status.ToString() << ". Sleeping for " << sleep_ms << "ms "
+              << "and retrying...";
+      SleepFor(MonoDelta::FromMilliseconds(sleep_ms));
+      continue;
+    }
+    RETURN_NOT_OK(lookup_status);
+
+    auto now = CoarseMonoClock::Now();
+    if (deadline < now) {
+      return STATUS(TimedOut, "Op timed out, deadline expired");
+    }
+
+    // Recalculate the deadlines.
+    // If we have other replicas beyond this one to try, then we'll use the default RPC timeout.
+    // That gives us time to try other replicas later. Otherwise, use the full remaining deadline
+    // for the user's call.
+    CoarseTimePoint rpc_deadline;
+    if (static_cast<int>(candidates.size()) - blacklist.size() > 1) {
+      rpc_deadline = now + table_->client()->default_rpc_timeout();
+      rpc_deadline = std::min(deadline, rpc_deadline);
+    } else {
+      rpc_deadline = deadline;
+    }
+
+    rpc::RpcController controller;
+    controller.set_deadline(rpc_deadline);
+
+    CHECK(ts->proxy());
+    const Status rpc_status = ts->proxy()->NoOp(noop_req, &noop_resp, &controller);
+    if (rpc_status.ok() && !noop_resp.has_error()) {
+      break;
+    }
+
+    LOG(INFO) << rpc_status.CodeAsString();
+    if (noop_resp.has_error()) {
+      Status s = StatusFromPB(noop_resp.error().status());
+      LOG(INFO) << rpc_status.CodeAsString();
+    }
+    /*
+     * TODO: For now, we just try a few attempts and exit. Ideally, we should check for
+     * errors that are retriable, and retry if so.
+     * RETURN_NOT_OK(CanBeRetried(true, rpc_status, server_status, rpc_deadline, deadline,
+     *                         candidates, blacklist));
+     */
+  }
+
+  return Status::OK();
 }
 
 }  // namespace client

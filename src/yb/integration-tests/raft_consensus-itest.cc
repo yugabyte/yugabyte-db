@@ -34,7 +34,6 @@
 #include <unordered_set>
 
 #include <boost/optional.hpp>
-#include <boost/scope_exit.hpp>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -43,6 +42,8 @@
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
+#include "yb/client/error.h"
+#include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
@@ -65,6 +66,7 @@
 #include "yb/server/server_base.pb.h"
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
 
@@ -263,6 +265,8 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     session->SetTimeout(60s);
 
     for (int i = 0; i < num_batches; i++) {
+      SCOPED_TRACE(Format("Batch: $0", i));
+
       uint64_t first_row_in_batch = first_row + (i * count / num_batches);
       uint64_t last_row_in_batch = first_row_in_batch + count / num_batches;
 
@@ -286,7 +290,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
       if (PREDICT_FALSE(!s.ok())) {
         client::CollectedErrors errors = session->GetPendingErrors();
         for (const auto& e : errors) {
-          CHECK(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status().ToString();
+          ASSERT_TRUE(e->status().IsAlreadyPresent()) << "Unexpected error: " << e->status();
         }
         inserted -= errors.size();
       }
@@ -476,8 +480,8 @@ TEST_F(RaftConsensusITest, TestGetPermanentUuid) {
 
   rpc::MessengerBuilder builder("test builder");
   builder.set_num_reactors(1);
-  auto messenger = ASSERT_RESULT(builder.Build());
-  rpc::ProxyCache proxy_cache(messenger);
+  std::unique_ptr<rpc::Messenger> messenger = ASSERT_RESULT(builder.Build());
+  rpc::ProxyCache proxy_cache(messenger.get());
 
   // Set a decent timeout for allowing the masters to find eachother.
   const auto kTimeout = 30s;
@@ -499,10 +503,11 @@ TEST_F(RaftConsensusITest, TestInsertAndMutateThroughConsensus) {
   int num_iters = AllowSlowTests() ? 10 : 1;
 
   for (int i = 0; i < num_iters; i++) {
-    InsertTestRowsRemoteThread(i * FLAGS_client_inserts_per_thread,
-                               FLAGS_client_inserts_per_thread,
-                               FLAGS_client_num_batches_per_thread,
-                               vector<CountDownLatch*>());
+    ASSERT_NO_FATALS(InsertTestRowsRemoteThread(
+        i * FLAGS_client_inserts_per_thread,
+        FLAGS_client_inserts_per_thread,
+        FLAGS_client_num_batches_per_thread,
+        vector<CountDownLatch*>()));
   }
   ASSERT_ALL_REPLICAS_AGREE(FLAGS_client_inserts_per_thread * num_iters);
 }
@@ -653,10 +658,11 @@ TEST_F(RaftConsensusITest, TestRunLeaderElection) {
 
   int num_iters = AllowSlowTests() ? 10 : 1;
 
-  InsertTestRowsRemoteThread(0,
-                             FLAGS_client_inserts_per_thread * num_iters,
-                             FLAGS_client_num_batches_per_thread,
-                             vector<CountDownLatch*>());
+  ASSERT_NO_FATALS(InsertTestRowsRemoteThread(
+      0,
+      FLAGS_client_inserts_per_thread * num_iters,
+      FLAGS_client_num_batches_per_thread,
+      vector<CountDownLatch*>()));
 
   ASSERT_ALL_REPLICAS_AGREE(FLAGS_client_inserts_per_thread * num_iters);
 
@@ -676,10 +682,11 @@ TEST_F(RaftConsensusITest, TestRunLeaderElection) {
   ASSERT_OK(StartElection(replica, tablet_id_, MonoDelta::FromSeconds(10)));
 
   // Insert a bunch more rows.
-  InsertTestRowsRemoteThread(FLAGS_client_inserts_per_thread * num_iters,
-                             FLAGS_client_inserts_per_thread * num_iters,
-                             FLAGS_client_num_batches_per_thread,
-                             vector<CountDownLatch*>());
+  ASSERT_NO_FATALS(InsertTestRowsRemoteThread(
+      FLAGS_client_inserts_per_thread * num_iters,
+      FLAGS_client_inserts_per_thread * num_iters,
+      FLAGS_client_num_batches_per_thread,
+      vector<CountDownLatch*>()));
 
   // Restart the original replica and make sure they all agree.
   ASSERT_OK(leader_ets->Restart());
@@ -1452,10 +1459,11 @@ TEST_F(RaftConsensusITest, TestAutomaticLeaderElection) {
     LOG(INFO) << Substitute("Writing data to leader of $0-node config ($1 alive)...",
                             FLAGS_num_replicas, FLAGS_num_replicas - leaders_killed);
 
-    InsertTestRowsRemoteThread(leaders_killed * FLAGS_client_inserts_per_thread,
-                               FLAGS_client_inserts_per_thread,
-                               FLAGS_client_num_batches_per_thread,
-                               vector<CountDownLatch*>());
+    ASSERT_NO_FATALS(InsertTestRowsRemoteThread(
+        leaders_killed * FLAGS_client_inserts_per_thread,
+        FLAGS_client_inserts_per_thread,
+        FLAGS_client_num_batches_per_thread,
+        vector<CountDownLatch*>()));
 
     // At this point, the writes are flushed but the commit index may not be
     // propagated to all replicas. We kill the leader anyway.
@@ -1651,7 +1659,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ASSERT_TRUE(resp.has_error()) << resp.DebugString();
   ASSERT_EQ(resp.error().status().message(),
             "New operation's index does not follow the previous op's index. "
-            "Current: 2.6. Previous: 2.4");
+            "Current: { term: 2 index: 6 }. Previous: { term: 2 index: 4 }");
 
   resp.Clear();
   req.clear_ops();
@@ -1664,8 +1672,8 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   ASSERT_OK(c_proxy->UpdateConsensus(req, &resp, &rpc));
   ASSERT_TRUE(resp.has_error()) << resp.DebugString();
   ASSERT_EQ(resp.error().status().message(),
-            "New operation's term is not >= than the previous op's term."
-            " Current: 2.6. Previous: 3.5");
+            "New operation's term is not >= than the previous op's term. "
+            "Current: { term: 2 index: 6 }. Previous: { term: 3 index: 5 }");
 
   LOG(INFO) << "Regression test for KUDU-639";
   // If we send a valid request, but the
@@ -1967,8 +1975,9 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   vector<TServerDetails*> tservers = TServerDetailsVector(tablet_servers_);
   ASSERT_EQ(FLAGS_num_tablet_servers, tservers.size());
 
-  LOG(INFO) << "Elect server 0 as leader and wait for log index 1 to propagate to all servers.";
   TServerDetails* leader_tserver = tservers[0];
+  LOG(INFO) << "Elect server 0 (" << leader_tserver->uuid()
+            << ") as leader and wait for log index 1 to propagate to all servers.";
 
   auto original_followers = CreateTabletServerMapUnowned(tablet_servers_);
   ASSERT_EQ(1, original_followers.erase(leader_tserver->uuid()));
@@ -1978,7 +1987,7 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
   ASSERT_OK(WaitForServersToAgree(timeout, tablet_servers_, tablet_id_, 1));
   ASSERT_OK(WaitUntilCommittedOpIdIndexIs(1, leader_tserver, tablet_id_, timeout));
 
-  LOG(INFO) << "Shut down servers 1 and 2, so that server 1 can't replicate anything.";
+  LOG(INFO) << "Shut down servers 1 and 2, so that server 0 can't replicate anything.";
   cluster_->tablet_server_by_uuid(tservers[1]->uuid())->Shutdown();
   cluster_->tablet_server_by_uuid(tservers[2]->uuid())->Shutdown();
 
@@ -1997,9 +2006,9 @@ TEST_F(RaftConsensusITest, TestReplaceChangeConfigOperation) {
 
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), original_followers, tablet_id_, 1));
 
-  LOG(INFO) << "Elect one of the other servers.";
+  LOG(INFO) << "Elect one of the other servers: " << tservers[1]->uuid();
   ASSERT_OK(StartElection(tservers[1], tablet_id_, MonoDelta::FromSeconds(10)));
-  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), original_followers, tablet_id_, 1));
+  ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), original_followers, tablet_id_, 2));
 
   LOG(INFO) << "Resume the original leader. Its change-config operation will now be aborted "
                "since it was never replicated to the majority, and the new leader will have "
@@ -2266,13 +2275,13 @@ TEST_F(RaftConsensusITest, TestConfigChangeUnderLoad) {
   {
     std::atomic<bool> finish(false);
     vector<scoped_refptr<Thread> > threads;
-    BOOST_SCOPE_EXIT(&threads, &finish) {
+    auto se = ScopeExit([&threads, &finish] {
       LOG(INFO) << "Joining writer threads...";
       finish = true;
       for (const scoped_refptr<Thread> &thread : threads) {
         ASSERT_OK(ThreadJoiner(thread.get()).Join());
       }
-    } BOOST_SCOPE_EXIT_END;
+    });
 
     int num_threads = FLAGS_num_client_threads;
     for (int i = 0; i < num_threads; i++) {

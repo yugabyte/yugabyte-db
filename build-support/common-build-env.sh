@@ -143,7 +143,7 @@ heading() {
   fi
   log_empty_line
   echo >&2 "--------------------------------------------------------------------------------------"
-  echo >&2 "$1"
+  echo >&2 "$*"
   echo >&2 "--------------------------------------------------------------------------------------"
   log_empty_line
 }
@@ -255,6 +255,7 @@ readonly VALID_BUILD_TYPES=(
   release
   tsan
   tsan_slow
+  compilecmds
 )
 
 # Valid values of CMAKE_BUILD_TYPE passed to the top-level CMake build. This is the same as the
@@ -271,20 +272,16 @@ readonly VALID_COMPILER_TYPES=( gcc clang zapcc )
 
 readonly VALID_LINKING_TYPES=( static dynamic )
 
-readonly VALID_EDITIONS=( community enterprise )
-
 make_regexes_from_lists \
   VALID_BUILD_TYPES \
   VALID_CMAKE_BUILD_TYPES \
   VALID_COMPILER_TYPES \
-  VALID_LINKING_TYPES \
-  VALID_EDITIONS
+  VALID_LINKING_TYPES
 
 readonly BUILD_ROOT_BASENAME_RE=\
 "^($VALID_BUILD_TYPES_RAW_RE)-\
 ($VALID_COMPILER_TYPES_RAW_RE)-\
-($VALID_LINKING_TYPES_RAW_RE)-\
-($VALID_EDITIONS_RAW_RE)\
+($VALID_LINKING_TYPES_RAW_RE)\
 (-ninja)?\
 (-clion)?$"
 
@@ -410,9 +407,6 @@ set_build_root() {
   determine_linking_type
 
   BUILD_ROOT=$YB_BUILD_PARENT_DIR/$build_type-$YB_COMPILER_TYPE-$YB_LINK
-
-  detect_edition
-  BUILD_ROOT+="-$YB_EDITION"
 
   if using_ninja; then
     BUILD_ROOT+="-ninja"
@@ -690,6 +684,11 @@ set_cmake_build_type_and_compiler_type() {
       cmake_build_type=${build_type:1}
       cmake_opts+=( -DYB_INSTRUMENT_FUNCTIONS=1 )
     ;;
+    compilecmds)
+      cmake_build_type=debug
+      export CMAKE_EXPORT_COMPILE_COMMANDS=1
+      export YB_EXPORT_COMPILE_COMMANDS=1
+    ;;
     *)
       cmake_build_type=$build_type
   esac
@@ -854,6 +853,7 @@ append_common_mvn_opts() {
 # A utility function called by both 'build_yb_java_code' and 'build_yb_java_code_with_retries'.
 build_yb_java_code_filter_save_output() {
   set_mvn_parameters
+  log "Building Java code in $PWD"
 
   # --batch-mode hides download progress.
   # We are filtering out some patterns from Maven output, e.g.:
@@ -1693,62 +1693,15 @@ configure_remote_compilation() {
   export YB_REMOTE_COMPILATION
 }
 
-yb_edition_detected=false
-
-validate_edition() {
-  if [[ ! $YB_EDITION =~ ^(community|enterprise)$ ]]; then
-    fatal "The YB_EDITION environment variable has an invalid value: '$YB_EDITION'" \
-          "(must be either 'community' or 'enterprise')."
-  fi
-}
-
-detect_edition() {
-  if "$yb_edition_detected"; then
-    return
-  fi
-  yb_edition_detected=true
-
-  # If we haven't detected edition based on BUILD_ROOT, let's do that based on existence of the
-  # enterprise source directory.
-  if [[ -z ${YB_EDITION:-} ]]; then
-    if is_jenkins && [[ $JOB_NAME =~ -community(-|$) ]]; then
-      YB_EDITION=community
-      log "Detecting YB_EDITION: $YB_EDITION based on Jenkins job name: $JOB_NAME"
-    elif is_jenkins && [[ $JOB_NAME =~ -enterprise(-|$) ]]; then
-      YB_EDITION=enterprise
-      log "Detecting YB_EDITION: $YB_EDITION based on Jenkins job name: $JOB_NAME"
-    elif [[ -d $YB_ENTERPRISE_ROOT ]]; then
-      YB_EDITION=enterprise
-      log "Detected YB_EDITION: $YB_EDITION based on existence of '$YB_ENTERPRISE_ROOT'"
-    else
-      YB_EDITION=community
-      log "Detected YB_EDITION: $YB_EDITION"
-    fi
-  fi
-
-  if [[ $YB_EDITION == "enterprise" && ! -d $YB_ENTERPRISE_ROOT ]]; then
-    fatal "YB_EDITION is set to '$YB_EDITION' but the directory '$YB_ENTERPRISE_ROOT'" \
-          "does not exist"
-  fi
-
-  readonly YB_EDITION
-  export YB_EDITION
-
-  yb_java_project_dirs=( "$YB_SRC_ROOT"/java )
-  if [[ $YB_EDITION == "enterprise" ]]; then
-    yb_java_project_dirs+=( "$YB_ENTERPRISE_ROOT"/java )
-  fi
-}
-
 set_yb_src_root() {
   export YB_SRC_ROOT=$1
   YB_BUILD_SUPPORT_DIR=$YB_SRC_ROOT/build-support
   if [[ ! -d $YB_SRC_ROOT ]]; then
     fatal "YB_SRC_ROOT directory '$YB_SRC_ROOT' does not exist"
   fi
-  YB_ENTERPRISE_ROOT=$YB_SRC_ROOT/ent
   YB_COMPILER_WRAPPER_CC=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/cc
   YB_COMPILER_WRAPPER_CXX=$YB_BUILD_SUPPORT_DIR/compiler-wrappers/c++
+  yb_java_project_dirs=( "$YB_SRC_ROOT/java" "$YB_SRC_ROOT/ent/java" )
 }
 
 read_file_and_trim() {
@@ -1835,8 +1788,7 @@ handle_predefined_build_root() {
     local _build_type=${BASH_REMATCH[1]}
     local _compiler_type=${BASH_REMATCH[2]}
     local _linking_type=${BASH_REMATCH[3]}
-    local _edition=${BASH_REMATCH[4]}
-    local _dash_ninja=${BASH_REMATCH[5]}
+    local _dash_ninja=${BASH_REMATCH[4]}
   else
     fatal "Could not parse build root directory name '$basename'" \
           "(full path: '$predefined_build_root'). Expected to match '$BUILD_ROOT_BASENAME_RE'."
@@ -1877,17 +1829,6 @@ handle_predefined_build_root() {
   fi
 
   set_use_ninja
-
-  if [[ -z ${YB_EDITION:-} ]]; then
-    export YB_EDITION=$_edition
-    if ! "$handle_predefined_build_root_quietly"; then
-      log "Detected YB_EDITION: '$YB_EDITION' based on predefined build root ('$basename')"
-    fi
-  elif [[ $YB_EDITION != $_edition ]]; then
-    fatal "Edition from the build root ('$_edition' from '$predefined_build_root') " \
-          "does not match YB_EDITION ('$YB_EDITION')."
-  fi
-
 }
 
 # Remove the build/latest symlink to prevent Jenkins from showing every test twice in test results.
@@ -1945,6 +1886,9 @@ handle_build_root_from_current_dir() {
   local d=$PWD
   while [[ $d != "/" && $d != "" ]]; do
     basename=${d##*/}
+    if [[ ${YB_DEBUG_BUILD_ROOT_BASENAME_VALIDATION:-0} == "1" ]]; then
+      log "Trying to match basename $basename to regex: $BUILD_ROOT_BASENAME_RE"
+    fi
     if [[ $basename =~ $BUILD_ROOT_BASENAME_RE ]]; then
       predefined_build_root=$d
       handle_predefined_build_root
@@ -2044,9 +1988,31 @@ activate_virtualenv() {
   fi
 
   if ! "$yb_readonly_virtualenv"; then
-    run_with_retries 10 0.5 pip2 install -r "$YB_SRC_ROOT/python_requirements_frozen.txt" \
-      $pip_no_cache
+    local requirements_file_path="$YB_SRC_ROOT/python_requirements_frozen.txt"
+    local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
+    if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
+      run_with_retries 10 0.5 pip2 install -r "$requirements_file_path" \
+        $pip_no_cache
+    fi
+    # To avoid re-running pip install, save the requirements that we've installed in the virtualenv.
+    cp "$requirements_file_path" "$installed_requirements_file_path"
   fi
+
+  if [[ ${YB_DEBUG_VIRTUALENV:-0} == "1" ]]; then
+    echo >&2 "
+VIRTUALENV DEBUGGING
+--------------------
+
+    Activated virtualenv in: $virtualenv_dir
+    Executable: $0
+    PATH: $PATH
+    PYTHONPATH: ${PYTHONPATH:-undefined}
+    VIRTUAL_ENV: ${VIRTUAL_ENV:-undefined}
+
+"
+  fi
+
+  export VIRTUAL_ENV
 }
 
 check_python_interpreter_version() {
@@ -2125,10 +2091,14 @@ log_file_existence() {
   fi
 }
 
+is_valid_git_sha1() {
+  [[ $1 =~ ^[0-9a-f]{40} ]]
+}
+
 # Returns current git SHA1 in the variable current_git_sha1.
 get_current_git_sha1() {
   current_git_sha1=$( git rev-parse HEAD )
-  if [[ ! $current_git_sha1 =~ ^[0-9a-f]{40}$ ]]; then
+  if ! is_valid_git_sha1 "$current_git_sha1"; then
     fatal "Could not get current git SHA1 in $PWD, got: $current_git_sha1"
   fi
 }
@@ -2236,6 +2206,15 @@ set_java_home() {
   fi
   export JAVA_HOME=$new_java_home
   put_path_entry_first "$JAVA_HOME/bin"
+}
+
+update_submodules() {
+  # This does NOT create any new commits in the top-level repository (the "superproject").
+  #
+  # From documentation on "update" from https://git-scm.com/docs/git-submodule:
+  # Update the registered submodules to match what the superproject expects by cloning missing
+  # submodules and updating the working tree of the submodules
+  ( cd "$YB_SRC_ROOT"; git submodule update --init --recursive )
 }
 
 # -------------------------------------------------------------------------------------------------

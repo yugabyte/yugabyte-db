@@ -19,6 +19,7 @@
 
 #include "yb/client/client.h"
 #include "yb/client/schema-internal.h"
+#include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/ql_protocol_util.h"
@@ -54,7 +55,8 @@ void GetBindVariableSchemasFromDmlStmt(const PTDmlStmt& stmt,
     table_names->reserve(table_names->size() + stmt.bind_variables().size());
   }
   for (const PTBindVar *var : stmt.bind_variables()) {
-    schemas->emplace_back(string(var->name()->c_str()), var->ql_type());
+    DCHECK_NOTNULL(var->name().get());
+    schemas->emplace_back(var->name() ? string(var->name()->c_str()) : string(), var->ql_type());
     if (table_names != nullptr) {
       table_names->emplace_back(stmt.bind_table()->name());
     }
@@ -206,9 +208,8 @@ void RowsResult::SetPagingState(YBqlOp *op) {
 }
 
 void RowsResult::SetPagingState(const QLPagingStatePB& paging_state) {
-  faststring s;
-  CHECK(pb_util::SerializeToString(paging_state, &s));
-  paging_state_ = s.ToString();
+  paging_state_.clear();
+  CHECK(paging_state.SerializeToString(&paging_state_));
 }
 
 void RowsResult::SetPagingState(RowsResult&& other) {

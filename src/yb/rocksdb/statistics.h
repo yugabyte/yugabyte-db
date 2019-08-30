@@ -18,8 +18,8 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_STATISTICS_H
-#define ROCKSDB_INCLUDE_ROCKSDB_STATISTICS_H
+#ifndef YB_ROCKSDB_STATISTICS_H
+#define YB_ROCKSDB_STATISTICS_H
 
 #include <atomic>
 #include <cstddef>
@@ -183,9 +183,10 @@ enum Tickers : uint32_t {
   NUMBER_SUPERVERSION_RELEASES,
   NUMBER_SUPERVERSION_CLEANUPS,
   NUMBER_BLOCK_NOT_COMPRESSED,
-  // Total size of all the SST Files
-  TOTAL_SST_FILE_SIZE,
-  TOTAL_UNCOMPRESSED_SST_FILE_SIZE,
+  // Size of all the SST Files for the current version.
+  CURRENT_VERSION_SST_FILES_SIZE,
+  CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE,
+  CURRENT_VERSION_NUM_SST_FILES,
   MERGE_OPERATION_TOTAL_TIME,
   FILTER_OPERATION_TOTAL_TIME,
 
@@ -286,8 +287,18 @@ const std::vector<std::pair<Tickers, std::string>> TickersNameMap = {
     {NUMBER_SUPERVERSION_RELEASES, "rocksdb_number_superversion_releases"},
     {NUMBER_SUPERVERSION_CLEANUPS, "rocksdb_number_superversion_cleanups"},
     {NUMBER_BLOCK_NOT_COMPRESSED, "rocksdb_number_block_not_compressed"},
-    {TOTAL_SST_FILE_SIZE, "rocksdb_total_sst_file_size"},
-    {TOTAL_UNCOMPRESSED_SST_FILE_SIZE, "rocksdb_total_uncompressed_size"},
+    {CURRENT_VERSION_SST_FILES_SIZE, "rocksdb_current_version_sst_files_size"},
+
+    // TODO: for backward compatibility only, so previous metrics data is shown in UI.
+    {CURRENT_VERSION_SST_FILES_SIZE, "rocksdb_total_sst_file_size"},
+
+    {CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE,
+          "rocksdb_current_version_sst_files_uncompressed_size"},
+
+    // TODO: for backward compatibility only, so previous metrics data is shown in UI.
+    {CURRENT_VERSION_SST_FILES_UNCOMPRESSED_SIZE, "rocksdb_total_uncompressed_size"},
+
+    {CURRENT_VERSION_NUM_SST_FILES, "rocksdb_current_version_num_sst_files"},
     {MERGE_OPERATION_TOTAL_TIME, "rocksdb_merge_operation_time_nanos"},
     {FILTER_OPERATION_TOTAL_TIME, "rocksdb_filter_operation_time_nanos"},
     {ROW_CACHE_HIT, "rocksdb_row_cache_hit"},
@@ -426,4 +437,4 @@ std::shared_ptr<Statistics> CreateDBStatistics();
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_STATISTICS_H
+#endif // YB_ROCKSDB_STATISTICS_H

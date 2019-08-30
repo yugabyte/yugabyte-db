@@ -13,18 +13,23 @@
 
 #include "yb/master/master_service_base.h"
 #include "yb/master/master.h"
+#include "yb/master/catalog_manager.h"
 
 namespace yb {
 namespace master {
 
 // Available overloaded handlers of different types:
 
-YB_EDITION_NS_PREFIX CatalogManager* MasterServiceBase::handler(CatalogManager*) {
+enterprise::CatalogManager* MasterServiceBase::handler(CatalogManager*) {
   return server_->catalog_manager();
 }
 
 FlushManager* MasterServiceBase::handler(FlushManager*) {
   return server_->flush_manager();
+}
+
+PermissionsManager* MasterServiceBase::handler(PermissionsManager*) {
+  return server_->catalog_manager()->permissions_manager();
 }
 
 } // namespace master

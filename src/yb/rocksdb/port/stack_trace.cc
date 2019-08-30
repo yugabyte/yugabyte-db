@@ -19,7 +19,7 @@
 //
 #include "yb/rocksdb/port/stack_trace.h"
 
-#if defined(ROCKSDB_LITE) || !(defined(OS_LINUX) || defined(OS_MACOSX)) || \
+#if defined(ROCKSDB_LITE) || !(defined(__linux__) || defined(OS_MACOSX)) || \
     defined(CYGWIN)
 
 // noop
@@ -46,7 +46,7 @@ namespace port {
 
 namespace {
 
-#ifdef OS_LINUX
+#ifdef __linux__
 const char* GetExecutableName() {
   static char name[1024];
 

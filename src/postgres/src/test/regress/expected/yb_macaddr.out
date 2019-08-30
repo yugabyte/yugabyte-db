@@ -40,7 +40,7 @@ SELECT * FROM macaddr_data ORDER BY a;
 (12 rows)
 
 -- TODO(neil) Create index on non-empty table is not yet supported.
--- CREATE INDEX macaddr_data_btree ON macaddr_data USING btree (b);
+-- CREATE INDEX macaddr_data_lsm ON macaddr_data USING lsm (b);
 -- CREATE INDEX macaddr_data_hash ON macaddr_data USING hash (b);
 SELECT a, b, trunc(b) FROM macaddr_data ORDER BY 2, 1;
  a  |         b         |       trunc

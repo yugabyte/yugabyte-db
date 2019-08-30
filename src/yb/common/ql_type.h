@@ -22,6 +22,7 @@
 
 #include "yb/common/key_encoder.h"
 #include "yb/common/common.pb.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -183,6 +184,7 @@ class QLType {
         // set has no keys, only values
         return nullptr;
       case TUPLE:
+        // https://github.com/YugaByte/yugabyte-db/issues/936
         LOG(FATAL) << "Tuple type not implemented yet";
 
       default:
@@ -208,7 +210,7 @@ class QLType {
     }
   }
 
-  const std::shared_ptr<QLType>& param_type(int member_index = 0) const {
+  const QLType::SharedPtr& param_type(int member_index = 0) const {
     DCHECK_LT(member_index, params_.size());
     return params_[member_index];
   }
@@ -219,6 +221,10 @@ class QLType {
 
   //------------------------------------------------------------------------------------------------
   // Methods for User-Defined types.
+
+  const std::shared_ptr<UDTypeInfo>& udtype_info() const {
+    return udtype_info_;
+  }
 
   const std::vector<string>& udtype_field_names() const {
     return udtype_info_->field_names();
@@ -271,6 +277,16 @@ class QLType {
     for (auto& param : params_) {
       param->GetUserDefinedTypeIds(udt_ids);
     }
+  }
+
+  // Returns the type of given field, or nullptr if that field is not found in this UDT.R
+  const Result<QLType::SharedPtr> GetUDTFieldTypeByName(const std::string& field_name) const {
+    SCHECK(IsUserDefined(), InternalError, "Can only be called on UDT");
+    const int idx = GetUDTypeFieldIdxByName(field_name);
+    if (idx == -1) {
+      return nullptr;
+    }
+    return param_type(idx);
   }
 
   //------------------------------------------------------------------------------------------------
@@ -342,6 +358,15 @@ class QLType {
       }
       return true;
     }
+  }
+
+  bool Contains(DataType id) const {
+    for (const std::shared_ptr<QLType>& param : params_) {
+      if (param->Contains(id)) {
+        return true;
+      }
+    }
+    return id_ == id;
   }
 
   bool operator ==(const QLType& other) const {
@@ -438,13 +463,13 @@ class QLType {
         /* i16 */{ kIM,  kSI,  kID,  kSI,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* i32 */{ kIM,  kSI,  kSI,  kID,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* i64 */{ kIM,  kSI,  kSI,  kSI,  kID,  kNA,  kNA,  kEX,  kEX,  kNA,  kEX,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX,  kNA },
-        /* str */{ kIM,  kEX,  kEX,  kEX,  kEX,  kID,  kEX,  kEX,  kEX,  kNA,  kEX,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX,  kEX },
+        /* str */{ kIM,  kEX,  kEX,  kEX,  kEX,  kID,  kEX,  kEX,  kEX,  kEX,  kEX,  kEX,  kNA,  kEX,  kNA,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX,  kEX },
         /* bln */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* flt */{ kIM,  kIM,  kIM,  kIM,  kIM,  kNA,  kNA,  kID,  kSI,  kNA,  kNA,  kSI,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* dbl */{ kIM,  kIM,  kIM,  kIM,  kIM,  kNA,  kNA,  kSI,  kID,  kNA,  kNA,  kSI,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* bin */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* tst */{ kIM,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kNA,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA },
-        /* dec */{ kIM,  kIM,  kIM,  kIM,  kIM,  kNA,  kNA,  kSI,  kSI,  kNA,  kNA,  kID,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
+        /* dec */{ kIM,  kIM,  kIM,  kIM,  kIM,  kEX,  kNA,  kSI,  kSI,  kNA,  kEX,  kID,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* vit */{ kIM,  kSI,  kSI,  kSI,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kEX,  kEX,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX,  kNA },
         /* ine */{ kIM,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
         /* lst */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },

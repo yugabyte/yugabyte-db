@@ -45,7 +45,8 @@ class ColumnDesc {
             bool is_primary,
             int32_t attr_num,
             const std::shared_ptr<QLType>& ql_type,
-            InternalType internal_type) {
+            InternalType internal_type,
+            ColumnSchema::SortingType sorting_type) {
     index_ = index,
     id_ = id;
     name_ = name;
@@ -54,6 +55,7 @@ class ColumnDesc {
     attr_num_ = attr_num;
     ql_type_ = ql_type;
     internal_type_ = internal_type;
+    sorting_type_ = sorting_type;
   }
 
   bool IsInitialized() const {
@@ -92,6 +94,10 @@ class ColumnDesc {
     return internal_type_;
   }
 
+  ColumnSchema::SortingType sorting_type() const {
+    return sorting_type_;
+  }
+
  private:
   int index_ = -1;
   int id_ = -1;
@@ -101,6 +107,7 @@ class ColumnDesc {
   int32_t attr_num_ = -1;
   std::shared_ptr<QLType> ql_type_;
   InternalType internal_type_ = InternalType::VALUE_NOT_SET;
+  ColumnSchema::SortingType sorting_type_ = ColumnSchema::SortingType::kNotSpecified;
 };
 
 }  // namespace pggate

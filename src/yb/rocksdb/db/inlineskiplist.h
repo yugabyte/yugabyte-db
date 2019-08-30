@@ -56,7 +56,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#ifndef YB_ROCKSDB_DB_INLINESKIPLIST_H
+#define YB_ROCKSDB_DB_INLINESKIPLIST_H
+
 #pragma once
+
 #include <assert.h>
 #include <stdlib.h>
 #include <atomic>
@@ -94,6 +99,11 @@ class InlineSkipList {
 
   // Like Insert, but external synchronization is not required.
   void InsertConcurrently(const char* key);
+
+  bool Erase(const char* key, Comparator cmp) {
+    LOG(FATAL) << "Erase not supported";
+    return false;
+  }
 
   // Returns true iff an entry that compares equal to key is in the list.
   bool Contains(const char* key) const;
@@ -670,3 +680,5 @@ bool InlineSkipList<Comparator>::Contains(const char* key) const {
 }
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_DB_INLINESKIPLIST_H

@@ -15,10 +15,18 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/master_defaults.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include <boost/algorithm/string.hpp>
 
 
 DECLARE_int32(simulate_slow_table_create_secs);
+DECLARE_bool(master_enable_metrics_snapshotter);
+DECLARE_bool(tserver_enable_metrics_snapshotter);
+DECLARE_int32(metrics_snapshotter_interval_ms);
+DECLARE_string(metrics_snapshotter_table_metrics_whitelist);
+DECLARE_string(metrics_snapshotter_tserver_metrics_whitelist);
+
 
 namespace yb {
 namespace master {
@@ -28,18 +36,7 @@ class Master;
 namespace ql {
 
 #define EXEC_DUPLICATE_OBJECT_CREATE_STMT(stmt)                         \
-  do {                                                                  \
-    Status s = processor->Run(stmt);                                    \
-    EXPECT_FALSE(s.ok());                                               \
-    EXPECT_FALSE(s.ToString().find("Duplicate Object. Object") == string::npos); \
-  } while (false)
-
-#define EXEC_INVALID_TABLE_CREATE_STMT(stmt, msg)                       \
-  do {                                                                  \
-    Status s = processor->Run(stmt);                                    \
-    ASSERT_FALSE(s.ok());                                               \
-    ASSERT_FALSE(s.ToString().find(msg) == string::npos);               \
-  } while (false)
+  EXEC_INVALID_STMT_WITH_ERROR(stmt, "Duplicate Object. Object")
 
 class TestQLCreateTable : public QLTestBase {
  public:
@@ -311,21 +308,21 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithClusteringOrderBy) {
   EXEC_VALID_STMT(CreateStmt(table4));
   EXEC_VALID_STMT(CreateStmt(table5));
 
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table6),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table6),
       "Invalid Table Property. Columns in the CLUSTERING ORDER directive must be in same order "
       "as the clustering key columns order (first_name must appear before last_name)");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table7),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table7),
       "Invalid Table Property. Columns in the CLUSTERING ORDER directive must be in same order "
       "as the clustering key columns order (first_name must appear before last_name)");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table8),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table8),
       "Invalid Table Property. Missing CLUSTERING ORDER for column first_name");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table9),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table9),
       "Invalid Table Property. Not a clustering key colum");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table10),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table10),
       "Invalid Table Property. Not a clustering key colum");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table11),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table11),
       "Invalid Table Property. Not a clustering key colum");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table12),
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table12),
       "Invalid Table Property. Not a clustering key colum");
 }
 
@@ -370,32 +367,113 @@ TEST_F(TestQLCreateTable, TestQLCreateTableWithPartitionScemeOf) {
 
   EXEC_VALID_STMT(CreateStmt(table2));
   EXEC_VALID_STMT(CreateStmt(table3));
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table4),
-                                 "The number of hash keys in the current table "
-                                     "differ from the number of hash keys in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table5),
-                                 "The number of hash keys in the current table "
-                                     "differ from the number of hash keys in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table6),
-                                 "Object Not Found");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table7),
-                                 "The hash key 'description' in the current table has a different "
-                                     "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table8),
-                                 "The hash key 'dev_id' in the current table has a different "
-                                     "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table9),
-                                 "The hash key 'image_id' in the current table has a different "
-                                     "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table10),
-                                 "The hash key 'description' in the current table has a different "
-                                     "datatype from the corresponding hash key in 'devices'");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table11),
-                                 "syntax error");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table12),
-                                 "syntax error");
-  EXEC_INVALID_TABLE_CREATE_STMT(CreateStmt(table13),
-                                 "syntax error");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table4),
+                               "The number of hash keys in the current table "
+                                   "differ from the number of hash keys in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table5),
+                               "The number of hash keys in the current table "
+                                   "differ from the number of hash keys in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table6),
+                               "Object Not Found");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table7),
+                               "The hash key 'description' in the current table has a different "
+                                   "datatype from the corresponding hash key in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table8),
+                               "The hash key 'dev_id' in the current table has a different "
+                                   "datatype from the corresponding hash key in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table9),
+                               "The hash key 'image_id' in the current table has a different "
+                                   "datatype from the corresponding hash key in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table10),
+                               "The hash key 'description' in the current table has a different "
+                                   "datatype from the corresponding hash key in 'devices'");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table11),
+                               "syntax error");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table12),
+                               "syntax error");
+  EXEC_INVALID_STMT_WITH_ERROR(CreateStmt(table13),
+                               "syntax error");
+}
+
+// Check for presence of rows in system.metrics table.
+TEST_F(TestQLCreateTable, TestMetrics) {
+  FLAGS_master_enable_metrics_snapshotter = true;
+  FLAGS_tserver_enable_metrics_snapshotter = true;
+
+  std::vector<std::string> table_metrics =
+  {"rocksdb_db_write_stall_sum", "rocksdb_db_write_stall_count"};
+  FLAGS_metrics_snapshotter_table_metrics_whitelist = boost::algorithm::join(table_metrics, ",");
+
+  std::vector<std::string> tserver_metrics = {
+    "handler_latency_yb_tserver_TabletServerService_ListTablets_sum",
+    "handler_latency_yb_tserver_TabletServerService_ListTablets_count",
+    "handler_latency_yb_tserver_TabletServerService_ListTabletsForTabletServer_sum"};
+  FLAGS_metrics_snapshotter_tserver_metrics_whitelist =
+    boost::algorithm::join(tserver_metrics, ",");
+
+  // rf1 cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster(1));
+
+  TestQLProcessor* processor = GetQLProcessor();
+  ASSERT_OK(processor->Run("create keyspace k"));
+
+  auto table_name = "tmptable";
+
+  ASSERT_OK(processor->Run(Format("CREATE TABLE k.$0(id int PRIMARY KEY)", table_name)));
+
+  // Sleep for 5 sec to give the previous statement a head start.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  int num_inserts = 100;
+  for (int i = 0; i < num_inserts; i++) {
+    ASSERT_OK(processor->Run(Format("INSERT INTO k.$0 (id) VALUES ($1)", table_name, i)));
+  }
+
+  // Read from table, ignore output.
+  ASSERT_OK(processor->Run(Format("SELECT * FROM k.$0", table_name)));
+
+  // Sleep enough for one tick of metrics snapshotter (and a bit more).
+  SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_metrics_snapshotter_interval_ms));
+
+  // Verify whitelist functionality for table metrics.
+  {
+    ASSERT_OK(processor->Run(Format("SELECT metric FROM $0.$1 WHERE entity_type=\'table\'",
+            yb::master::kSystemNamespaceName, kMetricsSnapshotsTableName)));
+
+    auto row_block = processor->row_block();
+
+    std::unordered_set<std::string> t;
+    for (int i = 0; i < row_block->row_count(); i++) {
+      QLRow &row = row_block->row(i);
+      t.insert(row.column(0).string_value());
+    }
+
+    EXPECT_EQ(t.size(), table_metrics.size());
+    for (const auto& table_metric : table_metrics) {
+      EXPECT_NE(t.find(table_metric), t.end());
+    }
+  }
+
+  // Verify whitelist functionality for tserver metrics.
+  {
+    ASSERT_OK(processor->Run(Format("SELECT metric FROM $0.$1 WHERE entity_type=\'tserver\'",
+            yb::master::kSystemNamespaceName, kMetricsSnapshotsTableName)));
+
+    auto row_block = processor->row_block();
+
+    std::unordered_set<std::string> t;
+    for (int i = 0; i < row_block->row_count(); i++) {
+      QLRow &row = row_block->row(i);
+      t.insert(row.column(0).string_value());
+    }
+
+    EXPECT_EQ(t.size(), tserver_metrics.size());
+    for (const auto& tserver_metric : tserver_metrics) {
+      EXPECT_NE(t.find(tserver_metric), t.end());
+    }
+  }
+
+  ASSERT_OK(processor->Run(Format("DROP TABLE k.$0", table_name)));
 }
 
 } // namespace ql

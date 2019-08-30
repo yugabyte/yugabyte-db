@@ -16,8 +16,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_LISTENER_H
-#define ROCKSDB_INCLUDE_ROCKSDB_LISTENER_H
+#ifndef YB_ROCKSDB_LISTENER_H
+#define YB_ROCKSDB_LISTENER_H
 
 #pragma once
 
@@ -213,6 +213,9 @@ class EventListener {
   // returned value.
   virtual void OnTableFileDeleted(const TableFileDeletionInfo& /*info*/) {}
 
+  // A call-back function for RocksDB which will be called whenever a compaction has been started.
+  virtual void OnCompactionStarted() {}
+
   // A call-back function for RocksDB which will be called whenever
   // a registered RocksDB compacts a file. The default implementation
   // is a no-op.
@@ -254,4 +257,4 @@ class EventListener {
 
 }  // namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_LISTENER_H
+#endif // YB_ROCKSDB_LISTENER_H

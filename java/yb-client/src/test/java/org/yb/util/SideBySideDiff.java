@@ -92,10 +92,10 @@ public class SideBySideDiff {
       return;
     }
     String lineFromFile = lines.get(i);
-    if (lineFromFile.equals(lineFromDiff)) {
+    if (!lineFromFile.equals(lineFromDiff)) {
       LOG.error("SideBySideDiff sanity check failed: line " + (i + 1) + " from the " +
-          fileDescription + " file is\n" + lineFromFile +
-          "\nbut the diff tool implies it should be\n" + lineFromDiff);
+          fileDescription + " file is\n" + lineFromFile + "<EOL>" +
+          "\nbut the diff tool implies it should be\n" + lineFromDiff + "<EOL>");
     }
   }
 

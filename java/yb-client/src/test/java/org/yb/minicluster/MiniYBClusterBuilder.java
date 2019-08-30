@@ -17,6 +17,8 @@ package org.yb.minicluster;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 public class MiniYBClusterBuilder {
 
@@ -38,6 +40,10 @@ public class MiniYBClusterBuilder {
   private boolean startPgSqlProxy = false;
   private boolean pgTransactionsEnabled = false;
 
+  private String certFile = null;
+
+  private Map<String, String> tserverEnvVars = new TreeMap<String, String>();
+
   public MiniYBClusterBuilder numMasters(int numMasters) {
     this.numMasters = numMasters;
     return this;
@@ -58,6 +64,11 @@ public class MiniYBClusterBuilder {
     return this;
   }
 
+  public MiniYBClusterBuilder sslCertFile(String certFile) {
+    this.certFile = certFile;
+    return this;
+  }
+
   /**
    * Configures the internal client to use the given timeout for all operations. Also uses the
    * timeout for tasks like waiting for tablet servers to check in with the master.
@@ -70,7 +81,9 @@ public class MiniYBClusterBuilder {
   }
 
   /**
-   * Configure additional command-line arguments for starting master.
+   * Configure additional command-line arguments for starting master. This replaces the list of
+   * existing additional master arguments.
+   *
    * @param masterArgs additional command-line arguments
    * @return this instance
    */
@@ -78,6 +91,16 @@ public class MiniYBClusterBuilder {
     this.masterArgs = masterArgs;
     return this;
   }
+
+  /**
+   * Configure additional command-line arguments for starting master. This appends to the list of
+   * additional master arguments.
+   */
+  public MiniYBClusterBuilder addMasterArgs(String... newArgs) {
+    this.masterArgs.addAll(Arrays.asList(newArgs));
+    return this;
+  }
+
 
   /**
    * Configure additional command-line arguments for starting tserver.
@@ -136,6 +159,14 @@ public class MiniYBClusterBuilder {
     return this;
   }
 
+  /**
+   * Add environment variables.
+   */
+  public MiniYBClusterBuilder addEnvironmentVariables(Map<String, String> tserverEnvVars) {
+    this.tserverEnvVars.putAll(tserverEnvVars);
+    return this;
+  }
+
   public MiniYBCluster build() throws Exception {
     if (perTServerArgs != null && perTServerArgs.size() != numTservers) {
       throw new AssertionError(
@@ -150,11 +181,13 @@ public class MiniYBClusterBuilder {
         masterArgs,
         perTServerArgs,
         commonTServerArgs,
+        tserverEnvVars,
         numShardsPerTServer,
         testClassName,
         useIpWithCertificate,
         replicationFactor,
         startPgSqlProxy,
+        certFile,
         pgTransactionsEnabled);
   }
 }

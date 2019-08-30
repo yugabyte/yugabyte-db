@@ -18,6 +18,8 @@
 #include <memory>
 #include <vector>
 
+#include <boost/container/small_vector.hpp>
+
 #include "yb/gutil/thread_annotations.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -26,7 +28,9 @@
 
 #include "yb/common/schema.h"
 #include "yb/common/hybrid_time.h"
+
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/expiration.h"
 
 namespace yb {
 namespace docdb {
@@ -55,14 +59,13 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
  public:
   DocDBCompactionFilter(
       HistoryRetentionDirective retention,
-      IsMajorCompaction is_major_compaction);
+      IsMajorCompaction is_major_compaction,
+      const KeyBounds* key_bounds);
 
   ~DocDBCompactionFilter() override;
-  bool Filter(int level,
-              const rocksdb::Slice& key,
-              const rocksdb::Slice& existing_value,
-              std::string* new_value,
-              bool* value_changed) const override;
+  rocksdb::FilterDecision Filter(
+      int level, const Slice& key, const Slice& existing_value, std::string* new_value,
+      bool* value_changed) override;
   const char* Name() const override;
 
   // This indicates we don't have a cached TTL. We need this to be different from kMaxTtl
@@ -75,11 +78,23 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
   rocksdb::UserFrontierPtr GetLargestUserFrontier() const override;
 
  private:
+  // Assigns prev_subdoc_key_ from memory addressed by data. The length of key is taken from
+  // sub_key_ends_ and same_bytes are reused.
+  void AssignPrevSubDocKey(const char* data, size_t same_bytes);
+
+  // Actual Filter implementation.
+  Result<rocksdb::FilterDecision> DoFilter(
+      int level, const Slice& key, const Slice& existing_value, std::string* new_value,
+      bool* value_changed);
+
   const HistoryRetentionDirective retention_;
+  const KeyBounds* key_bounds_;
   const IsMajorCompaction is_major_compaction_;
 
-  mutable bool is_first_key_value_ = true;
-  mutable SubDocKey prev_subdoc_key_;
+  std::vector<char> prev_subdoc_key_;
+
+  // Result of DecodeDocKeyAndSubKeyEnds for prev_subdoc_key_.
+  boost::container::small_vector<size_t, 16> sub_key_ends_;
 
   // A stack of highest hybrid_times lower than or equal to history_cutoff_ at which parent
   // subdocuments of the key that has just been processed, or the subdocument / primitive value
@@ -117,13 +132,17 @@ class DocDBCompactionFilter : public rocksdb::CompactionFilter {
   // doc_key1 subkey1 HT(21) -> "value2"  | [20, 23]      | 21 < 23, deleting the entry
   // doc_key1 subkey1 HT(15) -> "value1"  | [20, 23]      | 15 < 23, deleting the entry
 
-  mutable std::vector<DocHybridTime> overwrite_ht_;
-  mutable std::vector<Expiration> expiration_;
+  struct OverwriteData {
+    DocHybridTime doc_ht;
+    Expiration expiration;
+  };
+
+  std::vector<OverwriteData> overwrite_;
 
   // We use this to only log a message that the filter is being used once on the first call to
   // the Filter function.
-  mutable bool filter_usage_logged_ = false;
-  mutable bool within_merge_block_ = false;
+  bool filter_usage_logged_ = false;
+  bool within_merge_block_ = false;
 };
 
 // A strategy for deciding how the history of old database operations should be retained during
@@ -136,7 +155,8 @@ class HistoryRetentionPolicy {
 
 class DocDBCompactionFilterFactory : public rocksdb::CompactionFilterFactory {
  public:
-  explicit DocDBCompactionFilterFactory(std::shared_ptr<HistoryRetentionPolicy> retention_policy);
+  explicit DocDBCompactionFilterFactory(
+      std::shared_ptr<HistoryRetentionPolicy> retention_policy, const KeyBounds* key_bounds);
   ~DocDBCompactionFilterFactory() override;
   std::unique_ptr<rocksdb::CompactionFilter> CreateCompactionFilter(
       const rocksdb::CompactionFilter::Context& context) override;
@@ -144,6 +164,7 @@ class DocDBCompactionFilterFactory : public rocksdb::CompactionFilterFactory {
 
  private:
   std::shared_ptr<HistoryRetentionPolicy> retention_policy_;
+  const KeyBounds* key_bounds_;
 };
 
 // A history retention policy that can be configured manually. Useful in tests. This class is

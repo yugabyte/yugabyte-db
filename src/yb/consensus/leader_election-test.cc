@@ -110,8 +110,8 @@ class FromMapPeerProxyFactory : public PeerProxyFactory {
     used_peer_proxy_.clear();
   }
 
-  shared_ptr<rpc::Messenger> messenger() const override {
-    return shared_ptr<rpc::Messenger>();
+  Messenger* messenger() const override {
+    return nullptr;
   }
 
  private:

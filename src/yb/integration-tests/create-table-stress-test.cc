@@ -30,26 +30,34 @@
 // under the License.
 //
 
+#include <fstream>
 #include <memory>
 #include <thread>
 #include <boost/bind.hpp>
 #include <boost/thread/thread.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/table_creator.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/master/master.h"
 #include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master-test-util.h"
 #include "yb/rpc/messenger.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/metrics.h"
+#include "yb/util/spinlock_profiling.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
@@ -71,8 +79,14 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(log_preallocate_segments);
 DECLARE_bool(enable_remote_bootstrap);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
+DECLARE_int32(max_create_tablets_per_ts);
 
 DEFINE_int32(num_test_tablets, 60, "Number of tablets for stress test");
+DEFINE_int32(benchmark_runtime_secs, 5, "Number of seconds to run the benchmark");
+DEFINE_int32(benchmark_num_threads, 16, "Number of threads to run the benchmark");
+DEFINE_int32(benchmark_num_tablets, 60, "Number of tablets to create");
+
+METRIC_DECLARE_histogram(handler_latency_yb_master_MasterService_GetTableLocations);
 
 using std::string;
 using std::vector;
@@ -86,7 +100,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
  public:
   CreateTableStressTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("key")->Type(INT32)->NotNull()->HashPrimaryKey();
     b.AddColumn("v1")->Type(INT64)->NotNull();
     b.AddColumn("v2")->Type(STRING)->NotNull();
     CHECK_OK(b.Build(&schema_));
@@ -114,19 +128,21 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
 
-    ASSERT_OK(YBClientBuilder()
-                     .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
-                     .Build(&client_));
+    client_ = ASSERT_RESULT(YBClientBuilder()
+        .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
+        .Build());
 
     messenger_ = ASSERT_RESULT(
         MessengerBuilder("stress-test-msgr").set_num_reactors(1).Build());
-    rpc::ProxyCache proxy_cache(messenger_);
+    rpc::ProxyCache proxy_cache(messenger_.get());
     master_proxy_.reset(new MasterServiceProxy(&proxy_cache,
                                                cluster_->mini_master()->bound_rpc_addr()));
     ASSERT_OK(CreateTabletServerMap(master_proxy_.get(), &proxy_cache, &ts_map_));
   }
 
   void DoTearDown() override {
+    messenger_->Shutdown();
+    client_.reset();
     cluster_->Shutdown();
     ts_map_.clear();
   }
@@ -134,30 +150,103 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
   void CreateBigTable(const YBTableName& table_name, int num_tablets);
 
  protected:
-  std::shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   YBSchema schema_;
-  std::shared_ptr<Messenger> messenger_;
+  std::unique_ptr<Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> master_proxy_;
   TabletServerMap ts_map_;
 };
 
 void CreateTableStressTest::CreateBigTable(const YBTableName& table_name, int num_tablets) {
-  vector<const YBPartialRow*> split_rows;
-  int num_splits = num_tablets - 1; // 4 tablets == 3 splits.
-  // Let the "\x8\0\0\0" keys end up in the first split; start splitting at 1.
-  for (int i = 1; i <= num_splits; i++) {
-    YBPartialRow* row = schema_.NewRow();
-    CHECK_OK(row->SetInt32(0, i));
-    split_rows.push_back(row);
-  }
-
   ASSERT_OK(client_->CreateNamespaceIfNotExists(table_name.namespace_name()));
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(table_name)
             .schema(&schema_)
-            .split_rows(split_rows)
+            .num_tablets(num_tablets)
             .wait(false)
             .Create());
+}
+
+TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
+  FLAGS_max_create_tablets_per_ts = FLAGS_benchmark_num_tablets;
+  DontVerifyClusterBeforeNextTearDown();
+  YBTableName table_name("my_keyspace", "test_table");
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Step 1. Creating big table "
+            << table_name.ToString() << " ...";
+  LOG_TIMING(INFO, "creating big table") {
+    ASSERT_NO_FATALS(CreateBigTable(table_name, FLAGS_benchmark_num_tablets));
+  }
+
+  // Make sure the table is completely created before we start poking.
+  LOG(INFO) << CURRENT_TEST_NAME() << ": Step 2. Waiting for creation of big table "
+            << table_name.ToString() << " to complete...";
+  master::GetTableLocationsResponsePB create_resp;
+  LOG_TIMING(INFO, "waiting for creation of big table") {
+    ASSERT_OK(WaitForRunningTabletCount(cluster_->mini_master(), table_name,
+                                       FLAGS_benchmark_num_tablets, &create_resp));
+  }
+  // Sleep for a while to let all TS heartbeat to master.
+  SleepFor(MonoDelta::FromSeconds(10));
+  const int kNumThreads = FLAGS_benchmark_num_threads;
+  const auto kRuntime = MonoDelta::FromSeconds(FLAGS_benchmark_runtime_secs);
+
+  // Make one proxy per thread, so each thread gets its own messenger and
+  // reactor. If there were only one messenger, then only one reactor thread
+  // would be used for the connection to the master, so this benchmark would
+  // probably be testing the serialization and network code rather than the
+  // master GTL code.
+  vector<unique_ptr<Messenger>> messengers;
+  vector<unique_ptr<MasterServiceProxy>> proxies;
+  vector<unique_ptr<rpc::ProxyCache>> caches;
+  messengers.reserve(kNumThreads);
+  proxies.reserve(kNumThreads);
+  caches.reserve(kNumThreads);
+  for (int i = 0; i < kNumThreads; i++) {
+    messengers.push_back(ASSERT_RESULT(MessengerBuilder("Client").set_num_reactors(1).Build()));
+    caches.emplace_back(new rpc::ProxyCache(messengers.back().get()));
+    proxies.emplace_back(new MasterServiceProxy(
+          caches.back().get(), cluster_->mini_master()->bound_rpc_addr()));
+  }
+
+  std::atomic<bool> stop { false };
+  vector<std::thread> threads;
+  threads.reserve(kNumThreads);
+  for (int i = 0; i < kNumThreads; i++) {
+    threads.emplace_back([&, i]() {
+        while (!stop) {
+          master::GetTableLocationsRequestPB req;
+          master::GetTableLocationsResponsePB resp;
+          RpcController controller;
+          // Silence errors.
+          controller.set_timeout(MonoDelta::FromSeconds(10));
+          table_name.SetIntoTableIdentifierPB(req.mutable_table());
+          req.set_max_returned_locations(1000);
+          CHECK_OK(proxies[i]->GetTableLocations(req, &resp, &controller));
+          CHECK_EQ(resp.tablet_locations_size(), FLAGS_benchmark_num_tablets);
+        }
+      });
+  }
+
+  std::stringstream profile;
+  StartSynchronizationProfiling();
+  SleepFor(kRuntime);
+  stop = true;
+  for (auto& t : threads) {
+    t.join();
+  }
+  StopSynchronizationProfiling();
+  int64_t discarded_samples = 0;
+  FlushSynchronizationProfile(&profile, &discarded_samples);
+
+  const auto& ent = cluster_->mini_master()->master()->metric_entity();
+  auto hist = METRIC_handler_latency_yb_master_MasterService_GetTableLocations
+      .Instantiate(ent);
+
+  cluster_->Shutdown();
+
+  LOG(INFO) << "LOCK PROFILE\n" << profile.str();
+  LOG(INFO) << "BENCHMARK HISTOGRAM:";
+  hist->histogram()->DumpHumanReadable(&LOG(INFO));
 }
 
 TEST_F(CreateTableStressTest, CreateAndDeleteBigTable) {

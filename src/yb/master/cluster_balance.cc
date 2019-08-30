@@ -20,7 +20,10 @@
 
 #include "yb/consensus/quorum_util.h"
 #include "yb/master/master.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/random_util.h"
+
+#include "yb/master/catalog_entity_info.h"
 
 DEFINE_bool(enable_load_balancing,
             true,
@@ -59,6 +62,14 @@ DEFINE_int32(load_balancer_max_concurrent_moves,
              1,
              "Maximum number of tablet leaders on tablet servers to move in any one run of the "
              "load balancer.");
+
+DEFINE_int32(load_balancer_num_idle_runs,
+             5,
+             "Number of idle runs of load balancer to deem it idle.");
+
+DEFINE_test_flag(bool, load_balancer_handle_under_replicated_tablets_only, false,
+                 "Limit the functionality of the load balancer during tests so tests can make "
+                 "progress")
 
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 
@@ -121,7 +132,8 @@ int ClusterLoadBalancer::get_total_running_tablets() const { return state_->tota
 // Load balancer class.
 ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
     : random_(GetRandomSeed32()),
-      is_enabled_(FLAGS_enable_load_balancing) {
+      is_enabled_(FLAGS_enable_load_balancing),
+      cbuf_activities_(FLAGS_load_balancer_num_idle_runs) {
   ResetState();
 
   catalog_manager_ = cm;
@@ -141,13 +153,15 @@ void set_remaining(int pending_tasks, int* remaining_tasks) {
 ClusterLoadBalancer::~ClusterLoadBalancer() = default;
 
 void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
+  uint32_t master_errors = 0;
+
   if (!is_enabled_) {
     LOG(INFO) << "Load balancing is not enabled.";
     return;
   }
-  std::unique_ptr<YB_EDITION_NS_PREFIX Options> options_unique_ptr;
+  std::unique_ptr<enterprise::Options> options_unique_ptr;
   if (options == nullptr) {
-    options_unique_ptr = std::make_unique<YB_EDITION_NS_PREFIX Options>();
+    options_unique_ptr = std::make_unique<enterprise::Options>();
     options = options_unique_ptr.get();
   }
 
@@ -180,6 +194,9 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
   set_remaining(pending_remove_replica_tasks, &remaining_removals);
   set_remaining(pending_stepdown_leader_tasks, &remaining_leader_moves);
 
+  // At the start of the run, report LB state that might prevent it from running smoothly.
+  ReportUnusualLoadBalancerState();
+
   // Loop over all tables.
   for (const auto& table : GetTableMap()) {
 
@@ -191,7 +208,12 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
     state_->options_ = options;
 
     // Prepare the in-memory structures.
-    YB_WARN_NOT_OK(AnalyzeTablets(table.first), "Skipping load balancing " + table.first);
+    auto handle_analyze_tablets = AnalyzeTablets(table.first);
+    if (!handle_analyze_tablets.ok()) {
+      LOG(WARNING) << "Skipping load balancing " << table.first << ": "
+        << StatusToString(handle_analyze_tablets);
+      master_errors++;
+    }
 
     // Output parameters are unused in the load balancer, but useful in testing.
     TabletId out_tablet_id;
@@ -204,12 +226,17 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       if (!handle_add.ok()) {
         LOG(WARNING) << "Skipping add replicas for " << table.first << ": "
                      << StatusToString(handle_add);
+        master_errors++;
         break;
       }
       if (!*handle_add) {
         break;
       }
       --remaining_adds;
+    }
+    if (PREDICT_FALSE(FLAGS_load_balancer_handle_under_replicated_tablets_only)) {
+      LOG(INFO) << "Skipping remove replicas and leader moves for " << table.first;
+      continue;
     }
 
     // Handle cleanup after over-replication.
@@ -218,6 +245,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       if (!handle_remove.ok()) {
         LOG(WARNING) << "Skipping remove replicas for " << table.first << ": "
                      << StatusToString(handle_remove);
+        master_errors++;
         break;
       }
       if (!*handle_remove) {
@@ -232,6 +260,7 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       if (!handle_leader.ok()) {
         LOG(WARNING) << "Skipping leader moves for " << table.first << ": "
                      << StatusToString(handle_leader);
+        master_errors++;
         break;
       }
       if (!*handle_leader) {
@@ -244,10 +273,67 @@ void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
       break;
     }
   }
+
+  RecordActivity(master_errors);
+}
+
+void ClusterLoadBalancer::RecordActivity(uint32_t master_errors) {
+  uint32_t table_tasks = 0;
+  for (const auto& table : GetTableMap()) {
+    table_tasks += table.second->NumTasks();
+  }
+
+  uint32_t tserver_tasks = 0;
+  TSDescriptorVector ts_descs;
+  GetAllReportedDescriptors(&ts_descs);
+  for (const auto& ts_desc : ts_descs) {
+    tserver_tasks += ts_desc->NumTasks();
+  }
+
+  struct ActivityInfo ai {table_tasks, tserver_tasks, master_errors};
+
+  // Update circular buffer summary.
+
+  if (ai.IsIdle()) {
+    num_idle_runs_++;
+  } else {
+    VLOG(1) <<
+      Substitute("Load balancer has $0 table tasks, $1 tserver tasks, and $2 master errors",
+          table_tasks, tserver_tasks, master_errors);
+  }
+
+  if (cbuf_activities_.full()) {
+    if (cbuf_activities_.front().IsIdle()) {
+      num_idle_runs_--;
+    }
+  }
+
+  // Mutate circular buffer.
+  cbuf_activities_.push_back(std::move(ai));
+
+  // Update state.
+  is_idle_.store(num_idle_runs_ == cbuf_activities_.size(), std::memory_order_release);
+}
+
+Status ClusterLoadBalancer::IsIdle() const {
+  return (is_enabled_ && !is_idle_.load(std::memory_order_acquire)) ?
+    STATUS(IllegalState, "Task or error encountered recently.") : Status::OK();
+}
+
+void ClusterLoadBalancer::ReportUnusualLoadBalancerState() const {
+  TSDescriptorVector ts_descs;
+  GetAllReportedDescriptors(&ts_descs);
+  for (const auto& ts_desc : ts_descs) {
+    // Report if any ts has a pending delete.
+    if (ts_desc->HasTabletDeletePending()) {
+      LOG(INFO) << Format("tablet server $0 has a pending delete for tablets $1",
+                          ts_desc->permanent_uuid(), ts_desc->PendingTabletDeleteToString());
+    }
+  }
 }
 
 void ClusterLoadBalancer::ResetState() {
-  state_ = make_unique<YB_EDITION_NS_PREFIX ClusterLoadState>();
+  state_ = make_unique<enterprise::ClusterLoadState>();
 }
 
 Status ClusterLoadBalancer::AnalyzeTablets(const TableId& table_uuid) {
@@ -837,7 +923,7 @@ const BlacklistPB& ClusterLoadBalancer::GetServerBlacklist() const {
 
 bool ClusterLoadBalancer::SkipLoadBalancing(const TableInfo& table) const {
   // Skip load-balancing of system tables. They are virtual tables not hosted by tservers.
-  return catalog_manager_->IsSystemTable(table);
+  return catalog_manager_->IsSystemTableUnlocked(table);
 }
 
 void ClusterLoadBalancer::CountPendingTasks(const TableId& table_uuid,

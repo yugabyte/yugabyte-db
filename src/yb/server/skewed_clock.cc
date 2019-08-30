@@ -34,7 +34,7 @@ void SkewedClock::Register() {
 
 Result<PhysicalTime> SkewedClock::Now() {
   auto result = VERIFY_RESULT(impl_->Now());
-  result.time_point += delta_.load(std::memory_order_acquire);
+  result.time_point += delta_.load(std::memory_order_acquire).count();
   return result;
 }
 

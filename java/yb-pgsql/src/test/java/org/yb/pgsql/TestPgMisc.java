@@ -18,10 +18,12 @@ import java.util.*;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.postgresql.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
+import java.sql.Connection;
 import java.sql.Statement;
 
 import com.datastax.driver.core.Cluster;
@@ -74,5 +76,62 @@ public class TestPgMisc extends BasePgSQLTest {
 
     // Verify that YSQL database can be created with the same name as an existing YCQL keyspace.
     connection.createStatement().execute("create database system;");
+  }
+
+  @Test
+  public void testTableCreationInTemplate() throws Exception {
+    try {
+      executeQueryInTemplate("CREATE TABLE test (a int);");
+      fail("Table created in template");
+    } catch(PSQLException e) {
+    }
+  }
+
+  @Test
+  public void testTableCreationAsInTemplate() throws Exception {
+    try {
+      executeQueryInTemplate("CREATE TABLE test AS SELECT 1;");
+      fail("Table created in template");
+    } catch(PSQLException e) {
+    }
+  }
+
+  @Test
+  public void testSequenceCreationInTemplate() throws Exception {
+    try {
+      executeQueryInTemplate("CREATE SEQUENCE test START 101;");
+      fail("Sequence created in template");
+    } catch(PSQLException e) {
+    }
+  }
+
+  @Test
+  public void testFeatureRestrictionInTemplate() throws Exception {
+    try {
+      executeQueryInTemplate("VACUUM;");
+      fail("Restricted feature executed in template");
+    } catch(PSQLException e) {
+    }
+  }
+
+  @Test
+  public void testTemporaryTableTransactionInExecute() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TEMP TABLE test_table(a int, b int, c int, PRIMARY KEY (a))");
+
+      // Can insert using JDBC prepared statement.
+      statement.execute("INSERT INTO test_table(a, b, c) VALUES (1, 2, 3)");
+
+      // Can insert explicitly prepared statement.
+      statement.execute("PREPARE ins AS INSERT INTO test_table(a, b, c) VALUES (2, 3, 4)");
+      statement.execute("EXECUTE ins");
+    }
+  }
+
+  private void executeQueryInTemplate(String query) throws Exception {
+    try (Connection connection = createConnection(0, "template1");
+         Statement statement = connection.createStatement()) {
+      statement.execute(query);
+    }
   }
 }

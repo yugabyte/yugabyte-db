@@ -57,8 +57,8 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
     bool stop_on_empty_read = true;
 
     // Create two separate clients for read and writes.
-    shared_ptr<YBClient> write_client = CreateYBClient();
-    shared_ptr<YBClient> read_client = CreateYBClient();
+    auto write_client = CreateYBClient();
+    auto read_client = CreateYBClient();
     yb::load_generator::YBSessionFactory write_session_factory(write_client.get(), &table_);
     yb::load_generator::YBSessionFactory read_session_factory(read_client.get(), &table_);
 

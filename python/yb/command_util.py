@@ -18,6 +18,7 @@ This module provides utilities for running commands.
 """
 
 import os
+import platform
 import shutil
 import subprocess
 import logging
@@ -95,21 +96,32 @@ def mkdir_p(d):
 def copy_deep(src, dst, create_dst_dir=False):
     """
     Does recursive copy of src path to dst path. Copies symlinks as symlinks. Doesn't overwrite
-    existing files and symlinks (even if they are broken).
+    existing files and symlinks (even if they are broken) in Linux.
+    In Darwin, it overwrite the files if the source mtime is newer than the destination mtime.
     """
+    system_is_darwin = platform.system().lower() == "darwin"
     if create_dst_dir:
         mkdir_p(os.path.dirname(dst))
     src_is_link = os.path.islink(src)
+    dst_exists = os.path.lexists(dst)
     if os.path.isdir(src) and not src_is_link:
         logging.debug("Copying directory {} to {}".format(src, dst))
         mkdir_p(dst)
         for name in os.listdir(src):
             copy_deep(os.path.join(src, name), os.path.join(dst, name))
-    elif not os.path.lexists(dst):
-        if src_is_link:
-            target = os.readlink(src)
-            logging.debug("Creating symlink {} -> {}".format(dst, target))
-            os.symlink(target, dst)
-        else:
-            logging.debug("Copying file {} to {}".format(src, dst))
-            shutil.copy(src, dst)
+    elif src_is_link:
+        if dst_exists:
+            return
+        target = os.readlink(src)
+        logging.debug("Creating symlink {} -> {}".format(dst, target))
+        os.symlink(target, dst)
+    else:
+        if dst_exists:
+            if not system_is_darwin:
+                return
+            # Only overwrite the file if the source is newer than the destination.
+            if os.path.getmtime(src) <= os.path.getmtime(dst):
+                return
+        logging.debug("Copying file {} to {}".format(src, dst))
+        # Preserve the file attributes.
+        shutil.copy2(src, dst)

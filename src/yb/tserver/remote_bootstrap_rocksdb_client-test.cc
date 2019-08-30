@@ -23,7 +23,7 @@ namespace tserver {
 
 using consensus::GetRaftConfigLeader;
 using consensus::RaftPeerPB;
-using tablet::TabletMetadata;
+using tablet::RaftGroupMetadata;
 using tablet::TabletStatusListener;
 
 class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
@@ -46,7 +46,8 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestBeginEndSession) {
 TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadRocksDBFiles) {
   TabletStatusListener listener(meta_);
   ASSERT_OK(client_->DownloadRocksDBFiles());
-  auto tablet_peer_checkpoint_dir = tablet_peer_->tablet()->GetLastRocksDBCheckpointDirForTest();
+  auto tablet_peer_checkpoint_dir =
+      tablet_peer_->tablet()->TEST_LastRocksDBCheckpointDir();
 
   vector<std::string> rocksdb_files;
   ASSERT_OK(fs_manager_->ListDir(meta_->rocksdb_dir(), &rocksdb_files));

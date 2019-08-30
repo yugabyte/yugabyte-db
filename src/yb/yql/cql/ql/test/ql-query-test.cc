@@ -16,6 +16,7 @@
 #include <thread>
 #include <cmath>
 
+#include "yb/client/table.h"
 #include "yb/common/jsonb.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/master/master.h"
@@ -444,10 +445,32 @@ class TestQLQuery : public QLTestBase {
     ASSERT_EQ(1, row_block->row_count());
 
     //----------------------------------------------------------------------------------------------
-    // Testing parametric types (i.e. with frozen)
+    // Testing separate UDT type.
     //----------------------------------------------------------------------------------------------
     CHECK_OK(processor->Run("CREATE TYPE udt_partition_hash_test(a int, b text)"));
 
+    CHECK_OK(processor->Run(
+        "CREATE TABLE partition_hash_bcall_udt_test("
+        " h frozen<udt_partition_hash_test>, r int, v int, PRIMARY KEY ((h), r))"));
+
+    // Sample values to check hash value computation
+    key_values = "{a : 1, b : 'foo'}";
+
+    insert_stmt = Substitute("INSERT INTO partition_hash_bcall_udt_test "
+                             "(h, r, v) VALUES ($0, 1, 1);", key_values);
+    CHECK_OK(processor->Run(insert_stmt));
+
+    select_stmt = Substitute("SELECT * FROM partition_hash_bcall_udt_test WHERE "
+                                 "$0(h) = $1($2)", func_name, func_name, key_values);
+    CHECK_OK(processor->Run(select_stmt));
+
+    // Checking result.
+    row_block = processor->row_block();
+    ASSERT_EQ(1, row_block->row_count());
+
+    //----------------------------------------------------------------------------------------------
+    // Testing parametric types (i.e. with frozen)
+    //----------------------------------------------------------------------------------------------
     CHECK_OK(processor->Run(
         "CREATE TABLE partition_hash_bcall_frozen_test("
         " h1 frozen<map<int,text>>, h2 frozen<set<text>>, h3 frozen<list<int>>, "
@@ -703,7 +726,7 @@ TEST_F(TestQLQuery, TestPagingState) {
       if (processor->rows_result()->paging_state().empty()) {
         break;
       }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+      CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
     } while (true);
     CHECK_EQ(page_count, kNumRows / kPageSize);
   }
@@ -732,7 +755,7 @@ TEST_F(TestQLQuery, TestPagingState) {
         break;
       }
       CHECK_EQ(row_block->row_count(), kPageSize);
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+      CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
     } while (true);
     CHECK_EQ(i, kLimit);
     CHECK_EQ(page_count, static_cast<int>(ceil(static_cast<double>(kLimit) /
@@ -772,7 +795,7 @@ TEST_F(TestQLQuery, TestPagingState) {
       if (processor->rows_result()->paging_state().empty()) {
         break;
       }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+      CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
     } while (true);
     CHECK_EQ(row_count, kNumRows);
     // Page count should be at least "kNumRows / kPageSize". Can be more because some pages may not
@@ -804,7 +827,7 @@ TEST_F(TestQLQuery, TestPagingState) {
       if (processor->rows_result()->paging_state().empty()) {
         break;
       }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+      CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
     } while (true);
     CHECK_EQ(row_count, kLimit);
     // Page count should be at least "kLimit / kPageSize". Can be more because some pages may not
@@ -876,7 +899,7 @@ do {                                                                            
     if (processor->rows_result()->paging_state().empty()) {                                        \
       break;                                                                                       \
     }                                                                                              \
-    CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));                   \
+    CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));                   \
   } while (true);                                                                                  \
   /* Page count should be at least "<nrRowsRead> / kPageSize". */                                  \
   /* Can be more since some pages may not be fully filled depending on hash key distribution. */   \
@@ -1919,7 +1942,8 @@ TEST_F(TestQLQuery, TestJsonUpdate) {
   verifyJson(processor->row_block());
 
   ASSERT_OK(processor->Run("UPDATE test_json SET data->'a' = '100' WHERE k1 = 1"));
-  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'new-field' = '100' WHERE k1 = 1"));
+  ASSERT_NOK(processor->Run("UPDATE test_json SET data->'new-field'->'c' = '100' WHERE k1 = 1"));
+  ASSERT_OK(processor->Run("UPDATE test_json SET data->'new-field' = '100' WHERE k1 = 1"));
 
   ASSERT_OK(processor->Run("UPDATE test_json SET data =  '{ \"a\": 2, \"b\": 4 }' WHERE k1 = 2"));
   ASSERT_NOK(processor->Run("UPDATE test_json SET data->'a' = '3' WHERE k1 = 3"));

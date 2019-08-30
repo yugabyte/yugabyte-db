@@ -129,6 +129,13 @@ IndexNext(IndexScanState *node)
 	}
 
 	/*
+	 * Setup LIMIT and future execution parameter before calling YugaByte scanning rountines.
+	 */
+	if (IsYugaByteEnabled()) {
+		scandesc->yb_exec_params = &estate->yb_exec_params;
+	}
+
+	/*
 	 * ok, now that we have what we need, fetch the next tuple.
 	 */
 	while ((tuple = index_getnext(scandesc, direction)) != NULL)
@@ -1377,7 +1384,8 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				opno = lfirst_oid(opnos_cell);
 				opnos_cell = lnext(opnos_cell);
 
-				if (index->rd_rel->relam != BTREE_AM_OID ||
+				if ((index->rd_rel->relam != BTREE_AM_OID &&
+					 index->rd_rel->relam != LSM_AM_OID) ||
 					varattno < 1 || varattno > indnkeyatts)
 					elog(ERROR, "bogus RowCompare index qualification");
 				opfamily = index->rd_opfamily[varattno - 1];

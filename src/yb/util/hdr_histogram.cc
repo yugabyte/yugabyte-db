@@ -46,6 +46,7 @@ using base::subtle::NoBarrier_Store;
 using base::subtle::NoBarrier_Load;
 using base::subtle::NoBarrier_CompareAndSwap;
 using strings::Substitute;
+using std::endl;
 
 namespace yb {
 
@@ -326,6 +327,24 @@ uint64_t HdrHistogram::ValueAtPercentile(double percentile) const {
 
   LOG(DFATAL) << "Fell through while iterating, likely concurrent modification of histogram";
   return 0;
+}
+
+void HdrHistogram::DumpHumanReadable(std::ostream* out) const {
+  *out << "Count: " << TotalCount() << endl;
+  *out << "Mean: " << MeanValue() << endl;
+  *out << "Percentiles:" << endl;
+  *out << "   0%  (min) = " << MinValue() << endl;
+  *out << "  25%        = " << ValueAtPercentile(25) << endl;
+  *out << "  50%  (med) = " << ValueAtPercentile(50) << endl;
+  *out << "  75%        = " << ValueAtPercentile(75) << endl;
+  *out << "  95%        = " << ValueAtPercentile(95) << endl;
+  *out << "  99%        = " << ValueAtPercentile(99) << endl;
+  *out << "  99.9%      = " << ValueAtPercentile(99.9) << endl;
+  *out << "  99.99%     = " << ValueAtPercentile(99.99) << endl;
+  *out << "  100% (max) = " << MaxValue() << endl;
+  if (MaxValue() >= highest_trackable_value()) {
+    *out << "*NOTE: some values were greater than highest trackable value" << endl;
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////

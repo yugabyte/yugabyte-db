@@ -253,6 +253,9 @@ message PgsqlReadRequestPB {
   // Where clause condition
   optional PgsqlExpressionPB where_expr = 8;
 
+  // Conditions for range columns.
+  optional PgsqlExpressionPB condition_expr = 22;
+
   //------------------------------------------------------------------------------------------------
   // Listing of all columns that this operation is referencing. TServers will need to read these
   // columns when processing this read request.
@@ -300,6 +303,7 @@ message PgsqlResponsePB {
     PGSQL_STATUS_RUNTIME_ERROR = 2;
     PGSQL_STATUS_USAGE_ERROR = 3;
     PGSQL_STATUS_RESTART_REQUIRED_ERROR = 4;
+    PGSQL_STATUS_DUPLICATE_KEY_ERROR = 5;
   }
 
   // Status and error message
@@ -315,4 +319,7 @@ message PgsqlResponsePB {
 
   // Paging state for continuing the read in the next QLReadRequestPB fetch.
   optional PgsqlPagingStatePB paging_state = 5;
+
+  // Number of rows affected by the operation. Currently only used for update and delete.
+  optional int32 rows_affected_count = 7;
 }

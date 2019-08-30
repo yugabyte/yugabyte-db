@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/table_creator.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/fs/fs_manager.h"
@@ -93,11 +94,11 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(cluster_->Start());
 
     ASSERT_OK(cluster_->WaitForTabletServerCount(opts.num_tablet_servers));
-    ASSERT_OK(YBClientBuilder()
-                  .add_master_server_addr(cluster_->mini_master(0)->bound_rpc_addr_str())
-                  .add_master_server_addr(cluster_->mini_master(1)->bound_rpc_addr_str())
-                  .add_master_server_addr(cluster_->mini_master(2)->bound_rpc_addr_str())
-                  .Build(&client_));
+    client_ = ASSERT_RESULT(YBClientBuilder()
+        .add_master_server_addr(cluster_->mini_master(0)->bound_rpc_addr_str())
+        .add_master_server_addr(cluster_->mini_master(1)->bound_rpc_addr_str())
+        .add_master_server_addr(cluster_->mini_master(2)->bound_rpc_addr_str())
+        .Build());
   }
 
   Status BreakMasterConnectivityTo(int from_idx, int to_idx) {
@@ -129,6 +130,7 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTearDown() override {
+    client_.reset();
     FLAGS_slowdown_master_async_rpc_tasks_by_ms = 0;
     SleepFor(MonoDelta::FromMilliseconds(1000));
     cluster_->Shutdown();
@@ -139,7 +141,7 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
   void CheckLeaderMasterIsResponsive(int master_idx);
 
  protected:
-  std::shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   int32_t num_tservers_ = 5;
 };
 

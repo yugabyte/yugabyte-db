@@ -1,0 +1,56 @@
+CREATE TABLE test (a int);
+-- Write operation in READ ONLY transaction
+BEGIN;
+SET TRANSACTION READ ONLY;
+INSERT INTO test VALUES(1); -- fail
+ERROR:  cannot execute INSERT in a read-only transaction
+END;
+-- Write operation in aborted READ WRITE transaction
+BEGIN;
+SET TRANSACTION READ WRITE;
+INSERT INTO test VALUES(1);
+SELECT COUNT(*) FROM test; -- equals 1
+ count
+-------
+     1
+(1 row)
+
+ABORT;
+SELECT COUNT(*) FROM test; -- equals 0
+ count
+-------
+     0
+(1 row)
+
+-- Write operation in committed READ WRITE transaction
+BEGIN;
+SET TRANSACTION READ WRITE;
+INSERT INTO test VALUES(1);
+SELECT COUNT(*) FROM test; -- equals 1
+ count
+-------
+     1
+(1 row)
+
+END;
+SELECT COUNT(*) FROM test; -- equals 1
+ count
+-------
+     1
+(1 row)
+
+-- Check alternative syntax
+START TRANSACTION ISOLATION LEVEL SERIALIZABLE READ WRITE;
+INSERT INTO test VALUES(1);
+SELECT COUNT(*) FROM test; -- equals 2
+ count
+-------
+     2
+(1 row)
+
+ABORT;
+SELECT COUNT(*) FROM test; -- equals 1
+ count
+-------
+     1
+(1 row)

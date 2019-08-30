@@ -46,6 +46,8 @@ class MonitoredTask;
 
 void HtmlOutputSchemaTable(const Schema& schema,
                            std::stringstream* output);
+void HtmlOutputTask(const std::shared_ptr<MonitoredTask>& task,
+                    std::stringstream* output);
 void HtmlOutputTasks(const std::unordered_set<std::shared_ptr<MonitoredTask> >& tasks,
                      std::stringstream* output);
 

@@ -55,7 +55,7 @@ using namespace std::placeholders;
 
 namespace {
 
-void RpczPathHandler(const shared_ptr<Messenger>& messenger,
+void RpczPathHandler(Messenger* messenger,
                      const Webserver::WebRequest& req, stringstream* output) {
   DumpRunningRpcsRequestPB dump_req;
   DumpRunningRpcsResponsePB dump_resp;
@@ -72,7 +72,7 @@ void RpczPathHandler(const shared_ptr<Messenger>& messenger,
 
 } // anonymous namespace
 
-void AddRpczPathHandlers(const shared_ptr<Messenger>& messenger, Webserver* webserver) {
+void AddRpczPathHandlers(Messenger* messenger, Webserver* webserver) {
   webserver->RegisterPathHandler(
       "/rpcz", "RPCs", std::bind(RpczPathHandler, messenger, _1, _2), false, false);
 }

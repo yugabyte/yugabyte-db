@@ -53,8 +53,8 @@ void QLTestBase::CreateSimulatedCluster(int num_tablet_servers) {
   builder.add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str());
   builder.default_rpc_timeout(MonoDelta::FromSeconds(30));
   builder.set_tserver_uuid(cluster_->mini_tablet_server(0)->server()->permanent_uuid());
-  ASSERT_OK(builder.Build(&client_));
-  metadata_cache_ = std::make_shared<client::YBMetaDataCache>(client_,
+  client_ = ASSERT_RESULT(builder.Build());
+  metadata_cache_ = std::make_shared<client::YBMetaDataCache>(client_.get(),
       false /* Update roles' permissions cache */);
   ASSERT_OK(client_->CreateNamespaceIfNotExists(kDefaultKeyspaceName));
 }
@@ -70,11 +70,11 @@ TestQLProcessor* QLTestBase::GetQLProcessor(const RoleName& role_name) {
   if (!role_name.empty()) {
     CHECK(FLAGS_use_cassandra_authentication);
   }
-  if (client_ == nullptr) {
+  if (!client_) {
     CreateSimulatedCluster();
   }
 
-  ql_processors_.emplace_back(new TestQLProcessor(client_, metadata_cache_, role_name));
+  ql_processors_.emplace_back(new TestQLProcessor(client_.get(), metadata_cache_, role_name));
   CallUseKeyspace(ql_processors_.back(), kDefaultKeyspaceName);
   return ql_processors_.back().get();
 }

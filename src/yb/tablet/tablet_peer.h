@@ -99,7 +99,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
  public:
   typedef std::map<int64_t, int64_t> MaxIdxToSegmentSizeMap;
 
-  TabletPeer(const scoped_refptr<TabletMetadata>& meta,
+  TabletPeer(const RaftGroupMetadataPtr& meta,
              const consensus::RaftPeerPB& local_peer_pb,
              const scoped_refptr<server::Clock> &clock,
              const std::string& permanent_uuid,
@@ -110,8 +110,9 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Initializes the TabletPeer, namely creating the Log and initializing
   // Consensus.
   CHECKED_STATUS InitTabletPeer(const std::shared_ptr<TabletClass> &tablet,
-                                const std::shared_future<client::YBClientPtr> &client_future,
-                                const std::shared_ptr<rpc::Messenger> &messenger,
+                                const std::shared_future<client::YBClient*> &client_future,
+                                const std::shared_ptr<MemTracker>& server_mem_tracker,
+                                rpc::Messenger* messenger,
                                 rpc::ProxyCache* proxy_cache,
                                 const scoped_refptr<log::Log> &log,
                                 const scoped_refptr<MetricEntity> &metric_entity,
@@ -164,6 +165,8 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperationState> state, int64_t term) override;
 
+  void GetLastReplicatedData(RemoveIntentsData* data) override;
+
   void GetTabletStatusPB(TabletStatusPB* status_pb_out) const;
 
   // Used by consensus to create and start a new ReplicaOperation.
@@ -174,6 +177,9 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // This is an override of a ReplicaOperationFactory method. This is called from
   // UpdateReplica -> EnqueuePreparesUnlocked on Raft heartbeats.
   void SetPropagatedSafeTime(HybridTime ht) override;
+
+  // Returns false if it is preferable to don't apply write operation.
+  bool ShouldApplyWrite() override;
 
   consensus::Consensus* consensus() const;
 
@@ -189,9 +195,11 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
     return tablet_;
   }
 
-  const TabletStatePB state() const {
+  const RaftGroupStatePB state() const {
     return state_.load(std::memory_order_acquire);
   }
+
+  const TabletDataState data_state() const;
 
   // Returns the current Raft configuration.
   const consensus::RaftConfigPB RaftConfig() const;
@@ -202,10 +210,10 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   // Sets the tablet to a BOOTSTRAPPING state, indicating it is starting up.
   CHECKED_STATUS SetBootstrapping() {
-    return UpdateState(TabletStatePB::NOT_STARTED, TabletStatePB::BOOTSTRAPPING, "");
+    return UpdateState(RaftGroupStatePB::NOT_STARTED, RaftGroupStatePB::BOOTSTRAPPING, "");
   }
 
-  CHECKED_STATUS UpdateState(TabletStatePB expected, TabletStatePB new_state,
+  CHECKED_STATUS UpdateState(RaftGroupStatePB expected, RaftGroupStatePB new_state,
                              const std::string& error_message);
 
   // sets the tablet state to FAILED additionally setting the error to the provided
@@ -273,7 +281,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   bool Enqueue(rpc::ThreadPoolTask* task) override;
 
-  const std::shared_future<client::YBClientPtr>& client_future() const override {
+  const std::shared_future<client::YBClient*>& client_future() const override {
     return client_future_;
   }
 
@@ -317,7 +325,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // Return pointer to the transaction tracker for this peer.
   const OperationTracker* operation_tracker() const { return &operation_tracker_; }
 
-  const scoped_refptr<TabletMetadata>& tablet_metadata() const {
+  const RaftGroupMetadataPtr& tablet_metadata() const {
     return meta_;
   }
 
@@ -348,7 +356,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   virtual std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg);
 
-  const scoped_refptr<TabletMetadata> meta_;
+  const RaftGroupMetadataPtr meta_;
 
   const std::string tablet_id_;
 
@@ -357,7 +365,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
   // The atomics state_, error_ and has_consensus_ maintain information about the tablet peer.
   // While modifying the other fields in tablet peer, state_ is modified last.
   // error_ is set before state_ is set to an error state.
-  std::atomic<enum TabletStatePB> state_;
+  std::atomic<enum RaftGroupStatePB> state_;
   AtomicUniquePtr<Status> error_;
   std::atomic<bool> has_consensus_ = {false};
 
@@ -417,7 +425,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
     return LeaderTerm() != OpId::kUnknownTerm;
   }
 
-  std::shared_future<client::YBClientPtr> client_future_;
+  std::shared_future<client::YBClient*> client_future_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletPeer);
 };

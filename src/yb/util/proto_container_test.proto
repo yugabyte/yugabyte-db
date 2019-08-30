@@ -40,6 +40,14 @@ message ProtoContainerTestPB {
   optional string note = 3;
 }
 
+message TestStringRequiredPB {
+  required string text = 1;
+}
+
+message TestStringRepeatedPB {
+  repeated string text = 1;
+}
+
 enum TestPBEnum {
   FOO = 1;
   BAR = 2;

@@ -44,6 +44,7 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/async_util.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -51,6 +52,12 @@ namespace yb {
 class MetricEntity;
 class Thread;
 class WebCallbackRegistry;
+
+#if defined(__linux__)
+typedef int64_t ThreadIdForStack;
+#else
+typedef pthread_t ThreadIdForStack;
+#endif
 
 // Utility to join on a thread, printing warning messages if it
 // takes too long. For example:
@@ -99,6 +106,8 @@ class ThreadJoiner {
 
   DISALLOW_COPY_AND_ASSIGN(ThreadJoiner);
 };
+
+typedef scoped_refptr<Thread> ThreadPtr;
 
 // Thin wrapper around pthread that can register itself with the singleton ThreadMgr
 // (a private class implemented in thread.cc entirely, which tracks all live threads so
@@ -180,6 +189,22 @@ class Thread : public RefCountedThreadSafe<Thread> {
     return StartThread(category, name, std::bind(f, a1, a2, a3, a4, a5, a6), holder);
   }
 
+  template <class F>
+  static Result<ThreadPtr> Make(
+      const std::string& category, const std::string& name, const F& f) {
+    ThreadPtr result;
+    RETURN_NOT_OK(StartThread(category, name, f, &result));
+    return result;
+  }
+
+  template <class... Args>
+  static Result<ThreadPtr> Make(
+      const std::string& category, const std::string& name, Args&&... args) {
+    ThreadPtr result;
+    RETURN_NOT_OK(StartThread(category, name, std::bind(std::forward<Args>(args)...), &result));
+    return result;
+  }
+
   // Emulates std::thread and detaches.
   ~Thread();
 
@@ -203,6 +228,14 @@ class Thread : public RefCountedThreadSafe<Thread> {
 
   // Returns the thread's pthread ID.
   pthread_t pthread_id() const { return thread_; }
+
+  ThreadIdForStack tid_for_stack() {
+#if defined(__linux__)
+    return tid();
+#else
+    return pthread_id();
+#endif
+  }
 
   const std::string& name() const { return name_; }
   const std::string& category() const { return category_; }
@@ -255,6 +288,14 @@ class Thread : public RefCountedThreadSafe<Thread> {
     return syscall(SYS_gettid);
 #else
     return UniqueThreadId();
+#endif
+  }
+
+  static ThreadIdForStack CurrentThreadIdForStack() {
+#if defined(__linux__)
+    return CurrentThreadId();
+#else
+    return pthread_self();
 #endif
   }
 
@@ -326,8 +367,9 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // initialised and its TID has been read. Waits for notification from the started
   // thread that initialisation is complete before returning. On success, stores a
   // reference to the thread in holder.
-  static CHECKED_STATUS StartThread(const std::string& category, const std::string& name,
-                            const ThreadFunctor& functor, scoped_refptr<Thread>* holder);
+  static CHECKED_STATUS StartThread(
+      const std::string& category, const std::string& name,
+      ThreadFunctor functor, ThreadPtr* holder);
 
   // Wrapper for the user-supplied function. Invoked from the new thread,
   // with the Thread as its only argument. Executes functor_, but before
@@ -364,6 +406,12 @@ Status StartThreadInstrumentation(const scoped_refptr<MetricEntity>& server_metr
 void InitThreading();
 
 void SetThreadName(const std::string& name);
+
+class CDSAttacher {
+ public:
+  CDSAttacher();
+  ~CDSAttacher();
+};
 
 } // namespace yb
 

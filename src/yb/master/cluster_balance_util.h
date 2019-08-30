@@ -274,12 +274,14 @@ class ClusterLoadState {
         ts_meta_it->second.leaders.insert(tablet_id);
       }
 
-      const tablet::TabletStatePB& tablet_state = replica.second.state;
+      const tablet::RaftGroupStatePB& tablet_state = replica.second.state;
+      const bool replica_is_stale = replica.second.IsStale();
       if (tablet_state == tablet::RUNNING) {
         ts_meta_it->second.running_tablets.insert(tablet_id);
         ++tablet_meta.running;
         ++total_running_;
-      } else if (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED) {
+      } else if (!replica_is_stale &&
+                 (tablet_state == tablet::BOOTSTRAPPING || tablet_state == tablet::NOT_STARTED)) {
         // Keep track of transitioning state (not running, but not in a stopped or failed state).
         ts_meta_it->second.starting_tablets.insert(tablet_id);
         ++tablet_meta.starting;
@@ -398,7 +400,6 @@ class ClusterLoadState {
     }
 
     if (ts_desc->HasTabletDeletePending()) {
-      LOG(INFO) << "tablet server " << ts_uuid << " has a pending delete";
       servers_with_pending_deletes_.insert(ts_uuid);
     }
   }

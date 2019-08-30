@@ -6,4 +6,5 @@
 # - ALTER
 # - DROP
 ####################################################################################################
-test: yb_table_create
+test: yb_create_table
+test: yb_drop_table

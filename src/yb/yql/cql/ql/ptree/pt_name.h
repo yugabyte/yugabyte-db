@@ -54,10 +54,6 @@ class PTName : public TreeNode {
     return Status::OK();
   }
 
-  CHECKED_STATUS SetupPrimaryKey(SemContext *sem_context) const;
-  CHECKED_STATUS SetupHashAndPrimaryKey(SemContext *sem_context) const;
-  CHECKED_STATUS SetupCoveringIndexColumn(SemContext *sem_context) const;
-
   const MCString& name() const {
     return *name_;
   }
@@ -70,7 +66,7 @@ class PTName : public TreeNode {
     return name_->c_str();
   }
 
- private:
+ protected:
   MCSharedPtr<MCString> name_;
 };
 
@@ -142,6 +138,11 @@ class PTQualifiedName : public PTName {
 
   bool IsSimpleName() const {
     return ptnames_.size() == 1;
+  }
+
+  // Column name should be the last name.
+  const MCSharedPtr<MCString>& column_name() {
+    return ptnames_.back()->name_ptr();
   }
 
   // Construct bind variable name from this name.

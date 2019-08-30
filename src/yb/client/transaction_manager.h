@@ -36,14 +36,14 @@ typedef std::function<void(const Result<std::string>&)> PickStatusTabletCallback
 // TransactionManager manages multiple transactions. It lives at the YQL engine layer.
 class TransactionManager {
  public:
-  TransactionManager(const YBClientPtr& client, const scoped_refptr<ClockBase>& clock,
+  TransactionManager(YBClient* client, const scoped_refptr<ClockBase>& clock,
                      LocalTabletFilter local_tablet_filter);
   ~TransactionManager();
 
   void PickStatusTablet(PickStatusTabletCallback callback);
 
   rpc::Rpcs& rpcs();
-  const YBClientPtr& client() const;
+  YBClient* client() const;
 
   const scoped_refptr<ClockBase>& clock() const;
   HybridTime Now() const;

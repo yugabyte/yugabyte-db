@@ -17,6 +17,8 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/read_hybrid_time.h"
+
 namespace yb {
 namespace ql {
 
@@ -35,6 +37,31 @@ StatementParameters::StatementParameters(const StatementParameters& other)
 }
 
 StatementParameters::~StatementParameters() {
+}
+
+ReadHybridTime StatementParameters::read_time() const {
+  if (!paging_state_) {
+    return ReadHybridTime();
+  }
+
+  return ReadHybridTime::FromReadTimePB(*paging_state_);
+}
+
+Status StatementParameters::SetPagingState(const std::string& paging_state) {
+  // For performance, create QLPagingStatePB on demand only when setting paging state because
+  // only SELECT statements continuing from a previous page carry a paging state.
+  if (paging_state_ == nullptr) {
+    paging_state_.reset(new QLPagingStatePB());
+  }
+  if (!paging_state_->ParseFromString(paging_state)) {
+    STATUS(Corruption, "Invalid paging state");
+  }
+
+  if (paging_state_->has_original_request_id()) {
+    request_id_ = paging_state_->original_request_id();
+  }
+
+  return Status::OK();
 }
 
 } // namespace ql

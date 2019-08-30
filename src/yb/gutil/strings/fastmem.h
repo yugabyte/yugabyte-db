@@ -28,8 +28,8 @@
 //     Analysis: memcmp, fastmemcmp_inlined, fastmemcmp
 //     2012-01-30
 
-#ifndef STRINGS_FASTMEM_H_
-#define STRINGS_FASTMEM_H_
+#ifndef YB_GUTIL_STRINGS_FASTMEM_H
+#define YB_GUTIL_STRINGS_FASTMEM_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -92,13 +92,13 @@ inline int fastmemcmp_inlined(const void *a_void, const void *b_void, size_t n) 
     return memcmp(a, b, n);
   }
   const void* a_limit = a + n;
-  const size_t sizeof_uint64 = sizeof(uint64);  // NOLINT(runtime/sizeof)
+  const size_t sizeof_uint64 = sizeof(uint64);
   while (a + sizeof_uint64 <= a_limit &&
          UNALIGNED_LOAD64(a) == UNALIGNED_LOAD64(b)) {
     a += sizeof_uint64;
     b += sizeof_uint64;
   }
-  const size_t sizeof_uint32 = sizeof(uint32);  // NOLINT(runtime/sizeof)
+  const size_t sizeof_uint32 = sizeof(uint32);
   if (a + sizeof_uint32 <= a_limit &&
       UNALIGNED_LOAD32(a) == UNALIGNED_LOAD32(b)) {
     a += sizeof_uint32;
@@ -139,6 +139,36 @@ inline void memcpy_inlined(void *dst, const void *src, size_t size) {
   }
 }
 
+inline size_t MemoryDifferencePos(const void *a_void, const void *b_void, size_t n) {
+  constexpr size_t kUInt64Size = sizeof(uint64_t);
+  constexpr size_t kUInt32Size = sizeof(uint32_t);
+
+  const uint8_t *a = reinterpret_cast<const uint8_t*>(a_void);
+  const uint8_t *b = reinterpret_cast<const uint8_t*>(b_void);
+
+  const uint8_t* a_limit = a + n;
+
+  while (a + kUInt64Size <= a_limit && UNALIGNED_LOAD64(a) == UNALIGNED_LOAD64(b)) {
+    a += kUInt64Size;
+    b += kUInt64Size;
+  }
+
+  if (a + kUInt32Size <= a_limit && UNALIGNED_LOAD32(a) == UNALIGNED_LOAD32(b)) {
+    a += kUInt32Size;
+    b += kUInt32Size;
+  }
+
+  while (a < a_limit) {
+    if (*a != *b) {
+      return a - reinterpret_cast<const uint8_t*>(a_void);
+    }
+    ++a;
+    ++b;
+  }
+
+  return n;
+}
+
 }  // namespace strings
 
-#endif  // STRINGS_FASTMEM_H_
+#endif // YB_GUTIL_STRINGS_FASTMEM_H

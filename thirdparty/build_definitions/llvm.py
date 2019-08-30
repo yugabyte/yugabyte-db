@@ -84,3 +84,6 @@ class LLVMDependency(Dependency):
         list_dest = os.path.relpath(os.getcwd(), builder.tp_dir)
         log("Link {} => {}".format(link_path, list_dest))
         os.symlink(list_dest, link_path)
+
+    def should_build(self, builder):
+        return builder.will_need_clang()

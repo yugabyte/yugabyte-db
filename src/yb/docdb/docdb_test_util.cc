@@ -17,8 +17,6 @@
 #include <memory>
 #include <sstream>
 
-#include <boost/scope_exit.hpp>
-
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/statistics.h"
 
@@ -34,12 +32,14 @@
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/algorithm_util.h"
+#include "yb/util/string_util.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/rocksdb/db/filename.h"
 
@@ -74,9 +74,9 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
-  boost::optional<TransactionMetadata> Metadata(const TransactionId& id) override {
+  Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) override {
     Fail();
-    return boost::none;
+    return STATUS(Expired, "");
   }
 
   int64_t RegisterRequest() override {
@@ -93,6 +93,11 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
   }
 
   void Cleanup(TransactionIdSet&& set) override {
+    Fail();
+  }
+
+  void FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {
     Fail();
   }
 
@@ -213,7 +218,7 @@ PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
       }
       return PrimitiveValue(s);
     }
-    case 2: return PrimitiveValue(ValueType::kNull);
+    case 2: return PrimitiveValue(ValueType::kNullLow);
     case 3: return PrimitiveValue(ValueType::kTrue);
     case 4: return PrimitiveValue(ValueType::kFalse);
     case 5: return PrimitiveValue(kFruit[(*rng)() % kFruit.size()]);
@@ -577,9 +582,22 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
   const string debug_dump_str = TrimDocDbDebugDumpStr(DocDBDebugDumpToStr());
   const string expected_str = TrimDocDbDebugDumpStr(expected);
   if (expected_str != debug_dump_str) {
-    LOG(INFO) << "Assertion failure"
-              << "\nExpected DocDB contents:\n\n" << expected_str << "\n"
-              << "\nActual DocDB contents:\n\n" << debug_dump_str << "\n";
+    auto expected_lines = StringSplit(expected_str, '\n');
+    auto actual_lines = StringSplit(debug_dump_str, '\n');
+    vector<int> mismatch_line_numbers;
+    for (int i = 0; i < std::min(expected_lines.size(), actual_lines.size()); ++i) {
+      if (expected_lines[i] != actual_lines[i]) {
+        mismatch_line_numbers.push_back(i + 1);
+      }
+    }
+    LOG(ERROR) << "Assertion failure"
+               << "\nExpected DocDB contents:\n\n" << expected_str << "\n"
+               << "\nActual DocDB contents:\n\n" << debug_dump_str << "\n"
+               << "\nExpected # of lines: " << expected_lines.size()
+               << ", actual # of lines: " << actual_lines.size()
+               << "\nLines not matching: " << yb::ToString(mismatch_line_numbers)
+               << "\nPlease check if source files have trailing whitespace and remove it.";
+
     FAIL();
   }
 }
@@ -587,9 +605,9 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
 void DocDBRocksDBFixture::FullyCompactHistoryBefore(HybridTime history_cutoff) {
   LOG(INFO) << "Major-compacting history before hybrid_time " << history_cutoff;
   SetHistoryCutoffHybridTime(history_cutoff);
-  BOOST_SCOPE_EXIT(this_) {
-    this_->SetHistoryCutoffHybridTime(HybridTime::kMin);
-  } BOOST_SCOPE_EXIT_END;
+  auto se = ScopeExit([this] {
+    SetHistoryCutoffHybridTime(HybridTime::kMin);
+  });
 
   ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_OK(FullyCompactDB(rocksdb_.get()));
@@ -602,9 +620,9 @@ void DocDBRocksDBFixture::MinorCompaction(
 
   ASSERT_OK(FlushRocksDbAndWait());
   SetHistoryCutoffHybridTime(history_cutoff);
-  BOOST_SCOPE_EXIT(this_) {
-    this_->SetHistoryCutoffHybridTime(HybridTime::kMin);
-  } BOOST_SCOPE_EXIT_END;
+  auto se = ScopeExit([this] {
+    SetHistoryCutoffHybridTime(HybridTime::kMin);
+  });
 
   rocksdb::ColumnFamilyMetaData cf_meta;
   rocksdb_->GetColumnFamilyMetaData(&cf_meta);

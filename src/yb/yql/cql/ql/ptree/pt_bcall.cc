@@ -18,6 +18,7 @@
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 
 #include "yb/client/client.h"
+#include "yb/client/table.h"
 
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/util/bfql/bfql.h"
@@ -58,6 +59,34 @@ PTBcall::PTBcall(MemoryContext *memctx,
 PTBcall::~PTBcall() {
 }
 
+string PTBcall::QLName() const {
+  string arg_names;
+  string keyspace;
+
+  // cql_cast() is displayed as "cast(<col> as <type>)".
+  if (strcmp(name_->c_str(), bfql::kCqlCastFuncName) == 0) {
+    CHECK_GE(args_->size(), 2);
+    const string column_name = args_->element(0)->QLName();
+    const string type =  QLType::ToCQLString(args_->element(1)->ql_type()->type_info()->type());
+    return strings::Substitute("cast($0 as $1)", column_name, type);
+  }
+
+  for (auto arg : args_->node_list()) {
+    if (!arg_names.empty()) {
+      arg_names += ", ";
+    }
+    arg_names += arg->QLName();
+  }
+  if (IsAggregateCall()) {
+    // count(*) is displayed as "count".
+    if (arg_names.empty()) {
+      return name_->c_str();
+    }
+    keyspace += "system.";
+  }
+  return strings::Substitute("$0$1($2)", keyspace, name_->c_str(), arg_names);
+}
+
 bool PTBcall::IsAggregateCall() const {
   return is_server_operator_ && BFDecl::is_aggregate_op(static_cast<TSOpcode>(bfopcode_));
 }
@@ -77,13 +106,15 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
   int pindex = 0;
   const MCList<PTExpr::SharedPtr>& exprs = args_->node_list();
   vector<PTExpr::SharedPtr> params(exprs.size());
-  for (const auto& expr : exprs) {
+  for (const PTExpr::SharedPtr& expr : exprs) {
     RETURN_NOT_OK(expr->Analyze(sem_context));
     RETURN_NOT_OK(expr->CheckRhsExpr(sem_context));
 
     params[pindex] = expr;
     pindex++;
   }
+
+  RETURN_NOT_OK(CheckOperatorAfterArgAnalyze(sem_context));
 
   // Reset the semantics state after analyzing the arguments.
   sem_state.ResetContextState();
@@ -114,6 +145,15 @@ CHECKED_STATUS PTBcall::Analyze(SemContext *sem_context) {
     // Use the builtin-function opcode since this is a regular builtin call.
     bfopcode_ = static_cast<int32_t>(bfopcode);
 
+    if (*name_ == "cql_cast" || *name_ == "tojson") {
+      // Argument must be of primitive type for these operators.
+      for (const PTExpr::SharedPtr &expr : exprs) {
+        if (expr->expr_op() == ExprOperator::kCollection) {
+          return sem_context->Error(expr, "Input argument must be of primitive type",
+                                    ErrorCode::INVALID_ARGUMENTS);
+        }
+      }
+    }
   } else {
     // Use the server opcode since this is a server operator. Ignore the BFOpcode.
     is_server_operator_ = true;
@@ -331,6 +371,27 @@ CHECKED_STATUS PTBcall::CheckCounterUpdateSupport(SemContext *sem_context) const
   if (ref->desc() != sem_context->lhs_col()) {
     return sem_context->Error(arg1, "Right and left arguments must reference the same counter",
                               ErrorCode::INVALID_COUNTING_EXPR);
+  }
+
+  return Status::OK();
+}
+
+CHECKED_STATUS PTBcall::CheckOperatorAfterArgAnalyze(SemContext *sem_context) {
+  if (*name_ == "tojson") {
+    // The arguments must be analyzed and correct types must be set.
+    const QLType::SharedPtr type = args_->element(0)->ql_type();
+    DCHECK(!type->IsUnknown());
+
+    if (type->main() == TUPLE) {
+      // https://github.com/YugaByte/yugabyte-db/issues/936
+      return sem_context->Error(args_->element(0),
+          "Tuple type not implemented yet", ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
+    }
+
+    if (type->Contains(FROZEN) || type->Contains(USER_DEFINED_TYPE)) {
+      // Only the server side implementation allows complex types unwrapping based on the schema.
+      name_->insert(0, "server_");
+    }
   }
 
   return Status::OK();

@@ -54,13 +54,12 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/util/opid.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
-
-struct OpId;
 
 namespace log {
 class Log;
@@ -259,7 +258,8 @@ class Consensus {
   // stringified Status message.
   virtual CHECKED_STATUS Update(
       ConsensusRequestPB* request,
-      ConsensusResponsePB* response) = 0;
+      ConsensusResponsePB* response,
+      CoarseTimePoint deadline) = 0;
 
   // Messages sent from CANDIDATEs to voting peers to request their vote
   // in leader election.
@@ -315,15 +315,11 @@ class Consensus {
 
   // Returns the last OpId (either received or committed, depending on the 'type' argument) that the
   // Consensus implementation knows about.  Primarily used for testing purposes.
-  virtual CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) {
-    return STATUS(NotFound, "Not implemented.");
-  }
+  Result<yb::OpId> GetLastOpId(OpIdType type);
 
-  Result<OpId> GetLastReceivedOpId() {
-    OpId result;
-    RETURN_NOT_OK(GetLastOpId(OpIdType::RECEIVED_OPID, &result));
-    return result;
-  }
+  virtual yb::OpId GetLastReceivedOpId() = 0;
+
+  virtual yb::OpId GetLastCommittedOpId() = 0;
 
   // Assuming we are the leader, wait until we have a valid leader lease (i.e. the old leader's
   // lease has expired, and we have replicated a new lease that has not expired yet).
@@ -345,6 +341,8 @@ class Consensus {
 
   // This includes heartbeats too.
   virtual MonoTime TimeSinceLastMessageFromLeader() = 0;
+
+  virtual CHECKED_STATUS ReadReplicatedMessages(const OpId& from, ReplicateMsgs* msgs) = 0;
 
  protected:
   friend class RefCountedThreadSafe<Consensus>;

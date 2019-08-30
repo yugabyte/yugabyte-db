@@ -152,6 +152,12 @@ ExecScan(ScanState *node,
 	ResetExprContext(econtext);
 
 	/*
+	 * Use default prefetch limit if there's a qualifier or projection.
+	 * If Postgres has a qualifier or projection for filtering, YB cannot LIMIT the number rows.
+	 */
+	node->ps.state->yb_exec_params.limit_use_default = true;
+
+	/*
 	 * get a tuple from the access method.  Loop until we obtain a tuple that
 	 * passes the qualification.
 	 */

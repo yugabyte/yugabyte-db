@@ -75,6 +75,9 @@ DEFINE_string(heap_profile_path, "", "Output path to store heap profiles. If not
 TAG_FLAG(heap_profile_path, stable);
 TAG_FLAG(heap_profile_path, advanced);
 
+DEFINE_int32(svc_queue_length_default, 50, "Default RPC queue length for a service");
+TAG_FLAG(svc_queue_length_default, advanced);
+
 // Tag a bunch of the flags that we inherit from glog/gflags.
 
 //------------------------------------------------------------

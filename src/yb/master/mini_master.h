@@ -35,6 +35,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/util/env.h"
@@ -63,7 +64,7 @@ class MiniMaster {
   // Start a master running on the loopback interface and
   // an ephemeral port. To determine the address that the server
   // bound to, call MiniMaster::bound_addr()
-  CHECKED_STATUS Start();
+  CHECKED_STATUS Start(bool simulate_fs_create_failure = false);
 
   CHECKED_STATUS StartDistributedMaster(const std::vector<uint16_t>& peer_ports);
 

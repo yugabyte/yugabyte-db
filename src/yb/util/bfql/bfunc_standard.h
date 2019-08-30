@@ -32,12 +32,14 @@
 
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/jsonb.h"
 
 #include "yb/util/status.h"
 #include "yb/util/logging.h"
 #include "yb/util/yb_partition.h"
 #include "yb/util/uuid.h"
 #include "yb/util/date_time.h"
+#include "yb/util/string_util.h"
 
 namespace yb {
 namespace bfql {
@@ -99,12 +101,29 @@ CHECKED_STATUS PartitionHash(const vector<PTypePtr>& params, RTypePtr result) {
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ttl(PTypePtr col, PTypePtr result) {
+CHECKED_STATUS ToJson(PTypePtr col, RTypePtr result) {
+  common::Jsonb jsonb;
+  Status s = jsonb.FromQLValuePB(col->value());
+
+  if (!s.ok()) {
+    return s.CloneAndPrepend(strings::Substitute(
+        "Cannot convert $0 value $1 to $2",
+        QLType::ToCQLString(QLValue::FromInternalDataType(col->type())),
+        col->ToString(),
+        QLType::ToCQLString(DataType::JSONB)));
+  }
+
+  result->set_jsonb_value(jsonb.MoveSerializedJsonb());
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS writetime(PTypePtr col, PTypePtr result) {
+CHECKED_STATUS ttl(PTypePtr col, RTypePtr result) {
+  return Status::OK();
+}
+
+template<typename PTypePtr, typename RTypePtr>
+CHECKED_STATUS writetime(PTypePtr col, RTypePtr result) {
   return Status::OK();
 }
 

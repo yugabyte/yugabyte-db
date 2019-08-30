@@ -131,12 +131,17 @@ class FsManager {
 
   //
   // Returns an error if the file system is already initialized.
-  CHECKED_STATUS CreateInitialFileSystemLayout();
+  CHECKED_STATUS CreateInitialFileSystemLayout(bool delete_fs_if_lock_found = false);
 
   // Deletes the yb-data directory contents for data/wal. "logs" subdirectory deletion is skipped
   // when 'delete_logs_also' is set to false.
   // Needed for a master shell process to be stoppable and restartable correctly in shell mode.
   CHECKED_STATUS DeleteFileSystemLayout(bool delete_logs_also = false);
+
+  // Check if a lock file is present.
+  bool HasAnyLockFiles();
+  // Delete the lock files. Used once the caller deems fs creation was succcessful.
+  CHECKED_STATUS DeleteLockFiles();
 
   void DumpFileSystemTree(std::ostream& out);
 
@@ -155,16 +160,17 @@ class FsManager {
   std::string GetFirstTabletWalDirOrDie(const std::string& table_id,
                                         const std::string& tablet_id) const;
 
-  std::string GetTabletWalRecoveryDir(const std::string& tablet_wal_path) const;
+  static std::string GetTabletWalRecoveryDir(const std::string& tablet_wal_path);
 
-  std::string GetWalSegmentFileName(const std::string& tablet_wal_path,
-                                    uint64_t sequence_number) const;
+  static std::string GetWalSegmentFileName(const std::string& tablet_wal_path,
+                                    uint64_t sequence_number);
 
-  // Return the directory where tablet superblocks should be stored.
-  std::string GetTabletMetadataDir() const;
+  // Return the directory where Raft group superblocks should be stored.
+  std::string GetRaftGroupMetadataDir() const;
+  static std::string GetRaftGroupMetadataDir(const std::string& data_dir);
 
-  // Return the path for a specific tablet's superblock.
-  std::string GetTabletMetadataPath(const std::string& tablet_id) const;
+  // Return the path for a specific Raft group's superblock.
+  std::string GetRaftGroupMetadataPath(const std::string& tablet_id) const;
 
   // List the tablet IDs in the metadata directory.
   CHECKED_STATUS ListTabletIds(std::vector<std::string>* tablet_ids);
@@ -172,8 +178,12 @@ class FsManager {
   // Return the path where InstanceMetadataPB is stored.
   std::string GetInstanceMetadataPath(const std::string& root) const;
 
+  // Return the path where the fs lock file is stored.
+  std::string GetFsLockFilePath(const std::string& root) const;
+
   // Return the directory where the consensus metadata is stored.
   std::string GetConsensusMetadataDir() const;
+  static std::string GetConsensusMetadataDir(const std::string& data_dir);
 
   // Return the path where ConsensusMetadataPB is stored.
   std::string GetConsensusMetadataPath(const std::string& tablet_id) const {
@@ -209,7 +219,6 @@ class FsManager {
 
  private:
   FRIEND_TEST(FsManagerTestBase, TestDuplicatePaths);
-  friend class itest::ExternalMiniClusterFsInspector; // for access to directory names
 
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
   CHECKED_STATUS Init();
@@ -238,9 +247,10 @@ class FsManager {
                           const std::vector<std::string>& objects);
 
   static const char *kDataDirName;
-  static const char *kTabletMetadataDirName;
+  static const char *kRaftGroupMetadataDirName;
   static const char *kCorruptedSuffix;
   static const char *kInstanceMetadataFileName;
+  static const char *kFsLockFileName;
   static const char *kInstanceMetadataMagicNumber;
   static const char *kTabletSuperBlockMagicNumber;
   static const char *kConsensusMetadataDirName;

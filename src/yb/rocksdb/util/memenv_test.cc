@@ -108,7 +108,7 @@ TEST_F(MemEnvTest, ReadWrite) {
   unique_ptr<SequentialFile> seq_file;
   unique_ptr<RandomAccessFile> rand_file;
   Slice result;
-  char scratch[100];
+  uint8_t scratch[100];
 
   ASSERT_OK(env_->CreateDir("/dir"));
 
@@ -168,7 +168,7 @@ TEST_F(MemEnvTest, Misc) {
 
 TEST_F(MemEnvTest, LargeWrite) {
   const size_t kWriteSize = 300 * 1024;
-  char* scratch = new char[kWriteSize * 2];
+  uint8_t* scratch = new uint8_t[kWriteSize * 2];
 
   std::string write_data;
   for (size_t i = 0; i < kWriteSize; ++i) {

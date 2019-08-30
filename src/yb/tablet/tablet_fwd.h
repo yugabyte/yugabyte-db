@@ -13,20 +13,25 @@
 #ifndef YB_TABLET_TABLET_FWD_H
 #define YB_TABLET_TABLET_FWD_H
 
+#include <memory>
+
+#include "yb/gutil/ref_counted.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace tablet {
 
+namespace enterprise {
+class Tablet;
+}
+
 class AbstractTablet;
-class TabletMetadata;
-class TabletPeer;
-class TabletStatusPB;
-class TabletStatusListener;
-class WriteOperationState;
 
 class OperationDriver;
 typedef scoped_refptr<OperationDriver> OperationDriverPtr;
+
+class RaftGroupMetadata;
+typedef scoped_refptr<RaftGroupMetadata> RaftGroupMetadataPtr;
 
 class Tablet;
 typedef std::shared_ptr<Tablet> TabletPtr;
@@ -34,8 +39,11 @@ typedef std::shared_ptr<Tablet> TabletPtr;
 class TabletPeer;
 typedef std::shared_ptr<TabletPeer> TabletPeerPtr;
 
-typedef YB_EDITION_NS_PREFIX Tablet TabletClass;
-typedef YB_EDITION_NS_PREFIX TabletPeer TabletPeerClass;
+class TabletStatusPB;
+class TabletStatusListener;
+class WriteOperationState;
+
+using TabletClass = enterprise::Tablet;
 
 YB_STRONGLY_TYPED_BOOL(RequireLease);
 

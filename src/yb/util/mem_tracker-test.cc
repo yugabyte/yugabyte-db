@@ -279,7 +279,7 @@ TEST(MemTrackerTest, SoftLimitExceeded) {
 
   // Consumption is 0; the soft limit is never exceeded.
   for (int i = 0; i < kNumIters; i++) {
-    ASSERT_FALSE(m->SoftLimitExceeded(nullptr));
+    ASSERT_FALSE(m->SoftLimitExceeded(0.0 /* score */).exceeded);
   }
 
   // Consumption is half of the actual limit, so we expect to exceed the soft
@@ -287,10 +287,10 @@ TEST(MemTrackerTest, SoftLimitExceeded) {
   ScopedTrackedConsumption consumption(m, kMemLimit / 2);
   int exceeded_count = 0;
   for (int i = 0; i < kNumIters; i++) {
-    double current_percentage;
-    if (m->SoftLimitExceeded(&current_percentage)) {
+    auto soft_limit_exceeded_result = m->SoftLimitExceeded(0.0 /* score */);
+    if (soft_limit_exceeded_result.exceeded) {
       exceeded_count++;
-      ASSERT_NEAR(50, current_percentage, 0.1);
+      ASSERT_NEAR(50, soft_limit_exceeded_result.current_capacity_pct, 0.1);
     }
   }
   double exceeded_pct = static_cast<double>(exceeded_count) / kNumIters * 100;
@@ -299,9 +299,9 @@ TEST(MemTrackerTest, SoftLimitExceeded) {
   // Consumption is over the limit; the soft limit is always exceeded.
   consumption.Reset(kMemLimit + 1);
   for (int i = 0; i < kNumIters; i++) {
-    double current_percentage;
-    ASSERT_TRUE(m->SoftLimitExceeded(&current_percentage));
-    ASSERT_NEAR(100, current_percentage, 0.1);
+    auto soft_limit_exceeded_result = m->SoftLimitExceeded(0.0 /* score */);
+    ASSERT_TRUE(soft_limit_exceeded_result.exceeded);
+    ASSERT_NEAR(100, soft_limit_exceeded_result.current_capacity_pct, 0.1);
   }
 }
 
@@ -315,7 +315,7 @@ TEST(MemTrackerTest, TcMallocRootTracker) {
   // Sleep to be sure that UpdateConsumption will take action.
   size_t value = 0;
   ASSERT_OK(WaitFor([root, &value] {
-    value = MemTracker::GetTCMallocCurrentAllocatedBytes();
+    value = MemTracker::GetTCMallocActualHeapSizeBytes();
     return root->GetUpdatedConsumption() == value;
   }, kWaitTimeout, "Consumption actualized"));
 

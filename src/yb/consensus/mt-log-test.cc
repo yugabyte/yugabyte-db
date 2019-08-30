@@ -169,8 +169,9 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
   ASSERT_OK(log_->Close());
 
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_.get(), NULL, kTestTablet,
+  ASSERT_OK(LogReader::Open(fs_manager_->env(), NULL, kTestTablet,
                             fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
+                            fs_manager_->uuid(),
                             NULL, &reader));
   SegmentSequence segments;
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));

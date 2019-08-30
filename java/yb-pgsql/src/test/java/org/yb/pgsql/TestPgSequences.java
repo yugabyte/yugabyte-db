@@ -18,15 +18,15 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.pgsql.BasePgSQLTest;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.sql.*;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -208,7 +208,7 @@ public class TestPgSequences extends BasePgSQLTest {
 
       // Verify that the sequence was deleted.
       ResultSet rs = statement.executeQuery(
-          "SELECT c.relname FROM pg_class c WHERE c.relkind = 'S'");
+          "SELECT relname FROM pg_class WHERE relkind = 'S'");
       assertFalse(rs.next());
     }
   }
@@ -547,25 +547,125 @@ public class TestPgSequences extends BasePgSQLTest {
   }
 
   //------------------------------------------------------------------------------------------------
-  // Unsupported features tests.
-  //-----------------------------------------------------------------------------------------------
+  // CYCLE tests.
+  //------------------------------------------------------------------------------------------------
   @Test
   public void testCycle() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      thrown.expect(org.postgresql.util.PSQLException.class);
-      thrown.expectMessage("CYCLE not supported yet");
-      statement.execute("CREATE SEQUENCE s1 CYCLE");
+      statement.execute("CREATE SEQUENCE s1 CYCLE MAXVALUE 2");
+      for (int i = 1; i <= 2; i++) {
+        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("nextval"));
+      }
+      // After reaching MAXVALUE the sequence should go back to 1.
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getInt("nextval"));
     }
   }
 
+  // A cycled sequence always go back to the MINVALUE value in a sequence with a positive increment
+  // regardless by how much the sequence is overflown.
+  @Test
+  public void testCycleWithBigPositiveIncrement() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      long increment = Long.MAX_VALUE / 2 + 1234567;
+      statement.execute(String.format("CREATE SEQUENCE s1 CYCLE INCREMENT %d", increment));
+      for (long i = 0; i < 2; i++) {
+        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(i * increment + 1L, rs.getLong("nextval"));
+      }
+      // After reaching MAXVALUE the sequence should go back to 1.
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong("nextval"));
+    }
+  }
+
+  // A cycled sequence always go back to the MINVALUE value in a sequence with a positive increment
+  // regardless by how much the sequence is overflown.
+  @Test
+  public void testCycleWithBigNegativeIncrement() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      long increment = Long.MIN_VALUE / 2 - 1234567;
+      statement.execute(
+          String.format("CREATE SEQUENCE s1 MAXVALUE 0 START 0 CYCLE INCREMENT %d", increment));
+      for (long i = 0; i < 2; i++) {
+        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(i * increment, rs.getLong("nextval"));
+      }
+      // After reaching MAXVALUE the sequence should go back to 1.
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(0, rs.getLong("nextval"));
+    }
+  }
+
+  @Test
+  public void testCycleWithPositiveIncrement() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1 CYCLE MINVALUE 5 START 8 MAXVALUE 10 INCREMENT 1");
+      for (int i = 8; i <= 10; i++) {
+        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("nextval"));
+      }
+      // After reaching MAXVALUE the sequence should go back to MINVALUE which is 5.
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(5, rs.getInt("nextval"));
+    }
+  }
+
+  @Test
+  public void testCycleWithNegativeIncrement() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1 CYCLE MINVALUE 1 START 3 MAXVALUE 9 INCREMENT -1");
+      for (int i = 3; i >= 1; i--) {
+        ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("nextval"));
+      }
+      // After reaching MINVALUE the sequence should go back to MAXVALUE which is 3.
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(9, rs.getInt("nextval"));
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Newly-supported features tests.
+  //------------------------------------------------------------------------------------------------
   @Test
   public void testSelectDirectlyFromSequenceTable() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE SEQUENCE s1");
 
-      thrown.expect(org.postgresql.util.PSQLException.class);
-      thrown.expectMessage("Querying sequence tables is not supported yet");
-      statement.execute("SELECT last_value FROM s1");
+      ResultSet rs = statement.executeQuery("SELECT last_value FROM s1");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getInt("last_value"));
+    }
+  }
+
+  @Test
+  public void testSetvalAndSelect() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1");
+
+      ResultSet rs = statement.executeQuery("SELECT setval('s1', 45, false)");
+      assertTrue(rs.next());
+      assertEquals(45, rs.getInt("setval"));
+    }
+
+    Connection connection2 = createConnection();
+    try (Statement statement = connection2.createStatement()) {
+      ResultSet rs = statement.executeQuery("SELECT * FROM s1");
+      assertTrue(rs.next());
+      assertEquals(45, rs.getInt("last_value"));
+      assertEquals(false, rs.getBoolean("is_called"));
     }
   }
 
@@ -603,6 +703,57 @@ public class TestPgSequences extends BasePgSQLTest {
     }
   }
 
+  //------------------------------------------------------------------------------------------------
+  // Test fix for https://github.com/YugaByte/yugabyte-db/issues/1783.
+  //------------------------------------------------------------------------------------------------
+  @Test
+  public void testConcurrentInsertsWithSerialType() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE accounts(user_id SERIAL, username VARCHAR (50), " +
+          "PRIMARY KEY(user_id, username))");
+    }
+    final int NUM_THREADS = 4;
+    final int NUM_INSERTS_PER_THREAD = 100;
+    ExecutorService ecs = Executors.newFixedThreadPool(NUM_THREADS);
+    List<Future<?>> futures = new ArrayList<>();
+    final AtomicBoolean hadErrors = new AtomicBoolean();
+    for (int i = 1; i <= NUM_THREADS; ++i) {
+      final int threadIndex = i;
+      Future<?> future = ecs.submit(() -> {
+        try (Statement statement = connection.createStatement()) {
+          for (int j = 0; j < NUM_INSERTS_PER_THREAD; ++j) {
+            statement.execute(String.format("INSERT INTO accounts(username) VALUES ('user_%d_%d')",
+                threadIndex, j));
+            LOG.info(String.format("Inserted username user_%d_%d", threadIndex, j));
+          }
+        } catch (Exception e) {
+          fail(e.getMessage());
+        }
+      });
+      futures.add(future);
+    }
+    for (Future<?> future : futures) {
+      future.get();
+    }
+    ecs.shutdown();
+    ecs.awaitTermination(30, TimeUnit.SECONDS);
+    try (Statement statement = connection.createStatement()) {
+      ResultSet rs = statement.executeQuery("SELECT count(*) FROM accounts");
+      assertTrue(rs.next());
+      assertEquals(NUM_THREADS * NUM_INSERTS_PER_THREAD, rs.getLong("count"));
+
+      rs = statement.executeQuery("SELECT max(user_id) FROM accounts");
+      assertTrue(rs.next());
+      assertEquals(NUM_THREADS * NUM_INSERTS_PER_THREAD, rs.getLong("max"));
+
+      rs = statement.executeQuery("SELECT user_id, username FROM accounts ORDER BY user_id");
+      for (int i = 1; i <= NUM_THREADS * NUM_INSERTS_PER_THREAD; ++i) {
+        assertTrue(rs.next());
+        assertEquals(i, rs.getInt("user_id"));
+      }
+    }
+  }
+
   @Test
   public void testNextValAsDefaultValueInTable() throws Exception {
     try (Statement statement = connection.createStatement()) {
@@ -624,5 +775,188 @@ public class TestPgSequences extends BasePgSQLTest {
         assertTrue(rs.next());
       }
     }
+  }
+
+  // Test that when we alter a sequence to be owned by a table's column, the sequence gets deleted
+  // whenever the table gets deleted.
+  @Test
+  public void testOwnedSequenceGetsDeleted() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1 CACHE 100000");
+      statement.execute("CREATE TABLE t(k int NOT NULL DEFAULT nextval('s1'))");
+      statement.execute("ALTER SEQUENCE s1 OWNED BY t.k");
+      statement.execute("DROP TABLE t");
+
+      // Verify that the sequence was deleted.
+      ResultSet rs = statement.executeQuery(
+          "SELECT relname FROM pg_class WHERE relkind = 'S'");
+      assertFalse(rs.next());
+    }
+  }
+
+  @Test
+  public void testAlterSequenceRestart() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE SEQUENCE s1");
+
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(1, rs.getLong("nextval"));
+
+      statement.execute("ALTER SEQUENCE s1 RESTART WITH 100");
+    }
+
+    Connection connection2 = createConnection(1);
+    try (Statement statement = connection2.createStatement()) {
+      ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(100, rs.getLong("nextval"));
+    }
+  }
+
+  // Retries once if we get error "Catalog Version Mismatch: A DDL occurred while processing this
+  // query"
+  private void ExecuteWithRetry(Statement statement, String stmt) throws Exception {
+    for (int i = 0; i < 2; i++) {
+      try {
+        statement.execute(stmt);
+        return;
+      } catch (Exception e) {
+        if (e.toString().contains("Catalog Version Mismatch: A DDL occurred while processing")) {
+          continue;
+        } else {
+          throw e;
+        }
+      }
+    }
+    throw new RuntimeException("Failed to execute statement: " + stmt);
+  }
+
+  // Retries once if we get error "Catalog Version Mismatch: A DDL occurred while processing this
+  // query"
+  private ResultSet ExecuteQueryWithRetry(Statement statement, String query) throws Exception {
+    for (int i = 0; i < 2; i++) {
+      try {
+        return statement.executeQuery(query);
+      } catch (Exception e) {
+        if (e.toString().contains("Catalog Version Mismatch: A DDL occurred while processing")) {
+          continue;
+        } else {
+          throw e;
+        }
+      }
+    }
+    throw new RuntimeException("Failed to execute query");
+  }
+
+  private void WaitUntilTServerGetsNewYSqlCatalogVersion() throws Exception {
+    // ysql_catalog_version gets propagated through the heartbeat. Wait at least one heartbeat
+    // (500 ms set through flag raft_heartbeat_interval_ms) period to give TS2 enough time to
+    // realize that its cache is invalid.
+    waitForTServerHeartbeat();
+  }
+
+  @Test
+  public void testAlterSequence() throws Exception {
+    Statement statement = connection.createStatement();
+    Connection connection2 = createConnection(1);
+    Statement statement2 = connection2.createStatement();
+
+    statement.execute("CREATE SEQUENCE s1");
+    ResultSet rs = ExecuteQueryWithRetry(statement, "SELECT nextval('s1')");
+    assertTrue(rs.next());
+    assertEquals(1, rs.getLong("nextval"));
+
+    // ---------------------------------------------------------------------------------------------
+    // Test INCREMENT option.
+    // ---------------------------------------------------------------------------------------------
+    statement.execute("ALTER SEQUENCE s1 INCREMENT 100");
+
+    rs = ExecuteQueryWithRetry(statement2, "SELECT nextval('s1')");
+    assertTrue(rs.next());
+    assertEquals(101, rs.getLong("nextval"));
+
+    // ---------------------------------------------------------------------------------------------
+    // Test CACHE option.
+    // ---------------------------------------------------------------------------------------------
+    statement.execute("ALTER SEQUENCE s1 CACHE 5");
+    rs = ExecuteQueryWithRetry(statement, "SELECT nextval('s1')");
+    assertTrue(rs.next());
+    assertEquals(201, rs.getLong("nextval"));
+
+
+    // CACHE is 5 elements. The previous request should have cached 201, 301, 401, 501, and 601.
+    WaitUntilTServerGetsNewYSqlCatalogVersion();
+    rs = ExecuteQueryWithRetry(statement2, "SELECT nextval('s1')");
+    assertTrue(rs.next());
+    assertEquals(701, rs.getLong("nextval"));
+
+    // ---------------------------------------------------------------------------------------------
+    // Test RESTART option.
+    // ---------------------------------------------------------------------------------------------
+    ExecuteWithRetry(statement, "ALTER SEQUENCE s1 RESTART CACHE 1");
+
+    // Consume the rest of the numbers in the cache: 801, 901, 1001, 1101.
+    for (int i = 0; i < 4; i++) {
+      rs = statement2.executeQuery("SELECT nextval('s1')");
+      assertTrue(rs.next());
+      assertEquals(801 + i * 100, rs.getLong("nextval"));
+    }
+
+    // After all the elements in the cache have been used, the next value should be 1 again because
+    // the sequence was restarted.
+    WaitUntilTServerGetsNewYSqlCatalogVersion();
+    rs = ExecuteQueryWithRetry(statement2,"SELECT nextval('s1')");
+    assertTrue(rs.next());
+    assertEquals(1, rs.getLong("nextval"));
+
+    // ---------------------------------------------------------------------------------------------
+    // Test RESTART WITH option.
+    // ---------------------------------------------------------------------------------------------
+    statement.execute("ALTER SEQUENCE s1 RESTART WITH 9");
+
+    WaitUntilTServerGetsNewYSqlCatalogVersion();
+    rs = ExecuteQueryWithRetry(statement2,"SELECT nextval('s1')");
+    assertTrue(rs.next());
+    assertEquals(9, rs.getLong("nextval"));
+
+    // ---------------------------------------------------------------------------------------------
+    // Test START WITH option.
+    // ---------------------------------------------------------------------------------------------
+    ExecuteWithRetry(statement2, "ALTER SEQUENCE s1 START WITH 1000");
+
+    // After RESTART the sequence should start with 1000 that was set by the previous statement.
+    WaitUntilTServerGetsNewYSqlCatalogVersion();
+    ExecuteWithRetry(statement, "ALTER SEQUENCE s1 RESTART");
+
+    WaitUntilTServerGetsNewYSqlCatalogVersion();
+    rs = ExecuteQueryWithRetry(statement2, "SELECT nextval('s1')");
+    assertTrue(rs.next());
+    assertEquals(1000, rs.getLong("nextval"));
+
+    // ---------------------------------------------------------------------------------------------
+    // Test CYCLE option.
+    // ---------------------------------------------------------------------------------------------
+    ExecuteWithRetry(statement, "ALTER SEQUENCE s1 RESTART WITH 1 INCREMENT -1 CACHE 1");
+    rs = ExecuteQueryWithRetry(statement2,"SELECT nextval('s1')");
+    assertTrue(rs.next());
+    assertEquals(1, rs.getLong("nextval"));
+
+    WaitUntilTServerGetsNewYSqlCatalogVersion();
+    // Verify that getting next value without CYCLE fails.
+    try {
+      rs = ExecuteQueryWithRetry(statement2,"SELECT nextval('s1')");
+      fail("Expected exception but got none");
+    } catch (Exception e) {
+      assertTrue(e.getMessage().contains("reached minimum value of sequence \"s1\" (1)"));
+    }
+
+    // Alter sequence to add CYCLE option.
+    statement2.execute("ALTER SEQUENCE s1 CYCLE");
+
+    WaitUntilTServerGetsNewYSqlCatalogVersion();
+    rs = ExecuteQueryWithRetry(statement,"SELECT nextval('s1')");
+    assertTrue(rs.next());
+    assertEquals(Long.MAX_VALUE, rs.getLong("nextval"));
   }
 }

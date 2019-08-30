@@ -132,11 +132,11 @@ const PhysicalClockPtr& AdjTimeClock() {
 #endif
 
 Result<PhysicalTime> MockClock::Now() {
-  return CheckClockSyncError(value_.load(std::memory_order_acquire));
+  return CheckClockSyncError(value_.load(boost::memory_order_acquire));
 }
 
 void MockClock::Set(const PhysicalTime& value) {
-  value_.store(value, std::memory_order_release);
+  value_.store(value, boost::memory_order_release);
 }
 
 PhysicalClockPtr MockClock::AsClock() {

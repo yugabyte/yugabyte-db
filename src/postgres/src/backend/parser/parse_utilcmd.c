@@ -318,6 +318,39 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 										  (Node *) makeInteger(true), -1),
 							  stmt->options);
 
+  /* Validate the storage options from the WITH clause */
+  ListCell *cell;
+  foreach(cell, stmt->options)
+  {
+    DefElem *def = (DefElem*) lfirst(cell);
+    if (strcmp(def->defname, "oids") == 0)
+    {
+      bool oids_val = defGetBoolean(def);
+      if (oids_val)
+      {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                    errmsg("OIDs are not supported for user tables.")));
+      }
+    }
+    else if (strcmp(def->defname, "user_catalog_table") == 0)
+    {
+      bool user_cat_val = defGetBoolean(def);
+      if (user_cat_val)
+      {
+        ereport(ERROR,
+                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                    errmsg("Users cannot create system catalog tables.")));
+      }
+    }
+    else
+    {
+      ereport(WARNING,
+              (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                  errmsg("Storage parameter %s is unsupported, ignoring", def->defname)));
+    }
+  }
+
 	/*
 	 * transformIndexConstraints wants cxt.alist to contain only index
 	 * statements, so transfer anything we already have into save_alist.
@@ -331,8 +364,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 * Postprocess constraints that give rise to index definitions.
 	 * In YugaByte mode we handle ixconstraints as regular constraints below.
 	 */
-	if (!IsYugaByteEnabled())
-		transformIndexConstraints(&cxt);
+	transformIndexConstraints(&cxt);
 
 	/*
 	 * Postprocess foreign-key constraints.
@@ -362,7 +394,6 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	if (IsYugaByteEnabled())
 	{
 		stmt->constraints = list_concat(stmt->constraints, cxt.ixconstraints);
-		cxt.ixconstraints = NIL;
 	}
 
 	result = lappend(cxt.blist, stmt);
@@ -749,6 +780,21 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 												constraint->location)));
 				if (constraint->keys == NIL)
 					constraint->keys = list_make1(makeString(column->colname));
+				if (IsYugaByteEnabled())
+				{
+					if (constraint->yb_index_params == NIL)
+					{
+						IndexElem *index_elem = makeNode(IndexElem);
+						index_elem->name = pstrdup(column->colname);
+						index_elem->expr = NULL;
+						index_elem->indexcolname = NULL;
+						index_elem->collation = NIL;
+						index_elem->opclass = NIL;
+						index_elem->ordering = SORTBY_DEFAULT;
+						index_elem->nulls_ordering = SORTBY_NULLS_DEFAULT;
+						constraint->yb_index_params = list_make1(index_elem);
+					}
+				}
 				cxt->ixconstraints = lappend(cxt->ixconstraints, constraint);
 				break;
 
@@ -1941,7 +1987,10 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 		index->idxname = NULL;	/* DefineIndex will choose name */
 
 	index->relation = cxt->relation;
-	index->accessMethod = constraint->access_method ? constraint->access_method : DEFAULT_INDEX_TYPE;
+	index->accessMethod = constraint->access_method ? constraint->access_method :
+			(IsYugaByteEnabled() && index->relation->relpersistence != RELPERSISTENCE_TEMP
+					? DEFAULT_YB_INDEX_TYPE
+					: DEFAULT_INDEX_TYPE);
 	index->options = constraint->options;
 	index->tableSpace = constraint->indexspace;
 	index->whereClause = constraint->where_clause;
@@ -2056,16 +2105,17 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 					 parser_errposition(cxt->pstate, constraint->location)));
 
 		/*
-		 * Insist on it being a btree.  That's the only kind that supports
+		 * Insist on it being a btree/lsm.  That's the only kind that supports
 		 * uniqueness at the moment anyway; but we must have an index that
 		 * exactly matches what you'd get from plain ADD CONSTRAINT syntax,
 		 * else dump and reload will produce a different index (breaking
 		 * pg_upgrade in particular).
 		 */
-		if (index_rel->rd_rel->relam != get_index_am_oid(DEFAULT_INDEX_TYPE, false))
+		if (index_rel->rd_rel->relam != BTREE_AM_OID &&
+			index_rel->rd_rel->relam != LSM_AM_OID)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("index \"%s\" is not a btree", index_name),
+					 errmsg("index \"%s\" is not a btree or lsm index", index_name),
 					 parser_errposition(cxt->pstate, constraint->location)));
 
 		/* Must get indclass the hard way */
@@ -2115,6 +2165,18 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 							 errdetail("Cannot create a primary key or unique constraint using such an index."),
 							 parser_errposition(cxt->pstate, constraint->location)));
 
+				if (IsYugaByteEnabled())
+				{
+					IndexElem *index_elem = makeNode(IndexElem);
+					index_elem->name = attname;
+					index_elem->expr = NULL;
+					index_elem->indexcolname = NULL;
+					index_elem->collation = NIL;
+					index_elem->opclass = NIL;
+					index_elem->ordering = SORTBY_DEFAULT;
+					index_elem->nulls_ordering = SORTBY_NULLS_DEFAULT;
+					constraint->yb_index_params = lappend(constraint->yb_index_params, index_elem);
+				}
 				constraint->keys = lappend(constraint->keys, makeString(attname));
 			}
 			else
@@ -2159,9 +2221,10 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 	 */
 	else
 	{
-		foreach(lc, constraint->keys)
+		foreach(lc, constraint->yb_index_params)
 		{
-			char	   *key = strVal(lfirst(lc));
+			IndexElem  *index_elem = (IndexElem *)lfirst(lc);
+			char	   *key = index_elem->name;
 			bool		found = false;
 			ColumnDef  *column = NULL;
 			ListCell   *columns;
@@ -2277,10 +2340,10 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 			iparam->name = pstrdup(key);
 			iparam->expr = NULL;
 			iparam->indexcolname = NULL;
-			iparam->collation = NIL;
-			iparam->opclass = NIL;
-			iparam->ordering = SORTBY_DEFAULT;
-			iparam->nulls_ordering = SORTBY_NULLS_DEFAULT;
+			iparam->collation = list_copy(index_elem->collation);
+			iparam->opclass = list_copy(index_elem->opclass);
+			iparam->ordering = index_elem->ordering;
+			iparam->nulls_ordering = index_elem->nulls_ordering;
 			index->indexParams = lappend(index->indexParams, iparam);
 		}
 	}
@@ -3000,6 +3063,30 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 			case AT_AddColumnToView:
 				{
 					ColumnDef  *def = castNode(ColumnDef, cmd->def);
+
+					/*
+					 * Report an error for constraint types which YB does not yet support in
+					 * ALTER TABLE ... ADD COLUMN statements.
+					 */
+					ListCell *clist;
+					foreach(clist, def->constraints)
+					{
+						Constraint *constraint = lfirst_node(Constraint, clist);
+
+						switch (constraint->contype)
+						{
+							case CONSTR_DEFAULT:
+							case CONSTR_IDENTITY:
+							case CONSTR_PRIMARY:
+							case CONSTR_UNIQUE:
+								ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+											errmsg("This ALTER TABLE command is not yet supported.")));
+								break;
+
+							default:
+								break;
+						}
+					}
 
 					transformColumnDefinition(&cxt, def);
 

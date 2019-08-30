@@ -69,6 +69,8 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+/*  YB includes. */
+#include "pg_yb_utils.h"
 
 /* result structure for get_rels_with_domain() */
 typedef struct
@@ -1971,7 +1973,7 @@ findRangeSubOpclass(List *opcname, Oid subtype)
 
 	if (opcname != NIL)
 	{
-		opcid = get_opclass_oid(BTREE_AM_OID, opcname, false);
+		opcid = get_opclass_oid(IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID, opcname, false);
 
 		/*
 		 * Verify that the operator class accepts this datatype. Note we will
@@ -1987,7 +1989,7 @@ findRangeSubOpclass(List *opcname, Oid subtype)
 	}
 	else
 	{
-		opcid = GetDefaultOpClass(subtype, BTREE_AM_OID);
+		opcid = GetDefaultOpClass(subtype, IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID);
 		if (!OidIsValid(opcid))
 		{
 			/* We spell the error message identically to ResolveOpClass */

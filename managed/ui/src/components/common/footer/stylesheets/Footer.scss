@@ -1,0 +1,71 @@
+/* Copyright (c) YugaByte, Inc. */
+
+@import "_style/colors.scss";
+
+/* From gentelella.css need to cleanup */
+
+footer {
+  height: 45px;
+  margin-left: 90px;
+  background-color: white;
+  line-height: 46px;
+  display: flex;
+  flex-direction: row;
+  padding: 0 30px;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  font-weight: 300;
+
+  object {
+    margin-right: 20px;
+    margin-top: -1px;
+    margin-left: -5px;
+    height: 26px;
+    vertical-align: middle;
+    display: inline-block;
+  }
+
+  .flex-grow {
+    padding: 0 10px;
+
+    a {
+      margin-left: 4px;
+    }
+  }
+
+  .footer-social-container {
+    text-align: center;
+  }
+
+  @media screen and (max-width: 960px) {
+    .footer-logo-container {
+      display: none;
+    }
+    .footer-social-container {
+      text-align: left;
+    }
+  }
+
+  .flex-grow:last-child {
+    text-align: right;
+  }
+
+  .flex-grow .social-media-logo {
+    margin-bottom: 4px;
+    margin-left: 2px;
+  }
+
+  span.social-media-cta {
+    margin-right: 5%;
+  }
+
+  a {
+    color: inherit;
+    cursor: pointer;
+  }
+  a:hover {
+    color: inherit;
+  }
+}

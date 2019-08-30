@@ -2,9 +2,9 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/jsonb.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_bfunc.h"
+#include "yb/common/jsonb.h"
 
 namespace yb {
 
@@ -20,7 +20,8 @@ bfql::TSOpcode QLExprExecutor::GetTSWriteInstruction(const QLExpressionPB& ql_ex
 
 CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
                                         const QLTableRow& table_row,
-                                        QLValue *result) {
+                                        QLValue *result,
+                                        const Schema *schema) {
   switch (ql_expr.expr_case()) {
     case QLExpressionPB::ExprCase::kValue:
       *result = ql_expr.value();
@@ -54,7 +55,7 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
       return EvalBFCall(ql_expr.bfcall(), table_row, result);
 
     case QLExpressionPB::ExprCase::kTscall:
-      return EvalTSCall(ql_expr.tscall(), table_row, result);
+      return EvalTSCall(ql_expr.tscall(), table_row, result, schema);
 
     case QLExpressionPB::ExprCase::kCondition:
       return EvalCondition(ql_expr.condition(), table_row, result);
@@ -70,10 +71,11 @@ CHECKED_STATUS QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS QLExprExecutor::EvalExpr(QLExpressionPB* ql_expr,
-                                        const QLTableRow& table_row) {
+                                        const QLTableRow& table_row,
+                                        const Schema *schema) {
   if (!ql_expr->has_value()) {
     QLValue temp;
-    RETURN_NOT_OK(EvalExpr(*ql_expr, table_row, &temp));
+    RETURN_NOT_OK(EvalExpr(*ql_expr, table_row, &temp, schema));
     ql_expr->mutable_value()->Swap(temp.mutable_value());
   }
   return Status::OK();
@@ -111,23 +113,25 @@ CHECKED_STATUS QLExprExecutor::EvalBFCall(const QLBCallPB& bfcall,
   //   "AddListList"
   //   "SubListList"
 
+  const bfql::BFOpcode bf_opcode = static_cast<bfql::BFOpcode>(bfcall.opcode());
   // First evaluate the arguments.
   vector<QLValue> args(bfcall.operands().size());
   int arg_index = 0;
   for (auto operand : bfcall.operands()) {
-    RETURN_NOT_OK(EvalExpr(operand, table_row, &args[arg_index]));
-    arg_index++;
+    QLValue* arg = &args[arg_index++];
+    RETURN_NOT_OK(EvalExpr(operand, table_row, arg));
   }
 
   // Execute the builtin call associated with the given opcode.
-  return QLBfunc::Exec(static_cast<bfql::BFOpcode>(bfcall.opcode()), &args, result);
+  return QLBfunc::Exec(bf_opcode, &args, result);
 }
 
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS QLExprExecutor::EvalTSCall(const QLBCallPB& ql_expr,
                                           const QLTableRow& table_row,
-                                          QLValue *result) {
+                                          QLValue *result,
+                                          const Schema *schema) {
   result->SetNull();
   return STATUS(RuntimeError, "Only tablet server can execute this operator");
 }
@@ -704,6 +708,10 @@ boost::optional<const QLValuePB&> QLTableRow::GetValue(ColumnIdRep col_id) const
     return boost::none;
   }
   return col_iter->second.value;
+}
+
+bool QLTableRow::IsColumnSpecified(ColumnIdRep col_id) const {
+  return col_map_.find(col_id) != col_map_.end();
 }
 
 void QLTableRow::ClearValue(ColumnIdRep col_id) {

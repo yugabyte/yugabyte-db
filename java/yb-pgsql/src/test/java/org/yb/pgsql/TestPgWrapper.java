@@ -46,8 +46,8 @@ public class TestPgWrapper extends BasePgSQLTest {
       // Database already exists.
       runInvalidQuery(statement, "CREATE DATABASE dbtest");
 
-      // TODO Drop database not yet supported.
-      runInvalidQuery(statement,"DROP DATABASE dbtest");
+      // Drop database.
+      statement.execute("DROP DATABASE dbtest");
 
       // -------------------------------------------------------------------------------------------
       // Test Table
@@ -58,9 +58,12 @@ public class TestPgWrapper extends BasePgSQLTest {
       statement.execute("CREATE TABLE test2(v text, r float, h bigint, PRIMARY KEY (h, r))");
 
       // Table already exists.
-      runInvalidQuery(statement, getSimpleTableCreationStatement("test", "v"));
+      runInvalidQuery(
+          statement,
+          getSimpleTableCreationStatement("test", "v", PartitioningMode.HASH),
+          "already exists");
 
-      // TODO Drop table not yet supported.
+      // Drop tables.
       statement.execute("DROP TABLE test");
       statement.execute("DROP TABLE test2");
 

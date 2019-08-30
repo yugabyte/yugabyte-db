@@ -78,10 +78,10 @@ Status Env::GetChildrenFileAttributes(const std::string& dir,
   return Status::OK();
 }
 
-SequentialFile::~SequentialFile() {
-}
-
-RandomAccessFile::~RandomAccessFile() {
+yb::Result<uint64_t> Env::GetFileSize(const std::string& fname) {
+  uint64_t result;
+  RETURN_NOT_OK(GetFileSize(fname, &result));
+  return result;
 }
 
 WritableFile::~WritableFile() {
@@ -358,16 +358,16 @@ Status WriteStringToFile(Env* env, const Slice& data, const std::string& fname,
 Status ReadFileToString(Env* env, const std::string& fname, std::string* data) {
   EnvOptions soptions;
   data->clear();
-  unique_ptr<SequentialFile> file;
+  std::unique_ptr<SequentialFile> file;
   Status s = env->NewSequentialFile(fname, &file, soptions);
   if (!s.ok()) {
     return s;
   }
   static const int kBufferSize = 8192;
-  char* space = new char[kBufferSize];
+  std::unique_ptr<uint8_t[]> space(new uint8_t[kBufferSize]);
   while (true) {
     Slice fragment;
-    s = file->Read(kBufferSize, &fragment, space);
+    s = file->Read(kBufferSize, &fragment, space.get());
     if (!s.ok()) {
       break;
     }
@@ -376,7 +376,6 @@ Status ReadFileToString(Env* env, const std::string& fname, std::string* data) {
       break;
     }
   }
-  delete[] space;
   return s;
 }
 

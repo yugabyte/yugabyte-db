@@ -71,6 +71,7 @@
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
 #include "tcop/utility.h"
+#include "utils/inval.h"
 #include "utils/relcache.h"
 #include "utils/catcache.h"
 #include "utils/syscache.h"
@@ -171,6 +172,9 @@ static ProcSignalReason RecoveryConflictReason;
 /* reused buffer to pass to SendRowDescriptionMessage() */
 static MemoryContext row_description_context = NULL;
 static StringInfoData row_description_buf;
+
+/* Flag to mark cache as invalid if discovered within a txn block. */
+static bool yb_need_cache_refresh = false;
 
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
@@ -1990,6 +1994,14 @@ exec_execute_message(const char *portal_name, long max_rows)
 	start_xact_command();
 
 	/*
+	 * If the planner found a pg relation in this plan, set the appropriate
+	 * flag for the execution txn.
+	 */
+	if (portal->cplan && portal->cplan->usesPostgresRel) {
+		SetTxnWithPGRel();
+	}
+
+	/*
 	 * If we re-issue an Execute protocol request against an existing portal,
 	 * then we are only fetching more rows rather than completely re-executing
 	 * the query from the start. atStart is never reset for a v3 portal, so we
@@ -3651,17 +3663,67 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 #endif
 }
 
-static void ybcPrepareRetryIfNeeded(MemoryContext oldcontext,
-                                    bool cleanup_transaction,
-                                    bool *need_retry)
+/*
+ * Reload the postgres caches and update the cache version.
+ * Note: if catalog changes sneaked in since getting the
+ * version it is unfortunate but ok. The master version will have
+ * changed too (making our version number obsolete) so we will just end
+ * up needing to do another cache refresh later.
+ * See the comment for yb_catalog_cache_version in 'pg_yb_utils.c' for
+ * more details.
+ */
+static void YBRefreshCache()
 {
-	/* Initialize, will set to true below if needed */
+
+	/*
+	 * Check that we are not already inside a transaction or we might end up
+	 * leaking cache references for any open relations (i.e. relations in-use by
+	 * the current transaction).
+	 *
+	 * Caller(s) should have already ensured that this is the case.
+	 */
+	if (xact_started)
+	{
+		ereport(ERROR,
+		        (errcode(ERRCODE_INTERNAL_ERROR),
+				        errmsg("Cannot refresh cache within a transaction")));
+	}
+
+	/* Get the latest syscatalog version from the master */
+	uint64 catalog_master_version = 0;
+	YBCPgGetCatalogMasterVersion(ybc_pg_session,
+	                             (uint64_t *) &catalog_master_version);
+
+	/* Need to execute some (read) queries internally so start a local txn. */
+	start_xact_command();
+
+	/* Clear and reload system catalog caches, including all callbacks. */
+	ResetCatalogCaches();
+	CallSystemCacheCallbacks();
+	YBPreloadRelCache();
+
+	/* Also invalidate the pggate cache. */
+	YBCPgInvalidateCache(ybc_pg_session);
+
+	/* Set the new ysql cache version. */
+	yb_catalog_cache_version = catalog_master_version;
+	yb_need_cache_refresh = false;
+
+	finish_xact_command();
+}
+
+static void YBPrepareCacheRefreshIfNeeded(MemoryContext oldcontext,
+                                          bool consider_retry,
+                                          bool *need_retry)
+{
+	bool need_cache_refresh = false;
 	*need_retry = false;
 
+	/*
+	 * A retry is only required if the transaction is handled by YugaByte.
+	 */
 	if (!IsYugaByteEnabled())
-	{
 		return;
-	}
 
 	/* Get error data */
 	ErrorData *edata;
@@ -3669,37 +3731,28 @@ static void ybcPrepareRetryIfNeeded(MemoryContext oldcontext,
 	edata = CopyErrorData();
 	bool is_retryable_err = YBNeedRetryAfterCacheRefresh(edata);
 
-	/* Get the latest syscatalog version from the master */
+	/*
+	 * Get the latest syscatalog version from the master to check if we need
+	 * to refresh the cache.
+	 */
 	uint64 catalog_master_version = 0;
 	YBCPgGetCatalogMasterVersion(ybc_pg_session,
 	                             (uint64_t *) &catalog_master_version);
+	need_cache_refresh = yb_catalog_cache_version != catalog_master_version;
+	if (!need_cache_refresh)
+		return;
 
 	/*
-	 * If versions are mismatched refresh the cache to get
-	 * the latest version of the catalog data and also retry the
-	 * query if possible.
+	 * Reset catalog version so that the cache gets marked as invalid and
+	 * will be refreshed after the txn ends.
 	 */
-	if (is_retryable_err &&
-	    ybc_catalog_cache_version != catalog_master_version)
+	yb_need_cache_refresh = true;
+
+	/*
+	 * Prepare to retry the query if possible.
+	 */
+	if (is_retryable_err)
 	{
-
-		/*
-		 * Reload the postgres caches and update the cache version.
-		 * Note: if catalog changes sneaked in since getting the
-		 * version it is unfortunate but ok. The master version will have
-		 * changed too (making our version number obsolete) so we will just end
-		 * up needing to do another cache refresh later.
-		 * See the comment for ybc_catalog_cache_version in 'pg_yb_utils.c' for
-		 * more details.
-		 */
-		ResetCatalogCaches();
-		YBCInitializeRelCache();
-		InitCatalogCachePhase2();
-		ybc_catalog_cache_version = catalog_master_version;
-
-		/* Also invalidate the pggate cache */
-		YBCPgInvalidateCache(ybc_pg_session);
-
 		/*
 		 * For single-query transactions we abort the current
 		 * transaction to undo any already-applied operations
@@ -3711,32 +3764,90 @@ static void ybcPrepareRetryIfNeeded(MemoryContext oldcontext,
 		 * So we just re-throw the error in that case.
 		 *
 		 */
-		if (!IsTransactionBlock())
+		if (consider_retry && !IsTransactionBlock())
 		{
 			/* Clear error state */
 			FlushErrorState();
 			FreeErrorData(edata);
 
-			if (cleanup_transaction)
-			{
-				/* Abort the transaction and clean up. */
-				AbortCurrentTransaction();
-				if (am_walsender)
-					WalSndErrorCleanup();
+			/* Abort the transaction and clean up. */
+			AbortCurrentTransaction();
+			if (am_walsender)
+				WalSndErrorCleanup();
 
-				if (MyReplicationSlot != NULL)
-					ReplicationSlotRelease();
+			if (MyReplicationSlot != NULL)
+				ReplicationSlotRelease();
 
-				ReplicationSlotCleanup();
+			ReplicationSlotCleanup();
 
-				if (doing_extended_query_message)
-					ignore_till_sync = true;
+			if (doing_extended_query_message)
+				ignore_till_sync = true;
 
-				xact_started = false;
-			}
-			/* Retry query */
+			xact_started = false;
+
+			/* Refresh cache now so that the retry uses latest version. */
+			YBRefreshCache();
+
 			*need_retry = true;
 		}
+		else
+		{
+			ereport(ERROR,
+			        (errcode(ERRCODE_INTERNAL_ERROR),
+					        errmsg("Catalog Version Mismatch: A DDL occurred "
+					               "while processing this query. Try Again.")));
+		}
+
+	}
+}
+
+/*
+ * Only retry DML commands: DELETE, INSERT, SELECT, UPDATE
+ * Do the minimum parsing to find out what the command is
+ */
+static bool check_retry_allowed(const char *query_string)
+{
+  if (!query_string)
+  {
+    return false;
+  }
+
+  List *parsetree_list = pg_parse_query(query_string);
+  RawStmt *raw_parse_tree = linitial_node(RawStmt, parsetree_list);
+  const char *commandTag = CreateCommandTag(raw_parse_tree->stmt);
+  if (strncmp(commandTag, "DELETE", 6) == 0 ||
+      strncmp(commandTag, "INSERT", 6) == 0 ||
+      strncmp(commandTag, "SELECT", 6) == 0 ||
+      strncmp(commandTag, "UPDATE", 6) == 0)
+  {
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
+static void YBCheckSharedCatalogCacheVersion() {
+	/*
+	 * We cannot refresh the cache if we are already inside a transaction, so don't
+	 * bother checking shared memory.
+	 */
+	if (xact_started)
+		return;
+
+	/*
+	 * Don't check shared memory if we are in initdb. E.g. during initial system
+	 * catalog snapshot creation, tablet servers may not be running.
+	 */
+	if (YBCIsInitDbModeEnvVarSet())
+		return;
+
+	uint64_t shared_catalog_version;
+	HandleYBStatus(YBCGetSharedCatalogVersion(ybc_pg_session, &shared_catalog_version));
+
+	if (yb_catalog_cache_version < shared_catalog_version) {
+		YBRefreshCache();
 	}
 }
 
@@ -4218,6 +4329,11 @@ PostgresMain(int argc, char *argv[],
 			}
 			else
 			{
+				if (IsYugaByteEnabled() && yb_need_cache_refresh)
+				{
+					YBRefreshCache();
+				}
+
 				ProcessCompletedNotifies();
 				pgstat_report_stat(false);
 
@@ -4280,6 +4396,10 @@ PostgresMain(int argc, char *argv[],
 		if (ignore_till_sync && firstchar != EOF)
 			continue;
 
+		if (IsYugaByteEnabled()) {
+			YBCheckSharedCatalogCacheVersion();
+		}
+
 		switch (firstchar)
 		{
 			case 'Q':			/* simple query */
@@ -4305,10 +4425,11 @@ PostgresMain(int argc, char *argv[],
 				}
 				PG_CATCH();
 				{
-					bool need_retry = false;
-					ybcPrepareRetryIfNeeded(oldcontext,
-					                        true /* cleanup_transaction */,
-					                        &need_retry);
+          bool need_retry = false;
+          YBPrepareCacheRefreshIfNeeded(oldcontext,
+                                        check_retry_allowed(query_string),
+                                        &need_retry);
+
 					if (need_retry)
 					{
 						if (am_walsender)
@@ -4369,23 +4490,11 @@ PostgresMain(int argc, char *argv[],
 						 * TODO Cannot retry parse statements yet (without
 						 * aborting the followup bind/execute.
 						 */
-						bool can_retry = false;
 						bool need_retry = false;
-						ybcPrepareRetryIfNeeded(oldcontext,
-						                        false /* cleanup_transaction */,
-						                        &need_retry);
-						if (need_retry && can_retry)
-						{
-							exec_parse_message(query_string,
-							                   stmt_name,
-							                   paramTypes,
-							                   numParams,
-							                   whereToSendOutput);
-						}
-						else
-						{
-							PG_RE_THROW();
-						}
+						YBPrepareCacheRefreshIfNeeded(oldcontext,
+						                              false /* consider_retry */,
+						                              &need_retry);
+						PG_RE_THROW();
 
 					}
 					PG_END_TRY();
@@ -4437,7 +4546,8 @@ PostgresMain(int argc, char *argv[],
 						bool can_retry = IsYugaByteEnabled() &&
 						                 old_portal &&
 						                 portal_name[0] == '\0' &&
-						                 !old_portal->portalParams;
+						                 !old_portal->portalParams &&
+						                 check_retry_allowed(unnamed_stmt_psrc->query_string);
 
 						/* Stuff we might need for retrying below */
 						char *query_string = NULL;
@@ -4477,9 +4587,9 @@ PostgresMain(int argc, char *argv[],
 						 * Execute may have been partially applied so need to
 						 * cleanup (and restart) the transaction.
 						 */
-						ybcPrepareRetryIfNeeded(oldcontext,
-						                        true /* cleanup_transaction */,
-						                        &need_retry);
+						YBPrepareCacheRefreshIfNeeded(oldcontext,
+						                              can_retry,
+						                              &need_retry);
 
 						if (need_retry && can_retry)
 						{

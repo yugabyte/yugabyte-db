@@ -193,6 +193,8 @@ Supported target keywords:
   [yb-]tserver       - tablet server executable
   daemons            - yb-master, yb-tserver, and the postgres server
   packaged[-targets] - targets that are required for a release package
+  initdb             - Initialize the initial system catalog snapshot for fast cluster startup
+  reinitdb           - Reinitialize the initial system catalog snapshot for fast cluster startup
 
 Setting YB environment variables on the command line (for environment variables starting with YB_):
   YB_SOME_VARIABLE1=some_value1 YB_SOME_VARIABLE2=some_value2
@@ -269,7 +271,6 @@ print_report() {
         print_report_line "%s" "C/C++ compiler" "$YB_COMPILER_TYPE"
       fi
       print_report_line "%s" "Build directory" "${BUILD_ROOT:-undefined}"
-      print_report_line "%s" "Edition" "${YB_EDITION:-undefined}"
       print_report_line "%s" "Third-party dir" "${YB_THIRDPARTY_DIR:-undefined}"
       if using_linuxbrew; then
         print_report_line "%s" "Linuxbrew dir" "${YB_LINUXBREW_DIR:-undefined}"
@@ -533,6 +534,12 @@ register_file_to_rebuild() {
   )
 }
 
+# This is used for "initdb" and "reinitdb" target keywords.
+set_initdb_target() {
+  make_targets+=( "initial_sys_catalog_snapshot" )
+  build_java=false
+}
+
 cleanup() {
   local YB_BUILD_EXIT_CODE=$?
   print_report
@@ -589,6 +596,8 @@ export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
 
 export YB_EXTRA_GTEST_FLAGS=""
 unset BUILD_ROOT
+
+export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=0
 
 while [[ $# -gt 0 ]]; do
   if is_valid_build_type "$1"; then
@@ -700,6 +709,10 @@ while [[ $# -gt 0 ]]; do
       export YB_GTEST_FILTER=$2
       shift
     ;;
+    # Support the way of argument passing that is used for gtest test programs themselves.
+    --gtest-filter=*)
+      export YB_GTEST_FILTER=${2#--gtest-filter=}
+    ;;
     --rebuild-file)
       ensure_option_has_arg "$@"
       register_file_to_rebuild "$2"
@@ -764,7 +777,8 @@ while [[ $# -gt 0 ]]; do
     ;;
     --)
       if [[ $num_test_repetitions -lt 2 ]]; then
-        fatal "Forward to arguments to repeat_unit_test.sh without multiple repetitions"
+        fatal "Trying to forward arguments to repeat_unit_test.sh, but -n not specified, so" \
+              "we won't be repeating a test multiple times."
       fi
       forward_args_to_repeat_unit_test=true
     ;;
@@ -777,6 +791,13 @@ while [[ $# -gt 0 ]]; do
     ;;
     tserver|yb-tserver)
       make_targets+=( "yb-tserver" )
+    ;;
+    initdb)
+      set_initdb_target
+    ;;
+    reinitdb)
+      export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=1
+      set_initdb_target
     ;;
     postgres)
       make_targets+=( "postgres ")
@@ -791,21 +812,12 @@ while [[ $# -gt 0 ]]; do
       if [[ ${#make_targets[@]} -eq 0 ]]; then
         fatal "Failed to identify the set of targets to build for the release package"
       fi
+      # Explicitly recreate the snapshot for releasing the code!
+      export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=1
+      make_targets+=( "initial_sys_catalog_snapshot" )
     ;;
     --skip-build|--sb)
       set_flags_to_skip_build
-    ;;
-    --community|--comm)
-      export YB_EDITION=community
-    ;;
-    --enterprise|--ent)
-      export YB_EDITION=enterprise
-    ;;
-    --edition)
-      ensure_option_has_arg "$@"
-      export YB_EDITION=$2
-      validate_edition
-      shift
     ;;
     --mvn-opts)
       ensure_option_has_arg "$@"
@@ -947,6 +959,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+update_submodules
 
 if [[ -n $YB_GTEST_FILTER && -z $cxx_test_name ]]; then
   test_name=${YB_GTEST_FILTER%%.*}
@@ -1051,8 +1064,6 @@ fi
 
 echo "Using third-party directory (YB_THIRDPARTY_DIR): $YB_THIRDPARTY_DIR"
 
-detect_edition
-
 if "$java_lint"; then
   log "--lint-java-code specified, only linting java code and then exiting."
   lint_java_code
@@ -1145,9 +1156,11 @@ fi
 if "$clean_before_build"; then
   log "Removing '$BUILD_ROOT' (--clean specified)"
   ( set -x; rm -rf "$BUILD_ROOT" )
-elif "$clean_postgres"; then
-  log "Removing contents of 'postgres_build' and 'postgres' subdirectories of '$BUILD_ROOT'"
-  ( set -x; rm -rf "$BUILD_ROOT/postgres_build"/* "$BUILD_ROOT/postgres"/* )
+else
+  if "$clean_postgres"; then
+    log "Removing contents of 'postgres_build' and 'postgres' subdirectories of '$BUILD_ROOT'"
+    ( set -x; rm -rf "$BUILD_ROOT/postgres_build"/* "$BUILD_ROOT/postgres"/* )
+  fi
 fi
 
 mkdir_safe "$BUILD_ROOT"
@@ -1195,6 +1208,18 @@ if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
   make_targets+=( yb-master yb-tserver postgres )
 fi
 
+if [[ $build_type == "compilecmds" ]]; then
+  if [[ ${#make_targets[@]} -gt 0 ]]; then
+    fatal "Cannot specify custom Make targets for the 'compilecmds' build type, got: " \
+          "${make_targets[*]}"
+  fi
+  # We need to add anything that generates header files, and also the postgres build because it goes
+  # through the build_postgres.py script and that's also where we create the overall
+  # compile_commands.json file.
+  make_targets+=( gen_proto postgres yb_bfpg yb_bfql )
+  build_java=false
+fi
+
 if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
   run_cxx_build
 fi
@@ -1223,7 +1248,10 @@ if "$build_java"; then
   unset java_project_dir
 
   if "$run_java_tests" && should_run_java_test_methods_separately; then
-    run_all_java_test_methods_separately
+    if ! run_all_java_test_methods_separately; then
+      log "Some Java tests failed"
+      global_exit_code=1
+    fi
   elif should_run_java_test_methods_separately; then
     collect_java_tests
   fi
@@ -1256,3 +1284,5 @@ if ! "$ran_tests_remotely"; then
     capture_sec_timestamp ctest_end
   fi
 fi
+
+exit $global_exit_code

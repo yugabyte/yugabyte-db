@@ -26,6 +26,9 @@
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 
+/*  YB includes. */
+#include "pg_yb_utils.h"
+
 static void recompute_limits(LimitState *node);
 static int64 compute_tuples_needed(LimitState *node);
 
@@ -54,12 +57,19 @@ ExecLimit(PlanState *pstate)
 	outerPlan = outerPlanState(node);
 
 	/*
+	 * Initialize LIMIT count and offset.
+	 */
+	if (IsYugaByteEnabled()) {
+		pstate->state->yb_exec_params.limit_count = node->count;
+		pstate->state->yb_exec_params.limit_offset = node->offset;
+	}
+
+	/*
 	 * The main logic is a simple state machine.
 	 */
 	switch (node->lstate)
 	{
 		case LIMIT_INITIAL:
-
 			/*
 			 * First call for this node, so compute limit/offset. (We can't do
 			 * this any earlier, because parameters from upper nodes will not
@@ -67,6 +77,14 @@ ExecLimit(PlanState *pstate)
 			 * changes the state to LIMIT_RESCAN.
 			 */
 			recompute_limits(node);
+
+			/*
+			 * Update LIMIT count and offset after recomputing.
+			 */
+			if (IsYugaByteEnabled()) {
+				pstate->state->yb_exec_params.limit_count = node->count;
+				pstate->state->yb_exec_params.limit_offset = node->offset;
+			}
 
 			/* FALL THRU */
 
@@ -90,6 +108,7 @@ ExecLimit(PlanState *pstate)
 			/*
 			 * Fetch rows from subplan until we reach position > offset.
 			 */
+			pstate->state->yb_exec_params.limit_use_default = false;
 			for (;;)
 			{
 				slot = ExecProcNode(outerPlan);

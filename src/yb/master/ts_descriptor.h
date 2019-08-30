@@ -32,6 +32,8 @@
 #ifndef YB_MASTER_TS_DESCRIPTOR_H
 #define YB_MASTER_TS_DESCRIPTOR_H
 
+#include <shared_mutex>
+
 #include <memory>
 #include <mutex>
 #include <string>
@@ -112,7 +114,7 @@ class TSDescriptor {
   TSRegistrationPB GetRegistration() const;
 
   // Returns TSInformationPB for this TSDescriptor.
-  TSInformationPB GetTSInformationPB() const;
+  const std::shared_ptr<TSInformationPB> GetTSInformationPB() const;
 
   // Helper function to tell if this TS matches the cloud information provided. For now, we have
   // no wildcard functionality, so it will have to explicitly match each individual component.
@@ -149,87 +151,96 @@ class TSDescriptor {
   // Set the number of live replicas (i.e. running or bootstrapping).
   void set_num_live_replicas(int num_live_replicas) {
     DCHECK_GE(num_live_replicas, 0);
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<rw_spinlock> l(lock_);
     num_live_replicas_ = num_live_replicas;
   }
 
   // Return the number of live replicas (i.e running or bootstrapping).
   int num_live_replicas() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::shared_lock<rw_spinlock> l(lock_);
     return num_live_replicas_;
   }
 
   void set_leader_count(int leader_count) {
     DCHECK_GE(leader_count, 0);
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<rw_spinlock> l(lock_);
     leader_count_ = leader_count;
   }
 
   int leader_count() const {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::shared_lock<rw_spinlock> l(lock_);
     return leader_count_;
   }
 
   void set_total_memory_usage(uint64_t total_memory_usage) {
-    std::lock_guard<simple_spinlock> l(lock_);
-    tsMetrics_.total_memory_usage = total_memory_usage;
+    std::lock_guard<rw_spinlock> l(lock_);
+    ts_metrics_.total_memory_usage = total_memory_usage;
   }
 
   uint64_t total_memory_usage() {
-    std::lock_guard<simple_spinlock> l(lock_);
-    return tsMetrics_.total_memory_usage;
+    std::shared_lock<rw_spinlock> l(lock_);
+    return ts_metrics_.total_memory_usage;
   }
 
   void set_total_sst_file_size (uint64_t total_sst_file_size) {
-    std::lock_guard<simple_spinlock> l(lock_);
-    tsMetrics_.total_sst_file_size = total_sst_file_size;
+    std::lock_guard<rw_spinlock> l(lock_);
+    ts_metrics_.total_sst_file_size = total_sst_file_size;
   }
 
   void set_uncompressed_sst_file_size (uint64_t uncompressed_sst_file_size) {
-    std::lock_guard<simple_spinlock> l(lock_);
-    tsMetrics_.uncompressed_sst_file_size = uncompressed_sst_file_size;
+    std::lock_guard<rw_spinlock> l(lock_);
+    ts_metrics_.uncompressed_sst_file_size = uncompressed_sst_file_size;
   }
 
+  void set_num_sst_files (uint64_t num_sst_files) {
+    std::lock_guard<rw_spinlock> l(lock_);
+    ts_metrics_.num_sst_files = num_sst_files;
+  }
 
   uint64_t total_sst_file_size() {
-    std::lock_guard<simple_spinlock> l(lock_);
-    return tsMetrics_.total_sst_file_size;
+    std::shared_lock<rw_spinlock> l(lock_);
+    return ts_metrics_.total_sst_file_size;
   }
 
   uint64_t uncompressed_sst_file_size() {
-    std::lock_guard<simple_spinlock> l(lock_);
-    return tsMetrics_.uncompressed_sst_file_size;
+    std::shared_lock<rw_spinlock> l(lock_);
+    return ts_metrics_.uncompressed_sst_file_size;
+  }
+
+  uint64_t num_sst_files() {
+    std::shared_lock<rw_spinlock> l(lock_);
+    return ts_metrics_.num_sst_files;
   }
 
   void set_read_ops_per_sec(double read_ops_per_sec) {
-    std::lock_guard<simple_spinlock> l(lock_);
-    tsMetrics_.read_ops_per_sec = read_ops_per_sec;
+    std::lock_guard<rw_spinlock> l(lock_);
+    ts_metrics_.read_ops_per_sec = read_ops_per_sec;
   }
 
   double read_ops_per_sec() {
-    std::lock_guard<simple_spinlock> l(lock_);
-    return tsMetrics_.read_ops_per_sec;
+    std::shared_lock<rw_spinlock> l(lock_);
+    return ts_metrics_.read_ops_per_sec;
   }
 
   void set_write_ops_per_sec(double write_ops_per_sec) {
-    std::lock_guard<simple_spinlock> l(lock_);
-    tsMetrics_.write_ops_per_sec = write_ops_per_sec;
+    std::lock_guard<rw_spinlock> l(lock_);
+    ts_metrics_.write_ops_per_sec = write_ops_per_sec;
   }
 
   double write_ops_per_sec() {
-    std::lock_guard<simple_spinlock> l(lock_);
-    return tsMetrics_.write_ops_per_sec;
+    std::shared_lock<rw_spinlock> l(lock_);
+    return ts_metrics_.write_ops_per_sec;
   }
 
   uint64_t uptime_seconds() {
-    std::lock_guard<simple_spinlock> l(lock_);
-    return tsMetrics_.uptime_seconds;
+    std::shared_lock<rw_spinlock> l(lock_);
+    return ts_metrics_.uptime_seconds;
   }
 
   void UpdateMetrics(const TServerMetricsPB& metrics);
 
   void ClearMetrics() {
-    tsMetrics_.ClearMetrics();
+    ts_metrics_.ClearMetrics();
   }
 
   // Set of methods to keep track of pending tablet deletes for a tablet server. We use them to
@@ -253,13 +264,15 @@ class TSDescriptor {
 
   explicit TSDescriptor(std::string perm_id);
 
+  std::size_t NumTasks() const;
+
  protected:
   virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration,
                                           CloudInfoPB local_cloud_info,
                                           rpc::ProxyCache* proxy_cache);
 
-  mutable simple_spinlock lock_;
+  mutable rw_spinlock lock_;
  private:
   template <class TProxy>
   CHECKED_STATUS GetOrCreateProxy(std::shared_ptr<TProxy>* result,
@@ -281,6 +294,7 @@ class TSDescriptor {
     // Stores the total size of all the sst files in a tserver
     uint64_t total_sst_file_size = 0;
     uint64_t uncompressed_sst_file_size = 0;
+    uint64_t num_sst_files = 0;
 
     double read_ops_per_sec = 0;
 
@@ -292,13 +306,14 @@ class TSDescriptor {
       total_memory_usage = 0;
       total_sst_file_size = 0;
       uncompressed_sst_file_size = 0;
+      num_sst_files = 0;
       read_ops_per_sec = 0;
       write_ops_per_sec = 0;
       uptime_seconds = 0;
     }
   };
 
-  struct TSMetrics tsMetrics_;
+  struct TSMetrics ts_metrics_;
 
   const std::string permanent_uuid_;
   CloudInfoPB local_cloud_info_;
@@ -322,13 +337,13 @@ class TSDescriptor {
   // The number of tablets for which this ts is a leader.
   int leader_count_;
 
-  gscoped_ptr<TSRegistrationPB> registration_;
+  std::shared_ptr<TSInformationPB> ts_information_;
   std::string placement_id_;
 
   // The (read replica) cluster uuid to which this tserver belongs.
   std::string placement_uuid_;
 
-  YB_EDITION_NS_PREFIX ProxyTuple proxies_;
+  enterprise::ProxyTuple proxies_;
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_;
@@ -349,7 +364,7 @@ template <class TProxy>
 Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
                                       std::shared_ptr<TProxy>* result_cache) {
   {
-    std::lock_guard<simple_spinlock> l(lock_);
+    std::lock_guard<rw_spinlock> l(lock_);
     if (*result_cache) {
       *result = *result_cache;
       return Status::OK();

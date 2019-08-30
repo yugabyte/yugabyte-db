@@ -14,6 +14,7 @@
 #include "yb/docdb/doc_kv_util.h"
 
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/value.h"
 #include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/server/hybrid_clock.h"
@@ -186,40 +187,6 @@ string DecodeZeroEncodedStr(string encoded_str) {
 
 std::string ToShortDebugStr(rocksdb::Slice slice) {
   return yb::FormatRocksDBSliceAsStr(slice, kShortDebugStringLength);
-}
-
-CHECKED_STATUS HasExpiredTTL(const HybridTime& key_hybrid_time, const MonoDelta& ttl,
-                             const HybridTime& read_hybrid_time, bool* has_expired) {
-  *has_expired = false;
-  if (!(ttl.Equals(Value::kMaxTtl) || ttl.Equals(Value::kResetTtl))) {
-    // We avoid using AddPhysicalTimeToHybridTime, since there might be overflows after addition.
-    *has_expired = server::HybridClock::CompareHybridClocksToDelta(key_hybrid_time,
-                                                                   read_hybrid_time, ttl) > 0;
-  }
-  return Status::OK();
-}
-
-const MonoDelta TableTTL(const Schema& schema) {
-  MonoDelta ttl = Value::kMaxTtl;
-  if (schema.table_properties().HasDefaultTimeToLive()) {
-    uint64_t default_ttl = schema.table_properties().DefaultTimeToLive();
-    return default_ttl == kResetTTL ? Value::kMaxTtl : MonoDelta::FromMilliseconds(default_ttl);
-  }
-  return ttl;
-}
-
-const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const MonoDelta& default_ttl) {
-  MonoDelta ttl;
-  if (!value_ttl.Equals(Value::kMaxTtl)) {
-    ttl = value_ttl.ToMilliseconds() == kResetTTL ? Value::kMaxTtl : value_ttl;
-  } else {
-    ttl = default_ttl;
-  }
-  return ttl;
-}
-
-const MonoDelta ComputeTTL(const MonoDelta& value_ttl, const Schema& schema) {
-  return ComputeTTL(value_ttl, TableTTL(schema));
 }
 
 }  // namespace docdb

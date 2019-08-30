@@ -115,12 +115,13 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
   // Clear the internal state.
   root_ = SubDocument();
 
-  auto rocksdb_iter = CreateRocksDBIterator(doc_db.regular, BloomFilterMode::DONT_USE_BLOOM_FILTER,
+  auto rocksdb_iter = CreateRocksDBIterator(
+      doc_db.regular, doc_db.key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER,
       boost::none /* user_key_for_filter */, query_id);
-  rocksdb_iter->SeekToFirst();
+  rocksdb_iter.SeekToFirst();
   KeyBytes prev_key;
-  while (rocksdb_iter->Valid()) {
-    const auto key = rocksdb_iter->key();
+  while (rocksdb_iter.Valid()) {
+    const auto key = rocksdb_iter.key();
     CHECK_NE(0, prev_key.CompareTo(key)) << "Infinite loop detected on key " << prev_key.ToString();
     prev_key = KeyBytes(key);
 
@@ -157,13 +158,13 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
       SetDocument(encoded_doc_key, std::move(subdoc));
     }
     // Go to the next top-level document key.
-    ROCKSDB_SEEK(rocksdb_iter.get(), subdoc_key.AdvanceOutOfSubDoc().AsSlice());
+    ROCKSDB_SEEK(&rocksdb_iter, subdoc_key.AdvanceOutOfSubDoc().AsSlice());
 
-    VLOG(4) << "After performing a seek: IsValid=" << rocksdb_iter->Valid();
-    if (VLOG_IS_ON(4) && rocksdb_iter->Valid()) {
-      VLOG(4) << "Next key: " << FormatRocksDBSliceAsStr(rocksdb_iter->key());
+    VLOG(4) << "After performing a seek: IsValid=" << rocksdb_iter.Valid();
+    if (VLOG_IS_ON(4) && rocksdb_iter.Valid()) {
+      VLOG(4) << "Next key: " << FormatRocksDBSliceAsStr(rocksdb_iter.key());
       SubDocKey tmp_subdoc_key;
-      CHECK_OK(tmp_subdoc_key.FullyDecodeFrom(rocksdb_iter->key()));
+      CHECK_OK(tmp_subdoc_key.FullyDecodeFrom(rocksdb_iter.key()));
       VLOG(4) << "Parsed as SubDocKey: " << tmp_subdoc_key.ToString();
     }
   }

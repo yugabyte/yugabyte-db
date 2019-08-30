@@ -53,9 +53,11 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/retryable_requests.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/fs/fs_manager.h"
 
+#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 
@@ -76,9 +78,11 @@
 
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/remote_bootstrap_client.h"
+#include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/background_task.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -87,6 +91,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
@@ -112,6 +117,17 @@ DEFINE_int32(db_block_cache_num_shard_bits, 4,
              "Number of bits to use for sharding the block cache (defaults to 4 bits)");
 TAG_FLAG(db_block_cache_num_shard_bits, advanced);
 
+DEFINE_bool(enable_log_cache_gc, true,
+            "Set to true to enable log cache garbage collector.");
+
+DEFINE_bool(log_cache_gc_evict_only_over_allocated, true,
+            "If set to true, log cache garbage collection would evict only memory that was "
+            "allocated over limit for log cache. Otherwise it will try to evict requested number "
+            "of bytes.");
+
+DEFINE_bool(enable_block_based_table_cache_gc, false,
+            "Set to true to enable block based table garbage collector.");
+
 DEFINE_test_flag(double, fault_crash_after_blocks_deleted, 0.0,
                  "Fraction of the time when the tablet will crash immediately "
                  "after deleting the data blocks during tablet deletion.");
@@ -131,6 +147,10 @@ DEFINE_test_flag(double, fault_crash_after_rb_files_fetched, 0.0,
 
 DEFINE_test_flag(bool, pretend_memory_exceeded_enforce_flush, false,
                  "Always pretend memory has been exceeded to enforce background flush.");
+
+DEFINE_test_flag(int32, crash_if_remote_bootstrap_sessions_greater_than, 0,
+                 "If greater than zero, this process will crash if we detect more than the "
+                 "specified number of remote bootstrap sessions.");
 
 namespace {
 
@@ -226,6 +246,11 @@ METRIC_DEFINE_histogram(server, op_read_run_time, "Operation Read op Run Time",
                             "that operations consist of very large batches.",
                         10000000, 2);
 
+METRIC_DEFINE_histogram(server, ts_bootstrap_time, "TServer Bootstrap Time",
+                        MetricUnit::kMicroseconds,
+                        "Time that the tablet server takes to bootstrap all of its tablets.",
+                        10000000, 2);
+
 using consensus::ConsensusMetadata;
 using consensus::ConsensusStatePB;
 using consensus::OpId;
@@ -240,15 +265,19 @@ using std::string;
 using std::vector;
 using std::unordered_set;
 using strings::Substitute;
+using tablet::BOOTSTRAPPING;
+using tablet::NOT_STARTED;
+using tablet::RaftGroupStatePB;
+using tablet::RUNNING;
 using tablet::TABLET_DATA_COPYING;
 using tablet::TABLET_DATA_DELETED;
 using tablet::TABLET_DATA_READY;
 using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
-using tablet::TabletMetadata;
+using tablet::RaftGroupMetadata;
+using tablet::RaftGroupMetadataPtr;
 using tablet::TabletClass;
 using tablet::TabletPeer;
-using tablet::TabletPeerClass;
 using tablet::TabletPeerPtr;
 using tablet::TabletStatusListener;
 using tablet::TabletStatusPB;
@@ -258,19 +287,30 @@ void TSTabletManager::MaybeFlushTablet() {
   int iteration = 0;
   while (memory_monitor()->Exceeded() ||
          (iteration++ == 0 && FLAGS_pretend_memory_exceeded_enforce_flush)) {
+    YB_LOG_EVERY_N_SECS(INFO, 5) << Format("Memstore global limit of $0 bytes reached, looking for "
+                                           "tablet to flush", memory_monitor()->limit());
+    auto flush_tick = rocksdb::FlushTick();
     TabletPeerPtr tablet_to_flush = TabletToFlush();
     // TODO(bojanserafimov): If tablet_to_flush flushes now because of other reasons,
     // we will schedule a second flush, which will unnecessarily stall writes for a short time. This
     // will not happen often, but should be fixed.
     if (tablet_to_flush) {
-      WARN_NOT_OK(tablet_to_flush->tablet()->Flush(tablet::FlushMode::kAsync),
+      LOG(INFO) << Format(
+          "Flushing tablet $0 with oldest memstore write at $1", tablet_to_flush->tablet_id(),
+          tablet_to_flush->tablet()->OldestMutableMemtableWriteHybridTime());
+      WARN_NOT_OK(
+          tablet_to_flush->tablet()->Flush(
+              tablet::FlushMode::kAsync, tablet::FlushFlags::kAll, flush_tick),
           Substitute("Flush failed on $0", tablet_to_flush->tablet_id()));
+      for (auto listener : TEST_listeners) {
+        listener->StartedFlush(tablet_to_flush->tablet_id());
+      }
     }
   }
 }
 
-// Return the tablet with the oldest write in memstore, or nullptr if all
-// tablet memstores are empty or about to flush.
+// Return the tablet with the oldest write in memstore, or nullptr if all tablet memstores are
+// empty or about to flush.
 TabletPeerPtr TSTabletManager::TabletToFlush() {
   boost::shared_lock<RWMutex> lock(lock_); // For using the tablet map
   HybridTime oldest_write_in_memstores = HybridTime::kMax;
@@ -278,15 +318,60 @@ TabletPeerPtr TSTabletManager::TabletToFlush() {
   for (const TabletMap::value_type& entry : tablet_map_) {
     const auto tablet = entry.second->shared_tablet();
     if (tablet) {
-      const HybridTime oldest_write_in_memstore = tablet->flush_stats()->oldest_write_in_memstore();
-      if (oldest_write_in_memstore < oldest_write_in_memstores) {
-        oldest_write_in_memstores = oldest_write_in_memstore;
-        tablet_to_flush = entry.second;
+      const auto ht = tablet->OldestMutableMemtableWriteHybridTime();
+      if (ht.ok()) {
+        if (*ht < oldest_write_in_memstores) {
+          oldest_write_in_memstores = *ht;
+          tablet_to_flush = entry.second;
+        }
+      } else {
+        YB_LOG_EVERY_N_SECS(WARNING, 5) << Format(
+            "Failed to get oldest mutable memtable write ht for tablet $0: $1",
+            tablet->tablet_id(), ht.status());
       }
     }
   }
   return tablet_to_flush;
 }
+
+namespace {
+
+class LRUCacheGC : public GarbageCollector {
+ public:
+  explicit LRUCacheGC(std::shared_ptr<rocksdb::Cache> cache) : cache_(std::move(cache)) {}
+
+  void CollectGarbage(size_t required) {
+    if (!FLAGS_enable_block_based_table_cache_gc) {
+      return;
+    }
+
+    auto evicted = cache_->Evict(required);
+    LOG(INFO) << "Evicted from table cache: " << HumanReadableNumBytes::ToString(evicted)
+              << ", new usage: " << HumanReadableNumBytes::ToString(cache_->GetUsage())
+              << ", required: " << HumanReadableNumBytes::ToString(required);
+  }
+
+  virtual ~LRUCacheGC() = default;
+
+ private:
+  std::shared_ptr<rocksdb::Cache> cache_;
+};
+
+class FunctorGC : public GarbageCollector {
+ public:
+  explicit FunctorGC(std::function<void(size_t)> impl) : impl_(std::move(impl)) {}
+
+  void CollectGarbage(size_t required) {
+    impl_(required);
+  }
+
+  virtual ~FunctorGC() = default;
+
+ private:
+  std::function<void(size_t)> impl_;
+};
+
+} // namespace
 
 TSTabletManager::TSTabletManager(FsManager* fs_manager,
                                  TabletServer* server,
@@ -347,11 +432,22 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
 
     block_cache_size_bytes = total_ram_avail * FLAGS_db_block_cache_size_percentage / 100;
   }
+
+  block_based_table_mem_tracker_ = MemTracker::FindOrCreateTracker(
+      block_cache_size_bytes, "BlockBasedTable", server_->mem_tracker());
+
   if (FLAGS_db_block_cache_size_bytes != kDbCacheSizeCacheDisabled) {
     tablet_options_.block_cache = rocksdb::NewLRUCache(block_cache_size_bytes,
                                                        FLAGS_db_block_cache_num_shard_bits);
     tablet_options_.block_cache->SetMetrics(server_->metric_entity());
+    block_based_table_gc_ = std::make_shared<LRUCacheGC>(tablet_options_.block_cache);
+    block_based_table_mem_tracker_->AddGarbageCollector(block_based_table_gc_);
   }
+
+  auto log_cache_mem_tracker = consensus::LogCache::GetServerMemTracker(server_->mem_tracker());
+  log_cache_gc_ = std::make_shared<FunctorGC>(
+      std::bind(&TSTabletManager::LogCacheGC, this, log_cache_mem_tracker.get(), _1));
+  log_cache_mem_tracker->AddGarbageCollector(log_cache_gc_);
 
   // Calculate memstore_size_bytes
   bool should_count_memory = FLAGS_global_memstore_size_percentage > 0;
@@ -393,6 +489,10 @@ Status TSTabletManager::Init() {
       &server_->options(), server_->metric_entity(), server_->mem_tracker(),
       server_->messenger());
 
+  tablet_options_.env = server_->GetEnv();
+  tablet_options_.rocksdb_env = server_->GetRocksDBEnv();
+  tablet_options_.listeners = server_->options().listeners;
+
   // Start the threadpool we'll use to open tablets.
   // This has to be done in Init() instead of the constructor, since the
   // FsManager isn't initialized until this point.
@@ -406,9 +506,17 @@ Status TSTabletManager::Init() {
     }
     LOG(INFO) <<  "max_bootstrap_threads=" << max_bootstrap_threads;
   }
+  ThreadPoolMetrics metrics = {
+          NULL,
+          NULL,
+          METRIC_ts_bootstrap_time.Instantiate(server_->metric_entity())
+  };
   RETURN_NOT_OK(ThreadPoolBuilder("tablet-bootstrap")
                 .set_max_threads(max_bootstrap_threads)
+                .set_metrics(std::move(metrics))
                 .Build(&open_tablet_pool_));
+
+  CleanupCheckpoints();
 
   // Search for tablets in the metadata dir.
   vector<string> tablet_ids;
@@ -416,36 +524,37 @@ Status TSTabletManager::Init() {
 
   InitLocalRaftPeerPB();
 
-  vector<scoped_refptr<TabletMetadata> > metas;
+  vector<RaftGroupMetadataPtr> metas;
 
   // First, load all of the tablet metadata. We do this before we start
   // submitting the actual OpenTablet() tasks so that we don't have to compete
   // for disk resources, etc, with bootstrap processes and running tablets.
   for (const string& tablet_id : tablet_ids) {
-    scoped_refptr<TabletMetadata> meta;
+    RaftGroupMetadataPtr meta;
     RETURN_NOT_OK_PREPEND(OpenTabletMeta(tablet_id, &meta),
                           "Failed to open tablet metadata for tablet: " + tablet_id);
     if (PREDICT_FALSE(meta->tablet_data_state() != TABLET_DATA_READY)) {
       RETURN_NOT_OK(HandleNonReadyTabletOnStartup(meta));
       if (meta->tablet_data_state() == TABLET_DATA_TOMBSTONED) {
-        RegisterDataAndWalDir(fs_manager_, meta->table_id(), meta->tablet_id(),
+        RegisterDataAndWalDir(fs_manager_, meta->table_id(), meta->raft_group_id(),
                               meta->table_type(), meta->data_root_dir(),
                               meta->wal_root_dir());
       }
       continue;
     }
-    RegisterDataAndWalDir(fs_manager_, meta->table_id(), meta->tablet_id(),
+    RegisterDataAndWalDir(fs_manager_, meta->table_id(), meta->raft_group_id(),
                           meta->table_type(), meta->data_root_dir(),
                           meta->wal_root_dir());
     metas.push_back(meta);
   }
 
   // Now submit the "Open" task for each.
-  for (const scoped_refptr<TabletMetadata>& meta : metas) {
+  for (const RaftGroupMetadataPtr& meta : metas) {
     scoped_refptr<TransitionInProgressDeleter> deleter;
     {
       std::lock_guard<RWMutex> lock(lock_);
-      CHECK_OK(StartTabletStateTransitionUnlocked(meta->tablet_id(), "opening tablet", &deleter));
+      CHECK_OK(StartTabletStateTransitionUnlocked(
+          meta->raft_group_id(), "opening tablet", &deleter));
     }
 
     TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
@@ -463,6 +572,34 @@ Status TSTabletManager::Init() {
   }
 
   return Status::OK();
+}
+
+void TSTabletManager::CleanupCheckpoints() {
+  for (const auto& data_root : fs_manager_->GetDataRootDirs()) {
+    auto tables_dir = JoinPathSegments(data_root, FsManager::kRocksDBDirName);
+    auto tables = fs_manager_->env()->GetChildren(tables_dir, ExcludeDots::kTrue);
+    if (!tables.ok()) {
+      LOG(WARNING) << "Failed to get tables in " << tables_dir << ": " << tables.status();
+      continue;
+    }
+    for (const auto& table : *tables) {
+      auto table_dir = JoinPathSegments(tables_dir, table);
+      auto tablets = fs_manager_->env()->GetChildren(table_dir, ExcludeDots::kTrue);
+      if (!tablets.ok()) {
+        LOG(WARNING) << "Failed to get tablets in " << table_dir << ": " << tables.status();
+        continue;
+      }
+      for (const auto& tablet : *tablets) {
+        auto checkpoints_dir = JoinPathSegments(
+            table_dir, tablet, RemoteBootstrapSession::kCheckpointsDir);
+        if (fs_manager_->env()->FileExists(checkpoints_dir)) {
+          LOG(INFO) << "Cleaning up checkpoints dir: " << yb::ToString(checkpoints_dir);
+          auto status = fs_manager_->env()->DeleteRecursively(checkpoints_dir);
+          WARN_NOT_OK(status, Format("Cleanup of checkpoints dir $0 failed", checkpoints_dir));
+        }
+      }
+    }
+  }
 }
 
 Status TSTabletManager::Start() {
@@ -533,12 +670,12 @@ Status TSTabletManager::CreateNewTablet(
 
   // Create the metadata.
   TRACE("Creating new metadata...");
-  scoped_refptr<TabletMetadata> meta;
+  RaftGroupMetadataPtr meta;
   string data_root_dir;
   string wal_root_dir;
   GetAndRegisterDataAndWalDir(fs_manager_, table_id, tablet_id, table_type,
                               &data_root_dir, &wal_root_dir);
-  Status create_status = TabletMetadata::CreateNew(fs_manager_,
+  Status create_status = RaftGroupMetadata::CreateNew(fs_manager_,
                                                    table_id,
                                                    tablet_id,
                                                    table_name,
@@ -598,7 +735,7 @@ Status CheckLeaderTermNotLower(
 }
 
 Status HandleReplacingStaleTablet(
-    scoped_refptr<TabletMetadata> meta,
+    RaftGroupMetadataPtr meta,
     TabletPeerPtr old_tablet_peer,
     const string& tablet_id,
     const string& uuid,
@@ -645,6 +782,8 @@ Status HandleReplacingStaleTablet(
 }
 
 Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB& req) {
+  LongOperationTracker tracker("StartRemoteBootstrap", 5s);
+
   const string& tablet_id = req.tablet_id();
   const string& bootstrap_peer_uuid = req.bootstrap_peer_uuid();
   HostPort bootstrap_peer_addr = HostPortFromPB(DesiredHostPort(
@@ -655,7 +794,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   const string kLogPrefix = tserver::LogPrefix(tablet_id, fs_manager_->uuid());
 
   TabletPeerPtr old_tablet_peer;
-  scoped_refptr<TabletMetadata> meta;
+  RaftGroupMetadataPtr meta;
   bool replacing_tablet = false;
   scoped_refptr<TransitionInProgressDeleter> deleter;
   {
@@ -691,8 +830,8 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   LOG(INFO) << init_msg;
   TRACE(init_msg);
 
-  gscoped_ptr<YB_EDITION_NS_PREFIX RemoteBootstrapClient> rb_client(
-      new YB_EDITION_NS_PREFIX RemoteBootstrapClient(
+  gscoped_ptr<enterprise::RemoteBootstrapClient> rb_client(
+      new enterprise::RemoteBootstrapClient(
           tablet_id, fs_manager_, fs_manager_->uuid()));
 
   // Download and persist the remote superblock in TABLET_DATA_COPYING state.
@@ -712,6 +851,12 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // Registering a non-initialized TabletPeer offers visibility through the Web UI.
   RegisterTabletPeerMode mode = replacing_tablet ? REPLACEMENT_PEER : NEW_PEER;
   TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, mode));
+  MarkTabletBeingRemoteBootstrapped(tablet_peer->tablet_id());
+
+  // TODO: If we ever make this method asynchronous, we need to move this code somewhere else.
+  auto se = ScopeExit([this, tablet_peer] {
+    UnmarkTabletBeingRemoteBootstrapped(tablet_peer->tablet_id());
+  });
 
   // Download all of the remote files.
   TOMBSTONE_NOT_OK(rb_client->FetchAll(tablet_peer->status_listener()),
@@ -751,7 +896,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
                                             tablet_peer,
                                             meta,
                                             fs_manager_->uuid(),
-                                            "Remote bootstrap: Failure calling OpenTablet()",
+                                            "Remote bootstrap: OpenTablet() failed",
                                             this);
 
   auto status = rb_client->VerifyChangeRoleSucceeded(tablet_peer->shared_consensus());
@@ -765,16 +910,18 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
     LOG(INFO) << kLogPrefix << "Remote bootstrap for tablet ended successfully";
   }
 
+  WARN_NOT_OK(rb_client->Remove(), "Remove remote bootstrap sessions failed");
+
   return Status::OK();
 }
 
 // Create and register a new TabletPeer, given tablet metadata.
 Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
-    const scoped_refptr<TabletMetadata>& meta, RegisterTabletPeerMode mode) {
-  TabletPeerPtr tablet_peer(new TabletPeerClass(
+    const RaftGroupMetadataPtr& meta, RegisterTabletPeerMode mode) {
+  TabletPeerPtr tablet_peer(new tablet::TabletPeer(
       meta, local_peer_pb_, scoped_refptr<server::Clock>(server_->clock()), fs_manager_->uuid(),
-      Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->tablet_id())));
-  RETURN_NOT_OK(RegisterTablet(meta->tablet_id(), tablet_peer, mode));
+      Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->raft_group_id())));
+  RETURN_NOT_OK(RegisterTablet(meta->raft_group_id(), tablet_peer, mode));
   return tablet_peer;
 }
 
@@ -840,7 +987,7 @@ Status TSTabletManager::DeleteTablet(
     }
   }
 
-  scoped_refptr<TabletMetadata> meta = tablet_peer->tablet_metadata();
+  RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
   tablet_peer->Shutdown();
 
   yb::OpId last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
@@ -905,11 +1052,11 @@ bool TSTabletManager::IsTabletInTransition(const std::string& tablet_id) const {
 }
 
 Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
-                                       scoped_refptr<TabletMetadata>* metadata) {
+                                       RaftGroupMetadataPtr* metadata) {
   LOG(INFO) << "Loading metadata for tablet " << tablet_id;
   TRACE("Loading metadata...");
-  scoped_refptr<TabletMetadata> meta;
-  RETURN_NOT_OK_PREPEND(TabletMetadata::Load(fs_manager_, tablet_id, &meta),
+  RaftGroupMetadataPtr meta;
+  RETURN_NOT_OK_PREPEND(RaftGroupMetadata::Load(fs_manager_, tablet_id, &meta),
                         strings::Substitute("Failed to load tablet metadata for tablet id $0",
                                             tablet_id));
   TRACE("Metadata loaded");
@@ -917,9 +1064,9 @@ Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
   return Status::OK();
 }
 
-void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
+void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
                                  const scoped_refptr<TransitionInProgressDeleter>& deleter) {
-  string tablet_id = meta->tablet_id();
+  string tablet_id = meta->raft_group_id();
   TRACE_EVENT1("tserver", "TSTabletManager::OpenTablet",
                "tablet_id", tablet_id);
 
@@ -935,7 +1082,6 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   TRACE("Bootstrapping tablet");
 
   consensus::ConsensusBootstrapInfo bootstrap_info;
-  Status s;
   consensus::RetryableRequests retryable_requests(kLogPrefix);
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // TODO: handle crash mid-creation of tablet? do we ever end up with a
@@ -946,11 +1092,13 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
       tablet_peer->SetFailed(s);
       return;
     }
+
     tablet::BootstrapTabletData data = {
         meta,
         async_client_init_->get_client_future(),
         scoped_refptr<server::Clock>(server_->clock()),
-        server_->mem_tracker(),
+        MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker()),
+        block_based_table_mem_tracker_,
         metric_registry_,
         tablet_peer->status_listener(),
         tablet_peer->log_anchor_registry(),
@@ -973,15 +1121,16 @@ void TSTabletManager::OpenTablet(const scoped_refptr<TabletMetadata>& meta,
   MonoTime start(MonoTime::Now());
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "starting tablet") {
     TRACE("Initializing tablet peer");
-    s = tablet_peer->InitTabletPeer(tablet,
-                                    async_client_init_->get_client_future(),
-                                    server_->messenger(),
-                                    &server_->proxy_cache(),
-                                    log,
-                                    tablet->GetMetricEntity(),
-                                    raft_pool(),
-                                    tablet_prepare_pool(),
-                                    &retryable_requests);
+    auto s = tablet_peer->InitTabletPeer(tablet,
+                                         async_client_init_->get_client_future(),
+                                         server_->mem_tracker(),
+                                         server_->messenger(),
+                                         &server_->proxy_cache(),
+                                         log,
+                                         tablet->GetMetricEntity(),
+                                         raft_pool(),
+                                         tablet_prepare_pool(),
+                                         &retryable_requests);
 
     if (!s.ok()) {
       LOG(ERROR) << kLogPrefix << "Tablet failed to init: "
@@ -1112,7 +1261,7 @@ Status TSTabletManager::RegisterTablet(const std::string& tablet_id,
   if (!InsertIfNotPresent(&tablet_map_, tablet_id, tablet_peer)) {
     auto result = STATUS_FORMAT(
         AlreadyPresent, "Unable to register tablet peer $0: already registered", tablet_id);
-    scoped_refptr<TabletMetadata> meta = tablet_peer->tablet_metadata();
+    RaftGroupMetadataPtr meta = tablet_peer->tablet_metadata();
     LOG(WARNING) << result;
     return result;
   }
@@ -1203,37 +1352,78 @@ void TSTabletManager::MarkTabletDirty(const std::string& tablet_id,
   MarkDirtyUnlocked(tablet_id, context);
 }
 
+void TSTabletManager::MarkTabletBeingRemoteBootstrapped(const std::string& tablet_id) {
+  std::lock_guard<RWMutex> lock(lock_);
+  tablets_being_remote_bootstrapped_.insert(tablet_id);
+  if (PREDICT_FALSE(FLAGS_crash_if_remote_bootstrap_sessions_greater_than > 0) &&
+      tablets_being_remote_bootstrapped_.size() >
+          FLAGS_crash_if_remote_bootstrap_sessions_greater_than) {
+    string tablets;
+    for (const auto& tablet_id : tablets_being_remote_bootstrapped_) {
+      if (!tablets.empty()) {
+        tablets += ", ";
+      }
+      tablets += tablet_id;
+    }
+    LOG(FATAL) << "Exceeded the specified maximum number of concurrent remote botstraps sessions. "
+               << "Specified: " << FLAGS_crash_if_remote_bootstrap_sessions_greater_than
+               << ", concurrent remote bootstrap sessions: " << tablets;
+  }
+  LOG(INFO) << "Concurrent remote bootstrap sessions: "
+            << tablets_being_remote_bootstrapped_.size();
+}
+
+void TSTabletManager::UnmarkTabletBeingRemoteBootstrapped(const std::string& tablet_id) {
+  std::lock_guard<RWMutex> lock(lock_);
+  tablets_being_remote_bootstrapped_.erase(tablet_id);
+}
+
 int TSTabletManager::GetNumDirtyTabletsForTests() const {
   boost::shared_lock<RWMutex> lock(lock_);
   return dirty_tablets_.size();
 }
 
-int TSTabletManager::GetNumTabletsNotRunning() const {
+Status TSTabletManager::GetNumTabletsPendingBootstrap(
+    IsTabletServerReadyResponsePB* resp) const {
   if (state() != MANAGER_RUNNING) {
-    return INT_MAX;
+    resp->set_num_tablets_not_running(INT_MAX);
+    resp->set_total_tablets(INT_MAX);
+    return Status::OK();
   }
 
   boost::shared_lock<RWMutex> shared_lock(lock_);
-  int num_not_running = 0;
+  int num_pending = 0;
+  int total_tablets = 0;
   for (const auto& entry : tablet_map_) {
-    tablet::TabletStatePB state = entry.second->state();
-    if (state != tablet::RUNNING) {
-      num_not_running++;
+    RaftGroupStatePB state = entry.second->state();
+    TabletDataState data_state = entry.second->data_state();
+    // Do not count tablets that will never get to RUNNING state.
+    if (data_state != TABLET_DATA_READY) {
+      continue;
+    }
+    bool not_started_or_bootstrap = state == NOT_STARTED || state == BOOTSTRAPPING;
+    if (not_started_or_bootstrap || state == RUNNING) {
+      total_tablets++;
+    }
+    if (not_started_or_bootstrap) {
+      num_pending++;
     }
   }
 
-  LOG(INFO) << num_not_running << " tablets not running out of " << tablet_map_.size();
+  LOG(INFO) << num_pending << " tablets pending bootstrap out of " << total_tablets;
+  resp->set_num_tablets_not_running(num_pending);
+  resp->set_total_tablets(total_tablets);
 
-  return num_not_running;
+  return Status::OK();
 }
 
 int TSTabletManager::GetNumLiveTablets() const {
   int count = 0;
   boost::shared_lock<RWMutex> lock(lock_);
   for (const auto& entry : tablet_map_) {
-    tablet::TabletStatePB state = entry.second->state();
-    if (state == tablet::BOOTSTRAPPING ||
-        state == tablet::RUNNING) {
+    RaftGroupStatePB state = entry.second->state();
+    if (state == BOOTSTRAPPING ||
+        state == RUNNING) {
       count++;
     }
   }
@@ -1306,12 +1496,21 @@ void TSTabletManager::GenerateIncrementalTabletReport(TabletReportPB* report) {
   // to block if there is a waiting writer (see KUDU-2193). So, we just make
   // a local copy of the set of replicas.
   vector<std::shared_ptr<TabletPeer>> to_report;
+  vector<std::string> tablet_ids;
   {
     boost::shared_lock<RWMutex> shared_lock(lock_);
-    to_report.reserve(dirty_tablets_.size());
+    tablet_ids.reserve(dirty_tablets_.size() + tablets_being_remote_bootstrapped_.size());
+    to_report.reserve(dirty_tablets_.size() + tablets_being_remote_bootstrapped_.size());
     report->set_sequence_number(next_report_seq_++);
     for (const DirtyMap::value_type& dirty_entry : dirty_tablets_) {
       const string& tablet_id = dirty_entry.first;
+      tablet_ids.push_back(tablet_id);
+    }
+    for (auto const& tablet_id : tablets_being_remote_bootstrapped_) {
+      tablet_ids.push_back(tablet_id);
+    }
+
+    for (auto const& tablet_id : tablet_ids) {
       TabletPeerPtr* tablet_peer = FindOrNull(tablet_map_, tablet_id);
       if (tablet_peer) {
         // Dirty entry, report on it.
@@ -1371,8 +1570,9 @@ void TSTabletManager::MarkTabletReportAcknowledged(const TabletReportPB& report)
   }
 }
 
-Status TSTabletManager::HandleNonReadyTabletOnStartup(const scoped_refptr<TabletMetadata>& meta) {
-  const string& tablet_id = meta->tablet_id();
+Status TSTabletManager::HandleNonReadyTabletOnStartup(
+    const RaftGroupMetadataPtr& meta) {
+  const string& tablet_id = meta->raft_group_id();
   TabletDataState data_state = meta->tablet_data_state();
   CHECK(data_state == TABLET_DATA_DELETED ||
         data_state == TABLET_DATA_TOMBSTONED ||
@@ -1402,8 +1602,7 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(const scoped_refptr<Tablet
   }
 
   // Register TOMBSTONED tablets so that they get reported to the Master, which
-  // allows us to permanently delete replica tombstones when a table gets
-  // deleted.
+  // allows us to permanently delete replica tombstones when a table gets deleted.
   if (data_state == TABLET_DATA_TOMBSTONED) {
     RETURN_NOT_OK(CreateAndRegisterTabletPeer(meta, NEW_PEER));
   }
@@ -1571,18 +1770,68 @@ void TSTabletManager::UnregisterDataWalDir(const string& table_id,
   }
 }
 
-Status DeleteTabletData(const scoped_refptr<TabletMetadata>& meta,
+size_t GetLogCacheSize(TabletPeer* peer) {
+  return down_cast<consensus::RaftConsensus*>(peer->consensus())->LogCacheSize();
+}
+
+void TSTabletManager::LogCacheGC(MemTracker* log_cache_mem_tracker, size_t bytes_to_evict) {
+  if (!FLAGS_enable_log_cache_gc) {
+    return;
+  }
+
+  if (FLAGS_log_cache_gc_evict_only_over_allocated) {
+    if (!log_cache_mem_tracker->has_limit()) {
+      return;
+    }
+    auto limit = log_cache_mem_tracker->limit();
+    auto consumption = log_cache_mem_tracker->consumption();
+    if (consumption <= limit) {
+      return;
+    }
+    bytes_to_evict = std::min<size_t>(bytes_to_evict, consumption - limit);
+  }
+
+  std::vector<TabletPeerPtr> peers;
+  {
+    boost::shared_lock<RWMutex> shared_lock(lock_);
+    peers.reserve(tablet_map_.size());
+    for (const auto& pair : tablet_map_) {
+      if (GetLogCacheSize(pair.second.get()) > 0) {
+        peers.push_back(pair.second);
+      }
+    }
+  }
+  std::sort(peers.begin(), peers.end(), [](const auto& lhs, const auto& rhs) {
+    // Note inverse order.
+    return GetLogCacheSize(lhs.get()) > GetLogCacheSize(rhs.get());
+  });
+
+  size_t total_evicted = 0;
+  for (const auto& peer : peers) {
+    size_t evicted = down_cast<consensus::RaftConsensus*>(
+        peer->consensus())->EvictLogCache(bytes_to_evict - total_evicted);
+    total_evicted += evicted;
+    if (total_evicted >= bytes_to_evict) {
+      break;
+    }
+  }
+
+  LOG(INFO) << "Evicted from log cache: " << HumanReadableNumBytes::ToString(total_evicted)
+            << ", required: " << HumanReadableNumBytes::ToString(bytes_to_evict);
+}
+
+Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
                         TabletDataState data_state,
                         const string& uuid,
                         const yb::OpId& last_logged_opid,
                         TSTabletManager* ts_manager) {
-  const string& tablet_id = meta->tablet_id();
+  const string& tablet_id = meta->raft_group_id();
   const string kLogPrefix = LogPrefix(tablet_id, uuid);
   LOG(INFO) << kLogPrefix << "Deleting tablet data with delete state "
             << TabletDataState_Name(data_state);
   CHECK(data_state == TABLET_DATA_DELETED ||
         data_state == TABLET_DATA_TOMBSTONED)
-      << "Unexpected data_state to delete tablet " << meta->tablet_id() << ": "
+      << "Unexpected data_state to delete tablet " << meta->raft_group_id() << ": "
       << TabletDataState_Name(data_state) << " (" << data_state << ")";
 
   // Note: Passing an unset 'last_logged_opid' will retain the last_logged_opid
@@ -1592,7 +1841,9 @@ Status DeleteTabletData(const scoped_refptr<TabletMetadata>& meta,
             << meta->tombstone_last_logged_opid();
   MAYBE_FAULT(FLAGS_fault_crash_after_blocks_deleted);
 
-  RETURN_NOT_OK(Log::DeleteOnDiskData(meta->fs_manager(), meta->tablet_id(), meta->wal_dir()));
+  RETURN_NOT_OK(Log::DeleteOnDiskData(
+      meta->fs_manager()->env(), meta->raft_group_id(), meta->wal_dir(),
+      meta->fs_manager()->uuid()));
   MAYBE_FAULT(FLAGS_fault_crash_after_wal_deleted);
 
   // We do not delete the superblock or the consensus metadata when tombstoning
@@ -1602,18 +1853,18 @@ Status DeleteTabletData(const scoped_refptr<TabletMetadata>& meta,
   }
 
   // Only TABLET_DATA_DELETED tablets get this far.
-  RETURN_NOT_OK(ConsensusMetadata::DeleteOnDiskData(meta->fs_manager(), meta->tablet_id()));
+  RETURN_NOT_OK(ConsensusMetadata::DeleteOnDiskData(meta->fs_manager(), meta->raft_group_id()));
   MAYBE_FAULT(FLAGS_fault_crash_after_cmeta_deleted);
 
   return Status::OK();
 }
 
-void LogAndTombstone(const scoped_refptr<TabletMetadata>& meta,
+void LogAndTombstone(const RaftGroupMetadataPtr& meta,
                      const std::string& msg,
                      const std::string& uuid,
                      const Status& s,
                      TSTabletManager* ts_manager) {
-  const string& tablet_id = meta->tablet_id();
+  const string& tablet_id = meta->raft_group_id();
   const string kLogPrefix = LogPrefix(tablet_id, uuid);
   LOG(WARNING) << kLogPrefix << msg << ": " << s.ToString();
 
@@ -1641,7 +1892,7 @@ void LogAndTombstone(const scoped_refptr<TabletMetadata>& meta,
   // Remove the child tracker if present.
   if (ts_manager != nullptr) {
     auto tracker = MemTracker::FindTracker(
-        Format("tablet-$0", meta->tablet_id()), ts_manager->server()->mem_tracker());
+        Format("tablet-$0", meta->raft_group_id()), ts_manager->server()->mem_tracker());
     if (tracker) {
       tracker->UnregisterFromParent();
     }

@@ -1,0 +1,1 @@
+Support for Microsoft Azure in YugaByte DB Enterprise Edition is currently in the works. You are recommended to treat Microsoft Azure as an [On-Premises Datacenter](../configure-cloud-providers/#on-premises-datacenters) for now.

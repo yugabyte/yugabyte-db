@@ -25,6 +25,8 @@
 #ifndef PG_YB_COMMON_H
 #define PG_YB_COMMON_H
 
+#define YB_INITDB_ALREADY_DONE_EXIT_CODE 125
+
 /**
  * Checks if the given environment variable is set to a "true" value (e.g. "1").
  */
@@ -64,4 +66,15 @@ extern bool YBIsInitDbModeEnvVarSet();
  */
 extern void YBSetInitDbModeEnvVar();
 
+
+/**
+ * Checks if environment variables indicating that YB's unsupported features must
+ * be restricted are set
+ */
+extern bool YBIsUsingYBParser();
+
+/**
+ * Returns ERROR or WARNING level depends on environment variable
+ */
+extern int YBUnsupportedFeatureSignalLevel();
 #endif /* PG_YB_COMMON_H */

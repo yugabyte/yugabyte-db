@@ -16,7 +16,7 @@ import re
 from subprocess import call, check_output
 from xml.dom import minidom
 from yb.command_util import run_program, mkdir_p, copy_deep
-from yb.common_util import get_thirdparty_dir
+from yb.common_util import get_thirdparty_dir, is_macos
 
 RELEASE_MANIFEST_NAME = "yb_release_manifest.json"
 RELEASE_VERSION_FILE = "version.txt"
@@ -25,12 +25,11 @@ THIRDPARTY_PREFIX_RE = re.compile('^thirdparty/(.*)$')
 
 class ReleaseUtil(object):
     """Packages a YugaByte package with the appropriate file naming schema."""
-    def __init__(self, repository, build_type, edition, distribution_path, force, commit,
+    def __init__(self, repository, build_type, distribution_path, force, commit,
                  build_root):
         self.repo = repository
         self.build_type = build_type
         self.build_path = os.path.join(self.repo, 'build')
-        self.edition = edition
         self.distribution_path = distribution_path
         self.force = force
         self.commit = commit or ReleaseUtil.get_head_commit_hash()
@@ -74,6 +73,10 @@ class ReleaseUtil(object):
             new_value = os.path.join(get_thirdparty_dir(), thirdparty_prefix_match.group(1))
         # Substitution for BUILD_ROOT.
         new_value = new_value.replace("$BUILD_ROOT", self.build_root)
+        thirdparty_intrumentation = "clang_uninstrumented" if is_macos() else "uninstrumented"
+        new_value = new_value.replace(
+            "$THIRDPARTY_BUILD_SPECIFIC_DIR",
+            os.path.join(get_thirdparty_dir(), "installed", thirdparty_intrumentation))
         if new_value != old_value:
             logging.info("Substituting '{}' -> '{}' in manifest".format(
                 old_value, new_value))
@@ -99,32 +102,19 @@ class ReleaseUtil(object):
             path = os.path.join(self.repo, path)
         return path
 
-    def create_distribution(self, distribution_dir, prefix_dir=None):
+    def create_distribution(self, distribution_dir):
         """This method would read the release_manifest and traverse through the
         build directory and copy necessary files/symlinks into the distribution_dir
         Args:
             distribution_dir (string): Directory to create the distribution
-            prefix_dir (string): Only add entries that have a manifest key prefixed with this
         """
-        if prefix_dir:
-            full_path_prefix_dir = os.path.join(distribution_dir, prefix_dir)
-            if os.path.exists(full_path_prefix_dir):
-                logging.info("Found data at {}, removing before adding to distribution.".format(
-                    full_path_prefix_dir))
-                # Ignore errors so that it recurses even if dir is not empty.
-                shutil.rmtree(full_path_prefix_dir, ignore_errors=True)
         for dir_from_manifest in self.release_manifest:
             if dir_from_manifest == '%symlinks%':
                 for dst, target in self.release_manifest[dir_from_manifest].iteritems():
-                    if prefix_dir is not None and not dst.startswith(prefix_dir):
-                        continue
                     dst = os.path.join(distribution_dir, dst)
                     logging.debug("Creating symlink {} -> {}".format(dst, target))
                     mkdir_p(os.path.dirname(dst))
                     os.symlink(target, dst)
-                continue
-            # If we're using a prefix_dir, skip all manifest keys not starting with this.
-            if prefix_dir is not None and not dir_from_manifest.startswith(prefix_dir):
                 continue
             current_dest_dir = os.path.join(distribution_dir, dir_from_manifest)
             mkdir_p(current_dest_dir)
@@ -175,8 +165,8 @@ class ReleaseUtil(object):
         if system == "linux":
             system = platform.linux_distribution(full_distribution_name=False)[0].lower()
 
-        release_file_name = "yugabyte-{}-{}-{}-{}.tar.gz".format(
-            self.edition, release_name, system, platform.machine().lower())
+        release_file_name = "yugabyte-{}-{}-{}.tar.gz".format(
+            release_name, system, platform.machine().lower())
         return os.path.join(self.build_path, release_file_name)
 
     def generate_release(self):

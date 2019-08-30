@@ -188,5 +188,42 @@ std::string InboundCall::LogPrefix() const {
   return Format("$0: ", this);
 }
 
+bool InboundCall::RespondTimedOutIfPending(const char* message) {
+  if (!TryStartProcessing()) {
+    return false;
+  }
+
+  RespondFailure(ErrorStatusPB::ERROR_SERVER_TOO_BUSY, STATUS(TimedOut, message));
+  Clear();
+
+  return true;
+}
+
+void InboundCall::Clear() {
+  request_data_.Reset();
+}
+
+void InboundCall::InboundCallTask::Run() {
+  handler_->Handle(call_);
+}
+
+void InboundCall::InboundCallTask::Done(const Status& status) {
+  // We should reset call_ after this function. So it is easiest way to do it.
+  auto call = std::move(call_);
+  if (!status.ok()) {
+    handler_->Failure(call, status);
+  }
+}
+
+void InboundCall::RetainSelf() {
+  LOG_IF_WITH_PREFIX(DFATAL, retained_self_) << "Aleady retained";
+  retained_self_ = shared_from(this);
+}
+
+void InboundCall::UnretainSelf() {
+  LOG_IF_WITH_PREFIX(DFATAL, !retained_self_) << "Not retained";
+  retained_self_.reset();
+}
+
 }  // namespace rpc
 }  // namespace yb

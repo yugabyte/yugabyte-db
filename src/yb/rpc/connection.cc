@@ -145,7 +145,7 @@ void Connection::Shutdown(const Status& status) {
   context_->Shutdown(status);
 
   stream_->Shutdown(status);
-  timer_.stop();
+  timer_.Shutdown();
 }
 
 void Connection::OutboundQueued() {
@@ -160,10 +160,6 @@ void Connection::OutboundQueued() {
             shared_from_this(), SOURCE_LOCATION()));
     LOG_IF_WITH_PREFIX(WARNING, !scheduled) << "Failed to schedule destroy";
   }
-}
-
-void StartTimer(CoarseMonoClock::Duration left, ev::timer* timer) {
-  timer->start(MonoDelta(left).ToSeconds(), 0);
 }
 
 void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
@@ -189,11 +185,16 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
     }
   }
 
-  while (!expiration_queue_.empty() && expiration_queue_.top().first <= now) {
-    auto call = expiration_queue_.top().second.lock();
+  while (!expiration_queue_.empty() && expiration_queue_.top().time <= now) {
+    auto& top = expiration_queue_.top();
+    auto call = top.call.lock();
+    auto handle = top.handle;
     expiration_queue_.pop();
     if (call && !call->IsFinished()) {
       call->SetTimedOut();
+      if (handle != std::numeric_limits<size_t>::max()) {
+        stream_->Cancelled(handle);
+      }
       auto i = awaiting_response_.find(call->call_id());
       if (i != awaiting_response_.end()) {
         i->second.reset();
@@ -202,11 +203,11 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   }
 
   if (!expiration_queue_.empty()) {
-    deadline = std::min(deadline, expiration_queue_.top().first);
+    deadline = std::min(deadline, expiration_queue_.top().time);
   }
 
   if (deadline != CoarseTimePoint::max()) {
-    StartTimer(deadline - now, &timer_);
+    timer_.Start(deadline - now);
   }
 }
 
@@ -214,29 +215,29 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   DCHECK(call);
   DCHECK_EQ(direction_, Direction::CLIENT);
 
-  DoQueueOutboundData(call, true);
+  auto handle = DoQueueOutboundData(call, true);
 
   // Set up the timeout timer.
   const MonoDelta& timeout = call->controller()->timeout();
   if (timeout.Initialized()) {
     auto expires_at = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
-    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().first > expires_at;
-    expiration_queue_.emplace(expires_at, call);
+    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().time > expires_at;
+    expiration_queue_.push({expires_at, call, handle});
     if (reschedule && (stream_->IsConnected() ||
                        expires_at < last_activity_time_ + FLAGS_rpc_connection_timeout_ms * 1ms)) {
-      StartTimer(timeout.ToSteadyDuration(), &timer_);
+      timer_.Start(timeout.ToSteadyDuration());
     }
   }
 
   call->SetQueued();
 }
 
-void Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) {
+size_t Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) {
   DCHECK(reactor_->IsCurrentThread());
 
   if (!shutdown_status_.ok()) {
     outbound_data->Transferred(shutdown_status_, this);
-    return;
+    return std::numeric_limits<size_t>::max();
   }
 
   // If the connection is torn down, then the QueueOutbound() call that
@@ -249,18 +250,20 @@ void Connection::DoQueueOutboundData(OutboundDataPtr outbound_data, bool batch) 
   Status s = context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
   if (!s.ok()) {
     Shutdown(s);
-    return;
+    return std::numeric_limits<size_t>::max();
   }
-  stream_->Send(std::move(outbound_data));
+  auto result = stream_->Send(std::move(outbound_data));
   s = context_->ReportPendingWriteBytes(stream_->GetPendingWriteBytes());
   if (!s.ok()) {
     Shutdown(s);
-    return;
+    return std::numeric_limits<size_t>::max();
   }
 
   if (!batch) {
     OutboundQueued();
   }
+
+  return result;
 }
 
 void Connection::ParseReceived() {
@@ -276,7 +279,9 @@ Result<ProcessDataResult> Connection::ProcessReceived(
   }
 
   if (!result->consumed && read_buffer_full && context_->Idle()) {
-    return STATUS(InvalidArgument, "Command is greater than read buffer");
+    return STATUS_FORMAT(
+        InvalidArgument, "Command is greater than read buffer, exist data: $0",
+        IoVecsFullSize(data));
   }
 
   return result;
@@ -290,9 +295,8 @@ Status Connection::HandleCallResponse(CallData* call_data) {
   ++responded_call_count_;
   auto awaiting = awaiting_response_.find(resp.call_id());
   if (awaiting == awaiting_response_.end()) {
-    LOG_WITH_PREFIX(ERROR) << "Got a response for call id " << resp.call_id() << " which "
-                           << "was not pending! Ignoring.";
-    DCHECK(awaiting != awaiting_response_.end());
+    LOG_WITH_PREFIX(DFATAL) << "Got a response for call id " << resp.call_id() << " which "
+                            << "was not pending! Ignoring.";
     return Status::OK();
   }
   auto call = awaiting->second;
@@ -300,7 +304,8 @@ Status Connection::HandleCallResponse(CallData* call_data) {
 
   if (PREDICT_FALSE(!call)) {
     // The call already failed due to a timeout.
-    VLOG(1) << "Got response to call id " << resp.call_id() << " after client already timed out";
+    VLOG_WITH_PREFIX(1) << "Got response to call id " << resp.call_id()
+                        << " after client already timed out";
     return Status::OK();
   }
 
@@ -424,13 +429,15 @@ void Connection::ProcessResponseQueue() {
 Status Connection::Start(ev::loop_ref* loop) {
   DCHECK(reactor_->IsCurrentThread());
 
+  context_->SetEventLoop(loop);
+
   RETURN_NOT_OK(stream_->Start(direction_ == Direction::CLIENT, loop, this));
 
-  timer_.set(*loop);
-  timer_.set<Connection, &Connection::HandleTimeout>(this); // NOLINT
+  timer_.Init(*loop);
+  timer_.SetCallback<Connection, &Connection::HandleTimeout>(this); // NOLINT
 
   if (!stream_->IsConnected()) {
-    StartTimer(FLAGS_rpc_connection_timeout_ms * 1ms, &timer_);
+    timer_.Start(FLAGS_rpc_connection_timeout_ms * 1ms);
   }
 
   auto self = shared_from_this();
@@ -465,6 +472,14 @@ void Connection::Close() {
 
 void Connection::UpdateLastActivity() {
   last_activity_time_ = reactor_->cur_time();
+}
+
+void Connection::UpdateLastRead() {
+  context_->UpdateLastRead(shared_from_this());
+}
+
+void Connection::UpdateLastWrite() {
+  context_->UpdateLastWrite(shared_from_this());
 }
 
 void Connection::Transferred(const OutboundDataPtr& data, const Status& status) {

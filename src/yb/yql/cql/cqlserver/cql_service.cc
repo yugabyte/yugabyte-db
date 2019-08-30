@@ -16,6 +16,7 @@
 #include <mutex>
 #include <thread>
 
+#include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_pool.h"
 
 #include "yb/gutil/strings/join.h"
@@ -32,10 +33,11 @@
 #include "yb/util/mem_tracker.h"
 
 using namespace std::placeholders;
+using namespace yb::size_literals;
 
 DECLARE_bool(use_cassandra_authentication);
 
-DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 0,
+DEFINE_int64(cql_service_max_prepared_statement_size_bytes, 128_MB,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
              "statements. 0 or negative means unlimited.");
 DEFINE_int32(cql_ybclient_reactor_threads, 24,
@@ -91,16 +93,15 @@ CQLServiceImpl::CQLServiceImpl(CQLServer* server, const CQLServerOptions& opts,
 CQLServiceImpl::~CQLServiceImpl() {
 }
 
-const std::shared_ptr<client::YBClient>& CQLServiceImpl::client() const {
-  auto& client = async_client_init_.client();
+client::YBClient* CQLServiceImpl::client() const {
+  auto client = async_client_init_.client();
   if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
     std::lock_guard<std::mutex> l(metadata_init_mutex_);
     if (!is_metadata_initialized_.load(std::memory_order_acquire)) {
       // Add local tserver if available.
       if (server_->tserver() != nullptr && server_->tserver()->proxy() != nullptr) {
-        client->AddTabletServer(server_->tserver()->permanent_uuid(),
-                                server_->tserver()->proxy(),
-                                server_->tserver());
+        client->SetLocalTabletServer(
+            server_->tserver()->permanent_uuid(), server_->tserver()->proxy(), server_->tserver());
       }
       // Create and save the metadata cache object.
       metadata_cache_ = std::make_shared<YBMetaDataCache>(client,

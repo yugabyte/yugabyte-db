@@ -26,7 +26,7 @@
 #include "yb/rocksdb/util/io_posix.h"
 #include <errno.h>
 #include <fcntl.h>
-#if defined(OS_LINUX)
+#if defined(__linux__)
 #include <linux/fs.h>
 #endif
 #include <stdio.h>
@@ -36,203 +36,30 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#ifdef OS_LINUX
+#ifdef __linux__
 #include <sys/statfs.h>
 #include <sys/syscall.h>
 #endif
 #include "yb/rocksdb/port/port.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
 #include "yb/rocksdb/util/posix_logger.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
+
+#include "yb/util/file_system_posix.h"
+#include "yb/util/malloc.h"
+#include "yb/util/slice.h"
+#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 
 // A wrapper for fadvise, if the platform doesn't support fadvise,
 // it will simply return Status::NotSupport.
 int Fadvise(int fd, off_t offset, size_t len, int advice) {
-#ifdef OS_LINUX
+#ifdef __linux__
   return posix_fadvise(fd, offset, len, advice);
 #else
   return 0;  // simply do nothing.
-#endif
-}
-
-/*
- * PosixSequentialFile
- */
-PosixSequentialFile::PosixSequentialFile(const std::string& fname, FILE* f,
-                                         const EnvOptions& options)
-    : filename_(fname),
-      file_(f),
-      fd_(fileno(f)),
-      use_os_buffer_(options.use_os_buffer) {}
-
-PosixSequentialFile::~PosixSequentialFile() { fclose(file_); }
-
-Status PosixSequentialFile::Read(size_t n, Slice* result, char* scratch) {
-  Status s;
-  size_t r = 0;
-  do {
-    r = fread_unlocked(scratch, 1, n, file_);
-  } while (r == 0 && ferror(file_) && errno == EINTR);
-  *result = Slice(scratch, r);
-  if (r < n) {
-    if (feof(file_)) {
-      // We leave status as ok if we hit the end of the file
-      // We also clear the error so that the reads can continue
-      // if a new data is written to the file
-      clearerr(file_);
-    } else {
-      // A partial read with an error: return a non-ok status
-      s = STATUS_IO_ERROR(filename_, errno);
-    }
-  }
-  if (!use_os_buffer_) {
-    // we need to fadvise away the entire range of pages because
-    // we do not want readahead pages to be cached.
-    Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);  // free OS pages
-  }
-  return s;
-}
-
-Status PosixSequentialFile::Skip(uint64_t n) {
-  if (fseek(file_, static_cast<long>(n), SEEK_CUR)) { // NOLINT
-    return STATUS_IO_ERROR(filename_, errno);
-  }
-  return Status::OK();
-}
-
-Status PosixSequentialFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef OS_LINUX
-  return Status::OK();
-#else
-  // free OS pages
-  int ret = Fadvise(fd_, offset, length, POSIX_FADV_DONTNEED);
-  if (ret == 0) {
-    return Status::OK();
-  }
-  return STATUS_IO_ERROR(filename_, errno);
-#endif
-}
-
-#if defined(OS_LINUX)
-namespace {
-static size_t GetUniqueIdFromFile(int fd, char* id, size_t max_size) {
-  if (max_size < kMaxVarint64Length * 3) {
-    return 0;
-  }
-
-  struct stat buf;
-  int result = fstat(fd, &buf);
-  if (result == -1) {
-    return 0;
-  }
-
-  int version = 0;
-  result = ioctl(fd, FS_IOC_GETVERSION, &version);
-  if (result == -1) {
-    return 0;
-  }
-  uint64_t uversion = (uint64_t)version;
-
-  char* rid = id;
-  rid = EncodeVarint64(rid, buf.st_dev);
-  rid = EncodeVarint64(rid, buf.st_ino);
-  rid = EncodeVarint64(rid, uversion);
-  assert(rid >= id);
-  return static_cast<size_t>(rid - id);
-}
-} // namespace
-#endif
-
-/*
- * PosixRandomAccessFile
- *
- * pread() based random-access
- */
-PosixRandomAccessFile::PosixRandomAccessFile(const std::string& fname, int fd,
-                                             const EnvOptions& options)
-    : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer) {
-  assert(!options.use_mmap_reads || sizeof(void*) < 8);
-}
-
-PosixRandomAccessFile::~PosixRandomAccessFile() { close(fd_); }
-
-Status PosixRandomAccessFile::Read(uint64_t offset, size_t n, Slice* result,
-                                   char* scratch) const {
-  Status s;
-  ssize_t r = -1;
-  size_t left = n;
-  char* ptr = scratch;
-  while (left > 0) {
-    r = pread(fd_, ptr, left, static_cast<off_t>(offset));
-
-    if (r <= 0) {
-      if (errno == EINTR) {
-        continue;
-      }
-      break;
-    }
-    ptr += r;
-    offset += r;
-    left -= r;
-  }
-
-  *result = Slice(scratch, (r < 0) ? 0 : n - left);
-  if (r < 0) {
-    // An error: return a non-ok status
-    s = STATUS_IO_ERROR(filename_, errno);
-  }
-  if (!use_os_buffer_) {
-    // we need to fadvise away the entire range of pages because
-    // we do not want readahead pages to be cached.
-    Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);  // free OS pages
-  }
-  return s;
-}
-
-#ifdef OS_LINUX
-size_t PosixRandomAccessFile::GetUniqueId(char* id, size_t max_size) const {
-  return GetUniqueIdFromFile(fd_, id, max_size);
-}
-#endif
-
-void PosixRandomAccessFile::Hint(AccessPattern pattern) {
-  switch (pattern) {
-    case NORMAL:
-      Fadvise(fd_, 0, 0, POSIX_FADV_NORMAL);
-      break;
-    case RANDOM:
-      Fadvise(fd_, 0, 0, POSIX_FADV_RANDOM);
-      break;
-    case SEQUENTIAL:
-      Fadvise(fd_, 0, 0, POSIX_FADV_SEQUENTIAL);
-      break;
-    case WILLNEED:
-      Fadvise(fd_, 0, 0, POSIX_FADV_WILLNEED);
-      break;
-    case DONTNEED:
-      Fadvise(fd_, 0, 0, POSIX_FADV_DONTNEED);
-      break;
-    default:
-      assert(false);
-      break;
-  }
-}
-
-Status PosixRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef OS_LINUX
-  return Status::OK();
-#else
-  // free OS pages
-  int ret = Fadvise(fd_, offset, length, POSIX_FADV_DONTNEED);
-  if (ret == 0) {
-    return Status::OK();
-  }
-  return STATUS_IO_ERROR(filename_, errno);
 #endif
 }
 
@@ -261,7 +88,7 @@ PosixMmapReadableFile::~PosixMmapReadableFile() {
 }
 
 Status PosixMmapReadableFile::Read(uint64_t offset, size_t n, Slice* result,
-                                   char* scratch) const {
+                                   uint8_t* scratch) const {
   Status s;
   if (offset > length_) {
     *result = Slice();
@@ -274,7 +101,7 @@ Status PosixMmapReadableFile::Read(uint64_t offset, size_t n, Slice* result,
 }
 
 Status PosixMmapReadableFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef OS_LINUX
+#ifndef __linux__
   return Status::OK();
 #else
   // free OS pages
@@ -284,6 +111,19 @@ Status PosixMmapReadableFile::InvalidateCache(size_t offset, size_t length) {
   }
   return STATUS_IO_ERROR(filename_, errno);
 #endif
+}
+
+yb::Result<uint64_t> PosixMmapReadableFile::INode() const {
+  struct stat st;
+  if (stat(filename_.c_str(), &st) != 0) {
+    return STATUS_IO_ERROR(filename_, errno);
+  } else {
+    return st.st_ino;
+  }
+}
+
+size_t PosixMmapReadableFile::memory_footprint() const {
+  return malloc_usable_size(this) + filename_.capacity();
 }
 
 /*
@@ -479,7 +319,7 @@ uint64_t PosixMmapFile::GetFileSize() {
 }
 
 Status PosixMmapFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef OS_LINUX
+#ifndef __linux__
   return Status::OK();
 #else
   // free OS pages
@@ -610,7 +450,7 @@ bool PosixWritableFile::IsSyncThreadSafe() const { return true; }
 uint64_t PosixWritableFile::GetFileSize() { return filesize_; }
 
 Status PosixWritableFile::InvalidateCache(size_t offset, size_t length) {
-#ifndef OS_LINUX
+#ifndef __linux__
   return Status::OK();
 #else
   // free OS pages
@@ -652,8 +492,8 @@ Status PosixWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) {
   }
 }
 
-size_t PosixWritableFile::GetUniqueId(char* id, size_t max_size) const {
-  return GetUniqueIdFromFile(fd_, id, max_size);
+size_t PosixWritableFile::GetUniqueId(char* id) const {
+  return yb::GetUniqueIdFromFile(fd_, pointer_cast<uint8_t*>(id));
 }
 #endif
 

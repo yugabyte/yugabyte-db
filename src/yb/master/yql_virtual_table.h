@@ -54,14 +54,14 @@ class YQLVirtualTable : public common::YQLStorageIf {
                              const common::QLScanSpec& spec,
                              std::unique_ptr<common::YQLRowwiseIteratorIf>* iter) const override;
 
-  CHECKED_STATUS BuildYQLScanSpec(const QLReadRequestPB& request,
-                                  const ReadHybridTime& read_time,
-                                  const Schema& schema,
-                                  bool include_static_columns,
-                                  const Schema& static_projection,
-                                  std::unique_ptr<common::QLScanSpec>* spec,
-                                  std::unique_ptr<common::QLScanSpec>* static_row_spec,
-                                  ReadHybridTime* req_read_time) const override;
+  CHECKED_STATUS BuildYQLScanSpec(
+      const QLReadRequestPB& request,
+      const ReadHybridTime& read_time,
+      const Schema& schema,
+      bool include_static_columns,
+      const Schema& static_projection,
+      std::unique_ptr<common::QLScanSpec>* spec,
+      std::unique_ptr<common::QLScanSpec>* static_row_spec) const override;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.

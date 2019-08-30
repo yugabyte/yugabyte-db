@@ -88,5 +88,11 @@ void SemState::set_bindvar_name(string name) {
   bindvar_name_ = MCMakeShared<MCString>(sem_context_->PSemMem(), name.data(), name.size());
 }
 
+void SemState::add_index_column_ref(int32_t col_id) {
+  if (index_column_) {
+    index_column_->AddIndexedRef(col_id);
+  }
+}
+
 }  // namespace ql}  // namespace ql
 }  // namespace yb

@@ -29,7 +29,6 @@ using client::YBSession;
 using client::YBMetaDataCache;
 using client::YBTable;
 using client::YBTableName;
-using client::YBTableType;
 using client::YBPgsqlWriteOp;
 
 // TODO(neil) This should be derived from a GFLAGS.
@@ -70,7 +69,7 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
   bool missing_primary_key = false;
 
   // Either ybctid or primary key must be present.
-  if (ybctid_bind_.empty()) {
+  if (!ybctid_bind_) {
     // Remove empty binds from partition list.
     auto partition_iter = write_req_->mutable_partition_column_values()->begin();
     while (partition_iter != write_req_->mutable_partition_column_values()->end()) {
@@ -93,9 +92,6 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
       }
     }
   } else {
-    uint16_t hash_value;
-    RETURN_NOT_OK(PgExpr::ReadHashValue(ybctid_bind_.data(), ybctid_bind_.size(), &hash_value));
-    write_req_->set_hash_code(hash_value);
     write_req_->clear_partition_column_values();
     write_req_->clear_range_column_values();
   }
@@ -136,6 +132,8 @@ Status PgDmlWrite::Exec() {
        RETURN_NOT_OK(PgDocData::LoadCache(row_batch_, &row_count, &cursor_));
        accumulated_row_count_ += row_count;
      }
+     // Save the number of rows affected by the op.
+     rows_affected_count_ = doc_op_->GetRowsAffectedCount();
   }
 
   return Status::OK();

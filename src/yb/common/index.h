@@ -32,7 +32,9 @@ class IndexInfo {
   // Index column mapping.
   struct IndexColumn {
     ColumnId column_id;         // Column id in the index table.
+    string column_name;         // Column name in the index table, PTExpr::QLName().
     ColumnId indexed_column_id; // Corresponding column id in indexed table.
+    QLExpressionPB colexpr;     // Index expression.
 
     explicit IndexColumn(const IndexInfoPB::IndexColumnPB& pb);
     IndexColumn() {}
@@ -72,6 +74,11 @@ class IndexInfo {
 
   // Is column covered by this index? (Note: indexed columns are always covered)
   bool IsColumnCovered(ColumnId column_id) const;
+
+  // Check if this INDEX contain the column being referenced by the given selected expression.
+  // - If found, return the location of the column (columns_[loc]).
+  // - Otherwise, return -1.
+  int32_t IsExprCovered(const string& expr_content) const;
 
  private:
   const TableId table_id_;            // Index table id.

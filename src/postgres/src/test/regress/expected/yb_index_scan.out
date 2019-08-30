@@ -1,0 +1,273 @@
+-- Test primary key ordering
+CREATE TABLE pk_asc(k int, v int, PRIMARY KEY(k ASC));
+INSERT INTO pk_asc VALUES (20, 2),(30, 3),(10, 1);
+SELECT * FROM pk_asc;
+ k  | v
+----+---
+ 10 | 1
+ 20 | 2
+ 30 | 3
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM pk_asc ORDER BY k;
+               QUERY PLAN
+----------------------------------------
+ Index Scan using pk_asc_pkey on pk_asc
+(1 row)
+
+SELECT * FROM pk_asc ORDER BY k;
+ k  | v
+----+---
+ 10 | 1
+ 20 | 2
+ 30 | 3
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM pk_asc ORDER BY k DESC;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Scan Backward using pk_asc_pkey on pk_asc
+(1 row)
+
+SELECT * FROM pk_asc ORDER BY k DESC;
+ k  | v
+----+---
+ 30 | 3
+ 20 | 2
+ 10 | 1
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM pk_asc ORDER BY k NULLS FIRST;
+          QUERY PLAN
+------------------------------
+ Sort
+   Sort Key: k NULLS FIRST
+   ->  Foreign Scan on pk_asc
+(3 rows)
+
+SELECT * FROM pk_asc ORDER BY k NULLS FIRST;
+ k  | v
+----+---
+ 10 | 1
+ 20 | 2
+ 30 | 3
+(3 rows)
+
+CREATE TABLE pk_desc(k int, v int, PRIMARY KEY(k DESC NULLS LAST));
+INSERT INTO pk_desc VALUES (20, 12),(30, 13),(10, 11);
+SELECT * FROM pk_desc;
+ k  | v
+----+----
+ 30 | 13
+ 20 | 12
+ 10 | 11
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM pk_desc ORDER BY k;
+          QUERY PLAN
+-------------------------------
+ Sort
+   Sort Key: k
+   ->  Foreign Scan on pk_desc
+(3 rows)
+
+SELECT * FROM pk_desc ORDER BY k;
+ k  | v
+----+----
+ 10 | 11
+ 20 | 12
+ 30 | 13
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM pk_desc ORDER BY k DESC;
+          QUERY PLAN
+-------------------------------
+ Sort
+   Sort Key: k DESC
+   ->  Foreign Scan on pk_desc
+(3 rows)
+
+SELECT * FROM pk_desc ORDER BY k DESC;
+ k  | v
+----+----
+ 30 | 13
+ 20 | 12
+ 10 | 11
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM pk_desc ORDER BY k NULLS FIRST;
+                    QUERY PLAN
+---------------------------------------------------
+ Index Scan Backward using pk_desc_pkey on pk_desc
+(1 row)
+
+SELECT * FROM pk_desc ORDER BY k NULLS FIRST;
+ k  | v
+----+----
+ 10 | 11
+ 20 | 12
+ 30 | 13
+(3 rows)
+
+CREATE TABLE  pk_multi(h int, r int, v text, PRIMARY KEY(h, r DESC));
+INSERT INTO pk_multi(h, r, v) VALUES (1, 0, '1-0'),(1, 1, '1-1'),(1, 2, '1-2'),(1, 3, '1-3');
+EXPLAIN (COSTS OFF) SELECT * FROM pk_multi WHERE h = 1;
+                 QUERY PLAN
+--------------------------------------------
+ Index Scan using pk_multi_pkey on pk_multi
+   Index Cond: (h = 1)
+(2 rows)
+
+SELECT * FROM pk_multi WHERE h = 1;
+ h | r |  v
+---+---+-----
+ 1 | 3 | 1-3
+ 1 | 2 | 1-2
+ 1 | 1 | 1-1
+ 1 | 0 | 1-0
+(4 rows)
+
+-- Test unique secondary index ordering
+CREATE TABLE usc_asc(k int, v int);
+CREATE UNIQUE INDEX ON usc_asc(v ASC NULLS FIRST);
+INSERT INTO usc_asc VALUES (44, NULL),(22, 20),(33, 30),(11, 10),(44, NULL);
+EXPLAIN (COSTS OFF) SELECT * FROM usc_asc ORDER BY v;
+          QUERY PLAN
+-------------------------------
+ Sort
+   Sort Key: v
+   ->  Foreign Scan on usc_asc
+(3 rows)
+
+SELECT * FROM usc_asc ORDER BY v;
+ k  | v
+----+----
+ 11 | 10
+ 22 | 20
+ 33 | 30
+ 44 |
+ 44 |
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM usc_asc ORDER BY v DESC NULLS LAST;
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan Backward using usc_asc_v_idx on usc_asc
+(1 row)
+
+SELECT * FROM usc_asc ORDER BY v DESC NULLS LAST;
+ k  | v
+----+----
+ 33 | 30
+ 22 | 20
+ 11 | 10
+ 44 |
+ 44 |
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM usc_asc ORDER BY v NULLS FIRST;
+                QUERY PLAN
+-------------------------------------------
+ Index Scan using usc_asc_v_idx on usc_asc
+(1 row)
+
+SELECT * FROM usc_asc ORDER BY v NULLS FIRST;
+ k  | v
+----+----
+ 44 |
+ 44 |
+ 11 | 10
+ 22 | 20
+ 33 | 30
+(5 rows)
+
+CREATE TABLE usc_multi_asc(k int, r int, v int);
+CREATE INDEX ON usc_multi_asc(k, r ASC NULLS FIRST);
+INSERT INTO usc_multi_asc(k, r, v) VALUES (1, 10, 1),(1, NULL, 2),(1, 20, 3);
+EXPLAIN (COSTS OFF) SELECT * FROM usc_multi_asc WHERE k = 1;
+                       QUERY PLAN
+---------------------------------------------------------
+ Index Scan using usc_multi_asc_k_r_idx on usc_multi_asc
+   Index Cond: (k = 1)
+(2 rows)
+
+SELECT * FROM usc_multi_asc WHERE k = 1;
+ k | r  | v
+---+----+---
+ 1 |    | 2
+ 1 | 10 | 1
+ 1 | 20 | 3
+(3 rows)
+
+-- Test non-unique secondary index ordering
+CREATE TABLE sc_desc(k int, v int);
+CREATE INDEX ON sc_desc(v DESC NULLS LAST);
+INSERT INTO sc_desc VALUES (4, NULL),(2, 20),(3, 30),(1, 10),(4, NULL);
+EXPLAIN (COSTS OFF) SELECT * FROM sc_desc ORDER BY v;
+          QUERY PLAN
+-------------------------------
+ Sort
+   Sort Key: v
+   ->  Foreign Scan on sc_desc
+(3 rows)
+
+SELECT * FROM sc_desc ORDER BY v;
+ k | v
+---+----
+ 1 | 10
+ 2 | 20
+ 3 | 30
+ 4 |
+ 4 |
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM sc_desc ORDER BY v DESC NULLS LAST;
+                QUERY PLAN
+-------------------------------------------
+ Index Scan using sc_desc_v_idx on sc_desc
+(1 row)
+
+SELECT * FROM sc_desc ORDER BY v DESC NULLS LAST;
+ k | v
+---+----
+ 3 | 30
+ 2 | 20
+ 1 | 10
+ 4 |
+ 4 |
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT * FROM sc_desc ORDER BY v NULLS FIRST;
+                     QUERY PLAN
+----------------------------------------------------
+ Index Scan Backward using sc_desc_v_idx on sc_desc
+(1 row)
+
+SELECT * FROM sc_desc ORDER BY v NULLS FIRST;
+ k | v
+---+----
+ 4 |
+ 4 |
+ 1 | 10
+ 2 | 20
+ 3 | 30
+(5 rows)
+
+CREATE TABLE sc_multi_desc(k int, r int, v int);
+CREATE INDEX ON sc_multi_desc(k, r DESC);
+INSERT INTO sc_multi_desc(k, r, v) VALUES (1, 10, 10),(1, 10, 10),(1, NULL, 2),(1, 20, 3);
+EXPLAIN (COSTS OFF) SELECT * FROM sc_multi_desc WHERE k = 1;
+                       QUERY PLAN
+---------------------------------------------------------
+ Index Scan using sc_multi_desc_k_r_idx on sc_multi_desc
+   Index Cond: (k = 1)
+(2 rows)
+
+SELECT * FROM sc_multi_desc WHERE k = 1;
+ k | r  | v
+---+----+----
+ 1 |    |  2
+ 1 | 20 |  3
+ 1 | 10 | 10
+ 1 | 10 | 10
+(4 rows)

@@ -35,9 +35,12 @@
 #include <memory>
 #include <vector>
 
+#include "yb/client/client_fwd.h"
+
 #include "yb/gutil/ref_counted.h"
-#include "yb/util/locks.h"
 #include "yb/gutil/thread_annotations.h"
+
+#include "yb/util/locks.h"
 
 namespace yb {
 namespace client {
@@ -52,9 +55,7 @@ class ErrorCollector : public RefCountedThreadSafe<ErrorCollector> {
 
   void AddError(std::unique_ptr<YBError> error);
 
-  void AddError(std::shared_ptr<YBOperation> operation, Status status) {
-    AddError(std::make_unique<YBError>(std::move(operation), std::move(status)));
-  }
+  void AddError(YBOperationPtr operation, Status status);
 
   // See YBSession for details.
   int CountErrors() const;

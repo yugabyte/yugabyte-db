@@ -52,20 +52,14 @@ namespace {
 
 class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
  public:
-  explicit DocDBIntentsCompactionFilter(tablet::Tablet* tablet)
-      : tablet_(tablet), compaction_start_time_(tablet->clock()->Now().GetPhysicalValueMicros()) {
-  }
+  explicit DocDBIntentsCompactionFilter(tablet::Tablet* tablet, const KeyBounds* key_bounds)
+      : tablet_(tablet), compaction_start_time_(tablet->clock()->Now().GetPhysicalValueMicros()) {}
 
   ~DocDBIntentsCompactionFilter() override;
 
-  bool Filter(int level,
-              const rocksdb::Slice& key,
-              const rocksdb::Slice& existing_value,
-              std::string* new_value,
-              bool* value_changed) const override {
-    return const_cast<DocDBIntentsCompactionFilter*>(this)->DoFilter(level, key,
-              existing_value, new_value, value_changed);
-  }
+  rocksdb::FilterDecision Filter(
+      int level, const Slice& key, const Slice& existing_value, std::string* new_value,
+      bool* value_changed) override;
 
   const char* Name() const override;
 
@@ -76,11 +70,6 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
   void AddToSet(const TransactionId& transaction_id);
 
  private:
-  bool DoFilter(int level,
-                const rocksdb::Slice& key,
-                const rocksdb::Slice& existing_value,
-                std::string* new_value,
-                bool* value_changed);
   tablet::Tablet* const tablet_;
   const MicrosTime compaction_start_time_;
 
@@ -106,9 +95,9 @@ DocDBIntentsCompactionFilter::~DocDBIntentsCompactionFilter() {
   manager->Cleanup(std::move(transactions_to_cleanup_));
 }
 
-bool DocDBIntentsCompactionFilter::DoFilter(int level, const rocksdb::Slice& key,
-                                            const rocksdb::Slice& existing_value,
-                                            std::string* new_value, bool* value_changed) {
+rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
+    int level, const Slice& key, const Slice& existing_value, std::string* new_value,
+    bool* value_changed) {
   if (!filter_usage_logged_) {
     VLOG(3) << "DocDB intents compaction filter is being used for a compaction";
     filter_usage_logged_ = true;
@@ -119,23 +108,28 @@ bool DocDBIntentsCompactionFilter::DoFilter(int level, const rocksdb::Slice& key
     TransactionMetadataPB metadata_pb;
     if (!metadata_pb.ParseFromArray(existing_value.cdata(), existing_value.size())) {
       LOG(ERROR) << "Transaction metadata failed to parse.";
-      return false;
+      return rocksdb::FilterDecision::kKeep;
     }
     uint64_t write_time = metadata_pb.metadata_write_time();
     if (!write_time) {
       write_time = HybridTime(metadata_pb.deprecated_start_hybrid_time()).GetPhysicalValueMicros();
     }
     if (compaction_start_time_ < write_time + FLAGS_aborted_intent_cleanup_ms * 1000) {
-      return false;
+      return rocksdb::FilterDecision::kKeep;
     }
     auto result = DecodeTransactionIdFromIntentValue(const_cast<Slice*>(&key));
     if (!result.ok()) {
       LOG(ERROR) << "Could not decode Transaction metadata: " << result.status();
-      return false;
+      return rocksdb::FilterDecision::kKeep;
     }
     AddToSet(*result);
   }
-  return false;
+
+  // TODO(dtxn): If/when we add processing of reverse index or intents here - we will need to
+  // respect key_bounds passed to constructor in order to ignore/delete non-relevant keys. As of
+  // 2019/06/19, intents and reverse indexes are being deleted by docdb::PrepareApplyIntentsBatch.
+
+  return rocksdb::FilterDecision::kKeep;
 }
 
 void DocDBIntentsCompactionFilter::AddToSet(const TransactionId& transaction_id) {
@@ -154,14 +148,15 @@ const char* DocDBIntentsCompactionFilter::Name() const {
 
 // ------------------------------------------------------------------------------------------------
 
-DocDBIntentsCompactionFilterFactory::DocDBIntentsCompactionFilterFactory(tablet::Tablet* tablet)
-    : tablet_(tablet) {}
+DocDBIntentsCompactionFilterFactory::DocDBIntentsCompactionFilterFactory(
+    tablet::Tablet* tablet, const KeyBounds* key_bounds)
+    : tablet_(tablet), key_bounds_(key_bounds) {}
 
 DocDBIntentsCompactionFilterFactory::~DocDBIntentsCompactionFilterFactory() {}
 
 std::unique_ptr<CompactionFilter> DocDBIntentsCompactionFilterFactory::CreateCompactionFilter(
     const CompactionFilter::Context& context) {
-  return std::make_unique<DocDBIntentsCompactionFilter>(tablet_);
+  return std::make_unique<DocDBIntentsCompactionFilter>(tablet_, key_bounds_);
 }
 
 const char* DocDBIntentsCompactionFilterFactory::Name() const {

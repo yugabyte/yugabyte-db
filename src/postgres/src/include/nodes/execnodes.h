@@ -31,6 +31,7 @@
 #include "nodes/tidbitmap.h"
 #include "storage/condition_variable.h"
 
+#include "pg_yb_utils.h"
 
 struct PlanState;				/* forward references in this file */
 struct ParallelHashJoinState;
@@ -579,11 +580,12 @@ typedef struct EState
 	struct JitInstrumentation *es_jit_worker_instr;
 
 	/* YugaByte-specific fields */
-	uint64_t es_yb_read_ht; /* read hybrid time used by YB proxy to read consistent snapshot,
-                             initial value is 0, it means that value is not initialised */
-
 	bool es_yb_is_single_row_modify_txn; /* Is this query a single-row modify
-                                          * and the only stmt in this txn. */
+																				* and the only stmt in this txn. */
+	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
+																		 * we cache the conflict tuple here when processing and
+																		 * then free the slot after the conflict is resolved. */
+	YBCPgExecParameters yb_exec_params;
 } EState;
 
 
@@ -1077,6 +1079,10 @@ typedef struct ModifyTableState
 
 	/* Per plan map for tuple conversion from child to root */
 	TupleConversionMap **mt_per_subplan_tupconv_maps;
+
+	/* YB specific attributes. */
+	bool yb_mt_is_single_row_update_or_delete;
+	Bitmapset *yb_mt_update_attrs;
 } ModifyTableState;
 
 /* ----------------

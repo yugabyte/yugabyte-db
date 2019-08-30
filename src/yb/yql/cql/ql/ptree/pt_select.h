@@ -28,51 +28,6 @@ namespace yb {
 namespace ql {
 
 //--------------------------------------------------------------------------------------------------
-// This class represents VALUES clause
-class PTValues : public PTCollection {
- public:
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef MCSharedPtr<PTValues> SharedPtr;
-  typedef MCSharedPtr<const PTValues> SharedPtrConst;
-
-  //------------------------------------------------------------------------------------------------
-  // Constructor and destructor.
-  PTValues(MemoryContext *memctx,
-           YBLocation::SharedPtr loc,
-           PTExprListNode::SharedPtr tuple);
-  virtual ~PTValues();
-
-  template<typename... TypeArgs>
-  inline static PTValues::SharedPtr MakeShared(MemoryContext *memctx,
-                                               TypeArgs&&... args) {
-    return MCMakeShared<PTValues>(memctx, std::forward<TypeArgs>(args)...);
-  }
-
-  // Add a tree node at the end.
-  void Append(const PTExprListNode::SharedPtr& tnode);
-  void Prepend(const PTExprListNode::SharedPtr& tnode);
-
-  // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
-  void PrintSemanticAnalysisResult(SemContext *sem_context);
-
-  // Access function for tuples_.
-  const TreeListNode<PTExprListNode>& tuples() {
-    return tuples_;
-  }
-
-  // Number of provided tuples.
-  virtual int TupleCount() const {
-    return tuples_.size();
-  }
-  PTExprListNode::SharedPtr Tuple(int index) const;
-
- private:
-  TreeListNode<PTExprListNode> tuples_;
-};
-
-//--------------------------------------------------------------------------------------------------
 // ORDER BY.
 class PTOrderBy : public TreeNode {
  public:
@@ -205,6 +160,8 @@ class PTSelectStmt : public PTDmlStmt {
   // Node semantics analysis.
   virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
+  ExplainPlanPB AnalysisResultToPB() override;
+  bool CoversFully(const IndexInfo& index_info) const;
 
   // Execution opcode.
   virtual TreeNodeOpcode opcode() const override {
@@ -327,6 +284,7 @@ class PTSelectStmt : public PTDmlStmt {
   PTOrderByListNode::SharedPtr order_by_clause_;
   PTExpr::SharedPtr limit_clause_;
   PTExpr::SharedPtr offset_clause_;
+  MCVector<const PTExpr*> covering_exprs_;
 
   // -- The semantic analyzer will decorate this node with the following information --
 

@@ -33,6 +33,7 @@
 #define YB_INTEGRATION_TESTS_TEST_WORKLOAD_H_
 
 #include "yb/client/client.h"
+#include "yb/client/table.h"
 
 namespace yb {
 
@@ -52,9 +53,12 @@ struct TestWorkloadOptions {
   bool pathological_one_row_enabled = false;
   bool sequential_write = false;
   bool insert_failures_allowed = true;
+  IsolationLevel isolation_level = IsolationLevel::NON_TRANSACTIONAL;
 
   int num_tablets = 1;
   client::YBTableName table_name = kDefaultTableName;
+
+  bool is_transactional() const { return isolation_level != IsolationLevel::NON_TRANSACTIONAL; }
 };
 
 // Utility class for generating a workload against a test cluster.
@@ -124,6 +128,8 @@ class TestWorkload {
     return options_.table_name;
   }
 
+  client::YBClient& client() const;
+
   void set_pathological_one_row_enabled(bool enabled) {
     options_.pathological_one_row_enabled = enabled;
   }
@@ -135,6 +141,8 @@ class TestWorkload {
   void set_insert_failures_allowed(bool value) {
     options_.insert_failures_allowed = value;
   }
+
+  void set_transactional(IsolationLevel isolation_level, client::TransactionPool* pool);
 
   // Sets up the internal client and creates the table which will be used for
   // writing, if it doesn't already exist.

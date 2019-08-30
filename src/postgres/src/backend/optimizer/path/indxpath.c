@@ -2518,8 +2518,8 @@ match_rowcompare_to_indexcol(IndexOptInfo *index,
 	Oid			expr_op;
 	Oid			expr_coll;
 
-	/* Forget it if we're not dealing with a btree index */
-	if (index->relam != BTREE_AM_OID)
+	/* Forget it if we're not dealing with a btree or lsm index */
+	if (index->relam != BTREE_AM_OID && index->relam != LSM_AM_OID)
 		return false;
 
 	/*
@@ -2970,7 +2970,7 @@ ec_member_matches_indexcol(PlannerInfo *root, RelOptInfo *rel,
 	curCollation = index->indexcollations[indexcol];
 
 	/*
-	 * If it's a btree index, we can reject it if its opfamily isn't
+	 * If it's a btree or lsm index, we can reject it if its opfamily isn't
 	 * compatible with the EC, since no clause generated from the EC could be
 	 * used with the index.  For non-btree indexes, we can't easily tell
 	 * whether clauses generated from the EC could be used with the index, so
@@ -2979,7 +2979,7 @@ ec_member_matches_indexcol(PlannerInfo *root, RelOptInfo *rel,
 	 * generate_implied_equalities_for_column; see
 	 * match_eclass_clauses_to_index.
 	 */
-	if (index->relam == BTREE_AM_OID &&
+	if ((index->relam == BTREE_AM_OID || index->relam == LSM_AM_OID) &&
 		!list_member_oid(ec->ec_opfamilies, curFamily))
 		return false;
 
@@ -3496,7 +3496,7 @@ match_special_index_operator(Expr *clause, Oid opfamily, Oid idxcollation,
 	/*
 	 * Must also check that index's opfamily supports the operators we will
 	 * want to apply.  (A hash index, for example, will not support ">=".)
-	 * Currently, only btree and spgist support the operators we need.
+	 * Currently, only btree, lsm and spgist support the operators we need.
 	 *
 	 * Note: actually, in the Pattern_Prefix_Exact case, we only need "=" so a
 	 * hash index would work.  Currently it doesn't seem worth checking for
@@ -3520,8 +3520,10 @@ match_special_index_operator(Expr *clause, Oid opfamily, Oid idxcollation,
 		case OID_TEXT_ICREGEXEQ_OP:
 			isIndexable =
 				(opfamily == TEXT_PATTERN_BTREE_FAM_OID) ||
+				(opfamily == TEXT_PATTERN_LSM_FAM_OID) ||
 				(opfamily == TEXT_SPGIST_FAM_OID) ||
-				(opfamily == TEXT_BTREE_FAM_OID &&
+				((opfamily == TEXT_BTREE_FAM_OID ||
+				  opfamily == TEXT_LSM_FAM_OID) &&
 				 (pstatus == Pattern_Prefix_Exact ||
 				  lc_collate_is_c(idxcollation)));
 			break;
@@ -3532,7 +3534,9 @@ match_special_index_operator(Expr *clause, Oid opfamily, Oid idxcollation,
 		case OID_BPCHAR_ICREGEXEQ_OP:
 			isIndexable =
 				(opfamily == BPCHAR_PATTERN_BTREE_FAM_OID) ||
-				(opfamily == BPCHAR_BTREE_FAM_OID &&
+				(opfamily == BPCHAR_PATTERN_LSM_FAM_OID) ||
+				((opfamily == BPCHAR_BTREE_FAM_OID ||
+				  opfamily == BPCHAR_LSM_FAM_OID) &&
 				 (pstatus == Pattern_Prefix_Exact ||
 				  lc_collate_is_c(idxcollation)));
 			break;
@@ -3542,16 +3546,16 @@ match_special_index_operator(Expr *clause, Oid opfamily, Oid idxcollation,
 		case OID_NAME_REGEXEQ_OP:
 		case OID_NAME_ICREGEXEQ_OP:
 			/* name uses locale-insensitive sorting */
-			isIndexable = (opfamily == NAME_BTREE_FAM_OID);
+			isIndexable = (opfamily == NAME_BTREE_FAM_OID || opfamily == NAME_LSM_FAM_OID);
 			break;
 
 		case OID_BYTEA_LIKE_OP:
-			isIndexable = (opfamily == BYTEA_BTREE_FAM_OID);
+			isIndexable = (opfamily == BYTEA_BTREE_FAM_OID || opfamily == BYTEA_LSM_FAM_OID);
 			break;
 
 		case OID_INET_SUB_OP:
 		case OID_INET_SUBEQ_OP:
-			isIndexable = (opfamily == NETWORK_BTREE_FAM_OID);
+			isIndexable = (opfamily == NETWORK_BTREE_FAM_OID || opfamily == NETWORK_LSM_FAM_OID);
 			break;
 	}
 
@@ -4108,21 +4112,27 @@ prefix_quals(Node *leftop, Oid opfamily, Oid collation,
 	switch (opfamily)
 	{
 		case TEXT_BTREE_FAM_OID:
+		case TEXT_LSM_FAM_OID:
 		case TEXT_PATTERN_BTREE_FAM_OID:
+		case TEXT_PATTERN_LSM_FAM_OID:
 		case TEXT_SPGIST_FAM_OID:
 			datatype = TEXTOID;
 			break;
 
 		case BPCHAR_BTREE_FAM_OID:
+		case BPCHAR_LSM_FAM_OID:
 		case BPCHAR_PATTERN_BTREE_FAM_OID:
+		case BPCHAR_PATTERN_LSM_FAM_OID:
 			datatype = BPCHAROID;
 			break;
 
 		case NAME_BTREE_FAM_OID:
+		case NAME_LSM_FAM_OID:
 			datatype = NAMEOID;
 			break;
 
 		case BYTEA_BTREE_FAM_OID:
+		case BYTEA_LSM_FAM_OID:
 			datatype = BYTEAOID;
 			break;
 

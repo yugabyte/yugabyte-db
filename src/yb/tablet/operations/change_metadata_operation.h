@@ -51,6 +51,8 @@ class Log;
 
 namespace tablet {
 
+class TabletPeer;
+
 // Operation Context for the AlterSchema operation.
 // Keeps track of the Operation states (request, result, ...)
 class ChangeMetadataOperationState : public OperationState {
@@ -92,6 +94,14 @@ class ChangeMetadataOperationState : public OperationState {
     return request_->schema_version();
   }
 
+  uint32_t wal_retention_secs() const {
+    return request_->wal_retention_secs();
+  }
+
+  bool has_wal_retention_secs() const {
+    return request_->has_wal_retention_secs();
+  }
+
   void AcquireSchemaLock(rw_semaphore* l);
 
   // Release the acquired schema lock.
@@ -106,6 +116,8 @@ class ChangeMetadataOperationState : public OperationState {
   }
 
   log::Log* log() const { return log_; }
+
+  log::Log* mutable_log() { return log_; }
 
   virtual std::string ToString() const override;
 
@@ -127,7 +139,7 @@ class ChangeMetadataOperationState : public OperationState {
   DISALLOW_COPY_AND_ASSIGN(ChangeMetadataOperationState);
 };
 
-// Executes the alter schema transaction,.
+// Executes the metadata change operation.
 class ChangeMetadataOperation : public Operation {
  public:
   explicit ChangeMetadataOperation(std::unique_ptr<ChangeMetadataOperationState> operation_state);
@@ -142,26 +154,27 @@ class ChangeMetadataOperation : public Operation {
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override;
 
-  // Executes a Prepare for the alter schema transaction.
+  // Executes a Prepare for the metadata change operation.
   //
   // TODO: need a schema lock?
 
   CHECKED_STATUS Prepare() override;
 
-  // Executes an Apply for the alter schema transaction
-  CHECKED_STATUS Apply(int64_t leader_term) override;
-
-  // Actually commits the transaction.
-  void Finish(OperationResult result) override;
-
   std::string ToString() const override;
 
  private:
-  // Starts the AlterSchemaOperation by assigning it a timestamp.
+  // Starts the ChangeMetadataOperation by assigning it a timestamp.
   void DoStart() override;
+  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
+  CHECKED_STATUS DoAborted(const Status& status) override;
 
   DISALLOW_COPY_AND_ASSIGN(ChangeMetadataOperation);
 };
+
+CHECKED_STATUS SyncReplicateChangeMetadataOperation(
+    const tserver::ChangeMetadataRequestPB* req,
+    tablet::TabletPeer* tablet_peer,
+    int64_t term);
 
 }  // namespace tablet
 }  // namespace yb

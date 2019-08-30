@@ -46,14 +46,14 @@ class YQLStorageIf {
                                      const QLScanSpec& spec,
                                      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
-  virtual CHECKED_STATUS BuildYQLScanSpec(const QLReadRequestPB& request,
-                                          const ReadHybridTime& read_time,
-                                          const Schema& schema,
-                                          bool include_static_columns,
-                                          const Schema& static_projection,
-                                          std::unique_ptr<common::QLScanSpec>* spec,
-                                          std::unique_ptr<common::QLScanSpec>* static_row_spec,
-                                          ReadHybridTime* req_read_time) const = 0;
+  virtual CHECKED_STATUS BuildYQLScanSpec(
+      const QLReadRequestPB& request,
+      const ReadHybridTime& read_time,
+      const Schema& schema,
+      bool include_static_columns,
+      const Schema& static_projection,
+      std::unique_ptr<common::QLScanSpec>* spec,
+      std::unique_ptr<common::QLScanSpec>* static_row_spec) const = 0;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.

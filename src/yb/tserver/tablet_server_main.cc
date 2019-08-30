@@ -94,6 +94,7 @@ DECLARE_int32(cql_proxy_webserver_port);
 
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_bool(start_pgsql_proxy);
+DECLARE_bool(enable_ysql);
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
@@ -152,14 +153,17 @@ static int TabletServerMain(int argc, char** argv) {
 
   auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
-  YB_EDITION_NS_PREFIX Factory factory;
+  enterprise::Factory factory;
+
+  auto server = factory.CreateTabletServer(*tablet_server_options);
 
   boost::optional<PgProcessConf> pg_process_conf;
   std::unique_ptr<PgSupervisor> pg_supervisor;
-  if (FLAGS_start_pgsql_proxy) {
+  if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
     auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
         FLAGS_pgsql_proxy_bind_address,
-        tablet_server_options->fs_opts.data_paths.front() + "/pg_data");
+        tablet_server_options->fs_opts.data_paths.front() + "/pg_data",
+        server->GetSharedMemoryFd());
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_process_conf_result);
     pg_process_conf = std::move(*pg_process_conf_result);
     pg_process_conf->master_addresses = tablet_server_options->master_addresses_flag;
@@ -175,7 +179,6 @@ static int TabletServerMain(int argc, char** argv) {
   // Starting to instantiate servers
   // ----------------------------------------------------------------------------------------------
 
-  auto server = factory.CreateTabletServer(*tablet_server_options);
   LOG(INFO) << "Initializing tablet server...";
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Init());
   LOG(INFO) << "Starting tablet server...";

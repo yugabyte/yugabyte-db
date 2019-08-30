@@ -44,7 +44,9 @@ set(MASTER_YRPC_LIBS
   rpc_header_proto
   tablet_proto
   tserver_proto
-  wire_protocol_proto)
+  wire_protocol_proto
+  yb_pgwrapper
+  cdc_consumer_proto)
 ADD_YB_LIBRARY(master_proto
   SRCS ${MASTER_YRPC_SRCS}
   DEPS ${MASTER_YRPC_LIBS}
@@ -60,7 +62,12 @@ set(MASTER_SRCS
   call_home.cc
   catalog_manager.cc
   catalog_manager_util.cc
+  catalog_entity_info.cc
+  catalog_manager_bg_tasks.cc
+  catalog_loaders.cc
+  scoped_leader_shared_lock.cc
   cluster_balance.cc
+  permissions_manager.cc
   flush_manager.cc
   master.cc
   master_options.cc
@@ -71,7 +78,9 @@ set(MASTER_SRCS
   master-path-handlers.cc
   mini_master.cc
   sys_catalog.cc
+  initial_sys_catalog_snapshot.cc
   system_tablet.cc
+  tasks_tracker.cc
   ts_descriptor.cc
   ts_manager.cc
   yql_virtual_table.cc
@@ -110,7 +119,8 @@ target_link_libraries(master
   ${MASTER_PROTO_LIBS}
   rpc_header_proto
   master_util
-  version_info_proto)
+  version_info_proto
+  yb_pggate_flags)
 
 set(MASTER_RPC_SRCS
   master_rpc.cc)
@@ -131,8 +141,15 @@ ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
   DEPS ${MASTER_RPC_LIBS})
 
+# A library with common code shared between master tests.
+set(MASTER_TEST_COMMON_SRCS
+  master-test_base.cc)
+add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
+target_link_libraries(master_test_common
+  master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})
+
 # Tests
-set(YB_TEST_LINK_LIBS master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS master ${MASTER_PROTO_LIBS} master_test_common yb_client ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(sys_catalog-test)

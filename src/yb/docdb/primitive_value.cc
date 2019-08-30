@@ -96,8 +96,8 @@ const PrimitiveValue PrimitiveValue::kObject = PrimitiveValue(ValueType::kObject
 
 string PrimitiveValue::ToString() const {
   switch (type_) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull:
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow:
       return "null";
     case ValueType::kCounter:
       return "counter";
@@ -122,6 +122,9 @@ string PrimitiveValue::ToString() const {
     case ValueType::kUInt32:
     case ValueType::kUInt32Descending:
       return std::to_string(uint32_val_);
+    case ValueType::kUInt64:  FALLTHROUGH_INTENDED;
+    case ValueType::kUInt64Descending:
+      return std::to_string(uint64_val_);
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64:
       return std::to_string(int64_val_);
@@ -236,8 +239,8 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
     case ValueType::kLowest: return;
     case ValueType::kHighest: return;
     case ValueType::kMaxByte: return;
-    case ValueType::kNullDescending: return;
-    case ValueType::kNull: return;
+    case ValueType::kNullHigh: return;
+    case ValueType::kNullLow: return;
     case ValueType::kCounter: return;
     case ValueType::kSSForward: return;
     case ValueType::kSSReverse: return;
@@ -277,6 +280,14 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
 
     case ValueType::kInt64Descending:
       key_bytes->AppendDescendingInt64(int64_val_);
+      return;
+
+    case ValueType::kUInt64:
+      key_bytes->AppendUInt64(uint64_val_);
+      return;
+
+    case ValueType::kUInt64Descending:
+      key_bytes->AppendDescendingUInt64(uint64_val_);
       return;
 
     case ValueType::kDouble:
@@ -350,14 +361,14 @@ void PrimitiveValue::AppendToKey(KeyBytes* key_bytes) const {
     case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
       std::string bytes;
-      CHECK_OK(uuid_val_.EncodeToComparable(&bytes));
+      uuid_val_.EncodeToComparable(&bytes);
       key_bytes->AppendString(bytes);
       return;
     }
 
     case ValueType::kUuidDescending: {
       std::string bytes;
-      CHECK_OK(uuid_val_.EncodeToComparable(&bytes));
+      uuid_val_.EncodeToComparable(&bytes);
       key_bytes->AppendDescendingString(bytes);
       return;
     }
@@ -400,8 +411,8 @@ string PrimitiveValue::ToValue() const {
   string result;
   result.push_back(static_cast<char>(type_));
   switch (type_) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kSSForward: FALLTHROUGH_INTENDED;
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
@@ -432,6 +443,11 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32:
       AppendBigEndianUInt32(uint32_val_, &result);
+      return result;
+
+    case ValueType::kUInt64Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kUInt64:
+      AppendBigEndianUInt64(uint64_val_, &result);
       return result;
 
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
@@ -513,7 +529,7 @@ string PrimitiveValue::ToValue() const {
     case ValueType::kTableId: FALLTHROUGH_INTENDED;
     case ValueType::kUuid: {
       std::string bytes;
-      CHECK_OK(uuid_val_.EncodeToComparable(&bytes))
+      uuid_val_.EncodeToComparable(&bytes);
       result.append(bytes);
       return result;
     }
@@ -565,11 +581,11 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
     // Ensure we are not leaving the object in an invalid state in case e.g. an exception is thrown
     // due to inability to allocate memory.
   }
-  type_ref = ValueType::kNull;
+  type_ref = ValueType::kNullLow;
 
   switch (value_type) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kSSForward: FALLTHROUGH_INTENDED;
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
@@ -713,6 +729,23 @@ Status PrimitiveValue::DecodeKey(rocksdb::Slice* slice, PrimitiveValue* out) {
         }
       }
       slice->remove_prefix(sizeof(uint32_t));
+      type_ref = value_type;
+      return Status::OK();
+
+    case ValueType::kUInt64Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kUInt64:
+      if (slice->size() < sizeof(uint64_t)) {
+        return STATUS_SUBSTITUTE(Corruption,
+                                 "Not enough bytes to decode a 64-bit integer: $0",
+                                 slice->size());
+      }
+      if (out) {
+        out->uint64_val_ = BigEndian::Load64(slice->data());
+        if (value_type == ValueType::kUInt64Descending) {
+          out->uint64_val_ = ~out->uint64_val_;
+        }
+      }
+      slice->remove_prefix(sizeof(uint64_t));
       type_ref = value_type;
       return Status::OK();
 
@@ -911,14 +944,14 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
   this->~PrimitiveValue();
   // Ensure we are not leaving the object in an invalid state in case e.g. an exception is thrown
   // due to inability to allocate memory.
-  type_ = ValueType::kNull;
+  type_ = ValueType::kNullLow;
 
   const auto value_type = ConsumeValueType(&slice);
 
   // TODO: ensure we consume all data from the given slice.
   switch (value_type) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kSSForward: FALLTHROUGH_INTENDED;
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
@@ -988,6 +1021,16 @@ Status PrimitiveValue::DecodeFromValue(const rocksdb::Slice& rocksdb_slice) {
       }
       type_ = value_type;
       uint32_val_ = BigEndian::Load32(slice.data());
+      return Status::OK();
+
+    case ValueType::kUInt64: FALLTHROUGH_INTENDED;
+    case ValueType::kUInt64Descending:
+      if (slice.size() != sizeof(uint64_t)) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+            value_type, slice.size());
+      }
+      type_ = value_type;
+      uint64_val_ = BigEndian::Load64(slice.data());
       return Status::OK();
 
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
@@ -1193,6 +1236,17 @@ PrimitiveValue PrimitiveValue::UInt32(uint32_t v, SortOrder sort_order) {
   return primitive_value;
 }
 
+PrimitiveValue PrimitiveValue::UInt64(uint64_t v, SortOrder sort_order) {
+  PrimitiveValue primitive_value;
+  if (sort_order == SortOrder::kDescending) {
+    primitive_value.type_ = ValueType::kUInt64Descending;
+  } else {
+    primitive_value.type_ = ValueType::kUInt64;
+  }
+  primitive_value.uint64_val_ = v;
+  return primitive_value;
+}
+
 PrimitiveValue PrimitiveValue::TransactionId(Uuid transaction_id) {
   PrimitiveValue primitive_value(transaction_id);
   primitive_value.type_ = ValueType::kTransactionId;
@@ -1223,8 +1277,8 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     return false;
   }
   switch (type_) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kFalse: FALLTHROUGH_INTENDED;
     case ValueType::kFalseDescending: FALLTHROUGH_INTENDED;
@@ -1248,6 +1302,9 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
 
     case ValueType::kUInt32Descending: FALLTHROUGH_INTENDED;
     case ValueType::kUInt32: return uint32_val_ == other.uint32_val_;
+
+    case ValueType::kUInt64Descending: FALLTHROUGH_INTENDED;
+    case ValueType::kUInt64: return uint64_val_ == other.uint64_val_;
 
     case ValueType::kInt64Descending: FALLTHROUGH_INTENDED;
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
@@ -1299,8 +1356,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     return result;
   }
   switch (type_) {
-    case ValueType::kNullDescending: FALLTHROUGH_INTENDED;
-    case ValueType::kNull: FALLTHROUGH_INTENDED;
+    case ValueType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueType::kNullLow: FALLTHROUGH_INTENDED;
     case ValueType::kCounter: FALLTHROUGH_INTENDED;
     case ValueType::kSSForward: FALLTHROUGH_INTENDED;
     case ValueType::kSSReverse: FALLTHROUGH_INTENDED;
@@ -1327,6 +1384,10 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
       return CompareUsingLessThan(other.uint32_val_, uint32_val_);
     case ValueType::kUInt32:
       return CompareUsingLessThan(uint32_val_, other.uint32_val_);
+    case ValueType::kUInt64Descending:
+      return CompareUsingLessThan(other.uint64_val_, uint64_val_);
+    case ValueType::kUInt64:
+      return CompareUsingLessThan(uint64_val_, other.uint64_val_);
     case ValueType::kInt64: FALLTHROUGH_INTENDED;
     case ValueType::kArrayIndex:
       return CompareUsingLessThan(int64_val_, other.int64_val_);
@@ -1394,7 +1455,7 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
   LOG(FATAL) << "Comparing invalid PrimitiveValues: " << *this << " and " << other;
 }
 
-// This is used to initialize kNull, kNullDescending, kTrue, kFalse constants.
+// This is used to initialize kNullLow, kNullHigh, kTrue, kFalse constants.
 PrimitiveValue::PrimitiveValue(ValueType value_type)
     : type_(value_type) {
   complex_data_structure_ = nullptr;
@@ -1416,7 +1477,8 @@ PrimitiveValue::PrimitiveValue(ValueType value_type)
 
 SortOrder PrimitiveValue::SortOrderFromColumnSchemaSortingType(
     ColumnSchema::SortingType sorting_type) {
-  if (sorting_type == ColumnSchema::SortingType::kDescending) {
+  if (sorting_type == ColumnSchema::SortingType::kDescending ||
+      sorting_type == ColumnSchema::SortingType::kDescendingNullsLast) {
     return SortOrder::kDescending;
   }
   return SortOrder::kAscending;
@@ -1435,6 +1497,10 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
       return PrimitiveValue::Int32(value.int32_value(), sort_order);
     case QLValuePB::kInt64Value:
       return PrimitiveValue(value.int64_value(), sort_order);
+    case QLValuePB::kUint32Value:
+      return PrimitiveValue::UInt32(value.uint32_value(), sort_order);
+    case QLValuePB::kUint64Value:
+      return PrimitiveValue::UInt64(value.uint64_value(), sort_order);
     case QLValuePB::kFloatValue: {
       float f = value.float_value();
       return PrimitiveValue::Float(util::CanonicalizeFloat(f), sort_order);
@@ -1476,9 +1542,9 @@ PrimitiveValue PrimitiveValue::FromQLValuePB(const QLValuePB& value,
     case QLValuePB::kFrozenValue: {
       QLSeqValuePB frozen = value.frozen_value();
       PrimitiveValue pv(ValueType::kFrozen);
-      auto null_value_type = ValueType::kNull;
+      auto null_value_type = ValueType::kNullLow;
       if (sort_order == SortOrder::kDescending) {
-        null_value_type = ValueType::kNullDescending;
+        null_value_type = ValueType::kNullHigh;
         pv.type_ = ValueType::kFrozenDescending;
       }
 
@@ -1510,8 +1576,8 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
                                  QLValuePB* ql_value) {
   // DocDB sets type to kInvalidValueType for SubDocuments that don't exist. That's why they need
   // to be set to Null in QLValue.
-  if (primitive_value.value_type() == ValueType::kNull ||
-      primitive_value.value_type() == ValueType::kNullDescending ||
+  if (primitive_value.value_type() == ValueType::kNullLow ||
+      primitive_value.value_type() == ValueType::kNullHigh ||
       primitive_value.value_type() == ValueType::kInvalid) {
     SetNull(ql_value);
     return;
@@ -1525,13 +1591,19 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
       ql_value->set_int16_value(static_cast<int16_t>(primitive_value.GetInt32()));
       return;
     case INT32:
-      ql_value->set_int32_value(static_cast<int32_t>(primitive_value.GetInt32()));
+      ql_value->set_int32_value(primitive_value.GetInt32());
       return;
     case INT64:
-      ql_value->set_int64_value(static_cast<int64_t>(primitive_value.GetInt64()));
+      ql_value->set_int64_value(primitive_value.GetInt64());
+      return;
+    case UINT32:
+      ql_value->set_uint32_value(primitive_value.GetUInt32());
+      return;
+    case UINT64:
+      ql_value->set_uint64_value(primitive_value.GetUInt64());
       return;
     case FLOAT:
-      ql_value->set_float_value(static_cast<float>(primitive_value.GetFloat()));
+      ql_value->set_float_value(primitive_value.GetFloat());
       return;
     case DOUBLE:
       ql_value->set_double_value(primitive_value.GetDouble());
@@ -1637,8 +1709,6 @@ void PrimitiveValue::ToQLValuePB(const PrimitiveValue& primitive_value,
 
     case UINT8:  FALLTHROUGH_INTENDED;
     case UINT16: FALLTHROUGH_INTENDED;
-    case UINT32: FALLTHROUGH_INTENDED;
-    case UINT64: FALLTHROUGH_INTENDED;
     case UNKNOWN_DATA:
       break;
 

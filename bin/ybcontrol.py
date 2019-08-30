@@ -54,7 +54,7 @@ class ClusterManager(object):
     def __init__(self, args):
         self.master_ips = ClusterManager.get_arg(args, 'master_ips')
         self.tserver_ips = ClusterManager.get_arg(args, 'tserver_ips')
-        default_pem = os.path.join(os.environ["HOME"], ".yugabyte/yugabyte-dev-aws-keypair.pem")
+        default_pem = os.path.join(os.environ["HOME"], ".yugabyte/no-such-key.pem")
         self.pem_file = ClusterManager.get_arg(args, 'pem_file', default_pem)
         self.user = ClusterManager.get_arg(args, 'user', 'yugabyte')
         self.repo = ClusterManager.get_arg(args, 'repo',

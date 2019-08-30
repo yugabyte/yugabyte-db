@@ -85,7 +85,6 @@ using yb::log::Log;
 using yb::log::LogAnchorRegistry;
 using yb::tablet::LatchOperationCompletionCallback;
 using yb::tablet::TabletClass;
-using yb::tablet::TabletPeerClass;
 using yb::tserver::WriteRequestPB;
 using yb::tserver::WriteResponsePB;
 using strings::Substitute;
@@ -194,8 +193,8 @@ Status SysCatalogTable::CreateAndFlushConsensusMeta(
 Status SysCatalogTable::Load(FsManager* fs_manager) {
   LOG(INFO) << "Trying to load previous SysCatalogTable data from disk";
   // Load Metadata Information from disk
-  scoped_refptr<tablet::TabletMetadata> metadata;
-  RETURN_NOT_OK(tablet::TabletMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
+  scoped_refptr<tablet::RaftGroupMetadata> metadata;
+  RETURN_NOT_OK(tablet::RaftGroupMetadata::Load(fs_manager, kSysCatalogTabletId, &metadata));
 
   // Verify that the schema is the current one
   if (!metadata->schema().Equals(BuildTableSchema())) {
@@ -224,7 +223,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   // 1. We always believe the local config options for who is in the consensus configuration.
   // 2. We always want to look up all node's UUIDs on start (via RPC).
   //    - TODO: Cache UUIDs. See KUDU-526.
-  string tablet_id = metadata->tablet_id();
+  string tablet_id = metadata->raft_group_id();
   std::unique_ptr<ConsensusMetadata> cmeta;
   RETURN_NOT_OK_PREPEND(ConsensusMetadata::Load(fs_manager, tablet_id, fs_manager->uuid(), &cmeta),
                         "Unable to load consensus metadata for tablet " + tablet_id);
@@ -260,7 +259,7 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
 Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   LOG(INFO) << "Creating new SysCatalogTable data";
   // Create the new Metadata
-  scoped_refptr<tablet::TabletMetadata> metadata;
+  scoped_refptr<tablet::RaftGroupMetadata> metadata;
   Schema schema = BuildTableSchema();
   PartitionSchema partition_schema;
   RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
@@ -270,7 +269,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   DCHECK_EQ(1, partitions.size());
 
-  RETURN_NOT_OK(tablet::TabletMetadata::CreateNew(
+  RETURN_NOT_OK(tablet::RaftGroupMetadata::CreateNew(
     fs_manager,
     kSysCatalogTableId,
     kSysCatalogTabletId,
@@ -454,20 +453,20 @@ Status SysCatalogTable::GoIntoShellMode() {
   return Status::OK();
 }
 
-void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::TabletMetadata>& metadata) {
+void SysCatalogTable::SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetadata>& metadata) {
   InitLocalRaftPeerPB();
 
   // TODO: handle crash mid-creation of tablet? do we ever end up with a
   // partially created tablet here?
-  std::shared_ptr<tablet::TabletPeer> tablet_peer = std::make_shared<TabletPeerClass>(
+  auto tablet_peer = std::make_shared<tablet::TabletPeer>(
       metadata, local_peer_pb_, scoped_refptr<server::Clock>(master_->clock()),
       metadata->fs_manager()->uuid(),
-      Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->tablet_id()));
+      Bind(&SysCatalogTable::SysCatalogStateChanged, Unretained(this), metadata->raft_group_id()));
 
   std::atomic_store(&tablet_peer_, tablet_peer);
 }
 
-Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::TabletMetadata>& metadata) {
+Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata) {
   SetupTabletPeer(metadata);
 
   RETURN_NOT_OK(OpenTablet(metadata));
@@ -475,7 +474,7 @@ Status SysCatalogTable::SetupTablet(const scoped_refptr<tablet::TabletMetadata>&
   return Status::OK();
 }
 
-Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& metadata) {
+Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata) {
   CHECK(tablet_peer());
 
   shared_ptr<TabletClass> tablet;
@@ -483,26 +482,29 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::TabletMetadata>& 
   consensus::ConsensusBootstrapInfo consensus_info;
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
-  tablet::BootstrapTabletData data = { metadata,
-                                       std::shared_future<client::YBClientPtr>(),
-                                       scoped_refptr<server::Clock>(master_->clock()),
-                                       master_->mem_tracker(),
-                                       metric_registry_,
-                                       tablet_peer()->status_listener(),
-                                       tablet_peer()->log_anchor_registry(),
-                                       tablet_options,
-                                       " P " + tablet_peer()->permanent_uuid(),
-                                       nullptr, // transaction_participant_context
-                                       client::LocalTabletFilter(),
-                                       nullptr, // transaction_coordinator_context
-                                       append_pool()};
+  tablet::BootstrapTabletData data = {
+      metadata,
+      std::shared_future<client::YBClient*>(),
+      scoped_refptr<server::Clock>(master_->clock()),
+      master_->mem_tracker(),
+      MemTracker::FindOrCreateTracker("BlockBasedTable", master_->mem_tracker()),
+      metric_registry_,
+      tablet_peer()->status_listener(),
+      tablet_peer()->log_anchor_registry(),
+      tablet_options,
+      " P " + tablet_peer()->permanent_uuid(),
+      nullptr, // transaction_participant_context
+      client::LocalTabletFilter(),
+      nullptr, // transaction_coordinator_context
+      append_pool()};
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
 
   // TODO: Do we have a setSplittable(false) or something from the outside is
   // handling split in the TS?
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->InitTabletPeer(tablet,
-                                                     std::shared_future<client::YBClientPtr>(),
+                                                     std::shared_future<client::YBClient*>(),
+                                                     master_->mem_tracker(),
                                                      master_->messenger(),
                                                      &master_->proxy_cache(),
                                                      log,
@@ -553,6 +555,14 @@ Status SysCatalogTable::WaitUntilRunning() {
 
 CHECKED_STATUS SysCatalogTable::SyncWrite(SysCatalogWriter* writer) {
   tserver::WriteResponsePB resp;
+  // If this is a PG write, them the pgsql write batch is not empty.
+  //
+  // If this is a QL write, then it is a normal sys_catalog write, so ignore writes that might
+  // have filtered out all of the writes from the batch, as they were the same payload as the cow
+  // objects that are backing them.
+  if (writer->req().ql_write_batch().empty() && writer->req().pgsql_write_batch().empty()) {
+    return Status::OK();
+  }
 
   CountDownLatch latch(1);
   auto txn_callback = std::make_unique<LatchOperationCompletionCallback<WriteResponsePB>>(
@@ -644,7 +654,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
 
   QLTableRow value_map;
   QLValue entry_type, entry_id, metadata;
-  while ((**iter).HasNext()) {
+  while (VERIFY_RESULT((**iter).HasNext())) {
     RETURN_NOT_OK((**iter).NextRow(&value_map));
     RETURN_NOT_OK(value_map.GetValue(schema_with_ids_.column_id(type_col_idx), &entry_type));
     if (entry_type.int8_value() != tables_entry) {
@@ -659,7 +669,6 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
 
 Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
                                        const TableId& target_table_id,
-                                       const TableId& target_indexed_table_id,
                                        const int64_t leader_term) {
   TRACE_EVENT0("master", "CopyPgsqlTable");
 
@@ -668,37 +677,13 @@ Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
   const tablet::TableInfo* source_table_info = VERIFY_RESULT(meta->GetTableInfo(source_table_id));
   const tablet::TableInfo* target_table_info = VERIFY_RESULT(meta->GetTableInfo(target_table_id));
 
-  // Explicitly initializng optional to workaround gcc maybe-uninitialized false-positive warning.
-  boost::optional<ColumnId> source_ybbasectid = boost::make_optional(false, ColumnId());
-  boost::optional<const Schema&> target_indexed_schema;
-  if (!target_indexed_table_id.empty()) {
-    const Schema& source_schema = source_table_info->schema;
-    CHECK_GT(source_schema.num_columns(), 0);
-    CHECK_EQ(source_schema.columns().back().name(), "ybbasectid");
-    source_ybbasectid = source_schema.column_id(source_schema.num_columns() - 1);
-
-    const tablet::TableInfo* target_indexed_table_info =
-        VERIFY_RESULT(meta->GetTableInfo(target_indexed_table_id));
-    target_indexed_schema = target_indexed_table_info->schema;
-  }
-
   const Schema source_projection = source_table_info->schema.CopyWithoutColumnIds();
   std::unique_ptr<common::YQLRowwiseIteratorIf> iter =
       VERIFY_RESULT(tablet->NewRowIterator(source_projection, boost::none, source_table_id));
   QLTableRow source_row;
   std::unique_ptr<SysCatalogWriter> writer = NewWriter(leader_term);
-  while (iter->HasNext()) {
+  while (VERIFY_RESULT(iter->HasNext())) {
     RETURN_NOT_OK(iter->NextRow(&source_row));
-    if (source_ybbasectid) {
-      QLValue value;
-      docdb::DocKey doc_key;
-      RETURN_NOT_OK(source_row.GetValue(*source_ybbasectid, &value));
-      RETURN_NOT_OK(doc_key.DecodeFrom(Slice(value.binary_value())));
-      doc_key.SwitchTo(*target_indexed_schema);
-      RefCntPrefix encoded_key = doc_key.EncodeAsRefCntPrefix();
-      value.set_binary_value(encoded_key.data(), encoded_key.size());
-      source_row.AllocColumn(*source_ybbasectid, value);
-    }
     RETURN_NOT_OK(writer->InsertPgsqlTableRow(source_table_info->schema, source_row,
                                               target_table_id, target_table_info->schema,
                                               target_table_info->schema_version));
@@ -708,6 +693,11 @@ Status SysCatalogTable::CopyPgsqlTable(const TableId& source_table_id,
                     source_table_id, target_table_id);
 
   return !writer->req().pgsql_write_batch().empty() ? SyncWrite(writer.get()) : Status::OK();
+}
+
+Status SysCatalogTable::DeleteYsqlSystemTable(const string& table_id) {
+  tablet_peer()->tablet_metadata()->RemoveTable(table_id);
+  return Status::OK();
 }
 
 } // namespace master

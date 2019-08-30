@@ -42,7 +42,9 @@ BUILD_TYPE_COMMON = 'common'
 BUILD_TYPE_UNINSTRUMENTED = 'uninstrumented'
 BUILD_TYPE_ASAN = 'asan'
 BUILD_TYPE_TSAN = 'tsan'
-BUILD_TYPES = [BUILD_TYPE_COMMON, BUILD_TYPE_UNINSTRUMENTED, BUILD_TYPE_ASAN, BUILD_TYPE_TSAN]
+BUILD_TYPE_CLANG_UNINSTRUMENTED = 'clang_uninstrumented'
+BUILD_TYPES = [BUILD_TYPE_COMMON, BUILD_TYPE_UNINSTRUMENTED, BUILD_TYPE_CLANG_UNINSTRUMENTED,
+               BUILD_TYPE_ASAN, BUILD_TYPE_TSAN]
 
 
 TAR_EXTRACT = 'tar xf {}'
@@ -121,11 +123,22 @@ def is_mac():
 def is_linux():
     return platform.system().lower() == 'linux'
 
+
 def is_jenkins_user():
     return os.environ['USER'] == "jenkins"
 
+
 def is_jenkins():
     return 'BUILD_ID' in os.environ and 'JOB_NAME' in os.environ and is_jenkins_user()
+
+
+def is_ubuntu():
+    etc_issue_path = '/etc/issue'
+    if not os.path.exists(etc_issue_path):
+        return False
+    with open(etc_issue_path) as etc_issue_file:
+        contents = etc_issue_file.read()
+        return contents.startswith('Ubuntu')
 
 
 def remove_path(path):
@@ -187,7 +200,7 @@ class Dependency(object):
         self.archive_name = make_archive_name(name, version, self.download_url)
         self.patch_version = 0
 
-    def should_build(self, instrumented):
+    def should_build(self, builder):
         return True
 
 

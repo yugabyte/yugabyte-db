@@ -96,7 +96,7 @@ static int MasterMain(int argc, char** argv) {
 
   auto opts_result = MasterOptions::CreateMasterOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(opts_result);
-  YB_EDITION_NS_PREFIX Master server(*opts_result);
+  enterprise::Master server(*opts_result);
 
   if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0) {
     LOG(WARNING) << "Flag remote_boostrap_rate_limit_bytes_per_sec has been deprecated. "
@@ -104,6 +104,12 @@ static int MasterMain(int argc, char** argv) {
     FLAGS_remote_bootstrap_rate_limit_bytes_per_sec =
         FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
   }
+
+  SetDefaultInitialSysCatalogSnapshotFlags();
+
+  // ==============================================================================================
+  // End of setting master flags
+  // ==============================================================================================
 
   LOG(INFO) << "Initializing master server...";
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server.Init());

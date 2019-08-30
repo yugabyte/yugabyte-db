@@ -1,0 +1,67 @@
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+#
+# Structure of /home/yugabyte
+# .
+# |-- bin
+# |   `-- yb-server-ctl.sh
+# |-- cores -> /mnt/d0/cores
+# |-- master
+# |   |-- bin -> /home/yugabyte/yb-software/yugabyte.<commit_hash>.0.0.x.y/bin
+# |   |-- conf
+# |   |   `-- server.conf
+# |   |-- java -> /home/yugabyte/yb-software/yugabyte.<commit_hash>.0.0.x.y/java
+# |   |-- lib -> /home/yugabyte/yb-software/yugabyte.<commit_hash>.0.0.x.y/lib
+# |   |-- logs -> /mnt/d0/yb-data/master/logs
+# |   |-- pylib -> /home/yugabyte/yb-software/yugabyte.<commit_hash>.0.0.x.y/pylib
+# |   `-- www -> /home/yugabyte/yb-software/yugabyte.<commit_hash>.0.0.x.y/www
+# |-- tserver
+# |   |-- bin -> /home/yugabyte/yb-software/yugabyte.<commit_hash>.0.0.x.y/bin
+# |   |-- conf
+# |   |   `-- server.conf
+# |   |-- java -> /home/yugabyte/yb-software/yugabyte.<commit_hash>.0.0.x.y/java
+# |   |-- lib -> /home/yugabyte/yb-software/yugabyte.<commit_hash>.0.0.x.y/lib
+# |   |-- logs -> /mnt/d0/yb-data/tserver/logs
+# |   |-- pylib -> /home/yugabyte/yb-software/yugabyte.<commit_hash>.0.0.x.y/pylib
+# |   `-- www -> /home/yugabyte/yb-software/yugabyte.<commit_hash>.0.0.x.y/www
+# `-- yb-software
+#     |-- releases
+#     |   `-- 0.0.x.y
+#     `-- yugabyte.<commit_hash>.0.0.x.y
+#         |-- bin
+#         |-- java
+#         |-- lib
+#         |-- pylib
+#         `-- www
+
+yb_home_dir: "/home/{{ user_name }}"
+yb_bin_dir: "{{ yb_home_dir }}/bin"
+yb_cores_dir: "{{ yb_home_dir }}/cores"
+yb_conf_dir: "{{ yb_home_dir }}/{{ yb_process_type }}/conf"
+yb_logs_dir: "{{ yb_home_dir }}/{{ yb_process_type }}/logs"
+yb_conf_file: "{{ yb_conf_dir }}/server.conf"
+common_gflags:
+  placement_cloud: "{{ placement_cloud }}"
+  placement_region: "{{ placement_region }}"
+  placement_zone: "{{ placement_zone }}"
+  max_log_size: "256"
+process_specific_gflags:
+  master:
+    fs_data_dirs: "{{ mount_points }}"
+    master_addresses: "{{ master_addresses_for_master | default() }}"
+    rpc_bind_addresses: "{{ private_ip }}:{{ master_rpc_port }}"
+    webserver_port: "{{ master_http_port }}"
+    webserver_interface: "{{ private_ip }}"
+  tserver:
+    fs_data_dirs: "{{ mount_points }}"
+    rpc_bind_addresses: "{{ private_ip }}:{{ tserver_rpc_port }}"
+    tserver_master_addrs: "{{ master_addresses_for_tserver  }}"
+    webserver_port: "{{ tserver_http_port }}"
+    webserver_interface: "{{ private_ip }}"
+    cql_proxy_bind_address: "{{ private_ip }}:{{ cql_proxy_rpc_port }}"
+    redis_proxy_bind_address: "{{ private_ip }}:{{ redis_proxy_rpc_port }}"

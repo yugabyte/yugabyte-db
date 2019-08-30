@@ -33,9 +33,7 @@
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
-#include <gtest/gtest.h>
 #include <gtest/gtest-spi.h>
-#include <boost/scope_exit.hpp>
 
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
@@ -229,7 +227,7 @@ void AssertEventually(const std::function<void(void)>& f,
       testing::TestPartResultArray results;
       testing::ScopedFakeTestPartResultReporter reporter(
           testing::ScopedFakeTestPartResultReporter::INTERCEPT_ONLY_CURRENT_THREAD,
-      &results);
+          &results);
       f();
 
       // Determine whether their function produced any new test failure results.
@@ -310,6 +308,19 @@ void AssertLoggedWaitFor(
   LOG(INFO) << description;
   ASSERT_OK(WaitFor(condition, timeout, description, initial_delay));
   LOG(INFO) << description << " - DONE";
+}
+
+Status LoggedWaitFor(
+    std::function<Result<bool>()> condition,
+    MonoDelta timeout,
+    const string& description,
+    MonoDelta initial_delay,
+    double delay_multiplier,
+    MonoDelta max_delay) {
+  LOG(INFO) << description;
+  auto status = WaitFor(condition, timeout, description, initial_delay);
+  LOG(INFO) << description << " - completed: " << yb::ToString(status);
+  return status;
 }
 
 string GetToolPath(const string& tool_name) {

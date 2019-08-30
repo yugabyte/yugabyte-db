@@ -182,6 +182,13 @@ MonoDelta& MonoDelta::operator*=(int64_t mul) {
   return *this;
 }
 
+MonoDelta& MonoDelta::operator/=(int64_t divisor) {
+  DCHECK(Initialized());
+  DCHECK_NE(divisor, 0);
+  nano_delta_ /= divisor;
+  return *this;
+}
+
 void MonoDelta::ToTimeVal(struct timeval *tv) const {
   DCHECK(Initialized());
   tv->tv_sec = nano_delta_ / MonoTime::kNanosecondsPerSecond;
@@ -344,6 +351,10 @@ std::string ToString(CoarseMonoClock::TimePoint time_point) {
 
 CoarseTimePoint ToCoarse(MonoTime monotime) {
   return CoarseTimePoint(monotime.ToSteadyTimePoint().time_since_epoch());
+}
+
+std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point) {
+  return std::chrono::steady_clock::time_point(time_point.time_since_epoch());
 }
 
 } // namespace yb

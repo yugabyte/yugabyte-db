@@ -569,186 +569,222 @@ SELECT 'supeznova supernova'::tsvector @@ 'super:*'::tsquery AS "true";
 
 --phrase search
 SELECT to_tsvector('simple', '1 2 3 1') @@ '1 <-> 2' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 3 1') @@ '1 <-> 2' AS "tru...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 3 1') @@ '1 <2> 2' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 3 1') @@ '1 <2> 2' AS "fal...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 3 1') @@ '1 <-> 3' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 3 1') @@ '1 <-> 3' AS "fal...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 3 1') @@ '1 <2> 3' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 3 1') @@ '1 <2> 3' AS "tru...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 1 2') @@ '1 <3> 2' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 1 2') @@ '1 <3> 2' AS "tru...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 11 3') @@ '1 <-> 3' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 11 3') @@ '1 <-> 3' AS "fa...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 11 3') @@ '1:* <-> 3' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 11 3') @@ '1:* <-> 3' AS "...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 3 4') @@ '1 <-> 2 <-> 3' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 3 4') @@ '1 <-> 2 <-> 3' A...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 3 4') @@ '(1 <-> 2) <-> 3' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 3 4') @@ '(1 <-> 2) <-> 3'...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 3 4') @@ '1 <-> (2 <-> 3)' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 3 4') @@ '1 <-> (2 <-> 3)'...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 3 4') @@ '1 <2> (2 <-> 3)' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 3 4') @@ '1 <2> (2 <-> 3)'...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 1 2 3 4') @@ '(1 <-> 2) <-> 3' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 1 2 3 4') @@ '(1 <-> 2) <-...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 SELECT to_tsvector('simple', '1 2 1 2 3 4') @@ '1 <-> 2 <-> 3' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT to_tsvector('simple', '1 2 1 2 3 4') @@ '1 <-> 2 <-> ...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 -- without position data, phrase search does not match
 SELECT strip(to_tsvector('simple', '1 2 3 4')) @@ '1 <-> 2 <-> 3' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: SELECT strip(to_tsvector('simple', '1 2 3 4')) @@ '1 <-> 2 <...
-                     ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 select to_tsvector('simple', 'q x q y') @@ 'q <-> (x & y)' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'q x q y') @@ 'q <-> (x & y)' A...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 select to_tsvector('simple', 'q x') @@ 'q <-> (x | y <-> z)' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'q x') @@ 'q <-> (x | y <-> z)'...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'q y') @@ 'q <-> (x | y <-> z)' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'q y') @@ 'q <-> (x | y <-> z)'...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 select to_tsvector('simple', 'q y z') @@ 'q <-> (x | y <-> z)' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'q y z') @@ 'q <-> (x | y <-> z...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'q y x') @@ 'q <-> (x | y <-> z)' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'q y x') @@ 'q <-> (x | y <-> z...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 select to_tsvector('simple', 'q x y') @@ 'q <-> (x | y <-> z)' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'q x y') @@ 'q <-> (x | y <-> z...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'q x') @@ '(x | y <-> z) <-> q' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'q x') @@ '(x | y <-> z) <-> q'...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 select to_tsvector('simple', 'x q') @@ '(x | y <-> z) <-> q' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'x q') @@ '(x | y <-> z) <-> q'...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'x y q') @@ '(x | y <-> z) <-> q' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'x y q') @@ '(x | y <-> z) <-> ...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 select to_tsvector('simple', 'x y z') @@ '(x | y <-> z) <-> q' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'x y z') @@ '(x | y <-> z) <-> ...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 select to_tsvector('simple', 'x y z q') @@ '(x | y <-> z) <-> q' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'x y z q') @@ '(x | y <-> z) <-...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'y z q') @@ '(x | y <-> z) <-> q' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'y z q') @@ '(x | y <-> z) <-> ...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'y y q') @@ '(x | y <-> z) <-> q' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'y y q') @@ '(x | y <-> z) <-> ...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 select to_tsvector('simple', 'y y q') @@ '(!x | y <-> z) <-> q' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'y y q') @@ '(!x | y <-> z) <->...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'x y q') @@ '(!x | y <-> z) <-> q' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'x y q') @@ '(!x | y <-> z) <->...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'y y q') @@ '(x | y <-> !z) <-> q' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'y y q') @@ '(x | y <-> !z) <->...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'x q') @@ '(x | y <-> !z) <-> q' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'x q') @@ '(x | y <-> !z) <-> q...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'x q') @@ '(!x | y <-> z) <-> q' AS "false";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'x q') @@ '(!x | y <-> z) <-> q...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ false
+-------
+ f
+(1 row)
+
 select to_tsvector('simple', 'z q') @@ '(!x | y <-> z) <-> q' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'z q') @@ '(!x | y <-> z) <-> q...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'x y q y') @@ '!x <-> y' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'x y q y') @@ '!x <-> y' AS "tr...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', 'x y q y') @@ '!foo' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', 'x y q y') @@ '!foo' AS "true";
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 select to_tsvector('simple', '') @@ '!foo' AS "true";
-ERROR:  function to_tsvector(unknown, unknown) does not exist
-LINE 1: select to_tsvector('simple', '') @@ '!foo' AS "true";
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ true
+------
+ t
+(1 row)
+
 --ranking
 SELECT ts_rank(' a:1 s:2C d g'::tsvector, 'a | s');
   ts_rank
@@ -1004,10 +1040,9 @@ SELECT strip('base hidden rebel spaceship strike'::tsvector);
 (1 row)
 
 SELECT ts_delete(to_tsvector('english', 'Rebel spaceships, striking from a hidden base'), 'spaceship');
-ERROR:  function to_tsvector(unknown, unknown) does not exist
+ERROR:  text search configuration "english" does not exist
 LINE 1: SELECT ts_delete(to_tsvector('english', 'Rebel spaceships, s...
-                         ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+                                     ^
 SELECT ts_delete('base:7 hidden:6 rebel:1 spaceship:2,33A,34B,35C,36D strike:3'::tsvector, 'base');
                           ts_delete
 --------------------------------------------------------------

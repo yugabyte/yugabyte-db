@@ -46,6 +46,10 @@ class PgDmlWrite : public PgDml {
     write_req_->set_ysql_catalog_version(catalog_cache_version);
   }
 
+  int32_t GetRowsAffectedCount() {
+    return rows_affected_count_;
+  }
+
  protected:
   // Constructor.
   PgDmlWrite(PgSession::ScopedRefPtr pg_session,
@@ -71,6 +75,8 @@ class PgDmlWrite : public PgDml {
   PgsqlWriteRequestPB *write_req_ = nullptr;
 
   bool is_single_row_txn_ = false; // default.
+
+  int32_t rows_affected_count_ = 0;
 };
 
 }  // namespace pggate

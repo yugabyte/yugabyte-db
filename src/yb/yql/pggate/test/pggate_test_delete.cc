@@ -14,7 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/pggate/test/pggate_test.h"
-#include "yb/util/ybc-internal.h"
+#include "yb/common/ybc-internal.h"
 
 namespace yb {
 namespace pggate {
@@ -109,7 +109,8 @@ TEST_F(PggateTestDelete, TestDelete) {
 
   // DELETE ----------------------------------------------------------------------------------------
   // Allocate new delete.
-  CHECK_YBC_STATUS(YBCPgNewDelete(pg_session_, kDefaultDatabaseOid, tab_oid, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewDelete(pg_session_, kDefaultDatabaseOid, tab_oid,
+                                  false /* is_single_row_txn */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -141,8 +142,8 @@ TEST_F(PggateTestDelete, TestDelete) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid, &pg_stmt,
-                                  nullptr /* read_time */));
+  CHECK_YBC_STATUS(YBCPgNewSelect(pg_session_, kDefaultDatabaseOid, tab_oid, kInvalidOid,
+                                  true /* prevent_restart */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -160,7 +161,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   CHECK_YBC_STATUS(YBCPgDmlAppendTarget(pg_stmt, colref));
 
   // Execute select statement.
-  YBCPgExecSelect(pg_stmt);
+  YBCPgExecSelect(pg_stmt, nullptr /* exec_params */);
 
   // Fetching rows and check their contents.
   uint64_t *values = static_cast<uint64_t*>(YBCPAlloc(col_count * sizeof(uint64_t)));

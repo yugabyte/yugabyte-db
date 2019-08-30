@@ -91,6 +91,8 @@
 #include "utils/varlena.h"
 #include "utils/xml.h"
 
+#include "pg_yb_utils.h"
+
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
 #endif
@@ -1821,6 +1823,17 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&jit_tuple_deforming,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_debug_mode", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable yb debugging."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_debug_mode,
+		false,
 		NULL, NULL, NULL
 	},
 

@@ -130,6 +130,15 @@ class YBTransaction::Impl final {
     return Status::OK();
   }
 
+  void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point) {
+    metadata_.isolation = isolation;
+    read_point_ = std::move(read_point);
+  }
+
+  const IsolationLevel isolation() const {
+    return metadata_.isolation;
+  }
+
   // This transaction is a restarted transaction, so we set it up with data from original one.
   CHECKED_STATUS FillRestartedTransaction(Impl* other) {
     VLOG_WITH_PREFIX(1) << "Setup restart to " << other->ToString();
@@ -219,7 +228,8 @@ class YBTransaction::Impl final {
         // Prepare is invoked when we are going to send request to tablet server.
         // So after that tablet may have metadata, and we reflect it in our local state.
         if (it->second.metadata_state == InvolvedTabletMetadataState::MISSING &&
-            !op->yb_op->read_only()) {
+            (!op->yb_op->read_only() ||
+             metadata_.isolation == IsolationLevel::SERIALIZABLE_ISOLATION)) {
           it->second.metadata_state = InvolvedTabletMetadataState::MAY_EXIST;
         }
       }
@@ -260,7 +270,7 @@ class YBTransaction::Impl final {
       }
       TabletStates::iterator it = tablets_.end();
       for (const auto& op : ops) {
-        if (op->yb_op->wrote_data()) {
+        if (op->yb_op->wrote_data(metadata_.isolation)) {
           const std::string& tablet_id = op->tablet->tablet_id();
           // Usually all ops belong to the same tablet. So we can avoid repeating lookup.
           if (it == tablets_.end() || it->first != tablet_id) {
@@ -495,7 +505,7 @@ class YBTransaction::Impl final {
         UpdateTransaction(
             TransactionRpcDeadline(),
             status_tablet_.get(),
-            manager_->client().get(),
+            manager_->client(),
             &req,
             std::bind(&Impl::CommitDone, this, _1, _2, transaction)),
         &commit_handle_);
@@ -519,7 +529,7 @@ class YBTransaction::Impl final {
         AbortTransaction(
             TransactionRpcDeadline(),
             status_tablet_.get(),
-            manager_->client().get(),
+            manager_->client(),
             &req,
             std::bind(&Impl::AbortDone, this, _1, _2, transaction)),
         &abort_handle_);
@@ -570,7 +580,7 @@ class YBTransaction::Impl final {
       std::unique_lock<std::mutex> lock(mutex_);
       abort_requests_.reserve(abort_requests_.size() + remote_tablet_servers.size());
       for (auto* server : remote_tablet_servers) {
-        auto status = server->InitProxy(manager_->client().get());
+        auto status = server->InitProxy(manager_->client());
         if (!status.ok()) {
           LOG(WARNING) << "Failed to init proxy to " << server->ToString() << ": " << status;
           continue;
@@ -700,7 +710,7 @@ class YBTransaction::Impl final {
         UpdateTransaction(
             TransactionRpcDeadline(),
             status_tablet_.get(),
-            manager_->client().get(),
+            manager_->client(),
             &req,
             std::bind(&Impl::HeartbeatDone, this, _1, _2, status, transaction)),
         &heartbeat_handle_);
@@ -729,12 +739,13 @@ class YBTransaction::Impl final {
       }
       std::weak_ptr<YBTransaction> weak_transaction(transaction);
       manager_->client()->messenger()->scheduler().Schedule(
-          std::bind(&Impl::SendHeartbeat, this, TransactionStatus::PENDING,
-                    metadata_.transaction_id, weak_transaction),
+          [this, weak_transaction](const Status&) {
+              SendHeartbeat(TransactionStatus::PENDING, metadata_.transaction_id, weak_transaction);
+          },
           std::chrono::microseconds(FLAGS_transaction_heartbeat_usec));
     } else {
       LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status;
-      if (status.IsExpired()) {
+      if (status.IsExpired() || status.IsAborted()) {
         SetError(status);
         // If state is aborted, then we already requested this cleanup.
         // If state is committed, then we should not cleanup.
@@ -864,6 +875,12 @@ Status YBTransaction::Init(IsolationLevel isolation, const ReadHybridTime& read_
   return impl_->Init(isolation, read_time);
 }
 
+void YBTransaction::InitWithReadPoint(
+    IsolationLevel isolation,
+    ConsistentReadPoint&& read_point) {
+  return impl_->InitWithReadPoint(isolation, std::move(read_point));
+}
+
 bool YBTransaction::Prepare(const std::unordered_set<internal::InFlightOpPtr>& ops,
                             ForceConsistentRead force_consistent_read,
                             Waiter waiter,
@@ -884,6 +901,10 @@ void YBTransaction::Commit(CommitCallback callback) {
 
 const TransactionId& YBTransaction::id() const {
   return impl_->id();
+}
+
+const IsolationLevel YBTransaction::isolation() const {
+  return impl_->isolation();
 }
 
 const ConsistentReadPoint& YBTransaction::read_point() const {

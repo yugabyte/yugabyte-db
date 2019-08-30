@@ -93,7 +93,7 @@ string RpcServer::ToString() const {
   return "RpcServer";
 }
 
-Status RpcServer::Init(const shared_ptr<Messenger>& messenger) {
+Status RpcServer::Init(Messenger* messenger) {
   CHECK_EQ(server_state_, UNINITIALIZED);
   messenger_ = messenger;
 
@@ -132,8 +132,8 @@ Status RpcServer::RegisterService(size_t queue_limit,
 
   rpc::ThreadPool& thread_pool = messenger_->ThreadPool(priority);
 
-  scoped_refptr<rpc::ServicePool> service_pool =
-    new rpc::ServicePool(queue_limit, &thread_pool, std::move(service), metric_entity);
+  scoped_refptr<rpc::ServicePool> service_pool(new rpc::ServicePool(
+      queue_limit, &thread_pool, &messenger_->scheduler(), std::move(service), metric_entity));
   RETURN_NOT_OK(messenger_->RegisterService(service_name, service_pool));
   return Status::OK();
 }
@@ -173,7 +173,7 @@ void RpcServer::Shutdown() {
   if (messenger_) {
     messenger_->ShutdownThreadPools();
     messenger_->ShutdownAcceptor();
-    WARN_NOT_OK(messenger_->UnregisterAllServices(), "Unable to unregister our services");
+    messenger_->UnregisterAllServices();
   }
 }
 

@@ -77,7 +77,7 @@ class ReactorTest : public RpcTestBase {
   }
 
  protected:
-  const shared_ptr<Messenger> messenger_;
+  std::unique_ptr<Messenger> messenger_;
   CountDownLatch latch_;
 };
 

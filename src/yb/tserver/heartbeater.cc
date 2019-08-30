@@ -115,8 +115,7 @@ class Heartbeater::Thread {
 
  private:
   void RunThread();
-  Status FindLeaderMaster(const MonoTime& deadline,
-                          HostPort* leader_hostport);
+  Status FindLeaderMaster(CoarseTimePoint deadline, HostPort* leader_hostport);
   Status ConnectToMaster();
   int GetMinimumHeartbeatMillis() const;
   int GetMillisUntilNextHeartbeat() const;
@@ -250,8 +249,7 @@ void LeaderMasterCallback(HostPort* dst_hostport,
 
 } // anonymous namespace
 
-Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
-                                             HostPort* leader_hostport) {
+Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline, HostPort* leader_hostport) {
   Status s = Status::OK();
   const auto master_addresses = get_master_addresses();
   if (master_addresses->size() == 1 && (*master_addresses)[0].size() == 1) {
@@ -278,8 +276,7 @@ Status Heartbeater::Thread::FindLeaderMaster(const MonoTime& deadline,
 }
 
 Status Heartbeater::Thread::ConnectToMaster() {
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
+  auto deadline = CoarseMonoClock::Now() + FLAGS_heartbeat_rpc_timeout_ms * 1ms;
   // TODO send heartbeats without tablet reports to non-leader masters.
   Status s = FindLeaderMaster(deadline, &leader_master_hostport_);
   if (!s.ok()) {
@@ -379,33 +376,31 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   if (prev_tserver_metrics_submission_ + tserver_metrics_interval_ < MonoTime::Now()) {
 
-#ifdef TCMALLOC_ENABLED
     // Get the total memory used.
-    size_t mem_usage;
-    if (MallocExtension::instance()->GetNumericProperty(
-        "generic.current_allocated_bytes", &mem_usage)) {
-      req.mutable_metrics()->set_total_ram_usage(static_cast<int64_t> (mem_usage));
-      VLOG_WITH_PREFIX(4) << "Total Memory Usage: " << mem_usage;
-    } else {
-      YB_LOG_WITH_PREFIX_EVERY_N(ERROR, 10) << "Getting memory usage from TCMalloc failed!";
-    }
-#endif
+    size_t mem_usage = MemTracker::GetRootTracker()->GetUpdatedConsumption(true /* force */);
+    req.mutable_metrics()->set_total_ram_usage(static_cast<int64_t>(mem_usage));
+    VLOG_WITH_PREFIX(4) << "Total Memory Usage: " << mem_usage;
 
     // Get the Total SST file sizes and set it in the proto buf
     std::vector<shared_ptr<yb::tablet::TabletPeer> > tablet_peers;
     uint64_t total_file_sizes = 0;
     uint64_t uncompressed_file_sizes = 0;
+    uint64_t num_files = 0;
     server_->tablet_manager()->GetTabletPeers(&tablet_peers);
     for (auto it = tablet_peers.begin(); it != tablet_peers.end(); it++) {
       shared_ptr<yb::tablet::TabletPeer> tablet_peer = *it;
       if (tablet_peer) {
         shared_ptr<yb::tablet::TabletClass> tablet_class = tablet_peer->shared_tablet();
-        total_file_sizes += (tablet_class) ? tablet_class->GetTotalSSTFileSizes() : 0;
-        uncompressed_file_sizes += (tablet_class) ? tablet_class->GetUncompressedSSTFileSizes() : 0;
+        total_file_sizes += (tablet_class)
+            ? tablet_class->GetCurrentVersionSstFilesSize() : 0;
+        uncompressed_file_sizes += (tablet_class)
+            ? tablet_class->GetCurrentVersionSstFilesUncompressedSize() : 0;
+        num_files += (tablet_class) ? tablet_class->GetCurrentVersionNumSSTFiles() : 0;
       }
     }
     req.mutable_metrics()->set_total_sst_file_size(total_file_sizes);
     req.mutable_metrics()->set_uncompressed_sst_file_size(uncompressed_file_sizes);
+    req.mutable_metrics()->set_num_sst_files(num_files);
 
     // Get the total number of read and write operations.
     scoped_refptr<Histogram> reads_hist = server_->GetMetricsHistogram
@@ -451,7 +446,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
     VLOG_WITH_PREFIX(2) << "Sending heartbeat:\n" << req.DebugString();
     master::TSHeartbeatResponsePB resp;
     RETURN_NOT_OK_PREPEND(proxy_->TSHeartbeat(req, &resp, &rpc),
-        "Failed to send heartbeat");
+                          "Failed to send heartbeat");
     if (resp.has_error()) {
       if (resp.error().code() != master::MasterErrorPB::NOT_THE_LEADER) {
         return StatusFromPB(resp.error().status());
@@ -481,6 +476,16 @@ Status Heartbeater::Thread::TryHeartbeat() {
       return STATUS(ServiceUnavailable, "master is no longer the leader");
     }
 
+    // Check for a universe key registry for encryption.
+    if (resp.has_universe_key_registry()) {
+      RETURN_NOT_OK(server_->SetUniverseKeyRegistry(resp.universe_key_registry()));
+    }
+
+    if (resp.has_consumer_registry()) {
+      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->SetConsumerRegistry(
+          resp.consumer_registry()));
+    }
+
     // At this point we know resp is a successful heartbeat response from the master so set it as
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
     // below (hence using the nested scope for resp until here).
@@ -500,7 +505,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
   if (last_hb_response_.has_ysql_catalog_version()) {
-    server_->set_ysql_catalog_version(last_hb_response_.ysql_catalog_version());
+    server_->SetYSQLCatalogVersion(last_hb_response_.ysql_catalog_version());
   }
 
   // Update the live tserver list.

@@ -169,9 +169,6 @@ message WriteRequestPB {
   // A batch of Pgsql operations (Although batching is not yet supported).
   repeated PgsqlWriteRequestPB pgsql_write_batch = 13;
 
-  // Contains information about the cross shard transaction
-  optional TransactionMetadataPB transaction_meta = 11;
-
   // Whether data blocks will be cached when read from the files or discarded after use.
   // Disable this to lower cache churn when doing large scans.
   optional bool cache_blocks = 9 [default = true];
@@ -190,6 +187,9 @@ message WriteRequestPB {
   optional fixed64 client_id2 = 15;
   optional int64 request_id = 16;
   optional int64 min_running_request_id = 17;
+  optional double memory_limit_score = 18;
+
+  optional fixed64 external_hybrid_time = 19;
 }
 
 message WriteResponsePB {
@@ -287,6 +287,8 @@ message ReadRequestPB {
   optional string proxy_uuid = 11;
 
   optional bool may_have_metadata = 12;
+
+  optional double memory_limit_score = 13;
 }
 
 message ReadResponsePB {
@@ -371,11 +373,11 @@ message PublishResponsePB {
 message IsTabletServerReadyRequestPB {
 }
 
-// When no errors, the tserver is deemed ready as per its tablet manager layer.
-// The number of tablets not running is returned as well, to help track readiness progress.
-// When this reaches 0 the server is expected to be ready, or client can choose to
-// timeout before that.
+// When response has no errors, the tserver is deemed ready as per its tablet manager layer
+// when the number of not running tablets is 0. Or the client can choose to
+// timeout before that. Also returns total tablets under this tablet server.
 message IsTabletServerReadyResponsePB {
   optional TabletServerErrorPB error = 1;
   optional int32 num_tablets_not_running = 2;
+  optional int32 total_tablets = 3 [default = 0];
 }

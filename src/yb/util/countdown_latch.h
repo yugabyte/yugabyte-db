@@ -32,7 +32,8 @@
 #ifndef YB_UTIL_COUNTDOWN_LATCH_H
 #define YB_UTIL_COUNTDOWN_LATCH_H
 
-#include "yb/gutil/macros.h"
+#include <atomic>
+
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
@@ -45,7 +46,8 @@ namespace yb {
 class CountDownLatch {
  public:
   // Initialize the latch with the given initial count.
-  explicit CountDownLatch(int count);
+  explicit CountDownLatch(uint64_t count);
+  ~CountDownLatch();
 
   // Decrement the count of this latch by 'amount'
   // If the new count is less than or equal to zero, then all waiting threads are woken up.
@@ -83,7 +85,7 @@ class CountDownLatch {
   mutable Mutex lock_;
   ConditionVariable cond_;
 
-  uint64_t count_;
+  std::atomic<uint64_t> count_;
 
   DISALLOW_COPY_AND_ASSIGN(CountDownLatch);
 };

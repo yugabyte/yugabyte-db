@@ -40,13 +40,18 @@ class PeriodicTimerTest : public YBTest {
   PeriodicTimerTest()
       : period_ms_(200) {}
 
-  virtual void SetUp() override {
+  void SetUp() override {
     ASSERT_OK(MessengerBuilder("test").Build().MoveTo(&messenger_));
+  }
+
+  void TearDown() override {
+    messenger_->Shutdown();
+    YBTest::TearDown();
   }
 
  protected:
   const int64_t period_ms_;
-  shared_ptr<Messenger> messenger_;
+  std::unique_ptr<Messenger> messenger_;
 };
 
 class JitteredPeriodicTimerTest : public PeriodicTimerTest,
@@ -65,7 +70,7 @@ class JitteredPeriodicTimerTest : public PeriodicTimerTest,
 
   virtual void SetUp() override {
     PeriodicTimerTest::SetUp();
-    timer_ = PeriodicTimer::Create(messenger_,
+    timer_ = PeriodicTimer::Create(messenger_.get(),
                                    [&] { counter_++; },
                                    MonoDelta::FromMilliseconds(period_ms_),
                                    GetOptions());
@@ -76,7 +81,7 @@ class JitteredPeriodicTimerTest : public PeriodicTimerTest,
     // callbacks are running) by the time 'counter_' is destroyed.
     messenger_->Shutdown();
 
-    YBTest::TearDown();
+    PeriodicTimerTest::TearDown();
   }
 
  protected:
@@ -168,7 +173,7 @@ TEST_F(PeriodicTimerTest, TestCallbackRestartsTimer) {
   PeriodicTimer::Options opts;
   opts.jitter_pct = 0.0; // don't need jittering
   shared_ptr<PeriodicTimer> timer = PeriodicTimer::Create(
-      messenger_,
+      messenger_.get(),
       [&] {
         timer->Stop();
         timer->Start();
@@ -229,7 +234,7 @@ TEST_F(PeriodicTimerTest, TestCallbackRestartsOneShotTimer) {
   opts.jitter_pct = 0.0; // don't need jittering
   opts.one_shot = true;
   shared_ptr<PeriodicTimer> timer = PeriodicTimer::Create(
-      messenger_,
+      messenger_.get(),
       [&] {
         counter++;
         timer->Start();

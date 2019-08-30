@@ -109,7 +109,7 @@ class ParseTree {
   const std::string& stmt_;
 
   // Has this statement been reparsed?
-  mutable bool reparsed_ = false;
+  mutable std::atomic<bool> reparsed_ = {false};
 
   std::shared_ptr<BufferAllocator> buffer_allocator_;
 

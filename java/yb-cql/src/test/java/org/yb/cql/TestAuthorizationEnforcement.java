@@ -2299,4 +2299,46 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
 
     s2.execute(create_index_stmt);
   }
+
+  @Test
+  public void testDropIndexWithWrongTablePermission() throws Exception {
+    s.execute(String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h)) " +
+        "WITH transactions = { 'enabled' : true }", keyspace, table));
+    s.execute("USE " + keyspace);
+    grantPermission(DROP, TABLE, table, username);
+
+    String index_name = "drop_test_order_by_v_2";
+
+    String create_index_stmt = String.format("CREATE INDEX %s on %s.%s (v)",
+        index_name, keyspace, table);
+
+    s.execute(create_index_stmt);
+
+    Thread.sleep(1000);
+
+    String drop_index_stmt = String.format("DROP INDEX %s.%s", keyspace, index_name);
+    thrown.expect(UnauthorizedException.class);
+    thrown.expectMessage(String.format(
+        "User %s has no ALTER permission on <table %s.%s> or any of its parents",
+        username, keyspace, table));
+    s2.execute(drop_index_stmt);
+  }
+
+  @Test
+  public void testDropIndexWithAlterTablePermission() throws Exception {
+    s.execute(String.format("CREATE TABLE %s.%s (h int, v int, PRIMARY KEY(h)) " +
+        "WITH transactions = { 'enabled' : true }", keyspace, table));
+    s.execute("USE " + keyspace);
+    grantPermission(ALTER, TABLE, table, username);
+
+    String index_name = "drop_test_order_by_v_3";
+
+    String create_index_stmt = String.format("CREATE INDEX %s on %s.%s (v)",
+        index_name, keyspace, table);
+
+    s.execute(create_index_stmt);
+
+    String drop_index_stmt = String.format("DROP INDEX %s.%s", keyspace, index_name);
+    s2.execute(drop_index_stmt);
+  }
 }

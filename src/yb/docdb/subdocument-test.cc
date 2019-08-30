@@ -154,14 +154,14 @@ TEST(SubDocumentTest, TestCopyMove) {
   ASSERT_EQ(s3, s4);
   ASSERT_EQ(s3.GetTtl(), s4.GetTtl());
   ASSERT_EQ(s3.GetWriteTime(), s4.GetWriteTime());
-  ASSERT_EQ(ValueType::kNull, s1.value_type());
+  ASSERT_EQ(ValueType::kNullLow, s1.value_type());
 
   SubDocument s5;
   s5 = std::move(s2);
   ASSERT_EQ(s3, s5);
   ASSERT_EQ(s3.GetTtl(), s5.GetTtl());
   ASSERT_EQ(s3.GetWriteTime(), s5.GetWriteTime());
-  ASSERT_EQ(ValueType::kNull, s2.value_type());
+  ASSERT_EQ(ValueType::kNullLow, s2.value_type());
 }
 
 } // namespace docdb

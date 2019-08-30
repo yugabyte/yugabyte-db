@@ -21,6 +21,7 @@ add_library(ql_exec
             eval_where.cc
             eval_misc.cc
             eval_aggr.cc
+            eval_json.cc
             exec_context.cc
             executor.cc)
 

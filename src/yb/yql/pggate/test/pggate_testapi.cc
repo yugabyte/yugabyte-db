@@ -52,7 +52,7 @@ YBCStatus YBCTestCreateTableAddColumn(YBCPgStatement handle, const char *attr_na
     break;
   }
   return YBCPgCreateTableAddColumn(handle, attr_name, attr_num, YBCPgFindTypeEntity(pg_type),
-                                   is_hash, is_range);
+      is_hash, is_range, false /* is_desc */, false /* is_nulls_first */);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -127,6 +127,13 @@ YBCStatus YBCTestNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_nul
   const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(INT8OID);
   Datum datum = type_entity->yb_to_datum(&value, 0, nullptr);
   return YBCPgNewConstant(stmt, type_entity, datum, is_null, expr_handle);
+}
+
+YBCStatus YBCTestNewConstantInt8Op(YBCPgStatement stmt, int64_t value, bool is_null,
+                                 YBCPgExpr *expr_handle, bool is_gt) {
+  const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(INT8OID);
+  Datum datum = type_entity->yb_to_datum(&value, 0, nullptr);
+  return YBCPgNewConstantOp(stmt, type_entity, datum, is_null, expr_handle, is_gt);
 }
 
 YBCStatus YBCTestNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,

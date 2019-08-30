@@ -158,6 +158,14 @@ extern void printfPQExpBuffer(PQExpBuffer str, const char *fmt,...) pg_attribute
 extern void appendPQExpBuffer(PQExpBuffer str, const char *fmt,...) pg_attribute_printf(2, 3);
 
 /*------------------------
+ * appendPQExpBufferVA
+ * Shared guts of printfPQExpBuffer/appendPQExpBuffer.
+ * Attempt to format data and append it to str.  Returns true if done
+ * (either successful or hard failure), false if need to retry.
+ */
+extern bool appendPQExpBufferVA(PQExpBuffer str, const char *fmt, va_list args) pg_attribute_printf(2, 0);
+
+/*------------------------
  * appendPQExpBufferStr
  * Append the given string to a PQExpBuffer, allocating more space
  * if necessary.

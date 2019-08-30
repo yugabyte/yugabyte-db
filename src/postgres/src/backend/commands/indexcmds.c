@@ -563,6 +563,29 @@ DefineIndex(Oid relationId,
 	 * look up the access method, verify it can handle the requested features
 	 */
 	accessMethodName = stmt->accessMethod;
+
+	/*
+	 * In YugaByte mode, switch index method from "btree" or "hash" to "lsm" depending on whether
+	 * the table is stored in YugaByte storage or not (such as temporary tables).
+	 */
+	if (IsYugaByteEnabled())
+	{
+		if (accessMethodName == NULL)
+		{
+			accessMethodName = IsYBRelation(rel) ? DEFAULT_YB_INDEX_TYPE : DEFAULT_INDEX_TYPE;
+		}
+		else if (IsYBRelation(rel))
+		{
+			if (strcmp(accessMethodName, "btree") == 0 || strcmp(accessMethodName, "hash") == 0)
+			{
+				ereport(NOTICE,
+						(errmsg("index method \"%s\" was replaced with \"%s\" in YugaByte DB",
+								accessMethodName, DEFAULT_YB_INDEX_TYPE)));
+				accessMethodName = DEFAULT_YB_INDEX_TYPE;
+			}
+		}
+	}
+
 	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethodName));
 	if (!HeapTupleIsValid(tuple))
 	{
@@ -585,6 +608,14 @@ DefineIndex(Oid relationId,
 							accessMethodName)));
 	}
 	accessMethodId = HeapTupleGetOid(tuple);
+
+	if (IsYBRelation(rel) && accessMethodId != LSM_AM_OID)
+		ereport(ERROR,
+				(errmsg("index method \"%s\" not supported yet",
+						accessMethodName),
+				 errhint("See https://github.com/YugaByte/yugabyte-db/issues/1337. "
+						 "Click '+' on the description to raise its priority")));
+
 	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
 	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
 
@@ -1426,6 +1457,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	ListCell   *lc;
 	int			attn;
 	int			nkeycols = indexInfo->ii_NumIndexKeyAttrs;
+	bool use_yb_ordering = false;
 
 	/* Allocate space for exclusion operator info, if needed */
 	if (exclusionOpNames)
@@ -1439,15 +1471,68 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	else
 		nextExclOp = NULL;
 
+	if (IsYugaByteEnabled() &&
+		!IsBootstrapProcessingMode() &&
+		!YBIsPreparingTemplates())
+	{
+		Relation rel = RelationIdGetRelation(relId);
+		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
+		RelationClose(rel);
+	}
+
 	/*
 	 * process attributeList
 	 */
+	bool	range_index = false;
+
 	attn = 0;
 	foreach(lc, attList)
 	{
 		IndexElem  *attribute = (IndexElem *) lfirst(lc);
 		Oid			atttype;
 		Oid			attcollation;
+
+		if (IsYugaByteEnabled())
+		{
+			if (use_yb_ordering)
+			{
+				switch (attribute->ordering)
+				{
+					case SORTBY_ASC:
+					case SORTBY_DESC:
+						range_index = true;
+						break;
+					case SORTBY_DEFAULT:
+						/* In YB mode first attr defaults to HASH others to ASC */
+						if (attn > 0)
+						{
+							range_index = true;
+							break;
+						}
+						/* Fallthrough */
+					case SORTBY_HASH:
+						if (range_index)
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+									errmsg("hash column not allowed after an ASC/DESC column")));
+						break;
+					default:
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("unsupported column sort order")));
+						break;
+				}
+			}
+			else
+			{
+				if (attribute->ordering == SORTBY_HASH)
+				{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("unsupported column sort order")));
+				}
+			}
+		}
 
 		/*
 		 * Process the column-or-expression to be indexed.
@@ -1682,6 +1767,16 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			/* default ordering is ASC */
 			if (attribute->ordering == SORTBY_DESC)
 				colOptionP[attn] |= INDOPTION_DESC;
+			if (IsYugaByteEnabled() &&
+				attribute->ordering == SORTBY_HASH)
+				colOptionP[attn] |= INDOPTION_HASH;
+
+			/* In YugaByte use HASH as the default for the first column only */
+			if (use_yb_ordering &&
+				attn == 0 &&
+				attribute->ordering == SORTBY_DEFAULT)
+				colOptionP[attn] |= INDOPTION_HASH;
+
 			/* default null ordering is LAST for ASC, FIRST for DESC */
 			if (attribute->nulls_ordering == SORTBY_NULLS_DEFAULT)
 			{
@@ -1695,15 +1790,15 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		{
 			/* index AM does not support ordering */
 			if (attribute->ordering != SORTBY_DEFAULT)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("access method \"%s\" does not support ASC/DESC options",
-								accessMethodName)));
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("access method \"%s\" does not support ASC/DESC options",
+									accessMethodName)));
 			if (attribute->nulls_ordering != SORTBY_NULLS_DEFAULT)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("access method \"%s\" does not support NULLS FIRST/LAST options",
-								accessMethodName)));
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("access method \"%s\" does not support NULLS FIRST/LAST options",
+									accessMethodName)));
 		}
 
 		attn++;

@@ -13,6 +13,11 @@
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
+#include "yb/util/size_literals.h"
+#include "yb/util/format.h"
+
+using namespace yb::size_literals;
+
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
@@ -27,33 +32,45 @@ void PgWrapperTestBase::SetUp() {
 
   // TODO Increase the rpc timeout (from 2500) to not time out for long master queries (i.e. for
   // Postgres system tables). Should be removed once the long lock issue is fixed.
-  int rpc_timeout = NonTsanVsTsan(10000, 30000);
-  string rpc_flag = "--retryable_rpc_single_call_timeout_ms=";
-  opts.extra_tserver_flags.emplace_back(rpc_flag + std::to_string(rpc_timeout));
+  const string rpc_flag_str =
+      "--retryable_rpc_single_call_timeout_ms=" + std::to_string(NonTsanVsTsan(10000, 30000));
+  opts.extra_master_flags.emplace_back(rpc_flag_str);
 
-  // With 3 tservers we'll be creating 3 tables per table, which is enough.
-  opts.extra_tserver_flags.emplace_back("--yb_num_shards_per_tserver=1");
-  opts.extra_tserver_flags.emplace_back("--pg_transactions_enabled");
+  if (IsTsan()) {
+    // Increase timeout for admin ops to account for create database with copying during initdb.
+    // This will be useful when we start enabling PostgreSQL tests under TSAN.
+    opts.extra_master_flags.emplace_back(
+        "--yb_client_admin_operation_timeout_sec=120");
+  }
+
+  opts.extra_tserver_flags.emplace_back(rpc_flag_str);
+
+  // With ysql_num_shards_per_tserver=1 and 3 tservers we'll be creating 3 tablets per table, which
+  // is enough for most tests.
+  opts.extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
 
   // Collect old records very aggressively to catch bugs with old readpoints.
   opts.extra_tserver_flags.emplace_back("--timestamp_history_retention_interval_sec=0");
 
   opts.extra_master_flags.emplace_back("--hide_pg_catalog_table_creation_logs");
 
-  FLAGS_retryable_rpc_single_call_timeout_ms = rpc_timeout; // needed by cluster-wide initdb
+  opts.num_masters = GetNumMasters();
 
-  if (IsTsan()) {
-    // Increase timeout for admin ops to account for create database with copying during initdb
-    FLAGS_yb_client_admin_operation_timeout_sec = 120;
-  }
+  opts.num_tablet_servers = GetNumTabletServers();
 
-  // Test that we can start PostgreSQL servers on non-colliding ports within each tablet server.
-  opts.num_tablet_servers = 3;
+  opts.extra_master_flags.emplace_back("--client_read_write_timeout_ms=120000");
+  opts.extra_master_flags.emplace_back(Format("--memory_limit_hard_bytes=$0", 2_GB));
+
+  opts.extra_master_flags.emplace_back("--enable_ysql");
+
+  UpdateMiniClusterOptions(&opts);
 
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
 
-  pg_ts = cluster_->tablet_server(0);
+  if (cluster_->num_tablet_servers() > 0) {
+    pg_ts = cluster_->tablet_server(0);
+  }
 
   // TODO: fix cluster verification for PostgreSQL tables.
   DontVerifyClusterBeforeNextTearDown();

@@ -110,9 +110,9 @@ class LogTest : public LogTestBase {
                                        int first_repl_index,
                                        LogReader* reader) {
     string fqp = GetTestPath(strings::Substitute("wal-00000000$0", sequence_number));
-    gscoped_ptr<WritableFile> w_log_seg;
+    std::unique_ptr<WritableFile> w_log_seg;
     RETURN_NOT_OK(fs_manager_->env()->NewWritableFile(fqp, &w_log_seg));
-    gscoped_ptr<RandomAccessFile> r_log_seg;
+    std::unique_ptr<RandomAccessFile> r_log_seg;
     RETURN_NOT_OK(fs_manager_->env()->NewRandomAccessFile(fqp, &r_log_seg));
 
     scoped_refptr<ReadableLogSegment> readable_segment(
@@ -388,14 +388,14 @@ void LogTest::DoCorruptionTest(CorruptionType type, CorruptionPosition place,
       offset = entry.offset_in_segment + kEntryHeaderSize + 1;
       break;
   }
-  ASSERT_OK(CorruptLogFile(env_.get(), log_->ActiveSegmentPathForTests(), type, offset));
+  ASSERT_OK(CorruptLogFile(env_.get(), log_->ActiveSegmentForTests()->path(), type, offset));
 
   // Open a new reader -- we don't reuse the existing LogReader from log_
   // because it has a cached header.
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_.get(),
+  ASSERT_OK(LogReader::Open(fs_manager_->env(),
                             make_scoped_refptr(new LogIndex(log_->log_dir_)),
-                            kTestTablet, tablet_wal_path_, nullptr, &reader));
+                            kTestTablet, tablet_wal_path_, fs_manager_->uuid(), nullptr, &reader));
   ASSERT_EQ(1, reader->num_segments());
 
   SegmentSequence segments;
@@ -456,7 +456,9 @@ TEST_F(LogTest, TestSegmentRollover) {
   ASSERT_OK(log_->Close());
 
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_.get(), NULL, kTestTablet, tablet_wal_path_, NULL, &reader));
+  ASSERT_OK(
+      LogReader::Open(fs_manager_->env(), NULL, kTestTablet, tablet_wal_path_, fs_manager_->uuid(),
+                      NULL, &reader));
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_TRUE(segments.back()->HasFooter());
@@ -683,7 +685,7 @@ TEST_F(LogTest, TestGCOfIndexChunks) {
 TEST_F(LogTest, TestWaitUntilAllFlushed) {
   BuildLog();
   // Append 2 replicate pairs asynchronously
-  AppendReplicateBatchToLog(2, kTableType, APPEND_ASYNC);
+  AppendReplicateBatchToLog(2, APPEND_ASYNC);
 
   ASSERT_OK(log_->WaitUntilAllFlushed());
 
@@ -754,6 +756,7 @@ TEST_F(LogTest, TestLogReopenAndGC) {
   // Turn off the time-based retention and try GCing again. This time
   // we should succeed.
   FLAGS_log_min_seconds_to_retain = 0;
+  log_->set_wal_retention_secs(0);
   ASSERT_OK(log_->GC(anchored_index, &num_gced_segments));
   ASSERT_EQ(2, num_gced_segments);
 
@@ -779,7 +782,7 @@ TEST_F(LogTest, TestWriteManyBatches) {
 
   LOG(INFO)<< "Starting to write " << num_batches << " to log";
   LOG_TIMING(INFO, "Wrote all batches to log") {
-    AppendReplicateBatchToLog(num_batches, kTableType);
+    AppendReplicateBatchToLog(num_batches);
   }
   ASSERT_OK(log_->Close());
   LOG(INFO) << "Done writing";
@@ -789,8 +792,8 @@ TEST_F(LogTest, TestWriteManyBatches) {
     uint32_t num_entries = 0;
 
     std::unique_ptr<LogReader> reader;
-    ASSERT_OK(LogReader::Open(fs_manager_.get(), nullptr, kTestTablet, tablet_wal_path_, nullptr,
-                              &reader));
+    ASSERT_OK(LogReader::Open(fs_manager_->env(), nullptr, kTestTablet, tablet_wal_path_,
+                              fs_manager_->uuid(), nullptr, &reader));
 
     std::vector<scoped_refptr<ReadableLogSegment> > segments;
     ASSERT_OK(reader->GetSegmentsSnapshot(&segments));
@@ -812,9 +815,10 @@ TEST_F(LogTest, TestWriteManyBatches) {
 // seg003: 0.20 through 0.29
 // seg004: 0.30 through 0.39
 TEST_F(LogTest, TestLogReader) {
-  LogReader reader(fs_manager_.get(),
+  LogReader reader(fs_manager_->env(),
                    scoped_refptr<LogIndex>(),
                    kTestTablet,
+                   fs_manager_->uuid(),
                    nullptr);
   ASSERT_OK(reader.InitEmptyReaderForTests());
   ASSERT_OK(AppendNewEmptySegmentToReader(2, 10, &reader));
@@ -1117,5 +1121,25 @@ TEST_F(LogTest, TestGetMaxIndexesToSegmentSizeMap) {
   log_->GetMaxIndexesToSegmentSizeMap(10, &max_idx_to_segment_size);
   ASSERT_EQ(0, max_idx_to_segment_size.size());
 }
+
+// Ensure that we can read replicate messages from the LogReader with a very
+// high (> 32 bit) log index and term. Regression test for KUDU-1933.
+TEST_F(LogTest, TestReadReplicatesHighIndex) {
+  const int64_t first_log_index = std::numeric_limits<int32_t>::max() - 3;
+  const int kSequenceLength = 10;
+
+  BuildLog();
+  OpId op_id;
+  op_id.set_term(first_log_index);
+  op_id.set_index(first_log_index);
+  ASSERT_OK(AppendNoOps(&op_id, kSequenceLength));
+
+  auto* reader = log_->GetLogReader();
+  ReplicateMsgs repls;
+  ASSERT_OK(reader->ReadReplicatesInRange(first_log_index, first_log_index + kSequenceLength - 1,
+                                          LogReader::kNoSizeLimit, &repls));
+  ASSERT_EQ(kSequenceLength, repls.size());
+}
+
 } // namespace log
 } // namespace yb

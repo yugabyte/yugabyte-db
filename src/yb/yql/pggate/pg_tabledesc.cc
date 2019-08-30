@@ -15,6 +15,8 @@
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 
+#include "yb/client/table.h"
+
 namespace yb {
 namespace pggate {
 
@@ -35,7 +37,8 @@ PgTableDesc::PgTableDesc(std::shared_ptr<client::YBTable> pg_table) : table_(pg_
                idx < schema.num_key_columns(),
                col.order() /* attr_num */,
                col.type(),
-               client::YBColumnSchema::ToInternalDataType(col.type()));
+               client::YBColumnSchema::ToInternalDataType(col.type()),
+               col.sorting_type());
     attr_num_map_[col.order()] = idx;
   }
 
@@ -73,6 +76,38 @@ Status PgTableDesc::GetColumnInfo(int16_t attr_number, bool *is_primary, bool *i
 
 bool PgTableDesc::IsTransactional() const {
   return table_->schema().table_properties().is_transactional();
+}
+
+const client::YBTableName& PgTableDesc::table_name() const {
+  return table_->name();
+}
+
+const size_t PgTableDesc::num_hash_key_columns() const {
+  return table_->schema().num_hash_key_columns();
+}
+
+const size_t PgTableDesc::num_key_columns() const {
+  return table_->schema().num_key_columns();
+}
+
+const size_t PgTableDesc::num_columns() const {
+  return table_->schema().num_columns();
+}
+
+client::YBPgsqlReadOp* PgTableDesc::NewPgsqlSelect() {
+  return table_->NewPgsqlSelect();
+}
+
+client::YBPgsqlWriteOp* PgTableDesc::NewPgsqlInsert() {
+  return table_->NewPgsqlInsert();
+}
+
+client::YBPgsqlWriteOp* PgTableDesc::NewPgsqlUpdate() {
+  return table_->NewPgsqlUpdate();
+}
+
+client::YBPgsqlWriteOp* PgTableDesc::NewPgsqlDelete() {
+  return table_->NewPgsqlDelete();
 }
 
 }  // namespace pggate

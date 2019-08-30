@@ -18,6 +18,9 @@
 // under the License.
 //
 
+#ifndef YB_ROCKSDB_UTILITIES_COMPACTION_FILTERS_REMOVE_EMPTYVALUE_COMPACTIONFILTER_H
+#define YB_ROCKSDB_UTILITIES_COMPACTION_FILTERS_REMOVE_EMPTYVALUE_COMPACTIONFILTER_H
+
 #ifndef ROCKSDB_LITE
 
 #pragma once
@@ -32,11 +35,13 @@ namespace rocksdb {
 class RemoveEmptyValueCompactionFilter : public CompactionFilter {
  public:
     const char* Name() const override;
-    bool Filter(int level,
+    FilterDecision Filter(int level,
         const Slice& key,
         const Slice& existing_value,
         std::string* new_value,
-        bool* value_changed) const override;
+        bool* value_changed) override;
 };
 }  // namespace rocksdb
-#endif  // !ROCKSDB_LITE
+#endif // !ROCKSDB_LITE
+
+#endif // YB_ROCKSDB_UTILITIES_COMPACTION_FILTERS_REMOVE_EMPTYVALUE_COMPACTIONFILTER_H

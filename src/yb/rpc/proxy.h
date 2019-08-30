@@ -79,9 +79,13 @@ class ProxyContext {
 
   virtual const Protocol* DefaultProtocol() = 0;
 
+  virtual ThreadPool& CallbackThreadPool() = 0;
+
   virtual IoService& io_service() = 0;
 
   virtual RpcMetrics& rpc_metrics() = 0;
+
+  virtual const std::shared_ptr<MemTracker>& parent_mem_tracker() = 0;
 
   // Number of connections to create per destination address.
   virtual int num_connections_to_server() const = 0;
@@ -107,7 +111,7 @@ class ProxyContext {
 // After initialization, multiple threads may make calls using the same proxy object.
 class Proxy {
  public:
-  Proxy(std::shared_ptr<ProxyContext> context,
+  Proxy(ProxyContext* context,
         const HostPort& remote,
         const Protocol* protocol = nullptr);
   ~Proxy();
@@ -136,11 +140,10 @@ class Proxy {
   // controller: the RpcController to associate with this call. Each call
   //             must use a unique controller object. Does not take ownership.
   //
-  // callback: the callback to invoke upon call completion. This callback may
-  //           be invoked before AsyncRequest() itself returns, or any time
-  //           thereafter. It may be invoked either on the caller's thread
-  //           or by an RPC IO thread, and thus should take care to not
-  //           block or perform any heavy CPU work.
+  // callback: the callback to invoke upon call completion. This callback may be invoked before
+  // AsyncRequest() itself returns, or any time thereafter. It may be invoked either on the
+  // caller's thread or asynchronously. RpcController::set_invoke_callback_mode could be used to
+  // specify on which thread to invoke callback in case of asynchronous invocation.
   void AsyncRequest(const RemoteMethod* method,
                     const google::protobuf::Message& req,
                     google::protobuf::Message* resp,
@@ -164,10 +167,21 @@ class Proxy {
   void ResolveDone(const boost::system::error_code& ec, const Resolver::results_type& entries);
   void NotifyAllFailed(const Status& status);
   void QueueCall(RpcController* controller, const Endpoint& endpoint);
+  ThreadPool *GetCallbackThreadPool(
+      bool force_run_callback_on_reactor, InvokeCallbackMode invoke_callback_mode);
+
+  // Implements logic for AsyncRequest function, but allows to force to run callback on
+  // reactor thread. This is an optimisation used by SyncRequest function.
+  void DoAsyncRequest(const RemoteMethod* method,
+                      const google::protobuf::Message& req,
+                      google::protobuf::Message* resp,
+                      RpcController* controller,
+                      ResponseCallback callback,
+                      bool force_run_callback_on_reactor);
 
   static void NotifyFailed(RpcController* controller, const Status& status);
 
-  std::shared_ptr<ProxyContext> context_;
+  ProxyContext* context_;
   HostPort remote_;
   const Protocol* const protocol_;
   mutable std::atomic<bool> is_started_{false};
@@ -183,11 +197,13 @@ class Proxy {
 
   // Number of outbound connections to create per each destination server address.
   int num_connections_to_server_;
+
+  MemTrackerPtr mem_tracker_;
 };
 
 class ProxyCache {
  public:
-  explicit ProxyCache(const std::shared_ptr<ProxyContext>& context)
+  explicit ProxyCache(ProxyContext* context)
       : context_(context) {}
 
   std::shared_ptr<Proxy> Get(const HostPort& remote, const Protocol* protocol);
@@ -204,7 +220,7 @@ class ProxyCache {
     }
   };
 
-  std::shared_ptr<ProxyContext> context_;
+  ProxyContext* context_;
   std::mutex mutex_;
   std::unordered_map<ProxyKey, std::shared_ptr<Proxy>, ProxyKeyHash> proxies_;
 };

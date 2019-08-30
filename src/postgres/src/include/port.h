@@ -107,6 +107,12 @@ extern int	find_my_exec(const char *argv0, char *retpath);
 extern int find_other_exec(const char *argv0, const char *target,
 				const char *versionstr, char *retpath);
 
+/*
+ * YugaByte needed functionality of portable way to run system command
+ * and read first line of output (in exec.c)
+ */
+extern char *exec_pipe_read_line(char *cmd, char *line, int maxsize);
+
 /* Doesn't belong here, but this is used with find_other_exec(), so... */
 #define PG_BACKEND_VERSIONSTR "postgres (PostgreSQL) " PG_VERSION "\n"
 

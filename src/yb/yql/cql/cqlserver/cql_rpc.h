@@ -74,7 +74,7 @@ class CQLConnectionContext : public rpc::ConnectionContextWithCallId,
   ql::QLSession::SharedPtr ql_session_;
 
   // CQL message compression scheme to use.
-  CQLMessage::CompressionScheme compression_scheme_ = CQLMessage::CompressionScheme::NONE;
+  CQLMessage::CompressionScheme compression_scheme_ = CQLMessage::CompressionScheme::kNone;
 
   rpc::BinaryCallParser parser_;
 
@@ -94,7 +94,7 @@ class CQLInboundCall : public rpc::InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
   void LogTrace() const override;
   std::string ToString() const override;

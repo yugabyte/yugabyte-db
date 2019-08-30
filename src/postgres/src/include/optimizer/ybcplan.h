@@ -25,15 +25,15 @@
 
 #include "postgres.h"
 #include "nodes/plannodes.h"
+#include "nodes/relation.h"
 
-/*
- * Analyze a plan and set any YugaByte-specific fields to be used during
- * execution in YugaByte mode.
- */
-void ybcAnalyzePlan(Plan *plan);
+bool YBCIsSupportedSingleRowModifyWriteExpr(Expr *expr);
 
+bool YBCIsSingleRowModify(PlannedStmt *pstmt);
 
-bool ybcIsSingleRowModify(PlannedStmt *pstmt);
+bool YBCIsSingleRowUpdateOrDelete(ModifyTable *modifyTable);
+
+bool YBCAllPrimaryKeysProvided(Oid relid, Bitmapset *attrs);
 
 #endif // YBCPLAN_H
 

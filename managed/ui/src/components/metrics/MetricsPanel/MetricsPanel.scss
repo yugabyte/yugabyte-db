@@ -1,0 +1,47 @@
+// Copyright (c) YugaByte, Inc.
+
+@import "_style/colors.scss";
+
+.metrics-panel {
+  padding: 1px;
+  background-color: $YB_GRAY;
+  margin: 5px 7.5px;
+}
+
+.widget-panel {
+  .metrics-panel {
+    padding: 0;
+    background-color: transparent;
+    margin: 0;
+
+    .main-svg {
+
+      .hoverlayer {
+        
+        .axistext {
+          display: none;
+        }
+      }
+    }
+  }
+
+  .metrics-padded-panel {
+    padding: 15px 20px;
+  }
+
+  .disk-usage-panel {
+    span.metric-subtitle {
+      display: block;
+      margin: 10px 0;
+    }
+  }
+  .cpu-usage-panel {
+    .graph-body {
+      margin-top: 15px !important;
+      margin-bottom: 5px !important;
+    }
+    .yb-resource-count {
+      text-align: center;
+    }
+  }
+}

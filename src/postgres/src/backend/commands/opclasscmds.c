@@ -365,6 +365,10 @@ DefineOpClass(CreateOpClassStmt *stmt)
 						stmt->amname)));
 
 	amoid = HeapTupleGetOid(tup);
+	if (amoid == LSM_AM_OID)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("unsupported index method lsm for CREATE OPERATOR FAMILY")));
 	amroutine = GetIndexAmRoutineByAmId(amoid, false);
 	ReleaseSysCache(tup);
 
@@ -827,6 +831,11 @@ AlterOpFamilyAdd(AlterOpFamilyStmt *stmt, Oid amoid, Oid opfamilyoid,
 	List	   *procedures;		/* OpFamilyMember list for support procs */
 	ListCell   *l;
 
+	if (amoid == LSM_AM_OID)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("unsupported lsm index method for ALTER OPERATOR FAMILY")));
+
 	operators = NIL;
 	procedures = NIL;
 
@@ -1120,6 +1129,8 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid)
 {
 	HeapTuple	proctup;
 	Form_pg_proc procform;
+
+	Assert(amoid != LSM_AM_OID);
 
 	/* Fetch the procedure definition */
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(member->object));

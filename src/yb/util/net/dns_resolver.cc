@@ -34,6 +34,8 @@
 
 #include <vector>
 
+#include <boost/optional.hpp>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
@@ -94,5 +96,63 @@ ScopedDnsTracker::~ScopedDnsTracker() {
 Histogram* ScopedDnsTracker::active_metric() {
   return active_metric_;
 }
+
+std::future<Result<InetAddress>> ResolveDnsFuture(const std::string& host, Resolver* resolver) {
+  const std::string kService = "";
+  auto promise = std::make_shared<std::promise<Result<InetAddress>>>();
+
+  auto address = TryFastResolve(host);
+  if (address) {
+    promise->set_value(InetAddress(*address));
+    return promise->get_future();
+  }
+
+  resolver->async_resolve(
+      Resolver::query(host, kService),
+      [host, promise](
+          const boost::system::error_code& error,
+          const Resolver::results_type& entries) mutable {
+    // Unfortunately there is no safe way to set promise value from 2 different threads, w/o
+    // catching exception in case of concurrency.
+    try {
+      promise->set_value(PickResolvedAddress(host, error, entries));
+    } catch(std::future_error& error) {
+    }
+  });
+
+  if (resolver->get_io_context().stopped()) {
+    try {
+      promise->set_value(STATUS(Aborted, "Messenger already stopped"));
+    } catch(std::future_error& error) {
+    }
+  }
+
+  return promise->get_future();
+}
+
+Result<InetAddress> PickResolvedAddress(
+    const std::string& host, const boost::system::error_code& error,
+    const Resolver::results_type& entries) {
+  if (error) {
+    return STATUS_FORMAT(NetworkError, "Resolve failed $0: $1", host, error.message());
+  }
+  std::vector<InetAddress> addresses, addresses_v6;
+  for (const auto& entry : entries) {
+    auto& dest = entry.endpoint().address().is_v4() ? addresses : addresses_v6;
+    dest.emplace_back(entry.endpoint().address());
+  }
+  addresses.insert(addresses.end(), addresses_v6.begin(), addresses_v6.end());
+  if (addresses.empty()) {
+    return STATUS_FORMAT(NetworkError, "No endpoints resolved for: $0", host);
+  }
+  if (addresses.size() > 1) {
+    LOG(WARNING) << "Peer address '" << host << "' "
+                 << "resolves to " << yb::ToString(addresses) << " different addresses. Using "
+                 << yb::ToString(addresses.front());
+  }
+
+  return addresses.front();
+}
+
 
 } // namespace yb

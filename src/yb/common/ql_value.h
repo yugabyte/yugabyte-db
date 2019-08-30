@@ -84,6 +84,14 @@ class QLValue {
     CHECK(pb_.has_int64_value()) << "Value: " << pb_.ShortDebugString();
     return pb_.int64_value();
   }
+  virtual uint32_t uint32_value() const {
+    CHECK(pb_.has_uint32_value()) << "Value: " << pb_.ShortDebugString();
+    return pb_.uint32_value();
+  }
+  virtual uint64_t uint64_value() const {
+    CHECK(pb_.has_uint64_value()) << "Value: " << pb_.ShortDebugString();
+    return pb_.uint64_value();
+  }
   virtual float float_value() const {
     CHECK(pb_.has_float_value()) << "Value: " << pb_.ShortDebugString();
     return pb_.float_value();
@@ -204,6 +212,12 @@ class QLValue {
   }
   virtual void set_int64_value(int64_t val) {
     pb_.set_int64_value(val);
+  }
+  virtual void set_uint32_value(uint32_t val) {
+    pb_.set_uint32_value(val);
+  }
+  virtual void set_uint64_value(uint64_t val) {
+    pb_.set_uint64_value(val);
   }
   virtual void set_float_value(float val) {
     pb_.set_float_value(val);
@@ -363,28 +377,35 @@ class QLValue {
   virtual bool BothNotNull(const QLValue& other) const {
     return !IsNull() && !other.IsNull();
   }
+  virtual bool BothNull(const QLValue& other) const {
+    return IsNull() && other.IsNull();
+  }
   virtual bool EitherIsNull(const QLValue& other) const {
     return IsNull() || other.IsNull();
   }
 
   virtual int CompareTo(const QLValue& other) const;
+
+  // In YCQL null is not comparable with regular values (w.r.t. ordering).
   virtual bool operator <(const QLValue& v) const {
     return BothNotNull(v) && CompareTo(v) < 0;
   }
   virtual bool operator >(const QLValue& v) const {
     return BothNotNull(v) && CompareTo(v) > 0;
   }
+
+  // In YCQL equality holds for null values.
   virtual bool operator <=(const QLValue& v) const {
-    return BothNotNull(v) && CompareTo(v) <= 0;
+    return (BothNotNull(v) && CompareTo(v) <= 0) || BothNull(v);
   }
   virtual bool operator >=(const QLValue& v) const {
-    return BothNotNull(v) && CompareTo(v) >= 0;
+    return (BothNotNull(v) && CompareTo(v) >= 0) || BothNull(v);
   }
   virtual bool operator ==(const QLValue& v) const {
-    return BothNotNull(v) && CompareTo(v) == 0;
+    return (BothNotNull(v) && CompareTo(v) == 0) || BothNull(v);
   }
   virtual bool operator !=(const QLValue& v) const {
-    return BothNotNull(v) && CompareTo(v) != 0;
+    return !(*this == v);
   }
 
   //----------------------------- serializer / deserializer ---------------------------------
@@ -455,11 +476,13 @@ bool IsNull(const QLValuePB& v);
 void SetNull(QLValuePB* v);
 bool EitherIsNull(const QLValuePB& lhs, const QLValuePB& rhs);
 bool BothNotNull(const QLValuePB& lhs, const QLValuePB& rhs);
+bool BothNull(const QLValuePB& lhs, const QLValuePB& rhs);
 bool Comparable(const QLValuePB& lhs, const QLValuePB& rhs);
 int Compare(const QLValuePB& lhs, const QLValuePB& rhs);
 bool EitherIsNull(const QLValuePB& lhs, const QLValue& rhs);
 bool Comparable(const QLValuePB& lhs, const QLValue& rhs);
 bool BothNotNull(const QLValuePB& lhs, const QLValue& rhs);
+bool BothNull(const QLValuePB& lhs, const QLValue& rhs);
 int Compare(const QLValuePB& lhs, const QLValue& rhs);
 int Compare(const QLSeqValuePB& lhs, const QLSeqValuePB& rhs);
 int Compare(const bool lhs, const bool rhs);

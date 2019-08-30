@@ -239,6 +239,7 @@ has_yb_c_files=false
 
 compiler_args_no_output=()
 analyzer_checkers_specified=false
+is_linking=false
 
 while [[ $# -gt 0 ]]; do
   is_output_arg=false
@@ -276,6 +277,9 @@ while [[ $# -gt 0 ]]; do
           # we contributed, e.g. for stricter error checking.
           has_yb_c_files=true
         fi
+        if [[ $1 == *.o ]]; then
+          is_linking=true
+        fi
       fi
     ;;
     -Wl,-rpath,*)
@@ -304,7 +308,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ ! $output_file = *.o && ${#library_files[@]} -gt 0 ]]; then
+if [[ $output_file != *.o && ${#library_files[@]} -gt 0 ]]; then
   input_files+=( "${library_files[@]}" )
   library_files=()
 fi
@@ -566,6 +570,16 @@ if [[ ${build_type:-} == "asan" &&
   compiler_args=( "${rewritten_args[@]}" -fno-sanitize=undefined )
 fi
 
+if "$is_linking" && ! is_configure_mode_invocation && [[
+      ${build_type:-} == "compilecmds" &&
+      ${YB_SKIP_LINKING:-0} == "1" &&
+      ( $output_file == *libpqwalreceiver* || $output_file != *libpq* ) &&
+      $output_file != *libpgtypes*
+   ]]; then
+  log "Skipping linking in compilecmds mode for output file $output_file"
+  exit 0
+fi
+
 set_default_compiler_type
 find_compiler_by_type "$YB_COMPILER_TYPE"
 
@@ -595,7 +609,7 @@ if which ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; 
   export CCACHE_TEMPDIR=${CCACHE_TEMPDIR:-/tmp/ccache_tmp_$USER}
   jenkins_ccache_dir=/n/jenkins/ccache
   if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs; then
-    if ! is_jenkins; then
+    if [[ ${YB_DEBUG_CCACHE:-0} == "1" ]] && ! is_jenkins; then
       log "is_jenkins (based on JOB_NAME) is false for some reason, even though" \
           "the user is 'jenkins'. Setting CCACHE_DIR to '$jenkins_ccache_dir' anyway." \
           "This is host $HOSTNAME, and current directory is $PWD."

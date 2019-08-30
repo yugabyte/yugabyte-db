@@ -238,8 +238,10 @@ initscan(HeapScanDesc scan, ScanKey key, bool keep_startblock)
 	 */
 	if (scan->rs_parallel != NULL)
 		scan->rs_nblocks = scan->rs_parallel->phs_nblocks;
+	else if (RelationGetForm(scan->rs_rd)->relkind == RELKIND_SEQUENCE)
+	  scan->rs_nblocks = 1;
 	else
-		scan->rs_nblocks = RelationGetNumberOfBlocks(scan->rs_rd);
+    scan->rs_nblocks = RelationGetNumberOfBlocks(scan->rs_rd);
 
 	/*
 	 * If the table is large relative to NBuffers, use a bulk-read access
@@ -304,6 +306,7 @@ initscan(HeapScanDesc scan, ScanKey key, bool keep_startblock)
 	scan->rs_inited = false;
 	scan->rs_ctup.t_data = NULL;
 	ItemPointerSetInvalid(&scan->rs_ctup.t_self);
+	scan->rs_ctup.t_ybctid = (Datum) 0;
 	scan->rs_cbuf = InvalidBuffer;
 	scan->rs_cblock = InvalidBlockNumber;
 
@@ -432,9 +435,9 @@ heapgetpage(HeapScanDesc scan, BlockNumber page)
 		 lineoff <= lines;
 		 lineoff++, lpp++)
 	{
-		if (ItemIdIsNormal(lpp))
+    if (ItemIdIsNormal(lpp))
 		{
-			HeapTupleData loctup;
+      HeapTupleData loctup;
 			bool		valid;
 
 			loctup.t_tableOid = RelationGetRelid(scan->rs_rd);
@@ -1462,7 +1465,8 @@ heap_beginscan_internal(Relation relation, Snapshot snapshot,
 {
 	HeapScanDesc scan;
 
-	if (IsYugaByteEnabled())
+	/* YB scan methods should only be used for tables that are handled by YugaByte. */
+	if (IsYBRelation(relation))
 	{
 		return ybc_heap_beginscan(relation, snapshot, nkeys, key, temp_snap);
 	}
@@ -1581,7 +1585,7 @@ heap_endscan(HeapScanDesc scan)
 {
 	/* Note: no locking manipulations needed */
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(scan->rs_rd))
 	{
 		return ybc_heap_endscan(scan);
 	}
@@ -1849,7 +1853,7 @@ heap_getnext(HeapScanDesc scan, ScanDirection direction)
 {
 	/* Note: no locking manipulations needed */
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(scan->rs_rd))
 	{
 		return ybc_heap_getnext(scan);
 	}
@@ -2470,7 +2474,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	Buffer		vmbuffer = InvalidBuffer;
 	bool		all_visible_cleared = false;
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(relation))
 	{
 		ereport(ERROR,
 		        (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
@@ -2748,7 +2752,7 @@ heap_multi_insert(Relation relation, HeapTuple *tuples, int ntuples,
 	bool		need_tuple_data = RelationIsLogicallyLogged(relation);
 	bool		need_cids = RelationIsAccessibleInLogicalDecoding(relation);
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(relation))
 	{
 		ereport(ERROR,
 		        (errcode(ERRCODE_INTERNAL_ERROR),
@@ -3112,7 +3116,7 @@ heap_delete(Relation relation, ItemPointer tid,
 	HeapTuple	old_key_tuple = NULL;	/* replica identity of the tuple */
 	bool		old_key_copied = false;
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(relation))
 	{
 		YBC_LOG_WARNING("Ignoring unsupported tuple delete for rel %s",
 		                RelationGetRelationName(relation));
@@ -4766,6 +4770,12 @@ heap_lock_tuple(Relation relation, HeapTuple tuple,
 	tuple->t_data = (HeapTupleHeader) PageGetItem(page, lp);
 	tuple->t_len = ItemIdGetLength(lp);
 	tuple->t_tableOid = RelationGetRelid(relation);
+
+	/*
+	 * This will only be used for non-YB tuples (e.g. Temp tables) so we just
+	 * need to set the ybctid to 0 (NULL) here.
+	 */
+	tuple->t_ybctid = (Datum) 0;
 
 l3:
 	result = HeapTupleSatisfiesUpdate(tuple, cid, *buffer);
@@ -6439,7 +6449,7 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 
 	if (IsYugaByteEnabled())
 	{
-		YBCUpdateSysCatalogTuple(relation, tuple);
+		YBCUpdateSysCatalogTuple(relation, NULL /* oldtuple */, tuple);
 		return;
 	}
 

@@ -70,6 +70,8 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/version_info.h"
+#include "yb/util/version_info.pb.h"
 
 DEFINE_int64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");
@@ -163,41 +165,13 @@ static void MemUsageHandler(const Webserver::WebRequest& req, std::stringstream*
 #ifndef TCMALLOC_ENABLED
   (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
 #else
-  char buf[2048];
-  MallocExtension::instance()->GetStats(buf, 2048);
+  char buf[20480];
+  MallocExtension::instance()->GetStats(buf, sizeof(buf));
   // Replace new lines with <br> for html
   string tmp(buf);
   replace_all(tmp, "\n", tags.line_break);
   (*output) << tmp << tags.end_pre_tag;
 #endif
-}
-
-struct MemTrackerData {
-  MemTrackerPtr tracker;
-  // Depth of this tracker in hierarchy, i.e. root have depth = 0, his children 1 and so on.
-  int depth;
-  // Some mem trackers does not report their consumption to parent, so their consumption does not
-  // participate in limit calculation or parent. We accumulate such consumption in field below.
-  size_t consumption_excluded_from_ancestors = 0;
-};
-
-const MemTrackerData& ProcessMemTracker(const MemTrackerPtr& tracker, int depth,
-                                        std::vector<MemTrackerData>* output) {
-  size_t idx = output->size();
-  output->push_back({tracker, depth, 0});
-
-  auto children = tracker->ListChildren();
-
-  for (const auto& child : children) {
-    const auto& child_data = ProcessMemTracker(child, depth + 1, output);
-    (*output)[idx].consumption_excluded_from_ancestors +=
-        child_data.consumption_excluded_from_ancestors;
-    if (!child_data.tracker->add_to_parent()) {
-      (*output)[idx].consumption_excluded_from_ancestors += child_data.tracker->consumption();
-    }
-  }
-
-  return (*output)[idx];
 }
 
 // Registered to handle "/mem-trackers", and prints out to handle memory tracker information.
@@ -208,7 +182,7 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, std::stringstre
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
 
   std::vector<MemTrackerData> trackers;
-  ProcessMemTracker(MemTracker::GetRootTracker(), 0, &trackers);
+  CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
   for (const auto& data : trackers) {
     const auto& tracker = data.tracker;
     const std::string limit_str =
@@ -275,6 +249,35 @@ static void WriteForPrometheus(const MetricRegistry* const metrics,
   WARN_NOT_OK(metrics->WriteForPrometheus(&writer), "Couldn't write text metrics for Prometheus");
 }
 
+static void HandleGetVersionInfo(
+    const Webserver::WebRequest& req, std::stringstream* output) {
+
+  VersionInfoPB version_info;
+  VersionInfo::GetVersionInfoPB(&version_info);
+
+  JsonWriter jw(output, JsonWriter::COMPACT);
+  jw.StartObject();
+
+  jw.String("build_id");
+  jw.String(version_info.build_id());
+  jw.String("build_type");
+  jw.String(version_info.build_type());
+  jw.String("build_number");
+  jw.String(version_info.build_number());
+  jw.String("build_timestamp");
+  jw.String(version_info.build_timestamp());
+  jw.String("build_username");
+  jw.String(version_info.build_username());
+  jw.String("version_number");
+  jw.String(version_info.version_number());
+  jw.String("build_hostname");
+  jw.String(version_info.build_hostname());
+  jw.String("git_revision");
+  jw.String(version_info.git_hash());
+
+  jw.EndObject();
+}
+
 } // anonymous namespace
 
 void AddDefaultPathHandlers(Webserver* webserver) {
@@ -284,6 +287,8 @@ void AddDefaultPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
   webserver->RegisterPathHandler("/mem-trackers", "Memory (detail)",
                                  MemTrackersHandler, true, false);
+  webserver->RegisterPathHandler("/api/v1/version-info", "Build Version Info",
+                                 HandleGetVersionInfo, false, false);
 
   AddPprofPathHandlers(webserver);
 }

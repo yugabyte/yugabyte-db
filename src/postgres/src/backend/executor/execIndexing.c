@@ -322,6 +322,13 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 
 		indexInfo = indexInfoArray[i];
 
+		/*
+		 * No need to update YugaByte primary key which is intrinic part of
+		 * the base table.
+		 */
+		if (IsYugaByteEnabled() && indexRelation->rd_index->indisprimary)
+			continue;
+
 		/* If the index is marked as read-only, ignore it */
 		if (!indexInfo->ii_ReadyForInserts)
 			continue;
@@ -467,7 +474,7 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
  * ----------------------------------------------------------------
  */
 void
-ExecDeleteIndexTuples(TupleTableSlot *slot, EState *estate)
+ExecDeleteIndexTuples(Datum ybctid, HeapTuple tuple, EState *estate)
 {
 	ResultRelInfo *resultRelInfo;
 	int			i;
@@ -476,9 +483,9 @@ ExecDeleteIndexTuples(TupleTableSlot *slot, EState *estate)
 	Relation	heapRelation;
 	IndexInfo **indexInfoArray;
 	ExprContext *econtext;
+	TupleTableSlot	*slot;
 	Datum		values[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
-	Datum		ybctid = YBCGetYBTupleIdFromSlot(slot);
 
 	/*
 	 * Get information from the result relation info structure.
@@ -495,7 +502,12 @@ ExecDeleteIndexTuples(TupleTableSlot *slot, EState *estate)
 	 */
 	econtext = GetPerTupleExprContext(estate);
 
-	/* Arrange for econtext's scan tuple to be the tuple under test */
+	/*
+	 * Arrange for econtext's scan tuple to be the tuple under test using
+	 * a temporary slot.
+	 */
+	slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRelation));
+	slot = ExecStoreTuple(tuple, slot, InvalidBuffer, false);
 	econtext->ecxt_scantuple = slot;
 
 	/*
@@ -508,6 +520,13 @@ ExecDeleteIndexTuples(TupleTableSlot *slot, EState *estate)
 		IndexInfo  *indexInfo;
 
 		if (indexRelation == NULL)
+			continue;
+
+		/*
+		 * No need to update YugaByte primary key which is intrinic part of
+		 * the base table.
+		 */
+		if (IsYugaByteEnabled() && indexRelation->rd_index->indisprimary)
 			continue;
 
 		indexInfo = indexInfoArray[i];
@@ -555,6 +574,9 @@ ExecDeleteIndexTuples(TupleTableSlot *slot, EState *estate)
 					 indexInfo);	/* index AM may need this */
 
 	}
+
+	/* Drop the temporary slot */
+	ExecDropSingleTupleTableSlot(slot);
 }
 
 /* ----------------------------------------------------------------
@@ -814,6 +836,10 @@ check_exclusion_or_unique_constraint(Relation heap, Relation index,
 	econtext = GetPerTupleExprContext(estate);
 	save_scantuple = econtext->ecxt_scantuple;
 	econtext->ecxt_scantuple = existing_slot;
+	if (estate->yb_conflict_slot != NULL) {
+		ExecDropSingleTupleTableSlot(estate->yb_conflict_slot);
+		estate->yb_conflict_slot = NULL;
+	}
 
 	/*
 	 * May have to restart scan from this point if a potential conflict is
@@ -879,25 +905,32 @@ retry:
 		 * happen often enough to be worth trying harder, and anyway we don't
 		 * want to hold any index internal locks while waiting.
 		 */
-		xwait = TransactionIdIsValid(DirtySnapshot.xmin) ?
-			DirtySnapshot.xmin : DirtySnapshot.xmax;
+		/*
+		 * YugaByte manages transaction at a lower level, so we don't need to execute the following
+		 * code block.
+		 * TODO(Mikhail) Verify correctness in YugaByte transaction management for on-conflict.
+		 */
+		if (!IsYugaByteEnabled()) {
+			xwait = TransactionIdIsValid(DirtySnapshot.xmin) ?
+				DirtySnapshot.xmin : DirtySnapshot.xmax;
 
-		if (TransactionIdIsValid(xwait) &&
-			(waitMode == CEOUC_WAIT ||
-			 (waitMode == CEOUC_LIVELOCK_PREVENTING_WAIT &&
-			  DirtySnapshot.speculativeToken &&
-			  TransactionIdPrecedes(GetCurrentTransactionId(), xwait))))
-		{
-			ctid_wait = tup->t_data->t_ctid;
-			reason_wait = indexInfo->ii_ExclusionOps ?
-				XLTW_RecheckExclusionConstr : XLTW_InsertIndex;
-			index_endscan(index_scan);
-			if (DirtySnapshot.speculativeToken)
-				SpeculativeInsertionWait(DirtySnapshot.xmin,
-										 DirtySnapshot.speculativeToken);
-			else
-				XactLockTableWait(xwait, heap, &ctid_wait, reason_wait);
-			goto retry;
+			if (TransactionIdIsValid(xwait) &&
+					(waitMode == CEOUC_WAIT ||
+					 (waitMode == CEOUC_LIVELOCK_PREVENTING_WAIT &&
+						DirtySnapshot.speculativeToken &&
+						TransactionIdPrecedes(GetCurrentTransactionId(), xwait))))
+			{
+				ctid_wait = tup->t_data->t_ctid;
+				reason_wait = indexInfo->ii_ExclusionOps ?
+					XLTW_RecheckExclusionConstr : XLTW_InsertIndex;
+				index_endscan(index_scan);
+				if (DirtySnapshot.speculativeToken)
+					SpeculativeInsertionWait(DirtySnapshot.xmin,
+																	 DirtySnapshot.speculativeToken);
+				else
+					XactLockTableWait(xwait, heap, &ctid_wait, reason_wait);
+				goto retry;
+			}
 		}
 
 		/*
@@ -907,6 +940,9 @@ retry:
 		if (violationOK)
 		{
 			conflict = true;
+			if (IsYugaByteEnabled()) {
+				estate->yb_conflict_slot = existing_slot;
+			}
 			if (conflictTid)
 				*conflictTid = tup->t_self;
 			break;
@@ -950,9 +986,9 @@ retry:
 	 */
 
 	econtext->ecxt_scantuple = save_scantuple;
-
-	ExecDropSingleTupleTableSlot(existing_slot);
-
+	if (estate->yb_conflict_slot == NULL) {
+		ExecDropSingleTupleTableSlot(existing_slot);
+	}
 	return !conflict;
 }
 

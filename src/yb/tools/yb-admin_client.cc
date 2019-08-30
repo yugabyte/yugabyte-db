@@ -37,6 +37,7 @@
 
 #include "yb/common/wire_protocol.h"
 #include "yb/client/client.h"
+#include "yb/client/table_creator.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/string_case.h"
@@ -52,7 +53,7 @@ static constexpr int MAX_NUM_ELEMENTS_TO_SHOW_ON_ERROR = 10;
 
 PB_ENUM_FORMATTERS(yb::consensus::RaftPeerPB::Role);
 PB_ENUM_FORMATTERS(yb::AppStatusPB::ErrorCode);
-PB_ENUM_FORMATTERS(yb::tablet::TabletStatePB);
+PB_ENUM_FORMATTERS(yb::tablet::RaftGroupStatePB);
 
 namespace yb {
 namespace tools {
@@ -147,18 +148,22 @@ ClusterAdminClient::ClusterAdminClient(string addrs,
       client_init_(certs_dir.empty()),
       initted_(false) {}
 
+ClusterAdminClient::~ClusterAdminClient() {
+  yb_client_.reset();
+  messenger_->Shutdown();
+}
+
 Status ClusterAdminClient::Init() {
   CHECK(!initted_);
 
   // Check if caller will initialize the client and related parts.
   if (client_init_) {
-    CHECK_OK(YBClientBuilder()
-      .add_master_server_addr(master_addr_list_)
-      .default_admin_operation_timeout(timeout_)
-      .Build(&yb_client_));
-
     messenger_ = VERIFY_RESULT(MessengerBuilder("yb-admin").Build());
-    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
+    yb_client_ = CHECK_RESULT(YBClientBuilder()
+        .add_master_server_addr(master_addr_list_)
+        .default_admin_operation_timeout(timeout_)
+        .Build(messenger_.get()));
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
     // Find the leader master's socket info to set up the master proxy.
     leader_addr_ = yb_client_->GetMasterLeaderAddress();
@@ -334,6 +339,16 @@ Status ClusterAdminClient::GetLoadMoveCompletion() {
       &MasterServiceProxy::GetLoadMoveCompletion, master_proxy_.get(),
       master::GetLoadMovePercentRequestPB()));
   cout << "Percent complete = " << resp.percent() << endl;
+  return Status::OK();
+}
+
+Status ClusterAdminClient::GetIsLoadBalancerIdle() {
+  CHECK(initted_);
+  const auto resp = VERIFY_RESULT(InvokeRpc(
+      &MasterServiceProxy::IsLoadBalancerIdle, master_proxy_.get(),
+      master::IsLoadBalancerIdleRequestPB()));
+
+  cout << "Idle = " << !resp.has_error() << endl;
   return Status::OK();
 }
 
@@ -807,14 +822,22 @@ Status ClusterAdminClient::SetLoadBalancerEnabled(bool is_enabled) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::FlushTable(const YBTableName& table_name, int timeout_secs) {
+Status ClusterAdminClient::FlushTable(const YBTableName& table_name,
+                                      int timeout_secs,
+                                      bool is_compaction) {
   FlushTablesRequestPB req;
+  req.set_is_compaction(is_compaction);
   table_name.SetIntoTableIdentifierPB(req.add_tables());
   const auto resp = VERIFY_RESULT(InvokeRpc(&MasterServiceProxy::FlushTables,
       master_proxy_.get(), req));
 
-  cout << "Started flushing table " << table_name.ToString() << endl
-       << "Flush request id: " << resp.flush_request_id() << endl;
+  if (is_compaction) {
+    cout << "Started compaction of table " << table_name.ToString() << endl
+         << "Compaction request id: " << resp.flush_request_id() << endl;
+  } else {
+    cout << "Started flushing table " << table_name.ToString() << endl
+         << "Flush request id: " << resp.flush_request_id() << endl;
+  }
 
   IsFlushTablesDoneRequestPB wait_req;
   // Wait for table creation.
@@ -826,24 +849,27 @@ Status ClusterAdminClient::FlushTable(const YBTableName& table_name, int timeout
 
     if (wait_resp.has_error()) {
       if (wait_resp.error().status().code() == AppStatusPB::NOT_FOUND) {
-        cout << "Flush request was deleted: " << resp.flush_request_id() << endl;
+        cout << (is_compaction ? "Compaction" : "Flush") << " request was deleted: "
+             << resp.flush_request_id() << endl;
       }
 
       return StatusFromPB(wait_resp.error().status());
     }
 
     if (wait_resp.done()) {
-      cout << "Flushing complete: " << (wait_resp.success() ? "SUCCESS" : "FAILED") << endl;
+      cout << (is_compaction ? "Compaction" : "Flushing") << " complete: "
+           << (wait_resp.success() ? "SUCCESS" : "FAILED") << endl;
       return Status::OK();
     }
 
-    cout << "Waiting for flushing... " << (wait_resp.success() ? "" : "Already FAILED") << endl;
+    cout << "Waiting for " << (is_compaction ? "compaction..." : "flushing...")
+         << (wait_resp.success() ? "" : " Already FAILED") << endl;
     std::this_thread::sleep_for(1s);
   }
 
   return STATUS(TimedOut,
-      Substitute("Expired timeout ($0 seconds) for table $1 flushing",
-          timeout_secs, table_name.ToString()));
+      Substitute("Expired timeout ($0 seconds) for table $1 $2",
+          timeout_secs, table_name.ToString(), is_compaction ? "compaction" : "flushing"));
 }
 
 Status ClusterAdminClient::WaitUntilMasterLeaderReady() {

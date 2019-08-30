@@ -14,14 +14,24 @@
 
 #include "yb/yql/pggate/pg_doc_op.h"
 
-using std::shared_ptr;
+#include <boost/algorithm/string.hpp>
+
+#include "yb/client/table.h"
+
+#include "yb/yql/pggate/pggate_flags.h"
+
+// TODO: include a header for PgTxnManager specifically.
+#include "yb/yql/pggate/pggate_if_cxx_decl.h"
 
 namespace yb {
 namespace pggate {
 
-PgDocOp::PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time)
-    : pg_session_(std::move(pg_session)), read_time_(read_time),
-      can_restart_(!pg_session_->HasAppliedOperations()) {
+PgDocOp::PgDocOp(PgSession::
+    ScopedRefPtr pg_session, PreventRestart prevent_restart)
+    : pg_session_(std::move(pg_session)), prevent_restart_(prevent_restart) {
+  exec_params_.limit_count = FLAGS_ysql_prefetch_limit;
+  exec_params_.limit_offset = 0;
+  exec_params_.limit_use_default = true;
 }
 
 PgDocOp::~PgDocOp() {
@@ -40,6 +50,12 @@ Result<bool> PgDocOp::EndOfResult() const {
   std::lock_guard<std::mutex> lock(mtx_);
   RETURN_NOT_OK(exec_status_);
   return !has_cached_data_ && end_of_data_;
+}
+
+void PgDocOp::SetExecParams(const PgExecParameters *exec_params) {
+  if (exec_params) {
+    exec_params_ = *exec_params;
+  }
 }
 
 Result<RequestSent> PgDocOp::Execute() {
@@ -103,6 +119,9 @@ Status PgDocOp::GetResult(string *result_set) {
   // rows.
   RETURN_NOT_OK(SendRequestIfNeededUnlocked());
 
+  if (prevent_restart_) {
+    pg_session_->pg_txn_manager()->PreventRestart();
+  }
   return Status::OK();
 }
 
@@ -135,7 +154,7 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
   }
 
   if (op->response().status() == PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR &&
-      can_restart_) {
+      pg_session_->pg_txn_manager()->CanRestart()) {
     exec_status_ = pg_session_->RestartTransaction();
     if (exec_status_.ok()) {
       exec_status_ = SendRequestUnlocked();
@@ -144,7 +163,8 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
       }
     }
   } else {
-    exec_status_ = STATUS(QLError, op->response().error_message());
+    exec_status_ = STATUS(QLError, op->response().error_message(), Slice(),
+                          static_cast<int64_t>(op->response().status()));
   }
 
   return false;
@@ -153,8 +173,9 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocReadOp::PgDocReadOp(
-    PgSession::ScopedRefPtr pg_session, uint64_t* read_time, client::YBPgsqlReadOp *read_op)
-    : PgDocOp(pg_session, read_time), read_op_(read_op) {
+    PgSession::ScopedRefPtr pg_session, PreventRestart prevent_restart,
+    client::YBPgsqlReadOp *read_op)
+    : PgDocOp(std::move(pg_session), prevent_restart), read_op_(read_op) {
 }
 
 PgDocReadOp::~PgDocReadOp() {
@@ -163,15 +184,31 @@ PgDocReadOp::~PgDocReadOp() {
 void PgDocReadOp::InitUnlocked(std::unique_lock<std::mutex>* lock) {
   PgDocOp::InitUnlocked(lock);
 
+  read_op_->mutable_request()->set_return_paging_state(true);
+}
+
+void PgDocReadOp::SetRequestPrefetchLimit() {
+  // Predict the maximum prefetch-limit using the associated gflags.
   PgsqlReadRequestPB *req = read_op_->mutable_request();
-  req->set_limit(kPrefetchLimit);
-  req->set_return_paging_state(true);
+  int predicted_limit = FLAGS_ysql_prefetch_limit;
+  if (!req->is_forward_scan()) {
+    // Backward scan is slower than forward scan, so predicted limit is a smaller number.
+    predicted_limit = predicted_limit * FLAGS_ysql_backward_prefetch_scale_factor;
+  }
+
+  // Use statement LIMIT(count + offset) if it is smaller than the predicted limit.
+  int64_t limit_count = exec_params_.limit_count + exec_params_.limit_offset;
+  if (exec_params_.limit_use_default || limit_count > predicted_limit) {
+    limit_count = predicted_limit;
+  }
+  req->set_limit(limit_count);
 }
 
 Status PgDocReadOp::SendRequestUnlocked() {
   CHECK(!waiting_for_response_);
 
-  SCHECK_EQ(VERIFY_RESULT(pg_session_->PgApplyAsync(read_op_, read_time_)), OpBuffered::kFalse,
+  SetRequestPrefetchLimit();
+  SCHECK_EQ(VERIFY_RESULT(pg_session_->PgApplyAsync(read_op_, &read_time_)), OpBuffered::kFalse,
             IllegalState, "YSQL read operation should not be buffered");
 
   waiting_for_response_ = true;
@@ -208,16 +245,24 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
 
     // Setup request for the next batch of data.
     const PgsqlResponsePB& res = read_op_->response();
-     if (res.has_paging_state()) {
-       PgsqlReadRequestPB *req = read_op_->mutable_request();
-       // Set up paging state for next request.
-       *req->mutable_paging_state() = res.paging_state();
-       // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
-       // The docdb layer will check the target table's schema version is compatible.
-       // This allows long-running queries to continue in the presence of other DDL statements
-       // as long as they do not affect the table(s) being queried.
-       req->clear_ysql_catalog_version();
-     } else {
+    if (res.has_paging_state()) {
+      PgsqlReadRequestPB *req = read_op_->mutable_request();
+      // Set up paging state for next request.
+      // A query request can be nested, and paging state belong to the innermost query which is
+      // the read operator that is operated first and feeds data to other queries.
+      // Recursive Proto Message:
+      //     PgsqlReadRequestPB { PgsqlReadRequestPB index_request; }
+      PgsqlReadRequestPB *innermost_req = req;
+      while (innermost_req->has_index_request()) {
+        innermost_req = innermost_req->mutable_index_request();
+      }
+      *innermost_req->mutable_paging_state() = res.paging_state();
+      // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
+      // The docdb layer will check the target table's schema version is compatible.
+      // This allows long-running queries to continue in the presence of other DDL statements
+      // as long as they do not affect the table(s) being queried.
+      req->clear_ysql_catalog_version();
+    } else {
       end_of_data_ = true;
     }
   } else {
@@ -228,7 +273,7 @@ void PgDocReadOp::ReceiveResponse(Status exec_status) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocWriteOp::PgDocWriteOp(PgSession::ScopedRefPtr pg_session, client::YBPgsqlWriteOp *write_op)
-    : PgDocOp(pg_session, nullptr /* read_time */), write_op_(write_op) {
+    : PgDocOp(pg_session, PreventRestart::kTrue), write_op_(write_op) {
 }
 
 PgDocWriteOp::~PgDocWriteOp() {
@@ -238,7 +283,7 @@ Status PgDocWriteOp::SendRequestUnlocked() {
   CHECK(!waiting_for_response_);
 
   // If the op is buffered, we should not flush now. Just return.
-  if (VERIFY_RESULT(pg_session_->PgApplyAsync(write_op_, read_time_)) == OpBuffered::kTrue) {
+  if (VERIFY_RESULT(pg_session_->PgApplyAsync(write_op_, &read_time_)) == OpBuffered::kTrue) {
     return Status::OK();
   }
 
@@ -267,6 +312,8 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
   if (!is_canceled_ && exec_status_.ok()) {
     // Save it to cache.
     WriteToCacheUnlocked(write_op_);
+    // Save the number of rows affected by the write operation.
+    rows_affected_count_ = write_op_.get()->response().rows_affected_count();
   }
   end_of_data_ = true;
   VLOG(1) << __PRETTY_FUNCTION__ << ": Received response for request " << this;
@@ -275,7 +322,7 @@ void PgDocWriteOp::ReceiveResponse(Status exec_status) {
 //--------------------------------------------------------------------------------------------------
 
 PgDocCompoundOp::PgDocCompoundOp(PgSession::ScopedRefPtr pg_session)
-    : PgDocOp(pg_session, nullptr /* read_time */) {
+    : PgDocOp(std::move(pg_session), PreventRestart::kTrue) {
 }
 
 PgDocCompoundOp::~PgDocCompoundOp() {

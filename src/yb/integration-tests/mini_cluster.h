@@ -37,8 +37,9 @@
 #include <string>
 #include <vector>
 
-#include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/gutil/macros.h"
+#include "yb/integration-tests/mini_cluster_base.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/env.h"
@@ -68,10 +69,15 @@ class TabletPeer;
 
 namespace tserver {
 class MiniTabletServer;
+class TSTabletManager;
 }
 
 struct MiniClusterOptions {
   MiniClusterOptions();
+
+  MiniClusterOptions(int num_masters, int num_tablet_servers)
+      : num_masters(num_masters), num_tablet_servers(num_tablet_servers) {
+  }
 
   // Number of master servers.
   // Default: 1
@@ -85,6 +91,9 @@ struct MiniClusterOptions {
   // Default: "", which auto-generates a unique path for this cluster.
   // The default may only be used from a gtest unit test.
   std::string data_root;
+
+  // Cluster id used to create fs path when we create tests with multiple clusters.
+  std::string cluster_id = "";
 };
 
 // An in-process cluster with a MiniMaster and a configurable
@@ -169,7 +178,12 @@ class MiniCluster : public MiniClusterBase {
 
   std::string GetTabletServerFsRoot(int idx);
 
+  // The comma separated string of the master adresses host/ports from current list of masters.
+  string GetMasterAddresses() const;
+
   std::vector<std::shared_ptr<tablet::TabletPeer>> GetTabletPeers(int idx);
+
+  tserver::TSTabletManager* GetTabletManager(int idx);
 
   // Wait for the given tablet to have 'expected_count' replicas
   // reported on the master. Returns the locations in '*locations'.
@@ -187,6 +201,10 @@ class MiniCluster : public MiniClusterBase {
   CHECKED_STATUS WaitForTabletServerCount(int count,
                                   std::vector<std::shared_ptr<master::TSDescriptor> >* descs);
 
+  uint16_t AllocateFreePort() {
+    return port_picker_.AllocateFreePort();
+  }
+
  private:
 
   enum {
@@ -194,16 +212,9 @@ class MiniCluster : public MiniClusterBase {
     kRegistrationWaitTimeSeconds = NonTsanVsTsan(30, 60)
   };
 
-  // Create a client configured to talk to this cluster. Builder may contain
-  // override options for the client. The master address will be overridden to
-  // talk to the running master. If 'builder' is NULL, default options will be
-  // used.
-  //
-  // REQUIRES: the cluster must have already been Start()ed.
-  virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
-      std::shared_ptr<client::YBClient>* client);
+  void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
-  virtual HostPort DoGetLeaderMasterBoundRpcAddr();
+  HostPort DoGetLeaderMasterBoundRpcAddr() override;
 
   // Allocates ports for the given daemon type and saves them to the ports vector. Does not
   // overwrite values in the ports vector that are non-zero already.
@@ -258,6 +269,28 @@ YB_STRONGLY_TYPED_BOOL(ForceStepDown);
 CHECKED_STATUS StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
     ForceStepDown force_step_down);
+
+// Waits until all tablet peers of the specified cluster are in the Running state.
+// And total number of those peers equals to the number of tablet servers for each known tablet.
+CHECKED_STATUS WaitAllReplicasReady(MiniCluster* cluster, MonoDelta timeout);
+
+// Waits until all tablet peers of specified cluster have the specified index in their log.
+// And total number of those peers equals to the number of tablet servers for each known tablet.
+CHECKED_STATUS WaitAllReplicasHaveIndex(MiniCluster* cluster, int64_t index, MonoDelta timeout);
+
+std::thread RestartsThread(
+    MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag);
+
+std::vector<rocksdb::DB*> GetAllRocksDbs(MiniCluster* cluster);
+
+int NumTotalRunningCompactions(MiniCluster* cluster);
+
+int NumRunningFlushes(MiniCluster* cluster);
+
+Result<scoped_refptr<master::TableInfo>> FindTable(
+    MiniCluster* cluster, const client::YBTableName& table_name);
+
+CHECKED_STATUS WaitForInitDb(MiniCluster* cluster);
 
 }  // namespace yb
 

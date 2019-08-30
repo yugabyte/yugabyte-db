@@ -99,10 +99,15 @@ class ScopedFileDeleter {
  public:
   ScopedFileDeleter(Env* env, std::string path);
   ~ScopedFileDeleter();
+  ScopedFileDeleter(ScopedFileDeleter&& other) = default;
 
   // Do not delete the file when this object goes out of scope.
   void Cancel() {
     should_delete_ = false;
+  }
+
+  const std::string& path() {
+    return path_;
   }
 
  private:

@@ -34,6 +34,8 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/strings/substitute.h"
+#include "yb/client/session.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/integration-tests/cluster_verifier.h"
@@ -258,8 +260,8 @@ class AllTypesItest : public YBTest {
 
     cluster_.reset(new ExternalMiniCluster(opts));
     RETURN_NOT_OK(cluster_->Start());
-    YBClientBuilder builder;
-    return cluster_->CreateClient(&builder, &client_);
+    client_ = VERIFY_RESULT(cluster_->CreateClient());
+    return Status::OK();
   }
 
   Status CreateTable() {
@@ -364,6 +366,7 @@ class AllTypesItest : public YBTest {
   }
 
   void TearDown() override {
+    client_.reset();
     cluster_->AssertNoCrashes();
     cluster_->Shutdown();
   }
@@ -371,7 +374,7 @@ class AllTypesItest : public YBTest {
  protected:
   TestSetup setup_;
   YBSchema schema_;
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   gscoped_ptr<ExternalMiniCluster> cluster_;
   TableHandle table_;
 };

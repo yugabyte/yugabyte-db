@@ -66,7 +66,7 @@ TabletServerTestBase::TabletServerTestBase(TableType table_type)
 
   // Decrease heartbeat timeout: we keep re-trying heartbeats when a
   // single master server fails due to a network error. Decreasing
-  // the hearbeat timeout to 1 second speeds up unit tests which
+  // the heartbeat timeout to 1 second speeds up unit tests which
   // purposefully specify non-running Master servers.
   FLAGS_heartbeat_rpc_timeout_ms = 1000;
 
@@ -85,10 +85,11 @@ void TabletServerTestBase::SetUp() {
   key_schema_ = schema_.CreateKeyProjection();
 
   client_messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("Client").Build());
-  proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_messenger_);
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_messenger_.get());
 }
 
 void TabletServerTestBase::TearDown() {
+  client_messenger_->Shutdown();
   tablet_peer_.reset();
   if (mini_server_) {
     mini_server_->Shutdown();
@@ -331,7 +332,7 @@ void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValu
 
   int count = 0;
   QLTableRow row;
-  while ((**iter).HasNext()) {
+  while (ASSERT_RESULT((**iter).HasNext())) {
     ASSERT_OK_FAST((**iter).NextRow(&row));
     ++count;
   }

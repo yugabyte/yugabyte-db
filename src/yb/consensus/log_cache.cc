@@ -103,13 +103,10 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
     metrics_(metric_entity) {
 
   const int64_t max_ops_size_bytes = FLAGS_log_cache_size_limit_mb * 1_MB;
-  const int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1_MB;
 
   // Set up (or reuse) a tracker with the global limit. It is parented directly to the root tracker
   // so that it's always global.
-  parent_tracker_ = MemTracker::FindOrCreateTracker(global_max_ops_size_bytes,
-                                                    kParentMemTrackerId,
-                                                    server_tracker);
+  parent_tracker_ = GetServerMemTracker(server_tracker);
 
   // And create a child tracker with the per-tablet limit.
   tracker_ = MemTracker::CreateTracker(
@@ -121,6 +118,12 @@ LogCache::LogCache(const scoped_refptr<MetricEntity>& metric_entity,
   auto zero_op = std::make_shared<ReplicateMsg>();
   *zero_op->mutable_id() = MinimumOpId();
   InsertOrDie(&cache_, 0, { zero_op, zero_op->SpaceUsed() });
+}
+
+MemTrackerPtr LogCache::GetServerMemTracker(const MemTrackerPtr& server_tracker) {
+  const int64_t global_max_ops_size_bytes = FLAGS_global_log_cache_size_limit_mb * 1_MB;
+  return MemTracker::FindOrCreateTracker(
+      global_max_ops_size_bytes, kParentMemTrackerId, server_tracker);
 }
 
 LogCache::~LogCache() {
@@ -173,11 +176,12 @@ Result<LogCache::PrepareAppendResult> LogCache::PrepareAppendOperations(const Re
   if (!tracker_->TryConsume(result.mem_required)) {
     int spare = tracker_->SpareCapacity();
     int need_to_free = result.mem_required - spare;
-    VLOG_WITH_PREFIX_UNLOCKED(1) << "Memory limit would be exceeded trying to append "
-                        << HumanReadableNumBytes::ToString(result.mem_required)
-                        << " to log cache (available="
-                        << HumanReadableNumBytes::ToString(spare)
-                        << "): attempting to evict some operations...";
+    VLOG_WITH_PREFIX_UNLOCKED(1)
+        << "Memory limit would be exceeded trying to append "
+        << HumanReadableNumBytes::ToString(result.mem_required)
+        << " to log cache (available="
+        << HumanReadableNumBytes::ToString(spare)
+        << "): attempting to evict some operations...";
 
     // TODO: we should also try to evict from other tablets - probably better to evict really old
     // ops from another tablet than evict recent ops from this one.
@@ -294,6 +298,16 @@ Status LogCache::ReadOps(int64_t after_op_index,
                          ReplicateMsgs* messages,
                          OpId* preceding_op,
                          bool* have_more_messages) {
+  return ReadOps(after_op_index, 0 /* to_op_index */, max_size_bytes,
+                 messages, preceding_op, have_more_messages);
+}
+
+Status LogCache::ReadOps(int64_t after_op_index,
+                         int64_t to_op_index,
+                         int max_size_bytes,
+                         ReplicateMsgs* messages,
+                         OpId* preceding_op,
+                         bool* have_more_messages) {
   DCHECK_ONLY_NOTNULL(messages);
   DCHECK_ONLY_NOTNULL(preceding_op);
   DCHECK_GE(after_op_index, 0);
@@ -304,10 +318,11 @@ Status LogCache::ReadOps(int64_t after_op_index,
 
   std::unique_lock<simple_spinlock> l(lock_);
   int64_t next_index = after_op_index + 1;
+  int64_t to_index = to_op_index > 0 ? to_op_index + 1 : next_sequential_op_index_;
 
-  // Return as many operations as we can, up to the limit
+  // Return as many operations as we can, up to the limit.
   int64_t remaining_space = max_size_bytes;
-  while (remaining_space > 0 && next_index < next_sequential_op_index_) {
+  while (remaining_space > 0 && next_index < to_index) {
 
     // If the messages the peer needs haven't been loaded into the queue yet, load them.
     MessageCache::const_iterator iter = cache_.lower_bound(next_index);
@@ -315,10 +330,10 @@ Status LogCache::ReadOps(int64_t after_op_index,
       int64_t up_to;
       if (iter == cache_.end()) {
         // Read all the way to the current op.
-        up_to = next_sequential_op_index_ - 1;
+        up_to = to_index - 1;
       } else {
-        // Read up to the next entry that's in the cache.
-        up_to = iter->first - 1;
+        // Read up to the next entry that's in the cache or to_index whichever is lesser.
+        up_to = std::min(iter->first - 1, static_cast<uint64_t>(to_index - 1));
       }
 
       l.unlock();
@@ -329,8 +344,8 @@ Status LogCache::ReadOps(int64_t after_op_index,
             next_index, up_to, remaining_space, &raw_replicate_ptrs),
         Substitute("Failed to read ops $0..$1", next_index, up_to));
       l.lock();
-      LOG_WITH_PREFIX_UNLOCKED(INFO) << "Successfully read " << raw_replicate_ptrs.size() << " ops "
-                            << "from disk.";
+      LOG_WITH_PREFIX_UNLOCKED(INFO)
+          << "Successfully read " << raw_replicate_ptrs.size() << " ops from disk.";
 
       for (auto& msg : raw_replicate_ptrs) {
         CHECK_EQ(next_index, msg->id().index());
@@ -347,6 +362,9 @@ Status LogCache::ReadOps(int64_t after_op_index,
     } else {
       // Pull contiguous messages from the cache until the size limit is achieved.
       for (; iter != cache_.end(); ++iter) {
+        if (to_op_index > 0 && next_index > to_op_index) {
+          break;
+        }
         const ReplicateMsgPtr& msg = iter->second.msg;
         int64_t index = msg->id().index();
         if (index != next_index) {
@@ -369,14 +387,12 @@ Status LogCache::ReadOps(int64_t after_op_index,
   return Status::OK();
 }
 
-
-void LogCache::EvictThroughOp(int64_t index) {
+size_t LogCache::EvictThroughOp(int64_t index, int64_t bytes_to_evict) {
   std::lock_guard<simple_spinlock> lock(lock_);
-
-  EvictSomeUnlocked(index, MathLimits<int64_t>::kMax);
+  return EvictSomeUnlocked(index, bytes_to_evict);
 }
 
-void LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict) {
+size_t LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evict) {
   DCHECK(lock_.is_locked());
   VLOG_WITH_PREFIX_UNLOCKED(2) << "Evicting log cache index <= "
                       << stop_after_index
@@ -416,6 +432,8 @@ void LogCache::EvictSomeUnlocked(int64_t stop_after_index, int64_t bytes_to_evic
     }
   }
   VLOG_WITH_PREFIX_UNLOCKED(1) << "Evicting log cache: after state: " << ToStringUnlocked();
+
+  return bytes_evicted;
 }
 
 void LogCache::AccountForMessageRemovalUnlocked(const CacheEntry& entry) {

@@ -21,6 +21,8 @@
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_with_call_id.h"
 
+#include "yb/util/ev_util.h"
+
 namespace yb {
 namespace rpc {
 
@@ -33,8 +35,16 @@ class YBConnectionContext : public ConnectionContextWithCallId, public BinaryCal
 
   const MemTrackerPtr& call_tracker() const { return call_tracker_; }
 
+  void SetEventLoop(ev::loop_ref* loop) override;
+
+  void Shutdown(const Status& status) override;
+
  protected:
   BinaryCallParser& parser() { return parser_; }
+
+  ev::loop_ref* loop_ = nullptr;
+
+  EvTimerHolder timer_;
 
  private:
   uint64_t ExtractCallId(InboundCall* call) override;
@@ -69,9 +79,17 @@ class YBInboundConnectionContext : public YBConnectionContext {
   // Takes ownership of call_data content.
   CHECKED_STATUS HandleInboundCall(const ConnectionPtr& connection, std::vector<char>* call_data);
 
+  void HandleTimeout(ev::timer& watcher, int revents); // NOLINT
+
   RpcConnectionPB::StateType State() override { return state_; }
 
   RpcConnectionPB::StateType state_ = RpcConnectionPB::UNKNOWN;
+
+  void UpdateLastWrite(const ConnectionPtr& connection) override;
+
+  std::weak_ptr<Connection> connection_;
+
+  CoarseTimePoint last_write_time_;
 };
 
 class YBInboundCall : public InboundCall {
@@ -139,7 +157,7 @@ class YBInboundCall : public InboundCall {
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override;
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
 
   void LogTrace() const override;
   std::string ToString() const override;
@@ -205,9 +223,17 @@ class YBOutboundConnectionContext : public YBConnectionContext {
   CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
   void Connected(const ConnectionPtr& connection) override;
   void AssignConnection(const ConnectionPtr& connection) override;
-  Result<ProcessDataResult> ProcessCalls(
-      const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full)
-          override;
+  Result<ProcessDataResult> ProcessCalls(const ConnectionPtr& connection,
+                              const IoVecs& data,
+                              ReadBufferFull read_buffer_full) override;
+
+  void UpdateLastRead(const ConnectionPtr& connection) override;
+
+  void HandleTimeout(ev::timer& watcher, int revents); // NOLINT
+
+  std::weak_ptr<Connection> connection_;
+
+  CoarseTimePoint last_read_time_;
 };
 
 } // namespace rpc

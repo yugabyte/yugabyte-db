@@ -39,9 +39,15 @@
 
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/error.h"
 #include "yb/client/schema.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
@@ -73,6 +79,7 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(use_hybrid_clock);
 DECLARE_int32(ht_lease_duration_ms);
 DECLARE_int32(replication_factor);
+DECLARE_int32(log_min_seconds_to_retain);
 
 namespace yb {
 
@@ -99,7 +106,8 @@ using std::vector;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 
-class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
+class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
+                       public ::testing::WithParamInterface<int> {
  public:
   AlterTableTest()
     : stop_threads_(false),
@@ -130,10 +138,10 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(num_replicas()));
 
-    CHECK_OK(YBClientBuilder()
-             .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
-             .default_admin_operation_timeout(MonoDelta::FromSeconds(60))
-             .Build(&client_));
+    client_ = CHECK_RESULT(YBClientBuilder()
+        .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
+        .default_admin_operation_timeout(MonoDelta::FromSeconds(60))
+        .Build());
 
     CHECK_OK(client_->CreateNamespaceIfNotExists(kTableName.namespace_name()));
 
@@ -152,6 +160,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTearDown() override {
+    client_.reset();
     tablet_peer_.reset();
     cluster_->Shutdown();
   }
@@ -249,7 +258,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster> {
 
   static const YBTableName kTableName;
 
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
 
   YBSchema schema_;
 
@@ -625,6 +634,32 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_EQ(2, rows.size());
   ASSERT_EQ("{ int32:0, null, null }", rows[0]);
   ASSERT_EQ("{ int32:16777216, null, null }", rows[1]);
+}
+
+INSTANTIATE_TEST_CASE_P(TestAlterWalRetentionSecs,
+                        AlterTableTest,
+                        ::testing::Values(FLAGS_log_min_seconds_to_retain / 2,
+                                          FLAGS_log_min_seconds_to_retain * 2));
+
+TEST_P(AlterTableTest, TestAlterWalRetentionSecs) {
+  InsertRows(1, 1000);
+  int kWalRetentionSecs = GetParam();
+
+  LOG(INFO) << "Modifying wal retention time";
+  std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+
+  ASSERT_OK(table_alterer->SetWalRetentionSecs(kWalRetentionSecs)->Alter());
+
+  int expected_wal_retention_secs = max(FLAGS_log_min_seconds_to_retain, kWalRetentionSecs);
+
+  ASSERT_EQ(kWalRetentionSecs, tablet_peer_->tablet()->metadata()->wal_retention_secs());
+  ASSERT_EQ(expected_wal_retention_secs, tablet_peer_->log()->wal_retention_secs());
+
+  // Test that the wal retention time gets set correctly in the metadata and in the log objects.
+  ASSERT_NO_FATALS(RestartTabletServer());
+
+  ASSERT_EQ(kWalRetentionSecs, tablet_peer_->tablet()->metadata()->wal_retention_secs());
+  ASSERT_EQ(expected_wal_retention_secs, tablet_peer_->log()->wal_retention_secs());
 }
 
 TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {

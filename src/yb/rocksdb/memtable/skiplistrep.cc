@@ -17,15 +17,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rocksdb/db/inlineskiplist.h"
+#include "yb/rocksdb/db/skiplist.h"
+
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/util/arena.h"
 
 namespace rocksdb {
 namespace {
+
+template <class SkipListImpl>
 class SkipListRep : public MemTableRep {
-  InlineSkipList<const MemTableRep::KeyComparator&> skip_list_;
+  SkipListImpl skip_list_;
   const MemTableRep::KeyComparator& cmp_;
   const SliceTransform* transform_;
   const size_t lookahead_;
@@ -52,6 +57,10 @@ class SkipListRep : public MemTableRep {
 
   void InsertConcurrently(KeyHandle handle) override {
     skip_list_.InsertConcurrently(static_cast<char*>(handle));
+  }
+
+  bool Erase(KeyHandle handle, const MemTableRep::KeyComparator& comparator) override {
+    return skip_list_.Erase(static_cast<char*>(handle), comparator);
   }
 
   // Returns true iff an entry that compares equal to key is in the list.
@@ -88,13 +97,12 @@ class SkipListRep : public MemTableRep {
 
   // Iteration over the contents of a skip list
   class Iterator : public MemTableRep::Iterator {
-    InlineSkipList<const MemTableRep::KeyComparator&>::Iterator iter_;
+    typename SkipListImpl::Iterator iter_;
 
    public:
     // Initialize an iterator over the specified list.
     // The returned iterator is not valid.
-    explicit Iterator(
-        const InlineSkipList<const MemTableRep::KeyComparator&>* list)
+    explicit Iterator(const SkipListImpl* list)
         : iter_(list) {}
 
     ~Iterator() override { }
@@ -237,8 +245,8 @@ class SkipListRep : public MemTableRep {
 
    private:
     const SkipListRep& rep_;
-    InlineSkipList<const MemTableRep::KeyComparator&>::Iterator iter_;
-    InlineSkipList<const MemTableRep::KeyComparator&>::Iterator prev_;
+    typename SkipListImpl::Iterator iter_;
+    typename SkipListImpl::Iterator prev_;
   };
 
   MemTableRep::Iterator* GetIterator(Arena* arena = nullptr) override {
@@ -260,7 +268,13 @@ class SkipListRep : public MemTableRep {
 MemTableRep* SkipListFactory::CreateMemTableRep(
     const MemTableRep::KeyComparator& compare, MemTableAllocator* allocator,
     const SliceTransform* transform, Logger* logger) {
-  return new SkipListRep(compare, allocator, transform, lookahead_);
+  if (concurrent_writes_) {
+    return new SkipListRep<InlineSkipList<const MemTableRep::KeyComparator&>>(
+        compare, allocator, transform, lookahead_);
+  } else {
+    return new SkipListRep<SingleWriterInlineSkipList<const MemTableRep::KeyComparator&>>(
+        compare, allocator, transform, lookahead_);
+  }
 }
 
 } // namespace rocksdb

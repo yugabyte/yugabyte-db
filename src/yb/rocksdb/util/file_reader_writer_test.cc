@@ -55,7 +55,7 @@ TEST_F(WritableFileWriterTest, RangeSync) {
     uint64_t GetFileSize() override { return size_; }
     void GetPreallocationStatus(size_t* block_size,
                                 size_t* last_allocated_block) override {}
-    size_t GetUniqueId(char* id, size_t max_size) const override { return 0; }
+    size_t GetUniqueId(char* id) const override { return 0; }
     Status InvalidateCache(size_t offset, size_t length) override {
       return Status::OK();
     }

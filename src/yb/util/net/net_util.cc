@@ -46,7 +46,6 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/optional/optional.hpp>
-#include <boost/scope_exit.hpp>
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/map-util.h"
@@ -67,6 +66,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/random.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 
@@ -327,9 +327,9 @@ Status GetLocalAddresses(std::vector<IpAddress>* result, AddressFilter filter) {
                   errno);
   }
 
-  BOOST_SCOPE_EXIT(addresses) {
+  auto se = ScopeExit([addresses] {
     freeifaddrs(addresses);
-  } BOOST_SCOPE_EXIT_END
+  });
 
   for (auto address = addresses; address; address = address->ifa_next) {
     if (address->ifa_addr != nullptr) {

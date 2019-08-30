@@ -62,6 +62,8 @@
 
 METRIC_DECLARE_entity(tablet);
 
+DECLARE_bool(quick_leader_election_on_create);
+
 using std::shared_ptr;
 using std::string;
 
@@ -81,8 +83,7 @@ using rpc::MessengerBuilder;
 using strings::Substitute;
 using tablet::YBTabletTest;
 using tablet::TabletPeer;
-using tablet::TabletPeerClass;
-using tablet::TabletSuperBlockPB;
+using tablet::RaftGroupReplicaSuperBlockPB;
 using tablet::WriteOperationState;
 
 const int64_t kLeaderTerm = 1;
@@ -104,6 +105,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   }
 
   virtual void TearDown() override {
+    messenger_->Shutdown();
     session_.reset();
     tablet_peer_->Shutdown();
     YBTabletTest::TearDown();
@@ -112,9 +114,10 @@ class RemoteBootstrapTest : public YBTabletTest {
  protected:
   void SetUpTabletPeer() {
     scoped_refptr<Log> log;
-    ASSERT_OK(Log::Open(LogOptions(), fs_manager(), tablet()->tablet_id(),
+    ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
                        fs_manager()->GetFirstTabletWalDirOrDie(tablet()->metadata()->table_id(),
                                                                tablet()->tablet_id()),
+                       fs_manager()->uuid(),
                        *tablet()->schema(),
                        0,  // schema_version
                        nullptr, // metric_entity
@@ -132,13 +135,15 @@ class RemoteBootstrapTest : public YBTabletTest {
     hp->set_port(0);
 
     tablet_peer_.reset(
-        new TabletPeerClass(tablet()->metadata(),
-                            config_peer,
-                            clock(),
-                            fs_manager()->uuid(),
-                            Bind(&RemoteBootstrapTest::TabletPeerStateChangedCallback,
-                                 Unretained(this),
-                                 tablet()->tablet_id())));
+        new TabletPeer(
+            tablet()->metadata(),
+            config_peer,
+            clock(),
+            fs_manager()->uuid(),
+            Bind(
+                &RemoteBootstrapTest::TabletPeerStateChangedCallback,
+                Unretained(this),
+                tablet()->tablet_id())));
 
     // TODO similar to code in tablet_peer-test, consider refactor.
     RaftConfigPB config;
@@ -151,26 +156,35 @@ class RemoteBootstrapTest : public YBTabletTest {
                                        config, consensus::kMinimumTerm, &cmeta));
 
     MessengerBuilder mbuilder(CURRENT_TEST_NAME());
-    auto messenger = ASSERT_RESULT(mbuilder.Build());
-    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger);
+    messenger_ = ASSERT_RESULT(mbuilder.Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
     log_anchor_registry_.reset(new LogAnchorRegistry());
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
-                                          std::shared_future<client::YBClientPtr>(),
-                                          messenger,
-                                          proxy_cache_.get(),
-                                          log,
-                                          metric_entity,
-                                          raft_pool_.get(),
-                                          tablet_prepare_pool_.get(),
-                                          nullptr /* retryable_requests */));
+                                           std::shared_future<client::YBClient*>(),
+                                           nullptr /* server_mem_tracker */,
+                                           messenger_.get(),
+                                           proxy_cache_.get(),
+                                           log,
+                                           metric_entity,
+                                           raft_pool_.get(),
+                                           tablet_prepare_pool_.get(),
+                                           nullptr /* retryable_requests */));
     consensus::ConsensusBootstrapInfo boot_info;
     ASSERT_OK(tablet_peer_->Start(boot_info));
 
     ASSERT_OK(tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(2)));
 
-    ASSERT_OK(tablet_peer_->consensus()->EmulateElection());
+
+    AssertLoggedWaitFor([&]() -> Result<bool> {
+      if (FLAGS_quick_leader_election_on_create) {
+        return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+      }
+      RETURN_NOT_OK(tablet_peer_->consensus()->EmulateElection());
+      return true;
+    }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
+                                         "leader, otherwise emulate.");
   }
 
   void TabletPeerStateChangedCallback(const string& tablet_id,
@@ -202,7 +216,7 @@ class RemoteBootstrapTest : public YBTabletTest {
   }
 
   virtual void InitSession() {
-    session_.reset(new YB_EDITION_NS_PREFIX RemoteBootstrapSession(
+    session_.reset(new enterprise::RemoteBootstrapSession(
         tablet_peer_, "TestSession", "FakeUUID", fs_manager(), nullptr /* nsessions */));
     ASSERT_OK(session_->Init());
   }
@@ -213,7 +227,8 @@ class RemoteBootstrapTest : public YBTabletTest {
   unique_ptr<ThreadPool> tablet_prepare_pool_;
   unique_ptr<ThreadPool> append_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
-  scoped_refptr<YB_EDITION_NS_PREFIX RemoteBootstrapSession> session_;
+  scoped_refptr<enterprise::RemoteBootstrapSession> session_;
+  std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
 

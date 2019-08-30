@@ -26,6 +26,7 @@ using std::shared_ptr;
 using std::make_shared;
 using std::to_string;
 using std::vector;
+using std::numeric_limits;
 //--------------------------------------------------------------------------------------------------
 // BFTestValue is a data value to be used with builtin library for both phases - compilation and
 // execution. Note that the plan is to have two different data structures for two different.
@@ -482,6 +483,180 @@ TEST_F(BfqlTest, TestErroneousFuncCalls) {
   param0->set_ql_type_id(DataType::INT8);
   param1->set_ql_type_id(DataType::INT8);
   ASSERT_NOK(BFCompileApiTest::FindQLOpcode("+", params, &opcode, &bfdecl, result));
+}
+
+TEST_F(BfqlTest, TestBuiltinToJson) {
+  auto check_tojson = [](const BFTestValue& test_value, const string& expected) -> void {
+    auto result_val = [](BFTestValue::SharedPtr val) -> string {
+                        string result;
+                        common::Jsonb jsonb(val->jsonb_value());
+                        CHECK_OK(jsonb.ToJsonString(&result));
+                        return result;
+                      };
+
+    BFTestValue::SharedPtr result = make_shared<BFTestValue>();
+    vector<BFTestValue::SharedPtr> params(1);
+    params[0] = make_shared<BFTestValue>();
+    *(params[0]->mutable_value()) = test_value.value();
+
+    // Use wrong return type and expect error.
+    // NOTES:
+    // - BFExecApiTest::ExecQLFunc("builin_name") will combine the two steps of finding and
+    //   executing opcode into one function call. This is only convenient for testing. In actual
+    //   code, except execute-immediate feature, this process is divided into two steps.
+    result->set_ql_type_id(DataType::STRING);
+    ASSERT_NOK(BFExecApiTest::ExecQLFunc("tojson", params, result));
+
+    // Use correct return type.
+    result->set_ql_type_id(DataType::JSONB);
+    ASSERT_OK(BFExecApiTest::ExecQLFunc("tojson", params, result));
+    LOG(INFO) << "tojson(" << test_value.ToString() << ")=" << result_val(result);
+    ASSERT_EQ(result_val(result), expected);
+
+    // Call the C++ function directly and verify result.
+    BFTestValue::SharedPtr expected_result = make_shared<BFTestValue>();
+    ASSERT_OK(ToJson(params[0], expected_result));
+    ASSERT_EQ(result_val(result), result_val(expected_result));
+  };
+
+  // CQL types: NULL, INT8, INT16, INT32, INT64, STRING, BOOL, FLOAT, DOUBLE, BINARY, TIMESTAMP,
+  //            DECIMAL, VARINT, INET, LIST, MAP, SET, UUID, TIMEUUID, TUPLE, TYPEARGS,
+  //            USER_DEFINED_TYPE, FROZEN, DATE, TIME, JSONB,
+  BFTestValue param;
+
+  // Test simple values.
+
+  param.SetNull();
+  check_tojson(param, "null");
+
+  param.set_int8_value(-100);
+  check_tojson(param, "-100");
+
+  param.set_int16_value(-200);
+  check_tojson(param, "-200");
+
+  param.set_int32_value(-300);
+  check_tojson(param, "-300");
+
+  param.set_int64_value(-400);
+  check_tojson(param, "-400");
+
+  param.set_float_value(124.125f);
+  check_tojson(param, "124.125");
+
+  param.set_float_value(numeric_limits<float>::quiet_NaN());
+  check_tojson(param, "null");
+
+  param.set_float_value(-numeric_limits<float>::quiet_NaN());
+  check_tojson(param, "null");
+
+  param.set_float_value(numeric_limits<float>::infinity());
+  check_tojson(param, "null");
+
+  param.set_float_value(-numeric_limits<float>::infinity());
+  check_tojson(param, "null");
+
+  param.set_double_value(124.125);
+  check_tojson(param, "124.125");
+
+  param.set_bool_value(true);
+  check_tojson(param, "true");
+
+  // Note: conversion into internal JSON 'double' can overflow.
+  util::Decimal d("-9847.125");
+  param.set_decimal_value(d.EncodeToComparable());
+  check_tojson(param, "-9847.125");
+
+  util::Decimal d2("-987654321");
+  param.set_decimal_value(d2.EncodeToComparable());
+  check_tojson(param, "-987654321");
+
+  // Note: conversion into internal JSON 'double' can overflow.
+  Result<util::VarInt> varint = util::VarInt::CreateFromString("-1234567890");
+  ASSERT_TRUE(varint.ok());
+  param.set_varint_value(*varint);
+  check_tojson(param, "-1234567890");
+
+  param.set_string_value("value");
+  check_tojson(param, "\"value\"");
+
+  Result<uint32_t> date = DateTime::DateFromString("2018-02-14");
+  ASSERT_TRUE(date.ok());
+  param.set_date_value(*date);
+  check_tojson(param, "\"2018-02-14\"");
+
+  Result<int64_t> time = DateTime::TimeFromString("01:02:03.123456789");
+  ASSERT_TRUE(time.ok());
+  param.set_time_value(*time);
+  check_tojson(param, "\"01:02:03.123456789\"");
+
+  string ts_str = "2018-2-14 13:24:56.987+01:00";
+  Result<Timestamp> ts = DateTime::TimestampFromString(ts_str);
+  ASSERT_OK(ts);
+  param.set_timestamp_value(ts->ToInt64());
+  // TODO: Check output format.
+  check_tojson(param, "\"2018-02-14T12:24:56.987000+0000\"");
+
+  Uuid uuid;
+  string uuid_str = "87654321-dead-beaf-0000-deadbeaf0000";
+  ASSERT_OK(uuid.FromString(uuid_str));
+  param.set_uuid_value(uuid);
+  check_tojson(param, "\"" + uuid_str + "\"");
+
+  uuid_t linux_time_uuid;
+  uuid_generate_time(linux_time_uuid);
+  Uuid time_uuid(linux_time_uuid);
+  ASSERT_OK(time_uuid.IsTimeUuid());
+  ASSERT_OK(time_uuid.HashMACAddress());
+  param.set_timeuuid_value(time_uuid);
+  string time_uuid_str = time_uuid.ToString();
+  check_tojson(param, "\"" + time_uuid_str + "\"");
+
+  InetAddress addr;
+  ASSERT_OK(addr.FromString("1.2.3.4"));
+  param.set_inetaddress_value(addr);
+  check_tojson(param, "\"1.2.3.4\"");
+
+  param.set_binary_value("ABC");
+  check_tojson(param, "\"0x414243\"");
+
+  string json_str = "{\"a\":{\"b\":321},\"c\":[{\"d\":123}]}";
+  common::Jsonb jsonb;
+  ASSERT_OK(jsonb.FromString(json_str));
+  param.set_jsonb_value(jsonb.SerializedJsonb());
+  check_tojson(param, json_str);
+
+  // Test collections.
+  param.add_map_key()->set_string_value("a");
+  param.add_map_value()->set_int32_value(21);
+  param.add_map_key()->set_string_value("b");
+  param.add_map_value()->set_int32_value(22);
+  check_tojson(param, "{\"a\":21,\"b\":22}");
+
+  param.add_map_key()->set_string_value("c");
+  param.add_map_value()->set_string_value("23");
+  check_tojson(param, "{\"a\":21,\"b\":22,\"c\":\"23\"}");
+
+  param.add_map_key()->set_int32_value(88);
+  param.add_map_value()->set_string_value("24");
+  check_tojson(param, "{\"88\":\"24\",\"a\":21,\"b\":22,\"c\":\"23\"}");
+
+  param.add_map_key()->set_int32_value(99);
+  param.add_map_value()->set_int32_value(25);
+  check_tojson(param, "{\"88\":\"24\",\"99\":25,\"a\":21,\"b\":22,\"c\":\"23\"}");
+
+  param.add_set_elem()->set_string_value("a");
+  param.add_set_elem()->set_string_value("b");
+  check_tojson(param, "[\"a\",\"b\"]");
+
+  param.add_list_elem()->set_int32_value(123);
+  param.add_list_elem()->set_int32_value(456);
+  check_tojson(param, "[123,456]");
+
+  // Test FROZEN<SET> or FROZEN<LIST>.
+  param.add_frozen_elem()->set_int32_value(789);
+  param.add_frozen_elem()->set_int32_value(123);
+  check_tojson(param, "[789,123]");
 }
 
 } // namespace bfql

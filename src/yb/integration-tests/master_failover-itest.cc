@@ -37,6 +37,8 @@
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 
 #include "yb/common/schema.h"
@@ -46,6 +48,8 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -59,7 +63,6 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 using client::YBTableName;
-using client::YBTableType;
 
 class MasterFailoverTest : public YBTest {
  public:
@@ -92,6 +95,7 @@ class MasterFailoverTest : public YBTest {
   }
 
   void TearDown() override {
+    client_.reset();
     if (cluster_) {
       cluster_->Shutdown();
     }
@@ -105,8 +109,7 @@ class MasterFailoverTest : public YBTest {
     }
     cluster_.reset(new ExternalMiniCluster(opts_));
     ASSERT_OK(cluster_->Start());
-    YBClientBuilder builder;
-    ASSERT_OK(cluster_->CreateClient(&builder, &client_));
+    client_ = ASSERT_RESULT(cluster_->CreateClient());
   }
 
   Status CreateTable(const YBTableName& table_name, CreateTableMode mode) {
@@ -155,7 +158,7 @@ class MasterFailoverTest : public YBTest {
   int num_masters_;
   ExternalMiniClusterOptions opts_;
   gscoped_ptr<ExternalMiniCluster> cluster_;
-  shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
 };
 
 // Test that synchronous CreateTable (issue CreateTable call and then
@@ -207,8 +210,7 @@ TEST_F(MasterFailoverTest, DISABLED_TestPauseAfterCreateTableIssued) {
   ASSERT_OK(cluster_->master(leader_idx)->Pause());
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
-  MonoTime deadline = MonoTime::Now();
-  deadline.AddDelta(MonoDelta::FromSeconds(90));
+  auto deadline = CoarseMonoClock::Now() + 90s;
   ASSERT_OK(client_->data_->WaitForCreateTableToFinish(client_.get(), table_name, "" /* table_id */,
                                                        deadline));
 

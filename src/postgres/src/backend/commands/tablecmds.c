@@ -72,8 +72,8 @@
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
-#include "commands/user.h"
 #include "commands/typecmds.h"
+#include "commands/user.h"
 #include "executor/executor.h"
 #include "foreign/foreign.h"
 #include "miscadmin.h"
@@ -774,6 +774,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	 */
 	if (IsYugaByteEnabled())
 	{
+		CheckIsYBSupportedRelationByKind(relkind);
+
 		Relation pg_class_desc = heap_open(RelationRelationId,
 		                                   RowExclusiveLock);
 
@@ -1655,18 +1657,13 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 		 * truncate it in-place, because a rollback would cause the whole
 		 * table or the current physical file to be thrown away anyway.
 		 */
-		if (IsYugaByteEnabled())
+		if (IsYBRelation(rel))
 		{
-			if (!IsYBRelation(rel)) {
-				ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_OBJECT),
-								 errmsg("This relational object does not exist in YugaByte database")));
-			}
 			// Call YugaByte API to truncate tables.
 			YBCTruncateTable(rel);
 		}
 		else if (rel->rd_createSubid == mySubid ||
-						 rel->rd_newRelfilenodeSubid == mySubid)
+				 rel->rd_newRelfilenodeSubid == mySubid)
 		{
 			/* Immediate, non-rollbackable truncation is OK */
 			heap_truncate_one_rel(rel);
@@ -2956,20 +2953,9 @@ renameatt_internal(Oid myrelid,
 	(void) check_for_column_name_collision(targetrelation, newattname, false);
 
 	/* apply the update */
+	namestrcpy(&(attform->attname), newattname);
 
-	if (IsYugaByteEnabled()) {
-		/* TODO: Should be changed to CatalogTupleUpdate() when we are able to update a row's primary key */
-
-		CatalogTupleDelete(attrelation, atttup);
-
-		namestrcpy(&(attform->attname), newattname);
-
-		CatalogTupleInsert(attrelation, atttup);
-	} else {
-		namestrcpy(&(attform->attname), newattname);
-
-		CatalogTupleUpdate(attrelation, &atttup->t_self, atttup);
-	}
+	CatalogTupleUpdate(attrelation, &atttup->t_self, atttup);
 
 	InvokeObjectPostAlterHook(RelationRelationId, myrelid, attnum);
 
@@ -3026,7 +3012,8 @@ renameatt(RenameStmt *stmt)
 		return InvalidObjectAddress;
 	}
 
-	if (IsYugaByteEnabled()){
+	if (IsYugaByteEnabled())
+	{
 		YBCRename(stmt, relid);
 	}
 
@@ -3232,7 +3219,8 @@ RenameRelation(RenameStmt *stmt)
 	}
 
 	/* Do the work */
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled())
+	{
       YBCRename(stmt, relid);
 	}
 
@@ -3283,20 +3271,9 @@ RenameRelationInternal(Oid myrelid, const char *newrelname, bool is_internal)
 	 * Update pg_class tuple with new relname.  (Scribbling on reltup is OK
 	 * because it's a copy...)
 	 */
+	namestrcpy(&(relform->relname), newrelname);
 
-	if (IsYugaByteEnabled()) {
-		/* TODO: Should be changed to CatalogTupleUpdate() when we are able to update a row's primary key */
-
-		CatalogTupleDelete(relrelation, reltup);
-
-		namestrcpy(&(relform->relname), newrelname);
-
-		CatalogTupleInsert(relrelation, reltup);
-	} else {
-		namestrcpy(&(relform->relname), newrelname);
-
-		CatalogTupleUpdate(relrelation, &reltup->t_self, reltup);
-	}
+	CatalogTupleUpdate(relrelation, &reltup->t_self, reltup);
 
 	InvokeObjectPostAlterHookArg(RelationRelationId, myrelid, 0,
 								 InvalidOid, is_internal);
@@ -3446,7 +3423,6 @@ AlterTable(Oid relid, LOCKMODE lockmode, AlterTableStmt *stmt)
 	CheckTableNotInUse(rel, "ALTER TABLE");
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode);
-
 }
 
 /*
@@ -3772,25 +3748,34 @@ ATController(AlterTableStmt *parsetree,
 	foreach(lcmd, cmds)
 	{
 		AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
-		/* Currently don't support multiple commands that include an "add constraint" */
-		if (IsYugaByteEnabled() && cmd->subtype == AT_AddConstraint && cmds->length > 1) {
-			YBReportFeatureUnsupported("Alter Table with multiple commands "
-									   "including an add constraint is not supported");
-		}
-
 		ATPrepCmd(&wqueue, rel, cmd, recurse, false, lockmode);
 	}
 
 	/* Close the relation, but keep lock until commit */
 	relation_close(rel, NoLock);
 
-	if (IsYugaByteEnabled()){
-		YBCAlterTable(parsetree, rel, relid);
+	/*
+	 * Prepare the YB alter statement handle -- need to call this before the
+	 * system catalogs are changed below (since it looks up table metadata).
+	 */
+	YBCPgStatement handle = NULL;
+	if (IsYBRelation(rel))
+	{
+		handle = YBCPrepareAlterTable(parsetree, rel, relid);
 	}
 
 	/* Phase 2: update system catalogs */
 	ATRewriteCatalogs(&wqueue, lockmode);
 
+	/*
+	 * Execute the YB alter table (if needed).
+	 * Must call this after syscatalog updates succeed (e.g. dependencies are
+	 * checked) since we do not support rollback of YB alter operations yet.
+	 */
+	if (handle)
+	{
+		YBCExecAlterTable(handle);
+	}
 	/* Phase 3: scan/rewrite tables as needed */
 	ATRewriteTables(parsetree, &wqueue, lockmode);
 }
@@ -4157,7 +4142,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
 	}
 
 	/* YugaByte doesn't support toast tables. */
-	if (IsYugaByteEnabled()) return;
+	if (IsYugaByteEnabled())
+		return;
 
 	/* Check to see if a toast table must be added. */
 	foreach(ltab, *wqueue)
@@ -4968,11 +4954,14 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 				switch (con->contype)
 				{
 					case CONSTR_CHECK:
-						if (!ExecCheck(con->qualstate, econtext)) {
+						if (!ExecCheck(con->qualstate, econtext))
+						{
 							/* If YugaByte is enabled, the add constraint operation is not atomic.
 							 * So we must delete the relevant entries from the catalog tables. */
-							if (IsYugaByteEnabled()) {
-								ATExecDropConstraint(oldrel, con->name, DROP_RESTRICT, true, false, false, lockmode);
+							if (IsYugaByteEnabled())
+							{
+								ATExecDropConstraint(oldrel, con->name, DROP_RESTRICT, true, false,
+													 false, lockmode);
 							}
 							ereport(ERROR,
 									(errcode(ERRCODE_CHECK_VIOLATION),
@@ -7664,8 +7653,8 @@ ATAddForeignKeyConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 * strategy number is equality.  (Is it reasonable to insist that
 		 * every such index AM use btree's number for equality?)
 		 */
-		if (amid != BTREE_AM_OID)
-			elog(ERROR, "only b-tree indexes are supported for foreign keys");
+		if (amid != BTREE_AM_OID && amid != LSM_AM_OID)
+			elog(ERROR, "only b-tree and lsm indexes are supported for foreign keys");
 		eqstrategy = BTEqualStrategyNumber;
 
 		/*
@@ -14527,7 +14516,7 @@ ComputePartitionAttrs(Relation rel, List *partParams, AttrNumber *partattrs,
 		if (strategy == PARTITION_STRATEGY_HASH)
 			am_oid = HASH_AM_OID;
 		else
-			am_oid = BTREE_AM_OID;
+			am_oid = IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID;
 
 		if (!pelem->opclass)
 		{

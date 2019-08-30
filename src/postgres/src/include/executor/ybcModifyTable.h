@@ -30,6 +30,14 @@
 // YugaByte modify table API.
 
 /*
+ * Insert data into YugaByte table.
+ * This function is equivalent to "heap_insert", but it sends data to DocDB (YugaByte storage).
+ */
+extern Oid YBCHeapInsert(TupleTableSlot *slot,
+												 HeapTuple tuple,
+												 EState *estate);
+
+/*
  * Insert a tuple into a YugaByte table. Will execute within a distributed
  * transaction if the table is transactional (YSQL default).
  */
@@ -56,10 +64,14 @@ extern void YBCExecuteInsertIndex(Relation rel,
 
 /*
  * Delete a tuple (identified by ybctid) from a YugaByte table.
+ * If this is a single row op we will return false in the case that there was
+ * no row to delete. This can occur because we do not first perform a scan if
+ * it is a single row op.
  */
-extern void YBCExecuteDelete(Relation rel,
-                             ResultRelInfo *resultRelInfo,
-                             TupleTableSlot *slot);
+extern bool YBCExecuteDelete(Relation rel,
+							 TupleTableSlot *slot,
+							 EState *estate,
+							 ModifyTableState *mtstate);
 /*
  * Delete a tuple (identified by index columns and base table ybctid) from an
  * index's backing YugaByte index table.
@@ -71,11 +83,15 @@ extern void YBCExecuteDeleteIndex(Relation index,
 
 /*
  * Update a row (identified by ybctid) in a YugaByte table.
+ * If this is a single row op we will return false in the case that there was
+ * no row to update. This can occur because we do not first perform a scan if
+ * it is a single row op.
  */
-extern void YBCExecuteUpdate(Relation rel,
-                             ResultRelInfo *resultRelInfo,
-                             TupleTableSlot *slot,
-                             HeapTuple tuple);
+extern bool YBCExecuteUpdate(Relation rel,
+							 TupleTableSlot *slot,
+							 HeapTuple tuple,
+							 EState *estate,
+							 ModifyTableState *mtstate);
 
 //------------------------------------------------------------------------------
 // System tables modify-table API.
@@ -85,7 +101,9 @@ extern void YBCExecuteUpdate(Relation rel,
 
 extern void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple);
 
-extern void YBCUpdateSysCatalogTuple(Relation rel, HeapTuple tuple);
+extern void YBCUpdateSysCatalogTuple(Relation rel,
+									 HeapTuple oldtuple,
+									 HeapTuple tuple);
 
 // Buffer write operations.
 extern void YBCStartBufferingWriteOperations();
@@ -94,6 +112,18 @@ extern void YBCFlushBufferedWriteOperations();
 //------------------------------------------------------------------------------
 // Utility methods.
 
+extern bool YBCIsSingleRowTxnCapableRel(ResultRelInfo *resultRelInfo);
+
 extern Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot);
+
+extern Datum YBCGetYBTupleIdFromTuple(YBCPgStatement pg_stmt,
+									  Relation rel,
+									  HeapTuple tuple,
+									  TupleDesc tupleDesc);
+
+/*
+ * Returns if a table has secondary indices.
+ */
+extern bool YBCRelInfoHasSecondaryIndices(ResultRelInfo *resultRelInfo);
 
 #endif							/* YBCMODIFYTABLE_H */

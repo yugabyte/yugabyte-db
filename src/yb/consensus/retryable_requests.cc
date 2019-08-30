@@ -25,7 +25,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 
-DEFINE_int32(retryable_request_timeout_secs, 300,
+DEFINE_int32(retryable_request_timeout_secs, 120,
              "Amount of time to keep write request in index, to prevent duplicate writes.");
 
 // We use this limit to prevent request range from infinite grow, because it will block log

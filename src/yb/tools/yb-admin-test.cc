@@ -243,10 +243,9 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   BuildAndStart(ts_flags, master_flags);
   string master_address = ToString(cluster_->master()->bound_rpc_addr());
 
-  shared_ptr<YBClient> client;
-  ASSERT_OK(YBClientBuilder()
-            .add_master_server_addr(master_address)
-            .Build(&client));
+  auto client = ASSERT_RESULT(YBClientBuilder()
+      .add_master_server_addr(master_address)
+      .Build());
 
   // Default table that gets created;
   string table_name = kTableName.table_name();
@@ -257,7 +256,7 @@ TEST_F(AdminCliTest, TestDeleteTable) {
       exe_path, "-master_addresses", master_address, "delete_table", keyspace, table_name)));
 
   vector<YBTableName> tables;
-  ASSERT_OK(client->ListTables(&tables));
+  ASSERT_OK(client->ListTables(&tables, /* filter */ "", /* exclude_ysql */ true));
   ASSERT_EQ(master::kNumSystemTables, tables.size());
 }
 

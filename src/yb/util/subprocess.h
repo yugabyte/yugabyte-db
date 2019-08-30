@@ -32,10 +32,13 @@
 #ifndef YB_UTIL_SUBPROCESS_H
 #define YB_UTIL_SUBPROCESS_H
 
+#include <signal.h>
+
 #include <string>
 #include <vector>
 #include <mutex>
 #include <map>
+#include <unordered_set>
 
 #include <glog/logging.h>
 
@@ -77,6 +80,10 @@ class Subprocess {
   void ShareParentStdout(bool share = true) { SetFdShared(STDOUT_FILENO, share); }
   void ShareParentStderr(bool share = true) { SetFdShared(STDERR_FILENO, share); }
 
+  // Marks a non-standard file descriptor which should not be closed after
+  // forking the child process.
+  void InheritNonstandardFd(int fd);
+
   // Start the subprocess. Can only be called once.
   //
   // Thie returns a bad Status if the fork() fails. However,
@@ -91,6 +98,15 @@ class Subprocess {
   // NOTE: unlike the standard wait(2) call, this may be called multiple
   // times. If the process has exited, it will repeatedly return the same
   // exit code.
+  //
+  // The integer pointed by ret (ret must be non-NULL) is set to the "status" value as described
+  // by the waitpid documentation (https://linux.die.net/man/2/waitpid), paraphrasing below.
+  //
+  // If ret is not NULL, wait() and waitpid() store status information in the int to which it
+  // points. This integer can be inspected with the following macros (which take the integer
+  // itself as an argument, not a pointer to it, as is done in wait() and waitpid()!):
+  // WCONTINUED, WCOREDUMP, WEXITSTATUS, WIFCONTINUED, WIFEXITED, WIFSIGNALED, WIFSTOPPED,
+  // WNOHANG, WSTOPSIG, WTERMSIG, WUNTRACED.
   CHECKED_STATUS Wait(int* ret);
 
   Result<int> Wait();
@@ -148,6 +164,7 @@ class Subprocess {
   pid_t pid() const;
 
   void SetEnv(const std::string& key, const std::string& value);
+  void SetParentDeathSignal(int signal);
 
  private:
   enum State {
@@ -179,6 +196,13 @@ class Subprocess {
   int cached_rc_;
 
   std::map<std::string, std::string> env_;
+
+  // Signal to send child process in case parent dies
+  int pdeath_signal_ = SIGTERM;
+
+  // List of non-standard file descriptors which should be inherited by the
+  // child process.
+  std::unordered_set<int> ns_fds_inherited_;
 
   DISALLOW_COPY_AND_ASSIGN(Subprocess);
 };

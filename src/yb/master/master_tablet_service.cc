@@ -17,14 +17,24 @@
 namespace yb {
 namespace master {
 
+// Only SysTablet 0 is bootstrapped on all master peers, and only the master leader
+// reads other sys tablets. We check only for tablet 0 so as to have same readiness
+// level across all masters.
+// Note: If this value changes, then IsTabletServerReady has to be revisited.
+constexpr int NUM_TABLETS_SYS_CATALOG = 1;
+
 MasterTabletServiceImpl::MasterTabletServiceImpl(MasterTabletServer* server, Master* master)
     : TabletServiceImpl(server), master_(master) {
 }
 
-bool MasterTabletServiceImpl::GetTabletOrRespond(const tserver::ReadRequestPB* req,
-                                                 tserver::ReadResponsePB* resp,
-                                                 rpc::RpcContext* context,
-                                                 std::shared_ptr<tablet::AbstractTablet>* tablet) {
+bool MasterTabletServiceImpl::GetTabletOrRespond(
+    const tserver::ReadRequestPB* req,
+    tserver::ReadResponsePB* resp,
+    rpc::RpcContext* context,
+    std::shared_ptr<tablet::AbstractTablet>* tablet,
+    tablet::TabletPeerPtr looked_up_tablet_peer) {
+  // Ignore looked_up_tablet_peer.
+
   CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
   if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, context)) {
     return false;
@@ -44,9 +54,12 @@ bool MasterTabletServiceImpl::GetTabletOrRespond(const tserver::ReadRequestPB* r
 }
 
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
-           tserver::WriteResponsePB* resp,
-           rpc::RpcContext context) {
-
+                                    tserver::WriteResponsePB* resp,
+                                    rpc::RpcContext context) {
+  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
+    return;
+  }
   for (const auto& pg_req : req->pgsql_write_batch()) {
     if (pg_req.is_ysql_catalog_change()) {
       const auto &res = master_->catalog_manager()->IncrementYsqlCatalogVersion();
@@ -58,6 +71,26 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
   }
 
   tserver::TabletServiceImpl::Write(req, resp, std::move(context));
+}
+
+void MasterTabletServiceImpl::IsTabletServerReady(
+    const tserver::IsTabletServerReadyRequestPB* req,
+    tserver::IsTabletServerReadyResponsePB* resp,
+    rpc::RpcContext context) {
+  CatalogManager::ScopedLeaderSharedLock l(master_->catalog_manager());
+  int total_tablets = NUM_TABLETS_SYS_CATALOG;
+  resp->set_total_tablets(total_tablets);
+  resp->set_num_tablets_not_running(total_tablets);
+
+  // Tablet 0 being ready corresponds to state_ = kRunning in catalog manager.
+  // If catalog_status_ in not OK, then catalog manager state_ is not kRunning.
+  if (!l.CheckIsInitializedOrRespondTServer(resp, &context, false /* set_error */)) {
+    LOG(INFO) << "Zero tablets not running out of " << total_tablets;
+  } else {
+    LOG(INFO) << "All " << total_tablets << " tablets running.";
+    resp->set_num_tablets_not_running(0);
+    context.RespondSuccess();
+  }
 }
 
 namespace {

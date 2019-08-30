@@ -17,9 +17,9 @@
  */
 
 //--------------------------------------------------------------------------------------------------
-// NOTE: All entities in this modules are copies of PostgreQL's code. We made some minor changes
+// NOTE: Entities in this modules are based on PostgreQL's code. We made some minor changes
 // to avoid lint errors such as using '{' for if blocks and change the comment style from '/**/'
-// to '//'.
+// to '//', as well as added custom keywords.
 //--------------------------------------------------------------------------------------------------
 
 /* there is deliberately not an #ifndef KWLIST_H here */
@@ -228,6 +228,7 @@ PG_KEYWORD("increment", INCREMENT, UNRESERVED_KEYWORD)
 PG_KEYWORD("index", INDEX, UNRESERVED_KEYWORD)
 PG_KEYWORD("indexes", INDEXES, UNRESERVED_KEYWORD)
 PG_KEYWORD("inet", INET, COL_NAME_KEYWORD)
+PG_KEYWORD("json", JSON, COL_NAME_KEYWORD)
 PG_KEYWORD("jsonb", JSONB, COL_NAME_KEYWORD)
 PG_KEYWORD("infinity", INFINITY, RESERVED_KEYWORD)
 PG_KEYWORD("inherit", INHERIT, UNRESERVED_KEYWORD)
@@ -457,6 +458,7 @@ PG_KEYWORD("unique", UNIQUE, RESERVED_KEYWORD)
 PG_KEYWORD("unknown", UNKNOWN, UNRESERVED_KEYWORD)
 PG_KEYWORD("unlisten", UNLISTEN, UNRESERVED_KEYWORD)
 PG_KEYWORD("unlogged", UNLOGGED, UNRESERVED_KEYWORD)
+PG_KEYWORD("unset", UNSET, UNRESERVED_KEYWORD)
 PG_KEYWORD("until", UNTIL, UNRESERVED_KEYWORD)
 PG_KEYWORD("update", UPDATE, UNRESERVED_KEYWORD)
 PG_KEYWORD("use", USE, RESERVED_KEYWORD)

@@ -27,29 +27,10 @@ class LocalVTable : public YQLVirtualTable {
   CHECKED_STATUS RetrieveData(const QLReadRequestPB& request,
                               std::unique_ptr<QLRowBlock>* vtable) const;
 
- protected:
+ private:
   Schema CreateSchema() const;
 
- private:
-  static constexpr const char* const kSystemLocalKeyColumn = "key";
-  static constexpr const char* const kSystemLocalBootstrappedColumn = "bootstrapped";
-  static constexpr const char* const kSystemLocalBroadcastAddressColumn = "broadcast_address";
-  static constexpr const char* const kSystemLocalClusterNameColumn = "cluster_name";
-  static constexpr const char* const kSystemLocalCQLVersionColumn = "cql_version";
-  static constexpr const char* const kSystemLocalDataCenterColumn = "data_center";
-  static constexpr const char* const kSystemLocalGossipGenerationColumn = "gossip_generation";
-  static constexpr const char* const kSystemLocalHostIdColumn = "host_id";
-  static constexpr const char* const kSystemLocalListenAddressColumn = "listen_address";
-  static constexpr const char* const kSystemLocalNativeProtocolVersionColumn =
-      "native_protocol_version";
-  static constexpr const char* const kSystemLocalPartitionerColumn = "partitioner";
-  static constexpr const char* const kSystemLocalRackColumn = "rack";
-  static constexpr const char* const kSystemLocalReleaseVersionColumn = "release_version";
-  static constexpr const char* const kSystemLocalRpcAddressColumn = "rpc_address";
-  static constexpr const char* const kSystemLocalSchemaVersionColumn = "schema_version";
-  static constexpr const char* const kSystemLocalThriftVersionColumn = "thrift_version";
-  static constexpr const char* const kSystemLocalTokensColumn = "tokens";
-  static constexpr const char* const kSystemLocalTruncatedAtColumn = "truncated_at";
+  std::unique_ptr<Resolver> resolver_;
 };
 
 }  // namespace master

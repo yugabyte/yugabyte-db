@@ -30,12 +30,14 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
                    const DocKey& doc_key,
+                   const DocKey& start_doc_key = DocKey(),
                    bool is_forward_scan = true);
 
   // Scan for the given hash key, a condition, and optional doc_key.
   DocPgsqlScanSpec(const Schema& schema,
                    const rocksdb::QueryId query_id,
                    const std::vector<PrimitiveValue>& hashed_components,
+                   const PgsqlConditionPB* condition,
                    boost::optional<int32_t> hash_code,
                    boost::optional<int32_t> max_hash_code,
                    const PgsqlExpressionPB *where_expr,
@@ -56,23 +58,46 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   // Filters.
   std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const;
 
-  CHECKED_STATUS lower_bound(DocKey* key) const {
-    return GetBoundKey(true /* lower_bound */, key);
+  // Return the inclusive lower and upper bounds of the scan.
+  Result<KeyBytes> LowerBound() const {
+    return Bound(true /* lower_bound */);
   }
 
-  CHECKED_STATUS upper_bound(DocKey* key) const {
-    return GetBoundKey(false /* upper_bound */, key);
+  Result<KeyBytes> UpperBound() const {
+    return Bound(false /* upper_bound */);
   }
-
-  // Return inclusive lower/upper range doc key considering the start_doc_key.
-  CHECKED_STATUS GetBoundKey(const bool lower_bound, DocKey* key) const;
 
   // Returns the lower/upper range components of the key.
   std::vector<PrimitiveValue> range_components(const bool lower_bound) const;
 
+  const common::QLScanRange* range_bounds() const {
+    return range_bounds_.get();
+  }
+
+  const std::shared_ptr<std::vector<std::vector<PrimitiveValue>>>& range_options() const {
+    return range_options_;
+  }
+
  private:
+  // Return inclusive lower/upper range doc key considering the start_doc_key.
+  Result<KeyBytes> Bound(const bool lower_bound) const;
+
   // Returns the lower/upper doc key based on the range components.
-  DocKey bound_key(const Schema& schema, const bool lower_bound) const;
+  KeyBytes bound_key(const Schema& schema, const bool lower_bound) const;
+
+  // The scan range within the hash key when a WHERE condition is specified.
+  const std::unique_ptr<const common::QLScanRange> range_bounds_;
+
+  // Initialize range_options_ if hashed_components_ in set and all range columns have one or more
+  // options (i.e. using EQ/IN conditions). Otherwise range_options_ will stay null and we will
+  // only use the range_bounds for scanning.
+  void InitRangeOptions(const PgsqlConditionPB& condition);
+
+  // The range value options if set. (possibly more than one due to IN conditions).
+  std::shared_ptr<std::vector<std::vector<PrimitiveValue>>> range_options_;
+
+  // Schema of the columns to scan.
+  const Schema& schema_;
 
   // Query ID of this scan.
   const rocksdb::QueryId query_id_;
@@ -88,15 +113,12 @@ class DocPgsqlScanSpec : public common::PgsqlScanSpec {
   // hash values are positive int16_t.
   const boost::optional<int32_t> max_hash_code_;
 
-  // Specific doc key to scan if not empty.
-  const DocKey doc_key_;
-
   // Starting doc key when requested by the client.
-  const DocKey start_doc_key_;
+  const KeyBytes start_doc_key_;
 
   // Lower and upper keys for range condition.
-  const DocKey lower_doc_key_;
-  const DocKey upper_doc_key_;
+  KeyBytes lower_doc_key_;
+  KeyBytes upper_doc_key_;
 
   // Scan behavior.
   bool is_forward_scan_;

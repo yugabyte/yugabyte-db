@@ -25,6 +25,7 @@ class PeerProxyFactory;
 class PeerMessageQueue;
 class ReplicaOperationFactory;
 class ReplicateMsg;
+class ReplicateMsgsHolder;
 class RetryableRequests;
 class SafeOpIdWaiter;
 class VoteRequestPB;

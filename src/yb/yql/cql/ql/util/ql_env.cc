@@ -16,10 +16,12 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/client/client.h"
+#include "yb/client/meta_data_cache.h"
 #include "yb/client/permissions.h"
+#include "yb/client/session.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
-#include "yb/master/catalog_manager.h"
+
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 
@@ -44,11 +46,11 @@ using client::YBTableCreator;
 using client::YBTableAlterer;
 using client::YBTableName;
 
-QLEnv::QLEnv(shared_ptr<YBClient> client,
+QLEnv::QLEnv(client::YBClient* client,
              shared_ptr<YBMetaDataCache> cache,
              const server::ClockPtr& clock,
              TransactionPoolProvider transaction_pool_provider)
-    : client_(std::move(client)),
+    : client_(client),
       metadata_cache_(std::move(cache)),
       clock_(std::move(clock)),
       transaction_pool_provider_(std::move(transaction_pool_provider)) {

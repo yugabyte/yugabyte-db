@@ -59,7 +59,7 @@ bool RolePermissions::HasAllRolesPermission(PermissionType permission) const {
   return all_roles_permissions_.test(permission);
 }
 
-PermissionsCache::PermissionsCache(std::shared_ptr<YBClient> client,
+PermissionsCache::PermissionsCache(client::YBClient* client,
                                    bool automatically_update_cache) : client_(client) {
   if (!automatically_update_cache) {
     return;

@@ -74,7 +74,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // This must always be called before NextRow. The implementation actually finds the
   // first row to scan, and NextRow expects the RocksDB iterator to already be properly
   // positioned.
-  bool HasNext() const override;
+  Result<bool> HasNext() const override;
 
   std::string ToString() const override;
 
@@ -86,14 +86,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // Is the next row to read a row with a static column?
   bool IsNextStaticColumn() const override;
 
-  CHECKED_STATUS SetPagingStateIfNecessary(const QLReadRequestPB& request,
-                                           const size_t num_rows_skipped,
-                                           QLResponsePB* response) const override;
-
-  CHECKED_STATUS SetPagingStateIfNecessary(const PgsqlReadRequestPB& request,
-                                           PgsqlResponsePB* response) const override;
-
-  const DocKey& row_key() const {
+  const Slice& row_key() const {
     return row_key_;
   }
 
@@ -106,15 +99,27 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   HybridTime RestartReadHt() override;
 
-  virtual Result<std::string> GetRowKey() const override;
+  // Returns the tuple id of the current tuple. The tuple id returned is the serialized DocKey
+  // and without the cotable id.
+  Result<Slice> GetTupleId() const override;
 
-  // Seek to the given key.
-  virtual CHECKED_STATUS Seek(const std::string& row_key) override;
-
- private:
+  // Seeks to the given tuple by its id. The tuple id should be the serialized DocKey and without
+  // the cotable id.
+  Result<bool> SeekTuple(const Slice& tuple_id) override;
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const;
+  CHECKED_STATUS GetNextReadSubDocKey(SubDocKey* sub_doc_key) const override;
+
+ private:
+  template <class T>
+  CHECKED_STATUS DoInit(const T& spec);
+
+  Result<bool> InitScanChoices(
+      const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key);
+
+  Result<bool> InitScanChoices(
+      const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
+      const KeyBytes& upper_doc_key);
 
   // Get the non-key column values of a QL row.
   CHECKED_STATUS GetValues(const Schema& projection, vector<SubDocument>* values);
@@ -174,7 +179,7 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   // reaches this point. This is exclusive bound for forward scans and inclusive bound for
   // reverse scans.
   bool has_bound_key_;
-  DocKey bound_key_;
+  KeyBytes bound_key_;
 
   std::unique_ptr<ScanChoices> scan_choices_;
   std::unique_ptr<IntentAwareIterator> db_iter_;
@@ -192,7 +197,10 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
   mutable SubDocument row_;
 
   // The current row's primary key. It is set to lower bound in the beginning.
-  mutable DocKey row_key_;
+  mutable Slice row_key_;
+
+  // The current row's hash part of primary key.
+  mutable Slice row_hash_key_;
 
   // The current row's iterator key.
   mutable KeyBytes iter_key_;
@@ -204,10 +212,13 @@ class DocRowwiseIterator : public common::YQLRowwiseIteratorIf {
 
   mutable std::vector<PrimitiveValue> projection_subkeys_;
 
-  // Used for keeping track of errors that happen in HasNext. Returned
-  mutable Status status_;
+  // Used for keeping track of errors in HasNext.
+  mutable Status has_next_status_;
 
   mutable boost::optional<DeadlineInfo> deadline_info_;
+
+  // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
+  boost::optional<KeyBytes> tuple_key_;
 };
 
 }  // namespace docdb

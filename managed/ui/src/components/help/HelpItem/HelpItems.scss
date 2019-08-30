@@ -1,0 +1,20 @@
+.help-links {
+  font-size: 16px;
+
+  i {
+    display: inline-block;
+    margin-right: 2px;
+    width: 18px;
+    text-align: center;
+  }
+
+  h4 i {
+    padding-right: 6px;
+  }
+
+  .svg-logo {
+    position: relative;
+    top: 3px;
+    margin: 0 1px;
+  }
+}

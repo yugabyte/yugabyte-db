@@ -1,4 +1,5 @@
 // Licensed to the Apache Software Foundation (ASF) under one
+// Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
 // regarding copyright ownership.  The ASF licenses this file
@@ -42,6 +43,7 @@
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/faststring.h"
 #include "yb/util/status.h"
+#include "yb/util/result.h"
 
 namespace google {
 namespace protobuf {
@@ -90,6 +92,13 @@ bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile);
 // Similar to MessageLite::ParseFromArray, with the difference that it returns
 // Status::kCorruption if the message could not be parsed.
 Status ParseFromArray(MessageLite* msg, const uint8_t* data, uint32_t length);
+
+template<class T>
+Result<T> ParseFromSlice(const Slice& slice) {
+  T result;
+  RETURN_NOT_OK(ParseFromArray(&result, slice.data(), slice.size()));
+  return result;
+}
 
 // Load a protobuf from the given path.
 Status ReadPBFromPath(Env* env, const std::string& path, MessageLite* msg);
@@ -189,7 +198,7 @@ class WritablePBContainerFile {
  public:
 
   // Initializes the class instance; writer must be open.
-  explicit WritablePBContainerFile(gscoped_ptr<WritableFile> writer);
+  explicit WritablePBContainerFile(std::unique_ptr<WritableFile> writer);
 
   // Closes the container if not already closed.
   ~WritablePBContainerFile();
@@ -235,7 +244,7 @@ class WritablePBContainerFile {
 
   bool closed_;
 
-  gscoped_ptr<WritableFile> writer_;
+  std::unique_ptr<WritableFile> writer_;
 };
 
 // Protobuf container file opened for reading.
@@ -246,7 +255,7 @@ class ReadablePBContainerFile {
  public:
 
   // Initializes the class instance; reader must be open.
-  explicit ReadablePBContainerFile(gscoped_ptr<RandomAccessFile> reader);
+  explicit ReadablePBContainerFile(std::unique_ptr<RandomAccessFile> reader);
 
   // Closes the file if not already closed.
   ~ReadablePBContainerFile();
@@ -288,7 +297,7 @@ class ReadablePBContainerFile {
   // If 'eofOK' is EOF_OK, an EOF is returned as-is. Otherwise, it is
   // considered to be an invalid short read and returned as an error.
   CHECKED_STATUS ValidateAndRead(size_t length, EofOK eofOK,
-                         Slice* result, gscoped_ptr<uint8_t[]>* scratch);
+                                 Slice* result, std::unique_ptr<uint8_t[]>* scratch);
 
   size_t offset_;
 
@@ -296,9 +305,9 @@ class ReadablePBContainerFile {
   std::string pb_type_;
 
   // Wrapped in a gscoped_ptr so that clients need not include PB headers.
-  gscoped_ptr<google::protobuf::FileDescriptorSet> protos_;
+  std::unique_ptr<google::protobuf::FileDescriptorSet> protos_;
 
-  gscoped_ptr<RandomAccessFile> reader_;
+  std::unique_ptr<RandomAccessFile> reader_;
 };
 
 // Convenience functions for protobuf containers holding just one record.
@@ -317,6 +326,14 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
                               const google::protobuf::Message& msg,
                               CreateMode create,
                               SyncMode sync);
+
+// Return true if the two PBs are equal.
+//
+// If 'diff_str' is not null, stores a textual description of the
+// difference.
+bool ArePBsEqual(const google::protobuf::Message& prev_pb,
+                 const google::protobuf::Message& new_pb,
+                 std::string* diff_str);
 
 } // namespace pb_util
 } // namespace yb

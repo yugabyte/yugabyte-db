@@ -151,7 +151,7 @@ void SubDocument::MoveFrom(SubDocument* other) {
     // Another layer of protection against trying to use the old state in debug mode.
     memset(other, 0xab, sizeof(SubDocument));  // Fill with a random value.
 #endif
-    other->type_ = ValueType::kNull;  // To avoid deallocation of the old object's memory.
+    other->type_ = ValueType::kNullLow;  // To avoid deallocation of the old object's memory.
   }
 }
 

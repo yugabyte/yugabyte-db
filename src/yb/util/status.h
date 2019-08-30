@@ -89,6 +89,21 @@
     } \
   } while (0);
 
+#define WARN_WITH_PREFIX_NOT_OK(to_call, warning_prefix) do { \
+    ::yb::Status _s = (to_call); \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      YB_LOG(WARNING) << LogPrefix() << (warning_prefix) << ": " << _s; \
+    } \
+  } while (0);
+
+// Emit a error if 'to_call' returns a bad status.
+#define ERROR_NOT_OK(to_call, error_prefix) do { \
+    ::yb::Status _s = (to_call); \
+    if (PREDICT_FALSE(!_s.ok())) { \
+      YB_LOG(ERROR) << (error_prefix) << ": " << _s.ToString();  \
+    } \
+  } while (0);
+
 // Log the given status and return immediately.
 #define YB_LOG_AND_RETURN(level, status) do { \
     ::yb::Status _s = (status); \
@@ -120,6 +135,12 @@
 // These are standard glog macros.
 #define YB_LOG              LOG
 #define YB_CHECK            CHECK
+
+extern "C" {
+
+struct YBCStatusStruct;
+
+}
 
 namespace yb {
 
@@ -176,6 +197,7 @@ enum class TimeoutError {
 };
 
 YB_STRONGLY_TYPED_BOOL(DupFileName);
+YB_STRONGLY_TYPED_BOOL(AddRef);
 
 class Status {
  public:
@@ -202,6 +224,9 @@ class Status {
   // Return a string representation of the status code, without the message
   // text or posix code information.
   std::string CodeAsString() const;
+
+  // Returned string has unlimited lifetime, and should NOT be released by the caller.
+  const char* CodeAsCString() const;
 
   // Return the message portion of the Status. This is similar to ToString,
   // except that it does not include the stringified error code or posix code.
@@ -246,6 +271,7 @@ class Status {
          const char* file_name,
          int line_number,
          const Slice& msg,
+         // Error message details. If present - would be combined as "msg: msg2".
          const Slice& msg2 = Slice(),
          int64_t error_code = -1,
          DupFileName dup_file_name = DupFileName::kFalse);
@@ -258,6 +284,16 @@ class Status {
   Code code() const {
     return (state_ == nullptr) ? kOk : static_cast<Code>(state_->code);
   }
+
+  // Adopt status that was previously exported to C interface.
+  explicit Status(YBCStatusStruct* state, AddRef add_ref);
+
+  // Increments state ref count and returns pointer that could be used in C interface.
+  YBCStatusStruct* RetainStruct() const;
+
+  // Reset state w/o touching ref count. Return detached pointer that could be used in C interface.
+  YBCStatusStruct* DetachStruct();
+
  private:
   struct State {
     State(const State&) = delete;

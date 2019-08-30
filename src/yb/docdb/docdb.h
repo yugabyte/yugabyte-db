@@ -20,6 +20,7 @@
 #include <vector>
 #include <boost/function.hpp>
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/rocksdb/db.h"
 
 #include "yb/common/doc_hybrid_time.h"
@@ -43,7 +44,7 @@
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 
-// Document DB mapping on top of the key-value map in RocksDB:
+// DocDB mapping on top of the key-value map in RocksDB:
 // <document_key> <hybrid_time> -> <doc_type>
 // <document_key> <hybrid_time> <key_a> <gen_ts_a> -> <subdoc_a_type_or_value>
 //
@@ -117,6 +118,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     OperationKind operation_kind,
     bool transactional_table,
     CoarseTimePoint deadline,
+    PartialRangeKeyIntents partial_range_key_intents,
     SharedLockManager *lock_manager);
 
 // This constructs a DocWriteBatch using the given list of DocOperations, reading the previous
@@ -160,11 +162,11 @@ typedef boost::function<Status(IntentStrength, Slice, KeyBytes*)> EnumerateInten
 
 CHECKED_STATUS EnumerateIntents(
     const google::protobuf::RepeatedPtrField<yb::docdb::KeyValuePairPB>& kv_pairs,
-    const EnumerateIntentsCallback& functor);
+    const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents);
 
 CHECKED_STATUS EnumerateIntents(
-    Slice key, const Slice& value, const EnumerateIntentsCallback& functor,
-    KeyBytes* encoded_key_buffer);
+    Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
+    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents);
 
 void PrepareTransactionWriteBatch(
     const docdb::KeyValueWriteBatchPB& put_batch,
@@ -172,10 +174,11 @@ void PrepareTransactionWriteBatch(
     rocksdb::WriteBatch* rocksdb_write_batch,
     const TransactionId& transaction_id,
     IsolationLevel isolation_level,
+    PartialRangeKeyIntents partial_range_key_intents,
     IntraTxnWriteId* write_id);
 
 CHECKED_STATUS PrepareApplyIntentsBatch(
-    const TransactionId& transaction_id, HybridTime commit_ht,
+    const TransactionId& transaction_id, HybridTime commit_ht, const KeyBounds* key_bounds,
     rocksdb::WriteBatch* regular_batch,
     rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_batch);
 
@@ -477,6 +480,15 @@ std::string DocDBDebugDumpToStr(
     IncludeBinary include_binary = IncludeBinary::kFalse);
 
 std::string DocDBDebugDumpToStr(DocDB docdb, IncludeBinary include_binary = IncludeBinary::kFalse);
+
+template <class T>
+void DocDBDebugDumpToContainer(
+    rocksdb::DB* rocksdb, T* out, StorageDbType db_type = StorageDbType::kRegular,
+    IncludeBinary include_binary = IncludeBinary::kFalse);
+
+template <class T>
+void DocDBDebugDumpToContainer(
+    DocDB docdb, T* out, IncludeBinary include_binary = IncludeBinary::kFalse);
 
 void ConfigureDocDBRocksDBOptions(rocksdb::Options* options);
 

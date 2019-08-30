@@ -421,10 +421,11 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 		 */
 		if (LWLockConditionalAcquire(ProcArrayLock, LW_EXCLUSIVE))
 		{
-			ProcArrayEndTransactionInternal(proc, pgxact, latestXid);
+			if (IsCurrentTxnWithPGRel())
+				ProcArrayEndTransactionInternal(proc, pgxact, latestXid);
 			LWLockRelease(ProcArrayLock);
 		}
-		else
+		else if (IsCurrentTxnWithPGRel())
 			ProcArrayGroupClearXid(proc, latestXid);
 	}
 	else
@@ -457,10 +458,6 @@ static inline void
 ProcArrayEndTransactionInternal(PGPROC *proc, PGXACT *pgxact,
 								TransactionId latestXid)
 {
-	if (IsYugaByteEnabled()) {
-		return;
-	}
-
 	pgxact->xid = InvalidTransactionId;
 	proc->lxid = InvalidLocalTransactionId;
 	pgxact->xmin = InvalidTransactionId;
@@ -497,10 +494,6 @@ ProcArrayGroupClearXid(PGPROC *proc, TransactionId latestXid)
 	volatile PROC_HDR *procglobal = ProcGlobal;
 	uint32		nextidx;
 	uint32		wakeidx;
-
-	if (IsYugaByteEnabled()) {
-		return;
-	}
 
 	/* We should definitely have an XID to clear. */
 	Assert(TransactionIdIsValid(allPgXact[proc->pgprocno].xid));

@@ -69,6 +69,12 @@ uint32_t GetRandomSeed32() {
   return device();
 }
 
+std::vector<uint8_t> RandomBytes(size_t len, std::mt19937_64* rng) {
+  std::vector<uint8_t> data(len);
+  std::generate(data.begin(), data.end(), [=] { return RandomUniformInt(0, UCHAR_MAX, rng); });
+  return data;
+}
+
 std::string RandomHumanReadableString(int len, Random* rnd) {
   // TODO: https://yugabyte.atlassian.net/browse/ENG-1508: Avoid code duplication in yb::Random and
   // rocksdb::Random. Currently this does not allow to reuse the same function in both code bases.
@@ -100,6 +106,10 @@ std::mt19937_64& ThreadLocalRandom() {
   thread_local_random_ptr.reset(result = new std::mt19937_64);
   Seed(result);
   return *result;
+}
+
+bool RandomUniformBool(std::mt19937_64* rng) {
+  return RandomUniformInt(0, 1, rng) != 0;
 }
 
 } // namespace yb

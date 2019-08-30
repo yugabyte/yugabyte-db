@@ -96,12 +96,13 @@ DEFINE_bool(TEST_check_broadcast_address, true, "Break connectivity in test mini
             "check broadcast address.");
 
 using namespace std::literals;
+using namespace std::placeholders;
+
 using std::shared_ptr;
 using std::string;
 using std::stringstream;
 using std::vector;
 using strings::Substitute;
-using namespace std::placeholders;
 
 namespace yb {
 namespace server {
@@ -113,16 +114,27 @@ namespace {
 // Disambiguates between servers when in a minicluster.
 AtomicInt<int32_t> mem_tracker_id_counter(-1);
 
+std::string kServerMemTrackerName = "server";
+
+std::vector<MemTrackerPtr> common_mem_trackers;
+
 } // anonymous namespace
 
 std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
   int32_t id = mem_tracker_id_counter.Increment();
-  string id_str = "server";
+  std::string id_str = kServerMemTrackerName;
   if (id != 0) {
     StrAppend(&id_str, " ", id);
   }
   return MemTracker::CreateTracker(id_str);
 }
+
+#if defined(TCMALLOC_ENABLED)
+void RegisterTCMallocTracker(const char* name, const char* prop) {
+  common_mem_trackers.push_back(MemTracker::CreateTracker(
+      -1, "TCMalloc "s + name, std::bind(&MemTracker::GetTCMallocProperty, prop)));
+}
+#endif
 
 RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
                              const string& metric_namespace,
@@ -138,6 +150,17 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       stop_metrics_logging_latch_(1) {
   mem_tracker_->SetMetricEntity(metric_entity_);
 
+#if defined(TCMALLOC_ENABLED)
+  // When mem tracker for first server is created we register mem trackers that report tc malloc
+  // status.
+  if (mem_tracker_->id() == kServerMemTrackerName) {
+    RegisterTCMallocTracker("Thread Cache", "tcmalloc.thread_cache_free_bytes");
+    RegisterTCMallocTracker("Central Cache", "tcmalloc.central_cache_free_bytes");
+    RegisterTCMallocTracker("Transfer Cache", "tcmalloc.transfer_cache_free_bytes");
+    RegisterTCMallocTracker("PageHeap Free", "tcmalloc.pageheap_free_bytes");
+  }
+#endif
+
   if (FLAGS_use_hybrid_clock) {
     clock_ = new HybridClock();
   } else {
@@ -152,6 +175,8 @@ void RpcServerBase::SetConnectionContextFactory(
 
 RpcServerBase::~RpcServerBase() {
   Shutdown();
+  rpc_server_.reset();
+  messenger_.reset();
   if (mem_tracker_->parent()) {
     mem_tracker_->UnregisterFromParent();
   }
@@ -166,10 +191,10 @@ Endpoint RpcServerBase::first_rpc_address() const {
 const std::string RpcServerBase::get_hostname() const {
   auto hostname = GetHostname();
   if (hostname.ok()) {
-    LOG(INFO) << "Running on host " << *hostname;
+    YB_LOG_FIRST_N(INFO, 1) << "Running on host: " << *hostname;
     return *hostname;
   } else {
-    LOG(WARNING) << "Failed to get current host name: " << hostname.status();
+    YB_LOG_FIRST_N(WARNING, 1) << "Failed to get current host name: " << hostname.status();
     return "unknown_hostname";
   }
 }
@@ -178,10 +203,10 @@ const std::string RpcServerBase::get_current_user() const {
   string user_name;
   auto s = GetLoggedInUser(&user_name);
   if (s.ok()) {
-    LOG(INFO) << "Logged In User  " << user_name;
+    YB_LOG_FIRST_N(INFO, 1) << "Logged in user: " << user_name;
     return user_name;
   } else {
-    LOG(WARNING) << "Failed to get current user: " << user_name;
+    YB_LOG_FIRST_N(WARNING, 1) << "Failed to get current user";
     return "unknown_user";
   }
 }
@@ -226,9 +251,9 @@ Status RpcServerBase::Init() {
   builder.UseDefaultConnectionContextFactory(mem_tracker());
   RETURN_NOT_OK(SetupMessengerBuilder(&builder));
   messenger_ = VERIFY_RESULT(builder.Build());
-  proxy_cache_.reset(new rpc::ProxyCache(messenger_));
+  proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
-  RETURN_NOT_OK(rpc_server_->Init(messenger_));
+  RETURN_NOT_OK(rpc_server_->Init(messenger_.get()));
   RETURN_NOT_OK(rpc_server_->Bind());
   clock_->RegisterMetrics(metric_entity_);
 
@@ -362,7 +387,9 @@ void RpcServerBase::Shutdown() {
     stop_metrics_logging_latch_.CountDown();
     metrics_logging_thread_->Join();
   }
-  rpc_server_->Shutdown();
+  if (rpc_server_) {
+    rpc_server_->Shutdown();
+  }
   if (messenger_) {
     messenger_->Shutdown();
   }
@@ -407,11 +434,11 @@ void RpcAndWebServerBase::GenerateInstanceID() {
 
 Status RpcAndWebServerBase::Init() {
   Status s = fs_manager_->Open();
-  if (s.IsNotFound()) {
+  if (s.IsNotFound() || (!s.ok() && fs_manager_->HasAnyLockFiles())) {
     LOG(INFO) << "Could not load existing FS layout: " << s.ToString();
     LOG(INFO) << "Creating new FS layout";
     is_first_run_ = true;
-    RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(),
+    RETURN_NOT_OK_PREPEND(fs_manager_->CreateInitialFileSystemLayout(true),
                           "Could not create new FS layout");
     s = fs_manager_->Open();
   }
@@ -469,7 +496,7 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
 }
 
 string RpcAndWebServerBase::GetEasterEggMessage() const {
-  return "Congratulations on installing YugaByte DB Community Edition. "
+  return "Congratulations on installing YugaByte DB. "
          "We'd like to welcome you to the community with a free t-shirt and pack of stickers! "
          "Please claim your reward here: <a href='https://www.yugabyte.com/community-rewards/'>"
          "https://www.yugabyte.com/community-rewards/</a>";
@@ -498,17 +525,7 @@ void RpcAndWebServerBase::DisplayIconTile(std::stringstream* output, const strin
           << "  </div> <!-- col-sm-4 col-md-4 -->\n";
 }
 
-void RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
-  // RPCs in Progress.
-  DisplayIconTile(output, "fa-tasks", "Server RPCs", "/rpcz");
-}
-
-Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
-                                            stringstream* output) {
-  *output << "<h1>Debug Utilities</h1>\n";
-
-  *output << "<div class='row debug-tiles'>\n";
-  *output << "<h2> General Info </h2>";
+void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // Logs.
   DisplayIconTile(output, "fa-files-o", "Logs", "/logs");
   // GFlags.
@@ -521,6 +538,21 @@ Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
   DisplayIconTile(output, "fa-line-chart", "Metrics", "/metrics");
   // Threads.
   DisplayIconTile(output, "fa-list-ul", "Threads", "/threadz");
+}
+
+
+void RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {
+  // RPCs in Progress.
+  DisplayIconTile(output, "fa-tasks", "Server RPCs", "/rpcz");
+}
+
+Status RpcAndWebServerBase::HandleDebugPage(const Webserver::WebRequest& req,
+                                            stringstream* output) {
+  *output << "<h1>Debug Utilities</h1>\n";
+
+  *output << "<div class='row debug-tiles'>\n";
+  *output << "<h2> General Info </h2>";
+  DisplayGeneralInfoIcons(output);
   *output << "</div> <!-- row -->\n";
   *output << "<h2> RPCs In Progress </h2>";
   *output << "<div class='row debug-tiles'>\n";
@@ -533,7 +565,7 @@ Status RpcAndWebServerBase::Start() {
   GenerateInstanceID();
 
   AddDefaultPathHandlers(web_server_.get());
-  AddRpczPathHandlers(messenger_, web_server_.get());
+  AddRpczPathHandlers(messenger_.get(), web_server_.get());
   RegisterMetricsJsonHandler(web_server_.get(), metric_registry_.get());
   TracingPathHandlers::RegisterHandlers(web_server_.get());
   web_server_->RegisterPathHandler("/utilz", "Utilities",

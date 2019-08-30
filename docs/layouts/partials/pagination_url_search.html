@@ -1,0 +1,35 @@
+{{ with $.context}}
+  {{ .Scratch.Set "neededPrevLinkBuffer" false }}
+  {{ $url := .URL }}
+  {{ $level := (cond (isset $ "level") $.level 1) }}
+  {{ $urlLevel := len (split (trim .URL "/") "/") }}
+  {{ $context := $.context }}
+  {{ $iterator := print "neededLinkCurrentIndex" $level }}
+  {{ .Scratch.Set $iterator false }}
+
+  {{ range $index,$elem := $.menu }}
+    <!-- previous link search -->
+      <!-- set next as needed -->
+      {{ if and (not ($context.Scratch.Get "neededNextLink")) ($context.Scratch.Get $iterator) }}
+        {{ $context.Scratch.Set "neededNextLink" $elem }}
+      {{ end }}
+      <!-- check if current -->
+      {{ if (in $url $elem.URL) }}
+        <!-- set previous as needed -->
+        {{ if ($context.Scratch.Get "neededPrevLinkBuffer")}}
+          {{ $context.Scratch.Set "neededPrevLink" ($context.Scratch.Get "neededPrevLinkBuffer") }}
+        {{ end }}
+        <!-- if current mark it, cancel buffer and go deeper -->
+        {{ $context.Scratch.Set "neededPrevLinkBuffer" false }}
+        {{ $context.Scratch.Set $iterator true }}
+        {{ if $elem.Children }}
+          {{ partial "pagination_url_search" (dict "context" $.context "menu" $elem.Children "direction" $.direction "level" (add $level 1)) }}
+        {{ end }}
+      {{ else }}
+        <!-- if not current set as buffer for prev -->
+        {{ if (not ($context.Scratch.Get $iterator)) }}
+          {{ $context.Scratch.Set "neededPrevLinkBuffer" $elem }}
+        {{ end }}
+      {{ end }}
+  {{ end }}
+{{ end }}

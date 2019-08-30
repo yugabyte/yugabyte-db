@@ -57,7 +57,7 @@ TEST_F(SliceTransformTest, CapPrefixTransform) {
   ASSERT_EQ(transform->Transform(s).ToString(), "");
 
   transform.reset(NewCappedPrefixTransform(0));
-  ASSERT_EQ(transform->Transform("").ToString(), "");
+  ASSERT_EQ(transform->Transform(std::string()).ToString(), "");
 }
 
 class SliceTransformDBTest : public testing::Test {

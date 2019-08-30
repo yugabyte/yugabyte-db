@@ -180,6 +180,7 @@ class DBImpl : public DB {
       ColumnFamilyHandle* column_family) override;
   virtual const std::string& GetName() const override;
   virtual Env* GetEnv() const override;
+  Env* GetCheckpointEnv() const override;
   using DB::GetOptions;
   virtual const Options& GetOptions(
       ColumnFamilyHandle* column_family) const override;
@@ -220,7 +221,9 @@ class DBImpl : public DB {
       UserFrontierPtr frontier,
       FrontierModificationMode mode) override;
 
-  bool HasSomethingToFlush() override;
+  FlushAbility GetFlushAbility() override;
+
+  UserFrontierPtr GetMutableMemTableSmallestFrontier() override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
@@ -314,7 +317,6 @@ class DBImpl : public DB {
   InternalIterator* NewInternalIterator(
       Arena* arena, ColumnFamilyHandle* column_family = nullptr);
 
-#ifndef NDEBUG
   // Extra methods (for testing) that are not in the public DB interface
   // Implemented in db_impl_debug.cc
 
@@ -380,8 +382,6 @@ class DBImpl : public DB {
   Cache* TEST_table_cache() { return table_cache_.get(); }
 
   WriteController& TEST_write_controler() { return write_controller_; }
-
-#endif  // NDEBUG
 
   // Return maximum background compaction alowed to be scheduled based on
   // compaction status.
@@ -468,11 +468,15 @@ class DBImpl : public DB {
   // And max seqno of imported database is less that active seqno of destination db.
   CHECKED_STATUS Import(const std::string& source_dir) override;
 
+  bool AreWritesStopped();
+  bool NeedsDelay() override;
+
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
 
  protected:
   Env* const env_;
+  Env* const checkpoint_env_;
   const std::string dbname_;
   unique_ptr<VersionSet> versions_;
   const DBOptions db_options_;
@@ -525,7 +529,17 @@ class DBImpl : public DB {
 #endif
   struct CompactionState;
 
+  struct ManualCompaction;
+
   struct WriteContext;
+
+  class ThreadPoolTask;
+
+  class CompactionTask;
+  friend class CompactionTask;
+
+  class FlushTask;
+  friend class FlushTask;
 
   Status NewDB();
 
@@ -594,24 +608,26 @@ class DBImpl : public DB {
   static void BGWorkFlush(void* db);
   static void UnscheduleCallback(void* arg);
   void WaitAfterBackgroundError(const Status& s, const char* job_name, LogBuffer* log_buffer);
-  void BackgroundCallCompaction(void* arg);
-  void BackgroundCallFlush();
+  void BackgroundCallCompaction(
+      ManualCompaction* manual_compaction, std::unique_ptr<Compaction> compaction = nullptr);
+  void BackgroundCallFlush(ColumnFamilyData* cfd);
   Result<FileNumbersHolder> BackgroundCompaction(
-      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, void* m = 0);
+      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer,
+      ManualCompaction* manual_compaction = nullptr,
+      std::unique_ptr<Compaction> compaction = nullptr);
   Result<FileNumbersHolder> BackgroundFlush(
-      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer);
+      bool* made_progress, JobContext* job_context, LogBuffer* log_buffer, ColumnFamilyData* cfd);
 
-  // Yugabyte: This updates the stats object to show
-  // total SST file size ticker.
-  // This is different from HandleTotalSSTFileSizes since the later
-  // looks into the version set and not necessarily computes
-  // all the live file sizes.
+  uint64_t GetCurrentVersionSstFilesSize() override;
 
-  uint64_t GetTotalSSTFileSize() override;
+  uint64_t GetCurrentVersionSstFilesUncompressedSize() override;
 
-  void SetSSTFileSizeTickers();
+  uint64_t GetCurrentVersionDataSstFilesSize() override;
 
-  uint64_t GetUncompressedSSTFileSize() override;
+  uint64_t GetCurrentVersionNumSSTFiles() override;
+
+  // Updates stats_ object with SST files size metrics.
+  void SetSSTFileTickers();
 
   void PrintStatistics();
 
@@ -630,11 +646,14 @@ class DBImpl : public DB {
 
   // helper functions for adding and removing from flush & compaction queues
   bool AddToCompactionQueue(ColumnFamilyData* cfd);
-  Compaction* PopFirstFromSmallCompactionQueue();
-  Compaction* PopFirstFromLargeCompactionQueue();
+  std::unique_ptr<Compaction> PopFirstFromSmallCompactionQueue();
+  std::unique_ptr<Compaction> PopFirstFromLargeCompactionQueue();
   bool IsEmptyCompactionQueue();
   void AddToFlushQueue(ColumnFamilyData* cfd);
   ColumnFamilyData* PopFirstFromFlushQueue();
+
+  // Compaction is marked as large based on options, so cannot be static or free function.
+  bool IsLargeCompaction(const Compaction& compaction);
 
   // helper function to call after some of the logs_ were synced
   void MarkLogsSynced(uint64_t up_to, bool synced_dir, const Status& status);
@@ -642,6 +661,10 @@ class DBImpl : public DB {
   const Snapshot* GetSnapshotImpl(bool is_write_conflict_boundary);
 
   CHECKED_STATUS ApplyVersionEdit(VersionEdit* edit);
+
+  void SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task);
+
+  const std::string& LogPrefix() const;
 
   // table_cache_ provides its own synchronization
   std::shared_ptr<Cache> table_cache_;
@@ -826,8 +849,8 @@ class DBImpl : public DB {
   std::deque<ColumnFamilyData*> flush_queue_;
   // invariant(column family present in compaction_queue_ <==>
   // ColumnFamilyData::pending_compaction_ == true)
-  std::deque<Compaction*> small_compaction_queue_;
-  std::deque<Compaction*> large_compaction_queue_;
+  std::deque<std::unique_ptr<Compaction>> small_compaction_queue_;
+  std::deque<std::unique_ptr<Compaction>> large_compaction_queue_;
   int unscheduled_flushes_;
   int unscheduled_compactions_;
 
@@ -863,7 +886,7 @@ class DBImpl : public DB {
     InternalKey* manual_end;      // how far we are compacting
     InternalKey tmp_storage;      // Used to keep track of compaction progress
     InternalKey tmp_storage1;     // Used to keep track of compaction progress
-    Compaction* compaction;
+    std::unique_ptr<Compaction> compaction;
   };
   std::deque<ManualCompaction*> manual_compaction_dequeue_;
 
@@ -925,6 +948,9 @@ class DBImpl : public DB {
 
   // Indicate DB was opened successfully
   bool opened_successfully_;
+
+  // Returns flush tick of the last flush of this DB.
+  int64_t last_flush_at_tick_ = 0;
 
   // No copying allowed
   DBImpl(const DBImpl&);

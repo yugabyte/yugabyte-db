@@ -35,6 +35,7 @@ class ThreadPoolTask {
 
   // When thread pool done with task, i.e. it completed or failed, it invokes Done
   virtual void Done(const Status& status) = 0;
+
  protected:
   ~ThreadPoolTask() {}
 };

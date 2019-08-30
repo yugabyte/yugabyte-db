@@ -13,6 +13,7 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/common/schema.h"
+#include "yb/docdb/doc_ttl_util.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_retention_policy.h"

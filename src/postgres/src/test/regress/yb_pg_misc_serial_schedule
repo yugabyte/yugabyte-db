@@ -1,14 +1,25 @@
-# src/test/regress/yb_misc_serial_schedule
+# src/test/regress/yb_pg_misc_serial_schedule
 #
 ####################################################################################################
 # Postgres Testsuites: Porting from PostgreSQL original tests.
 # This includes miscellaneous tests that are not yet characterized to a proper testsuite.
 ####################################################################################################
 test: yb_insert
-test: yb_schema
-test: yb_prepare
-test: yb_create_table
-test: yb_create_index
-test: yb_copy
-test: yb_select
 
+# Chain of dependencies for `yb_select`
+test: yb_pg_create_function_1
+test: yb_pg_create_type
+test: yb_pg_create_table
+
+test: yb_pg_create_function_2
+
+# Dependency for `yb_select`
+test: yb_pg_copy
+
+test: yb_index_including
+test: yb_pg_create_function_3
+test: yb_select
+test: yb_pg_case
+test: yb_prepare
+test: yb_sequence
+test: yb_pg_identity

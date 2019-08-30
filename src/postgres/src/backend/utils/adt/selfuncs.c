@@ -150,6 +150,8 @@
 #include "utils/typcache.h"
 #include "utils/varlena.h"
 
+// YB includes
+#include "pg_yb_utils.h"
 
 /* Hooks for plugins to get control when we ask for stats */
 get_relation_stats_hook_type get_relation_stats_hook = NULL;
@@ -1280,16 +1282,16 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype, bool negate)
 	switch (vartype)
 	{
 		case TEXTOID:
-			opfamily = TEXT_BTREE_FAM_OID;
+			opfamily = IsYugaByteEnabled() ? TEXT_LSM_FAM_OID : TEXT_BTREE_FAM_OID;
 			break;
 		case BPCHAROID:
-			opfamily = BPCHAR_BTREE_FAM_OID;
+			opfamily = IsYugaByteEnabled() ? BPCHAR_LSM_FAM_OID : BPCHAR_BTREE_FAM_OID;
 			break;
 		case NAMEOID:
-			opfamily = NAME_BTREE_FAM_OID;
+			opfamily = IsYugaByteEnabled() ? NAME_LSM_FAM_OID : NAME_BTREE_FAM_OID;
 			break;
 		case BYTEAOID:
-			opfamily = BYTEA_BTREE_FAM_OID;
+			opfamily = IsYugaByteEnabled() ? BYTEA_LSM_FAM_OID : BYTEA_BTREE_FAM_OID;
 			break;
 		default:
 			ReleaseVariableStats(vardata);
@@ -5470,7 +5472,7 @@ get_actual_variable_range(PlannerInfo *root, VariableStatData *vardata,
 		ScanDirection indexscandir;
 
 		/* Ignore non-btree indexes */
-		if (index->relam != BTREE_AM_OID)
+		if (index->relam != BTREE_AM_OID && index->relam != LSM_AM_OID)
 			continue;
 
 		/*

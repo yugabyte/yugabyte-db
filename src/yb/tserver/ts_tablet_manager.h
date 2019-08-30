@@ -65,6 +65,7 @@
 
 namespace yb {
 
+class GarbageCollector;
 class PartitionSchema;
 class FsManager;
 class HostPort;
@@ -83,7 +84,11 @@ class TabletReportPB;
 
 namespace tserver {
 class TabletServer;
-class TSMemoryMonitorListener;
+class TsTabletManagerListener {
+ public:
+  virtual ~TsTabletManagerListener() {}
+  virtual void StartedFlush(const TabletId& tablet_id) {}
+};
 
 using rocksdb::MemoryMonitor;
 
@@ -248,6 +253,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   void MarkTabletDirty(const std::string& tablet_id,
                        std::shared_ptr<consensus::StateChangeContext> context);
 
+  void MarkTabletBeingRemoteBootstrapped(const std::string& tablet_id);
+
+  void UnmarkTabletBeingRemoteBootstrapped(const std::string& tablet_id);
+
   // Returns the number of tablets in the "dirty" map, for use by unit tests.
   int GetNumDirtyTabletsForTests() const;
 
@@ -257,9 +266,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Return the number of tablets for which this ts is a leader.
   int GetLeaderCount() const;
 
-  // Return the number of tablets which are not in RUNNING state.
-  // If the tablet manager itself is not initialized, then INT_MAX is returned.
-  int GetNumTabletsNotRunning() const;
+  // Set the number of tablets which are waiting to be bootstrapped and can go to RUNNING
+  // state in the response proto. Also set the total number of runnable tablets on this tserver.
+  // If the tablet manager itself is not initialized, then INT_MAX is set for both.
+  CHECKED_STATUS GetNumTabletsPendingBootstrap(IsTabletServerReadyResponsePB* resp) const;
 
   CHECKED_STATUS RunAllLogGC();
 
@@ -296,6 +306,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // Flush some tablet if the memstore memory limit is exceeded
   void MaybeFlushTablet();
 
+  tablet::TabletOptions* TEST_tablet_options() { return &tablet_options_; }
+
+  std::vector<std::shared_ptr<TsTabletManagerListener>> TEST_listeners;
+
  private:
   FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
 
@@ -331,7 +345,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Open a tablet meta from the local file system by loading its superblock.
   CHECKED_STATUS OpenTabletMeta(const std::string& tablet_id,
-                        scoped_refptr<tablet::TabletMetadata>* metadata);
+                        scoped_refptr<tablet::RaftGroupMetadata>* metadata);
 
   // Open a tablet whose metadata has already been loaded/created.
   // This method does not return anything as it can be run asynchronously.
@@ -344,11 +358,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // method. A TransitionInProgressDeleter must be passed as 'deleter' into
   // this method in order to remove that transition-in-progress entry when
   // opening the tablet is complete (in either a success or a failure case).
-  void OpenTablet(const scoped_refptr<tablet::TabletMetadata>& meta,
+  void OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
                   const scoped_refptr<TransitionInProgressDeleter>& deleter);
 
   // Open a tablet whose metadata has already been loaded.
-  void BootstrapAndInitTablet(const scoped_refptr<tablet::TabletMetadata>& meta,
+  void BootstrapAndInitTablet(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
                               std::shared_ptr<tablet::TabletPeer>* peer);
 
   // Add the tablet to the tablet map.
@@ -367,7 +381,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // the TablerPeer object. See RegisterTablet() for details about the
   // semantics of 'mode' and the locking requirements.
   Result<std::shared_ptr<tablet::TabletPeer>> CreateAndRegisterTabletPeer(
-      const scoped_refptr<tablet::TabletMetadata>& meta,
+      const scoped_refptr<tablet::RaftGroupMetadata>& meta,
       RegisterTabletPeerMode mode);
 
   // Helper to generate the report for a single tablet.
@@ -383,7 +397,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   // Handle the case on startup where we find a tablet that is not in
   // TABLET_DATA_READY state. Generally, we tombstone the replica.
-  CHECKED_STATUS HandleNonReadyTabletOnStartup(const scoped_refptr<tablet::TabletMetadata>& meta);
+  CHECKED_STATUS HandleNonReadyTabletOnStartup(
+      const scoped_refptr<tablet::RaftGroupMetadata>& meta);
 
   // Return the tablet with oldest write still in its memstore
   std::shared_ptr<tablet::TabletPeer> TabletToFlush();
@@ -403,6 +418,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   std::string LogPrefix() const;
 
+  void CleanupCheckpoints();
+
+  void LogCacheGC(MemTracker* log_cache_mem_tracker, size_t required);
+
   FsManager* const fs_manager_;
 
   TabletServer* server_;
@@ -416,8 +435,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
                              std::unordered_map<std::string, std::unordered_set<std::string>>>
     TableDiskAssignmentMap;
 
-  // Lock protecting tablet_map_, dirty_tablets_, state_, and
-  // transition_in_progress_.
+  // Lock protecting tablet_map_, dirty_tablets_, state_, transition_in_progress_, and
+  // tablets_being_remote_bootstrapped_.
   mutable RWMutex lock_;
 
   // Map from tablet ID to tablet
@@ -436,6 +455,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
   // When a tablet is added/removed/added locally and needs to be
   // reported to the master, an entry is added to this map.
   DirtyMap dirty_tablets_;
+
+  std::set<std::string> tablets_being_remote_bootstrapped_;
 
   // Next tablet report seqno.
   int32_t next_report_seq_;
@@ -472,6 +493,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf {
 
   TabletPeers shutting_down_peers_;
 
+  std::shared_ptr<GarbageCollector> block_based_table_gc_;
+  std::shared_ptr<GarbageCollector> log_cache_gc_;
+
+  std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
+
   DISALLOW_COPY_AND_ASSIGN(TSTabletManager);
 };
 
@@ -494,7 +520,7 @@ class TransitionInProgressDeleter : public RefCountedThreadSafe<TransitionInProg
 // Print a log message using the given info and tombstone the specified tablet.
 // If tombstoning the tablet fails, a FATAL error is logged, resulting in a crash.
 // If ts_manager pointer is passed in, it will unregister from the directory assignment map.
-void LogAndTombstone(const scoped_refptr<tablet::TabletMetadata>& meta,
+void LogAndTombstone(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
                      const std::string& msg,
                      const std::string& uuid,
                      const Status& s,
@@ -503,7 +529,7 @@ void LogAndTombstone(const scoped_refptr<tablet::TabletMetadata>& meta,
 // Delete the tablet using the specified delete_type as the final metadata
 // state. Deletes the on-disk data, as well as all WAL segments.
 // If ts_manager pointer is passed in, it will unregister from the directory assignment map.
-Status DeleteTabletData(const scoped_refptr<tablet::TabletMetadata>& meta,
+Status DeleteTabletData(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
                         tablet::TabletDataState delete_type,
                         const std::string& uuid,
                         const yb::OpId& last_logged_opid,
@@ -517,7 +543,7 @@ Status CheckLeaderTermNotLower(const std::string& tablet_id,
                                int64_t last_logged_term);
 
 // Helper function to replace a stale tablet found from earlier failed tries.
-Status HandleReplacingStaleTablet(scoped_refptr<tablet::TabletMetadata> meta,
+Status HandleReplacingStaleTablet(scoped_refptr<tablet::RaftGroupMetadata> meta,
                                   std::shared_ptr<tablet::TabletPeer> old_tablet_peer,
                                   const std::string& tablet_id,
                                   const std::string& uuid,

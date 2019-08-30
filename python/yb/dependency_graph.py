@@ -85,6 +85,21 @@ HOME_DIR = os.path.realpath(os.path.expanduser('~'))
 # This will match any node type (node types being sources/libraries/tests/etc.)
 NODE_TYPE_ANY = 'any'
 
+# As of August 2019, there is nothing in the "bin", "managed" and "www" directories that
+# is being used by tests.
+# If that changes, this needs to be updated. Note that the "bin" directory here is the
+# yugabyte/bin directory in the source tree, not the "bin" directory under the build
+# directory, so it only has scripts and not yb-master / yb-tserver binaries.
+DIRECTORIES_DONT_AFFECT_TESTS = [
+    'architecture',
+    'bin',
+    'cloud',
+    'community',
+    'docs',
+    'managed',
+    'sample',
+    'www',
+]
 CATEGORY_DOES_NOT_AFFECT_TESTS = 'does_not_affect_tests'
 
 # File changes in any category other than these will cause all tests to be re-run.  Even though
@@ -394,9 +409,7 @@ class Configuration:
         if not self.file_regex and args.file_name_glob:
             self.file_regex = fnmatch.translate('*/' + args.file_name_glob)
 
-        self.src_dir_paths = [self.src_dir_path]
-        if os.environ.get('YB_EDITION') != 'community' and os.path.exists(self.ent_src_dir_path):
-            self.src_dir_paths.append(self.ent_src_dir_path)
+        self.src_dir_paths = [self.src_dir_path, self.ent_src_dir_path]
 
         for dir_path in self.src_dir_paths:
             if not os.path.isdir(dir_path):
@@ -958,10 +971,7 @@ class DependencyGraph:
         """
         Add dependencies of .pb.{h,cc} files on the corresponding .proto file. We do that by
         finding .proto and .pb.{h,cc} nodes in the graph independently and matching them
-        based on their path relative to the source root, regardless of whether the .proto file
-        is present within the Community Edition C/C++ source directory (src) or Enterprise Edition
-        source directory (ent/src), because these two are folded into the same directory hierarchy
-        in the build directory.
+        based on their path relative to the source root.
 
         Additionally, we are inferring dependencies between binaries (protobuf libs or in some
         cases other libraries or even tests) that use a .pb.cc file on the CMake target that
@@ -1210,11 +1220,7 @@ def get_file_category(rel_path):
     """
     basename = os.path.basename(rel_path)
 
-    if rel_path.startswith('bin/'):
-        # As of December 2017, there is nothing in the "bin" directory that is being used by tests.
-        # If that changes, this needs to be updated. Note that the "bin" directory here is the
-        # yugabyte/bin directory in the source tree, not the "bin" directory under the build
-        # directory, so it only has scripts and not yb-master / yb-tserver binaries.
+    if rel_path.split(os.sep)[0] in DIRECTORIES_DONT_AFFECT_TESTS:
         return CATEGORY_DOES_NOT_AFFECT_TESTS
 
     if rel_path == 'yb_build.sh':

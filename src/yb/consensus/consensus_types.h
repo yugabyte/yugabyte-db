@@ -52,6 +52,7 @@ class ReplicaOperationFactory {
   virtual CHECKED_STATUS StartReplicaOperation(
       const ConsensusRoundPtr& context, HybridTime propagated_safe_time) = 0;
   virtual void SetPropagatedSafeTime(HybridTime ht) = 0;
+  virtual bool ShouldApplyWrite() = 0;
 
   virtual ~ReplicaOperationFactory() {}
 };

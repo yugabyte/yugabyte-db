@@ -23,6 +23,8 @@
 
 namespace yb {
 
+class IndexInfo;
+
 namespace common {
 
 class YQLStorageIf;
@@ -88,17 +90,9 @@ class PgsqlWriteOperation :
   // TODO(neil) Output arguments.
   // UPDATE, DELETE, INSERT operations should return total number of new or changed rows.
 
-  // State variables.
-  // Doc key and encoded doc key for hashed key (i.e. without range columns). Present when there is
-  // a static column being written.
-  boost::optional<DocKey> hashed_doc_key_;
-  RefCntPrefix encoded_hashed_doc_key_;
-
-  // Doc key and encoded doc key for primary key (i.e. with range columns). Present when there is a
-  // non-static column being written or when writing the primary key alone (i.e. range columns are
-  // present or table does not have range columns).
-  boost::optional<DocKey> range_doc_key_;
-  RefCntPrefix encoded_range_doc_key_;
+  // Doc key and encoded doc key for the primary key.
+  boost::optional<DocKey> doc_key_;
+  RefCntPrefix encoded_doc_key_;
 
   // Rows result requested.
   PgsqlResultSet resultset_;
@@ -135,6 +129,12 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   CHECKED_STATUS PopulateAggregate(const QLTableRow::SharedPtr& table_row,
                                    PgsqlResultSet *resultset);
+
+  // Checks whether we have processed enough rows for a page and sets the appropriate paging
+  // state in the response object.
+  CHECKED_STATUS SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
+                                           const PgsqlResultSet* resultset,
+                                           const size_t row_count_limit);
 
   //------------------------------------------------------------------------------------------------
   const PgsqlReadRequestPB& request_;

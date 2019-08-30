@@ -41,6 +41,7 @@
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
+#include "yb/yql/cql/ql/ptree/pt_explain.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -84,6 +85,23 @@ class Executor : public QLExprExecutor {
   // Execute a parse tree.
   CHECKED_STATUS Execute(const ParseTree& parse_tree, const StatementParameters& params);
 
+  // Run runtime analysis and prepare for execution within the execution context.
+  // Serves for processing things unavailable for initial semantic analysis.
+  CHECKED_STATUS PreExecTreeNode(TreeNode *tnode);
+
+  CHECKED_STATUS PreExecTreeNode(PTInsertStmt *tnode);
+
+  CHECKED_STATUS PreExecTreeNode(PTInsertJsonClause *tnode);
+
+  // Convert JSON value to an expression acording to its given expected type
+  Result<PTExpr::SharedPtr> ConvertJsonToExpr(const rapidjson::Value& json_value,
+                                              const QLType::SharedPtr& type,
+                                              const YBLocation::SharedPtr& loc);
+
+  Result<PTExpr::SharedPtr> ConvertJsonToExprInner(const rapidjson::Value& json_value,
+                                                   const QLType::SharedPtr& type,
+                                                   const YBLocation::SharedPtr& loc);
+
   // Execute any TreeNode. This function determines how to execute a node.
   CHECKED_STATUS ExecTreeNode(const TreeNode *tnode);
 
@@ -98,6 +116,7 @@ class Executor : public QLExprExecutor {
 
   // Create a table (including index table for CREATE INDEX).
   CHECKED_STATUS ExecPTNode(const PTCreateTable *tnode);
+  CHECKED_STATUS AddColumnToIndexInfo(IndexInfoPB *index_info, const PTColumnDefinition *column);
 
   // Alter a table.
   CHECKED_STATUS ExecPTNode(const PTAlterTable *tnode);
@@ -131,6 +150,9 @@ class Executor : public QLExprExecutor {
 
   // Update statement.
   CHECKED_STATUS ExecPTNode(const PTUpdateStmt *tnode, TnodeContext* tnode_context);
+
+  // Explain statement.
+  CHECKED_STATUS ExecPTNode(const PTExplainStmt *tnode);
 
   // Truncate statement.
   CHECKED_STATUS ExecPTNode(const PTTruncateStmt *tnode);
@@ -302,6 +324,11 @@ class Executor : public QLExprExecutor {
   // Convert column arguments to protobuf.
   CHECKED_STATUS ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req);
 
+  // Convert INSERT JSON clause to protobuf.
+  CHECKED_STATUS InsertJsonClauseToPB(const PTInsertStmt *insert_stmt,
+                                      const PTInsertJsonClause *json_clause,
+                                      QLWriteRequestPB *req);
+
   //------------------------------------------------------------------------------------------------
   // Where clause evaluation.
 
@@ -329,9 +356,6 @@ class Executor : public QLExprExecutor {
   CHECKED_STATUS WhereSubColOpToPB(QLConditionPB *condition, const SubscriptedColumnOp& subcol_op);
   CHECKED_STATUS WhereJsonColOpToPB(QLConditionPB *condition, const JsonColumnOp& jsoncol_op);
   CHECKED_STATUS FuncOpToPB(QLConditionPB *condition, const FuncOp& func_op);
-
-  //------------------------------------------------------------------------------------------------
-  CHECKED_STATUS ColumnOpsToSchema(const PTColumnDefinition *col, client::YBColumnSpec *col_spec);
 
   //------------------------------------------------------------------------------------------------
   // Add a read/write operation for the current statement and apply it. For write operation, check
@@ -468,6 +492,13 @@ class Executor : public QLExprExecutor {
 
   FlushAsyncTask flush_async_task_;
 };
+
+// Normalize the JSON object key according to CQL rules:
+// Key is made lowercase unless it's double-quoted - in which case double quotes are removed
+std::string NormalizeJsonKey(const std::string& key);
+
+// Create an appropriate QLExpressionPB depending on a column description
+QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_desc);
 
 }  // namespace ql
 }  // namespace yb

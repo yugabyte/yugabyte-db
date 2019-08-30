@@ -42,7 +42,7 @@ void YQLVTableIterator::SkipRow() {
   }
 }
 
-bool YQLVTableIterator::HasNext() const {
+Result<bool> YQLVTableIterator::HasNext() const {
   return vtable_index_ < vtable_->row_count();
 }
 

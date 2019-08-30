@@ -649,7 +649,7 @@ class WinSequentialFile : public SequentialFile {
     CloseHandle(file_);
   }
 
-  Status Read(size_t n, Slice* result, char* scratch) override {
+  Status Read(size_t n, Slice* result, uint8_t* scratch) override {
     Status s;
     size_t r = 0;
 

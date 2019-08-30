@@ -366,11 +366,12 @@ heap_create(const char *relname,
 									 relkind);
 
 	/*
-	 * No need to create local storage in YB Mode as YugaByte will handle it.
+	 * No need to create local storage for YB Tables as YugaByte will handle it.
+	 * Temporary tables in YugaByte mode use local storage.
 	 * TODO Consider hooking the YB-Create logic here instead of above.
 	 */
 	if (YBIsEnabledInPostgresEnvVar())
-		create_storage = false;
+		create_storage = relpersistence == RELPERSISTENCE_TEMP;
 
 	/*
 	 * Have the storage manager create the relation's disk file, if needed.
@@ -1085,11 +1086,11 @@ heap_create_with_catalog(const char *relname,
 	old_type_oid = InvalidOid;
 
 	/*
-	 * In YB mode, when preparing templates (initdb), do not waste a master
-	 * lookup for this as system catalogs should not have duplicates. If there
-	 * is a duplicate we will error out later anyway.
+	 * In YB mode, during bootstrap, a relation lookup by name will be a full-table scan
+	 * and slow because secondary indexes are not available yet. So we will skip this
+	 * duplicate name check as it will error later anyway when the indexes are created.
 	 */
-	if (!IsYugaByteEnabled() || !YBIsPreparingTemplates())
+	if (!IsYugaByteEnabled() || !IsBootstrapProcessingMode())
 	{
 		/*
 		 * This would fail later on anyway, if the relation already exists.  But
@@ -1629,7 +1630,8 @@ RemoveAttributeById(Oid relid, AttrNumber attnum)
 		* Change the column name to something that isn't likely to conflict
 		*/
 
-		if (IsYugaByteEnabled()) {
+		if (IsYugaByteEnabled())
+		{
 			/* TODO: Should be changed to CatalogTupleUpdate() when we are able to update a row's primary key */
 
 			CatalogTupleDelete(attr_rel, tuple);

@@ -46,7 +46,6 @@
 #include "yb/util/slice.h"
 
 namespace rocksdb {
-class SequentialFile;
 class SequentialFileReader;
 
 namespace test {
@@ -241,12 +240,11 @@ class StringSource: public RandomAccessFile {
         mmap_(mmap),
         total_reads_(0) {}
 
-  virtual ~StringSource() { }
+  virtual ~StringSource() {}
 
-  uint64_t Size() const { return contents_.size(); }
+  yb::Result<uint64_t> Size() const override { return contents_.size(); }
 
-  virtual Status Read(uint64_t offset, size_t n, Slice* result,
-      char* scratch) const override {
+  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
     total_reads_++;
     if (offset > contents_.size()) {
       return STATUS(InvalidArgument, "invalid Read offset");
@@ -263,22 +261,25 @@ class StringSource: public RandomAccessFile {
     return Status::OK();
   }
 
-  virtual size_t GetUniqueId(char* id, size_t max_size) const override {
-    if (max_size < 20) {
-      return 0;
-    }
-
+  virtual size_t GetUniqueId(char* id) const override {
     char* rid = id;
     rid = EncodeVarint64(rid, uniq_id_);
     rid = EncodeVarint64(rid, 0);
     return static_cast<size_t>(rid-id);
   }
 
+  yb::Result<uint64_t> INode() const override { return STATUS(NotSupported, "Not supported"); }
+
+  const std::string& filename() const override { return filename_; }
+
+  size_t memory_footprint() const override { LOG(FATAL) << "Not supported"; }
+
   int total_reads() const { return total_reads_; }
 
   void set_total_reads(int tr) { total_reads_ = tr; }
 
  private:
+  std::string filename_ = "StringSource";
   std::string contents_;
   uint64_t uniq_id_;
   bool mmap_;
@@ -369,12 +370,12 @@ class FilterNumber : public CompactionFilter {
 
   std::string last_merge_operand_key() { return last_merge_operand_key_; }
 
-  bool Filter(int level, const rocksdb::Slice& key, const rocksdb::Slice& value,
-              std::string* new_value, bool* value_changed) const override {
+  FilterDecision Filter(int level, const rocksdb::Slice& key, const rocksdb::Slice& value,
+              std::string* new_value, bool* value_changed) override {
     if (value.size() == sizeof(uint64_t)) {
-      return num_ == DecodeFixed64(value.data());
+      return num_ == DecodeFixed64(value.data()) ? FilterDecision::kDiscard : FilterDecision::kKeep;
     }
-    return true;
+    return FilterDecision::kDiscard;
   }
 
   bool FilterMergeOperand(int level, const rocksdb::Slice& key,
@@ -405,8 +406,10 @@ class StringEnv : public EnvWrapper {
    public:
     explicit SeqStringSource(const std::string& data)
         : data_(data), offset_(0) {}
+
     ~SeqStringSource() {}
-    Status Read(size_t n, Slice* result, char* scratch) override {
+
+    Status Read(size_t n, Slice* result, uint8_t* scratch) override {
       std::string output;
       if (offset_ < data_.size()) {
         n = std::min(data_.size() - offset_, n);
@@ -419,6 +422,7 @@ class StringEnv : public EnvWrapper {
       }
       return Status::OK();
     }
+
     Status Skip(uint64_t n) override {
       if (offset_ >= data_.size()) {
         return STATUS(InvalidArgument,
@@ -427,6 +431,11 @@ class StringEnv : public EnvWrapper {
       // TODO(yhchiang): Currently doesn't handle the overflow case.
       offset_ += n;
       return Status::OK();
+    }
+
+    const std::string& filename() const override {
+      static const std::string kFilename = "SeqStringSource";
+      return kFilename;
     }
 
    private:
@@ -603,9 +612,10 @@ class ChanglingCompactionFilter : public CompactionFilter {
 
   void SetName(const std::string& name) { name_ = name; }
 
-  bool Filter(int level, const Slice& key, const Slice& existing_value,
-              std::string* new_value, bool* value_changed) const override {
-    return false;
+  FilterDecision Filter(
+      int level, const Slice& key, const Slice& existing_value, std::string* new_value,
+      bool* value_changed) override {
+    return FilterDecision::kKeep;
   }
 
   const char* Name() const override { return name_.c_str(); }
@@ -747,6 +757,48 @@ class TestUserFrontiers : public rocksdb::UserFrontiersBase<TestUserFrontier> {
   std::unique_ptr<UserFrontiers> Clone() const {
     return std::make_unique<TestUserFrontiers>(*this);
   }
+};
+
+// A class which remembers the name of each flushed file.
+class FlushedFileCollector : public EventListener {
+ public:
+  virtual void OnFlushCompleted(DB* db, const FlushJobInfo& info) override {
+    std::lock_guard<std::mutex> lock(mutex_);
+    flushed_file_infos_.push_back(info);
+  }
+
+  std::vector<std::string> GetFlushedFiles() {
+    std::vector<std::string> flushed_files;
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& info : flushed_file_infos_) {
+      flushed_files.push_back(info.file_path);
+    }
+    return flushed_files;
+  }
+
+  std::vector<std::string> GetAndClearFlushedFiles() {
+    std::vector<std::string> flushed_files;
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& info : flushed_file_infos_) {
+      flushed_files.push_back(info.file_path);
+    }
+    flushed_file_infos_.clear();
+    return flushed_files;
+  }
+
+  std::vector<FlushJobInfo> GetFlushedFileInfos() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return flushed_file_infos_;
+  }
+
+  void Clear() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    flushed_file_infos_.clear();
+  }
+
+ private:
+  std::vector<FlushJobInfo> flushed_file_infos_;
+  std::mutex mutex_;
 };
 
 }  // namespace test

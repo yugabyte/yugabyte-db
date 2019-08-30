@@ -127,38 +127,71 @@ void ChangeMetadataOperation::DoStart() {
       server::HybridClock::GetPhysicalValueMicros(state()->hybrid_time()));
 }
 
-Status ChangeMetadataOperation::Apply(int64_t leader_term) {
+Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY CHANGE-METADATA: Starting");
 
   Tablet* tablet = state()->tablet();
+  log::Log* log = state()->mutable_log();
   size_t num_operations = 0;
 
+  // Only perform one operation.
+  enum MetadataChange {
+    NONE,
+    SCHEMA,
+    WAL_RETENTION_SECS,
+    ADD_TABLE
+  };
+
+  MetadataChange metadata_change = MetadataChange::NONE;
+  bool request_has_newer_schema = false;
   if (state()->request()->has_schema()) {
-    ++num_operations;
-    RETURN_NOT_OK(tablet->AlterSchema(state()));
-    state()->log()->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
-        state()->schema_version());
+    metadata_change = MetadataChange::SCHEMA;
+    request_has_newer_schema = tablet->metadata()->schema_version() < state()->schema_version();
+    if (request_has_newer_schema) {
+      ++num_operations;
+    }
+  }
+
+  if (state()->request()->has_wal_retention_secs()) {
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::WAL_RETENTION_SECS;
+    }
   }
 
   if (state()->request()->has_add_table()) {
-    ++num_operations;
-    RETURN_NOT_OK(tablet->AddTable(state()->request()->add_table()));
+    metadata_change = MetadataChange::NONE;
+    if (++num_operations == 1) {
+      metadata_change = MetadataChange::ADD_TABLE;
+    }
   }
 
-  if (num_operations != 1) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Wrong number of operations in Change Metadata Operation: $0",
-        num_operations);
-  }
-
-  return Status::OK();
-}
-
-void ChangeMetadataOperation::Finish(OperationResult result) {
-  if (PREDICT_FALSE(result == Operation::ABORTED)) {
-    TRACE("AlterSchemaCommitCallback: transaction aborted");
-    state()->Finish();
-    return;
+  switch (metadata_change) {
+    case MetadataChange::NONE:
+      return STATUS_FORMAT(
+          InvalidArgument, "Wrong number of operations in Change Metadata Operation: $0",
+          num_operations);
+    case MetadataChange::SCHEMA:
+      if (!request_has_newer_schema) {
+        LOG_WITH_PREFIX(INFO)
+            << "Already running schema version " << tablet->metadata()->schema_version()
+            << " got alter request for version " << state()->schema_version();
+        break;
+      }
+      DCHECK_EQ(1, num_operations) << "Invalid number of alter operations: " << num_operations;
+      RETURN_NOT_OK(tablet->AlterSchema(state()));
+      log->SetSchemaForNextLogSegment(*DCHECK_NOTNULL(state()->schema()),
+                                      state()->schema_version());
+      break;
+    case MetadataChange::WAL_RETENTION_SECS:
+      DCHECK_EQ(1, num_operations) << "Invalid number of alter operations: " << num_operations;
+      RETURN_NOT_OK(tablet->AlterWalRetentionSecs(state()));
+      log->set_wal_retention_secs(state()->request()->wal_retention_secs());
+      break;
+    case MetadataChange::ADD_TABLE:
+      DCHECK_EQ(1, num_operations) << "Invalid number of alter operations: " << num_operations;
+      RETURN_NOT_OK(tablet->AddTable(state()->request()->add_table()));
+      break;
   }
 
   // The schema lock was acquired by Tablet::CreatePreparedChangeMetadata.
@@ -168,15 +201,40 @@ void ChangeMetadataOperation::Finish(OperationResult result) {
   // Tablet::AlterSchema().
   state()->ReleaseSchemaLock();
 
-  DCHECK_EQ(result, Operation::COMMITTED);
   // Now that all of the changes have been applied and the commit is durable
   // make the changes visible to readers.
   TRACE("AlterSchemaCommitCallback: making alter schema visible");
   state()->Finish();
+
+  return Status::OK();
+}
+
+Status ChangeMetadataOperation::DoAborted(const Status& status) {
+  TRACE("AlterSchemaCommitCallback: transaction aborted");
+  state()->Finish();
+  return status;
 }
 
 string ChangeMetadataOperation::ToString() const {
   return Format("ChangeMetadataOperation { state: $0 }", state());
+}
+
+CHECKED_STATUS SyncReplicateChangeMetadataOperation(
+    const tserver::ChangeMetadataRequestPB* req,
+    tablet::TabletPeer* tablet_peer,
+    int64_t term) {
+  auto operation_state = std::make_unique<ChangeMetadataOperationState>(
+      tablet_peer->tablet(), tablet_peer->log(), req);
+
+  Synchronizer synchronizer;
+
+  operation_state->set_completion_callback(
+      std::make_unique<tablet::SynchronizerOperationCompletionCallback>(&synchronizer));
+
+  tablet_peer->Submit(std::make_unique<tablet::ChangeMetadataOperation>(
+      std::move(operation_state)), term);
+
+  return synchronizer.Wait();
 }
 
 }  // namespace tablet

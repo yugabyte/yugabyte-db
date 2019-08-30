@@ -18,19 +18,20 @@
 
 #include <boost/optional/optional.hpp>
 
-#include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/metadata.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/common/entity_ids.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/monitored_task.h"
 #include "yb/util/status.h"
 #include "yb/util/memory/memory.h"
-#include "yb/common/entity_ids.h"
 
-#include "yb/server/monitored_task.h"
-#include "yb/rpc/rpc_controller.h"
 
 namespace yb {
 
@@ -171,6 +172,9 @@ class RetryingTSRpcTask : public MonitoredTask {
   // pool, rather than a reactor thread, so it may do blocking IO operations.
   void DoRpcCallback();
 
+  // Called when the async task unregisters either successfully or unsuccessfully.
+  virtual void UnregisterAsyncTaskCallback();
+
   Master* const master_;
   ThreadPool* const callback_pool_;
   const gscoped_ptr<TSPicker> replica_picker_;
@@ -294,6 +298,7 @@ class AsyncDeleteReplica : public RetrySpecificTSRpcTask {
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  void UnregisterAsyncTaskCallback() override;
 
   const TabletId tablet_id_;
   const tablet::TabletDataState delete_type_;

@@ -37,6 +37,7 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.pb.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/server/metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/pb_util.h"
@@ -59,13 +60,6 @@ class MasterOptions;
 // Forward declaration from internal header file.
 class VisitorBase;
 class SysCatalogWriter;
-
-static const char* const kSysCatalogTabletId = "00000000000000000000000000000000";
-static const char* const kSysCatalogTableId = "sys.catalog.uuid";
-static const char* const kSysCatalogTableName = "sys.catalog";
-static const char* const kSysCatalogTableColType = "entry_type";
-static const char* const kSysCatalogTableColId = "entry_id";
-static const char* const kSysCatalogTableColMetadata = "metadata";
 
 // SysCatalogTable is a YB table that keeps track of table and
 // tablet metadata.
@@ -142,7 +136,7 @@ class SysCatalogTable {
   }
 
   // Create a new tablet peer with information from the metadata
-  void SetupTabletPeer(const scoped_refptr<tablet::TabletMetadata>& metadata);
+  void SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
 
   // Update the in-memory master addresses. Report missing uuid's in the
   // config when check_missing_uuids is set to true.
@@ -161,8 +155,10 @@ class SysCatalogTable {
   // Copy the content of a co-located table in sys catalog.
   CHECKED_STATUS CopyPgsqlTable(const TableId& source_table_id,
                                 const TableId& target_table_id,
-                                const TableId& target_indexed_table_id,
                                 int64_t leader_term);
+
+  // Drop YSQL table by removing the table metadata in sys-catalog.
+  CHECKED_STATUS DeleteYsqlSystemTable(const string& table_id);
 
  private:
   friend class CatalogManager;
@@ -181,9 +177,9 @@ class SysCatalogTable {
   void SysCatalogStateChanged(const std::string& tablet_id,
                               std::shared_ptr<consensus::StateChangeContext> context);
 
-  CHECKED_STATUS SetupTablet(const scoped_refptr<tablet::TabletMetadata>& metadata);
+  CHECKED_STATUS SetupTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
 
-  CHECKED_STATUS OpenTablet(const scoped_refptr<tablet::TabletMetadata>& metadata);
+  CHECKED_STATUS OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
 
   // Use the master options to generate a new consensus configuration.
   // In addition, resolve all UUIDs of this consensus configuration.

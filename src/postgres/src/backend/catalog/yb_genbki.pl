@@ -266,6 +266,8 @@ open my $bki, '>', $bkifile . $tmpext
 # version marker for .bki file
 print $bki "# PostgreSQL $major_version\n";
 
+print $bki "yb_check_if_initdb_is_already_done\n";
+
 # vars to hold data needed for schemapg.h
 my %schemapg_entries;
 my @tables_needing_macros;
@@ -326,6 +328,7 @@ foreach my $catname (@catnames)
     # Select a unique index on the table if available as the table's primary key
     # and add it after the table definition:
     # - prefer the oid one if available,
+    # - for pg_attribute, pg_attribute_relid_attnum_index fits better as the primary key,
     # - otherwise default to first index.
     my $pkidxname;
     my $pkidx;
@@ -336,7 +339,8 @@ foreach my $catname (@catnames)
         die "Unrecognized index declaration $_" if !$idxname;
         if ($icatname eq $catname && $unique)
         {
-            if ($columns eq "btree(oid oid_ops)")
+            if (($columns eq "btree(oid oid_ops)") ||
+                ($icatname eq "pg_attribute" && $idxname eq "pg_attribute_relid_attnum_index"))
             {
                 ($pkidxname, $pkidx) = ($idxname, $_);
                 last;
@@ -346,6 +350,7 @@ foreach my $catname (@catnames)
 	}
     if ($pkidx)
     {
+		$pkidx =~ s/unique index/primary index/;
         print $bki " yb_" . $pkidx;
         $pkidxs{$pkidxname} = 1;
 	}
@@ -456,7 +461,7 @@ foreach (@index_decls)
 {
 	my ($unique, $idxname, $oid, $icatname, $columns) =
 		/declare (unique )?index (.*) (\d+) on (.+) using (.+)/;
-	next if $idxname && $pkidxs{$idxname};
+	s/unique index/primary index/ if $idxname && $pkidxs{$idxname};
 	print $bki $_;
 }
 

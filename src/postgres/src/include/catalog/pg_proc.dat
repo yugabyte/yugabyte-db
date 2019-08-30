@@ -955,6 +955,9 @@
   proname => 'brin_desummarize_range', provolatile => 'v', proparallel => 'u',
   prorettype => 'void', proargtypes => 'regclass int8',
   prosrc => 'brin_desummarize_range' },
+{ oid => '9901', descr => 'lsm index access method handler',
+  proname => 'ybcinhandler', provolatile => 'v', prorettype => 'index_am_handler',
+  proargtypes => 'internal', prosrc => 'ybcinhandler' },
 
 { oid => '338', descr => 'validate an operator class',
   proname => 'amvalidate', provolatile => 'v', prorettype => 'bool',

@@ -58,27 +58,34 @@ namespace ql {
     EXPECT_FALSE(s.ToString().find(err_msg) == string::npos); \
   } while (false)
 
+#define PROCESSOR_RUN(result, stmt)            \
+    LOG(INFO) << "Run: " << stmt;              \
+    Status result = processor->Run(stmt);
+
 #define EXEC_VALID_STMT(stmt)                  \
   do {                                         \
-    Status s = processor->Run(stmt);           \
+    PROCESSOR_RUN(s, stmt);                    \
     EXPECT_TRUE(s.ok());                       \
   } while (false)
 
-#define EXEC_INVALID_STMT(stmt)                \
-  do {                                         \
-    Status s = processor->Run(stmt);           \
-    EXPECT_FALSE(s.ok());                      \
+#define EXEC_INVALID_STMT_WITH_ERROR(stmt, err_msg)           \
+  do {                                                        \
+    PROCESSOR_RUN(s, stmt);                                   \
+    EXPECT_FALSE(s.ok());                                     \
+    EXPECT_FALSE(s.ToString().find(err_msg) == string::npos); \
   } while (false)
+
+#define EXEC_INVALID_STMT(stmt) EXEC_INVALID_STMT_WITH_ERROR(stmt, "")
 
 #define CHECK_VALID_STMT(stmt)                 \
   do {                                         \
-    Status s = processor->Run(stmt);           \
+    PROCESSOR_RUN(s, stmt);                    \
     CHECK(s.ok()) << "Failure: " << s;         \
   } while (false)
 
 #define CHECK_INVALID_STMT(stmt)               \
   do {                                         \
-    Status s = processor->Run(stmt);           \
+    PROCESSOR_RUN(s, stmt);                    \
     CHECK(!s.ok()) << "Expect failure";        \
   } while (false)
 
@@ -98,7 +105,7 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
   typedef std::unique_ptr<const TestQLProcessor> UniPtrConst;
 
   // Constructors.
-  TestQLProcessor(std::shared_ptr<client::YBClient> client,
+  TestQLProcessor(client::YBClient* client,
                   std::shared_ptr<client::YBMetaDataCache> cache,
                   const RoleName& role_name)
       : QLProcessor(client, cache, nullptr /* ql_metrics */, clock_,
@@ -197,7 +204,9 @@ class QLTestBase : public YBTest {
   virtual void SetUp() override {
     YBTest::SetUp();
   }
+
   virtual void TearDown() override {
+    client_.reset();
     if (cluster_ != nullptr) {
       cluster_->Shutdown();
     }
@@ -250,7 +259,7 @@ class QLTestBase : public YBTest {
       if (processor->rows_result()->paging_state().empty()) {
         break;
       }
-      CHECK_OK(params.set_paging_state(processor->rows_result()->paging_state()));
+      CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
     } while (true);
     EXPECT_EQ(expected_rows, rows);
   }
@@ -262,7 +271,7 @@ class QLTestBase : public YBTest {
   std::shared_ptr<MiniCluster> cluster_;
 
   // Simulated YB client.
-  std::shared_ptr<client::YBClient> client_;
+  std::unique_ptr<client::YBClient> client_;
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
 
   // QL Processor.

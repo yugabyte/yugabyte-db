@@ -55,8 +55,8 @@ class PggateTest : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Test start and cleanup functions.
-  virtual void SetUp() override;
-  virtual void TearDown() override;
+  void SetUp() override;
+  void TearDown() override;
 
   // Init cluster for each test case.
   CHECKED_STATUS Init(const char *test_name, int num_tablet_servers = kNumOfTablets);
@@ -113,6 +113,8 @@ YBCStatus YBCTestNewConstantInt4(YBCPgStatement stmt, int32_t value, bool is_nul
                                  YBCPgExpr *expr_handle);
 YBCStatus YBCTestNewConstantInt8(YBCPgStatement stmt, int64_t value, bool is_null,
                                  YBCPgExpr *expr_handle);
+YBCStatus YBCTestNewConstantInt8Op(YBCPgStatement stmt, int64_t value, bool is_null,
+                                 YBCPgExpr *expr_handle, bool is_gt);
 YBCStatus YBCTestNewConstantFloat4(YBCPgStatement stmt, float value, bool is_null,
                                    YBCPgExpr *expr_handle);
 YBCStatus YBCTestNewConstantFloat8(YBCPgStatement stmt, double value, bool is_null,

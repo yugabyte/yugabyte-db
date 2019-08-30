@@ -62,7 +62,7 @@ class RpcServer {
             rpc::ConnectionContextFactoryPtr connection_context_factory);
   ~RpcServer();
 
-  CHECKED_STATUS Init(const std::shared_ptr<rpc::Messenger>& messenger);
+  CHECKED_STATUS Init(rpc::Messenger* messenger);
   // Services need to be registered after Init'ing, but before Start'ing.
   // The service's ownership will be given to a ServicePool.
   CHECKED_STATUS RegisterService(
@@ -102,7 +102,7 @@ class RpcServer {
 
   const RpcServerOptions options_;
 
-  std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* messenger_ = nullptr;
 
   // Parsed addresses to bind RPC to. Set by Init().
   std::vector<Endpoint> rpc_bind_addresses_;

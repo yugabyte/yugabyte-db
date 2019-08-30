@@ -15,6 +15,7 @@
 
 #include "yb/client/txn-test-base.h"
 
+#include "yb/client/session.h"
 #include "yb/client/transaction.h"
 
 #include "yb/consensus/consensus.h"
@@ -95,9 +96,11 @@ void TransactionTestBase::SetUp() {
   server::SkewedClock::Register();
   FLAGS_time_source = server::SkewedClock::kName;
   FLAGS_load_balancer_max_concurrent_adds = 100;
-  KeyValueTableTest::SetUp();
+  ASSERT_NO_FATALS(KeyValueTableTest::SetUp());
 
-  CreateTable(Transactional::kTrue);
+  if (create_table_) {
+    CreateTable(Transactional::kTrue);
+  }
 
   FLAGS_log_segment_size_bytes = log_segment_size_bytes();
   FLAGS_log_min_seconds_to_retain = 5;
@@ -106,11 +109,11 @@ void TransactionTestBase::SetUp() {
   HybridTime::TEST_SetPrettyToString(true);
 
   ASSERT_OK(clock_->Init());
-  transaction_manager_.emplace(client_, clock_, client::LocalTabletFilter());
+  transaction_manager_.emplace(client_.get(), clock_, client::LocalTabletFilter());
 
   server::ClockPtr clock2(new server::HybridClock(skewed_clock_));
   ASSERT_OK(clock2->Init());
-  transaction_manager2_.emplace(client_, clock2, client::LocalTabletFilter());
+  transaction_manager2_.emplace(client_.get(), clock2, client::LocalTabletFilter());
 }
 
 uint64_t TransactionTestBase::log_segment_size_bytes() const {
@@ -159,24 +162,31 @@ void TransactionTestBase::WriteDataWithRepetition() {
   ASSERT_OK(txn->CommitFuture().get());
 }
 
-YBTransactionPtr TransactionTestBase::CreateTransaction(SetReadTime set_read_time) {
-  auto result = std::make_shared<YBTransaction>(transaction_manager_.get_ptr());
+namespace {
+
+YBTransactionPtr CreateTransactionHelper(
+    TransactionManager* transaction_manager,
+    SetReadTime set_read_time,
+    IsolationLevel isolation_level) {
+  auto result = std::make_shared<YBTransaction>(transaction_manager);
   ReadHybridTime read_time;
   if (set_read_time) {
-    read_time = ReadHybridTime::FromHybridTimeRange(transaction_manager_->clock()->NowRange());
+    read_time = ReadHybridTime::FromHybridTimeRange(transaction_manager->clock()->NowRange());
   }
-  EXPECT_OK(result->Init(GetIsolationLevel(), read_time));
+  EXPECT_OK(result->Init(isolation_level, read_time));
   return result;
 }
 
+}  // anonymous namespace
+
+YBTransactionPtr TransactionTestBase::CreateTransaction(SetReadTime set_read_time) {
+  return CreateTransactionHelper(
+      transaction_manager_.get_ptr(), set_read_time, GetIsolationLevel());
+}
+
 YBTransactionPtr TransactionTestBase::CreateTransaction2(SetReadTime set_read_time) {
-  auto result = std::make_shared<YBTransaction>(transaction_manager2_.get_ptr());
-  ReadHybridTime read_time;
-  if (set_read_time) {
-    read_time = ReadHybridTime::FromHybridTimeRange(transaction_manager2_->clock()->NowRange());
-  }
-  EXPECT_OK(result->Init(GetIsolationLevel(), read_time));
-  return result;
+  return CreateTransactionHelper(
+      transaction_manager2_.get_ptr(), set_read_time, GetIsolationLevel());
 }
 
 void TransactionTestBase::VerifyRows(
@@ -218,20 +228,23 @@ void TransactionTestBase::VerifyData(
   }
 }
 
-size_t TransactionTestBase::CountTransactions() {
-  size_t result = 0;
+bool TransactionTestBase::HasTransactions() {
   for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
     auto peers = tablet_manager->GetTabletPeers();
     for (const auto& peer : peers) {
+      if (!peer->consensus()) {
+        return true; // Report true, since we could have transactions on this non ready peer.
+      }
       if (peer->consensus()->GetLeaderStatus() !=
               consensus::LeaderStatus::NOT_LEADER &&
-          peer->tablet()->transaction_coordinator()) {
-        result += peer->tablet()->transaction_coordinator()->test_count_transactions();
+          peer->tablet()->transaction_coordinator() &&
+          peer->tablet()->transaction_coordinator()->test_count_transactions()) {
+        return true;
       }
     }
   }
-  return result;
+  return false;
 }
 
 size_t TransactionTestBase::CountIntents() {
@@ -277,7 +290,7 @@ void TransactionTestBase::CheckNoRunningTransactions() {
             "Wait until no transactions are running");
         if (!status.ok()) {
           LOG(ERROR) << Format(
-              "Server: $0, tablet: $1, transactions: $2",
+              "T $1 P $0: Transactions: $2",
               server->permanent_uuid(), peer->tablet_id(),
               participant->TEST_GetNumRunningTransactions());
           has_bad = true;

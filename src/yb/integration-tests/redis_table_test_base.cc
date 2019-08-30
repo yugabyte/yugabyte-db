@@ -16,7 +16,10 @@
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
+#include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
@@ -50,7 +53,7 @@ YBTableName RedisTableTestBase::table_name() {
 
 void RedisTableTestBase::CreateTable() {
   if (!table_exists_) {
-    CreateRedisTable(client_, table_name());
+    CreateRedisTable(table_name());
     client::YBSchema schema;
     PartitionSchema partition_schema;
     CHECK_OK(client_->GetTableSchema(RedisTableTestBase::table_name(), &schema, &partition_schema));

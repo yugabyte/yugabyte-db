@@ -190,6 +190,8 @@ typedef struct TransactionStateData
 	bool		didLogXid;		/* has xid been included in WAL record? */
 	int			parallelModeLevel;	/* Enter/ExitParallelMode counter */
 	struct TransactionStateData *parent;	/* back link to parent */
+	bool		isYBTxnWithPostgresRel; /* does the current transaction
+										   * operate on a postgres table? */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -1151,7 +1153,8 @@ RecordTransactionCommit(void)
 	bool		RelcacheInitFileInval = false;
 	bool		wrote_xlog;
 
-	if (IsYugaByteEnabled()) {
+	if (IsYugaByteEnabled() && !IsCurrentTxnWithPGRel())
+	{
 		return latestXid;
 	}
 	/* Get data needed for commit record */
@@ -1834,6 +1837,8 @@ StartTransaction(void)
 	/* check the current transaction state */
 	Assert(s->state == TRANS_DEFAULT);
 
+	s->isYBTxnWithPostgresRel = IsYugaByteEnabled() ? false : true;
+
 	/*
 	 * Set the current transaction state information appropriately during
 	 * start processing.  Note that once the transaction status is switched
@@ -1962,8 +1967,9 @@ StartTransaction(void)
 	 */
 	s->state = TRANS_INPROGRESS;
 
-	if (YBTransactionsEnabled()) {
-		YBCPgTxnManager_BeginTransaction(YBCGetPgTxnManager());
+	if (YBTransactionsEnabled())
+	{
+		YBCPgTxnManager_BeginTransaction(YBCGetPgTxnManager(), XactIsoLevel);
 	}
 
 	ShowTransactionState("StartTransaction");
@@ -2808,6 +2814,19 @@ StartTransactionCommand(void)
 }
 
 void
+SetTxnWithPGRel(void)
+{
+	TransactionState s = CurrentTransactionState;
+	s->isYBTxnWithPostgresRel = true;
+}
+
+bool
+IsCurrentTxnWithPGRel(void)
+{
+	return CurrentTransactionState->isYBTxnWithPostgresRel;
+}
+
+void
 YBCCommitTransactionAndUpdateBlockState() {
 	TransactionState s = CurrentTransactionState;
 	if (YBCCommitTransaction()) {
@@ -2818,7 +2837,11 @@ YBCCommitTransactionAndUpdateBlockState() {
 		CommitTransaction();
 		s->blockState = TBLOCK_DEFAULT;
 	} else {
-		s->blockState = TBLOCK_ABORT;
+    /*
+     * TBLOCK_STARTED means that we aren't in a transaction block, so should switch to
+     * default state in this case.
+     */
+		s->blockState = s->blockState == TBLOCK_STARTED ? TBLOCK_DEFAULT : TBLOCK_ABORT;
 		YBCHandleCommitError();
 	}
 }

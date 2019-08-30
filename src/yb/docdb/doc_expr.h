@@ -34,7 +34,8 @@ class DocExprExecutor : public QLExprExecutor {
   // Evaluate call to tablet-server builtin operator.
   virtual CHECKED_STATUS EvalTSCall(const QLBCallPB& ql_expr,
                                     const QLTableRow& table_row,
-                                    QLValue *result) override;
+                                    QLValue *result,
+                                    const Schema *schema = nullptr) override;
 
   // Evaluate aggregate functions for each row.
   CHECKED_STATUS EvalCount(QLValue *aggr_count);
@@ -42,6 +43,11 @@ class DocExprExecutor : public QLExprExecutor {
   CHECKED_STATUS EvalMax(const QLValue& val, QLValue *aggr_max);
   CHECKED_STATUS EvalMin(const QLValue& val, QLValue *aggr_min);
   CHECKED_STATUS EvalAvg(const QLValue& val, QLValue *aggr_avg);
+
+  CHECKED_STATUS EvalParametricToJson(const QLExpressionPB& operand,
+                                      const QLTableRow& table_row,
+                                      QLValue *result,
+                                      const Schema *schema);
 
  protected:
   virtual CHECKED_STATUS GetTupleId(QLValue *result) const;

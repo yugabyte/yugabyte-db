@@ -181,13 +181,12 @@ typedef std::shared_ptr<ColumnIds> ColumnIdsPtr;
 // In the future, it may hold information about annotations, etc.
 class ColumnSchema {
  public:
-  typedef std::pair<JsonOperatorPB, QLValuePB> QLJsonOperation;
-  typedef std::vector<QLJsonOperation> QLJsonOperations;
-
   enum SortingType : uint8_t {
     kNotSpecified = 0,
-    kAscending,
-    kDescending
+    kAscending,          // ASC, NULLS FIRST
+    kDescending,         // DESC, NULLS FIRST
+    kAscendingNullsLast, // ASC, NULLS LAST
+    kDescendingNullsLast // DESC, NULLS LAST
   };
 
   // name: column name
@@ -209,8 +208,7 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified,
-               const QLJsonOperations& json_ops = QLJsonOperations())
+               SortingType sorting_type = SortingType::kNotSpecified)
       : name_(std::move(name)),
         type_(type),
         is_nullable_(is_nullable),
@@ -218,8 +216,7 @@ class ColumnSchema {
         is_static_(is_static),
         is_counter_(is_counter),
         order_(order),
-        sorting_type_(sorting_type),
-        json_ops_(json_ops) {
+        sorting_type_(sorting_type) {
   }
 
   // convenience constructor for creating columns with simple (non-parametric) data types
@@ -230,10 +227,9 @@ class ColumnSchema {
                bool is_static = false,
                bool is_counter = false,
                int32_t order = 0,
-               SortingType sorting_type = SortingType::kNotSpecified,
-               const QLJsonOperations& json_ops = QLJsonOperations())
+               SortingType sorting_type = SortingType::kNotSpecified)
       : ColumnSchema(name, QLType::Create(type), is_nullable, is_hash_key, is_static, is_counter,
-                     order, sorting_type, json_ops) {
+                     order, sorting_type) {
   }
 
   const std::shared_ptr<QLType>& type() const {
@@ -284,16 +280,16 @@ class ColumnSchema {
         return "asc";
       case kDescending:
         return "desc";
+      case kAscendingNullsLast:
+        return "asc nulls last";
+      case kDescendingNullsLast:
+        return "desc nulls last";
     }
     LOG (FATAL) << "Invalid sorting type: " << sorting_type_;
   }
 
   const string &name() const {
     return name_;
-  }
-
-  const QLJsonOperations& json_ops() const {
-    return json_ops_;
   }
 
   // Return a string identifying this column, including its
@@ -365,7 +361,6 @@ class ColumnSchema {
   bool is_counter_;
   int32_t order_;
   SortingType sorting_type_;
-  QLJsonOperations json_ops_;
 };
 
 class ContiguousRow;
@@ -446,6 +441,7 @@ class TableProperties {
   bool is_transactional_ = false;
   YBConsistencyLevel consistency_level_ = YBConsistencyLevel::STRONG;
   TableId copartition_table_id_ = kNoCopartitionTableId;
+  boost::optional<uint32_t> wal_retention_secs_;
 };
 
 // The schema for a set of rows.
@@ -635,6 +631,10 @@ class Schema {
 
   void SetCopartitionTableId(const TableId& copartition_table_id) {
     table_properties_.SetCopartitionTableId(copartition_table_id);
+  }
+
+  void SetTransactional(bool is_transactional) {
+    table_properties_.SetTransactional(is_transactional);
   }
 
   // Return the column index corresponding to the given column,

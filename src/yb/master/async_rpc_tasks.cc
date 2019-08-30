@@ -323,7 +323,11 @@ void RetryingTSRpcTask::RunDelayedTask(const Status& status) {
   }
 }
 
+void RetryingTSRpcTask::UnregisterAsyncTaskCallback() {}
+
 void RetryingTSRpcTask::UnregisterAsyncTask() {
+  UnregisterAsyncTaskCallback();
+
   auto s = state();
   if (!IsStateTerminal(s)) {
     LOG_WITH_PREFIX(FATAL) << "Invalid task state " << s;
@@ -475,11 +479,7 @@ void AsyncDeleteReplica::HandleResponse(int attempt) {
     VLOG(1) << "TS " << permanent_uuid_ << ": delete complete on tablet " << tablet_id_;
   }
   if (delete_done) {
-    master_->catalog_manager()->NotifyTabletDeleteFinished(permanent_uuid_, tablet_id_);
-    shared_ptr<TSDescriptor> ts_desc;
-    if (master_->ts_manager()->LookupTSByUUID(permanent_uuid_, &ts_desc)) {
-      ts_desc->ClearPendingTabletDelete(tablet_id_);
-    }
+    UnregisterAsyncTaskCallback();
   }
 }
 
@@ -498,6 +498,10 @@ bool AsyncDeleteReplica::SendRequest(int attempt) {
           << " (attempt " << attempt << "):\n"
           << req.DebugString();
   return true;
+}
+
+void AsyncDeleteReplica::UnregisterAsyncTaskCallback() {
+  master_->catalog_manager()->NotifyTabletDeleteFinished(permanent_uuid_, tablet_id_);
 }
 
 // ============================================================================
@@ -563,13 +567,19 @@ bool AsyncAlterTable::SendRequest(int attempt) {
   auto l = table_->LockForRead();
 
   tserver::ChangeMetadataRequestPB req;
+  req.set_schema_version(l->data().pb.version());
   req.set_dest_uuid(permanent_uuid());
   req.set_tablet_id(tablet_->tablet_id());
-  req.set_new_table_name(l->data().pb.name());
-  req.set_schema_version(l->data().pb.version());
+
+  if (l->data().pb.has_wal_retention_secs()) {
+    req.set_wal_retention_secs(l->data().pb.wal_retention_secs());
+  }
+
   req.mutable_schema()->CopyFrom(l->data().pb.schema());
+  req.set_new_table_name(l->data().pb.name());
   req.mutable_indexes()->CopyFrom(l->data().pb.indexes());
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
+
   schema_version_ = l->data().pb.version();
 
   l->Unlock();

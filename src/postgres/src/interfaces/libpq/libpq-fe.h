@@ -36,6 +36,12 @@ extern "C"
 #define PG_COPYRES_EVENTS		  0x04
 #define PG_COPYRES_NOTICEHOOKS	  0x08
 
+/*
+ * YugaByte default port
+ */
+#define DEF_YBPORT 5433
+#define DEF_YBPORT_STR "5433"
+
 /* Application-visible enum types */
 
 /*

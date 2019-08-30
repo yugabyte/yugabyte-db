@@ -35,7 +35,7 @@ YBC_CLASS_START_REF_COUNTED_THREAD_SAFE
 
 YBC_VIRTUAL_DESTRUCTOR
 
-YBC_STATUS_METHOD_NO_ARGS(BeginTransaction)
+YBC_STATUS_METHOD(BeginTransaction, ((int, isolation)))
 YBC_STATUS_METHOD_NO_ARGS(CommitTransaction)
 YBC_STATUS_METHOD_NO_ARGS(AbortTransaction)
 YBC_STATUS_METHOD(SetIsolationLevel, ((int, isolation)));
@@ -49,7 +49,9 @@ YBC_STATUS_METHOD(SetIsolationLevel, ((int, isolation)));
 
   Status BeginWriteTransactionIfNecessary(bool read_only_op);
   Status RestartTransaction();
-  bool HasAppliedOperations();
+
+  bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
+  void PreventRestart();
 
  private:
 
@@ -57,16 +59,19 @@ YBC_STATUS_METHOD(SetIsolationLevel, ((int, isolation)));
   void ResetTxnAndSession();
   void StartNewSession();
 
+  client::AsyncClientInitialiser* async_client_init_ = nullptr;
+  scoped_refptr<ClockBase> clock_;
+
   bool txn_in_progress_ = false;
   client::YBTransactionPtr txn_;
   client::YBSessionPtr session_;
 
-  client::AsyncClientInitialiser* async_client_init_ = nullptr;
-  scoped_refptr<ClockBase> clock_;
   std::atomic<client::TransactionManager*> transaction_manager_{nullptr};
   std::mutex transaction_manager_mutex_;
   std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
   int isolation_level_ = 1;
+
+  std::atomic<bool> can_restart_{true};
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 #endif  // YBC_CXX_DECLARATION_MODE

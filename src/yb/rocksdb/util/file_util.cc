@@ -63,7 +63,7 @@ Status CopyFile(Env* env, const string& source,
     dest_writer.reset(new WritableFileWriter(std::move(destfile), soptions));
   }
 
-  char buffer[4096];
+  uint8_t buffer[4096];
   Slice slice;
   while (size > 0) {
     size_t bytes_to_read = std::min(sizeof(buffer), static_cast<size_t>(size));

@@ -15,6 +15,7 @@
 #define YB_MASTER_MASTER_SERVICE_BASE_H
 
 #include "yb/gutil/macros.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 class Status;
@@ -28,6 +29,11 @@ namespace master {
 class Master;
 class CatalogManager;
 class FlushManager;
+class PermissionsManager;
+
+// Tells HandleIn/HandleOnLeader to either acquire the lock briefly to check leadership (kFalse)
+// or to hold it throughout the handler invocation (kTrue).
+YB_STRONGLY_TYPED_BOOL(HoldCatalogLock);
 
 // Base class for any master service with a few helpers.
 class MasterServiceBase {
@@ -42,22 +48,27 @@ class MasterServiceBase {
   static void CheckRespErrorOrSetUnknown(const Status& s, RespClass* resp);
 
   template <class ReqType, class RespType, class FnType>
-  void HandleOnLeader(const ReqType* req, RespType* resp, rpc::RpcContext* rpc, FnType f);
+  void HandleOnLeader(const ReqType* req, RespType* resp, rpc::RpcContext* rpc, FnType f,
+                      HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
 
   template <class HandlerType, class ReqType, class RespType>
   void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
-      Status (HandlerType::*f)(RespType*));
+      Status (HandlerType::*f)(RespType*),
+      HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
 
   template <class HandlerType, class ReqType, class RespType>
   void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
-      Status (HandlerType::*f)(const ReqType*, RespType*));
+      Status (HandlerType::*f)(const ReqType*, RespType*),
+      HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
 
   template <class HandlerType, class ReqType, class RespType>
   void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
-      Status (HandlerType::*f)(const ReqType*, RespType*, rpc::RpcContext*));
+      Status (HandlerType::*f)(const ReqType*, RespType*, rpc::RpcContext*),
+      HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
 
-  YB_EDITION_NS_PREFIX CatalogManager* handler(CatalogManager*);
+  enterprise::CatalogManager* handler(CatalogManager*);
   FlushManager* handler(FlushManager*);
+  PermissionsManager* handler(PermissionsManager*);
 
   Master* server_;
 

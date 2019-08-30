@@ -38,14 +38,13 @@ class PgDocOp {
 
   typedef scoped_refptr<PgDocOp> ScopedRefPtr;
 
-  // Public constants.
-  static const int64_t kPrefetchLimit = INT32_MAX;
-
   // Constructors & Destructors.
-  // read_time points to place where read_time for whole postgres statement is stored.
-  // It is available while statement is executed.
-  explicit PgDocOp(PgSession::ScopedRefPtr pg_session, uint64_t* read_time);
+  PgDocOp(PgSession::ScopedRefPtr pg_session, PreventRestart prevent_restart);
   virtual ~PgDocOp();
+
+  // Set execution control parameters.
+  // When "exec_params" is null, the default setup in PgExecParameters are used.
+  void SetExecParams(const PgExecParameters *exec_params);
 
   // Execute the op. Return true if the request has been sent and is awaiting the result.
   virtual Result<RequestSent> Execute();
@@ -58,6 +57,10 @@ class PgDocOp {
     return exec_status_;
   }
   Result<bool> EndOfResult() const;
+
+  int32_t GetRowsAffectedCount() {
+    return rows_affected_count_;
+  }
 
  protected:
   virtual void InitUnlocked(std::unique_lock<std::mutex>* lock);
@@ -77,8 +80,11 @@ class PgDocOp {
 
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
+  const PreventRestart prevent_restart_;
 
-  uint64_t* const read_time_;
+  // Operation time. This time is set at the start and must stay the same for the lifetime of the
+  // operation to ensure that it is operating on one snapshot.
+  uint64_t read_time_ = 0;
 
   // This mutex protects the fields below.
   mutable std::mutex mtx_;
@@ -104,8 +110,11 @@ class PgDocOp {
   // Caching state variables.
   std::list<string> result_cache_;
 
-  // Whether we can restart this operation.
-  const bool can_restart_;
+  // Exec control parameters.
+  PgExecParameters exec_params_;
+
+  // Number of rows affected by the operation.
+  int32_t rows_affected_count_ = 0;
 };
 
 class PgDocReadOp : public PgDocOp {
@@ -120,8 +129,8 @@ class PgDocReadOp : public PgDocOp {
   typedef scoped_refptr<PgDocReadOp> ScopedRefPtr;
 
   // Constructors & Destructors.
-  PgDocReadOp(
-      PgSession::ScopedRefPtr pg_session, uint64_t* read_time, client::YBPgsqlReadOp *read_op);
+  PgDocReadOp(PgSession::ScopedRefPtr pg_session, PreventRestart prevent_restart,
+              client::YBPgsqlReadOp *read_op);
   virtual ~PgDocReadOp();
 
   // Access function.
@@ -134,6 +143,9 @@ class PgDocReadOp : public PgDocOp {
   void InitUnlocked(std::unique_lock<std::mutex>* lock) override;
   CHECKED_STATUS SendRequestUnlocked() override;
   virtual void ReceiveResponse(Status exec_status);
+
+  // Analyze options and pick the appropriate prefetch limit.
+  void SetRequestPrefetchLimit();
 
   // Operator.
   std::shared_ptr<client::YBPgsqlReadOp> read_op_;

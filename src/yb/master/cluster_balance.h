@@ -23,6 +23,7 @@
 #include <vector>
 #include <atomic>
 #include <list>
+#include <boost/circular_buffer.hpp>
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/ts_descriptor.h"
@@ -82,6 +83,8 @@ class ClusterLoadBalancer {
 
   // Sets whether to enable or disable the load balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
+
+  CHECKED_STATUS IsIdle() const;
 
   //
   // Catalog manager indirection methods.
@@ -281,11 +284,35 @@ class ClusterLoadBalancer {
   // Dump the sorted load on tservers (it is usually per table).
   void DumpSortedLoad() const;
 
+  // Report unusual state at the beginning of an LB run which may prevent LB from making moves.
+  void ReportUnusualLoadBalancerState() const;
+
   // Random number generator for picking items at random from sets, using ReservoirSample.
   ThreadSafeRandom random_;
 
   // Controls whether to run the load balancing algorithm or not.
   std::atomic<bool> is_enabled_;
+
+  // Information representing activity of load balancer.
+  struct ActivityInfo {
+    uint32_t table_tasks = 0;
+    uint32_t tserver_tasks = 0;
+    uint32_t master_errors = 0;
+
+    bool IsIdle() const {
+      return table_tasks == 0 && tserver_tasks == 0 && master_errors == 0;
+    }
+  };
+
+  // Circular buffer of load balancer activity.
+  boost::circular_buffer<ActivityInfo> cbuf_activities_;
+
+  // Summary of circular buffer of load balancer activity.
+  int num_idle_runs_ = 0;
+  std::atomic<bool> is_idle_ {true};
+
+  // Record load balancer activity for tables and tservers.
+  void RecordActivity(uint32_t master_errors);
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };

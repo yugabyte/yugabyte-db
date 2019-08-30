@@ -74,6 +74,7 @@
 #include "catalog/pg_database.h"
 #include "executor/ybcModifyTable.h"
 #include "pg_yb_utils.h"
+#include "optimizer/ybcplan.h"
 
 static bool ExecOnConflictUpdate(ModifyTableState *mtstate,
 					 ResultRelInfo *resultRelInfo,
@@ -298,6 +299,12 @@ ExecInsert(ModifyTableState *mtstate,
 	OnConflictAction onconflict = node->onConflictAction;
 
 	/*
+	 * The attribute "yb_conflict_slot" is only used within ExecInsert.
+	 * Initialize its value to NULL.
+	 */
+	estate->yb_conflict_slot = NULL;
+
+	/*
 	 * get the heap tuple out of the tuple table slot, making sure we have a
 	 * writable copy
 	 */
@@ -418,62 +425,22 @@ ExecInsert(ModifyTableState *mtstate,
 		if (resultRelationDesc->rd_att->constr)
 			ExecConstraints(resultRelInfo, slot, estate);
 
-		if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
-		{
-			/*
-			 * Try to execute the statement as a single row transaction (rather
-			 * than a distributed transaction) if it is safe to do so.
-			 * I.e. if we are in a single-statement transaction that targets a
-			 * single row (i.e. single-row-modify txn), and there are no indices
-			 * or triggers on the target table.
-			 */
-			bool has_triggers = resultRelInfo->ri_TrigDesc &&
-			                    resultRelInfo->ri_TrigDesc->numtriggers > 0;
-
-			bool is_single_row_txn = estate->es_yb_is_single_row_modify_txn &&
-			                         resultRelInfo->ri_NumIndices == 0 &&
-			                         !has_triggers;
-
-			if (is_single_row_txn)
-			{
-				newId = YBCExecuteSingleRowTxnInsert(resultRelationDesc,
-				                                     slot->tts_tupleDescriptor,
-				                                     tuple);
-			}
-			else
-			{
-				newId = YBCExecuteInsert(resultRelationDesc,
-				                         slot->tts_tupleDescriptor,
-				                         tuple);
-			}
-
-			if (resultRelInfo->ri_NumIndices > 0)
-			{
-				/* insert index entries for tuple */
-				recheckIndexes = ExecInsertIndexTuples(slot, tuple,
-													   estate, false, NULL,
-													   NIL);
-			}
-
-			/* 
-			 * We use goto here to avoid modifying a lot of code not needed in
-			 * YugaByte mode below by putting it in an "else" clause and
-			 * changing indentation.
-			 */
-			goto yb_end_of_skipped_pg_code;
-		}
-		/* CODE BELOW IS SKIPPED IN YugaByte MODE ---------------------------*/
-
 		/*
 		 * Also check the tuple against the partition constraint, if there is
 		 * one; except that if we got here via tuple-routing, we don't need to
 		 * if there's no BR trigger defined on the partition.
 		 */
-		if (resultRelInfo->ri_PartitionCheck &&
-			(resultRelInfo->ri_PartitionRoot == NULL ||
-			 (resultRelInfo->ri_TrigDesc &&
-			  resultRelInfo->ri_TrigDesc->trig_insert_before_row)))
-			ExecPartitionCheck(resultRelInfo, slot, estate, true);
+		if (!IsYBRelation(resultRelationDesc))
+		{
+			/*
+			 * TODO(Hector) When partitioning is supported in YugaByte, this check must be enabled.
+			 */
+			if (resultRelInfo->ri_PartitionCheck &&
+					(resultRelInfo->ri_PartitionRoot == NULL ||
+					 (resultRelInfo->ri_TrigDesc &&
+						resultRelInfo->ri_TrigDesc->trig_insert_before_row)))
+				ExecPartitionCheck(resultRelInfo, slot, estate, true);
+		}
 
 		if (onconflict != ONCONFLICT_NONE && resultRelInfo->ri_NumIndices > 0)
 		{
@@ -518,7 +485,8 @@ ExecInsert(ModifyTableState *mtstate,
 											 estate, canSetTag, &returning))
 					{
 						InstrCountTuples2(&mtstate->ps, 1);
-						return returning;
+						result = returning;
+						goto conflict_resolved;
 					}
 					else
 						goto vlock;
@@ -531,59 +499,80 @@ ExecInsert(ModifyTableState *mtstate,
 					 * snapshot at higher isolation levels.
 					 */
 					Assert(onconflict == ONCONFLICT_NOTHING);
-					ExecCheckTIDVisible(estate, resultRelInfo, &conflictTid);
+					if (!IsYBRelation(resultRelationDesc)) {
+						// YugaByte does not use Postgres transaction control code.
+						ExecCheckTIDVisible(estate, resultRelInfo, &conflictTid);
+					}
 					InstrCountTuples2(&mtstate->ps, 1);
-					return NULL;
+					result = NULL;
+					goto conflict_resolved;
 				}
 			}
 
-			/*
-			 * Before we start insertion proper, acquire our "speculative
-			 * insertion lock".  Others can use that to wait for us to decide
-			 * if we're going to go ahead with the insertion, instead of
-			 * waiting for the whole transaction to complete.
-			 */
-			specToken = SpeculativeInsertionLockAcquire(GetCurrentTransactionId());
-			HeapTupleHeaderSetSpeculativeToken(tuple->t_data, specToken);
-
-			/* insert the tuple, with the speculative token */
-			newId = heap_insert(resultRelationDesc, tuple,
-								estate->es_output_cid,
-								HEAP_INSERT_SPECULATIVE,
-								NULL);
-
-			/* insert index entries for tuple */
-			recheckIndexes = ExecInsertIndexTuples(slot, tuple,
-												   estate, true, &specConflict,
-												   arbiterIndexes);
-
-			/* adjust the tuple's state accordingly */
-			if (!specConflict)
-				heap_finish_speculative(resultRelationDesc, tuple);
-			else
-				heap_abort_speculative(resultRelationDesc, tuple);
-
-			/*
-			 * Wake up anyone waiting for our decision.  They will re-check
-			 * the tuple, see that it's no longer speculative, and wait on our
-			 * XID as if this was a regularly inserted tuple all along.  Or if
-			 * we killed the tuple, they will see it's dead, and proceed as if
-			 * the tuple never existed.
-			 */
-			SpeculativeInsertionLockRelease(GetCurrentTransactionId());
-
-			/*
-			 * If there was a conflict, start from the beginning.  We'll do
-			 * the pre-check again, which will now find the conflicting tuple
-			 * (unless it aborts before we get there).
-			 */
-			if (specConflict)
+			if (IsYBRelation(resultRelationDesc))
 			{
-				list_free(recheckIndexes);
-				goto vlock;
+				/*
+				 * YugaByte handles transaction-control internally, so speculative token are not being
+				 * locked and released in this call.
+				 * TODO(Mikhail) Verify the YugaByte transaction support works properly for on-conflict.
+				 */
+				newId = YBCHeapInsert(slot, tuple, estate);
+
+				/* insert index entries for tuple */
+				recheckIndexes = ExecInsertIndexTuples(slot, tuple,
+													   estate, true, &specConflict,
+													   arbiterIndexes);
+			}
+			else
+			{
+				/*
+				 * Before we start insertion proper, acquire our "speculative
+				 * insertion lock".  Others can use that to wait for us to decide
+				 * if we're going to go ahead with the insertion, instead of
+				 * waiting for the whole transaction to complete.
+				 */
+				specToken = SpeculativeInsertionLockAcquire(GetCurrentTransactionId());
+				HeapTupleHeaderSetSpeculativeToken(tuple->t_data, specToken);
+
+				/* insert the tuple, with the speculative token */
+				newId = heap_insert(resultRelationDesc, tuple,
+									estate->es_output_cid,
+									HEAP_INSERT_SPECULATIVE,
+									NULL);
+
+				/* insert index entries for tuple */
+				recheckIndexes = ExecInsertIndexTuples(slot, tuple,
+													   estate, true, &specConflict,
+													   arbiterIndexes);
+
+				/* adjust the tuple's state accordingly */
+				if (!specConflict)
+					heap_finish_speculative(resultRelationDesc, tuple);
+				else
+					heap_abort_speculative(resultRelationDesc, tuple);
+
+				/*
+				 * Wake up anyone waiting for our decision.  They will re-check
+				 * the tuple, see that it's no longer speculative, and wait on our
+				 * XID as if this was a regularly inserted tuple all along.  Or if
+				 * we killed the tuple, they will see it's dead, and proceed as if
+				 * the tuple never existed.
+				 */
+				SpeculativeInsertionLockRelease(GetCurrentTransactionId());
+
+				/*
+				 * If there was a conflict, start from the beginning.  We'll do
+				 * the pre-check again, which will now find the conflicting tuple
+				 * (unless it aborts before we get there).
+				 */
+				if (specConflict)
+				{
+					list_free(recheckIndexes);
+					goto vlock;
+				}
 			}
 
-			/* Since there was no insertion conflict, we're done */
+			/* Since there was no more insertion conflict, we're done with ON CONFLICT DO UPDATE */
 		}
 		else
 		{
@@ -593,21 +582,30 @@ ExecInsert(ModifyTableState *mtstate,
 			 * Note: heap_insert returns the tid (location) of the new tuple
 			 * in the t_self field.
 			 */
-			newId = heap_insert(resultRelationDesc, tuple,
-								estate->es_output_cid,
-								0, NULL);
+			if (IsYBRelation(resultRelationDesc))
+			{
+				newId = YBCHeapInsert(slot, tuple, estate);
 
-			/* insert index entries for tuple */
-			if (resultRelInfo->ri_NumIndices > 0)
-				recheckIndexes = ExecInsertIndexTuples(slot, tuple,
-													   estate, false, NULL,
-													   NIL);
+				/* insert index entries for tuple */
+				if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
+					recheckIndexes = ExecInsertIndexTuples(slot, tuple, estate, false, NULL, NIL);
+			}
+			else
+			{
+				newId = heap_insert(resultRelationDesc, tuple,
+									estate->es_output_cid,
+									0, NULL);
+
+				/* insert index entries for tuple */
+				if (resultRelInfo->ri_NumIndices > 0)
+					recheckIndexes = ExecInsertIndexTuples(slot, tuple,
+																								 estate, false, NULL,
+																								 NIL);
+			}
 		}
 	}
-	/* CODE ABOVE IS SKIPPED IN YugaByte MODE -------------------------------*/
-yb_end_of_skipped_pg_code:
 
-	if (canSetTag)
+  if (canSetTag)
 	{
 		(estate->es_processed)++;
 		estate->es_lastoid = newId;
@@ -659,9 +657,14 @@ yb_end_of_skipped_pg_code:
 		ExecWithCheckOptions(WCO_VIEW_CHECK, resultRelInfo, slot, estate);
 
 	/* Process RETURNING if present */
-	if (resultRelInfo->ri_projectReturning)
+  if (resultRelInfo->ri_projectReturning)
 		result = ExecProcessReturning(resultRelInfo, slot, planSlot);
 
+conflict_resolved:
+	if (estate->yb_conflict_slot != NULL) {
+		ExecDropSingleTupleTableSlot(estate->yb_conflict_slot);
+		estate->yb_conflict_slot = NULL;
+	}
 	return result;
 }
 
@@ -773,19 +776,24 @@ ExecDelete(ModifyTableState *mtstate,
 		tuple = ExecMaterializeSlot(slot);
 		tuple->t_tableOid = RelationGetRelid(resultRelationDesc);
 	}
-	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
+	else if (IsYBRelation(resultRelationDesc))
 	{
-		YBCExecuteDelete(resultRelationDesc, resultRelInfo, planSlot);
-
-		if (resultRelInfo->ri_NumIndices > 0)
+		bool row_found = YBCExecuteDelete(resultRelationDesc, planSlot, estate, mtstate);
+		if (!row_found)
 		{
 			/*
-			 * Store the old tuple in plan slot, compute the old index entries
-			 * to delete and delete them from the indexes.
+			 * No row was found. This is possible if it's a single row txn
+			 * and there is no row to delete (since we do not first do a scan).
 			 */
-			planSlot = ExecStoreTuple(oldtuple, planSlot, InvalidBuffer, false);
+			return NULL;
+		}
 
-			ExecDeleteIndexTuples(planSlot, estate);
+		if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
+		{
+			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
+
+			/* Delete index entries of the old tuple */
+			ExecDeleteIndexTuples(ybctid, oldtuple, estate);
 		}
 	}
 	else
@@ -954,14 +962,17 @@ ldelete:;
 			Assert(!TupIsNull(slot));
 			delbuffer = InvalidBuffer;
 		}
-		else if (IsYugaByteEnabled())
+		else if (IsYBRelation(resultRelationDesc))
 		{
-			if (!IsYBRelation(resultRelationDesc)) {
-				ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_OBJECT),
-								 errmsg("This relational object does not exist in YugaByte database")));
+			if (mtstate->yb_mt_is_single_row_update_or_delete)
+			{
+				slot = planSlot;
 			}
-			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+			else
+			{
+				slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+			}
+
 			delbuffer = InvalidBuffer;
 		}
 		else
@@ -1110,28 +1121,38 @@ ExecUpdate(ModifyTableState *mtstate,
 		 */
 		tuple->t_tableOid = RelationGetRelid(resultRelationDesc);
 	}
-	else if (IsYugaByteEnabled() && IsYBRelation(resultRelationDesc))
+	else if (IsYBRelation(resultRelationDesc))
 	{
-		YBCExecuteUpdate(resultRelationDesc, resultRelInfo, planSlot, tuple);
-
-		if (resultRelInfo->ri_NumIndices > 0)
+		bool row_found = YBCExecuteUpdate(resultRelationDesc, planSlot, tuple, estate, mtstate);
+		if (!row_found)
 		{
 			/*
-			 * Store the old tuple in plan slot, compute the old index entries
-			 * to delete and delete them from the indexes.
+			 * No row was found. This is possible if it's a single row txn
+			 * and there is no row to update (since we do not first do a scan).
 			 */
-			planSlot = ExecStoreTuple(oldtuple, planSlot, InvalidBuffer, false);
+			return NULL;
+		}
 
-			ExecDeleteIndexTuples(planSlot, estate);
+		/*
+		 * Prepare the updated tuple in inner slot for RETURNING clause execution.
+		 * For ON CONFLICT DO UPDATE, the INSERT returning clause is setup
+		 * differently, so junkFilter is not needed.
+		 */
+		if (resultRelInfo->ri_projectReturning && resultRelInfo->ri_junkFilter)
+			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+
+		if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
+		{
+			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
+
+			/* Delete index entries of the old tuple */
+			ExecDeleteIndexTuples(ybctid, oldtuple, estate);
 
 			/* Insert new index entries for tuple */
 			recheckIndexes = ExecInsertIndexTuples(slot, tuple,
 												   estate, false, NULL,
 												   NIL);
 		}
-
-		if (resultRelInfo->ri_projectReturning)
-			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
 	}
 	else
 	{
@@ -1481,10 +1502,35 @@ ExecOnConflictUpdate(ModifyTableState *mtstate,
 	Relation	relation = resultRelInfo->ri_RelationDesc;
 	ExprState  *onConflictSetWhere = resultRelInfo->ri_onConflict->oc_WhereClause;
 	HeapTupleData tuple;
+	HeapTuple	oldtuple = NULL;
 	HeapUpdateFailureData hufd;
 	LockTupleMode lockmode;
 	HTSU_Result test;
 	Buffer		buffer;
+
+	/*
+	 * This routine selects data and check with indexes for conflicts.
+	 * - When selecting data from disk, Postgres prepares a heap buffer to hold the selected row
+	 *   and performs transaction-control locking operations on the selected row.
+	 * - YugaByte usually uses Postgres heap buffer after selecting data from storage (DocDB).
+	 *   However, in this case, it's complicated to use the heap buffer because the two systems use
+	 *   different tuple IDs - "ybctid" vs "ctid".
+	 * - Also, YugaByte manages transactions separately from Postgres's plan execution.
+	 *
+	 * Coding-wise, Posgres writes tuple to heap buffer and writes its tuple ID to "conflictTid".
+	 * However, YugaByte writes the conflict tuple including its "ybctid" to execution state "estate"
+	 * and then frees the slot when done.
+	 */
+	if (IsYBBackedRelation(relation)) {
+		/* Not using heap buffer for YugaByte */
+		buffer = InvalidBuffer;
+
+		/* Ensure the heap tuple is initialized to invalid too. */
+		ItemPointerSetInvalid(&(tuple.t_self));
+		tuple.t_ybctid = (Datum) 0;
+
+		goto yb_skip_transaction_control_check;
+	}
 
 	/* Determine lock mode to use */
 	lockmode = ExecUpdateLockMode(estate, resultRelInfo);
@@ -1571,6 +1617,7 @@ ExecOnConflictUpdate(ModifyTableState *mtstate,
 			elog(ERROR, "unrecognized heap_lock_tuple status: %u", test);
 	}
 
+yb_skip_transaction_control_check:
 	/*
 	 * Success, the tuple is locked.
 	 *
@@ -1579,23 +1626,32 @@ ExecOnConflictUpdate(ModifyTableState *mtstate,
 	 */
 	ResetExprContext(econtext);
 
-	/*
-	 * Verify that the tuple is visible to our MVCC snapshot if the current
-	 * isolation level mandates that.
-	 *
-	 * It's not sufficient to rely on the check within ExecUpdate() as e.g.
-	 * CONFLICT ... WHERE clause may prevent us from reaching that.
-	 *
-	 * This means we only ever continue when a new command in the current
-	 * transaction could see the row, even though in READ COMMITTED mode the
-	 * tuple will not be visible according to the current statement's
-	 * snapshot.  This is in line with the way UPDATE deals with newer tuple
-	 * versions.
-	 */
-	ExecCheckHeapTupleVisible(estate, &tuple, buffer);
+	if (IsYugaByteEnabled())
+	{
+		oldtuple = ExecMaterializeSlot(estate->yb_conflict_slot);
+		ExecStoreTuple(oldtuple, mtstate->mt_existing, buffer, false);
+		planSlot->tts_tuple->t_ybctid = oldtuple->t_ybctid;
+	}
+	else
+	{
+		/*
+		 * Verify that the tuple is visible to our MVCC snapshot if the current
+		 * isolation level mandates that.
+		 *
+		 * It's not sufficient to rely on the check within ExecUpdate() as e.g.
+		 * CONFLICT ... WHERE clause may prevent us from reaching that.
+		 *
+		 * This means we only ever continue when a new command in the current
+		 * transaction could see the row, even though in READ COMMITTED mode the
+		 * tuple will not be visible according to the current statement's
+		 * snapshot.  This is in line with the way UPDATE deals with newer tuple
+		 * versions.
+		 */
+		ExecCheckHeapTupleVisible(estate, &tuple, buffer);
 
-	/* Store target's existing tuple in the state's dedicated slot */
-	ExecStoreTuple(&tuple, mtstate->mt_existing, buffer, false);
+		/* Store target's existing tuple in the state's dedicated slot */
+		ExecStoreTuple(&tuple, mtstate->mt_existing, buffer, false);
+	}
 
 	/*
 	 * Make tuple and any needed join variables available to ExecQual and
@@ -1610,7 +1666,9 @@ ExecOnConflictUpdate(ModifyTableState *mtstate,
 
 	if (!ExecQual(onConflictSetWhere, econtext))
 	{
-		ReleaseBuffer(buffer);
+		/* YugaByte don't use the heap buffer to cache the conflict tuple */
+		if (!IsYugaByteEnabled())
+			ReleaseBuffer(buffer);
 		InstrCountFiltered1(&mtstate->ps, 1);
 		return true;			/* done with the tuple */
 	}
@@ -1650,12 +1708,14 @@ ExecOnConflictUpdate(ModifyTableState *mtstate,
 	 */
 
 	/* Execute UPDATE with projection */
-	*returning = ExecUpdate(mtstate, &tuple.t_self, NULL,
+	*returning = ExecUpdate(mtstate, &tuple.t_self, oldtuple,
 							mtstate->mt_conflproj, planSlot,
 							&mtstate->mt_epqstate, mtstate->ps.state,
 							canSetTag);
 
-	ReleaseBuffer(buffer);
+	/* YugaByte don't use the heap buffer to cache the conflict tuple */
+	if (!IsYugaByteEnabled())
+		ReleaseBuffer(buffer);
 	return true;
 }
 
@@ -2207,15 +2267,18 @@ ExecModifyTable(PlanState *pstate)
 				AttrNumber  resno;
 
 				relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
-
 				/*
-				 * For YugaByte table with indexes, extract the old row from
-				 * wholerow junk attribute with the ybctid for removing old
-				 * index entries for UPDATE and DELETE.
+				 * For YugaByte relations extract the old row from the wholerow junk
+				 * attribute if needed.
+				 * 1. For tables with secondary indexes we need the (old) ybctid for
+				 *    removing old index entries (for UPDATE and DELETE)
+				 * 2. For tables with row triggers we need to pass the old row for
+				 *    trigger execution.
 				 */
-				if (IsYugaByteEnabled() &&
-					IsYBRelation(resultRelInfo->ri_RelationDesc) &&
-					(resultRelInfo->ri_NumIndices > 0))
+				if (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
+					(YBCRelInfoHasSecondaryIndices(resultRelInfo) ||
+					YBRelHasOldRowTriggers(resultRelInfo->ri_RelationDesc,
+					                       operation)))
 				{
 					resno = ExecFindJunkAttribute(junkfilter, "wholerow");
 					datum = ExecGetJunkAttribute(slot, resno, &isNull);
@@ -2241,7 +2304,7 @@ ExecModifyTable(PlanState *pstate)
 						elog(ERROR, "ybctid is NULL");
 
 					oldtupdata.t_ybctid = datum;
-					
+
 					oldtuple = &oldtupdata;
 				}
 				else if (relkind == RELKIND_RELATION || relkind == RELKIND_MATVIEW)
@@ -2390,6 +2453,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 	mtstate->mt_plans = (PlanState **) palloc0(sizeof(PlanState *) * nplans);
 	mtstate->resultRelInfo = estate->es_result_relations + node->resultRelIndex;
+	mtstate->yb_mt_is_single_row_update_or_delete = YBCIsSingleRowUpdateOrDelete(node);
+	mtstate->yb_mt_update_attrs = node->ybUpdateAttrs;
 
 	/* If modifying a partitioned table, initialize the root table info */
 	if (node->rootResultRelIndex >= 0)
@@ -2436,10 +2501,17 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 * inside an EvalPlanQual operation, the indexes might be open
 		 * already, since we share the resultrel state with the original
 		 * query.
+		 *
+		 * For a YugaByte table, we need to update the secondary indices for
+		 * all of the INSERT, UPDATE, and DELETE statements. The ON CONFLICT UPDATE
+		 * execution also needs to process primary key index.
 		 */
-		if (resultRelInfo->ri_RelationDesc->rd_rel->relhasindex &&
-			operation != CMD_DELETE &&
-			resultRelInfo->ri_IndexRelationDescs == NULL)
+		if ((IsYBRelation(resultRelInfo->ri_RelationDesc) ?
+				 (YBRelHasSecondaryIndices(resultRelInfo->ri_RelationDesc) ||
+					node->onConflictAction != ONCONFLICT_NONE) :
+				 (resultRelInfo->ri_RelationDesc->rd_rel->relhasindex &&
+					operation != CMD_DELETE)) &&
+				resultRelInfo->ri_IndexRelationDescs == NULL)
 			ExecOpenIndices(resultRelInfo,
 							node->onConflictAction != ONCONFLICT_NONE);
 
@@ -2736,7 +2808,12 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 				break;
 			case CMD_UPDATE:
 			case CMD_DELETE:
-				junk_filter_needed = true;
+				/*
+				 * If it's a YB single row UPDATE/DELETE we do not perform an
+				 * initial scan to populate the ybctid, so there is no junk
+				 * attribute to extract.
+				 */
+				junk_filter_needed = !mtstate->yb_mt_is_single_row_update_or_delete;
 				break;
 			default:
 				elog(ERROR, "unknown operation");
@@ -2765,7 +2842,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 					char		relkind;
 
 					relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
-					if (IsYugaByteEnabled() && IsYBRelation(rel))
+					if (IsYBRelation(rel))
 					{
 						j->jf_junkAttNo = ExecFindJunkAttribute(j, "ybctid");
 						if (!AttributeNumberIsValid(j->jf_junkAttNo)) {

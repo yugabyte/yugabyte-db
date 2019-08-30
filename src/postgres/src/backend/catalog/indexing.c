@@ -15,7 +15,6 @@
  */
 #include "postgres.h"
 
-#include "miscadmin.h"
 #include "access/htup_details.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
@@ -24,6 +23,7 @@
 #include "utils/rel.h"
 
 #include "pg_yb_utils.h"
+#include "access/ybcam.h"
 #include "executor/ybcModifyTable.h"
 
 /*
@@ -107,6 +107,13 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple)
 	 */
 	for (i = 0; i < numIndexes; i++)
 	{
+		/*
+		 * No need to update YugaByte primary key which is intrinic part of
+		 * the base table.
+		 */
+		if (IsYugaByteEnabled() && relationDescs[i]->rd_index->indisprimary)
+			continue;
+
 		IndexInfo  *indexInfo;
 
 		indexInfo = indexInfoArray[i];
@@ -190,6 +197,13 @@ CatalogIndexDelete(CatalogIndexState indstate, HeapTuple heapTuple)
 	 */
 	for (i = 0; i < numIndexes; i++)
 	{
+		/*
+		 * No need to update YugaByte primary key which is intrinic part of
+		 * the base table.
+		 */
+		if (IsYugaByteEnabled() && relationDescs[i]->rd_index->indisprimary)
+			continue;
+
 		IndexInfo  *indexInfo;
 
 		indexInfo = indexInfoArray[i];
@@ -253,7 +267,7 @@ CatalogTupleInsert(Relation heapRel, HeapTuple tup)
 	{
 		oid = YBCExecuteInsert(heapRel, RelationGetDescr(heapRel), tup);
 		/* Update the local cache automatically */
-		SetSysCacheTuple(heapRel, tup);
+		YBSetSysCacheTuple(heapRel, tup);
 	}
 	else
 	{
@@ -286,7 +300,7 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 	{
 		oid = YBCExecuteInsert(heapRel, RelationGetDescr(heapRel), tup);
 		/* Update the local cache automatically */
-		SetSysCacheTuple(heapRel, tup);
+		YBSetSysCacheTuple(heapRel, tup);
 	}
 	else
 	{
@@ -312,24 +326,41 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 void
 CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 {
-
-	if (IsYugaByteEnabled())
-	{
-		YBCUpdateSysCatalogTuple(heapRel, tup);
-		/* Update the local cache automatically */
-		SetSysCacheTuple(heapRel, tup);
-
-		if (heapRel->rd_rel->relhasindex)
-			YBC_LOG_WARNING("Skipping index update for %s", RelationGetRelationName(heapRel));
-		return;
-	}
-
 	CatalogIndexState indstate;
 
 	indstate = CatalogOpenIndexes(heapRel);
-	simple_heap_update(heapRel, otid, tup);
 
-	CatalogIndexInsert(indstate, tup);
+	if (IsYugaByteEnabled())
+	{
+		HeapTuple	oldtup = NULL;
+		bool		has_indices = YBRelHasSecondaryIndices(heapRel);
+
+		if (has_indices)
+		{
+			if (tup->t_ybctid)
+			{
+				oldtup = YBCFetchTuple(heapRel, tup->t_ybctid);
+				CatalogIndexDelete(indstate, oldtup);
+			}
+			else
+				YBC_LOG_WARNING("ybctid missing in %s's tuple",
+								RelationGetRelationName(heapRel));
+		}
+
+		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
+		/* Update the local cache automatically */
+		YBSetSysCacheTuple(heapRel, tup);
+
+		if (has_indices)
+			CatalogIndexInsert(indstate, tup);
+	}
+	else
+	{
+		simple_heap_update(heapRel, otid, tup);
+
+		CatalogIndexInsert(indstate, tup);
+	}
+
 	CatalogCloseIndexes(indstate);
 }
 
@@ -347,18 +378,34 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 {
 	if (IsYugaByteEnabled())
 	{
-		YBCUpdateSysCatalogTuple(heapRel, tup);
+		HeapTuple	oldtup = NULL;
+		bool		has_indices = YBRelHasSecondaryIndices(heapRel);
+
+		if (has_indices)
+		{
+			if (tup->t_ybctid)
+			{
+				oldtup = YBCFetchTuple(heapRel, tup->t_ybctid);
+				CatalogIndexDelete(indstate, oldtup);
+			}
+			else
+				YBC_LOG_WARNING("ybctid missing in %s's tuple",
+								RelationGetRelationName(heapRel));
+		}
+
+		YBCUpdateSysCatalogTuple(heapRel, oldtup, tup);
 		/* Update the local cache automatically */
-		SetSysCacheTuple(heapRel, tup);
+		YBSetSysCacheTuple(heapRel, tup);
 
-		if (heapRel->rd_rel->relhasindex)
-			YBC_LOG_WARNING("Skipping index update for %s", RelationGetRelationName(heapRel));
-		return;
+		if (has_indices)
+			CatalogIndexInsert(indstate, tup);
 	}
+	else
+	{
+		simple_heap_update(heapRel, otid, tup);
 
-	simple_heap_update(heapRel, otid, tup);
-
-	CatalogIndexInsert(indstate, tup);
+		CatalogIndexInsert(indstate, tup);
+	}
 }
 
 /*

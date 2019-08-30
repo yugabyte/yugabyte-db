@@ -35,9 +35,6 @@ CHECKED_STATUS Env::CreateDirs(const std::string& dirname) {
       Status::OK() : STATUS_FORMAT(IOError, "Not a directory: $0", dirname);
 }
 
-SequentialFile::~SequentialFile() {
-}
-
 RandomAccessFile::~RandomAccessFile() {
 }
 
@@ -53,7 +50,7 @@ FileLock::~FileLock() {
 static Status DoWriteStringToFile(Env* env, const Slice& data,
                                   const std::string& fname,
                                   bool should_sync) {
-  gscoped_ptr<WritableFile> file;
+  std::unique_ptr<WritableFile> file;
   Status s = env->NewWritableFile(fname, &file);
   if (!s.ok()) {
     return s;
@@ -86,13 +83,13 @@ Status WriteStringToFileSync(Env* env, const Slice& data,
 
 Status ReadFileToString(Env* env, const std::string& fname, faststring* data) {
   data->clear();
-  gscoped_ptr<SequentialFile> file;
+  std::unique_ptr<SequentialFile> file;
   Status s = env->NewSequentialFile(fname, &file);
   if (!s.ok()) {
     return s;
   }
   static const int kBufferSize = 8192;
-  gscoped_ptr<uint8_t[]> scratch(new uint8_t[kBufferSize]);
+  std::unique_ptr<uint8_t[]> scratch(new uint8_t[kBufferSize]);
   while (true) {
     Slice fragment;
     s = file->Read(kBufferSize, &fragment, scratch.get());

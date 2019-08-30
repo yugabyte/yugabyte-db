@@ -18,6 +18,7 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
 
 namespace yb {
@@ -36,6 +37,7 @@ class Schema;
     ((Bool, bool, bool)) \
     ((Float, float, float)) \
     ((Double, double, double)) \
+    ((Jsonb, jsonb, const std::string&)) \
     ((Timestamp, timestamp, int64_t)) \
 
 #define PP_CAT3(a, b, c) BOOST_PP_CAT(a, BOOST_PP_CAT(b, c))

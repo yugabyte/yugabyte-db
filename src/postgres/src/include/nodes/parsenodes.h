@@ -52,7 +52,8 @@ typedef enum SortByDir
 	SORTBY_DEFAULT,
 	SORTBY_ASC,
 	SORTBY_DESC,
-	SORTBY_USING				/* not allowed in CREATE INDEX ... */
+	SORTBY_USING,				/* not allowed in CREATE INDEX ... */
+	SORTBY_HASH
 } SortByDir;
 
 typedef enum SortByNulls
@@ -692,6 +693,12 @@ typedef enum TableLikeOption
  * For a plain index attribute, 'name' is the name of the table column to
  * index, and 'expr' is NULL.  For an index expression, 'name' is NULL and
  * 'expr' is the expression tree.
+ *
+ * When a YugaByte LSM primary key or index declaration contains an attribute
+ * group like "create table (... primary key ((h1, h2, ...) hash, ...))",
+ * the attribute group is first represented as an IndexElem with 'h1', 'h2',
+ * ... in 'yb_yname_list'. The attribute group is then flattened as a list of
+ * IndexElem's the relevant the grammar rules.
  */
 typedef struct IndexElem
 {
@@ -703,6 +710,8 @@ typedef struct IndexElem
 	List	   *opclass;		/* name of desired opclass; NIL = default */
 	SortByDir	ordering;		/* ASC/DESC/default */
 	SortByNulls nulls_ordering; /* FIRST/LAST/default */
+
+	List	   *yb_name_list;	/* List of attribute names in parenthesis */
 } IndexElem;
 
 /*
@@ -2025,6 +2034,8 @@ typedef struct CreateStmt
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
 	char	   *tablespacename; /* table space to use, or NULL */
 	bool		if_not_exists;	/* just do nothing if it already exists? */
+
+	struct OptSplit *split_options; /* SPLIT statement options */
 } CreateStmt;
 
 /* ----------
@@ -2136,7 +2147,42 @@ typedef struct Constraint
 	/* Fields used for constraints that allow a NOT VALID specification */
 	bool		skip_validation;	/* skip validation of existing rows? */
 	bool		initially_valid;	/* mark the new constraint as valid? */
+
+	/* For YugaByte LSM priamry or unique key defined inline with the table
+	 * definition, we allow the key definition to include the sorting info
+	 * like "create table (... primary key (h hash, r1 asc, r2 desc))".
+	 * We save the IndexElem of the attributes in 'yb_index_params' to access
+	 * the full definition of the key attributes.
+	 */
+	List	   *yb_index_params;	/* IndexElem nodes of UNIQUE or PRIMARY KEY
+									 * constraint */
 } Constraint;
+
+/* ----------
+ * YugaByte split parameters in CreateStmt
+ *
+ * In YugaByte, tables are split into a certain number of tablets.
+ * This normally happens automatically behind the scenes, but there is
+ * a SPLIT extension that allows the user to specify the number of tablets
+ * (in the case of a HASH-partitioned table) or explicit split points
+ * (in the case of a range-partitioned table).
+ * ----------
+ */
+
+typedef enum
+{
+	NUM_TABLETS = 0,
+	SPLIT_POINTS = 1
+} yb_split_type;
+
+typedef struct OptSplit
+{
+	NodeTag type;
+
+	yb_split_type split_type;
+	int num_tablets;
+	List *split_points;
+} OptSplit;
 
 /* ----------------------
  *		Create/Drop Table Space Statements

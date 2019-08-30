@@ -73,6 +73,10 @@ class SystemTablet : public tablet::AbstractTablet {
 
   const TableName& GetTableName() const;
 
+  Result<IsolationLevel> GetIsolationLevel(const TransactionMetadataPB& transaction) override {
+    return IsolationLevel::NON_TRANSACTIONAL;
+  }
+
  private:
   HybridTime DoGetSafeTime(
       tablet::RequireLease require_lease, HybridTime min_allowed,

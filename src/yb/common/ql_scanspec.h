@@ -62,11 +62,12 @@ class QLScanRange {
   };
 
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
+  QLScanRange(const Schema& schema, const PgsqlConditionPB& condition);
 
   // Return the inclusive lower and upper range values to scan.
   std::vector<QLValuePB> range_values(bool lower_bound) const;
 
-  QLRange rangeFor(ColumnId col_id) const {
+  QLRange RangeFor(ColumnId col_id) const {
     const auto& iter = ranges_.find(col_id);
     return (iter == ranges_.end() ? QLRange() : iter->second);
   }
@@ -115,6 +116,9 @@ class QLScanSpec : public YQLScanSpec {
   bool is_forward_scan() const {
     return is_forward_scan_;
   }
+
+  // Get Schema if available.
+  virtual const Schema* schema() const { return nullptr; }
 
  protected:
   const QLConditionPB* condition_;

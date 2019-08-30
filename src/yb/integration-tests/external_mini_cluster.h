@@ -152,8 +152,18 @@ struct ExternalMiniClusterOptions {
   // If true logs will be writen in both stderr and file
   bool log_to_file = false;
 
+  // Use even IPs for cluster, like we have for MiniCluster.
+  // So it could be used with test certificates.
+  bool use_even_ips = false;
+
+  // Cluster id used to create fs path when we create tests with multiple clusters.
+  std::string cluster_id = "";
+
   CHECKED_STATUS RemovePort(const uint16_t port);
   CHECKED_STATUS AddPort(const uint16_t port);
+
+  // Make sure we have the correct number of master RPC ports specified.
+  void AdjustMasterRpcPorts();
 };
 
 // A mini-cluster made up of subprocesses running each of the daemons separately. This is useful for
@@ -175,7 +185,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   ~ExternalMiniCluster();
 
   // Start the cluster.
-  CHECKED_STATUS Start();
+  CHECKED_STATUS Start(rpc::Messenger* messenger = nullptr);
 
   // Restarts the cluster. Requires that it has been Shutdown() first.
   CHECKED_STATUS Restart();
@@ -194,6 +204,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.
   void Shutdown(NodeSelectionMode mode = ALL);
+
+  // Waits for the master to finishing running initdb.
+  CHECKED_STATUS WaitForInitDb();
 
   // Return the IP address that the tablet server with the given index will bind to.  If
   // options.bind_to_unique_loopback_addresses is false, this will be 127.0.0.1 Otherwise, it is
@@ -216,6 +229,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // The comma separated string of the master adresses host/ports from current list of masters.
   string GetMasterAddresses() const;
+
+  string GetTabletServerAddresses() const;
 
   // Start a new master with `peer_addrs` as the master_addresses parameter.
   Result<ExternalMaster *> StartMasterWithPeers(const string& peer_addrs);
@@ -288,6 +303,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Return all tablet servers and masters.
   std::vector<ExternalDaemon*> daemons() const;
 
+  // Return all tablet servers.
+  std::vector<ExternalTabletServer*> tserver_daemons() const;
+
   // Get tablet server host.
   HostPort pgsql_hostport(int node_index) const;
 
@@ -300,7 +318,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   }
 
   // Return the client messenger used by the ExternalMiniCluster.
-  std::shared_ptr<rpc::Messenger> messenger();
+  rpc::Messenger* messenger();
 
   rpc::ProxyCache& proxy_cache() {
     return *proxy_cache_;
@@ -337,6 +355,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Wait until all tablets on the given tablet server are in 'RUNNING'
   // state.
   CHECKED_STATUS WaitForTabletsRunning(ExternalTabletServer* ts, const MonoDelta& timeout);
+
+  Result<std::vector<TabletId>> GetTabletIds(ExternalTabletServer* ts);
 
   CHECKED_STATUS WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));
@@ -377,14 +397,9 @@ class ExternalMiniCluster : public MiniClusterBase {
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 
-  // Create a client configured to talk to this cluster.  Builder may contain override options for
-  // the client. The master address will be overridden to talk to the running master.
-  //
-  // REQUIRES: the cluster must have already been Start()ed.
-  virtual CHECKED_STATUS DoCreateClient(client::YBClientBuilder* builder,
-      std::shared_ptr<client::YBClient>* client);
+  void ConfigureClientBuilder(client::YBClientBuilder* builder) override;
 
-  virtual HostPort DoGetLeaderMasterBoundRpcAddr();
+  HostPort DoGetLeaderMasterBoundRpcAddr() override;
 
   CHECKED_STATUS StartMasters();
 
@@ -393,6 +408,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   CHECKED_STATUS DeduceBinRoot(std::string* ret);
   CHECKED_STATUS HandleOptions();
+
+  std::string GetClusterDataDirName() const;
 
   // Helper function to get a leader or (random) follower index
   CHECKED_STATUS GetPeerMasterIndex(int* idx, bool is_leader);
@@ -423,6 +440,9 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Step down the master leader and wait for a new leader to be elected.
   CHECKED_STATUS StepDownMasterLeaderAndWaitForNewLeader();
 
+  // Return master address for specified port.
+  std::string MasterAddressForPort(uint16_t port) const;
+
   ExternalMiniClusterOptions opts_;
 
   // The root for binaries.
@@ -437,7 +457,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   std::vector<scoped_refptr<ExternalMaster> > masters_;
   std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;
 
-  std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* messenger_ = nullptr;
+  std::unique_ptr<rpc::Messenger> messenger_holder_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
   std::vector<std::unique_ptr<FileLock>> free_port_file_locks_;
@@ -457,7 +478,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   ExternalDaemon(
       std::string daemon_id,
-      std::shared_ptr<rpc::Messenger> messenger,
+      rpc::Messenger* messenger,
       std::string exe,
       std::string data_dir,
       std::string server_type,
@@ -489,9 +510,11 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   virtual void Shutdown();
 
-  const std::string& data_dir() const { return full_data_dir_; }
+  const std::string& GetFullDataDir() const { return full_data_dir_; }
 
   const std::string& exe() const { return exe_; }
+
+  const std::string& GetDataDir() const { return data_dir_; }
 
   // Return a pointer to the flags used for this server on restart.  Modifying these flags will only
   // take effect on the next restart.
@@ -551,7 +574,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   std::string ProcessNameAndPidStr();
 
   const std::string daemon_id_;
-  const std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* messenger_ = nullptr;
   const std::string exe_;
   const std::string data_dir_;
   const std::string full_data_dir_;
@@ -614,7 +637,7 @@ class ExternalMaster : public ExternalDaemon {
  public:
   ExternalMaster(
     int master_index,
-    const std::shared_ptr<rpc::Messenger>& messenger,
+    rpc::Messenger* messenger,
     const std::string& exe,
     const std::string& data_dir,
     const std::vector<std::string>& extra_flags,
@@ -640,7 +663,7 @@ class ExternalMaster : public ExternalDaemon {
 class ExternalTabletServer : public ExternalDaemon {
  public:
   ExternalTabletServer(
-      int tablet_server_index, const std::shared_ptr<rpc::Messenger>& messenger,
+      int tablet_server_index, rpc::Messenger* messenger,
       const std::string& exe, const std::string& data_dir, std::string bind_host, uint16_t rpc_port,
       uint16_t http_port, uint16_t redis_rpc_port, uint16_t redis_http_port,
       uint16_t cql_rpc_port, uint16_t cql_http_port,
@@ -721,7 +744,7 @@ class ExternalTabletServer : public ExternalDaemon {
   const uint16_t cql_rpc_port_;
   const uint16_t cql_http_port_;
   bool start_cql_proxy_ = true;
-  bool start_pgsql_proxy_ = false;
+  bool enable_ysql_ = false;
   std::unique_ptr<server::ServerStatusPB> cqlserver_status_;
 
   friend class RefCountedThreadSafe<ExternalTabletServer>;

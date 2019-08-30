@@ -39,7 +39,7 @@ create table atacc1 (a int4 not null, b int4, c int4 not null, d int4);
 insert into atacc1 values (1, 2, 3, 4);
 alter table atacc1 drop a;
 alter table atacc1 drop a;
-ERROR:  Not found: The specified column does not exist: a
+ERROR:  column "a" of relation "atacc1" does not exist
 -- SELECTs
 select * from atacc1;
  b | c | d
@@ -179,13 +179,13 @@ LINE 1: delete from atacc1 where "........pg.dropped.1........" = 3;
 delete from atacc1;
 -- try dropping a non-existent column, should fail
 alter table atacc1 drop bar;
-ERROR:  Not found: The specified column does not exist: bar
+ERROR:  column "bar" of relation "atacc1" does not exist
 -- try dropping the oid column, should succeed
 alter table atacc1 drop oid;
-ERROR:  Not found: The specified column does not exist: oid
+ERROR:  column "oid" of relation "atacc1" does not exist
 -- try dropping the xmin column, should fail
 alter table atacc1 drop xmin;
-ERROR:  Not found: The specified column does not exist: xmin
+ERROR:  cannot drop system column "xmin"
 -- try creating a view and altering that, should fail
 create view myview as select * from atacc1;
 select * from myview;
@@ -228,12 +228,18 @@ alter table atacc1 add constraint checkb check (b < 0); -- should fail
 ERROR:  check constraint "checkb" is violated by some row
 alter table atacc1 add constraint checkb check (b > 0);
 alter table atacc1 add constraint checkb2 check (b > 10);
+alter table atacc1 add constraint checkb3 check (b > 10);
 insert into atacc1 values (5, 5, 5); -- should fail
 ERROR:  new row for relation "atacc1" violates check constraint "checkb2"
 DETAIL:  Failing row contains (5, 5, 5).
 alter table atacc1 drop constraint checkb2;
 insert into atacc1 values (5, 5, 5);
+ERROR:  new row for relation "atacc1" violates check constraint "checkb3"
+DETAIL:  Failing row contains (5, 5, 5).
 alter table atacc1 drop constraint checkb;
+alter table atacc1 drop constraint if exists checkb2;
+NOTICE:  constraint "checkb2" of relation "atacc1" does not exist, skipping
+alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
 -- test rename
 alter table atacc1 rename b to e;
@@ -249,7 +255,11 @@ alter table atacc1 drop d;
 alter table atacc1 drop b;
 ERROR:  column "b" of relation "atacc1" does not exist
 select * from atacc1;
-ERROR:  Invalid argument: Invalid column number 2
+ e
+----
+ 21
+(1 row)
+
 drop table atacc1;
 --
 -- rename
@@ -266,3 +276,184 @@ ERROR:  relation "tmp" does not exist
 LINE 1: SELECT * FROM tmp;
                       ^
 DROP TABLE tmp_new;
+-- alter table / alter column [set/drop] not null tests
+-- try altering system catalogs, should fail
+alter table pg_class alter column relname drop not null;
+ERROR:  permission denied: "pg_class" is a system catalog
+alter table pg_class alter relname set not null;
+ERROR:  permission denied: "pg_class" is a system catalog
+-- try altering non-existent table, should fail
+alter table non_existent alter column bar set not null;
+ERROR:  relation "non_existent" does not exist
+alter table non_existent alter column bar drop not null;
+ERROR:  relation "non_existent" does not exist
+-- test setting columns to null and not null and vice versa
+-- test checking for null values and primary key
+create table atacc1tmp (test int not null PRIMARY KEY);
+alter table atacc1tmp alter column test drop not null;
+ERROR:  column "test" is in a primary key
+drop table atacc1tmp;
+create table atacc1 (test int not null);
+alter table atacc1 alter column test drop not null;
+insert into atacc1 values (null);
+alter table atacc1 alter test set not null;
+ERROR:  column "test" contains null values
+delete from atacc1;
+alter table atacc1 alter test set not null;
+-- try altering a non-existent column, should fail
+alter table atacc1 alter bar set not null;
+ERROR:  column "bar" of relation "atacc1" does not exist
+alter table atacc1 alter bar drop not null;
+ERROR:  column "bar" of relation "atacc1" does not exist
+-- -- try altering the oid column, should fail
+-- alter table atacc1 alter oid set not null;
+-- alter table atacc1 alter oid drop not null;
+-- try creating a view and altering that, should fail
+create view myview as select * from atacc1;
+alter table myview alter column test drop not null;
+ERROR:  "myview" is not a table or foreign table
+alter table myview alter column test set not null;
+ERROR:  "myview" is not a table or foreign table
+drop view myview;
+drop table atacc1;
+-- test setting and removing default values
+create table def_test (
+	c1	int4 default 5,
+	c2	text default 'initial_default'
+);
+insert into def_test default values;
+alter table def_test alter column c1 drop default;
+insert into def_test default values;
+alter table def_test alter column c2 drop default;
+insert into def_test default values;
+alter table def_test alter column c1 set default 10;
+alter table def_test alter column c2 set default 'new_default';
+insert into def_test default values;
+select * from def_test order by c1, c2;
+ c1 |       c2
+----+-----------------
+  5 | initial_default
+ 10 | new_default
+    | initial_default
+    |
+(4 rows)
+
+-- set defaults to an incorrect type: this should fail
+alter table def_test alter column c1 set default 'wrong_datatype';
+ERROR:  invalid input syntax for integer: "wrong_datatype"
+alter table def_test alter column c2 set default 20;
+-- set defaults on a non-existent column: this should fail
+alter table def_test alter column c3 set default 30;
+ERROR:  column "c3" of relation "def_test" does not exist
+-- TODO: enable following section after https://github.com/YugaByte/yugabyte-db/issues/1981
+---- set defaults on views: we need to create a view, add a rule
+---- to allow insertions into it, and then alter the view to add
+---- a default
+--create view def_view_test as select * from def_test;
+--create rule def_view_test_ins as
+--	on insert to def_view_test
+--	do instead insert into def_test select new.*;
+--insert into def_view_test default values;
+--alter table def_view_test alter column c1 set default 45;
+--insert into def_view_test default values;
+--alter table def_view_test alter column c2 set default 'view_default';
+--insert into def_view_test default values;
+--select * from def_view_test;
+--drop rule def_view_test_ins on def_view_test;
+--drop view def_view_test;
+drop table def_test;
+-- test ADD COLUMN IF NOT EXISTS
+CREATE TABLE test_add_column(c1 integer);
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer;
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer; -- fail because c2 already exists
+ERROR:  column "c2" of relation "test_add_column" already exists
+ALTER TABLE ONLY test_add_column
+	ADD COLUMN c2 integer; -- fail because c2 already exists
+ERROR:  column "c2" of relation "test_add_column" already exists
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
+NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+ALTER TABLE ONLY test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
+NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN c2 integer, -- fail because c2 already exists
+	ADD COLUMN c3 integer;
+ERROR:  column "c2" of relation "test_add_column" already exists
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN c3 integer; -- fail because c3 already exists
+NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN IF NOT EXISTS c3 integer; -- skipping because c3 already exists
+NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           |          | 
+
+ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
+	ADD COLUMN IF NOT EXISTS c3 integer, -- skipping because c3 already exists
+	ADD COLUMN c4 integer;
+NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
+\d test_add_column
+          Table "public.test_add_column"
+ Column |  Type   | Collation | Nullable | Default 
+--------+---------+-----------+----------+---------
+ c1     | integer |           |          | 
+ c2     | integer |           |          | 
+ c3     | integer |           |          | 
+ c4     | integer |           |          | 
+
+DROP TABLE test_add_column;

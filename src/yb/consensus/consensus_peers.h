@@ -125,8 +125,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
  public:
   Peer(const RaftPeerPB& peer, std::string tablet_id, std::string leader_uuid,
        PeerProxyPtr proxy, PeerMessageQueue* queue,
-       ThreadPoolToken* raft_pool_token, Consensus* consensus,
-       std::shared_ptr<rpc::Messenger> messenger);
+       ThreadPoolToken* raft_pool_token, Consensus* consensus, rpc::Messenger* messenger);
 
   // Initializes a peer and get its status.
   CHECKED_STATUS Init();
@@ -169,7 +168,7 @@ class Peer : public std::enable_shared_from_this<Peer> {
       ThreadPoolToken* raft_pool_token,
       PeerProxyPtr proxy,
       Consensus* consensus,
-      std::shared_ptr<rpc::Messenger> messenger);
+      rpc::Messenger* messenger);
 
   uint64_t failed_attempts() {
     std::lock_guard<simple_spinlock> l(peer_lock_);
@@ -179,13 +178,9 @@ class Peer : public std::enable_shared_from_this<Peer> {
  private:
   void SendNextRequest(RequestTriggerMode trigger_mode);
 
-  // Signals that a response was received from the peer.  This method is called from the reactor
-  // thread and calls DoProcessResponse() on raft_pool_token_ to do any work that requires IO or
-  // lock-taking.
+  // Signals that a response was received from the peer. This method does response handling that
+  // requires IO or may block.
   void ProcessResponse();
-
-  // Run on 'raft_pool_token'. Does response handling that requires IO or may block.
-  void DoProcessResponse();
 
   // Fetch the desired remote bootstrap request from the queue and send it to the peer. The callback
   // goes to ProcessRemoteBootstrapResponse().
@@ -208,8 +203,6 @@ class Peer : public std::enable_shared_from_this<Peer> {
     return std::unique_lock<AtomicTryMutex>(performing_mutex_, type);
   }
 
-  void ReleaseResourcesUnlocked();
-
   std::string LogPrefix() const;
 
   const std::string& tablet_id() const { return tablet_id_; }
@@ -231,12 +224,6 @@ class Peer : public std::enable_shared_from_this<Peer> {
   // The latest remote bootstrap request and response.
   StartRemoteBootstrapRequestPB rb_request_;
   StartRemoteBootstrapResponsePB rb_response_;
-
-  // Reference-counted pointers to any ReplicateMsgs which are in-flight to the peer. We may have
-  // loaded these messages from the LogCache, in which case we are potentially sharing the same
-  // object as other peers. Since the PB request_ itself can't hold reference counts, this holds
-  // them.
-  ReplicateMsgs replicate_msg_refs_;
 
   rpc::RpcController controller_;
 
@@ -263,7 +250,8 @@ class Peer : public std::enable_shared_from_this<Peer> {
   mutable simple_spinlock peer_lock_;
   State state_ = kPeerCreated;
   Consensus* consensus_ = nullptr;
-  std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* messenger_ = nullptr;
+  std::atomic<int> using_thread_pool_{0};
 };
 
 // A proxy to another peer. Usually a thin wrapper around an rpc proxy but can be replaced for
@@ -320,7 +308,7 @@ class PeerProxyFactory {
 
   virtual ~PeerProxyFactory() {}
 
-  virtual std::shared_ptr<rpc::Messenger> messenger() const {
+  virtual rpc::Messenger* messenger() const {
     return nullptr;
   }
 };
@@ -366,17 +354,16 @@ class RpcPeerProxy : public PeerProxy {
 // PeerProxyFactory implementation that generates RPCPeerProxies
 class RpcPeerProxyFactory : public PeerProxyFactory {
  public:
-  RpcPeerProxyFactory(std::shared_ptr<rpc::Messenger> messenger, rpc::ProxyCache* proxy_cache,
-                      CloudInfoPB from);
+  RpcPeerProxyFactory(rpc::Messenger* messenger, rpc::ProxyCache* proxy_cache, CloudInfoPB from);
 
   PeerProxyPtr NewProxy(const RaftPeerPB& peer_pb) override;
 
   virtual ~RpcPeerProxyFactory();
 
-  std::shared_ptr<rpc::Messenger> messenger() const override;
+  rpc::Messenger* messenger() const override;
 
  private:
-  std::shared_ptr<rpc::Messenger> messenger_;
+  rpc::Messenger* messenger_ = nullptr;
   rpc::ProxyCache* const proxy_cache_;
   const CloudInfoPB from_;
 };

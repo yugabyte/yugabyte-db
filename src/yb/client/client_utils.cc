@@ -16,13 +16,14 @@
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/table.h"
 
 namespace yb {
 namespace client {
 
 std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(const YBTable* table) {
   return table->client()->data_->meta_cache_->LookupTabletByKeyFuture(
-      table, "" /* partition_key */, MonoTime::Max() /* deadline */);
+      table, "" /* partition_key */, CoarseTimePoint::max() /* deadline */);
 }
 
 }

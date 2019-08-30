@@ -61,7 +61,7 @@ my @options = (
 	# name, options, stderr checks
 	[
 		'bad option',
-		'-h home -p 5432 -U calvin -d --bad-option',
+		'-h home -p 5432 -U calvin -d all --bad-option',
 		[qr{--help.*more information}]
 	],
 	[
@@ -152,6 +152,11 @@ my @options = (
 			qr{unrecognized random seed option "one": expecting an unsigned integer, "time" or "rand"},
 			qr{error while setting random seed from --random-seed option}
 		]
+	],
+	[
+		'bad maximum number of tries',
+		'--max-tries -10',
+		[ qr{invalid number of maximum tries: "-10"} ]
 	],
 
 	# loging sub-options

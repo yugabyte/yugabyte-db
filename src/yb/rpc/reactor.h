@@ -225,8 +225,7 @@ YB_DEFINE_ENUM(MarkAsDoneResult,
 class DelayedTask : public ReactorTask {
  public:
   DelayedTask(StatusFunctor func, MonoDelta when, int64_t id,
-              const SourceLocation& source_location,
-              const std::shared_ptr<Messenger>& messenger);
+              const SourceLocation& source_location, Messenger* messenger);
 
   // Schedules the task for running later but doesn't actually run it yet.
   void Run(Reactor* reactor) override;
@@ -260,7 +259,7 @@ class DelayedTask : public ReactorTask {
   // This task's id.
   const int64_t id_;
 
-  std::weak_ptr<Messenger> messenger_;
+  Messenger* const messenger_;
 
   // Set to true whenever a Run or Abort methods are called.
   // Guarded by lock_.
@@ -279,7 +278,7 @@ class Reactor {
   // Client-side connection map.
   typedef std::unordered_map<const ConnectionId, ConnectionPtr, ConnectionIdHash> ConnectionMap;
 
-  Reactor(const std::shared_ptr<Messenger>& messenger,
+  Reactor(Messenger* messenger,
           int index,
           const MessengerBuilder &bld);
 
@@ -313,7 +312,9 @@ class Reactor {
   // This may be called from another thread.
   const std::string &name() const { return name_; }
 
-  Messenger *messenger() const { return messenger_.get(); }
+  const std::string& LogPrefix() { return log_prefix_; }
+
+  Messenger *messenger() const { return messenger_; }
 
   CoarseTimePoint cur_time() const { return cur_time_; }
 
@@ -356,8 +357,9 @@ class Reactor {
   // Queue a new incoming connection. Takes ownership of the underlying fd from
   // 'socket', but not the Socket object itself.
   // If the reactor is already shut down, takes care of closing the socket.
-  void RegisterInboundSocket(Socket *socket, const Endpoint& remote,
-                             std::unique_ptr<ConnectionContext> connection_context);
+  void RegisterInboundSocket(
+      Socket *socket, const Endpoint& remote, std::unique_ptr<ConnectionContext> connection_context,
+      const MemTrackerPtr& mem_tracker);
 
   // Schedule the given task's Run() method to be called on the reactor thread. If the reactor shuts
   // down before it is run, the Abort method will be called.
@@ -420,9 +422,11 @@ class Reactor {
   void ShutdownConnection(const ConnectionPtr& conn);
 
   // parent messenger
-  std::shared_ptr<Messenger> messenger_;
+  Messenger* const messenger_;
 
   const std::string name_;
+
+  const std::string log_prefix_;
 
   mutable simple_spinlock pending_tasks_mtx_;
 

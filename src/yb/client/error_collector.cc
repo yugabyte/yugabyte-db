@@ -30,8 +30,10 @@
 // under the License.
 //
 
-#include "yb/client/client.h"
 #include "yb/client/error_collector.h"
+
+#include "yb/client/error.h"
+#include "yb/client/client.h"
 
 namespace yb {
 namespace client {
@@ -69,6 +71,9 @@ Status ErrorCollector::GetSingleErrorStatus() {
   return Status::OK();
 }
 
+void ErrorCollector::AddError(std::shared_ptr<YBOperation> operation, Status status) {
+  AddError(std::make_unique<YBError>(std::move(operation), std::move(status)));
+}
 
 } // namespace internal
 } // namespace client

@@ -14,8 +14,12 @@
 #ifndef YB_MASTER_UTIL_YQL_VTABLE_HELPERS_H
 #define YB_MASTER_UTIL_YQL_VTABLE_HELPERS_H
 
+#include <future>
+
 #include "yb/common/ql_value.h"
 #include "yb/master/master.pb.h"
+
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/net/inetaddress.h"
 
 namespace yb {
@@ -124,12 +128,13 @@ QLValuePB GetReplicationValue(int replication_factor);
 bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
                                   const InetAddress& remote_endpoint);
 
-struct PublicPrivateIPs {
-  InetAddress private_ip;
-  InetAddress public_ip;
+struct PublicPrivateIPFutures {
+  std::shared_future<Result<InetAddress>> private_ip_future;
+  std::shared_future<Result<InetAddress>> public_ip_future;
 };
 
-Result<PublicPrivateIPs> GetPublicPrivateIPs(const TSInformationPB& ts_info);
+PublicPrivateIPFutures GetPublicPrivateIPFutures(
+    const TSInformationPB& ts_info, Resolver* resolver);
 
 }  // namespace util
 }  // namespace master

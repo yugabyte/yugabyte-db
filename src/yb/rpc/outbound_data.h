@@ -39,13 +39,15 @@ class OutboundData : public std::enable_shared_from_this<OutboundData> {
   virtual void Transferred(const Status& status, Connection* conn) = 0;
 
   // Serializes the data to be sent out via the RPC framework.
-  virtual void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const = 0;
+  virtual void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) = 0;
 
   virtual std::string ToString() const = 0;
 
   virtual bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) = 0;
 
   virtual bool IsFinished() const { return false; }
+
+  virtual bool IsHeartbeat() const { return false; }
 
   virtual ~OutboundData() {}
 };
@@ -58,8 +60,9 @@ class StringOutboundData : public OutboundData {
   StringOutboundData(const char* data, size_t len, const string& name)
       : buffer_(data, len), name_(name) {}
   void Transferred(const Status& status, Connection* conn) override {}
+
   // Serializes the data to be sent out via the RPC framework.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const override {
+  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override {
     output->push_back(buffer_);
   }
 

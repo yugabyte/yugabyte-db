@@ -135,7 +135,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2000));
     ASSERT_OK(iter.Init());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -150,7 +150,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row1_e", value.string_value());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -164,7 +164,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 
   // Scan at a later hybrid_time.
@@ -175,7 +175,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(5000));
     ASSERT_OK(iter.Init());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     // This row is exactly the same as in the previous case. TODO: deduplicate.
@@ -192,7 +192,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row1_e", value.string_value());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -208,7 +208,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorTest) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e_prime", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -251,7 +251,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -264,7 +264,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorDeletedDocumentTest) {
     ASSERT_OK(row.GetValue(projection.column_id(2), &value));
     ASSERT_TRUE(value.IsNull());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -308,7 +308,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     // ColumnId 30, 40 should be hidden whereas ColumnId 50 should be visible.
@@ -322,7 +322,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2800 w: 1 }]
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row1_e", value.string_value());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -366,9 +366,9 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     // Ensure calling HasNext() again doesn't mess up anything.
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     // ColumnId 40 should be deleted whereas ColumnId 50 should be visible.
@@ -416,7 +416,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -427,7 +427,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
     ASSERT_EQ(10000, value.int64_value());
 
     // Now find next row.
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -437,7 +437,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorIncompleteProjection) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ(20000, value.int64_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -500,9 +500,9 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     // Ensure Idempotency.
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -512,7 +512,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2800 w: 3 }]
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -561,7 +561,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -570,7 +570,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
     ASSERT_OK(row.GetValue(projection.column_id(1), &value));
     ASSERT_TRUE(value.IsNull());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -581,7 +581,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorValidColumnNotInProjection) {
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ(20000, value.int64_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -615,7 +615,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -624,7 +624,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 w: 1 }]
     ASSERT_OK(row.GetValue(projection.column_id(1), &value));
     ASSERT_EQ(11111, value.int64_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -633,12 +633,10 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
 
   TransactionStatusManagerMock txn_status_manager;
 
-  Result<TransactionId> txn1 = FullyDecodeTransactionId("0000000000000001");
-  ASSERT_OK(txn1);
-  Result<TransactionId> txn2 = FullyDecodeTransactionId("0000000000000002");
-  ASSERT_OK(txn2);
+  auto txn1 = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000001"));
+  auto txn2 = ASSERT_RESULT(FullyDecodeTransactionId("0000000000000002"));
 
-  SetCurrentTransactionId(*txn1);
+  SetCurrentTransactionId(txn1);
   ASSERT_OK(SetPrimitive(
       DocPath(kEncodedDocKey1, PrimitiveValue(30_ColId)),
       PrimitiveValue("row1_c_t1"), HybridTime::FromMicros(500)));
@@ -683,9 +681,9 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
       PrimitiveValue("row2_e_prime"), HybridTime::FromMicros(4000)));
 
-  txn_status_manager.Commit(*txn1, HybridTime::FromMicros(3500));
+  txn_status_manager.Commit(txn1, HybridTime::FromMicros(3500));
 
-  SetCurrentTransactionId(*txn2);
+  SetCurrentTransactionId(txn2);
   ASSERT_OK(DeleteSubDoc(
       DocPath(kEncodedDocKey1),
       HybridTime::FromMicros(4000)));
@@ -693,7 +691,7 @@ TEST_F(DocRowwiseIteratorTest, DocRowwiseIteratorResolveWriteIntents) {
       DocPath(kEncodedDocKey2, PrimitiveValue(50_ColId)),
       PrimitiveValue("row2_e_t2"), HybridTime::FromMicros(4000)));
   ResetCurrentTransactionId();
-  txn_status_manager.Commit(*txn2, HybridTime::FromMicros(6000));
+  txn_status_manager.Commit(txn2, HybridTime::FromMicros(6000));
 
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> "row1_c"
@@ -704,11 +702,15 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2500 }]) -> 
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 2000 }]) -> 20000
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 4000 }]) -> "row2_e_prime"
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50); HT{ physical: 2000 }]) -> "row2_e"
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 3 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
-SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
-SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
+SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
@@ -723,6 +725,10 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40)]) [kStrongRead, kStrongWrit
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
     HT{ physical: 500 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) WriteId(2) "row1_e_t1"
+SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303032) none
+SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303032) none
 SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
@@ -742,14 +748,18 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
+    SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 }
 TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(50)]) [kStrongRead, kStrongWrite] \
     HT{ physical: 4000 }
 TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 1 } -> \
     SubDocKey(DocKey([], ["row2", 22222]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 1 }
 TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 }
+    SubDocKey(DocKey([], ["row2"]), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 4000 w: 3 }
       )#");
 
   const Schema &schema = kSchemaForIteratorTests;
@@ -766,7 +776,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -781,7 +791,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row1_e", value.string_value());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -795,7 +805,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 
   // Scan at a later hybrid_time.
@@ -809,7 +819,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -824,7 +834,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row1_e_t1", value.string_value());
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -838,7 +848,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e_prime", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 
   // Scan at a later hybrid_time.
@@ -852,7 +862,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(iter.HasNext());
+    ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
     ASSERT_OK(iter.NextRow(&row));
 
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -866,7 +876,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 2 } -> \
     ASSERT_FALSE(value.IsNull());
     ASSERT_EQ("row2_e_t2", value.string_value());
 
-    ASSERT_FALSE(iter.HasNext());
+    ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
   }
 }
 
@@ -907,7 +917,9 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> 
 SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 10000
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(30); HT{ physical: 1000 }]) -> "row2_c"
 SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(40); HT{ physical: 1000 }]) -> 20000
-SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
@@ -920,8 +932,10 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
     SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
-      )#");
+    SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 }
+    )#");
 
   // Create a new IntentAwareIterator and seek to an empty DocKey. Verify that it returns the
   // first non-intent key.
@@ -930,13 +944,11 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
       ReadHybridTime::FromMicros(1000), boost::none);
   iter.Seek(DocKey());
   ASSERT_TRUE(iter.valid());
-  DocHybridTime doc_ht;
-  Result<Slice> key = iter.FetchKey(&doc_ht);
-  ASSERT_OK(key);
+  auto key_data = ASSERT_RESULT(iter.FetchKey());
   SubDocKey subdoc_key;
-  ASSERT_OK(subdoc_key.FullyDecodeFrom(*key, HybridTimeRequired::kFalse));
+  ASSERT_OK(subdoc_key.FullyDecodeFrom(key_data.key, HybridTimeRequired::kFalse));
   ASSERT_EQ(subdoc_key.ToString(), R"#(SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30)]))#");
-  ASSERT_EQ(doc_ht.ToString(), "HT{ physical: 1000 }");
+  ASSERT_EQ(key_data.write_time.ToString(), "HT{ physical: 1000 }");
 }
 
 TEST_F(DocRowwiseIteratorTest, SeekTwiceWithinTheSameTxn) {
@@ -954,7 +966,9 @@ TEST_F(DocRowwiseIteratorTest, SeekTwiceWithinTheSameTxn) {
 
   // Verify the content of RocksDB.
   ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
+SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 } -> \
+    TransactionId(30303030-3030-3030-3030-303030303031) none
+SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
 SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 } -> \
     TransactionId(30303030-3030-3030-3030-303030303031) none
@@ -967,7 +981,9 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 } -> \
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 1 } -> \
     SubDocKey(DocKey([], ["row1", 11111]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 1 }
 TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 2 } -> \
-    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
+    SubDocKey(DocKey([], ["row1"]), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 2 }
+TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
+    SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ physical: 500 w: 3 }
       )#");
 
   IntentAwareIterator iter(
@@ -1008,7 +1024,7 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
   QLTableRow row;
   QLValue value;
 
-  ASSERT_TRUE(iter.HasNext());
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
   ASSERT_OK(iter.NextRow(&row));
 
   ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -1021,7 +1037,7 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
   ASSERT_OK(row.GetValue(projection.column_id(2), &value));
   ASSERT_TRUE(value.IsNull());
 
-  ASSERT_TRUE(iter.HasNext());
+  ASSERT_TRUE(ASSERT_RESULT(iter.HasNext()));
   ASSERT_OK(iter.NextRow(&row));
 
   ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -1034,7 +1050,7 @@ TEST_F(DocRowwiseIteratorTest, ScanWithinTheSameTxn) {
   ASSERT_OK(row.GetValue(projection.column_id(2), &value));
   ASSERT_TRUE(value.IsNull());
 
-  ASSERT_FALSE(iter.HasNext());
+  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
 }
 
 }  // namespace docdb

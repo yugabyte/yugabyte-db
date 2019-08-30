@@ -38,6 +38,9 @@
 #include "yb/rpc/rpc_context.h"
 
 namespace yb {
+
+using tserver::TabletServerErrorPB;
+
 namespace master {
 
 // Non-template helpers.
@@ -107,6 +110,24 @@ bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrResp
   return false;
 }
 
+template<typename RespClass, typename ErrorClass>
+bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedOrRespondInternal(
+    RespClass* resp,
+    rpc::RpcContext* rpc,
+    bool set_error) {
+  const Status* status = &catalog_status_;
+  if (PREDICT_TRUE(status->ok())) {
+    return true;
+  }
+
+  if (set_error) {
+    StatusToPB(*status, resp->mutable_error()->mutable_status());
+    resp->mutable_error()->set_code(ErrorClass::UNKNOWN_ERROR);
+  }
+  rpc->RespondSuccess();
+  return false;
+}
+
 template<typename RespClass>
 bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespond(
     RespClass* resp,
@@ -114,13 +135,30 @@ bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrResp
   return CheckIsInitializedAndIsLeaderOrRespondInternal<RespClass, MasterErrorPB>(resp, rpc);
 }
 
-// Variation of the above method which uses TabletServerErrorPB instead.
+// Variation of the above methods using TabletServerErrorPB instead.
+template<typename RespClass>
+bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedOrRespondTServer(
+    RespClass* resp,
+    rpc::RpcContext* rpc,
+    bool set_error) {
+  return CheckIsInitializedOrRespondInternal<RespClass, TabletServerErrorPB>
+     (resp, rpc, set_error);
+}
+
 template<typename RespClass>
 bool CatalogManager::ScopedLeaderSharedLock::CheckIsInitializedAndIsLeaderOrRespondTServer(
     RespClass* resp,
     rpc::RpcContext* rpc) {
-  return CheckIsInitializedAndIsLeaderOrRespondInternal<RespClass, tserver::TabletServerErrorPB>
+  return CheckIsInitializedAndIsLeaderOrRespondInternal<RespClass, TabletServerErrorPB>
       (resp, rpc);
+}
+
+inline std::string RequestorString(yb::rpc::RpcContext* rpc) {
+  if (rpc) {
+    return rpc->requestor_string();
+  } else {
+    return "internal request";
+  }
 }
 
 }  // namespace master

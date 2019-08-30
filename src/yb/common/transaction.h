@@ -16,6 +16,7 @@
 #ifndef YB_COMMON_TRANSACTION_H
 #define YB_COMMON_TRANSACTION_H
 
+#include <boost/container/small_vector.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/optional.hpp>
 #include <boost/uuid/uuid.hpp>
@@ -25,6 +26,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 
+#include "yb/util/async_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/logging.h"
@@ -69,6 +71,10 @@ struct TransactionStatusResult {
   static TransactionStatusResult Aborted() {
     return TransactionStatusResult(TransactionStatus::ABORTED, HybridTime());
   }
+
+  std::string ToString() const {
+    return Format("{ status: $0 status_time: $1 }", status, status_time);
+  }
 };
 
 inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult& result) {
@@ -79,7 +85,8 @@ inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult
 typedef std::function<void(Result<TransactionStatusResult>)> TransactionStatusCallback;
 struct TransactionMetadata;
 
-YB_STRONGLY_TYPED_BOOL(MustExist);
+YB_DEFINE_ENUM(TransactionLoadFlag, (kMustExist)(kCleanup));
+typedef EnumBitSet<TransactionLoadFlag> TransactionLoadFlags;
 
 // Used by RequestStatusAt.
 struct StatusRequest {
@@ -88,8 +95,13 @@ struct StatusRequest {
   HybridTime global_limit_ht;
   int64_t serial_no;
   const std::string* reason;
-  MustExist must_exist;
+  TransactionLoadFlags flags;
   TransactionStatusCallback callback;
+
+  std::string ToString() const {
+    return Format("{ id: $0 read_ht: $1 global_limit_ht: $2 serial_no: $3 reason: $4 flags: $5}",
+                  *id, read_ht, global_limit_ht, serial_no, *reason, flags);
+  }
 };
 
 class RequestScope;
@@ -114,11 +126,17 @@ class TransactionStatusManager {
   // 4. Any kind of network/timeout errors would be reflected in error passed to callback.
   virtual void RequestStatusAt(const StatusRequest& request) = 0;
 
-  virtual boost::optional<TransactionMetadata> Metadata(const TransactionId& id) = 0;
+  // Prepares metadata for provided protobuf. Either trying to extract it from pb, or fetch
+  // from existing metadatas.
+  virtual Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb) = 0;
 
   virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
 
   virtual void Cleanup(TransactionIdSet&& set) = 0;
+
+  // For each pair fills second with priority of transaction with id equals to first.
+  virtual void FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) = 0;
 
  private:
   friend class RequestScope;
@@ -225,9 +243,10 @@ inline bool operator!=(const TransactionMetadata& lhs, const TransactionMetadata
 std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata);
 
 MonoDelta TransactionRpcTimeout();
-MonoTime TransactionRpcDeadline();
+CoarseTimePoint TransactionRpcDeadline();
 
 extern const std::string kTransactionsTableName;
+extern const std::string kMetricsSnapshotsTableName;
 
 } // namespace yb
 

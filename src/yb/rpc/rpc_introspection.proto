@@ -57,10 +57,21 @@ message RedisCallDetailsPB {
   repeated RedisStatementsDetailsPB call_details = 1;
 }
 
+enum RpcCallState {
+  READY = 0;
+  ON_OUTBOUND_QUEUE = 1;
+  SENT = 2;
+  TIMED_OUT = 3;
+  FINISHED_ERROR = 4;
+  FINISHED_SUCCESS = 5;
+}
+
 message RpcCallInProgressPB {
   required RequestHeader header = 1;
   optional string trace_buffer = 2;
   optional uint64 micros_elapsed = 3;
+  optional uint64 sending_bytes = 6;
+  optional RpcCallState state = 7;
   oneof call_details {
     CQLCallDetailsPB cql_details = 4;
     RedisCallDetailsPB redis_details = 5;
@@ -87,6 +98,7 @@ message RpcConnectionPB {
   required string remote_ip = 1;
   required StateType state = 2;
   optional uint64 processed_call_count = 4;
+  optional uint64 sending_bytes = 7;
   optional RpcConnectionDetailsPB connection_details = 5;
   repeated RpcCallInProgressPB calls_in_flight = 6;
 }

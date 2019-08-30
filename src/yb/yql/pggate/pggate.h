@@ -24,7 +24,7 @@
 
 #include "yb/util/metrics.h"
 #include "yb/util/mem_tracker.h"
-#include "yb/util/ybc_util.h"
+#include "yb/common/ybc_util.h"
 
 #include "yb/client/client.h"
 #include "yb/client/callbacks.h"
@@ -62,7 +62,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Access function to Pggate attribute.
-  std::shared_ptr<client::YBClient> client() {
+  client::YBClient* client() {
     return async_client_init_.client();
   }
 
@@ -92,21 +92,32 @@ class PgApiImpl {
   CHECKED_STATUS InsertSequenceTuple(PgSession *pg_session,
                                      int64_t db_oid,
                                      int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
                                      int64_t last_val,
                                      bool is_called);
+
+  CHECKED_STATUS UpdateSequenceTupleConditionally(PgSession *pg_session,
+                                                  int64_t db_oid,
+                                                  int64_t seq_oid,
+                                                  uint64_t ysql_catalog_version,
+                                                  int64_t last_val,
+                                                  bool is_called,
+                                                  int64_t expected_last_val,
+                                                  bool expected_is_called,
+                                                  bool *skipped);
 
   CHECKED_STATUS UpdateSequenceTuple(PgSession *pg_session,
                                      int64_t db_oid,
                                      int64_t seq_oid,
+                                     uint64_t ysql_catalog_version,
                                      int64_t last_val,
                                      bool is_called,
-                                     int64_t expected_last_val,
-                                     bool expected_is_called,
                                      bool* skipped);
 
   CHECKED_STATUS ReadSequenceTuple(PgSession *pg_session,
                                    int64_t db_oid,
                                    int64_t seq_oid,
+                                   uint64_t ysql_catalog_version,
                                    int64_t *last_val,
                                    bool *is_called);
 
@@ -137,7 +148,7 @@ class PgApiImpl {
   // Drop database.
   CHECKED_STATUS NewDropDatabase(PgSession *pg_session,
                                  const char *database_name,
-                                 bool if_exist,
+                                 PgOid database_oid,
                                  PgStatement **handle);
   CHECKED_STATUS ExecDropDatabase(PgStatement *handle);
 
@@ -150,25 +161,6 @@ class PgApiImpl {
                              PgOid *end_oid);
 
   CHECKED_STATUS GetCatalogMasterVersion(PgSession *pg_session, uint64_t *version);
-
-  //------------------------------------------------------------------------------------------------
-  // Create and drop schema.
-  // - When "database_name" is NULL, the connected database name is used.
-  CHECKED_STATUS NewCreateSchema(PgSession *pg_session,
-                                 const char *database_name,
-                                 const char *schema_name,
-                                 bool if_not_exist,
-                                 PgStatement **handle);
-
-  CHECKED_STATUS ExecCreateSchema(PgStatement *handle);
-
-  CHECKED_STATUS NewDropSchema(PgSession *pg_session,
-                               const char *database_name,
-                               const char *schema_name,
-                               bool if_exist,
-                               PgStatement **handle);
-
-  CHECKED_STATUS ExecDropSchema(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Create, alter and drop table.
@@ -184,7 +176,9 @@ class PgApiImpl {
 
   CHECKED_STATUS CreateTableAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
                                       const YBCPgTypeEntity *attr_type, bool is_hash,
-                                      bool is_range);
+                                      bool is_range, bool is_desc, bool is_nulls_first);
+
+  CHECKED_STATUS CreateTableSetNumTablets(PgStatement *handle, int32_t num_tablets);
 
   CHECKED_STATUS ExecCreateTable(PgStatement *handle);
 
@@ -229,7 +223,9 @@ class PgApiImpl {
                                bool *is_primary,
                                bool *is_hash);
 
-  CHECKED_STATUS SetIsSystemCatalogChange(PgStatement *handle);
+  CHECKED_STATUS DmlModifiesRow(PgStatement *handle, bool *modifies_row);
+
+  CHECKED_STATUS SetIsSysCatalogVersionChange(PgStatement *handle);
 
   CHECKED_STATUS SetCatalogCacheVersion(PgStatement *handle, uint64_t catalog_cache_version);
 
@@ -248,7 +244,7 @@ class PgApiImpl {
 
   CHECKED_STATUS CreateIndexAddColumn(PgStatement *handle, const char *attr_name, int attr_num,
                                       const YBCPgTypeEntity *attr_type, bool is_hash,
-                                      bool is_range);
+                                      bool is_range, bool is_desc, bool is_nulls_first);
 
   CHECKED_STATUS ExecCreateIndex(PgStatement *handle);
 
@@ -281,7 +277,12 @@ class PgApiImpl {
   //     contain bind-variables (placeholders) and contants whose values can be updated for each
   //     execution of the same allocated statement.
   CHECKED_STATUS DmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+  CHECKED_STATUS DmlBindColumnCondEq(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+  CHECKED_STATUS DmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
+      YBCPgExpr attr_value_end);
   CHECKED_STATUS DmlBindIndexColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
+  CHECKED_STATUS DmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
+      YBCPgExpr *attr_value);
 
   // API for SET clause.
   CHECKED_STATUS DmlAssignColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
@@ -292,7 +293,15 @@ class PgApiImpl {
                           PgSysColumns *syscols, bool *has_data);
 
   // Utility method that checks stmt type and calls exec insert, update, or delete internally.
-  CHECKED_STATUS DmlExecWriteOp(PgStatement *handle);
+  CHECKED_STATUS DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count);
+
+  // This function adds a primary column to be used in the construction of the tuple id (ybctid).
+  CHECKED_STATUS DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
+                                       bool is_null, const YBCPgTypeEntity *type_entity);
+
+
+  // This function returns the tuple id (ybctid) of a Postgres tuple.
+  CHECKED_STATUS DmlGetYBTupleId(PgStatement *handle, uint64_t *ybctid);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.
@@ -319,22 +328,31 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Update.
-  CHECKED_STATUS NewUpdate(PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle);
+  CHECKED_STATUS NewUpdate(PgSession *pg_session,
+                           const PgObjectId& table_id,
+                           bool is_single_row_txn,
+                           PgStatement **handle);
 
   CHECKED_STATUS ExecUpdate(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Delete.
-  CHECKED_STATUS NewDelete(PgSession *pg_session, const PgObjectId& table_id, PgStatement **handle);
+  CHECKED_STATUS NewDelete(PgSession *pg_session,
+                           const PgObjectId& table_id,
+                           bool is_single_row_txn,
+                           PgStatement **handle);
 
   CHECKED_STATUS ExecDelete(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Select.
   CHECKED_STATUS NewSelect(PgSession *pg_session, const PgObjectId& table_id,
-                           const PgObjectId& index_id, PgStatement **handle, uint64_t* read_time);
+                           const PgObjectId& index_id, PreventRestart prevent_restart,
+                           PgStatement **handle);
 
-  CHECKED_STATUS ExecSelect(PgStatement *handle);
+  CHECKED_STATUS SetForwardScan(PgStatement *handle, bool is_forward_scan);
+
+  CHECKED_STATUS ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
@@ -350,6 +368,8 @@ class PgApiImpl {
   // Constant expressions.
   CHECKED_STATUS NewConstant(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
                              uint64_t datum, bool is_null, YBCPgExpr *expr_handle);
+  CHECKED_STATUS NewConstantOp(YBCPgStatement stmt, const YBCPgTypeEntity *type_entity,
+                             uint64_t datum, bool is_null, YBCPgExpr *expr_handle, bool is_gt);
 
   // TODO(neil) UpdateConstant should be merged into one.
   // Update constant.

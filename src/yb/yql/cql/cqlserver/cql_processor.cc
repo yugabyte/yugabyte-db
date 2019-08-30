@@ -90,7 +90,6 @@ using std::unique_ptr;
 
 using client::YBClient;
 using client::YBSession;
-using client::YBMetaDataCache;
 using ql::ExecutedResult;
 using ql::PreparedResult;
 using ql::RowsResult;
@@ -257,9 +256,9 @@ CQLResponse* CQLProcessor::ProcessRequest(const StartupRequest& req) {
     if (name == CQLMessage::kCompressionOption) {
       auto& context = static_cast<CQLConnectionContext&>(call_->connection()->context());
       if (value == CQLMessage::kLZ4Compression) {
-        context.set_compression_scheme(CQLMessage::CompressionScheme::LZ4);
+        context.set_compression_scheme(CQLMessage::CompressionScheme::kLz4);
       } else if (value == CQLMessage::kSnappyCompression) {
-        context.set_compression_scheme(CQLMessage::CompressionScheme::SNAPPY);
+        context.set_compression_scheme(CQLMessage::CompressionScheme::kSnappy);
       } else {
         return new ErrorResponse(
             req, ErrorResponse::Code::PROTOCOL_ERROR,
@@ -525,7 +524,7 @@ CQLResponse* CQLProcessor::ProcessResult(const ExecutedResult::SharedPtr& result
 }
 
 bool CQLProcessor::NeedReschedule() {
-  auto messenger = service_impl_->messenger().lock();
+  auto messenger = service_impl_->messenger();
   if (!messenger) {
     return false;
   }
@@ -533,7 +532,7 @@ bool CQLProcessor::NeedReschedule() {
 }
 
 void CQLProcessor::Reschedule(rpc::ThreadPoolTask* task) {
-  auto messenger = service_impl_->messenger().lock();
+  auto messenger = service_impl_->messenger();
   DCHECK(messenger != nullptr) << "No messenger to reschedule CQL call";
   messenger->ThreadPool(rpc::ServicePriority::kNormal).Enqueue(task);
 }

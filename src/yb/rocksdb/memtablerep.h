@@ -46,8 +46,8 @@
 // The last four implementations are designed for situations in which
 // iteration over the entire collection is rare since doing so requires all the
 // keys to be copied into a sorted data structure.
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_MEMTABLEREP_H
-#define ROCKSDB_INCLUDE_ROCKSDB_MEMTABLEREP_H
+#ifndef YB_ROCKSDB_MEMTABLEREP_H
+#define YB_ROCKSDB_MEMTABLEREP_H
 
 #pragma once
 
@@ -58,6 +58,7 @@
 #include <stdexcept>
 
 #include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {
 
@@ -109,6 +110,11 @@ class MemTableRep {
 #else
     abort();
 #endif
+  }
+
+  virtual bool Erase(KeyHandle handle, const KeyComparator& comparator) {
+    LOG(FATAL) << "Erase not supported";
+    return false;
   }
 
   // Returns true iff an entry that compares equal to key is in the collection.
@@ -228,7 +234,11 @@ class MemTableRepFactory {
   // Return true if the current MemTableRep supports concurrent inserts
   // Default: false
   virtual bool IsInsertConcurrentlySupported() const { return false; }
+
+  virtual bool IsInMemoryEraseSupported() const { return false; }
 };
+
+YB_STRONGLY_TYPED_BOOL(ConcurrentWrites);
 
 // This uses a skip list to store keys. It is the default.
 //
@@ -239,18 +249,35 @@ class MemTableRepFactory {
 //     seeks with consecutive keys.
 class SkipListFactory : public MemTableRepFactory {
  public:
-  explicit SkipListFactory(size_t lookahead = 0) : lookahead_(lookahead) {}
+  explicit SkipListFactory(
+      size_t lookahead = 0, ConcurrentWrites concurrent_writes = ConcurrentWrites::kTrue)
+      : lookahead_(lookahead), concurrent_writes_(concurrent_writes) {}
 
-  virtual MemTableRep* CreateMemTableRep(const MemTableRep::KeyComparator&,
-                                         MemTableAllocator*,
-                                         const SliceTransform*,
-                                         Logger* logger) override;
-  virtual const char* Name() const override { return "SkipListFactory"; }
+  MemTableRep* CreateMemTableRep(const MemTableRep::KeyComparator&,
+                                 MemTableAllocator*,
+                                 const SliceTransform*,
+                                 Logger* logger) override;
+  const char* Name() const override { return "SkipListFactory"; }
 
-  bool IsInsertConcurrentlySupported() const override { return true; }
+  bool IsInsertConcurrentlySupported() const override { return concurrent_writes_; }
+
+  bool IsInMemoryEraseSupported() const override { return !concurrent_writes_; }
 
  private:
   const size_t lookahead_;
+  const ConcurrentWrites concurrent_writes_;
+};
+
+class CDSSkipListFactory : public MemTableRepFactory {
+ public:
+  MemTableRep* CreateMemTableRep(const MemTableRep::KeyComparator&,
+                                 MemTableAllocator*,
+                                 const SliceTransform*,
+                                 Logger* logger) override;
+
+  const char* Name() const override { return "CDSSkipListFactory"; }
+
+  bool IsInsertConcurrentlySupported() const override { return true; }
 };
 
 #ifndef ROCKSDB_LITE
@@ -346,4 +373,4 @@ extern MemTableRepFactory* NewHashCuckooRepFactory(
 #endif  // ROCKSDB_LITE
 }  // namespace rocksdb
 
-#endif // ROCKSDB_INCLUDE_ROCKSDB_MEMTABLEREP_H
+#endif // YB_ROCKSDB_MEMTABLEREP_H

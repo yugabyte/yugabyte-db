@@ -29,7 +29,7 @@ class YQLVTableIterator : public common::YQLRowwiseIteratorIf {
 
   void SkipRow() override;
 
-  bool HasNext() const override;
+  Result<bool> HasNext() const override;
 
   std::string ToString() const override;
 

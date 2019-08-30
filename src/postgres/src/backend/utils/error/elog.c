@@ -430,12 +430,6 @@ errfinish(int dummy,...)
 	CHECK_STACK_DEPTH();
 	elevel = edata->elevel;
 
-	/* TODO Make this a YB-debug-mode feature */
-	if (IsYugaByteEnabled() && elevel >= FATAL)
-	{
-		YBC_LOG_ERROR_STACK_TRACE("Stack trace for a FATAL log message");
-	}
-
 	/*
 	 * Do processing in ErrorContext, which we hope has enough reserved space
 	 * to report an error.
@@ -489,8 +483,18 @@ errfinish(int dummy,...)
 	 * what we want for NOTICE messages, but not for fatal exits.) This hack
 	 * is necessary because of poor design of old-style copy protocol.
 	 */
-	if (elevel >= FATAL && whereToSendOutput == DestRemote)
-		pq_endcopyout(true);
+	if (elevel >= FATAL)
+	{
+		if (whereToSendOutput == DestRemote)
+			pq_endcopyout(true);
+
+		if (IsYugaByteEnabled())
+			/* When it's FATAL, the memory context that "debug_query_string" points to might have been
+			 * deleted or even corrupted. Set "debug_query_string" to NULL before emitting error.
+			 * The variable "debug_query_string" contains the user statement that is currently executed.
+			 */
+			debug_query_string = NULL;
+	}
 
 	/* Emit the message to the right places */
 	EmitErrorReport();
@@ -746,6 +750,10 @@ errcode_for_socket_access(void)
 		} \
 		/* Done with expanded fmt */ \
 		pfree(fmtbuf); \
+		/* In YB debug mode, add stack trace info (to first msg only) */ \
+		if (IsYugaByteEnabled() && yb_debug_mode && !appendval) { \
+			appendStringInfoString(&buf, YBCGetStackTrace()); \
+		} \
 		/* Save the completed message into the stack item */ \
 		if (edata->targetfield) \
 			pfree(edata->targetfield); \

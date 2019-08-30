@@ -37,22 +37,28 @@
 #include <regex>
 #include <sstream>
 
+#include <glog/logging.h>
 #include <glog/stl_logging.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
+#include "yb/util/debug/long_operation_tracker.h"
+
 using std::string;
 using std::vector;
+
+using namespace std::literals;
 
 namespace yb {
 
 class DebugUtilTest : public YBTest {
  protected:
-  void WaitForSleeperThreadNameInStackTrace(int64_t thread_id) {
+  void WaitForSleeperThreadNameInStackTrace(ThreadIdForStack thread_id) {
     string stack;
     for (int i = 0; i < 10000; i++) {
       stack = DumpThreadStack(thread_id);
@@ -126,9 +132,33 @@ TEST_F(DebugUtilTest, TestGetStackTrace) {
 // on the tgkill syscall which is not portable.
 //
 // TODO: it might be possible to enable other tests in this section to work on macOS.
+
+TEST_F(DebugUtilTest, TestStackTraceInvalidTid) {
+#if defined(__linux__)
+  ThreadIdForStack bad_tid = 1;
+#else
+  ThreadIdForStack bad_tid = reinterpret_cast<ThreadIdForStack>(1);
+#endif
+  string s = DumpThreadStack(bad_tid);
+  ASSERT_STR_CONTAINS(s, "Unable to deliver signal");
+}
+
+TEST_F(DebugUtilTest, TestStackTraceSelf) {
+  string s = DumpThreadStack(Thread::CurrentThreadIdForStack());
+  ASSERT_STR_CONTAINS(s, "yb::DebugUtilTest_TestStackTraceSelf_Test::TestBody()");
+}
+
 #if defined(__linux__)
 
+TEST_F(DebugUtilTest, TestStackTraceMainThread) {
+  string s = DumpThreadStack(getpid());
+  ASSERT_STR_CONTAINS(s, "yb::DebugUtilTest_TestStackTraceMainThread_Test::TestBody()");
+}
+
+#endif
+
 namespace {
+
 void SleeperThread(CountDownLatch* l) {
   // We use an infinite loop around WaitFor() instead of a normal Wait()
   // so that this test passes in TSAN. Without this, we run into this TSAN
@@ -145,22 +175,8 @@ bool IsSignalHandlerRegistered(int signum) {
   CHECK_EQ(0, sigaction(signum, nullptr, &cur_action));
   return cur_action.sa_handler != SIG_DFL;
 }
+
 } // anonymous namespace
-
-TEST_F(DebugUtilTest, TestStackTraceInvalidTid) {
-  string s = DumpThreadStack(1);
-  ASSERT_STR_CONTAINS(s, "Unable to deliver signal");
-}
-
-TEST_F(DebugUtilTest, TestStackTraceSelf) {
-  string s = DumpThreadStack(Thread::CurrentThreadId());
-  ASSERT_STR_CONTAINS(s, "yb::DebugUtilTest_TestStackTraceSelf_Test::TestBody()");
-}
-
-TEST_F(DebugUtilTest, TestStackTraceMainThread) {
-  string s = DumpThreadStack(getpid());
-  ASSERT_STR_CONTAINS(s, "yb::DebugUtilTest_TestStackTraceMainThread_Test::TestBody()");
-}
 
 TEST_F(DebugUtilTest, TestSignalStackTrace) {
   CountDownLatch l(1);
@@ -169,7 +185,7 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
 
   // We have to loop a little bit because it takes a little while for the thread
   // to start up and actually call our function.
-  WaitForSleeperThreadNameInStackTrace(t->tid());
+  WaitForSleeperThreadNameInStackTrace(t->tid_for_stack());
 
   // Test that we can change the signal and that the stack traces still work,
   // on the new signal.
@@ -184,7 +200,7 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
 
   // Stack traces should work using the new handler. We've had a test failure here when we ust had
   // a one-time check, so we do the same waiting loop as in the beginning of the test.
-  WaitForSleeperThreadNameInStackTrace(t->tid());
+  WaitForSleeperThreadNameInStackTrace(t->tid_for_stack());
 
   // Switch back to SIGUSR2 and ensure it changes back.
   ASSERT_OK(SetStackTraceSignal(SIGUSR2));
@@ -193,7 +209,7 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
 
   // Stack traces should work using the new handler. Also has a test failure here, so using a retry
   // loop.
-  WaitForSleeperThreadNameInStackTrace(t->tid());
+  WaitForSleeperThreadNameInStackTrace(t->tid_for_stack());
 
   // Register our own signal handler on SIGUSR1, and ensure that
   // we get a bad Status if we try to use it.
@@ -203,7 +219,7 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
   signal(SIGUSR1, SIG_IGN);
 
   // Stack traces should be disabled
-  ASSERT_STR_CONTAINS(DumpThreadStack(t->tid()), "Unable to take thread stack");
+  ASSERT_STR_CONTAINS(DumpThreadStack(t->tid_for_stack()), "Unable to take thread stack");
 
   // Re-enable so that other tests pass.
   ASSERT_OK(SetStackTraceSignal(SIGUSR2));
@@ -213,16 +229,20 @@ TEST_F(DebugUtilTest, TestSignalStackTrace) {
   t->Join();
 }
 
+#if defined(__linux__)
+
 // Test which dumps all known threads within this process.
 // We don't validate the results in any way -- but this verifies that we can
 // dump library threads such as the libc timer_thread and properly time out.
 TEST_F(DebugUtilTest, TestDumpAllThreads) {
-  vector<pid_t> tids;
+  std::vector<pid_t> tids;
   ASSERT_OK(ListThreads(&tids));
   for (pid_t tid : tids) {
     LOG(INFO) << DumpThreadStack(tid);
   }
 }
+
+#endif
 
 // This will probably be really slow on Mac OS X, so only enabling on Linux.
 TEST_F(DebugUtilTest, TestGetStackTraceInALoop) {
@@ -251,6 +271,49 @@ TEST_F(DebugUtilTest, TestConcurrentStackTrace) {
     thread.join();
   }
 }
-#endif
+
+TEST_F(DebugUtilTest, LongOperationTracker) {
+  struct TestLogSink : public google::LogSink {
+    void send(google::LogSeverity severity, const char* full_filename,
+              const char* base_filename, int line,
+              const struct ::tm* tm_time,
+              const char* message, size_t message_len) override {
+      log_messages.emplace_back(message, message_len);
+    }
+
+    std::vector<std::string> log_messages;
+  };
+
+  const auto kTimeMultiplier = RegularBuildVsSanitizers(1, 10);
+
+  const auto kShortDuration = 100ms * kTimeMultiplier;
+  const auto kMidDuration = 300ms * kTimeMultiplier;
+  const auto kLongDuration = 500ms * kTimeMultiplier;
+  TestLogSink log_sink;
+  google::AddLogSink(&log_sink);
+  auto se = ScopeExit([&log_sink] {
+    google::RemoveLogSink(&log_sink);
+  });
+
+  {
+    LongOperationTracker tracker("Op1", kLongDuration);
+    std::this_thread::sleep_for(kShortDuration);
+  }
+  {
+    LongOperationTracker tracker("Op2", kShortDuration);
+    std::this_thread::sleep_for(kLongDuration);
+  }
+  {
+    LongOperationTracker tracker1("Op3", kLongDuration);
+    LongOperationTracker tracker2("Op4", kShortDuration);
+    std::this_thread::sleep_for(kMidDuration);
+  }
+
+  std::this_thread::sleep_for(kLongDuration);
+
+  ASSERT_EQ(log_sink.log_messages.size(), 2);
+  ASSERT_STR_CONTAINS(log_sink.log_messages[0], "Op2");
+  ASSERT_STR_CONTAINS(log_sink.log_messages[1], "Op4");
+}
 
 } // namespace yb

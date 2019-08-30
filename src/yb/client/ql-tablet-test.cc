@@ -20,6 +20,7 @@
 #include <boost/optional/optional_io.hpp>
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 
 #include "yb/consensus/consensus.h"
@@ -41,6 +42,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -54,6 +56,13 @@ DECLARE_int32(TEST_delay_execute_async_ms);
 DECLARE_int64(retryable_rpc_single_call_timeout_ms);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(enable_lease_revocation);
+DECLARE_bool(rocksdb_disable_compactions);
+DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
+DECLARE_int32(rocksdb_level0_stop_writes_trigger);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_int32(memstore_size_mb);
+DECLARE_int64(global_memstore_size_mb_max);
+DECLARE_bool(TEST_allow_stop_writes);
 
 namespace yb {
 namespace client {
@@ -406,11 +415,9 @@ void VerifyLogIndicies(MiniCluster* cluster) {
     cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
 
     for (const auto& peer : peers) {
-      consensus::OpId op_id;
-      ASSERT_OK(peer->consensus()->GetLastOpId(consensus::OpIdType::COMMITTED_OPID, &op_id));
       int64_t index = -1;
       ASSERT_OK(peer->GetEarliestNeededLogIndex(&index));
-      ASSERT_EQ(op_id.index(), index);
+      ASSERT_EQ(peer->consensus()->GetLastCommittedOpId().index, index);
     }
   }
 }
@@ -453,7 +460,7 @@ TEST_F(QLTabletTest, GCLogWithRestartWithoutWrites) {
 }
 
 TEST_F(QLTabletTest, LeaderLease) {
-  FLAGS_enable_lease_revocation = false;
+  SetAtomicFlag(false, &FLAGS_enable_lease_revocation);
 
   TableHandle table;
   CreateTable(kTable1Name, &table);
@@ -817,6 +824,82 @@ TEST_F(QLTabletTest, DeleteByHashKey) {
 
 TEST_F(QLTabletTest, DeleteByHashAndPartialRangeKey) {
   TestDeletePartialKey(1);
+}
+
+TEST_F(QLTabletTest, ManySstFilesBootstrap) {
+  FLAGS_flush_rocksdb_on_shutdown = false;
+
+  int key = 0;
+  {
+    google::FlagSaver flag_saver;
+
+    auto original_rocksdb_level0_stop_writes_trigger = FLAGS_rocksdb_level0_stop_writes_trigger;
+    FLAGS_rocksdb_level0_stop_writes_trigger = 10000;
+    FLAGS_rocksdb_level0_slowdown_writes_trigger = 10000;
+    FLAGS_rocksdb_disable_compactions = true;
+    CreateTable(kTable1Name, &table1_, 1);
+
+    auto session = CreateSession();
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    ASSERT_EQ(peers.size(), 1);
+    LOG(INFO) << "Leader: " << peers[0]->permanent_uuid();
+    int stop_key = 0;
+    for (;;) {
+      auto meta = peers[0]->tablet()->TEST_db()->GetLiveFilesMetaData();
+      LOG(INFO) << "Total files: " << meta.size();
+
+      ++key;
+      SetValue(session, key, ValueForKey(key), &table1_);
+      if (meta.size() <= original_rocksdb_level0_stop_writes_trigger) {
+        ASSERT_OK(peers[0]->tablet()->Flush(tablet::FlushMode::kSync));
+        stop_key = key + 10;
+      } else if (key >= stop_key) {
+        break;
+      }
+    }
+  }
+
+  cluster_->Shutdown();
+
+  LOG(INFO) << "Starting cluster";
+
+  ASSERT_OK(cluster_->StartSync());
+
+  LOG(INFO) << "Verify table";
+
+  VerifyTable(1, key, &table1_);
+}
+
+class QLTabletTestSmallMemstore : public QLTabletTest {
+ public:
+  void SetUp() override {
+    FLAGS_memstore_size_mb = 1;
+    FLAGS_global_memstore_size_mb_max = 1;
+    QLTabletTest::SetUp();
+  }
+};
+
+TEST_F_EX(QLTabletTest, DoubleFlush, QLTabletTestSmallMemstore) {
+  FLAGS_TEST_allow_stop_writes = false;
+
+  TestWorkload workload(cluster_.get());
+  workload.set_table_name(kTable1Name);
+  workload.set_write_timeout_millis(30000);
+  workload.set_num_tablets(1);
+  workload.set_num_write_threads(10);
+  workload.set_write_batch_size(1);
+  workload.set_payload_bytes(1_KB);
+  workload.Setup();
+  workload.Start();
+
+  while (workload.rows_inserted() < 75000) {
+    std::this_thread::sleep_for(10ms);
+  }
+
+  workload.StopAndJoin();
+
+  cluster_->Shutdown(); // Need to shutdown cluster before resetting clock back.
+  cluster_.reset();
 }
 
 } // namespace client

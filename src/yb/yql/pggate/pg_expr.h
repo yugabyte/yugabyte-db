@@ -67,6 +67,7 @@ class PgExpr {
 
   // Convert this expression structure to PB format.
   virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, QLValuePB *result);
 
   // Access methods.
   Opcode opcode() const {
@@ -168,9 +169,6 @@ class PgExpr {
                                   const YBCPgTypeEntity *type_entity, const PgTypeAttrs *type_attrs,
                                   PgTuple *pg_tuple);
 
-  // Read hash_value.
-  static CHECKED_STATUS ReadHashValue(const char *doc_key, int key_size, uint16_t *hash_value);
-
   // Get expression type.
   InternalType internal_type() const;
 
@@ -197,7 +195,8 @@ class PgConstant : public PgExpr {
   typedef std::unique_ptr<const PgConstant> UniPtrConst;
 
   // Constructor.
-  explicit PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null);
+  explicit PgConstant(const YBCPgTypeEntity *type_entity, uint64_t datum, bool is_null,
+      PgExpr::Opcode opcode = PgExpr::Opcode::PG_EXPR_CONSTANT);
 
   // Destructor.
   virtual ~PgConstant();
@@ -215,7 +214,8 @@ class PgConstant : public PgExpr {
   void UpdateConstant(const void *value, size_t bytes, bool is_null);
 
   // Expression to PB.
-  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
+  CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
+  CHECKED_STATUS Eval(PgDml *pg_stmt, QLValuePB *result) override;
 
   // Read binary value.
   const string &binary_value() {
@@ -270,25 +270,6 @@ class PgOperator : public PgExpr {
  private:
   const string opname_;
   std::vector<PgExpr*> args_;
-};
-
-class PgGenerateRowId : public PgExpr {
- public:
-  // Public types.
-  typedef std::shared_ptr<PgGenerateRowId> SharedPtr;
-  typedef std::shared_ptr<const PgGenerateRowId> SharedPtrConst;
-
-  typedef std::unique_ptr<PgGenerateRowId> UniPtr;
-  typedef std::unique_ptr<const PgGenerateRowId> UniPtrConst;
-
-  // Constructor.
-  PgGenerateRowId();
-  virtual ~PgGenerateRowId();
-
-  // Convert this expression structure to PB format.
-  virtual CHECKED_STATUS Eval(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) override;
-
- private:
 };
 
 }  // namespace pggate

@@ -20,6 +20,7 @@
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
 
 namespace yb {
 
@@ -66,7 +67,8 @@ class QLWriteOperation :
                                        const DocPath& sub_path, const MonoDelta& ttl,
                                        const UserTimeMicros& user_timestamp,
                                        const ColumnSchema& column,
-                                       QLTableRow* current_row);
+                                       QLTableRow* current_row,
+                                       bool is_insert);
 
   CHECKED_STATUS ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
                                        const QLTableRow& current_row,
@@ -189,7 +191,9 @@ class QLReadOperation : public DocExprExecutor {
                          QLResultSet* result_set,
                          HybridTime* restart_read_ht);
 
-  CHECKED_STATUS PopulateResultSet(const QLTableRow& table_row, QLResultSet *result_set);
+  CHECKED_STATUS PopulateResultSet(const std::unique_ptr<common::QLScanSpec>& spec,
+                                   const QLTableRow& table_row,
+                                   QLResultSet *result_set);
 
   CHECKED_STATUS EvalAggregate(const QLTableRow& table_row);
   CHECKED_STATUS PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset);
@@ -207,6 +211,15 @@ class QLReadOperation : public DocExprExecutor {
   QLResponsePB& response() { return response_; }
 
  private:
+
+  // Checks whether we have processed enough rows for a page and sets the appropriate paging
+  // state in the response object.
+  CHECKED_STATUS SetPagingStateIfNecessary(const common::YQLRowwiseIteratorIf* iter,
+                                           const QLResultSet* resultset,
+                                           const size_t row_count_limit,
+                                           const size_t num_rows_skipped,
+                                           const ReadHybridTime& read_time);
+
   const QLReadRequestPB& request_;
   const TransactionOperationContextOpt txn_op_context_;
   QLResponsePB response_;

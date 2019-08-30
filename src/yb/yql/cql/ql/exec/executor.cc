@@ -13,18 +13,25 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <yb/yql/cql/ql/util/errcodes.h>
+#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ql_processor.h"
-#include "yb/client/client.h"
+
 #include "yb/client/callbacks.h"
+#include "yb/client/client.h"
+#include "yb/client/error.h"
+#include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/rpc/thread_pool.h"
 #include "yb/util/decimal.h"
 #include "yb/util/logging.h"
+#include "yb/util/random_util.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 
@@ -36,21 +43,19 @@ using std::shared_ptr;
 using namespace std::placeholders;
 
 using client::YBColumnSpec;
+using client::YBOperation;
+using client::YBqlOpPtr;
+using client::YBqlReadOp;
+using client::YBqlReadOpPtr;
+using client::YBqlWriteOp;
+using client::YBqlWriteOpPtr;
 using client::YBSchema;
 using client::YBSchemaBuilder;
-using client::YBTable;
-using client::YBTableCreator;
-using client::YBTableAlterer;
-using client::YBTableType;
-using client::YBTableName;
 using client::YBSessionPtr;
-using client::YBOperation;
-using client::YBqlOp;
-using client::YBqlReadOp;
-using client::YBqlWriteOp;
-using client::YBqlOpPtr;
-using client::YBqlReadOpPtr;
-using client::YBqlWriteOpPtr;
+using client::YBTableAlterer;
+using client::YBTableCreator;
+using client::YBTableName;
+using client::YBTableType;
 using strings::Substitute;
 
 #define RETURN_STMT_NOT_OK(s) do {                                         \
@@ -77,7 +82,12 @@ void Executor::ExecuteAsync(const ParseTree& parse_tree, const StatementParamete
   DCHECK(cb_.is_null()) << "Another execution is in progress.";
   cb_ = std::move(cb);
   session_->SetForceConsistentRead(client::ForceConsistentRead::kFalse);
-  session_->SetReadPoint(client::Restart::kFalse);
+  auto read_time = params.read_time();
+  if (read_time) {
+    session_->SetReadPoint(read_time);
+  } else {
+    session_->SetReadPoint(client::Restart::kFalse);
+  }
   RETURN_STMT_NOT_OK(Execute(parse_tree, params));
   FlushAsync();
 }
@@ -162,7 +172,30 @@ Status Executor::Execute(const ParseTree& parse_tree, const StatementParameters&
   // Prepare execution context and execute the parse tree's root node.
   exec_contexts_.emplace_back(parse_tree, params);
   exec_context_ = &exec_contexts_.back();
-  return ProcessStatementStatus(parse_tree, ExecTreeNode(parse_tree.root().get()));
+  auto root_node = parse_tree.root().get();
+  RETURN_NOT_OK(PreExecTreeNode(root_node));
+  return ProcessStatementStatus(parse_tree, ExecTreeNode(root_node));
+}
+
+//--------------------------------------------------------------------------------------------------
+
+Status Executor::PreExecTreeNode(TreeNode *tnode) {
+  if (!tnode) {
+    return Status::OK();
+  } else if (tnode->opcode() == TreeNodeOpcode::kPTInsertStmt) {
+    return PreExecTreeNode(static_cast<PTInsertStmt*>(tnode));
+  } else {
+    return Status::OK();
+  }
+}
+
+Status Executor::PreExecTreeNode(PTInsertStmt *tnode) {
+  if (tnode->InsertingValue()->opcode() == TreeNodeOpcode::kPTInsertJsonClause) {
+    // We couldn't resolve JSON clause bind variable until now
+    return PreExecTreeNode(static_cast<PTInsertJsonClause*>(tnode->InsertingValue().get()));
+  } else {
+    return Status::OK();
+  }
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -236,6 +269,9 @@ Status Executor::ExecTreeNode(const TreeNode *tnode) {
 
     case TreeNodeOpcode::kPTAlterKeyspace:
       return ExecPTNode(static_cast<const PTAlterKeyspace *>(tnode));
+
+    case TreeNodeOpcode::kPTExplainStmt:
+      return ExecPTNode(static_cast<const PTExplainStmt *>(tnode));
 
     default:
       return exec_context_->Error(tnode, ErrorCode::FEATURE_NOT_SUPPORTED);
@@ -357,41 +393,66 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   Status s;
   YBSchema schema;
   YBSchemaBuilder b;
+  shared_ptr<YBTableCreator> table_creator(ql_env_->NewTableCreator());
 
-  const MCList<PTColumnDefinition *>& hash_columns = tnode->hash_columns();
-  for (const auto& column : hash_columns) {
+  // When creating an index, we construct IndexInfo and associated it with the data-table. Later,
+  // when operating on the data-table, we can decide if updating the index-tables are needed.
+  IndexInfoPB *index_info = nullptr;
+  if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
+    const PTCreateIndex *index_node = static_cast<const PTCreateIndex*>(tnode);
+
+    index_info = table_creator->mutable_index_info();
+    index_info->set_indexed_table_id(index_node->indexed_table_id());
+    index_info->set_is_local(index_node->is_local());
+    index_info->set_is_unique(index_node->is_unique());
+    index_info->set_hash_column_count(tnode->hash_columns().size());
+    index_info->set_range_column_count(tnode->primary_columns().size());
+
+    // List key columns of data-table being indexed.
+    for (const auto& col_desc : index_node->column_descs()) {
+      if (col_desc.is_hash()) {
+        index_info->add_indexed_hash_column_ids(col_desc.id());
+      } else if (col_desc.is_primary()) {
+        index_info->add_indexed_range_column_ids(col_desc.id());
+      }
+    }
+  }
+
+  for (const auto& column : tnode->hash_columns()) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
       return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
+    b.AddColumn(column->yb_name())
+      ->Type(column->ql_type())
+      ->HashPrimaryKey()
+      ->Order(column->order());
+    RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
+  }
 
-    YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->ql_type())
-                                ->HashPrimaryKey()
-                                ->Order(column->order());
-    RETURN_NOT_OK(ColumnOpsToSchema(column, column_spec));
+  for (const auto& column : tnode->primary_columns()) {
+    b.AddColumn(column->yb_name())
+      ->Type(column->ql_type())
+      ->PrimaryKey()
+      ->Order(column->order())
+      ->SetSortingType(column->sorting_type());
+    RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
   }
-  const MCList<PTColumnDefinition *>& primary_columns = tnode->primary_columns();
-  for (const auto& column : primary_columns) {
-    YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->ql_type())
-                                ->PrimaryKey()
-                                ->Order(column->order())
-                                ->SetSortingType(column->sorting_type());
-    RETURN_NOT_OK(ColumnOpsToSchema(column, column_spec));
-  }
-  const MCList<PTColumnDefinition *>& columns = tnode->columns();
-  for (const auto& column : columns) {
+
+  for (const auto& column : tnode->columns()) {
     if (column->sorting_type() != ColumnSchema::SortingType::kNotSpecified) {
       return exec_context_->Error(tnode->columns().front(), s, ErrorCode::INVALID_TABLE_DEFINITION);
     }
-    YBColumnSpec *column_spec = b.AddColumn(column->yb_name())->Type(column->ql_type())
-                                ->Nullable()
-                                ->Order(column->order());
+    YBColumnSpec *column_spec = b.AddColumn(column->yb_name())
+                                  ->Type(column->ql_type())
+                                  ->Nullable()
+                                  ->Order(column->order());
     if (column->is_static()) {
       column_spec->StaticColumn();
     }
     if (column->is_counter()) {
       column_spec->Counter();
     }
-    RETURN_NOT_OK(ColumnOpsToSchema(column, column_spec));
+    RETURN_NOT_OK(AddColumnToIndexInfo(index_info, column));
   }
 
   TableProperties table_properties;
@@ -407,17 +468,18 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   }
 
   // Create table.
-  shared_ptr<YBTableCreator> table_creator(ql_env_->NewTableCreator());
   table_creator->table_name(table_name)
       .table_type(YBTableType::YQL_TABLE_TYPE)
       .creator_role_name(ql_env_->CurrentRoleName())
       .schema(&schema);
+
   if (tnode->opcode() == TreeNodeOpcode::kPTCreateIndex) {
     const PTCreateIndex *index_node = static_cast<const PTCreateIndex*>(tnode);
     table_creator->indexed_table_id(index_node->indexed_table_id());
     table_creator->is_local_index(index_node->is_local());
     table_creator->is_unique_index(index_node->is_unique());
   }
+
   s = table_creator->Create();
   if (PREDICT_FALSE(!s.ok())) {
     ErrorCode error_code = ErrorCode::SERVER_ERROR;
@@ -447,6 +509,19 @@ Status Executor::ExecPTNode(const PTCreateTable *tnode) {
   } else {
     result_ = std::make_shared<SchemaChangeResult>(
         "CREATED", "TABLE", table_name.namespace_name(), table_name.table_name());
+  }
+  return Status::OK();
+}
+
+Status Executor::AddColumnToIndexInfo(IndexInfoPB *index_info, const PTColumnDefinition *column) {
+  // Associate index-column with data-column.
+  if (index_info) {
+    // Note that column_id is assigned by master server, so we don't have it yet. When processing
+    // create index request, server will update IndexInfo with proper column_id.
+    auto *col = index_info->add_columns();
+    col->set_column_name(column->yb_name());
+    col->set_indexed_column_id(column->indexed_ref());
+    RETURN_NOT_OK(PTExprToPB(column->colexpr(), col->mutable_colexpr()));
   }
   return Status::OK();
 }
@@ -732,8 +807,11 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
 
   // Default row count limit is the page size.
   // We should return paging state when page size limit is hit.
-  req->set_limit(params.page_size());
-  req->set_return_paging_state(true);
+  // For system tables, we do not support page size so do nothing.
+  if (!tnode->is_system()) {
+    req->set_limit(params.page_size());
+    req->set_return_paging_state(true);
+  }
 
   // Check if there is a limit and compute the new limit based on the number of returned rows.
   if (tnode->limit()) {
@@ -751,7 +829,7 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
     // the page size limit set from above, set the lower limit and do not return paging state when
     // this limit is hit.
     limit -= params.total_num_rows_read();
-    if (limit <= req->limit()) {
+    if (!req->has_limit() || limit <= req->limit()) {
       req->set_limit(limit);
       req->set_return_paging_state(false);
     }
@@ -839,7 +917,7 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
 
   // Statement (paging) parameters.
   StatementParameters current_params;
-  RETURN_NOT_OK(current_params.set_paging_state(current_result->paging_state()));
+  RETURN_NOT_OK(current_params.SetPagingState(current_result->paging_state()));
 
   const size_t total_rows_skipped = exec_context->params().total_rows_skipped() +
                                     current_params.total_rows_skipped();
@@ -909,6 +987,8 @@ Result<bool> Executor::FetchMoreRows(const PTSelectStmt* tnode,
       paging_state.set_next_partition_key(current_params.next_partition_key());
       paging_state.set_next_row_key(current_params.next_row_key());
 
+      paging_state.set_original_request_id(exec_context_->params().request_id());
+
       current_result->SetPagingState(paging_state);
     }
 
@@ -975,9 +1055,17 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
   }
 
   // Set the values for columns.
-  s = ColumnArgsToPB(tnode, req);
-  if (PREDICT_FALSE(!s.ok())) {
-    return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+  if (tnode->InsertingValue()->opcode() == TreeNodeOpcode::kPTInsertJsonClause) {
+    // Error messages are already formatted and don't need additional wrap
+    RETURN_NOT_OK(
+        InsertJsonClauseToPB(tnode,
+                             static_cast<PTInsertJsonClause*>(tnode->InsertingValue().get()),
+                             req));
+  } else {
+    s = ColumnArgsToPB(tnode, req);
+    if (PREDICT_FALSE(!s.ok())) {
+      return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+    }
   }
 
   // Setup the column values that need to be read.
@@ -1200,6 +1288,89 @@ Status Executor::ExecPTNode(const PTAlterKeyspace *tnode) {
 
 namespace {
 
+void AddStringRow(const string& str, QLRowBlock* row_block) {
+  row_block->Extend().mutable_column(0)->set_string_value(str);
+}
+
+void RightPad(const int length, string *s) {
+  s->append(length - s->length(), ' ');
+}
+} // namespace
+
+Status Executor::ExecPTNode(const PTExplainStmt *tnode) {
+  TreeNode::SharedPtr subStmt = tnode->stmt();
+  PTDmlStmt *dmlStmt = down_cast<PTDmlStmt *>(subStmt.get());
+  const YBTableName explainTable("Explain");
+  ColumnSchema explainColumn("QUERY PLAN", STRING);
+  auto explainColumns = std::make_shared<std::vector<ColumnSchema>>(
+      std::initializer_list<ColumnSchema>{explainColumn});
+  auto explainSchema = std::make_shared<Schema>(*explainColumns, 0);
+  QLRowBlock row_block(*explainSchema);
+  faststring buffer;
+  ExplainPlanPB explain_plan = dmlStmt->AnalysisResultToPB();
+  switch (explain_plan.plan_case()) {
+    case ExplainPlanPB::kSelectPlan: {
+      SelectPlanPB *select_plan = explain_plan.mutable_select_plan();
+      if (select_plan->has_aggregate()) {
+        RightPad(select_plan->output_width(), select_plan->mutable_aggregate());
+        AddStringRow(select_plan->aggregate(), &row_block);
+      }
+      RightPad(select_plan->output_width(), select_plan->mutable_select_type());
+      AddStringRow(select_plan->select_type(), &row_block);
+      if (select_plan->has_key_conditions()) {
+        RightPad(select_plan->output_width(), select_plan->mutable_key_conditions());
+        AddStringRow(select_plan->key_conditions(), &row_block);
+      }
+      if (select_plan->has_filter()) {
+        RightPad(select_plan->output_width(), select_plan->mutable_filter());
+        AddStringRow(select_plan->filter(), &row_block);
+      }
+      break;
+    }
+    case ExplainPlanPB::kInsertPlan: {
+      InsertPlanPB *insert_plan = explain_plan.mutable_insert_plan();
+      RightPad(insert_plan->output_width(), insert_plan->mutable_insert_type());
+      AddStringRow(insert_plan->insert_type(), &row_block);
+      break;
+    }
+    case ExplainPlanPB::kUpdatePlan: {
+      UpdatePlanPB *update_plan = explain_plan.mutable_update_plan();
+      RightPad(update_plan->output_width(), update_plan->mutable_update_type());
+      AddStringRow(update_plan->update_type(), &row_block);
+      RightPad(update_plan->output_width(), update_plan->mutable_scan_type());
+      AddStringRow(update_plan->scan_type(), &row_block);
+      RightPad(update_plan->output_width(), update_plan->mutable_key_conditions());
+      AddStringRow(update_plan->key_conditions(), &row_block);
+      break;
+    }
+    case ExplainPlanPB::kDeletePlan: {
+      DeletePlanPB *delete_plan = explain_plan.mutable_delete_plan();
+      RightPad(delete_plan->output_width(), delete_plan->mutable_delete_type());
+      AddStringRow(delete_plan->delete_type(), &row_block);
+      RightPad(delete_plan->output_width(), delete_plan->mutable_scan_type());
+      AddStringRow(delete_plan->scan_type(), &row_block);
+      RightPad(delete_plan->output_width(), delete_plan->mutable_key_conditions());
+      AddStringRow(delete_plan->key_conditions(), &row_block);
+      if (delete_plan->has_filter()) {
+        RightPad(delete_plan->output_width(), delete_plan->mutable_filter());
+        AddStringRow(delete_plan->filter(), &row_block);
+      }
+      break;
+    }
+    case ExplainPlanPB::PLAN_NOT_SET: {
+      return exec_context_->Error(tnode, ErrorCode::EXEC_ERROR);
+      break;
+    }
+  }
+  row_block.Serialize(YQL_CLIENT_CQL, &buffer);
+  result_ = std::make_shared<RowsResult>(explainTable, explainColumns, buffer.ToString());
+  return Status::OK();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+namespace {
+
 // When executing a DML in a transaction or a SELECT statement on a transaction-enabled table, the
 // following transient errors may happen for which the YCQL service will restart the transaction.
 // - TryAgain: when the transaction has a write conflict with another transaction or read-
@@ -1269,9 +1440,13 @@ void Executor::FlushAsync() {
         CommitDone(s, exec_context);
       });
   }
+  // Use the same score on each tablet. So probability of rejecting write should be related
+  // to used capacity.
+  auto memory_limit_score = RandomUniformReal<double>(0.01, 1);
   for (const auto& pair : flush_sessions) {
     auto session = pair.first;
     auto exec_context = pair.second;
+    session->SetMemoryLimitScore(memory_limit_score);
     TRACE("Flush Async");
     session->FlushAsync([this, exec_context](const Status& s) {
         FlushAsyncDone(s, exec_context);
@@ -1404,6 +1579,14 @@ void Executor::ProcessAsyncResults(const bool rescheduled) {
       if (root->opcode() == TreeNodeOpcode::kPTSelectStmt) {
         result_ = nullptr;
       }
+
+      // We should restart read, but read time was specified by caller.
+      // For instance it could happen in case of pagination.
+      if (exec_context_->params().read_time()) {
+        RETURN_STMT_NOT_OK(
+            STATUS(IllegalState, "Restart read required, but read time specified by caller"));
+      }
+
       YBSessionPtr session = GetSession(exec_context_);
       session->SetReadPoint(client::Restart::kTrue);
       RETURN_STMT_NOT_OK(ExecTreeNode(root));
@@ -1848,6 +2031,8 @@ bool Executor::WriteBatch::Empty() const {
 
 Status Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_context) {
   DCHECK(write_batch_.Empty()) << "Concurrent read and write operations not supported yet";
+
+  op->mutable_request()->set_request_id(exec_context_->params().request_id());
   tnode_context->AddOperation(op);
 
   // We need consistent read point if statement is executed in multiple RPC commands.
@@ -2047,6 +2232,18 @@ void Executor::Reset() {
   result_ = nullptr;
   cb_.Reset();
   returns_status_batch_opt_ = boost::none;
+}
+
+QLExpressionPB* CreateQLExpression(QLWriteRequestPB *req, const ColumnDesc& col_desc) {
+  if (col_desc.is_hash()) {
+    return req->add_hashed_column_values();
+  } else if (col_desc.is_primary()) {
+    return req->add_range_column_values();
+  } else {
+    QLColumnValuePB *col_pb = req->add_column_values();
+    col_pb->set_column_id(col_desc.id());
+    return col_pb->mutable_expr();
+  }
 }
 
 }  // namespace ql

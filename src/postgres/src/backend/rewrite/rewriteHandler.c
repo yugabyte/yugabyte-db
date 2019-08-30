@@ -40,6 +40,7 @@
 #include "utils/rel.h"
 
 #include "pg_yb_utils.h"
+#include "executor/ybcModifyTable.h"
 
 /* We use a list of these to detect recursion in RewriteQuery */
 typedef struct rewrite_event
@@ -1316,12 +1317,15 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 	const char *attrname;
 	TargetEntry *tle;
 
-	if (IsYugaByteEnabled() && IsYBRelation(target_relation))
+	if (IsYBRelation(target_relation))
 	{
 		/*
-		 * If there are indexes on the target table, return the whole row also.
+		 * If there are secondary indices on the target table, or if we have a 
+		 * row-level trigger corresponding to the operations, then also return 
+		 * the whole row.
 		 */	
-		if (target_relation->rd_rel->relhasindex)
+		if (YBRelHasOldRowTriggers(target_relation, parsetree->commandType) ||
+		    YBRelHasSecondaryIndices(target_relation))
 		{
 			var = makeWholeRowVar(target_rte,
 								  parsetree->resultRelation,
@@ -1345,7 +1349,7 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 					  -1,
 					  InvalidOid,
 					  0);
-		attrname = "ybctid";			
+		attrname = "ybctid";
 	}
 	else if (target_relation->rd_rel->relkind == RELKIND_RELATION ||
 		target_relation->rd_rel->relkind == RELKIND_MATVIEW ||

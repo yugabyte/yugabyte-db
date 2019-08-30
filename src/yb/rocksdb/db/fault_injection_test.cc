@@ -92,7 +92,7 @@ Status Truncate(Env* env, const std::string& filename, uint64_t length) {
     return s;
   }
 
-  std::unique_ptr<char[]> scratch(new char[length]);
+  std::unique_ptr<uint8_t[]> scratch(new uint8_t[length]);
   rocksdb::Slice result;
   s = orig_file->Read(length, &result, scratch.get());
 #ifdef OS_WIN
@@ -280,7 +280,7 @@ class FaultInjectionTestEnv : public EnvWrapper {
   }
 
   // For every file that is not fully synced, make a call to `func` with
-  // FileState of the file as the parameter.
+  // InMemoryFileState of the file as the parameter.
   Status DropFileData(std::function<Status(Env*, FileState)> func) {
     Status s;
     MutexLock l(&mutex_);

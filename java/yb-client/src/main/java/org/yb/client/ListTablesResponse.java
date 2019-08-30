@@ -36,13 +36,17 @@ import org.yb.annotations.InterfaceStability;
 import org.yb.master.Master;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public class ListTablesResponse extends YRpcResponse {
 
-  private final List<Master.ListTablesResponsePB.TableInfo> tablesList;
+  private List<Master.ListTablesResponsePB.TableInfo> tablesList;
 
   ListTablesResponse(long ellapsedMillis,
                      String tsUUID,
@@ -71,4 +75,23 @@ public class ListTablesResponse extends YRpcResponse {
     }
     return tables;
   }
+
+  /**
+   * Merges tablesList from input ListTablesResponse into this tablesList.
+   * @return this instance
+   */
+  public ListTablesResponse mergeWith(ListTablesResponse inputResponse) {
+    if (inputResponse == null) { return this; }
+    List<Master.ListTablesResponsePB.TableInfo> inputTablesList = inputResponse.getTableInfoList();
+    if (inputTablesList != null && !inputTablesList.isEmpty()) {
+      // Protobuf returns an unmodifiable list, so we need a new ArrayList.
+      inputTablesList = new ArrayList<>(inputTablesList);
+      if (this.tablesList != null && !this.tablesList.isEmpty()) {
+        inputTablesList.addAll(this.tablesList);
+      }
+      this.tablesList = inputTablesList;
+    }
+    return this;
+  }
+
 }

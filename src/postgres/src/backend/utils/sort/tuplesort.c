@@ -889,7 +889,8 @@ tuplesort_begin_cluster(TupleDesc tupDesc,
 	MemoryContext oldcontext;
 	int			i;
 
-	Assert(indexRel->rd_rel->relam == BTREE_AM_OID);
+	Assert(indexRel->rd_rel->relam == BTREE_AM_OID ||
+		   indexRel->rd_rel->relam == LSM_AM_OID);
 
 	oldcontext = MemoryContextSwitchTo(state->sortcontext);
 

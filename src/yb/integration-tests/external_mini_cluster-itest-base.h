@@ -58,6 +58,7 @@ class ExternalMiniClusterITestBase : public YBTest {
   }
 
   virtual void TearDown() override {
+    client_.reset();
     if (cluster_) {
       if (HasFatalFailure()) {
         LOG(INFO) << "Found fatal failure";
@@ -86,7 +87,7 @@ class ExternalMiniClusterITestBase : public YBTest {
 
   gscoped_ptr<ExternalMiniCluster> cluster_;
   gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
-  std::shared_ptr<client::YBClient> client_;
+  std::unique_ptr<client::YBClient> client_;
   itest::TabletServerMap ts_map_;
 };
 
@@ -105,8 +106,7 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
   ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy().get(),
                                          &cluster_->proxy_cache(),
                                          &ts_map_));
-  client::YBClientBuilder builder;
-  ASSERT_OK(cluster_->CreateClient(&builder, &client_));
+  client_ = ASSERT_RESULT(cluster_->CreateClient());
 }
 
 }  // namespace yb

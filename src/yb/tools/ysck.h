@@ -86,6 +86,11 @@ class YsckTabletReplica {
     return ts_uuid_;
   }
 
+  std::string ToString() const {
+    return Format("{ is_leader: $0 is_follower: $1 ts_uuid: $2 }",
+                  is_leader_, is_follower_, ts_uuid_);
+  }
+
  private:
   const bool is_leader_;
   const bool is_follower_;
@@ -119,9 +124,21 @@ class YsckTablet {
 // Representation of a table. Composed of tablets.
 class YsckTable {
  public:
-  YsckTable(client::YBTableName name, const Schema& schema, int num_replicas, TableType table_type)
-      : name_(std::move(name)), schema_(schema), num_replicas_(num_replicas),
-      table_type_(table_type) {}
+  YsckTable(
+      const TableId& id,
+      client::YBTableName name,
+      const Schema& schema,
+      int num_replicas,
+      TableType table_type)
+      : id_(id),
+        name_(std::move(name)),
+        schema_(schema),
+        num_replicas_(num_replicas),
+        table_type_(table_type) {}
+
+  const TableId& id() const {
+    return id_;
+  }
 
   const client::YBTableName& name() const {
     return name_;
@@ -148,6 +165,7 @@ class YsckTable {
   }
 
  private:
+  TableId id_;
   const client::YBTableName name_;
   const Schema schema_;
   const int num_replicas_;

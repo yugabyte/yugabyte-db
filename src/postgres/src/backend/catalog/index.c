@@ -857,27 +857,35 @@ index_create(Relation heapRelation,
 		elog(ERROR, "shared relations must be placed in pg_global tablespace");
 
 	/*
-	 * Check for duplicate name (both as to the index, and as to the
-	 * associated constraint if any).  Such cases would fail on the relevant
-	 * catalogs' unique indexes anyway, but we prefer to give a friendlier
-	 * error message.
+	 * In YB mode, during bootstrap, a relation lookup by name will be a full-table scan
+	 * and slow because secondary indexes are not available yet. So we will skip this
+	 * duplicate name check as it will error later anyway when the indexes are created.
 	 */
-	if (get_relname_relid(indexRelationName, namespaceId))
+	if (!IsYugaByteEnabled() || !IsBootstrapProcessingMode())
 	{
-		if ((flags & INDEX_CREATE_IF_NOT_EXISTS) != 0)
+		/*
+		 * Check for duplicate name (both as to the index, and as to the
+		 * associated constraint if any).  Such cases would fail on the relevant
+		 * catalogs' unique indexes anyway, but we prefer to give a friendlier
+		 * error message.
+		 */
+		if (get_relname_relid(indexRelationName, namespaceId))
 		{
-			ereport(NOTICE,
-					(errcode(ERRCODE_DUPLICATE_TABLE),
-					 errmsg("relation \"%s\" already exists, skipping",
-							indexRelationName)));
-			heap_close(pg_class, RowExclusiveLock);
-			return InvalidOid;
-		}
+			if ((flags & INDEX_CREATE_IF_NOT_EXISTS) != 0)
+			{
+				ereport(NOTICE,
+						(errcode(ERRCODE_DUPLICATE_TABLE),
+						 errmsg("relation \"%s\" already exists, skipping",
+								indexRelationName)));
+				heap_close(pg_class, RowExclusiveLock);
+				return InvalidOid;
+			}
 
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_TABLE),
-				 errmsg("relation \"%s\" already exists",
-						indexRelationName)));
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_TABLE),
+					 errmsg("relation \"%s\" already exists",
+							indexRelationName)));
+		}
 	}
 
 	if ((flags & INDEX_CREATE_ADD_CONSTRAINT) != 0 &&
@@ -949,11 +957,16 @@ index_create(Relation heapRelation,
 
 	Assert(indexRelationId == RelationGetRelid(indexRelation));
 
-	if (IsYugaByteEnabled())
+	/*
+	 * Create index in YugaByte only if it is a secondary index. Primary key is
+	 * an implicit part of the base table in YugaByte and doesn't need to be created.
+	 */
+	if (IsYBRelation(indexRelation) && !isprimary)
 	{
 		YBCCreateIndex(indexRelationName,
 					   indexInfo,
 					   indexTupDesc,
+					   coloptions,
 					   indexRelationId,
 					   heapRelation);
 	}
@@ -1995,8 +2008,9 @@ BuildSpeculativeIndexInfo(Relation index, IndexInfo *ii)
 	 */
 	Assert(ii->ii_Unique);
 
-	if (index->rd_rel->relam != BTREE_AM_OID)
-		elog(ERROR, "unexpected non-btree speculative unique index");
+	if (index->rd_rel->relam != BTREE_AM_OID &&
+		index->rd_rel->relam != LSM_AM_OID)
+		elog(ERROR, "unexpected non-btree/lsm speculative unique index");
 
 	ii->ii_UniqueOps = (Oid *) palloc(sizeof(Oid) * indnkeyatts);
 	ii->ii_UniqueProcs = (Oid *) palloc(sizeof(Oid) * indnkeyatts);

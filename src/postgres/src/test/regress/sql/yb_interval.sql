@@ -17,47 +17,50 @@ SELECT INTERVAL '10 years -11 month -12 days +13:14' AS "9 years...";
 
 CREATE TABLE INTERVAL_TBL (f1 interval PRIMARY KEY);
 
-INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 1 minute');
-INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 5 hour');
-INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 10 day');
-INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 34 year');
-INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 3 months');
-INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 14 seconds ago');
-INSERT INTO INTERVAL_TBL (f1) VALUES ('1 day 2 hours 3 minutes 4 seconds');
-INSERT INTO INTERVAL_TBL (f1) VALUES ('6 years');
-INSERT INTO INTERVAL_TBL (f1) VALUES ('5 months');
-INSERT INTO INTERVAL_TBL (f1) VALUES ('5 months 12 hours');
+-- Disallow interval in a primary key until we support it properly.
+-- See https://github.com/YugaByte/yugabyte-db/issues/1397.
+--
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 1 minute');
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 5 hour');
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 10 day');
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 34 year');
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 3 months');
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 14 seconds ago');
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('1 day 2 hours 3 minutes 4 seconds');
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('6 years');
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('5 months');
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('5 months 12 hours');
 
 -- badly formatted interval
-INSERT INTO INTERVAL_TBL (f1) VALUES ('badly formatted interval');
-INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 30 eons ago');
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('badly formatted interval');
+-- INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 30 eons ago');
 
 -- test interval operators
 
-SELECT '' AS ten, * FROM INTERVAL_TBL ORDER BY f1;
+-- SELECT '' AS ten, * FROM INTERVAL_TBL ORDER BY f1;
 
-SELECT '' AS nine, * FROM INTERVAL_TBL
-   WHERE INTERVAL_TBL.f1 <> interval '@ 10 days' ORDER BY f1;
+-- SELECT '' AS nine, * FROM INTERVAL_TBL
+--    WHERE INTERVAL_TBL.f1 <> interval '@ 10 days' ORDER BY f1;
 
-SELECT '' AS three, * FROM INTERVAL_TBL
-   WHERE INTERVAL_TBL.f1 <= interval '@ 5 hours' ORDER BY f1;
+-- SELECT '' AS three, * FROM INTERVAL_TBL
+--    WHERE INTERVAL_TBL.f1 <= interval '@ 5 hours' ORDER BY f1;
 
-SELECT '' AS three, * FROM INTERVAL_TBL
-   WHERE INTERVAL_TBL.f1 < interval '@ 1 day' ORDER BY f1;
+-- SELECT '' AS three, * FROM INTERVAL_TBL
+--    WHERE INTERVAL_TBL.f1 < interval '@ 1 day' ORDER BY f1;
 
-SELECT '' AS one, * FROM INTERVAL_TBL
-   WHERE INTERVAL_TBL.f1 = interval '@ 34 years' ORDER BY f1;
+-- SELECT '' AS one, * FROM INTERVAL_TBL
+--    WHERE INTERVAL_TBL.f1 = interval '@ 34 years' ORDER BY f1;
 
-SELECT '' AS five, * FROM INTERVAL_TBL
-   WHERE INTERVAL_TBL.f1 >= interval '@ 1 month' ORDER BY f1;
+-- SELECT '' AS five, * FROM INTERVAL_TBL
+--    WHERE INTERVAL_TBL.f1 >= interval '@ 1 month' ORDER BY f1;
 
-SELECT '' AS nine, * FROM INTERVAL_TBL
-   WHERE INTERVAL_TBL.f1 > interval '@ 3 seconds ago' ORDER BY f1;
+-- SELECT '' AS nine, * FROM INTERVAL_TBL
+--    WHERE INTERVAL_TBL.f1 > interval '@ 3 seconds ago' ORDER BY f1;
 
-SELECT '' AS fortyfive, r1.*, r2.*
-   FROM INTERVAL_TBL r1, INTERVAL_TBL r2
-   WHERE r1.f1 > r2.f1
-   ORDER BY r1.f1, r2.f1;
+-- SELECT '' AS fortyfive, r1.*, r2.*
+--    FROM INTERVAL_TBL r1, INTERVAL_TBL r2
+--    WHERE r1.f1 > r2.f1
+--    ORDER BY r1.f1, r2.f1;
 
 -- Test intervals that are large enough to overflow 64 bits in comparisons
 CREATE TABLE INTERVAL_TBL_OF (f1 interval);
@@ -115,13 +118,13 @@ DROP TABLE INTERVAL_MULDIV_TBL;
 SET DATESTYLE = 'postgres';
 SET IntervalStyle to postgres_verbose;
 
-SELECT '' AS ten, * FROM INTERVAL_TBL ORDER BY f1;
+-- SELECT '' AS ten, * FROM INTERVAL_TBL ORDER BY f1;
 
 -- test avg(interval), which is somewhat fragile since people have been
 -- known to change the allowed input syntax for type interval without
 -- updating pg_aggregate.agginitval
 
-select avg(f1) from interval_tbl;
+-- select avg(f1) from interval_tbl;
 
 -- test long interval input
 select '4 millenniums 5 centuries 4 decades 1 year 4 months 4 days 17 minutes 31 seconds'::interval;
@@ -215,9 +218,9 @@ SELECT interval '1 2:03.5678' minute to second(2);
 SELECT interval '1 2:03:04.5678' minute to second(2);
 
 -- test casting to restricted precision (bug #14479)
-SELECT f1, f1::INTERVAL DAY TO MINUTE AS "minutes",
-  (f1 + INTERVAL '1 month')::INTERVAL MONTH::INTERVAL YEAR AS "years"
-  FROM interval_tbl ORDER BY f1;
+-- SELECT f1, f1::INTERVAL DAY TO MINUTE AS "minutes",
+--   (f1 + INTERVAL '1 month')::INTERVAL MONTH::INTERVAL YEAR AS "years"
+--   FROM interval_tbl ORDER BY f1;
 
 -- test inputting and outputting SQL standard interval literals
 SET IntervalStyle TO sql_standard;

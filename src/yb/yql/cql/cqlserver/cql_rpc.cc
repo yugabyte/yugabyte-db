@@ -58,7 +58,8 @@ CQLConnectionContext::CQLConnectionContext(
     const MemTrackerPtr& call_tracker)
     : ql_session_(new ql::QLSession()),
       parser_(buffer_tracker, CQLMessage::kMessageHeaderLength, CQLMessage::kHeaderPosLength,
-              FLAGS_max_message_length, rpc::IncludeHeader::kTrue, this),
+              FLAGS_max_message_length, rpc::IncludeHeader::kTrue, rpc::SkipEmptyMessages::kFalse,
+              this),
       read_buffer_(receive_buffer_size, buffer_tracker),
       call_tracker_(call_tracker) {
 }
@@ -66,7 +67,7 @@ CQLConnectionContext::CQLConnectionContext(
 Result<rpc::ProcessDataResult> CQLConnectionContext::ProcessCalls(
     const rpc::ConnectionPtr& connection, const IoVecs& data,
     rpc::ReadBufferFull read_buffer_full) {
-  return parser_.Parse(connection, data);
+  return parser_.Parse(connection, data, read_buffer_full);
 }
 
 Status CQLConnectionContext::HandleCall(
@@ -140,11 +141,11 @@ const std::string& CQLInboundCall::method_name() const {
   return result;
 }
 
-void CQLInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
+void CQLInboundCall::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) {
   TRACE_EVENT0("rpc", "CQLInboundCall::Serialize");
   CHECK_GT(response_msg_buf_.size(), 0);
 
-  output->push_back(response_msg_buf_);
+  output->push_back(std::move(response_msg_buf_));
 }
 
 void CQLInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_code,
@@ -273,7 +274,7 @@ void CQLInboundCall::LogTrace() const {
 }
 
 std::string CQLInboundCall::ToString() const {
-  return Format("CQL Call from $0", connection()->remote());
+  return Format("CQL Call from $0, stream id: $1", connection()->remote(), stream_id_);
 }
 
 bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,

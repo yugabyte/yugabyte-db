@@ -29,8 +29,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_HDRHISTOGRAM_H_
-#define YB_UTIL_HDRHISTOGRAM_H_
+#ifndef YB_UTIL_HDR_HISTOGRAM_H
+#define YB_UTIL_HDR_HISTOGRAM_H
 
 // C++ (TR1) port of HdrHistogram.
 // Original java implementation: http://giltene.github.io/HdrHistogram/
@@ -56,7 +56,8 @@
 // tracked value (1 hour), it would still maintain a resolution of 3.6 seconds
 // (or better).
 
-#include <stdint.h>
+#include <cstdint>
+#include <iosfwd>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -174,7 +175,10 @@ class HdrHistogram {
   // Get the count of recorded values within a range of value levels.
   // (inclusive to within the histogram's resolution)
   // TODO: implement
-  //uint64_t CountBetweenValues(uint64_t low_value, uint64_t high_value) const;
+  // uint64_t CountBetweenValues(uint64_t low_value, uint64_t high_value) const;
+
+  // Dump a formatted, multiline string describing this histogram to 'out'.
+  void DumpHumanReadable(std::ostream* out) const;
 
  private:
   friend class AbstractHistogramIterator;
@@ -357,4 +361,4 @@ class PercentileIterator : public AbstractHistogramIterator {
 
 } // namespace yb
 
-#endif // YB_UTIL_HDRHISTOGRAM_H_
+#endif // YB_UTIL_HDR_HISTOGRAM_H

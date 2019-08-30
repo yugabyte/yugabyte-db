@@ -153,7 +153,7 @@ public class BinaryValuesCommandsTest extends JedisCommandTestBase {
   }
 
   @Test
-  @Ignore public void setnx() {
+  public void setnx() {
     long status = jedis.setnx(bfoo, binaryValue);
     assertEquals(1, status);
     assertTrue(Arrays.equals(binaryValue, jedis.get(bfoo)));

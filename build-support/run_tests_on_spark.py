@@ -54,8 +54,6 @@ from collections import defaultdict
 
 BUILD_SUPPORT_DIR = os.path.dirname(os.path.realpath(__file__))
 YB_PYTHONPATH_ENTRY = os.path.realpath(os.path.join(BUILD_SUPPORT_DIR, '..', 'python'))
-YB_ENT_PYTHONPATH_ENTRY = os.path.realpath(os.path.join(BUILD_SUPPORT_DIR, '..', 'ent', 'python'))
-is_yb_internal_env = os.path.isdir(YB_ENT_PYTHONPATH_ENTRY)
 
 # An upper bound on a single test's running time. In practice there are multiple other timeouts
 # that should be triggered earlier.
@@ -80,8 +78,6 @@ def add_pythonpath_entry(entry):
 
 def adjust_pythonpath():
     add_pythonpath_entry(YB_PYTHONPATH_ENTRY)
-    if is_yb_internal_env:
-        add_pythonpath_entry(YB_ENT_PYTHONPATH_ENTRY)
 
 
 def wait_for_path_to_exist(target_path):
@@ -117,10 +113,6 @@ wait_for_path_to_exist(YB_PYTHONPATH_ENTRY)
 from yb import yb_dist_tests  # noqa
 from yb import command_util  # noqa
 from yb.common_util import set_to_comma_sep_str, get_bool_env_var, is_macos  # noqa
-
-
-if is_yb_internal_env:
-    from yb_ent import yb_dist_tests_internal
 
 
 # Special Jenkins environment variables. They are propagated to tasks running in a distributed way
@@ -163,10 +155,16 @@ LIST_OF_TESTS_DIR_NAME = 'list_of_tests'
 propagated_env_vars = {}
 global_conf_dict = None
 
-SPARK_URLS = yb_dist_tests_internal.SPARK_URLS if is_yb_internal_env else {
-    'linux_default': 'spark://spark-for-yugabyte-linux-default.example.com:7077',
-    'macos': 'spark://spark-for-yugabyte-macos.example.com:7077',
-    'linux_asan_tsan': 'spark://spark-for-yugabyte-linux-asan-tsan.example.com:7078'
+SPARK_URLS = {
+    'linux_default': os.getenv(
+        'YB_SPARK_URL_LINUX_DEFAULT',
+        'spark://spark-for-yugabyte-linux-default.example.com:7077'),
+    'linux_asan_tsan': os.getenv(
+        'YB_SPARK_URL_LINUX_ASAN_TSAN',
+        'spark://spark-for-yugabyte-linux-asan-tsan.example.com:7077'),
+    'macos': os.getenv(
+        'YB_SPARK_URL_MACOS',
+        'spark://spark-for-yugabyte-macos.example.com:7077'),
 }
 
 # This has to match what we output in run-test.sh if YB_LIST_CTEST_TESTS_ONLY is set.
@@ -198,9 +196,8 @@ g_spark_master_url_override = None
 
 
 def get_sys_path_info_str():
-    return 'Host: %s, is_yb_internal_env=%s, pythonpath_adjustments=%s, sys.path entries: %s' % (
+    return 'Host: %s, pythonpath_adjustments=%s, sys.path entries: %s' % (
         socket.gethostname(),
-        is_yb_internal_env,
         repr(pythonpath_adjustments),
         ', '.join([
             '"%s" (%s)' % (path_entry, "exists" if os.path.exists(path_entry) else "does NOT exist")
@@ -295,6 +292,10 @@ def parallel_run_test(test_descriptor_str):
     wait_for_path_to_exist(global_conf.build_root)
     yb_dist_tests.global_conf = global_conf
     test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
+
+    # This is saved in the test result file by process_test_result.py.
+    os.environ['YB_TEST_DESCRIPTOR_STR'] = test_descriptor_str
+
     os.environ['YB_TEST_ATTEMPT_INDEX'] = str(test_descriptor.attempt_index)
     os.environ['build_type'] = global_conf.build_type
     os.environ['YB_RUNNING_TEST_ON_SPARK'] = '1'
@@ -307,6 +308,7 @@ def parallel_run_test(test_descriptor_str):
                     ''.join('%09d' % random.randrange(0, 1000000000) for i in xrange(4))))
 
     os.environ['YB_TEST_STARTED_RUNNING_FLAG_FILE'] = test_started_running_flag_file
+    os.environ['YB_TEST_EXTRA_ERROR_LOG_PATH'] = test_descriptor.error_output_path
 
     yb_dist_tests.wait_for_clock_sync()
 
@@ -993,6 +995,9 @@ def main():
         assert total_num_tests == len(test_descriptors), \
             "total_num_tests={}, len(test_descriptors)={}".format(
                     total_num_tests, len(test_descriptors))
+
+        # Randomize test order to avoid any kind of skew.
+        random.shuffle(test_descriptors)
 
         test_names_rdd = spark_context.parallelize(
                 [test_descriptor.descriptor_str for test_descriptor in test_descriptors],

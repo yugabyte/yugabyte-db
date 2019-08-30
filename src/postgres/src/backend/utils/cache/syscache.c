@@ -990,65 +990,6 @@ static int	SysCacheSupportingRelOidSize;
 
 static int	oid_compare(const void *a, const void *b);
 
-/*
- * Returns the oid of the primary key index of the sys catalog tables in SysCache in YugaByte.
- */
-Oid
-YBSysTablePrimaryKeyOid(Oid relid)
-{
-	switch (relid)
-	{
-		case AccessMethodOperatorRelationId: return AccessMethodOperatorOidIndexId;
-		case AccessMethodProcedureRelationId: return AccessMethodProcedureOidIndexId;
-		case AccessMethodRelationId: return AmOidIndexId;
-		case AggregateRelationId: return AggregateFnoidIndexId;
-		case AttributeRelationId: return AttributeRelidNameIndexId;
-		case AuthIdRelationId: return AuthIdOidIndexId;
-		case AuthMemRelationId: return AuthMemRoleMemIndexId;
-		case CastRelationId: return CastOidIndexId;
-		case CollationRelationId: return CollationOidIndexId;
-		case ConstraintRelationId: return ConstraintOidIndexId;
-		case ConversionRelationId: return ConversionOidIndexId;
-		case DatabaseRelationId: return DatabaseOidIndexId;
-		case DefaultAclRelationId: return DefaultAclOidIndexId;
-		case EnumRelationId: return EnumOidIndexId;
-		case EventTriggerRelationId: return EventTriggerOidIndexId;
-		case ForeignDataWrapperRelationId: return ForeignDataWrapperOidIndexId;
-		case ForeignServerRelationId: return ForeignServerOidIndexId;
-		case ForeignTableRelationId: return ForeignTableRelidIndexId;
-		case IndexRelationId: return IndexRelidIndexId;
-		case LanguageRelationId: return LanguageOidIndexId;
-		case NamespaceRelationId: return NamespaceOidIndexId;
-		case OperatorClassRelationId: return OpclassOidIndexId;
-		case OperatorFamilyRelationId: return OpfamilyOidIndexId;
-		case OperatorRelationId: return OperatorOidIndexId;
-		case PartitionedRelationId: return PartitionedRelidIndexId;
-		case ProcedureRelationId: return ProcedureOidIndexId;
-		case PublicationRelRelationId: return PublicationRelObjectIndexId;
-		case PublicationRelationId: return PublicationObjectIndexId;
-		case RangeRelationId: return RangeTypidIndexId;
-		case RelationRelationId: return ClassOidIndexId;
-		case ReplicationOriginRelationId: return ReplicationOriginIdentIndex;
-		case RewriteRelationId: return RewriteOidIndexId;
-		case SequenceRelationId: return SequenceRelidIndexId;
-		case StatisticExtRelationId: return StatisticExtOidIndexId;
-		case StatisticRelationId: return StatisticRelidAttnumInhIndexId;
-		case SubscriptionRelRelationId: return SubscriptionRelSrrelidSrsubidIndexId;
-		case SubscriptionRelationId: return SubscriptionObjectIndexId;
-		case TSConfigMapRelationId: return TSConfigMapIndexId;
-		case TSConfigRelationId: return TSConfigOidIndexId;
-		case TSDictionaryRelationId: return TSDictionaryOidIndexId;
-		case TSParserRelationId: return TSParserOidIndexId;
-		case TSTemplateRelationId: return TSTemplateOidIndexId;
-		case TableSpaceRelationId: return TablespaceOidIndexId;
-		case TransformRelationId: return TransformOidIndexId;
-		case TypeRelationId: return TypeOidIndexId;
-		case UserMappingRelationId: return UserMappingOidIndexId;
-		default: break;
-	}
-	return InvalidOid;
-}
-
 Bitmapset *
 YBSysTablePrimaryKey(Oid relid)
 {
@@ -1100,7 +1041,7 @@ YBSysTablePrimaryKey(Oid relid)
 			break;
 		case AttributeRelationId:
 			YBPkAddAttribute(Anum_pg_attribute_attrelid);
-			YBPkAddAttribute(Anum_pg_attribute_attname);
+			YBPkAddAttribute(Anum_pg_attribute_attnum);
 			break;
 		case AuthMemRelationId:
 			YBPkAddAttribute(Anum_pg_auth_members_roleid);
@@ -1145,7 +1086,7 @@ YBSysTablePrimaryKey(Oid relid)
  * Utility function for YugaByte mode. Is used to automatically add entries
  * from common catalog tables to the cache immediately after they are inserted.
  */
-void SetSysCacheTuple(Relation rel, HeapTuple tup)
+void YBSetSysCacheTuple(Relation rel, HeapTuple tup)
 {
 	TupleDesc tupdesc = RelationGetDescr(rel);
 	switch (RelationGetRelid(rel))
@@ -1319,6 +1260,24 @@ YBCInitCatalogCache(int cacheId)
 }
 
 /*
+ * Preload catalog caches with data from the master to avoid master lookups
+ * later.
+ */
+void
+YBPreloadCatalogCaches(void)
+{
+	int			cacheId;
+
+	Assert(CacheInitialized);
+
+	/* Ensure individual caches are initialized */
+	InitCatalogCachePhase2();
+
+	for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
+		YBCInitCatalogCache(cacheId);
+}
+
+/*
  * InitCatalogCache - initialize the caches
  *
  * Note that no database access is done here; we only allocate memory
@@ -1408,15 +1367,7 @@ InitCatalogCachePhase2(void)
 
 	for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
 		InitCatCachePhase2(SysCache[cacheId], true);
-
-	if (IsYugaByteEnabled())
-	{
-		for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
-			YBCInitCatalogCache(cacheId);
-	}
-
 }
-
 
 /*
  * SearchSysCache

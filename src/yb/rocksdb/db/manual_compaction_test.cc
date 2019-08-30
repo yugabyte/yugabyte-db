@@ -63,10 +63,10 @@ class DestroyAllCompactionFilter : public CompactionFilter {
  public:
   DestroyAllCompactionFilter() {}
 
-  virtual bool Filter(int level, const Slice& key, const Slice& existing_value,
-                      std::string* new_value,
-                      bool* value_changed) const override {
-    return existing_value.ToString() == "destroy";
+  FilterDecision Filter(int level, const Slice& key, const Slice& existing_value,
+                        std::string* new_value, bool* value_changed) override {
+    return existing_value.ToBuffer() == "destroy" ? FilterDecision::kDiscard
+                                                  : FilterDecision::kKeep;
   }
 
   const char* Name() const override {

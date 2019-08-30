@@ -12,7 +12,10 @@
 //
 
 #include <set>
+
 #include "yb/client/schema.h"
+#include "yb/client/table.h"
+
 #include "yb/yql/cql/ql/ptree/pt_table_property.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/util/stol_utils.h"
@@ -392,6 +395,11 @@ Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) co
       break;
   }
   return Status::OK();
+}
+
+TableId PTTableProperty::copartition_table_id() const {
+  DCHECK_EQ(property_type_, PropertyType::kCoPartitionTable);
+  return copartition_table_->id();
 }
 
 const std::map<string, PTTablePropertyMap::PropertyMapType> PTTablePropertyMap::kPropertyDataTypes

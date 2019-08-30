@@ -62,6 +62,4 @@ extern void ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 extern bool ybcingettuple(IndexScanDesc scan, ScanDirection dir);
 extern void ybcinendscan(IndexScanDesc scan);
 
-extern HeapTuple YBCIndexExecuteSelect(Relation relation, Datum ybctid);
-
 #endif							/* YBCINDEX_H */

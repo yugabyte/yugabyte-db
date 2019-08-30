@@ -1,0 +1,140 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+syntax = "proto2";
+
+package yb.master;
+
+option java_package = "org.yb.master";
+
+import "yb/master/master.proto";
+
+// The on-disk entry in the sys.catalog table ("metadata" column) for snapshots entries.
+message SysSnapshotEntryPB {
+  enum State {
+    UNKNOWN = 0;
+    CREATING = 1;
+    COMPLETE = 2;
+    DELETING = 3;
+    DELETED = 4;
+    FAILED = 5;
+    CANCELLED = 6;
+    RESTORING = 7;
+  }
+
+  // Note: The id of the snapshot is not stored here as it is already part of
+  // SysRowEntry's id component.
+
+  optional State state = 1 [ default = UNKNOWN ];
+
+  message TabletSnapshotPB {
+    optional bytes id = 1;
+    optional State state = 2;
+  }
+
+  repeated TabletSnapshotPB tablet_snapshots = 2;
+
+  // Stored info about snapshot (1) namespaces (2) tables (3) tablets.
+  repeated SysRowEntry entries = 3;
+}
+
+////////////////////////////////////////////////////////////
+// RPCs
+////////////////////////////////////////////////////////////
+
+message CreateSnapshotRequestPB {
+  repeated TableIdentifierPB tables = 1;
+}
+
+message CreateSnapshotResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bytes snapshot_id = 2;
+}
+
+message IsSnapshotOpDoneRequestPB {
+  optional bytes snapshot_id = 1;
+}
+
+message IsSnapshotOpDoneResponsePB {
+  optional MasterErrorPB error = 1;
+
+  // true if the create operation is completed, false otherwise
+  optional bool done = 2;
+}
+
+message SnapshotInfoPB {
+  optional bytes id = 1;
+  // Detailed snapshot entries.
+  optional SysSnapshotEntryPB entry = 2;
+}
+
+message ListSnapshotsRequestPB {
+  optional bytes snapshot_id = 2;
+}
+
+message ListSnapshotsResponsePB {
+  optional MasterErrorPB error = 1;
+
+  optional bytes current_snapshot_id = 2; // Snapshot currently being created/restored.
+  repeated SnapshotInfoPB snapshots = 3;
+}
+
+message RestoreSnapshotRequestPB {
+  optional bytes snapshot_id = 2;
+}
+
+message RestoreSnapshotResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message DeleteSnapshotRequestPB {
+  optional bytes snapshot_id = 2;
+}
+
+message DeleteSnapshotResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message ImportSnapshotMetaRequestPB {
+  optional SnapshotInfoPB snapshot = 1;
+}
+
+// ID mapping pair: old ID (object ID on external cluster) TO new ID
+// (same object ID on this cluster)
+message IdPairPB {
+  optional bytes old_id = 1;
+  optional bytes new_id = 2;
+}
+
+message ImportSnapshotMetaResponsePB {
+  optional MasterErrorPB error = 1;
+
+  // Per table IDs mapping (IDs on external cluster TO IDs on this cluster).
+  message TableMetaPB {
+    optional IdPairPB namespace_ids = 1;
+    optional IdPairPB table_ids = 2;
+    repeated IdPairPB tablets_ids = 3;
+  }
+
+  repeated TableMetaPB tables_meta = 3;
+}
+
+service MasterBackupService {
+  // Client->Master RPCs
+  rpc CreateSnapshot(CreateSnapshotRequestPB) returns (CreateSnapshotResponsePB);
+  rpc IsSnapshotOpDone(IsSnapshotOpDoneRequestPB) returns (IsSnapshotOpDoneResponsePB);
+  rpc ListSnapshots(ListSnapshotsRequestPB) returns (ListSnapshotsResponsePB);
+  rpc RestoreSnapshot(RestoreSnapshotRequestPB) returns (RestoreSnapshotResponsePB);
+  rpc DeleteSnapshot(DeleteSnapshotRequestPB) returns (DeleteSnapshotResponsePB);
+  rpc ImportSnapshotMeta(ImportSnapshotMetaRequestPB) returns (ImportSnapshotMetaResponsePB);
+}

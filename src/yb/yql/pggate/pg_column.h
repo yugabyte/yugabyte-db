@@ -41,8 +41,10 @@ class PgColumn {
 
   // Bindings for read requests.
   PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlReadRequestPB *write_req);
-  PgsqlExpressionPB *AllocPartitionBindPB(PgsqlReadRequestPB *read_req);
   PgsqlExpressionPB *AllocBindPB(PgsqlReadRequestPB *read_req);
+
+  // Bindings for read requests.
+  PgsqlExpressionPB *AllocBindConditionExprPB(PgsqlReadRequestPB *read_req);
 
   // Assign values for write requests.
   PgsqlExpressionPB *AllocAssignPB(PgsqlWriteRequestPB *write_req);
@@ -84,16 +86,16 @@ class PgColumn {
     return read_requested_;
   }
 
-  bool set_read_requested(bool value) {
-    return read_requested_ = value;
+  void set_read_requested(const bool value) {
+    read_requested_ = value;
   }
 
   bool write_requested() const {
     return write_requested_;
   }
 
-  bool set_write_requested(bool value) {
-    return write_requested_ = value;
+  void set_write_requested(const bool value) {
+    write_requested_ = value;
   }
 
   bool is_system_column() {
@@ -114,6 +116,7 @@ class PgColumn {
   // - During DML execution, the reserved expression spaces will be filled with actual values.
   // - The data-member "primary_exprs" is to map column id with the reserved expression spaces.
   PgsqlExpressionPB *bind_pb_ = nullptr;
+  PgsqlExpressionPB *bind_condition_expr_pb_ = nullptr;
 
   // Protobuf for new-values of a column in the tuple.
   PgsqlExpressionPB *assign_pb_ = nullptr;

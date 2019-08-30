@@ -64,6 +64,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/schemapg.h"
 #include "catalog/storage.h"
+#include "commands/dbcommands.h"
 #include "commands/policy.h"
 #include "commands/trigger.h"
 #include "miscadmin.h"
@@ -94,7 +95,6 @@
 
 #include "pg_yb_utils.h"
 #include "access/ybcam.h"
-#include "executor/ybcScan.h"
 
 #define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
 
@@ -225,6 +225,50 @@ do { \
 		elog(WARNING, "failed to delete relcache entry for OID %u", \
 			 (RELATION)->rd_id); \
 } while(0)
+
+#define RelCacheInitFileName(filename, shared) \
+do { \
+	if (shared) \
+	{ \
+		snprintf(filename, sizeof(filename), "global/%s", \
+		         RELCACHE_INIT_FILENAME); \
+	} \
+	else \
+	{ \
+		if (IsYugaByteEnabled()) \
+		{ \
+			snprintf(filename, sizeof(filename), "%d_%s", \
+			         MyDatabaseId, RELCACHE_INIT_FILENAME); \
+		} \
+		else \
+		{ \
+			snprintf(filename, sizeof(filename), "%s/%s", \
+			         DatabasePath, RELCACHE_INIT_FILENAME); \
+		} \
+	} \
+} while (0)
+
+#define RelCacheInitTempFileName(filename, shared) \
+do { \
+	if (shared) \
+	{ \
+		snprintf(filename, sizeof(filename), "global/%s.%d", \
+		         RELCACHE_INIT_FILENAME, MyProcPid); \
+	} \
+	else \
+	{ \
+		if (IsYugaByteEnabled()) \
+		{ \
+			snprintf(filename, sizeof(filename), "%d_%s.%d", \
+			         MyDatabaseId, RELCACHE_INIT_FILENAME, MyProcPid); \
+		} \
+		else \
+		{ \
+			snprintf(filename, sizeof(filename), "%s/%s.%d", \
+			         DatabasePath, RELCACHE_INIT_FILENAME, MyProcPid); \
+		} \
+	} \
+} while (0)
 
 
 /*
@@ -1072,12 +1116,31 @@ equalPartitionDescs(PartitionKey key, PartitionDesc partdesc1,
  *  Note: We assume that any error happening here will fatal so as to not end
  *  up with partial information in the cache.
  */
-void YBCInitializeRelCache()
+void YBPreloadRelCache()
 {
 	Relation      relation;
 	Oid           relid;
 	HeapTuple     pg_class_tuple;
 	Form_pg_class relp;
+
+	/*
+	 * Make sure that the connection is still valid.
+	 * - If the name is already dropped from the cache, raise error.
+	 * - If the name is still in the cache, we look for the associated OID in the system.
+	 *   Raise error if that OID is not MyDatabaseId, which must be either invalid or new DB.
+	 */
+	Oid dboid = InvalidOid;
+	const char *dbname = get_database_name(MyDatabaseId);
+	if (dbname != NULL)
+	{
+		dboid = get_database_oid(dbname, true);
+	}
+	if (dboid != MyDatabaseId) {
+		ereport(FATAL,
+						(errcode(ERRCODE_CONNECTION_FAILURE),
+						 errmsg("Could not reconnect to database"),
+						 errhint("Database might have been dropped by another user")));
+	}
 
 	/*
 	 * 1. Load up the (partial) relation info from pg_class.
@@ -1140,21 +1203,10 @@ void YBCInitializeRelCache()
 				else
 				{
 					/*
-					 * If it's a temp table, but not one of ours, we have to use
-					 * the slow, grotty method to figure out the owning backend.
-					 *
-					 * Note: it's possible that rd_backend gets set to MyBackendId
-					 * here, in case we are looking at a pg_class entry left over
-					 * from a crashed backend that coincidentally had the same
-					 * BackendId we're using.  We should *not* consider such a
-					 * table to be "ours"; this is why we need the separate
-					 * rd_islocaltemp flag.  The pg_class entry will get flushed
-					 * if/when we clean out the corresponding temp table namespace
-					 * in preparation for using it.
+					 * If it's a temp table, but not one of ours,
+					 * we set rd_backend to the invalid backend id.
 					 */
-					relation->rd_backend = GetTempNamespaceBackendId(relation->rd_rel
-					                                                         ->relnamespace);
-					Assert(relation->rd_backend != InvalidBackendId);
+					relation->rd_backend = InvalidBackendId;
 					relation->rd_islocaltemp = false;
 				}
 				break;
@@ -1726,7 +1778,7 @@ RelationInitPhysicalAddr(Relation relation)
 	else
 		relation->rd_node.dbNode = MyDatabaseId;
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(relation))
 	  return;
 
 	if (relation->rd_rel->relfilenode)
@@ -2096,7 +2148,9 @@ LookupOpclassInfo(Oid operatorClassOid,
 	 */
 	indexOK = criticalRelcachesBuilt ||
 		(operatorClassOid != OID_BTREE_OPS_OID &&
-		 operatorClassOid != INT2_BTREE_OPS_OID);
+		 operatorClassOid != OID_LSM_OPS_OID &&
+		 operatorClassOid != INT2_BTREE_OPS_OID &&
+		 operatorClassOid != INT2_LSM_OPS_OID);
 
 	/*
 	 * We have to fetch the pg_opclass row to determine its opfamily and
@@ -4060,9 +4114,9 @@ RelationCacheInitializePhase3(void)
 	 * In YB mode initialize the relache at the beginning so that we need
 	 * fewer cache lookups in steady state.
 	 */
-	if (IsYugaByteEnabled())
+	if (needNewCacheFile && IsYugaByteEnabled())
 	{
-		YBCInitializeRelCache();
+		YBPreloadRelCache();
 	}
 
 	/*
@@ -4302,13 +4356,18 @@ RelationCacheInitializePhase3(void)
 		 */
 		InitCatalogCachePhase2();
 
-		/* We do not use a relation map file in YugaByte mode yet */
-		if (!IsYugaByteEnabled())
-		{
-			/* now write the files */
-			write_relcache_init_file(true);
-			write_relcache_init_file(false);
-		}
+		/* now write the files */
+		write_relcache_init_file(true);
+		write_relcache_init_file(false);
+	}
+
+	/*
+	 * During initdb also preload catalog caches (not just relation cache) as
+	 * they will be used heavily.
+	 */
+	if (IsYugaByteEnabled() && YBIsPreparingTemplates())
+	{
+		YBPreloadCatalogCaches();
 	}
 }
 
@@ -4779,7 +4838,8 @@ RelationGetIndexList(Relation relation)
 		/* Check to see if is a usable btree index on OID */
 		if (index->indnatts == 1 &&
 			index->indkey.values[0] == ObjectIdAttributeNumber &&
-			indclass->values[0] == OID_BTREE_OPS_OID)
+			(indclass->values[0] == OID_BTREE_OPS_OID ||
+			 indclass->values[0] == OID_LSM_OPS_OID))
 			oidIndex = index->indexrelid;
 
 		/* remember primary key index if any */
@@ -5859,13 +5919,9 @@ load_relcache_init_file(bool shared)
 				nailed_indexes,
 				magic;
 	int			i;
+	uint64      ybc_stored_cache_version = 0;
 
-	if (shared)
-		snprintf(initfilename, sizeof(initfilename), "global/%s",
-				 RELCACHE_INIT_FILENAME);
-	else
-		snprintf(initfilename, sizeof(initfilename), "%s/%s",
-				 DatabasePath, RELCACHE_INIT_FILENAME);
+	RelCacheInitFileName(initfilename, shared);
 
 	fp = AllocateFile(initfilename, PG_BINARY_R);
 	if (fp == NULL)
@@ -5886,6 +5942,40 @@ load_relcache_init_file(bool shared)
 		goto read_failed;
 	if (magic != RELCACHE_INIT_FILEMAGIC)
 		goto read_failed;
+
+	if (IsYugaByteEnabled())
+	{
+		/* Read the stored catalog version number */
+		if (fread(&ybc_stored_cache_version,
+		          1,
+		          sizeof(ybc_stored_cache_version),
+		          fp) != sizeof(ybc_stored_cache_version))
+		{
+			goto read_failed;
+		}
+
+		/*
+		 * If we already have a newer cache version (e.g. from reading the
+		 * shared init file) then this file is too old.
+		 */
+		if (yb_catalog_cache_version > ybc_stored_cache_version)
+		{
+			unlink_initfile(initfilename, ERROR);
+			goto read_failed;
+		}
+
+		/* Else, still need to check with the master version to be sure. */
+		uint64 catalog_master_version = 0;
+		YBCPgGetCatalogMasterVersion(ybc_pg_session,
+		                             (uint64_t * ) & catalog_master_version);
+
+		/* File version does not match actual master version (i.e. too old) */
+		if (ybc_stored_cache_version != catalog_master_version)
+		{
+			unlink_initfile(initfilename, ERROR);
+			goto read_failed;
+		}
+	}
 
 	for (relno = 0;; relno++)
 	{
@@ -6227,6 +6317,19 @@ load_relcache_init_file(bool shared)
 	pfree(rels);
 	FreeFile(fp);
 
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * Set the catalog version if needed.
+		 * The checks above will ensure that if it is already initialized then
+		 * we should leave it unchanged (see also comment in pg_yb_utils.h).
+		 */
+		if (yb_catalog_cache_version == YB_CATCACHE_VERSION_UNINITIALIZED)
+		{
+			yb_catalog_cache_version = ybc_stored_cache_version;
+		}
+	}
+
 	if (shared)
 		criticalSharedRelcachesBuilt = true;
 	else
@@ -6272,20 +6375,8 @@ write_relcache_init_file(bool shared)
 	 * another backend starting at about the same time might crash trying to
 	 * read the partially-complete file.
 	 */
-	if (shared)
-	{
-		snprintf(tempfilename, sizeof(tempfilename), "global/%s.%d",
-				 RELCACHE_INIT_FILENAME, MyProcPid);
-		snprintf(finalfilename, sizeof(finalfilename), "global/%s",
-				 RELCACHE_INIT_FILENAME);
-	}
-	else
-	{
-		snprintf(tempfilename, sizeof(tempfilename), "%s/%s.%d",
-				 DatabasePath, RELCACHE_INIT_FILENAME, MyProcPid);
-		snprintf(finalfilename, sizeof(finalfilename), "%s/%s",
-				 DatabasePath, RELCACHE_INIT_FILENAME);
-	}
+	RelCacheInitTempFileName(tempfilename, shared);
+	RelCacheInitFileName(finalfilename, shared);
 
 	unlink(tempfilename);		/* in case it exists w/wrong permissions */
 
@@ -6311,6 +6402,18 @@ write_relcache_init_file(bool shared)
 	magic = RELCACHE_INIT_FILEMAGIC;
 	if (fwrite(&magic, 1, sizeof(magic), fp) != sizeof(magic))
 		elog(FATAL, "could not write init file");
+
+	if (IsYugaByteEnabled())
+	{
+		/* Write the ysql_catalog_version */
+		if (fwrite(&yb_catalog_cache_version,
+		           1,
+		           sizeof(yb_catalog_cache_version),
+		           fp) != sizeof(yb_catalog_cache_version))
+		{
+			elog(FATAL, "could not write init file");
+		}
+	}
 
 	/*
 	 * Write all the appropriate reldescs (in no particular order).
@@ -6555,10 +6658,8 @@ RelationCacheInitFilePreInvalidate(void)
 	char		sharedinitfname[MAXPGPATH];
 
 	if (DatabasePath)
-		snprintf(localinitfname, sizeof(localinitfname), "%s/%s",
-				 DatabasePath, RELCACHE_INIT_FILENAME);
-	snprintf(sharedinitfname, sizeof(sharedinitfname), "global/%s",
-			 RELCACHE_INIT_FILENAME);
+		RelCacheInitFileName(localinitfname, false);
+	RelCacheInitFileName(sharedinitfname, true);
 
 	LWLockAcquire(RelCacheInitLock, LW_EXCLUSIVE);
 
@@ -6595,6 +6696,15 @@ RelationCacheInitFileRemove(void)
 	DIR		   *dir;
 	struct dirent *de;
 	char		path[MAXPGPATH + 10 + sizeof(TABLESPACE_VERSION_DIRECTORY)];
+
+	/*
+	 * In YugaByte mode we anyway do a cache version check on each backend init
+	 * so no need to preemptively clean up the init files here.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		return;
+	}
 
 	snprintf(path, sizeof(path), "global/%s",
 			 RELCACHE_INIT_FILENAME);

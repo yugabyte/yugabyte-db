@@ -15,12 +15,15 @@
 // Treenode definitions for expressions.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/client/table.h"
+
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/util/decimal.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/date_time.h"
 
 namespace yb {
 namespace ql {
@@ -196,7 +199,10 @@ PTExpr::SharedPtr PTExpr::CreateConst(MemoryContext *memctx,
       return PTConstTimestamp::MakeShared(memctx, loc, 0);
     case DataType::DATE:
       return PTConstDate::MakeShared(memctx, loc, 0);
+    case DataType::DECIMAL:
+      return PTConstDecimal::MakeShared(memctx, loc, MCMakeShared<MCString>(memctx));
     default:
+      LOG(WARNING) << "Unexpected QL type: " << data_type->ql_type()->ToString();
       return nullptr;
   }
 }
@@ -255,6 +261,10 @@ CHECKED_STATUS PTLiteralString::ToVarInt(string *value, bool negate) const {
   return Status::OK();
 }
 
+std::string PTLiteralString::ToString() const {
+  return string(value_->c_str());
+}
+
 CHECKED_STATUS PTLiteralString::ToString(string *value) const {
   *value = value_->c_str();
   return Status::OK();
@@ -281,6 +291,47 @@ CHECKED_STATUS PTLiteralString::ToInetaddress(InetAddress *value) const {
 
 //--------------------------------------------------------------------------------------------------
 // Collections.
+
+CHECKED_STATUS PTCollectionExpr::InitializeUDTValues(const QLType::SharedPtr& expected_type,
+                                                     ProcessContextBase* process_context) {
+  SCHECK(expected_type->IsUserDefined(), Corruption, "Expected type should be UDT");
+  SCHECK_EQ(keys_.size(), values_.size(), Corruption,
+            "Expected keys and values to be of the same size");
+
+  udtype_field_values_.resize(expected_type->udtype_field_names().size());
+  // Each literal key/value pair must correspond to a field name/type pair from the UDT
+  auto values_it = values_.begin();
+  for (const auto& key : keys_) {
+    // All keys must be field refs
+
+    // TODO (mihnea) Consider unifying handling of field references (for user-defined types) and
+    // column references (for tables) to simplify this path.
+    if (key->opcode() != TreeNodeOpcode::kPTRef) {
+      return process_context->Error(this,
+                                    "Field names for user-defined types must be field reference",
+                                    ErrorCode::INVALID_ARGUMENTS);
+    }
+    PTRef* field_ref = down_cast<PTRef*>(key.get());
+    if (!field_ref->name()->IsSimpleName()) {
+      return process_context->Error(this,
+                                    "Qualified names not allowed for fields of user-defined types",
+                                    ErrorCode::INVALID_ARGUMENTS);
+    }
+    string field_name(field_ref->name()->last_name().c_str());
+
+    // All keys must be existing field names from the UDT
+    int field_idx = expected_type->GetUDTypeFieldIdxByName(field_name);
+    if (field_idx < 0) {
+      return process_context->Error(this, "Invalid field name found for user-defined type instance",
+                                    ErrorCode::INVALID_ARGUMENTS);
+    }
+
+    // Setting the corresponding field value
+    udtype_field_values_[field_idx] = *values_it;
+    values_it++;
+  }
+  return Status::OK();
+}
 
 CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
   RETURN_NOT_OK(CheckOperator(sem_context));
@@ -346,47 +397,18 @@ CHECKED_STATUS PTCollectionExpr::Analyze(SemContext *sem_context) {
 
     case USER_DEFINED_TYPE: {
       SemState sem_state(sem_context);
-      DCHECK_EQ(keys_.size(), values_.size());
-
-      udtype_field_values_.resize(expected_type->udtype_field_names().size());
-      // Each literal key/value pair must correspond to a field name/type pair from the UDT
-      auto values_it = values_.begin();
-      for (auto& key : keys_) {
-        // All keys must be field refs
-
-        // TODO (mihnea) Consider unifying handling of field references (for user-defined types) and
-        // column references (for tables) to simplify this path.
-        PTRef* field_ref = dynamic_cast<PTRef *>(key.get());
-        if (field_ref == nullptr) {
-          return sem_context->Error(this,
-                                    "Field names for user-defined types must be field reference",
-                                    ErrorCode::INVALID_ARGUMENTS);
+      RETURN_NOT_OK(InitializeUDTValues(expected_type, sem_context));
+      for (int i = 0; i < udtype_field_values_.size(); i++) {
+        if (!udtype_field_values_[i]) {
+          // Skip missing values
+          continue;
         }
-        if (!field_ref->name()->IsSimpleName()) {
-          return sem_context->Error(this,
-                                    "Qualified names not allowed for fields of user-defined types",
-                                    ErrorCode::INVALID_ARGUMENTS);
-        }
-        string field_name(field_ref->name()->last_name().c_str());
-
-        // All keys must be existing field names from the UDT
-        int field_idx = expected_type->GetUDTypeFieldIdxByName(field_name);
-        if (field_idx < 0) {
-          return sem_context->Error(this, "Invalid field name found for user-defined type instance",
-                                    ErrorCode::INVALID_ARGUMENTS);
-        }
-
-        // Setting the corresponding field value
-        udtype_field_values_[field_idx] = *values_it;
-
         // Each value should have the corresponding type from the UDT
-        auto& param_type = expected_type->param_type(field_idx);
+        const auto& param_type = expected_type->param_type(i);
         sem_state.SetExprState(param_type,
                                YBColumnSchema::ToInternalDataType(param_type),
                                bindvar_name);
-        RETURN_NOT_OK(udtype_field_values_[field_idx]->Analyze(sem_context));
-
-        values_it++;
+        RETURN_NOT_OK(udtype_field_values_[i]->Analyze(sem_context));
       }
       sem_state.ResetContextState();
       break;
@@ -502,7 +524,7 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp1(SemState *sem_state) {
 CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
   // The state of operand2 is dependent on operand1.
   PTExpr::SharedPtr operand1 = op1();
-  DCHECK(operand1 != nullptr);
+  DCHECK_NOTNULL(operand1.get());
   sem_state->set_allowing_column_refs(false);
 
   switch (ql_op_) {
@@ -526,15 +548,37 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
         sem_state->SetExprState(operand1->ql_type(), operand1->internal_type());
       }
 
-      if (operand1->expr_op() == ExprOperator::kBcall) {
-        PTBcall *bcall = static_cast<PTBcall *>(operand1.get());
-        if (strcmp(bcall->name()->c_str(), "token") == 0) {
-          sem_state->set_bindvar_name(PTBindVar::token_bindvar_name());
+      switch (operand1->expr_op()) {
+        case ExprOperator::kBcall: {
+          PTBcall *bcall = static_cast<PTBcall *>(operand1.get());
+          DCHECK_NOTNULL(bcall->name().get());
+          if (strcmp(bcall->name()->c_str(), "token") == 0) {
+            sem_state->set_bindvar_name(PTBindVar::token_bindvar_name());
+          }
+          if (strcmp(bcall->name()->c_str(), "partition_hash") == 0) {
+            sem_state->set_bindvar_name(PTBindVar::partition_hash_bindvar_name());
+          }
+          break;
         }
-        if (strcmp(bcall->name()->c_str(), "partition_hash") == 0) {
-          sem_state->set_bindvar_name(PTBindVar::partition_hash_bindvar_name());
+
+        case ExprOperator::kSubColRef: {
+          const PTSubscriptedColumn *ref = static_cast<const PTSubscriptedColumn *>(operand1.get());
+          DCHECK_NOTNULL(ref->desc());
+          sem_state->set_bindvar_name(PTBindVar::coll_bindvar_name(ref->desc()->name()));
+          break;
         }
+
+        case ExprOperator::kJsonOperatorRef: {
+          const PTJsonColumnWithOperators *ref =
+              static_cast<const PTJsonColumnWithOperators*>(operand1.get());
+          DCHECK_NOTNULL(ref->desc());
+          sem_state->set_bindvar_name(PTBindVar::json_bindvar_name(ref->desc()->name()));
+          break;
+        }
+
+        default: {} // Use default bindvar name below.
       }
+
       break;
     }
 
@@ -556,6 +600,10 @@ CHECKED_STATUS PTRelationExpr::SetupSemStateForOp2(SemState *sem_state) {
 
     default:
       LOG(FATAL) << "Invalid operator" << int(ql_op_);
+  }
+
+  if (!sem_state->bindvar_name()) {
+    sem_state->set_bindvar_name(PTBindVar::default_bindvar_name());
   }
 
   return Status::OK();
@@ -692,6 +740,70 @@ CHECKED_STATUS PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
   return Status::OK();
 }
 
+string PTRelationExpr::QLName() const {
+  switch (ql_op_) {
+    case QL_OP_NOOP:
+      return "NO OP";
+
+    // Logic operators that take one operand.
+    case QL_OP_NOT:
+      return string("NOT ") + op1()->QLName();
+    case QL_OP_IS_TRUE:
+      return op1()->QLName() + "IS TRUE";
+    case QL_OP_IS_FALSE:
+      return op1()->QLName() + "IS FALSE";
+
+      // Logic operators that take two or more operands.
+    case QL_OP_AND:
+      return op1()->QLName() + " AND " + op2()->QLName();
+    case QL_OP_OR:
+      return op1()->QLName() + " OR " + op2()->QLName();
+
+      // Relation operators that take one operand.
+    case QL_OP_IS_NULL:
+      return op1()->QLName() + " IS NULL";
+    case QL_OP_IS_NOT_NULL:
+      return op1()->QLName() + " IS NOT NULL";
+
+      // Relation operators that take two operands.
+    case QL_OP_EQUAL:
+      return op1()->QLName() + " == " + op2()->QLName();
+    case QL_OP_LESS_THAN:
+      return op1()->QLName() + " < " + op2()->QLName();
+    case QL_OP_LESS_THAN_EQUAL:
+      return op1()->QLName() + " <= " + op2()->QLName();
+    case QL_OP_GREATER_THAN:
+      return op1()->QLName() + " > " + op2()->QLName();
+    case QL_OP_GREATER_THAN_EQUAL:
+      return op1()->QLName() + " >= " + op2()->QLName();
+    case QL_OP_NOT_EQUAL:
+      return op1()->QLName() + " != " + op2()->QLName();
+
+    case QL_OP_LIKE:
+      return op1()->QLName() + " LIKE " + op2()->QLName();
+    case QL_OP_NOT_LIKE:
+      return op1()->QLName() + " NOT LIKE " + op2()->QLName();
+    case QL_OP_IN:
+      return op1()->QLName() + " IN " + op2()->QLName();
+    case QL_OP_NOT_IN:
+      return op1()->QLName() + " NOT IN " + op2()->QLName();
+
+      // Relation operators that take three operands.
+    case QL_OP_BETWEEN:
+      return op1()->QLName() + " BETWEEN " + op2()->QLName() + " AND " + op3()->QLName();
+    case QL_OP_NOT_BETWEEN:
+      return op1()->QLName() + " NOT BETWEEN " + op2()->QLName() + " AND " + op3()->QLName();
+
+      // Operators that take no operand. For use in "if" clause only currently.
+    case QL_OP_EXISTS:
+      return "EXISTS";
+    case QL_OP_NOT_EXISTS:
+      return "NOT EXISTS";
+  }
+
+  return "expr";
+}
+
 //--------------------------------------------------------------------------------------------------
 
 CHECKED_STATUS PTOperatorExpr::SetupSemStateForOp1(SemState *sem_state) {
@@ -778,7 +890,6 @@ CHECKED_STATUS PTRef::AnalyzeOperator(SemContext *sem_context) {
   // Type resolution: Ref(x) should have the same datatype as (x).
   internal_type_ = desc_->internal_type();
   ql_type_ = desc_->ql_type();
-
   return Status::OK();
 }
 
@@ -847,7 +958,6 @@ PTJsonColumnWithOperators::~PTJsonColumnWithOperators() {
 }
 
 CHECKED_STATUS PTJsonColumnWithOperators::AnalyzeOperator(SemContext *sem_context) {
-
   // Look for a column descriptor from symbol table.
   RETURN_NOT_OK(name_->Analyze(sem_context));
   desc_ = GetColumnDesc(sem_context, name_->last_name());
@@ -893,103 +1003,6 @@ CHECKED_STATUS PTJsonColumnWithOperators::AnalyzeOperator(SemContext *sem_contex
 
 CHECKED_STATUS PTJsonColumnWithOperators::CheckLhsExpr(SemContext *sem_context) {
   return Status::OK();
-}
-
-CHECKED_STATUS PTJsonColumnWithOperators::SetupPrimaryKey(SemContext *sem_context) const {
-  PTColumnDefinition* column = sem_context->GetColumnDefinition(name_->first_name());
-  if (column == nullptr) {
-    return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
-  }
-
-  // Add the analyzed column to table. For CREATE INDEX, need to check for proper datatype and set
-  // column location because column definition is loaded from the indexed table definition actually.
-  PTCreateTable* const table = sem_context->current_create_table_stmt();
-  if (table->opcode() == TreeNodeOpcode::kPTCreateIndex) {
-    if (column->datatype() == nullptr) {
-      return sem_context->Error(this, "Unsupported index datatype",
-                                ErrorCode::SQL_STATEMENT_INVALID);
-    }
-
-    DCHECK_GT(operators_->size(), 0);
-    // JSONB type cannot be Key (because it's not indexable). Let's replace JSONB type by TEXT.
-    // For that new PTColumnDefinition will be created of fly with replaced data type.
-    // Replace JSONB column type by TEXT indexable type.
-    const PTColumnDefinition::SharedPtr copied_column = MCMakeShared<PTColumnDefinition>(
-        sem_context->PTreeMem(), *column, operators_,
-        MCMakeShared<PTVarchar>(sem_context->PTreeMem(), loc_));
-    sem_context->current_create_index_stmt()->AddColumnDefinition(copied_column);
-    column = copied_column.get();
-
-    column->set_loc(*this);
-    column->datatype()->set_loc(*this);
-  }
-
-  return table->AppendPrimaryColumn(sem_context, column);
-}
-
-CHECKED_STATUS PTJsonColumnWithOperators::SetupHashAndPrimaryKey(SemContext *sem_context) const {
-  PTColumnDefinition* column = sem_context->GetColumnDefinition(name_->first_name());
-  if (column == nullptr) {
-    return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
-  }
-
-  // Add the analyzed column to table. For CREATE INDEX, need to check for proper datatype and set
-  // column location because column definition is loaded from the indexed table definition actually.
-  PTCreateTable* const table = sem_context->current_create_table_stmt();
-  if (table->opcode() == TreeNodeOpcode::kPTCreateIndex) {
-    if (column->datatype() == nullptr) {
-      return sem_context->Error(this, "Unsupported index datatype",
-                                ErrorCode::SQL_STATEMENT_INVALID);
-    }
-
-    DCHECK_GT(operators_->size(), 0);
-    // JSONB type cannot be Key (because it's not indexable). Let's replace JSONB type by TEXT.
-    // For that new PTColumnDefinition will be created of fly with replaced data type.
-    // Replace JSONB column type by TEXT indexable type.
-    const PTColumnDefinition::SharedPtr copied_column = MCMakeShared<PTColumnDefinition>(
-        sem_context->PTreeMem(), *column, operators_,
-        MCMakeShared<PTVarchar>(sem_context->PTreeMem(), loc_));
-    sem_context->current_create_index_stmt()->AddColumnDefinition(copied_column);
-    column = copied_column.get();
-
-    column->set_loc(*this);
-    column->datatype()->set_loc(*this);
-  }
-
-  return table->AppendHashColumn(sem_context, column);
-}
-
-CHECKED_STATUS PTJsonColumnWithOperators::SetupCoveringIndexColumn(SemContext *sem_context) const {
-  PTColumnDefinition* column = sem_context->GetColumnDefinition(name_->first_name());
-  if (column == nullptr) {
-    return sem_context->Error(this, "Column does not exist", ErrorCode::UNDEFINED_COLUMN);
-  }
-  if (column->is_static()) {
-    return sem_context->Error(this, "Static column not supported as a covering index column",
-                              ErrorCode::SQL_STATEMENT_INVALID);
-  }
-
-  // Add the analyzed covering index column to table. Need to check for proper datatype and set
-  // column location because column definition is loaded from the indexed table definition actually.
-  PTCreateTable* const table = sem_context->current_create_table_stmt();
-  DCHECK(table->opcode() == TreeNodeOpcode::kPTCreateIndex);
-  if (column->datatype() == nullptr) {
-    return sem_context->Error(this, "Unsupported index datatype", ErrorCode::SQL_STATEMENT_INVALID);
-  }
-
-  DCHECK_GT(operators_->size(), 0);
-  // JSONB type cannot be Key (because it's not indexable). Let's replace JSONB type by TEXT.
-  // For that new PTColumnDefinition will be created of fly with replaced data type.
-  // Replace JSONB column type by TEXT indexable type.
-  const PTColumnDefinition::SharedPtr copied_column = MCMakeShared<PTColumnDefinition>(
-      sem_context->PTreeMem(), *column, operators_,
-      MCMakeShared<PTVarchar>(sem_context->PTreeMem(), loc_));
-  sem_context->current_create_index_stmt()->AddColumnDefinition(copied_column);
-  column = copied_column.get();
-
-  column->set_loc(*this);
-  column->datatype()->set_loc(*this);
-  return table->AppendColumn(sem_context, column, true /* check_duplicate */);
 }
 
 //--------------------------------------------------------------------------------------------------

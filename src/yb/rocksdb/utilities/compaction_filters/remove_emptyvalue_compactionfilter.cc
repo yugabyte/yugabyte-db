@@ -31,14 +31,15 @@ const char* RemoveEmptyValueCompactionFilter::Name() const {
   return "RemoveEmptyValueCompactionFilter";
 }
 
-bool RemoveEmptyValueCompactionFilter::Filter(int level,
+FilterDecision RemoveEmptyValueCompactionFilter::Filter(
+    int level,
     const Slice& key,
     const Slice& existing_value,
     std::string* new_value,
-    bool* value_changed) const {
+    bool* value_changed) {
 
   // remove kv pairs that have empty values
-  return existing_value.empty();
+  return existing_value.empty() ? FilterDecision::kDiscard : FilterDecision::kKeep;
 }
 
 }  // namespace rocksdb

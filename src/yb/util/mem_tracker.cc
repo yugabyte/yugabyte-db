@@ -175,6 +175,8 @@ std::string CreateMetricName(const MemTracker& mem_tracker) {
   }
   std::string id = mem_tracker.id();
   std::replace(id.begin(), id.end(), ' ', '_');
+  std::replace(id.begin(), id.end(), '.', '_');
+  std::replace(id.begin(), id.end(), '-', '_');
   if (mem_tracker.parent()) {
     return CreateMetricName(*mem_tracker.parent()) + "_" + id;
   } else {
@@ -235,8 +237,16 @@ void MemTracker::CreateRootTracker() {
     limit = total_ram * FLAGS_default_memory_limit_to_ram_ratio;
   }
 
+  ConsumptionFunctor consumption_functor;
+
+  #ifdef TCMALLOC_ENABLED
+  consumption_functor = &MemTracker::GetTCMallocActualHeapSizeBytes;
+  #endif
+
   root_tracker = std::make_shared<MemTracker>(
-      limit, "root", nullptr /* parent */, AddToParent::kTrue, CreateMetrics::kFalse);
+      limit, "root", std::move(consumption_functor), nullptr /* parent */, AddToParent::kTrue,
+      CreateMetrics::kFalse);
+
   LOG(INFO) << StringPrintf("MemTracker: hard memory limit is %.6f GB",
                             (static_cast<float>(limit) / (1024.0 * 1024.0 * 1024.0)));
   LOG(INFO) << StringPrintf("MemTracker: soft memory limit is %.6f GB",
@@ -246,15 +256,19 @@ void MemTracker::CreateRootTracker() {
 
 shared_ptr<MemTracker> MemTracker::CreateTracker(int64_t byte_limit,
                                                  const string& id,
+                                                 ConsumptionFunctor consumption_functor,
                                                  const shared_ptr<MemTracker>& parent,
                                                  AddToParent add_to_parent,
                                                  CreateMetrics create_metrics) {
   shared_ptr<MemTracker> real_parent = parent ? parent : GetRootTracker();
-  return real_parent->CreateChild(byte_limit, id, MayExist::kFalse, add_to_parent, create_metrics);
+  return real_parent->CreateChild(
+      byte_limit, id, std::move(consumption_functor), MayExist::kFalse, add_to_parent,
+      create_metrics);
 }
 
 shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
                                                const string& id,
+                                               ConsumptionFunctor consumption_functor,
                                                MayExist may_exist,
                                                AddToParent add_to_parent,
                                                CreateMetrics create_metrics) {
@@ -266,7 +280,8 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
     }
   }
   auto result = std::make_shared<MemTracker>(
-      byte_limit, id, shared_from_this(), add_to_parent, create_metrics);
+      byte_limit, id, std::move(consumption_functor), shared_from_this(), add_to_parent,
+      create_metrics);
   auto p = child_trackers_.emplace(id, result);
   if (!p.second) {
     auto existing = p.first->second.lock();
@@ -280,10 +295,13 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
   return result;
 }
 
-MemTracker::MemTracker(int64_t byte_limit, const string& id, shared_ptr<MemTracker> parent,
+MemTracker::MemTracker(int64_t byte_limit, const string& id,
+                       ConsumptionFunctor consumption_functor, std::shared_ptr<MemTracker> parent,
                        AddToParent add_to_parent, CreateMetrics create_metrics)
     : limit_(byte_limit),
+      soft_limit_(limit_ == -1 ? -1 : (limit_ * FLAGS_memory_limit_soft_percentage) / 100),
       id_(id),
+      consumption_functor_(std::move(consumption_functor)),
       descr_(Substitute("memory consumption for $0", id)),
       parent_(std::move(parent)),
       rand_(GetRandomSeed32()),
@@ -292,8 +310,6 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id, shared_ptr<MemTrack
       add_to_parent_(add_to_parent) {
   VLOG(1) << "Creating tracker " << ToString();
   UpdateConsumption();
-  soft_limit_ = (limit_ == -1)
-      ? -1 : (limit_ * FLAGS_memory_limit_soft_percentage) / 100;
 
   all_trackers_.push_back(this);
   if (has_limit()) {
@@ -319,8 +335,10 @@ MemTracker::MemTracker(int64_t byte_limit, const string& id, shared_ptr<MemTrack
 
 MemTracker::~MemTracker() {
   VLOG(1) << "Destroying tracker " << ToString();
-  if (parent_) {
+  if (!consumption_functor_) {
     DCHECK_EQ(consumption(), 0) << "Memory tracker " << ToString();
+  }
+  if (parent_) {
     if (add_to_parent_) {
       parent_->Release(consumption());
     }
@@ -379,7 +397,8 @@ shared_ptr<MemTracker> MemTracker::FindOrCreateTracker(int64_t byte_limit,
                                                        AddToParent add_to_parent,
                                                        CreateMetrics create_metrics) {
   shared_ptr<MemTracker> real_parent = parent ? parent : GetRootTracker();
-  return real_parent->CreateChild(byte_limit, id, MayExist::kTrue, add_to_parent, create_metrics);
+  return real_parent->CreateChild(
+      byte_limit, id, ConsumptionFunctor(), MayExist::kTrue, add_to_parent, create_metrics);
 }
 
 std::vector<MemTrackerPtr> MemTracker::ListChildren() {
@@ -419,15 +438,14 @@ std::vector<MemTrackerPtr> MemTracker::ListTrackers() {
   return result;
 }
 
-bool MemTracker::UpdateConsumption() {
-#if TCMALLOC_ENABLED
-  if (!parent_) {
+bool MemTracker::UpdateConsumption(bool force) {
+  if (consumption_functor_) {
     auto now = CoarseMonoClock::now();
     auto interval = std::chrono::microseconds(
         GetAtomicFlag(&FLAGS_mem_tracker_update_consumption_interval_us));
-    if (now > last_consumption_update_ + interval) {
+    if (force || now > last_consumption_update_ + interval) {
       last_consumption_update_ = now;
-      auto value = GetTCMallocCurrentAllocatedBytes();
+      auto value = consumption_functor_();
       consumption_.set_value(value);
       if (metrics_) {
         metrics_->metric_->set_value(value);
@@ -435,7 +453,6 @@ bool MemTracker::UpdateConsumption() {
     }
     return true;
   }
-#endif
 
   return false;
 }
@@ -463,7 +480,7 @@ void MemTracker::Consume(int64_t bytes) {
   }
 }
 
-bool MemTracker::TryConsume(int64_t bytes) {
+bool MemTracker::TryConsume(int64_t bytes, MemTracker** blocking_mem_tracker) {
   UpdateConsumption();
   if (bytes <= 0) {
     return true;
@@ -511,6 +528,10 @@ bool MemTracker::TryConsume(int64_t bytes) {
   for (int j = all_trackers_.size() - 1; j > i; --j) {
     IncrementBy(-bytes, &all_trackers_[j]->consumption_, all_trackers_[j]->metrics_);
   }
+  if (blocking_mem_tracker) {
+    *blocking_mem_tracker = all_trackers_[i];
+  }
+
   return false;
 }
 
@@ -566,46 +587,41 @@ bool MemTracker::LimitExceeded() {
   return false;
 }
 
-bool MemTracker::SoftLimitExceeded(double* current_capacity_pct) {
+SoftLimitExceededResult MemTracker::SoftLimitExceeded(double score) {
   // Did we exceed the actual limit?
   if (LimitExceeded()) {
-    if (current_capacity_pct) {
-      *current_capacity_pct =
-          static_cast<double>(consumption()) / limit() * 100;
-    }
-    return true;
+    return {true, consumption() * 100.0 / limit()};
   }
 
   // No soft limit defined.
   if (!has_limit() || limit_ == soft_limit_) {
-    return false;
+    return {false, 0.0};
   }
 
   // Are we under the soft limit threshold?
   int64_t usage = consumption();
   if (usage < soft_limit_) {
-    return false;
+    return {false, 0.0};
   }
 
   // We're over the threshold; were we randomly chosen to be over the soft limit?
-  if (usage + rand_.Uniform64(limit_ - soft_limit_) > limit_) {
-    bool exceeded = GcMemory(soft_limit_);
-    if (exceeded && current_capacity_pct) {
-      *current_capacity_pct =
-          static_cast<double>(consumption()) / limit() * 100;
-    }
-    return exceeded;
+  if (score == 0.0) {
+    score = RandomUniformReal<double>();
   }
-  return false;
+  if (usage + (limit_ - soft_limit_) * score > limit_ && GcMemory(soft_limit_)) {
+    return {true, usage * 100.0 / limit()};
+  }
+  return {false, 0.0};
 }
 
-bool MemTracker::AnySoftLimitExceeded(double* current_capacity_pct) {
+SoftLimitExceededResult MemTracker::AnySoftLimitExceeded(double score) {
   for (MemTracker* t : limit_trackers_) {
-    if (t->SoftLimitExceeded(current_capacity_pct)) {
-      return true;
+    auto result = t->SoftLimitExceeded(score);
+    if (result.exceeded) {
+      return result;
     }
   }
-  return false;
+  return {false, 0.0};
 }
 
 int64_t MemTracker::SpareCapacity() const {
@@ -624,7 +640,7 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
   }
 
   {
-    size_t current_consumption = GetUpdatedConsumption();
+    int64_t current_consumption = GetUpdatedConsumption();
     // Check if someone gc'd before us
     if (current_consumption <= max_consumption) {
       return false;
@@ -652,7 +668,7 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
 
     // Try to free up some memory
     for (const auto& gc : collectors) {
-      gc->CollectGarbage(max_consumption - current_consumption);
+      gc->CollectGarbage(current_consumption - max_consumption);
       current_consumption = GetUpdatedConsumption();
       if (current_consumption <= max_consumption) {
         break;
@@ -660,7 +676,8 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
     }
   }
 
-  if (consumption() > max_consumption) {
+  int64_t current_consumption = GetUpdatedConsumption();
+  if (current_consumption > max_consumption) {
     std::vector<MemTrackerPtr> children;
     {
       std::lock_guard<std::mutex> lock(child_trackers_mutex_);
@@ -676,8 +693,12 @@ bool MemTracker::GcMemory(int64_t max_consumption) {
     }
 
     for (const auto& child : children) {
-      if (child->GcMemory(max_consumption) && GetUpdatedConsumption() <= max_consumption) {
-        return true;
+      bool did_gc = child->GcMemory(max_consumption - current_consumption + child->consumption());
+      if (did_gc) {
+        current_consumption = GetUpdatedConsumption();
+        if (current_consumption <= max_consumption) {
+          return true;
+        }
       }
     }
   }
@@ -767,5 +788,47 @@ scoped_refptr<MetricEntity> MemTracker::metric_entity() const {
   return metrics_ ? metrics_->metric_entity_ : nullptr;
 }
 
+const MemTrackerData& CollectMemTrackerData(const MemTrackerPtr& tracker, int depth,
+                                            std::vector<MemTrackerData>* output) {
+  size_t idx = output->size();
+  output->push_back({tracker, depth, 0});
+
+  auto children = tracker->ListChildren();
+  std::sort(children.begin(), children.end(), [](const auto& lhs, const auto& rhs) {
+    return lhs->id() < rhs->id();
+  });
+
+  for (const auto& child : children) {
+    const auto& child_data = CollectMemTrackerData(child, depth + 1, output);
+    (*output)[idx].consumption_excluded_from_ancestors +=
+        child_data.consumption_excluded_from_ancestors;
+    if (!child_data.tracker->add_to_parent()) {
+      (*output)[idx].consumption_excluded_from_ancestors += child_data.tracker->consumption();
+    }
+  }
+
+  return (*output)[idx];
+}
+
+std::string DumpMemTrackers() {
+  std::ostringstream out;
+  std::vector<MemTrackerData> trackers;
+  CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
+  for (const auto& data : trackers) {
+    const auto& tracker = data.tracker;
+    const std::string current_consumption_str =
+        HumanReadableNumBytes::ToString(tracker->consumption());
+    out << std::string(data.depth, ' ') << tracker->id() << ": ";
+    if (!data.consumption_excluded_from_ancestors || data.tracker->UpdateConsumption()) {
+      out << current_consumption_str;
+    } else {
+      auto full_consumption_str = HumanReadableNumBytes::ToString(
+          tracker->consumption() + data.consumption_excluded_from_ancestors);
+      out << current_consumption_str << " (" << full_consumption_str << ")";
+    }
+    out << std::endl;
+  }
+  return out.str();
+}
 
 } // namespace yb

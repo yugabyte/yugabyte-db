@@ -42,9 +42,7 @@ class PgSelect : public PgDml {
   void UseIndex(const PgObjectId& index_id);
 
   // Prepare SELECT before execution.
-  // read_time points to place where read_time for whole postgres statement is stored.
-  // It is available while statement is executed.
-  CHECKED_STATUS Prepare(uint64_t* read_time);
+  CHECKED_STATUS Prepare(PreventRestart prevent_restart);
 
   // Setup internal structures for binding values during prepare.
   void PrepareColumns();
@@ -55,16 +53,31 @@ class PgSelect : public PgDml {
   // Bind an index column with an expression.
   CHECKED_STATUS BindIndexColumn(int attnum, PgExpr *attr_value);
 
+  // Bind a column with an EQUALS condition.
+  CHECKED_STATUS BindColumnCondEq(int attnum, PgExpr *attr_value);
+
+  // Bind a range column with a BETWEEN condition.
+  CHECKED_STATUS BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end);
+
+  // Bind a column with an IN condition.
+  CHECKED_STATUS BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
+
+  // Set forward (or backward) scan.
+  void SetForwardScan(const bool is_forward_scan) {
+    DCHECK_NOTNULL(read_req_)->set_is_forward_scan(is_forward_scan);
+  }
+
   // Execute.
-  CHECKED_STATUS Exec();
+  CHECKED_STATUS Exec(const PgExecParameters *exec_params);
 
   void SetCatalogCacheVersion(const uint64_t catalog_cache_version) override {
-    read_req_->set_ysql_catalog_version(catalog_cache_version);
+    DCHECK_NOTNULL(read_req_)->set_ysql_catalog_version(catalog_cache_version);
   }
 
  private:
   // Allocate column protobuf.
   PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  PgsqlExpressionPB *AllocColumnBindConditionExprPB(PgColumn *col);
   PgsqlExpressionPB *AllocIndexColumnBindPB(PgColumn *col);
 
   // Allocate protobuf for target.

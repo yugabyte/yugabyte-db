@@ -30,6 +30,8 @@
 # under the License.
 #
 
+YB_INCLUDE_EXTENSIONS()
+
 #######################################
 # protoc-gen-insertions
 #######################################
@@ -80,7 +82,7 @@ ADD_YB_LIBRARY(version_info_proto
   NONLINK_DEPS ${VERSION_INFO_PROTO_TGTS})
 
 #######################################
-# version_info_proto
+# op_id_proto
 #######################################
 
 PROTOBUF_GENERATE_CPP(
@@ -92,6 +94,19 @@ ADD_YB_LIBRARY(opid_proto
   SRCS ${OP_ID_PROTO_SRCS}
   DEPS protobuf
   NONLINK_DEPS ${OP_ID_PROTO_TGTS})
+
+#########################################
+# encryption_proto
+#########################################
+PROTOBUF_GENERATE_CPP(
+  ENCRYPTION_PROTO_SRCS ENCRYPTION_PROTO_HDRS ENCRYPTION_PROTO_TGTS
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES encryption.proto)
+ADD_YB_LIBRARY(encryption_proto
+  SRCS ${ENCRYPTION_PROTO_SRCS}
+  DEPS protobuf
+  NONLINK_DEPS ${ENCRYPTION_PROTO_TGTS})
 
 ############################################################
 # Version stamp
@@ -122,8 +137,6 @@ else ()
   set(SEMAPHORE_CC "semaphore.cc")
 endif()
 
-YB_INCLUDE_EXTENSIONS()
-
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
@@ -144,16 +157,21 @@ set(UTIL_SRCS
   curl_util.cc
   date_time.cc
   debug-util.cc
+  debug/long_operation_tracker.cc
   debug/trace_event_impl.cc
   debug/trace_event_impl_constants.cc
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   env.cc env_posix.cc env_util.cc
   errno.cc
+  ev_util.cc
   failure_detector.cc
   fast_varint.cc
   faststring.cc
   fault_injection.cc
+  file_system.cc
+  file_system_mem.cc
+  file_system_posix.cc
   flag_tags.cc
   flags.cc
   hdr_histogram.cc
@@ -193,6 +211,7 @@ set(UTIL_SRCS
   pending_op_counter.cc
   physical_time.cc
   port_picker.cc
+  priority_thread_pool.cc
   pstack_watcher.cc
   random_util.cc
   redis_util.cc
@@ -200,9 +219,12 @@ set(UTIL_SRCS
   rolling_log.cc
   rw_mutex.cc
   rwc_lock.cc
+  shared_mem.cc
   slice.cc
   spinlock_profiling.cc
   split.cc
+  stats/perf_level_imp.cc
+  stats/iostats_context_imp.cc
   status.cc
   status_callback.cc
   stol_utils.cc
@@ -226,14 +248,13 @@ set(UTIL_SRCS
   varint.cc
   version_info.cc
   async_util.cc
-  ybc_util.cc
-  ybc-internal.cc
   ${UTIL_SRCS_EXTENSIONS}
   )
 
 set(UTIL_LIBS
   boost_system
   boost_thread
+  cds
   icui18n
   icuuc
   crcutil
@@ -242,11 +263,14 @@ set(UTIL_LIBS
   glog
   gutil
   histogram_proto
+  libev
   pb_util_proto
   protobuf
   version_info_proto
+  encryption_proto
   zlib
-  ${OPENSSL_CRYPTO_LIBRARY})
+  ${OPENSSL_CRYPTO_LIBRARY}
+  ${UTIL_LIBS_EXTENSIONS})
 
 if (NOT APPLE AND NOT USING_LINUXBREW)
   set(UTIL_LIBS ${UTIL_LIBS} atomic)
@@ -307,7 +331,7 @@ endif()
 # Unit tests
 #######################################
 
-set(YB_TEST_LINK_LIBS yb_util gutil gmock ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS}  ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
@@ -348,6 +372,8 @@ ADD_YB_TEST(object_pool-test)
 ADD_YB_TEST(once-test)
 ADD_YB_TEST(os-util-test)
 ADD_YB_TEST(path_util-test)
+ADD_YB_TEST(priority_queue-test)
+ADD_YB_TEST(priority_thread_pool-test)
 ADD_YB_TEST(pstack_watcher-test)
 ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(random-test)
@@ -367,6 +393,7 @@ ADD_YB_TEST(slice-test)
 ADD_YB_TEST(spinlock_profiling-test)
 ADD_YB_TEST(split-test)
 ADD_YB_TEST(stack_watchdog-test)
+ADD_YB_TEST(stats/iostats_context_test)
 ADD_YB_TEST(status-test)
 ADD_YB_TEST(stol_utils-test)
 ADD_YB_TEST(string_case-test)
@@ -388,6 +415,7 @@ ADD_YB_TEST(decimal-test)
 ADD_YB_TEST(net/inetaddress-test)
 ADD_YB_TEST(uuid-test)
 ADD_YB_TEST(fast_varint-test)
+ADD_YB_TEST(shared_mem-test)
 
 #######################################
 # jsonwriter_test_proto
@@ -444,3 +472,11 @@ if(NOT "${NO_TESTS}")
   target_link_libraries(pb_util-test
     proto_container_test_proto)
 endif()
+
+#######################################
+# enterprise tests
+#######################################
+
+foreach(test ${UTIL_TESTS_EXTENSIONS})
+  ADD_YB_TEST(${test})
+endforeach()

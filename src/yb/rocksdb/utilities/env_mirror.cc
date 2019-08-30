@@ -35,22 +35,21 @@ class SequentialFileMirror : public SequentialFile {
   std::string fname;
   explicit SequentialFileMirror(std::string f) : fname(std::move(f)) {}
 
-  Status Read(size_t n, Slice* result, char* scratch) {
+  Status Read(size_t n, Slice* result, uint8_t* scratch) override {
     Slice aslice;
     Status as = a_->Read(n, &aslice, scratch);
     if (as.ok()) {
-      char* bscratch = new char[n];
+      std::unique_ptr<uint8_t[]> bscratch(new uint8_t[n]);
       Slice bslice;
       size_t off = 0;
       size_t left = aslice.size();
       while (left) {
-        Status bs = b_->Read(left, &bslice, bscratch);
+        Status bs = b_->Read(left, &bslice, bscratch.get());
         assert(as.code() == bs.code());
-        assert(memcmp(bscratch, scratch + off, bslice.size()) == 0);
+        assert(memcmp(bscratch.get(), scratch + off, bslice.size()) == 0);
         off += bslice.size();
         left -= bslice.size();
       }
-      delete[] bscratch;
       *result = aslice;
     } else {
       Status bs = b_->Read(n, result, scratch);
@@ -59,18 +58,21 @@ class SequentialFileMirror : public SequentialFile {
     return as;
   }
 
-  Status Skip(uint64_t n) {
+  Status Skip(uint64_t n) override {
     Status as = a_->Skip(n);
     Status bs = b_->Skip(n);
     assert(as.code() == bs.code());
     return as;
   }
-  Status InvalidateCache(size_t offset, size_t length) {
+
+  Status InvalidateCache(size_t offset, size_t length) override {
     Status as = a_->InvalidateCache(offset, length);
     Status bs = b_->InvalidateCache(offset, length);
     assert(as.code() == bs.code());
     return as;
   }
+
+  const std::string& filename() const override { return fname; }
 };
 
 class RandomAccessFileMirror : public RandomAccessFile {
@@ -79,10 +81,10 @@ class RandomAccessFileMirror : public RandomAccessFile {
   std::string fname;
   explicit RandomAccessFileMirror(std::string f) : fname(std::move(f)) {}
 
-  Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const {
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
     Status as = a_->Read(offset, n, result, scratch);
     if (as.ok()) {
-      char* bscratch = new char[n];
+      uint8_t* bscratch = new uint8_t[n];
       Slice bslice;
       size_t off = 0;
       size_t left = result->size();
@@ -101,15 +103,35 @@ class RandomAccessFileMirror : public RandomAccessFile {
     return as;
   }
 
-  bool ShouldForwardRawRequest() const {
+  yb::Result<uint64_t> Size() const override {
+    const auto a_size = a_->Size();
+    const auto b_size = b_->Size();
+    CHECK_EQ(a_size.ok(), b_size.ok());
+    if (a_size.ok()) {
+      CHECK_EQ(*a_size, *b_size);
+    }
+    return a_size;
+  }
+
+  yb::Result<uint64_t> INode() const override {
+    return STATUS(NotSupported, "INode", "Not supported in RandomAccessFileMirror");
+  }
+
+  bool ShouldForwardRawRequest() const override {
     // NOTE: not verified
     return a_->ShouldForwardRawRequest();
   }
 
-  size_t GetUniqueId(char* id, size_t max_size) const {
+  size_t GetUniqueId(char* id) const override {
     // NOTE: not verified
-    return a_->GetUniqueId(id, max_size);
+    return a_->GetUniqueId(id);
   }
+
+  size_t memory_footprint() const override {
+    LOG(FATAL) << "memory_footprint is not supported in RandomAccessFileMirror";
+  }
+
+  const std::string& filename() const override { return fname; }
 };
 
 class WritableFileMirror : public WritableFile {
@@ -183,9 +205,9 @@ class WritableFileMirror : public WritableFile {
     // NOTE: we don't verify this one
     return a_->GetPreallocationStatus(block_size, last_allocated_block);
   }
-  size_t GetUniqueId(char* id, size_t max_size) const override {
+  size_t GetUniqueId(char* id) const override {
     // NOTE: we don't verify this one
-    return a_->GetUniqueId(id, max_size);
+    return a_->GetUniqueId(id);
   }
   Status InvalidateCache(size_t offset, size_t length) override {
     Status as = a_->InvalidateCache(offset, length);

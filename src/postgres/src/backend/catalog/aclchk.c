@@ -5467,10 +5467,6 @@ get_user_default_acl(ObjectType objtype, Oid ownerId, Oid nsp_oid)
 	if (IsBootstrapProcessingMode())
 		return NULL;
 
-	/* TODO Do not support default permissions in YugaByte yet. */
-	if (IsYugaByteEnabled())
-		return NULL;
-
 	/* Check if object type is supported in pg_default_acl */
 	switch (objtype)
 	{

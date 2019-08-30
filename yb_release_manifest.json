@@ -1,11 +1,12 @@
 {
-  ".": ["$BUILD_ROOT/version_metadata.json"],
+  ".": ["$BUILD_ROOT/version_metadata.json",
+        "bin/yugabyte-db"],
   "postgres": ["$BUILD_ROOT/postgres/*"],
   "www": ["www/*"],
   "bin": ["bin/bulk_load_cleanup.sh",
           "bin/bulk_load_helper.sh",
           "bin/configure",
-          "bin/yb-ctl",
+          "submodules/yugabyte-installation/bin/yb-ctl",
           "bin/yb-prof.py",
           "$BUILD_ROOT/bin/log-dump",
           "$BUILD_ROOT/bin/sst_dump",
@@ -22,10 +23,15 @@
           "thirdparty/installed/common/cqlsh/bin/cqlsh",
           "thirdparty/installed/common/cqlsh/bin/cqlsh.py",
           "thirdparty/installed/common/bin/redis-cli",
-          "thirdparty/installed/uninstrumented/bin/pprof"],
+          "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof"],
   "lib"      : ["thirdparty/installed/common/cqlsh/lib/*"],
   "pylib"    : ["thirdparty/installed/common/cqlsh/pylib/*"],
+  "share": [
+    "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
+    "sample/*.sql"
+  ],
   "%symlinks%": {
-    "bin/psql": "../postgres/bin/psql"
+    "bin/ysqlsh": "../postgres/bin/ysqlsh",
+    "bin/psql": "../postgres/bin/ysqlsh"
   }
 }

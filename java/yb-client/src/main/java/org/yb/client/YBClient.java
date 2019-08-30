@@ -348,11 +348,28 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Check if the load balancer is idle as per the master leader.
+   * @return a deferred object that yields if the load is balanced.
+   */
+  public IsLoadBalancerIdleResponse getIsLoadBalancerIdle() throws Exception {
+    Deferred<IsLoadBalancerIdleResponse> d = asyncClient.getIsLoadBalancerIdle();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Check if the tablet leader load is balanced as per the master leader.
    * @return a deferred object that yields if the load is balanced.
    */
   public AreLeadersOnPreferredOnlyResponse getAreLeadersOnPreferredOnly() throws Exception {
     Deferred<AreLeadersOnPreferredOnlyResponse> d = asyncClient.getAreLeadersOnPreferredOnly();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * Check if initdb executed by the master is done running.
+   */
+  public IsInitDbDoneResponse getIsInitDbDone() throws Exception {
+    Deferred<IsInitDbDoneResponse> d = asyncClient.getIsInitDbDone();
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -686,12 +703,14 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
-   * Check if the tserver is ready to serve requests.
-   * @param hp the host and port of the tablet server.
-   * @return tablet server readiness response.
+   * Check if the server is ready to serve requests.
+   * @param hp the host and port of the server.
+   * @param isTserver true if host/port is for tserver, else its master.
+   * @return server readiness response.
    */
-  public IsTabletServerReadyResponse isTServerReady(HostAndPort hp) throws Exception {
-    Deferred<IsTabletServerReadyResponse> d = asyncClient.isTServerReady(hp);
+  public IsServerReadyResponse isServerReady(HostAndPort hp, boolean isTserver)
+     throws Exception {
+    Deferred<IsServerReadyResponse> d = asyncClient.isServerReady(hp, isTserver);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -724,6 +743,19 @@ public class YBClient implements AutoCloseable {
     @Override
     public boolean get() throws Exception {
       IsLoadBalancedResponse resp = getIsLoadBalanced(numServers);
+      return !resp.hasError();
+    }
+  }
+
+  /**
+   * Checks whether the IsLoadBalancerIdleResponse has no error.
+   */
+  private class LoadBalancerIdleCondition implements Condition {
+    public LoadBalancerIdleCondition() {
+    }
+    @Override
+    public boolean get() throws Exception {
+      IsLoadBalancerIdleResponse resp = getIsLoadBalancerIdle();
       return !resp.hasError();
     }
   }
@@ -848,6 +880,16 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+  * Wait for the tablet load to be balanced by master leader.
+  * @param timeoutMs the amount of time, in MS, to wait
+  * @return true if the master leader does not return any error balance check.
+  */
+  public boolean waitForLoadBalancerIdle(final long timeoutMs) {
+    Condition loadBalancerIdleCondition = new LoadBalancerIdleCondition();
+    return waitForCondition(loadBalancerIdleCondition, timeoutMs);
+  }
+
+  /**
    * Wait for the leader load to be balanced by master leader.
    * @param timeoutMs the amount of time, in MS, to wait.
    * @return true iff the leader count is balanced within timeoutMs.
@@ -887,11 +929,20 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
-   * Get the list of all the tables.
-   * @return a list of all the tables
+   * Get the list of all YSQL, YCQL, and YEDIS non-system tables.
+   * @return a list of all the non-system tables
    */
   public ListTablesResponse getTablesList() throws Exception {
-    return getTablesList(null);
+    // YEDIS tables are stored as system tables, so they have to be separated.
+    ListTablesResponse nonSystemTables = getTablesList(null, true, null);
+    ListTablesResponse yedisTables;
+    // If YEDIS is not enabled, getTablesList will error out on this call.
+    try {
+      yedisTables  = getTablesList(null, false, REDIS_KEYSPACE_NAME);
+    } catch (MasterErrorException e) {
+      yedisTables = null;
+    }
+    return nonSystemTables.mergeWith(yedisTables);
   }
 
   /**
@@ -901,7 +952,23 @@ public class YBClient implements AutoCloseable {
    * @return a deferred that contains the list of table names
    */
   public ListTablesResponse getTablesList(String nameFilter) throws Exception {
-    Deferred<ListTablesResponse> d = asyncClient.getTablesList(nameFilter);
+    return getTablesList(nameFilter, false, null);
+  }
+
+  /**
+   * Get a list of table names. Passing a null filter returns all the tables. When a filter is
+   * specified, it only returns tables that satisfy a substring match. Passing excludeSysfilters
+   * will return only non-system tables (index and user tables).
+   * @param nameFilter an optional table name filter
+   * @param excludeSystemTables an optional filter to search only non-system tables
+   * @param namespace an optional filter to search tables in specific namespace
+   * @return a deferred that contains the list of table names
+   */
+  public ListTablesResponse getTablesList(
+      String nameFilter, boolean excludeSystemTables, String namespace)
+  throws Exception {
+    Deferred<ListTablesResponse> d = asyncClient.getTablesList(
+        nameFilter, excludeSystemTables, namespace);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -1100,6 +1167,19 @@ public class YBClient implements AutoCloseable {
      */
     public YBClientBuilder defaultSocketReadTimeoutMs(long timeoutMs) {
       clientBuilder.defaultSocketReadTimeoutMs(timeoutMs);
+      return this;
+    }
+
+    /**
+     * Sets the certificate file in case SSL is enabled.
+     * Optional.
+     * If not provided, defaults to null.
+     * A value of null disables an SSL connection.
+     * @param certFile the path to the certificate.
+     * @return this builder
+     */
+    public YBClientBuilder sslCertFile(String certFile) {
+      clientBuilder.sslCertFile(certFile);
       return this;
     }
 

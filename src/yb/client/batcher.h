@@ -70,6 +70,25 @@ class ErrorCollector;
 class RemoteTablet;
 class AsyncRpc;
 
+// Batcher state changes sequentially in the order listed below, with the exception that kAborted
+// could be reached from any state.
+YB_DEFINE_ENUM(
+    BatcherState,
+    (kGatheringOps)       // Initial state, while we adding operations to the batcher.
+    (kResolvingTablets)   // Flush was invoked on batcher, waiting until tablets for all operations
+                          // are resolved and move to the next state.
+                          // Could change to kComplete in case of failure.
+    (kTransactionPrepare) // Preparing associated transaction for flushing operations of this
+                          // batcher, for instance it picks status tablet and fills
+                          // transaction metadata for this batcher.
+                          // When there is no associated transaction move to the next state
+                          // immediately.
+    (kTransactionReady)   // Transaction is ready, sending operations to appropriate tablets and
+                          // wait for response. When there is no transaction - we still sending
+                          // operations marking transaction as auto ready.
+    (kComplete)           // Batcher complete.
+    (kAborted));          // Batcher was aborted.
+
 // A Batcher is the class responsible for collecting row operations, routing them to the
 // correct tablet server, and possibly batching them together for better efficiency.
 //
@@ -87,7 +106,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // Takes a reference on error_collector. Creates a weak_ptr to 'session'.
   Batcher(YBClient* client,
           ErrorCollector* error_collector,
-          const std::shared_ptr<YBSessionData>& session,
+          const YBSessionPtr& session,
           YBTransactionPtr transaction,
           ConsistentReadPoint* read_point,
           bool force_consistent_read);
@@ -127,11 +146,11 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // information on which operations failed.
   void FlushAsync(StatusFunctor callback);
 
-  MonoTime deadline() const {
+  CoarseTimePoint deadline() const {
     return deadline_;
   }
 
-  const std::shared_ptr<rpc::Messenger>& messenger() const;
+  rpc::Messenger* messenger() const;
 
   rpc::ProxyCache& proxy_cache() const;
 
@@ -169,6 +188,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
       const TabletId& tablet_id);
   void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
 
+  void SetMemoryLimitScore(double score) {
+    memory_limit_score_ = score;
+  }
+
   // This is a status error string used when there are multiple errors that need to be fetched
   // from the error collector.
   static const std::string kErrorReachingOutToTServersMsg;
@@ -187,9 +210,9 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   void RemoveInFlightOpsAfterFlushing(
       const InFlightOps& ops, const Status& status, FlushExtraResult flush_extra_result);
 
-    // Return true if the batch has been aborted, and any in-flight ops should stop
+  // Return true if the batch has been aborted, and any in-flight ops should stop
   // processing wherever they are.
-  bool IsAbortedUnlocked() const;
+  bool IsAbortedUnlocked() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Combines new error to existing ones. I.e. updates combined error with new status.
   void CombineErrorUnlocked(const InFlightOpPtr& in_flight_op, const Status& status)
@@ -226,23 +249,17 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // Compute a new deadline based on timeout_. If no timeout_ has been set,
   // uses a hard-coded default and issues periodic warnings.
-  MonoTime ComputeDeadlineUnlocked() const;
+  CoarseTimePoint ComputeDeadlineUnlocked() const;
 
   void TransactionReady(const Status& status, const BatcherPtr& self);
 
   // See note about lock ordering in batcher.cc
   mutable simple_spinlock mutex_;
 
-  enum State {
-    kGatheringOps,
-    kFlushing,
-    kFlushed,
-    kAborted
-  };
-  State state_;
+  BatcherState state_ GUARDED_BY(mutex_) = BatcherState::kGatheringOps;
 
   YBClient* const client_;
-  std::weak_ptr<YBSessionData> weak_session_data_;
+  std::weak_ptr<YBSession> weak_session_;
 
   // Errors are reported into this error collector.
   scoped_refptr<ErrorCollector> const error_collector_;
@@ -274,7 +291,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   MonoDelta timeout_;
 
   // After flushing, the absolute deadline for all in-flight ops.
-  MonoTime deadline_;
+  CoarseTimePoint deadline_;
 
   // Number of outstanding lookups across all in-flight ops.
   int outstanding_lookups_ = 0;
@@ -302,6 +319,8 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // Force consistent read on transactional table, even we have only single shard commands.
   ForceConsistentRead force_consistent_read_;
+
+  double memory_limit_score_ = 0.0;
 
   DISALLOW_COPY_AND_ASSIGN(Batcher);
 };

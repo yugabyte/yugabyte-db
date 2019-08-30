@@ -379,7 +379,7 @@ Status WaitForNumTabletsOnTS(
 // Wait until the specified replica is in the specified state.
 Status WaitUntilTabletInState(TServerDetails* ts,
                               const TabletId& tablet_id,
-                              tablet::TabletStatePB state,
+                              tablet::RaftGroupStatePB state,
                               const MonoDelta& timeout);
 
 // Wait until the specified tablet is in RUNNING state.

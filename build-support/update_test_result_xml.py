@@ -17,18 +17,46 @@ import logging
 import argparse
 import os
 import sys
+import signal
+import time
 
 from xml.dom import minidom
 
 
 MAX_RESULT_XML_SIZE_BYTES = 16 * 1024 * 1024
 
+# This script sometimes gets stuck in our macOS NFS environment for unknown reasons, so we put a
+# timeout around it.
+TIMEOUT_SEC = 10
 
-def main():
+
+# https://stackoverflow.com/questions/2281850/timeout-function-if-it-takes-too-long-to-finish
+class Timeout:
+    def __init__(self, seconds=1, error_message='Timeout'):
+        self.seconds = seconds
+        self.start_time = None
+
+    def handle_timeout(self, signum, frame):
+        if self.start_time is None:
+            raise RuntimeError("Timed out")
+        raise RuntimeError("Timed out after %.2f seconds" % (time.time() - self.start_time))
+
+    def __enter__(self):
+        self.start_time = time.time()
+        signal.signal(signal.SIGALRM, self.handle_timeout)
+        signal.alarm(self.seconds)
+
+    def __exit__(self, type, value, traceback):
+        signal.alarm(0)
+
+
+def initialize():
     logging.basicConfig(
         level=logging.INFO,
         format="[" + os.path.basename(__file__) + "] %(asctime)s %(levelname)s: %(message)s")
 
+
+def parse_args():
     parser = argparse.ArgumentParser(
         usage="usage: %(prog)s <options>",
         description="Updates a JUnit-style test result XML file, e.g. to add a log URL or "
@@ -66,7 +94,10 @@ def main():
         default='false',
         dest="mark_as_failed")
 
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def update_test_result_xml(args):
     result_xml_size = os.stat(args.result_xml).st_size
     if result_xml_size > MAX_RESULT_XML_SIZE_BYTES:
         logging.error(
@@ -143,14 +174,27 @@ def main():
                 else:
                     failure_node.appendChild(new_node)
 
-    output_xml_str = xml_dom.toxml()
-    with open(args.result_xml, 'w') as output_file:
-        output_file.write(output_xml_str)
+    output_xml_bytes = xml_dom.toxml().encode('utf-8')
+    with open(args.result_xml, 'wb') as output_file:
+        output_file.write(output_xml_bytes)
 
     return True
 
 
+def main():
+    args = None
+    try:
+        with Timeout(seconds=TIMEOUT_SEC):
+            args = parse_args()
+            return update_test_result_xml(args)
+    except:  # noqa
+        if args:
+            logging.error("Error while trying to update test result XML: %s", args.result_xml)
+        raise
+
+
 if __name__ == "__main__":
+    initialize()
     if main():
         exit_code = 0
     else:

@@ -61,243 +61,20 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
+#include "access/ybcam.h"
 #include "executor/ybcExpr.h"
 
 #include "utils/resowner_private.h"
-
-/* Number of rows assumed for a YB table if no size estimates exist */
-static const int DEFAULT_YB_NUM_ROWS = 1000;
 
 /* -------------------------------------------------------------------------- */
 /*  Planner/Optimizer functions */
 
 typedef struct YbFdwPlanState
 {
-	/* YugaByte metadata about the referenced table/relation. */
-	Bitmapset *primary_key;
-	Bitmapset *hash_key;
-
 	/* Bitmap of attribute (column) numbers that we need to fetch from YB. */
 	Bitmapset *target_attrs;
 
-	/* (Equality) Conditions on hash key -- filtered by YugaByte */
-	List *yb_hconds;
-
-	/* (Equality) Conditions on range key -- filtered by YugaByte */
-	List *yb_rconds;
-
-	/* Rest of baserestrictinfo conditions -- filtered by Postgres */
-	List *pg_conds;
-
-	/*
-	 * The set of columns set by YugaByte conds (i.e. in yb_hconds or yb_rconds
-	 * above). Used to check if hash or primary key is fully set.
-	 */
-	Bitmapset *yb_cols;
-
 } YbFdwPlanState;
-
-static bool IsSupportedPredicateExpr(Expr *expr)
-{
-	switch (nodeTag(expr))
-	{
-		case T_Const:
-			return true;
-		case T_Param:
-		{
-			Param *param = (Param *) expr;
-			return param->paramkind == PARAM_EXTERN;
-		}
-		case T_RelabelType:
-		{
-			/*
-			 * RelabelType is a "dummy" type coercion between two binary-
-			 * compatible datatypes so we just recurse into its argument.
-			 */
-			RelabelType *rt = (RelabelType *) expr;
-			return IsSupportedPredicateExpr(rt->arg);
-		}
-		default:
-			break;
-	}
-
-	return false;
-}
-
-static void GetValFromPredicateExpr(Expr *expr,
-									ParamListInfo params_info,
-									Datum *value,
-									bool *isnull)
-{
-	switch (nodeTag(expr))
-	{
-		case T_RelabelType:
-		{
-			/*
-			 * RelabelType is a "dummy" type coercion between two binary-
-			 * compatible datatypes so we just recurse into its argument.
-			 */
-			RelabelType *rt = (RelabelType *) expr;
-			return GetValFromPredicateExpr(rt->arg, params_info, value, isnull);
-		}
-		case T_Const:
-		{
-			Const *cst = (Const *) expr;
-			*value  = cst->constvalue;
-			*isnull = cst->constisnull;
-			return;
-		}
-		case T_Param:
-		{
-			int paramid = ((Param *) expr)->paramid;
-			*value  = params_info->params[paramid - 1].value;
-			*isnull = params_info->params[paramid - 1].isnull;
-			return;
-		}
-		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-							"Found unsupported YugaByte RHS expression %s",
-							nodeToString(expr))));
-	}
-}
-
-/*
- * Returns whether an expression can be pushed down to be evaluated by YugaByte.
- * Otherwise, it will need to be evaluated by Postgres as it filters the rows
- * returned by YugaByte.
- */
-static void ybcClassifyWhereExpr(RelOptInfo *baserel,
-		                        YbFdwPlanState *yb_state,
-		                        Expr *expr)
-{
-	HeapTuple        tuple;
-	Form_pg_operator form;
-	/* YugaByte only supports base relations (e.g. no joins or child rels) */
-	if (baserel->reloptkind == RELOPT_BASEREL)
-	{
-
-		/* YugaByte only supports operator expressions (e.g. no functions) */
-		if (IsA(expr, OpExpr))
-		{
-
-			/* Get operator info */
-			OpExpr *opExpr = (OpExpr *) expr;
-			tuple = SearchSysCache1(OPEROID, ObjectIdGetDatum(opExpr->opno));
-			if (!HeapTupleIsValid(tuple))
-				ereport(ERROR,
-				        (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-						        "cache lookup failed for operator %u",
-						        opExpr->opno)));
-			form = (Form_pg_operator) GETSTRUCT(tuple);
-			char *opname = NameStr(form->oprname);
-			bool is_eq   = strcmp(opname, "=") == 0;
-			/* Note: the != operator is converted to <> in the parser stage */
-			bool is_ineq = strcmp(opname, ">") == 0 ||
-			               strcmp(opname, ">=") == 0 ||
-			               strcmp(opname, "<") == 0 ||
-			               strcmp(opname, "<=") == 0 ||
-			               strcmp(opname, "<>") == 0;
-
-			ReleaseSysCache(tuple);
-
-			/* Currently, YugaByte only supports comparison operators. */
-			if (is_eq || is_ineq)
-			{
-				/* Supported operators ensure there are exactly two arguments */
-				Expr *left  = linitial(opExpr->args);
-				Expr *right = lsecond(opExpr->args);
-
-				/*
-				 * Currently, YugaByte only supports conds of the form '<col>
-				 * <op> <value>' or '<value> <op> <col>' at this point.
-				 * Note: Postgres should have already evaluated expressions
-				 * with no column refs before this point.
-				 */
-				if ((IsA(left, Var) && IsSupportedPredicateExpr(right)) ||
-				    (IsSupportedPredicateExpr(left) && IsA(right, Var)))
-				{
-					AttrNumber attrNum;
-					attrNum = IsA(left, Var) ? ((Var *) left)->varattno
-					                         : ((Var *) right)->varattno;
-
-					int bms_idx = attrNum - baserel->min_attr + 1;
-					bool is_primary = bms_is_member(bms_idx,
-					                                yb_state->primary_key);
-					bool is_hash    = bms_is_member(bms_idx,
-					                                yb_state->hash_key);
-
-					/*
-					 * TODO Once we support WHERE clause in pggate, these
-					 * conditions need to be updated accordingly.
-					 */
-					if (is_hash && is_eq)
-					{
-						yb_state->yb_cols   = bms_add_member(yb_state->yb_cols,
-						                                     bms_idx);
-						yb_state->yb_hconds = lappend(yb_state->yb_hconds,
-						                              expr);
-						return;
-					}
-					else if (is_primary && is_eq)
-					{
-						yb_state->yb_cols   = bms_add_member(yb_state->yb_cols,
-						                                     bms_idx);
-						yb_state->yb_rconds = lappend(yb_state->yb_rconds,
-						                              expr);
-						return;
-					}
-				}
-			}
-		}
-	}
-
-	/* Otherwise let postgres handle the condition (default) */
-	yb_state->pg_conds = lappend(yb_state->pg_conds, expr);
-}
-
-/*
- * Add a Postgres expression as a where condition to a YugaByte select
- * statement. Assumes the expression can be evaluated by YugaByte
- * (i.e. ybcIsYbExpression returns true).
- */
-static void ybcAddWhereCond(EState *estate, Expr* expr, YBCPgStatement yb_stmt)
-{
-	OpExpr *opExpr = (OpExpr *) expr;
-
-	/*
-	 * ybcClassifyWhereExpr should only pass conditions to YugaByte if the
-	 * assertion below holds.
-	 */
-	Assert(opExpr->args->length == 2);
-	Expr *left  = linitial(opExpr->args);
-	Expr *right = lsecond(opExpr->args);
-	Assert((IsA(left, Var) && IsSupportedPredicateExpr(right)) ||
-	       (IsSupportedPredicateExpr(left) && IsA(right, Var)));
-
-	Var *col_desc;
-	Expr *rhs_expr;
-
-	if (IsA(left, Var))
-	{
-		col_desc = (Var *) left;
-		rhs_expr = right;
-	}
-	else
-	{
-		col_desc = (Var *) right;
-		rhs_expr = left;
-	}
-
-	Datum value;
-	bool is_null;
-	GetValFromPredicateExpr(rhs_expr, estate->es_param_list_info, &value, &is_null);
-	YBCPgExpr ybc_expr  = YBCNewConstant(yb_stmt,
-	                                     col_desc->vartype,
-	                                     value,
-	                                     is_null);
-	HandleYBStatus(YBCPgDmlBindColumn(yb_stmt, col_desc->varattno, ybc_expr));
-}
 
 /*
  * ybcGetForeignRelSize
@@ -308,63 +85,12 @@ ybcGetForeignRelSize(PlannerInfo *root,
 					 RelOptInfo *baserel,
 					 Oid foreigntableid)
 {
-	Oid					relid;
-	Relation			rel = NULL;
-	ListCell 			*cell = NULL;
 	YbFdwPlanState		*ybc_plan = NULL;
 
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
-	relid = root->simple_rte_array[baserel->relid]->relid;
-
-	/*
-	 * Get table info (from both Postgres and YugaByte).
-	 * YugaByte info is currently mainly primary and partition (hash) keys.
-	 */
-	rel = RelationIdGetRelation(relid);
-	YBCPgTableDesc ybc_table_desc = NULL;
-	HandleYBStatus(YBCPgGetTableDesc(ybc_pg_session,
-									 YBCGetDatabaseOid(rel),
-									 relid,
-	                                 &ybc_table_desc));
-
-	for (AttrNumber col = baserel->min_attr; col <= baserel->max_attr; col++)
-	{
-		bool is_primary = false;
-		bool is_hash    = false;
-		HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
-		                                           col,
-		                                           &is_primary,
-		                                           &is_hash), ybc_table_desc);
-		int bms_idx = col - baserel->min_attr + 1;
-		if (is_hash)
-		{
-			ybc_plan->hash_key = bms_add_member(ybc_plan->hash_key, bms_idx);
-		}
-		if (is_primary)
-		{
-			ybc_plan->primary_key = bms_add_member(ybc_plan->primary_key,
-			                                       bms_idx);
-		}
-	}
-	HandleYBStatus(YBCPgDeleteTableDesc(ybc_table_desc));
-	ybc_table_desc = NULL;
-	RelationClose(rel);
-	rel = NULL;
-
-	/*
-	 * Split scan_clauses between those handled by YugaByte and the rest (which
-	 * should be checked by Postgres).
-	 * Ignore pseudoconstants (which will be handled elsewhere).
-	 */
-	foreach(cell, baserel->baserestrictinfo)
-	{
-		RestrictInfo *ri = (RestrictInfo *) lfirst(cell);
-		ybcClassifyWhereExpr(baserel, ybc_plan, ri->clause);
-	}
-
 	/* Save the output-rows estimate for the planner */
-	baserel->rows = DEFAULT_YB_NUM_ROWS;
+	baserel->rows = YBC_DEFAULT_NUM_ROWS;
 	baserel->fdw_private = ybc_plan;
 
 	/*
@@ -375,11 +101,9 @@ ybcGetForeignRelSize(PlannerInfo *root,
 
 /*
  * ybcGetForeignPaths
- *		Create possible access paths for a scan on the foreign table
- *
- *		Currently we don't support any push-down feature, so there is only one
- *		possible access path, which simply returns all records in the order in
- *		the data file.
+ *		Create possible access paths for a scan on the foreign table, which is
+ *      the full table scan plus available index paths (including the  primary key
+ *      scan path if any).
  */
 static void
 ybcGetForeignPaths(PlannerInfo *root,
@@ -388,29 +112,24 @@ ybcGetForeignPaths(PlannerInfo *root,
 {
 	Cost startup_cost;
 	Cost total_cost;
-	Cost cpu_per_tuple;
 
 	/* Estimate costs */
-	startup_cost  = baserel->baserestrictcost.startup;
-	cpu_per_tuple = cpu_tuple_cost * 10 + baserel->baserestrictcost.per_tuple;
-	total_cost    = startup_cost + seq_page_cost * baserel->pages +
-	                cpu_per_tuple * baserel->rows;
+	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY, &startup_cost, &total_cost);
 
 	/* Create a ForeignPath node and it as the scan path */
-	/* TODO Can add YB order guarantees to pathkeys (if hash key is fixed). */
 	add_path(baserel,
 	         (Path *) create_foreignscan_path(root,
 	                                          baserel,
-	                                          NULL,    /* default pathtarget */
+	                                          NULL, /* default pathtarget */
 	                                          baserel->rows,
 	                                          startup_cost,
 	                                          total_cost,
-	                                          NIL,    /* no pathkeys */
-	                                          NULL,    /* no outer rel either */
-	                                          NULL,    /* no extra plan */
-	                                          NULL /* no options yet */ ));
+	                                          NIL,  /* no pathkeys */
+	                                          NULL, /* no outer rel either */
+	                                          NULL, /* no extra plan */
+	                                          NULL  /* no options yet */ ));
 
-	/* Add secondary index paths also */
+	/* Add primary key and secondary index paths also */
 	create_index_paths(root, baserel);
 }
 
@@ -429,53 +148,11 @@ ybcGetForeignPlan(PlannerInfo *root,
 {
 	YbFdwPlanState *yb_plan_state = (YbFdwPlanState *) baserel->fdw_private;
 	Index          scan_relid     = baserel->relid;
-	List           *fdw_private;
 	ListCell       *lc;
 
-	/*
-	 * Split any unprocessed scan_clauses (i.e. joins restrictions if any)
-	 * between those handled by YugaByte and the rest (which should be
-	 * checked by Postgres).
-	 * Ignore pseudoconstants (which will be handled elsewhere).
-	 */
 	scan_clauses = extract_actual_clauses(scan_clauses, false);
 
-	foreach(lc, scan_clauses)
-	{
-		Expr *expr = (Expr *) lfirst(lc);
-		if (!list_member_ptr(yb_plan_state->yb_hconds, expr) &&
-		    !list_member_ptr(yb_plan_state->yb_rconds, expr) &&
-		    !list_member_ptr(yb_plan_state->pg_conds, expr))
-		{
-			ybcClassifyWhereExpr(baserel, yb_plan_state, expr);
-		}
-	}
-
-	/*
-	 * If hash key is not fully set, we must do a full-table scan in YugaByte
-	 * and defer all filtering to Postgres.
-	 * Else, if primary key is not fully set we need to remove all range
-	 * key conds and defer filtering for range column conds to Postgres.
-	 */
-	if (!bms_is_subset(yb_plan_state->hash_key, yb_plan_state->yb_cols))
-	{
-		yb_plan_state->pg_conds  = scan_clauses;
-		yb_plan_state->yb_hconds = NIL;
-		yb_plan_state->yb_rconds = NIL;
-	}
-	else if (!bms_is_subset(yb_plan_state->primary_key, yb_plan_state->yb_cols))
-	{
-		yb_plan_state->pg_conds  = list_concat(yb_plan_state->pg_conds,
-		                                       yb_plan_state->yb_rconds);
-		yb_plan_state->yb_rconds = NIL;
-	}
-
-	/*
-	 * Get the target columns that need to be retrieved from YugaByte.
-	 * Specifically, any columns that are either:
-	 * 1. Referenced in the select targets (i.e. selected columns or exprs).
-	 * 2. Referenced in the WHERE clause exprs that Postgres must evaluate.
-	 */
+	/* Get the target columns that need to be retrieved from YugaByte */
 	foreach(lc, baserel->reltarget->exprs)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
@@ -485,7 +162,7 @@ ybcGetForeignPlan(PlannerInfo *root,
 		                        baserel->min_attr);
 	}
 
-	foreach(lc, yb_plan_state->pg_conds)
+	foreach(lc, scan_clauses)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
 		pull_varattnos_min_attr((Node *) expr,
@@ -536,17 +213,14 @@ ybcGetForeignPlan(PlannerInfo *root,
 		}
 	}
 
-	List *yb_conds = list_concat(yb_plan_state->yb_hconds, yb_plan_state->yb_rconds);
-
 	/* Create the ForeignScan node */
-	fdw_private = list_make2(target_attrs, yb_conds);
 	return make_foreignscan(tlist,  /* target list */
-	                        yb_plan_state->pg_conds,  /* checked by Postgres */
+	                        scan_clauses,
 	                        scan_relid,
 	                        NIL,    /* expressions YB may evaluate (none) */
-	                        fdw_private,  /* private data for YB */
-	                        NIL,    /* custom YB target list (none for now */
-	                        yb_conds,    /* checked by YB */
+	                        target_attrs,  /* fdw_private data for YB */
+	                        NIL,    /* custom YB target list (none for now) */
+	                        NIL,    /* custom YB target list (none for now) */
 	                        outer_plan);
 }
 
@@ -559,8 +233,10 @@ ybcGetForeignPlan(PlannerInfo *root,
 typedef struct YbFdwExecState
 {
 	/* The handle for the internal YB Select statement. */
-	YBCPgStatement handle;
-	ResourceOwner stmt_owner;
+	YBCPgStatement	handle;
+	ResourceOwner	stmt_owner;
+	YBCPgExecParameters *exec_params; /* execution control parameters for YugaByte */
+	bool is_exec_done; /* Each statement should be executed exactly one time */
 } YbFdwExecState;
 
 /*
@@ -575,10 +251,8 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	Relation    relation     = node->ss.ss_currentRelation;
 	TupleDesc   tupdesc      = RelationGetDescr(relation);
 
-	/* Planning function above should ensure both target and conds are set */
-	Assert(foreignScan->fdw_private->length == 2);
-	List *target_attrs = linitial(foreignScan->fdw_private);
-	List *yb_conds     = lsecond(foreignScan->fdw_private);
+	/* Planning function above should ensure target list is set */
+	List *target_attrs = foreignScan->fdw_private;
 
 	YbFdwExecState *ybc_state = NULL;
 	ListCell       *lc;
@@ -595,18 +269,13 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	                              YBCGetDatabaseOid(relation),
 	                              RelationGetRelid(relation),
 	                              InvalidOid /* index_oid */,
-	                              &ybc_state->handle,
-	                              estate ? &estate->es_yb_read_ht : 0));
+	                              true /* prevent_restart */,
+	                              &ybc_state->handle));
 	ResourceOwnerEnlargeYugaByteStmts(CurrentResourceOwner);
 	ResourceOwnerRememberYugaByteStmt(CurrentResourceOwner, ybc_state->handle);
 	ybc_state->stmt_owner = CurrentResourceOwner;
-
-	/* Set WHERE clause values (currently only primary key). */
-	foreach(lc, yb_conds)
-	{
-		Expr *expr = (Expr *) lfirst(lc);
-		ybcAddWhereCond(estate, expr, ybc_state->handle);
-	}
+	ybc_state->exec_params = &estate->yb_exec_params;
+	ybc_state->is_exec_done = false;
 
 	/* Set scan targets. */
 	bool has_targets = false;
@@ -672,12 +341,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	/* Set the current syscatalog version (will check that we are up to date) */
 	HandleYBStmtStatusWithOwner(YBCPgSetCatalogCacheVersion(ybc_state->handle,
-	                                                        ybc_catalog_cache_version),
-	                            ybc_state->handle,
-	                            ybc_state->stmt_owner);
-
-	/* Execute the select statement. */
-	HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybc_state->handle),
+	                                                        yb_catalog_cache_version),
 	                            ybc_state->handle,
 	                            ybc_state->stmt_owner);
 }
@@ -693,6 +357,19 @@ ybcIterateForeignScan(ForeignScanState *node)
 	TupleTableSlot *slot      = node->ss.ss_ScanTupleSlot;
 	YbFdwExecState *ybc_state = (YbFdwExecState *) node->fdw_state;
 	bool           has_data   = false;
+
+	/* Execute the select statement one time.
+	 * TODO(neil) Check whether YugaByte PgGate should combine Exec() and Fetch() into one function.
+	 * - The first fetch from YugaByte PgGate requires a number of operations including allocating
+	 *   operators and protobufs. These operations are done by YBCPgExecSelect() function.
+	 * - The subsequent fetches don't need to setup the query with these operations again.
+	 */
+	if (!ybc_state->is_exec_done) {
+		HandleYBStmtStatusWithOwner(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params),
+																ybc_state->handle,
+																ybc_state->stmt_owner);
+		ybc_state->is_exec_done = true;
+	}
 
 	/* Clear tuple slot before starting */
 	ExecClearTuple(slot);
@@ -741,6 +418,8 @@ ybcFreeStatementObject(YbFdwExecState* yb_fdw_exec_state)
 										yb_fdw_exec_state->handle);
 		yb_fdw_exec_state->handle = NULL;
 		yb_fdw_exec_state->stmt_owner = NULL;
+		yb_fdw_exec_state->exec_params = NULL;
+		yb_fdw_exec_state->is_exec_done = false;
 	}
 }
 
@@ -792,7 +471,7 @@ ybc_fdw_handler()
 	fdwroutine->EndForeignScan     = ybcEndForeignScan;
 
 	/* TODO: These are optional but we should support them eventually. */
-	/* fdwroutine->ExplainForeignScan = fileExplainForeignScan; */
+	/* fdwroutine->ExplainForeignScan = ybcExplainForeignScan; */
 	/* fdwroutine->AnalyzeForeignTable = ybcAnalyzeForeignTable; */
 	/* fdwroutine->IsForeignScanParallelSafe = ybcIsForeignScanParallelSafe; */
 

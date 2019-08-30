@@ -1540,6 +1540,15 @@ ExecAgg(PlanState *pstate)
 
 	if (!node->agg_done)
 	{
+		/*
+		 * Use default prefetch limit when AGGREGATE is present.
+		 * Aggregate functions combine multiple rows into one. The final LIMIT can be different from
+		 * the number of rows to be read. As a result, we have to use default prefetch limit.
+		 */
+		if (IsYugaByteEnabled()) {
+			pstate->state->yb_exec_params.limit_use_default = true;
+		}
+
 		/* Dispatch based on strategy */
 		switch (node->phase->aggstrategy)
 		{

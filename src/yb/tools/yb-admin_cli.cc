@@ -36,6 +36,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/range.hpp>
 
+#include "yb/rpc/messenger.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/flags.h"
 
@@ -258,8 +259,28 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
           timeout_secs = std::stoi(args[4].c_str());
         }
 
-        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name, timeout_secs),
+        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name, timeout_secs,
+                                                 false /* is_compaction */),
                               Substitute("Unable to flush table $0", table_name.ToString()));
+        return Status::OK();
+      });
+
+    Register(
+      "compact_table", " <keyspace> <table_name> [timeout_in_seconds] (default 20)",
+      [client](const CLIArguments& args) -> Status {
+        if (args.size() != 4 && args.size() != 5) {
+          UsageAndExit(args[0]);
+        }
+        const YBTableName table_name(args[2], args[3]);
+        int timeout_secs = 20;
+        if (args.size() > 4) {
+          timeout_secs = std::stoi(args[4].c_str());
+        }
+
+        // We use the same FlushTables RPC to trigger compaction.
+        RETURN_NOT_OK_PREPEND(client->FlushTable(table_name, timeout_secs,
+                                                 true /* is_compaction */),
+                              Substitute("Unable to compact table $0", table_name.ToString()));
         return Status::OK();
       });
 
@@ -357,6 +378,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
+      "get_is_load_balancer_idle", "",
+      [client](const CLIArguments&) -> Status {
+        RETURN_NOT_OK_PREPEND(client->GetIsLoadBalancerIdle(),
+                              "Unable to get is load balancer idle");
+        return Status::OK();
+      });
+
+  Register(
       "list_leader_counts", " <keyspace> <table_name>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() != 4) {
@@ -398,5 +427,5 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 }  // namespace yb
 
 int main(int argc, char** argv) {
-  return yb::tools::YB_EDITION_NS_PREFIX ClusterAdminCli().Run(argc, argv);
+  return yb::tools::enterprise::ClusterAdminCli().Run(argc, argv);
 }

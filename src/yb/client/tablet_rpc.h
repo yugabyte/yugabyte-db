@@ -91,8 +91,8 @@ class TabletInvoker {
 
   // Marks all replicas on current_ts_ as failed and retries the write on a
   // new replica.
-  void FailToNewReplica(const Status& reason,
-                        const tserver::TabletServerErrorPB* error_code = nullptr);
+  CHECKED_STATUS FailToNewReplica(const Status& reason,
+                                  const tserver::TabletServerErrorPB* error_code = nullptr);
 
   // Called when we finish a lookup (to find the new consensus leader). Retries
   // the rpc after a short delay.
@@ -109,7 +109,7 @@ class TabletInvoker {
         current_ts_ != nullptr;
   }
 
-  YBClient* client_;
+  YBClient* const client_;
 
   rpc::RpcCommand* const command_;
 

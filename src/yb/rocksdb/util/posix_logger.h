@@ -24,23 +24,27 @@
 // Logger implementation that can be shared by all environments
 // where enough posix functionality is available.
 
-#pragma once
-#include <algorithm>
+#ifndef YB_ROCKSDB_UTIL_POSIX_LOGGER_H
+#define YB_ROCKSDB_UTIL_POSIX_LOGGER_H
+
 #include <stdio.h>
-#include "yb/rocksdb/port/sys_time.h"
 #include <time.h>
 #include <fcntl.h>
 
-#ifdef OS_LINUX
+#include <algorithm>
+#include <atomic>
+
+#ifdef __linux__
 #ifndef FALLOC_FL_KEEP_SIZE
 #include <linux/falloc.h>
 #endif
 #endif
 
+#include "yb/rocksdb/port/sys_time.h"
+
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
+#include "yb/util/stats/iostats_context_imp.h"
 #include "yb/rocksdb/util/sync_point.h"
-#include <atomic>
 
 namespace rocksdb {
 
@@ -52,7 +56,7 @@ class PosixLogger : public Logger {
   uint64_t (*gettid_)();  // Return the thread id for the current thread
   std::atomic_size_t log_size_;
   int fd_;
-  const static uint64_t flush_every_seconds_ = 5;
+  static const uint64_t flush_every_seconds_ = 5;
   std::atomic_uint_fast64_t last_flush_micros_;
   Env* env_;
   std::atomic<bool> flush_pending_;
@@ -110,7 +114,7 @@ class PosixLogger : public Logger {
       struct tm t;
       localtime_r(&seconds, &t);
       p += snprintf(p, limit - p,
-                    "%04d/%02d/%02d-%02d:%02d:%02d.%06d %llx ",
+                    "%04d/%02d/%02d-%02d:%02d:%02d.%06d %" PRIx64 " ",
                     t.tm_year + 1900,
                     t.tm_mon + 1,
                     t.tm_mday,
@@ -118,7 +122,7 @@ class PosixLogger : public Logger {
                     t.tm_min,
                     t.tm_sec,
                     static_cast<int>(now_tv.tv_usec),
-                    static_cast<long long unsigned int>(thread_id));
+                    thread_id);
 
       // Print the message
       if (p < limit) {
@@ -184,3 +188,5 @@ class PosixLogger : public Logger {
 };
 
 }  // namespace rocksdb
+
+#endif // YB_ROCKSDB_UTIL_POSIX_LOGGER_H

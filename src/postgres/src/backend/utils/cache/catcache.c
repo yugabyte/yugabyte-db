@@ -46,7 +46,6 @@
 #include "utils/tqual.h"
 
 #include "pg_yb_utils.h"
-#include "executor/ybcScan.h"
 
  /* #define CACHEDEBUG */	/* turns DEBUG elogs on */
 
@@ -715,13 +714,6 @@ ResetCatalogCaches(void)
 
 	CACHE1_elog(DEBUG2, "ResetCatalogCaches called");
 
-
-	if (IsYugaByteEnabled())
-	{
-		/* Reset catalog version. */
-		ybc_catalog_cache_version = 0;
-	}
-
 	slist_foreach(iter, &CacheHdr->ch_caches)
 	{
 		CatCache   *cache = slist_container(CatCache, cc_next, iter.cur);
@@ -1282,6 +1274,10 @@ InitCatCachePhase2(CatCache *cache, bool touch_index)
 	if (cache->cc_tupdesc == NULL)
 		CatalogCacheInitializeCache(cache);
 
+	/*
+	 * TODO(mihnea/robert) This could be enabled if we handle
+	 * "primary key as index" so that PG can open the primary indexes by id.
+	 */
 	if (IsYugaByteEnabled())
 	{
 		return;
@@ -2448,6 +2444,33 @@ PrepareToInvalidateCacheTuple(Relation relation,
 	}
 }
 
+/*
+ *	RelationHasCachedLists
+ *
+ *	Returns true if there is a catalog cache associated with this
+ * 	relation which is currently caching at least one list.
+ */
+bool
+RelationHasCachedLists(Relation relation)
+{
+	slist_iter iter;
+	Oid reloid;
+
+	/* sanity checks */
+	Assert(RelationIsValid(relation));
+	Assert(CacheHdr != NULL);
+
+	reloid = RelationGetRelid(relation);
+
+	slist_foreach(iter, &CacheHdr->ch_caches)
+	{
+		CatCache *ccp = slist_container(CatCache, cc_next, iter.cur);
+		if (ccp->cc_reloid == reloid && !dlist_is_empty(&ccp->cc_lists))
+			return true;
+	}
+
+	return false;
+}
 
 /*
  * Subroutines for warning about reference leaks.  These are exported so

@@ -66,6 +66,8 @@ METRIC_DECLARE_entity(tablet);
 
 DECLARE_int32(log_min_seconds_to_retain);
 
+DECLARE_bool(quick_leader_election_on_create);
+
 namespace yb {
 namespace tablet {
 
@@ -82,7 +84,6 @@ using docdb::KeyValueWriteBatchPB;
 using log::Log;
 using log::LogAnchorRegistry;
 using log::LogOptions;
-using rpc::Messenger;
 using server::Clock;
 using server::LogicalClock;
 using std::shared_ptr;
@@ -116,7 +117,7 @@ class TabletPeerTest : public YBTabletTest,
 
     rpc::MessengerBuilder builder(CURRENT_TEST_NAME());
     messenger_ = ASSERT_RESULT(builder.Build());
-    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_);
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
 
     metric_entity_ = METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "test-tablet");
 
@@ -129,17 +130,19 @@ class TabletPeerTest : public YBTabletTest,
 
     // "Bootstrap" and start the TabletPeer.
     tablet_peer_.reset(
-      new TabletPeerClass(make_scoped_refptr(tablet()->metadata()),
-                          config_peer,
-                          clock(),
-                          tablet()->metadata()->fs_manager()->uuid(),
-                          Bind(&TabletPeerTest::TabletPeerStateChangedCallback,
-                               Unretained(this),
-                               tablet()->tablet_id())));
+        new TabletPeer(
+            make_scoped_refptr(tablet()->metadata()),
+            config_peer,
+            clock(),
+            tablet()->metadata()->fs_manager()->uuid(),
+            Bind(
+                &TabletPeerTest::TabletPeerStateChangedCallback,
+                Unretained(this),
+                tablet()->tablet_id())));
 
     // Make TabletPeer use the same LogAnchorRegistry as the Tablet created by the harness.
     // TODO: Refactor TabletHarness to allow taking a LogAnchorRegistry, while also providing
-    // TabletMetadata for consumption by TabletPeer before Tablet is instantiated.
+    // RaftGroupMetadata for consumption by TabletPeer before Tablet is instantiated.
     tablet_peer_->log_anchor_registry_ = tablet()->log_anchor_registry_;
 
     consensus::RaftConfigPB config;
@@ -158,15 +161,16 @@ class TabletPeerTest : public YBTabletTest,
                  .unlimited_threads()
                  .Build(&append_pool_));
     scoped_refptr<Log> log;
-    ASSERT_OK(Log::Open(LogOptions(), fs_manager(), tablet()->tablet_id(),
-                        tablet()->metadata()->wal_dir(), *tablet()->schema(),
-                        tablet()->metadata()->schema_version(), metric_entity_.get(),
-                        append_pool_.get(), &log));
+    ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
+                        tablet()->metadata()->wal_dir(), tablet()->metadata()->fs_manager()->uuid(),
+                        *tablet()->schema(), tablet()->metadata()->schema_version(),
+                        metric_entity_.get(), append_pool_.get(), &log));
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
-                                           std::shared_future<client::YBClientPtr>(),
-                                           messenger_,
+                                           std::shared_future<client::YBClient*>(),
+                                           nullptr /* server_mem_tracker */,
+                                           messenger_.get(),
                                            proxy_cache_.get(),
                                            log,
                                            metric_entity_,
@@ -178,8 +182,14 @@ class TabletPeerTest : public YBTabletTest,
   Status StartPeer(const ConsensusBootstrapInfo& info) {
     RETURN_NOT_OK(tablet_peer_->Start(info));
 
-    RETURN_NOT_OK(tablet_peer_->consensus()->EmulateElection());
-
+    AssertLoggedWaitFor([&]() -> Result<bool> {
+      if (FLAGS_quick_leader_election_on_create) {
+        return tablet_peer_->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
+      }
+      RETURN_NOT_OK(tablet_peer_->consensus()->EmulateElection());
+      return true;
+    }, MonoDelta::FromMilliseconds(500), "If quick leader elections enabled, wait for peer to be a "
+                                         "leader, otherwise emulate.");
     return Status::OK();
   }
 
@@ -191,6 +201,7 @@ class TabletPeerTest : public YBTabletTest,
   }
 
   void TearDown() override {
+    messenger_->Shutdown();
     tablet_peer_->Shutdown();
     YBTabletTest::TearDown();
   }
@@ -276,7 +287,7 @@ class TabletPeerTest : public YBTabletTest,
   int32_t delete_counter_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
-  shared_ptr<Messenger> messenger_;
+  std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::unique_ptr<ThreadPool> raft_pool_;
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
@@ -297,12 +308,12 @@ class DelayedApplyOperation : public WriteOperation {
         apply_continue_(DCHECK_NOTNULL(apply_continue)) {
   }
 
-  Status Apply(int64_t leader_term) override {
+  Status DoReplicated(int64_t leader_term, Status* completion_status) override {
     apply_started_->CountDown();
     LOG(INFO) << "Delaying apply...";
     apply_continue_->Wait();
     LOG(INFO) << "Apply proceeding";
-    return WriteOperation::Apply(leader_term);
+    return WriteOperation::DoReplicated(leader_term, completion_status);
   }
 
  private:

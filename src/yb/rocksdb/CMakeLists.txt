@@ -134,7 +134,6 @@ set(ROCKSDB_SRCS
     util/hash.cc
     util/histogram.cc
     util/instrumented_mutex.cc
-    util/iostats_context.cc
     utilities/backupable/backupable_db.cc
     utilities/convenience/info_log_finder.cc
     utilities/checkpoint/checkpoint.cc
@@ -178,7 +177,6 @@ set(ROCKSDB_SRCS
     util/options_parser.cc
     util/options_sanity_check.cc
     util/perf_context.cc
-    util/perf_level.cc
     util/random.cc
     util/rate_limiter.cc
     util/slice_transform.cc
@@ -196,7 +194,7 @@ set(ROCKSDB_SRCS
 )
 
 set(CMAKE_CXX_FLAGS
-  "${CMAKE_CXX_FLAGS} -DROCKSDB_LIB_IO_POSIX -DBZIP2 -DSNAPPY -DZLIB \
+  "${CMAKE_CXX_FLAGS} \
    -Wextra -Wsign-compare -Wshadow -Woverloaded-virtual \
    -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-variable")
 
@@ -206,7 +204,7 @@ if (IS_CLANG)
 endif()
 
 if (NOT APPLE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DOS_LINUX -DROCKSDB_FALLOCATE_PRESENT")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
 endif()
 
 if (${YB_USE_TSAN})
@@ -304,7 +302,6 @@ ADD_YB_TEST(util/env_test)
 ADD_YB_TEST(util/event_logger_test)
 ADD_YB_TEST(util/filelock_test)
 ADD_YB_TEST(util/histogram_test)
-ADD_YB_TEST(util/iostats_context_test)
 ADD_YB_TEST(util/memenv_test)
 ADD_YB_TEST(util/mock_env_test)
 ADD_YB_TEST(util/options_test)
@@ -343,6 +340,7 @@ ADD_YB_TEST(db/db_inplace_update_test)
 ADD_YB_TEST(db/db_iter_test)
 ADD_YB_TEST(db/db_log_iter_test)
 ADD_YB_TEST(db/db_properties_test)
+ADD_YB_TEST(db/db_sst_test)
 ADD_YB_TEST(db/db_table_properties_test)
 ADD_YB_TEST(db/db_tailing_iter_test)
 ADD_YB_TEST(db/db_test)

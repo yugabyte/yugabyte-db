@@ -18,6 +18,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.util.RegexMatcher;
 
 import java.math.BigDecimal;
 import java.sql.ResultSet;
@@ -35,13 +36,14 @@ public class TestPgSelect extends BasePgSQLTest {
   @Test
   public void testWhereClause() throws Exception {
     List<Row> allRows = setupSimpleTable("test_where");
+    final String PRIMARY_KEY = "test_where_pkey";
     try (Statement statement = connection.createStatement()) {
       // Test no where clause -- select all rows.
       String query = "SELECT * FROM test_where";
       try (ResultSet rs = statement.executeQuery(query)) {
         assertEquals(allRows, getSortedRowList(rs));
       }
-      assertFalse(needsPgFiltering(query));
+      assertFalse(useIndex(query, PRIMARY_KEY));
 
       // Test fixed hash key.
       query = "SELECT * FROM test_where WHERE h = 2";
@@ -52,7 +54,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(10, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertFalse(needsPgFiltering(query));
+      assertTrue(useIndex(query, PRIMARY_KEY));
 
       // Test fixed primary key.
       query = "SELECT * FROM test_where WHERE h = 2 AND r = 3.5";
@@ -64,7 +66,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(1, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertFalse(needsPgFiltering(query));
+      assertTrue(useIndex(query, PRIMARY_KEY));
 
       // Test fixed range key without fixed hash key.
       query = "SELECT * FROM test_where WHERE r = 6.5";
@@ -75,7 +77,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(10, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(needsPgFiltering(query));
+      assertFalse(useIndex(query, PRIMARY_KEY));
 
       // Test range scan.
       query = "SELECT * FROM test_where WHERE h = 2 AND r >= 3.5 AND r < 8.5";
@@ -88,7 +90,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(5, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(needsPgFiltering(query));
+      assertTrue(useIndex(query, PRIMARY_KEY));
 
       // Test conditions on regular (non-primary-key) columns.
       query = "SELECT * FROM test_where WHERE vi < 14 AND vs != 'v09'";
@@ -101,10 +103,10 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(13, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(needsPgFiltering(query));
+      assertFalse(useIndex(query, PRIMARY_KEY));
 
       // Test other WHERE operators (IN, OR, LIKE).
-      query = "SELECT * FROM test_where WHERE h IN (2,3) OR vs LIKE 'v_2'";
+      query = "SELECT * FROM test_where WHERE h = 2 OR h = 3 OR vs LIKE 'v_2'";
       try (ResultSet rs = statement.executeQuery(query)) {
         List<Row> expectedRows = allRows.stream()
             .filter(row -> row.getLong(0).equals(2L) ||
@@ -115,7 +117,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(28, expectedRows.size());
         assertEquals(expectedRows, getSortedRowList(rs));
       }
-      assertTrue(needsPgFiltering(query));
+      assertFalse(useIndex(query, PRIMARY_KEY));
     }
   }
 
@@ -228,7 +230,7 @@ public class TestPgSelect extends BasePgSQLTest {
 
       // Test join with WHERE clause.
       joinStmt = "SELECT a.h, a.r, a.v as av, b.v as bv FROM t1 a LEFT JOIN t2 b " +
-          "ON (a.h = b.h and a.r = b.r) WHERE a.h = 1 AND a.r IN (2.5, 3.5)";
+          "ON (a.h = b.h and a.r = b.r) WHERE a.h = 1 AND (a.r = 2.5 OR a.r = 3.5)";
       try (ResultSet rs = statement.executeQuery(joinStmt)) {
         assertNextRow(rs, 1L, 2.5D, "abc", "foo");
         assertNextRow(rs, 1L, 3.5D, "def", null);
@@ -238,6 +240,37 @@ public class TestPgSelect extends BasePgSQLTest {
       // Test views from join.
       statement.execute("CREATE VIEW t1_and_t2 AS " + joinStmt);
       assertOneRow("SELECT * FROM t1_and_t2 WHERE r > 3", 1L, 3.5D, "def", null);
+    }
+  }
+
+  /**
+   * Regression test for #1827.
+   */
+  @Test
+  public void testJoinWithArraySearch() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(id int, name varchar, PRIMARY KEY (id))");
+      statement.execute("CREATE TABLE join_table(id int, tid int, PRIMARY KEY (id))");
+
+      statement.execute("INSERT INTO test_table VALUES (0, 'name 1')");
+      statement.execute("INSERT INTO test_table VALUES (1, 'name 2')");
+      statement.execute("INSERT INTO test_table VALUES (2, 'name 3')");
+
+      statement.execute("INSERT INTO join_table VALUES (0, 0)");
+      statement.execute("INSERT INTO join_table VALUES (1, 0)");
+      statement.execute("INSERT INTO join_table VALUES (2, 1)");
+      statement.execute("INSERT INTO join_table VALUES (3, 1)");
+      statement.execute("INSERT INTO join_table VALUES (4, 2)");
+      statement.execute("INSERT INTO join_table VALUES (5, 2)");
+
+      assertQuery(statement, "SELECT tt.name, jt.id FROM test_table tt" +
+              " INNER JOIN join_table jt ON tt.id = jt.tid" +
+              " WHERE tt.id IN (0, 1)" +
+              " ORDER BY jt.id",
+          new Row("name 1", 0),
+          new Row("name 1", 1),
+          new Row("name 2", 2),
+          new Row("name 2", 3));
     }
   }
 
@@ -257,6 +290,24 @@ public class TestPgSelect extends BasePgSQLTest {
       // Test expressions in SELECT WHERE clause.
       assertOneRow("SELECT * FROM test_expr WHERE h + r <= 10 AND substring(vs from 2) = 'bc'",
                    2L, 3.0D, 4, "abc");
+    }
+  }
+
+  @Test
+  public void testPgsqlVersion() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      try (ResultSet rs = statement.executeQuery("SELECT version();")) {
+          assertTrue(rs.next());
+          assertThat(String.valueOf(rs.getArray(1)),
+                     RegexMatcher.matchesRegex("PostgreSQL.*-YB-.*"));
+          assertFalse(rs.next());
+      }
+      try (ResultSet rs = statement.executeQuery("show server_version;")) {
+        assertTrue(rs.next());
+        assertThat(String.valueOf(rs.getArray(1)),
+                RegexMatcher.matchesRegex(".*-YB-.*"));
+        assertFalse(rs.next());
+      }
     }
   }
 }

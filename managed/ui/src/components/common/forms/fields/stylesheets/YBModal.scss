@@ -1,0 +1,15 @@
+/* Copyright (c) YugaByte, Inc. */
+
+.yb-alert-item {
+    color: red;
+    font-size: 12px;
+}
+
+.delete-row-btn {
+    padding: 12px 20px 12px 10px;
+    font-size: 16px !important;
+    cursor: pointer;
+}
+.delete-row-btn:hover {
+    color: #d3d3d3;
+}

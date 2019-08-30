@@ -53,6 +53,8 @@
 #include "utils/syscache.h"
 #include "utils/rel.h"
 
+/*  YB includes. */
+#include "pg_yb_utils.h"
 
 /* Convenience macro for the most common makeNamespaceItem() case */
 #define makeDefaultNSItem(rte)	makeNamespaceItem(rte, true, true, false, true)
@@ -3135,7 +3137,7 @@ resolve_unique_index_expr(ParseState *pstate, InferClause *infer,
 		if (!ielem->opclass)
 			pInfer->inferopclass = InvalidOid;
 		else
-			pInfer->inferopclass = get_opclass_oid(BTREE_AM_OID,
+			pInfer->inferopclass = get_opclass_oid(IsYugaByteEnabled() ? LSM_AM_OID : BTREE_AM_OID,
 												   ielem->opclass, false);
 
 		result = lappend(result, pInfer);
@@ -3228,11 +3230,10 @@ transformOnConflictArbiter(ParseState *pstate,
 		 */
 		if (infer->conname)
 		{
-			Oid			relid = RelationGetRelid(pstate->p_target_relation);
 			RangeTblEntry *rte = pstate->p_target_rangetblentry;
 			Bitmapset  *conattnos;
 
-			conattnos = get_relation_constraint_attnos(relid, infer->conname,
+			conattnos = get_relation_constraint_attnos(pstate->p_target_relation, infer->conname,
 													   false, constraint);
 
 			/* Make sure the rel as a whole is marked for SELECT access */

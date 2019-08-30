@@ -40,7 +40,7 @@
 %expect 0
 
 // Debugging options. These should be deleted after coding is completed.
-%debug
+%define parse.trace
 %define parse.error verbose
 // Because of a bug in BISON 3.2, we have to turn off assertion for now.
 // %define parse.assert
@@ -90,6 +90,9 @@
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
+#include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_insert_values_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_explain.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
 #include "yb/yql/cql/ql/ptree/pt_transaction.h"
@@ -117,7 +120,8 @@ typedef PTRoleOptionListNode::SharedPtr     PRoleOptionListNode;
 typedef PTConstInt::SharedPtr          PConstInt;
 typedef PTCollectionExpr::SharedPtr    PCollectionExpr;
 typedef PTCollection::SharedPtr        PCollection;
-typedef PTValues::SharedPtr            PValues;
+typedef PTInsertValuesClause::SharedPtr     PInsertValuesClause;
+typedef PTInsertJsonClause::SharedPtr       PInsertJsonClause;
 typedef PTSelectStmt::SharedPtr        PSelectStmt;
 typedef PTTableRef::SharedPtr          PTableRef;
 typedef PTTableRefListNode::SharedPtr  PTableRefListNode;
@@ -139,6 +143,7 @@ typedef PTTypeFieldListNode::SharedPtr PTypeFieldListNode;
 typedef PTAssignListNode::SharedPtr    PAssignListNode;
 
 typedef PTName::SharedPtr              PName;
+typedef PTIndexColumn::SharedPtr       PIndexColumn;
 typedef PTQualifiedName::SharedPtr     PQualifiedName;
 typedef PTQualifiedNameListNode::SharedPtr PQualifiedNameListNode;
 
@@ -263,12 +268,17 @@ using namespace yb::ql;
                           // Index.
                           IndexStmt
 
+                          //Explain
+                          ExplainStmt ExplainableStmt
+
 %type <PCollection>       // Select can be either statement or expression of collection types.
                           SelectStmt select_no_parens select_with_parens select_clause
 
 %type <PSelectStmt>       simple_select
 
-%type <PValues>           values_clause
+%type <PInsertValuesClause>     values_clause
+
+%type <PInsertJsonClause>       json_clause
 
 %type <PExpr>             // Expression clause. These expressions are used in a specific context.
                           if_clause
@@ -282,7 +292,7 @@ using namespace yb::ql;
 
                           // Create table clauses.
                           OptTableElementList TableElementList
-                          ColQualList NestedColumnList columnList
+                          ColQualList NestedColumnList columnList index_column_list
 
                           // Alter table commands.
                           addColumnDefList dropColumnList alterPropertyList
@@ -361,6 +371,7 @@ using namespace yb::ql;
 
 // Name nodes.
 %type <PName>             indirection_el
+%type <PIndexColumn>      index_column
 
 %type <PQualifiedNameListNode>  insert_column_list any_name_list relation_expr_list
 
@@ -379,14 +390,14 @@ using namespace yb::ql;
 %type <KeywordType>       unreserved_keyword type_func_name_keyword
 %type <KeywordType>       col_name_keyword reserved_keyword
 
-%type <PBool>             boolean opt_else_clause opt_returns_clause
+%type <PBool>             boolean opt_else_clause opt_returns_clause opt_json_clause_default_null
 
 //--------------------------------------------------------------------------------------------------
 // Inactive tree node declarations (%type).
 // The rule names are currently not used.
 
 %type <KeywordType>       iso_level opt_encoding opt_boolean_or_string row_security_cmd
-                          RowSecurityDefaultForCmd explain_option_name all_Op MathOp extract_arg
+                          RowSecurityDefaultForCmd all_Op MathOp extract_arg
 
 %type <PChar>             enable_trigger
 
@@ -450,9 +461,9 @@ using namespace yb::ql;
                           DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt
                           DropPolicyStmt DropUserStmt DropdbStmt DropTableSpaceStmt DropFdwStmt
                           DropTransformStmt
-                          DropForeignServerStmt DropUserMappingStmt ExplainStmt FetchStmt
+                          DropForeignServerStmt DropUserMappingStmt FetchStmt
                           ImportForeignSchemaStmt
-                          ListenStmt LoadStmt LockStmt NotifyStmt ExplainableStmt PreparableStmt
+                          ListenStmt LoadStmt LockStmt NotifyStmt PreparableStmt
                           CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
                           RemoveFuncStmt RemoveOperStmt RenameStmt
                           RuleActionStmt RuleActionStmtOrEmpty RuleStmt
@@ -510,8 +521,6 @@ using namespace yb::ql;
                           tablesample_clause opt_repeatable_clause
                           generic_option_arg
                           generic_option_elem alter_generic_option_elem
-                          explain_option_arg
-                          explain_option_elem
                           copy_generic_opt_arg copy_generic_opt_arg_list_item
                           copy_generic_opt_elem
                           var_value zone_value
@@ -561,7 +570,7 @@ using namespace yb::ql;
                           ExclusionConstraintElem row explicit_row implicit_row
                           type_list when_clause_list NumericOnly_list
                           func_alias_clause generic_option_list alter_generic_option_list
-                          explain_option_list copy_generic_opt_list copy_generic_opt_arg_list
+                          copy_generic_opt_list copy_generic_opt_arg_list
                           copy_options constraints_set_list xml_attribute_list
                           xml_attributes within_group_clause
                           window_definition_list opt_partition_clause DefACLOptionList var_list
@@ -609,7 +618,7 @@ using namespace yb::ql;
                           INITIALLY INLINE_P INNER_P INOUT INPUT_P INSENSITIVE INSERT INSTEAD
                           INT_P INTEGER INTERSECT INTERVAL INTO INVOKER IS ISNULL ISOLATION
 
-                          JOIN JSONB
+                          JOIN JSON JSONB
 
                           KEY KEYSPACE KEYSPACES
 
@@ -650,7 +659,7 @@ using namespace yb::ql;
                           TYPE_P TYPES_P PARTITION_HASH
 
                           UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN
-                          UNLOGGED UNTIL UPDATE USE USER USING UUID
+                          UNLOGGED UNSET UNTIL UPDATE USE USER USING UUID
 
                           VACUUM VALID VALIDATE VALIDATOR VALUE_P VALUES VARCHAR VARIADIC VARINT
                           VARYING VERBOSE VERSION_P VIEW VIEWS VOLATILE
@@ -851,6 +860,12 @@ dml:
     }
     $$ = $1;
   }
+  | ExplainStmt {
+      if ($1 != nullptr) {
+        parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
+      }
+      $$ = $1;
+  }
 ;
 
 stmt:
@@ -907,6 +922,9 @@ stmt:
       parser_->SetBindVariables(static_cast<PTDmlStmt*>($1.get()));
     }
     $$ = $1;
+  }
+  | ExplainStmt {
+      $$ = $1;
   }
   | InsertStmt {
     if ($1 != nullptr) {
@@ -1359,19 +1377,45 @@ opt_column_list:
 ;
 
 NestedColumnList:
-  columnElem {
+  index_column {
     $$ = MAKE_NODE(@1, PTListNode, $1);
   }
-  | NestedColumnList ',' columnElem {
+  | NestedColumnList ',' index_column {
     $1->Append($3);
     $$ = $1;
   }
   | '(' NestedColumnList ')' {
     $$ = MAKE_NODE(@1, PTListNode, $2);
   }
-  | '(' NestedColumnList ')' ',' columnElem {
+  | '(' NestedColumnList ')' ',' index_column {
     $$ = MAKE_NODE(@1, PTListNode, $2);
     $$->Append($5);
+  }
+;
+
+// This can be "a_expr", but as of now, we only allow column_ref and json attributes.
+index_column:
+  columnref {
+    // A columnref expression refers to a previously defined column.
+    if (!$1->name()->IsSimpleName()) {
+      PARSER_ERROR_MSG(@0, INVALID_ARGUMENTS, "Cannot use qualified name in this context");
+    }
+    $$ = MAKE_NODE(@1, PTIndexColumn, $1->name()->column_name(), $1);
+  }
+  | columnref json_ref {
+    // Declare an index column here as generic expressions are not mapped to any pre-defined column.
+    PTExpr::SharedPtr expr = MAKE_NODE(@1, PTJsonColumnWithOperators, $1->name(), $2);
+    $$ = MAKE_NODE(@1, PTIndexColumn, parser_->MakeString(expr->IndexColumnName().c_str()), expr);
+  }
+;
+
+index_column_list:
+  index_column {
+    $$ = MAKE_NODE(@1, PTListNode, $1);
+  }
+  | index_column_list ',' index_column {
+    $1->Append($3);
+    $$ = $1;
   }
 ;
 
@@ -1388,10 +1432,6 @@ columnList:
 columnElem:
   ColId {
     $$ = MAKE_NODE(@1, PTName, $1);
-  }
-  | ColId json_ref {
-    PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $1);
-    $$ = MAKE_NODE(@1, PTJsonColumnWithOperators, name_node, $2);
   }
 ;
 
@@ -2132,12 +2172,38 @@ simple_select:
 
 values_clause:
   VALUES ctext_row {
-    $$ = MAKE_NODE(@1, PTValues, $2);
+    $$ = MAKE_NODE(@1, PTInsertValuesClause, $2);
   }
   | values_clause ',' ctext_row {
     PARSER_NOCODE(@2);
     $1->Append($3);
     $$ = $1;
+  }
+;
+
+// Sconst parsing is delayed
+json_clause:
+  JSON Sconst opt_json_clause_default_null {
+    PTConstText::SharedPtr json_expr = MAKE_NODE(@2, PTConstText, $2);
+    $$ = MAKE_NODE(@1, PTInsertJsonClause, json_expr, $3);
+  }
+  | JSON bindvar opt_json_clause_default_null {
+    if ($2 != nullptr) {
+      parser_->AddBindVariable(static_cast<PTBindVar*>($2.get()));
+    }
+    $$ = MAKE_NODE(@1, PTInsertJsonClause, $2, $3);
+  }
+;
+
+opt_json_clause_default_null:
+  /* EMPTY */ {
+    $$ = true;
+  }
+  | DEFAULT NULL_P {
+    $$ = true;
+  }
+  | DEFAULT UNSET {
+    $$ = false;
   }
 ;
 
@@ -2549,6 +2615,11 @@ InsertStmt:
   opt_using_ttl_timestamp_clause opt_returns_clause
   {
     $$ = MAKE_NODE(@2, PTInsertStmt, $3, $5, $7, $8, $9, $10, $11);
+  }
+  | INSERT INTO insert_target json_clause opt_on_conflict opt_using_ttl_timestamp_clause
+  opt_returns_clause
+  {
+    $$ = MAKE_NODE(@2, PTInsertStmt, $3, nullptr, $4, nullptr, false, $6, $7);
   }
   | INSERT INTO insert_target DEFAULT VALUES opt_on_conflict returning_clause {
     PARSER_CQL_INVALID_MSG(@4, "DEFAULT VALUES feature is not supported");
@@ -5144,6 +5215,7 @@ unreserved_keyword:
   | UNKNOWN { $$ = $1; }
   | UNLISTEN { $$ = $1; }
   | UNLOGGED { $$ = $1; }
+  | UNSET { $$ = $1; }
   | UNTIL { $$ = $1; }
   | UPDATE { $$ = $1; }
   | VACUUM { $$ = $1; }
@@ -5197,6 +5269,7 @@ col_name_keyword:
   | GREATEST { $$ = $1; }
   | GROUPING { $$ = $1; }
   | INET { $$ = $1; }
+  | JSON { $$ = $1; }
   | JSONB { $$ = $1; }
   | INOUT { $$ = $1; }
   | INT_P { $$ = $1; }
@@ -5458,7 +5531,6 @@ inactive_stmt:
   | DropUserMappingStmt
   | DropdbStmt
   | ExecuteStmt
-  | ExplainStmt
   | FetchStmt
   | ImportForeignSchemaStmt
   | ListenStmt
@@ -8074,10 +8146,10 @@ opt_include_clause:
   /*EMPTY*/ {
     $$ = nullptr;
   }
-  | INCLUDE '(' columnList ')' {
+  | INCLUDE '(' index_column_list ')' {
     $$ = $3;
   }
-  | COVERING '(' columnList ')' {
+  | COVERING '(' index_column_list ')' {
     $$ = $3;
   }
 ;
@@ -9343,62 +9415,33 @@ opt_name_list:
 /*****************************************************************************
  *
  *    QUERY:
- *        EXPLAIN [ANALYZE] [VERBOSE] query
- *        EXPLAIN ( options ) query
+ *        EXPLAIN query
  *
  *****************************************************************************/
 
 ExplainStmt:
   EXPLAIN ExplainableStmt {
-    PARSER_UNSUPPORTED(@1);
+    $$ = MAKE_NODE(@1, PTExplainStmt, $2);
   }
-  | EXPLAIN analyze_keyword opt_verbose ExplainableStmt {
-    PARSER_UNSUPPORTED(@1);
+  | EXPLAIN analyze_keyword ExplainableStmt {
+    PARSER_UNSUPPORTED(@2);
+  }
+  | EXPLAIN analyze_keyword VERBOSE ExplainableStmt {
+    PARSER_UNSUPPORTED(@2);
+  }
+  | EXPLAIN VERBOSE analyze_keyword ExplainableStmt {
+    PARSER_UNSUPPORTED(@3);
   }
   | EXPLAIN VERBOSE ExplainableStmt {
-    PARSER_UNSUPPORTED(@1);
-  }
-  | EXPLAIN '(' explain_option_list ')' ExplainableStmt {
-    PARSER_UNSUPPORTED(@1);
+    PARSER_UNSUPPORTED(@2);
   }
 ;
 
 ExplainableStmt:
-  SelectStmt              { $$ = nullptr; }
-  | InsertStmt            { $$ = nullptr; }
-  | UpdateStmt            { $$ = nullptr; }
-  | DeleteStmt            { $$ = nullptr; }
-  | DeclareCursorStmt     { $$ = nullptr; }
-  | CreateAsStmt          { $$ = nullptr; }
-  | CreateMatViewStmt     { $$ = nullptr; }
-  | RefreshMatViewStmt    { $$ = nullptr; }
-  | ExecuteStmt           { $$ = nullptr; }
-;
-
-explain_option_list:
-  explain_option_elem {
-  }
-  | explain_option_list ',' explain_option_elem {
-  }
-;
-
-explain_option_elem:
-  explain_option_name explain_option_arg {
-  }
-;
-
-explain_option_name:
-  NonReservedWord     { $$ = $1->c_str(); }
-  | analyze_keyword   { $$ = "analyze"; }
-;
-
-explain_option_arg:
-  opt_boolean_or_string {
-  }
-  | NumericOnly {
-  }
-  | /* EMPTY */ {
-  }
+  SelectStmt { $$ = $1; }
+  | InsertStmt { $$ = $1; }
+  | UpdateStmt { $$ = $1; }
+  | DeleteStmt { $$ = $1; }
 ;
 
 /*****************************************************************************

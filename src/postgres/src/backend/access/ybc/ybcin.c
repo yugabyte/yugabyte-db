@@ -25,6 +25,7 @@
 #include "postgres.h"
 
 #include "miscadmin.h"
+#include "access/nbtree.h"
 #include "access/relscan.h"
 #include "access/sysattr.h"
 #include "access/ybcam.h"
@@ -39,8 +40,61 @@
 /* Working state for ybcinbuild and its callback */
 typedef struct
 {
-	double	  index_tuples;
+	bool	isprimary;
+	double	index_tuples;
 } YBCBuildState;
+
+/*
+ * LSM handler function: return IndexAmRoutine with access method parameters
+ * and callbacks.
+ */
+Datum
+ybcinhandler(PG_FUNCTION_ARGS)
+{
+	IndexAmRoutine *amroutine = makeNode(IndexAmRoutine);
+
+	amroutine->amstrategies = BTMaxStrategyNumber;
+	amroutine->amsupport = BTNProcs;
+	amroutine->amcanorder = true;
+	amroutine->amcanorderbyop = false;
+	amroutine->amcanbackward = true;
+	amroutine->amcanunique = true;
+	amroutine->amcanmulticol = true;
+	amroutine->amoptionalkey = true;
+	amroutine->amsearcharray = true;
+	amroutine->amsearchnulls = true;
+	amroutine->amstorage = false;
+	amroutine->amclusterable = true;
+	amroutine->ampredlocks = true;
+	amroutine->amcanparallel = false; /* TODO: support parallel scan */
+	amroutine->amcaninclude = true;
+	amroutine->amkeytype = InvalidOid;
+
+	amroutine->ambuild = ybcinbuild;
+	amroutine->ambuildempty = ybcinbuildempty;
+	amroutine->aminsert = NULL; /* use yb_aminsert below instead */
+	amroutine->ambulkdelete = ybcinbulkdelete;
+	amroutine->amvacuumcleanup = ybcinvacuumcleanup;
+	amroutine->amcanreturn = ybcincanreturn;
+	amroutine->amcostestimate = ybcincostestimate;
+	amroutine->amoptions = ybcinoptions;
+	amroutine->amproperty = ybcinproperty;
+	amroutine->amvalidate = ybcinvalidate;
+	amroutine->ambeginscan = ybcinbeginscan;
+	amroutine->amrescan = ybcinrescan;
+	amroutine->amgettuple = ybcingettuple;
+	amroutine->amgetbitmap = NULL; /* TODO: support bitmap scan */
+	amroutine->amendscan = ybcinendscan;
+	amroutine->ammarkpos = NULL; /* TODO: support mark/restore pos with ordering */
+	amroutine->amrestrpos = NULL;
+	amroutine->amestimateparallelscan = NULL; /* TODO: support parallel scan */
+	amroutine->aminitparallelscan = NULL;
+	amroutine->amparallelrescan = NULL;
+	amroutine->yb_aminsert = ybcininsert;
+	amroutine->yb_amdelete = ybcindelete;
+
+	PG_RETURN_POINTER(amroutine);
+}
 
 static void
 ybcinbuildCallback(Relation index, HeapTuple heapTuple, Datum *values, bool *isnull,
@@ -48,7 +102,9 @@ ybcinbuildCallback(Relation index, HeapTuple heapTuple, Datum *values, bool *isn
 {
 	YBCBuildState  *buildstate = (YBCBuildState *)state;
 
-	YBCExecuteInsertIndex(index, values, isnull, heapTuple->t_ybctid);
+	if (!buildstate->isprimary)
+		YBCExecuteInsertIndex(index, values, isnull, heapTuple->t_ybctid);
+
 	buildstate->index_tuples += 1;
 }
 
@@ -58,8 +114,6 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 	YBCBuildState	buildstate;
 	double			heap_tuples = 0;
 
-	Assert(!index->rd_index->indisprimary);
-
 	PG_TRY();
 	{
 		/* Buffer the inserts into the index for initdb */
@@ -67,6 +121,7 @@ ybcinbuild(Relation heap, Relation index, struct IndexInfo *indexInfo)
 			YBCStartBufferingWriteOperations();
 
 		/* Do the heap scan */
+		buildstate.isprimary = index->rd_index->indisprimary;
 		buildstate.index_tuples = 0;
 		heap_tuples = IndexBuildHeapScan(heap, index, indexInfo, true, ybcinbuildCallback,
 										 &buildstate, NULL);
@@ -101,9 +156,8 @@ bool
 ybcininsert(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation heap,
 			IndexUniqueCheck checkUnique, struct IndexInfo *indexInfo)
 {
-	Assert(!index->rd_index->indisprimary);
-
-	YBCExecuteInsertIndex(index, values, isnull, ybctid);
+	if (!index->rd_index->indisprimary)
+		YBCExecuteInsertIndex(index, values, isnull, ybctid);
 
 	return index->rd_index->indisunique ? true : false;
 }
@@ -112,7 +166,8 @@ void
 ybcindelete(Relation index, Datum *values, bool *isnull, Datum ybctid, Relation heap,
 			struct IndexInfo *indexInfo)
 {
-	YBCExecuteDeleteIndex(index, values, isnull, ybctid);
+	if (!index->rd_index->indisprimary)
+		YBCExecuteDeleteIndex(index, values, isnull, ybctid);
 }
 
 IndexBulkDeleteResult *
@@ -134,7 +189,15 @@ ybcinvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 
 bool ybcincanreturn(Relation index, int attno)
 {
-	return false;
+	/*
+	 * If "canreturn" is true, Postgres will attempt to perform index-only scan on the indexed
+	 * columns and expect us to return the column values as an IndexTuple. This will be the case
+	 * for secondary index.
+	 *
+	 * For indexes which are primary keys, we will return the table row as a HeapTuple instead.
+	 * For this reason, we set "canreturn" to false for primary keys.
+	 */
+	return !index->rd_index->indisprimary;
 }
 
 void
@@ -142,6 +205,7 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 				  Cost *indexStartupCost, Cost *indexTotalCost, Selectivity *indexSelectivity,
 				  double *indexCorrelation, double *indexPages)
 {
+	ybcIndexCostEstimate(path, indexSelectivity, indexStartupCost, indexTotalCost);
 }
 
 bytea *
@@ -183,107 +247,55 @@ ybcinbeginscan(Relation rel, int nkeys, int norderbys)
 void 
 ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys, int norderbys)
 {
-	ybc_index_beginscan(scan->indexRelation, scan, nscankeys, scankey);
+	if (scan->indexRelation->rd_index->indisprimary)
+		ybc_pkey_beginscan(scan->heapRelation, scan->indexRelation, scan, nscankeys, scankey);
+	else
+		ybc_index_beginscan(scan->indexRelation, scan, nscankeys, scankey);
 }
 
 bool
 ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 {
-	HeapTuple tuple = ybc_index_getnext(scan);
-	scan->xs_ctup.t_ybctid = (tuple != NULL) ? tuple->t_ybctid : 0;
-	scan->xs_recheck = false; /* no need to recheck because the scan key is exact match */
+	Assert(dir == ForwardScanDirection || dir == BackwardScanDirection);
+	const bool is_forward_scan = (dir == ForwardScanDirection);
+
+	scan->xs_ctup.t_ybctid = 0;
+
+	/* 
+	 * If IndexTuple is requested or it is a secondary index, return the result as IndexTuple.
+	 * Otherwise, return the result as a HeapTuple of the base table.
+	 */
+	if (scan->xs_want_itup || !scan->indexRelation->rd_index->indisprimary)
+	{
+		IndexTuple tuple = ybc_index_getnext(scan, is_forward_scan);
+
+		if (tuple)
+		{
+			scan->xs_ctup.t_ybctid = tuple->t_ybctid;
+			scan->xs_itup = tuple;
+			scan->xs_itupdesc = RelationGetDescr(scan->indexRelation);
+		}
+	}
+	else
+	{
+		HeapTuple tuple = ybc_pkey_getnext(scan, is_forward_scan);
+
+		if (tuple)
+		{
+			scan->xs_ctup.t_ybctid = tuple->t_ybctid;
+			scan->xs_hitup = tuple;
+			scan->xs_hitupdesc = RelationGetDescr(scan->heapRelation);
+		}
+	}
+
 	return scan->xs_ctup.t_ybctid != 0;
 }
 
 void 
 ybcinendscan(IndexScanDesc scan)
 {
-	ybc_index_endscan(scan);
-}
-
-/* --------------------------------------------------------------------------------------------- */
-
-HeapTuple
-YBCIndexExecuteSelect(Relation relation, Datum ybctid)
-{
-	YBCPgStatement ybc_stmt;
-	TupleDesc      tupdesc = RelationGetDescr(relation);
-
-	HandleYBStatus(YBCPgNewSelect(ybc_pg_session,
-								  YBCGetDatabaseOid(relation),
-								  RelationGetRelid(relation),
-								  InvalidOid,
-								  &ybc_stmt,
-								  NULL /* read_time */));
-
-	/* Bind ybctid to identify the current row. */
-	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt,
-										   BYTEAOID,
-										   ybctid,
-										   false);
-	HandleYBStmtStatus(YBCPgDmlBindColumn(ybc_stmt,
-										  YBTupleIdAttributeNumber,
-										  ybctid_expr), ybc_stmt);
-
-	/*
-	 * Set up the scan targets. For index-based scan we need to return all "real" columns.
-	 */
-	if (RelationGetForm(relation)->relhasoids)
-	{
-		YBCPgTypeAttrs type_attrs = { 0 };
-		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, ObjectIdAttributeNumber, InvalidOid,
-										   &type_attrs);
-		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, expr), ybc_stmt);
-	}
-	for (AttrNumber attnum = 1; attnum <= tupdesc->natts; attnum++)
-	{
-		Form_pg_attribute att = TupleDescAttr(tupdesc, attnum - 1);
-		YBCPgTypeAttrs type_attrs = { att->atttypmod };
-		YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid, &type_attrs);
-		HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, expr), ybc_stmt);
-	}
-	YBCPgTypeAttrs type_attrs = { 0 };
-	YBCPgExpr   expr = YBCNewColumnRef(ybc_stmt, YBTupleIdAttributeNumber, InvalidOid,
-									   &type_attrs);
-	HandleYBStmtStatus(YBCPgDmlAppendTarget(ybc_stmt, expr), ybc_stmt);
-
-	/* Execute the select statement. */
-	HandleYBStmtStatus(YBCPgExecSelect(ybc_stmt), ybc_stmt);
-
-	HeapTuple tuple    = NULL;
-	bool      has_data = false;
-
-	Datum           *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
-	bool            *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
-	YBCPgSysColumns syscols;
-
-	/* Fetch one row. */
-	HandleYBStmtStatus(YBCPgDmlFetch(ybc_stmt,
-									 tupdesc->natts,
-									 (uint64_t *) values,
-									 nulls,
-									 &syscols,
-									 &has_data),
-					   ybc_stmt);
-
-	if (has_data)
-	{
-		tuple = heap_form_tuple(tupdesc, values, nulls);
-
-		if (syscols.oid != InvalidOid)
-		{
-			HeapTupleSetOid(tuple, syscols.oid);
-		}
-		if (syscols.ybctid != NULL)
-		{
-			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
-		}
-	}
-	pfree(values);
-	pfree(nulls);
-
-	/* Complete execution */
-	HandleYBStatus(YBCPgDeleteStatement(ybc_stmt));
-
-	return tuple;
+	if (scan->indexRelation->rd_index->indisprimary)
+		ybc_pkey_endscan(scan);
+	else
+		ybc_index_endscan(scan);
 }

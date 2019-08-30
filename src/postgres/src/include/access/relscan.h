@@ -78,7 +78,7 @@ typedef struct HeapScanDescData
 	int			rs_cindex;		/* current tuple's index in vistuples */
 	int			rs_ntuples;		/* number of visible tuples on page */
 	OffsetNumber rs_vistuples[MaxHeapTuplesPerPage];	/* their offsets */
-	YbSysScanDesc ybscan;       /* only valid in yb-scan case */
+	YbScanDesc	ybscan;			/* only valid in yb-scan case */
 }			HeapScanDescData;
 
 /*
@@ -141,6 +141,24 @@ typedef struct IndexScanDescData
 
 	/* parallel index scan information, in shared memory */
 	ParallelIndexScanDesc parallel_scan;
+
+	/* During execution, Postgres will push down hints to YugaByte for performance purpose.
+	 * (currently, only LIMIT values are being pushed down). All these execution information will
+	 * kept in "yb_exec_params".
+	 *
+	 * - Generally, "yb_exec_params" is kept in execution-state. As Postgres executor traverses and
+	 *   excutes the nodes, it passes along the execution state. Necessary information (such as
+	 *   LIMIT values) will be collected and written to "yb_exec_params" in EState.
+	 *
+	 * - However, IndexScan execution doesn't use Postgres's node execution infrastructure. Neither
+	 *   execution plan nor execution state is passed to IndexScan operators. As a result,
+	 *   "yb_exec_params" is kept in "IndexScanDescData" to avoid passing EState to a lot of
+	 *   IndexScan functions.
+	 *
+	 * - Postgres IndexScan function will call and pass "yb_exec_params" to PgGate to control the
+	 *   index-scan execution in YugaByte.
+	 */
+	YBCPgExecParameters *yb_exec_params;
 }			IndexScanDescData;
 
 /* Generic structure for parallel scans */
@@ -160,7 +178,7 @@ typedef struct SysScanDescData
 	HeapScanDesc scan;			/* only valid in heap-scan case */
 	IndexScanDesc iscan;		/* only valid in index-scan case */
 	Snapshot	snapshot;		/* snapshot to unregister at end of scan */
-	YbSysScanDesc ybscan;       /* only valid in yb-scan case */
+	YbScanDesc	ybscan;			/* only valid in yb-scan case */
 }			SysScanDescData;
 
 #endif							/* RELSCAN_H */

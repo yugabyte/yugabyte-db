@@ -58,6 +58,67 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/url-coding.h"
 
+namespace {
+
+// A struct representing some information about a tablet peer.
+struct TabletPeerInfo {
+  string name;
+  int64_t on_disk_size;
+  bool has_on_disk_size;
+  yb::consensus::RaftPeerPB::Role raft_role;
+};
+
+// An identifier for a table, according to the `/tables` page.
+struct TableIdentifier {
+  string uuid;
+  string state;
+};
+
+// A struct representing some information about a table.
+struct TableInfo {
+  string name;
+  int64_t on_disk_size;
+  bool has_complete_on_disk_size;
+  std::map<yb::consensus::RaftPeerPB::Role, size_t> raft_role_counts;
+
+  explicit TableInfo(TabletPeerInfo info)
+      : name(info.name),
+        on_disk_size(info.on_disk_size),
+        has_complete_on_disk_size(info.has_on_disk_size) {
+    raft_role_counts.emplace(info.raft_role, 1);
+  }
+
+  // Adds information about a single tablet peer to a table.
+  void Aggregate(const TabletPeerInfo& other) {
+    auto rc_iter = raft_role_counts.find(other.raft_role);
+    if (rc_iter == raft_role_counts.end()) {
+      raft_role_counts.emplace(other.raft_role, 1);
+    } else {
+      ++rc_iter->second;
+    }
+
+    on_disk_size += other.on_disk_size;
+    has_complete_on_disk_size = has_complete_on_disk_size && other.has_on_disk_size;
+  }
+};
+
+}  // anonymous namespace
+
+namespace std {
+
+template<>
+struct less<TableIdentifier> {
+  bool operator() (const TableIdentifier& lhs, const TableIdentifier& rhs) const {
+    if (lhs.uuid == rhs.uuid) {
+      return lhs.state < rhs.state;
+    } else {
+      return lhs.uuid < rhs.uuid;
+    }
+  }
+};
+
+} //  namespace std
+
 namespace yb {
 namespace tserver {
 
@@ -70,6 +131,7 @@ using yb::tablet::MaintenanceManagerStatusPB;
 using yb::tablet::MaintenanceManagerStatusPB_CompletedOpPB;
 using yb::tablet::MaintenanceManagerStatusPB_MaintenanceOpPB;
 using yb::tablet::Tablet;
+using yb::tablet::TabletDataState;
 using yb::tablet::TabletPeer;
 using yb::tablet::TabletStatusPB;
 using yb::tablet::Operation;
@@ -84,6 +146,9 @@ TabletServerPathHandlers::~TabletServerPathHandlers() {
 }
 
 Status TabletServerPathHandlers::Register(Webserver* server) {
+  server->RegisterPathHandler(
+      "/tables", "Tables", std::bind(&TabletServerPathHandlers::HandleTablesPage, this, _1, _2),
+      true /* styled */, true /* is_on_nav_bar */, "fa fa-table");
   server->RegisterPathHandler(
       "/tablets", "Tablets", std::bind(&TabletServerPathHandlers::HandleTabletsPage, this, _1, _2),
       true /* styled */, true /* is_on_nav_bar */, "fa fa-server");
@@ -190,7 +255,100 @@ bool CompareByTabletId(const std::shared_ptr<TabletPeer>& a,
   return a->tablet_id() < b->tablet_id();
 }
 
+// Returns information about the tables stored on this tablet server.
+std::map<TableIdentifier, TableInfo> GetTablesInfo(
+    const vector<std::shared_ptr<TabletPeer>>& peers) {
+  std::map<TableIdentifier, TableInfo> table_map;
+
+  for (const auto& peer : peers) {
+    TabletStatusPB status;
+    peer->GetTabletStatusPB(&status);
+
+    if (status.tablet_data_state() != TabletDataState::TABLET_DATA_COPYING &&
+        status.tablet_data_state() != TabletDataState::TABLET_DATA_READY) {
+      continue;
+    }
+
+    auto consensus = peer->shared_consensus();
+    auto raft_role = RaftPeerPB::UNKNOWN_ROLE;
+    if (consensus) {
+      raft_role = consensus->role();
+    } else if (status.tablet_data_state() == TabletDataState::TABLET_DATA_COPYING) {
+      raft_role = RaftPeerPB::LEARNER;
+    }
+
+    auto identifer = TableIdentifier {
+      .uuid = std::move(status.table_id()),
+      .state = peer->HumanReadableState()
+    };
+    auto info = TabletPeerInfo {
+      .name = std::move(status.table_name()),
+      .on_disk_size = status.has_estimated_on_disk_size() ? status.estimated_on_disk_size() : 0,
+      .has_on_disk_size = status.has_estimated_on_disk_size(),
+      .raft_role = raft_role,
+    };
+
+    auto table_iter = table_map.find(identifer);
+    if (table_iter == table_map.end()) {
+      table_map.emplace(identifer, TableInfo(std::move(info)));
+    } else {
+      table_iter->second.Aggregate(std::move(info));
+    }
+  }
+
+  return table_map;
+}
+
 }  // anonymous namespace
+
+void TabletServerPathHandlers::HandleTablesPage(const Webserver::WebRequest& req,
+                                                std::stringstream *output) {
+  vector<std::shared_ptr<TabletPeer>> peers;
+  tserver_->tablet_manager()->GetTabletPeers(&peers);
+  auto table_map = GetTablesInfo(peers);
+  bool show_missing_size_footer = false;
+
+  *output << "<h1>Tables</h1>\n"
+          << "<table class='table table-striped'>\n"
+          << "  <tr>\n"
+          << "    <th>Table name</th><th>Table UUID</th>\n"
+          << "    <th>State</th><th>On-disk size</th><th>Raft roles</th>\n"
+          << "  </tr>\n";
+
+  for (const auto& table_iter : table_map) {
+    const auto& identifier = table_iter.first;
+    const auto& info = table_iter.second;
+
+    string disk_size_string = HumanReadableNumBytes::ToString(info.on_disk_size);
+    if (!info.has_complete_on_disk_size) {
+      disk_size_string += "*";
+      show_missing_size_footer = true;
+    }
+
+    std::stringstream role_counts_html;
+    role_counts_html << "<ul>";
+    for (const auto& rc_iter : info.raft_role_counts) {
+      role_counts_html << "<li>" << RaftPeerPB::Role_Name(rc_iter.first)
+                       << ": " << rc_iter.second << "</li>";
+    }
+    role_counts_html << "</ul>";
+
+    *output << Substitute(
+        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
+        EscapeForHtmlToString(info.name),
+        EscapeForHtmlToString(identifier.uuid),
+        EscapeForHtmlToString(identifier.state),
+        disk_size_string,
+        role_counts_html.str());
+  }
+
+  *output << "</table>\n";
+
+  if (show_missing_size_footer) {
+    *output << "<p>* Some tablets did not provide disk size estimates,"
+            << " and were not added to the displayed totals.</p>";
+  }
+}
 
 void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& req,
                                                  std::stringstream *output) {
@@ -200,7 +358,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
 
   *output << "<h1>Tablets</h1>\n";
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Table name</th><th>Tablet ID</th>"
+  *output << "  <tr><th>Table name</th><th>Table UUID</th><th>Tablet ID</th>"
       "<th>Partition</th>"
       "<th>State</th><th>On-disk size</th><th>RaftConfig</th><th>Last status</th></tr>\n";
   for (const std::shared_ptr<TabletPeer>& peer : peers) {
@@ -208,6 +366,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     peer->GetTabletStatusPB(&status);
     string id = status.tablet_id();
     string table_name = status.table_name();
+    string table_id = status.table_id();
     string tablet_id_or_link;
     if (peer->tablet() != nullptr) {
       tablet_id_or_link = TabletLink(id);
@@ -225,17 +384,18 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
     // TODO: would be nice to include some other stuff like memory usage
     shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
     (*output) << Substitute(
-        // Table name, tablet id, partition
-        "<tr><td>$0</td><td>$1</td><td>$2</td>"
+        // Table name, UUID of table, tablet id, partition
+        "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td>"
         // State, on-disk size, consensus configuration, last status
-        "<td>$3</td><td>$4</td><td>$5</td><td>$6</td></tr>\n",
+        "<td>$4</td><td>$5</td><td>$6</td><td>$7</td></tr>\n",
         EscapeForHtmlToString(table_name),  // $0
-        tablet_id_or_link,  // $1
-        EscapeForHtmlToString(partition),  // $2
-        EscapeForHtmlToString(peer->HumanReadableState()), n_bytes,  // $3, $4
+        EscapeForHtmlToString(table_id),  // $1
+        tablet_id_or_link,  // $2
+        EscapeForHtmlToString(partition),  // $3
+        EscapeForHtmlToString(peer->HumanReadableState()), n_bytes,  // $4, $5
         consensus ? ConsensusStatePBToHtml(consensus->ConsensusState(CONSENSUS_CONFIG_COMMITTED))
-                  : "",  // $5
-        EscapeForHtmlToString(status.last_status()));  // $6
+                  : "",  // $6
+        EscapeForHtmlToString(status.last_status()));  // $7
   }
   *output << "</table>\n";
 }

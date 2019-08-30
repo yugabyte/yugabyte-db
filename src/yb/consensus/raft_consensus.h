@@ -101,9 +101,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
     const scoped_refptr<MetricEntity>& metric_entity,
     const scoped_refptr<server::Clock>& clock,
     ReplicaOperationFactory* operation_factory,
-    const std::shared_ptr<rpc::Messenger>& messenger,
+    rpc::Messenger* messenger,
     rpc::ProxyCache* proxy_cache,
     const scoped_refptr<log::Log>& log,
+    const std::shared_ptr<MemTracker>& server_mem_tracker,
     const std::shared_ptr<MemTracker>& parent_mem_tracker,
     const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
     TableType table_type,
@@ -151,7 +152,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   CHECKED_STATUS Update(
       ConsensusRequestPB* request,
-      ConsensusResponsePB* response) override;
+      ConsensusResponsePB* response,
+      CoarseTimePoint deadline) override;
 
   CHECKED_STATUS RequestVote(const VoteRequestPB* request,
                              VoteResponsePB* response) override;
@@ -213,7 +215,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                             int64_t term,
                             const std::string& reason) override;
 
-  CHECKED_STATUS GetLastOpId(OpIdType type, OpId* id) override;
+  yb::OpId GetLastReceivedOpId() override;
+
+  yb::OpId GetLastCommittedOpId() override;
 
   MicrosTime MajorityReplicatedHtLeaseExpiration(
       MicrosTime min_allowed, CoarseTimePoint deadline) const override;
@@ -228,15 +232,24 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   yb::OpId MinRetryableRequestOpId();
 
+  CHECKED_STATUS StartElection(const LeaderElectionData& data) override {
+    return DoStartElection(data, PreElected::kFalse);
+  }
+
+  size_t LogCacheSize();
+  size_t EvictLogCache(size_t bytes_to_evict);
+
   RetryableRequestsCounts TEST_CountRetryableRequests();
 
   void TEST_RejectMode(RejectMode value) {
     reject_mode_.store(value, std::memory_order_release);
   }
 
-  CHECKED_STATUS StartElection(const LeaderElectionData& data) override {
-    return DoStartElection(data, PreElected::kFalse);
+  void TEST_DelayUpdate(MonoDelta duration) {
+    TEST_delay_update_.store(duration, std::memory_order_release);
   }
+
+  CHECKED_STATUS ReadReplicatedMessages(const OpId& from, ReplicateMsgs* msgs) override;
 
  protected:
   // Trigger that a non-Operation ConsensusRound has finished replication.
@@ -295,7 +308,7 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // append to our log, after they've been deduplicated.
   struct LeaderRequest {
     std::string leader_uuid;
-    const OpId* preceding_opid;
+    yb::OpId preceding_opid;
     ReplicateMsgs messages;
     // The positional index of the first message selected to be appended, in the
     // original leader's request message sequence.
@@ -329,15 +342,25 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   CHECKED_STATUS BecomeLeaderUnlocked();
 
   // Makes the peer become a replica, i.e. a FOLLOWER or a LEARNER.
+  // initial_fd_wait is the initial wait time before the FailureDetector wakes up and triggers a
+  // leader election.
   //
   // The ReplicaState must be locked for configuration change before calling.
-  CHECKED_STATUS BecomeReplicaUnlocked(const std::string& new_leader_uuid);
+  CHECKED_STATUS BecomeReplicaUnlocked(const std::string& new_leader_uuid,
+                                       MonoDelta initial_fd_wait = MonoDelta());
+
+  struct UpdateReplicaResult {
+    yb::OpId wait_for_op_id;
+
+    // Start an election after the writes are committed?
+    bool start_election = false;
+  };
 
   // Updates the state in a replica by storing the received operations in the log
   // and triggering the required operations. This method won't return until all
   // operations have been stored in the log and all Prepares() have been completed,
   // and a replica cannot accept any more Update() requests until this is done.
-  CHECKED_STATUS UpdateReplica(
+  Result<UpdateReplicaResult> UpdateReplica(
       ConsensusRequestPB* request,
       ConsensusResponsePB* response);
 
@@ -559,13 +582,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
                                        LeaderRequest* deduped_req,
                                        ConsensusResponsePB* response);
   // Returns last op id received from leader.
-  OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, const yb::OpId& committed_op_id,
-                             WriteEmpty write_empty, const StatusCallback& sync_status_cb);
+  yb::OpId EnqueueWritesUnlocked(const LeaderRequest& deduped_req, const yb::OpId& committed_op_id,
+                                 WriteEmpty write_empty);
   CHECKED_STATUS MarkOperationsAsCommittedUnlocked(const ConsensusRequestPB& request,
                                                    const LeaderRequest& deduped_req,
-                                                   OpId last_from_leader);
-  CHECKED_STATUS WaitWritesUnlocked(const LeaderRequest& deduped_req,
-                                    Synchronizer* log_synchronizer);
+                                                   yb::OpId last_from_leader);
+  CHECKED_STATUS WaitForWrites(const yb::OpId& wait_for_op_id);
 
   // See comment for ReplicaState::CancelPendingOperation
   void RollbackIdAndDeleteOpId(const ReplicateMsgPtr& replicate_msg, bool should_exists);
@@ -612,14 +634,16 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // server, we'll reply with the amount of time that has passed to avoid leader stepdown loops.s
   MonoTime election_lost_by_protege_at_;
 
+  // The number of times this node has called and lost a leader election since
+  // the last time it saw a stable leader (either itself or another node).
+  // This is used to calculate back-off of the election timeout.
+  std::atomic<int> failed_elections_since_stable_leader_{0};
+
   const Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk_;
 
-  // TODO hack to serialize updates due to repeated/out-of-order messages
-  // should probably be refactored out.
-  //
   // Lock ordering note: If both this lock and the ReplicaState lock are to be
   // taken, this lock must be taken first.
-  mutable std::mutex update_lock_;
+  mutable std::timed_mutex update_mutex_;
 
   AtomicBool shutdown_;
 
@@ -648,6 +672,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   std::atomic<RejectMode> reject_mode_{RejectMode::kNone};
 
   CoarseTimePoint disable_pre_elections_until_ = CoarseTimePoint::min();
+
+  std::atomic<MonoDelta> TEST_delay_update_{MonoDelta::kZero};
 
   DISALLOW_COPY_AND_ASSIGN(RaftConsensus);
 };

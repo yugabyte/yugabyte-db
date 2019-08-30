@@ -25,6 +25,7 @@ DEFINE_int64(transaction_rpc_timeout_ms, 5000 * yb::kTimeMultiplier,
 namespace yb {
 
 const std::string kTransactionsTableName = "transactions";
+const std::string kMetricsSnapshotsTableName = "metrics";
 
 namespace {
 
@@ -103,8 +104,8 @@ MonoDelta TransactionRpcTimeout() {
 }
 
 // TODO(dtxn) correct deadline should be calculated and propagated.
-MonoTime TransactionRpcDeadline() {
-  return MonoTime::Now() + TransactionRpcTimeout();
+CoarseTimePoint TransactionRpcDeadline() {
+  return CoarseMonoClock::Now() + TransactionRpcTimeout();
 }
 
 bool TransactionOperationContext::transactional() const {

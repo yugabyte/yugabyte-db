@@ -1298,6 +1298,12 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 							 quote_identifier(NameStr(amrec->amname)));
 	}
 
+	/* Count hash columns */
+	int hash_count = 0;
+	for (keyno = 0; keyno < idxrec->indnkeyatts; keyno++)
+		if (indoption->values[keyno] & INDOPTION_HASH)
+			hash_count++;
+
 	/*
 	 * Report the indexed attributes
 	 */
@@ -1308,6 +1314,10 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		int16		opt = indoption->values[keyno];
 		Oid			keycoltype;
 		Oid			keycolcollation;
+
+		/* Put hash column group in a parenthesis */
+		if (!attrsOnly && keyno == 0 && !colno && hash_count > 1)
+			appendStringInfoString(&buf, "(");
 
 		/*
 		 * Ignore non-key attributes if told to.
@@ -1393,6 +1403,15 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 				{
 					if (opt & INDOPTION_NULLS_FIRST)
 						appendStringInfoString(&buf, " NULLS FIRST");
+				}
+
+				/* Report hash column with optional closing parenthesis */
+				if (opt & INDOPTION_HASH)
+				{
+					if (colno == keyno + 1 || hash_count == 1)
+						appendStringInfoString(&buf, " HASH");
+					else if (keyno == hash_count - 1)
+						appendStringInfoString(&buf, ") HASH");
 				}
 			}
 

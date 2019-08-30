@@ -15,6 +15,7 @@
 #ifndef YB_YQL_PGGATE_PG_DML_H_
 #define YB_YQL_PGGATE_PG_DML_H_
 
+#include "yb/docdb/primitive_value.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_doc_op.h"
@@ -45,6 +46,9 @@ class PgDml : public PgStatement {
 
   // Bind a column with an expression.
   CHECKED_STATUS BindColumn(int attnum, PgExpr *attr_value);
+  CHECKED_STATUS BindColumnCondEq(int attr_num, PgExpr *attr_value);
+  CHECKED_STATUS BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end);
+  CHECKED_STATUS BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);
 
   // Assign an expression to a column.
   CHECKED_STATUS AssignColumn(int attnum, PgExpr *attr_value);
@@ -59,6 +63,15 @@ class PgDml : public PgStatement {
                        PgSysColumns *syscols,
                        bool *has_data);
   CHECKED_STATUS WritePgTuple(PgTuple *pg_tuple);
+
+  // Add primary column to be used in construction of tuple id (ybctid).
+  CHECKED_STATUS AddYBTupleIdColumn(int attr_num,
+                                    uint64_t datum,
+                                    bool is_null,
+                                    const YBCPgTypeEntity *type_entity);
+
+  // Get tuple id (ybctid) of the given Postgres tuple.
+  Result<std::string> GetYBTupleId();
 
   virtual void SetCatalogCacheVersion(uint64_t catalog_cache_version) = 0;
 
@@ -113,7 +126,7 @@ class PgDml : public PgStatement {
   //
   // * Bind values are used to identify the selected rows to be operated on.
   // * Set values are used to hold columns' new values in the selected rows.
-  string ybctid_bind_;
+  bool ybctid_bind_ = false;
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_binds_;
   std::unordered_map<PgsqlExpressionPB*, PgExpr*> expr_assigns_;
 
@@ -130,6 +143,24 @@ class PgDml : public PgStatement {
 
   // Total number of rows that have been found.
   int64_t accumulated_row_count_ = 0;
+
+  //------------------------------------------------------------------------------------------------
+  // Hashed and range values/components used to compute the tuple id.
+  //
+  // These members are populated by the AddYBTupleIdColumn function and the tuple id is retrieved
+  // using the GetYBTupleId function.
+  //
+  // These members are not used internally by the statement and are simply a utility for computing
+  // the tuple id (ybctid).
+
+  // Hashed values used to compute tuple id (ybctid).
+  google::protobuf::RepeatedPtrField<PgsqlExpressionPB> hashed_values_;
+
+  // Hashed components used to compute tuple id (ybctid).
+  vector<docdb::PrimitiveValue> hashed_components_;
+
+  // Range components used to compute tuple id (ybctid).
+  vector<docdb::PrimitiveValue> range_components_;
 };
 
 }  // namespace pggate

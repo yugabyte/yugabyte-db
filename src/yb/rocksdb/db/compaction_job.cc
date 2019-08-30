@@ -63,16 +63,17 @@
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/iostats_context_imp.h"
 #include "yb/rocksdb/util/log_buffer.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/thread_status_util.h"
+
+#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 
@@ -484,6 +485,9 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   TEST_SYNC_POINT("CompactionJob::Run():Start");
   log_buffer_->FlushBufferToLog();
   LogCompaction();
+  for (auto listener : db_options_.listeners) {
+    listener->OnCompactionStarted();
+  }
 
   const size_t num_threads = compact_->sub_compact_states.size();
   assert(num_threads > 0);
@@ -1039,24 +1043,26 @@ Status CompactionJob::OpenCompactionOutputFile(
   ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
 
   {
-    auto setup_outfile = [] (const EnvOptions& env_options, size_t preallocation_block_size,
-        std::unique_ptr<WritableFile>* writable_file, std::unique_ptr<WritableFileWriter>* writer) {
+    auto setup_outfile = [this, sub_compact] (
+        size_t preallocation_block_size, std::unique_ptr<WritableFile>* writable_file,
+        std::unique_ptr<WritableFileWriter>* writer) {
       (*writable_file)->SetIOPriority(Env::IO_LOW);
       if (preallocation_block_size > 0) {
         (*writable_file)->SetPreallocationBlockSize(preallocation_block_size);
       }
-      writer->reset(new WritableFileWriter(std::move(*writable_file), env_options));
+      writer->reset(new WritableFileWriter(
+          std::move(*writable_file), env_options_, sub_compact->compaction->suspender()));
     };
 
     const bool is_split_sst = cfd->ioptions()->table_factory->IsSplitSstForWriteSupported();
     const size_t preallocation_data_block_size = static_cast<size_t>(
         sub_compact->compaction->OutputFilePreallocationSize());
     // if we don't have separate data file - preallocate size for base file
-    setup_outfile(env_options_, is_split_sst ? 0 : preallocation_data_block_size,
-        &base_writable_file, &sub_compact->base_outfile);
+    setup_outfile(
+        is_split_sst ? 0 : preallocation_data_block_size, &base_writable_file,
+        &sub_compact->base_outfile);
     if (is_split_sst) {
-      setup_outfile(env_options_, preallocation_data_block_size, &data_writable_file,
-          &sub_compact->data_outfile);
+      setup_outfile(preallocation_data_block_size, &data_writable_file, &sub_compact->data_outfile);
     }
   }
 

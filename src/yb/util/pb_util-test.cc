@@ -67,6 +67,7 @@ using std::vector;
 static const char* kTestFileName = "pb_container.meta";
 static const char* kTestKeyvalName = "my-key";
 static const int kTestKeyvalValue = 1;
+static const std::string kTestString = "test-string";
 
 class TestPBUtil : public YBTest {
  public:
@@ -102,7 +103,7 @@ Status TestPBUtil::BitFlipFileByteRange(const string& path, uint64_t offset, uin
   faststring buf;
   // Read the data from disk.
   {
-    gscoped_ptr<RandomAccessFile> file;
+    std::unique_ptr<RandomAccessFile> file;
     RETURN_NOT_OK(env_->NewRandomAccessFile(path, &file));
     uint64_t size = VERIFY_RESULT(file->Size());
     Slice slice;
@@ -119,7 +120,7 @@ Status TestPBUtil::BitFlipFileByteRange(const string& path, uint64_t offset, uin
   }
 
   // Write the data back to disk.
-  gscoped_ptr<WritableFile> file;
+  std::unique_ptr<WritableFile> file;
   RETURN_NOT_OK(env_->NewWritableFile(path, &file));
   RETURN_NOT_OK(file->Append(buf));
   RETURN_NOT_OK(file->Close());
@@ -128,7 +129,7 @@ Status TestPBUtil::BitFlipFileByteRange(const string& path, uint64_t offset, uin
 }
 
 TEST_F(TestPBUtil, TestWritableFileOutputStream) {
-  gscoped_ptr<Env> env(NewMemEnv(Env::Default()));
+  std::unique_ptr<Env> env(NewMemEnv(Env::Default()));
   shared_ptr<WritableFile> file;
   ASSERT_OK(env_util::OpenFileForWrite(env.get(), "/test", &file));
 
@@ -203,7 +204,7 @@ TEST_F(TestPBUtil, TestPBContainerCorruption) {
   // Test that an empty file looks like corruption.
   {
     // Create the empty file.
-    gscoped_ptr<WritableFile> file;
+    std::unique_ptr<WritableFile> file;
     ASSERT_OK(env_->NewWritableFile(path_, &file));
     ASSERT_OK(file->Close());
   }
@@ -267,9 +268,9 @@ TEST_F(TestPBUtil, TestMultipleMessages) {
   pb.set_name("foo");
   pb.set_note("bar");
 
-  gscoped_ptr<WritableFile> writer;
+  std::unique_ptr<WritableFile> writer;
   ASSERT_OK(env_->NewWritableFile(path_, &writer));
-  WritablePBContainerFile pb_writer(writer.Pass());
+  WritablePBContainerFile pb_writer(std::move(writer));
   ASSERT_OK(pb_writer.Init(pb));
 
   for (int i = 0; i < 10; i++) {
@@ -279,9 +280,9 @@ TEST_F(TestPBUtil, TestMultipleMessages) {
   ASSERT_OK(pb_writer.Close());
 
   int pbs_read = 0;
-  gscoped_ptr<RandomAccessFile> reader;
+  std::unique_ptr<RandomAccessFile> reader;
   ASSERT_OK(env_->NewRandomAccessFile(path_, &reader));
-  ReadablePBContainerFile pb_reader(reader.Pass());
+  ReadablePBContainerFile pb_reader(std::move(reader));
   ASSERT_OK(pb_reader.Init());
   for (int i = 0;; i++) {
     ProtoContainerTestPB read_pb;
@@ -305,12 +306,12 @@ TEST_F(TestPBUtil, TestInterleavedReadWrite) {
   pb.set_note("bar");
 
   // Open the file for writing and reading.
-  gscoped_ptr<WritableFile> writer;
+  std::unique_ptr<WritableFile> writer;
   ASSERT_OK(env_->NewWritableFile(path_, &writer));
-  WritablePBContainerFile pb_writer(writer.Pass());
-  gscoped_ptr<RandomAccessFile> reader;
+  WritablePBContainerFile pb_writer(std::move(writer));
+  std::unique_ptr<RandomAccessFile> reader;
   ASSERT_OK(env_->NewRandomAccessFile(path_, &reader));
-  ReadablePBContainerFile pb_reader(reader.Pass());
+  ReadablePBContainerFile pb_reader(std::move(reader));
 
   // Write the header (writer) and validate it (reader).
   ASSERT_OK(pb_writer.Init(pb));
@@ -362,9 +363,9 @@ TEST_F(TestPBUtil, TestPopulateDescriptorSet) {
 
 void TestPBUtil::DumpPBCToString(const string& path, bool oneline_output,
                                  string* ret) {
-  gscoped_ptr<RandomAccessFile> reader;
+  std::unique_ptr<RandomAccessFile> reader;
   ASSERT_OK(env_->NewRandomAccessFile(path, &reader));
-  ReadablePBContainerFile pb_reader(reader.Pass());
+  ReadablePBContainerFile pb_reader(std::move(reader));
   ASSERT_OK(pb_reader.Init());
   ostringstream oss;
   ASSERT_OK(pb_reader.Dump(&oss, oneline_output));
@@ -408,9 +409,9 @@ TEST_F(TestPBUtil, TestDumpPBContainer) {
   pb.mutable_record_one()->set_name("foo");
   pb.mutable_record_two()->mutable_record()->set_name("foo");
 
-  gscoped_ptr<WritableFile> writer;
+  std::unique_ptr<WritableFile> writer;
   ASSERT_OK(env_->NewWritableFile(path_, &writer));
-  WritablePBContainerFile pb_writer(writer.Pass());
+  WritablePBContainerFile pb_writer(std::move(writer));
   ASSERT_OK(pb_writer.Init(pb));
 
   for (int i = 0; i < 2; i++) {
@@ -457,6 +458,30 @@ TEST_F(TestPBUtil, TestEnumToString) {
     ASSERT_EQ(kExpectedStr, ToString(kInvalidValue));
   }
 #endif
+}
+
+TEST_F(TestPBUtil, TestPBRequiredToRepeated) {
+  // Write the file with required fields.
+  {
+    TestObjectRequiredPB pb;
+    pb.set_string1(kTestString + "1");
+    pb.set_string2(kTestString + "2");
+    pb.mutable_record()->set_text(kTestString);
+    ASSERT_OK(WritePBContainerToPath(env_.get(), path_, pb, OVERWRITE, SYNC));
+  }
+
+  // Read it back as repeated fields, should validate and contain the expected values.
+  TestObjectRepeatedPB pb;
+  ASSERT_OK(ReadPBContainerFromPath(env_.get(), path_, &pb));
+  ASSERT_EQ(1, pb.string1_size());
+  ASSERT_EQ(1, pb.string2_size());
+  ASSERT_EQ(1, pb.record_size());
+  ASSERT_EQ(kTestString + "1", pb.string1()[0]);
+  ASSERT_EQ(kTestString + "2", pb.string2()[0]);
+  ASSERT_EQ(kTestString, pb.record()[0].text()[0]);
+
+  // Delete the file.
+  ASSERT_OK(env_->DeleteFile(path_));
 }
 
 } // namespace pb_util

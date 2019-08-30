@@ -42,6 +42,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -104,7 +105,6 @@ using client::YBSession;
 using client::YBStatusMemberCallback;
 using client::YBTable;
 using client::YBTableCreator;
-using client::YBTableType;
 using client::YBTableName;
 using strings::Split;
 using strings::Substitute;
@@ -139,6 +139,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
   void CreateTable();
 
   void DoTearDown() override {
+    client_.reset();
     if (cluster_) {
       cluster_->Shutdown();
     }
@@ -164,7 +165,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
     builder.add_master_server_addr(
         cluster_->mini_master()->bound_rpc_addr_str());
     builder.default_rpc_timeout(MonoDelta::FromSeconds(30));
-    ASSERT_OK(builder.Build(&client_));
+    client_ = ASSERT_RESULT(builder.Build());
   }
 
   // Adds newly generated client's session and table pointers to arrays at id
@@ -194,7 +195,7 @@ class FullStackInsertScanTest : public YBMiniClusterTestBase<MiniCluster> {
   Random random_;
 
   YBSchema schema_;
-  std::shared_ptr<YBClient> client_;
+  std::unique_ptr<YBClient> client_;
   client::TableHandle reader_table_;
   // Concurrent client insertion test variables
   vector<std::shared_ptr<YBSession> > sessions_;

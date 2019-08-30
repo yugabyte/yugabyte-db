@@ -17,6 +17,7 @@
 #include "yb/client/client-internal.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/wire_protocol.h"
@@ -254,6 +255,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel con
   req_.set_tablet_id(tablet_invoker_.tablet()->tablet_id());
   req_.set_include_trace(IsTracingEnabled());
   const ConsistentReadPoint* read_point = batcher_->read_point();
+  bool has_read_time = false;
   if (read_point) {
     req_.set_propagated_hybrid_time(read_point->Now().ToUint64());
     // Set read time for consistent read only if the table is transaction-enabled and
@@ -262,6 +264,7 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel con
         table()->InternalSchema().table_properties().is_transactional()) {
       auto read_time = read_point->GetReadTime(tablet_invoker_.tablet()->tablet_id());
       if (read_time) {
+        has_read_time = true;
         read_time.AddToPB(&req_);
       }
     }
@@ -269,7 +272,12 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(AsyncRpcData* data, YBConsistencyLevel con
   auto& transaction_metadata = batcher_->transaction_metadata();
   if (!transaction_metadata.transaction_id.is_nil()) {
     SetTransactionMetadata(transaction_metadata, batcher_->may_have_metadata(), &req_);
+    bool serializable = transaction_metadata.isolation == IsolationLevel::SERIALIZABLE_ISOLATION;
+    LOG_IF(DFATAL, has_read_time && serializable)
+        << "Read time should NOT be specified for serializable isolation: "
+        << read_point->GetReadTime().ToString();
   }
+  req_.set_memory_limit_score(data->memory_limit_score);
 }
 
 template <class Req, class Resp>
@@ -302,8 +310,13 @@ void AsyncRpcBase<Req, Resp>::SendRpcToTserver() {
   if (!tablet_invoker_.current_ts().HasCapability(CAPABILITY_PickReadTimeAtTabletServer)) {
     ConsistentReadPoint* read_point = batcher_->read_point();
     if (read_point && !read_point->GetReadTime()) {
-      read_point->SetCurrentReadTime();
-      read_point->GetReadTime().AddToPB(&req_);
+      auto txn = batcher_->transaction();
+      // If txn is not set, this is a consistent scan across multiple tablets of a
+      // non-transactional YCQL table.
+      if (!txn || txn->isolation() == IsolationLevel::SNAPSHOT_ISOLATION) {
+        read_point->SetCurrentReadTime();
+        read_point->GetReadTime().AddToPB(&req_);
+      }
     }
   }
 

@@ -57,8 +57,6 @@ class PreparerImpl {
  private:
   using OperationDrivers = std::vector<OperationDriver*>;
 
-  scoped_refptr<yb::Thread> thread_;
-
   consensus::Consensus* const consensus_;
 
   // We set this to true to tell the Run function to return. No new tasks will be accepted, but
@@ -188,9 +186,8 @@ void PreparerImpl::ProcessItem(OperationDriver* item) {
 
   if (item->is_leader_side()) {
     // ChangeMetadataOperation::Prepare calls Tablet::CreatePreparedChangeMetadata, which acquires
-    // the schema lock. Because of this, we must not attempt to process two AlterSchemaOperations in
-    // one batch, otherwise we'll deadlock. Furthermore, for simplicity, we choose to process each
-    // AlterSchemaOperation in a batch of its own.
+    // the schema lock. Because of this, we must not attempt to process two ChangeMetadataOperations
+    // in one batch, otherwise we'll deadlock.
     auto operation_type = item->operation_type();
     const bool apply_separately = operation_type == OperationType::kChangeMetadata ||
                                   operation_type == OperationType::kEmpty;
