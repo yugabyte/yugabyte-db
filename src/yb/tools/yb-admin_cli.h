@@ -52,9 +52,9 @@ class ClusterAdminCli {
 
   virtual ~ClusterAdminCli() = default;
 
-  int Run(int argc, char** argv);
+  Status Run(int argc, char** argv);
 
-  static void UsageAndExit(const std::string& prog_name);
+  static const Status kInvalidArguments;
 
  protected:
   typedef std::function<Status(const CLIArguments&)> CommandFn;
