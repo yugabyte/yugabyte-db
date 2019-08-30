@@ -3075,7 +3075,6 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 
 						switch (constraint->contype)
 						{
-							case CONSTR_DEFAULT:
 							case CONSTR_IDENTITY:
 							case CONSTR_PRIMARY:
 							case CONSTR_UNIQUE:
