@@ -32,7 +32,7 @@ YugaByte DB is not a good fit for traditional Online Analytical Processing (OLAP
 
 ## How many major releases YugaByte DB has had so far?
 
-YugaByte DB has had 4 major releases.
+YugaByte DB has had 5 major releases.
 
 - [v0.9 Beta](https://blog.yugabyte.com/yugabyte-has-arrived/) in November 2017
 - [v1.0](https://blog.yugabyte.com/announcing-yugabyte-db-1-0-%F0%9F%8D%BE-%F0%9F%8E%89/) in May 2018
@@ -84,7 +84,7 @@ Starting [v1.3](https://blog.yugabyte.com/announcing-yugabyte-db-v1-3-with-enter
 
 [YugaByte Platform](../../deploy/enterprise-edition/) is commercial software for running a self-managed DB-as-a-Service. It has built-in cloud native operations, enterprise-grade deployment options and world-class support. It is the simplest way to run YugaByte DB in mission-critical production environments with one or more regions (across both public cloud and on-premises datacenters).
 
-[YugaByte Cloud] is YugaByte's fully-managed cloud service on AWS and GCP. You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
+[YugaByte Cloud](http://yugabyte.com/cloud) is YugaByte's fully-managed cloud service on AWS and GCP. You can [sign up](https://www.yugabyte.com/cloud/) for early access now.
 
 A more detailed comparison of the above is available [here](https://www.yugabyte.com/platform/#compare-editions).
 
