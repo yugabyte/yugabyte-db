@@ -382,7 +382,7 @@ main(int argc, char **argv)
 		{NULL, 0, NULL, 0}
 	};
 
-	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_dump"));
+	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("ysql_dump"));
 
 	/*
 	 * Initialize what we need for parallel execution, especially for thread
@@ -407,7 +407,7 @@ main(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pg_dump (PostgreSQL) " PG_VERSION);
+			puts("ysql_dump (YSQL) " PG_VERSION);
 			exit_nicely(0);
 		}
 	}
@@ -1010,7 +1010,7 @@ help(const char *progname)
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
-	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(_("Report bugs on https://github.com/YugaByte/yugabyte-db/issues/new\n"));
 }
 
 static void
