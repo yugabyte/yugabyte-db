@@ -32,8 +32,8 @@ import java.util.*;
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
-public class TestPgDump extends BasePgSQLTest {
-  private static final Logger LOG = LoggerFactory.getLogger(TestPgDump.class);
+public class TestYsqlDump extends BasePgSQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestYsqlDump.class);
 
   @Test
   public void testPgDump() throws Exception {
@@ -41,41 +41,43 @@ public class TestPgDump extends BasePgSQLTest {
     File pgRegressDir = PgRegressRunner.getPgRegressDir();
 
     // Create the data
-    BufferedReader inputIn = new BufferedReader(
-                                           new FileReader(
-                                               new File(pgRegressDir,
-                                                        "sql/yb_pg_dump.sql")));
-    try (Statement statement = connection.createStatement()) {
-      String inputLine = null;
-      while ((inputLine = inputIn.readLine()) != null) {
-        LOG.info(inputLine);
-        statement.execute(inputLine);
-        LOG.info("Executed");
+    try (BufferedReader inputIn = createFileReader(new File(pgRegressDir,
+                                                            "sql/yb_ysql_dump.sql"))) {
+      try (Statement statement = connection.createStatement()) {
+        String inputLine = null;
+        while ((inputLine = inputIn.readLine()) != null) {
+          LOG.info(inputLine);
+          statement.execute(inputLine);
+          LOG.info("Executed");
+        }
       }
     }
 
     // Dump and validate the data
     File pgBinDir = PgRegressRunner.getPgBinDir();
-    File pgDumpExec = new File(pgBinDir, "pg_dump");
+    File ysqlDumpExec = new File(pgBinDir, "ysql_dump");
 
     final int tserverIndex = 0;
-    File actual = new File(pgRegressDir, "output/yb_pg_dump.out");
-    ProcessBuilder pb = new ProcessBuilder(pgDumpExec.toString(), "-h", getPgHost(tserverIndex),
+    File actual = new File(pgRegressDir, "output/yb_ysql_dump.out");
+    ProcessBuilder pb = new ProcessBuilder(ysqlDumpExec.toString(), "-h", getPgHost(tserverIndex),
                                            "-p", Integer.toString(getPgPort(tserverIndex)),
                                            "-U", DEFAULT_PG_USER,
                                            "-f", actual.toString());
     pb.start().waitFor();
 
-    BufferedReader actualIn = new BufferedReader(new FileReader(actual));
-    BufferedReader expectedIn = new BufferedReader(
-                                        new FileReader(
-                                            new File(pgRegressDir,
-                                                     "expected/yb_pg_dump.out")));
-    String actualLine = null, expectedLine = null;
-    while ((actualLine = actualIn.readLine()) != null) {
-      expectedLine = expectedIn.readLine();
-      assertEquals(actualLine, expectedLine);
+    try (BufferedReader actualIn   = createFileReader(actual);
+         BufferedReader expectedIn = createFileReader(new File(pgRegressDir,
+                                                              "expected/yb_ysql_dump.out"));) {
+      String actualLine = null, expectedLine = null;
+      while ((actualLine = actualIn.readLine()) != null) {
+        expectedLine = expectedIn.readLine();
+        assertEquals(actualLine, expectedLine);
+      }
+      assertEquals(expectedIn.readLine(), null);
     }
-    assertEquals(expectedIn.readLine(), null);
+  }
+
+  private BufferedReader createFileReader(File f) throws Exception {
+    return new BufferedReader(new FileReader(f));
   }
 }

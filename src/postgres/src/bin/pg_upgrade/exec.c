@@ -394,8 +394,8 @@ check_bin_dir(ClusterInfo *cluster)
 	{
 		/* these are only needed in the new cluster */
 		validate_exec(cluster->bindir, "psql");
-		validate_exec(cluster->bindir, "pg_dump");
-		validate_exec(cluster->bindir, "pg_dumpall");
+		validate_exec(cluster->bindir, "ysql_dump");
+		validate_exec(cluster->bindir, "ysql_dumpall");
 	}
 }
 
