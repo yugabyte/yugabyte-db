@@ -112,6 +112,23 @@ Description
 
 *TODO*
 
+``DELETE``
+----------
+
+Deletes nodes and relationships from the graph. Use ``DETACH`` to delete a node and any relationship it has.
+
+Synopsis
+~~~~~~~~
+
+::
+
+  [DETACH] DELETE expression
+
+Description
+~~~~~~~~~~~
+
+*TODO*
+
 Expressions
 -----------
 
