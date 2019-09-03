@@ -33,6 +33,7 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`CREATE SEQUENCE`](ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](ddl_create_table) | Create a new table |
 | [`CREATE TABLE AS`](ddl_create_table_as) | Create a new table |
+| [`CREATE TYPE`](ddl_create_type) | Create a new type |
 | [`CREATE USER`](dcl_create_user) | Create a new user (role) |
 | [`CREATE VIEW`](ddl_create_view) | Create a new view |
 | [`DEALLOCATE`](perf_deallocate) | Deallocate a prepared statement |
@@ -41,7 +42,8 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](ddl_drop_table) | Deletes a table from a database |
-| [`END`](txn_end) | Commits a transaction |
+| [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
+| [`END`](txn_end) | Commit a transaction |
 | [`EXECUTE`](perf_execute) | Execute a prepared statement |
 | [`EXPLAIN`](perf_explain) | Display execution plan for a statement |
 | [`INSERT`](dml_insert) | Insert rows into a table |

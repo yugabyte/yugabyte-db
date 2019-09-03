@@ -15,10 +15,13 @@
 
 #include "../../../../src/yb/master/catalog_manager.h"
 #include "yb/master/cdc_rpc_tasks.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/cdc_consumer_registry_service.h"
 
 namespace yb {
 namespace master {
 namespace enterprise {
+
 
 class CatalogManager : public yb::master::CatalogManager {
   typedef yb::master::CatalogManager super;
@@ -53,6 +56,10 @@ class CatalogManager : public yb::master::CatalogManager {
   CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                       ChangeEncryptionInfoResponsePB* resp) override;
 
+  CHECKED_STATUS InitCDCConsumer(const std::vector<CDCConsumerStreamInfo>& consumer_info,
+                                 const std::string& master_addrs,
+                                 const std::string& producer_universe_uuid);
+
   void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error);
 
   void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error);
@@ -82,6 +89,7 @@ class CatalogManager : public yb::master::CatalogManager {
   // Is encryption at rest enabled for this cluster.
   CHECKED_STATUS IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* req,
                                      IsEncryptionEnabledResponsePB* resp);
+
   // Create a new CDC stream with the specified attributes.
   CHECKED_STATUS CreateCDCStream(const CreateCDCStreamRequestPB* req,
                                  CreateCDCStreamResponsePB* resp,
@@ -188,6 +196,14 @@ class CatalogManager : public yb::master::CatalogManager {
 
   bool CDCStreamExistsUnlocked(const CDCStreamId& stream_id) override;
 
+  CHECKED_STATUS FillHeartbeatResponseEncryption(const SysClusterConfigEntryPB& cluster_config,
+                                                 const TSHeartbeatRequestPB* req,
+                                                 TSHeartbeatResponsePB* resp);
+
+  CHECKED_STATUS FillHeartbeatResponseCDC(const SysClusterConfigEntryPB& cluster_config,
+                                          const TSHeartbeatRequestPB* req,
+                                          TSHeartbeatResponsePB* resp);
+
   template <class Collection>
   typename Collection::value_type::second_type LockAndFindPtrOrNull(
       const Collection& collection, const typename Collection::value_type::first_type& key) {
@@ -229,6 +245,12 @@ class CatalogManager : public yb::master::CatalogManager {
   typedef std::unordered_map<std::string, scoped_refptr<UniverseReplicationInfo>>
       UniverseReplicationInfoMap;
   UniverseReplicationInfoMap universe_replication_map_;
+
+  // mutex on should_send_consumer_registry_mutex_.
+  mutable simple_spinlock should_send_consumer_registry_mutex_;
+  // Should catalog manager resend latest consumer registry to tserver.
+  std::unordered_map<TabletServerId, bool> should_send_consumer_registry_
+  GUARDED_BY(should_send_consumer_registry_mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

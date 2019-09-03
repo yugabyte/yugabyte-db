@@ -22,6 +22,7 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/session.h"
 #include "yb/client/yb_table_name.h"
@@ -43,6 +44,14 @@ DEFINE_int32(cdc_ybclient_reactor_threads, 50,
              "The number of reactor threads to be used for processing ybclient "
              "requests for CDC.");
 TAG_FLAG(cdc_ybclient_reactor_threads, advanced);
+
+// TODO(Rahul): Remove this flag once the master handshake has been landed.
+DEFINE_test_flag(bool, mock_get_changes_response_for_consumer_testing, false,
+                 "Mock a successful response to consumer before stream id integration is set up.");
+
+DEFINE_int32(cdc_wal_retention_time_secs, 4 * 3600,
+             "WAL retention time in seconds to be used for tables for which a CDC stream was "
+             "created.");
 
 namespace yb {
 namespace cdc {
@@ -151,26 +160,38 @@ void CDCServiceImpl::CreateCDCStream(const CreateCDCStreamRequestPB* req,
     // Check if YSQL table has a primary key. CQL tables always have a user specified primary key.
     RPC_CHECK_AND_RETURN_ERROR(
         table->table_type() != client::YBTableType::PGSQL_TABLE_TYPE ||
-          YsqlTableHasPrimaryKey(table->schema()),
+        YsqlTableHasPrimaryKey(table->schema()),
         STATUS(InvalidArgument, "Cannot setup CDC on table without primary key"),
         resp->mutable_error(),
         CDCErrorPB::INVALID_REQUEST,
         context);
   }
 
+  std::unique_ptr<client::YBTableAlterer> table_alterer(
+      async_client_init_->client()->NewTableAlterer(table->name()));
+
+  // Increase WAL retention. Fail the request if we fail to set the WAL retention.
+  auto wal_retention_secs = 0;
+  if (req->has_retention_sec()) {
+    wal_retention_secs = req->retention_sec();
+  } else {
+    wal_retention_secs = static_cast<uint32>(FLAGS_cdc_wal_retention_time_secs);
+  }
+
+  auto status = table_alterer->SetWalRetentionSecs(wal_retention_secs)->Alter();
+  RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+
   std::unordered_map<std::string, std::string> options;
   options.reserve(3);
   options.emplace(kRecordType, CDCRecordType_Name(req->record_type()));
   options.emplace(kRecordFormat, CDCRecordFormat_Name(req->record_format()));
-  if (req->has_retention_sec()) {
-    options.emplace(kRetentionSec, std::to_string(req->retention_sec()));
-  }
+  options.emplace(kRetentionSec, std::to_string(wal_retention_secs));
+
   auto result = async_client_init_->client()->CreateCDCStream(req->table_id(), options);
   RPC_CHECK_AND_RETURN_ERROR(result.ok(), result.status(), resp->mutable_error(),
                              CDCErrorPB::INTERNAL_ERROR, context);
 
   resp->set_stream_id(*result);
-  // TODO: Increase retention for WAL.
 
   // Add stream to cache.
   AddStreamMetadataToCache(*result, std::make_shared<StreamMetadata>(req->table_id(),
@@ -290,6 +311,12 @@ std::shared_ptr<std::unordered_set<std::string>> CDCServiceImpl::GetTabletIdsFor
 void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
                                 GetChangesResponsePB* resp,
                                 RpcContext context) {
+  if (FLAGS_mock_get_changes_response_for_consumer_testing) {
+    *resp->mutable_checkpoint()->mutable_op_id() = consensus::MinimumOpId();
+    context.RespondSuccess();
+    return;
+  }
+
   if (!CheckOnline(req, resp, &context)) {
     return;
   }

@@ -24,9 +24,12 @@ set(TSERVER_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/remote_bootstrap_session_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/tablet_server_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/header_manager_impl.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_consumer.cc
+  ${YB_ENT_CURRENT_SOURCE_DIR}/twodc_output_client.cc 
+  ${YB_ENT_CURRENT_SOURCE_DIR}/cdc_poller.cc 
   PARENT_SCOPE)
 
-set(TSERVER_LIB_EXTENSIONS cdc PARENT_SCOPE)
+set(TSERVER_LIB_EXTENSIONS cdc cdc_consumer_proto PARENT_SCOPE)
 
 # Additional tests support.
 set(YB_ENT_CURRENT_SOURCE_DIR

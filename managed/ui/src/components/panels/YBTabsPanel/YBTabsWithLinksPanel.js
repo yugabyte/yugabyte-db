@@ -15,6 +15,7 @@ class YBTabsWithLinksPanel extends Component {
       currentLocation.query = currentLocation.query || {};
       currentLocation.query.tab = selectedKey;
     }
+    console.log(currentLocation);
     this.props.router.push(currentLocation);
   };
 

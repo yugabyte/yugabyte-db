@@ -191,6 +191,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                     FlushTabletsResponsePB* resp,
                     rpc::RpcContext context) override;
 
+  void CountIntents(const CountIntentsRequestPB* req,
+                    CountIntentsResponsePB* resp,
+                    rpc::RpcContext context) override;
+
  private:
   TabletServer* server_;
 };

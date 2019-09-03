@@ -21,9 +21,11 @@ from threading import Thread
 PY_VERSION = sys.version_info[0]
 if sys.version_info[0] < 3:
     from urllib2 import Request, urlopen, URLError, HTTPError
+    from urllib import urlencode
 else:
     from urllib.request import Request, urlopen
     from urllib.error import URLError, HTTPError
+    from urllib.parse import urlencode
 
 """
 Run `yugabyte-db` to start a single-node Yugabyte DB process. If no options are specified,
@@ -536,6 +538,10 @@ class YugabyteProcessManager(object):
         return None
 
     def wait_yb_master(self, timeout=30):
+        if (not self.processes.get("master").is_running()
+                or not self.processes.get("tserver").is_running()):
+            return False
+
         num_tservers = 1
         master_addr = "127.0.0.1:{}".format(self.configs.saved_data.get("master_port"))
 
@@ -620,7 +626,7 @@ class YugabyteProcessManager(object):
             "User-Agent": "Mozilla",
         }
         data = Diagnostics(self.configs).get_data(self.processes)
-        req = Request(url, headers=headers, data=data)
+        req = Request(url, headers=headers, data=data.encode('utf8'))
         resp = urlopen(req)
 
     # Calls func after receiving certain exit signals.
@@ -634,7 +640,7 @@ class YugabyteProcessManager(object):
             cmd = ["java", "-version"]
             version = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
             pattern = '\"(\d+\.\d+).*\"'
-            return re.search(pattern, version).groups()[0] >= 1.8
+            return float(re.search(pattern, version.decode('utf-8')).groups()[0]) >= 1.8
         except (OSError, AttributeError, IndexError) as e:
             return False
 
@@ -966,7 +972,7 @@ class ProcessManager(object):
                         self.delete_pidfile()
                         return None
                 command = ProcessManager.get_command(pid)
-                if command and self.name in command:
+                if command and self.name.encode('utf8') in command:
                     return pid
 
             Output.log(
@@ -1250,8 +1256,8 @@ class YugaWareProxy(object):
             headers = {
                 "Content-Type": "application/json",
             }
-            data = '{"email": "admin", "password": "admin"}'
-            req = Request(target, headers=headers, data=data)
+            data = urlencode({"email": "admin", "password": "admin"})
+            req = Request(target, data=data.encode('utf8'))
             resp = urlopen(req)
             session_data = json.loads(resp.read())
             auth_token = session_data["authToken"]
@@ -1301,7 +1307,7 @@ class YugaWareProxy(object):
         Output.log("Importing Yugabyte into webserver...")
         try:
             Output.log("Importing master.", logging.DEBUG)
-            req = Request(target, headers=headers, data=json.dumps(data))
+            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
             resp = json.loads(urlopen(req).read())
             checks = resp.get("checks")
             Output.log("Import master payload: {}".format(resp), logging.DEBUG)
@@ -1312,7 +1318,7 @@ class YugaWareProxy(object):
 
             Output.log("Importing tserver.", logging.DEBUG)
             data["currentState"] = "IMPORTED_MASTERS"
-            req = Request(target, headers=headers, data=json.dumps(data))
+            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
             resp = json.loads(urlopen(req).read())
             checks = resp.get("checks")
             Output.log("Import tserver payload: {}".format(resp), logging.DEBUG)
@@ -1322,7 +1328,7 @@ class YugaWareProxy(object):
 
             Output.log("Finalizing import.", logging.DEBUG)
             data["currentState"] = "IMPORTED_TSERVERS"
-            req = Request(target, headers=headers, data=json.dumps(data))
+            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
             resp = json.loads(urlopen(req).read())
             checks = resp.get("checks")
             Output.log("Finalizing import payload: {}".format(resp), logging.DEBUG)
@@ -1394,7 +1400,7 @@ class YugaWareProxy(object):
         err_msg = None
         Output.log("Updating UI with proper features...")
         try:
-            req = Request(target, headers=headers, data=json.dumps(data))
+            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
             req.get_method = lambda: "PUT"
             resp = json.loads(urlopen(req).read())
             if resp.get("features") != data["features"]:
@@ -1419,7 +1425,7 @@ class YugaWareProxy(object):
         err_msg = None
         Output.log("Updating YW security to {}...".format(level))
         try:
-            req = Request(target, headers=headers, data=json.dumps(data))
+            req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
             req.get_method = lambda: "PUT"
             resp = urlopen(req)
             if resp.code != 200:
@@ -1447,7 +1453,7 @@ class YugaWareProxy(object):
                 "message": alert[1]
             }
             try:
-                req = Request(target, headers=headers, data=json.dumps(data))
+                req = Request(target, headers=headers, data=json.dumps(data).encode('utf8'))
                 resp = urlopen(req)
                 if resp.code != 200:
                     Output.log(

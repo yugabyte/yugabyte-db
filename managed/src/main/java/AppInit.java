@@ -41,18 +41,9 @@ public class AppInit {
                  AWSInitializer awsInitializer) {
     Logger.info("Yugaware Application has started");
     Configuration appConfig = application.configuration();
-    String devopsHome = appConfig.getString("yb.devops.home");
-    String storagePath = appConfig.getString("yb.storage.path");
+    String mode = appConfig.getString("yb.mode", "PLATFORM");
 
     if (!environment.isTest()) {
-      if (devopsHome == null || devopsHome.length() == 0) {
-        throw new RuntimeException("yb.devops.home is not set in application.conf");
-      }
-
-      if (storagePath == null || storagePath.length() == 0) {
-        throw new RuntimeException(("yb.storage.path is not set in application.conf"));
-      }
-
       // Check if we have provider data, if not, we need to seed the database
       if (Customer.find.where().findRowCount() == 0 &&
           appConfig.getBoolean("yb.seedData", false)) {
@@ -65,12 +56,26 @@ public class AppInit {
         Ebean.saveAll(all);
       }
 
+      if (mode.equals("PLATFORM")) {
+        String devopsHome = appConfig.getString("yb.devops.home");
+        String storagePath = appConfig.getString("yb.storage.path");
+        if (devopsHome == null || devopsHome.length() == 0) {
+          throw new RuntimeException("yb.devops.home is not set in application.conf");
+        }
+
+        if (storagePath == null || storagePath.length() == 0) {
+          throw new RuntimeException(("yb.storage.path is not set in application.conf"));
+        }
+      }
+
       // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
-      Object version = Yaml.load(application.resourceAsStream("version.txt"), application.classloader());
+      Object version = Yaml.load(application.resourceAsStream("version.txt"),
+                                  application.classloader());
       configHelper.loadConfigToDB(SoftwareVersion, ImmutableMap.of("version", version));
       Map <String, Object> ywMetadata = new HashMap<String, Object>();
       // Assign a new Yugaware UUID if not already present in the DB i.e. first install
-      Object ywUUID = configHelper.getConfig(YugawareMetadata).getOrDefault("yugaware_uuid", UUID.randomUUID());
+      Object ywUUID = configHelper.getConfig(YugawareMetadata)
+                                  .getOrDefault("yugaware_uuid", UUID.randomUUID());
       ywMetadata.put("yugaware_uuid", ywUUID);
       ywMetadata.put("version", version);
       configHelper.loadConfigToDB(YugawareMetadata, ywMetadata);
@@ -82,7 +87,7 @@ public class AppInit {
           for (InstanceType instanceType : InstanceType.findByProvider(provider)) {
             if (instanceType.instanceTypeDetails != null &&
                 (instanceType.instanceTypeDetails.volumeDetailsList == null ||
-                instanceType.instanceTypeDetails.volumeDetailsList.isEmpty())) {
+                    instanceType.instanceTypeDetails.volumeDetailsList.isEmpty())) {
               awsInitializer.initialize(provider.customerUUID, provider.uuid);
               break;
             }
@@ -93,13 +98,13 @@ public class AppInit {
 
       // Load metrics configurations.
       Map<String, Object> configs = (HashMap<String, Object>) Yaml.load(
-        application.resourceAsStream("metrics.yml"),
-        application.classloader()
+          application.resourceAsStream("metrics.yml"),
+          application.classloader()
       );
       MetricConfig.loadConfig(configs);
 
-      // Enter all the configuration data. This is the first thing that should be done as the other
-      // init steps may depend on this data.
+      // Enter all the configuration data. This is the first thing that should be
+      // done as the other init steps may depend on this data.
       configHelper.loadConfigsToDB(application);
 
       // Import new local releases into release metadata

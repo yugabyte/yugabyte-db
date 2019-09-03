@@ -99,8 +99,8 @@ class UniverseConnectModal extends Component {
       const endpointsContent = (
         <Fragment>
           <FlexContainer className="btn-group-cnt endpoint-buttons">
-            <FlexShrink>{this.renderEndpointUrl(ycqlServiceUrl, "YCQL")}</FlexShrink>
             {userIntent.enableYSQL && <FlexShrink>{this.renderEndpointUrl(ysqlServiceUrl, "YSQL")}</FlexShrink>}
+            <FlexShrink>{this.renderEndpointUrl(ycqlServiceUrl, "YCQL")}</FlexShrink>
             <FlexShrink>{this.renderEndpointUrl(yedisServiceUrl, "YEDIS")}</FlexShrink>
           </FlexContainer>
           <YBCodeBlock className={"endpoint-output" + (this.state.endpointPayload === "" ? " empty" : "")}>
@@ -115,11 +115,13 @@ class UniverseConnectModal extends Component {
         <YBCodeBlock>
         <table>
           <tbody>
-            <tr>
-              <td>JDBC</td>
-              <td>:</td>
-              <td>jdbc:postgresql://{connectIp}:5433/postgres</td>
-            </tr>
+            {userIntent.enableYSQL &&
+              <tr>
+                <td>JDBC</td>
+                <td>:</td>
+                <td>jdbc:postgresql://{connectIp}:5433/postgres</td>
+              </tr>
+            }
             {userIntent.enableYSQL &&
               <tr>
                 <td>YSQL Shell</td>

@@ -33,7 +33,7 @@ export default class CreateBackup extends Component {
       };
       createTableBackup(universeUUID, backupTable.tableUUID, payload);
       onHide();
-      browserHistory.push('/universes/' + universeUUID + "?tab=backups");
+      browserHistory.push('/universes/' + universeUUID + "/backups");
     }
   };
 

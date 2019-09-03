@@ -40,11 +40,15 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
   @Mock
   ApiHelper mockApiHelper;
 
+  @Mock
+  YBMetricQueryComponent mockYBMetricQueryComponent;
+
   private MetricConfig validMetric;
 
   @Before
   public void setUp() {
     when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar");
+
 
     JsonNode configJson = Json.parse("{\"metric\": \"our_valid_metric\", " +
                                        "\"function\": \"sum\", \"filters\": {\"filter\": \"awesome\"}," +
@@ -59,7 +63,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     HashMap<String, String> params = new HashMap<>();
     params.put("start", "1479281737");
     params.put("queryKey", "valid_metric");
-    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper, params, new HashMap<>());
+    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper, params,
+                                                     new HashMap<>(), mockYBMetricQueryComponent);
 
     JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n" +
                                          " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n" +
@@ -98,8 +103,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
     when(mockApiHelper.getRequest(eq("foo://bar/query"), anyMap(), anyMap())).thenReturn(Json.toJson(responseJson));
 
-    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper,
-                                                     params, new HashMap<>());
+    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper, params,
+                                                     new HashMap<>(), mockYBMetricQueryComponent);
     JsonNode result = qe.call();
 
     assertThat(result.get("queryKey").asText(), allOf(notNullValue(), equalTo("invalid_metric")));
@@ -113,8 +118,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("end", "1479281937");
     params.put("queryKey", "valid_metric");
 
-    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper,
-                                                     params, new HashMap<>());
+    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper, params,
+                                                     new HashMap<>(), mockYBMetricQueryComponent);
 
     JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n" +
                                          " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n" +
@@ -142,8 +147,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("start", "1479281737");
     params.put("queryKey", "valid_metric");
 
-    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper,
-                                                     params, new HashMap<>());
+    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper, params,
+                                                     new HashMap<>(), mockYBMetricQueryComponent);
 
     JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n" +
                                          " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n" +
@@ -171,8 +176,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("start", "1479281737");
     params.put("queryKey", "valid_metric");
 
-    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper,
-            params, new HashMap<>());
+    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper, params,
+                                                     new HashMap<>(), mockYBMetricQueryComponent);
 
     JsonNode responseJson = Json.parse("{\"status\":\"error\",\"errorType\":\"bad_data\"," +
             "\"error\":\"parse error at char 44: unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
@@ -180,5 +185,40 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     JsonNode response = qe.call();
     assertThat(response.get("error").asText(), allOf(notNullValue(), equalTo("parse error at char 44: unexpected " +
             "\"{\" in aggregation, expected \")\"")));
+  }
+
+  @Test
+  public void testNativeMetrics() throws Exception {
+    when(mockAppConfig.getBoolean("yb.metrics.useNative")).thenReturn(true);
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", "1479281737");
+    params.put("queryKey", "valid_metric");
+    MetricQueryExecutor qe = new MetricQueryExecutor(mockAppConfig, mockApiHelper, params,
+                                                     new HashMap<>(), mockYBMetricQueryComponent);
+
+    JsonNode responseJson = Json.parse("{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n" +
+                                         " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n" +
+                                         " {\"cpu\":\"system\"}, \"value\":[1479278137,\"0.04329469299783263\"]}]}}");
+
+    when(mockYBMetricQueryComponent.query(anyMap())).thenReturn(Json.toJson(responseJson));
+
+    JsonNode result = qe.call();
+    assertThat(result.get("queryKey").asText(), allOf(notNullValue(), equalTo("valid_metric")));
+
+    JsonNode data = result.get("data");
+    assertThat(data, allOf(notNullValue(), instanceOf(ArrayNode.class)));
+    assertEquals(2, data.size());
+    for (int i = 0; i< data.size(); i++) {
+      assertThat(data.get(i).get("name").asText(), allOf(notNullValue(), equalTo("system")));
+      assertThat(data.get(i).get("type").asText(), allOf(notNullValue(), equalTo("scatter")));
+      assertThat(data.get(i).get("x"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
+      assertThat(data.get(i).get("y"), allOf(notNullValue(), instanceOf(ArrayNode.class)));
+    }
+
+    JsonNode layout = result.get("layout");
+    assertThat(layout, allOf(notNullValue(), instanceOf(ObjectNode.class)));
+    assertThat(layout.get("title").asText(), allOf(notNullValue(), equalTo("Awesome Metric")));
+    assertThat(layout.get("xaxis"), allOf(notNullValue(), instanceOf(ObjectNode.class)));
+    assertThat(layout.get("xaxis").get("type").asText(), allOf(notNullValue(), equalTo("date")));
   }
 }

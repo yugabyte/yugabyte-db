@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -111,12 +112,7 @@ public abstract class AbstractTaskBase implements ITask {
    * @return JsonNode: Json formatted shell response message
    */
   public JsonNode parseShellResponseAsJson(ShellProcessHandler.ShellResponse response) {
-    ObjectMapper mapper = new ObjectMapper();
-    try {
-      return mapper.readTree(response.message);
-    } catch (IOException e) {
-      throw new RuntimeException("Shell Response message is not a valid Json.");
-    }
+    return Util.convertStringToJson(response.message);
   }
 
   public UniverseUpdater nodeStateUpdater(final UUID universeUUID, final String nodeName,

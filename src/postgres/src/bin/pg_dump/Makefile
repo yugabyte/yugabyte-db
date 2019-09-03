@@ -9,7 +9,7 @@
 #
 #-------------------------------------------------------------------------
 
-PGFILEDESC = "pg_dump/pg_restore/pg_dumpall - backup and restore PostgreSQL databases"
+PGFILEDESC = "ysql_dump/pg_restore/ysql_dumpall - backup and restore YSQL databases"
 PGAPPICON=win32
 
 subdir = src/bin/pg_dump
@@ -29,21 +29,21 @@ endif
 
 LIBS += -L$(YB_BUILD_ROOT)/lib -lyb_util
 
-all: pg_dump pg_restore pg_dumpall
+all: ysql_dump pg_restore ysql_dumpall
 
-pg_dump: pg_dump.o common.o pg_dump_sort.o $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils
+ysql_dump: pg_dump.o common.o pg_dump_sort.o $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) pg_dump.o common.o pg_dump_sort.o $(OBJS) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
 pg_restore: pg_restore.o $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) pg_restore.o $(OBJS) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
-pg_dumpall: pg_dumpall.o dumputils.o | submake-libpq submake-libpgport submake-libpgfeutils
+ysql_dumpall: pg_dumpall.o dumputils.o | submake-libpq submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) pg_dumpall.o dumputils.o $(WIN32RES) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
 install: all installdirs
-	$(INSTALL_PROGRAM) pg_dump$(X) '$(DESTDIR)$(bindir)'/pg_dump$(X)
+	$(INSTALL_PROGRAM) ysql_dump$(X) '$(DESTDIR)$(bindir)'/ysql_dump$(X)
 	$(INSTALL_PROGRAM) pg_restore$(X) '$(DESTDIR)$(bindir)'/pg_restore$(X)
-	$(INSTALL_PROGRAM) pg_dumpall$(X) '$(DESTDIR)$(bindir)'/pg_dumpall$(X)
+	$(INSTALL_PROGRAM) ysql_dumpall$(X) '$(DESTDIR)$(bindir)'/ysql_dumpall$(X)
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(bindir)'
@@ -55,7 +55,7 @@ installcheck:
 	$(prove_installcheck)
 
 uninstall:
-	rm -f $(addprefix '$(DESTDIR)$(bindir)'/, pg_dump$(X) pg_restore$(X) pg_dumpall$(X))
+	rm -f $(addprefix '$(DESTDIR)$(bindir)'/, ysql_dump$(X) pg_restore$(X) ysql_dumpall$(X))
 
 clean distclean maintainer-clean:
 	rm -f pg_dump$(X) pg_restore$(X) pg_dumpall$(X) $(OBJS) pg_dump.o common.o pg_dump_sort.o pg_restore.o pg_dumpall.o

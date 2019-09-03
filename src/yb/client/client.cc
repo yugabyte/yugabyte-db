@@ -997,6 +997,23 @@ Result<bool> YBClient::IsLoadBalanced(uint32_t num_servers) {
   return s.ok();
 }
 
+Status YBClient::GetTabletsFromTableId(const string& table_id,
+                                       const int32_t max_tablets,
+                                       RepeatedPtrField<TabletLocationsPB>* tablets) {
+  GetTableLocationsRequestPB req;
+  GetTableLocationsResponsePB resp;
+  req.mutable_table()->set_table_id(table_id);
+
+  if (max_tablets == 0) {
+    req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
+  } else if (max_tablets > 0) {
+    req.set_max_returned_locations(max_tablets);
+  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetTableLocations);
+  *tablets = resp.tablet_locations();
+  return Status::OK();
+}
+
 Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             RepeatedPtrField<TabletLocationsPB>* tablets) {

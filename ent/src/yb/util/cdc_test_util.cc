@@ -27,10 +27,14 @@ void AssertIntKey(const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>&
 
 void CreateCDCStream(const std::unique_ptr<CDCServiceProxy>& cdc_proxy,
                      const TableId& table_id,
+                     boost::optional<uint32_t> wal_retention_secs,
                      CDCStreamId* stream_id) {
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
   req.set_table_id(table_id);
+  if (wal_retention_secs) {
+    req.set_retention_sec(*wal_retention_secs);
+  }
 
   rpc::RpcController rpc;
   cdc_proxy->CreateCDCStream(req, &resp, &rpc);

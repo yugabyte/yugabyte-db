@@ -544,6 +544,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const TabletId& tablet_id, const Partition& partition,
       const docdb::KeyBounds& key_bounds);
 
+  // Scans the intent db. Potentially takes a long time. Used for testing/debugging.
+  Result<int64_t> CountIntents();
+
  protected:
   friend class Iterator;
   friend class TabletPeerTest;

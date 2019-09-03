@@ -732,11 +732,19 @@ Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
           ? operation_state->consensus_round()->replicate_msg()->write_request().write_batch()
           // Bootstrap case.
           : operation_state->request()->write_batch();
+  if (metrics_) {
+    metrics_->rows_inserted->IncrementBy(put_batch.write_pairs().size());
+  }
 
   docdb::ConsensusFrontiers frontiers;
   set_op_id({operation_state->op_id().term(), operation_state->op_id().index()}, &frontiers);
-  set_hybrid_time(operation_state->hybrid_time(), &frontiers);
-  return ApplyKeyValueRowOperations(put_batch, &frontiers, operation_state->hybrid_time());
+
+  auto hybrid_time = operation_state->request()->has_external_hybrid_time() ?
+      HybridTime(operation_state->request()->external_hybrid_time()) :
+      operation_state->hybrid_time();
+
+  set_hybrid_time(hybrid_time, &frontiers);
+  return ApplyKeyValueRowOperations(put_batch, &frontiers, hybrid_time);
 }
 
 Status Tablet::CreateCheckpoint(const std::string& dir) {
@@ -880,6 +888,9 @@ void SetupKeyValueBatch(WriteRequestPB* write_request, WriteRequestPB* batch_req
     write_request->set_client_id2(batch_request->client_id2());
     write_request->set_request_id(batch_request->request_id());
     write_request->set_min_running_request_id(batch_request->min_running_request_id());
+  }
+  if (batch_request->has_external_hybrid_time()) {
+    write_request->set_external_hybrid_time(batch_request->external_hybrid_time());
   }
 }
 
@@ -2303,6 +2314,25 @@ Status Tablet::CreateSubtablet(
   auto metadata = VERIFY_RESULT(metadata_->CreateSubtabletMetadata(
       tablet_id, partition, key_bounds.lower.data(), key_bounds.upper.data()));
   return CreateCheckpoint(metadata->rocksdb_dir());
+}
+
+Result<int64_t> Tablet::CountIntents() {
+  ScopedPendingOperation pending_op(&pending_op_counter_);
+  RETURN_NOT_OK(pending_op);
+
+  if (!intents_db_) {
+    return 0;
+  }
+  rocksdb::ReadOptions read_options;
+  auto intent_iter = std::unique_ptr<rocksdb::Iterator>(
+      intents_db_->NewIterator(read_options));
+  int64_t num_intents = 0;
+  intent_iter->SeekToFirst();
+  while (intent_iter->Valid()) {
+    num_intents++;
+    intent_iter->Next();
+  }
+  return num_intents;
 }
 
 // ------------------------------------------------------------------------------------------------

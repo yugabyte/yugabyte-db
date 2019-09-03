@@ -102,7 +102,8 @@ TEST_F(CDCServiceTxnTest, TestGetChanges) {
 
   // Create CDC stream on table.
   CDCStreamId stream_id;
-  CreateCDCStream(cdc_proxy_, table_.table()->id(), &stream_id);
+  CreateCDCStream(cdc_proxy_, table_.table()->id(), boost::none /* wal retention time */,
+      &stream_id);
 
   GetChangesRequestPB change_req;
   GetChangesResponsePB change_resp;

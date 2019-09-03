@@ -10,6 +10,7 @@ import static org.mockito.Matchers.any;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
 import java.util.Set;
@@ -51,7 +52,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    customer = ModelFactory.testCustomer("dc", "demo@customer.com");
+    customer = ModelFactory.testCustomer("tc", "demo@customer.com");
     provider = ModelFactory.awsProvider(customer);
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     zone = AvailabilityZone.create(region, "az-1", "AZ 1", "subnet-1");
@@ -255,7 +256,10 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   public void testDeleteInstanceWithInvalidCustomerUUID() {
     UUID invalidCustomerUUID = UUID.randomUUID();
     Result r = deleteInstance(invalidCustomerUUID, provider.uuid, "random_ip");
-    assertBadRequest(r, "Invalid Customer UUID: " + invalidCustomerUUID);
+    assertEquals(FORBIDDEN, r.status());
+
+    String resultString = contentAsString(r);
+    assertEquals(resultString, "Unable To Authenticate Customer");
   }
 
   @Test

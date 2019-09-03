@@ -122,6 +122,11 @@ Result<std::vector<RecordTimeIndex>> CDCProducer::GetCommittedRecordIndexes(
 
   // Order ReplicateMsgs based on commit time.
   for (const auto &msg : msgs) {
+    if (msg->write_request().has_external_hybrid_time()) {
+      // If the message came from an external source, ignore it when producing change list.
+      index++;
+      continue;
+    }
     switch (msg->op_type()) {
       case consensus::OperationType::UPDATE_TRANSACTION_OP:
         if (msg->transaction_state().status() == TransactionStatus::APPLYING) {

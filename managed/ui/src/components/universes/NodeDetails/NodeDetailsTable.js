@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import { YBLoadingIcon } from '../../common/indicators';
+import { YBLoadingCircleIcon } from '../../common/indicators';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
@@ -12,7 +12,7 @@ import { NodeAction } from '../../universes';
 export default class NodeDetailsTable extends Component {
   render() {
     const { nodeDetails, providerUUID, clusterType } = this.props;
-    const loadingIcon = <YBLoadingIcon size='inline' />;
+    const loadingIcon = <YBLoadingCircleIcon size='inline' />;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
     const sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
