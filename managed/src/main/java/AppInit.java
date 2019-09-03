@@ -66,49 +66,49 @@ public class AppInit {
         if (storagePath == null || storagePath.length() == 0) {
           throw new RuntimeException(("yb.storage.path is not set in application.conf"));
         }
-
-        // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
-        Object version = Yaml.load(application.resourceAsStream("version.txt"),
-                                   application.classloader());
-        configHelper.loadConfigToDB(SoftwareVersion, ImmutableMap.of("version", version));
-        Map <String, Object> ywMetadata = new HashMap<String, Object>();
-        // Assign a new Yugaware UUID if not already present in the DB i.e. first install
-        Object ywUUID = configHelper.getConfig(YugawareMetadata)
-                                    .getOrDefault("yugaware_uuid", UUID.randomUUID());
-        ywMetadata.put("yugaware_uuid", ywUUID);
-        ywMetadata.put("version", version);
-        configHelper.loadConfigToDB(YugawareMetadata, ywMetadata);
-
-        // Initialize AWS if any of its instance types have an empty volumeDetailsList
-        List<Provider> providerList = Provider.find.where().findList();
-        for (Provider provider : providerList) {
-          if (provider.code.equals("aws")) {
-            for (InstanceType instanceType : InstanceType.findByProvider(provider)) {
-              if (instanceType.instanceTypeDetails != null &&
-                  (instanceType.instanceTypeDetails.volumeDetailsList == null ||
-                      instanceType.instanceTypeDetails.volumeDetailsList.isEmpty())) {
-                awsInitializer.initialize(provider.customerUUID, provider.uuid);
-                break;
-              }
-            }
-            break;
-          }
-        }
-
-        // Load metrics configurations.
-        Map<String, Object> configs = (HashMap<String, Object>) Yaml.load(
-            application.resourceAsStream("metrics.yml"),
-            application.classloader()
-        );
-        MetricConfig.loadConfig(configs);
-
-        // Enter all the configuration data. This is the first thing that should be
-        // done as the other init steps may depend on this data.
-        configHelper.loadConfigsToDB(application);
-
-        // Import new local releases into release metadata
-        releaseManager.importLocalReleases();
       }
+
+      // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
+      Object version = Yaml.load(application.resourceAsStream("version.txt"),
+                                  application.classloader());
+      configHelper.loadConfigToDB(SoftwareVersion, ImmutableMap.of("version", version));
+      Map <String, Object> ywMetadata = new HashMap<String, Object>();
+      // Assign a new Yugaware UUID if not already present in the DB i.e. first install
+      Object ywUUID = configHelper.getConfig(YugawareMetadata)
+                                  .getOrDefault("yugaware_uuid", UUID.randomUUID());
+      ywMetadata.put("yugaware_uuid", ywUUID);
+      ywMetadata.put("version", version);
+      configHelper.loadConfigToDB(YugawareMetadata, ywMetadata);
+
+      // Initialize AWS if any of its instance types have an empty volumeDetailsList
+      List<Provider> providerList = Provider.find.where().findList();
+      for (Provider provider : providerList) {
+        if (provider.code.equals("aws")) {
+          for (InstanceType instanceType : InstanceType.findByProvider(provider)) {
+            if (instanceType.instanceTypeDetails != null &&
+                (instanceType.instanceTypeDetails.volumeDetailsList == null ||
+                    instanceType.instanceTypeDetails.volumeDetailsList.isEmpty())) {
+              awsInitializer.initialize(provider.customerUUID, provider.uuid);
+              break;
+            }
+          }
+          break;
+        }
+      }
+
+      // Load metrics configurations.
+      Map<String, Object> configs = (HashMap<String, Object>) Yaml.load(
+          application.resourceAsStream("metrics.yml"),
+          application.classloader()
+      );
+      MetricConfig.loadConfig(configs);
+
+      // Enter all the configuration data. This is the first thing that should be
+      // done as the other init steps may depend on this data.
+      configHelper.loadConfigsToDB(application);
+
+      // Import new local releases into release metadata
+      releaseManager.importLocalReleases();
     }
   }
 }
