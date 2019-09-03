@@ -151,6 +151,45 @@ create_table_as ::= 'CREATE' 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] \
                            table_name [ '(' column_name { ',' column_name } ')' ] \
                            'AS' query [ 'WITH' [ 'NO' ] 'DATA' ] ;
 
+(* 'CREATE' 'TYPE' *)
+create_composite_type ::= 'CREATE' 'TYPE' type_name 'AS'
+                          '(' [ composite_type_elem { ',' composite_type_elem } ] ')' ;
+
+create_enum_type ::= 'CREATE' 'TYPE' type_name 'AS' 'ENUM'
+                     '(' [ label { ',' label } ] ')' ;
+
+create_range_type ::= 'CREATE' 'TYPE' type_name 'AS' 'RANGE'
+                      '(' 'SUBTYPE' '=' subtype { ',' range_type_option } ')' ;
+
+create_base_type ::= 'CREATE' 'TYPE' type_name
+                     '(' 'INPUT' '=' input_function ',' 'OUTPUT' '=' output_function
+                     { ',' base_type_option } ')' ;
+
+create_shell_type ::= 'CREATE' 'TYPE' type_name ;
+
+composite_type_elem ::= attribute_name data_type [ 'COLLATE' collation ] ;
+
+range_type_option ::= 'SUBTYPE_OPCLASS' '=' subtype_operator_class
+                      | 'COLLATION' '=' collation
+                      | 'CANONICAL' '=' canonical_function
+                      | 'SUBTYPE_DIFF' '=' subtype_diff_function ;
+
+base_type_option ::= 'RECEIVE' '=' receive_function
+                     | 'SEND' '=' send_function
+                     | 'TYPMOD_IN' '=' type_modifier_input_function
+                     | 'TYPMOD_OUT' '=' type_modifier_output_function
+                     | 'INTERNALLENGTH' '=' ( internallength | 'VARIABLE' )
+                     | 'PASSEDBYVALUE'
+                     | 'ALIGNMENT' '=' alignment
+                     | 'STORAGE' '=' storage
+                     | 'LIKE' '=' like_type
+                     | 'CATEGORY' '=' category
+                     | 'PREFERRED' '=' preferred
+                     | 'DEFAULT' '=' default
+                     | 'ELEMENT' '=' element
+                     | 'DELIMITER' '=' delimiter
+                     | 'COLLATABLE' '=' collatable ;
+
 (* 'CREATE' 'USER' *)
 create_user ::= 'CREATE' 'USER' name ;
 
@@ -176,6 +215,10 @@ drop_database ::= 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
 
 (* 'DROP' 'TABLE' *)
 drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name ;
+
+(* 'DROP' 'TYPE' *)
+drop_type ::= 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
+              [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'SEQUENCE' *)
 drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
@@ -371,11 +414,13 @@ aggregate_signature ::= (
 
 (* Supporting rules *)
 
-where_expression ::= boolean_expression ;
+qualified_name ::= [ [ database_name '.' ] schema_name '.' ] '<Text Literal>' ;
 
 database_name ::= '<Text Literal>' ;
 
-table_name ::= [ database_name '.' ] '<Text Literal>' ;
+schema_name ::= '<Text Literal>' ;
+
+table_name ::= qualified_name ;
 
 column_name ::= '<Text Literal>' ;
 
@@ -417,6 +462,63 @@ name ::= '<Text Literal>' ;
 
 column_names ::= column_name { ',' column_name } ;
 
+where_expression ::= boolean_expression ;
+
 expression ::= '<expression>' ;
 
 boolean ::= 'TRUE' | 'FALSE' ;
+
+(* TODO(jason): change the below when issue #1557 is closed or closing *)
+collation ::= ( '"default"' | '"C"' | '"POSIX"' | '"ucs_basic"' ) ;
+
+type_name ::= qualified_name ;
+
+attribute_name ::= '<Text Literal>' ;
+
+data_type ::= type_name ;
+
+label ::= '<Text Literal>' ;
+
+subtype ::= type_name ;
+
+operator_class_name ::= qualified_name ;
+
+subtype_operator_class ::= operator_class_name ;
+
+function_name ::= qualified_name ;
+
+canonical_function ::= function_name ;
+
+subtype_diff_function ::= function_name ;
+
+input_function ::= function_name ;
+
+output_function ::= function_name ;
+
+receive_function ::= function_name ;
+
+send_function ::= function_name ;
+
+type_modifier_input_function ::= function_name ;
+
+type_modifier_output_function ::= function_name ;
+
+internallength ::= ( '-2' | '-1' | '<non-negative integer>' ) ;
+
+alignment ::= ( 'CHAR' | 'INT2' | 'INT4' | 'DOUBLE' ) ;
+
+storage ::= ( 'PLAIN' | 'EXTERNAL' | 'EXTENDED' | 'MAIN' ) ;
+
+like_type ::= type_name ;
+
+category ::= '<character>' ;
+
+preferred ::= boolean ;
+
+default ::= '<type value>' ;
+
+element ::= type_name ;
+
+delimiter ::= '<character>' ;
+
+collatable ::= boolean ;
