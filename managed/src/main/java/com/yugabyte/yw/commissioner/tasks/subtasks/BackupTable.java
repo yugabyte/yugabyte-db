@@ -38,16 +38,22 @@ public class BackupTable extends AbstractTaskBase {
 
   @Override
   public void run() {
-    ShellProcessHandler.ShellResponse response = tableManager.createBackup(taskParams());
     Backup backup = Backup.fetchByTaskUUID(userTaskUUID);
-    JsonNode jsonNode = Json.parse(response.message);
-    if (response.code != 0 || jsonNode.has("error")) {
-      LOG.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
+    try {
+      ShellProcessHandler.ShellResponse response = tableManager.createBackup(taskParams());
+      JsonNode jsonNode = Json.parse(response.message);
+      if (response.code != 0 || jsonNode.has("error")) {
+        LOG.error("Response code={}, hasError={}.", response.code, jsonNode.has("error"));
+        backup.transitionState(Backup.BackupState.Failed);
+        throw new RuntimeException(response.message);
+      } else {
+        LOG.info("[" + getName() + "] STDOUT: " + response.message);
+        backup.transitionState(Backup.BackupState.Completed);
+      }
+    } catch (Exception e) {
+      LOG.error("Errored out with: " + e);
       backup.transitionState(Backup.BackupState.Failed);
-      throw new RuntimeException(response.message);
-    } else {
-      LOG.info("[" + getName() + "] STDOUT: " + response.message);
-      backup.transitionState(Backup.BackupState.Completed);
+      throw new RuntimeException(e);
     }
   }
 }

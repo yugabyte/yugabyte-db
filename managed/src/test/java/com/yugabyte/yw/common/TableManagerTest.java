@@ -216,6 +216,9 @@ import static org.mockito.Mockito.when;
     if (backupTableParams.enableVerboseLogs) {
       cmd.add("--verbose");
     }
+    if (backupTableParams.sse) {
+      cmd.add("--sse");
+    }
     return cmd;
   }
 
@@ -258,10 +261,11 @@ import static org.mockito.Mockito.when;
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
   }
 
-  private void testCreateS3BackupHelper(boolean enableVerbose) {
+  private void testCreateS3BackupHelper(boolean enableVerbose, boolean sse) {
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer);;
     BackupTableParams backupTableParams = getBackupTableParams(BackupTableParams.ActionType.CREATE);
     backupTableParams.storageConfigUUID = storageConfig.configUUID;
+    backupTableParams.sse = sse;
     if (enableVerbose) {
       backupTableParams.enableVerboseLogs = true;
     }
@@ -291,13 +295,19 @@ import static org.mockito.Mockito.when;
   @Test
   public void testCreateS3Backup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    testCreateS3BackupHelper(false);
+    testCreateS3BackupHelper(false, false);
+  }
+
+  @Test
+  public void testCreateS3BackupWithSSE() {
+    setupUniverse(ModelFactory.awsProvider(testCustomer));
+    testCreateS3BackupHelper(false, true);
   }
 
   @Test
   public void testCreateS3BackupVerbose() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
-    testCreateS3BackupHelper(true);
+    testCreateS3BackupHelper(true, false);
   }
 
   @Test
@@ -373,7 +383,7 @@ import static org.mockito.Mockito.when;
   @Test
   public void testCreateTLSBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer), "0.0.1", true);
-    testCreateS3BackupHelper(false);
+    testCreateS3BackupHelper(false, false);
   }
 
   @Test
