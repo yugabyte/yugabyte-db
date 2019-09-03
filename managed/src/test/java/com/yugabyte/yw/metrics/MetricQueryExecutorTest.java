@@ -22,7 +22,9 @@ import java.util.Map;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
+import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.anyMap;
+import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.when;
@@ -189,7 +191,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
   @Test
   public void testNativeMetrics() throws Exception {
-    when(mockAppConfig.getBoolean("yb.metrics.useNative")).thenReturn(true);
+    when(mockAppConfig.getBoolean(eq("yb.metrics.useNative"), eq(false))).thenReturn(true);
     HashMap<String, String> params = new HashMap<>();
     params.put("start", "1479281737");
     params.put("queryKey", "valid_metric");
