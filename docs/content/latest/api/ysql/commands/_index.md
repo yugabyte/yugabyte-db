@@ -22,7 +22,7 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`ALTER DATABASE`](ddl_alter_db) | Changes database definition |
 | [`ALTER DOMAIN`](ddl_alter_domain) | Alters a domain |
 | [`ALTER TABLE`](ddl_alter_table) | Changes table definition |
-| [`BEGIN TRANSACTION`](txn_begin) | Starts a transaction |
+| [`BEGIN`](txn_begin) | Starts a transaction |
 | [`COMMENT`](ddl_comment) | Adds a comment on a database object |
 | [`COMMIT`](txn_commit) | Commits a transaction |
 | [`COPY`](cmd_copy) | Copy data between tables and files |
@@ -41,7 +41,7 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
 | [`DROP TABLE`](ddl_drop_table) | Deletes a table from a database |
-| [`END TRANSACTION`](txn_end) | Commits a transaction |
+| [`END`](txn_end) | Commits a transaction |
 | [`EXECUTE`](perf_execute) | Execute a prepared statement |
 | [`EXPLAIN`](perf_explain) | Display execution plan for a statement |
 | [`INSERT`](dml_insert) | Insert rows into a table |

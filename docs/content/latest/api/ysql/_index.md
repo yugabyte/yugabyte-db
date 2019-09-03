@@ -74,11 +74,11 @@ TCL statements manage transactions of operations on the database.
 
 | Statement | Description |
 |-----------|-------------|
-| [`ABORT`](commands/txn_abort) | Rollback a transaction |
+| [`ABORT`](commands/txn_abort) | Roll back a transaction |
 | [`BEGIN`](commands/txn_begin) | Start a transaction |
 | [`COMMIT`](commands/txn_commit) | Commit a transaction |
-| [`END TRANSACTION`](commands/txn_end) | Commit a transaction |
-| [`ROLLBACK`](commands/txn_rollback) | Rollback a transaction |
+| [`END`](commands/txn_end) | Commit a transaction |
+| [`ROLLBACK`](commands/txn_rollback) | Roll back a transaction |
 | [`SET CONSTRAINTS`](commands/txn_set_constraints) | Set constraints on current transaction|
 | [`SET TRANSACTION`](commands/txn_set) | Set transaction behaviors |
 | [`SHOW TRANSACTION`](commands/txn_show) | Show properties of a transaction |

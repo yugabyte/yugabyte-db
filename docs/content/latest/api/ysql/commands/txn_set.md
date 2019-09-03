@@ -46,6 +46,14 @@ Use the `SET TRANSACTION` statement to set the current transaction isolation lev
 
 Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
 
+### _transaction_mode_
+
+Set the transaction mode to one of the following.
+
+- ISOLATION LEVEL clause
+- Access mode
+- Deferrable mode
+
 ### ISOLATION LEVEL clause
 
 #### SERIALIZABLE
@@ -71,15 +79,37 @@ Default in PostgreSQL.
 
 In PostgreSQL, `READ_UNCOMMITTED` is mapped to `READ_COMMITTED`.
 
-### READ WRITE clause
+### READ WRITE mode
 
 Default.
 
-### READ ONLY clause
+### READ ONLY mode
 
-### DEFERRABLE
+The `READ ONLY` mode does not prevent all writes to disk.
 
+When a transaction is `READ ONLY`, the following SQL statements are:
 
+- Disallowed if the table they would write to is not a temporary table.
+  - INSERT
+  - UPDATE
+  - DELETE
+  - COPY FROM
+
+- Always disallowed
+  - COMMENT
+  - GRANT
+  - REVOKE
+  - TRUNCATE
+
+- Disallowed when the statement that would be executed is one of the above
+  - EXECUTE
+  - EXPLAIN ANALYZE
+
+### DEFERRABLE mode
+
+Use to defer a transaction only when both `SERIALIZABLE` and `READ ONLY` modes are also selected. If used, then the transaction may block when first acquiring its snapshot, after which it is able to run without the normal overhead of a `SERIALIZABLE` transaction and without any risk of contributing to, or being canceled by a serialization failure.
+
+The `DEFERRABLE` mode may be useful for long-running reports or back-ups.
 
 ## Examples
 
@@ -182,6 +212,4 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 
 ## See also
 
-[`COMMIT`](../txn_commit)
-[`ROLLBACK`](../txn_rollback)
-[Other YSQL Statements](..)
+- [`SHOW TRANSACTION`](../txn_show)

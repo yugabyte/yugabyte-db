@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-YSQL API currently supports the following transactions-related SQL statements: `BEGIN`, `ABORT`, `ROLLBACK`, `END`, `COMMIT`. Additionally, the `SET` and `SHOW` statements can be used to set and, respectively, show the current transaction isolation level.
+Use the `SHOW TRANSACTION` statement to show the current transaction isolation level.
 
 ## Syntax
 
@@ -47,35 +47,6 @@ YSQL API currently supports the following transactions-related SQL statements: `
 Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
 
 ### ISOLATION LEVEL
-
-#### SERIALIZABLE
-
-Default in ANSI SQL standard.
-
-#### REPEATABLE READ
-
-Also referred to as "snapshot isolation" in YugaByte DB.
-Default in YugaByte DB.
-
-#### READ COMMITTED
-
-A statement can only see rows committed before it begins.
-
-`READ_COMMITTED` is mapped to `REPEATABLE_READ`.
-
-Default in PostgreSQL.
-
-#### READ UNCOMMITTED
-
-`READ_UNCOMMITTED` is mapped to `REPEATABLE_READ`.
-
-In PostgreSQL, `READ_UNCOMMITTED` is mapped to `READ_COMMITTED`.
-
-### READ WRITE
-
-### READ ONLY
-
-### DEFERRABLE
 
 ## Examples
 
@@ -149,7 +120,7 @@ Abort the current transaction (from the first shell).
 postgres=# ABORT TRANSACTION; -- run second shell.
 ```
 
-In each shell check that only the rows from the committed transaction are visible.
+In each shell, check that only the rows from the committed transaction are visible.
 
 ```sql
 postgres=# SELECT * FROM sample; -- run in first shell.
@@ -177,5 +148,4 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 
 ## See also
 
-[`SET`](../txn_set)
-[Other YSQL Statements](..)
+- [`SHOW TRANSACTION`](../txn_show)

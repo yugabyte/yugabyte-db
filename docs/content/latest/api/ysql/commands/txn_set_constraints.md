@@ -63,10 +63,4 @@ Uniqueness and exclusion constraints are checked immediately, unless marked `DEF
 
 ### IMMEDIATE
 
-Sets
-
-This mode takes effect retroactively.
-
-## See also
-
-[Other YSQL Statements](..)
+Set constraints to take effect retroactively.
