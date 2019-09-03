@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`COPY` command transfers data between tables and files. `COPY TO` copies from tables to files. `COPY FROM` copies from files to tables. `COPY` outputs the number of rows that were copied.
+Use a `COPY` statement to transfer data between tables and files. `COPY TO` copies from tables to files. `COPY FROM` copies from files to tables. `COPY` outputs the number of rows that were copied.
 
 ## Syntax
 
@@ -43,19 +43,27 @@ showAsideToc: true
   </div>
 </div>
 
-Where
+## Semantics
 
-- `table_name` specifies the table to be copied.
-- `column_name` specifies column to be copied.
-- `query` can be either SELECT, VALUES, INSERT, UPDATE or DELETE whose results will be copied to files. RETURNING clause must be provided for INSERT, UPDATE and DELETE commands.
-- `filename` specifies an absolute or relative path of a file to be copied.
+### _table_name_
+
+Specify the table, optionally schema-qualified, to be copied.
+
+### _column_name_
+
+Specify the list of columns to be copied. If not specified, then all columns of the table will be copied.
+
+### _query_
+
+Specify a `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE` statement whose results are to be copied. For `INSERT`, `UPDATE`, and `DELETE` statements, a RETURNING clause must be provided.
+
+### _filename_
+
+Specify the path of the file to be copied. An input file name can be an absolute or relative path, but an output file name must be an absolute path.
 
 ## Examples
 
-- Errors are raised if table does not exist.
+- Errors are raised if the table does not exist.
 - `COPY TO` can only be used with regular tables.
-- `COPY FROM` can be used with either tables, foreign tables, or views.
+- `COPY FROM` can be used with tables, foreign tables, or views.
 
-## See also
-
-[Other YSQL Statements](..)

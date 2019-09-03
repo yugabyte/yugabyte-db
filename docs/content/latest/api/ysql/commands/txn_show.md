@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-YSQL API currently supports the following transactions-related SQL commands `BEGIN`, `ABORT`, `ROLLBACK`, `END`, `COMMIT`. Additionally the `SET` and `SHOW` commands can be used to set and, respectively, show the current transaction isolation level.
+YSQL API currently supports the following transactions-related SQL statements: `BEGIN`, `ABORT`, `ROLLBACK`, `END`, `COMMIT`. Additionally, the `SET` and `SHOW` statements can be used to set and, respectively, show the current transaction isolation level.
 
 ## Syntax
 
@@ -46,16 +46,46 @@ YSQL API currently supports the following transactions-related SQL commands `BEG
 
 Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
 
-Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
+### ISOLATION LEVEL
+
+#### SERIALIZABLE
+
+Default in ANSI SQL standard.
+
+#### REPEATABLE READ
+
+Also referred to as "snapshot isolation" in YugaByte DB.
+Default in YugaByte DB.
+
+#### READ COMMITTED
+
+A statement can only see rows committed before it begins.
+
+`READ_COMMITTED` is mapped to `REPEATABLE_READ`.
+
+Default in PostgreSQL.
+
+#### READ UNCOMMITTED
+
+`READ_UNCOMMITTED` is mapped to `REPEATABLE_READ`.
+
+In PostgreSQL, `READ_UNCOMMITTED` is mapped to `READ_COMMITTED`.
+
+### READ WRITE
+
+### READ ONLY
+
+### DEFERRABLE
 
 ## Examples
 
-Create a sample table.
+Note that the `SERIALIZABLE` isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
+
+Create a sample table
 
 ```sql
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
-
 
 Begin a transaction and insert some rows.
 
@@ -92,6 +122,7 @@ postgres=# SELECT * FROM sample; -- run in first shell
   1 |  3 |  4 | b
 (2 rows)
 ```
+
 2nd shell
 
 ```sql

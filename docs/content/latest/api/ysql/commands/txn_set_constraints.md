@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`SET CONSTRAINTS` command checks timing for current transaction.
+Use the `SET CONSTRAINTS` statement to set the timing of constraint checking within the current transaction.
 
 ## Syntax
 
@@ -45,7 +45,27 @@ showAsideToc: true
 
 ## Semantics
 
-- Attributes in `SET CONSTRAINTS` does not apply to `NOT NULL` and `CHECK` constraints.
+Attributes in the `SET CONSTRAINTS` statement comply with the behavior defined in the SQL standard, except that it does not apply to `NOT NULL` and `CHECK` constraints.
+
+### ALL
+
+Change the mode of all deferrable constraints.
+
+### _name_
+
+Specify one or a list of constraint names.
+
+### DEFERRED
+
+Set constraints to not be checked until transaction commit.
+
+Uniqueness and exclusion constraints are checked immediately, unless marked `DEFERRABLE`.
+
+### IMMEDIATE
+
+Sets
+
+This mode takes effect retroactively.
 
 ## See also
 

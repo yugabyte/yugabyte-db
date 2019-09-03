@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`DELETE` command removes rows that meet certain conditions, and when conditions are not provided in WHERE clause, all rows are deleted. DELETE outputs the number of rows that are being deleted.
+Use the `DELETE` statement to remove rows that meet certain conditions, and when conditions are not provided in WHERE clause, all rows are deleted. DELETE outputs the number of rows that are being deleted.
 
 ## Syntax
 
@@ -43,9 +43,15 @@ showAsideToc: true
   </div>
 </div>
 
-Where
+## Semantics
 
-- `with_query` specifies the subqueries that are referenced by name in the DELETE statement.
+- USING clause is not yet supported.
+
+- While the where clause allows a wide range of operators, the exact conditions used in the where clause have significant performance considerations (especially for large datasets). WHERE clause that provides values for all columns in PRIMARY KEY or INDEX KEY has the best performance.
+
+### with_query
+
+Specify the subqueries that are referenced by name in the DELETE statement.
 
 - `table_name` specifies a name of the table to be deleted.
 
@@ -53,11 +59,6 @@ Where
 
 - `output_expression` specifies the value to be returned. When the `output_expression` is referencing a column, the existing value of this column (deleted value) is used to evaluate.
 
-## Semantics
-
-- USING clause is not yet supported.
-
-- While the where clause allows a wide range of operators, the exact conditions used in the where clause have significant performance considerations (especially for large datasets). WHERE clause that provides values for all columns in PRIMARY KEY or INDEX KEY has the best performance.
 
 ## Examples
 

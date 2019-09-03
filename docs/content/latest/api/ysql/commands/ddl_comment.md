@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `COMMENT` command is used to set or update the comment on an object.
+Use the `COMMENT` statement to set or update a comment on a database object.
 
 ## Syntax
 
@@ -43,23 +43,31 @@ The `COMMENT` command is used to set or update the comment on an object.
   </div>
 </div>
 
-When `NULL` is passed instead of a text literal, any existing comment on the referenced object is removed.
+To remove a comment, set the value to `NULL`.
 
 ## Examples
 
-```
-# Add comments.
-COMMENT ON TABLE some_table IS 'This is a table';
-COMMENT ON COLUMN some_table.id IS 'Primary key column';
-COMMENT ON DATABASE postgres IS 'Default database';
-COMMENT ON ACCESS METHOD lsm IS 'Default ysql index type';
-COMMENT ON OPERATOR = (text, text) IS 'Text equality operator';
-COMMENT ON AGGREGATE max (int) IS 'Maximum integer value';
-COMMENT ON RULE pg_settings_u ON pg_settings IS 'Setting update rule';
+### Add a comment
 
-# Remove comment.
-COMMENT ON TABLE some_table IS NULL;
 ```
+COMMENT ON TABLE some_table IS 'This is a table';
+
+COMMENT ON COLUMN some_table.id IS 'Primary key column';
+
+COMMENT ON DATABASE postgres IS 'Default database';
+
+COMMENT ON ACCESS METHOD lsm IS 'Default YSQL index type';
+
+COMMENT ON OPERATOR = (text, text) IS 'Text equality operator';
+
+COMMENT ON AGGREGATE max (int) IS 'Maximum integer value';
+
+COMMENT ON RULE pg_settings_u ON pg_settings IS 'Setting update rule';
+```
+
+### Remove a comment
+
+COMMENT ON TABLE some_table IS NULL;
 
 ## See also
 

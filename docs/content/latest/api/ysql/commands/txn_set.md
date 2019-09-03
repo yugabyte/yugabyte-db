@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`SET TRANSACTION` command sets the current transaction isolation level.
+Use the `SET TRANSACTION` statement to set the current transaction isolation level.
 
 ## Syntax
 
@@ -42,14 +42,48 @@ showAsideToc: true
   </div>
 </div>
 
-
 ## Semantics
 
 Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
 
-Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
+### ISOLATION LEVEL clause
+
+#### SERIALIZABLE
+
+Default in ANSI SQL standard.
+
+#### REPEATABLE READ
+
+Also referred to as "snapshot isolation" in YugaByte DB.
+Default in YugaByte DB.
+
+#### READ COMMITTED
+
+A statement can only see rows committed before it begins.
+
+`READ_COMMITTED` is mapped to `REPEATABLE_READ`.
+
+Default in PostgreSQL.
+
+#### READ UNCOMMITTED
+
+`READ_UNCOMMITTED` is mapped to `REPEATABLE_READ`.
+
+In PostgreSQL, `READ_UNCOMMITTED` is mapped to `READ_COMMITTED`.
+
+### READ WRITE clause
+
+Default.
+
+### READ ONLY clause
+
+### DEFERRABLE
+
+
 
 ## Examples
+
+Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
 
 Create a sample table.
 
@@ -148,6 +182,6 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 
 ## See also
 
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
+[`COMMIT`](../txn_commit)
+[`ROLLBACK`](../txn_rollback)
 [Other YSQL Statements](..)

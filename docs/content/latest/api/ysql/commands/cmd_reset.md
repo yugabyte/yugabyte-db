@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`RESET` command sets the value of a parameter to the default value.
+Use the `RESET` statement to set the value of a parameter to the default value.
 
 ## Syntax
 
@@ -43,13 +43,17 @@ showAsideToc: true
   </div>
 </div>
 
-Where
-
-- name specifies the name of a mutable run-time parameter
-
 ## Semantics
 
-- Although the values of a parameter can be set, showed, and reset, the effect of these parameters are not yet supported in YugaByte. The factory-settings or default behaviors will be used for the moment.
+{{< note Type="Note" >}}
+
+Although the values of a parameter can be set, showed, and reset, the effect of these parameters are not yet supported in YugaByte. The factory-settings or default behaviors will be used for the moment.
+
+{{ /<note> }}
+
+### _name_
+
+Specify the name of a mutable run-time parameter.
 
 ## See also
 
