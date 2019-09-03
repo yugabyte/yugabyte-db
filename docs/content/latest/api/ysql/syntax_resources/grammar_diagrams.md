@@ -297,6 +297,76 @@ create_table_as ::= CREATE TABLE [ IF NOT EXISTS ]  table_name
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="387" height="195" viewbox="0 0 387 195"><path class="connector" d="M0 22h15m67 0h10m58 0h30m32 0h10m45 0h10m64 0h20m-196 0q5 0 5 5v8q0 5 5 5h171q5 0 5-5v-8q0-5 5-5m5 0h7m2 0h2m2 0h2m-376 80h2m2 0h2m2 0h7m91 0h30m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h46q5 0 5 5v20q0 5-5 5m-5 0h30m25 0h20m-251 0q5 0 5 5v8q0 5 5 5h226q5 0 5-5v-8q0-5 5-5m5 0h7m2 0h2m2 0h2m-387 50h2m2 0h2m2 0h7m36 0h10m54 0h30m53 0h30m38 0h20m-73 0q5 0 5 5v8q0 5 5 5h48q5 0 5-5v-8q0-5 5-5m5 0h10m52 0h20m-238 0q5 0 5 5v23q0 5 5 5h213q5 0 5-5v-23q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="67" height="25" rx="7"/><text class="text" x="25" y="22">CREATE</text><rect class="literal" x="92" y="5" width="58" height="25" rx="7"/><text class="text" x="102" y="22">TABLE</text><rect class="literal" x="180" y="5" width="32" height="25" rx="7"/><text class="text" x="190" y="22">IF</text><rect class="literal" x="222" y="5" width="45" height="25" rx="7"/><text class="text" x="232" y="22">NOT</text><rect class="literal" x="277" y="5" width="64" height="25" rx="7"/><text class="text" x="287" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="15" y="85" width="91" height="25"/><text class="text" x="25" y="102">table_name</text></a><rect class="literal" x="136" y="85" width="25" height="25" rx="7"/><text class="text" x="146" y="102">(</text><rect class="literal" x="232" y="55" width="24" height="25" rx="7"/><text class="text" x="242" y="72">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="191" y="85" width="106" height="25"/><text class="text" x="201" y="102">column_name</text></a><rect class="literal" x="327" y="85" width="25" height="25" rx="7"/><text class="text" x="337" y="102">)</text><rect class="literal" x="15" y="135" width="36" height="25" rx="7"/><text class="text" x="25" y="152">AS</text><a xlink:href="../grammar_diagrams#query"><rect class="rule" x="61" y="135" width="54" height="25"/><text class="text" x="71" y="152">query</text></a><rect class="literal" x="145" y="135" width="53" height="25" rx="7"/><text class="text" x="155" y="152">WITH</text><rect class="literal" x="228" y="135" width="38" height="25" rx="7"/><text class="text" x="238" y="152">NO</text><rect class="literal" x="296" y="135" width="52" height="25" rx="7"/><text class="text" x="306" y="152">DATA</text><polygon points="379,159 383,159 383,145 379,145" style="fill:black;stroke-width:0"/></svg>
 
+### create_composite_type
+```
+create_composite_type ::= CREATE TYPE type_name AS ( 
+                          [ composite_type_elem [ , ... ] ] )
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="611" height="80" viewbox="0 0 611 80"><path class="connector" d="M0 52h15m67 0h10m49 0h10m88 0h10m36 0h10m25 0h50m-5 0q-5 0-5-5v-20q0-5 5-5h68m24 0h69q5 0 5 5v20q0 5-5 5m-5 0h40m-226 0q5 0 5 5v8q0 5 5 5h201q5 0 5-5v-8q0-5 5-5m5 0h10m25 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="67" height="25" rx="7"/><text class="text" x="25" y="52">CREATE</text><rect class="literal" x="92" y="35" width="49" height="25" rx="7"/><text class="text" x="102" y="52">TYPE</text><a xlink:href="../grammar_diagrams#type-name"><rect class="rule" x="151" y="35" width="88" height="25"/><text class="text" x="161" y="52">type_name</text></a><rect class="literal" x="249" y="35" width="36" height="25" rx="7"/><text class="text" x="259" y="52">AS</text><rect class="literal" x="295" y="35" width="25" height="25" rx="7"/><text class="text" x="305" y="52">(</text><rect class="literal" x="433" y="5" width="24" height="25" rx="7"/><text class="text" x="443" y="22">,</text><a xlink:href="../grammar_diagrams#composite-type-elem"><rect class="rule" x="370" y="35" width="151" height="25"/><text class="text" x="380" y="52">composite_type_elem</text></a><rect class="literal" x="571" y="35" width="25" height="25" rx="7"/><text class="text" x="581" y="52">)</text><polygon points="607,59 611,59 611,45 607,45" style="fill:black;stroke-width:0"/></svg>
+
+### create_enum_type
+```
+create_enum_type ::= CREATE TYPE type_name AS ENUM ( 
+                     [ label [ , ... ] ] )
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="573" height="80" viewbox="0 0 573 80"><path class="connector" d="M0 52h15m67 0h10m49 0h10m88 0h10m36 0h10m56 0h10m25 0h50m-5 0q-5 0-5-5v-20q0-5 5-5h16m24 0h17q5 0 5 5v20q0 5-5 5m-5 0h40m-122 0q5 0 5 5v8q0 5 5 5h97q5 0 5-5v-8q0-5 5-5m5 0h10m25 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="67" height="25" rx="7"/><text class="text" x="25" y="52">CREATE</text><rect class="literal" x="92" y="35" width="49" height="25" rx="7"/><text class="text" x="102" y="52">TYPE</text><a xlink:href="../grammar_diagrams#type-name"><rect class="rule" x="151" y="35" width="88" height="25"/><text class="text" x="161" y="52">type_name</text></a><rect class="literal" x="249" y="35" width="36" height="25" rx="7"/><text class="text" x="259" y="52">AS</text><rect class="literal" x="295" y="35" width="56" height="25" rx="7"/><text class="text" x="305" y="52">ENUM</text><rect class="literal" x="361" y="35" width="25" height="25" rx="7"/><text class="text" x="371" y="52">(</text><rect class="literal" x="447" y="5" width="24" height="25" rx="7"/><text class="text" x="457" y="22">,</text><a xlink:href="../grammar_diagrams#label"><rect class="rule" x="436" y="35" width="47" height="25"/><text class="text" x="446" y="52">label</text></a><rect class="literal" x="533" y="35" width="25" height="25" rx="7"/><text class="text" x="543" y="52">)</text><polygon points="569,59 573,59 573,45 569,45" style="fill:black;stroke-width:0"/></svg>
+
+### create_range_type
+```
+create_range_type ::= CREATE TYPE type_name AS RANGE ( SUBTYPE = 
+                      subtype [ , range_type_option [ ... ] ] )
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="900" height="65" viewbox="0 0 900 65"><path class="connector" d="M0 37h15m67 0h10m49 0h10m88 0h10m36 0h10m62 0h10m25 0h10m74 0h10m30 0h10m67 0h50m-5 0q-5 0-5-5v-17q0-5 5-5h177q5 0 5 5v17q0 5-5 5m-148 0h10m133 0h40m-242 0q5 0 5 5v8q0 5 5 5h217q5 0 5-5v-8q0-5 5-5m5 0h10m25 0h15"/><polygon points="0,44 5,37 0,30" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="20" width="67" height="25" rx="7"/><text class="text" x="25" y="37">CREATE</text><rect class="literal" x="92" y="20" width="49" height="25" rx="7"/><text class="text" x="102" y="37">TYPE</text><a xlink:href="../grammar_diagrams#type-name"><rect class="rule" x="151" y="20" width="88" height="25"/><text class="text" x="161" y="37">type_name</text></a><rect class="literal" x="249" y="20" width="36" height="25" rx="7"/><text class="text" x="259" y="37">AS</text><rect class="literal" x="295" y="20" width="62" height="25" rx="7"/><text class="text" x="305" y="37">RANGE</text><rect class="literal" x="367" y="20" width="25" height="25" rx="7"/><text class="text" x="377" y="37">(</text><rect class="literal" x="402" y="20" width="74" height="25" rx="7"/><text class="text" x="412" y="37">SUBTYPE</text><rect class="literal" x="486" y="20" width="30" height="25" rx="7"/><text class="text" x="496" y="37">=</text><a xlink:href="../grammar_diagrams#subtype"><rect class="rule" x="526" y="20" width="67" height="25"/><text class="text" x="536" y="37">subtype</text></a><rect class="literal" x="643" y="20" width="24" height="25" rx="7"/><text class="text" x="653" y="37">,</text><a xlink:href="../grammar_diagrams#range-type-option"><rect class="rule" x="677" y="20" width="133" height="25"/><text class="text" x="687" y="37">range_type_option</text></a><rect class="literal" x="860" y="20" width="25" height="25" rx="7"/><text class="text" x="870" y="37">)</text><polygon points="896,44 900,44 900,30 896,30" style="fill:black;stroke-width:0"/></svg>
+
+### create_base_type
+```
+create_base_type ::= CREATE TYPE type_name ( INPUT = input_function , 
+                     OUTPUT = output_function 
+                     [ , base_type_option [ ... ] ] )
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="1078" height="65" viewbox="0 0 1078 65"><path class="connector" d="M0 37h15m67 0h10m49 0h10m88 0h10m25 0h10m57 0h10m30 0h10m108 0h10m24 0h10m68 0h10m30 0h10m117 0h50m-5 0q-5 0-5-5v-17q0-5 5-5h170q5 0 5 5v17q0 5-5 5m-141 0h10m126 0h40m-235 0q5 0 5 5v8q0 5 5 5h210q5 0 5-5v-8q0-5 5-5m5 0h10m25 0h15"/><polygon points="0,44 5,37 0,30" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="20" width="67" height="25" rx="7"/><text class="text" x="25" y="37">CREATE</text><rect class="literal" x="92" y="20" width="49" height="25" rx="7"/><text class="text" x="102" y="37">TYPE</text><a xlink:href="../grammar_diagrams#type-name"><rect class="rule" x="151" y="20" width="88" height="25"/><text class="text" x="161" y="37">type_name</text></a><rect class="literal" x="249" y="20" width="25" height="25" rx="7"/><text class="text" x="259" y="37">(</text><rect class="literal" x="284" y="20" width="57" height="25" rx="7"/><text class="text" x="294" y="37">INPUT</text><rect class="literal" x="351" y="20" width="30" height="25" rx="7"/><text class="text" x="361" y="37">=</text><a xlink:href="../grammar_diagrams#input-function"><rect class="rule" x="391" y="20" width="108" height="25"/><text class="text" x="401" y="37">input_function</text></a><rect class="literal" x="509" y="20" width="24" height="25" rx="7"/><text class="text" x="519" y="37">,</text><rect class="literal" x="543" y="20" width="68" height="25" rx="7"/><text class="text" x="553" y="37">OUTPUT</text><rect class="literal" x="621" y="20" width="30" height="25" rx="7"/><text class="text" x="631" y="37">=</text><a xlink:href="../grammar_diagrams#output-function"><rect class="rule" x="661" y="20" width="117" height="25"/><text class="text" x="671" y="37">output_function</text></a><rect class="literal" x="828" y="20" width="24" height="25" rx="7"/><text class="text" x="838" y="37">,</text><a xlink:href="../grammar_diagrams#base-type-option"><rect class="rule" x="862" y="20" width="126" height="25"/><text class="text" x="872" y="37">base_type_option</text></a><rect class="literal" x="1038" y="20" width="25" height="25" rx="7"/><text class="text" x="1048" y="37">)</text><polygon points="1074,44 1078,44 1078,30 1074,30" style="fill:black;stroke-width:0"/></svg>
+
+### create_shell_type
+```
+create_shell_type ::= CREATE TYPE type_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="254" height="35" viewbox="0 0 254 35"><path class="connector" d="M0 22h15m67 0h10m49 0h10m88 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="67" height="25" rx="7"/><text class="text" x="25" y="22">CREATE</text><rect class="literal" x="92" y="5" width="49" height="25" rx="7"/><text class="text" x="102" y="22">TYPE</text><a xlink:href="../grammar_diagrams#type-name"><rect class="rule" x="151" y="5" width="88" height="25"/><text class="text" x="161" y="22">type_name</text></a><polygon points="250,29 254,29 254,15 250,15" style="fill:black;stroke-width:0"/></svg>
+
+### composite_type_elem
+```
+composite_type_elem ::= attribute_name data_type [ COLLATE collation ]
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="437" height="50" viewbox="0 0 437 50"><path class="connector" d="M0 22h15m114 0h10m80 0h30m74 0h10m69 0h20m-188 0q5 0 5 5v8q0 5 5 5h163q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#attribute-name"><rect class="rule" x="15" y="5" width="114" height="25"/><text class="text" x="25" y="22">attribute_name</text></a><a xlink:href="../grammar_diagrams#data-type"><rect class="rule" x="139" y="5" width="80" height="25"/><text class="text" x="149" y="22">data_type</text></a><rect class="literal" x="249" y="5" width="74" height="25" rx="7"/><text class="text" x="259" y="22">COLLATE</text><a xlink:href="../grammar_diagrams#collation"><rect class="rule" x="333" y="5" width="69" height="25"/><text class="text" x="343" y="22">collation</text></a><polygon points="433,29 437,29 437,15 433,15" style="fill:black;stroke-width:0"/></svg>
+
+### range_type_option
+```
+range_type_option ::= SUBTYPE_OPCLASS = subtype_operator_class
+                      | COLLATION = collation
+                      | CANONICAL = canonical_function
+                      | SUBTYPE_DIFF = subtype_diff_function
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="418" height="125" viewbox="0 0 418 125"><path class="connector" d="M0 22h35m137 0h10m30 0h10m161 0h20m-378 25q0 5 5 5h5m89 0h10m30 0h10m69 0h145q5 0 5-5m-368 30q0 5 5 5h5m91 0h10m30 0h10m132 0h80q5 0 5-5m-373-55q5 0 5 5v80q0 5 5 5h5m110 0h10m30 0h10m150 0h43q5 0 5-5v-80q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="35" y="5" width="137" height="25" rx="7"/><text class="text" x="45" y="22">SUBTYPE_OPCLASS</text><rect class="literal" x="182" y="5" width="30" height="25" rx="7"/><text class="text" x="192" y="22">=</text><a xlink:href="../grammar_diagrams#subtype-operator-class"><rect class="rule" x="222" y="5" width="161" height="25"/><text class="text" x="232" y="22">subtype_operator_class</text></a><rect class="literal" x="35" y="35" width="89" height="25" rx="7"/><text class="text" x="45" y="52">COLLATION</text><rect class="literal" x="134" y="35" width="30" height="25" rx="7"/><text class="text" x="144" y="52">=</text><a xlink:href="../grammar_diagrams#collation"><rect class="rule" x="174" y="35" width="69" height="25"/><text class="text" x="184" y="52">collation</text></a><rect class="literal" x="35" y="65" width="91" height="25" rx="7"/><text class="text" x="45" y="82">CANONICAL</text><rect class="literal" x="136" y="65" width="30" height="25" rx="7"/><text class="text" x="146" y="82">=</text><a xlink:href="../grammar_diagrams#canonical-function"><rect class="rule" x="176" y="65" width="132" height="25"/><text class="text" x="186" y="82">canonical_function</text></a><rect class="literal" x="35" y="95" width="110" height="25" rx="7"/><text class="text" x="45" y="112">SUBTYPE_DIFF</text><rect class="literal" x="155" y="95" width="30" height="25" rx="7"/><text class="text" x="165" y="112">=</text><a xlink:href="../grammar_diagrams#subtype-diff-function"><rect class="rule" x="195" y="95" width="150" height="25"/><text class="text" x="205" y="112">subtype_diff_function</text></a><polygon points="414,29 418,29 418,15 414,15" style="fill:black;stroke-width:0"/></svg>
+
+### base_type_option
+```
+base_type_option ::= RECEIVE = receive_function
+                     | SEND = send_function
+                     | TYPMOD_IN = type_modifier_input_function
+                     | TYPMOD_OUT = type_modifier_output_function
+                     | INTERNALLENGTH = { internallength | VARIABLE }
+                     | PASSEDBYVALUE
+                     | ALIGNMENT = alignment
+                     | STORAGE = storage
+                     | LIKE = like_type
+                     | CATEGORY = category
+                     | PREFERRED = preferred
+                     | DEFAULT = default
+                     | ELEMENT = element
+                     | DELIMITER = delimiter
+                     | COLLATABLE = collatable
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="429" height="485" viewbox="0 0 429 485"><path class="connector" d="M0 22h35m73 0h10m30 0h10m119 0h137m-389 25q0 5 5 5h5m54 0h10m30 0h10m105 0h155q5 0 5-5m-379 30q0 5 5 5h5m91 0h10m30 0h10m198 0h25q5 0 5-5m-379 30q0 5 5 5h5m102 0h10m30 0h10m207 0h5q5 0 5-5m-379 30q0 5 5 5h5m130 0h10m30 0h30m104 0h20m-139 0q5 0 5 5v20q0 5 5 5h5m80 0h29q5 0 5-5v-20q0-5 5-5m5 0h40q5 0 5-5m-379 60q0 5 5 5h5m123 0h241q5 0 5-5m-379 30q0 5 5 5h5m92 0h10m30 0h10m80 0h142q5 0 5-5m-379 30q0 5 5 5h5m77 0h10m30 0h10m64 0h173q5 0 5-5m-379 30q0 5 5 5h5m48 0h10m30 0h10m74 0h192q5 0 5-5m-379 30q0 5 5 5h5m84 0h10m30 0h10m71 0h159q5 0 5-5m-379 30q0 5 5 5h5m91 0h10m30 0h10m74 0h149q5 0 5-5m-379 30q0 5 5 5h5m75 0h10m30 0h10m61 0h178q5 0 5-5m-379 30q0 5 5 5h5m77 0h10m30 0h10m69 0h168q5 0 5-5m-379 30q0 5 5 5h5m87 0h10m30 0h10m72 0h155q5 0 5-5m-384-415q5 0 5 5v440q0 5 5 5h5m97 0h10m30 0h10m75 0h142q5 0 5-5v-440q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="35" y="5" width="73" height="25" rx="7"/><text class="text" x="45" y="22">RECEIVE</text><rect class="literal" x="118" y="5" width="30" height="25" rx="7"/><text class="text" x="128" y="22">=</text><a xlink:href="../grammar_diagrams#receive-function"><rect class="rule" x="158" y="5" width="119" height="25"/><text class="text" x="168" y="22">receive_function</text></a><rect class="literal" x="35" y="35" width="54" height="25" rx="7"/><text class="text" x="45" y="52">SEND</text><rect class="literal" x="99" y="35" width="30" height="25" rx="7"/><text class="text" x="109" y="52">=</text><a xlink:href="../grammar_diagrams#send-function"><rect class="rule" x="139" y="35" width="105" height="25"/><text class="text" x="149" y="52">send_function</text></a><rect class="literal" x="35" y="65" width="91" height="25" rx="7"/><text class="text" x="45" y="82">TYPMOD_IN</text><rect class="literal" x="136" y="65" width="30" height="25" rx="7"/><text class="text" x="146" y="82">=</text><a xlink:href="../grammar_diagrams#type-modifier-input-function"><rect class="rule" x="176" y="65" width="198" height="25"/><text class="text" x="186" y="82">type_modifier_input_function</text></a><rect class="literal" x="35" y="95" width="102" height="25" rx="7"/><text class="text" x="45" y="112">TYPMOD_OUT</text><rect class="literal" x="147" y="95" width="30" height="25" rx="7"/><text class="text" x="157" y="112">=</text><a xlink:href="../grammar_diagrams#type-modifier-output-function"><rect class="rule" x="187" y="95" width="207" height="25"/><text class="text" x="197" y="112">type_modifier_output_function</text></a><rect class="literal" x="35" y="125" width="130" height="25" rx="7"/><text class="text" x="45" y="142">INTERNALLENGTH</text><rect class="literal" x="175" y="125" width="30" height="25" rx="7"/><text class="text" x="185" y="142">=</text><a xlink:href="../grammar_diagrams#internallength"><rect class="rule" x="235" y="125" width="104" height="25"/><text class="text" x="245" y="142">internallength</text></a><rect class="literal" x="235" y="155" width="80" height="25" rx="7"/><text class="text" x="245" y="172">VARIABLE</text><rect class="literal" x="35" y="185" width="123" height="25" rx="7"/><text class="text" x="45" y="202">PASSEDBYVALUE</text><rect class="literal" x="35" y="215" width="92" height="25" rx="7"/><text class="text" x="45" y="232">ALIGNMENT</text><rect class="literal" x="137" y="215" width="30" height="25" rx="7"/><text class="text" x="147" y="232">=</text><a xlink:href="../grammar_diagrams#alignment"><rect class="rule" x="177" y="215" width="80" height="25"/><text class="text" x="187" y="232">alignment</text></a><rect class="literal" x="35" y="245" width="77" height="25" rx="7"/><text class="text" x="45" y="262">STORAGE</text><rect class="literal" x="122" y="245" width="30" height="25" rx="7"/><text class="text" x="132" y="262">=</text><a xlink:href="../grammar_diagrams#storage"><rect class="rule" x="162" y="245" width="64" height="25"/><text class="text" x="172" y="262">storage</text></a><rect class="literal" x="35" y="275" width="48" height="25" rx="7"/><text class="text" x="45" y="292">LIKE</text><rect class="literal" x="93" y="275" width="30" height="25" rx="7"/><text class="text" x="103" y="292">=</text><a xlink:href="../grammar_diagrams#like-type"><rect class="rule" x="133" y="275" width="74" height="25"/><text class="text" x="143" y="292">like_type</text></a><rect class="literal" x="35" y="305" width="84" height="25" rx="7"/><text class="text" x="45" y="322">CATEGORY</text><rect class="literal" x="129" y="305" width="30" height="25" rx="7"/><text class="text" x="139" y="322">=</text><a xlink:href="../grammar_diagrams#category"><rect class="rule" x="169" y="305" width="71" height="25"/><text class="text" x="179" y="322">category</text></a><rect class="literal" x="35" y="335" width="91" height="25" rx="7"/><text class="text" x="45" y="352">PREFERRED</text><rect class="literal" x="136" y="335" width="30" height="25" rx="7"/><text class="text" x="146" y="352">=</text><a xlink:href="../grammar_diagrams#preferred"><rect class="rule" x="176" y="335" width="74" height="25"/><text class="text" x="186" y="352">preferred</text></a><rect class="literal" x="35" y="365" width="75" height="25" rx="7"/><text class="text" x="45" y="382">DEFAULT</text><rect class="literal" x="120" y="365" width="30" height="25" rx="7"/><text class="text" x="130" y="382">=</text><a xlink:href="../grammar_diagrams#default"><rect class="rule" x="160" y="365" width="61" height="25"/><text class="text" x="170" y="382">default</text></a><rect class="literal" x="35" y="395" width="77" height="25" rx="7"/><text class="text" x="45" y="412">ELEMENT</text><rect class="literal" x="122" y="395" width="30" height="25" rx="7"/><text class="text" x="132" y="412">=</text><a xlink:href="../grammar_diagrams#element"><rect class="rule" x="162" y="395" width="69" height="25"/><text class="text" x="172" y="412">element</text></a><rect class="literal" x="35" y="425" width="87" height="25" rx="7"/><text class="text" x="45" y="442">DELIMITER</text><rect class="literal" x="132" y="425" width="30" height="25" rx="7"/><text class="text" x="142" y="442">=</text><a xlink:href="../grammar_diagrams#delimiter"><rect class="rule" x="172" y="425" width="72" height="25"/><text class="text" x="182" y="442">delimiter</text></a><rect class="literal" x="35" y="455" width="97" height="25" rx="7"/><text class="text" x="45" y="472">COLLATABLE</text><rect class="literal" x="142" y="455" width="30" height="25" rx="7"/><text class="text" x="152" y="472">=</text><a xlink:href="../grammar_diagrams#collatable"><rect class="rule" x="182" y="455" width="75" height="25"/><text class="text" x="192" y="472">collatable</text></a><polygon points="425,29 429,29 429,15 425,15" style="fill:black;stroke-width:0"/></svg>
+
 ### create_user
 ```
 create_user ::= CREATE USER name
@@ -350,6 +420,13 @@ drop_database ::= DROP DATABASE [ IF EXISTS ] database_name
 drop_table ::= DROP TABLE [ IF EXISTS ] table_name
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="408" height="50" viewbox="0 0 408 50"><path class="connector" d="M0 22h15m53 0h10m58 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h10m91 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="53" height="25" rx="7"/><text class="text" x="25" y="22">DROP</text><rect class="literal" x="78" y="5" width="58" height="25" rx="7"/><text class="text" x="88" y="22">TABLE</text><rect class="literal" x="166" y="5" width="32" height="25" rx="7"/><text class="text" x="176" y="22">IF</text><rect class="literal" x="208" y="5" width="64" height="25" rx="7"/><text class="text" x="218" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="302" y="5" width="91" height="25"/><text class="text" x="312" y="22">table_name</text></a><polygon points="404,29 408,29 408,15 404,15" style="fill:black;stroke-width:0"/></svg>
+
+### drop_type
+```
+drop_type ::= DROP TYPE [ IF EXISTS ] type_name [ , ... ] 
+              [ CASCADE | RESTRICT ]
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="565" height="100" viewbox="0 0 565 100"><path class="connector" d="M0 52h15m53 0h10m49 0h30m32 0h10m64 0h20m-141 0q5 0 5 5v8q0 5 5 5h116q5 0 5-5v-8q0-5 5-5m5 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h37m24 0h37q5 0 5 5v20q0 5-5 5m-5 0h50m77 0h22m-109 25q0 5 5 5h5m79 0h5q5 0 5-5m-104-25q5 0 5 5v33q0 5 5 5h89q5 0 5-5v-33q0-5 5-5m5 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="35" width="53" height="25" rx="7"/><text class="text" x="25" y="52">DROP</text><rect class="literal" x="78" y="35" width="49" height="25" rx="7"/><text class="text" x="88" y="52">TYPE</text><rect class="literal" x="157" y="35" width="32" height="25" rx="7"/><text class="text" x="167" y="52">IF</text><rect class="literal" x="199" y="35" width="64" height="25" rx="7"/><text class="text" x="209" y="52">EXISTS</text><rect class="literal" x="345" y="5" width="24" height="25" rx="7"/><text class="text" x="355" y="22">,</text><a xlink:href="../grammar_diagrams#type-name"><rect class="rule" x="313" y="35" width="88" height="25"/><text class="text" x="323" y="52">type_name</text></a><rect class="literal" x="451" y="35" width="77" height="25" rx="7"/><text class="text" x="461" y="52">CASCADE</text><rect class="literal" x="451" y="65" width="79" height="25" rx="7"/><text class="text" x="461" y="82">RESTRICT</text><polygon points="561,59 565,59 565,45 561,45" style="fill:black;stroke-width:0"/></svg>
 
 ### drop_sequence
 ```
@@ -663,11 +740,12 @@ aggregate_signature ::= * | [ argmode ] [ argname ] argtype [ , ... ]
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="937" height="200" viewbox="0 0 937 200"><path class="connector" d="M0 22h35m28 0h859m-897 55q0 5 5 5h25m72 0h20m-107 0q5 0 5 5v8q0 5 5 5h82q5 0 5-5v-8q0-5 5-5m5 0h30m73 0h20m-108 0q5 0 5 5v8q0 5 5 5h83q5 0 5-5v-8q0-5 5-5m5 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h25m24 0h26q5 0 5 5v20q0 5-5 5m-5 0h542q5 0 5-5m-892-55q5 0 5 5v125q0 5 5 5h45m72 0h20m-107 0q5 0 5 5v8q0 5 5 5h82q5 0 5-5v-8q0-5 5-5m5 0h30m73 0h20m-108 0q5 0 5 5v8q0 5 5 5h83q5 0 5-5v-8q0-5 5-5m5 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h25m24 0h26q5 0 5 5v20q0 5-5 5m-5 0h40m-385 0q5 0 5 5v23q0 5 5 5h360q5 0 5-5v-23q0-5 5-5m5 0h10m62 0h10m35 0h30m72 0h20m-107 0q5 0 5 5v8q0 5 5 5h82q5 0 5-5v-8q0-5 5-5m5 0h30m73 0h20m-108 0q5 0 5 5v8q0 5 5 5h83q5 0 5-5v-8q0-5 5-5m5 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h25m24 0h26q5 0 5 5v20q0 5-5 5m-5 0h25q5 0 5-5v-125q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="35" y="5" width="28" height="25" rx="7"/><text class="text" x="45" y="22">*</text><a xlink:href="../grammar_diagrams#argmode"><rect class="rule" x="55" y="65" width="72" height="25"/><text class="text" x="65" y="82">argmode</text></a><a xlink:href="../grammar_diagrams#argname"><rect class="rule" x="177" y="65" width="73" height="25"/><text class="text" x="187" y="82">argname</text></a><rect class="literal" x="320" y="35" width="24" height="25" rx="7"/><text class="text" x="330" y="52">,</text><a xlink:href="../grammar_diagrams#argtype"><rect class="rule" x="300" y="65" width="65" height="25"/><text class="text" x="310" y="82">argtype</text></a><a xlink:href="../grammar_diagrams#argmode"><rect class="rule" x="75" y="140" width="72" height="25"/><text class="text" x="85" y="157">argmode</text></a><a xlink:href="../grammar_diagrams#argname"><rect class="rule" x="197" y="140" width="73" height="25"/><text class="text" x="207" y="157">argname</text></a><rect class="literal" x="340" y="110" width="24" height="25" rx="7"/><text class="text" x="350" y="127">,</text><a xlink:href="../grammar_diagrams#argtype"><rect class="rule" x="320" y="140" width="65" height="25"/><text class="text" x="330" y="157">argtype</text></a><rect class="literal" x="435" y="140" width="62" height="25" rx="7"/><text class="text" x="445" y="157">ORDER</text><rect class="literal" x="507" y="140" width="35" height="25" rx="7"/><text class="text" x="517" y="157">BY</text><a xlink:href="../grammar_diagrams#argmode"><rect class="rule" x="572" y="140" width="72" height="25"/><text class="text" x="582" y="157">argmode</text></a><a xlink:href="../grammar_diagrams#argname"><rect class="rule" x="694" y="140" width="73" height="25"/><text class="text" x="704" y="157">argname</text></a><rect class="literal" x="837" y="110" width="24" height="25" rx="7"/><text class="text" x="847" y="127">,</text><a xlink:href="../grammar_diagrams#argtype"><rect class="rule" x="817" y="140" width="65" height="25"/><text class="text" x="827" y="157">argtype</text></a><polygon points="933,29 937,29 937,15 933,15" style="fill:black;stroke-width:0"/></svg>
 
-### where_expression
+### qualified_name
 ```
-where_expression ::= boolean_expression
+qualified_name ::= [ [ database_name . ] schema_name . ] 
+                   '<Text Literal>'
 ```
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="167" height="35" viewbox="0 0 167 35"><path class="connector" d="M0 22h15m137 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#boolean-expression"><rect class="rule" x="15" y="5" width="137" height="25"/><text class="text" x="25" y="22">boolean_expression</text></a><polygon points="163,29 167,29 167,15 163,15" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="528" height="65" viewbox="0 0 528 65"><path class="connector" d="M0 22h55m115 0h10m24 0h20m-184 0q5 0 5 5v8q0 5 5 5h159q5 0 5-5v-8q0-5 5-5m5 0h10m108 0h10m24 0h20m-376 0q5 0 5 5v23q0 5 5 5h351q5 0 5-5v-23q0-5 5-5m5 0h10m107 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#database-name"><rect class="rule" x="55" y="5" width="115" height="25"/><text class="text" x="65" y="22">database_name</text></a><rect class="literal" x="180" y="5" width="24" height="25" rx="7"/><text class="text" x="190" y="22">.</text><a xlink:href="../grammar_diagrams#schema-name"><rect class="rule" x="234" y="5" width="108" height="25"/><text class="text" x="244" y="22">schema_name</text></a><rect class="literal" x="352" y="5" width="24" height="25" rx="7"/><text class="text" x="362" y="22">.</text><rect class="literal" x="406" y="5" width="107" height="25" rx="7"/><text class="text" x="416" y="22">&lt;Text Literal&gt;</text><polygon points="524,29 528,29 528,15 524,15" style="fill:black;stroke-width:0"/></svg>
 
 ### database_name
 ```
@@ -675,11 +753,17 @@ database_name ::= '<Text Literal>'
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="137" height="35" viewbox="0 0 137 35"><path class="connector" d="M0 22h15m107 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="107" height="25" rx="7"/><text class="text" x="25" y="22">&lt;Text Literal&gt;</text><polygon points="133,29 137,29 137,15 133,15" style="fill:black;stroke-width:0"/></svg>
 
+### schema_name
+```
+schema_name ::= '<Text Literal>'
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="137" height="35" viewbox="0 0 137 35"><path class="connector" d="M0 22h15m107 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="107" height="25" rx="7"/><text class="text" x="25" y="22">&lt;Text Literal&gt;</text><polygon points="133,29 137,29 137,15 133,15" style="fill:black;stroke-width:0"/></svg>
+
 ### table_name
 ```
-table_name ::= [ database_name . ] '<Text Literal>'
+table_name ::= qualified_name
 ```
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="336" height="50" viewbox="0 0 336 50"><path class="connector" d="M0 22h35m115 0h10m24 0h20m-184 0q5 0 5 5v8q0 5 5 5h159q5 0 5-5v-8q0-5 5-5m5 0h10m107 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#database-name"><rect class="rule" x="35" y="5" width="115" height="25"/><text class="text" x="45" y="22">database_name</text></a><rect class="literal" x="160" y="5" width="24" height="25" rx="7"/><text class="text" x="170" y="22">.</text><rect class="literal" x="214" y="5" width="107" height="25" rx="7"/><text class="text" x="224" y="22">&lt;Text Literal&gt;</text><polygon points="332,29 336,29 336,15 332,15" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#qualified-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">qualified_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
 
 ### column_name
 ```
@@ -837,6 +921,12 @@ column_names ::= column_name [ , ... ]
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="176" height="65" viewbox="0 0 176 65"><path class="connector" d="M0 52h35m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h46q5 0 5 5v20q0 5-5 5m-5 0h35"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="76" y="5" width="24" height="25" rx="7"/><text class="text" x="86" y="22">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="35" y="35" width="106" height="25"/><text class="text" x="45" y="52">column_name</text></a><polygon points="172,59 176,59 176,45 172,45" style="fill:black;stroke-width:0"/></svg>
 
+### where_expression
+```
+where_expression ::= boolean_expression
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="167" height="35" viewbox="0 0 167 35"><path class="connector" d="M0 22h15m137 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#boolean-expression"><rect class="rule" x="15" y="5" width="137" height="25"/><text class="text" x="25" y="22">boolean_expression</text></a><polygon points="163,29 167,29 167,15 163,15" style="fill:black;stroke-width:0"/></svg>
+
 ### expression
 ```
 expression ::= '<expression>'
@@ -848,4 +938,166 @@ expression ::= '<expression>'
 boolean ::= TRUE | FALSE
 ```
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="128" height="65" viewbox="0 0 128 65"><path class="connector" d="M0 22h35m52 0h26m-93 0q5 0 5 5v20q0 5 5 5h5m58 0h5q5 0 5-5v-20q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="35" y="5" width="52" height="25" rx="7"/><text class="text" x="45" y="22">TRUE</text><rect class="literal" x="35" y="35" width="58" height="25" rx="7"/><text class="text" x="45" y="52">FALSE</text><polygon points="124,29 128,29 128,15 124,15" style="fill:black;stroke-width:0"/></svg>
+
+### collation
+```
+collation ::= '"default"' | "C" | "POSIX" | '"ucs_basic"'
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="159" height="125" viewbox="0 0 159 125"><path class="connector" d="M0 22h35m73 0h36m-119 25q0 5 5 5h5m40 0h54q5 0 5-5m-109 30q0 5 5 5h5m69 0h25q5 0 5-5m-114-55q5 0 5 5v80q0 5 5 5h5m89 0h5q5 0 5-5v-80q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="35" y="5" width="73" height="25" rx="7"/><text class="text" x="45" y="22">&quot;default&quot;</text><rect class="literal" x="35" y="35" width="40" height="25" rx="7"/><text class="text" x="45" y="52">&quot;C&quot;</text><rect class="literal" x="35" y="65" width="69" height="25" rx="7"/><text class="text" x="45" y="82">&quot;POSIX&quot;</text><rect class="literal" x="35" y="95" width="89" height="25" rx="7"/><text class="text" x="45" y="112">&quot;ucs_basic&quot;</text><polygon points="155,29 159,29 159,15 155,15" style="fill:black;stroke-width:0"/></svg>
+
+### type_name
+```
+type_name ::= qualified_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#qualified-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">qualified_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+
+### attribute_name
+```
+attribute_name ::= '<Text Literal>'
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="137" height="35" viewbox="0 0 137 35"><path class="connector" d="M0 22h15m107 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="107" height="25" rx="7"/><text class="text" x="25" y="22">&lt;Text Literal&gt;</text><polygon points="133,29 137,29 137,15 133,15" style="fill:black;stroke-width:0"/></svg>
+
+### data_type
+```
+data_type ::= type_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="118" height="35" viewbox="0 0 118 35"><path class="connector" d="M0 22h15m88 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#type-name"><rect class="rule" x="15" y="5" width="88" height="25"/><text class="text" x="25" y="22">type_name</text></a><polygon points="114,29 118,29 118,15 114,15" style="fill:black;stroke-width:0"/></svg>
+
+### label
+```
+label ::= '<Text Literal>'
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="137" height="35" viewbox="0 0 137 35"><path class="connector" d="M0 22h15m107 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="107" height="25" rx="7"/><text class="text" x="25" y="22">&lt;Text Literal&gt;</text><polygon points="133,29 137,29 137,15 133,15" style="fill:black;stroke-width:0"/></svg>
+
+### subtype
+```
+subtype ::= type_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="118" height="35" viewbox="0 0 118 35"><path class="connector" d="M0 22h15m88 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#type-name"><rect class="rule" x="15" y="5" width="88" height="25"/><text class="text" x="25" y="22">type_name</text></a><polygon points="114,29 118,29 118,15 114,15" style="fill:black;stroke-width:0"/></svg>
+
+### operator_class_name
+```
+operator_class_name ::= qualified_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#qualified-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">qualified_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+
+### subtype_operator_class
+```
+subtype_operator_class ::= operator_class_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="178" height="35" viewbox="0 0 178 35"><path class="connector" d="M0 22h15m148 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#operator-class-name"><rect class="rule" x="15" y="5" width="148" height="25"/><text class="text" x="25" y="22">operator_class_name</text></a><polygon points="174,29 178,29 178,15 174,15" style="fill:black;stroke-width:0"/></svg>
+
+### function_name
+```
+function_name ::= qualified_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#qualified-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">qualified_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+
+### canonical_function
+```
+canonical_function ::= function_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#function-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">function_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+
+### subtype_diff_function
+```
+subtype_diff_function ::= function_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#function-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">function_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+
+### input_function
+```
+input_function ::= function_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#function-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">function_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+
+### output_function
+```
+output_function ::= function_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#function-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">function_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+
+### receive_function
+```
+receive_function ::= function_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#function-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">function_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+
+### send_function
+```
+send_function ::= function_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#function-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">function_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+
+### type_modifier_input_function
+```
+type_modifier_input_function ::= function_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#function-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">function_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+
+### type_modifier_output_function
+```
+type_modifier_output_function ::= function_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="141" height="35" viewbox="0 0 141 35"><path class="connector" d="M0 22h15m111 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#function-name"><rect class="rule" x="15" y="5" width="111" height="25"/><text class="text" x="25" y="22">function_name</text></a><polygon points="137,29 141,29 141,15 137,15" style="fill:black;stroke-width:0"/></svg>
+
+### internallength
+```
+internallength ::= -2 | -1 | '<non-negative integer>'
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="235" height="95" viewbox="0 0 235 95"><path class="connector" d="M0 22h35m33 0h152m-195 25q0 5 5 5h5m33 0h137q5 0 5-5m-190-25q5 0 5 5v50q0 5 5 5h5m165 0h5q5 0 5-5v-50q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="35" y="5" width="33" height="25" rx="7"/><text class="text" x="45" y="22">-2</text><rect class="literal" x="35" y="35" width="33" height="25" rx="7"/><text class="text" x="45" y="52">-1</text><rect class="literal" x="35" y="65" width="165" height="25" rx="7"/><text class="text" x="45" y="82">&lt;non-negative integer&gt;</text><polygon points="231,29 235,29 235,15 231,15" style="fill:black;stroke-width:0"/></svg>
+
+### alignment
+```
+alignment ::= CHAR | INT2 | INT4 | DOUBLE
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="140" height="125" viewbox="0 0 140 125"><path class="connector" d="M0 22h35m53 0h37m-100 25q0 5 5 5h5m49 0h26q5 0 5-5m-90 30q0 5 5 5h5m49 0h26q5 0 5-5m-95-55q5 0 5 5v80q0 5 5 5h5m70 0h5q5 0 5-5v-80q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="35" y="5" width="53" height="25" rx="7"/><text class="text" x="45" y="22">CHAR</text><rect class="literal" x="35" y="35" width="49" height="25" rx="7"/><text class="text" x="45" y="52">INT2</text><rect class="literal" x="35" y="65" width="49" height="25" rx="7"/><text class="text" x="45" y="82">INT4</text><rect class="literal" x="35" y="95" width="70" height="25" rx="7"/><text class="text" x="45" y="112">DOUBLE</text><polygon points="136,29 140,29 140,15 136,15" style="fill:black;stroke-width:0"/></svg>
+
+### storage
+```
+storage ::= PLAIN | EXTERNAL | EXTENDED | MAIN
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="156" height="125" viewbox="0 0 156 125"><path class="connector" d="M0 22h35m56 0h50m-116 25q0 5 5 5h5m83 0h8q5 0 5-5m-106 30q0 5 5 5h5m86 0h5q5 0 5-5m-111-55q5 0 5 5v80q0 5 5 5h5m52 0h39q5 0 5-5v-80q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="35" y="5" width="56" height="25" rx="7"/><text class="text" x="45" y="22">PLAIN</text><rect class="literal" x="35" y="35" width="83" height="25" rx="7"/><text class="text" x="45" y="52">EXTERNAL</text><rect class="literal" x="35" y="65" width="86" height="25" rx="7"/><text class="text" x="45" y="82">EXTENDED</text><rect class="literal" x="35" y="95" width="52" height="25" rx="7"/><text class="text" x="45" y="112">MAIN</text><polygon points="152,29 156,29 156,15 152,15" style="fill:black;stroke-width:0"/></svg>
+
+### like_type
+```
+like_type ::= type_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="118" height="35" viewbox="0 0 118 35"><path class="connector" d="M0 22h15m88 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#type-name"><rect class="rule" x="15" y="5" width="88" height="25"/><text class="text" x="25" y="22">type_name</text></a><polygon points="114,29 118,29 118,15 114,15" style="fill:black;stroke-width:0"/></svg>
+
+### category
+```
+category ::= '<character>'
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="126" height="35" viewbox="0 0 126 35"><path class="connector" d="M0 22h15m96 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="96" height="25" rx="7"/><text class="text" x="25" y="22">&lt;character&gt;</text><polygon points="122,29 126,29 126,15 122,15" style="fill:black;stroke-width:0"/></svg>
+
+### preferred
+```
+preferred ::= boolean
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="96" height="35" viewbox="0 0 96 35"><path class="connector" d="M0 22h15m66 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#boolean"><rect class="rule" x="15" y="5" width="66" height="25"/><text class="text" x="25" y="22">boolean</text></a><polygon points="92,29 96,29 96,15 92,15" style="fill:black;stroke-width:0"/></svg>
+
+### default
+```
+default ::= '<type value>'
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="132" height="35" viewbox="0 0 132 35"><path class="connector" d="M0 22h15m102 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="102" height="25" rx="7"/><text class="text" x="25" y="22">&lt;type value&gt;</text><polygon points="128,29 132,29 132,15 128,15" style="fill:black;stroke-width:0"/></svg>
+
+### element
+```
+element ::= type_name
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="118" height="35" viewbox="0 0 118 35"><path class="connector" d="M0 22h15m88 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#type-name"><rect class="rule" x="15" y="5" width="88" height="25"/><text class="text" x="25" y="22">type_name</text></a><polygon points="114,29 118,29 118,15 114,15" style="fill:black;stroke-width:0"/></svg>
+
+### delimiter
+```
+delimiter ::= '<character>'
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="126" height="35" viewbox="0 0 126 35"><path class="connector" d="M0 22h15m96 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="96" height="25" rx="7"/><text class="text" x="25" y="22">&lt;character&gt;</text><polygon points="122,29 126,29 126,15 122,15" style="fill:black;stroke-width:0"/></svg>
+
+### collatable
+```
+collatable ::= boolean
+```
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="96" height="35" viewbox="0 0 96 35"><path class="connector" d="M0 22h15m66 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#boolean"><rect class="rule" x="15" y="5" width="66" height="25"/><text class="text" x="25" y="22">boolean</text></a><polygon points="92,29 96,29 96,15 92,15" style="fill:black;stroke-width:0"/></svg>
 
