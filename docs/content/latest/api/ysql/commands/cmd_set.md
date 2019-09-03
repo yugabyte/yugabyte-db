@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`SET` command updates a run-time control parameter.
+Use a `SET` statement to update a run-time control parameter.
 
 ## Syntax
 
@@ -55,7 +55,7 @@ Where
 
 ## Semantics
 
-- Although the values of a parameter can be set, showed, and reset, the effect of these parameters are not yet supported in YugaByte. The factory-settings or default behaviors will be used for the moment.
+  Although the values of a parameter can be set, showed, and reset, the effect of these parameters are not yet supported in YugaByte DB. The default settings and behaviors will be used for the moment.
 
 ## See also
 

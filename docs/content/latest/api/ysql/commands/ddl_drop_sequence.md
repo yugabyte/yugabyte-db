@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `DROP SEQUENCE` command deletes a sequence in the current schema.
+Use the `DROP SEQUENCE` statement to delete a sequence in the current schema.
 
 ## Syntax
 
@@ -42,16 +42,22 @@ The `DROP SEQUENCE` command deletes a sequence in the current schema.
   </div>
 </div>
 
-Where
-
-- `sequence_name` is the name of the sequence.
-- `CASCADE`. Remove also all objects that depend on this sequence (for example a `DEFAULT` value in a table's column).
-- `RESTRICT`. Do not remove this sequence if any object depends on it. This is the default behavior even if it's not specified.
-
 ## Semantics
+
+### _sequence_name_
+
+Specify the name of the sequence.
 
 - An error is raised if a sequence with that name does not exist in the current schema unless `IF EXISTS` is specified.
 - An error is raised if any object depends on this sequence unless the `CASCADE` option is specified.
+
+### CASCADE
+
+Remove also all objects that depend on this sequence (for example a `DEFAULT` value in a table's column).
+
+#### RESTRICT
+
+Do not remove this sequence if any object depends on it. This is the default behavior even if it's not specified.
 
 ## Examples
 
@@ -117,4 +123,3 @@ DROP SEQUENCE
 [`currval()`](../currval_sequence)
 [`lastval()`](../lastval_sequence)
 [`nextval()`](../nextval_sequence)
-[Other YSQL Statements](..)

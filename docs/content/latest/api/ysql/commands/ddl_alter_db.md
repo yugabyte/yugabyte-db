@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-ALTER DATABASE redefines the attributes of the specified database.
+Use the `ALTER DATABASE` statement to redefine the attributes of a database.
 
 ## Syntax
 
@@ -43,25 +43,38 @@ ALTER DATABASE redefines the attributes of the specified database.
   </div>
 </div>
 
-
-where
-
-- `name` is an identifier that specifies the database to be altered.
-
-- tablespace_name specifies the new tablespace that is associated with the database.
-
-- allowconn is either `true` or `false`.
-
-- connlimit specifies the number of concurrent connections can be made to this database. -1 means there is no limit.
-
-- istemplate is either `true` or `false`.
-
 ## Semantics
 
-- Some options in DATABASE are under development.
+{{< note title="Note" >}}
+
+Some options in DATABASE are under development.
+
+{{< /note >}}
+
+### _name_
+
+Specify the name of the database to be altered.
+
+### _tablespace_name_
+
+Specify the new tablespace that is associated with the database.
+
+### allowconn
+
+- `true` — Allow connections to this database.
+- `false` — Disallow connections to this database.
+
+### connlimit
+
+- `<how-many>` — Specify how many concurrent connections can be made to this database.
+- `-1` — Unlimited.
+
+### istemplate
+
+- `true` — This database can be cloned by any user with `CREATEDB` privileges.
+- `false` — Only superusers or the owner of the database can clone it.
 
 ## See also
 
 [`CREATE DATABASE`](../ddl_create_database)
 [`DROP DATABASE`](../ddl_drop_database)
-[Other YSQL Statements](..)

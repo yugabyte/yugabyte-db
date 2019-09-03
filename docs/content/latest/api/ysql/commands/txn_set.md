@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`SET TRANSACTION` command sets the current transaction isolation level.
+Use the `SET TRANSACTION` statement to set the current transaction isolation level.
 
 ## Syntax
 
@@ -42,14 +42,78 @@ showAsideToc: true
   </div>
 </div>
 
-
 ## Semantics
 
 Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
 
-Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
+### _transaction_mode_
+
+Set the transaction mode to one of the following.
+
+- ISOLATION LEVEL clause
+- Access mode
+- Deferrable mode
+
+### ISOLATION LEVEL clause
+
+#### SERIALIZABLE
+
+Default in ANSI SQL standard.
+
+#### REPEATABLE READ
+
+Also referred to as "snapshot isolation" in YugaByte DB.
+Default in YugaByte DB.
+
+#### READ COMMITTED
+
+A statement can only see rows committed before it begins.
+
+`READ_COMMITTED` is mapped to `REPEATABLE_READ`.
+
+Default in PostgreSQL.
+
+#### READ UNCOMMITTED
+
+`READ_UNCOMMITTED` is mapped to `REPEATABLE_READ`.
+
+In PostgreSQL, `READ_UNCOMMITTED` is mapped to `READ_COMMITTED`.
+
+### READ WRITE mode
+
+Default.
+
+### READ ONLY mode
+
+The `READ ONLY` mode does not prevent all writes to disk.
+
+When a transaction is `READ ONLY`, the following SQL statements are:
+
+- Disallowed if the table they would write to is not a temporary table.
+  - INSERT
+  - UPDATE
+  - DELETE
+  - COPY FROM
+
+- Always disallowed
+  - COMMENT
+  - GRANT
+  - REVOKE
+  - TRUNCATE
+
+- Disallowed when the statement that would be executed is one of the above
+  - EXECUTE
+  - EXPLAIN ANALYZE
+
+### DEFERRABLE mode
+
+Use to defer a transaction only when both `SERIALIZABLE` and `READ ONLY` modes are also selected. If used, then the transaction may block when first acquiring its snapshot, after which it is able to run without the normal overhead of a `SERIALIZABLE` transaction and without any risk of contributing to, or being canceled by a serialization failure.
+
+The `DEFERRABLE` mode may be useful for long-running reports or back-ups.
 
 ## Examples
+
+Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
 
 Create a sample table.
 
@@ -148,6 +212,4 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 
 ## See also
 
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[Other YSQL Statements](..)
+- [`SHOW TRANSACTION`](../txn_show)

@@ -14,19 +14,19 @@ showAsideToc: true
 
 ## Synopsis
 
-The `currval( sequence_name )` function returns the last value returned by `nextval( sequence_name )` for the specified sequence in the current session.
-
-Where
-
-- `sequence_name` is the name of the sequence
+Use the `currval( sequence_name )` function to return the last value returned by the `nextval( sequence_name )` function for the specified sequence in the current session.
 
 ## Semantics
 
-- An error is raised if `nextval( sequence_name )` has not been called in the current session for the specified sequence.
+### _sequence_name_
+
+Specify the name of the sequence.
+
+- An error is raised if `nextval( sequence_name )` has not been called for the specified sequence in the current session.
 
 ## Examples
 
-Create a sequence.
+### Create a sequence
 
 ```sql
 postgres=# CREATE SEQUENCE s;

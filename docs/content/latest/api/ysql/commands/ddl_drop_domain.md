@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `DROP DOMAIN` command removes a domain from the database.
+Use the `DROP DOMAIN` statement to remove a domain from the database.
 
 ## Syntax
 
@@ -42,21 +42,30 @@ The `DROP DOMAIN` command removes a domain from the database.
   </div>
 </div>
 
-Where
-
-- `IF EXISTS` does not throw an error if domain does not exist.
-- `name` is the name of the existing domain.
-- `CASCADE` automatically drops objects that depend on the domain such as table columns using the domain data type and, in turn, all other objects that depend on those objects.
-- `RESTRICT` refuses to drop the domain if objects depend on it (default).
-
 ## Semantics
+
+### _name_
+
+Specify the name of the existing domain.
 
 - An error is raised if the specified domain does not exist (unless `IF EXISTS` is set).
 - An error is raised if any objects depend on this domain (unless `CASCADE` is set).
 
+### IF EXISTS
+
+Do not throw an error if the domain does not exist.
+
+### CASCADE
+
+Automatically drop objects that depend on the domain such as table columns using the domain data type and, in turn, all other objects that depend on those objects.
+
+### RESTRICT
+
+Refuse to drop the domain if objects depend on it (default).
+
 ## Examples
 
-Example 1
+### Example 1
 
 ```sql
 postgres=# CREATE DOMAIN idx DEFAULT 5 CHECK (VALUE > 0);
@@ -66,7 +75,7 @@ postgres=# CREATE DOMAIN idx DEFAULT 5 CHECK (VALUE > 0);
 postgres=# DROP DOMAIN idx;
 ```
 
-Example 2
+### Example 2
 
 ```sql
 postgres=# CREATE DOMAIN idx DEFAULT 5 CHECK (VALUE > 0);
@@ -84,4 +93,4 @@ postgres=# DROP DOMAIN idx CASCADE;
 
 [`CREATE DOMAIN`](../ddl_create_domain)
 [`ALTER DOMAIN`](../ddl_alter_domain)
-[Other YSQL Statements](..)
+
