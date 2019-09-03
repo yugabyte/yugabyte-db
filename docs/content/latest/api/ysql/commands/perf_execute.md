@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`EXECUTE` command executes a previously prepared statement. This separation is a performance optimization because a prepared statement would be executed many times with different values while the syntax and semantics analysis and rewriting are done only once during `PREPARE` processing.
+Use the `EXECUTE` statement to execute a previously prepared statement. This separation is a performance optimization because a prepared statement would be executed many times with different values while the syntax and semantics analysis and rewriting are done only once during `PREPARE` processing.
 
 ## Syntax
 
@@ -44,7 +44,13 @@ showAsideToc: true
 
 ## Semantics
 
-- Each expression in `EXECUTE` must match with the corresponding data type from `PREPARE`.
+### _name_
+
+Specify the name of the prepared statement to execute.
+
+### _expression_
+
+Specify the expression. Each expression in `EXECUTE` must match with the corresponding data type from `PREPARE`.
 
 ## Examples
 
@@ -87,6 +93,5 @@ postgres=# SELECT * FROM sample ORDER BY k1;
 
 ## See also
 
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[Other YSQL Statements](..)
+- [`DEALLOCATE`](../perf_deallocate)
+- [`PREPARE`](../perf_prepare)

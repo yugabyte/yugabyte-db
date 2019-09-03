@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`SHOW` command displays the value of specified parameters.
+Use the `SHOW` statement to display the value of a run-time parameter.
 
 ## Syntax
 
@@ -43,16 +43,15 @@ showAsideToc: true
   </div>
 </div>
 
-Where
-
-- `name` specifies the name of the parameter to be showed.
-
 ## Semantics
 
 - Although the values of a parameter can be set, showed, and reset, the effect of these parameters are not yet supported in YugaByte. The factory-settings or default behaviors will be used for the moment.
+
+### name
+
+Specify the name of the parameter to be showed.
 
 ## See also
 
 [`SET`](../cmd_set)
 [`RESET`](../cmd_reset)
-[Other YSQL Statements](..)

@@ -1,7 +1,7 @@
 ---
 title: KEYWORDS
 linkTitle: Keywords
-description: List of YSQL Keywords
+description: List of YSQL keywords
 summary: Reference for YSQL API
 image: /images/section_icons/api/ysql.png
 menu:

@@ -1,7 +1,7 @@
 ---
-title: Commands
-description: Commands
-summary: Commands
+title: Statements
+description: Statements
+summary: Statements
 image: /images/section_icons/api/ysql.png
 menu:
   latest:
@@ -14,15 +14,17 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following table lists the commands in YSQL.
+The following SQL statements are supported by the YugaByte Structured Query Language (YSQL).
 
 | Statement | Description |
 |-----------|-------------|
-| [`ABORT`](txn_abort) | Rollback a transaction |
-| [`ALTER DOMAIN`](ddl_alter_domain) | Alter a domain |
-| [`ALTER TABLE`](ddl_alter_table) | Change table definition |
-| [`BEGIN TRANSACTION`](txn_begin) | Start a transaction |
-| [`COMMIT`](txn_commit) | Commit a transaction |
+| [`ABORT`](txn_abort) | Rolls back a transaction |
+| [`ALTER DATABASE`](ddl_alter_db) | Changes database definition |
+| [`ALTER DOMAIN`](ddl_alter_domain) | Alters a domain |
+| [`ALTER TABLE`](ddl_alter_table) | Changes table definition |
+| [`BEGIN`](txn_begin) | Starts a transaction |
+| [`COMMENT`](ddl_comment) | Adds a comment on a database object |
+| [`COMMIT`](txn_commit) | Commits a transaction |
 | [`COPY`](cmd_copy) | Copy data between tables and files |
 | [`CREATE DATABASE`](ddl_create_database) | Create a new database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
@@ -39,14 +41,16 @@ The following table lists the commands in YSQL.
 | [`DROP DATABASE`](ddl_drop_database) | Delete a database from the system |
 | [`DROP DOMAIN`](ddl_drop_domain) | Delete a domain |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
-| [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
+| [`DROP TABLE`](ddl_drop_table) | Deletes a table from a database |
 | [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
-| [`END TRANSACTION`](txn_end) | Commit a transaction |
+| [`END`](txn_end) | Commit a transaction |
 | [`EXECUTE`](perf_execute) | Execute a prepared statement |
 | [`EXPLAIN`](perf_explain) | Display execution plan for a statement |
 | [`INSERT`](dml_insert) | Insert rows into a table |
+| [`LOCK`](txn_lock) | Locks a table |
 | [`PREPARE`](perf_prepare) | Prepare a statement |
 | [`RESET`](cmd_reset) | Reset a parameter to factory settings |
+| [`REVOKE`](dcl_revoke) | Remove access privileges |
 | [`ROLLBACK`](txn_rollback) | Rollback a transaction |
 | [`SELECT`](dml_select) | Select rows from a table |
 | [`SET`](cmd_set) | Set a system, session, or transactional parameter |

@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`CREATE TABLE AS` command creates new table using the output of a subquery.
+Use the `CREATE TABLE AS` statement to create a new table using the output of a subquery.
 
 ## Syntax
 
@@ -43,14 +43,17 @@ showAsideToc: true
   </div>
 </div>
 
-Where
-
-- table_name specifies the name of the table to be created.
-- column_name specifies the name of a column in the new table. When not specified, column names are the selected names of the query.
-
 ## Semantics
 
-- YugaByte may extend syntax to allow specifying PRIMARY KEY for `CREATE TABLE AS` command.
+YugaByte DB may extend the syntax to allow specifying PRIMARY KEY for `CREATE TABLE AS` command.
+
+### _table_name_
+
+Specify the name (optionally schema-qualified) of the table to be created.
+
+### _column_name_
+
+Specify the name of a column in the new table. When not specified, column names are taken from the output column names of the query.
 
 ## Examples
 
@@ -81,4 +84,3 @@ postgres=# SELECT * FROM selective_sample ORDER BY k1;
 ## See also
 
 [`CREATE TABLE`](../dml_create_table)
-[Other YSQL Statements](..)
