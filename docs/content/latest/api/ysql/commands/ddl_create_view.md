@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `CREATE VIEW` command creates a new view in a database. It defines the view name and the (select) statement defining it.  
+Use the `CREATE VIEW` statement to create a new view in a database. It defines the view name and the (select) statement defining it.  
 
 ## Syntax
 
@@ -42,14 +42,15 @@ The `CREATE VIEW` command creates a new view in a database. It defines the view 
   </div>
 </div>
 
-Where
-
-- `qualified_name`  is the name of the view
-- `column_list` is a comma-separated list of columns
-
 ## Semantics
 
-- An error is raised if view with that name already exists in the specified database (unless the `OR REPLACE` option is used).
+### _qualified_name_
+
+Specify the name of the view. An error is raised if view with that name already exists in the specified database (unless the `OR REPLACE` option is used).
+
+### _column_list_
+
+Specify a comma-separated list of columns.
 
 ## Examples
 
@@ -88,4 +89,3 @@ postgres=# SELECT * FROM sample_view;
 ## See also
 
 [`SELECT`](../dml_select)
-[Other YSQL Statements](..)

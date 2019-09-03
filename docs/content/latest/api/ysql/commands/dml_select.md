@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `SELECT` command retrieves (part of) rows of specified columns that meet a given condition from a table. It specifies the columns to be retrieved, the name of the table, and the condition each selected row must satisfy.
+Use the `SELECT` statement to retrieve rows of specified columns that meet a given condition from a table. It specifies the columns to be retrieved, the name of the table, and the condition each selected row must satisfy.
 
 ## Syntax
 
@@ -42,20 +42,18 @@ The `SELECT` command retrieves (part of) rows of specified columns that meet a g
   </div>
 </div>
 
-
-### Diagrams
-
-Where
-
-- `condition` is any expression that evaluates to boolean value.
-- for more details on `from_item`, `grouping_element`, and`with_query` see [this](https://www.postgresql.org/docs/10/static/sql-select.html) page.
-
 ## Semantics
 
-- An error is raised if the specified `qualified_name` does not exist.
+- An error is raised if the specified `table_name` does not exist.
 - `*` represents all columns.
 
 While the where clause allows a wide range of operators, the exact conditions used in the where clause have significant performance considerations (especially for large datasets).
+
+### _condition_
+
+Specify an expression that evaluates to boolean value.
+
+For details on `from_item`, `grouping_element`, and `with_query` see [SELECT](https://www.postgresql.org/docs/10/static/sql-select.html) in the PostgreSQL documentation.
 
 ## Examples
 
@@ -97,4 +95,4 @@ postgres=# SELECT a.k1, a.k2, a.v as av, b.v as bv FROM sample1 a LEFT JOIN samp
 
 [`CREATE TABLE`](../ddl_create_table)
 [`INSERT`](../dml_insert)
-[Other YSQL Statements](..)
+

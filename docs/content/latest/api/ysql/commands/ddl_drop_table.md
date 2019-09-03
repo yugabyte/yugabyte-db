@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `DROP TABLE` command removes a table and all of its data from the database.
+Use the `DROP TABLE` statement to remove a table and all of its data from the database.
 
 ## Syntax
 
@@ -42,19 +42,18 @@ The `DROP TABLE` command removes a table and all of its data from the database.
   </div>
 </div>
 
-
-Where
-
-- `qualified_name` is a (possibly qualified) identifier.
-
 ## Semantics
 
-- An error is raised if the specified `table_name` does not exist.
-- Associated objects to `table_name` such as prepared statements will be eventually invalidated after the drop statement is completed.
+### _qualified_name_
+
+Specify a (possibly qualified) identifier.
+
+- If the specified `table_name` does not exist, an error is raised.
+- Associated objects to `table_name`, such as prepared statements, will be eventually invalidated after the drop statement is completed.
 
 ## See also
 
 [`CREATE TABLE`](../ddl_create_table)
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
-[Other YSQL Statements](..)
+
