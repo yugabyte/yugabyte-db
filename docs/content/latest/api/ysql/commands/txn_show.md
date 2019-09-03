@@ -48,7 +48,7 @@ Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation
 
 ### TRANSACTION ISOLATION LEVEL
 
-Show the current transaction isolation level. 
+Show the current transaction isolation level.
 
 The `TRANSACTION ISOLATION LEVEL` returned is either `SERIALIZABLE` or `REPEATABLE READS`. In YugaByte DB, the `READ COMMITTED` and `READ UNCOMMITTED` of PostgreSQL are mapped to `REPEATABLE READS`.
 
