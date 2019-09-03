@@ -15,10 +15,9 @@ showAsideToc: true
 
 ## Synopsis
 
-The `CREATE TABLE` command creates a new table in a database. It defines the table name, column names and types, primary key, and table properties.
+Use the `CREATE TABLE` statement to create a new table in a database. It defines the table name, column names and types, primary key, and table properties.
 
 ## Syntax
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -44,16 +43,27 @@ The `CREATE TABLE` command creates a new table in a database. It defines the tab
   </div>
 </div>
 
-Where
-
-- `qualified_name` and `name` are identifiers (`qualified_name` can be a qualified name).
-- `expression` for DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
-- `param_name` and `param_value` represent storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS)
-
 ## Semantics
 
-- An error is raised if `qualified_name` already exists in the specified database.
 - Storage parameters through the `WITH` clause are accepted [for PostgreSQL compatibility](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), but they will be ignored. The exceptions are `oids=true` and `user_catalog_table=true`, which are explicitly disallowed and will result in an error being thrown.
+
+### _qualified_name_
+
+- An error is raised if `qualified_name` already exists in the specified database.
+
+### _name_
+
+are identifiers (`qualified_name` can be a qualified name).
+
+### _expression_
+
+For DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
+
+### _param_name_
+
+Represent storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS).
+
+### _param_value_
 
 ### PRIMARY KEY
 
@@ -67,7 +77,7 @@ Foreign keys are supported starting v1.2.10.
 
 ## Examples
 
-Table with primary key
+### Table with primary key
 
 ```sql
 postgres=# CREATE TABLE sample(k1 int, 
@@ -77,7 +87,7 @@ postgres=# CREATE TABLE sample(k1 int,
                                PRIMARY KEY (k1, k2));
 ```
 
-Table with check constraint
+### Table with check constraint
 
 ```sql
 postgres=# CREATE TABLE student_grade (student_id int, 
@@ -87,7 +97,7 @@ postgres=# CREATE TABLE student_grade (student_id int,
                                        PRIMARY KEY (student_id, class_id, term_id));
 ```
 
-Table with default value
+### Table with default value
 
 ```sql
 postgres=# CREATE TABLE cars (id int PRIMARY KEY, 
@@ -96,7 +106,7 @@ postgres=# CREATE TABLE cars (id int PRIMARY KEY,
                               color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
 ```
 
-Table with foreign key constraint
+### Table with foreign key constraint
 
 ```sql
 postgres=# create table products(id int primary key, 
@@ -112,4 +122,3 @@ postgres=# create table orders(id int primary key,
 [`ALTER TABLE`](../ddl_alter_table)
 [`INSERT`](../dml_insert)
 [`SELECT`](../dml_select)
-[Other YSQL Statements](..)

@@ -45,20 +45,25 @@ Use the `DELETE` statement to remove rows that meet certain conditions, and when
 
 ## Semantics
 
-- USING clause is not yet supported.
+- `USING` clause is not yet supported.
 
-- While the where clause allows a wide range of operators, the exact conditions used in the where clause have significant performance considerations (especially for large datasets). WHERE clause that provides values for all columns in PRIMARY KEY or INDEX KEY has the best performance.
+- While the `WHERE` clause allows a wide range of operators, the exact conditions used in the `WHERE` clause have significant performance considerations (especially for large datasets). For the best performance, use a `WHERE` clause that provides values for all columns in `PRIMARY KEY` or `INDEX KEY`.
 
-### with_query
+### _with_query_
 
 Specify the subqueries that are referenced by name in the DELETE statement.
 
-- `table_name` specifies a name of the table to be deleted.
+### _table_name_
 
-- `alias` is the identifier of the target table within the DELETE statement. When an alias is specified, it must be used in place of the actual table in the statement.
+Specify the name of the table to be deleted.
 
-- `output_expression` specifies the value to be returned. When the `output_expression` is referencing a column, the existing value of this column (deleted value) is used to evaluate.
+### _alias_
 
+Specify the identifier of the target table within the DELETE statement. When an alias is specified, it must be used in place of the actual table in the statement.
+
+### _output_expression_
+
+Specify the value to be returned. When the _output_expression_ references a column, the existing value of this column (deleted value) is used to evaluate.
 
 ## Examples
 
@@ -104,9 +109,9 @@ DELETE 1
   3 |  4 |  5 | c
 (2 rows)
 ```
-## See Aalso
 
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[`UPDATE`](../dml_update)
-[Other YSQL Statements](..)
+## See also
+
+- [`INSERT`](../dml_insert)
+- [`SELECT`](../dml_select)
+- [`UPDATE`](../dml_update)

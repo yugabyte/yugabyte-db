@@ -14,10 +14,9 @@ showAsideToc: true
 
 ## Synopsis
 
-`COMMIT` command commits the current transaction. All changes made by the transaction become visible to others and are guaranteed to be durable if a crash occurs.
+Use the `COMMIT` statement to commit the current transaction. All changes made by the transaction become visible to others and are guaranteed to be durable if a crash occurs.
 
 ## Syntax
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -48,6 +47,14 @@ showAsideToc: true
 Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
 
 Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
+
+### WORK
+
+Add optional keyword — has no effect.
+
+### TRANSACTION
+
+Add optional keyword — has no effect.
 
 ## Examples
 
@@ -146,6 +153,6 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 
 ## See also
 
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[Other YSQL Statements](..)
+- [`ABORT`](../txn_abort)
+- [`BEGIN`](../txn_begin)
+- [`ROLLBACK`](../txn_rollback)

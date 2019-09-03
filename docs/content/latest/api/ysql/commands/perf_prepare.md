@@ -89,6 +89,5 @@ postgres=# SELECT * FROM sample ORDER BY k1;
 
 ## See also
 
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[Other YSQL Statements](..)
+- [`DEALLOCATE`](../perf_deallocate)
+- [`EXECUTE`](../perf_execute)

@@ -14,10 +14,9 @@ showAsideToc: true
 
 ## Synopsis
 
-The `EXPLAIN` command shows the execution plan for an statement. If the `ANALYZE` option is used, the statement will be executed, rather than just planned. In that case, execution information (rather than just the planner's estimates) is added to the `EXPLAIN` result.
+Use the `EXPLAIN` statement to show the execution plan for an statement. If the `ANALYZE` option is used, the statement will be executed, rather than just planned. In that case, execution information (rather than just the planner's estimates) is added to the `EXPLAIN` result.
 
 ## Syntax
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -43,7 +42,13 @@ The `EXPLAIN` command shows the execution plan for an statement. If the `ANALYZE
   </div>
 </div>
 
+## Semantics
+
 Where statement is the target statement (see more [here](../dml)).
+
+### ANALYZE
+
+Execute the statement and show actual run times and other statistics.
 
 ## Examples
 
@@ -103,5 +108,5 @@ postgres=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5)
 
 ## See also
 
-[`SELECT`](../dml_select)
-[Other YSQL Statements](..)
+- [`INSERT`](../dml_insert)
+- [`SELECT`](../dml_select)
