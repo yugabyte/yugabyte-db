@@ -14,19 +14,19 @@ showAsideToc: true
 
 ## Synopsis
 
-The `nextval( sequence_name )` function returns the next value from the session's sequence cache. If no more values are available in the cache, the session allocates a block of numbers for the cache and returns the first one. The number of elements allocated is determined by the `cache` option specified as part of the `CREATE SEQUENCE` statement.
-
-Where
-
-- `sequence_name` is the name of the sequence
+Use the `nextval( sequence_name )` function to return the next value from the sequence cache for the current session. If no more values are available in the cache, the session allocates a block of numbers for the cache and returns the first one. The number of elements allocated is determined by the `cache` option specified as part of the `CREATE SEQUENCE` statement.
 
 ## Semantics
+
+### _sequence_name_
+
+Specify the name of the sequence.
 
 - An error is raised if a sequence reaches its minimum or maximum value.
 
 ## Examples
 
-Create a simple sequence that increments by 1 every time nextval() is called.
+### Create a simple sequence that increments by 1 every time nextval() is called
 
 ```sql
 postgres=# CREATE SEQUENCE s;
@@ -60,7 +60,7 @@ postgres=# SELECT nextval('s');
 (1 row)
 ```
 
-Create a sequence with a cache of 3 values.
+### Create a sequence with a cache of 3 values
 
 ```sql
 postgres=# CREATE SEQUENCE s2 CACHE 3;
@@ -70,7 +70,8 @@ postgres=# CREATE SEQUENCE s2 CACHE 3;
 CREATE SEQUENCE
 ```
 
-In the same session, call `nextval()`. The first time it's called, the session's cache will allocate numbers 1, 2, and 3. This means that the data for this sequence will have its `last_val` set to 3. This modification requires two RPCs.
+In the same session, call `nextval()`. The first time it's called, the session's cache will allocate numbers 1, 2, and 3. This means that the data for this sequence will have its `last_val` set to 3. This modification requires two RPC requests.
+
 ```sql
 SELECT nextval('s2');
 ```

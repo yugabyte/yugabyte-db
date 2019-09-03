@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `CREATE DATABASE` command creates a `database` that functions as a grouping mechanism for database objects such as [tables](../ddl_create_table).
+Use the `CREATE DATABASE` statement to create a database that functions as a grouping mechanism for database objects such as [tables](../ddl_create_table).
 
 ## Syntax
 
@@ -42,27 +42,51 @@ The `CREATE DATABASE` command creates a `database` that functions as a grouping 
   </div>
 </div>
 
-Where
-
-- `name` is an identifier that specifies the database to be created.
-- `user_name` specifies the user who will own the new database. When not specified, the database creator is the owner.
-- `template` specifies name of the template from which the new database is created.
-- `encoding` specifies the character set encoding to use in the new database.
-- `lc_collate` specifies the collation order (LC_COLLATE).
-- `lc_ctype` specifies the character classification (LC_CTYPE).
-- `tablespace_name` specifies the tablespace that is associated with the database to be created.
-- `allowconn` is either `true` or `false`.
-- `connlimit` specifies the number of concurrent connections can be made to this database. -1 means there is no limit.
-- `istemplate` is either `true` or `false`.
-
 ## Semantics
 
-- An error is raised if YSQL database of the given `name` already exists.
+Some options in DATABASE are under development.
 
-- Some options in DATABASE are under development.
+### _name_
+
+Specify the name of the database to be created. An error is raised if a YSQL database of the given `name` already exists.
+
+### _user_name_
+
+Specify the role name of the user who will own the new database. When not specified, the database creator is the owner.
+
+### template
+
+Specify the name of the template from which the new database is created.
+
+### _encoding_
+
+Specify the character set encoding to use in the new database.
+
+### _lc_collate_
+
+Specify the collation order (LC_COLLATE).
+
+### _lc_ctype_
+
+Specify the character classification (LC_CTYPE).
+
+### _tablespace_name_
+
+Specify the name of the tablespace that is associated with the database to be created.
+
+### allowconn
+
+Either `true` or `false`.
+
+### connlimit
+
+Specify the number of concurrent connections can be made to this database. `-1` means there is no limit.
+
+### istemplate
+
+Is either `true` or `false`.
 
 ## See also
 
 [`ALTER DATABASE`](../ddl_alter_db)
 [`DROP DATABASE`](../ddl_drop_database)
-[Other YSQL Statements](..)

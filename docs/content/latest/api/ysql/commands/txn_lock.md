@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`LOCK` command locks a table.
+Use the `LOCK` statement to lock a table.
 
 ## Syntax
 
@@ -43,16 +43,17 @@ showAsideToc: true
   </div>
 </div>
 
-Where
-
-- name specifies an existing table to be locked.
-
 ## Semantics
 
+### _name_
+
+Specify an existing table to lock.
+
+### _lockmode_
+
 - Only `ACCESS SHARE` lock mode is supported at this time.
-- All other modes listed in `lockmode` are under development.
+- All other modes listed in _lockmode_ are under development.
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[Other YSQL Statements](..)
+- [`SET TRANSACTION`](../txn_set)
