@@ -154,7 +154,7 @@ lex_expect(JsonParseContext ctx, JsonLexContext *lex, JsonTokenType token)
  * str is of length len, and need not be null-terminated.
  */
 bool
-IsValidJsonNumber(const char *str, int len)
+ag_IsValidJsonNumber(const char *str, int len)
 {
 	bool		numeric_error;
 	int			total_len;
@@ -198,15 +198,15 @@ IsValidJsonNumber(const char *str, int len)
  * functions, otherwise use  makeJsonLexContextCstringLen().
  */
 JsonLexContext *
-makeJsonLexContext(text *json, bool need_escapes)
+ag_makeJsonLexContext(text *json, bool need_escapes)
 {
-	return makeJsonLexContextCstringLen(VARDATA_ANY(json),
+	return ag_makeJsonLexContextCstringLen(VARDATA_ANY(json),
 										VARSIZE_ANY_EXHDR(json),
 										need_escapes);
 }
 
 JsonLexContext *
-makeJsonLexContextCstringLen(char *json, int len, bool need_escapes)
+ag_makeJsonLexContextCstringLen(char *json, int len, bool need_escapes)
 {
 	JsonLexContext *lex = palloc0(sizeof(JsonLexContext));
 
@@ -229,7 +229,7 @@ makeJsonLexContextCstringLen(char *json, int len, bool need_escapes)
  * pointer to a state object to be passed to those routines.
  */
 void
-pg_parse_json(JsonLexContext *lex, JsonSemAction *sem)
+ag_parse_json(JsonLexContext *lex, JsonSemAction *sem)
 {
 	JsonTokenType tok;
 
@@ -1203,7 +1203,7 @@ extract_mb_char(char *s)
  * optionally preallocated buffer 'buf'.
  */
 char *
-JsonEncodeDateTime(char *buf, Datum value, Oid typid)
+ag_JsonEncodeDateTime(char *buf, Datum value, Oid typid)
 {
 	if (!buf)
 		buf = palloc(MAXDATELEN + 1);

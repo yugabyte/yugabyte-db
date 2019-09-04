@@ -21,6 +21,8 @@ typedef enum
 	JSON_TOKEN_INVALID,
 	JSON_TOKEN_STRING,
 	JSON_TOKEN_NUMBER,
+	JSON_TOKEN_INTEGER8,
+	JSON_TOKEN_FLOAT8,
 	JSON_TOKEN_OBJECT_START,
 	JSON_TOKEN_OBJECT_END,
 	JSON_TOKEN_ARRAY_START,
@@ -101,14 +103,7 @@ typedef struct JsonSemAction
  * points to. If the action pointers are NULL the parser
  * does nothing and just continues.
  */
-extern void pg_parse_json(JsonLexContext *lex, JsonSemAction *sem);
-
-/*
- * json_count_array_elements performs a fast secondary parse to determine the
- * number of elements in passed array lex context. It should be called from an
- * array_start action.
- */
-extern int	json_count_array_elements(JsonLexContext *lex);
+extern void ag_parse_json(JsonLexContext *lex, JsonSemAction *sem);
 
 /*
  * constructors for JsonLexContext, with or without strval element.
@@ -119,8 +114,8 @@ extern int	json_count_array_elements(JsonLexContext *lex);
  * If you already have the json as a text* value, use the first of these
  * functions, otherwise use  makeJsonLexContextCstringLen().
  */
-extern JsonLexContext *makeJsonLexContext(text *json, bool need_escapes);
-extern JsonLexContext *makeJsonLexContextCstringLen(char *json,
+extern JsonLexContext *ag_makeJsonLexContext(text *json, bool need_escapes);
+extern JsonLexContext *ag_makeJsonLexContextCstringLen(char *json,
 							 int len,
 							 bool need_escapes);
 
@@ -129,8 +124,8 @@ extern JsonLexContext *makeJsonLexContextCstringLen(char *json,
  *
  * str argument does not need to be nul-terminated.
  */
-extern bool IsValidJsonNumber(const char *str, int len);
+extern bool ag_IsValidJsonNumber(const char *str, int len);
 
-extern char *JsonEncodeDateTime(char *buf, Datum value, Oid typid);
+extern char *ag_JsonEncodeDateTime(char *buf, Datum value, Oid typid);
 
 #endif							/* JSONAPI_H */
