@@ -289,6 +289,12 @@ parse_scalar(JsonLexContext *lex, JsonSemAction *sem)
 		case JSON_TOKEN_NUMBER:
 			lex_accept(lex, JSON_TOKEN_NUMBER, valaddr);
 			break;
+		case JSON_TOKEN_INTEGER8:
+            lex_accept(lex, JSON_TOKEN_INTEGER8, valaddr);
+            break;
+		case JSON_TOKEN_FLOAT8:
+            lex_accept(lex, JSON_TOKEN_FLOAT8, valaddr);
+            break;
 		case JSON_TOKEN_STRING:
 			lex_accept(lex, JSON_TOKEN_STRING, valaddr);
 			break;
@@ -540,7 +546,7 @@ json_lex(JsonLexContext *lex)
 			case '-':
 				/* Negative number. */
 				json_lex_number(lex, s + 1, NULL, NULL);
-				lex->token_type = JSON_TOKEN_NUMBER;
+				/* token is assigned in json_lex_number */
 				break;
 			case '0':
 			case '1':
@@ -554,7 +560,7 @@ json_lex(JsonLexContext *lex)
 			case '9':
 				/* Positive number. */
 				json_lex_number(lex, s, NULL, NULL);
-				lex->token_type = JSON_TOKEN_NUMBER;
+				/* token is assigned in json_lex_number */
 				break;
 			default:
 				{
@@ -892,6 +898,9 @@ json_lex_number(JsonLexContext *lex, char *s,
 	bool		error = false;
 	int			len = s - lex->input;
 
+	/* assume we have an integer until proven otherwise */
+	lex->token_type = JSON_TOKEN_INTEGER8;
+
 	/* Part (1): leading sign indicator. */
 	/* Caller already did this for us; so do nothing. */
 
@@ -915,6 +924,9 @@ json_lex_number(JsonLexContext *lex, char *s,
 	/* Part (3): parse optional decimal portion. */
 	if (len < lex->input_length && *s == '.')
 	{
+		/* since we have a decimal point, we have a float */
+		lex->token_type = JSON_TOKEN_FLOAT8;
+
 		s++;
 		len++;
 		if (len == lex->input_length || *s < '0' || *s > '9')
@@ -932,6 +944,9 @@ json_lex_number(JsonLexContext *lex, char *s,
 	/* Part (4): parse optional exponent. */
 	if (len < lex->input_length && (*s == 'e' || *s == 'E'))
 	{
+		/* since we have an exponent, we have a float */
+		lex->token_type = JSON_TOKEN_FLOAT8;
+
 		s++;
 		len++;
 		if (len < lex->input_length && (*s == '+' || *s == '-'))

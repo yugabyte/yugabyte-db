@@ -17,6 +17,7 @@
 #include "catalog/pg_type.h"
 #include "parser/parse_coerce.h"
 #include "utils/builtins.h"
+#include "utils/int8.h"
 #include "utils/lsyscache.h"
 #include "utils/json.h"
 #include "utils/typcache.h"
@@ -47,7 +48,7 @@ typedef enum					/* type categories for datum_to_jsonbx */
 	JSONBXTYPE_OTHER			/* all else */
 } JsonbXTypeCategory;
 
-static inline Datum jsonbx_from_cstring(char *jsonbx, int len);
+static inline Datum jsonbx_from_cstring(char *json, int len);
 static size_t checkStringLen(size_t len);
 static void jsonbx_in_object_start(void *pstate);
 static void jsonbx_in_object_end(void *pstate);
@@ -78,9 +79,9 @@ PG_FUNCTION_INFO_V1(jsonbx_in);
 Datum
 jsonbx_in(PG_FUNCTION_ARGS)
 {
-	char	   *jsonbx = PG_GETARG_CSTRING(0);
+	char	   *json = PG_GETARG_CSTRING(0);
 
-	return jsonbx_from_cstring(jsonbx, strlen(jsonbx));
+	return jsonbx_from_cstring(json, strlen(json));
 }
 
 PG_FUNCTION_INFO_V1(jsonbx_out);
@@ -115,7 +116,7 @@ jsonbx_from_cstring(char *json, int len)
 
 	memset(&state, 0, sizeof(state));
 	memset(&sem, 0, sizeof(sem));
-	lex = makeJsonLexContextCstringLen(json, len, true);
+	lex = ag_makeJsonLexContextCstringLen(json, len, true);
 
 	sem.semstate = (void *) &state;
 
@@ -126,7 +127,7 @@ jsonbx_from_cstring(char *json, int len)
 	sem.scalar = jsonbx_in_scalar;
 	sem.object_field_start = jsonbx_in_object_field_start;
 
-	pg_parse_json(lex, &sem);
+	ag_parse_json(lex, &sem);
 
 	/* after parsing, the item member has the composed jsonbx structure */
 	PG_RETURN_POINTER(JsonbXValueToJsonbX(state.res));
@@ -207,6 +208,20 @@ jsonbx_put_escaped_value(StringInfo out, JsonbXValue *scalarVal)
 								   DatumGetCString(DirectFunctionCall1(numeric_out,
 																	   PointerGetDatum(scalarVal->val.numeric))));
 			break;
+
+		case jbvXInteger8:
+			appendStringInfoString(out,
+								   DatumGetCString(DirectFunctionCall1(int8out,
+																	   PointerGetDatum(scalarVal->val.integer8))));
+			break;
+
+		case jbvXFloat8:
+			//appendStringInfoString(out,
+			//					   DatumGetCString(DirectFunctionCall1(float8out,
+			//														   PointerGetDatum(scalarVal->val.float8))));
+			appendStringInfoString(out, DatumGetCString(float8out_internal(scalarVal->val.float8)));
+			break;
+
 		case jbvXBool:
 			if (scalarVal->val.boolean)
 				appendBinaryStringInfo(out, "true", 4);
@@ -238,7 +253,6 @@ jsonbx_in_scalar(void *pstate, char *token, JsonTokenType tokentype)
 			v.val.string.val = token;
 			break;
 		case JSON_TOKEN_NUMBER:
-
 			/*
 			 * No need to check size of numeric values, because maximum
 			 * numeric size is well below the JsonbXValue restriction
@@ -250,6 +264,16 @@ jsonbx_in_scalar(void *pstate, char *token, JsonTokenType tokentype)
 									   ObjectIdGetDatum(InvalidOid),
 									   Int32GetDatum(-1));
 			v.val.numeric = DatumGetNumeric(numd);
+			break;
+		case JSON_TOKEN_INTEGER8:
+			Assert(token != NULL);
+			v.type = jbvXInteger8;
+			scanint8(token, false, &v.val.integer8);
+			break;
+		case JSON_TOKEN_FLOAT8:
+			Assert(token != NULL);
+			v.type = jbvXFloat8;
+			v.val.float8 = float8in_internal(token, NULL, "double precision", token);
 			break;
 		case JSON_TOKEN_TRUE:
 			v.type = jbvXBool;
@@ -677,17 +701,17 @@ datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
 				break;
 			case JSONBXTYPE_DATE:
 				jb.type = jbvXString;
-				jb.val.string.val = JsonEncodeDateTime(NULL, val, DATEOID);
+				jb.val.string.val = ag_JsonEncodeDateTime(NULL, val, DATEOID);
 				jb.val.string.len = strlen(jb.val.string.val);
 				break;
 			case JSONBXTYPE_TIMESTAMP:
 				jb.type = jbvXString;
-				jb.val.string.val = JsonEncodeDateTime(NULL, val, TIMESTAMPOID);
+				jb.val.string.val = ag_JsonEncodeDateTime(NULL, val, TIMESTAMPOID);
 				jb.val.string.len = strlen(jb.val.string.val);
 				break;
 			case JSONBXTYPE_TIMESTAMPTZ:
 				jb.type = jbvXString;
-				jb.val.string.val = JsonEncodeDateTime(NULL, val, TIMESTAMPTZOID);
+				jb.val.string.val = ag_JsonEncodeDateTime(NULL, val, TIMESTAMPTZOID);
 				jb.val.string.len = strlen(jb.val.string.val);
 				break;
 			case JSONBXTYPE_JSONCAST:
@@ -698,7 +722,7 @@ datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
 					JsonSemAction sem;
 					text	   *json = DatumGetTextPP(val);
 
-					lex = makeJsonLexContext(json, true);
+					lex = ag_makeJsonLexContext(json, true);
 
 					memset(&sem, 0, sizeof(sem));
 
@@ -711,7 +735,7 @@ datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
 					sem.scalar = jsonbx_in_scalar;
 					sem.object_field_start = jsonbx_in_object_field_start;
 
-					pg_parse_json(lex, &sem);
+					ag_parse_json(lex, &sem);
 
 				}
 				break;

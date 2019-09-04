@@ -243,6 +243,9 @@ compareJsonbXContainers(JsonbXContainer *a, JsonbXContainer *b)
 						break;
 					case jbvXBinary:
 						elog(ERROR, "unexpected jbvXBinary value");
+					default:
+						elog(ERROR, "unexpected jbvXType");
+
 				}
 			}
 			else
@@ -475,6 +478,28 @@ fillJsonbXValue(JsonbXContainer *container, int index,
 	{
 		result->type = jbvXNumeric;
 		result->val.numeric = (Numeric) (base_addr + INTALIGN(offset));
+	}
+	else if (JBXE_ISJSONBX(entry))
+	{
+		uint32 jbx_header;
+		char *base = base_addr + INTALIGN(offset);
+		memcpy(&jbx_header, base, 4);
+
+		switch (jbx_header)
+		{
+			case JBX_HEADER_INTEGER8:
+				result->type = jbvXInteger8;
+				memcpy(&result->val.integer8, (base + 4), 8);
+				break;
+
+			case JBX_HEADER_FLOAT8:
+				result->type = jbvXFloat8;
+				memcpy(&result->val.float8, (base + 4), 8);
+				break;
+
+			default:
+				elog(ERROR, "Invalid JBX header value.");
+		}
 	}
 	else if (JBXE_ISBOOL_TRUE(entry))
 	{
@@ -1711,21 +1736,23 @@ convertJsonbXObject(StringInfo buffer, JXEntry *pheader, JsonbXValue *val, int l
 }
 
 static void
-convertJsonbXScalar(StringInfo buffer, JXEntry *jentry, JsonbXValue *scalarVal)
+convertJsonbXScalar(StringInfo buffer, JXEntry *jxentry, JsonbXValue *scalarVal)
 {
 	int			numlen;
 	short		padlen;
+	uint32		jbx_header;
+	int			jbx_size;
 
 	switch (scalarVal->type)
 	{
 		case jbvXNull:
-			*jentry = JXENTRY_ISNULL;
+			*jxentry = JXENTRY_ISNULL;
 			break;
 
 		case jbvXString:
 			appendToBuffer(buffer, scalarVal->val.string.val, scalarVal->val.string.len);
 
-			*jentry = scalarVal->val.string.len;
+			*jxentry = scalarVal->val.string.len;
 			break;
 
 		case jbvXNumeric:
@@ -1734,11 +1761,37 @@ convertJsonbXScalar(StringInfo buffer, JXEntry *jentry, JsonbXValue *scalarVal)
 
 			appendToBuffer(buffer, (char *) scalarVal->val.numeric, numlen);
 
-			*jentry = JXENTRY_ISNUMERIC | (padlen + numlen);
+			*jxentry = JXENTRY_ISNUMERIC | (padlen + numlen);
+			break;
+
+		case jbvXInteger8:
+			/* copy in the jsonbx header */
+			jbx_header = JBX_HEADER_INTEGER8;
+			jbx_size = sizeof(jbx_header);
+			padlen = padBufferToInt(buffer);
+			appendToBuffer(buffer, (char *) &jbx_header, jbx_size);
+
+			/* copy in the integer8 data */
+			numlen = 8;
+			appendToBuffer(buffer, (char *) &scalarVal->val.integer8, numlen);
+			*jxentry = JXENTRY_ISJSONBX | (padlen + numlen + jbx_size);
+			break;
+
+		case jbvXFloat8:
+			/* copy in the jsonbx header */
+			jbx_header = JBX_HEADER_FLOAT8;
+			jbx_size = sizeof(jbx_header);
+			padlen = padBufferToInt(buffer);
+			appendToBuffer(buffer, (char *) &jbx_header, jbx_size);
+
+			/* copy in the float8 data */
+			numlen = 8;
+			appendToBuffer(buffer, (char *) &scalarVal->val.float8, numlen);
+			*jxentry = JXENTRY_ISJSONBX | (padlen + numlen +  jbx_size);
 			break;
 
 		case jbvXBool:
-			*jentry = (scalarVal->val.boolean) ?
+			*jxentry = (scalarVal->val.boolean) ?
 				JXENTRY_ISBOOL_TRUE : JXENTRY_ISBOOL_FALSE;
 			break;
 

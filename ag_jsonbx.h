@@ -151,6 +151,10 @@ typedef uint32 JXEntry;
 #define JXENTRY_ISCONTAINER		0x50000000	/* array or object */
 #define JXENTRY_ISJSONBX		0x70000000  // out type designator
 
+/* values for the JBX header field when the JXENTRY_ISJSONBX flag is set */
+#define JBX_HEADER_INTEGER8		0x00000000
+#define JBX_HEADER_FLOAT8		0x00000001
+
 /* Access macros.  Note possible multiple evaluations */
 #define JBXE_OFFLENFLD(je_)		((je_) & JXENTRY_OFFLENMASK)
 #define JBXE_HAS_OFF(je_)		(((je_) & JXENTRY_HAS_OFF) != 0)
@@ -226,12 +230,19 @@ typedef struct
 #define JBX_ROOT_IS_OBJECT(jbxp_)	((*(uint32 *) VARDATA(jbxp_) & JBX_FOBJECT) != 0)
 #define JBX_ROOT_IS_ARRAY(jbxp_)	((*(uint32 *) VARDATA(jbxp_) & JBX_FARRAY) != 0)
 
+/*
+ * IMPORTANT NOTE: For jbvXType, IsAJsonbXScalar() checks that the type is
+ * between jbvXNull and jbvXBool, inclusive. So, new scalars need to be
+ * between these values.
+ */
 enum jbvXType
 {
 	/* Scalar types */
 	jbvXNull = 0x0,
 	jbvXString,
 	jbvXNumeric,
+	jbvXInteger8,
+	jbvXFloat8,
 	jbvXBool,
 	/* Composite types */
 	jbvXArray = 0x10,
@@ -252,6 +263,8 @@ struct JsonbXValue
 
 	union
 	{
+		int64	integer8;		/* Cypher 8 byte Integer */
+		float8	float8;			/* Cypher 8 byte Float */
 		Numeric numeric;
 		bool		boolean;
 		struct
