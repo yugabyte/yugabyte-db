@@ -1085,5 +1085,34 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NoTxnOnConflict)) {
   LogResult(ASSERT_RESULT(Fetch(conn.get(), "SELECT * FROM test ORDER BY k")).get());
 }
 
+TEST_F(PgLibPqTest, CompoundKeyColumnOrder) {
+  const string table_name = "test";
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(Execute(conn.get(), Format(
+      "CREATE TABLE $0 (r2 int, r1 int, h int, v2 int, v1 int, primary key (h, r1, r2))",
+      table_name)));
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  yb::client::YBSchema schema;
+  PartitionSchema partition_schema;
+  bool table_found = false;
+  // TODO(dmitry): Find table by name instead of checking all the tables when catalog_mangager
+  // will be able to find YSQL tables
+  std::vector<yb::client::YBTableName> tables;
+  ASSERT_OK(client->ListTables(&tables));
+  for (const auto& t : tables) {
+    if (t.namespace_name() == "postgres" && t.table_name() == table_name) {
+      table_found = true;
+      ASSERT_OK(client->GetTableSchema(t, &schema, &partition_schema));
+      const auto& columns = schema.columns();
+      std::array<string, 5> expected_column_names{"h", "r1", "r2", "v2", "v1"};
+      ASSERT_EQ(expected_column_names.size(), columns.size());
+      for (size_t i = 0; i < expected_column_names.size(); ++i) {
+        ASSERT_EQ(columns[i].name(), expected_column_names[i]);
+      }
+    }
+  }
+  ASSERT_TRUE(table_found);
+}
+
 } // namespace pgwrapper
 } // namespace yb
