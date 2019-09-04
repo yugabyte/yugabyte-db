@@ -14,6 +14,18 @@
   }
 }
 
+.primary-node-details, .async-node-details {
+  .react-bs-table table td {
+    line-height: 22px !important;
+    padding-top: 15px !important;
+    padding-bottom: 15px !important;
+
+    i.fa {
+      vertical-align: middle;
+    }
+  }
+}
+
 #universe-tab-panel-pane-nodes .x_title {
   margin-bottom: 0px;
   margin-top: 0;
@@ -307,6 +319,22 @@ h2 {
   }
   .readonly-node-details {
       margin-top: 24px !important;
+  }
+
+  .readonly-node-details, .primary-node-details {
+    .text-lightgray {
+      margin-top: 2px;
+    }
+    .yb-node-status-cell {
+      .text-green, .text-red {
+        font-weight: 900;
+        font-size: 14px;
+      }
+    }
+    .node-name-field a {
+      font-weight: 900;
+      font-size: 14px;
+    }
   }
 
 
