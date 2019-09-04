@@ -278,7 +278,7 @@ export default class UniverseOverviewNew extends Component {
           isNonEmptyObject(universeInfo)
           ? <Link onClick={(e) => {
             e.preventDefault();
-            window.location.pathname = `/universes/${universeInfo.universeUUID}/tables`
+            window.location.pathname = `/universes/${universeInfo.universeUUID}/tables`;
           }}>Details</Link>
           : null
         }

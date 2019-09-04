@@ -113,34 +113,32 @@ class UniverseConnectModal extends Component {
       content = (<Fragment>
         <h4>Services</h4>
         <YBCodeBlock>
-        <table>
-          <tbody>
-            {userIntent.enableYSQL &&
+          <table>
+            <tbody>
               <tr>
                 <td>JDBC</td>
                 <td>:</td>
                 <td>jdbc:postgresql://{connectIp}:5433/postgres</td>
               </tr>
-            }
-            {userIntent.enableYSQL &&
+              {userIntent.enableYSQL &&
+                <tr>
+                  <td>YSQL Shell</td>
+                  <td>:    </td>
+                  <td>bin/ysqlsh</td>
+                </tr>
+              }
               <tr>
-                <td>YSQL Shell</td>
+                <td>YCQL Shell</td>
                 <td>:    </td>
-                <td>bin/ysqlsh</td>
+                <td>bin/cqlsh</td>
               </tr>
-            }
-            <tr>
-              <td>YCQL Shell</td>
-              <td>:    </td>
-              <td>bin/cqlsh</td>
-            </tr>
-            <tr>
-              <td>YEDIS Shell</td>
-              <td>:    </td>
-              <td>bin/redis-cli</td>
-            </tr>
-          </tbody>
-        </table>
+              <tr>
+                <td>YEDIS Shell</td>
+                <td>:    </td>
+                <td>bin/redis-cli</td>
+              </tr>
+            </tbody>
+          </table>
         </YBCodeBlock>
         <h4 className="endpoints-heading">Endpoints</h4>
         {endpointsContent}
