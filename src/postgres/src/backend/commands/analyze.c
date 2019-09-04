@@ -368,6 +368,16 @@ do_analyze_rel(Relation onerel, int options, VacuumParams *params,
 	int			save_sec_context;
 	int			save_nestlevel;
 
+	/*
+	 * ANALYZE not supported for Yugabyte relations.
+	 */
+	if (IsYBRelation(onerel))
+	{
+		ereport(WARNING,
+				(errmsg("analyzing non-temporary tables will be ignored")));
+		return;
+	}
+
 	if (inh)
 		ereport(elevel,
 				(errmsg("analyzing \"%s.%s\" inheritance tree",

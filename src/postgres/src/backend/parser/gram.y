@@ -908,6 +908,7 @@ stmt :
 			| ViewStmt
 
 			/* BETA features */
+			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze"); }
 			| CreateFunctionStmt { parser_ybc_beta_feature(@1, "function"); }
 			| DoStmt { parser_ybc_beta_feature(@1, "function"); }
 			| RemoveFuncStmt { parser_ybc_beta_feature(@1, "function"); }
@@ -925,6 +926,7 @@ stmt :
 			| GrantRoleStmt { parser_ybc_beta_feature(@1, "roles"); }
 			| ReassignOwnedStmt { parser_ybc_beta_feature(@1, "roles"); }
 			| RevokeRoleStmt { parser_ybc_beta_feature(@1, "roles"); }
+			| VacuumStmt { parser_ybc_beta_feature(@1, "vacuum"); }
 
 			/* Not supported in template0/template1 statements */
 			| CreateAsStmt { parser_ybc_not_support_in_templates(@1, "This statement"); }
@@ -953,7 +955,6 @@ stmt :
 			| AlterTSConfigurationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AnalyzeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CheckPointStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClosePortalStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -999,7 +1000,6 @@ stmt :
 			| RuleStmt { parser_ybc_not_support(@1, "This statement"); }
 			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
 			| UnlistenStmt { parser_ybc_not_support(@1, "This statement"); }
-			| VacuumStmt { parser_ybc_not_support(@1, "This statement"); }
 		;
 
 /*****************************************************************************
@@ -11271,7 +11271,6 @@ cluster_index_specification:
 
 VacuumStmt: VACUUM opt_full opt_freeze opt_verbose opt_analyze opt_vacuum_relation_list
 				{
-					parser_ybc_not_support(@1, "VACUUM");
 					VacuumStmt *n = makeNode(VacuumStmt);
 					n->options = VACOPT_VACUUM;
 					if ($2)
@@ -11287,7 +11286,6 @@ VacuumStmt: VACUUM opt_full opt_freeze opt_verbose opt_analyze opt_vacuum_relati
 				}
 			| VACUUM '(' vacuum_option_list ')' opt_vacuum_relation_list
 				{
-					parser_ybc_not_support(@1, "VACUUM");
 					VacuumStmt *n = makeNode(VacuumStmt);
 					n->options = VACOPT_VACUUM | $3;
 					n->rels = $5;
@@ -11319,7 +11317,6 @@ vacuum_option_elem:
 
 AnalyzeStmt: analyze_keyword opt_verbose opt_vacuum_relation_list
 				{
-					parser_ybc_not_support(@1, "ANALYZE");
 					VacuumStmt *n = makeNode(VacuumStmt);
 					n->options = VACOPT_ANALYZE;
 					if ($2)
@@ -11329,7 +11326,6 @@ AnalyzeStmt: analyze_keyword opt_verbose opt_vacuum_relation_list
 				}
 			| analyze_keyword '(' analyze_option_list ')' opt_vacuum_relation_list
 				{
-					parser_ybc_not_support(@1, "ANALYZE");
 					VacuumStmt *n = makeNode(VacuumStmt);
 					n->options = VACOPT_ANALYZE | $3;
 					n->rels = $5;
