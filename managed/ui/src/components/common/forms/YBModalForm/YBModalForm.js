@@ -35,8 +35,7 @@ export default class YBModalForm extends Component {
                 </div>
               </Modal.Header>
               <Modal.Body>
-                {this.props.children}
-                {this.props.render(props)}
+                {this.props.render ? this.props.render(props) : this.props.children}
               </Modal.Body>
               {(footerAccessory || showCancelButton || onFormSubmit) &&
                 <Modal.Footer>
