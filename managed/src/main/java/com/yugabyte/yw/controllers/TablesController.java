@@ -220,7 +220,8 @@ public class TablesController extends AuthenticatedController {
         String tableKeySpace = table.getNamespace().getName().toString();
         if (!tableKeySpace.toLowerCase().equals("system") &&
             !tableKeySpace.toLowerCase().equals("system_schema") &&
-            !tableKeySpace.toLowerCase().equals("system_auth")) {
+            !tableKeySpace.toLowerCase().equals("system_auth") &&
+            !tableKeySpace.toLowerCase().equals("system_platform")) {
           ObjectNode node = Json.newObject();
           node.put("keySpace", tableKeySpace);
           node.put("tableType", table.getTableType().toString());
