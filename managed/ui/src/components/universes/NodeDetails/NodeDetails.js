@@ -27,6 +27,10 @@ export default class NodeDetails extends Component {
     }
   }
 
+  componentWillUnmount() {
+    this.props.resetMasterLeader();
+  }
+
   componentDidUpdate(prevProps, prevState) {
     const { universe: { currentUniverse, universeMasterLeader }} = this.props;
     const universeDetails = currentUniverse.data.universeDetails;
@@ -39,7 +43,7 @@ export default class NodeDetails extends Component {
       });
       const axiosInstance = axios.create({
         baseURL: `http://${universeMasterLeader.data.privateIP}:${httpPort}/api/v1/tablet-servers`,
-        timeout: 3000,
+        timeout: 20000,
         headers: {
           'Content-Type': 'text/plain',
           'Accept': '*/*'
