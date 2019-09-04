@@ -121,7 +121,7 @@ cache ::= '<Integer Literal>' ;
 (* 'CREATE' 'TABLE' *)
 create_table ::= 'CREATE' 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')'
-                 [ 'WITH' '(' storage_parameter { ',' storage_parameter } ')' | 'WITHOUT' 'OIDS' ] ;
+                 [ 'WITH' '(' storage_parameters ')' | 'WITHOUT' 'OIDS' ] ;
 
 table_elem ::= ( column_name data_type [ column_constraint { column_constraint } ] ) | table_constraint ;
 
@@ -146,10 +146,12 @@ references_clause ::= 'REFERENCES' table_name [ ( column_name { ',' column_name 
 
 key_action ::= 'NO' 'ACTION' | 'RESTRICT' | 'CASCADE' | 'SET' 'NULL' | 'SET' 'DEFAULT' ;
 
+storage_parameters ::= storage_parameter { ',' storage_parameter } ;
+
 storage_parameter ::= param_name [ '=' param_value] ;
 
 index_parameters ::= [ INCLUDE '(' column_names ')' ]
-                     [ WITH '(' storage_parameter { ',' storage_parameter } ')' ] ;
+                     [ WITH '(' storage_parameters ')' ] ;
 
 (* 'CREATE' 'TABLE' 'AS' *)
 create_table_as ::= 'CREATE' 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] \
@@ -337,3 +339,7 @@ column_names ::= column_name { ',' column_name } ;
 expression ::= '<expression>' ;
 
 boolean ::= 'TRUE' | 'FALSE' ;
+
+param_name ::= '<Text Literal>' ;
+
+param_value ::= '<Text Literal>' ;

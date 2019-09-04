@@ -37,10 +37,10 @@ The `CREATE TABLE` command creates a new table in a database. It defines the tab
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameter,index_parameters.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameter,index_parameters.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters.diagram.md" /%}}
   </div>
 </div>
 
