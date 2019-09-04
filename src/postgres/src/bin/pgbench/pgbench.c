@@ -119,7 +119,7 @@ int64		end_time = 0;		/* when to stop in micro seconds, under -T */
 
 /*
  * scaling factor. for example, scale = 10 will make 1000000 tuples in
- * pgbench_accounts table.
+ * ysql_bench_accounts table.
  */
 int			scale = 1;
 
@@ -607,11 +607,11 @@ static const BuiltinScript builtin_script[] =
 		"\\set tid random(1, " CppAsString2(ntellers) " * :scale)\n"
 		"\\set delta random(-5000, 5000)\n"
 		"BEGIN;\n"
-		"UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
-		"SELECT abalance FROM pgbench_accounts WHERE aid = :aid;\n"
-		"UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;\n"
-		"UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;\n"
-		"INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
+		"UPDATE ysql_bench_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
+		"SELECT abalance FROM ysql_bench_accounts WHERE aid = :aid;\n"
+		"UPDATE ysql_bench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;\n"
+		"UPDATE ysql_bench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;\n"
+		"INSERT INTO ysql_bench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
 		"END;\n"
 	},
 	{
@@ -622,16 +622,16 @@ static const BuiltinScript builtin_script[] =
 		"\\set tid random(1, " CppAsString2(ntellers) " * :scale)\n"
 		"\\set delta random(-5000, 5000)\n"
 		"BEGIN;\n"
-		"UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
-		"SELECT abalance FROM pgbench_accounts WHERE aid = :aid;\n"
-		"INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
+		"UPDATE ysql_bench_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
+		"SELECT abalance FROM ysql_bench_accounts WHERE aid = :aid;\n"
+		"INSERT INTO ysql_bench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
 		"END;\n"
 	},
 	{
 		"select-only",
 		"<builtin: select only>",
 		"\\set aid random(1, " CppAsString2(naccounts) " * :scale)\n"
-		"SELECT abalance FROM pgbench_accounts WHERE aid = :aid;\n"
+		"SELECT abalance FROM ysql_bench_accounts WHERE aid = :aid;\n"
 	}
 };
 
@@ -773,7 +773,7 @@ static const PsqlScanCallbacks pgbench_callbacks = {
 static void
 usage(void)
 {
-	printf("%s is a benchmarking tool for PostgreSQL.\n\n"
+	printf("%s is a benchmarking tool for YSQL.\n\n"
 		   "Usage:\n"
 		   "  %s [OPTION]... [DBNAME]\n"
 		   "\nInitialization options:\n"
@@ -793,7 +793,7 @@ usage(void)
 		   "  -b, --builtin=NAME[@W]   add builtin script NAME weighted at W (default: 1)\n"
 		   "                           (use \"-b list\" to list available scripts)\n"
 		   "  -f, --file=FILENAME[@W]  add script FILENAME weighted at W (default: 1)\n"
-		   "  -N, --skip-some-updates  skip updates of pgbench_tellers and pgbench_branches\n"
+		   "  -N, --skip-some-updates  skip updates of ysql_bench_tellers and ysql_bench_branches\n"
 		   "                           (same as \"-b simple-update\")\n"
 		   "  -S, --select-only        perform SELECT-only transactions\n"
 		   "                           (same as \"-b select-only\")\n"
@@ -817,7 +817,7 @@ usage(void)
 		   "  -v, --vacuum-all         vacuum all four standard tables before tests\n"
 		   "  --aggregate-interval=NUM aggregate data over NUM seconds\n"
 		   "  --log-prefix=PREFIX      prefix for transaction time log file\n"
-		   "                           (default: \"pgbench_log\")\n"
+		   "                           (default: \"ysql_bench_log\")\n"
 		   "  --max-tries=NUM          max number of tries to run transaction\n"
 		   "  --progress-timestamp     use Unix epoch timestamps for progress\n"
 		   "  --random-seed=SEED       set random seed (\"time\", \"rand\", integer)\n"
@@ -830,7 +830,7 @@ usage(void)
 		   "  -V, --version            output version information, then exit\n"
 		   "  -?, --help               show this help, then exit\n"
 		   "\n"
-		   "Report bugs to <pgsql-bugs@postgresql.org>.\n",
+		   "Report bugs on https://github.com/YugaByte/yugabyte-db/issues/new.\n",
 		   progname, progname);
 }
 
@@ -4239,10 +4239,10 @@ initDropTables(PGconn *con)
 	 * foreign key dependencies or not doesn't matter.
 	 */
 	executeStatement(con, "drop table if exists "
-					 "pgbench_accounts, "
-					 "pgbench_branches, "
-					 "pgbench_history, "
-					 "pgbench_tellers");
+					 "ysql_bench_accounts, "
+					 "ysql_bench_branches, "
+					 "ysql_bench_history, "
+					 "ysql_bench_tellers");
 }
 
 /*
@@ -4264,7 +4264,7 @@ initCreateTables(PGconn *con, bool use_primary_key)
 	/*
 	 * Note: TPC-B requires at least 100 bytes per row, and the "filler"
 	 * fields in these table declarations were intended to comply with that.
-	 * The pgbench_accounts table complies with that because the "filler"
+	 * The ysql_bench_accounts table complies with that because the "filler"
 	 * column is set to blank-padded empty string. But for all other tables
 	 * the columns default to NULL and so don't actually take any space.  We
 	 * could fix that by giving them non-null default values.  However, that
@@ -4282,28 +4282,28 @@ initCreateTables(PGconn *con, bool use_primary_key)
 	};
 	static const struct ddlinfo DDLs[] = {
 		{
-			"pgbench_history",
+			"ysql_bench_history",
 			"tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22)",
 			"tid int,bid int,aid bigint,delta int,mtime timestamp,filler char(22)",
 			"",
 			0
 		},
 		{
-			"pgbench_tellers",
+			"ysql_bench_tellers",
 			"tid int not null,bid int,tbalance int,filler char(84)",
 			"tid int not null,bid int,tbalance int,filler char(84)",
       ",PRIMARY KEY(tid)",
 			1
 		},
 		{
-			"pgbench_accounts",
+			"ysql_bench_accounts",
 			"aid    int not null,bid int,abalance int,filler char(84)",
 			"aid bigint not null,bid int,abalance int,filler char(84)",
       ",PRIMARY KEY(aid)",
 			1
 		},
 		{
-			"pgbench_branches",
+			"ysql_bench_branches",
 			"bid int not null,bbalance int,filler char(88)",
 			"bid int not null,bbalance int,filler char(88)",
       ",PRIMARY KEY(bid)",
@@ -4384,10 +4384,10 @@ initGenerateData(PGconn *con)
 	 * keys
 	 */
 	executeStatement(con, "truncate table "
-					 "pgbench_accounts, "
-					 "pgbench_branches, "
-					 "pgbench_history, "
-					 "pgbench_tellers");
+					 "ysql_bench_accounts, "
+					 "ysql_bench_branches, "
+					 "ysql_bench_history, "
+					 "ysql_bench_tellers");
 
 	/*
 	 * fill branches, tellers, accounts in that order in case foreign keys
@@ -4397,7 +4397,7 @@ initGenerateData(PGconn *con)
 	{
 		/* "filler" column defaults to NULL */
 		snprintf(sql, sizeof(sql),
-				 "insert into pgbench_branches(bid,bbalance) values(%d,0)",
+				 "insert into ysql_bench_branches(bid,bbalance) values(%d,0)",
 				 i + 1);
 		executeStatement(con, sql);
 	}
@@ -4406,7 +4406,7 @@ initGenerateData(PGconn *con)
 	{
 		/* "filler" column defaults to NULL */
 		snprintf(sql, sizeof(sql),
-				 "insert into pgbench_tellers(tid,bid,tbalance) values (%d,%d,0)",
+				 "insert into ysql_bench_tellers(tid,bid,tbalance) values (%d,%d,0)",
 				 i + 1, i / ntellers + 1);
 		executeStatement(con, sql);
 	}
@@ -4414,7 +4414,7 @@ initGenerateData(PGconn *con)
 	/*
 	 * accounts is big enough to be worth using COPY and tracking runtime
 	 */
-	res = PQexec(con, "copy pgbench_accounts from stdin");
+	res = PQexec(con, "copy ysql_bench_accounts from stdin");
 	if (PQresultStatus(res) != PGRES_COPY_IN)
 		ereport(ELEVEL_FATAL, (errmsg("%s", PQerrorMessage(con))));
 	PQclear(res);
@@ -4491,10 +4491,10 @@ static void
 initVacuum(PGconn *con)
 {
 	ereport(ELEVEL_LOG_MAIN, (errmsg("vacuuming...\n")));
-	executeStatement(con, "vacuum analyze pgbench_branches");
-	executeStatement(con, "vacuum analyze pgbench_tellers");
-	executeStatement(con, "vacuum analyze pgbench_accounts");
-	executeStatement(con, "vacuum analyze pgbench_history");
+	executeStatement(con, "vacuum analyze ysql_bench_branches");
+	executeStatement(con, "vacuum analyze ysql_bench_tellers");
+	executeStatement(con, "vacuum analyze ysql_bench_accounts");
+	executeStatement(con, "vacuum analyze ysql_bench_history");
 }
 
 /*
@@ -4504,11 +4504,11 @@ static void
 initCreateFKeys(PGconn *con)
 {
 	static const char *const DDLKEYs[] = {
-		"alter table pgbench_tellers add constraint pgbench_tellers_bid_fkey foreign key (bid) references pgbench_branches",
-		"alter table pgbench_accounts add constraint pgbench_accounts_bid_fkey foreign key (bid) references pgbench_branches",
-		"alter table pgbench_history add constraint pgbench_history_bid_fkey foreign key (bid) references pgbench_branches",
-		"alter table pgbench_history add constraint pgbench_history_tid_fkey foreign key (tid) references pgbench_tellers",
-		"alter table pgbench_history add constraint pgbench_history_aid_fkey foreign key (aid) references pgbench_accounts"
+		"alter table ysql_bench_tellers add constraint ysql_bench_tellers_bid_fkey foreign key (bid) references ysql_bench_branches",
+		"alter table ysql_bench_accounts add constraint ysql_bench_accounts_bid_fkey foreign key (bid) references ysql_bench_branches",
+		"alter table ysql_bench_history add constraint ysql_bench_history_bid_fkey foreign key (bid) references ysql_bench_branches",
+		"alter table ysql_bench_history add constraint ysql_bench_history_tid_fkey foreign key (tid) references ysql_bench_tellers",
+		"alter table ysql_bench_history add constraint ysql_bench_history_aid_fkey foreign key (aid) references ysql_bench_accounts"
 	};
 	int			i;
 
@@ -5739,7 +5739,7 @@ main(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pgbench (PostgreSQL) " PG_VERSION);
+			puts("ysql_bench (YSQL) " PG_VERSION);
 			exit(0);
 		}
 	}
@@ -6321,9 +6321,9 @@ main(int argc, char **argv)
 	{
 		/*
 		 * get the scaling factor that should be same as count(*) from
-		 * pgbench_branches if this is not a custom query
+		 * ysql_bench_branches if this is not a custom query
 		 */
-		res = PQexec(con, "select count(*) from pgbench_branches");
+		res = PQexec(con, "select count(*) from ysql_bench_branches");
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		{
 			char	   *sqlState = PQresultErrorField(res, PG_DIAG_SQLSTATE);
@@ -6334,7 +6334,7 @@ main(int argc, char **argv)
 			if (sqlState && strcmp(sqlState, ERRCODE_UNDEFINED_TABLE) == 0)
 			{
 				appendPQExpBuffer(&errmsg_buf,
-								  "Perhaps you need to do initialization (\"pgbench -i\") in database \"%s\"\n",
+								  "Perhaps you need to do initialization (\"ysql_bench -i\") in database \"%s\"\n",
 								  PQdb(con));
 			}
 
@@ -6346,7 +6346,7 @@ main(int argc, char **argv)
 		if (scale < 0)
 		{
 			ereport(ELEVEL_FATAL,
-					(errmsg("invalid count(*) from pgbench_branches: \"%s\"\n",
+					(errmsg("invalid count(*) from ysql_bench_branches: \"%s\"\n",
 							PQgetvalue(res, 0, 0))));
 		}
 		PQclear(res);
@@ -6354,7 +6354,7 @@ main(int argc, char **argv)
 		/* warn if we override user-given -s switch */
 		if (scale_given)
 			ereport(ELEVEL_LOG_MAIN,
-					(errmsg("scale option ignored, using count from pgbench_branches table (%d)\n",
+					(errmsg("scale option ignored, using count from ysql_bench_branches table (%d)\n",
 							scale)));
 	}
 
@@ -6405,16 +6405,16 @@ main(int argc, char **argv)
 	if (!is_no_vacuum)
 	{
 		ereport(ELEVEL_LOG_MAIN, (errmsg("starting vacuum...")));
-		tryExecuteStatement(con, "vacuum pgbench_branches");
-		tryExecuteStatement(con, "vacuum pgbench_tellers");
-		tryExecuteStatement(con, "truncate pgbench_history");
+		tryExecuteStatement(con, "vacuum ysql_bench_branches");
+		tryExecuteStatement(con, "vacuum ysql_bench_tellers");
+		tryExecuteStatement(con, "truncate ysql_bench_history");
 		ereport(ELEVEL_LOG_MAIN, (errmsg("end.\n")));
 
 		if (do_vacuum_accounts)
 		{
 			ereport(ELEVEL_LOG_MAIN,
-					(errmsg("starting vacuum pgbench_accounts...")));
-			tryExecuteStatement(con, "vacuum analyze pgbench_accounts");
+					(errmsg("starting vacuum ysql_bench_accounts...")));
+			tryExecuteStatement(con, "vacuum analyze ysql_bench_accounts");
 			ereport(ELEVEL_LOG_MAIN, (errmsg("end.\n")));
 		}
 	}
@@ -6577,7 +6577,7 @@ threadRun(void *arg)
 	if (use_log)
 	{
 		char		logpath[MAXPGPATH];
-		char	   *prefix = logfile_prefix ? logfile_prefix : "pgbench_log";
+		char	   *prefix = logfile_prefix ? logfile_prefix : "ysql_bench_log";
 
 		if (thread->tid == 0)
 			snprintf(logpath, sizeof(logpath), "%s.%d", prefix, main_pid);
