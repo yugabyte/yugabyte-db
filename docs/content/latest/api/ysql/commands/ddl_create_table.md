@@ -36,10 +36,10 @@ Use the `CREATE TABLE` statement to create a new table in a database. It defines
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameter.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameter.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters.diagram.md" /%}}
   </div>
 </div>
 
@@ -47,23 +47,17 @@ Use the `CREATE TABLE` statement to create a new table in a database. It defines
 
 - Storage parameters through the `WITH` clause are accepted [for PostgreSQL compatibility](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), but they will be ignored. The exceptions are `oids=true` and `user_catalog_table=true`, which are explicitly disallowed and will result in an error being thrown.
 
-### _qualified_name_
+### **table_name**
 
-- An error is raised if `qualified_name` already exists in the specified database.
+- An error is raised if `table_name` already exists in the specified database.
 
-### _name_
+### **expression**
 
-are identifiers (`qualified_name` can be a qualified name).
+- For DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
 
-### _expression_
+### **param_name, param_value**
 
-For DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
-
-### _param_name_
-
-Represent storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS).
-
-### _param_value_
+- Represent storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS).
 
 ### PRIMARY KEY
 
@@ -80,40 +74,47 @@ Foreign keys are supported starting v1.2.10.
 ### Table with primary key
 
 ```sql
-postgres=# CREATE TABLE sample(k1 int, 
-                               k2 int, 
-                               v1 int, 
-                               v2 text, 
+postgres=# CREATE TABLE sample(k1 int,
+                               k2 int,
+                               v1 int,
+                               v2 text,
                                PRIMARY KEY (k1, k2));
 ```
 
 ### Table with check constraint
 
 ```sql
-postgres=# CREATE TABLE student_grade (student_id int, 
-                                       class_id int, 
-                                       term_id int, 
-                                       grade int CHECK (grade >= 0 AND grade <= 10), 
-                                       PRIMARY KEY (student_id, class_id, term_id));
+postgres=# CREATE TABLE student_grade(student_id int,
+                                      class_id int,
+                                      term_id int,
+                                      grade int CHECK (grade >= 0 AND grade <= 10),
+                                      PRIMARY KEY (student_id, class_id, term_id));
 ```
 
 ### Table with default value
 
 ```sql
-postgres=# CREATE TABLE cars (id int PRIMARY KEY, 
-                              brand text CHECK (brand in ('X', 'Y', 'Z')), 
-                              model text NOT NULL, 
-                              color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
+postgres=# CREATE TABLE cars(id int PRIMARY KEY,
+                             brand text CHECK (brand in ('X', 'Y', 'Z')),
+                             model text NOT NULL,
+                             color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
 ```
 
 ### Table with foreign key constraint
 
 ```sql
-postgres=# create table products(id int primary key, 
+postgres=# CREATE TABLE products(id int PRIMARY KEY,
                                  descr text);
-postgres=# create table orders(id int primary key, 
-                               pid int references products(id) ON DELETE CASCADE, 
+postgres=# CREATE TABLE orders(id int PRIMARY KEY,
+                               pid int REFERENCES products(id) ON DELETE CASCADE,
                                amount int);
+```
+
+### Table with unique constraint
+
+```sql
+postgres=# CREATE TABLE translations(message_id int UNIQUE,
+                                     message_txt text);
 ```
 
 ## See also
