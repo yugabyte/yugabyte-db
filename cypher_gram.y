@@ -733,10 +733,16 @@ reserved_keyword:
     | ASC
     | ASCENDING
     | BY
+    | CONTAINS
+    | DELETE
     | DESC
     | DESCENDING
+    | DETACH
     | DISTINCT
+    | ENDS
     | FALSE_P
+    | IN
+    | IS
     | LIMIT
     | NOT
     | NULL_P
@@ -746,6 +752,7 @@ reserved_keyword:
     | RETURN
     | SET
     | SKIP
+    | STARTS
     | TRUE_P
     | WHERE
     | WITH
