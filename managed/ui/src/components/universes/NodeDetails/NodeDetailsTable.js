@@ -1,12 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { Component } from 'react';
+import React, { Component, Fragment } from 'react';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
+import moment from 'moment';
+import pluralize from 'pluralize';
 
 
 export default class NodeDetailsTable extends Component {
@@ -22,9 +24,6 @@ export default class NodeDetailsTable extends Component {
         return <span>{cell}</span>;
       }
       const isMaster = type === "master";
-      if (isMaster && row.isMasterLeader) {
-        cell += " (Leader)";
-      }
       let href = "";
       if (IN_DEVELOPMENT_MODE) {
         href = "http://" + row.privateIP + ":" + (isMaster ? row.masterPort : row.tserverPort);
@@ -33,28 +32,89 @@ export default class NodeDetailsTable extends Component {
       }
 
       if (row.nodeAlive) {
-        return <span>{successIcon}&nbsp;<a href={href} target="_blank" rel="noopener noreferrer">{cell}</a></span>;
+        return <div>{successIcon}&nbsp;<a href={href} target="_blank" rel="noopener noreferrer">{isMaster ? "Master" : "TServer"}</a>{(isMaster && row.isMasterLeader) ? " (Leader)" : ""}</div>;
       } else {
-        return <span>{row.isLoading ? loadingIcon : warningIcon}&nbsp;{cell}</span>;
+        return <div>{row.isLoading ? loadingIcon : warningIcon}&nbsp;{isMaster ? "Master" : "TServer"}</div>;
       }
     };
 
-    const getNodeNameLink = function(cell, row) {
+    const getIpPortLinks = (cell, row) => {
+      return (<Fragment>
+        {formatIpPort(row.isMaster, row, "master")}
+        {formatIpPort(row.isTServer, row, "tserver")}
+      </Fragment>);
+    };
+
+    const getNodeNameLink = (cell, row) => {
       if (row.cloudInfo.cloud === "aws") {
         const awsURI = `https://${row.cloudInfo.region}.console.aws.amazon.com/ec2/v2/home?region=${row.cloudInfo.region}#Instances:search=${cell};sort=availabilityZone`;
-        return <a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>;
+        return (<Fragment>
+          <a href={awsURI} target="_blank" rel="noopener noreferrer">{cell}</a>
+          <div className={"text-lightgray"}>{row['privateIP']}</div>
+        </Fragment>);
       } else if (row.cloudInfo.cloud === "gcp") {
         const gcpURI = `https://console.cloud.google.com/compute/instancesDetail/zones/${row.azItem}/instances/${cell}`;
-        return <a href={gcpURI} target="_blank" rel="noopener noreferrer">{cell}</a>;
+        return (<Fragment>
+          <a href={gcpURI} target="_blank" rel="noopener noreferrer">{cell}</a>
+          <div>{row['privateIP']}</div>
+        </Fragment>);
       } else {
         return cell;
       }
     };
 
+    const getStatusUptime = (cell, row) => {
+
+      // get the difference between the moments
+      const difference = row.uptime_seconds * 1000;
+
+      //express as a duration
+      const diffDuration = moment.duration(difference);
+      const diffArray = [
+        [diffDuration.seconds(), 'sec'],
+        [diffDuration.minutes(), 'min'],
+        [diffDuration.hours(), 'hour'],
+        [diffDuration.days(), 'day'],
+        [diffDuration.months(), 'month'],
+        [diffDuration.years(),  'year'],
+      ];
+
+      const idx = diffArray.findIndex((elem) => elem[0] === 0);
+      const uptime = idx < 2
+        ? "< 1 min"
+        : `${diffArray[idx - 1][0]}
+          ${pluralize(diffArray[idx - 1][1], diffArray[idx - 1][0])}
+          ${diffArray[idx - 2][0]}
+          ${pluralize(diffArray[idx - 2][1], diffArray[idx - 2][0])}`;
+      return (<Fragment>
+        <div className={cell === "Live" ? 'text-green' : 'text-red'}>{cell}</div>
+        {uptime}
+      </Fragment>);
+    };
+
     const getNodeAction = function(cell, row, type) {
-      return (
-        <NodeAction currentRow={row} providerUUID={providerUUID} />
-      );
+      return <NodeAction currentRow={row} providerUUID={providerUUID} />;
+    };
+
+    const formatFloatValue = function(cell, row) {
+      return cell.toFixed(2);
+    };
+
+    const getCloudInfo = function(cell, row) {
+      return (<Fragment>
+        <div>{row.cloudItem}</div>
+        {row.regionItem} / {row.azItem}
+      </Fragment>);
+    };
+
+    const getOpsSec = function(cell, row) {
+      return (<Fragment>
+        {formatFloatValue(row.read_ops_per_sec)} | {formatFloatValue(row.write_ops_per_sec)}
+      </Fragment>);
+    };
+
+    const getReadableSize = function(cell, row) {
+      return parseFloat(cell).toFixed(1) + " " + cell.substr(-2, 2);
     };
 
     const panelTitle = clusterType === 'primary' ? 'Primary Cluster': 'Read Replicas';
@@ -69,19 +129,18 @@ export default class NodeDetailsTable extends Component {
             <TableHeaderColumn dataField="name" isKey={true} className={'node-name-field'}
                                columnClassName={'node-name-field'}
               dataFormat={getNodeNameLink}>Name</TableHeaderColumn>
-            <TableHeaderColumn dataField="cloudItem">Cloud</TableHeaderColumn>
-            <TableHeaderColumn dataField="regionItem">Region</TableHeaderColumn>
-            <TableHeaderColumn dataField="azItem">Zone</TableHeaderColumn>
-            <TableHeaderColumn dataField="isMaster" dataFormat={ formatIpPort } formatExtraData="master" >
-              Master
+            <TableHeaderColumn dataField="nodeStatus" dataFormat={getStatusUptime} className={"yb-node-status-cell"}
+               columnClassName={"yb-node-status-cell"} >Status</TableHeaderColumn>
+            <TableHeaderColumn dataField="cloudItem" dataFormat={getCloudInfo}>Cloud Info</TableHeaderColumn>
+            <TableHeaderColumn dataFormat={getReadableSize} dataField="ram_used">RAM Used</TableHeaderColumn>
+            <TableHeaderColumn dataFormat={getReadableSize} dataField="total_sst_file_size">SST Size</TableHeaderColumn>
+            <TableHeaderColumn dataFormat={getReadableSize} dataField="uncompressed_sst_file_size">Uncompressed SST Size</TableHeaderColumn>
+            <TableHeaderColumn dataFormat={getOpsSec} dataField="read_ops_per_sec">Read | Write ops/sec</TableHeaderColumn>
+            <TableHeaderColumn dataField="isMaster" dataFormat={ getIpPortLinks } formatExtraData="master" >
+              Processes
             </TableHeaderColumn>
-            <TableHeaderColumn dataField="isTServer" dataFormat={ formatIpPort } formatExtraData="tserver" >
-              TServer
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="privateIP">Private IP</TableHeaderColumn>
-            <TableHeaderColumn dataField="nodeStatus">Status</TableHeaderColumn>
-            {!this.props.isReadOnlyUniverse && <TableHeaderColumn dataField="nodeAction" columnClassName={"yb-actions-cell"}
-              dataFormat={getNodeAction}>Action</TableHeaderColumn>}
+            {!this.props.isReadOnlyUniverse && <TableHeaderColumn dataField="nodeAction" className={"yb-actions-cell"}
+               columnClassName={"yb-actions-cell"} dataFormat={getNodeAction}>Action</TableHeaderColumn>}
           </BootstrapTable>
         }
       />
