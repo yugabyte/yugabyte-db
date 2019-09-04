@@ -112,6 +112,40 @@ Description
 
 *TODO*
 
+``SET``
+-------
+
+Sets and updates properties from nodes and expressions given an expression.
+
+Synopsis
+~~~~~~~~
+
+::
+
+  SET expression
+
+Description
+~~~~~~~~~~~
+
+*TODO*
+
+``REMOVE``
+----------
+
+Removes properties from nodes and relationships.
+
+Synopsis
+~~~~~~~~
+
+::
+
+  REMOVE property
+
+Description
+~~~~~~~~~~~
+
+*TODO*
+
 ``DELETE``
 ----------
 
