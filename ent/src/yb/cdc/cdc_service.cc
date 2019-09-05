@@ -434,6 +434,8 @@ void CDCServiceImpl::TabletLeaderGetChanges(const GetChangesRequestPB* req,
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms));
   cdc_proxy->GetChanges(*req, resp, &rpc);
+  RPC_STATUS_RETURN_ERROR(rpc.status(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
+                          *context);
   context->RespondSuccess();
 }
 
@@ -448,6 +450,8 @@ void CDCServiceImpl::TabletLeaderGetCheckpoint(const GetCheckpointRequestPB* req
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_rpc_timeout_ms));
   cdc_proxy->GetCheckpoint(*req, resp, &rpc);
+  RPC_STATUS_RETURN_ERROR(rpc.status(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
+                          *context);
   context->RespondSuccess();
 }
 
