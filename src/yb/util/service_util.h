@@ -78,13 +78,6 @@ void SetupErrorAndRespond(ErrType* error,
   context->RespondSuccess();
 }
 
-template <class ErrType>
-void SetupErrorAndRespond(ErrType* error,
-                          const Status& s,
-                          rpc::RpcContext* context) {
-  SetupErrorAndRespond(error, s, static_cast<typename ErrType::Code>(s.error_code()), context);
-}
-
 } // namespace yb
 
 

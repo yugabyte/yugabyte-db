@@ -22,11 +22,11 @@
 #include <gflags/gflags.h>
 #include <boost/algorithm/string.hpp>
 
+#include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/env_util.h"
-#include "yb/util/errno.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
@@ -448,7 +448,7 @@ CHECKED_STATUS PgSupervisor::CleanupOldServerUnlocked() {
       // If process does not exist, system may return "process does not exist" or
       // "operation not permitted" error. Ignore those errors.
       if (kill(postgres_pid, SIGKILL) != 0 && errno != ESRCH && errno != EPERM) {
-        return STATUS(RuntimeError, "Unable to kill", ErrnoToString(errno), errno);
+        return STATUS(RuntimeError, "Unable to kill", Errno(errno));
       }
     }
     ignore_result(Env::Default()->DeleteFile(postmaster_pid_filename));

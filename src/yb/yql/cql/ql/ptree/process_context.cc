@@ -46,7 +46,7 @@ MCString* ProcessContextBase::error_msgs() {
 Status ProcessContextBase::GetStatus() {
   // Erroneous index is negative while successful index is non-negative.
   if (error_code_ < ErrorCode::SUCCESS) {
-    return STATUS(QLError, error_msgs()->c_str(), Slice(), static_cast<int64_t>(error_code_));
+    return STATUS(QLError, error_msgs()->c_str(), Slice(), QLError(error_code_));
   }
   return Status::OK();
 }
@@ -178,7 +178,7 @@ Status ProcessContextBase::Error(const YBLocation& loc,
   // Append this error message to the context.
   error_msgs()->append(msg);
   LOG(ERROR) << "SQL Error: " << msg;
-  return STATUS(QLError, msg.c_str(), Slice(), static_cast<int64_t>(error_code_));
+  return STATUS(QLError, msg.c_str(), Slice(), QLError(error_code_));
 }
 
 Status ProcessContextBase::Error(const YBLocation& loc,

@@ -127,8 +127,7 @@ class LogIndex::IndexChunk : public RefCountedThreadSafe<LogIndex::IndexChunk> {
 namespace  {
 Status CheckError(int rc, const char* operation) {
   if (PREDICT_FALSE(rc < 0)) {
-    int err = errno;
-    return STATUS(IOError, operation, ErrnoToString(err), err);
+    return STATUS(IOError, operation, Errno(errno));
   }
   return Status::OK();
 }
@@ -158,8 +157,7 @@ Status LogIndex::IndexChunk::Open() {
   mapping_ = static_cast<uint8_t*>(mmap(nullptr, kChunkFileSize, PROT_READ | PROT_WRITE,
                                         MAP_SHARED, fd_, 0));
   if (mapping_ == nullptr) {
-    int err = errno;
-    return STATUS(IOError, "Unable to mmap()", ErrnoToString(err), err);
+    return STATUS(IOError, "Unable to mmap()", Errno(err));
   }
 
   return Status::OK();
