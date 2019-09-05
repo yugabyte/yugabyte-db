@@ -45,7 +45,7 @@ Use the `DEALLOCATE` statement to deallocate a previously prepared SQL statement
 
 ## Semantics
 
-### _name_
+### *name*
 
 Specify the name of the prepared statement to deallocate.
 

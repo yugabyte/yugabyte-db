@@ -44,11 +44,11 @@ Use the `CREATE VIEW` statement to create a new view in a database. It defines t
 
 ## Semantics
 
-### _qualified_name_
+### *qualified_name*
 
 Specify the name of the view. An error is raised if view with that name already exists in the specified database (unless the `OR REPLACE` option is used).
 
-### _column_list_
+### *column_list*
 
 Specify a comma-separated list of columns.
 

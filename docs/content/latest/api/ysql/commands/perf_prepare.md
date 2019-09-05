@@ -14,10 +14,9 @@ showAsideToc: true
 
 ## Synopsis
 
-The `PREPARE` command creates a handle to a prepared statement by parsing, analyzing and rewriting (but not executing) the target statement. 
+Use the `PREPARE` command creates a handle to a prepared statement by parsing, analyzing and rewriting (but not executing) the target statement.
 
 ## Syntax
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -50,20 +49,20 @@ The `PREPARE` command creates a handle to a prepared statement by parsing, analy
 
 ## Examples
 
-- Create a sample table.
+Create a sample table.
 
 ```sql
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
-- Prepare a simple insert.
+Prepare a simple insert.
 
 ```sql
 postgres=# PREPARE ins (bigint, double precision, int, text) AS 
                INSERT INTO sample(k1, k2, v1, v2) VALUES ($1, $2, $3, $4);
 ```
 
-- Execute the insert twice (with different parameters).
+Execute the insert twice (with different parameters).
 
 ```sql
 postgres=# EXECUTE ins(1, 2.0, 3, 'a');
@@ -73,7 +72,7 @@ postgres=# EXECUTE ins(1, 2.0, 3, 'a');
 postgres=# EXECUTE ins(2, 3.0, 4, 'b');
 ```
 
-- Check the results.
+Check the results.
 
 ```sql
 postgres=# SELECT * FROM sample ORDER BY k1;

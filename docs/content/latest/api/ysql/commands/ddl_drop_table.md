@@ -44,7 +44,7 @@ Use the `DROP TABLE` statement to remove a table and all of its data from the da
 
 ## Semantics
 
-### _qualified_name_
+### *qualified_name*
 
 Specify a (possibly qualified) identifier.
 
@@ -53,7 +53,6 @@ Specify a (possibly qualified) identifier.
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-
+- [`CREATE TABLE`](../ddl_create_table)
+- [`INSERT`](../dml_insert)
+- [`SELECT`](../dml_select)

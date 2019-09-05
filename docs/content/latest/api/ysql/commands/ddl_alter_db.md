@@ -51,30 +51,30 @@ Some options in DATABASE are under development.
 
 {{< /note >}}
 
-### _name_
+### *name*
 
 Specify the name of the database to be altered.
 
-### _tablespace_name_
+### *tablespace_name*
 
 Specify the new tablespace that is associated with the database.
 
-### allowconn
+### ALLOW_CONNECTIONS
 
-- `true` — Allow connections to this database.
-- `false` — Disallow connections to this database.
+Specify `false` to disallow connections to this database. Default is `true`, which allows this database to be cloned by any user with `CREATEDB` privileges.
 
-### connlimit
+### CONNECTION_LIMIT
 
-- `<how-many>` — Specify how many concurrent connections can be made to this database.
-- `-1` — Unlimited.
+Specify how many concurrent connections can be made to this database. Default of `-1` allows unlimited concurrent connections.
 
-### istemplate
+### IS_TEMPLATE
 
-- `true` — This database can be cloned by any user with `CREATEDB` privileges.
-- `false` — Only superusers or the owner of the database can clone it.
+S`true` — This database can be cloned by any user with `CREATEDB` privileges.
+Specify `false` to Only superusers or the owner of the database can clone it.
 
 ## See also
 
-[`CREATE DATABASE`](../ddl_create_database)
-[`DROP DATABASE`](../ddl_drop_database)
+- [`CREATE DATABASE`](../ddl_create_database)
+- [`CREATE TABLESPACE`](../ddl_create_tablespace)
+- [`DROP DATABASE`](../ddl_drop_database)
+- [`SET`](../cmd_set)

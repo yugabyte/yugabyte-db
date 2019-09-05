@@ -45,7 +45,7 @@ Use the `TRUNCATE` statement to clear all rows in a table.
 
 ## Semantics
 
-### _name_
+### *name*
 
 Specify the name of the table to be truncated.
 

@@ -49,9 +49,9 @@ Use the `SELECT` statement to retrieve rows of specified columns that meet a giv
 
 While the where clause allows a wide range of operators, the exact conditions used in the where clause have significant performance considerations (especially for large datasets).
 
-### _condition_
+### *condition*
 
-Specify an expression that evaluates to boolean value.
+Specify an expression that evaluates to a Boolean value.
 
 For details on `from_item`, `grouping_element`, and `with_query` see [SELECT](https://www.postgresql.org/docs/10/static/sql-select.html) in the PostgreSQL documentation.
 
@@ -93,6 +93,5 @@ postgres=# SELECT a.k1, a.k2, a.v as av, b.v as bv FROM sample1 a LEFT JOIN samp
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[`INSERT`](../dml_insert)
-
+- [`CREATE TABLE`](../ddl_create_table)
+- [`INSERT`](../dml_insert)
