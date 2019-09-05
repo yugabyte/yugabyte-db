@@ -286,9 +286,6 @@ parse_scalar(JsonLexContext *lex, JsonSemAction *sem)
 		case JSON_TOKEN_NULL:
 			lex_accept(lex, JSON_TOKEN_NULL, valaddr);
 			break;
-		case JSON_TOKEN_NUMBER:
-			lex_accept(lex, JSON_TOKEN_NUMBER, valaddr);
-			break;
 		case JSON_TOKEN_INTEGER8:
             lex_accept(lex, JSON_TOKEN_INTEGER8, valaddr);
             break;

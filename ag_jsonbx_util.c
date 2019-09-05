@@ -21,7 +21,7 @@
 #include "utils/varlena.h"
 
 #include "ag_jsonbx.h"
-
+#include "ag_extended_type.h"
 /*
  * Maximum number of elements in an array (or key/value pairs in an object).
  * This is limited by two things: the size of the JXEntry array must fit
@@ -45,10 +45,8 @@ static void convertJsonbXArray(StringInfo buffer, JXEntry *header, JsonbXValue *
 static void convertJsonbXObject(StringInfo buffer, JXEntry *header, JsonbXValue *val, int level);
 static void convertJsonbXScalar(StringInfo buffer, JXEntry *header, JsonbXValue *scalarVal);
 
-static int	reserveFromBuffer(StringInfo buffer, int len);
 static void appendToBuffer(StringInfo buffer, const char *data, int len);
 static void copyToBuffer(StringInfo buffer, int offset, const char *data, int len);
-static short padBufferToInt(StringInfo buffer);
 
 static JsonbXIterator *iteratorFromContainer(JsonbXContainer *container, JsonbXIterator *parent);
 static JsonbXIterator *freeAndGetParent(JsonbXIterator *it);
@@ -479,27 +477,10 @@ fillJsonbXValue(JsonbXContainer *container, int index,
 		result->type = jbvXNumeric;
 		result->val.numeric = (Numeric) (base_addr + INTALIGN(offset));
 	}
+	/* if this is a JSONB extended type */
 	else if (JBXE_ISJSONBX(entry))
 	{
-		uint32 jbx_header;
-		char *base = base_addr + INTALIGN(offset);
-		memcpy(&jbx_header, base, 4);
-
-		switch (jbx_header)
-		{
-			case JBX_HEADER_INTEGER8:
-				result->type = jbvXInteger8;
-				memcpy(&result->val.integer8, (base + 4), 8);
-				break;
-
-			case JBX_HEADER_FLOAT8:
-				result->type = jbvXFloat8;
-				memcpy(&result->val.float8, (base + 4), 8);
-				break;
-
-			default:
-				elog(ERROR, "Invalid JBX header value.");
-		}
+		ag_deserialize_extended_type(base_addr, offset, result);
 	}
 	else if (JBXE_ISBOOL_TRUE(entry))
 	{
@@ -1398,7 +1379,7 @@ compareJsonbXScalarValue(JsonbXValue *aScalar, JsonbXValue *bScalar)
  * Returns the offset to the reserved area. The caller is expected to fill
  * the reserved area later with copyToBuffer().
  */
-static int
+int
 reserveFromBuffer(StringInfo buffer, int len)
 {
 	int			offset;
@@ -1447,7 +1428,7 @@ appendToBuffer(StringInfo buffer, const char *data, int len)
  * Append padding, so that the length of the StringInfo is int-aligned.
  * Returns the number of padding bytes appended.
  */
-static short
+short
 padBufferToInt(StringInfo buffer)
 {
 	int			padlen,
@@ -1740,8 +1721,7 @@ convertJsonbXScalar(StringInfo buffer, JXEntry *jxentry, JsonbXValue *scalarVal)
 {
 	int			numlen;
 	short		padlen;
-	uint32		jbx_header;
-	int			jbx_size;
+	bool		status;
 
 	switch (scalarVal->type)
 	{
@@ -1764,39 +1744,17 @@ convertJsonbXScalar(StringInfo buffer, JXEntry *jxentry, JsonbXValue *scalarVal)
 			*jxentry = JXENTRY_ISNUMERIC | (padlen + numlen);
 			break;
 
-		case jbvXInteger8:
-			/* copy in the jsonbx header */
-			jbx_header = JBX_HEADER_INTEGER8;
-			jbx_size = sizeof(jbx_header);
-			padlen = padBufferToInt(buffer);
-			appendToBuffer(buffer, (char *) &jbx_header, jbx_size);
-
-			/* copy in the integer8 data */
-			numlen = 8;
-			appendToBuffer(buffer, (char *) &scalarVal->val.integer8, numlen);
-			*jxentry = JXENTRY_ISJSONBX | (padlen + numlen + jbx_size);
-			break;
-
-		case jbvXFloat8:
-			/* copy in the jsonbx header */
-			jbx_header = JBX_HEADER_FLOAT8;
-			jbx_size = sizeof(jbx_header);
-			padlen = padBufferToInt(buffer);
-			appendToBuffer(buffer, (char *) &jbx_header, jbx_size);
-
-			/* copy in the float8 data */
-			numlen = 8;
-			appendToBuffer(buffer, (char *) &scalarVal->val.float8, numlen);
-			*jxentry = JXENTRY_ISJSONBX | (padlen + numlen +  jbx_size);
-			break;
-
 		case jbvXBool:
 			*jxentry = (scalarVal->val.boolean) ?
 				JXENTRY_ISBOOL_TRUE : JXENTRY_ISBOOL_FALSE;
 			break;
 
 		default:
-			elog(ERROR, "invalid jsonbx scalar type");
+			/* returns true if there was a valid extended type processed */
+			status = ag_serialize_extended_type(buffer, jxentry, scalarVal);
+			/* if nothing was found, error log out */
+			if (!status)
+				elog(ERROR, "invalid jsonbx scalar type");
 	}
 }
 

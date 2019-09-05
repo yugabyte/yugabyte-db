@@ -151,10 +151,6 @@ typedef uint32 JXEntry;
 #define JXENTRY_ISCONTAINER		0x50000000	/* array or object */
 #define JXENTRY_ISJSONBX		0x70000000  // out type designator
 
-/* values for the JBX header field when the JXENTRY_ISJSONBX flag is set */
-#define JBX_HEADER_INTEGER8		0x00000000
-#define JBX_HEADER_FLOAT8		0x00000001
-
 /* Access macros.  Note possible multiple evaluations */
 #define JBXE_OFFLENFLD(je_)		((je_) & JXENTRY_OFFLENMASK)
 #define JBXE_HAS_OFF(je_)		(((je_) & JXENTRY_HAS_OFF) != 0)
@@ -366,6 +362,8 @@ typedef struct JsonbXIterator
 } JsonbXIterator;
 
 /* Support functions */
+extern short padBufferToInt(StringInfo buffer);
+extern int reserveFromBuffer(StringInfo buffer, int len);
 extern uint32 getJsonbXOffset(const JsonbXContainer *jc, int index);
 extern uint32 getJsonbXLength(const JsonbXContainer *jc, int index);
 extern int	compareJsonbXContainers(JsonbXContainer *a, JsonbXContainer *b);
@@ -388,7 +386,7 @@ extern void JsonbXHashScalarValue(const JsonbXValue *scalarVal, uint32 *hash);
 extern void JsonbXHashScalarValueExtended(const JsonbXValue *scalarVal,
 										  uint64 *hash, uint64 seed);
 
-/* jsonb.c support functions */
+/* jsonbx.c support functions */
 extern char *JsonbXToCString(StringInfo out, JsonbXContainer *in,
 							 int estimated_len);
 extern char *JsonbXToCStringIndent(StringInfo out, JsonbXContainer *in,

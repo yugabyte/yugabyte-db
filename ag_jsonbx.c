@@ -212,14 +212,13 @@ jsonbx_put_escaped_value(StringInfo out, JsonbXValue *scalarVal)
 		case jbvXInteger8:
 			appendStringInfoString(out,
 								   DatumGetCString(DirectFunctionCall1(int8out,
-																	   PointerGetDatum(scalarVal->val.integer8))));
+																	   Int64GetDatum(scalarVal->val.integer8))));
 			break;
 
 		case jbvXFloat8:
-			//appendStringInfoString(out,
-			//					   DatumGetCString(DirectFunctionCall1(float8out,
-			//														   PointerGetDatum(scalarVal->val.float8))));
-			appendStringInfoString(out, DatumGetCString(float8out_internal(scalarVal->val.float8)));
+			appendStringInfoString(out,
+								   DatumGetCString(DirectFunctionCall1(float8out,
+																	   Float8GetDatum(scalarVal->val.float8))));
 			break;
 
 		case jbvXBool:
@@ -241,7 +240,6 @@ jsonbx_in_scalar(void *pstate, char *token, JsonTokenType tokentype)
 {
 	JsonbXInState *_state = (JsonbXInState *) pstate;
 	JsonbXValue	v;
-	Datum		numd;
 
 	switch (tokentype)
 	{
@@ -251,19 +249,6 @@ jsonbx_in_scalar(void *pstate, char *token, JsonTokenType tokentype)
 			v.type = jbvXString;
 			v.val.string.len = checkStringLen(strlen(token));
 			v.val.string.val = token;
-			break;
-		case JSON_TOKEN_NUMBER:
-			/*
-			 * No need to check size of numeric values, because maximum
-			 * numeric size is well below the JsonbXValue restriction
-			 */
-			Assert(token != NULL);
-			v.type = jbvXNumeric;
-			numd = DirectFunctionCall3(numeric_in,
-									   CStringGetDatum(token),
-									   ObjectIdGetDatum(InvalidOid),
-									   Int32GetDatum(-1));
-			v.val.numeric = DatumGetNumeric(numd);
 			break;
 		case JSON_TOKEN_INTEGER8:
 			Assert(token != NULL);
