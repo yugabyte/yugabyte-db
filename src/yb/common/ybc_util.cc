@@ -14,6 +14,7 @@
 
 #include <stdarg.h>
 
+#include "yb/common/pgsql_error.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ybc-internal.h"
 
@@ -115,8 +116,7 @@ bool YBCStatusIsNotFound(YBCStatus s) {
 
 bool IsQLError(YBCStatus s, PgsqlResponsePB::RequestStatus ec) {
   StatusWrapper status(s);
-  return status->IsQLError() &&
-         static_cast<PgsqlResponsePB::RequestStatus>(status->error_code()) == ec;
+  return PgsqlError(*status).value() == ec;
 }
 
 bool YBCStatusIsDuplicateKey(YBCStatus s) {

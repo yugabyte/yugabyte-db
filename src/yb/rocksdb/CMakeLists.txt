@@ -134,6 +134,7 @@ set(ROCKSDB_SRCS
     util/hash.cc
     util/histogram.cc
     util/instrumented_mutex.cc
+    util/timeout_error.cc
     utilities/backupable/backupable_db.cc
     utilities/convenience/info_log_finder.cc
     utilities/checkpoint/checkpoint.cc

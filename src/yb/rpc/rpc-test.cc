@@ -530,13 +530,14 @@ TEST_F(TestRpc, TestServerShutsDown) {
     //
     // EPROTOTYPE sometimes happens on Mac OS X.
     // TODO: figure out why.
-    ASSERT_TRUE(s.error_code() == EPIPE ||
-                s.error_code() == ECONNRESET ||
-                s.error_code() == ESHUTDOWN ||
-                s.error_code() == ECONNREFUSED ||
-                s.error_code() == EINVAL
+    Errno err(s);
+    ASSERT_TRUE(err == EPIPE ||
+                err == ECONNRESET ||
+                err == ESHUTDOWN ||
+                err == ECONNREFUSED ||
+                err == EINVAL
 #if defined(__APPLE__)
-                || s.error_code() == EPROTOTYPE
+                || err == EPROTOTYPE
 #endif
                )
       << "Unexpected status: " << s.ToString();

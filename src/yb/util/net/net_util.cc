@@ -304,9 +304,7 @@ Status GetHostname(string* hostname) {
   char name[HOST_NAME_MAX];
   int ret = gethostname(name, HOST_NAME_MAX);
   if (ret != 0) {
-    return STATUS(NetworkError, "Unable to determine local hostname",
-                                ErrnoToString(errno),
-                                errno);
+    return STATUS(NetworkError, "Unable to determine local hostname", Errno(errno));
   }
   *hostname = name;
   return Status::OK();
@@ -321,10 +319,7 @@ Result<string> GetHostname() {
 Status GetLocalAddresses(std::vector<IpAddress>* result, AddressFilter filter) {
   ifaddrs* addresses;
   if (getifaddrs(&addresses)) {
-    return STATUS(NetworkError,
-                  "Failed to list network interfaces: $0",
-                  ErrnoToString(errno),
-                  errno);
+    return STATUS(NetworkError, "Failed to list network interfaces", Errno(errno));
   }
 
   auto se = ScopeExit([addresses] {
@@ -378,7 +373,7 @@ Status GetFQDN(string* hostname) {
       return STATUS(NetworkError,
                     Substitute("Unable to lookup FQDN ($0), getaddrinfo returned $1",
                                *hostname, getaddrinfo_rc_to_string(rc)),
-                    ErrnoToString(errno), errno);
+                    Errno(errno));
     }
   }
 

@@ -611,7 +611,7 @@ Status Thread::StartThread(const std::string& category, const std::string& name,
     SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "creating pthread");
     int ret = pthread_create(&t->thread_, NULL, &Thread::SuperviseThread, t.get());
     if (ret) {
-      return STATUS(RuntimeError, "Could not create thread", strerror(ret), ret);
+      return STATUS(RuntimeError, "Could not create thread", Errno(ret));
     }
   }
 
