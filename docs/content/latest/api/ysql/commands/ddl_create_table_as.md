@@ -47,26 +47,28 @@ Use the `CREATE TABLE AS` statement to create a new table using the output of a 
 
 YugaByte DB may extend the syntax to allow specifying PRIMARY KEY for `CREATE TABLE AS` command.
 
-### _table_name_
+### CREATE TABLE [ IF NOT EXISTS ] *table_name*
 
 Specify the name (optionally schema-qualified) of the table to be created.
 
-### _column_name_
+### ( *column_name* [ , ... ] )
 
 Specify the name of a column in the new table. When not specified, column names are taken from the output column names of the query.
+
+### AS *query* [ WITH NO DATA ]
 
 ## Examples
 
 ```sql
-postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
+CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
 ```sql
-postgres=# INSERT INTO sample VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
+INSERT INTO sample VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 ```sql
-postgres=# CREATE TABLE selective_sample SELECT * FROM sample WHERE k1 > 1;
+CREATE TABLE selective_sample SELECT * FROM sample WHERE k1 > 1;
 ```
 
 ```sql
@@ -83,4 +85,4 @@ postgres=# SELECT * FROM selective_sample ORDER BY k1;
 
 ## See also
 
-[`CREATE TABLE`](../dml_create_table)
+- [`CREATE TABLE`](../dml_create_table)

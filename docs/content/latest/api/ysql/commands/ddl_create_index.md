@@ -57,11 +57,11 @@ Specify a list of columns which will be included in the index as non-key columns
 
  Specify the name of the index to be created.
 
-#### _table_name_
+#### *table_name*
 
 Specify the name of the table to be indexed.
 
-#### _column_name_
+#### *column_name*
 
 Specify the name of a column of the table.
 

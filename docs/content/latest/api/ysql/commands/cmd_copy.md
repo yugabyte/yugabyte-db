@@ -45,19 +45,19 @@ Use a `COPY` statement to transfer data between tables and files. `COPY TO` copi
 
 ## Semantics
 
-### _table_name_
+### *table_name*
 
 Specify the table, optionally schema-qualified, to be copied.
 
-### _column_name_
+### *column_name*
 
 Specify the list of columns to be copied. If not specified, then all columns of the table will be copied.
 
-### _query_
+### *query*
 
 Specify a `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE` statement whose results are to be copied. For `INSERT`, `UPDATE`, and `DELETE` statements, a RETURNING clause must be provided.
 
-### _filename_
+### *filename*
 
 Specify the path of the file to be copied. An input file name can be an absolute or relative path, but an output file name must be an absolute path.
 
@@ -66,4 +66,3 @@ Specify the path of the file to be copied. An input file name can be an absolute
 - Errors are raised if the table does not exist.
 - `COPY TO` can only be used with regular tables.
 - `COPY FROM` can be used with tables, foreign tables, or views.
-

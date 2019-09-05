@@ -53,7 +53,7 @@ Use the `DELETE` statement to remove rows that meet certain conditions, and when
 
 Specify the subqueries that are referenced by name in the DELETE statement.
 
-### _table_name_
+### *table_name*
 
 Specify the name of the table to be deleted.
 

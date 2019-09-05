@@ -15,8 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `CREATE TYPE` command creates a new user-defined type in a database.  There are five kinds of
-types: composite, enumerated, range, base, and shell.  They each have their own `CREATE TYPE`
+Use the `CREATE TYPE` statement to create a new user-defined type in a database.  There are five types: composite, enumerated, range, base, and shell. Each has its own `CREATE TYPE`
 syntax.
 
 ## Syntax
@@ -45,7 +44,10 @@ syntax.
   </div>
 </div>
 
-Where
+## Semantics
+
+- The order of options in creating range types and base types does not matter.  Even the mandatory
+  options `SUBTYPE`, `INPUT`, and `OUTPUT` may appear in any order.
 
 - `type_name` specifies the name of this user-defined type.
 - `attribute_name` specifies the name of an attribute for this composite type.
@@ -86,10 +88,6 @@ Where
 - `collatable` specifies whether collation information may be passed to operations that use this
   type.
 
-## Semantics
-
-- The order of options in creating range types and base types does not matter.  Even the mandatory
-  options `SUBTYPE`, `INPUT`, and `OUTPUT` may appear in any order.
 
 ## Examples
 

@@ -47,7 +47,7 @@ Use the `INSERT` statement to add one or more rows to the specified table.
 
 Constraints must be satisfied.  
 
-### _table_name_
+### *table_name*
 
 Specify the name of the table. If the specified table does not exist, an error is raised.
 

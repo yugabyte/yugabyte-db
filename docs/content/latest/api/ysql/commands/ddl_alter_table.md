@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`ALTER TABLE` changes or redefines one or more attributes of a table.
+Use the `ALTER TABLE` statement to change the definition of an existing table.
 
 ## Syntax
 
@@ -45,15 +45,28 @@ showAsideToc: true
 
 ## Semantics
 
-- An error is raised if specified table does not exist.
-- `ADD COLUMN` adds new column.
-- `DROP COLUMN` drops existing column.
-- `ADD table_constraint` adds new table_constraint such as a FOREIGN KEY (starting v1.2.10).
-- `DROP table_constraint` drops existing table_constraint.
-- Other `ALTER TABLE` options are not yet supported.
+### *name*
+
+Specify the name of the table. An error is raised if specified table does not exist.
+
+### ADD COLUMN [ IF NOT EXISTS ]
+
+Add a column.
+
+### DROP COLUMN [IF EXISTS]
+
+Drop a column.
+
+### ADD *table_constraint*
+
+Add a *table_constraint*.
+
+### DROP *table_constraint* 
+
+Drop a *table_constraint*.
+
+### *table_constraint*
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[`DROP TABLE`](../ddl_drop_table)
-[Other YSQL Statements](..)
+- [`CREATE TABLE`](../ddl_create_table)

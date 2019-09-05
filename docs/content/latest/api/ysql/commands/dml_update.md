@@ -53,7 +53,7 @@ Updating columns that are part of an index key including PRIMARY KEY is not yet 
 
 Specify the subqueries that are referenced by name in the `UPDATE` statement.
 
-### _table_name_
+### *table_name*
 
 Specify the name of the table to be updated.
 
@@ -61,7 +61,7 @@ Specify the name of the table to be updated.
 
 Specify the identifier of the target table within the `UPDATE` statement. When an alias is specified, it must be used in place of the actual table in the statement.
 
-### _column_name_
+### *column_name*
 
 Specify the column in the table to be updated.
 
