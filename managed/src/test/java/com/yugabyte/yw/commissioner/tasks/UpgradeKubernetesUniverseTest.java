@@ -178,9 +178,9 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.KubernetesWaitForPod,
       TaskType.WaitForServer,
       TaskType.WaitForServerReady,
+      TaskType.LoadBalancerStateChange,
       TaskType.UpdateSoftwareVersion,
-      TaskType.UniverseUpdateSucceeded,
-      TaskType.LoadBalancerStateChange
+      TaskType.UniverseUpdateSucceeded
   );
 
   List<JsonNode> KUBERNETES_UPGRADE_SOFTWARE_RESULTS = ImmutableList.of(
@@ -249,8 +249,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
       TaskType.KubernetesWaitForPod,
       TaskType.WaitForServer,
       TaskType.WaitForServerReady,
-      TaskType.UniverseUpdateSucceeded,
-      TaskType.LoadBalancerStateChange
+      TaskType.LoadBalancerStateChange,
+      TaskType.UniverseUpdateSucceeded
   );
 
   List<JsonNode> KUBERNETES_UPGRADE_GFLAG_RESULTS = ImmutableList.of(

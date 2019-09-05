@@ -160,6 +160,15 @@ public class UpgradeUniverse extends UniverseTaskBase {
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {} with error={}.", getName(), t);
+
+      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+      // If the task failed, we don't want the loadbalancer to be disabled,
+      // so we enable it again in case of errors.
+      if (taskParams().rollingUpgrade) {
+        createLoadBalancerStateChangeTask(true /*enable*/)
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
+      subTaskGroupQueue.run();
       throw t;
     } finally {
       unlockUniverseForUpdate();

@@ -107,10 +107,17 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       subTaskGroupQueue.run();
     } catch (Throwable t) {
       LOG.error("Error executing task {} with error={}.", getName(), t);
+
+      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+      // If the task failed, we don't want the loadbalancer to be disabled,
+      // so we enable it again in case of errors.
+      createLoadBalancerStateChangeTask(true /*enable*/)
+          .setSubTaskGroupType(getTaskSubGroupType());
+
+      subTaskGroupQueue.run();
+
       throw t;
     } finally {
-      createLoadBalancerStateChangeTask(true /*enable*/)
-                .setSubTaskGroupType(getTaskSubGroupType());
       unlockUniverseForUpdate();
     }
     LOG.info("Finished {} task.", getName());
@@ -147,7 +154,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
     createLoadBalancerStateChangeTask(false /*enable*/)
-                .setSubTaskGroupType(getTaskSubGroupType());
+        .setSubTaskGroupType(getTaskSubGroupType());
 
     if (!taskParams().masterGFlags.isEmpty() || !flag) {
       userIntent.masterGFlags = taskParams().masterGFlags;
@@ -159,5 +166,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       upgradePodsTask(placement, masterAddresses, null, ServerType.TSERVER,
                       version, taskParams().sleepAfterTServerRestartMillis);
     }
+
+    createLoadBalancerStateChangeTask(true /*enable*/)
+        .setSubTaskGroupType(getTaskSubGroupType());
   }
 }
