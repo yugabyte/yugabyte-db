@@ -51,7 +51,7 @@ Attributes in the `SET CONSTRAINTS` statement comply with the behavior defined i
 
 Change the mode of all deferrable constraints.
 
-### _name_
+### *name*
 
 Specify one or a list of constraint names.
 

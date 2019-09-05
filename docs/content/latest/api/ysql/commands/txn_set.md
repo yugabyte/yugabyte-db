@@ -46,7 +46,7 @@ Use the `SET TRANSACTION` statement to set the current transaction isolation lev
 
 Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
 
-### _transaction_mode_
+### *transaction_mode*
 
 Set the transaction mode to one of the following.
 
@@ -120,7 +120,6 @@ Create a sample table.
 ```sql
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
-
 
 Begin a transaction and insert some rows.
 

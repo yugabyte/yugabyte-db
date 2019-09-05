@@ -44,49 +44,48 @@ Use the `CREATE DATABASE` statement to create a database that functions as a gro
 
 ## Semantics
 
-Some options in DATABASE are under development.
-
-### _name_
+### CREATE DATABASE *name*
 
 Specify the name of the database to be created. An error is raised if a YSQL database of the given `name` already exists.
 
-### _user_name_
+### WITH OWNER *user_name*
 
 Specify the role name of the user who will own the new database. When not specified, the database creator is the owner.
 
-### template
+### TEMPLATE *template*
 
 Specify the name of the template from which the new database is created.
 
-### _encoding_
+### ENCODING *encoding*
 
 Specify the character set encoding to use in the new database.
 
-### _lc_collate_
+### LC_COLLATE *lc_collate*
 
 Specify the collation order (LC_COLLATE).
 
-### _lc_ctype_
+### LC_CTYPE *lc_ctype*
 
 Specify the character classification (LC_CTYPE).
 
-### _tablespace_name_
+### TABLESPACE *tablespace_name*
 
-Specify the name of the tablespace that is associated with the database to be created.
+Specify the new tablespace that is associated with the database.
 
-### allowconn
+### ALLOW_CONNECTIONS *allowconn*
 
-Either `true` or `false`.
+Specify `false` to disallow connections to the database. Default is `true`, which allows connections to the database.
 
-### connlimit
+### CONNECTION_LIMIT *connlimit*
 
-Specify the number of concurrent connections can be made to this database. `-1` means there is no limit.
+Specify how many concurrent connections can be made to this database. Default of `-1` allows unlimited concurrent connections.
 
-### istemplate
+### IS_TEMPLATE *istemplate*
 
-Is either `true` or `false`.
+`true` — This database can be cloned by any user with `CREATEDB` privileges.
+Specify `false` to only superusers or the owner of the database can clone it.
 
 ## See also
 
-[`ALTER DATABASE`](../ddl_alter_db)
-[`DROP DATABASE`](../ddl_drop_database)
+- [`ALTER DATABASE`](../ddl_alter_db)
+- [`DROP DATABASE`](../ddl_drop_database)

@@ -45,35 +45,45 @@ Use the `CREATE TABLE` statement to create a new table in a database. It defines
 
 ## Semantics
 
-- Storage parameters through the `WITH` clause are accepted [for PostgreSQL compatibility](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), but they will be ignored. The exceptions are `oids=true` and `user_catalog_table=true`, which are explicitly disallowed and will result in an error being thrown.
+Storage parameters through the `WITH` clause are accepted [for PostgreSQL compatibility](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), but they will be ignored. The exceptions are `oids=true` and `user_catalog_table=true`, which are explicitly disallowed and will result in an error being thrown.
 
-### _qualified_name_
+### *create_table*
 
-- An error is raised if `qualified_name` already exists in the specified database.
+#### CREATE TABLE [ IF NOT EXISTS ] *table_name*
 
-### _name_
+Create a table with *table_name*. An error is raised if `qualified_name` already exists in the specified database.
 
-are identifiers (`qualified_name` can be a qualified name).
+### *table_elem*
 
-### _expression_
+### *column_constraint*
 
-For DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
+#### CONSTRAINT *constraint_name*
 
-### _param_name_
+Specify the name of the constraint.
+
+### *table_constraint*
+
+#### CONSTRAINT *constraint_name*
+
+##### NOT NULL | NULL | CHECK ( *expression* ) | DEFAULT *expression* | PRIMARY KEY | *references_clause*
+
+###### PRIMARY KEY
+
+- Currently defining a primary key is required.
+- Primary key can be defined in either `column_constraint` or `table_constraint`, but not in both.
+- Each row in a table is uniquely identified by its primary key.
+
+###### FOREIGN KEY
+
+Foreign keys are supported starting v1.2.10.
+
+### *storage_parameter*
 
 Represent storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS).
 
-### _param_value_
+#### *name* | *name* = *value*
 
-### PRIMARY KEY
-
-- Currently defining a primary key is required.
-- Primary key can be defined in either `column_constraint` or `table_constraint` but not in both of them.
-- Each row in a table is uniquely identified by its primary key. 
-
-### FOREIGN KEY
-
-Foreign keys are supported starting v1.2.10.
+For DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
 
 ## Examples
 
@@ -118,7 +128,7 @@ postgres=# create table orders(id int primary key,
 
 ## See also
 
-[`DROP TABLE`](../ddl_drop_table)
-[`ALTER TABLE`](../ddl_alter_table)
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
+- [`ALTER TABLE`](../ddl_alter_table)
+- [`CREATE TABLE AS`](../ddl_create_table_as)
+- [`CREATE TABLESPACE`](../ddl_create_tablespace)
+- [`DROP TABLE`](../ddl_drop_table)

@@ -44,11 +44,11 @@ Use the `EXECUTE` statement to execute a previously prepared statement. This sep
 
 ## Semantics
 
-### _name_
+### *name*
 
 Specify the name of the prepared statement to execute.
 
-### _expression_
+### *expression*
 
 Specify the expression. Each expression in `EXECUTE` must match with the corresponding data type from `PREPARE`.
 

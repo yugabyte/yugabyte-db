@@ -42,26 +42,46 @@ showAsideToc: true
   </div>
 </div>
 
-## Examples
+## Semantics
 
-- Create a sample role.
+Not all `GRANT` options are supported yet in YSQL, but the following `GRANT` option is supported.
 
-```sql
-postgres=# CREATE USER John;
+```
+GRANT ALL ON DATABASE name TO name;
 ```
 
-- Grant John all permissions on the `postgres` database.
+For the list of possible privileges or privilege_target settings, see REVOKE in the PostgreSQL documentation.
+
+### GRANT
+
+Grant privileges on a database object or grant a membership in a role.
+
+### *privileges*
+
+Specify the privileges.
+
+#### ALL
+
+Grant all of the available privileges.
+
+### *privilege_target*
+
+### *name*
+
+Specify the name of the role.
+
+### WITH GRANT OPTION
+
+Specify that the recipient of the privileges can in turn grant them to others. Grant options cannot be granted to `PUBLIC`.
+
+## Examples
+
+- Grant John all privileges on the `postgres` database.
 
 ```sql
 postgres=# GRANT ALL ON DATABASE postgres TO John;
 ```
 
-- Remove John's permissions from the `postgres` database.
-
-```sql
-postgres=# REVOKE ALL ON DATABASE postgres FROM John;
-```
-
 ## See also
 
-[Other YSQL Statements](..)
+- [REVOKE](../dcl_revoke)

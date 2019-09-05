@@ -44,14 +44,9 @@ Use the `CREATE USER` statement, and limited `GRANT` or `REVOKE` statements, to 
 
 ## Semantics
 
-Not all GRANT and REVOKE options are supported yet in YSQL, but the following GRANT and REVOKE statements are supported in YSQL.
+### *name*
 
-```
-postgres=# GRANT ALL ON DATABASE name TO name;
-postgres=# REVOKE ALL ON DATABASE name FROM name;
-```
-
-For the list of possible `privileges` or `privilege_target` settings, see [GRANT](https://www.postgresql.org/docs/current/static/sql-grant.html) in the PostgreSQL documentation.
+Specify the new database role.
 
 ## Examples
 
@@ -59,21 +54,7 @@ For the list of possible `privileges` or `privilege_target` settings, see [GRANT
 
 ```sql
 postgres=# CREATE USER John;
-```
-Returns `CREATE ROLE` because `CREATE USER` is an alias for `CREATE ROLE`.
-
-### Grant John all permissions on the `postgres` database
-
-```sql
-postgres=# GRANT ALL ON DATABASE postgres TO John;
+CREATE ROLE
 ```
 
-### Remove John's permissions from the `postgres` database
-
-```sql
-postgres=# REVOKE ALL ON DATABASE postgres FROM John;
-```
-
-## See also
-
-[Other YSQL Statements](..)
+Note that `CREATE ROLE` is returned because `CREATE USER` is an alias for `CREATE ROLE`.

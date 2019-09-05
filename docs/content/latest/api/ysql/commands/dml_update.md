@@ -49,31 +49,31 @@ Updating columns that are part of an index key including PRIMARY KEY is not yet 
 
 - While the `WHERE` clause allows a wide range of operators, the exact conditions used in the where clause have significant performance considerations (especially for large datasets). For the best performance, use a `WHERE` clause that provides values for all columns in `PRIMARY KEY` or `INDEX KEY`.
 
-### _with_query_
+### *with_query*
 
 Specify the subqueries that are referenced by name in the `UPDATE` statement.
 
-### _table_name_
+### *table_name*
 
 Specify the name of the table to be updated.
 
-### _alias_
+### *alias*
 
 Specify the identifier of the target table within the `UPDATE` statement. When an alias is specified, it must be used in place of the actual table in the statement.
 
-### _column_name_
+### *column_name*
 
 Specify the column in the table to be updated.
 
-### _expression_
+### *expression*
 
 Specify the value to be assigned to a column. When the expression is referencing a column, the old value of this column is used to evaluate.
 
-### _output_expression_
+### *output_expression*
 
 Specify the value to be returned. When the `output_expression` is referencing a column, the new value of this column (updated value) is used to evaluate.
 
-### _subquery_
+### *subquery*
 
 Specify the SELECT subquery statement. Its selected values will be assigned to the specified columns.
 

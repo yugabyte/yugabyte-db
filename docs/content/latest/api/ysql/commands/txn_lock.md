@@ -45,14 +45,14 @@ Use the `LOCK` statement to lock a table.
 
 ## Semantics
 
-### _name_
+### *name*
 
 Specify an existing table to lock.
 
-### _lockmode_
+### *lockmode*
 
 - Only `ACCESS SHARE` lock mode is supported at this time.
-- All other modes listed in _lockmode_ are under development.
+- All other modes listed in *lockmode* are under development.
 
 ## See also
 

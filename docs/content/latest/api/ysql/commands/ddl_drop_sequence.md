@@ -44,7 +44,7 @@ Use the `DROP SEQUENCE` statement to delete a sequence in the current schema.
 
 ## Semantics
 
-### _sequence_name_
+### *sequence_name*
 
 Specify the name of the sequence.
 
@@ -119,7 +119,7 @@ DROP SEQUENCE
 
 ## See also
 
-[`CREATE SEQUENCE`](../ddl_create_sequence)
-[`currval()`](../currval_sequence)
-[`lastval()`](../lastval_sequence)
-[`nextval()`](../nextval_sequence)
+- [`CREATE SEQUENCE`](../ddl_create_sequence)
+- [`currval()`](../currval_sequence)
+- [`lastval()`](../lastval_sequence)
+- [`nextval()`](../nextval_sequence)
