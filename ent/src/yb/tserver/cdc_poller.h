@@ -56,12 +56,16 @@ class CDCPoller {
             std::function<cdc::CDCServiceProxy*(void)> get_proxy,
             std::function<void(void)> remove_self_from_pollers_map,
             ThreadPool* thread_pool,
-            const std::shared_ptr<client::YBClient>& client);
+            const std::shared_ptr<client::YBClient>& client,
+            CDCConsumer* cdc_consumer);
+  ~CDCPoller();
 
   // Begins poll process for a producer tablet.
   void Poll();
 
  private:
+  bool CheckOnline();
+
   void DoPoll();
   // Async handler for Poll.
   void HandlePoll();
@@ -84,6 +88,7 @@ class CDCPoller {
   std::unique_ptr<cdc::CDCOutputClient> output_client_;
 
   ThreadPool* thread_pool_;
+  CDCConsumer* cdc_consumer_;
 
   std::atomic<bool> is_polling_{true};
 };
