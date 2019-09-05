@@ -665,6 +665,15 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+  * Enable encryption at rest using the key file specified
+  */
+  public boolean enableEncryptionAtRest(final String file) throws Exception {
+    Deferred<ChangeEncryptionInfoResponse> d;
+    d = asyncClient.enableEncryptionAtRest(file);
+    return !d.join(getDefaultAdminOperationTimeoutMs()).hasError();
+  }
+
+  /**
   * Ping a certain server to see if it is responding to RPC requests.
   * @param host the hostname or IP of the server
   * @param port the port number of the server
