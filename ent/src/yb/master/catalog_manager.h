@@ -111,7 +111,7 @@ class CatalogManager : public yb::master::CatalogManager {
 
   // Delete CDC streams for a table.
   CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id) override;
-  CHECKED_STATUS DeleteCDCStreamsForTables(const vector<const TableId>& table_ids) override;
+  CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids) override;
 
   // Setup Universe Replication to consume data from another YB universe.
   CHECKED_STATUS SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
