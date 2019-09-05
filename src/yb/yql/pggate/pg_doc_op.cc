@@ -18,6 +18,8 @@
 
 #include "yb/client/table.h"
 
+#include "yb/common/pgsql_error.h"
+
 #include "yb/yql/pggate/pggate_flags.h"
 
 // TODO: include a header for PgTxnManager specifically.
@@ -164,7 +166,7 @@ bool PgDocOp::CheckRestartUnlocked(client::YBPgsqlOp* op) {
     }
   } else {
     exec_status_ = STATUS(QLError, op->response().error_message(), Slice(),
-                          static_cast<int64_t>(op->response().status()));
+                          PgsqlError(op->response().status()));
   }
 
   return false;

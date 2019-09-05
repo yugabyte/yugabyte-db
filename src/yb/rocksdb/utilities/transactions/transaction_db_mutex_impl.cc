@@ -29,6 +29,7 @@
 
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/rocksdb/util/timeout_error.h"
 #include "yb/rocksdb/utilities/transaction_db_mutex.h"
 
 namespace rocksdb {
@@ -101,7 +102,7 @@ Status NO_THREAD_SAFETY_ANALYSIS TransactionDBMutexImpl::TryLockFor(int64_t time
 
   if (!locked) {
     // timeout acquiring mutex
-    return STATUS(TimedOut, yb::TimeoutError::kMutexTimeout);
+    return STATUS(TimedOut, TimeoutError(TimeoutCode::kMutex));
   }
 
   return Status::OK();
@@ -136,7 +137,7 @@ Status TransactionDBCondVarImpl::WaitFor(
 
     // Check if the wait stopped due to timing out.
     if (cv_status == std::cv_status::timeout) {
-      s = STATUS(TimedOut, yb::TimeoutError::kMutexTimeout);
+      s = STATUS(TimedOut, TimeoutError(TimeoutCode::kMutex));
     }
   }
 

@@ -52,9 +52,8 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/tablet/tablet_bootstrap_if.h"
-#include "yb/tserver/remote_bootstrap_service.h"
 
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet.h"
@@ -65,9 +64,12 @@
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 
+#include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/crc.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
@@ -856,12 +858,12 @@ Status TabletServiceImpl::CheckPeerIsReady(const TabletPeer& tablet_peer) {
   if (!consensus) {
     return STATUS(
         IllegalState, Format("Consensus not available for tablet $0.", tablet_peer.tablet_id()),
-        Slice(), TabletServerErrorPB::TABLET_NOT_RUNNING);
+        Slice(), TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
   }
 
   Status s = tablet_peer.CheckRunning();
   if (!s.ok()) {
-    return s.CloneAndChangeErrorCode(TabletServerErrorPB::TABLET_NOT_RUNNING);
+    return s.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::TABLET_NOT_RUNNING));
   }
   return Status::OK();
 }
