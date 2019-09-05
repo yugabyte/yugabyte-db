@@ -38,6 +38,7 @@ struct OutputClientResponse {
 class CDCOutputClient {
  public:
   virtual ~CDCOutputClient() {}
+  virtual void Shutdown() {}
   // Async call for applying changes.
   virtual CHECKED_STATUS ApplyChanges(const cdc::GetChangesResponsePB* resp) = 0;
 };

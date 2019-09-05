@@ -48,6 +48,10 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       apply_changes_clbk_(std::move(apply_changes_clbk)) {}
 
   ~TwoDCOutputClient() {
+    Shutdown();
+  }
+
+  void Shutdown() override {
     rpcs_.Shutdown();
   }
 
@@ -303,8 +307,16 @@ string WriteAsyncRpc::ToString() const {
 }
 
 void WriteAsyncRpc::Finished(const Status& status) {
+  Status new_status = status;
+  if (new_status.ok() &&
+      mutable_retrier()->HandleResponse(this, &new_status, rpc::RetryWhenBusy::kFalse)) {
+    return;
+  }
+  if (new_status.ok() && resp_->has_error()) {
+    new_status = StatusFromPB(resp_->error().status());
+  }
   auto retained_self = twodc_client_->UnregisterRpc(&retained_self_);
-  twodc_client_->HandleWriteRpcResponse(status, std::move(resp_));
+  twodc_client_->HandleWriteRpcResponse(new_status, std::move(resp_));
 }
 
 } // namespace enterprise
