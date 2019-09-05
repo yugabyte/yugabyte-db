@@ -1394,7 +1394,7 @@ Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table_id) {
   return DeleteCDCStreamsForTables({table_id});
 }
 
-Status CatalogManager::DeleteCDCStreamsForTables(const vector<const TableId>& table_ids) {
+Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_ids) {
   std::ostringstream tid_stream;
   for (const auto& tid : table_ids) {
     tid_stream << " " << tid;

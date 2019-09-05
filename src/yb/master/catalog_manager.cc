@@ -4202,7 +4202,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
 
   // Batch remove all CDC streams subscribed to the newly DELETING tables.
   TRACE("Deleting CDC streams on table");
-  vector<const TableId> id_list;
+  vector<TableId> id_list;
   id_list.reserve(user_tables.size());
   for (auto &table_and_lock : user_tables) {
     id_list.push_back(table_and_lock.first->id());
@@ -4546,7 +4546,7 @@ Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table) {
   return Status::OK();
 }
 
-Status CatalogManager::DeleteCDCStreamsForTables(const vector<const TableId>& table_ids) {
+Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_ids) {
   return Status::OK();
 }
 
