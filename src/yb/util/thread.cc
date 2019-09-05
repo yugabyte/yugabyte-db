@@ -32,6 +32,8 @@
 
 #include "yb/util/thread.h"
 
+#include <cds/init.h>
+#include <cds/gc/dhp.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
@@ -48,9 +50,6 @@
 #include <memory>
 #include <set>
 #include <vector>
-
-#include <cds/init.h>
-#include <cds/gc/dhp.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
@@ -138,6 +137,48 @@ uint64_t GetInVoluntaryContextSwitches() {
   return ru.ru_nivcsw;
 }
 
+class ThreadCategoryTracker {
+ public:
+  ThreadCategoryTracker(const string& name, const scoped_refptr<MetricEntity> &metrics) :
+      name_(name), metrics_(metrics) {}
+
+  void IncrementCategory(const string& category);
+  void DecrementCategory(const string& category);
+
+  scoped_refptr<AtomicGauge<uint64>> FindOrCreateGauge(const string& category);
+
+ private:
+  string name_;
+  scoped_refptr<MetricEntity> metrics_;
+  map<string, scoped_refptr<AtomicGauge<uint64>>> gauges_;
+};
+
+void ThreadCategoryTracker::IncrementCategory(const string& category) {
+  auto gauge = FindOrCreateGauge(category);
+  gauge->Increment();
+}
+
+void ThreadCategoryTracker::DecrementCategory(const string& category) {
+  auto gauge = FindOrCreateGauge(category);
+  gauge->Decrement();
+}
+
+scoped_refptr<AtomicGauge<uint64>> ThreadCategoryTracker::FindOrCreateGauge(
+    const string& category) {
+  if (gauges_.find(category) == gauges_.end()) {
+    string id = name_ + "_" + category;
+    std::replace(id.begin(), id.end(), ' ', '_');
+    std::replace(id.begin(), id.end(), '.', '_');
+    std::replace(id.begin(), id.end(), '-', '_');
+    const string description = id + " metric in ThreadCategoryTracker";
+    std::unique_ptr<GaugePrototype<uint64>> gauge = std::make_unique<OwningGaugePrototype<uint64>>(
+        "server", id, description, yb::MetricUnit::kThreads, description, yb::EXPOSE_AS_COUNTER);
+    gauges_[category] =
+        metrics_->FindOrCreateGauge(std::move(gauge), static_cast<uint64>(0) /* initial_value */);
+  }
+  return gauges_[category];
+}
+
 // A singleton class that tracks all live threads, and groups them together for easy
 // auditing. Used only by Thread.
 class ThreadMgr {
@@ -214,6 +255,11 @@ class ThreadMgr {
   uint64_t threads_started_metric_;
   uint64_t threads_running_metric_;
 
+  // Tracker to track the number of started threads and the number of running threads for each
+  // category.
+  std::unique_ptr<ThreadCategoryTracker> started_category_tracker_;
+  std::unique_ptr<ThreadCategoryTracker> running_category_tracker_;
+
   // Metric callbacks.
   uint64_t ReadThreadsStarted();
   uint64_t ReadThreadsRunning();
@@ -239,6 +285,8 @@ Status ThreadMgr::StartInstrumentation(const scoped_refptr<MetricEntity>& metric
                                        WebCallbackRegistry* web) {
   MutexLock l(lock_);
   metrics_enabled_ = true;
+  started_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_started", metrics);
+  running_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_running", metrics);
 
   // Use function gauges here so that we can register a unique copy of these metrics in
   // multiple tservers, even though the ThreadMgr is itself a singleton.
@@ -299,6 +347,8 @@ void ThreadMgr::AddThread(const pthread_t& pthread_id, const string& name,
     if (metrics_enabled_) {
       threads_running_metric_++;
       threads_started_metric_++;
+      started_category_tracker_->IncrementCategory(category);
+      running_category_tracker_->IncrementCategory(category);
     }
   }
   ANNOTATE_IGNORE_SYNC_END();
@@ -315,6 +365,7 @@ void ThreadMgr::RemoveThread(const pthread_t& pthread_id, const string& category
     category_it->second.erase(pthread_id);
     if (metrics_enabled_) {
       threads_running_metric_--;
+      running_category_tracker_->DecrementCategory(category);
     }
   }
   ANNOTATE_IGNORE_SYNC_END();
