@@ -7,8 +7,6 @@ menu:
   latest:
     identifier: api-ysql-commands-do
     parent: api-ysql-commands
-aliases:
-  - /latest/api/ysql/commands/cmd_do
 isTocNested: true
 showAsideToc: true
 ---
@@ -46,15 +44,16 @@ The optional LANGUAGE clause can be written either before or after the code bloc
   </div>
 </div>
 
-Where
-
-- `code` the procedural language code to be executed. This must be specified as a string literal, just as in `CREATE FUNCTION`. Use of a dollar-quoted literal is recommended.
-- `lang_name` the name of the procedural language the code is written in. If omitted, the default is `plpgsql`.
-
-## Notes
+## Semantics
 
 The procedural language to be used must already have been installed into the current database. `plpgsql` is installed by default, but other languages are not.
 If `DO` is executed in a transaction block, then the procedure code cannot execute transaction control statements. Transaction control statements are only allowed if `DO` is executed in its own transaction.
+
+### *code*
+- The procedural language code to be executed. This must be specified as a string literal, just as in `CREATE FUNCTION`. Use of a dollar-quoted literal is recommended.
+
+### *lang_name*
+- The name of the procedural language the code is written in. If omitted, the default is `plpgsql`.
 
 ## Examples
 ```sql

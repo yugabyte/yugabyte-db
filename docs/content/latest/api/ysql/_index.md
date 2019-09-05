@@ -107,7 +107,7 @@ TCL statements manage transactions of operations on the database.
 | Statement | Description |
 |-----------|-------------|
 | [`COPY`](commands/cmd_copy) | Copy data between tables and files |
-| [`DO`](commands/cmd_doc) | Execute an anonymous code block |
+| [`DO`](commands/cmd_do) | Execute an anonymous code block |
 
 ## Language elements
 

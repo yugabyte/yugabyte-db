@@ -412,6 +412,9 @@ aggregate_signature ::= (
   [ [ argmode ] [ argname ] argtype { ',' argtype } ] 'ORDER' 'BY' [ argmode ] [ argname ] argtype { ',' argtype }
 ) ;
 
+(* 'DO' *)
+do ::= DO [ LANGUAGE lang_name ] code ;
+
 (* Supporting rules *)
 
 qualified_name ::= [ [ database_name '.' ] schema_name '.' ] '<Text Literal>' ;
