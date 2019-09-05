@@ -45,8 +45,6 @@ Use the `CREATE TABLE` statement to create a new table in a database. It defines
 
 ## Semantics
 
-- Storage parameters through the `WITH` clause are accepted [for PostgreSQL compatibility](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), but they will be ignored. The exceptions are `oids=true` and `user_catalog_table=true`, which are explicitly disallowed and will result in an error being thrown.
-
 ### **table_name**
 
 - An error is raised if `table_name` already exists in the specified database.
@@ -55,9 +53,9 @@ Use the `CREATE TABLE` statement to create a new table in a database. It defines
 
 - For DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
 
-### **param_name, param_value**
+### **storage_parameters**
 
-- Represent storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS).
+- Storage parameters through the `WITH` clause are accepted [for PostgreSQL compatibility](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), but they will be ignored. The exceptions are `oids=true` and `user_catalog_table=true`, which are explicitly disallowed and will result in an error being thrown.
 
 ### PRIMARY KEY
 
