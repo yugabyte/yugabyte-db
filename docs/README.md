@@ -125,23 +125,17 @@ instructions just as a reference for YCQL._
 1. Run the diagram generator using the following command:
 
    ```sh
-   java -jar rrdiagram.jar <input-file.ebnf> <output-folder>
-   ```
-
-   `<output-folder>` should end in `syntax_resources`, not `commands`, to get helpful `WARNING`s.
-
-   The following files will be regenerated _if they exist_:
-
-   - `syntax_resources/commands/*.diagram.md`
-   - `syntax_resources/commands/*.grammar.md`
-   - `syntax_resources/grammar_diagrams.md`
-
-   _Example: To regenerate files for the YSQL API, run the following command:_
-
-   ```sh
    java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf \
      content/latest/api/ysql/syntax_resources/
    ```
+
+   The last argument should end in `syntax_resources`, not `commands`, to get helpful `WARNING`s.
+
+   The following files will be regenerated _if they exist_:
+
+   - `content/latest/api/ysql/syntax_resources/commands/*.diagram.md`
+   - `content/latest/api/ysql/syntax_resources/commands/*.grammar.md`
+   - `content/latest/api/ysql/syntax_resources/grammar_diagrams.md`
 
    _Note: To see help, run `java -jar rrdiagram.jar` (without arguments)._
 
@@ -150,17 +144,16 @@ instructions just as a reference for YCQL._
 You may need to add a new docs page if you are adding a new command that doesn't belong in the
 existing doc pages.
 
-1. Add new rules to the appropriate EBNF source grammar file:
+1. Add new rules to the source grammar file:
 
-   - `content/latest/api/<ycql|ysql>/syntax_resources/<ycql|ysql>_grammar.ebnf`
+   - `content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf`
 
 1. Prepare the new diagram and grammar files by creating the following **empty** files:
 
-   - `content/latest/api/<ycql|ysql>/syntax_resources/commands/<rules>.diagram.md`
-   - `content/latest/api/<ycql|ysql>/syntax_resources/commands/<rules>.grammar.md`
+   - `content/latest/api/ysql/syntax_resources/commands/<rules>.diagram.md`
+   - `content/latest/api/ysql/syntax_resources/commands/<rules>.grammar.md`
 
-   For `<rules>`, use a comma-separated list of rule names from the EBNF file that you want in your
-   new docs page.
+   For `<rules>`, use a comma-separated list of rule names that you want in your new docs page.
 
    _Example: for the YSQL 'COPY' command, the diagram and grammar files are the following:_
 
@@ -169,7 +162,7 @@ existing doc pages.
 
 1. Create the docs page file:
 
-   - `content/latest/api/<ycql|ysql>/commands/<name>.md`
+   - `content/latest/api/ysql/commands/<name>.md`
 
    Use the existing files in that directory as examples.  For `<name>`, follow the naming convention
    exhibited by the other files.  For YSQL, note the usage of the template `includeMarkdown` macro.
@@ -180,8 +173,8 @@ existing doc pages.
 
 1. Update the index page files:
 
-   - `content/latest/api/<ycql|ysql>/_index.md`
-   - `content/latest/api/<ycql|ysql>/commands/_index.md`
+   - `content/latest/api/ysql/_index.md`
+   - `content/latest/api/ysql/commands/_index.md`
 
 1. [Run the diagram generator](#generate-api-syntax-diagrams).
 
@@ -193,26 +186,26 @@ existing doc pages.
 
 You may need to add or edit grammar rules in an existing docs page.
 
-1. Add or edit rules in the appropriate EBNF source grammar file:
+1. Add or edit rules in the source grammar file:
 
-   - `content/latest/api/<ycql|ysql>/syntax_resources/<ycql|ysql>_grammar.ebnf`
+   - `content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf`
 
 1. Rename the diagram and grammar files if needed:
 
-   - `content/latest/api/<ycql|ysql>/syntax_resources/commands/<oldrules>.diagram.md` to
-     `content/latest/api/<ycql|ysql>/syntax_resources/commands/<newrules>.diagram.md`
-   - `content/latest/api/<ycql|ysql>/syntax_resources/commands/<oldrules>.grammar.md` to
-     `content/latest/api/<ycql|ysql>/syntax_resources/commands/<newrules>.grammar.md`
+   - `content/latest/api/ysql/syntax_resources/commands/<oldrules>.diagram.md` to
+     `content/latest/api/ysql/syntax_resources/commands/<newrules>.diagram.md`
+   - `content/latest/api/ysql/syntax_resources/commands/<oldrules>.grammar.md` to
+     `content/latest/api/ysql/syntax_resources/commands/<newrules>.grammar.md`
 
 1. Edit the contents of the docs page file:
 
-   - `content/latest/api/<ycql|ysql>/commands/<name>.md`
+   - `content/latest/api/ysql/commands/<name>.md`
 
 1. [Run the diagram generator](#generate-api-syntax-diagrams).
 
    Ensure that no `WARNING`s are thrown related to the rules that you added or edited.
 
-1. Check the modified docs page and index pages to make sure that there are no broken links.
+1. Check the modified docs page to make sure that there are no broken links.
 
 ### Notes
 
