@@ -44,7 +44,7 @@ Use the `DROP DATABASE` statement to remove a database and all of its associated
 
 ## Semantics
 
-### _database_name_
+### *database_name*
 
 Specify the qualified name of the database.
 
@@ -54,4 +54,4 @@ Specify the qualified name of the database.
 
 ## See also
 
-[`CREATE DATABASE`](../ddl_create_database)
+- [`CREATE DATABASE`](../ddl_create_database)

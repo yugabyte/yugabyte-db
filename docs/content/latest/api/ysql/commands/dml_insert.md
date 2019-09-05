@@ -47,11 +47,11 @@ Use the `INSERT` statement to add one or more rows to the specified table.
 
 Constraints must be satisfied.  
 
-### _table_name_
+### *table_name*
 
 Specify the name of the table. If the specified table does not exist, an error is raised.
 
-### _column_names_
+### *column_names*
 
 Specify a comma-separated list of columns names. If a specified column does not exist, an error is raised. Each of the primary key columns must have a non-null value.
 
@@ -312,5 +312,5 @@ postgres=# SELECT id, c1, c2 FROM sample ORDER BY c1;
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[`SELECT`](../dml_select)
+- [`CREATE TABLE`](../ddl_create_table)
+- [`SELECT`](../dml_select)

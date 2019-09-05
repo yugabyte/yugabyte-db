@@ -15,8 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `CREATE DOMAIN` command creates a user-defined data type with optional constraints such as range of valid values, DEFAULT, NOT NULL and CHECK. 
-Domains are useful to abstract data types with common constraints. For example, domain can be used to represent phone number columns that will require the same CHECK constraints on the syntax.
+Use the `CREATE DOMAIN` statement to create a user-defined data type with optional constraints, such as range of valid values, `DEFAULT`, `NOT NULL`, and `CHECK`. Domains are useful to abstract data types with common constraints. For example, domain can be used to represent phone number columns that will require the same `CHECK` constraints on the syntax.
 
 ## Syntax
 
@@ -44,21 +43,41 @@ Domains are useful to abstract data types with common constraints. For example, 
   </div>
 </div>
 
-Where
-
-- `name` is the name of the domain.
-- `data_type` is the underlying data type.
-- `DEFAULT expression` sets default value for columns of the domain data type.
-- `CONSTRAINT constraint_name` is an optional name for constraint.
-- `NOT NULL` does not allow null values.
-- `NULL` allows null values (default).
-- `CHECK (expression)` enforces a constraint that the values of the domain must satisfy and returns a boolean value.
-
-The key word VALUE should be used to refer to the value being tested. Expressions evaluating to TRUE or UNKNOWN succeed.
-
 ## Semantics
 
-- An error is raised if `name` already exists in the specified database.
+### *create_domain*
+
+### CREATE DOMAIN *name*
+
+Specify the name of the domain. An error is raised if `name` already exists in the specified database.
+
+### AS *data_type*
+
+Specify the underlying data type.
+
+### DEFAULT *expression*
+
+Set the default value for columns of the domain data type.
+
+### *domain_constraint*
+
+#### CONSTRAINT *constraint_name*
+
+Specify the optional name for the constraint.
+
+##### NOT NULL
+
+Do not allow null values.
+
+##### NULL
+
+Allow null values (default).
+
+##### CHECK ( *expression* )
+
+Enforce a constraint that the values of the domain must satisfy and returns a Boolean value.
+
+The key word VALUE should be used to refer to the value being tested. Expressions evaluating to TRUE or UNKNOWN succeed.
 
 ## Examples
 
@@ -74,4 +93,3 @@ postgres=# CREATE TABLE person(first_name TEXT, last_name TEXT, phone_number pho
 
 [`DROP DOMAIN`](../ddl_drop_domain)
 [`ALTER DOMAIN`](../ddl_alter_domain)
-[Other YSQL Statements](..)
