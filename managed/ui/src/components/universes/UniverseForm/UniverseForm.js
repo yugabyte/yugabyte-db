@@ -175,7 +175,6 @@ class UniverseForm extends Component {
 
   getFormPayload = () => {
     const { formValues, universe, type } = this.props;
-
     const { universeConfigTemplate, currentUniverse: { data: { universeDetails }}} = universe;
     const submitPayload = {..._.clone(universeConfigTemplate.data, true)};
     const self = this;
@@ -197,6 +196,7 @@ class UniverseForm extends Component {
         enableYSQL: self.getYSQLstate(),
         enableNodeToNodeEncrypt: formValues[clusterType].enableNodeToNodeEncrypt,
         enableClientToNodeEncrypt: formValues[clusterType].enableClientToNodeEncrypt,
+        enableEncryptionAtRest: formValues[clusterType].enableEncryptionAtRest,
         providerType: self.getCurrentProvider(formValues[clusterType].provider).code,
         instanceType: formValues[clusterType].instanceType,
         numNodes: formValues[clusterType].numNodes,
@@ -473,7 +473,7 @@ class PrimaryClusterFields extends Component {
         'primary.numNodes', 'primary.instanceType', 'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.ybSoftwareVersion',
         'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
         'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL', 'primary.enableNodeToNodeEncrypt',
-        'primary.enableClientToNodeEncrypt']} component={ClusterFields} {...this.props} clusterType={"primary"} />
+        'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest']} component={ClusterFields} {...this.props} clusterType={"primary"} />
     );
   }
 }

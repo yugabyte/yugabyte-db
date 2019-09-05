@@ -226,8 +226,8 @@ public class NodeManager extends DevopsBase {
         // Add in the nodeName during configure.
         extra_gflags.put("metric_node_name", taskParam.nodeName);
         // TODO: add a shared path to massage flags across different flavors of configure.
+        NodeDetails node = universe.getNode(taskParam.nodeName);
         if (taskParam.enableYSQL) {
-          NodeDetails node = universe.getNode(taskParam.nodeName);
           extra_gflags.put("start_pgsql_proxy", "true");
           extra_gflags.put("pgsql_proxy_bind_address", String.format("%s:%s", node.cloudInfo.private_ip, node.ysqlServerRpcPort));
         }
@@ -239,11 +239,19 @@ public class NodeManager extends DevopsBase {
           if (taskParam.enableNodeToNodeEncrypt) extra_gflags.put("use_node_to_node_encryption", "true");
           if (taskParam.enableClientToNodeEncrypt) extra_gflags.put("use_client_to_server_encryption", "true");
           extra_gflags.put("allow_insecure_connections", taskParam.allowInsecure ? "true" : "false");
+          // TODO: This directory location should also be passed into subcommand: --certs_node_dir
           extra_gflags.put("certs_dir", "/home/yugabyte/yugabyte-tls-config");
           subcommand.add("--rootCA_cert");
           subcommand.add(cert.certificate);
           subcommand.add("--rootCA_key");
           subcommand.add(cert.privateKey);
+        }
+        if (taskParam.encryptionKeyFilePath != null && node.isMaster) {
+          String filePath = taskParam.encryptionKeyFilePath;
+          subcommand.add("--encryption_key_source_file");
+          subcommand.add(filePath);
+          subcommand.add("--encryption_key_target_dir");
+          subcommand.add("/home/yugabyte/encryption-key-dir");
         }
         if (taskParam.callhomeLevel != null){
           extra_gflags.put("callhome_collection_level", taskParam.callhomeLevel.toString().toLowerCase());

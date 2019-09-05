@@ -240,6 +240,32 @@ class AbstractCloud(AbstractCommandParser):
         except OSError as e:
             raise YBOpsRuntimeError("Error: %s - %s." % (e.filename, e.strerror))
 
+    def create_encryption_at_rest_file(self, extra_vars, ssh_options):
+        node_ip = ssh_options["ssh_host"]
+        encryption_key_path = extra_vars["encryption_key_file"] # Source file path
+        key_node_dir = extra_vars["encryption_key_dir"] # Target file path
+        with open(encryption_key_path, "r") as f:
+            encryption_key = f.read()
+        key_file = os.path.basename(encryption_key_path)
+        common_path = os.path.join(self.CERTS_TEMP_DIR, node_ip)
+        try:
+            os.makedirs(common_path)
+        except OSError as exc:  # Guard against race condition
+            if exc.errno != errno.EEXIST:
+                raise YBOpsRuntimeError(common_path + " could not be  be created")
+        # Write encryption-at-rest key to file
+        with open(os.path.join(common_path, key_file), 'wb') as key_out:
+            key_out.write(encryption_key)
+        # Copy files over to node
+        remote_shell = RemoteShell(ssh_options)
+        remote_shell.run_command('mkdir -p ' + key_node_dir)
+        remote_shell.put_file(os.path.join(common_path, key_file),
+                              os.path.join(key_node_dir, key_file))
+        try:
+            shutil.rmtree(common_path)
+        except OSError as e:
+            raise YBOpsRuntimeError("Error: %s - %s." % (e.filename, e.strerror))
+
     def get_host_info(self, args, get_all=False):
         """Use this to override in subclasses to use cloud-specific APIs to search the cloud
         instances for something that matches the given arguments.
