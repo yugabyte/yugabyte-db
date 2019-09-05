@@ -46,8 +46,23 @@ syntax.
 
 ## Semantics
 
-- The order of options in creating range types and base types does not matter.  Even the mandatory
-  options `SUBTYPE`, `INPUT`, and `OUTPUT` may appear in any order.
+The order of options in creating range types and base types does not matter.  Even the mandatory options `SUBTYPE`, `INPUT`, and `OUTPUT` may appear in any order.
+
+### *create_composite_type*
+
+### *create_enum_type*
+
+### *create_range_type*
+
+### *create_base_type*
+
+### *create_shell_type*
+
+### *composite_type_elem*
+
+### *range_type_option*
+
+### *base_type_option*
 
 - `type_name` specifies the name of this user-defined type.
 - `attribute_name` specifies the name of an attribute for this composite type.
@@ -87,7 +102,6 @@ syntax.
   representation of values of this type.
 - `collatable` specifies whether collation information may be passed to operations that use this
   type.
-
 
 ## Examples
 
@@ -137,4 +151,4 @@ postgres=# CREATE TYPE shell_type;
 ## See also
 
 - [`DROP TYPE`](../ddl_drop_type)
-- [Other YSQL Statements](..)
+

@@ -76,11 +76,11 @@ Specify how many numbers from the sequence to cache in the client. Default is `1
 
 In YSQL as in PostgreSQL, the sequence's data is stored in a persistent system table. In YSQL this table has one row per sequence and it stores the sequence data in two values:
 
-### _last_val_
+### *last_val*
 
 Stores the last value used or the next value to be used.
 
-### _is_called_
+### *is_called*
 
 Stores whether `last_val` has been used. If false, `last_val` is the next value in the sequence. Otherwise, `last_val` + `INCREMENT` is the next one.
 
@@ -107,6 +107,7 @@ Create a simple sequence that increments by 1 every time `nextval()` is called.
 ```sql
 postgres=# CREATE SEQUENCE s;
 ```
+
 ```
 CREATE SEQUENCE
 ```

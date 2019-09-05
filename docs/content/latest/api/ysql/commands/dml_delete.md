@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `DELETE` statement to remove rows that meet certain conditions, and when conditions are not provided in WHERE clause, all rows are deleted. DELETE outputs the number of rows that are being deleted.
+Use the `DELETE` statement to remove rows that meet certain conditions, and when conditions are not provided in WHERE clause, all rows are deleted. `DELETE` outputs the number of rows that are being deleted.
 
 ## Syntax
 
@@ -49,7 +49,7 @@ Use the `DELETE` statement to remove rows that meet certain conditions, and when
 
 - While the `WHERE` clause allows a wide range of operators, the exact conditions used in the `WHERE` clause have significant performance considerations (especially for large datasets). For the best performance, use a `WHERE` clause that provides values for all columns in `PRIMARY KEY` or `INDEX KEY`.
 
-### _with_query_
+### *with_query*
 
 Specify the subqueries that are referenced by name in the DELETE statement.
 
@@ -57,11 +57,11 @@ Specify the subqueries that are referenced by name in the DELETE statement.
 
 Specify the name of the table to be deleted.
 
-### _alias_
+### *alias*
 
 Specify the identifier of the target table within the DELETE statement. When an alias is specified, it must be used in place of the actual table in the statement.
 
-### _output_expression_
+### *output_expression*
 
 Specify the value to be returned. When the _output_expression_ references a column, the existing value of this column (deleted value) is used to evaluate.
 

@@ -53,7 +53,7 @@ Enforce that duplicate values in a table are not allowed.
 
 Specify a list of columns which will be included in the index as non-key columns.
 
-#### _name_
+#### *name*
 
  Specify the name of the index to be created.
 
@@ -65,7 +65,7 @@ Specify the name of the table to be indexed.
 
 Specify the name of a column of the table.
 
-#### _expression_
+#### *expression*
 
 Specify one or more columns of the table and must be surrounded by parentheses.
 

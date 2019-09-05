@@ -52,7 +52,7 @@ Use the `CREATE SCHEMA` statement to enter a new schema into the current databas
 
 Specify the name of the schema to be created.
 
-### _schema_element_
+### *schema_element*
 
 Specify the SQL statement that defines a database object to be created within the schema.
 Acceptable clauses are `CREATE TABLE`, `CREATE VIEW`, `CREATE INDEX`, `CREATE SEQUENCE`, and `GRANT`.
