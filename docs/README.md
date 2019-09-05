@@ -104,9 +104,10 @@ We will review your changes, add any feedback and once everything looks good mer
 
 ## Advanced Usage
 
-### Generate API syntax diagrams
+_Note: YCQL docs are still using an old method.  Follow these instructions for YSQL, but use these
+instructions just as a reference for YCQL._
 
-_Note: This is currently not used for YCQL._
+### Generate API syntax diagrams
 
 1. Download the latest RRDiagram JAR file (`rrdiagram.jar`).  You can find it on the [release
    page](https://github.com/YugaByte/RRDiagram/releases/), or you can try running the following
