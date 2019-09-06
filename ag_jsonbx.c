@@ -70,6 +70,7 @@ static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
 			   bool key_scalar);
 static char *JsonbXToCStringWorker(StringInfo out, JsonbXContainer *in, int estimated_len, bool indent);
 static void add_indent(StringInfo out, bool indent, int level);
+static bool is_decimal_needed(char *string);
 
 PG_FUNCTION_INFO_V1(jsonbx_in);
 
@@ -192,9 +193,31 @@ jsonbx_in_object_field_start(void *pstate, char *fname, bool isnull)
 	_state->res = pushJsonbXValue(&_state->parseState, WJBX_KEY, &v);
 }
 
+static bool is_decimal_needed(char *string)
+{
+
+	int i;
+
+	if (string == NULL)
+		return false;
+
+	i = (string[0] == '-') ? 1 : 0;
+
+	while (string[i] != 0)
+	{
+		if (string[i] < '0' || string[i] > '9')
+			return false;
+		i++;
+	}
+
+	return true;
+}
+
 static void
 jsonbx_put_escaped_value(StringInfo out, JsonbXValue *scalarVal)
 {
+	char *temp_string = NULL;
+
 	switch (scalarVal->type)
 	{
 		case jbvXNull:
@@ -208,19 +231,19 @@ jsonbx_put_escaped_value(StringInfo out, JsonbXValue *scalarVal)
 								   DatumGetCString(DirectFunctionCall1(numeric_out,
 																	   PointerGetDatum(scalarVal->val.numeric))));
 			break;
-
 		case jbvXInteger8:
 			appendStringInfoString(out,
 								   DatumGetCString(DirectFunctionCall1(int8out,
 																	   Int64GetDatum(scalarVal->val.integer8))));
 			break;
-
 		case jbvXFloat8:
-			appendStringInfoString(out,
-								   DatumGetCString(DirectFunctionCall1(float8out,
-																	   Float8GetDatum(scalarVal->val.float8))));
-			break;
+			temp_string = DatumGetCString(DirectFunctionCall1(float8out,
+										  Float8GetDatum(scalarVal->val.float8)));
+			appendStringInfoString(out, temp_string);
 
+			if (is_decimal_needed(temp_string))
+				appendBinaryStringInfo(out, ".0", 2);
+			break;
 		case jbvXBool:
 			if (scalarVal->val.boolean)
 				appendBinaryStringInfo(out, "true", 4);
