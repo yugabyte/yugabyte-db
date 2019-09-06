@@ -912,9 +912,7 @@ class PosixEnv : public Env {
  public:
   PosixEnv();
   explicit PosixEnv(std::unique_ptr<FileFactory> file_factory);
-  virtual ~PosixEnv() {
-    fprintf(stdout, "Destroying Env::Default()\n");
-  }
+  virtual ~PosixEnv() = default;
 
   virtual Status NewSequentialFile(const std::string& fname,
                                    std::unique_ptr<SequentialFile>* result) override {
