@@ -22,22 +22,29 @@ libraryDependencies ++= Seq(
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.2.0-yb-19",
   "org.yaml" % "snakeyaml" % "1.17",
-  "com.google.protobuf" % "protobuf-java" % "2.6.1",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61"
 )
 // Default to true if nothing passed on the env, so we can pick up YB jars from local java itest.
 lazy val mavenLocal = Option(System.getenv("USE_MAVEN_LOCAL")).getOrElse("false")
 resolvers += {
   if (mavenLocal != null && mavenLocal.equals("true")) {
-    Resolver.mavenLocal
+    val localMavenRepo = System.getenv("YB_MVN_LOCAL_REPO")
+    if (localMavenRepo != null) {
+      "Local Maven Repository" at "file://" + localMavenRepo
+    } else {
+      Resolver.mavenLocal
+    }
   } else {
     "Yugabyte Nexus Snapshots" at System.getenv("YB_NEXUS_SNAPSHOT_URL")
   }
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.0-SNAPSHOT"
+lazy val groupId = Option(System.getenv("YB_TMP_GROUP_ID")).getOrElse("org.yb")
+libraryDependencies += groupId % "yb-client" % "0.8.0-SNAPSHOT"
+
 
 dependencyOverrides += "io.netty" % "netty-handler" % "4.0.36.Final"
+dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
 
 javaOptions in Test += "-Dconfig.file=src/main/resources/application.test.conf"
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a")
