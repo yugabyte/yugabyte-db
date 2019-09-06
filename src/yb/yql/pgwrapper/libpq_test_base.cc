@@ -35,7 +35,8 @@ void LibPqTestBase::SetUp() {
 }
 
 Result<PGConnPtr> LibPqTestBase::Connect() {
-  auto deadline = CoarseMonoClock::now() + 60s;
+  auto start = CoarseMonoClock::now();
+  auto deadline = start + 60s;
   for (;;) {
     PGConnPtr result(PQconnectdb(Format(
         "host=$0 port=$1 user=postgres", pg_ts->bind_host(), pg_ts->pgsql_rpc_port()).c_str()));
@@ -43,8 +44,10 @@ Result<PGConnPtr> LibPqTestBase::Connect() {
     if (status == ConnStatusType::CONNECTION_OK) {
       return result;
     }
-    if (CoarseMonoClock::now() >= deadline) {
-      return STATUS_FORMAT(NetworkError, "Connect failed: $0", status);
+    auto now = CoarseMonoClock::now();
+    if (now >= deadline) {
+      return STATUS_FORMAT(NetworkError, "Connect failed: $0, passed: $1",
+                           status, MonoDelta(now - start));
     }
   }
 }

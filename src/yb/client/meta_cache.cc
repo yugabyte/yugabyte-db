@@ -595,7 +595,8 @@ template <class Response>
 void LookupRpc::DoFinished(
     const Status& status, const Response& resp, const std::string* partition_group_start) {
   if (resp.has_error()) {
-    LOG(INFO) << "Got resp error " << resp.error().code() << ", code=" << status.CodeAsString();
+    LOG(INFO) << "Got resp error " << master::MasterErrorPB::Code_Name(resp.error().code())
+              << ", status: " << status;
   }
   // Prefer early failures over controller failures.
   Status new_status = status;
@@ -608,22 +609,18 @@ void LookupRpc::DoFinished(
   if (new_status.ok() && resp.has_error()) {
     if (resp.error().code() == master::MasterErrorPB::NOT_THE_LEADER ||
         resp.error().code() == master::MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED) {
-      if (client()->IsMultiMaster()) {
-        YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master has changed, re-trying...";
-        ResetMasterLeaderAndRetry();
-        return;
-      }
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master has changed, re-trying...";
+      ResetMasterLeaderAndRetry();
+      return;
     }
     new_status = StatusFromPB(resp.error().status());
   }
 
   if (new_status.IsTimedOut()) {
     if (CoarseMonoClock::Now() < retrier().deadline()) {
-      if (client()->IsMultiMaster()) {
-        YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master timed out, re-trying...";
-        ResetMasterLeaderAndRetry();
-        return;
-      }
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Leader Master timed out, re-trying...";
+      ResetMasterLeaderAndRetry();
+      return;
     } else {
       // Operation deadline expired during this latest RPC.
       new_status = new_status.CloneAndPrepend("timed out after deadline expired");
@@ -631,12 +628,10 @@ void LookupRpc::DoFinished(
   }
 
   if (new_status.IsNetworkError() || new_status.IsRemoteError()) {
-    if (client()->IsMultiMaster()) {
-      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Encountered a error from the Master: "
-           << new_status << ", retrying...";
-      ResetMasterLeaderAndRetry();
-      return;
-    }
+    YB_LOG_EVERY_N_SECS(WARNING, 1) << "Encountered a error from the Master: "
+         << new_status << ", retrying...";
+    ResetMasterLeaderAndRetry();
+    return;
   }
 
   // Prefer response failures over no tablets found.
