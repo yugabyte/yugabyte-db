@@ -520,7 +520,7 @@ TEST_F(ClientTest, TestMasterDown) {
   shared_ptr<YBTable> t;
   client_->data_->default_admin_operation_timeout_ = MonoDelta::FromSeconds(1);
   Status s = client_->OpenTable(YBTableName(kKeyspaceName, "other-tablet"), &t);
-  ASSERT_TRUE(s.IsNetworkError());
+  ASSERT_TRUE(s.IsTimedOut());
 }
 
 // TODO scan with predicates is not supported.
@@ -1049,7 +1049,8 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
   switch (which) {
     case DEAD_MASTER:
       // Only one master, so no retry for finding the new leader master.
-      ASSERT_TRUE(error->status().IsNetworkError());
+      ASSERT_TRUE(error->status().IsTimedOut());
+      ASSERT_STR_CONTAINS(error->status().ToString(false), "Network error");
       break;
     case DEAD_TSERVER:
       ASSERT_TRUE(error->status().IsTimedOut());
