@@ -174,9 +174,7 @@ gremlin> g.V(pluto).out('brother').as('god').out('lives').as('place').select('go
 
 ## 7. Global graph index examples
 
-NOTE: Secondary indexes in YugaByte DB are coming soon. These queries will iterate over all vertices to find the result.
-
-- Geo-spatial indexes - events that have happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
+Geo-spatial indexes - events that have happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
 
 ```sh
 // Show all events that happened within 50 kilometers of Athens (latitude:37.97 and long:23.72).
