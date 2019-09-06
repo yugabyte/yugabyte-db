@@ -49,32 +49,40 @@ Use the `DELETE` statement to remove rows that meet certain conditions, and when
 
 - While the `WHERE` clause allows a wide range of operators, the exact conditions used in the `WHERE` clause have significant performance considerations (especially for large datasets). For the best performance, use a `WHERE` clause that provides values for all columns in `PRIMARY KEY` or `INDEX KEY`.
 
-### *with_query*
+### *delete* 
+
+#### WITH [ RECURSIVE ] *with_query* [ , ... ] DELETE FROM [ ONLY ] *table_name* [ * ] [ [ AS ] *alias* ] [ WHERE *condition* | WHERE CURRENT OF *cursor_name* ] [ [*returning_clause*](#returning-clause) ]
+
+##### *with_query*
 
 Specify the subqueries that are referenced by name in the DELETE statement.
 
-### *table_name*
+##### *table_name*
 
 Specify the name of the table to be deleted.
 
-### *alias*
+##### *alias*
 
 Specify the identifier of the target table within the DELETE statement. When an alias is specified, it must be used in place of the actual table in the statement.
 
-### *output_expression*
+### *returning_clause*
+
+#### RETURNING
 
 Specify the value to be returned. When the _output_expression_ references a column, the existing value of this column (deleted value) is used to evaluate.
+
+#### *output_name*
 
 ## Examples
 
 Create a sample table, insert a few rows, then delete one of the inserted row.
 
 ```sql
-postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
+CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
 ```sql
-postgres=# INSERT INTO sample VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
+INSERT INTO sample VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 ```sql
@@ -91,7 +99,7 @@ postgres=# SELECT * FROM sample ORDER BY k1;
 ```
 
 ```sql
-postgres=# DELETE FROM sample WHERE k1 = 2 AND k2 = 3;
+DELETE FROM sample WHERE k1 = 2 AND k2 = 3;
 ```
 
 ```sql

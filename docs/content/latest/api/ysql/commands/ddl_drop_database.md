@@ -44,13 +44,15 @@ Use the `DROP DATABASE` statement to remove a database and all of its associated
 
 ## Semantics
 
+### *drop_database*
+
+#### DROP DATABASE [ IF EXISTS ] *database_name*
+
+Remove a database and all associated objects. All objects that are associated with `database_name` such as tables will be invalidated after the drop statement is completed. All connections to the dropped database would be invalidated and eventually disconnected.
+
 ### *database_name*
 
-Specify the qualified name of the database.
-
-- An error is raised if the specified `database_name` does not exist.
-- All objects that are associated with `database_name` such as tables will be invalidated after the drop statement is completed.
-- All connections to the dropped database would be invalidated and eventually disconnected.
+Specify the name of the database.
 
 ## See also
 

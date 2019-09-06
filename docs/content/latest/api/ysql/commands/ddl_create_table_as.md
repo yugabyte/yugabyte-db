@@ -47,15 +47,23 @@ Use the `CREATE TABLE AS` statement to create a new table using the output of a 
 
 YugaByte DB may extend the syntax to allow specifying PRIMARY KEY for `CREATE TABLE AS` command.
 
-### CREATE TABLE [ IF NOT EXISTS ] *table_name*
+### *create_table_as*
 
-Specify the name (optionally schema-qualified) of the table to be created.
+#### CREATE TABLE [ IF NOT EXISTS ] *table_name*
 
-### ( *column_name* [ , ... ] )
+Create a table.
+
+##### *table_name*
+
+Specify the name of the table.
+
+##### ( *column_name* [ , ... ] )
 
 Specify the name of a column in the new table. When not specified, column names are taken from the output column names of the query.
 
-### AS *query* [ WITH NO DATA ]
+#### AS *query* [ WITH [ NO ] DATA ]
+
+##### *query*
 
 ## Examples
 

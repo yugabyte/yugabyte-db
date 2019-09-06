@@ -50,9 +50,9 @@ Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation
 
 Set the transaction mode to one of the following.
 
-- ISOLATION LEVEL clause
+- `ISOLATION LEVEL` clause
 - Access mode
-- Deferrable mode
+- `DEFERRABLE` mode
 
 ### ISOLATION LEVEL clause
 
@@ -63,7 +63,7 @@ Default in ANSI SQL standard.
 #### REPEATABLE READ
 
 Also referred to as "snapshot isolation" in YugaByte DB.
-Default in YugaByte DB.
+Default.
 
 #### READ COMMITTED
 

@@ -44,11 +44,15 @@ Use the `ABORT` statement to roll back the current transaction and discards all 
 
 ## Semantics
 
-### WORK
+### *abort*
+
+#### ABORT [ TRANSACTION | WORK ]
+
+##### WORK
 
 Add optional keyword — has no effect.
 
-### TRANSACTION
+##### TRANSACTION
 
 Add optional keyword — has no effect.
 

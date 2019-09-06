@@ -47,6 +47,12 @@ Use the `SET CONSTRAINTS` statement to set the timing of constraint checking wit
 
 Attributes in the `SET CONSTRAINTS` statement comply with the behavior defined in the SQL standard, except that it does not apply to `NOT NULL` and `CHECK` constraints.
 
+### *set_constraints*
+
+```
+SET CONSTRAINTS { ALL | *name [ , ... ] } { DEFERRED | IMMEDIATE }
+```
+
 ### ALL
 
 Change the mode of all deferrable constraints.
@@ -64,3 +70,7 @@ Uniqueness and exclusion constraints are checked immediately, unless marked `DEF
 ### IMMEDIATE
 
 Set constraints to take effect retroactively.
+
+See also
+
+- [`ALTER TABLE`](../ddl_alter_table)

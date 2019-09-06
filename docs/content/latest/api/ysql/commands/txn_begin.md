@@ -44,17 +44,25 @@ Use the `BEGIN` statement to start a new transaction with the default (or given)
 
 ## Semantics
 
+### *begin*
+
+```sql
+BEGIN [ TRANSACTION | WORK ] [ transaction_mode [ ... ] ]
+```
+
+#### WORK
+
+Add optional keyword — has no effect.
+
+#### TRANSACTION
+
+Add optional keyword — has no effect.
+
+### *transaction_mode*
+
 Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
 
 Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
-
-### WORK
-
-Add optional keyword — has no effect.
-
-### TRANSACTION
-
-Add optional keyword — has no effect.
 
 ## Examples
 
@@ -158,3 +166,4 @@ postgres=# SELECT * FROM sample; -- run in second shell.
 - [`COMMIT`](../txn_commit)
 - [`END`](../txn_end)
 - [`ROLLBACK`](../txn_rollback)
+- [`SET TRANSACTION`](../txn_set)

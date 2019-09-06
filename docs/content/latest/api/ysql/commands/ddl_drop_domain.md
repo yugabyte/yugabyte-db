@@ -44,12 +44,11 @@ Use the `DROP DOMAIN` statement to remove a domain from the database.
 
 ## Semantics
 
-### *name*
+### *drop_domain*
 
-Specify the name of the existing domain.
+#### *name*
 
-- An error is raised if the specified domain does not exist (unless `IF EXISTS` is set).
-- An error is raised if any objects depend on this domain (unless `CASCADE` is set).
+Specify the name of the existing domain. An error is raised if the specified domain does not exist (unless `IF EXISTS` is set). An error is raised if any objects depend on this domain (unless `CASCADE` is set).
 
 ### IF EXISTS
 
