@@ -1704,7 +1704,12 @@ Status GetFromString(DBOptions* source, DBOptions* destination) {
   return GetDBOptionsFromString(*source, kOptionsString, destination);
 }
 
+// We want padding bytes to have the same values for test purposes, therefore we need to use
+// exactly the same saved default value instead of using CompactionOptionsUniversal().
+static CompactionOptionsUniversal kCompactionOptionsUniversalDefault;
+
 void InitDefault(ColumnFamilyOptions* options) {
+  options->compaction_options_universal = kCompactionOptionsUniversalDefault;
   // Deprecatd option which is not initialized. Need to set it to avoid
   // Valgrind error
   options->max_mem_compaction_level = 0;
@@ -1768,7 +1773,7 @@ Status GetFromString(ColumnFamilyOptions* source, ColumnFamilyOptions* destinati
   // GetColumnFamilyOptionsFromString():
   destination->rate_limit_delay_max_milliseconds = 33;
   destination->compaction_pri = CompactionPri::kOldestSmallestSeqFirst;
-  destination->compaction_options_universal = CompactionOptionsUniversal();
+  destination->compaction_options_universal = kCompactionOptionsUniversalDefault;
   destination->compression_opts = CompressionOptions();
   destination->hard_rate_limit = 0;
   destination->soft_rate_limit = 0;
