@@ -57,7 +57,9 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
 
   CHECKED_STATUS ApplyChanges(const cdc::GetChangesResponsePB* resp) override;
 
-  void HandleWriteRpcResponse(const Status&s, std::unique_ptr<WriteResponsePB> resp);
+  void HandleWriteRpcResponse(const Status& s,
+      const cdc::CDCRecordPB& record,
+      std::unique_ptr<WriteResponsePB> resp);
   void RegisterRpc(rpc::RpcCommandPtr call, rpc::Rpcs::Handle* handle);
   rpc::RpcCommandPtr UnregisterRpc(rpc::Rpcs::Handle* handle);
 
@@ -74,7 +76,7 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   void IncProcessedRecordCount();
 
   void HandleResponse();
-  void HandleError(const Status& s);
+  void HandleError(const Status& s, const cdc::CDCRecordPB& bad_record);
 
   cdc::ConsumerTabletInfo consumer_tablet_info_;
   std::shared_ptr<client::YBClient> client_;
@@ -102,6 +104,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
   record_count_.store(resp->records_size(), std::memory_order_release);
   DCHECK(resp->has_checkpoint());
 
+  // Init class variables that threads will use.
   {
     std::lock_guard<rw_spinlock> l(lock_);
     DCHECK(consensus::OpIdEquals(op_id_, consensus::MinimumOpId()));
@@ -109,11 +112,13 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
     error_status_ = Status::OK();
   }
 
+  // Ensure we have records.
   if (record_count_.load(std::memory_order_acquire) == 0) {
     HandleResponse();
     return Status::OK();
   }
 
+  // Ensure we have a connection to the consumer table cached.
   if (!table_) {
     Status s = client_->OpenTable(consumer_tablet_info_.table_id, &table_);
     if (!s.ok()) {
@@ -124,6 +129,7 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
     }
   }
 
+  // Inspect all records in the response.
   bool records_to_process = false;
   for (int i = 0; i < resp->records_size(); i++) {
     if (resp->records(i).key_size() == 0) {
@@ -151,9 +157,11 @@ Status TwoDCOutputClient::ApplyChanges(const cdc::GetChangesResponsePB* resp) {
 }
 
 void TwoDCOutputClient::HandleWriteRpcResponse(
-    const Status& status, std::unique_ptr<WriteResponsePB> resp ) {
-  if (!status.ok() || resp->has_error()) {
-    HandleError(!status.ok() ? status : StatusFromPB(resp->error().status()));
+    const Status& status, const cdc::CDCRecordPB& record, std::unique_ptr<WriteResponsePB> resp ) {
+  if (!status.ok()) {
+    HandleError(status, record);
+  } else if (resp->has_error()) {
+    HandleError(StatusFromPB(resp->error().status()), record);
   } else {
     IncProcessedRecordCount();
     HandleResponse();
@@ -173,20 +181,20 @@ void TwoDCOutputClient::TabletLookupCallback(
     const cdc::CDCRecordPB& record,
     const Result<client::internal::RemoteTabletPtr>& tablet) {
   if (!tablet.ok()) {
-    HandleError(tablet.status());
+    HandleError(tablet.status(), record);
     return;
   }
 
   auto ts = tablet->get()->LeaderTServer();
   if (ts == nullptr) {
-    HandleError(STATUS_FORMAT(
-        IllegalState, "Cannot find leader tserver for tablet $0", tablet->get()->tablet_id()));
+    HandleError(STATUS_FORMAT(IllegalState,
+        "Cannot find leader tserver for tablet $0", tablet->get()->tablet_id()), record);
     return;
   }
 
   Status s = ts->InitProxy(client_.get());
   if (!s.ok()) {
-    HandleError(s);
+    HandleError(s, record);
     return;
   }
 
@@ -196,11 +204,12 @@ void TwoDCOutputClient::TabletLookupCallback(
       tablet->get()->tablet_id(), record, this);
 }
 
-void TwoDCOutputClient::HandleError(const Status& s) {
+void TwoDCOutputClient::HandleError(const Status& s, const cdc::CDCRecordPB& bad_record) {
   IncProcessedRecordCount();
+  LOG(ERROR) << "Error while applying replicated record for " << bad_record.DebugString()
+             << ": " << s.ToString();
   {
     std::lock_guard<rw_spinlock> l(lock_);
-    LOG(ERROR) << "Error while applying replicated record: " << s.ToString();
     error_status_ = s;
   }
   HandleResponse();
@@ -316,7 +325,7 @@ void WriteAsyncRpc::Finished(const Status& status) {
     new_status = StatusFromPB(resp_->error().status());
   }
   auto retained_self = twodc_client_->UnregisterRpc(&retained_self_);
-  twodc_client_->HandleWriteRpcResponse(new_status, std::move(resp_));
+  twodc_client_->HandleWriteRpcResponse(new_status, record_, std::move(resp_));
 }
 
 } // namespace enterprise
