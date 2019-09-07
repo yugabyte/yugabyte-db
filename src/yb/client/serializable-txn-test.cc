@@ -30,8 +30,9 @@ namespace client {
 
 class SerializableTxnTest : public TransactionTestBase {
  protected:
-  IsolationLevel GetIsolationLevel() override {
-    return IsolationLevel::SERIALIZABLE_ISOLATION;
+  void SetUp() override {
+    SetIsolationLevel(IsolationLevel::SERIALIZABLE_ISOLATION);
+    TransactionTestBase::SetUp();
   }
 
   void TestIncrements(bool transactional);

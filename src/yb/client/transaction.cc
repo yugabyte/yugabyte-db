@@ -463,6 +463,15 @@ class YBTransaction::Impl final {
     }
   }
 
+  bool HasTabletsWithIntents() {
+    for (const auto& tablet : tablets_) {
+      if (tablet.second.HasMetadata()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   CHECKED_STATUS CheckRunning(std::unique_lock<std::mutex>* lock) {
     if (state_.load(std::memory_order_acquire) != TransactionState::kRunning) {
       auto status = error_;
@@ -483,9 +492,9 @@ class YBTransaction::Impl final {
       return;
     }
 
-    // tablets_.empty() means that transaction does not have writes, so just abort it.
+    // If we don't have any tablets that have intents written to them, just abort it.
     // But notify caller that commit was successful, so it is transparent for him.
-    if (tablets_.empty()) {
+    if (!HasTabletsWithIntents()) {
       DoAbort(Status::OK(), transaction);
       commit_callback_(Status::OK());
       return;
@@ -498,7 +507,11 @@ class YBTransaction::Impl final {
     state.set_transaction_id(metadata_.transaction_id.begin(), metadata_.transaction_id.size());
     state.set_status(TransactionStatus::COMMITTED);
     for (const auto& tablet : tablets_) {
-      state.add_tablets(tablet.first);
+      // If metadata is missing then the tablet does not contain intents, so does not
+      // need to be involved in Apply/Cleanup.
+      if (tablet.second.HasMetadata()) {
+        state.add_tablets(tablet.first);
+      }
     }
 
     manager_->rpcs().RegisterAndStart(
@@ -549,7 +562,11 @@ class YBTransaction::Impl final {
       std::unique_lock<std::mutex> lock(mutex_);
       tablet_ids.reserve(tablets_.size());
       for (const auto& tablet : tablets_) {
-        tablet_ids.push_back(tablet.first);
+        // If metadata is missing then the tablet does not contain intents, so does not
+        // need to be involved in Abort/Cleanup.
+        if (tablet.second.HasMetadata()) {
+          tablet_ids.push_back(tablet.first);
+        }
       }
     }
 
@@ -844,6 +861,10 @@ class YBTransaction::Impl final {
           }
           break;
       }
+    }
+
+    bool HasMetadata() const {
+      return metadata_state == InvolvedTabletMetadataState::EXIST;
     }
 
     std::string ToString() const {

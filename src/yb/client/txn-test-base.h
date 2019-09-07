@@ -26,6 +26,7 @@ namespace client {
 
 constexpr size_t kNumRows = 5;
 extern const MonoDelta kTransactionApplyTime;
+extern const MonoDelta kIntentsCleanupTime;
 
 // We use different sign to distinguish inserted and updated values for testing.
 int32_t GetMultiplier(const WriteOpType op_type);
@@ -91,7 +92,9 @@ class TransactionTestBase : public KeyValueTableTest {
 
   bool CheckAllTabletsRunning();
 
-  virtual IsolationLevel GetIsolationLevel() = 0;
+  IsolationLevel GetIsolationLevel();
+
+  void SetIsolationLevel(IsolationLevel isolation_level);
 
   std::shared_ptr<server::SkewedClock> skewed_clock_{
       std::make_shared<server::SkewedClock>(WallClock())};
@@ -100,6 +103,7 @@ class TransactionTestBase : public KeyValueTableTest {
   boost::optional<TransactionManager> transaction_manager2_;
 
   bool create_table_ = true;
+  IsolationLevel isolation_level_ = IsolationLevel::SNAPSHOT_ISOLATION;
 };
 
 } // namespace client
