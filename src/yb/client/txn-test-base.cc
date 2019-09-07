@@ -41,6 +41,7 @@ namespace yb {
 namespace client {
 
 const MonoDelta kTransactionApplyTime = 6s * kTimeMultiplier;
+const MonoDelta kIntentsCleanupTime = 6s * kTimeMultiplier;
 
 // We use different sign to distinguish inserted and updated values for testing.
 int32_t GetMultiplier(const WriteOpType op_type) {
@@ -323,6 +324,14 @@ bool TransactionTestBase::CheckAllTabletsRunning() {
     }
   }
   return result;
+}
+
+IsolationLevel TransactionTestBase::GetIsolationLevel() {
+  return isolation_level_;
+}
+
+void TransactionTestBase::SetIsolationLevel(IsolationLevel isolation_level) {
+  isolation_level_ = isolation_level;
 }
 
 } // namespace client
