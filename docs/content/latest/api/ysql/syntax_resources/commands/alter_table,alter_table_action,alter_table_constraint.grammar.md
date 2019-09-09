@@ -13,6 +13,8 @@ alter_table_action ::= ADD [ COLUMN ] column_name data_type
 
 alter_table_constraint ::= [ CONSTRAINT constraint_name ] 
                            { CHECK ( expression )
+                             | UNIQUE ( column_names ) 
+                               index_parameters
                              | FOREIGN KEY ( column_names ) 
                                references_clause }
 ```

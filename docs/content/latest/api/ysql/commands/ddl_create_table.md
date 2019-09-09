@@ -36,16 +36,14 @@ Use the `CREATE TABLE` statement to create a new table in a database. It defines
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameter.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameter.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_table,table_elem,column_constraint,table_constraint,storage_parameters,storage_parameter,index_parameters.diagram.md" /%}}
   </div>
 </div>
 
 ## Semantics
-
-Storage parameters through the `WITH` clause are accepted [for PostgreSQL compatibility](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), but they will be ignored. The exceptions are `oids=true` and `user_catalog_table=true`, which are explicitly disallowed and will result in an error being thrown.
 
 ### *create_table*
 
@@ -65,7 +63,7 @@ Specify the name of the constraint.
 
 #### CONSTRAINT *constraint_name*
 
-##### NOT NULL | NULL | CHECK ( *expression* ) | DEFAULT *expression* | PRIMARY KEY | *references_clause*
+##### NOT NULL | NULL | CHECK ( *expression* ) | DEFAULT *expression* | UNIQUE index_parameters | PRIMARY KEY | *references_clause*
 
 ###### PRIMARY KEY
 
@@ -90,40 +88,47 @@ For DEFAULT keyword must be of the same type as the column it modifies. It must 
 ### Table with primary key
 
 ```sql
-postgres=# CREATE TABLE sample(k1 int, 
-                               k2 int, 
-                               v1 int, 
-                               v2 text, 
+postgres=# CREATE TABLE sample(k1 int,
+                               k2 int,
+                               v1 int,
+                               v2 text,
                                PRIMARY KEY (k1, k2));
 ```
 
 ### Table with check constraint
 
 ```sql
-postgres=# CREATE TABLE student_grade (student_id int, 
-                                       class_id int, 
-                                       term_id int, 
-                                       grade int CHECK (grade >= 0 AND grade <= 10), 
-                                       PRIMARY KEY (student_id, class_id, term_id));
+postgres=# CREATE TABLE student_grade(student_id int,
+                                      class_id int,
+                                      term_id int,
+                                      grade int CHECK (grade >= 0 AND grade <= 10),
+                                      PRIMARY KEY (student_id, class_id, term_id));
 ```
 
 ### Table with default value
 
 ```sql
-postgres=# CREATE TABLE cars (id int PRIMARY KEY, 
-                              brand text CHECK (brand in ('X', 'Y', 'Z')), 
-                              model text NOT NULL, 
-                              color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
+postgres=# CREATE TABLE cars(id int PRIMARY KEY,
+                             brand text CHECK (brand in ('X', 'Y', 'Z')),
+                             model text NOT NULL,
+                             color text NOT NULL DEFAULT 'WHITE' CHECK (color in ('RED', 'WHITE', 'BLUE')));
 ```
 
 ### Table with foreign key constraint
 
 ```sql
-postgres=# create table products(id int primary key, 
+postgres=# CREATE TABLE products(id int PRIMARY KEY,
                                  descr text);
-postgres=# create table orders(id int primary key, 
-                               pid int references products(id) ON DELETE CASCADE, 
+postgres=# CREATE TABLE orders(id int PRIMARY KEY,
+                               pid int REFERENCES products(id) ON DELETE CASCADE,
                                amount int);
+```
+
+### Table with unique constraint
+
+```sql
+postgres=# CREATE TABLE translations(message_id int UNIQUE,
+                                     message_txt text);
 ```
 
 ## See also
