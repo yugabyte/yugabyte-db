@@ -15,10 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-JSON data types are introduced to support JavaScript Object Notation data. `JSON` type represents the exact text format of JSON while `JSONB` type represents its binary format in YSQL database.
-
-- `JSONB` is supported in YSQL
-- `JSON` is not yet supported.
+The JSON data types are introduced to support JavaScript Object Notation (JSON) data. The `JSON` data type represents the exact text format of JSON while the `JSONB` data type represents its binary format in YSQL database. Both `JSONB` and `JSON` are supported in YSQL.
 
 ## Description
 
