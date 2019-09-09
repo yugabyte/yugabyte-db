@@ -396,6 +396,8 @@ class YBSchema {
     return schema_->find_column(name);
   }
 
+  string ToString() const;
+
  private:
   friend YBSchema YBSchemaFromSchema(const Schema& schema);
   friend const Schema& internal::GetSchema(const YBSchema& schema);
