@@ -84,6 +84,7 @@ namespace enterprise {
 
 constexpr int kRpcTimeout = 30;
 static const std::string kUniverseId = "test_universe";
+static const std::string kNamespaceName = "test_namespace";
 
 class TwoDCTest : public YBTest {
  public:
@@ -135,18 +136,25 @@ class TwoDCTest : public YBTest {
     return yb_tables;
   }
 
-  Status CreateTable(
-      uint32_t idx, uint32_t num_tablets, YBClient* client, std::vector<YBTableName>* tables) {
-    YBTableName table = YBTableName("test_namespace", Format("test_table_$0", idx));
+  Result<YBTableName> CreateTable(YBClient* client, const std::string& namespace_name,
+                                  const std::string& table_name, uint32_t num_tablets) {
+    YBTableName table = YBTableName(namespace_name, table_name);
     RETURN_NOT_OK(client->CreateNamespaceIfNotExists(table.namespace_name()));
 
     // Add a table, make sure it reports itself.
     gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
-    RETURN_NOT_OK(table_creator->table_name(table)
-                 .schema(&schema_)
-                 .table_type(YBTableType::YQL_TABLE_TYPE)
-                 .num_tablets(num_tablets)
-                 .Create());
+        RETURN_NOT_OK(table_creator->table_name(table)
+                          .schema(&schema_)
+                          .table_type(YBTableType::YQL_TABLE_TYPE)
+                          .num_tablets(num_tablets)
+                          .Create());
+    return table;
+  }
+
+  Status CreateTable(
+      uint32_t idx, uint32_t num_tablets, YBClient* client, std::vector<YBTableName>* tables) {
+    auto table = VERIFY_RESULT(CreateTable(client, kNamespaceName, Format("test_table_$0", idx),
+                                           num_tablets));
     tables->push_back(table);
     return Status::OK();
   }
@@ -201,15 +209,15 @@ class TwoDCTest : public YBTest {
 
   Status GetCDCStreamForTable(
       const std::string& table_id, master::ListCDCStreamsResponsePB* resp) {
-    master::ListCDCStreamsRequestPB req;
-    req.set_table_id(table_id);
+    return LoggedWaitFor([=]() -> Result<bool> {
+      master::ListCDCStreamsRequestPB req;
+      req.set_table_id(table_id);
+      resp->Clear();
 
-    RETURN_NOT_OK(producer_cluster_->leader_mini_master()->master()->catalog_manager()->
-        ListCDCStreams(&req, resp));
-    if (resp->has_error()) {
-      return STATUS(IllegalState, "Failed getting CDC stream for table");
-    }
-    return Status::OK();
+      Status s = producer_cluster_->leader_mini_master()->master()->catalog_manager()->
+          ListCDCStreams(&req, resp);
+      return s.ok() && !resp->has_error() && resp->streams_size() == 1;
+    }, MonoDelta::FromSeconds(kRpcTimeout), "Get CDC stream for table");
   }
 
   void Destroy() {
@@ -362,9 +370,6 @@ TEST_F(TwoDCTest, SetupUniverseReplication) {
   ASSERT_OK(SetupUniverseReplication(
       producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
 
-  // Sleep for some time to give enough time for CDC streams and subscribers to be setup.
-  SleepFor(MonoDelta::FromMilliseconds(500));
-
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
@@ -380,6 +385,42 @@ TEST_F(TwoDCTest, SetupUniverseReplication) {
     ASSERT_OK(GetCDCStreamForTable(producer_tables[i]->id(), &stream_resp));
     ASSERT_EQ(stream_resp.streams_size(), 1);
     ASSERT_EQ(stream_resp.streams(0).table_id(), producer_tables[i]->id());
+  }
+
+  Destroy();
+}
+
+// Test for #2250 to verify that replication for tables with the same prefix gets set up correctly.
+TEST_F(TwoDCTest, SetupUniverseReplicationMultipleTables) {
+  // Setup the two clusters without any tables.
+  auto tables = ASSERT_RESULT(SetUpWithParams({}, {}, 1));
+
+  // Create tables with the same prefix.
+  std::string table_names[2] = {"table", "table_index"};
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+  for (int i = 0; i < 2; i++) {
+    auto t = ASSERT_RESULT(CreateTable(producer_client(), kNamespaceName, table_names[i], 3));
+    std::shared_ptr<client::YBTable> producer_table;
+    ASSERT_OK(producer_client()->OpenTable(t, &producer_table));
+    producer_tables.push_back(producer_table);
+  }
+
+  for (int i = 0; i < 2; i++) {
+    ASSERT_RESULT(CreateTable(consumer_client(), kNamespaceName, table_names[i], 3));
+  }
+
+  // Setup universe replication on both these tables.
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables));
+
+  // Verify that universe was setup on consumer.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+  ASSERT_EQ(resp.producer_id(), kUniverseId);
+  ASSERT_EQ(resp.producer_tables_size(), producer_tables.size());
+  for (int i = 0; i < producer_tables.size(); i++) {
+    ASSERT_EQ(resp.producer_tables(i).table_id(), producer_tables[i]->id());
   }
 
   Destroy();

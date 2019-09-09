@@ -1870,10 +1870,17 @@ void CatalogManager::GetTableSchemaCallback(
   // TODO: This does not work for situation where tables in different YSQL schemas have the same
   // name. This will be fixed as part of #1476.
   for (const auto& t : list_resp.tables()) {
-    if (t.namespace_().name() == info->table_name.namespace_name()) {
+    if (t.name() == info->table_name.table_name() &&
+        t.namespace_().name() == info->table_name.namespace_name()) {
       table->set_table_id(t.id());
       break;
     }
+  }
+
+  if (!table->has_table_id()) {
+    LOG(ERROR) << "Could not find matching table for " << info->table_name.ToString();
+    MarkUniverseReplicationFailed(universe);
+    return;
   }
 
   status = GetTableSchema(&req, &resp);
@@ -1886,7 +1893,9 @@ void CatalogManager::GetTableSchemaCallback(
   auto result = info->schema.Equals(resp.schema());
   if (!result.ok() || !*result) {
     LOG(ERROR) << "Source and target schemas don't match: Source: " << info->table_id
-               << ", Target: " << resp.identifier().table_id();
+               << ", Target: " << resp.identifier().table_id()
+               << ", Source schema: " << info->schema.ToString()
+               << ", Target schema: " << resp.schema().DebugString();
     MarkUniverseReplicationFailed(universe);
     return;
   }
