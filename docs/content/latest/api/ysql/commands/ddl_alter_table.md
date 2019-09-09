@@ -45,27 +45,56 @@ Use the `ALTER TABLE` statement to change the definition of an existing table.
 
 ## Semantics
 
-### *name*
+### *alter_table*
 
-Specify the name of the table. An error is raised if specified table does not exist.
+#### ALTER TABLE [ ONLY ] *name* [ * ] [*alter\_table\_action*](#alter_table_action) [ , ... ]
 
-### ADD COLUMN [ IF NOT EXISTS ]
+Alter the specified table and dependencies.
 
-Add a column.
+- `ONLY` — Limit the change to the specified table.
 
-### DROP COLUMN [IF EXISTS]
+### *alter_table_action*
 
-Drop a column.
+Specify one of the following actions.
 
-### ADD *table_constraint*
+#### ADD [ COLUMN ] *column_name* *data_type*
 
-Add a *table_constraint*.
+Add the specified column with the specified data type.
 
-### DROP *table_constraint* 
+#### RENAME TO *table_name*
 
-Drop a *table_constraint*.
+Rename the table to the specified table name.
 
-### *table_constraint*
+#### DROP [ COLUMN ] *column_name* [ RESTRICT | CASCADE ]
+
+Drop the named column from the table. 
+
+- `RESTRICT` — Remove only the specified
+
+#### ADD [*alter_table_constraint*](#alter-table-constraint)
+
+Add the specified constraint to the table. For descriptions of valid *table_constraint* values, see [CREATE TABLE](../ddl_create_table).
+
+#### DROP CONSTRAINT *constraint_name* [ RESTRICT | CASCADE ]
+
+Drop the named constraint from the table.
+
+- `RESTRICT` — Remove only the specified constraint.
+- `CASCADE` — Remove the specified constraint and any dependencies.
+
+#### RENAME [ COLUMN ] *column_name* TO *column_name*
+
+Rename a column to the specified name.
+
+### *alter_table_constraint*
+
+Specify a table constraint.
+
+#### CONSTRAINT *constraint_name*
+
+Specify the name of the constraint.
+
+#### CHECK ( expression ) | FOREIGN KEY ( column_names ) *reference_clause*
 
 ## See also
 

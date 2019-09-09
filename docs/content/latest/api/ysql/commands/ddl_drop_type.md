@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `DROP TYPE` statement to remove a type from the database.
+Use the `DROP TYPE` statement to remove a user-defined type from the database.
 
 ## Syntax
 
@@ -44,6 +44,8 @@ Use the `DROP TYPE` statement to remove a type from the database.
 </div>
 
 ## Semantics
+
+### *drop_type*
 
 ### *type_name*
 

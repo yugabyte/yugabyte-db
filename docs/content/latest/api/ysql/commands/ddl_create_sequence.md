@@ -1,5 +1,6 @@
 ---
 title: CREATE SEQUENCE
+linkTitle: CREATE SEQUENCE
 summary: Create a sequence in the current schema
 description: CREATE SEQUENCE
 menu:

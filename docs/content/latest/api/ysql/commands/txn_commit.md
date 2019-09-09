@@ -1,5 +1,6 @@
 ---
 title: COMMIT
+linkTitle: COMMIT
 description: COMMIT
 summary: COMMIT
 menu:
@@ -44,9 +45,11 @@ Use the `COMMIT` statement to commit the current transaction. All changes made b
 
 ## Semantics
 
-Supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` respectively. Even `READ COMMITTED` and `READ UNCOMMITTED` isolation levels are mapped to Snapshot Isolation.
+### *commit*
 
-Note that the Serializable isolation level support was added in [v1.2.6](../../../../releases/v1.2.6/). The examples on this page have not been updated to reflect this recent addition.
+```
+COMMIT [ TRANSACTION | WORK ]
+```
 
 ### WORK
 

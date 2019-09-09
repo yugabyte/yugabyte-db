@@ -2,7 +2,6 @@
 title: Chinook sample database
 linkTitle: Chinook
 description: Chinook sample database
-image: 
 menu:
   latest:
     identifier: chinook
@@ -28,15 +27,9 @@ The Chinook sample database includes:
 - A variety of indexes, primary and foreign key constraints
 - Over 15,000 rows of data
 
-For details, see the entity relationship diagram of the Chinook data model.
+For details, here's the entity relationship diagram of the Chinook data model.
 
-<details>
-
-<summary>Chinook E-R diagram</summary>
-
-![Chinook E-R diagram](/images/datasets/chinook/chinook-er-diagram.png)
-
-</details>
+![Chinook ER diagram](/images/sample-data/chinook/chinook-er-diagram.png)
 
 ## Install the Chinook database
 

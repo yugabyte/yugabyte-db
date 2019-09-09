@@ -28,13 +28,7 @@ The Northwind dataset includes sample data for the following.
 
 The Northwind sample database includes 14 tables and the table relationships are showcased in the following entity relationship diagram.
 
-<details>
-
-<summary>Northwind E-R diagram</summary>
-
-![Northwind E-R diagram](/images/datasets/northwind/northwind-er-diagram.jpg)
-
-</details>
+![Northwind ER diagram](/images/sample-data/northwind/northwind-er-diagram.png)
 
 ## Install the Northwind sample database
 
