@@ -1,6 +1,7 @@
 ---
 title: REVOKE
-description: REVOKE Command
+linkTitle: REVOKE
+description: REVOKE
 summary: REVOKE
 menu:
   latest:
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Remove access privileges.
+Use the `REVOKE` statement to remove access privileges.
 
 ## Syntax
 

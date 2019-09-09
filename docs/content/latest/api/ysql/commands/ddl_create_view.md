@@ -1,5 +1,6 @@
 ---
 title: CREATE VIEW
+linkTitle: CREATE VIEW
 summary: Create a new view in a database
 description: CREATE VIEW
 menu:
@@ -44,32 +45,42 @@ Use the `CREATE VIEW` statement to create a new view in a database. It defines t
 
 ## Semantics
 
-### *qualified_name*
+### *create_view*
+
+#### CREATE [ OR REPLACE ] VIEW *qualified_name* [ (*column_list* ) ] AS select
+
+Create a view.
+
+##### *qualified_name*
 
 Specify the name of the view. An error is raised if view with that name already exists in the specified database (unless the `OR REPLACE` option is used).
 
-### *column_list*
+##### *column_list*
 
-Specify a comma-separated list of columns.
+Specify a comma-separated list of columns. If not specified, the column names are deduced from the query.
+
+###### *select*
+
+Specify a `SELECT` or `VALUES` statement that will provide the columns and rows of the view.
 
 ## Examples
 
 Create a sample table.
 
 ```sql
-postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
+CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
 Insert some rows.
 
 ```sql
-postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
+INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 Create a view on the `sample` table.
 
 ```sql
-postgres=# CREATE VIEW sample_view AS SELECT * FROM sample WHERE v2 != 'b' ORDER BY k1 DESC;
+CREATE VIEW sample_view AS SELECT * FROM sample WHERE v2 != 'b' ORDER BY k1 DESC;
 ```
 
 Select from the view.
@@ -88,4 +99,5 @@ postgres=# SELECT * FROM sample_view;
 
 ## See also
 
-[`SELECT`](../dml_select)
+- [`DROP VIEW`](../ddl_drop_view)
+- [`SELECT`](../dml_select)

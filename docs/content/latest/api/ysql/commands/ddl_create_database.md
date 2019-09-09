@@ -1,5 +1,6 @@
 ---
 title: CREATE DATABASE
+linkTitle: CREATE DATABASE
 summary: Create a new database
 description: CREATE DATABASE
 menu:
@@ -44,11 +45,15 @@ Use the `CREATE DATABASE` statement to create a database that functions as a gro
 
 ## Semantics
 
+### *create_database*
+
 ### CREATE DATABASE *name*
 
 Specify the name of the database to be created. An error is raised if a YSQL database of the given `name` already exists.
 
-### WITH OWNER *user_name*
+### *create_database_options*
+
+### [ WITH ] OWNER *user_name*
 
 Specify the role name of the user who will own the new database. When not specified, the database creator is the owner.
 
@@ -62,11 +67,11 @@ Specify the character set encoding to use in the new database.
 
 ### LC_COLLATE *lc_collate*
 
-Specify the collation order (LC_COLLATE).
+Specify the collation order (`LC_COLLATE`).
 
 ### LC_CTYPE *lc_ctype*
 
-Specify the character classification (LC_CTYPE).
+Specify the character classification (`LC_CTYPE`).
 
 ### TABLESPACE *tablespace_name*
 

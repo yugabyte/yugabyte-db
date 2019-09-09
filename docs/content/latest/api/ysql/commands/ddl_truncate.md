@@ -45,7 +45,11 @@ Use the `TRUNCATE` statement to clear all rows in a table.
 
 ## Semantics
 
-### *name*
+### *truncate*
+
+#### TRUNCATE [ TABLE ] { { [ ONLY ] *name* [ * ] } [ , ... ] }
+
+#### *name*
 
 Specify the name of the table to be truncated.
 

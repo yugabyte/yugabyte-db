@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-YSQL support integers and floating-point and fixed-point numbers of different value ranges and precisions.
+YSQL support integers, floating-point numbers, and fixed-point numbers of different value ranges and precisions.
 
 Data type | Description | Min | Max |
 ----------|-------------|-----|-----|
@@ -33,7 +33,7 @@ Data type | Description | Min | Max |
 
 ## Integers
 
-- The following keywords are used to specify a column of type integer for different constraints including its value ranges.
+The following keywords are used to specify a column of type integer for different constraints, including its value ranges.
 
 ```
 type_specification ::= SMALLINT | INT | INTEGER | BIGINT
@@ -43,12 +43,11 @@ integer_literal ::= [ + | - ] digit [ { digit | , } ... ]
 - Columns of type `SMALLINT`, `INT`, `INTEGER`, or `BIGINT` can be part of the `PRIMARY KEY`.
 - Values of different integer data types are comparable and convertible to one another.
 - Values of integer data types are convertible but not comparable to floating point number.
-- Currently, values of floating point data types are not convertible to integers. This restriction
-will be removed in the near future.
+- Currently, values of floating point data types are not convertible to integers. This restriction will be removed in the near future.
 
 ## Floating-point numbers
 
-- The following keywords are used to specify a column of floating-point types for different constraints including its value ranges.
+The following keywords are used to specify a column of floating-point types for different constraints including its value ranges.
 
 ```
 type_specification ::= { FLOAT | DOUBLE PRECISION | REAL }
@@ -63,7 +62,7 @@ floating_point_literal ::= non_integer_fixed_point_literal | "NaN" | "Infinity" 
 
 ## Fixed-point numbers
 
-- The following keywords are used to specify a column of floating-point types for different constraints including its value ranges.
+The following keywords are used to specify a column of floating-point types for different constraints including its value ranges.
 
 ```
 type_specification ::= { DEC | DECIMAL | NUMERIC }

@@ -1,5 +1,6 @@
 ---
 title: PREPARE
+linkTitle: PREPARE
 description: PREPARE
 summary: PREPARE
 menu:

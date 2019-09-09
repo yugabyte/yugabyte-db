@@ -1,7 +1,8 @@
 ---
 title: GRANT
-description: GRANT Command
-summary: GRANT Command
+linkTitle: GRANT
+description: GRANT
+summary: GRANT statement
 menu:
   latest:
     identifier: api-ysql-commands-grant
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`GRANT` allows access privileges.
+Use the `GRANT` statement to allow access privileges.
 
 ## Syntax
 
