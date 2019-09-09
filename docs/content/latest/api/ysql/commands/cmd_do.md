@@ -7,8 +7,6 @@ menu:
   latest:
     identifier: api-ysql-commands-do
     parent: api-ysql-commands
-aliases:
-  - /latest/api/ysql/commands/cmd_do
 isTocNested: true
 showAsideToc: true
 ---
