@@ -129,7 +129,8 @@ instructions just as a reference for YCQL._
      content/latest/api/ysql/syntax_resources/
    ```
 
-   The last argument should end in `syntax_resources`, not `commands`, to get helpful `WARNING`s.
+   To display helpful `WARNING` messages, end the last argument with `syntax_resources`, not
+   `commands`.
 
    The following files will be regenerated _if they exist_:
 
@@ -209,5 +210,5 @@ You may need to add or edit grammar rules in an existing docs page.
 
 ### Notes
 
-- You may need to save the docs page file (for example, `commands/cmd_copy.md`) to force the page to
-  be re-rendered.
+- To force the page to be re-rendered, you may need to save the docs page file (for example,
+  `commands/cmd_copy.md`).
