@@ -337,9 +337,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   CHECKED_STATUS WaitForFlush();
 
-  // Synchronously perform a full compaction on both regular and intents RocksDBs.
-  CHECKED_STATUS CompactSync();
-
   // Prepares the transaction context for the alter schema operation.
   // An error will be returned if the specified schema is invalid (e.g.
   // key mismatch, or missing IDs)

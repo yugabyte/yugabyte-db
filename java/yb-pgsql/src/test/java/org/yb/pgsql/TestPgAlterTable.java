@@ -404,13 +404,6 @@ public class TestPgAlterTable extends BasePgSQLTest {
           "This ALTER TABLE command is not yet supported"
       );
 
-      // DEFAULT fails.
-      runInvalidQuery(
-          statement,
-          "ALTER TABLE test_table ADD a int DEFAULT 1",
-          "This ALTER TABLE command is not yet supported"
-      );
-
       // GENERATED fails.
       runInvalidQuery(
           statement,
@@ -457,6 +450,23 @@ public class TestPgAlterTable extends BasePgSQLTest {
           "ALTER TABLE pg_class SET WITHOUT OIDS",
           "permission denied: \"pg_class\" is a system catalog"
       );
+    }
+  }
+
+  @Test
+  public void testAddColumnWithDefault() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(id int)");
+      statement.execute("ALTER TABLE test_table ADD a int DEFAULT 11");
+      statement.execute("ALTER TABLE test_table ADD b int DEFAULT null");
+
+      // Check that defaults are generated as defined.
+      statement.execute("INSERT INTO test_table(id) values (1)");
+      assertQuery(statement, "SELECT a,b FROM test_table WHERE id = 1", new Row(11, null));
+      statement.execute("INSERT INTO test_table(id, b) values (2, 0)");
+      assertQuery(statement, "SELECT a,b FROM test_table WHERE id = 2", new Row(11, 0));
+      statement.execute("INSERT INTO test_table(id, a) values (3, 22)");
+      assertQuery(statement, "SELECT a,b FROM test_table WHERE id = 3", new Row(22, null));
     }
   }
 

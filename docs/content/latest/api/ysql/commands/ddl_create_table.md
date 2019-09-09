@@ -45,27 +45,43 @@ Use the `CREATE TABLE` statement to create a new table in a database. It defines
 
 ## Semantics
 
-### **table_name**
+### *create_table*
 
-- An error is raised if `table_name` already exists in the specified database.
+#### CREATE TABLE [ IF NOT EXISTS ] *table_name*
 
-### **expression**
+Create a table with *table_name*. An error is raised if `qualified_name` already exists in the specified database.
 
-- For DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
+### *table_elem*
 
-### **storage_parameters**
+### *column_constraint*
 
-- Storage parameters through the `WITH` clause are accepted [for PostgreSQL compatibility](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), but they will be ignored. The exceptions are `oids=true` and `user_catalog_table=true`, which are explicitly disallowed and will result in an error being thrown.
+#### CONSTRAINT *constraint_name*
 
-### PRIMARY KEY
+Specify the name of the constraint.
+
+### *table_constraint*
+
+#### CONSTRAINT *constraint_name*
+
+##### NOT NULL | NULL | CHECK ( *expression* ) | DEFAULT *expression* | UNIQUE index_parameters | PRIMARY KEY | *references_clause*
+
+###### PRIMARY KEY
 
 - Currently defining a primary key is required.
-- Primary key can be defined in either `column_constraint` or `table_constraint` but not in both of them.
-- Each row in a table is uniquely identified by its primary key. 
+- Primary key can be defined in either `column_constraint` or `table_constraint`, but not in both.
+- Each row in a table is uniquely identified by its primary key.
 
-### FOREIGN KEY
+###### FOREIGN KEY
 
 Foreign keys are supported starting v1.2.10.
+
+### *storage_parameter*
+
+Represent storage parameters [as defined by PostgreSQL](https://www.postgresql.org/docs/11/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS).
+
+#### *name* | *name* = *value*
+
+For DEFAULT keyword must be of the same type as the column it modifies. It must be of type boolean for CHECK constraints.
 
 ## Examples
 
@@ -117,7 +133,7 @@ postgres=# CREATE TABLE translations(message_id int UNIQUE,
 
 ## See also
 
-[`DROP TABLE`](../ddl_drop_table)
-[`ALTER TABLE`](../ddl_alter_table)
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
+- [`ALTER TABLE`](../ddl_alter_table)
+- [`CREATE TABLE AS`](../ddl_create_table_as)
+- [`CREATE TABLESPACE`](../ddl_create_tablespace)
+- [`DROP TABLE`](../ddl_drop_table)

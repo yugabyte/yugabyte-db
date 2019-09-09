@@ -311,7 +311,7 @@ void Log::SegmentAllocationTask() {
 }
 
 const Status Log::kLogShutdownStatus(
-    STATUS(ServiceUnavailable, "WAL is shutting down", "", ESHUTDOWN));
+    STATUS(ServiceUnavailable, "WAL is shutting down", "", Errno(ESHUTDOWN)));
 
 Status Log::Open(const LogOptions &options,
                  const std::string& tablet_id,

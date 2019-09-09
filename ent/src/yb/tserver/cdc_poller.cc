@@ -37,7 +37,8 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
                      std::function<cdc::CDCServiceProxy*(void)> get_proxy,
                      std::function<void(void)> remove_self_from_pollers_map,
                      ThreadPool* thread_pool,
-                     const std::shared_ptr<client::YBClient>& client) :
+                     const std::shared_ptr<client::YBClient>& client,
+                     CDCConsumer* cdc_consumer) :
     producer_tablet_info_(producer_tablet_info),
     consumer_tablet_info_(consumer_tablet_info),
     should_continue_polling_(std::move(should_continue_polling)),
@@ -50,14 +51,29 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
         consumer_tablet_info,
         client,
         std::bind(&CDCPoller::HandleApplyChanges, this, std::placeholders::_1))),
-    thread_pool_(thread_pool) {}
+    thread_pool_(thread_pool),
+    cdc_consumer_(cdc_consumer) {}
+
+CDCPoller::~CDCPoller() {
+  output_client_->Shutdown();
+}
+
+bool CDCPoller::CheckOnline() {
+  return cdc_consumer_ != nullptr;
+}
 
 void CDCPoller::Poll() {
+  if (!CheckOnline()) {
+    return;
+  }
   WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoPoll, this)),
               "Could not submit Poll to thread pool");
 }
 
 void CDCPoller::DoPoll() {
+  if (!CheckOnline()) {
+    return;
+  }
   cdc::GetChangesRequestPB req;
   req.set_stream_id(producer_tablet_info_.stream_id);
   req.set_tablet_id(producer_tablet_info_.tablet_id);
@@ -74,11 +90,17 @@ void CDCPoller::DoPoll() {
 }
 
 void CDCPoller::HandlePoll() {
+  if (!CheckOnline()) {
+    return;
+  }
   WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoHandlePoll, this)),
               "Could not submit HandlePoll to thread pool");
 }
 
 void CDCPoller::DoHandlePoll() {
+  if (!CheckOnline()) {
+    return;
+  }
   if (!should_continue_polling_()) {
     return remove_self_from_pollers_map_();
   }
@@ -93,12 +115,17 @@ void CDCPoller::DoHandlePoll() {
 }
 
 void CDCPoller::HandleApplyChanges(cdc::OutputClientResponse response) {
+  if (!CheckOnline()) {
+    return;
+  }
   WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::DoHandleApplyChanges, this, response)),
               "Could not submit HandleApplyChanges to thread pool");
 }
 
 void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
-
+  if (!CheckOnline()) {
+    return;
+  }
   if (!should_continue_polling_()) {
     return remove_self_from_pollers_map_();
   }

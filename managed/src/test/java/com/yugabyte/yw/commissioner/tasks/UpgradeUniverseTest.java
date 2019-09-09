@@ -387,7 +387,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(4, defaultUniverse.version);
-    assertEquals(0, taskInfo.getSubTasks().size());
+    // In case of an exception, the LoadBalancer enable task should be queued.
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -398,7 +399,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
     assertEquals(4, defaultUniverse.version);
-    assertEquals(0, taskInfo.getSubTasks().size());
+    // In case of an exception, the LoadBalancer enable task should be queued.
+    assertEquals(1, taskInfo.getSubTasks().size());
   }
 
   @Test

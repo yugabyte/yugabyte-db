@@ -44,7 +44,7 @@ Use the `DROP DOMAIN` statement to remove a domain from the database.
 
 ## Semantics
 
-### _name_
+### *name*
 
 Specify the name of the existing domain.
 
@@ -91,6 +91,5 @@ postgres=# DROP DOMAIN idx CASCADE;
 
 ## See also
 
-[`CREATE DOMAIN`](../ddl_create_domain)
-[`ALTER DOMAIN`](../ddl_alter_domain)
-
+- [`ALTER DOMAIN`](../ddl_alter_domain)
+- [`CREATE DOMAIN`](../ddl_create_domain)

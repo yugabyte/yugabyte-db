@@ -44,27 +44,31 @@ Use the `CREATE SEQUENCE` statement to create a new sequence in the current sche
 
 ## Semantics
 
-### _sequence_name_ 
+### *create_sequence*
 
-Specify the name of the sequence. An error is raised if a sequence with that name already exists in the current schema and `IF NOT EXISTS` is not specified.
+#### CREATE SEQUENCE *sequence_name* [ IF NOT EXISTS ]
 
-### _increment_
+Specify the name of the sequence (*sequence_name*). An error is raised if a sequence with that name already exists in the current schema and `IF NOT EXISTS` is not specified.
+
+### *sequence_options*
+
+#### INCREMENT BY *increment*
 
 Specify the difference between consecutive values in the sequence. Default is `1`.
 
-### _minvalue_
+#### MINVALUE *minvalue* | NO MINVALUE
 
  Specify the minimum value allowed in the sequence. If this value is reached (in a sequence with a negative increment), `nextval()` will return an error. If `NO MINVALUE` is specified, the default value will be used. Default is 1.
 
-### _maxvalue_
+### MAXVALUE *maxvalue* | NO MAXVALUE
 
 Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2<sup>63</sup> - 1`.
 
-### _start_
+### START WITH *start*
 
 Specify the first value in the sequence. `start` cannot be less than `minvalue`. Default is `1`.
 
-### _cache_
+### CACHE *cache*
 
 Specify how many numbers from the sequence to cache in the client. Default is `1`.
 
@@ -72,11 +76,11 @@ Specify how many numbers from the sequence to cache in the client. Default is `1
 
 In YSQL as in PostgreSQL, the sequence's data is stored in a persistent system table. In YSQL this table has one row per sequence and it stores the sequence data in two values:
 
-### _last_val_
+### *last_val*
 
 Stores the last value used or the next value to be used.
 
-### _is_called_
+### *is_called*
 
 Stores whether `last_val` has been used. If false, `last_val` is the next value in the sequence. Otherwise, `last_val` + `INCREMENT` is the next one.
 
@@ -103,6 +107,7 @@ Create a simple sequence that increments by 1 every time `nextval()` is called.
 ```sql
 postgres=# CREATE SEQUENCE s;
 ```
+
 ```
 CREATE SEQUENCE
 ```
@@ -179,8 +184,7 @@ nextval
 
 ## See also
 
-[`DROP SEQUENCE`](../drop_sequence)
-[`currval()`](../currval_sequence)
-[`lastval()`](../lastval_sequence)
-[`nextval()`](../nextval_sequence)
-[Other YSQL Statements](..)
+- [`DROP SEQUENCE`](../drop_sequence)
+- [`currval()`](../currval_sequence)
+- [`lastval()`](../lastval_sequence)
+- [`nextval()`](../nextval_sequence)

@@ -82,12 +82,13 @@ namespace {
 static const char* kShutdownMessage = "Shutdown connection";
 
 const Status& AbortedError() {
-  static Status result = STATUS(Aborted, kShutdownMessage, "", ESHUTDOWN);
+  static Status result = STATUS(Aborted, kShutdownMessage, "" /* msg2 */, Errno(ESHUTDOWN));
   return result;
 }
 
 const Status& ServiceUnavailableError() {
-  static Status result = STATUS(ServiceUnavailable, kShutdownMessage, "", ESHUTDOWN);
+  static Status result = STATUS(
+      ServiceUnavailable, kShutdownMessage, "" /* msg2 */, Errno(ESHUTDOWN));
   return result;
 }
 

@@ -47,6 +47,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/format.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"
 
 // Return the given status if it is not OK.
@@ -190,14 +191,143 @@ namespace yb {
 
 #define YB_STATUS_FORWARD_MACRO(r, data, tuple) data tuple
 
-enum class TimeoutError {
-  kMutexTimeout = 1,
-  kLockTimeout = 2,
-  kLockLimit = 3,
-};
-
 YB_STRONGLY_TYPED_BOOL(DupFileName);
 YB_STRONGLY_TYPED_BOOL(AddRef);
+
+// Extra error code assigned to status.
+class StatusErrorCode {
+ public:
+  virtual uint8_t Category() const = 0;
+  virtual size_t EncodedSize() const = 0;
+  virtual uint8_t* Encode(uint8_t* out) const = 0;
+  virtual std::string Message() const = 0;
+
+  virtual ~StatusErrorCode() = default;
+};
+
+template <class Tag>
+class StatusErrorCodeImpl : public StatusErrorCode {
+ public:
+  typedef typename Tag::Value Value;
+  // Category is a part of the wire protocol.
+  // So it should not be changed after first release containing this category.
+  // All used categories could be listed with the following command:
+  // git grep -h -F "uint8_t kCategory" | awk '{ print $6 }' | sort -n
+  static constexpr uint8_t kCategory = Tag::kCategory;
+
+  explicit StatusErrorCodeImpl(const Value& value) : value_(value) {}
+  explicit StatusErrorCodeImpl(Value&& value) : value_(std::move(value)) {}
+
+  explicit StatusErrorCodeImpl(const Status& status);
+
+  uint8_t Category() const override {
+    return kCategory;
+  }
+
+  size_t EncodedSize() const override {
+    return Tag::EncodedSize(value_);
+  }
+
+  uint8_t* Encode(uint8_t* out) const override {
+    return Tag::Encode(value_, out);
+  }
+
+  const Value& value() const {
+    return value_;
+  }
+
+  std::string Message() const override {
+    return Tag::ToMessage(value_);
+  }
+
+ private:
+  Value value_;
+};
+
+template <class Tag>
+bool operator==(const StatusErrorCodeImpl<Tag>& lhs, const StatusErrorCodeImpl<Tag>& rhs) {
+  return lhs.value() == rhs.value();
+}
+
+template <class Tag>
+bool operator==(const StatusErrorCodeImpl<Tag>& lhs, const typename Tag::Value& rhs) {
+  return lhs.value() == rhs;
+}
+
+template <class Tag>
+bool operator==(const typename Tag::Value& lhs, const StatusErrorCodeImpl<Tag>& rhs) {
+  return lhs == rhs.value();
+}
+
+template <class Tag>
+bool operator!=(const StatusErrorCodeImpl<Tag>& lhs, const StatusErrorCodeImpl<Tag>& rhs) {
+  return lhs.value() != rhs.value();
+}
+
+template <class Tag>
+bool operator!=(const StatusErrorCodeImpl<Tag>& lhs, const typename Tag::Value& rhs) {
+  return lhs.value() != rhs;
+}
+
+template <class Tag>
+bool operator!=(const typename Tag::Value& lhs, const StatusErrorCodeImpl<Tag>& rhs) {
+  return lhs != rhs.value();
+}
+
+template <class Enum>
+typename std::enable_if<std::is_enum<Enum>::value, std::string>::type
+IntegralToString(Enum e) {
+  return std::to_string(static_cast<typename std::underlying_type<Enum>::type>(e));
+}
+
+template <class Value>
+typename std::enable_if<!std::is_enum<Value>::value, std::string>::type
+IntegralToString(Value value) {
+  return std::to_string(value);
+}
+
+template <class ValueType>
+struct IntegralErrorTag {
+  typedef ValueType Value;
+
+  static Value Decode(const uint8_t* source) {
+    if (!source) {
+      return Value();
+    }
+    return Load<Value, LittleEndian>(source);
+  }
+
+  static size_t DecodeSize(const uint8_t* source) {
+    return sizeof(Value);
+  }
+
+  static size_t EncodedSize(Value value) {
+    return sizeof(Value);
+  }
+
+  static uint8_t* Encode(Value value, uint8_t* out) {
+    Store<Value, LittleEndian>(out, value);
+    return out + sizeof(Value);
+  }
+
+  static std::string DecodeToString(const uint8_t* source) {
+    return IntegralToString(Decode(source));
+  }
+};
+
+struct StatusCategoryDescription {
+  uint8_t id = 0;
+  const std::string* name = nullptr;
+  std::function<size_t(const uint8_t*)> decode_size;
+  std::function<std::string(const uint8_t*)> to_string;
+
+  StatusCategoryDescription() = default;
+
+  template <class Tag>
+  static StatusCategoryDescription Make(const std::string* name_) {
+    return StatusCategoryDescription{Tag::kCategory, name_, &Tag::DecodeSize, &Tag::DecodeToString};
+  }
+};
 
 class Status {
  public:
@@ -215,7 +345,9 @@ class Status {
 
   // Returns a text message of this status to be reported to users.
   // Returns empty string for success.
-  std::string ToUserMessage(bool include_code = false) const;
+  std::string ToUserMessage(bool include_code = false) const {
+    return ToString(false /* include_file_and_line */, include_code);
+  }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
@@ -237,10 +369,11 @@ class Status {
   // live and unchanged.
   Slice message() const;
 
-  int64_t error_code() const { return state_ ? state_->error_code : 0; }
+  const uint8_t* ErrorData(uint8_t category) const;
+  Slice ErrorCodesSlice() const;
 
-  const char* file_name() const { return state_ ? state_->file_name : ""; }
-  int line_number() const { return state_ ? state_->line_number : 0; }
+  const char* file_name() const;
+  int line_number() const;
 
   // Return a new Status object with the same state plus an additional leading message.
   Status CloneAndPrepend(const Slice& msg) const;
@@ -248,7 +381,9 @@ class Status {
   // Same as CloneAndPrepend, but appends to the message instead.
   Status CloneAndAppend(const Slice& msg) const;
 
-  Status CloneAndChangeErrorCode(int64_t error_code) const;
+  // Same as CloneAndPrepend, but adds new error code to status.
+  // If error code of the same category already present, it will be replaced with new one.
+  Status CloneAndAddErrorCode(const StatusErrorCode& error_code) const;
 
   // Returns the memory usage of this object without the object itself. Should
   // be used when embedded inside another object.
@@ -273,17 +408,50 @@ class Status {
          const Slice& msg,
          // Error message details. If present - would be combined as "msg: msg2".
          const Slice& msg2 = Slice(),
-         int64_t error_code = -1,
+         const StatusErrorCode* error = nullptr,
          DupFileName dup_file_name = DupFileName::kFalse);
 
   Status(Code code,
          const char* file_name,
          int line_number,
-         TimeoutError error_code);
-
-  Code code() const {
-    return (state_ == nullptr) ? kOk : static_cast<Code>(state_->code);
+         const Slice& msg,
+         // Error message details. If present - would be combined as "msg: msg2".
+         const Slice& msg2,
+         const StatusErrorCode& error,
+         DupFileName dup_file_name = DupFileName::kFalse)
+      : Status(code, file_name, line_number, msg, msg2, &error, dup_file_name) {
   }
+
+  Status(Code code,
+         const char* file_name,
+         int line_number,
+         const StatusErrorCode& error,
+         DupFileName dup_file_name = DupFileName::kFalse)
+      : Status(code, file_name, line_number, error.Message(), Slice(), error, dup_file_name) {
+  }
+
+  Status(Code code,
+         const char* file_name,
+         int line_number,
+         const Slice& msg,
+         const StatusErrorCode& error,
+         DupFileName dup_file_name = DupFileName::kFalse)
+      : Status(code, file_name, line_number, msg, error.Message(), error, dup_file_name) {
+  }
+
+
+  Status(Code code,
+         const char* file_name,
+         int line_number,
+         const Slice& msg,
+         const Slice& errors,
+         DupFileName dup_file_name);
+
+  Code code() const;
+
+  static void RegisterCategory(const StatusCategoryDescription& description);
+
+  static const std::string& CategoryName(uint8_t category);
 
   // Adopt status that was previously exported to C interface.
   explicit Status(YBCStatusStruct* state, AddRef add_ref);
@@ -295,40 +463,30 @@ class Status {
   YBCStatusStruct* DetachStruct();
 
  private:
-  struct State {
-    State(const State&) = delete;
-    void operator=(const State&) = delete;
-
-    std::atomic<size_t> counter;
-    uint32_t message_len;
-    uint8_t code;
-    int64_t error_code;
-    // This must always be a pointer to a constant string.
-    // The status object does not own this string.
-    const char* file_name;
-    int line_number;
-    char message[1];
-  };
+  struct State;
 
   bool file_name_duplicated() const;
 
   typedef boost::intrusive_ptr<State> StatePtr;
 
-  friend inline void intrusive_ptr_release(State* state) {
-    if (state->counter.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-      free(state);
-    }
-  }
+  explicit Status(StatePtr state);
 
-  friend inline void intrusive_ptr_add_ref(State* state) {
-    state->counter.fetch_add(1, std::memory_order_relaxed);
-  }
+  friend void intrusive_ptr_release(State* state);
+  friend void intrusive_ptr_add_ref(State* state);
 
   StatePtr state_;
-  static constexpr size_t kHeaderSize = offsetof(State, message);
 
   static_assert(sizeof(Code) == 4, "Code enum size is part of ABI");
 };
+
+class StatusCategoryRegisterer {
+ public:
+  explicit StatusCategoryRegisterer(const StatusCategoryDescription& description);
+};
+
+template <class Tag>
+StatusErrorCodeImpl<Tag>::StatusErrorCodeImpl(const Status& status)
+    : value_(Tag::Decode(status.ErrorData(Tag::kCategory))) {}
 
 inline Status&& MoveStatus(Status&& status) {
   return std::move(status);

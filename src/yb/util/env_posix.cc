@@ -132,6 +132,25 @@ static Atomic64 cur_thread_local_id_;
 
 namespace yb {
 
+Status IOError(const std::string& context, int err_number, const char* file, int line) {
+  Errno err(err_number);
+  switch (err_number) {
+    case ENOENT:
+      return Status(Status::kNotFound, file, line, context, err);
+    case EEXIST:
+      return Status(Status::kAlreadyPresent, file, line, context, err);
+    case EOPNOTSUPP:
+      return Status(Status::kNotSupported, file, line, context, err);
+    case EIO:
+      if (FLAGS_suicide_on_eio) {
+        // TODO: This is very, very coarse-grained. A more comprehensive
+        // approach is described in KUDU-616.
+        LOG(FATAL) << "Fatal I/O error, context: " << context;
+      }
+  }
+  return Status(Status::kIOError, file, line, context, err);
+}
+
 namespace {
 
 #if defined(__APPLE__)
@@ -187,26 +206,6 @@ class ScopedFdCloser {
  private:
   int fd_;
 };
-
-static Status IOError(const std::string& context, int err_number, const char* file, int line) {
-  switch (err_number) {
-    case ENOENT:
-      return Status(Status::kNotFound, file, line, context, ErrnoToString(err_number), err_number);
-    case EEXIST:
-      return Status(Status::kAlreadyPresent, file, line, context, ErrnoToString(err_number),
-                    err_number);
-    case EOPNOTSUPP:
-      return Status(Status::kNotSupported, file, line, context, ErrnoToString(err_number),
-                    err_number);
-    case EIO:
-      if (FLAGS_suicide_on_eio) {
-        // TODO: This is very, very coarse-grained. A more comprehensive
-        // approach is described in KUDU-616.
-        LOG(FATAL) << "Fatal I/O error, context: " << context;
-      }
-  }
-  return Status(Status::kIOError, file, line, context, ErrnoToString(err_number), err_number);
-}
 
 #define STATUS_IO_ERROR(context, err_number) IOError(context, err_number, __FILE__, __LINE__)
 
@@ -672,7 +671,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
         void *temp_buf = nullptr;
         auto err = posix_memalign(&temp_buf, FLAGS_o_direct_block_alignment_bytes, block_size_);
         if (err) {
-          return STATUS(RuntimeError, "Unable to allocate memory", ErrnoToString(err), err);
+          return STATUS(RuntimeError, "Unable to allocate memory", Errno(err));
         }
 
         uint8_t *start = static_cast<uint8_t *>(temp_buf);
@@ -913,9 +912,7 @@ class PosixEnv : public Env {
  public:
   PosixEnv();
   explicit PosixEnv(std::unique_ptr<FileFactory> file_factory);
-  virtual ~PosixEnv() {
-    fprintf(stdout, "Destroying Env::Default()\n");
-  }
+  virtual ~PosixEnv() = default;
 
   virtual Status NewSequentialFile(const std::string& fname,
                                    std::unique_ptr<SequentialFile>* result) override {
@@ -1191,7 +1188,7 @@ class PosixEnv : public Env {
 #if defined(__linux__)
       int rc = readlink("/proc/self/exe", buf.get(), size);
       if (rc == -1) {
-        return STATUS(IOError, "Unable to determine own executable path", "", errno);
+        return STATUS(IOError, "Unable to determine own executable path", "", Errno(errno));
       } else if (rc >= size) {
         // The buffer wasn't large enough
         size *= 2;

@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `DROP TYPE` command removes a type from the database.
+Use the `DROP TYPE` statement to remove a type from the database.
 
 ## Syntax
 
@@ -43,9 +43,11 @@ The `DROP TYPE` command removes a type from the database.
   </div>
 </div>
 
-Where
+## Semantics
 
-- `type_name` specifies the name of the user-defined type to drop.
+### *type_name*
+
+Specify the name of the user-defined type to drop.
 
 ## Examples
 
@@ -84,4 +86,4 @@ postgres=# DROP TYPE feature_range RESTRICT;
 ## See also
 
 - [`CREATE TYPE`](../ddl_create_type)
-- [Other YSQL Statements](..)
+

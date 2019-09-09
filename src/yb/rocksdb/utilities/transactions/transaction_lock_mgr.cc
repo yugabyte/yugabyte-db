@@ -40,6 +40,7 @@
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/murmurhash.h"
 #include "yb/rocksdb/util/thread_local.h"
+#include "yb/rocksdb/util/timeout_error.h"
 #include "yb/rocksdb/utilities/transactions/transaction_db_impl.h"
 
 namespace rocksdb {
@@ -355,14 +356,14 @@ Status TransactionLockMgr::AcquireLocked(LockMap* lock_map,
         lock_info.expiration_time = txn_lock_info.expiration_time;
         // lock_cnt does not change
       } else {
-        result = STATUS(TimedOut, yb::TimeoutError::kLockTimeout);
+        result = STATUS(TimedOut, TimeoutError(TimeoutCode::kLock));
       }
     }
   } else {  // Lock not held.
     // Check lock limit
     if (max_num_locks_ > 0 &&
         lock_map->lock_cnt.load(std::memory_order_acquire) >= max_num_locks_) {
-      result = STATUS(Busy, yb::TimeoutError::kLockLimit);
+      result = STATUS(Busy, TimeoutError(TimeoutCode::kLockLimit));
     } else {
       // acquire lock
       stripe->keys.insert({key, txn_lock_info});

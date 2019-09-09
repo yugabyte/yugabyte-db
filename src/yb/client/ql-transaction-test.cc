@@ -58,12 +58,18 @@ DECLARE_int32(master_inject_latency_on_transactional_tablet_lookups_ms);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_bool(rocksdb_disable_compactions);
 DECLARE_int32(delay_init_tablet_peer_ms);
+DECLARE_bool(fail_in_apply_if_no_metadata);
 
 namespace yb {
 namespace client {
 
 class QLTransactionTest : public TransactionTestBase {
  protected:
+  void SetUp() override {
+    SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
+    TransactionTestBase::SetUp();
+  }
+
   // We write data with first transaction then try to read it another one.
   // If commit is true, then first transaction is committed and second should be restarted.
   // Otherwise second transaction would see pending intents from first one and should not restart.
@@ -71,13 +77,18 @@ class QLTransactionTest : public TransactionTestBase {
 
   void TestWriteConflicts(bool do_restarts);
 
-  IsolationLevel GetIsolationLevel() override {
-    return IsolationLevel::SNAPSHOT_ISOLATION;
-  }
+  void TestReadOnlyTablets(IsolationLevel isolation_level,
+                           bool perform_write,
+                           bool written_intents_expected);
 
   CHECKED_STATUS WaitTransactionsCleaned() {
     return WaitFor(
       [this] { return !HasTransactions(); }, kTransactionApplyTime, "Transactions cleaned");
+  }
+
+  CHECKED_STATUS WaitIntentsCleaned() {
+    return WaitFor(
+      [this] { return CountIntents() == 0; }, kIntentsCleanupTime, "Intents cleaned");
   }
 };
 
@@ -540,6 +551,55 @@ TEST_F(QLTransactionTest, SimpleWriteConflict) {
   ASSERT_NOK(transaction->CommitFuture().get());
 }
 
+void QLTransactionTest::TestReadOnlyTablets(IsolationLevel isolation_level,
+                                            bool perform_write,
+                                            bool written_intents_expected) {
+  SetIsolationLevel(isolation_level);
+
+  YBTransactionPtr txn = CreateTransaction();
+  YBSessionPtr session = CreateSession(txn);
+
+  ReadRow(session, 0 /* key */);
+  if (perform_write) {
+    ASSERT_OK(WriteRow(session, 1 /* key */, 1 /* value */, WriteOpType::INSERT, Flush::kFalse));
+  }
+  ASSERT_OK(session->Flush());
+
+  // Verify intents were written if expected.
+  if (written_intents_expected) {
+    ASSERT_GT(CountIntents(), 0);
+  } else {
+    ASSERT_EQ(CountIntents(), 0);
+  }
+
+  // Commit and verify transaction and intents were applied/cleaned up.
+  ASSERT_OK(txn->CommitFuture().get());
+  ASSERT_OK(WaitTransactionsCleaned());
+  ASSERT_OK(WaitIntentsCleaned());
+}
+
+TEST_F(QLTransactionTest, ReadOnlyTablets) {
+  FLAGS_fail_in_apply_if_no_metadata = true;
+
+  // In snapshot isolation, tablets only read from will not have metadata written, so applying
+  // intents on this tablet would cause the test to fail.
+  TestReadOnlyTablets(IsolationLevel::SNAPSHOT_ISOLATION,
+                      false /* perform_write */,
+                      false /* written_intents_expected */);
+
+  // Writes always write intents, so metadata should be written and intents should be applied
+  // on this tablet.
+  TestReadOnlyTablets(IsolationLevel::SNAPSHOT_ISOLATION,
+                      true /* perform_write */,
+                      true /* written_intents_expected */);
+
+  // In serializable isolation, reads write intents, so metadata should be written and intents
+  // should be applied on this tablet.
+  TestReadOnlyTablets(IsolationLevel::SERIALIZABLE_ISOLATION,
+                      false /* perform_write */,
+                      true /* written_intents_expected */);
+}
+
 void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
   struct ActiveTransaction {
     YBTransactionPtr transaction;
@@ -707,7 +767,7 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
     VERIFY_ROW(session, 2, 2);
   }
 
-  ASSERT_EQ(CountIntents(), 0);
+  ASSERT_OK(WaitIntentsCleaned());
 
   ASSERT_OK(cluster_->RestartSync());
 }
@@ -742,12 +802,8 @@ TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
 
   ASSERT_OK(WaitTransactionsCleaned());
 
-  std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_aborted_intent_cleanup_ms));
-  tserver::TSTabletManager::TabletPeers peers;
-  cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTabletPeers(&peers);
-  for (std::shared_ptr<tablet::TabletPeer>  peer : peers) {
-    peer->tablet()->ForceRocksDBCompactInTest();
-  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
+  ASSERT_OK(cluster_->CompactTablets());
 
   // Should read { 1 -> 1, 2 -> 2 }, since T1 has been aborted.
   {
@@ -756,7 +812,7 @@ TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
     VERIFY_ROW(session, 2, 2);
   }
 
-  ASSERT_EQ(CountIntents(), 0);
+  ASSERT_OK(WaitIntentsCleaned());
 
   ASSERT_OK(cluster_->RestartSync());
 }

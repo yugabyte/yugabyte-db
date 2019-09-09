@@ -149,7 +149,7 @@ class CassandraFuture {
       const char* message = nullptr;
       size_t message_sz = 0;
       cass_future_error_message(future_.get(), &message, &message_sz);
-      return STATUS(RuntimeError, Slice(message, message_sz), Slice(), rc);
+      return STATUS(RuntimeError, Slice(message, message_sz));
     }
 
     return Status::OK();

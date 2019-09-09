@@ -41,6 +41,7 @@
 
 #include "yb/tserver/tserver_service.pb.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
@@ -56,6 +57,8 @@ DEFINE_uint64(transaction_delay_status_reply_usec_in_tests, 0,
               "For tests only. Delay handling status reply by specified amount of usec.");
 DEFINE_double(transaction_ignore_applying_probability_in_tests, 0,
               "Probability to ignore APPLYING update in tests.");
+DEFINE_test_flag(bool, fail_in_apply_if_no_metadata, false,
+                 "Fail when applying intents if metadata is not found.");
 
 METRIC_DEFINE_simple_counter(
     tablet, transaction_load_attempts,
@@ -853,9 +856,8 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                              boost::none,
                                              rocksdb::kDefaultQueryId);
-    while (iter.Valid()) {
+    for (iter.SeekToFirst(); iter.Valid(); iter.Next()) {
       count++;
-      iter.Next();
     }
 
     return count;
@@ -1081,6 +1083,7 @@ class TransactionParticipant::Impl : public RunningTransactionContext {
         // 2) Failed to notify status tablet that we applied transaction.
         LOG_WITH_PREFIX(WARNING) << Format("Apply of unknown transaction: $0", data);
         NotifyApplied(data);
+        CHECK(!FLAGS_fail_in_apply_if_no_metadata);
         return Status::OK();
       }
 

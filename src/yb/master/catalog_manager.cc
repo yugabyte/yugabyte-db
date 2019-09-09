@@ -4200,6 +4200,15 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
     table->AbortTasks();
   }
 
+  // Batch remove all CDC streams subscribed to the newly DELETING tables.
+  TRACE("Deleting CDC streams on table");
+  vector<TableId> id_list;
+  id_list.reserve(user_tables.size());
+  for (auto &table_and_lock : user_tables) {
+    id_list.push_back(table_and_lock.first->id());
+  }
+  RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
+
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto &table_and_lock : user_tables) {
     auto &table = table_and_lock.first;
@@ -4536,6 +4545,11 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
 Status CatalogManager::DeleteCDCStreamsForTable(const TableId& table) {
   return Status::OK();
 }
+
+Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_ids) {
+  return Status::OK();
+}
+
 
 bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
   return false;

@@ -52,19 +52,19 @@ Execute the statement and show actual run times and other statistics.
 
 ## Examples
 
-- Create a sample table.
+Create a sample table.
 
 ```sql
 postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
-- Insert some rows.
+Insert some rows.
 
 ```sql
 postgres=# INSERT INTO sample(k1, k2, v1, v2) VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
-- Check the execution plan for simple select (condition will get pushed down).
+Check the execution plan for simple select (condition will get pushed down).
 
 ```sql
 postgres=# EXPLAIN SELECT * FROM sample WHERE k1 = 1;
@@ -91,7 +91,7 @@ postgres=# EXPLAIN SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;
 (2 rows)
 ```
 
-- Check execution with `ANALYZE` option.
+Check execution with `ANALYZE` option.
 
 ```sql
 postgres=# EXPLAIN ANALYZE SELECT * FROM sample WHERE k1 = 2 and floor(k2 + 1.5) = v1;

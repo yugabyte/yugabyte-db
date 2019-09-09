@@ -75,6 +75,7 @@ CDCConsumer::~CDCConsumer() {
 }
 
 void CDCConsumer::Shutdown() {
+  LOG(INFO) << "Shutting down CDC Consumer";
   {
     std::unique_lock<std::mutex> l(should_run_mutex_);
     should_run_ = false;
@@ -123,6 +124,7 @@ std::vector<std::string> CDCConsumer::TEST_producer_tablets_running() {
 }
 
 void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB& consumer_registry) {
+  LOG(INFO) << "Updating CDC consumer registry: " << consumer_registry.DebugString();
   std::unique_lock<rw_spinlock> lock(master_data_mutex_);
 
   producer_consumer_tablet_map_from_master_.clear();
@@ -162,8 +164,7 @@ void CDCConsumer::TriggerPollForNewTablets() {
           std::bind(&CDCConsumer::ShouldContinuePolling, this, entry.first),
           std::bind(&cdc::CDCConsumerProxyManager::GetProxy, proxy_manager_.get(), entry.first),
           std::bind(&CDCConsumer::RemoveFromPollersMap, this, entry.first),
-          thread_pool_.get(),
-          client_);
+          thread_pool_.get(), client_, this);
       LOG_WITH_PREFIX(INFO) << Format("Start polling for producer tablet $0",
                                       entry.first.tablet_id);
       producer_pollers_map_[entry.first] = cdc_poller;

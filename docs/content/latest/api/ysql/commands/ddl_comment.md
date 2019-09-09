@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `COMMENT` statement to set or update a comment on a database object.
+Use the `COMMENT` statement to set, update, or remove a comment on a database object.
 
 ## Syntax
 
@@ -43,6 +43,8 @@ Use the `COMMENT` statement to set or update a comment on a database object.
   </div>
 </div>
 
+## Semantics
+
 To remove a comment, set the value to `NULL`.
 
 ## Examples
@@ -68,7 +70,3 @@ COMMENT ON RULE pg_settings_u ON pg_settings IS 'Setting update rule';
 ### Remove a comment
 
 COMMENT ON TABLE some_table IS NULL;
-
-## See also
-
-[Other YSQL Statements](..)
