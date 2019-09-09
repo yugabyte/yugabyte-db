@@ -1,5 +1,6 @@
 ---
 title: COMMIT
+linkTitle: COMMIT
 description: COMMIT
 summary: COMMIT
 menu:

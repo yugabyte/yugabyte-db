@@ -1,5 +1,6 @@
 ---
 title: DROP TABLE
+linkTitle: DROP TABLE
 summary: Remove a table
 description: DROP TABLE
 menu:

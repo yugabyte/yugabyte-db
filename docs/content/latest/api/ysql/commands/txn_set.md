@@ -1,5 +1,6 @@
 ---
 title: SET TRANSACTION
+linkTitle: SET TRANSACTION
 description: SET TRANSACTION
 summary: SET TRANSACTION
 menu:

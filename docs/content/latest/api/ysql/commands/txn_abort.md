@@ -1,7 +1,8 @@
 ---
 title: ABORT
-description: ABORT command
-summary: Overview of the ABORT command.
+linkTitle: ABORT
+description: ABORT
+summary: Overview of the ABORT statement
 menu:
   latest:
     identifier: api-ysql-commands-txn-abort

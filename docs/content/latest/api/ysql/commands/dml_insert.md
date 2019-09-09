@@ -1,5 +1,6 @@
 ---
 title: INSERT
+linkTitle: INSERT
 summary: Add new rows to a table
 description: INSERT
 menu:

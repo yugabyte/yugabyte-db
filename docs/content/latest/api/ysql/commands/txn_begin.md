@@ -1,5 +1,6 @@
 ---
 title: BEGIN
+linkTitle: BEGIN
 description: BEGIN
 summary: BEGIN
 menu:

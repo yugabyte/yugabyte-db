@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use a `SET` statement to update a run-time control parameter.
+Use the `SET` statement to update a run-time control parameter.
 
 ## Syntax
 

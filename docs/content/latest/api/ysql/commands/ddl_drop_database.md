@@ -1,5 +1,6 @@
 ---
 title: DROP DATABASE
+linkTitle: DROP DATABASE
 summary: Remove a database
 description: DROP DATABASE
 menu:

@@ -1,5 +1,6 @@
 ---
 title: DROP DOMAIN
+linkTitle: DROP DOMAIN
 summary: Remove a domain
 description: DROP DOMAIN
 menu:

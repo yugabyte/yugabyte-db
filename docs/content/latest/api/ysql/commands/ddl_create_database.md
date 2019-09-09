@@ -1,5 +1,6 @@
 ---
 title: CREATE DATABASE
+linkTitle: CREATE DATABASE
 summary: Create a new database
 description: CREATE DATABASE
 menu:

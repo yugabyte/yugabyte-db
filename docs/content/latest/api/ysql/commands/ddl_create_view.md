@@ -1,5 +1,6 @@
 ---
 title: CREATE VIEW
+linkTitle: CREATE VIEW
 summary: Create a new view in a database
 description: CREATE VIEW
 menu:

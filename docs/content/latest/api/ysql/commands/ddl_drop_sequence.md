@@ -1,5 +1,6 @@
 ---
 title: DROP SEQUENCE
+linkTitle: DROP SEQUENCE
 summary: Drop a sequence in the current schema
 description: DROP SEQUENCE
 menu:
