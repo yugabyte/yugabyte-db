@@ -2,6 +2,7 @@
 #define AG_AG_EXTENDED_TYPE_H
 
 #include "postgres.h"
+
 #include "ag_jsonbx.h"
 
 /*

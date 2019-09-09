@@ -9,8 +9,8 @@
  *
  *-------------------------------------------------------------------------
  */
-#ifndef AG_AG_JSONB_H
-#define AG_AG_JSONB_H
+#ifndef AG_AG_JSONBX_H
+#define AG_AG_JSONBX_H
 
 #include "lib/stringinfo.h"
 #include "utils/array.h"
@@ -19,21 +19,21 @@
 /* Tokens used when sequentially processing a jsonb value */
 typedef enum
 {
-	WJBX_DONE,
-	WJBX_KEY,
-	WJBX_VALUE,
-	WJBX_ELEM,
-	WJBX_BEGIN_ARRAY,
-	WJBX_END_ARRAY,
-	WJBX_BEGIN_OBJECT,
-	WJBX_END_OBJECT
+    WJBX_DONE,
+    WJBX_KEY,
+    WJBX_VALUE,
+    WJBX_ELEM,
+    WJBX_BEGIN_ARRAY,
+    WJBX_END_ARRAY,
+    WJBX_BEGIN_OBJECT,
+    WJBX_END_OBJECT
 } JsonbXIteratorToken;
 
 /* Strategy numbers for GIN index opclasses */
-#define JsonbXContainsStrategyNumber	7
-#define JsonbXExistsStrategyNumber		9
-#define JsonbXExistsAnyStrategyNumber	10
-#define JsonbXExistsAllStrategyNumber	11
+#define JsonbXContainsStrategyNumber 7
+#define JsonbXExistsStrategyNumber 9
+#define JsonbXExistsAnyStrategyNumber 10
+#define JsonbXExistsAllStrategyNumber 11
 
 /*
  * In the standard jsonb_ops GIN opclass for jsonb, we choose to index both
@@ -56,19 +56,19 @@ typedef enum
  * matches against the heap tuple; currently, this costs nothing because we
  * must always recheck for other reasons.
  */
-#define JXGINFLAG_KEY	0x01	/* key (or string array element) */
-#define JXGINFLAG_NULL	0x02	/* null value */
-#define JXGINFLAG_BOOL	0x03	/* boolean value */
-#define JXGINFLAG_NUM	0x04	/* numeric value */
-#define JXGINFLAG_STR	0x05	/* string value (if not an array element) */
-#define JXGINFLAG_HASHED 0x10	/* OR'd into flag if value was hashed */
-#define JXGIN_MAXLENGTH	125		/* max length of text part before hashing */
+#define JXGINFLAG_KEY 0x01 /* key (or string array element) */
+#define JXGINFLAG_NULL 0x02 /* null value */
+#define JXGINFLAG_BOOL 0x03 /* boolean value */
+#define JXGINFLAG_NUM 0x04 /* numeric value */
+#define JXGINFLAG_STR 0x05 /* string value (if not an array element) */
+#define JXGINFLAG_HASHED 0x10 /* OR'd into flag if value was hashed */
+#define JXGIN_MAXLENGTH 125 /* max length of text part before hashing */
 
 /* Convenience macros */
-#define DatumGetJsonbXP(d)		((JsonbX *) PG_DETOAST_DATUM(d))
-#define JsonbXPGetDatum(p)		PointerGetDatum(p)
-#define PG_GETARG_JSONBX_P(x)	DatumGetJsonbXP(PG_GETARG_DATUM(x))
-#define PG_RETURN_JSONBX_P(x)	PG_RETURN_POINTER(x)
+#define DatumGetJsonbXP(d) ((JsonbX *)PG_DETOAST_DATUM(d))
+#define JsonbXPGetDatum(p) PointerGetDatum(p)
+#define PG_GETARG_JSONBX_P(x) DatumGetJsonbXP(PG_GETARG_DATUM(x))
+#define PG_RETURN_JSONBX_P(x) PG_RETURN_POINTER(x)
 
 typedef struct JsonbXPair JsonbXPair;
 typedef struct JsonbXValue JsonbXValue;
@@ -138,40 +138,42 @@ typedef struct JsonbXValue JsonbXValue;
  */
 typedef uint32 JXEntry;
 
-#define JXENTRY_OFFLENMASK		0x0FFFFFFF
-#define JXENTRY_TYPEMASK		0x70000000
-#define JXENTRY_HAS_OFF			0x80000000
+#define JXENTRY_OFFLENMASK 0x0FFFFFFF
+#define JXENTRY_TYPEMASK 0x70000000
+#define JXENTRY_HAS_OFF 0x80000000
 
 /* values stored in the type bits */
-#define JXENTRY_ISSTRING		0x00000000
-#define JXENTRY_ISNUMERIC		0x10000000
-#define JXENTRY_ISBOOL_FALSE	0x20000000
-#define JXENTRY_ISBOOL_TRUE		0x30000000
-#define JXENTRY_ISNULL			0x40000000
-#define JXENTRY_ISCONTAINER		0x50000000	/* array or object */
-#define JXENTRY_ISJSONBX		0x70000000  // out type designator
+#define JXENTRY_ISSTRING 0x00000000
+#define JXENTRY_ISNUMERIC 0x10000000
+#define JXENTRY_ISBOOL_FALSE 0x20000000
+#define JXENTRY_ISBOOL_TRUE 0x30000000
+#define JXENTRY_ISNULL 0x40000000
+#define JXENTRY_ISCONTAINER 0x50000000 /* array or object */
+#define JXENTRY_ISJSONBX 0x70000000 // out type designator
 
 /* Access macros.  Note possible multiple evaluations */
-#define JBXE_OFFLENFLD(je_)		((je_) & JXENTRY_OFFLENMASK)
-#define JBXE_HAS_OFF(je_)		(((je_) & JXENTRY_HAS_OFF) != 0)
-#define JBXE_ISSTRING(je_)		(((je_) & JXENTRY_TYPEMASK) == JXENTRY_ISSTRING)
-#define JBXE_ISNUMERIC(je_)		(((je_) & JXENTRY_TYPEMASK) == JXENTRY_ISNUMERIC)
-#define JBXE_ISCONTAINER(je_)	(((je_) & JXENTRY_TYPEMASK) == JXENTRY_ISCONTAINER)
-#define JBXE_ISNULL(je_)		(((je_) & JXENTRY_TYPEMASK) == JXENTRY_ISNULL)
-#define JBXE_ISBOOL_TRUE(je_)	(((je_) & JXENTRY_TYPEMASK) == JXENTRY_ISBOOL_TRUE)
-#define JBXE_ISBOOL_FALSE(je_)	(((je_) & JXENTRY_TYPEMASK) == JXENTRY_ISBOOL_FALSE)
-#define JBXE_ISBOOL(je_)		(JBXE_ISBOOL_TRUE(je_) || JBXE_ISBOOL_FALSE(je_))
-#define JBXE_ISJSONBX(je_)      (((je_) & JXENTRY_TYPEMASK) == JXENTRY_ISJSONBX)
+#define JBXE_OFFLENFLD(je_) ((je_)&JXENTRY_OFFLENMASK)
+#define JBXE_HAS_OFF(je_) (((je_)&JXENTRY_HAS_OFF) != 0)
+#define JBXE_ISSTRING(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISSTRING)
+#define JBXE_ISNUMERIC(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISNUMERIC)
+#define JBXE_ISCONTAINER(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISCONTAINER)
+#define JBXE_ISNULL(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISNULL)
+#define JBXE_ISBOOL_TRUE(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISBOOL_TRUE)
+#define JBXE_ISBOOL_FALSE(je_) \
+    (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISBOOL_FALSE)
+#define JBXE_ISBOOL(je_) (JBXE_ISBOOL_TRUE(je_) || JBXE_ISBOOL_FALSE(je_))
+#define JBXE_ISJSONBX(je_) (((je_)&JXENTRY_TYPEMASK) == JXENTRY_ISJSONBX)
 
 /* Macro for advancing an offset variable to the next JXEntry */
 #define JBXE_ADVANCE_OFFSET(offset, je) \
-	do { \
-		JXEntry	je_ = (je); \
-		if (JBXE_HAS_OFF(je_)) \
-			(offset) = JBXE_OFFLENFLD(je_); \
-		else \
-			(offset) += JBXE_OFFLENFLD(je_); \
-	} while(0)
+    do \
+    { \
+        JXEntry je_ = (je); \
+        if (JBXE_HAS_OFF(je_)) \
+            (offset) = JBXE_OFFLENFLD(je_); \
+        else \
+            (offset) += JBXE_OFFLENFLD(je_); \
+    } while (0)
 
 /*
  * We store an offset, not a length, every JB_OFFSET_STRIDE children.
@@ -180,7 +182,7 @@ typedef uint32 JXEntry;
  * bits instead.  This allows changes in the offset-placement heuristic
  * without breaking on-disk compatibility.
  */
-#define JBX_OFFSET_STRIDE		32
+#define JBX_OFFSET_STRIDE 32
 
 /*
  * A jsonbx array or object node, within a JsonbX Datum.
@@ -194,37 +196,40 @@ typedef uint32 JXEntry;
  */
 typedef struct JsonbXContainer
 {
-	uint32		header;			/* number of elements or key/value pairs, and
+    uint32 header; /* number of elements or key/value pairs, and
 								 * flags */
-	JXEntry		children[FLEXIBLE_ARRAY_MEMBER];
+    JXEntry children[FLEXIBLE_ARRAY_MEMBER];
 
-	/* the data for each child node follows. */
+    /* the data for each child node follows. */
 } JsonbXContainer;
 
 /* flags for the header-field in JsonbContainer */
-#define JBX_CMASK				0x0FFFFFFF	/* mask for count field */
-#define JBX_FSCALAR				0x10000000	/* flag bits */
-#define JBX_FOBJECT				0x20000000
-#define JBX_FARRAY				0x40000000
+#define JBX_CMASK 0x0FFFFFFF /* mask for count field */
+#define JBX_FSCALAR 0x10000000 /* flag bits */
+#define JBX_FOBJECT 0x20000000
+#define JBX_FARRAY 0x40000000
 
 /* convenience macros for accessing a JsonbXContainer struct */
-#define JsonbXContainerSize(jc)		((jc)->header & JBX_CMASK)
-#define JsonbXContainerIsScalar(jc)	(((jc)->header & JBX_FSCALAR) != 0)
-#define JsonbXContainerIsObject(jc)	(((jc)->header & JBX_FOBJECT) != 0)
-#define JsonbXContainerIsArray(jc)	(((jc)->header & JBX_FARRAY) != 0)
+#define JsonbXContainerSize(jc) ((jc)->header & JBX_CMASK)
+#define JsonbXContainerIsScalar(jc) (((jc)->header & JBX_FSCALAR) != 0)
+#define JsonbXContainerIsObject(jc) (((jc)->header & JBX_FOBJECT) != 0)
+#define JsonbXContainerIsArray(jc) (((jc)->header & JBX_FARRAY) != 0)
 
 /* The top-level on-disk format for a jsonbx datum. */
 typedef struct
 {
-	int32		vl_len_;		/* varlena header (do not touch directly!) */
-	JsonbXContainer root;
+    int32 vl_len_; /* varlena header (do not touch directly!) */
+    JsonbXContainer root;
 } JsonbX;
 
 /* convenience macros for accessing the root container in a JsonbX datum */
-#define JBX_ROOT_COUNT(jbxp_)		(*(uint32 *) VARDATA(jbxp_) & JBX_CMASK)
-#define JBX_ROOT_IS_SCALAR(jbxp_)	((*(uint32 *) VARDATA(jbxp_) & JBX_FSCALAR) != 0)
-#define JBX_ROOT_IS_OBJECT(jbxp_)	((*(uint32 *) VARDATA(jbxp_) & JBX_FOBJECT) != 0)
-#define JBX_ROOT_IS_ARRAY(jbxp_)	((*(uint32 *) VARDATA(jbxp_) & JBX_FARRAY) != 0)
+#define JBX_ROOT_COUNT(jbxp_) (*(uint32 *)VARDATA(jbxp_) & JBX_CMASK)
+#define JBX_ROOT_IS_SCALAR(jbxp_) \
+    ((*(uint32 *)VARDATA(jbxp_) & JBX_FSCALAR) != 0)
+#define JBX_ROOT_IS_OBJECT(jbxp_) \
+    ((*(uint32 *)VARDATA(jbxp_) & JBX_FOBJECT) != 0)
+#define JBX_ROOT_IS_ARRAY(jbxp_) \
+    ((*(uint32 *)VARDATA(jbxp_) & JBX_FARRAY) != 0)
 
 /*
  * IMPORTANT NOTE: For jbvXType, IsAJsonbXScalar() checks that the type is
@@ -233,18 +238,18 @@ typedef struct
  */
 enum jbvXType
 {
-	/* Scalar types */
-	jbvXNull = 0x0,
-	jbvXString,
-	jbvXNumeric,
-	jbvXInteger8,
-	jbvXFloat8,
-	jbvXBool,
-	/* Composite types */
-	jbvXArray = 0x10,
-	jbvXObject,
-	/* Binary (i.e. struct Jsonb) jbvArray/jbvObject */
-	jbvXBinary
+    /* Scalar types */
+    jbvXNull = 0x0,
+    jbvXString,
+    jbvXNumeric,
+    jbvXInteger8,
+    jbvXFloat8,
+    jbvXBool,
+    /* Composite types */
+    jbvXArray = 0x10,
+    jbvXObject,
+    /* Binary (i.e. struct Jsonb) jbvArray/jbvObject */
+    jbvXBinary
 };
 
 /*
@@ -255,43 +260,43 @@ enum jbvXType
  */
 struct JsonbXValue
 {
-	enum jbvXType type;			/* Influences sort order */
+    enum jbvXType type; /* Influences sort order */
 
-	union
-	{
-		int64	integer8;		/* Cypher 8 byte Integer */
-		float8	float8;			/* Cypher 8 byte Float */
-		Numeric numeric;
-		bool		boolean;
-		struct
-		{
-			int			len;
-			char	   *val;	/* Not necessarily null-terminated */
-		}			string;		/* String primitive type */
+    union
+    {
+        int64 integer8; /* Cypher 8 byte Integer */
+        float8 float8; /* Cypher 8 byte Float */
+        Numeric numeric;
+        bool boolean;
+        struct
+        {
+            int len;
+            char *val; /* Not necessarily null-terminated */
+        } string; /* String primitive type */
 
-		struct
-		{
-			int			nElems;
-			JsonbXValue *elems;
-			bool		rawScalar;	/* Top-level "raw scalar" array? */
-		}			array;		/* Array container type */
+        struct
+        {
+            int nElems;
+            JsonbXValue *elems;
+            bool rawScalar; /* Top-level "raw scalar" array? */
+        } array; /* Array container type */
 
-		struct
-		{
-			int			nPairs; /* 1 pair, 2 elements */
-			JsonbXPair  *pairs;
-		}			object;		/* Associative container type */
+        struct
+        {
+            int nPairs; /* 1 pair, 2 elements */
+            JsonbXPair *pairs;
+        } object; /* Associative container type */
 
-		struct
-		{
-			int			len;
-			JsonbXContainer *data;
-		}			binary;		/* Array or object, in on-disk format */
-	}			val;
+        struct
+        {
+            int len;
+            JsonbXContainer *data;
+        } binary; /* Array or object, in on-disk format */
+    } val;
 };
 
-#define IsAJsonbXScalar(jsonbXval)	((jsonbXval)->type >= jbvXNull && \
-									(jsonbXval)->type <= jbvXBool)
+#define IsAJsonbXScalar(jsonbXval) \
+    ((jsonbXval)->type >= jbvXNull && (jsonbXval)->type <= jbvXBool)
 
 /*
  * Key/value pair within an Object.
@@ -305,17 +310,17 @@ struct JsonbXValue
  */
 struct JsonbXPair
 {
-	JsonbXValue	key;			/* Must be a jbvString */
-	JsonbXValue	value;			/* May be of any type */
-	uint32		order;			/* Pair's index in original sequence */
+    JsonbXValue key; /* Must be a jbvString */
+    JsonbXValue value; /* May be of any type */
+    uint32 order; /* Pair's index in original sequence */
 };
 
 /* Conversion state used when parsing JsonbX from text, or for type coercion */
 typedef struct JsonbXParseState
 {
-	JsonbXValue	contVal;
-	Size		size;
-	struct JsonbXParseState *next;
+    JsonbXValue contVal;
+    Size size;
+    struct JsonbXParseState *next;
 } JsonbXParseState;
 
 /*
@@ -324,41 +329,41 @@ typedef struct JsonbXParseState
  */
 typedef enum
 {
-	JBXI_ARRAY_START,
-	JBXI_ARRAY_ELEM,
-	JBXI_OBJECT_START,
-	JBXI_OBJECT_KEY,
-	JBXI_OBJECT_VALUE
+    JBXI_ARRAY_START,
+    JBXI_ARRAY_ELEM,
+    JBXI_OBJECT_START,
+    JBXI_OBJECT_KEY,
+    JBXI_OBJECT_VALUE
 } JsonbXIterState;
 
 typedef struct JsonbXIterator
 {
-	/* Container being iterated */
-	JsonbXContainer *container;
-	uint32		nElems;			/* Number of elements in children array (will
+    /* Container being iterated */
+    JsonbXContainer *container;
+    uint32 nElems; /* Number of elements in children array (will
 								 * be nPairs for objects) */
-	bool		isScalar;		/* Pseudo-array scalar value? */
-	JXEntry	   *children;		/* JXEntrys for child nodes */
-	/* Data proper.  This points to the beginning of the variable-length data */
-	char	   *dataProper;
+    bool isScalar; /* Pseudo-array scalar value? */
+    JXEntry *children; /* JXEntrys for child nodes */
+    /* Data proper.  This points to the beginning of the variable-length data */
+    char *dataProper;
 
-	/* Current item in buffer (up to nElems) */
-	int			curIndex;
+    /* Current item in buffer (up to nElems) */
+    int curIndex;
 
-	/* Data offset corresponding to current item */
-	uint32		curDataOffset;
+    /* Data offset corresponding to current item */
+    uint32 curDataOffset;
 
-	/*
+    /*
 	 * If the container is an object, we want to return keys and values
 	 * alternately; so curDataOffset points to the current key, and
 	 * curValueOffset points to the current value.
 	 */
-	uint32		curValueOffset;
+    uint32 curValueOffset;
 
-	/* Private state */
-	JsonbXIterState state;
+    /* Private state */
+    JsonbXIterState state;
 
-	struct JsonbXIterator *parent;
+    struct JsonbXIterator *parent;
 } JsonbXIterator;
 
 /* Support functions */
@@ -366,30 +371,29 @@ extern short padBufferToInt(StringInfo buffer);
 extern int reserveFromBuffer(StringInfo buffer, int len);
 extern uint32 getJsonbXOffset(const JsonbXContainer *jc, int index);
 extern uint32 getJsonbXLength(const JsonbXContainer *jc, int index);
-extern int	compareJsonbXContainers(JsonbXContainer *a, JsonbXContainer *b);
+extern int compareJsonbXContainers(JsonbXContainer *a, JsonbXContainer *b);
 extern JsonbXValue *findJsonbXValueFromContainer(JsonbXContainer *sheader,
-												 uint32 flags,
-												 JsonbXValue *key);
+                                                 uint32 flags,
+                                                 JsonbXValue *key);
 extern JsonbXValue *getIthJsonbXValueFromContainer(JsonbXContainer *sheader,
-												   uint32 i);
+                                                   uint32 i);
 extern JsonbXValue *pushJsonbXValue(JsonbXParseState **pstate,
-									JsonbXIteratorToken seq,
-									JsonbXValue *jbVal);
+                                    JsonbXIteratorToken seq,
+                                    JsonbXValue *jbVal);
 extern JsonbXIterator *JsonbXIteratorInit(JsonbXContainer *container);
-extern JsonbXIteratorToken JsonbXIteratorNext(JsonbXIterator **it,
-											  JsonbXValue *val,
-											  bool skipNested);
+extern JsonbXIteratorToken
+JsonbXIteratorNext(JsonbXIterator **it, JsonbXValue *val, bool skipNested);
 extern JsonbX *JsonbXValueToJsonbX(JsonbXValue *val);
 extern bool JsonbXDeepContains(JsonbXIterator **val,
-							   JsonbXIterator **mContained);
+                               JsonbXIterator **mContained);
 extern void JsonbXHashScalarValue(const JsonbXValue *scalarVal, uint32 *hash);
 extern void JsonbXHashScalarValueExtended(const JsonbXValue *scalarVal,
-										  uint64 *hash, uint64 seed);
+                                          uint64 *hash, uint64 seed);
 
 /* jsonbx.c support functions */
 extern char *JsonbXToCString(StringInfo out, JsonbXContainer *in,
-							 int estimated_len);
+                             int estimated_len);
 extern char *JsonbXToCStringIndent(StringInfo out, JsonbXContainer *in,
-								   int estimated_len);
+                                   int estimated_len);
 
-#endif							/* AG_AG_JSONB_H */
+#endif /* AG_AG_JSONBX_H */

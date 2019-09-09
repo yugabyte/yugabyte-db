@@ -18,22 +18,21 @@
 
 typedef enum
 {
-	JSON_TOKEN_INVALID,
-	JSON_TOKEN_STRING,
-	JSON_TOKEN_INTEGER8,
-	JSON_TOKEN_FLOAT8,
-	JSON_TOKEN_OBJECT_START,
-	JSON_TOKEN_OBJECT_END,
-	JSON_TOKEN_ARRAY_START,
-	JSON_TOKEN_ARRAY_END,
-	JSON_TOKEN_COMMA,
-	JSON_TOKEN_COLON,
-	JSON_TOKEN_TRUE,
-	JSON_TOKEN_FALSE,
-	JSON_TOKEN_NULL,
-	JSON_TOKEN_END
+    JSON_TOKEN_INVALID,
+    JSON_TOKEN_STRING,
+    JSON_TOKEN_INTEGER8,
+    JSON_TOKEN_FLOAT8,
+    JSON_TOKEN_OBJECT_START,
+    JSON_TOKEN_OBJECT_END,
+    JSON_TOKEN_ARRAY_START,
+    JSON_TOKEN_ARRAY_END,
+    JSON_TOKEN_COMMA,
+    JSON_TOKEN_COLON,
+    JSON_TOKEN_TRUE,
+    JSON_TOKEN_FALSE,
+    JSON_TOKEN_NULL,
+    JSON_TOKEN_END
 } JsonTokenType;
-
 
 /*
  * All the fields in this structure should be treated as read-only.
@@ -50,23 +49,23 @@ typedef enum
  */
 typedef struct JsonLexContext
 {
-	char	   *input;
-	int			input_length;
-	char	   *token_start;
-	char	   *token_terminator;
-	char	   *prev_token_terminator;
-	JsonTokenType token_type;
-	int			lex_level;
-	int			line_number;
-	char	   *line_start;
-	StringInfo	strval;
+    char *input;
+    int input_length;
+    char *token_start;
+    char *token_terminator;
+    char *prev_token_terminator;
+    JsonTokenType token_type;
+    int lex_level;
+    int line_number;
+    char *line_start;
+    StringInfo strval;
 } JsonLexContext;
 
-typedef void (*json_struct_action) (void *state);
-typedef void (*json_ofield_action) (void *state, char *fname, bool isnull);
-typedef void (*json_aelem_action) (void *state, bool isnull);
-typedef void (*json_scalar_action) (void *state, char *token, JsonTokenType tokentype);
-
+typedef void (*json_struct_action)(void *state);
+typedef void (*json_ofield_action)(void *state, char *fname, bool isnull);
+typedef void (*json_aelem_action)(void *state, bool isnull);
+typedef void (*json_scalar_action)(void *state, char *token,
+                                   JsonTokenType tokentype);
 
 /*
  * Semantic Action structure for use in parsing json.
@@ -81,16 +80,16 @@ typedef void (*json_scalar_action) (void *state, char *token, JsonTokenType toke
  */
 typedef struct JsonSemAction
 {
-	void	   *semstate;
-	json_struct_action object_start;
-	json_struct_action object_end;
-	json_struct_action array_start;
-	json_struct_action array_end;
-	json_ofield_action object_field_start;
-	json_ofield_action object_field_end;
-	json_aelem_action array_element_start;
-	json_aelem_action array_element_end;
-	json_scalar_action scalar;
+    void *semstate;
+    json_struct_action object_start;
+    json_struct_action object_end;
+    json_struct_action array_start;
+    json_struct_action array_end;
+    json_ofield_action object_field_start;
+    json_ofield_action object_field_end;
+    json_aelem_action array_element_start;
+    json_aelem_action array_element_end;
+    json_scalar_action scalar;
 } JsonSemAction;
 
 /*
@@ -114,9 +113,8 @@ extern void ag_parse_json(JsonLexContext *lex, JsonSemAction *sem);
  * functions, otherwise use  makeJsonLexContextCstringLen().
  */
 extern JsonLexContext *ag_makeJsonLexContext(text *json, bool need_escapes);
-extern JsonLexContext *ag_makeJsonLexContextCstringLen(char *json,
-							 int len,
-							 bool need_escapes);
+extern JsonLexContext *ag_makeJsonLexContextCstringLen(char *json, int len,
+                                                       bool need_escapes);
 
 /*
  * Utility function to check if a string is a valid JSON number.
@@ -127,4 +125,4 @@ extern bool ag_IsValidJsonNumber(const char *str, int len);
 
 extern char *ag_JsonEncodeDateTime(char *buf, Datum value, Oid typid);
 
-#endif							/* JSONAPI_H */
+#endif /* JSONAPI_H */

@@ -20,8 +20,8 @@
 #include "utils/memutils.h"
 #include "utils/varlena.h"
 
-#include "ag_jsonbx.h"
 #include "ag_extended_type.h"
+#include "ag_jsonbx.h"
 /*
  * Maximum number of elements in an array (or key/value pairs in an object).
  * This is limited by two things: the size of the JXEntry array must fit
@@ -35,31 +35,37 @@
 #define JSONBX_MAX_PAIRS (Min(MaxAllocSize / sizeof(JsonbXPair), JBX_CMASK))
 
 static void fillJsonbXValue(JsonbXContainer *container, int index,
-			   char *base_addr, uint32 offset,
-			   JsonbXValue *result);
+                            char *base_addr, uint32 offset,
+                            JsonbXValue *result);
 static bool equalsJsonbXScalarValue(JsonbXValue *a, JsonbXValue *b);
-static int	compareJsonbXScalarValue(JsonbXValue *a, JsonbXValue *b);
+static int compareJsonbXScalarValue(JsonbXValue *a, JsonbXValue *b);
 static JsonbX *convertToJsonbX(JsonbXValue *val);
-static void convertJsonbXValue(StringInfo buffer, JXEntry *header, JsonbXValue *val, int level);
-static void convertJsonbXArray(StringInfo buffer, JXEntry *header, JsonbXValue *val, int level);
-static void convertJsonbXObject(StringInfo buffer, JXEntry *header, JsonbXValue *val, int level);
-static void convertJsonbXScalar(StringInfo buffer, JXEntry *header, JsonbXValue *scalarVal);
+static void convertJsonbXValue(StringInfo buffer, JXEntry *header,
+                               JsonbXValue *val, int level);
+static void convertJsonbXArray(StringInfo buffer, JXEntry *header,
+                               JsonbXValue *val, int level);
+static void convertJsonbXObject(StringInfo buffer, JXEntry *header,
+                                JsonbXValue *val, int level);
+static void convertJsonbXScalar(StringInfo buffer, JXEntry *header,
+                                JsonbXValue *scalarVal);
 
 static void appendToBuffer(StringInfo buffer, const char *data, int len);
-static void copyToBuffer(StringInfo buffer, int offset, const char *data, int len);
+static void copyToBuffer(StringInfo buffer, int offset, const char *data,
+                         int len);
 
-static JsonbXIterator *iteratorFromContainer(JsonbXContainer *container, JsonbXIterator *parent);
+static JsonbXIterator *iteratorFromContainer(JsonbXContainer *container,
+                                             JsonbXIterator *parent);
 static JsonbXIterator *freeAndGetParent(JsonbXIterator *it);
 static JsonbXParseState *pushState(JsonbXParseState **pstate);
 static void appendKey(JsonbXParseState *pstate, JsonbXValue *scalarVal);
 static void appendValue(JsonbXParseState *pstate, JsonbXValue *scalarVal);
 static void appendElement(JsonbXParseState *pstate, JsonbXValue *scalarVal);
-static int	lengthCompareJsonbXStringValue(const void *a, const void *b);
-static int	lengthCompareJsonbXPair(const void *a, const void *b, void *arg);
+static int lengthCompareJsonbXStringValue(const void *a, const void *b);
+static int lengthCompareJsonbXPair(const void *a, const void *b, void *arg);
 static void uniqueifyJsonbXObject(JsonbXValue *object);
 static JsonbXValue *pushJsonbXValueScalar(JsonbXParseState **pstate,
-					 JsonbXIteratorToken seq,
-					 JsonbXValue *scalarVal);
+                                          JsonbXIteratorToken seq,
+                                          JsonbXValue *scalarVal);
 
 /*
  * Turn an in-memory JsonbXValue into a JsonbX for on-disk storage.
@@ -74,41 +80,40 @@ static JsonbXValue *pushJsonbXValueScalar(JsonbXParseState **pstate,
  * or simple containers of scalar values, where it would be inconvenient to
  * deal with a great amount of other state.
  */
-JsonbX *
-JsonbXValueToJsonbX(JsonbXValue *val)
+JsonbX *JsonbXValueToJsonbX(JsonbXValue *val)
 {
-	JsonbX	   *out;
+    JsonbX *out;
 
-	if (IsAJsonbXScalar(val))
-	{
-		/* Scalar value */
-		JsonbXParseState *pstate = NULL;
-		JsonbXValue *res;
-		JsonbXValue	scalarArray;
+    if (IsAJsonbXScalar(val))
+    {
+        /* Scalar value */
+        JsonbXParseState *pstate = NULL;
+        JsonbXValue *res;
+        JsonbXValue scalarArray;
 
-		scalarArray.type = jbvXArray;
-		scalarArray.val.array.rawScalar = true;
-		scalarArray.val.array.nElems = 1;
+        scalarArray.type = jbvXArray;
+        scalarArray.val.array.rawScalar = true;
+        scalarArray.val.array.nElems = 1;
 
-		pushJsonbXValue(&pstate, WJBX_BEGIN_ARRAY, &scalarArray);
-		pushJsonbXValue(&pstate, WJBX_ELEM, val);
-		res = pushJsonbXValue(&pstate, WJBX_END_ARRAY, NULL);
+        pushJsonbXValue(&pstate, WJBX_BEGIN_ARRAY, &scalarArray);
+        pushJsonbXValue(&pstate, WJBX_ELEM, val);
+        res = pushJsonbXValue(&pstate, WJBX_END_ARRAY, NULL);
 
-		out = convertToJsonbX(res);
-	}
-	else if (val->type == jbvXObject || val->type == jbvXArray)
-	{
-		out = convertToJsonbX(val);
-	}
-	else
-	{
-		Assert(val->type == jbvXBinary);
-		out = palloc(VARHDRSZ + val->val.binary.len);
-		SET_VARSIZE(out, VARHDRSZ + val->val.binary.len);
-		memcpy(VARDATA(out), val->val.binary.data, val->val.binary.len);
-	}
+        out = convertToJsonbX(res);
+    }
+    else if (val->type == jbvXObject || val->type == jbvXArray)
+    {
+        out = convertToJsonbX(val);
+    }
+    else
+    {
+        Assert(val->type == jbvXBinary);
+        out = palloc(VARHDRSZ + val->val.binary.len);
+        SET_VARSIZE(out, VARHDRSZ + val->val.binary.len);
+        memcpy(VARDATA(out), val->val.binary.data, val->val.binary.len);
+    }
 
-	return out;
+    return out;
 }
 
 /*
@@ -116,51 +121,49 @@ JsonbXValueToJsonbX(JsonbXValue *val)
  * the variable-length-data part of its container.  The node is identified
  * by index within the container's JXEntry array.
  */
-uint32
-getJsonbXOffset(const JsonbXContainer *jc, int index)
+uint32 getJsonbXOffset(const JsonbXContainer *jc, int index)
 {
-	uint32		offset = 0;
-	int			i;
+    uint32 offset = 0;
+    int i;
 
-	/*
+    /*
 	 * Start offset of this entry is equal to the end offset of the previous
 	 * entry.  Walk backwards to the most recent entry stored as an end
 	 * offset, returning that offset plus any lengths in between.
 	 */
-	for (i = index - 1; i >= 0; i--)
-	{
-		offset += JBXE_OFFLENFLD(jc->children[i]);
-		if (JBXE_HAS_OFF(jc->children[i]))
-			break;
-	}
+    for (i = index - 1; i >= 0; i--)
+    {
+        offset += JBXE_OFFLENFLD(jc->children[i]);
+        if (JBXE_HAS_OFF(jc->children[i]))
+            break;
+    }
 
-	return offset;
+    return offset;
 }
 
 /*
  * Get the length of the variable-length portion of a JsonbX node.
  * The node is identified by index within the container's JXEntry array.
  */
-uint32
-getJsonbXLength(const JsonbXContainer *jc, int index)
+uint32 getJsonbXLength(const JsonbXContainer *jc, int index)
 {
-	uint32		off;
-	uint32		len;
+    uint32 off;
+    uint32 len;
 
-	/*
+    /*
 	 * If the length is stored directly in the JXEntry, just return it.
 	 * Otherwise, get the begin offset of the entry, and subtract that from
 	 * the stored end+1 offset.
 	 */
-	if (JBXE_HAS_OFF(jc->children[index]))
-	{
-		off = getJsonbXOffset(jc, index);
-		len = JBXE_OFFLENFLD(jc->children[index]) - off;
-	}
-	else
-		len = JBXE_OFFLENFLD(jc->children[index]);
+    if (JBXE_HAS_OFF(jc->children[index]))
+    {
+        off = getJsonbXOffset(jc, index);
+        len = JBXE_OFFLENFLD(jc->children[index]) - off;
+    }
+    else
+        len = JBXE_OFFLENFLD(jc->children[index]);
 
-	return len;
+    return len;
 }
 
 /*
@@ -173,88 +176,86 @@ getJsonbXLength(const JsonbXContainer *jc, int index)
  * called from B-Tree support function 1, we're careful about not leaking
  * memory here.
  */
-int
-compareJsonbXContainers(JsonbXContainer *a, JsonbXContainer *b)
+int compareJsonbXContainers(JsonbXContainer *a, JsonbXContainer *b)
 {
-	JsonbXIterator *ita,
-			   *itb;
-	int			res = 0;
+    JsonbXIterator *ita, *itb;
+    int res = 0;
 
-	ita = JsonbXIteratorInit(a);
-	itb = JsonbXIteratorInit(b);
+    ita = JsonbXIteratorInit(a);
+    itb = JsonbXIteratorInit(b);
 
-	do
-	{
-		JsonbXValue	va,
-					vb;
-		JsonbXIteratorToken ra,
-					rb;
+    do
+    {
+        JsonbXValue va, vb;
+        JsonbXIteratorToken ra, rb;
 
-		ra = JsonbXIteratorNext(&ita, &va, false);
-		rb = JsonbXIteratorNext(&itb, &vb, false);
+        ra = JsonbXIteratorNext(&ita, &va, false);
+        rb = JsonbXIteratorNext(&itb, &vb, false);
 
-		if (ra == rb)
-		{
-			if (ra == WJBX_DONE)
-			{
-				/* Decisively equal */
-				break;
-			}
+        if (ra == rb)
+        {
+            if (ra == WJBX_DONE)
+            {
+                /* Decisively equal */
+                break;
+            }
 
-			if (ra == WJBX_END_ARRAY || ra == WJBX_END_OBJECT)
-			{
-				/*
+            if (ra == WJBX_END_ARRAY || ra == WJBX_END_OBJECT)
+            {
+                /*
 				 * There is no array or object to compare at this stage of
 				 * processing.  jbvArray/jbvObject values are compared
 				 * initially, at the WJB_BEGIN_ARRAY and WJB_BEGIN_OBJECT
 				 * tokens.
 				 */
-				continue;
-			}
+                continue;
+            }
 
-			if (va.type == vb.type)
-			{
-				switch (va.type)
-				{
-					case jbvXString:
-					case jbvXNull:
-					case jbvXNumeric:
-					case jbvXBool:
-						res = compareJsonbXScalarValue(&va, &vb);
-						break;
-					case jbvXArray:
+            if (va.type == vb.type)
+            {
+                switch (va.type)
+                {
+                case jbvXString:
+                case jbvXNull:
+                case jbvXNumeric:
+                case jbvXBool:
+                    res = compareJsonbXScalarValue(&va, &vb);
+                    break;
+                case jbvXArray:
 
-						/*
+                    /*
 						 * This could be a "raw scalar" pseudo array.  That's
 						 * a special case here though, since we still want the
 						 * general type-based comparisons to apply, and as far
 						 * as we're concerned a pseudo array is just a scalar.
 						 */
-						if (va.val.array.rawScalar != vb.val.array.rawScalar)
-							res = (va.val.array.rawScalar) ? -1 : 1;
-						if (va.val.array.nElems != vb.val.array.nElems)
-							res = (va.val.array.nElems > vb.val.array.nElems) ? 1 : -1;
-						break;
-					case jbvXObject:
-						if (va.val.object.nPairs != vb.val.object.nPairs)
-							res = (va.val.object.nPairs > vb.val.object.nPairs) ? 1 : -1;
-						break;
-					case jbvXBinary:
-						elog(ERROR, "unexpected jbvXBinary value");
-					default:
-						elog(ERROR, "unexpected jbvXType");
-
-				}
-			}
-			else
-			{
-				/* Type-defined order */
-				res = (va.type > vb.type) ? 1 : -1;
-			}
-		}
-		else
-		{
-			/*
+                    if (va.val.array.rawScalar != vb.val.array.rawScalar)
+                        res = (va.val.array.rawScalar) ? -1 : 1;
+                    if (va.val.array.nElems != vb.val.array.nElems)
+                        res = (va.val.array.nElems > vb.val.array.nElems) ? 1 :
+                                                                            -1;
+                    break;
+                case jbvXObject:
+                    if (va.val.object.nPairs != vb.val.object.nPairs)
+                        res = (va.val.object.nPairs > vb.val.object.nPairs) ?
+                                  1 :
+                                  -1;
+                    break;
+                case jbvXBinary:
+                    elog(ERROR, "unexpected jbvXBinary value");
+                default:
+                    elog(ERROR, "unexpected jbvXType");
+                }
+            }
+            else
+            {
+                /* Type-defined order */
+                res = (va.type > vb.type) ? 1 : -1;
+            }
+        }
+        else
+        {
+            /*
 			 * It's safe to assume that the types differed, and that the va
 			 * and vb values passed were set.
 			 *
@@ -269,34 +270,33 @@ compareJsonbXContainers(JsonbXContainer *a, JsonbXContainer *b)
 			 * WJB_BEGIN_ARRAY and WJB_BEGIN_OBJECT tokens first, and
 			 * concluded that they don't match.
 			 */
-			Assert(ra != WJBX_END_ARRAY && ra != WJBX_END_OBJECT);
-			Assert(rb != WJBX_END_ARRAY && rb != WJBX_END_OBJECT);
+            Assert(ra != WJBX_END_ARRAY && ra != WJBX_END_OBJECT);
+            Assert(rb != WJBX_END_ARRAY && rb != WJBX_END_OBJECT);
 
-			Assert(va.type != vb.type);
-			Assert(va.type != jbvXBinary);
-			Assert(vb.type != jbvXBinary);
-			/* Type-defined order */
-			res = (va.type > vb.type) ? 1 : -1;
-		}
-	}
-	while (res == 0);
+            Assert(va.type != vb.type);
+            Assert(va.type != jbvXBinary);
+            Assert(vb.type != jbvXBinary);
+            /* Type-defined order */
+            res = (va.type > vb.type) ? 1 : -1;
+        }
+    } while (res == 0);
 
-	while (ita != NULL)
-	{
-		JsonbXIterator *i = ita->parent;
+    while (ita != NULL)
+    {
+        JsonbXIterator *i = ita->parent;
 
-		pfree(ita);
-		ita = i;
-	}
-	while (itb != NULL)
-	{
-		JsonbXIterator *i = itb->parent;
+        pfree(ita);
+        ita = i;
+    }
+    while (itb != NULL)
+    {
+        JsonbXIterator *i = itb->parent;
 
-		pfree(itb);
-		itb = i;
-	}
+        pfree(itb);
+        itb = i;
+    }
 
-	return res;
+    return res;
 }
 
 /*
@@ -325,91 +325,88 @@ compareJsonbXContainers(JsonbXContainer *a, JsonbXContainer *b)
  * immediately fall through and return NULL.  If we cannot find the value,
  * return NULL.  Otherwise, return palloc()'d copy of value.
  */
-JsonbXValue *
-findJsonbXValueFromContainer(JsonbXContainer *container, uint32 flags,
-							JsonbXValue *key)
+JsonbXValue *findJsonbXValueFromContainer(JsonbXContainer *container,
+                                          uint32 flags, JsonbXValue *key)
 {
-	JXEntry	   *children = container->children;
-	int			count = JsonbXContainerSize(container);
-	JsonbXValue *result;
+    JXEntry *children = container->children;
+    int count = JsonbXContainerSize(container);
+    JsonbXValue *result;
 
-	Assert((flags & ~(JBX_FARRAY | JBX_FOBJECT)) == 0);
+    Assert((flags & ~(JBX_FARRAY | JBX_FOBJECT)) == 0);
 
-	/* Quick out without a palloc cycle if object/array is empty */
-	if (count <= 0)
-		return NULL;
+    /* Quick out without a palloc cycle if object/array is empty */
+    if (count <= 0)
+        return NULL;
 
-	result = palloc(sizeof(JsonbXValue));
+    result = palloc(sizeof(JsonbXValue));
 
-	if ((flags & JBX_FARRAY) && JsonbXContainerIsArray(container))
-	{
-		char	   *base_addr = (char *) (children + count);
-		uint32		offset = 0;
-		int			i;
+    if ((flags & JBX_FARRAY) && JsonbXContainerIsArray(container))
+    {
+        char *base_addr = (char *)(children + count);
+        uint32 offset = 0;
+        int i;
 
-		for (i = 0; i < count; i++)
-		{
-			fillJsonbXValue(container, i, base_addr, offset, result);
+        for (i = 0; i < count; i++)
+        {
+            fillJsonbXValue(container, i, base_addr, offset, result);
 
-			if (key->type == result->type)
-			{
-				if (equalsJsonbXScalarValue(key, result))
-					return result;
-			}
+            if (key->type == result->type)
+            {
+                if (equalsJsonbXScalarValue(key, result))
+                    return result;
+            }
 
-			JBXE_ADVANCE_OFFSET(offset, children[i]);
-		}
-	}
-	else if ((flags & JBX_FOBJECT) && JsonbXContainerIsObject(container))
-	{
-		/* Since this is an object, account for *Pairs* of Jentrys */
-		char	   *base_addr = (char *) (children + count * 2);
-		uint32		stopLow = 0,
-					stopHigh = count;
+            JBXE_ADVANCE_OFFSET(offset, children[i]);
+        }
+    }
+    else if ((flags & JBX_FOBJECT) && JsonbXContainerIsObject(container))
+    {
+        /* Since this is an object, account for *Pairs* of Jentrys */
+        char *base_addr = (char *)(children + count * 2);
+        uint32 stopLow = 0, stopHigh = count;
 
-		/* Object key passed by caller must be a string */
-		Assert(key->type == jbvXString);
+        /* Object key passed by caller must be a string */
+        Assert(key->type == jbvXString);
 
-		/* Binary search on object/pair keys *only* */
-		while (stopLow < stopHigh)
-		{
-			uint32		stopMiddle;
-			int			difference;
-			JsonbXValue	candidate;
+        /* Binary search on object/pair keys *only* */
+        while (stopLow < stopHigh)
+        {
+            uint32 stopMiddle;
+            int difference;
+            JsonbXValue candidate;
 
-			stopMiddle = stopLow + (stopHigh - stopLow) / 2;
+            stopMiddle = stopLow + (stopHigh - stopLow) / 2;
 
-			candidate.type = jbvXString;
-			candidate.val.string.val =
-				base_addr + getJsonbXOffset(container, stopMiddle);
-			candidate.val.string.len = getJsonbXLength(container, stopMiddle);
+            candidate.type = jbvXString;
+            candidate.val.string.val = base_addr +
+                                       getJsonbXOffset(container, stopMiddle);
+            candidate.val.string.len = getJsonbXLength(container, stopMiddle);
 
-			difference = lengthCompareJsonbXStringValue(&candidate, key);
+            difference = lengthCompareJsonbXStringValue(&candidate, key);
 
-			if (difference == 0)
-			{
-				/* Found our key, return corresponding value */
-				int			index = stopMiddle + count;
+            if (difference == 0)
+            {
+                /* Found our key, return corresponding value */
+                int index = stopMiddle + count;
 
-				fillJsonbXValue(container, index, base_addr,
-							   getJsonbXOffset(container, index),
-							   result);
+                fillJsonbXValue(container, index, base_addr,
+                                getJsonbXOffset(container, index), result);
 
-				return result;
-			}
-			else
-			{
-				if (difference < 0)
-					stopLow = stopMiddle + 1;
-				else
-					stopHigh = stopMiddle;
-			}
-		}
-	}
+                return result;
+            }
+            else
+            {
+                if (difference < 0)
+                    stopLow = stopMiddle + 1;
+                else
+                    stopHigh = stopMiddle;
+            }
+        }
+    }
 
-	/* Not found */
-	pfree(result);
-	return NULL;
+    /* Not found */
+    pfree(result);
+    return NULL;
 }
 
 /*
@@ -417,29 +414,28 @@ findJsonbXValueFromContainer(JsonbXContainer *container, uint32 flags,
  *
  * Returns palloc()'d copy of the value, or NULL if it does not exist.
  */
-JsonbXValue *
-getIthJsonbXValueFromContainer(JsonbXContainer *container, uint32 i)
+JsonbXValue *getIthJsonbXValueFromContainer(JsonbXContainer *container,
+                                            uint32 i)
 {
-	JsonbXValue *result;
-	char	   *base_addr;
-	uint32		nelements;
+    JsonbXValue *result;
+    char *base_addr;
+    uint32 nelements;
 
-	if (!JsonbXContainerIsArray(container))
-		elog(ERROR, "not a jsonbx array");
+    if (!JsonbXContainerIsArray(container))
+        elog(ERROR, "not a jsonbx array");
 
-	nelements = JsonbXContainerSize(container);
-	base_addr = (char *) &container->children[nelements];
+    nelements = JsonbXContainerSize(container);
+    base_addr = (char *)&container->children[nelements];
 
-	if (i >= nelements)
-		return NULL;
+    if (i >= nelements)
+        return NULL;
 
-	result = palloc(sizeof(JsonbXValue));
+    result = palloc(sizeof(JsonbXValue));
 
-	fillJsonbXValue(container, i, base_addr,
-				   getJsonbXOffset(container, i),
-				   result);
+    fillJsonbXValue(container, i, base_addr, getJsonbXOffset(container, i),
+                    result);
 
-	return result;
+    return result;
 }
 
 /*
@@ -454,53 +450,53 @@ getIthJsonbXValueFromContainer(JsonbXContainer *container, uint32 i)
  * A nested array or object will be returned as jbvXBinary, ie. it won't be
  * expanded.
  */
-static void
-fillJsonbXValue(JsonbXContainer *container, int index,
-			   char *base_addr, uint32 offset,
-			   JsonbXValue *result)
+static void fillJsonbXValue(JsonbXContainer *container, int index,
+                            char *base_addr, uint32 offset,
+                            JsonbXValue *result)
 {
-	JXEntry		entry = container->children[index];
+    JXEntry entry = container->children[index];
 
-	if (JBXE_ISNULL(entry))
-	{
-		result->type = jbvXNull;
-	}
-	else if (JBXE_ISSTRING(entry))
-	{
-		result->type = jbvXString;
-		result->val.string.val = base_addr + offset;
-		result->val.string.len = getJsonbXLength(container, index);
-		Assert(result->val.string.len >= 0);
-	}
-	else if (JBXE_ISNUMERIC(entry))
-	{
-		result->type = jbvXNumeric;
-		result->val.numeric = (Numeric) (base_addr + INTALIGN(offset));
-	}
-	/* if this is a JSONB extended type */
-	else if (JBXE_ISJSONBX(entry))
-	{
-		ag_deserialize_extended_type(base_addr, offset, result);
-	}
-	else if (JBXE_ISBOOL_TRUE(entry))
-	{
-		result->type = jbvXBool;
-		result->val.boolean = true;
-	}
-	else if (JBXE_ISBOOL_FALSE(entry))
-	{
-		result->type = jbvXBool;
-		result->val.boolean = false;
-	}
-	else
-	{
-		Assert(JBXE_ISCONTAINER(entry));
-		result->type = jbvXBinary;
-		/* Remove alignment padding from data pointer and length */
-		result->val.binary.data = (JsonbXContainer *) (base_addr + INTALIGN(offset));
-		result->val.binary.len = getJsonbXLength(container, index) -
-			(INTALIGN(offset) - offset);
-	}
+    if (JBXE_ISNULL(entry))
+    {
+        result->type = jbvXNull;
+    }
+    else if (JBXE_ISSTRING(entry))
+    {
+        result->type = jbvXString;
+        result->val.string.val = base_addr + offset;
+        result->val.string.len = getJsonbXLength(container, index);
+        Assert(result->val.string.len >= 0);
+    }
+    else if (JBXE_ISNUMERIC(entry))
+    {
+        result->type = jbvXNumeric;
+        result->val.numeric = (Numeric)(base_addr + INTALIGN(offset));
+    }
+    /* if this is a JSONB extended type */
+    else if (JBXE_ISJSONBX(entry))
+    {
+        ag_deserialize_extended_type(base_addr, offset, result);
+    }
+    else if (JBXE_ISBOOL_TRUE(entry))
+    {
+        result->type = jbvXBool;
+        result->val.boolean = true;
+    }
+    else if (JBXE_ISBOOL_FALSE(entry))
+    {
+        result->type = jbvXBool;
+        result->val.boolean = false;
+    }
+    else
+    {
+        Assert(JBXE_ISCONTAINER(entry));
+        result->type = jbvXBinary;
+        /* Remove alignment padding from data pointer and length */
+        result->val.binary.data =
+            (JsonbXContainer *)(base_addr + INTALIGN(offset));
+        result->val.binary.len = getJsonbXLength(container, index) -
+                                 (INTALIGN(offset) - offset);
+    }
 }
 
 /*
@@ -520,199 +516,199 @@ fillJsonbXValue(JsonbXContainer *container, int index,
  * Values of type jvbXBinary, which are rolled up arrays and objects,
  * are unpacked before being added to the result.
  */
-JsonbXValue *
-pushJsonbXValue(JsonbXParseState **pstate, JsonbXIteratorToken seq,
-			   JsonbXValue *jbxval)
+JsonbXValue *pushJsonbXValue(JsonbXParseState **pstate,
+                             JsonbXIteratorToken seq, JsonbXValue *jbxval)
 {
-	JsonbXIterator *it;
-	JsonbXValue *res = NULL;
-	JsonbXValue	v;
-	JsonbXIteratorToken tok;
+    JsonbXIterator *it;
+    JsonbXValue *res = NULL;
+    JsonbXValue v;
+    JsonbXIteratorToken tok;
 
-	if (!jbxval || (seq != WJBX_ELEM && seq != WJBX_VALUE) ||
-		jbxval->type != jbvXBinary)
-	{
-		/* drop through */
-		return pushJsonbXValueScalar(pstate, seq, jbxval);
-	}
+    if (!jbxval || (seq != WJBX_ELEM && seq != WJBX_VALUE) ||
+        jbxval->type != jbvXBinary)
+    {
+        /* drop through */
+        return pushJsonbXValueScalar(pstate, seq, jbxval);
+    }
 
-	/* unpack the binary and add each piece to the pstate */
-	it = JsonbXIteratorInit(jbxval->val.binary.data);
-	while ((tok = JsonbXIteratorNext(&it, &v, false)) != WJBX_DONE)
-		res = pushJsonbXValueScalar(pstate, tok,
-								   tok < WJBX_BEGIN_ARRAY ? &v : NULL);
+    /* unpack the binary and add each piece to the pstate */
+    it = JsonbXIteratorInit(jbxval->val.binary.data);
+    while ((tok = JsonbXIteratorNext(&it, &v, false)) != WJBX_DONE)
+        res = pushJsonbXValueScalar(pstate, tok,
+                                    tok < WJBX_BEGIN_ARRAY ? &v : NULL);
 
-	return res;
+    return res;
 }
 
 /*
  * Do the actual pushing, with only scalar or pseudo-scalar-array values
  * accepted.
  */
-static JsonbXValue *
-pushJsonbXValueScalar(JsonbXParseState **pstate, JsonbXIteratorToken seq,
-					 JsonbXValue *scalarVal)
+static JsonbXValue *pushJsonbXValueScalar(JsonbXParseState **pstate,
+                                          JsonbXIteratorToken seq,
+                                          JsonbXValue *scalarVal)
 {
-	JsonbXValue *result = NULL;
+    JsonbXValue *result = NULL;
 
-	switch (seq)
-	{
-		case WJBX_BEGIN_ARRAY:
-			Assert(!scalarVal || scalarVal->val.array.rawScalar);
-			*pstate = pushState(pstate);
-			result = &(*pstate)->contVal;
-			(*pstate)->contVal.type = jbvXArray;
-			(*pstate)->contVal.val.array.nElems = 0;
-			(*pstate)->contVal.val.array.rawScalar = (scalarVal &&
-													  scalarVal->val.array.rawScalar);
-			if (scalarVal && scalarVal->val.array.nElems > 0)
-			{
-				/* Assume that this array is still really a scalar */
-				Assert(scalarVal->type == jbvXArray);
-				(*pstate)->size = scalarVal->val.array.nElems;
-			}
-			else
-			{
-				(*pstate)->size = 4;
-			}
-			(*pstate)->contVal.val.array.elems = palloc(sizeof(JsonbXValue) *
-														(*pstate)->size);
-			break;
-		case WJBX_BEGIN_OBJECT:
-			Assert(!scalarVal);
-			*pstate = pushState(pstate);
-			result = &(*pstate)->contVal;
-			(*pstate)->contVal.type = jbvXObject;
-			(*pstate)->contVal.val.object.nPairs = 0;
-			(*pstate)->size = 4;
-			(*pstate)->contVal.val.object.pairs = palloc(sizeof(JsonbXPair) *
-														 (*pstate)->size);
-			break;
-		case WJBX_KEY:
-			Assert(scalarVal->type == jbvXString);
-			appendKey(*pstate, scalarVal);
-			break;
-		case WJBX_VALUE:
-			Assert(IsAJsonbXScalar(scalarVal));
-			appendValue(*pstate, scalarVal);
-			break;
-		case WJBX_ELEM:
-			Assert(IsAJsonbXScalar(scalarVal));
-			appendElement(*pstate, scalarVal);
-			break;
-		case WJBX_END_OBJECT:
-			uniqueifyJsonbXObject(&(*pstate)->contVal);
-			/* fall through! */
-		case WJBX_END_ARRAY:
-			/* Steps here common to WJB_END_OBJECT case */
-			Assert(!scalarVal);
-			result = &(*pstate)->contVal;
+    switch (seq)
+    {
+    case WJBX_BEGIN_ARRAY:
+        Assert(!scalarVal || scalarVal->val.array.rawScalar);
+        *pstate = pushState(pstate);
+        result = &(*pstate)->contVal;
+        (*pstate)->contVal.type = jbvXArray;
+        (*pstate)->contVal.val.array.nElems = 0;
+        (*pstate)->contVal.val.array.rawScalar =
+            (scalarVal && scalarVal->val.array.rawScalar);
+        if (scalarVal && scalarVal->val.array.nElems > 0)
+        {
+            /* Assume that this array is still really a scalar */
+            Assert(scalarVal->type == jbvXArray);
+            (*pstate)->size = scalarVal->val.array.nElems;
+        }
+        else
+        {
+            (*pstate)->size = 4;
+        }
+        (*pstate)->contVal.val.array.elems =
+            palloc(sizeof(JsonbXValue) * (*pstate)->size);
+        break;
+    case WJBX_BEGIN_OBJECT:
+        Assert(!scalarVal);
+        *pstate = pushState(pstate);
+        result = &(*pstate)->contVal;
+        (*pstate)->contVal.type = jbvXObject;
+        (*pstate)->contVal.val.object.nPairs = 0;
+        (*pstate)->size = 4;
+        (*pstate)->contVal.val.object.pairs =
+            palloc(sizeof(JsonbXPair) * (*pstate)->size);
+        break;
+    case WJBX_KEY:
+        Assert(scalarVal->type == jbvXString);
+        appendKey(*pstate, scalarVal);
+        break;
+    case WJBX_VALUE:
+        Assert(IsAJsonbXScalar(scalarVal));
+        appendValue(*pstate, scalarVal);
+        break;
+    case WJBX_ELEM:
+        Assert(IsAJsonbXScalar(scalarVal));
+        appendElement(*pstate, scalarVal);
+        break;
+    case WJBX_END_OBJECT:
+        uniqueifyJsonbXObject(&(*pstate)->contVal);
+        /* fall through! */
+    case WJBX_END_ARRAY:
+        /* Steps here common to WJB_END_OBJECT case */
+        Assert(!scalarVal);
+        result = &(*pstate)->contVal;
 
-			/*
+        /*
 			 * Pop stack and push current array/object as value in parent
 			 * array/object
 			 */
-			*pstate = (*pstate)->next;
-			if (*pstate)
-			{
-				switch ((*pstate)->contVal.type)
-				{
-					case jbvXArray:
-						appendElement(*pstate, result);
-						break;
-					case jbvXObject:
-						appendValue(*pstate, result);
-						break;
-					default:
-						elog(ERROR, "invalid jsonbx container type");
-				}
-			}
-			break;
-		default:
-			elog(ERROR, "unrecognized jsonbx sequential processing token");
-	}
+        *pstate = (*pstate)->next;
+        if (*pstate)
+        {
+            switch ((*pstate)->contVal.type)
+            {
+            case jbvXArray:
+                appendElement(*pstate, result);
+                break;
+            case jbvXObject:
+                appendValue(*pstate, result);
+                break;
+            default:
+                elog(ERROR, "invalid jsonbx container type");
+            }
+        }
+        break;
+    default:
+        elog(ERROR, "unrecognized jsonbx sequential processing token");
+    }
 
-	return result;
+    return result;
 }
 
 /*
  * pushJsonbXValue() worker:  Iteration-like forming of Jsonb
  */
-static JsonbXParseState *
-pushState(JsonbXParseState **pstate)
+static JsonbXParseState *pushState(JsonbXParseState **pstate)
 {
-	JsonbXParseState *ns = palloc(sizeof(JsonbXParseState));
+    JsonbXParseState *ns = palloc(sizeof(JsonbXParseState));
 
-	ns->next = *pstate;
-	return ns;
+    ns->next = *pstate;
+    return ns;
 }
 
 /*
  * pushJsonbXValue() worker:  Append a pair key to state when generating a Jsonb
  */
-static void
-appendKey(JsonbXParseState *pstate, JsonbXValue *string)
+static void appendKey(JsonbXParseState *pstate, JsonbXValue *string)
 {
-	JsonbXValue *object = &pstate->contVal;
+    JsonbXValue *object = &pstate->contVal;
 
-	Assert(object->type == jbvXObject);
-	Assert(string->type == jbvXString);
+    Assert(object->type == jbvXObject);
+    Assert(string->type == jbvXString);
 
-	if (object->val.object.nPairs >= JSONBX_MAX_PAIRS)
-		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("number of jsonbx object pairs exceeds the maximum allowed (%zu)",
-						JSONBX_MAX_PAIRS)));
+    if (object->val.object.nPairs >= JSONBX_MAX_PAIRS)
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+             errmsg(
+                 "number of jsonbx object pairs exceeds the maximum allowed (%zu)",
+                 JSONBX_MAX_PAIRS)));
 
-	if (object->val.object.nPairs >= pstate->size)
-	{
-		pstate->size *= 2;
-		object->val.object.pairs = repalloc(object->val.object.pairs,
-											sizeof(JsonbXPair) * pstate->size);
-	}
+    if (object->val.object.nPairs >= pstate->size)
+    {
+        pstate->size *= 2;
+        object->val.object.pairs = repalloc(object->val.object.pairs,
+                                            sizeof(JsonbXPair) * pstate->size);
+    }
 
-	object->val.object.pairs[object->val.object.nPairs].key = *string;
-	object->val.object.pairs[object->val.object.nPairs].order = object->val.object.nPairs;
+    object->val.object.pairs[object->val.object.nPairs].key = *string;
+    object->val.object.pairs[object->val.object.nPairs].order =
+        object->val.object.nPairs;
 }
 
 /*
  * pushJsonbXValue() worker:  Append a pair value to state when generating a
  * Jsonb
  */
-static void
-appendValue(JsonbXParseState *pstate, JsonbXValue *scalarVal)
+static void appendValue(JsonbXParseState *pstate, JsonbXValue *scalarVal)
 {
-	JsonbXValue *object = &pstate->contVal;
+    JsonbXValue *object = &pstate->contVal;
 
-	Assert(object->type == jbvXObject);
+    Assert(object->type == jbvXObject);
 
-	object->val.object.pairs[object->val.object.nPairs++].value = *scalarVal;
+    object->val.object.pairs[object->val.object.nPairs++].value = *scalarVal;
 }
 
 /*
  * pushJsonbXValue() worker:  Append an element to state when generating a Jsonb
  */
-static void
-appendElement(JsonbXParseState *pstate, JsonbXValue *scalarVal)
+static void appendElement(JsonbXParseState *pstate, JsonbXValue *scalarVal)
 {
-	JsonbXValue *array = &pstate->contVal;
+    JsonbXValue *array = &pstate->contVal;
 
-	Assert(array->type == jbvXArray);
+    Assert(array->type == jbvXArray);
 
-	if (array->val.array.nElems >= JSONBX_MAX_ELEMS)
-		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("number of jsonbx array elements exceeds the maximum allowed (%zu)",
-						JSONBX_MAX_ELEMS)));
+    if (array->val.array.nElems >= JSONBX_MAX_ELEMS)
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+             errmsg(
+                 "number of jsonbx array elements exceeds the maximum allowed (%zu)",
+                 JSONBX_MAX_ELEMS)));
 
-	if (array->val.array.nElems >= pstate->size)
-	{
-		pstate->size *= 2;
-		array->val.array.elems = repalloc(array->val.array.elems,
-										  sizeof(JsonbXValue) * pstate->size);
-	}
+    if (array->val.array.nElems >= pstate->size)
+    {
+        pstate->size *= 2;
+        array->val.array.elems = repalloc(array->val.array.elems,
+                                          sizeof(JsonbXValue) * pstate->size);
+    }
 
-	array->val.array.elems[array->val.array.nElems++] = *scalarVal;
+    array->val.array.elems[array->val.array.nElems++] = *scalarVal;
 }
 
 /*
@@ -721,10 +717,9 @@ appendElement(JsonbXParseState *pstate, JsonbXValue *scalarVal)
  *
  * See JsonbXIteratorNext() for notes on memory management.
  */
-JsonbXIterator *
-JsonbXIteratorInit(JsonbXContainer *container)
+JsonbXIterator *JsonbXIteratorInit(JsonbXContainer *container)
 {
-	return iteratorFromContainer(container, NULL);
+    return iteratorFromContainer(container, NULL);
 }
 
 /*
@@ -757,201 +752,196 @@ JsonbXIteratorInit(JsonbXContainer *container)
  * WJBX_END_OBJECT, on the assumption that it's only useful to access values
  * when recursing in.
  */
-JsonbXIteratorToken
-JsonbXIteratorNext(JsonbXIterator **it, JsonbXValue *val, bool skipNested)
+JsonbXIteratorToken JsonbXIteratorNext(JsonbXIterator **it, JsonbXValue *val,
+                                       bool skipNested)
 {
-	if (*it == NULL)
-		return WJBX_DONE;
+    if (*it == NULL)
+        return WJBX_DONE;
 
-	/*
+    /*
 	 * When stepping into a nested container, we jump back here to start
 	 * processing the child. We will not recurse further in one call, because
 	 * processing the child will always begin in JBXI_ARRAY_START or
 	 * JBXI_OBJECT_START state.
 	 */
 recurse:
-	switch ((*it)->state)
-	{
-		case JBXI_ARRAY_START:
-			/* Set v to array on first array call */
-			val->type = jbvXArray;
-			val->val.array.nElems = (*it)->nElems;
+    switch ((*it)->state)
+    {
+    case JBXI_ARRAY_START:
+        /* Set v to array on first array call */
+        val->type = jbvXArray;
+        val->val.array.nElems = (*it)->nElems;
 
-			/*
+        /*
 			 * v->val.array.elems is not actually set, because we aren't doing
 			 * a full conversion
 			 */
-			val->val.array.rawScalar = (*it)->isScalar;
-			(*it)->curIndex = 0;
-			(*it)->curDataOffset = 0;
-			(*it)->curValueOffset = 0;	/* not actually used */
-			/* Set state for next call */
-			(*it)->state = JBXI_ARRAY_ELEM;
-			return WJBX_BEGIN_ARRAY;
+        val->val.array.rawScalar = (*it)->isScalar;
+        (*it)->curIndex = 0;
+        (*it)->curDataOffset = 0;
+        (*it)->curValueOffset = 0; /* not actually used */
+        /* Set state for next call */
+        (*it)->state = JBXI_ARRAY_ELEM;
+        return WJBX_BEGIN_ARRAY;
 
-		case JBXI_ARRAY_ELEM:
-			if ((*it)->curIndex >= (*it)->nElems)
-			{
-				/*
+    case JBXI_ARRAY_ELEM:
+        if ((*it)->curIndex >= (*it)->nElems)
+        {
+            /*
 				 * All elements within array already processed.  Report this
 				 * to caller, and give it back original parent iterator (which
 				 * independently tracks iteration progress at its level of
 				 * nesting).
 				 */
-				*it = freeAndGetParent(*it);
-				return WJBX_END_ARRAY;
-			}
+            *it = freeAndGetParent(*it);
+            return WJBX_END_ARRAY;
+        }
 
-			fillJsonbXValue((*it)->container, (*it)->curIndex,
-						   (*it)->dataProper, (*it)->curDataOffset,
-						   val);
+        fillJsonbXValue((*it)->container, (*it)->curIndex, (*it)->dataProper,
+                        (*it)->curDataOffset, val);
 
-			JBXE_ADVANCE_OFFSET((*it)->curDataOffset,
-							   (*it)->children[(*it)->curIndex]);
-			(*it)->curIndex++;
+        JBXE_ADVANCE_OFFSET((*it)->curDataOffset,
+                            (*it)->children[(*it)->curIndex]);
+        (*it)->curIndex++;
 
-			if (!IsAJsonbXScalar(val) && !skipNested)
-			{
-				/* Recurse into container. */
-				*it = iteratorFromContainer(val->val.binary.data, *it);
-				goto recurse;
-			}
-			else
-			{
-				/*
+        if (!IsAJsonbXScalar(val) && !skipNested)
+        {
+            /* Recurse into container. */
+            *it = iteratorFromContainer(val->val.binary.data, *it);
+            goto recurse;
+        }
+        else
+        {
+            /*
 				 * Scalar item in array, or a container and caller didn't want
 				 * us to recurse into it.
 				 */
-				return WJBX_ELEM;
-			}
+            return WJBX_ELEM;
+        }
 
-		case JBXI_OBJECT_START:
-			/* Set v to object on first object call */
-			val->type = jbvXObject;
-			val->val.object.nPairs = (*it)->nElems;
+    case JBXI_OBJECT_START:
+        /* Set v to object on first object call */
+        val->type = jbvXObject;
+        val->val.object.nPairs = (*it)->nElems;
 
-			/*
+        /*
 			 * v->val.object.pairs is not actually set, because we aren't
 			 * doing a full conversion
 			 */
-			(*it)->curIndex = 0;
-			(*it)->curDataOffset = 0;
-			(*it)->curValueOffset = getJsonbXOffset((*it)->container,
-												   (*it)->nElems);
-			/* Set state for next call */
-			(*it)->state = JBXI_OBJECT_KEY;
-			return WJBX_BEGIN_OBJECT;
+        (*it)->curIndex = 0;
+        (*it)->curDataOffset = 0;
+        (*it)->curValueOffset = getJsonbXOffset((*it)->container,
+                                                (*it)->nElems);
+        /* Set state for next call */
+        (*it)->state = JBXI_OBJECT_KEY;
+        return WJBX_BEGIN_OBJECT;
 
-		case JBXI_OBJECT_KEY:
-			if ((*it)->curIndex >= (*it)->nElems)
-			{
-				/*
+    case JBXI_OBJECT_KEY:
+        if ((*it)->curIndex >= (*it)->nElems)
+        {
+            /*
 				 * All pairs within object already processed.  Report this to
 				 * caller, and give it back original containing iterator
 				 * (which independently tracks iteration progress at its level
 				 * of nesting).
 				 */
-				*it = freeAndGetParent(*it);
-				return WJBX_END_OBJECT;
-			}
-			else
-			{
-				/* Return key of a key/value pair.  */
-				fillJsonbXValue((*it)->container, (*it)->curIndex,
-							   (*it)->dataProper, (*it)->curDataOffset,
-							   val);
-				if (val->type != jbvXString)
-					elog(ERROR, "unexpected jsonbx type as object key");
+            *it = freeAndGetParent(*it);
+            return WJBX_END_OBJECT;
+        }
+        else
+        {
+            /* Return key of a key/value pair.  */
+            fillJsonbXValue((*it)->container, (*it)->curIndex,
+                            (*it)->dataProper, (*it)->curDataOffset, val);
+            if (val->type != jbvXString)
+                elog(ERROR, "unexpected jsonbx type as object key");
 
-				/* Set state for next call */
-				(*it)->state = JBXI_OBJECT_VALUE;
-				return WJBX_KEY;
-			}
+            /* Set state for next call */
+            (*it)->state = JBXI_OBJECT_VALUE;
+            return WJBX_KEY;
+        }
 
-		case JBXI_OBJECT_VALUE:
-			/* Set state for next call */
-			(*it)->state = JBXI_OBJECT_KEY;
+    case JBXI_OBJECT_VALUE:
+        /* Set state for next call */
+        (*it)->state = JBXI_OBJECT_KEY;
 
-			fillJsonbXValue((*it)->container, (*it)->curIndex + (*it)->nElems,
-						   (*it)->dataProper, (*it)->curValueOffset,
-						   val);
+        fillJsonbXValue((*it)->container, (*it)->curIndex + (*it)->nElems,
+                        (*it)->dataProper, (*it)->curValueOffset, val);
 
-			JBXE_ADVANCE_OFFSET((*it)->curDataOffset,
-							   (*it)->children[(*it)->curIndex]);
-			JBXE_ADVANCE_OFFSET((*it)->curValueOffset,
-							   (*it)->children[(*it)->curIndex + (*it)->nElems]);
-			(*it)->curIndex++;
+        JBXE_ADVANCE_OFFSET((*it)->curDataOffset,
+                            (*it)->children[(*it)->curIndex]);
+        JBXE_ADVANCE_OFFSET((*it)->curValueOffset,
+                            (*it)->children[(*it)->curIndex + (*it)->nElems]);
+        (*it)->curIndex++;
 
-			/*
+        /*
 			 * Value may be a container, in which case we recurse with new,
 			 * child iterator (unless the caller asked not to, by passing
 			 * skipNested).
 			 */
-			if (!IsAJsonbXScalar(val) && !skipNested)
-			{
-				*it = iteratorFromContainer(val->val.binary.data, *it);
-				goto recurse;
-			}
-			else
-				return WJBX_VALUE;
-	}
+        if (!IsAJsonbXScalar(val) && !skipNested)
+        {
+            *it = iteratorFromContainer(val->val.binary.data, *it);
+            goto recurse;
+        }
+        else
+            return WJBX_VALUE;
+    }
 
-	elog(ERROR, "invalid iterator state");
-	return -1;
+    elog(ERROR, "invalid iterator state");
+    return -1;
 }
 
 /*
  * Initialize an iterator for iterating all elements in a container.
  */
-static JsonbXIterator *
-iteratorFromContainer(JsonbXContainer *container, JsonbXIterator *parent)
+static JsonbXIterator *iteratorFromContainer(JsonbXContainer *container,
+                                             JsonbXIterator *parent)
 {
-	JsonbXIterator *it;
+    JsonbXIterator *it;
 
-	it = palloc0(sizeof(JsonbXIterator));
-	it->container = container;
-	it->parent = parent;
-	it->nElems = JsonbXContainerSize(container);
+    it = palloc0(sizeof(JsonbXIterator));
+    it->container = container;
+    it->parent = parent;
+    it->nElems = JsonbXContainerSize(container);
 
-	/* Array starts just after header */
-	it->children = container->children;
+    /* Array starts just after header */
+    it->children = container->children;
 
-	switch (container->header & (JBX_FARRAY | JBX_FOBJECT))
-	{
-		case JBX_FARRAY:
-			it->dataProper =
-				(char *) it->children + it->nElems * sizeof(JXEntry);
-			it->isScalar = JsonbXContainerIsScalar(container);
-			/* This is either a "raw scalar", or an array */
-			Assert(!it->isScalar || it->nElems == 1);
+    switch (container->header & (JBX_FARRAY | JBX_FOBJECT))
+    {
+    case JBX_FARRAY:
+        it->dataProper = (char *)it->children + it->nElems * sizeof(JXEntry);
+        it->isScalar = JsonbXContainerIsScalar(container);
+        /* This is either a "raw scalar", or an array */
+        Assert(!it->isScalar || it->nElems == 1);
 
-			it->state = JBXI_ARRAY_START;
-			break;
+        it->state = JBXI_ARRAY_START;
+        break;
 
-		case JBX_FOBJECT:
-			it->dataProper =
-				(char *) it->children + it->nElems * sizeof(JXEntry) * 2;
-			it->state = JBXI_OBJECT_START;
-			break;
+    case JBX_FOBJECT:
+        it->dataProper = (char *)it->children +
+                         it->nElems * sizeof(JXEntry) * 2;
+        it->state = JBXI_OBJECT_START;
+        break;
 
-		default:
-			elog(ERROR, "unknown type of jsonbx container");
-	}
+    default:
+        elog(ERROR, "unknown type of jsonbx container");
+    }
 
-	return it;
+    return it;
 }
 
 /*
  * JsonbXIteratorNext() worker:	Return parent, while freeing memory for current
  * iterator
  */
-static JsonbXIterator *
-freeAndGetParent(JsonbXIterator *it)
+static JsonbXIterator *freeAndGetParent(JsonbXIterator *it)
 {
-	JsonbXIterator *v = it->parent;
+    JsonbXIterator *v = it->parent;
 
-	pfree(it);
-	return v;
+    pfree(it);
+    return v;
 }
 
 /*
@@ -966,111 +956,106 @@ freeAndGetParent(JsonbXIterator *it)
  * "val" is lhs JsonbX, and mContained is rhs JsonbX when called from top level.
  * We determine if mContained is contained within val.
  */
-bool
-JsonbXDeepContains(JsonbXIterator **val, JsonbXIterator **mContained)
+bool JsonbXDeepContains(JsonbXIterator **val, JsonbXIterator **mContained)
 {
-	JsonbXValue	vval,
-				vcontained;
-	JsonbXIteratorToken rval,
-				rcont;
+    JsonbXValue vval, vcontained;
+    JsonbXIteratorToken rval, rcont;
 
-	/*
+    /*
 	 * Guard against stack overflow due to overly complex Jsonb.
 	 *
 	 * Functions called here independently take this precaution, but that
 	 * might not be sufficient since this is also a recursive function.
 	 */
-	check_stack_depth();
+    check_stack_depth();
 
-	rval = JsonbXIteratorNext(val, &vval, false);
-	rcont = JsonbXIteratorNext(mContained, &vcontained, false);
+    rval = JsonbXIteratorNext(val, &vval, false);
+    rcont = JsonbXIteratorNext(mContained, &vcontained, false);
 
-	if (rval != rcont)
-	{
-		/*
+    if (rval != rcont)
+    {
+        /*
 		 * The differing return values can immediately be taken as indicating
 		 * two differing container types at this nesting level, which is
 		 * sufficient reason to give up entirely (but it should be the case
 		 * that they're both some container type).
 		 */
-		Assert(rval == WJBX_BEGIN_OBJECT || rval == WJBX_BEGIN_ARRAY);
-		Assert(rcont == WJBX_BEGIN_OBJECT || rcont == WJBX_BEGIN_ARRAY);
-		return false;
-	}
-	else if (rcont == WJBX_BEGIN_OBJECT)
-	{
-		Assert(vval.type == jbvXObject);
-		Assert(vcontained.type == jbvXObject);
+        Assert(rval == WJBX_BEGIN_OBJECT || rval == WJBX_BEGIN_ARRAY);
+        Assert(rcont == WJBX_BEGIN_OBJECT || rcont == WJBX_BEGIN_ARRAY);
+        return false;
+    }
+    else if (rcont == WJBX_BEGIN_OBJECT)
+    {
+        Assert(vval.type == jbvXObject);
+        Assert(vcontained.type == jbvXObject);
 
-		/*
+        /*
 		 * If the lhs has fewer pairs than the rhs, it can't possibly contain
 		 * the rhs.  (This conclusion is safe only because we de-duplicate
 		 * keys in all JsonbX objects; thus there can be no corresponding
 		 * optimization in the array case.)  The case probably won't arise
 		 * often, but since it's such a cheap check we may as well make it.
 		 */
-		if (vval.val.object.nPairs < vcontained.val.object.nPairs)
-			return false;
+        if (vval.val.object.nPairs < vcontained.val.object.nPairs)
+            return false;
 
-		/* Work through rhs "is it contained within?" object */
-		for (;;)
-		{
-			JsonbXValue *lhsVal; /* lhsVal is from pair in lhs object */
+        /* Work through rhs "is it contained within?" object */
+        for (;;)
+        {
+            JsonbXValue *lhsVal; /* lhsVal is from pair in lhs object */
 
-			rcont = JsonbXIteratorNext(mContained, &vcontained, false);
+            rcont = JsonbXIteratorNext(mContained, &vcontained, false);
 
-			/*
+            /*
 			 * When we get through caller's rhs "is it contained within?"
 			 * object without failing to find one of its values, it's
 			 * contained.
 			 */
-			if (rcont == WJBX_END_OBJECT)
-				return true;
+            if (rcont == WJBX_END_OBJECT)
+                return true;
 
-			Assert(rcont == WJBX_KEY);
+            Assert(rcont == WJBX_KEY);
 
-			/* First, find value by key... */
-			lhsVal = findJsonbXValueFromContainer((*val)->container,
-												 JBX_FOBJECT,
-												 &vcontained);
+            /* First, find value by key... */
+            lhsVal = findJsonbXValueFromContainer((*val)->container,
+                                                  JBX_FOBJECT, &vcontained);
 
-			if (!lhsVal)
-				return false;
+            if (!lhsVal)
+                return false;
 
-			/*
+            /*
 			 * ...at this stage it is apparent that there is at least a key
 			 * match for this rhs pair.
 			 */
-			rcont = JsonbXIteratorNext(mContained, &vcontained, true);
+            rcont = JsonbXIteratorNext(mContained, &vcontained, true);
 
-			Assert(rcont == WJBX_VALUE);
+            Assert(rcont == WJBX_VALUE);
 
-			/*
+            /*
 			 * Compare rhs pair's value with lhs pair's value just found using
 			 * key
 			 */
-			if (lhsVal->type != vcontained.type)
-			{
-				return false;
-			}
-			else if (IsAJsonbXScalar(lhsVal))
-			{
-				if (!equalsJsonbXScalarValue(lhsVal, &vcontained))
-					return false;
-			}
-			else
-			{
-				/* Nested container value (object or array) */
-				JsonbXIterator *nestval,
-						   *nestContained;
+            if (lhsVal->type != vcontained.type)
+            {
+                return false;
+            }
+            else if (IsAJsonbXScalar(lhsVal))
+            {
+                if (!equalsJsonbXScalarValue(lhsVal, &vcontained))
+                    return false;
+            }
+            else
+            {
+                /* Nested container value (object or array) */
+                JsonbXIterator *nestval, *nestContained;
 
-				Assert(lhsVal->type == jbvXBinary);
-				Assert(vcontained.type == jbvXBinary);
+                Assert(lhsVal->type == jbvXBinary);
+                Assert(vcontained.type == jbvXBinary);
 
-				nestval = JsonbXIteratorInit(lhsVal->val.binary.data);
-				nestContained = JsonbXIteratorInit(vcontained.val.binary.data);
+                nestval = JsonbXIteratorInit(lhsVal->val.binary.data);
+                nestContained = JsonbXIteratorInit(vcontained.val.binary.data);
 
-				/*
+                /*
 				 * Match "value" side of rhs datum object's pair recursively.
 				 * It's a nested structure.
 				 *
@@ -1090,20 +1075,20 @@ JsonbXDeepContains(JsonbXIterator **val, JsonbXIterator **mContained)
 				 * of containment (plus of course the mapped nodes must be
 				 * equal).
 				 */
-				if (!JsonbXDeepContains(&nestval, &nestContained))
-					return false;
-			}
-		}
-	}
-	else if (rcont == WJBX_BEGIN_ARRAY)
-	{
-		JsonbXValue *lhsConts = NULL;
-		uint32		nLhsElems = vval.val.array.nElems;
+                if (!JsonbXDeepContains(&nestval, &nestContained))
+                    return false;
+            }
+        }
+    }
+    else if (rcont == WJBX_BEGIN_ARRAY)
+    {
+        JsonbXValue *lhsConts = NULL;
+        uint32 nLhsElems = vval.val.array.nElems;
 
-		Assert(vval.type == jbvXArray);
-		Assert(vcontained.type == jbvXArray);
+        Assert(vval.type == jbvXArray);
+        Assert(vcontained.type == jbvXArray);
 
-		/*
+        /*
 		 * Handle distinction between "raw scalar" pseudo arrays, and real
 		 * arrays.
 		 *
@@ -1113,101 +1098,100 @@ JsonbXDeepContains(JsonbXIterator **val, JsonbXIterator **mContained)
 		 * only contain pairs, never raw scalars (a pair is represented by an
 		 * rhs object argument with a single contained pair).
 		 */
-		if (vval.val.array.rawScalar && !vcontained.val.array.rawScalar)
-			return false;
+        if (vval.val.array.rawScalar && !vcontained.val.array.rawScalar)
+            return false;
 
-		/* Work through rhs "is it contained within?" array */
-		for (;;)
-		{
-			rcont = JsonbXIteratorNext(mContained, &vcontained, true);
+        /* Work through rhs "is it contained within?" array */
+        for (;;)
+        {
+            rcont = JsonbXIteratorNext(mContained, &vcontained, true);
 
-			/*
+            /*
 			 * When we get through caller's rhs "is it contained within?"
 			 * array without failing to find one of its values, it's
 			 * contained.
 			 */
-			if (rcont == WJBX_END_ARRAY)
-				return true;
+            if (rcont == WJBX_END_ARRAY)
+                return true;
 
-			Assert(rcont == WJBX_ELEM);
+            Assert(rcont == WJBX_ELEM);
 
-			if (IsAJsonbXScalar(&vcontained))
-			{
-				if (!findJsonbXValueFromContainer((*val)->container,
-												 JBX_FARRAY,
-												 &vcontained))
-					return false;
-			}
-			else
-			{
-				uint32		i;
+            if (IsAJsonbXScalar(&vcontained))
+            {
+                if (!findJsonbXValueFromContainer((*val)->container,
+                                                  JBX_FARRAY, &vcontained))
+                    return false;
+            }
+            else
+            {
+                uint32 i;
 
-				/*
+                /*
 				 * If this is first container found in rhs array (at this
 				 * depth), initialize temp lhs array of containers
 				 */
-				if (lhsConts == NULL)
-				{
-					uint32		j = 0;
+                if (lhsConts == NULL)
+                {
+                    uint32 j = 0;
 
-					/* Make room for all possible values */
-					lhsConts = palloc(sizeof(JsonbXValue) * nLhsElems);
+                    /* Make room for all possible values */
+                    lhsConts = palloc(sizeof(JsonbXValue) * nLhsElems);
 
-					for (i = 0; i < nLhsElems; i++)
-					{
-						/* Store all lhs elements in temp array */
-						rcont = JsonbXIteratorNext(val, &vval, true);
-						Assert(rcont == WJBX_ELEM);
+                    for (i = 0; i < nLhsElems; i++)
+                    {
+                        /* Store all lhs elements in temp array */
+                        rcont = JsonbXIteratorNext(val, &vval, true);
+                        Assert(rcont == WJBX_ELEM);
 
-						if (vval.type == jbvXBinary)
-							lhsConts[j++] = vval;
-					}
+                        if (vval.type == jbvXBinary)
+                            lhsConts[j++] = vval;
+                    }
 
-					/* No container elements in temp array, so give up now */
-					if (j == 0)
-						return false;
+                    /* No container elements in temp array, so give up now */
+                    if (j == 0)
+                        return false;
 
-					/* We may have only partially filled array */
-					nLhsElems = j;
-				}
+                    /* We may have only partially filled array */
+                    nLhsElems = j;
+                }
 
-				/* XXX: Nested array containment is O(N^2) */
-				for (i = 0; i < nLhsElems; i++)
-				{
-					/* Nested container value (object or array) */
-					JsonbXIterator *nestval,
-							   *nestContained;
-					bool		contains;
+                /* XXX: Nested array containment is O(N^2) */
+                for (i = 0; i < nLhsElems; i++)
+                {
+                    /* Nested container value (object or array) */
+                    JsonbXIterator *nestval, *nestContained;
+                    bool contains;
 
-					nestval = JsonbXIteratorInit(lhsConts[i].val.binary.data);
-					nestContained = JsonbXIteratorInit(vcontained.val.binary.data);
+                    nestval = JsonbXIteratorInit(lhsConts[i].val.binary.data);
+                    nestContained =
+                        JsonbXIteratorInit(vcontained.val.binary.data);
 
-					contains = JsonbXDeepContains(&nestval, &nestContained);
+                    contains = JsonbXDeepContains(&nestval, &nestContained);
 
-					if (nestval)
-						pfree(nestval);
-					if (nestContained)
-						pfree(nestContained);
-					if (contains)
-						break;
-				}
+                    if (nestval)
+                        pfree(nestval);
+                    if (nestContained)
+                        pfree(nestContained);
+                    if (contains)
+                        break;
+                }
 
-				/*
+                /*
 				 * Report rhs container value is not contained if couldn't
 				 * match rhs container to *some* lhs cont
 				 */
-				if (i == nLhsElems)
-					return false;
-			}
-		}
-	}
-	else
-	{
-		elog(ERROR, "invalid jsonbx container type");
-	}
+                if (i == nLhsElems)
+                    return false;
+            }
+        }
+    }
+    else
+    {
+        elog(ERROR, "invalid jsonbx container type");
+    }
 
-	elog(ERROR, "unexpectedly fell off end of jsonbx container");
-	return false;
+    elog(ERROR, "unexpectedly fell off end of jsonbx container");
+    return false;
 }
 
 /*
@@ -1217,115 +1201,113 @@ JsonbXDeepContains(JsonbXIterator **val, JsonbXIterator **mContained)
  * Some callers may wish to independently XOR in JBX_FOBJECT and JBX_FARRAY
  * flags.
  */
-void
-JsonbXHashScalarValue(const JsonbXValue *scalarVal, uint32 *hash)
+void JsonbXHashScalarValue(const JsonbXValue *scalarVal, uint32 *hash)
 {
-	uint32		tmp;
+    uint32 tmp;
 
-	/* Compute hash value for scalarVal */
-	switch (scalarVal->type)
-	{
-		case jbvXNull:
-			tmp = 0x01;
-			break;
-		case jbvXString:
-			tmp = DatumGetUInt32(hash_any((const unsigned char *) scalarVal->val.string.val,
-										  scalarVal->val.string.len));
-			break;
-		case jbvXNumeric:
-			/* Must hash equal numerics to equal hash codes */
-			tmp = DatumGetUInt32(DirectFunctionCall1(hash_numeric,
-													 NumericGetDatum(scalarVal->val.numeric)));
-			break;
-		case jbvXBool:
-			tmp = scalarVal->val.boolean ? 0x02 : 0x04;
+    /* Compute hash value for scalarVal */
+    switch (scalarVal->type)
+    {
+    case jbvXNull:
+        tmp = 0x01;
+        break;
+    case jbvXString:
+        tmp = DatumGetUInt32(
+            hash_any((const unsigned char *)scalarVal->val.string.val,
+                     scalarVal->val.string.len));
+        break;
+    case jbvXNumeric:
+        /* Must hash equal numerics to equal hash codes */
+        tmp = DatumGetUInt32(DirectFunctionCall1(
+            hash_numeric, NumericGetDatum(scalarVal->val.numeric)));
+        break;
+    case jbvXBool:
+        tmp = scalarVal->val.boolean ? 0x02 : 0x04;
 
-			break;
-		default:
-			elog(ERROR, "invalid jsonbx scalar type");
-			tmp = 0;			/* keep compiler quiet */
-			break;
-	}
+        break;
+    default:
+        elog(ERROR, "invalid jsonbx scalar type");
+        tmp = 0; /* keep compiler quiet */
+        break;
+    }
 
-	/*
+    /*
 	 * Combine hash values of successive keys, values and elements by rotating
 	 * the previous value left 1 bit, then XOR'ing in the new
 	 * key/value/element's hash value.
 	 */
-	*hash = (*hash << 1) | (*hash >> 31);
-	*hash ^= tmp;
+    *hash = (*hash << 1) | (*hash >> 31);
+    *hash ^= tmp;
 }
 
 /*
  * Hash a value to a 64-bit value, with a seed. Otherwise, similar to
  * JsonbXHashScalarValue.
  */
-void
-JsonbXHashScalarValueExtended(const JsonbXValue *scalarVal, uint64 *hash,
-							 uint64 seed)
+void JsonbXHashScalarValueExtended(const JsonbXValue *scalarVal, uint64 *hash,
+                                   uint64 seed)
 {
-	uint64		tmp;
+    uint64 tmp;
 
-	switch (scalarVal->type)
-	{
-		case jbvXNull:
-			tmp = seed + 0x01;
-			break;
-		case jbvXString:
-			tmp = DatumGetUInt64(hash_any_extended((const unsigned char *) scalarVal->val.string.val,
-												   scalarVal->val.string.len,
-												   seed));
-			break;
-		case jbvXNumeric:
-			tmp = DatumGetUInt64(DirectFunctionCall2(hash_numeric_extended,
-													 NumericGetDatum(scalarVal->val.numeric),
-													 UInt64GetDatum(seed)));
-			break;
-		case jbvXBool:
-			if (seed)
-				tmp = DatumGetUInt64(DirectFunctionCall2(hashcharextended,
-														 BoolGetDatum(scalarVal->val.boolean),
-														 UInt64GetDatum(seed)));
-			else
-				tmp = scalarVal->val.boolean ? 0x02 : 0x04;
+    switch (scalarVal->type)
+    {
+    case jbvXNull:
+        tmp = seed + 0x01;
+        break;
+    case jbvXString:
+        tmp = DatumGetUInt64(
+            hash_any_extended((const unsigned char *)scalarVal->val.string.val,
+                              scalarVal->val.string.len, seed));
+        break;
+    case jbvXNumeric:
+        tmp = DatumGetUInt64(DirectFunctionCall2(
+            hash_numeric_extended, NumericGetDatum(scalarVal->val.numeric),
+            UInt64GetDatum(seed)));
+        break;
+    case jbvXBool:
+        if (seed)
+            tmp = DatumGetUInt64(DirectFunctionCall2(
+                hashcharextended, BoolGetDatum(scalarVal->val.boolean),
+                UInt64GetDatum(seed)));
+        else
+            tmp = scalarVal->val.boolean ? 0x02 : 0x04;
 
-			break;
-		default:
-			elog(ERROR, "invalid jsonbx scalar type");
-			break;
-	}
+        break;
+    default:
+        elog(ERROR, "invalid jsonbx scalar type");
+        break;
+    }
 
-	*hash = ROTATE_HIGH_AND_LOW_32BITS(*hash);
-	*hash ^= tmp;
+    *hash = ROTATE_HIGH_AND_LOW_32BITS(*hash);
+    *hash ^= tmp;
 }
 
 /*
  * Are two scalar JsonbXValues of the same type a and b equal?
  */
-static bool
-equalsJsonbXScalarValue(JsonbXValue *aScalar, JsonbXValue *bScalar)
+static bool equalsJsonbXScalarValue(JsonbXValue *aScalar, JsonbXValue *bScalar)
 {
-	if (aScalar->type == bScalar->type)
-	{
-		switch (aScalar->type)
-		{
-			case jbvXNull:
-				return true;
-			case jbvXString:
-				return lengthCompareJsonbXStringValue(aScalar, bScalar) == 0;
-			case jbvXNumeric:
-				return DatumGetBool(DirectFunctionCall2(numeric_eq,
-														PointerGetDatum(aScalar->val.numeric),
-														PointerGetDatum(bScalar->val.numeric)));
-			case jbvXBool:
-				return aScalar->val.boolean == bScalar->val.boolean;
+    if (aScalar->type == bScalar->type)
+    {
+        switch (aScalar->type)
+        {
+        case jbvXNull:
+            return true;
+        case jbvXString:
+            return lengthCompareJsonbXStringValue(aScalar, bScalar) == 0;
+        case jbvXNumeric:
+            return DatumGetBool(DirectFunctionCall2(
+                numeric_eq, PointerGetDatum(aScalar->val.numeric),
+                PointerGetDatum(bScalar->val.numeric)));
+        case jbvXBool:
+            return aScalar->val.boolean == bScalar->val.boolean;
 
-			default:
-				elog(ERROR, "invalid jsonbx scalar type");
-		}
-	}
-	elog(ERROR, "jsonbx scalar type mismatch");
-	return -1;
+        default:
+            elog(ERROR, "invalid jsonbx scalar type");
+        }
+    }
+    elog(ERROR, "jsonbx scalar type mismatch");
+    return -1;
 }
 
 /*
@@ -1334,40 +1316,36 @@ equalsJsonbXScalarValue(JsonbXValue *aScalar, JsonbXValue *bScalar)
  * Strings are compared using the default collation.  Used by B-tree
  * operators, where a lexical sort order is generally expected.
  */
-static int
-compareJsonbXScalarValue(JsonbXValue *aScalar, JsonbXValue *bScalar)
+static int compareJsonbXScalarValue(JsonbXValue *aScalar, JsonbXValue *bScalar)
 {
-	if (aScalar->type == bScalar->type)
-	{
-		switch (aScalar->type)
-		{
-			case jbvXNull:
-				return 0;
-			case jbvXString:
-				return varstr_cmp(aScalar->val.string.val,
-								  aScalar->val.string.len,
-								  bScalar->val.string.val,
-								  bScalar->val.string.len,
-								  DEFAULT_COLLATION_OID);
-			case jbvXNumeric:
-				return DatumGetInt32(DirectFunctionCall2(numeric_cmp,
-														 PointerGetDatum(aScalar->val.numeric),
-														 PointerGetDatum(bScalar->val.numeric)));
-			case jbvXBool:
-				if (aScalar->val.boolean == bScalar->val.boolean)
-					return 0;
-				else if (aScalar->val.boolean > bScalar->val.boolean)
-					return 1;
-				else
-					return -1;
-			default:
-				elog(ERROR, "invalid jsonbx scalar type");
-		}
-	}
-	elog(ERROR, "jsonbx scalar type mismatch");
-	return -1;
+    if (aScalar->type == bScalar->type)
+    {
+        switch (aScalar->type)
+        {
+        case jbvXNull:
+            return 0;
+        case jbvXString:
+            return varstr_cmp(aScalar->val.string.val, aScalar->val.string.len,
+                              bScalar->val.string.val, bScalar->val.string.len,
+                              DEFAULT_COLLATION_OID);
+        case jbvXNumeric:
+            return DatumGetInt32(DirectFunctionCall2(
+                numeric_cmp, PointerGetDatum(aScalar->val.numeric),
+                PointerGetDatum(bScalar->val.numeric)));
+        case jbvXBool:
+            if (aScalar->val.boolean == bScalar->val.boolean)
+                return 0;
+            else if (aScalar->val.boolean > bScalar->val.boolean)
+                return 1;
+            else
+                return -1;
+        default:
+            elog(ERROR, "invalid jsonbx scalar type");
+        }
+    }
+    elog(ERROR, "jsonbx scalar type mismatch");
+    return -1;
 }
-
 
 /*
  * Functions for manipulating the resizeable buffer used by convertJsonbX and
@@ -1379,105 +1357,98 @@ compareJsonbXScalarValue(JsonbXValue *aScalar, JsonbXValue *bScalar)
  * Returns the offset to the reserved area. The caller is expected to fill
  * the reserved area later with copyToBuffer().
  */
-int
-reserveFromBuffer(StringInfo buffer, int len)
+int reserveFromBuffer(StringInfo buffer, int len)
 {
-	int			offset;
+    int offset;
 
-	/* Make more room if needed */
-	enlargeStringInfo(buffer, len);
+    /* Make more room if needed */
+    enlargeStringInfo(buffer, len);
 
-	/* remember current offset */
-	offset = buffer->len;
+    /* remember current offset */
+    offset = buffer->len;
 
-	/* reserve the space */
-	buffer->len += len;
+    /* reserve the space */
+    buffer->len += len;
 
-	/*
+    /*
 	 * Keep a trailing null in place, even though it's not useful for us; it
 	 * seems best to preserve the invariants of StringInfos.
 	 */
-	buffer->data[buffer->len] = '\0';
+    buffer->data[buffer->len] = '\0';
 
-	return offset;
+    return offset;
 }
 
 /*
  * Copy 'len' bytes to a previously reserved area in buffer.
  */
-static void
-copyToBuffer(StringInfo buffer, int offset, const char *data, int len)
+static void copyToBuffer(StringInfo buffer, int offset, const char *data,
+                         int len)
 {
-	memcpy(buffer->data + offset, data, len);
+    memcpy(buffer->data + offset, data, len);
 }
 
 /*
  * A shorthand for reserveFromBuffer + copyToBuffer.
  */
-static void
-appendToBuffer(StringInfo buffer, const char *data, int len)
+static void appendToBuffer(StringInfo buffer, const char *data, int len)
 {
-	int			offset;
+    int offset;
 
-	offset = reserveFromBuffer(buffer, len);
-	copyToBuffer(buffer, offset, data, len);
+    offset = reserveFromBuffer(buffer, len);
+    copyToBuffer(buffer, offset, data, len);
 }
-
 
 /*
  * Append padding, so that the length of the StringInfo is int-aligned.
  * Returns the number of padding bytes appended.
  */
-short
-padBufferToInt(StringInfo buffer)
+short padBufferToInt(StringInfo buffer)
 {
-	int			padlen,
-				p,
-				offset;
+    int padlen, p, offset;
 
-	padlen = INTALIGN(buffer->len) - buffer->len;
+    padlen = INTALIGN(buffer->len) - buffer->len;
 
-	offset = reserveFromBuffer(buffer, padlen);
+    offset = reserveFromBuffer(buffer, padlen);
 
-	/* padlen must be small, so this is probably faster than a memset */
-	for (p = 0; p < padlen; p++)
-		buffer->data[offset + p] = '\0';
+    /* padlen must be small, so this is probably faster than a memset */
+    for (p = 0; p < padlen; p++)
+        buffer->data[offset + p] = '\0';
 
-	return padlen;
+    return padlen;
 }
 
 /*
  * Given a JsonbXValue, convert to JsonbX. The result is palloc'd.
  */
-static JsonbX *
-convertToJsonbX(JsonbXValue *val)
+static JsonbX *convertToJsonbX(JsonbXValue *val)
 {
-	StringInfoData buffer;
-	JXEntry		jentry;
-	JsonbX	   *res;
+    StringInfoData buffer;
+    JXEntry jentry;
+    JsonbX *res;
 
-	/* Should not already have binary representation */
-	Assert(val->type != jbvXBinary);
+    /* Should not already have binary representation */
+    Assert(val->type != jbvXBinary);
 
-	/* Allocate an output buffer. It will be enlarged as needed */
-	initStringInfo(&buffer);
+    /* Allocate an output buffer. It will be enlarged as needed */
+    initStringInfo(&buffer);
 
-	/* Make room for the varlena header */
-	reserveFromBuffer(&buffer, VARHDRSZ);
+    /* Make room for the varlena header */
+    reserveFromBuffer(&buffer, VARHDRSZ);
 
-	convertJsonbXValue(&buffer, &jentry, val, 0);
+    convertJsonbXValue(&buffer, &jentry, val, 0);
 
-	/*
+    /*
 	 * Note: the JXEntry of the root is discarded. Therefore the root
 	 * JsonbXContainer struct must contain enough information to tell what kind
 	 * of value it is.
 	 */
 
-	res = (JsonbX *) buffer.data;
+    res = (JsonbX *)buffer.data;
 
-	SET_VARSIZE(res, buffer.len);
+    SET_VARSIZE(res, buffer.len);
 
-	return res;
+    return res;
 }
 
 /*
@@ -1491,271 +1462,282 @@ convertToJsonbX(JsonbXValue *val)
  * If the value is an array or an object, this recurses. 'level' is only used
  * for debugging purposes.
  */
-static void
-convertJsonbXValue(StringInfo buffer, JXEntry *header, JsonbXValue *val, int level)
+static void convertJsonbXValue(StringInfo buffer, JXEntry *header,
+                               JsonbXValue *val, int level)
 {
-	check_stack_depth();
+    check_stack_depth();
 
-	if (!val)
-		return;
+    if (!val)
+        return;
 
-	/*
+    /*
 	 * A JsonbXValue passed as val should never have a type of jbvXBinary, and
 	 * neither should any of its sub-components. Those values will be produced
 	 * by convertJsonbXArray and convertJsonbXObject, the results of which will
 	 * not be passed back to this function as an argument.
 	 */
 
-	if (IsAJsonbXScalar(val))
-		convertJsonbXScalar(buffer, header, val);
-	else if (val->type == jbvXArray)
-		convertJsonbXArray(buffer, header, val, level);
-	else if (val->type == jbvXObject)
-		convertJsonbXObject(buffer, header, val, level);
-	else
-		elog(ERROR, "unknown type of jsonbx container to convert");
+    if (IsAJsonbXScalar(val))
+        convertJsonbXScalar(buffer, header, val);
+    else if (val->type == jbvXArray)
+        convertJsonbXArray(buffer, header, val, level);
+    else if (val->type == jbvXObject)
+        convertJsonbXObject(buffer, header, val, level);
+    else
+        elog(ERROR, "unknown type of jsonbx container to convert");
 }
 
-static void
-convertJsonbXArray(StringInfo buffer, JXEntry *pheader, JsonbXValue *val, int level)
+static void convertJsonbXArray(StringInfo buffer, JXEntry *pheader,
+                               JsonbXValue *val, int level)
 {
-	int			base_offset;
-	int			jentry_offset;
-	int			i;
-	int			totallen;
-	uint32		header;
-	int			nElems = val->val.array.nElems;
+    int base_offset;
+    int jentry_offset;
+    int i;
+    int totallen;
+    uint32 header;
+    int nElems = val->val.array.nElems;
 
-	/* Remember where in the buffer this array starts. */
-	base_offset = buffer->len;
+    /* Remember where in the buffer this array starts. */
+    base_offset = buffer->len;
 
-	/* Align to 4-byte boundary (any padding counts as part of my data) */
-	padBufferToInt(buffer);
+    /* Align to 4-byte boundary (any padding counts as part of my data) */
+    padBufferToInt(buffer);
 
-	/*
+    /*
 	 * Construct the header Jentry and store it in the beginning of the
 	 * variable-length payload.
 	 */
-	header = nElems | JBX_FARRAY;
-	if (val->val.array.rawScalar)
-	{
-		Assert(nElems == 1);
-		Assert(level == 0);
-		header |= JBX_FSCALAR;
-	}
+    header = nElems | JBX_FARRAY;
+    if (val->val.array.rawScalar)
+    {
+        Assert(nElems == 1);
+        Assert(level == 0);
+        header |= JBX_FSCALAR;
+    }
 
-	appendToBuffer(buffer, (char *) &header, sizeof(uint32));
+    appendToBuffer(buffer, (char *)&header, sizeof(uint32));
 
-	/* Reserve space for the JXEntries of the elements. */
-	jentry_offset = reserveFromBuffer(buffer, sizeof(JXEntry) * nElems);
+    /* Reserve space for the JXEntries of the elements. */
+    jentry_offset = reserveFromBuffer(buffer, sizeof(JXEntry) * nElems);
 
-	totallen = 0;
-	for (i = 0; i < nElems; i++)
-	{
-		JsonbXValue *elem = &val->val.array.elems[i];
-		int			len;
-		JXEntry		meta;
+    totallen = 0;
+    for (i = 0; i < nElems; i++)
+    {
+        JsonbXValue *elem = &val->val.array.elems[i];
+        int len;
+        JXEntry meta;
 
-		/*
-		 * Convert element, producing a JXEntry and appending its
-		 * variable-length data to buffer
-		 */
-		convertJsonbXValue(buffer, &meta, elem, level + 1);
+        /*
+         * Convert element, producing a JXEntry and appending its
+         * variable-length data to buffer
+         */
+        convertJsonbXValue(buffer, &meta, elem, level + 1);
 
-		len = JBXE_OFFLENFLD(meta);
-		totallen += len;
+        len = JBXE_OFFLENFLD(meta);
+        totallen += len;
 
-		/*
-		 * Bail out if total variable-length data exceeds what will fit in a
-		 * JXEntry length field.  We check this in each iteration, not just
-		 * once at the end, to forestall possible integer overflow.
-		 */
-		if (totallen > JXENTRY_OFFLENMASK)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("total size of jsonbx array elements exceeds the maximum of %u bytes",
-							JXENTRY_OFFLENMASK)));
+        /*
+         * Bail out if total variable-length data exceeds what will fit in a
+         * JXEntry length field.  We check this in each iteration, not just
+         * once at the end, to forestall possible integer overflow.
+         */
+        if (totallen > JXENTRY_OFFLENMASK)
+            ereport(
+                ERROR,
+                (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+                 errmsg(
+                     "total size of jsonbx array elements exceeds the maximum of %u bytes",
+                     JXENTRY_OFFLENMASK)));
 
-		/*
-		 * Convert each JBX_OFFSET_STRIDE'th length to an offset.
-		 */
-		if ((i % JBX_OFFSET_STRIDE) == 0)
-			meta = (meta & JXENTRY_TYPEMASK) | totallen | JXENTRY_HAS_OFF;
+        /*
+         * Convert each JBX_OFFSET_STRIDE'th length to an offset.
+         */
+        if ((i % JBX_OFFSET_STRIDE) == 0)
+            meta = (meta & JXENTRY_TYPEMASK) | totallen | JXENTRY_HAS_OFF;
 
-		copyToBuffer(buffer, jentry_offset, (char *) &meta, sizeof(JXEntry));
-		jentry_offset += sizeof(JXEntry);
-	}
+        copyToBuffer(buffer, jentry_offset, (char *)&meta, sizeof(JXEntry));
+        jentry_offset += sizeof(JXEntry);
+    }
 
-	/* Total data size is everything we've appended to buffer */
-	totallen = buffer->len - base_offset;
+    /* Total data size is everything we've appended to buffer */
+    totallen = buffer->len - base_offset;
 
-	/* Check length again, since we didn't include the metadata above */
-	if (totallen > JXENTRY_OFFLENMASK)
-		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("total size of jsonbx array elements exceeds the maximum of %u bytes",
-						JXENTRY_OFFLENMASK)));
+    /* Check length again, since we didn't include the metadata above */
+    if (totallen > JXENTRY_OFFLENMASK)
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+             errmsg(
+                 "total size of jsonbx array elements exceeds the maximum of %u bytes",
+                 JXENTRY_OFFLENMASK)));
 
-	/* Initialize the header of this node in the container's JXEntry array */
-	*pheader = JXENTRY_ISCONTAINER | totallen;
+    /* Initialize the header of this node in the container's JXEntry array */
+    *pheader = JXENTRY_ISCONTAINER | totallen;
 }
 
-static void
-convertJsonbXObject(StringInfo buffer, JXEntry *pheader, JsonbXValue *val, int level)
+static void convertJsonbXObject(StringInfo buffer, JXEntry *pheader,
+                                JsonbXValue *val, int level)
 {
-	int			base_offset;
-	int			jentry_offset;
-	int			i;
-	int			totallen;
-	uint32		header;
-	int			nPairs = val->val.object.nPairs;
+    int base_offset;
+    int jentry_offset;
+    int i;
+    int totallen;
+    uint32 header;
+    int nPairs = val->val.object.nPairs;
 
-	/* Remember where in the buffer this object starts. */
-	base_offset = buffer->len;
+    /* Remember where in the buffer this object starts. */
+    base_offset = buffer->len;
 
-	/* Align to 4-byte boundary (any padding counts as part of my data) */
-	padBufferToInt(buffer);
+    /* Align to 4-byte boundary (any padding counts as part of my data) */
+    padBufferToInt(buffer);
 
-	/*
-	 * Construct the header JXentry and store it in the beginning of the
+    /*
+	 * Construct the header JXEntry and store it in the beginning of the
 	 * variable-length payload.
 	 */
-	header = nPairs | JBX_FOBJECT;
-	appendToBuffer(buffer, (char *) &header, sizeof(uint32));
+    header = nPairs | JBX_FOBJECT;
+    appendToBuffer(buffer, (char *)&header, sizeof(uint32));
 
-	/* Reserve space for the JXEntries of the keys and values. */
-	jentry_offset = reserveFromBuffer(buffer, sizeof(JXEntry) * nPairs * 2);
+    /* Reserve space for the JXEntries of the keys and values. */
+    jentry_offset = reserveFromBuffer(buffer, sizeof(JXEntry) * nPairs * 2);
 
-	/*
+    /*
 	 * Iterate over the keys, then over the values, since that is the ordering
 	 * we want in the on-disk representation.
 	 */
-	totallen = 0;
-	for (i = 0; i < nPairs; i++)
-	{
-		JsonbXPair  *pair = &val->val.object.pairs[i];
-		int			len;
-		JXEntry		meta;
+    totallen = 0;
+    for (i = 0; i < nPairs; i++)
+    {
+        JsonbXPair *pair = &val->val.object.pairs[i];
+        int len;
+        JXEntry meta;
 
-		/*
+        /*
 		 * Convert key, producing a JXEntry and appending its variable-length
 		 * data to buffer
 		 */
-		convertJsonbXScalar(buffer, &meta, &pair->key);
+        convertJsonbXScalar(buffer, &meta, &pair->key);
 
-		len = JBXE_OFFLENFLD(meta);
-		totallen += len;
+        len = JBXE_OFFLENFLD(meta);
+        totallen += len;
 
-		/*
+        /*
 		 * Bail out if total variable-length data exceeds what will fit in a
 		 * JXEntry length field.  We check this in each iteration, not just
 		 * once at the end, to forestall possible integer overflow.
 		 */
-		if (totallen > JXENTRY_OFFLENMASK)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("total size of jsonbx object elements exceeds the maximum of %u bytes",
-							JXENTRY_OFFLENMASK)));
+        if (totallen > JXENTRY_OFFLENMASK)
+            ereport(
+                ERROR,
+                (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+                 errmsg(
+                     "total size of jsonbx object elements exceeds the maximum of %u bytes",
+                     JXENTRY_OFFLENMASK)));
 
-		/*
+        /*
 		 * Convert each JBX_OFFSET_STRIDE'th length to an offset.
 		 */
-		if ((i % JBX_OFFSET_STRIDE) == 0)
-			meta = (meta & JXENTRY_TYPEMASK) | totallen | JXENTRY_HAS_OFF;
+        if ((i % JBX_OFFSET_STRIDE) == 0)
+            meta = (meta & JXENTRY_TYPEMASK) | totallen | JXENTRY_HAS_OFF;
 
-		copyToBuffer(buffer, jentry_offset, (char *) &meta, sizeof(JXEntry));
-		jentry_offset += sizeof(JXEntry);
-	}
-	for (i = 0; i < nPairs; i++)
-	{
-		JsonbXPair  *pair = &val->val.object.pairs[i];
-		int			len;
-		JXEntry		meta;
+        copyToBuffer(buffer, jentry_offset, (char *)&meta, sizeof(JXEntry));
+        jentry_offset += sizeof(JXEntry);
+    }
+    for (i = 0; i < nPairs; i++)
+    {
+        JsonbXPair *pair = &val->val.object.pairs[i];
+        int len;
+        JXEntry meta;
 
-		/*
+        /*
 		 * Convert value, producing a JXEntry and appending its variable-length
 		 * data to buffer
 		 */
-		convertJsonbXValue(buffer, &meta, &pair->value, level + 1);
+        convertJsonbXValue(buffer, &meta, &pair->value, level + 1);
 
-		len = JBXE_OFFLENFLD(meta);
-		totallen += len;
+        len = JBXE_OFFLENFLD(meta);
+        totallen += len;
 
-		/*
+        /*
 		 * Bail out if total variable-length data exceeds what will fit in a
 		 * JXEntry length field.  We check this in each iteration, not just
 		 * once at the end, to forestall possible integer overflow.
 		 */
-		if (totallen > JXENTRY_OFFLENMASK)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("total size of jsonbx object elements exceeds the maximum of %u bytes",
-							JXENTRY_OFFLENMASK)));
+        if (totallen > JXENTRY_OFFLENMASK)
+            ereport(
+                ERROR,
+                (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+                 errmsg(
+                     "total size of jsonbx object elements exceeds the maximum of %u bytes",
+                     JXENTRY_OFFLENMASK)));
 
-		/*
+        /*
 		 * Convert each JBX_OFFSET_STRIDE'th length to an offset.
 		 */
-		if (((i + nPairs) % JBX_OFFSET_STRIDE) == 0)
-			meta = (meta & JXENTRY_TYPEMASK) | totallen | JXENTRY_HAS_OFF;
+        if (((i + nPairs) % JBX_OFFSET_STRIDE) == 0)
+            meta = (meta & JXENTRY_TYPEMASK) | totallen | JXENTRY_HAS_OFF;
 
-		copyToBuffer(buffer, jentry_offset, (char *) &meta, sizeof(JXEntry));
-		jentry_offset += sizeof(JXEntry);
-	}
+        copyToBuffer(buffer, jentry_offset, (char *)&meta, sizeof(JXEntry));
+        jentry_offset += sizeof(JXEntry);
+    }
 
-	/* Total data size is everything we've appended to buffer */
-	totallen = buffer->len - base_offset;
+    /* Total data size is everything we've appended to buffer */
+    totallen = buffer->len - base_offset;
 
-	/* Check length again, since we didn't include the metadata above */
-	if (totallen > JXENTRY_OFFLENMASK)
-		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("total size of jsonbx object elements exceeds the maximum of %u bytes",
-						JXENTRY_OFFLENMASK)));
+    /* Check length again, since we didn't include the metadata above */
+    if (totallen > JXENTRY_OFFLENMASK)
+        ereport(
+            ERROR,
+            (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+             errmsg(
+                 "total size of jsonbx object elements exceeds the maximum of %u bytes",
+                 JXENTRY_OFFLENMASK)));
 
-	/* Initialize the header of this node in the container's JXEntry array */
-	*pheader = JXENTRY_ISCONTAINER | totallen;
+    /* Initialize the header of this node in the container's JXEntry array */
+    *pheader = JXENTRY_ISCONTAINER | totallen;
 }
 
-static void
-convertJsonbXScalar(StringInfo buffer, JXEntry *jxentry, JsonbXValue *scalarVal)
+static void convertJsonbXScalar(StringInfo buffer, JXEntry *jxentry,
+                                JsonbXValue *scalarVal)
 {
-	int			numlen;
-	short		padlen;
-	bool		status;
+    int numlen;
+    short padlen;
+    bool status;
 
-	switch (scalarVal->type)
-	{
-		case jbvXNull:
-			*jxentry = JXENTRY_ISNULL;
-			break;
+    switch (scalarVal->type)
+    {
+    case jbvXNull:
+        *jxentry = JXENTRY_ISNULL;
+        break;
 
-		case jbvXString:
-			appendToBuffer(buffer, scalarVal->val.string.val, scalarVal->val.string.len);
+    case jbvXString:
+        appendToBuffer(buffer, scalarVal->val.string.val,
+                       scalarVal->val.string.len);
 
-			*jxentry = scalarVal->val.string.len;
-			break;
+        *jxentry = scalarVal->val.string.len;
+        break;
 
-		case jbvXNumeric:
-			numlen = VARSIZE_ANY(scalarVal->val.numeric);
-			padlen = padBufferToInt(buffer);
+    case jbvXNumeric:
+        numlen = VARSIZE_ANY(scalarVal->val.numeric);
+        padlen = padBufferToInt(buffer);
 
-			appendToBuffer(buffer, (char *) scalarVal->val.numeric, numlen);
+        appendToBuffer(buffer, (char *)scalarVal->val.numeric, numlen);
 
-			*jxentry = JXENTRY_ISNUMERIC | (padlen + numlen);
-			break;
+        *jxentry = JXENTRY_ISNUMERIC | (padlen + numlen);
+        break;
 
-		case jbvXBool:
-			*jxentry = (scalarVal->val.boolean) ?
-				JXENTRY_ISBOOL_TRUE : JXENTRY_ISBOOL_FALSE;
-			break;
+    case jbvXBool:
+        *jxentry = (scalarVal->val.boolean) ? JXENTRY_ISBOOL_TRUE :
+                                              JXENTRY_ISBOOL_FALSE;
+        break;
 
-		default:
-			/* returns true if there was a valid extended type processed */
-			status = ag_serialize_extended_type(buffer, jxentry, scalarVal);
-			/* if nothing was found, error log out */
-			if (!status)
-				elog(ERROR, "invalid jsonbx scalar type");
-	}
+    default:
+        /* returns true if there was a valid extended type processed */
+        status = ag_serialize_extended_type(buffer, jxentry, scalarVal);
+        /* if nothing was found, error log out */
+        if (!status)
+            elog(ERROR, "invalid jsonbx scalar type");
+    }
 }
 
 /*
@@ -1770,26 +1752,26 @@ convertJsonbXScalar(StringInfo buffer, JXEntry *jxentry, JsonbXValue *scalarVal)
  * a and b are first sorted based on their length.  If a tie-breaker is
  * required, only then do we consider string binary equality.
  */
-static int
-lengthCompareJsonbXStringValue(const void *a, const void *b)
+static int lengthCompareJsonbXStringValue(const void *a, const void *b)
 {
-	const JsonbXValue *va = (const JsonbXValue *) a;
-	const JsonbXValue *vb = (const JsonbXValue *) b;
-	int			res;
+    const JsonbXValue *va = (const JsonbXValue *)a;
+    const JsonbXValue *vb = (const JsonbXValue *)b;
+    int res;
 
-	Assert(va->type == jbvXString);
-	Assert(vb->type == jbvXString);
+    Assert(va->type == jbvXString);
+    Assert(vb->type == jbvXString);
 
-	if (va->val.string.len == vb->val.string.len)
-	{
-		res = memcmp(va->val.string.val, vb->val.string.val, va->val.string.len);
-	}
-	else
-	{
-		res = (va->val.string.len > vb->val.string.len) ? 1 : -1;
-	}
+    if (va->val.string.len == vb->val.string.len)
+    {
+        res = memcmp(va->val.string.val, vb->val.string.val,
+                     va->val.string.len);
+    }
+    else
+    {
+        res = (va->val.string.len > vb->val.string.len) ? 1 : -1;
+    }
 
-	return res;
+    return res;
 }
 
 /*
@@ -1803,58 +1785,57 @@ lengthCompareJsonbXStringValue(const void *a, const void *b)
  *
  * Pairs with equals keys are ordered such that the order field is respected.
  */
-static int
-lengthCompareJsonbXPair(const void *a, const void *b, void *binequal)
+static int lengthCompareJsonbXPair(const void *a, const void *b,
+                                   void *binequal)
 {
-	const JsonbXPair *pa = (const JsonbXPair *) a;
-	const JsonbXPair *pb = (const JsonbXPair *) b;
-	int			res;
+    const JsonbXPair *pa = (const JsonbXPair *)a;
+    const JsonbXPair *pb = (const JsonbXPair *)b;
+    int res;
 
-	res = lengthCompareJsonbXStringValue(&pa->key, &pb->key);
-	if (res == 0 && binequal)
-		*((bool *) binequal) = true;
+    res = lengthCompareJsonbXStringValue(&pa->key, &pb->key);
+    if (res == 0 && binequal)
+        *((bool *)binequal) = true;
 
-	/*
+    /*
 	 * Guarantee keeping order of equal pair.  Unique algorithm will prefer
 	 * first element as value.
 	 */
-	if (res == 0)
-		res = (pa->order > pb->order) ? -1 : 1;
+    if (res == 0)
+        res = (pa->order > pb->order) ? -1 : 1;
 
-	return res;
+    return res;
 }
 
 /*
  * Sort and unique-ify pairs in JsonbXValue object
  */
-static void
-uniqueifyJsonbXObject(JsonbXValue *object)
+static void uniqueifyJsonbXObject(JsonbXValue *object)
 {
-	bool		hasNonUniq = false;
+    bool hasNonUniq = false;
 
-	Assert(object->type == jbvXObject);
+    Assert(object->type == jbvXObject);
 
-	if (object->val.object.nPairs > 1)
-		qsort_arg(object->val.object.pairs, object->val.object.nPairs, sizeof(JsonbXPair),
-				  lengthCompareJsonbXPair, &hasNonUniq);
+    if (object->val.object.nPairs > 1)
+        qsort_arg(object->val.object.pairs, object->val.object.nPairs,
+                  sizeof(JsonbXPair), lengthCompareJsonbXPair, &hasNonUniq);
 
-	if (hasNonUniq)
-	{
-		JsonbXPair  *ptr = object->val.object.pairs + 1,
-				   *res = object->val.object.pairs;
+    if (hasNonUniq)
+    {
+        JsonbXPair *ptr = object->val.object.pairs + 1,
+                   *res = object->val.object.pairs;
 
-		while (ptr - object->val.object.pairs < object->val.object.nPairs)
-		{
-			/* Avoid copying over duplicate */
-			if (lengthCompareJsonbXStringValue(ptr, res) != 0)
-			{
-				res++;
-				if (ptr != res)
-					memcpy(res, ptr, sizeof(JsonbXPair));
-			}
-			ptr++;
-		}
+        while (ptr - object->val.object.pairs < object->val.object.nPairs)
+        {
+            /* Avoid copying over duplicate */
+            if (lengthCompareJsonbXStringValue(ptr, res) != 0)
+            {
+                res++;
+                if (ptr != res)
+                    memcpy(res, ptr, sizeof(JsonbXPair));
+            }
+            ptr++;
+        }
 
-		object->val.object.nPairs = res + 1 - object->val.object.pairs;
-	}
+        object->val.object.nPairs = res + 1 - object->val.object.pairs;
+    }
 }
