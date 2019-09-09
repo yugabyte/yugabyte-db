@@ -1,6 +1,7 @@
 ---
 title: EXPLAIN
-description: EXPLAIN Command
+linkTitle: EXPLAIN
+description: EXPLAIN
 summary: EXPLAIN
 menu:
   latest:

@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE SCHEMA` statement to enter a new schema into the current database. The schema name must be unique.
+Use the `CREATE SCHEMA` statement to enter a new schema into the current database. 
 
 ## Syntax
 
@@ -46,16 +46,21 @@ Use the `CREATE SCHEMA` statement to enter a new schema into the current databas
 ## Semantics
 
 - `AUTHORIZATION` clause is not yet supported.
-- Only `CREATE TABLE`, `CREATE VIEW`, `CREATE INDEX`, `CREATE SEQUENCE`, `CREATE TRIGGER`, and `GRANT` can be used to create objects within `CREATE SCHEMA` statement. Other database objects must be created in separate commands after the schema is created.
+
+## *create_schema*
+
+### CREATE SCHEMA [ IF NOT EXISTS ] *schema_name* [ *schema_element* [ ... ] ]
+
+Create a schema in the current database.
 
 ### *schema_name*
 
-Specify the name of the schema to be created.
+Specify the name of the schema to be created. The schema name must be unique.
 
 ### *schema_element*
 
 Specify the SQL statement that defines a database object to be created within the schema.
-Acceptable clauses are `CREATE TABLE`, `CREATE VIEW`, `CREATE INDEX`, `CREATE SEQUENCE`, and `GRANT`.
+Acceptable clauses are `CREATE TABLE`, `CREATE VIEW`, `CREATE INDEX`, `CREATE SEQUENCE`, and `GRANT`. Other database objects must be created in separate commands after the schema is created.
 
 ## See also
 

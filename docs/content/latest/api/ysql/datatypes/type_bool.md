@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-BOOLEAN data type represents three different states: TRUE, FALSE, or NULL.
+The `BOOLEAN` data type represents three different states: `TRUE`, `FALSE`, or `NULL`.
 
 ## Description
 

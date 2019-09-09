@@ -1,5 +1,6 @@
 ---
 title: SHOW TRANSACTION
+linkTitle: SHOW TRANSACTION
 description: SHOW TRANSACTION
 summary: SHOW TRANSACTION
 menu:
