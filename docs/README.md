@@ -104,39 +104,16 @@ We will review your changes, add any feedback and once everything looks good mer
 
 ## Advanced Usage
 
+_Note: YCQL docs are still using an old method.  Follow these instructions for YSQL, but use these
+instructions just as a reference for YCQL._
+
 ### Generate API syntax diagrams
 
-To update the documentation with new grammars and syntax diagrams, follow these steps:
-
-_Note: Modifications will typically be added to the `ysql` or `ycql` subdirectories of the `docs/content/latest/api/` directory._
-
-1. Update the appropriate EBNF source grammar file (`<source>_grammar.ebnf`) with your changes, for example, adding support for a new statement or clause.
-
-    - YSQL API: `./content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf`
-    - YCQL API: `./content/latest/api/ycql/syntax_resources/ycql_grammar.ebnf`
-
-2. If you are adding a new file (for example for a new statement), use the template `includeMarkdown` macro (see `cmd_copy.md` file mentioned below as an example).
-
-    _Example: for the YSQL `COPY` command the source file is `./content/latest/api/ysql/commands/cmd_copy.md`._
-
-3. Inside of the `syntax_resources/commands` directory, create the following two **empty** files:
-    - `<name>.grammar.md`
-    - `<name>.diagram.md`
-
-    For `<name>`, use a comma-separated list of rule names from the EBNF file that you want in your new file.
-    The two new files must be added into a directory structure that matches the top-level directory (`ysql` or `ycql`) — if needed, create any required parent directories.
-
-    _Example: For the commands/cmd_copy.md case, the new files would be named as follows:_
-    ```
-    ./content/latest/api/ysql/syntax_resources/commands/copy_from,copy_to,copy_option.grammar.md
-    ./content/latest/api/ycql/syntax_resources/commands/copy_from,copy_to,copy_option.diagram.md
-    ```
-
-4. Download the latest RRDiagram JAR file (`rrdiagram.jar`).  You can find it on the [release
+1. Download the latest RRDiagram JAR file (`rrdiagram.jar`).  You can find it on the [release
    page](https://github.com/YugaByte/RRDiagram/releases/), or you can try running the following
    command.
 
-   ```bash
+   ```sh
    wget $(curl -s https://api.github.com/repos/YugaByte/RRDiagram/releases/latest \
           | grep browser_download_url | cut -d \" -f 4)
    ```
@@ -145,22 +122,93 @@ _Note: Modifications will typically be added to the `ysql` or `ycql` subdirector
    section](https://github.com/YugaByte/RRDiagram/README.md#build) of the `RRDiagram` repo (and
    move/rename the resulting jar from the target folder)._
 
-5. Run the diagram generator using the following command:
+1. Run the diagram generator using the following command:
 
-    ```bash
-    java -jar rrdiagram.jar <input-file.ebnf> <output-folder>
-    ```
+   ```sh
+   java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf \
+     content/latest/api/ysql/syntax_resources/
+   ```
 
-    `<output-folder>` should end in `syntax_resources`, not `commands`, to get helpful `WARNING`s.
+   To display helpful `WARNING` messages, end the last argument with `syntax_resources`, not
+   `commands`.
 
-    _Example: To generate the syntax diagrams for the YSQL API, run the following command:_
-    ```bash
-    java -jar rrdiagram.jar content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf content/latest/api/ysql/syntax_resources/
-    ```
+   The following files will be regenerated _if they exist_:
 
-    All of the Markdown (`.md`) files in the `./ysql/syntax_resources/commands` directory will be generated as needed.
+   - `content/latest/api/ysql/syntax_resources/commands/*.diagram.md`
+   - `content/latest/api/ysql/syntax_resources/commands/*.grammar.md`
+   - `content/latest/api/ysql/syntax_resources/grammar_diagrams.md`
 
-    _Note: To see help, run `java -jar rrdiagram.jar` (without arguments)._
+   _Note: To see help, run `java -jar rrdiagram.jar` (without arguments)._
 
-6. Check that the output file looks fine.
-    You may need to save the main Markdown (`.md`) file (for example `commands/cmd_copy.md`) to force the page to be rerendered.
+### Add a new docs page
+
+You may need to add a new docs page if you are adding a new command that doesn't belong in the
+existing doc pages.
+
+1. Add new rules to the source grammar file:
+
+   - `content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf`
+
+1. Prepare the new diagram and grammar files by creating the following **empty** files:
+
+   - `content/latest/api/ysql/syntax_resources/commands/<rules>.diagram.md`
+   - `content/latest/api/ysql/syntax_resources/commands/<rules>.grammar.md`
+
+   For `<rules>`, use a comma-separated list of rule names that you want in your new docs page.
+
+   _Example: for the YSQL 'COPY' command, the diagram and grammar files are the following:_
+
+   - `content/latest/api/ysql/syntax_resources/commands/copy_from,copy_to,copy_option.diagram.md`
+   - `content/latest/api/ysql/syntax_resources/commands/copy_from,copy_to,copy_option.grammar.md`
+
+1. Create the docs page file:
+
+   - `content/latest/api/ysql/commands/<name>.md`
+
+   Use the existing files in that directory as examples.  For `<name>`, follow the naming convention
+   exhibited by the other files.  For YSQL, note the usage of the template `includeMarkdown` macro.
+
+   _Example: for the YSQL `COPY` command, the created file is the following:_
+
+   - `content/latest/api/ysql/commands/cmd_copy.md`
+
+1. Update the index page files:
+
+   - `content/latest/api/ysql/_index.md`
+   - `content/latest/api/ysql/commands/_index.md`
+
+1. [Run the diagram generator](#generate-api-syntax-diagrams).
+
+   Ensure that no `WARNING`s are thrown related to the rules that you added.
+
+1. Check the new docs page and index pages to make sure that there are no broken links.
+
+### Edit rules in a docs page
+
+You may need to add or edit grammar rules in an existing docs page.
+
+1. Add or edit rules in the source grammar file:
+
+   - `content/latest/api/ysql/syntax_resources/ysql_grammar.ebnf`
+
+1. Rename the diagram and grammar files if needed:
+
+   - `content/latest/api/ysql/syntax_resources/commands/<oldrules>.diagram.md` to
+     `content/latest/api/ysql/syntax_resources/commands/<newrules>.diagram.md`
+   - `content/latest/api/ysql/syntax_resources/commands/<oldrules>.grammar.md` to
+     `content/latest/api/ysql/syntax_resources/commands/<newrules>.grammar.md`
+
+1. Edit the contents of the docs page file:
+
+   - `content/latest/api/ysql/commands/<name>.md`
+
+1. [Run the diagram generator](#generate-api-syntax-diagrams).
+
+   Ensure that no `WARNING`s are thrown related to the rules that you added or edited.
+
+1. Check the modified docs page to make sure that there are no broken links.
+
+### Notes
+
+- To force the page to be re-rendered, you may need to save the docs page file (for example,
+  `commands/cmd_copy.md`).
