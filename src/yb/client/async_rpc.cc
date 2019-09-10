@@ -20,12 +20,16 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/wire_protocol.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/cast.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting
 // these metrics are used not only in Redis service.
@@ -210,6 +214,12 @@ void AsyncRpc::Failed(const Status& status) {
         resp->set_status(status.IsTryAgain() ? PgsqlResponsePB::PGSQL_STATUS_RESTART_REQUIRED_ERROR
                                              : PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
         resp->set_error_message(error_message);
+        const uint8_t* pgerr = status.ErrorData(PgsqlErrorTag::kCategory);
+        if (pgerr != nullptr) {
+          resp->set_pg_error_code(static_cast<uint32_t>(PgsqlErrorTag::Decode(pgerr)));
+        } else {
+          resp->set_pg_error_code(static_cast<uint32_t>(YBPgErrorCode::YB_PG_INTERNAL_ERROR));
+        }
         break;
       }
       default:
@@ -299,7 +309,8 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
     if (read_point) {
       read_point->RestartRequired(req_.tablet_id(), restart_read_time);
     }
-    Failed(STATUS_FORMAT(TryAgain, "Restart read required at: $0", restart_read_time));
+    Failed(STATUS(TryAgain, Format("Restart read required at: $0", restart_read_time), Slice(),
+                  PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)));
     return false;
   }
   return true;

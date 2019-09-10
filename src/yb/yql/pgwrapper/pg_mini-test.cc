@@ -22,6 +22,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
+#include "yb/common/pgsql_error.h"
 #include "yb/util/random_util.h"
 
 using namespace std::literals;
@@ -131,7 +132,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(WriteRetry)) {
   LOG(INFO) << "Insert " << kKeys << " keys";
   for (int key = 0; key != kKeys; ++key) {
     auto status = Execute(conn.get(), Format("INSERT INTO t (key) VALUES ($0)", key));
-    ASSERT_TRUE(status.ok() ||
+    ASSERT_TRUE(status.ok() || PgsqlError(status) == YBPgErrorCode::YB_PG_UNIQUE_VIOLATION ||
                 status.ToString().find("Already present: Duplicate request") != std::string::npos)
         << status;
   }
@@ -146,6 +147,7 @@ TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(WriteRetry)) {
 
   LOG(INFO) << "Insert duplicate key";
   auto status = Execute(conn.get(), "INSERT INTO t (key) VALUES (1)");
+  ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_UNIQUE_VIOLATION) << status;
   ASSERT_STR_CONTAINS(status.ToString(), "duplicate key value violates unique constraint");
 }
 
