@@ -19,7 +19,9 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   const { customer: { configs }, tables: { universeTablesList } } = state;
   const storageConfigs = configs.data.filter( (config) => config.type === "STORAGE");
-  const initialFormValues = {};
+  const initialFormValues = {
+    enableSSE: false,
+  };
 
   if (isNonEmptyObject(ownProps.tableInfo)) {
     initialFormValues.backupTableUUID = ownProps.tableInfo.tableID;
