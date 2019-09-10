@@ -35,7 +35,7 @@ docker run -d -p 8080:8080 \
        hasura/graphql-engine:v1.0.0-beta.6
 ```
 
-Then,  start hasura using:
+Then,  start Hasura using:
 
 ```
 ./docker-run.sh
@@ -49,13 +49,7 @@ The Hasura UI should load on localhost:8080 eventually.
 
 ## Create sample tables and relationships
 
-1. Create an author table
-2. Create an article table
-3. Create an object relationship
-4. Create an array relationship
-5. Load sample data
-
- Open the Hasura UI on localhost:8080 and go to the DATA tab (see below)
+ Open the Hasura UI on `localhost:8080` and go to the `DATA` tab (see below).
 
 ### 1. Create the `author` table
 
@@ -101,25 +95,25 @@ Click **Add** and then **Save** as before.
 
 2. Copy the commands below in the shell and hit Enter.
 
-```sql
-SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+    ```sql
+    SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 
-INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe');
+    INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe');
 
-INSERT INTO article(title, content, rating, author_id) 
-VALUES ('Jane''s First Book', 'Lorem ipsum', 10, 2);
-INSERT INTO article(title, content, rating, author_id) 
-VALUES ('John''s First Book', 'dolor sit amet', 8, 1);
-INSERT INTO article(title, content, rating, author_id) 
-VALUES ('Jane''s Second Book', 'consectetur adipiscing elit', 7, 2);
-INSERT INTO article(title, content, rating, author_id) 
-VALUES ('Jane''s Third Book', 'sed do eiusmod tempor', 8, 2);
-INSERT INTO article(title, content, rating, author_id) 
-VALUES ('John''s Second Book', 'incididunt ut labore', 9, 1);
+    INSERT INTO article(title, content, rating, author_id) 
+    VALUES ('Jane''s First Book', 'Lorem ipsum', 10, 2);
+    INSERT INTO article(title, content, rating, author_id) 
+    VALUES ('John''s First Book', 'dolor sit amet', 8, 1);
+    INSERT INTO article(title, content, rating, author_id) 
+    VALUES ('Jane''s Second Book', 'consectetur adipiscing elit', 7, 2);
+    INSERT INTO article(title, content, rating, author_id) 
+    VALUES ('Jane''s Third Book', 'sed do eiusmod tempor', 8, 2);
+    INSERT INTO article(title, content, rating, author_id) 
+    VALUES ('John''s Second Book', 'incididunt ut labore', 9, 1);
 
-SELECT * FROM author ORDER BY id;
-SELECT * FROM article ORDER BY id;
-```
+    SELECT * FROM author ORDER BY id;
+    SELECT * FROM article ORDER BY id;
+    ```
 
 ## Run some GraphQL queries
 
