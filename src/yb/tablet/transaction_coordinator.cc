@@ -30,6 +30,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/transaction.h"
+#include "yb/common/pgsql_error.h"
 
 #include "yb/consensus/opid_util.h"
 
@@ -52,6 +53,7 @@
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
 DEFINE_double(transaction_max_missed_heartbeat_periods, 10.0 * yb::kTimeMultiplier,
@@ -202,7 +204,8 @@ class TransactionState {
           ClearRequests(STATUS(AlreadyPresent, "Transaction committed"));
           break;
         case TransactionStatus::ABORTED:
-          ClearRequests(STATUS(Expired, "Transaction aborted"));
+          ClearRequests(STATUS(Expired, "Transaction aborted",
+            PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)));
           break;
         case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
@@ -793,7 +796,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
           YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
               << LogPrefix() << "Request to unknown transaction " << id << ": "
               << state.ShortDebugString();
-          request->CompleteWithStatus(STATUS(Expired, "Transaction expired"));
+          request->CompleteWithStatus(STATUS(Expired, "Transaction expired",
+              PgsqlError(YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION)));
           return;
         }
       }
