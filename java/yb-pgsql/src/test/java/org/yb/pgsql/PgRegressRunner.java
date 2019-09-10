@@ -108,7 +108,7 @@ public class PgRegressRunner {
             "--port=" + pgPort,
             "--host=" + pgHost,
             "--user=" + pgUser,
-            "--dbname=postgres",
+            "--dbname=yugabyte",
             "--use-existing",
             "--schedule=" + pgSchedule);
     procBuilder.directory(pgRegressDir);
