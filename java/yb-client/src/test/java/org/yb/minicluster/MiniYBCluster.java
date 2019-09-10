@@ -242,6 +242,7 @@ public class MiniYBCluster implements AutoCloseable {
     }
 
     commonFlags.add("--yb_num_shards_per_tserver=" + numShardsPerTserver);
+    commonFlags.add("--ysql_num_shards_per_tserver=" + numShardsPerTserver);
 
     if (replicationFactor > 0) {
       commonFlags.add("--replication_factor=" + replicationFactor);
