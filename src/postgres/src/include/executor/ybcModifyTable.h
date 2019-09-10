@@ -46,13 +46,12 @@ extern Oid YBCExecuteInsert(Relation rel,
                             HeapTuple tuple);
 
 /*
- * Execute (the only) insert from a single row transaction into a
- * YugaByte table. Will execute as a single-row transaction.
+ * Execute the insert outside of a transaction.
  * Assumes the caller checked that it is safe to do so.
  */
-extern Oid YBCExecuteSingleRowTxnInsert(Relation rel,
-                                        TupleDesc tupleDesc,
-                                        HeapTuple tuple);
+extern Oid YBCExecuteNonTxnInsert(Relation rel,
+								  TupleDesc tupleDesc,
+								  HeapTuple tuple);
 
 /*
  * Insert a tuple into the an index's backing YugaByte index table.
