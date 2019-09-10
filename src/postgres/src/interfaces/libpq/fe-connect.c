@@ -5379,7 +5379,7 @@ conninfo_add_defaults(PQconninfoOption *options, PQExpBuffer errorMessage)
 		if (strcmp(option->keyword, "user") == 0)
 		{
 		  /* YugaByte default username to "postgres" */
-			option->val = strdup("postgres");
+			option->val = strdup("yugabyte");
 			continue;
 		}
 	}
