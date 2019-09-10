@@ -4,14 +4,14 @@ linkTitle: Rook operator
 description: Rook YugaByte DB operator
 menu:
   latest:
-    identifier: local-ssd
+    identifier: rook-operator
     parent: deploy-kubernetes
-    weight: 622
+    weight: 624
 ---
 
 [Rook](https://rook.io) is an open source, cloud-native storage orchestrator for Kubernetes, providing the platform, framework, and support that can turn YugaByte DB clusters into self-managing, self-scaling, and self-healing storage services. Rook automates storage-layer tasks, including deployment, bootstrapping, configuration, provisioning, scaling, upgrading, migration, disaster recovery, monitoring, and resource management.
 
-The [Rook YugaByte DB Operator](https://rook.io/docs/rook/v1.1/yugabytedb.html) is a custom controller that uses Custom Resource Definition (CRD) to extend the Kubernetes API and automate deploying, scaling, and managing YugaByte DB clusters.  Based on the  _desired state_ that you specified in the CRD, the Rook operator observes (watching for changes in state and health), analyzes (comparing current to desired state), and acts (applying changes to the cluster) to maintain the desired state. For details, see [YugaByte DB Cluster CRD](https://rook.io/docs/rook/v1.1/yugabytedb-cluster-crd.html)
+The [Rook YugaByte DB operator](https://rook.io/docs/rook/v1.1/yugabytedb.html) is a custom controller that uses Custom Resource Definition (CRD) to extend the Kubernetes API and automate deploying, scaling, and managing YugaByte DB clusters.  Based on the  _desired state_ that you specified in the CRD, the Rook operator observes (watching for changes in state and health), analyzes (comparing current to desired state), and acts (applying changes to the cluster) to maintain the desired state. For details, see [YugaByte DB Cluster CRD](https://rook.io/docs/rook/v1.1/yugabytedb-cluster-crd.html)
 
 ## Before you begin
 
@@ -22,7 +22,7 @@ A YugaByte DB cluster installed in a Kubernetes environment is required. If
 
 Verify that your Kubernetes cluster is ready for Rook by reviewing the [Kubernetes cluster prerequisites for using the Rook operator](https://github.com/rook/rook/blob/master/Documentation/k8s-pre-reqs.md).
 
-Rook must be installed — see  the [Rook GitHub Repository](https://github.com/rook/rook). You can install Rook by running the following command:
+Rook must be installed — see the [Rook GitHub Repository](https://github.com/rook/rook). You can install Rook by running the following command:
 
 ```bash
 git clone git@github.com:rook/rook.git
@@ -30,7 +30,7 @@ git clone git@github.com:rook/rook.git
 
 ## Deploy the Rook YugaByte DB operator
 
-To deploy the YugaByte DB operator, 
+To deploy the YugaByte DB operator,
 
 1. Change your directory to the Rook directory containing the YugaByte DB example files.
 
@@ -121,7 +121,7 @@ kubectl -n rook-yugabytedb-system logs -l app=rook-yugabytedb-operator
 
 ### Review the YugaByte DB logs
 
-If everything is OK in the operator logs, check the YugabyteDB Master & TServer logs.
+If everything is OK in the operator logs, check the YugabyteDB logs for YB-Master and YB-TServer.
 
 ```bash
 kubectl -n rook-yugabytedb logs -l app=yb-master-rook-yugabytedb
