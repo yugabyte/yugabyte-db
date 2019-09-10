@@ -50,8 +50,7 @@ public class LogPrinter {
   private static final long MAX_ALLOWED_LOGGED_BYTES =
       EnvAndSysPropertyUtil.getLongEnvVarOrSystemProperty(
           "YB_JAVA_TEST_MAX_ALLOWED_LOG_BYTES",
-          (EnvAndSysPropertyUtil.getLongEnvVarOrSystemProperty(
-              "YB_RUN_JAVA_TEST_METHODS_SEPARATELY", 0) != 0 ? 50 : 256) * 1024 * 1024);
+          512 * 1024 * 1024);
 
   // A mechanism to wait for a line in the log that says that the server is starting.
   private LogErrorListener errorListener;
