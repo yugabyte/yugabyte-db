@@ -137,7 +137,7 @@ DEFINE_bool(use_priority_thread_pool_for_flushes, false,
             "Env thread pool with Priority::HIGH will be used.");
 TAG_FLAG(use_priority_thread_pool_for_flushes, runtime);
 
-DEFINE_bool(use_priority_thread_pool_for_compactions, true,
+DEFINE_bool(use_priority_thread_pool_for_compactions, false,
             "When true priority thread pool will be used for compactions, otherwise "
             "Env thread pool with Priority::LOW will be used.");
 TAG_FLAG(use_priority_thread_pool_for_compactions, runtime);
