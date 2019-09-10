@@ -53,6 +53,8 @@ DEFINE_int32(rocksdb_level0_stop_writes_trigger, 48,
              "The number of files above which compactions are stopped.");
 DEFINE_int32(rocksdb_universal_compaction_size_ratio, 20,
              "The percentage upto which files that are larger are include in a compaction.");
+DEFINE_uint64(rocksdb_universal_compaction_always_include_size_threshold, 64_MB,
+             "Always include files of smaller or equal size in a compaction.");
 DEFINE_int32(rocksdb_universal_compaction_min_merge_width, 4,
              "The minimum number of files in a single compaction run.");
 DEFINE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec, 256_MB,
@@ -540,6 +542,8 @@ void InitRocksDBOptions(
         rocksdb::CompactionStopStyle::kCompactionStopStyleTotalSize;
     options->compaction_options_universal.size_ratio =
         FLAGS_rocksdb_universal_compaction_size_ratio;
+    options->compaction_options_universal.always_include_size_threshold =
+        FLAGS_rocksdb_universal_compaction_always_include_size_threshold;
     options->compaction_options_universal.min_merge_width =
         FLAGS_rocksdb_universal_compaction_min_merge_width;
     options->compaction_size_threshold_bytes = FLAGS_rocksdb_compaction_size_threshold_bytes;

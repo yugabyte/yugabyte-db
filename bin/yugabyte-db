@@ -66,6 +66,7 @@ YUGABYTE_API_CLIENT_PROGRAMS = {
     "ysql": "ysqlsh",
     "ycql": "cqlsh",
 }
+YSQL_NUM_SHARDS_PER_TSERVER = 2
 
 # YugaWare configs. These have their own separate subdirectory to preserve our itest flow.
 YUGAWARE_DIR = os.path.join(YUGABYTE_DIR, "ui")
@@ -281,7 +282,8 @@ class YugabyteProcessManager(object):
                 "handler_latency_yb_tserver_TabletServerService_Read_count,"
                 "handler_latency_yb_tserver_TabletServerService_Write_count,"
                 "handler_latency_yb_tserver_TabletServerService_Read_sum,"
-                "handler_latency_yb_tserver_TabletServerService_Write_sum",]
+                "handler_latency_yb_tserver_TabletServerService_Write_sum",
+             "--ysql_num_shards_per_tserver", YSQL_NUM_SHARDS_PER_TSERVER]
         if self.configs.saved_data.get("master_flags"):
             yb_master_cmd.extend(
                 ["--{}".format(flag) for flag in \
@@ -304,7 +306,8 @@ class YugabyteProcessManager(object):
                 "handler_latency_yb_tserver_TabletServerService_Write_count,"
                 "handler_latency_yb_tserver_TabletServerService_Read_sum,"
                 "handler_latency_yb_tserver_TabletServerService_Write_sum",
-            "--metrics_snapshotter_interval_ms", "11000"]
+             "--metrics_snapshotter_interval_ms", "11000",
+             "--ysql_num_shards_per_tserver", YSQL_NUM_SHARDS_PER_TSERVER]
         if self.configs.saved_data.get("tserver_flags"):
             yb_tserver_cmd.extend(
                 ["--{}".format(flag) for flag in \

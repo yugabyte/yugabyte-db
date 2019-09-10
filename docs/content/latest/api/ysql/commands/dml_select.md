@@ -1,5 +1,6 @@
 ---
 title: SELECT
+linkTitle: SELECT
 summary: Retrieves rows from a table
 description: SELECT
 menu:

@@ -1,7 +1,8 @@
 ---
 title: CREATE USER
+linkTitle: CREATE USER
 description: Users and roles
-summary: Users and roles
+summary: CREATE USER
 menu:
   latest:
     identifier: api-ysql-commands-create-users

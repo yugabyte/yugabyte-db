@@ -1,5 +1,6 @@
 ---
 title: DROP TABLE
+linkTitle: DROP TABLE
 summary: Remove a table
 description: DROP TABLE
 menu:
@@ -44,12 +45,11 @@ Use the `DROP TABLE` statement to remove a table and all of its data from the da
 
 ## Semantics
 
-### *qualified_name*
+### *drop_table*
 
-Specify a (possibly qualified) identifier.
+#### *table_name*
 
-- If the specified `table_name` does not exist, an error is raised.
-- Associated objects to `table_name`, such as prepared statements, will be eventually invalidated after the drop statement is completed.
+Specify the name of the table to be dropped. If the table does not exist, an error is raised. Objects associated with the table, such as prepared statements, will be eventually invalidated after the `DROP TABLE` statement is completed.
 
 ## See also
 

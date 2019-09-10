@@ -45,6 +45,8 @@ showAsideToc: true
 
 `CONCURRENTLY`, `USING method`, `COLLATE`, `NULL` order, and `TABLESPACE` options are not yet supported.
 
+### *create_index*
+
 ### UNIQUE
 
 Enforce that duplicate values in a table are not allowed.
@@ -61,6 +63,8 @@ Specify a list of columns which will be included in the index as non-key columns
 
 Specify the name of the table to be indexed.
 
+### *index_elem*
+
 #### *column_name*
 
 Specify the name of a column of the table.
@@ -69,5 +73,8 @@ Specify the name of a column of the table.
 
 Specify one or more columns of the table and must be surrounded by parentheses.
 
-- `ASC` indicates ascending sort order.
-- `DESC` indicates descending sort order.
+- `ASC` — Sort in ascending order.
+- `DESC` — Sort in descending order.
+
+#### *opclass*
+

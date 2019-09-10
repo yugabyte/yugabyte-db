@@ -47,24 +47,24 @@ Use the `COMMENT` statement to set, update, or remove a comment on a database ob
 
 To remove a comment, set the value to `NULL`.
 
+### *comment_on*
+
+#### COMMMENT ON
+
+Add or change a comment about a database object. To remove a comment, set the value to `NULL`.
+
+### *aggregate_signature*
+
 ## Examples
 
 ### Add a comment
 
 ```
-COMMENT ON TABLE some_table IS 'This is a table';
-
-COMMENT ON COLUMN some_table.id IS 'Primary key column';
-
 COMMENT ON DATABASE postgres IS 'Default database';
+```
 
-COMMENT ON ACCESS METHOD lsm IS 'Default YSQL index type';
-
-COMMENT ON OPERATOR = (text, text) IS 'Text equality operator';
-
-COMMENT ON AGGREGATE max (int) IS 'Maximum integer value';
-
-COMMENT ON RULE pg_settings_u ON pg_settings IS 'Setting update rule';
+```
+COMMENT ON INDEX index_name IS 'Special index';
 ```
 
 ### Remove a comment

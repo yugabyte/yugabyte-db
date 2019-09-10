@@ -511,6 +511,9 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
       compaction_pri);
   RHEADER(log, " Options.compaction_options_universal.size_ratio: %u",
       compaction_options_universal.size_ratio);
+  RHEADER(log, "Options.compaction_options_universal."
+          "always_include_size_threshold: %" ROCKSDB_PRIszt,
+          compaction_options_universal.always_include_size_threshold);
   RHEADER(log, "Options.compaction_options_universal.min_merge_width: %u",
       compaction_options_universal.min_merge_width);
   RHEADER(log, "Options.compaction_options_universal.max_merge_width: %u",

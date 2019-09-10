@@ -1,5 +1,5 @@
 ---
-title: Binary fata types
+title: Binary data types
 linktitle: Binary
 summary: Binary data types
 description: Binary data types
@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-BYTEA data type represents binary string of bytes (octets). Binary string allows 0's and non-printable bytes.
+Use the `BYTEA` data type to represent binary string of bytes (octets). Binary strings allow zeros (`0`) and non-printable bytes.
 
 Data type | Description |
 ----------|-------------|
