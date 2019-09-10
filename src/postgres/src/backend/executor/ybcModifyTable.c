@@ -736,6 +736,10 @@ bool YBCExecuteUpdate(Relation rel,
 	{
 		AttrNumber attnum = TupleDescAttr(tupleDesc, idx)->attnum;
 
+		/* Skip virtual (system) and dropped columns */
+		if (!IsRealYBColumn(rel, attnum))
+			continue;
+
 		if (update_attrs && !bms_is_member(attnum, update_attrs))
 			continue;
 
