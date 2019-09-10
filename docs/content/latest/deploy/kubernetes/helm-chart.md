@@ -1,7 +1,7 @@
 ---
-title: Helm Chart
-linkTitle: Helm Chart
-description: Helm Chart
+title: Helm chart
+linkTitle: Helm chart
+description: Helm chart
 aliases:
   - /deploy/kubernetes/helm-chart/
 menu:
