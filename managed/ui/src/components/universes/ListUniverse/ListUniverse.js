@@ -11,6 +11,10 @@ import { isNotHidden, isDisabled, isAvailable } from 'utils/LayoutUtils';
 import './ListUniverse.scss';
 
 export default class ListUniverse extends Component {
+  componentDidMount() {
+    this.props.fetchUniverseList();
+  }
+
   render() {
     const { customer: { currentCustomer } } = this.props;
     return (

@@ -170,8 +170,8 @@ message CDCRecordPB {
 
   // Key-value pairs (column_name : value) of changes / before record / after record
   repeated KeyValuePairPB changes = 4;
-  repeated KeyValuePairPB before = 5;
-  repeated KeyValuePairPB after = 6;
+  repeated KeyValuePairPB before = 5;  // NOT CURRENTLY USED
+  repeated KeyValuePairPB after = 6;   // NOT CURRENTLY USED
 
   optional tserver.TransactionStatePB transaction_state = 7;
 }
