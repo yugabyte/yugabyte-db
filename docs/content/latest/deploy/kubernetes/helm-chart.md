@@ -19,7 +19,7 @@ showAsideToc: true
 
 ## Prerequisites
 
-You must have a Kubernetes cluster that has Helm configured. If you have not installed Helm client and server (aka Tiller) yet, follow the instructions [here](https://docs.helm.sh/using_helm/#installing-helm).
+You must have a Kubernetes cluster that has Helm configured. If you have not installed Helm client and server (aka Tiller) yet, see [Installing Helm](https://docs.helm.sh/using_helm/#installing-helm).
 
 The YugaByte DB Helm chart documented here has been tested with the following software versions:
 
