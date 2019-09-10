@@ -1494,7 +1494,7 @@ public class UniverseControllerTest extends WithApplication {
     }
 
     // Set placement info with addition of nodes that is more than what has been configured
-    for (int m = 0; m < 2; m++) {
+    for (int m = 0; m < 7; m++) {
       NodeDetails nd= new NodeDetails();
       nd.state = NodeDetails.NodeState.ToBeAdded;
       nd.azUuid = az1.uuid;
