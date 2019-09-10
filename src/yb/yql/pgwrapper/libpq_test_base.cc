@@ -19,6 +19,7 @@
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/pgsql_error.h"
 
 using namespace std::literals;
 
@@ -53,16 +54,13 @@ Result<PGConnPtr> LibPqTestBase::Connect() {
 }
 
 bool LibPqTestBase::TransactionalFailure(const Status& status) {
-  auto message = status.ToString();
-  return message.find("Restart read required at") != std::string::npos ||
-         message.find("Transaction expired") != std::string::npos ||
-         message.find("Transaction aborted") != std::string::npos ||
-         message.find("Unknown transaction") != std::string::npos ||
-         message.find("Transaction metadata missing") != std::string::npos ||
-         message.find("Transaction was recently aborted") != std::string::npos ||
-         message.find("Conflicts with committed transaction") != std::string::npos ||
-         message.find("Value write after transaction start") != std::string::npos ||
-         message.find("Conflicts with higher priority transaction") != std::string::npos;
+  const uint8_t* pgerr = status.ErrorData(PgsqlErrorTag::kCategory);
+  if (pgerr == nullptr) {
+    return false;
+  }
+  YBPgErrorCode code = PgsqlErrorTag::Decode(pgerr);
+  return code == YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE ||
+         code == YBPgErrorCode::YB_PG_IN_FAILED_SQL_TRANSACTION;
 }
 
 } // namespace pgwrapper

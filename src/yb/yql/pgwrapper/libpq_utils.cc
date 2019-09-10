@@ -13,10 +13,35 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+#include "yb/common/pgsql_error.h"
+
 #include "yb/gutil/endian.h"
 
 namespace yb {
 namespace pgwrapper {
+
+namespace {
+
+YBPgErrorCode GetSqlState(PGresult* result) {
+  auto status = PQresultStatus(result);
+  if (status == ExecStatusType::PGRES_COMMAND_OK) {
+    return YBPgErrorCode::YB_PG_SUCCESSFUL_COMPLETION;
+  }
+
+  const char* sqlstate_str = PQresultErrorField(result, PG_DIAG_SQLSTATE);
+  CHECK_NOTNULL(sqlstate_str);
+  CHECK_EQ(5, strlen(sqlstate_str));
+
+  uint32_t sqlstate = 0;
+
+  for (int i = 0; i < 5; ++i) {
+    sqlstate |= (sqlstate_str[i] - '0') << (6 * i);
+  }
+  return static_cast<YBPgErrorCode>(sqlstate);
+}
+
+}  // anonymous namespace
+
 
 void PGConnClose::operator()(PGconn* conn) const {
   PQfinish(conn);
@@ -30,8 +55,10 @@ Status Execute(PGconn* conn, const std::string& command) {
   PGResultPtr res(PQexec(conn, command.c_str()));
   auto status = PQresultStatus(res.get());
   if (ExecStatusType::PGRES_COMMAND_OK != status) {
-    return STATUS_FORMAT(NetworkError, "Execute '$0' failed: $1, message: $2",
-                         command, status, PQresultErrorMessage(res.get()));
+    return STATUS(NetworkError,
+                  Format("Execute '$0' failed: $1, message: $2",
+                         command, status, PQresultErrorMessage(res.get())), Slice(),
+                  PgsqlError(GetSqlState(res.get())));
   }
   return Status::OK();
 }
@@ -40,8 +67,10 @@ Result<PGResultPtr> Fetch(PGconn* conn, const std::string& command) {
   PGResultPtr res(PQexecParams(conn, command.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1));
   auto status = PQresultStatus(res.get());
   if (ExecStatusType::PGRES_TUPLES_OK != status) {
-    return STATUS_FORMAT(NetworkError, "Fetch '$0' failed: $1, message: $2",
-                         command, status, PQresultErrorMessage(res.get()));
+    return STATUS(NetworkError,
+                  Format("Fetch '$0' failed: $1, message: $2",
+                         command, status, PQresultErrorMessage(res.get())), Slice(),
+                  PgsqlError(GetSqlState(res.get())));
   }
   return std::move(res);
 }
