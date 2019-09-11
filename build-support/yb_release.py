@@ -225,9 +225,7 @@ def main():
         ]
         logging.info("Creating YugaWare package with command: {}".format(package_yw_cmd))
         try:
-            subprocess.check_call(
-                package_yw_cmd, cwd=managed_dir, stdout=subprocess.STDOUT,
-                stderr=subprocess.STDOUT)
+            subprocess.check_call(package_yw_cmd, cwd=managed_dir)
         except Exception as e:
             logging.error("Failed to package YugaWare: {}".format(package_yw_cmd))
             logging.error("Failed to package YugaWare: {}".format(e))
