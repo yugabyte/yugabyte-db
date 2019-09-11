@@ -13,14 +13,14 @@ showAsideToc: true
 
 
 
-Getting Started with Prisma and YugaByte DB
 
+## Before you begin
 
-
-
-Prerequisites
 1. Install and start YugaByte
 2. Install and start Prisma
+
+
+
 Initialize a project
 Set up a sample schema
 Try Prisma GraphQL
@@ -50,7 +50,12 @@ Follow the Instructions from https://docs.yugabyte.com/latest/quick-start/instal
 and then run
 ./bin/yb-ctl create --tserver_flags='ysql_pg_conf="default_transaction_isolation=serializable"'
 
-Note: Needing to explicitly set the isolation level is a temporary limitation. 
+Note: Needing to explicitly set the isolation level is a temporary limitation.
+
+<!--
+Test of HTML commenting.
+-->
+
 2. Install and start Prisma
 Initialize a project
 First install npm and docker.
