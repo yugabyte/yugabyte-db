@@ -1,8 +1,8 @@
 Utility Functions
 =================
 
-``create_graph()``
-------------------
+create_graph()
+--------------
 
 Creates a graph in the database.
 
@@ -37,8 +37,8 @@ Examples
   
   (1 row)
 
-``drop_graph()``
-----------------
+drop_graph()
+------------
 
 Removes a graph from the database.
 
@@ -76,8 +76,8 @@ Examples
   
   (1 row)
 
-``alter_graph()``
------------------
+alter_graph()
+-------------
 
 Alters a graph characteristic. Currently, the only operation supported is ``rename``.
 
@@ -120,8 +120,8 @@ Examples
   
   (1 row)
 
-``get_cypher_keywords()``
--------------------------
+get_cypher_keywords()
+---------------------
 
 Returns the list of keywords in Cypher and their categories.
 

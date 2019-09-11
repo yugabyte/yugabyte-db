@@ -1,8 +1,8 @@
 Cypher Query Language
 =====================
 
-``RETURN``
-----------
+RETURN
+------
 
 Defines what to include in the query result set.
 
@@ -22,8 +22,8 @@ Description
 
 *TODO*
 
-``WITH``
---------
+WITH
+----
 
 Allows query parts to be chained together, piping the results from one to be used as starting points or criteria in the next.
 
@@ -44,8 +44,8 @@ Description
 
 *TODO*
 
-``WHERE``
----------
+WHERE
+-----
 
 Adds constraints to the patterns in a ``MATCH`` or ``OPTIONAL MATCH`` clause or filters the results of a ``WITH`` clause.
 
@@ -61,8 +61,8 @@ Description
 
 *TODO*
 
-``ORDER BY``
-------------
+ORDER BY
+--------
 
 Is a sub-clause following ``RETURN`` or ``WITH``, and it specifies that the output should be sorted and how.
 
@@ -78,8 +78,8 @@ Description
 
 *TODO*
 
-``SKIP``
---------
+SKIP
+----
 
 Defines from which record to start including the records in the output.
 
@@ -95,8 +95,8 @@ Description
 
 *TODO*
 
-``LIMIT``
----------
+LIMIT
+-----
 
 Constrains the number of records in the output.
 
@@ -112,8 +112,8 @@ Description
 
 *TODO*
 
-``SET``
--------
+SET
+---
 
 Sets and updates properties from nodes and expressions given an expression.
 
@@ -129,8 +129,8 @@ Description
 
 *TODO*
 
-``REMOVE``
-----------
+REMOVE
+------
 
 Removes properties from nodes and relationships.
 
@@ -146,8 +146,8 @@ Description
 
 *TODO*
 
-``DELETE``
-----------
+DELETE
+------
 
 Deletes nodes and relationships from the graph. Use ``DETACH`` to delete a node and any relationship it has.
 

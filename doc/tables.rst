@@ -3,8 +3,8 @@ Tables
 
 .. _ag_graph:
 
-``ag_graph``
-~~~~~~~~~~~~
+ag_graph
+~~~~~~~~
 
 The catalog ``ag_graph`` stores graphs.
 
