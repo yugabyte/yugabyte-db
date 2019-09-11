@@ -1,7 +1,7 @@
 ---
 title: Hasura
 linkTitle: Hasura
-description: Hasura
+description: Hasura GraphQL engine
 menu:
   latest:
     identifier: hasura
@@ -11,21 +11,23 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Getting Started with Hasura GraphQL and YugaByte DB
+The [Hasura GraphQL engine](https://hasura.io) is an [open source](https://github.com/hasura/graphql-engine) GraphQL server that can be integrated with YugaByte DB to provide GraphQL on your YugaByte DB databases and applications.
 
+Follow the steps below to learn how easily you can begin using the Hasura GraphQL engine with YugaByte DB. For details on using the Hasura GraphQL engine, see the [Hasura GraphQL engine documentation](https://docs.hasura.io).
 
 ## Before you begin
 
 ### Install and start YugaByte DB
 
-Follow the Instructions from https://docs.yugabyte.com/latest/quick-start/install/ 
-and then run `./bin/yb-ctl create`.
+If you're new to YugaByte DB, you can be up and running with YugaByte DB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/).
 
 ### Install and start Hasura
 
-Follow the instructions from https://docs.hasura.io/1.0/graphql/manual/getting-started/docker-simple.html
+To install the Hasura GraphQL engine, follow the steps in Hasura's [Quick start with Docker](https://docs.hasura.io/1.0/graphql/manual/getting-started/docker-simple.html).
 
-For YugaByte, the configuration should be similar to PostgreSQL, but the port should be 5433 and isolation level should be set to serializable. For instance, for a local Mac setup, the configuration should be:
+To use Hasura with YugaByte DB, the configuration should be similar to PostgreSQL, but the port should be `5433` and the transaction isolation level should be set to `SERIALIZABLE`. 
+
+For a local Mac setup, the configuration should be:
 
 ```
 docker run -d -p 8080:8080 \
@@ -35,21 +37,37 @@ docker run -d -p 8080:8080 \
        hasura/graphql-engine:v1.0.0-beta.6
 ```
 
-Then,  start Hasura using:
+{{< note title="Note" >}}
+
+Make sure that the release version specified for `hasura/graphql-engine` matches the version you are using. The releases and their versions can be found at [Hasura graphql-engine releases](https://github.com/hasura/graphql-engine/releases).
+
+{{> /note }}
+
+To start Hasura, run the following script:
 
 ```
 ./docker-run.sh
 ```
 
-Note: This initialization step may currently take a minute or more.
-You can use the container id returned by the command above to check the logs by doing:
-docker logs <container-id>
+{{< note title="Note" >}}
 
-The Hasura UI should load on localhost:8080 eventually.
+This initialization step may take a minute or more.
+
+To check the Docker logs, you can use the container ID returned by the command above:
+
+```bash
+docker logs <container-id>
+```
+
+{{< /note >}}
+
+The Hasura UI should load on `localhost:8080`.
 
 ## Create sample tables and relationships
 
- Open the Hasura UI on `localhost:8080` and go to the `DATA` tab (see below).
+ Open the Hasura UI on `localhost:8080` and go to the `DATA` tab as shown here.
+
+![DATA tab in Hasura UI](/images/ecosystem-integrations/hasura/hasura-data-tab.png)
 
 ### 1. Create the `author` table
 
@@ -126,7 +144,7 @@ Go back to the Hasura UI, click on the GRAPHQL tab on top.
 
     Fetch a list of articles and each article’s author, ordered descendingly by rating:
 
-    ```json
+    ```
     {
       article(order_by: {rating: desc}) {
         id
