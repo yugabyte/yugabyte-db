@@ -60,13 +60,13 @@ $ git clone https://github.com/YugaByte/orm-examples.git
 export GOPATH=$GOPATH:$HOME/orm-examples/golang/gorm
 ```
 
-This repository has a Golang example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through gorm ORM. It consists of the following.
+This repository has a Go language example that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through gorm ORM. It consists of the following.
 
 - The users of the e-commerce site are stored in the users table.
 - The products table contains a list of products the e-commerce site sells.
 - The orders placed by the users are populated in the orders table. An order can consist of multiple line items, each of these are inserted in the orderline table.
 
-The source for the above application can be found in the [repo](https://github.com/YugaByte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`. 
+The source for the above application can be found in the [repository](https://github.com/YugaByte/orm-examples/tree/master/golang/gorm). There are a number of options that can be customized in the properties file located at `src/config/config.json`. 
 
 ## Build & run the app
 
@@ -74,9 +74,19 @@ The source for the above application can be found in the [repo](https://github.c
 $ cd ./golang/gorm
 ```
 
+Create the `ysql_gorm` database in YugaByte DB, following the name specified in the configuration.
+
+```sh
+./ysqlsh -c "CREATE DATABASE ysql_gorm"
+```
+
+Build and run using the shell script.
+
 ```sh
 $ ./build-and-run.sh
 ```
+
+The REST API server will listen at `http://localhost:8080`.
 
 ## Send requests to the app
 
