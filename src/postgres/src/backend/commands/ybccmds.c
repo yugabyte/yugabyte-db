@@ -727,8 +727,11 @@ YBCPrepareAlterTable(AlterTableStmt *stmt, Relation rel, Oid relationId)
 			case AT_ColumnDefault:
       case AT_DropNotNull:
       case AT_SetNotNull:
-				/* For these cases a YugaByte alter isn't required, so we do nothing. */
-				break;
+      case AT_AddIdentity:
+      case AT_SetIdentity:
+      case AT_DropIdentity:
+        /* For these cases a YugaByte alter isn't required, so we do nothing. */
+        break;
 
 			default:
 				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
