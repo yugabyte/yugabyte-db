@@ -41,11 +41,11 @@ docker run -d -p 8080:8080 \
 
 Make sure that the release version specified for `hasura/graphql-engine` matches the version you are using. The releases and their versions can be found at [Hasura graphql-engine releases](https://github.com/hasura/graphql-engine/releases).
 
-{{> /note }}
+{{< /note >}}
 
 To start Hasura, run the following script:
 
-```
+```bash
 ./docker-run.sh
 ```
 
@@ -67,13 +67,13 @@ The Hasura UI should load on `localhost:8080`.
 
  Open the Hasura UI on `localhost:8080` and go to the `DATA` tab as shown here.
 
-![DATA tab in Hasura UI](/images/ecosystem-integrations/hasura/hasura-data-tab.png)
+![DATA tab in Hasura UI](/images/develop/ecosystem-integrations/hasura/data-tab.png)
 
 ### 1. Create the `author` table
 
 Click **Create Table** and fill in the details as below to create a table `author(id, name)`.
 
-![article table form](/images/???)
+![author table form](/images/develop/ecosystem-integrations/hasura/author-table.png)
 
 After filling in details, click **Add Table** at the bottom, then go back to the **DATA** tab.
 
@@ -81,98 +81,100 @@ After filling in details, click **Add Table** at the bottom, then go back to the
 
 Click **Create Table** again to create a table `article(id, title, content, rating, author_id)`, with a foreign key reference to `author`.
 
-Fill in the details as below.
+Fill in the details as shown here.
 
-![article table form](/images/???)
+![article table form](/images/develop/ecosystem-integrations/hasura/article-table.png)
 
-Under the **Foreign Keys**, click **Add a foreign key** and fill in as below.
+Under **Foreign Keys**, click **Add a foreign key** and fill in as shown here.
 
-![article table form](/images/???)
+![foreign keys form](/images/develop/ecosystem-integrations/hasura/foreign-keys.png)
 
-After filling in the details ,click **Save** for the foreign key constraint and afterwards click **Add Table** at the bottom. Then go back to the **DATA** tab.
+After completing the entries, click **Save** for the foreign key constraint, and then click **Add Table** at the bottom. Then go back to the **DATA** tab.
 
 ### 3. Create an object relationship
 
-1. Go to the article table on the left-side menu, then click on the Relationships tab (see below)
+1. Go to the article table on the left-side menu, then click the **Relationships** tab.
 
-2. Click **Add** and then **Save**.
+![relationships form](/images/develop/ecosystem-integrations/hasura/relationships.png)
+
+2. Click **Add**, and then click **Save**.
 
 ### 4. Create an array relationship
 
 Now go to the author table's **Relationship** tab.
 
-Click **Add** and then **Save** as before.
+![array relationships form](/images/develop/ecosystem-integrations/hasura/relationship-array.png)
+
+Click **Add**, and then click **Save**.
 
 ### 5. Load sample data
 
-1. In the bash shell (YugaByte installation root folder), use ysqlsh to connect to the YugaByte cluster:
+1. On the command line, change your directory to the root `yugabyte` directory, and then open `ysqlsh` (the YSQL CLI) to connect to the YugaByte cluster:
 
-    ```bash
-    ./bin/ysqlsh
-    ```
+```bash
+./bin/ysqlsh
+```
 
-2. Copy the commands below in the shell and hit Enter.
+2. Copy the commands below into the shell and press **Enter**.
 
-    ```sql
-    SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-
-    INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe');
-
-    INSERT INTO article(title, content, rating, author_id) 
-    VALUES ('Jane''s First Book', 'Lorem ipsum', 10, 2);
-    INSERT INTO article(title, content, rating, author_id) 
-    VALUES ('John''s First Book', 'dolor sit amet', 8, 1);
-    INSERT INTO article(title, content, rating, author_id) 
-    VALUES ('Jane''s Second Book', 'consectetur adipiscing elit', 7, 2);
-    INSERT INTO article(title, content, rating, author_id) 
-    VALUES ('Jane''s Third Book', 'sed do eiusmod tempor', 8, 2);
-    INSERT INTO article(title, content, rating, author_id) 
-    VALUES ('John''s Second Book', 'incididunt ut labore', 9, 1);
-
-    SELECT * FROM author ORDER BY id;
-    SELECT * FROM article ORDER BY id;
-    ```
+```sql
+SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE
+INSERT INTO author(name) VALUES ('John Doe'), ('Jane Doe')
+INSERT INTO article(title, content, rating, author_id) 
+VALUES ('Jane''s First Book', 'Lorem ipsum', 10, 2);
+INSERT INTO article(title, content, rating, author_id) 
+VALUES ('John''s First Book', 'dolor sit amet', 8, 1);
+INSERT INTO article(title, content, rating, author_id) 
+VALUES ('Jane''s Second Book', 'consectetur adipiscing elit', 7, 2);
+INSERT INTO article(title, content, rating, author_id) 
+VALUES ('Jane''s Third Book', 'sed do eiusmod tempor', 8, 2);
+INSERT INTO article(title, content, rating, author_id) 
+VALUES ('John''s Second Book', 'incididunt ut labore', 9, 1)
+SELECT * FROM author ORDER BY id;
+SELECT * FROM article ORDER BY id;
+```
 
 ## Run some GraphQL queries
 
-1. Query using the object relationship
-2. Query using the array relationship
+Go back to the Hasura UI, click the **GRAPHQL** tab on top.
 
-Go back to the Hasura UI, click on the GRAPHQL tab on top.
+### Query using the object relationship
 
-1. Query using the object relationship
+Fetch a list of articles and sort each article’s author in descending order and by rating.
 
-    Fetch a list of articles and each article’s author, ordered descendingly by rating:
-
-    ```
-    {
-      article(order_by: {rating: desc}) {
-        id
-        title
-        author {
-          id
-          name
-        }
-      }
+```json
+{
+  article(order_by: {rating: desc}) {
+    id
+    title
+    author {
+      id
+      name
     }
-    ```
+  }
+}
+```
 
-2. Query using the array relationship
+![relationships form](/images/develop/ecosystem-integrations/hasura/query-relationship-object.png)
 
-    Fetch a list of authors and a nested list of each author’s articles where the authors are ordered by descending by the average ratings of their articles, and their article lists are ordered by title.
+### Query using the array relationship
 
-    ```json
-    {
-      author(order_by: {articles_aggregate: {avg: {rating: desc}}}) {
-        name
-        articles(order_by: {title: asc}) {
-          title
-          content
-          rating
-        }
-      }
-    }
-    ```
+Fetch a list of authors and a nested list of each author’s articles where the authors are ordered by descending by the average ratings of their articles, and their article lists are ordered by title.
+
+ ```json
+ {
+   author(order_by: {articles_aggregate: {avg: {rating: desc}}}) {
+     name
+     articles(order_by: {title: asc}) {
+       title
+       content
+       rating
+     }
+   }
+ }
+ ```
+
+![query array relationship](/images/develop/ecosystem-integrations/hasura/query-relationship-array.png)
 
 ### Cleanup
 
@@ -194,7 +196,7 @@ Go back to the Hasura UI, click on the GRAPHQL tab on top.
     docker stop <container-id>
     ```
 
-    Note: You can list running containers using:
+    You can list running containers using the following command:
 
     ```bash
     docker ps
