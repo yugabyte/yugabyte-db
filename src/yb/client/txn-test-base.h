@@ -106,6 +106,14 @@ class TransactionTestBase : public KeyValueTableTest {
   IsolationLevel isolation_level_ = IsolationLevel::SNAPSHOT_ISOLATION;
 };
 
+template <uint64_t LogSizeBytes, class Base>
+class TransactionCustomLogSegmentSizeTest : public Base {
+  // We need multiple log segments in this test.
+  uint64_t log_segment_size_bytes() const override {
+    return LogSizeBytes;
+  }
+};
+
 } // namespace client
 } // namespace yb
 

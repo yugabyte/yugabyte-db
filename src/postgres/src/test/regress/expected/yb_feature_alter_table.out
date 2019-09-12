@@ -345,22 +345,32 @@ alter table def_test alter column c2 set default 20;
 -- set defaults on a non-existent column: this should fail
 alter table def_test alter column c3 set default 30;
 ERROR:  column "c3" of relation "def_test" does not exist
--- TODO: enable following section after https://github.com/YugaByte/yugabyte-db/issues/1981
----- set defaults on views: we need to create a view, add a rule
----- to allow insertions into it, and then alter the view to add
----- a default
---create view def_view_test as select * from def_test;
---create rule def_view_test_ins as
---	on insert to def_view_test
---	do instead insert into def_test select new.*;
---insert into def_view_test default values;
---alter table def_view_test alter column c1 set default 45;
---insert into def_view_test default values;
---alter table def_view_test alter column c2 set default 'view_default';
---insert into def_view_test default values;
---select * from def_view_test;
---drop rule def_view_test_ins on def_view_test;
---drop view def_view_test;
+-- set defaults on views: we need to create a view, add a rule
+-- to allow insertions into it, and then alter the view to add
+-- a default
+create view def_view_test as select * from def_test;
+create rule def_view_test_ins as
+	on insert to def_view_test
+	do instead insert into def_test select new.*;
+insert into def_view_test default values;
+alter table def_view_test alter column c1 set default 45;
+insert into def_view_test default values;
+alter table def_view_test alter column c2 set default 'view_default';
+insert into def_view_test default values;
+select * from def_view_test ORDER BY c1 NULLS FIRST, c2 NULLS FIRST;
+ c1 |       c2
+----+-----------------
+    |
+    |
+    | initial_default
+  5 | initial_default
+ 10 | new_default
+ 45 |
+ 45 | view_default
+(7 rows)
+
+drop rule def_view_test_ins on def_view_test;
+drop view def_view_test;
 drop table def_test;
 -- test ADD COLUMN IF NOT EXISTS
 CREATE TABLE test_add_column(c1 integer);

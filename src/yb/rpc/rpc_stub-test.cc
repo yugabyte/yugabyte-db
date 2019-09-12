@@ -797,5 +797,34 @@ TEST_F(RpcStubTest, IPv6) {
   ASSERT_TRUE(parsed->address().is_v6());
 }
 
+TEST_F(RpcStubTest, ExpireInQueue) {
+  CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+
+  struct Entry {
+    EchoRequestPB req;
+    boost::optional<EchoResponsePB> resp;
+    RpcController controller;
+  };
+
+  std::vector<Entry> entries(10000);
+
+  CountDownLatch latch(entries.size());
+
+  for (size_t i = 0; i != entries.size(); ++i) {
+    auto& entry = entries[i];
+    entry.req.set_data(std::string(100_KB, 'X'));
+    entry.resp.emplace();
+    entry.controller.set_timeout(1ms);
+    proxy.EchoAsync(entry.req, entry.resp.get_ptr(), &entry.controller, [&entry, &latch] {
+      auto ptr = entry.resp.get_ptr();
+      entry.resp.reset();
+      memset(static_cast<void*>(ptr), 'X', sizeof(*ptr));
+      latch.CountDown();
+    });
+  }
+
+  latch.Wait();
+}
+
 } // namespace rpc
 } // namespace yb

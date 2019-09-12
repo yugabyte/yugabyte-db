@@ -3,14 +3,9 @@
 ####################################################################################################
 # BETA features Testsuites: Used to test features protected by FLAGS_ysql_beta_features flag.
 ####################################################################################################
-# Chain of dependencies for `yb_pg_plpgsql`
+# Dependency for `yb_pg_triggers`
 test: yb_pg_create_function_1
-test: yb_pg_create_type
-test: yb_pg_create_table
-test: yb_pg_copy
 
 test: yb_pg_triggers
 test: yb_triggers
-test: yb_pg_plpgsql
-test: yb_plpgsql
 test: yb_extensions

@@ -104,6 +104,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+      // Enable encryption-at-rest if key file is passed in
+      createEnableEncryptionAtRestTask(taskParams().encryptionKeyFilePath)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
       // Wait for a master leader to hear from all the tservers.
       createWaitForTServerHeartBeatsTask()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

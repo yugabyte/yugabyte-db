@@ -568,9 +568,8 @@ Status TabletPeer::RunLogGC() {
   if (!CheckRunning().ok()) {
     return Status::OK();
   }
-  int64_t min_log_index = 0;
+  int64_t min_log_index = VERIFY_RESULT(GetEarliestNeededLogIndex());
   int32_t num_gced = 0;
-  RETURN_NOT_OK(GetEarliestNeededLogIndex(&min_log_index));
   return log_->GC(min_log_index, &num_gced);
 }
 
@@ -652,15 +651,16 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
   }
 }
 
-Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
+Result<int64_t> TabletPeer::GetEarliestNeededLogIndex() const {
   // First, we anchor on the last OpId in the Log to establish a lower bound
   // and avoid racing with the other checks. This limits the Log GC candidate
   // segments before we check the anchors.
-  *min_index = log_->GetLatestEntryOpId().index;
+  auto latest_log_entry_op_id = log_->GetLatestEntryOpId();
+  int64_t min_index = latest_log_entry_op_id.index;
 
   // If we never have written to the log, no need to proceed.
-  if (*min_index == 0) {
-    return Status::OK();
+  if (min_index == 0) {
+    return min_index;
   }
 
   // Next, we interrogate the anchor registry.
@@ -671,7 +671,7 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
     if (PREDICT_FALSE(!s.ok())) {
       DCHECK(s.IsNotFound()) << "Unexpected error calling LogAnchorRegistry: " << s.ToString();
     } else {
-      *min_index = std::min(*min_index, min_anchor_index);
+      min_index = std::min(min_index, min_anchor_index);
     }
   }
 
@@ -681,52 +681,63 @@ Status TabletPeer::GetEarliestNeededLogIndex(int64_t* min_index) const {
     // A operation which doesn't have an opid hasn't been submitted for replication yet and
     // thus has no need to anchor the log.
     if (tx_op_id.IsInitialized()) {
-      *min_index = std::min(*min_index, tx_op_id.index());
+      min_index = std::min(min_index, tx_op_id.index());
     }
   }
 
-  *min_index = std::min(*min_index, consensus_->MinRetryableRequestOpId().index);
+  min_index = std::min(min_index, consensus_->MinRetryableRequestOpId().index);
 
   auto* transaction_coordinator = tablet()->transaction_coordinator();
   if (transaction_coordinator) {
-    *min_index = std::min(*min_index, transaction_coordinator->PrepareGC());
-  }
-
-  int64_t last_committed_write_index = tablet_->last_committed_write_index();
-  if (tablet_->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    auto max_persistent_op_id = VERIFY_RESULT(tablet_->MaxPersistentOpId());
-    int64_t max_persistent_index = max_persistent_op_id.regular.index;
-    if (max_persistent_op_id.intents
-        && max_persistent_op_id.intents < max_persistent_op_id.regular) {
-      max_persistent_index = max_persistent_op_id.intents.index;
-    }
-    // Check whether we had writes after last persistent entry.
-    // Note that last_committed_write_index could be zero if logs were cleaned before restart.
-    // So correct check is 'less', and NOT 'not equals to'.
-    if (max_persistent_index < last_committed_write_index) {
-      *min_index = std::min(*min_index, max_persistent_index);
-    }
+    min_index = std::min(min_index, transaction_coordinator->PrepareGC());
   }
 
   // We keep at least one committed operation in the log so that we can always recover safe time
   // during bootstrap.
-  *min_index = std::min(*min_index, consensus()->GetLastCommittedOpId().index);
+  // Last committed op id should be read before MaxPersistentOpId to avoid race condition
+  // described in MaxPersistentOpIdForDb.
+  //
+  // If we read last committed op id AFTER reading last persistent op id (INCORRECT):
+  // - We read max persistent op id and find there is no new data, so we ignore it.
+  // - New data gets written and Raft-committed, but not yet flushed to an SSTable.
+  // - We read the last committed op id, which is greater than what max persistent op id would have
+  //   returned.
+  // - We garbage-collect the Raft log entries corresponding to the new data.
+  // - Power is lost and the server reboots, losing committed data.
+  //
+  // If we read last committed op id BEFORE reading last persistent op id (CORRECT):
+  // - We read the last committed op id.
+  // - We read max persistent op id and find there is no new data, so we ignore it.
+  // - New data gets written and Raft-committed, but not yet flushed to an SSTable.
+  // - We still don't garbage-collect the logs containing the committed but unflushed data,
+  //   because the earlier value of the last committed op id that we read prevents us from doing so.
+  min_index = std::min(min_index, consensus()->GetLastCommittedOpId().index);
 
-  return Status::OK();
+  if (tablet_->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    tablet_->FlushIntentsDbIfNecessary(latest_log_entry_op_id);
+    auto max_persistent_op_id = VERIFY_RESULT(
+        tablet_->MaxPersistentOpId(true /* invalid_if_no_new_data */));
+    if (max_persistent_op_id.regular.valid()) {
+      min_index = std::min(min_index, max_persistent_op_id.regular.index);
+    }
+    if (max_persistent_op_id.intents.valid()) {
+      min_index = std::min(min_index, max_persistent_op_id.intents.index);
+    }
+  }
+
+  return min_index;
 }
 
 Status TabletPeer::GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_size_map) const {
   RETURN_NOT_OK(CheckRunning());
-  int64_t min_op_idx;
-  RETURN_NOT_OK(GetEarliestNeededLogIndex(&min_op_idx));
+  int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
   log_->GetMaxIndexesToSegmentSizeMap(min_op_idx, idx_size_map);
   return Status::OK();
 }
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
-  int64_t min_op_idx;
-  RETURN_NOT_OK(GetEarliestNeededLogIndex(&min_op_idx));
+  int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
   RETURN_NOT_OK(log_->GetGCableDataSize(min_op_idx, retention_size));
   return Status::OK();
 }

@@ -12,25 +12,30 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.forms.RollingRestartParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.models.Universe;
-
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class UpgradeUniverse extends UniverseTaskBase {
   public static final Logger LOG = LoggerFactory.getLogger(UpgradeUniverse.class);
@@ -53,6 +58,21 @@ public class UpgradeUniverse extends UniverseTaskBase {
   @Override
   protected RollingRestartParams taskParams() {
     return (RollingRestartParams)taskParams;
+  }
+
+  private static <T> Collector<T, ?, T> toSingleNodeDetail(UUID uniUUID) {
+      return Collectors.collectingAndThen(
+              Collectors.toList(),
+              leaderMasterNodeList -> {
+                if (leaderMasterNodeList.size() != 1) {
+                  String errMsg = "Could not find a master matching the master leader address " +
+                          "retrieved in universe " + uniUUID;
+                  LOG.error(errMsg);
+                  throw new RuntimeException(errMsg);
+                }
+                return leaderMasterNodeList.get(0);
+              }
+      );
   }
 
   @Override
@@ -91,19 +111,45 @@ public class UpgradeUniverse extends UniverseTaskBase {
                    taskParams().ybSoftwareVersion, universe.name);
           // TODO: This is assuming that master nodes is a subset of tserver node, instead we should do a union
           createDownloadTasks(tServerNodes);
-          // Disable the load balancer for rolling upgrade.
+
           if (taskParams().rollingUpgrade) {
+            // Disable the load balancer for rolling upgrade.
             createLoadBalancerStateChangeTask(false /*enable*/)
                 .setSubTaskGroupType(getTaskSubGroupType());
+
+            // Retrieve master leader address of given universe
+            final String leaderMasterAddress = universe.getMasterLeaderHostText();
+            if (leaderMasterAddress.isEmpty()) {
+              final String errMsg = "Could not find the master leader address in universe "
+                      + universe.universeUUID;
+              LOG.error(errMsg);
+              throw new RuntimeException(errMsg);
+            }
+
+            // Separate master leader from follower masters
+            NodeDetails masterLeaderNode = masterNodes
+                    .stream()
+                    .filter(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress))
+                    .collect(toSingleNodeDetail(universe.universeUUID));
+            masterNodes.removeIf(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress));
+
+
+            // Order of rolling upgrades should be:
+            // 1) Non-leader masters
+            // 2) Leader master
+            // 3) Tservers
+            createAllUpgradeTasks(masterNodes, ServerType.MASTER);
+            createSingleNodeUpgradeTasks(masterLeaderNode, ServerType.MASTER);
+            createAllUpgradeTasks(tServerNodes, ServerType.TSERVER);
+
+            // Enable the load balancer for rolling upgrade only.
+            createLoadBalancerStateChangeTask(true /*enable*/)
+                    .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          } else {
+            createAllUpgradeTasks(masterNodes, ServerType.MASTER);
+            createAllUpgradeTasks(tServerNodes, ServerType.TSERVER);
           }
 
-          createAllUpgradeTasks(masterNodes, ServerType.MASTER);
-          createAllUpgradeTasks(tServerNodes, ServerType.TSERVER);
-          // Enable the load balancer for rolling upgrade only.
-          if (taskParams().rollingUpgrade) {
-            createLoadBalancerStateChangeTask(true /*enable*/)
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-          }
           didUpgradeUniverse = true;
           break;
         case GFlags:

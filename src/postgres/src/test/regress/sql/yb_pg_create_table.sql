@@ -132,6 +132,11 @@ CREATE TABLE real_city (
 	outline 	path
 );
 
+CREATE TABLE aggtest (
+	a 			int2,
+	b			float4
+);
+
 CREATE TABLE testjsonb (
        j jsonb
 );

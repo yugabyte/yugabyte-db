@@ -1380,12 +1380,6 @@ CREATE RULE european_city_insert_rule AS ON INSERT TO european_city_view
 DO INSTEAD INSERT INTO city_view
 VALUES (NEW.city_id, NEW.city_name, NEW.population, NEW.country_name, NEW.continent)
 RETURNING *;
-ERROR:  CREATE RULE not supported yet
-LINE 1: CREATE RULE european_city_insert_rule AS ON INSERT TO europe...
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
--- TODO When 'CREATE RULE' is supported in YB mode enable the tests below.
-/*
 CREATE RULE european_city_update_rule AS ON UPDATE TO european_city_view
 DO INSTEAD UPDATE city_view SET
     city_name = NEW.city_name,
@@ -1393,26 +1387,47 @@ DO INSTEAD UPDATE city_view SET
     country_name = NEW.country_name
 WHERE city_id = OLD.city_id
 RETURNING NEW.*;
-
 CREATE RULE european_city_delete_rule AS ON DELETE TO european_city_view
 DO INSTEAD DELETE FROM city_view WHERE city_id = OLD.city_id RETURNING *;
-
 \set QUIET false
-
 -- INSERT not limited by view's WHERE clause, but UPDATE AND DELETE are
 INSERT INTO european_city_view(city_name, country_name)
     VALUES ('Cambridge', 'USA') RETURNING *;
+ city_id | city_name | population | country_name |   continent
+---------+-----------+------------+--------------+---------------
+       4 | Cambridge |            | USA          | North America
+(1 row)
+
+INSERT 0 1
 UPDATE european_city_view SET country_name = 'UK'
     WHERE city_name = 'Cambridge';
+UPDATE 0
 DELETE FROM european_city_view WHERE city_name = 'Cambridge';
-
+DELETE 0
 -- UPDATE and DELETE via rule and trigger
 UPDATE city_view SET country_name = 'UK'
     WHERE city_name = 'Cambridge' RETURNING *;
+ city_id | city_name | population | country_name | continent
+---------+-----------+------------+--------------+-----------
+       4 | Cambridge |            | UK           | Europe
+(1 row)
+
+UPDATE 1
 UPDATE european_city_view SET population = 122800
     WHERE city_name = 'Cambridge' RETURNING *;
-DELETE FROM european_city_view WHERE city_name = 'Cambridge' RETURNING *;
+ city_id | city_name | population | country_name | continent
+---------+-----------+------------+--------------+-----------
+       4 | Cambridge |     122800 | UK           | Europe
+(1 row)
 
+UPDATE 1
+DELETE FROM european_city_view WHERE city_name = 'Cambridge' RETURNING *;
+ city_id | city_name | population | country_name | continent
+---------+-----------+------------+--------------+-----------
+       4 | Cambridge |     122800 | UK           | Europe
+(1 row)
+
+DELETE 1
 -- join UPDATE test
 UPDATE city_view v SET population = 599657
     FROM city_table ci, country_table co
@@ -1420,9 +1435,9 @@ UPDATE city_view v SET population = 599657
     AND v.city_id = ci.city_id AND v.country_name = co.country_name
     RETURNING co.country_id, v.country_name,
               v.city_id, v.city_name, v.population;
-
+ERROR:  FROM clause in UPDATE not supported yet
+HINT:  See https://github.com/YugaByte/yugabyte-db/issues/738. Click '+' on the description to raise its priority
 \set QUIET true
-*/
 SELECT * FROM city_view order by city_id;
  city_id |   city_name   | population | country_name |   continent
 ---------+---------------+------------+--------------+---------------

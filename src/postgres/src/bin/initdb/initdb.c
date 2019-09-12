@@ -1031,8 +1031,12 @@ test_config_settings(void)
 	 */
 #define MIN_BUFS_FOR_CONNS(nconns)	((nconns) * 10)
 
+	/*
+	 * For YugaByte we try larger number of connections (300) first.
+	 * TODO: we should also consider lowering the shared buffers below
+	 */
 	static const int trial_conns[] = {
-		100, 50, 40, 30, 20
+		300, 100, 50, 40, 30, 20
 	};
 	static const int trial_bufs[] = {
 		16384, 8192, 4096, 3584, 3072, 2560, 2048, 1536,
@@ -2185,6 +2189,42 @@ make_postgres(FILE *cmdfd)
 		PG_CMD_PUTS(*line);
 }
 
+
+/*
+ * Create yugabyte database and user.
+ */
+static void
+make_yugabyte(FILE *cmdfd)
+{
+	const char *const *line;
+	static const char *const yugabyte_setup[] = {
+		"CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;\n\n"
+		"CREATE DATABASE yugabyte;\n\n",
+		"COMMENT ON DATABASE yugabyte IS 'default administrative connection database';\n\n",
+		NULL
+	};
+
+	for (line = yugabyte_setup; *line; line++)
+		PG_CMD_PUTS(*line);
+}
+
+
+/*
+ * Create system_platform database.
+ */
+static void
+make_system_platform(FILE *cmdfd) {
+	const char *const *line;
+	static const char *const system_platform_setup[] = {
+		"CREATE DATABASE system_platform;\n\n",
+		"COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';\n\n",
+		NULL
+	};
+
+	for (line = system_platform_setup; *line; line++)
+		PG_CMD_PUTS(*line);
+}
+
 /*
  * signal handler in case we are interrupted.
  *
@@ -3177,10 +3217,10 @@ initialize_data_directory(void)
 
 	setup_schema(cmdfd);
 
-  load_plpgsql(cmdfd);
+	load_plpgsql(cmdfd);
 
-  if (!IsYugaByteGlobalClusterInitdb())
-  {
+	if (!IsYugaByteGlobalClusterInitdb())
+	{
 		/* Do not need to vacuum in YB */
 		vacuum_db(cmdfd);
 	}
@@ -3188,6 +3228,14 @@ initialize_data_directory(void)
 	make_template0(cmdfd);
 
 	make_postgres(cmdfd);
+
+	if (IsYugaByteGlobalClusterInitdb()) {
+		/* Create the yugabyte db and user (defaults for YugaByte/ysqlsh) */
+		make_yugabyte(cmdfd);
+
+		/* Create the system_platform database used by the YugaByte platform UI */
+		make_system_platform(cmdfd);
+	}
 
 	PG_CMD_CLOSE;
 

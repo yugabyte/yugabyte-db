@@ -118,3 +118,20 @@ export function hasLiveNodes(universe) {
 export function isKubernetesUniverse(currentUniverse) {
   return isDefinedNotNull(currentUniverse.universeDetails) && isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) && getPrimaryCluster(currentUniverse.universeDetails.clusters).userIntent.providerType === "kubernetes";
 }
+
+// Reads file and passes content into Promise.resolve
+export const readUploadedFile = (inputFile, isRequired) => {
+  const fileReader = new FileReader();
+  return new Promise((resolve, reject) => {
+    fileReader.onloadend = () => {
+      resolve(fileReader.result);
+    };
+    // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
+    if (isDefinedNotNull(inputFile)) {
+      fileReader.readAsText(inputFile);
+    }
+    if (!isRequired && !isDefinedNotNull(inputFile)) {
+      resolve(null);
+    }
+  });
+};

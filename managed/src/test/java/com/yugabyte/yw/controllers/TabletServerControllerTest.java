@@ -33,6 +33,10 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 
+import static play.inject.Bindings.bind;
+import play.Application;
+import play.inject.guice.GuiceApplicationBuilder;
+
 public class TabletServerControllerTest extends WithApplication {
   private YBClientService mockService;
   private TabletServerController tabletController;
@@ -40,20 +44,26 @@ public class TabletServerControllerTest extends WithApplication {
   private ListTabletServersResponse mockResponse;
   private ApiHelper mockApiHelper;
   private HostAndPort testHostAndPort = HostAndPort.fromString("0.0.0.0").withDefaultPort(11);
-  private JsonNode apiHelperMockResult = Json.newObject();
 
+  @Override
+  protected Application provideApplication() {
+    mockApiHelper = mock(ApiHelper.class);
+    mockService = mock(YBClientService.class);
+    return new GuiceApplicationBuilder()
+            .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
+            .overrides(bind(YBClientService.class).toInstance(mockService))
+            .build();
+  }
 
   @Before
   public void setUp() throws Exception {
     mockClient = mock(YBClient.class);
-    mockService = mock(YBClientService.class);
     mockResponse = mock(ListTabletServersResponse.class);
     when(mockClient.listTabletServers()).thenReturn(mockResponse);
     when(mockService.getClient(any(String.class))).thenReturn(mockClient);
     when(mockService.getClient(any(String.class), any(String.class))).thenReturn(mockClient);
     when(mockClient.getLeaderMasterHostAndPort()).thenReturn(testHostAndPort);
     tabletController = new TabletServerController(mockService);
-    mockApiHelper = mock(ApiHelper.class);
     when(mockApiHelper.getRequest(any(String.class))).thenReturn(Json.newObject());
     tabletController.apiHelper = mockApiHelper;
   }

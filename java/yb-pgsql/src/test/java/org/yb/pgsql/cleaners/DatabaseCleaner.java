@@ -42,7 +42,8 @@ public class DatabaseCleaner implements ClusterCleaner {
           "SELECT datname FROM pg_database" +
               " WHERE datname <> 'template0'" +
               " AND datname <> 'template1'" +
-              " AND datname <> 'postgres'");
+              " AND datname <> 'postgres'" +
+              " AND datname <> 'yugabyte'");
 
       List<String> databases = new ArrayList<>();
       while (resultSet.next()) {

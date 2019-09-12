@@ -146,7 +146,7 @@ const formFieldNames =
     'primary.numNodes', 'primary.instanceType', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
     'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes',
     'primary.volumeSize', 'primary.storageType', 'primary.assignPublicIP', 'primary.useTimeSync', 'primary.enableYSQL',
-    'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.mountPoints',
+    'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest', 'primary.mountPoints',
     'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.numNodes',
     'async.instanceType', 'async.ybSoftwareVersion', 'async.accessKeyCode', 'async.assignPublicIP', 'async.useTimeSync',
     'async.enableYSQL', 'async.enableNodeToNodeEncrypt', 'async.enableClientToNodeEncrypt', 'async.mountPoints',
@@ -166,6 +166,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].enableYSQL = userIntent.enableYSQL;
     data[clusterType].enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     data[clusterType].enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+    data[clusterType].enableEncryptionAtRest = userIntent.enableEncryptionAtRest;
     data[clusterType].provider = userIntent.provider;
     data[clusterType].numNodes = userIntent.numNodes;
     data[clusterType].replicationFactor = userIntent.replicationFactor;
@@ -209,7 +210,8 @@ function mapStateToProps(state, ownProps) {
       "useTimeSync": false,
       "enableYSQL": false,
       "enableNodeToNodeEncrypt": false,
-      "enableClientToNodeEncrypt": false
+      "enableClientToNodeEncrypt": false,
+      "enableEncryptionAtRest": false,
     },
     "async": {
       "universeName": "",
@@ -246,7 +248,7 @@ function mapStateToProps(state, ownProps) {
       'primary.numNodes', 'primary.instanceType', 'primary.replicationFactor', 'primary.ybSoftwareVersion', 'primary.accessKeyCode',
       'primary.masterGFlags', 'primary.tserverGFlags', 'primary.instanceTags', 'primary.diskIops', 'primary.numVolumes', 'primary.volumeSize', 'primary.storageType',
       'primary.diskIops', 'primary.assignPublicIP', 'primary.mountPoints', 'primary.useTimeSync', 'primary.enableYSQL',
-      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.tlsCertificateId',
+      'primary.enableNodeToNodeEncrypt', 'primary.enableClientToNodeEncrypt', 'primary.enableEncryptionAtRest', 'primary.tlsCertificateId',
       'async.universeName', 'async.provider', 'async.providerType', 'async.regionList', 'async.replicationFactor',
       'async.numNodes', 'async.instanceType', 'async.deviceInfo', 'async.ybSoftwareVersion', 'async.accessKeyCode',
       'async.diskIops',  'async.numVolumes',  'async.volumeSize',  'async.storageType', 'async.assignPublicIP',

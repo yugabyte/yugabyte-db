@@ -151,6 +151,11 @@ DEFINE_int32(intents_flush_max_delay_ms, 2000,
              "Max time to wait for regular db to flush during flush of intents. "
              "After this time flush of regular db will be forced.");
 
+DEFINE_int32(num_raft_ops_to_force_idle_intents_db_to_flush, 1000,
+             "When writes to intents RocksDB are stopped and the number of Raft operations after "
+             "the last write to the intents RocksDB "
+             "is greater than this value, the intents RocksDB would be requested to flush.");
+
 DEFINE_test_flag(
     bool, tablet_verify_flushed_frontier_after_modifying, false,
     "After modifying the flushed frontier in RocksDB, verify that the restored value of it "
@@ -725,7 +730,6 @@ void Tablet::StartOperation(WriteOperationState* operation_state) {
 }
 
 Status Tablet::ApplyRowOperations(WriteOperationState* operation_state) {
-  last_committed_write_index_.store(operation_state->op_id().index(), std::memory_order_release);
   const KeyValueWriteBatchPB& put_batch =
       operation_state->consensus_round() && operation_state->consensus_round()->replicate_msg()
           // Online case.
@@ -1718,26 +1722,61 @@ Result<bool> Tablet::HasSSTables() const {
   return !live_files_metadata.empty();
 }
 
-Result<DocDbOpIds> Tablet::MaxPersistentOpId() const {
+yb::OpId MaxPersistentOpIdForDb(rocksdb::DB* db, bool invalid_if_no_new_data) {
+  // A possible race condition could happen, when data is written between this query and
+  // actual log gc. But it is not a problem as long as we are reading committed op id
+  // before MaxPersistentOpId, since we always keep last committed entry in the log during garbage
+  // collection.
+  // See TabletPeer::GetEarliestNeededLogIndex
+  if (db == nullptr ||
+      (invalid_if_no_new_data &&
+       db->GetFlushAbility() == rocksdb::FlushAbility::kNoNewData)) {
+    return yb::OpId::Invalid();
+  }
+
+  rocksdb::UserFrontierPtr frontier = db->GetFlushedFrontier();
+  if (!frontier) {
+    return yb::OpId();
+  }
+
+  return down_cast<docdb::ConsensusFrontier*>(frontier.get())->op_id();
+}
+
+Result<DocDbOpIds> Tablet::MaxPersistentOpId(bool invalid_if_no_new_data) const {
   ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
   RETURN_NOT_OK(scoped_read_operation);
 
-  if (!regular_db_) {
-    return DocDbOpIds{yb::OpId(), yb::OpId()};
+  return DocDbOpIds{
+      MaxPersistentOpIdForDb(regular_db_.get(), invalid_if_no_new_data),
+      MaxPersistentOpIdForDb(intents_db_.get(), invalid_if_no_new_data)
+  };
+}
+
+void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) {
+  ScopedPendingOperation scoped_read_operation(&pending_op_counter_);
+  if (!scoped_read_operation.ok()) {
+    return;
   }
 
-  DocDbOpIds result;
-  auto temp = regular_db_->GetFlushedFrontier();
-  if (temp) {
-    result.regular = down_cast<docdb::ConsensusFrontier*>(temp.get())->op_id();
-  }
-  if (intents_db_) {
-    temp = intents_db_->GetFlushedFrontier();
-    if (temp) {
-      result.intents = down_cast<docdb::ConsensusFrontier*>(temp.get())->op_id();
+  auto intents_frontier = intents_db_
+      ? intents_db_->GetMutableMemTableFrontier(rocksdb::UpdateUserValueType::kLargest) : nullptr;
+  if (intents_frontier) {
+    auto index_delta =
+        lastest_log_entry_op_id.index -
+        down_cast<docdb::ConsensusFrontier*>(intents_frontier.get())->op_id().index;
+    if (index_delta > FLAGS_num_raft_ops_to_force_idle_intents_db_to_flush) {
+      auto intents_flush_ability = intents_db_->GetFlushAbility();
+      if (intents_flush_ability == rocksdb::FlushAbility::kHasNewData) {
+        LOG_WITH_PREFIX(INFO)
+            << "Force flushing intents DB since it was not flushed for " << index_delta
+            << " operations, while only "
+            << FLAGS_num_raft_ops_to_force_idle_intents_db_to_flush << " is allowed";
+        rocksdb::FlushOptions options;
+        options.wait = false;
+        intents_db_->Flush(options);
+      }
     }
   }
-  return result;
 }
 
 Result<HybridTime> Tablet::MaxPersistentHybridTime() const {
@@ -1769,7 +1808,7 @@ Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
   HybridTime result = HybridTime::kMax;
   for (auto* db : { regular_db_.get(), intents_db_.get() }) {
     if (db) {
-      auto mem_frontier = db->GetMutableMemTableSmallestFrontier();
+      auto mem_frontier = db->GetMutableMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
       if (mem_frontier) {
         const auto hybrid_time =
             static_cast<const docdb::ConsensusFrontier&>(*mem_frontier).hybrid_time();

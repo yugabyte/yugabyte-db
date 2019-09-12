@@ -73,9 +73,9 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
 
   // Postgres settings.
-  protected static final String DEFAULT_PG_DATABASE = "postgres";
-  protected static final String DEFAULT_PG_USER = "postgres";
-  public static final String TEST_PG_USER = "postgres_test";
+  protected static final String DEFAULT_PG_DATABASE = "yugabyte";
+  protected static final String DEFAULT_PG_USER = "yugabyte";
+  public static final String TEST_PG_USER = "yugabyte_test";
 
   // Postgres flags.
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
@@ -376,7 +376,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
 
     // A temporary workaround for a failure to look up a user name by uid in an LDAP environment.
-    pgRegressEnvVars.put("YB_PG_FALLBACK_SYSTEM_USER_NAME", "postgres");
+    pgRegressEnvVars.put("YB_PG_FALLBACK_SYSTEM_USER_NAME", "yugabyte");
 
     return pgRegressEnvVars;
   }

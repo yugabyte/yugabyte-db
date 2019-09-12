@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.models;
 
+import com.google.common.net.HostAndPort;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -40,8 +42,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 
+import org.yb.client.YBClient;
+import com.yugabyte.yw.common.services.YBClientService;
+
 import play.data.validation.Constraints;
 import play.libs.Json;
+import play.api.Play;
 
 @Table(
   uniqueConstraints =
@@ -643,5 +649,33 @@ public class Universe extends Model {
     }
 
     return node.getAllowedActions().contains(action);
+  }
+
+  /**
+   * Find the current master leader in the universe
+   *
+   * @return the host (private_ip) and port of the current master leader in the universe
+   *  or null if not found
+   */
+  public HostAndPort getMasterLeader() {
+    final String masterAddresses = getMasterAddresses();
+    final String cert = getCertificate();
+    final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
+    final YBClient client = ybService.getClient(masterAddresses, cert);
+    final HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
+    ybService.closeClient(client, masterAddresses);
+    return leaderMasterHostAndPort;
+  }
+
+  /**
+   * Find the current master leader in the universe
+   *
+   * @return a String of the private_ip of the current master leader in the universe
+   *  or an empty string if not found
+   */
+  public String getMasterLeaderHostText() {
+    final HostAndPort masterLeader = getMasterLeader();
+    if (masterLeader == null) return "";
+    return masterLeader.getHostText();
   }
 }
