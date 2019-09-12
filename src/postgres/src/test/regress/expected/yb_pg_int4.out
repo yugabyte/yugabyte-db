@@ -403,4 +403,3 @@ FROM (VALUES (-2.5::numeric),
   2.5 |          3
 (7 rows)
 
-DROP TABLE INT4_TBL;

@@ -167,7 +167,7 @@ SELECT * FROM CASE_TBL ORDER BY i, f;
 --                 ELSE (3 * j) END
 --   FROM CASE2_TBL b
 --   WHERE j = -CASE_TBL.i;
--- 
+--
 -- SELECT * FROM CASE_TBL ORDER BY i, f;
 
 --
@@ -207,11 +207,10 @@ CREATE FUNCTION volfoo(text) returns foodomain as
 CREATE FUNCTION inline_eq(foodomain, foodomain) returns boolean as
   'SELECT CASE $2::text WHEN $1::text THEN true ELSE false END' language sql;
 
--- TODO(jason): uncomment when issue #1981 is closed or closing.
--- CREATE OPERATOR = (procedure = inline_eq,
---                    leftarg = foodomain, rightarg = foodomain);
---
--- SELECT CASE volfoo('bar') WHEN 'foo'::foodomain THEN 'is foo' ELSE 'is not foo' END;
+CREATE OPERATOR = (procedure = inline_eq,
+                   leftarg = foodomain, rightarg = foodomain);
+
+SELECT CASE volfoo('bar') WHEN 'foo'::foodomain THEN 'is foo' ELSE 'is not foo' END;
 
 ROLLBACK;
 
@@ -232,15 +231,14 @@ CREATE FUNCTION make_ad(int,int) returns arrdomain as
 CREATE FUNCTION ad_eq(arrdomain, arrdomain) returns boolean as
   'begin return array_eq($1, $2); end' language plpgsql;
 
--- TODO(jason): uncomment when issue #1981 is closed or closing.
--- CREATE OPERATOR = (procedure = ad_eq,
---                    leftarg = arrdomain, rightarg = arrdomain);
---
--- SELECT CASE make_ad(1,2)
---   WHEN array[2,4]::arrdomain THEN 'wrong'
---   WHEN array[2,5]::arrdomain THEN 'still wrong'
---   WHEN array[1,2]::arrdomain THEN 'right'
---   END;
+CREATE OPERATOR = (procedure = ad_eq,
+                   leftarg = arrdomain, rightarg = arrdomain);
+
+SELECT CASE make_ad(1,2)
+  WHEN array[2,4]::arrdomain THEN 'wrong'
+  WHEN array[2,5]::arrdomain THEN 'still wrong'
+  WHEN array[1,2]::arrdomain THEN 'right'
+  END;
 
 ROLLBACK;
 

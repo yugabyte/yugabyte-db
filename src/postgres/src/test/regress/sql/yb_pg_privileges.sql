@@ -118,68 +118,72 @@ bar	true
 \.
 SELECT * FROM atest1; -- ok
 
--- NOT SUPPORTED
---
--- -- test leaky-function protections in selfuncs
---
--- -- regress_priv_user1 will own a table and provide a view for it.
--- SET SESSION AUTHORIZATION regress_priv_user1;
---
--- CREATE TABLE atest12 as
---   SELECT x AS a, 10001 - x AS b FROM generate_series(1,10000) x;
--- CREATE INDEX ON atest12 (a);
--- CREATE INDEX ON atest12 (abs(a));
---
--- CREATE FUNCTION leak(integer,integer) RETURNS boolean
---   AS $$begin return $1 < $2; end$$
---   LANGUAGE plpgsql immutable;
--- IF THIS LINE CAUSES A FAILURE, THIS REGION MAY BE SUPPORTED
+
+-- test leaky-function protections in selfuncs
+
+-- regress_priv_user1 will own a table and provide a view for it.
+SET SESSION AUTHORIZATION regress_priv_user1;
+
+CREATE TABLE atest12 as
+  SELECT x AS a, 10001 - x AS b FROM generate_series(1,10000) x;
+CREATE INDEX ON atest12 (a);
+CREATE INDEX ON atest12 (abs(a));
+VACUUM ANALYZE atest12;
+
+CREATE FUNCTION leak(integer,integer) RETURNS boolean
+  AS $$begin return $1 < $2; end$$
+  LANGUAGE plpgsql immutable;
 CREATE OPERATOR <<< (procedure = leak, leftarg = integer, rightarg = integer,
                      restrict = scalarltsel);
---
--- -- view with leaky operator
--- CREATE VIEW atest12v AS
---   SELECT * FROM atest12 WHERE b <<< 5;
--- GRANT SELECT ON atest12v TO PUBLIC;
---
--- -- This plan should use nestloop, knowing that few rows will be selected.
--- EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
---
--- -- And this one.
--- EXPLAIN (COSTS OFF) SELECT * FROM atest12 x, atest12 y
---   WHERE x.a = y.b and abs(y.a) <<< 5;
---
--- -- Check if regress_priv_user2 can break security.
--- SET SESSION AUTHORIZATION regress_priv_user2;
---
--- CREATE FUNCTION leak2(integer,integer) RETURNS boolean
---   AS $$begin raise notice 'leak % %', $1, $2; return $1 > $2; end$$
---   LANGUAGE plpgsql immutable;
--- CREATE OPERATOR >>> (procedure = leak2, leftarg = integer, rightarg = integer,
---                      restrict = scalargtsel);
---
--- -- This should not show any "leak" notices before failing.
--- EXPLAIN (COSTS OFF) SELECT * FROM atest12 WHERE a >>> 0;
---
--- -- This plan should use hashjoin, as it will expect many rows to be selected.
--- EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
---
--- -- Now regress_priv_user1 grants sufficient access to regress_priv_user2.
--- SET SESSION AUTHORIZATION regress_priv_user1;
--- GRANT SELECT (a, b) ON atest12 TO PUBLIC;
--- SET SESSION AUTHORIZATION regress_priv_user2;
---
--- -- Now regress_priv_user2 will also get a good row estimate.
--- EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
---
--- -- But not for this, due to lack of table-wide permissions needed
--- -- to make use of the expression index's statistics.
--- EXPLAIN (COSTS OFF) SELECT * FROM atest12 x, atest12 y
---   WHERE x.a = y.b and abs(y.a) <<< 5;
---
+
+-- view with leaky operator
+CREATE VIEW atest12v AS
+  SELECT * FROM atest12 WHERE b <<< 5;
+GRANT SELECT ON atest12v TO PUBLIC;
+
+-- This plan should use nestloop, knowing that few rows will be selected.
+-- TODO(jason): fix expected output when issue #1420 is closed or closing.
+EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
+
+-- And this one.
+-- TODO(jason): fix expected output when issue #2076 is closed or closing.
+EXPLAIN (COSTS OFF) SELECT * FROM atest12 x, atest12 y
+  WHERE x.a = y.b and abs(y.a) <<< 5;
+
+-- Check if regress_priv_user2 can break security.
+SET SESSION AUTHORIZATION regress_priv_user2;
+
+CREATE FUNCTION leak2(integer,integer) RETURNS boolean
+  AS $$begin raise notice 'leak % %', $1, $2; return $1 > $2; end$$
+  LANGUAGE plpgsql immutable;
+CREATE OPERATOR >>> (procedure = leak2, leftarg = integer, rightarg = integer,
+                     restrict = scalargtsel);
+
+-- This should not show any "leak" notices before failing.
+EXPLAIN (COSTS OFF) SELECT * FROM atest12 WHERE a >>> 0;
+
+-- This plan should use hashjoin, as it will expect many rows to be selected.
+-- TODO(jason): fix expected output when issue #1420 is closed or closing.
+EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
+
+-- Now regress_priv_user1 grants sufficient access to regress_priv_user2.
+SET SESSION AUTHORIZATION regress_priv_user1;
+GRANT SELECT (a, b) ON atest12 TO PUBLIC;
+SET SESSION AUTHORIZATION regress_priv_user2;
+
+-- Now regress_priv_user2 will also get a good row estimate.
+-- TODO(jason): fix expected output when issue #1420 is closed or closing.
+EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
+
+-- But not for this, due to lack of table-wide permissions needed
+-- to make use of the expression index's statistics.
+-- TODO(jason): fix expected output when issue #1420 is closed or closing.
+EXPLAIN (COSTS OFF) SELECT * FROM atest12 x, atest12 y
+  WHERE x.a = y.b and abs(y.a) <<< 5;
+
 -- clean up (regress_priv_user1's objects are all dropped later)
--- DROP FUNCTION leak2(integer, integer) CASCADE;
---
+DROP FUNCTION leak2(integer, integer) CASCADE;
+
 
 -- groups
 
@@ -450,24 +454,20 @@ SET SESSION AUTHORIZATION regress_priv_user1;
 GRANT USAGE ON LANGUAGE sql TO regress_priv_user2; -- fail
 CREATE FUNCTION priv_testfunc1(int) RETURNS int AS 'select 2 * $1;' LANGUAGE sql;
 CREATE FUNCTION priv_testfunc2(int) RETURNS int AS 'select 3 * $1;' LANGUAGE sql;
--- TODO(jason): uncomment lines about `priv_testagg1` when issue #1981 is
--- fixed.
 CREATE AGGREGATE priv_testagg1(int) (sfunc = int4pl, stype = int4);
 CREATE PROCEDURE priv_testproc1(int) AS 'select $1;' LANGUAGE sql;
 
--- TODO(jason): edit the following two statements (diff get `privileges`) when
--- issue #1981 is fixed.
-REVOKE ALL ON FUNCTION priv_testfunc1(int), priv_testfunc2(int) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION priv_testfunc1(int), priv_testfunc2(int) TO regress_priv_user2;
+REVOKE ALL ON FUNCTION priv_testfunc1(int), priv_testfunc2(int), priv_testagg1(int) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION priv_testfunc1(int), priv_testfunc2(int), priv_testagg1(int) TO regress_priv_user2;
 REVOKE ALL ON FUNCTION priv_testproc1(int) FROM PUBLIC; -- fail, not a function
 REVOKE ALL ON PROCEDURE priv_testproc1(int) FROM PUBLIC;
 GRANT EXECUTE ON PROCEDURE priv_testproc1(int) TO regress_priv_user2;
 GRANT USAGE ON FUNCTION priv_testfunc1(int) TO regress_priv_user3; -- semantic error
--- GRANT USAGE ON FUNCTION priv_testagg1(int) TO regress_priv_user3; -- semantic error
+GRANT USAGE ON FUNCTION priv_testagg1(int) TO regress_priv_user3; -- semantic error
 GRANT USAGE ON PROCEDURE priv_testproc1(int) TO regress_priv_user3; -- semantic error
 GRANT ALL PRIVILEGES ON FUNCTION priv_testfunc1(int) TO regress_priv_user4;
 GRANT ALL PRIVILEGES ON FUNCTION priv_testfunc_nosuch(int) TO regress_priv_user4;
--- GRANT ALL PRIVILEGES ON FUNCTION priv_testagg1(int) TO regress_priv_user4;
+GRANT ALL PRIVILEGES ON FUNCTION priv_testagg1(int) TO regress_priv_user4;
 GRANT ALL PRIVILEGES ON PROCEDURE priv_testproc1(int) TO regress_priv_user4;
 
 CREATE FUNCTION priv_testfunc4(boolean) RETURNS text
@@ -478,23 +478,23 @@ GRANT EXECUTE ON FUNCTION priv_testfunc4(boolean) TO regress_priv_user3;
 SET SESSION AUTHORIZATION regress_priv_user2;
 SELECT priv_testfunc1(5), priv_testfunc2(5); -- ok
 CREATE FUNCTION priv_testfunc3(int) RETURNS int AS 'select 2 * $1;' LANGUAGE sql; -- fail
--- SELECT priv_testagg1(x) FROM (VALUES (1), (2), (3)) _(x); -- ok
+SELECT priv_testagg1(x) FROM (VALUES (1), (2), (3)) _(x); -- ok
 CALL priv_testproc1(6); -- ok
 
 SET SESSION AUTHORIZATION regress_priv_user3;
 SELECT priv_testfunc1(5); -- fail
--- SELECT priv_testagg1(x) FROM (VALUES (1), (2), (3)) _(x); -- fail
+SELECT priv_testagg1(x) FROM (VALUES (1), (2), (3)) _(x); -- fail
 CALL priv_testproc1(6); -- fail
 SELECT col1 FROM atest2 WHERE col2 = true; -- fail
 SELECT priv_testfunc4(true); -- ok
 
 SET SESSION AUTHORIZATION regress_priv_user4;
 SELECT priv_testfunc1(5); -- ok
--- SELECT priv_testagg1(x) FROM (VALUES (1), (2), (3)) _(x); -- ok
+SELECT priv_testagg1(x) FROM (VALUES (1), (2), (3)) _(x); -- ok
 CALL priv_testproc1(6); -- ok
 
 DROP FUNCTION priv_testfunc1(int); -- fail
--- DROP AGGREGATE priv_testagg1(int); -- fail
+DROP AGGREGATE priv_testagg1(int); -- fail
 DROP PROCEDURE priv_testproc1(int); -- fail
 
 \c -
@@ -531,28 +531,28 @@ GRANT USAGE ON TYPE priv_testdomain1 TO regress_priv_user2; -- ok
 
 SET SESSION AUTHORIZATION regress_priv_user1;
 
--- -- commands that should fail
---
--- CREATE AGGREGATE priv_testagg1a(priv_testdomain1) (sfunc = int4_sum, stype = bigint);
---
--- CREATE DOMAIN priv_testdomain2a AS priv_testdomain1;
---
--- CREATE DOMAIN priv_testdomain3a AS int;
--- CREATE FUNCTION castfunc(int) RETURNS priv_testdomain3a AS $$ SELECT $1::priv_testdomain3a $$ LANGUAGE SQL;
--- CREATE CAST (priv_testdomain1 AS priv_testdomain3a) WITH FUNCTION castfunc(int);
--- DROP FUNCTION castfunc(int) CASCADE;
--- DROP DOMAIN priv_testdomain3a;
---
--- CREATE FUNCTION priv_testfunc5a(a priv_testdomain1) RETURNS int LANGUAGE SQL AS $$ SELECT $1 $$;
--- CREATE FUNCTION priv_testfunc6a(b int) RETURNS priv_testdomain1 LANGUAGE SQL AS $$ SELECT $1::priv_testdomain1 $$;
---
--- CREATE OPERATOR !+! (PROCEDURE = int4pl, LEFTARG = priv_testdomain1, RIGHTARG = priv_testdomain1);
---
--- CREATE TABLE test5a (a int, b priv_testdomain1);
--- CREATE TABLE test6a OF priv_testtype1;
--- CREATE TABLE test10a (a int[], b priv_testtype1[]);
---
--- CREATE TABLE test9a (a int, b int);
+-- commands that should fail
+
+CREATE AGGREGATE priv_testagg1a(priv_testdomain1) (sfunc = int4_sum, stype = bigint);
+
+CREATE DOMAIN priv_testdomain2a AS priv_testdomain1;
+
+CREATE DOMAIN priv_testdomain3a AS int;
+CREATE FUNCTION castfunc(int) RETURNS priv_testdomain3a AS $$ SELECT $1::priv_testdomain3a $$ LANGUAGE SQL;
+CREATE CAST (priv_testdomain1 AS priv_testdomain3a) WITH FUNCTION castfunc(int);
+DROP FUNCTION castfunc(int) CASCADE;
+DROP DOMAIN priv_testdomain3a;
+
+CREATE FUNCTION priv_testfunc5a(a priv_testdomain1) RETURNS int LANGUAGE SQL AS $$ SELECT $1 $$;
+CREATE FUNCTION priv_testfunc6a(b int) RETURNS priv_testdomain1 LANGUAGE SQL AS $$ SELECT $1::priv_testdomain1 $$;
+
+CREATE OPERATOR !+! (PROCEDURE = int4pl, LEFTARG = priv_testdomain1, RIGHTARG = priv_testdomain1);
+
+CREATE TABLE test5a (a int, b priv_testdomain1);
+CREATE TABLE test6a OF priv_testtype1;
+CREATE TABLE test10a (a int[], b priv_testtype1[]);
+
+CREATE TABLE test9a (a int, b int);
 -- ALTER TABLE test9a ADD COLUMN c priv_testdomain1;
 -- ALTER TABLE test9a ALTER COLUMN b TYPE priv_testdomain1;
 
@@ -561,34 +561,27 @@ CREATE TYPE test7a AS (a int, b priv_testdomain1);
 CREATE TYPE test8a AS (a int, b int);
 -- ALTER TYPE test8a ADD ATTRIBUTE c priv_testdomain1;
 -- ALTER TYPE test8a ALTER ATTRIBUTE b TYPE priv_testdomain1;
---
--- CREATE TABLE test11a AS (SELECT 1::priv_testdomain1 AS a);
---
--- REVOKE ALL ON TYPE priv_testtype1 FROM PUBLIC;
+
+CREATE TABLE test11a AS (SELECT 1::priv_testdomain1 AS a);
+
+REVOKE ALL ON TYPE priv_testtype1 FROM PUBLIC;
 
 SET SESSION AUTHORIZATION regress_priv_user2;
 
 -- commands that should succeed
 
--- TODO(jason): uncomment lines about `priv_testagg1b` when issue #1981 is
--- fixed.
--- CREATE AGGREGATE priv_testagg1b(priv_testdomain1) (sfunc = int4_sum, stype = bigint);
+CREATE AGGREGATE priv_testagg1b(priv_testdomain1) (sfunc = int4_sum, stype = bigint);
 
 CREATE DOMAIN priv_testdomain2b AS priv_testdomain1;
 
 CREATE DOMAIN priv_testdomain3b AS int;
-
--- NOT SUPPORTED
---
--- CREATE FUNCTION castfunc(int) RETURNS priv_testdomain3b AS $$ SELECT $1::priv_testdomain3b $$ LANGUAGE SQL;
--- IF THIS LINE CAUSES A FAILURE, THIS REGION MAY BE SUPPORTED
+CREATE FUNCTION castfunc(int) RETURNS priv_testdomain3b AS $$ SELECT $1::priv_testdomain3b $$ LANGUAGE SQL;
 CREATE CAST (priv_testdomain1 AS priv_testdomain3b) WITH FUNCTION castfunc(int);
---
--- CREATE FUNCTION priv_testfunc5b(a priv_testdomain1) RETURNS int LANGUAGE SQL AS $$ SELECT $1 $$;
--- CREATE FUNCTION priv_testfunc6b(b int) RETURNS priv_testdomain1 LANGUAGE SQL AS $$ SELECT $1::priv_testdomain1 $$;
---
--- CREATE OPERATOR !! (PROCEDURE = priv_testfunc5b, RIGHTARG = priv_testdomain1);
---
+
+CREATE FUNCTION priv_testfunc5b(a priv_testdomain1) RETURNS int LANGUAGE SQL AS $$ SELECT $1 $$;
+CREATE FUNCTION priv_testfunc6b(b int) RETURNS priv_testdomain1 LANGUAGE SQL AS $$ SELECT $1::priv_testdomain1 $$;
+
+CREATE OPERATOR !! (PROCEDURE = priv_testfunc5b, RIGHTARG = priv_testdomain1);
 
 CREATE TABLE test5b (a int, b priv_testdomain1);
 CREATE TABLE test6b OF priv_testtype1;
@@ -612,31 +605,19 @@ CREATE TABLE test11b AS (SELECT 1::priv_testdomain1 AS a);
 REVOKE ALL ON TYPE priv_testtype1 FROM PUBLIC;
 
 \c -
--- DROP AGGREGATE priv_testagg1b(priv_testdomain1);
+DROP AGGREGATE priv_testagg1b(priv_testdomain1);
 DROP DOMAIN priv_testdomain2b;
-
--- NOT SUPPORTED
---
--- IF THIS LINE CAUSES A FAILURE, THIS REGION MAY BE SUPPORTED
 DROP OPERATOR !! (NONE, priv_testdomain1);
--- DROP FUNCTION priv_testfunc5b(a priv_testdomain1);
--- DROP FUNCTION priv_testfunc6b(b int);
---
-
+DROP FUNCTION priv_testfunc5b(a priv_testdomain1);
+DROP FUNCTION priv_testfunc6b(b int);
 DROP TABLE test5b;
 DROP TABLE test6b;
 DROP TABLE test9b;
 DROP TABLE test10b;
-
--- NOT SUPPORTED
---
--- IF THIS LINE CAUSES A FAILURE, THIS REGION MAY BE SUPPORTED
 DROP TYPE test7b;
 DROP TYPE test8b;
--- DROP CAST (priv_testdomain1 AS priv_testdomain3b);
--- DROP FUNCTION castfunc(int) CASCADE;
---
-
+DROP CAST (priv_testdomain1 AS priv_testdomain3b);
+DROP FUNCTION castfunc(int) CASCADE;
 DROP DOMAIN priv_testdomain3b;
 DROP TABLE test11b;
 
@@ -1010,29 +991,28 @@ SELECT has_schema_privilege('regress_priv_user2', 'testns5', 'CREATE'); -- no
 SET ROLE regress_priv_user1;
 
 CREATE FUNCTION testns.foo() RETURNS int AS 'select 1' LANGUAGE sql;
--- TODO(jason): uncomment lines about `testns.agg1` when issue #1981 is fixed.
 CREATE AGGREGATE testns.agg1(int) (sfunc = int4pl, stype = int4);
 CREATE PROCEDURE testns.bar() AS 'select 1' LANGUAGE sql;
 
 SELECT has_function_privilege('regress_priv_user2', 'testns.foo()', 'EXECUTE'); -- no
--- SELECT has_function_privilege('regress_priv_user2', 'testns.agg1(int)', 'EXECUTE'); -- no
+SELECT has_function_privilege('regress_priv_user2', 'testns.agg1(int)', 'EXECUTE'); -- no
 SELECT has_function_privilege('regress_priv_user2', 'testns.bar()', 'EXECUTE'); -- no
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA testns GRANT EXECUTE ON ROUTINES to public;
 
 DROP FUNCTION testns.foo();
 CREATE FUNCTION testns.foo() RETURNS int AS 'select 1' LANGUAGE sql;
--- DROP AGGREGATE testns.agg1(int);
--- CREATE AGGREGATE testns.agg1(int) (sfunc = int4pl, stype = int4);
+DROP AGGREGATE testns.agg1(int);
+CREATE AGGREGATE testns.agg1(int) (sfunc = int4pl, stype = int4);
 DROP PROCEDURE testns.bar();
 CREATE PROCEDURE testns.bar() AS 'select 1' LANGUAGE sql;
 
 SELECT has_function_privilege('regress_priv_user2', 'testns.foo()', 'EXECUTE'); -- yes
--- SELECT has_function_privilege('regress_priv_user2', 'testns.agg1(int)', 'EXECUTE'); -- yes
+SELECT has_function_privilege('regress_priv_user2', 'testns.agg1(int)', 'EXECUTE'); -- yes
 SELECT has_function_privilege('regress_priv_user2', 'testns.bar()', 'EXECUTE'); -- yes (counts as function here)
 
 DROP FUNCTION testns.foo();
--- DROP AGGREGATE testns.agg1(int);
+DROP AGGREGATE testns.agg1(int);
 DROP PROCEDURE testns.bar();
 
 ALTER DEFAULT PRIVILEGES FOR ROLE regress_priv_user1 REVOKE USAGE ON TYPES FROM public;
@@ -1087,19 +1067,17 @@ SELECT has_table_privilege('regress_priv_user1', 'testns.t1', 'SELECT'); -- fals
 SELECT has_table_privilege('regress_priv_user1', 'testns.t2', 'SELECT'); -- false
 
 CREATE FUNCTION testns.priv_testfunc(int) RETURNS int AS 'select 3 * $1;' LANGUAGE sql;
--- TODO(jason): uncomment lines about `testns.priv_testagg` when issue #1981 is
--- fixed.
 CREATE AGGREGATE testns.priv_testagg(int) (sfunc = int4pl, stype = int4);
 CREATE PROCEDURE testns.priv_testproc(int) AS 'select 3' LANGUAGE sql;
 
 SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testfunc(int)', 'EXECUTE'); -- true by default
--- SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testagg(int)', 'EXECUTE'); -- true by default
+SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testagg(int)', 'EXECUTE'); -- true by default
 SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testproc(int)', 'EXECUTE'); -- true by default
 
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA testns FROM PUBLIC;
 
 SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testfunc(int)', 'EXECUTE'); -- false
--- SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testagg(int)', 'EXECUTE'); -- false
+SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testagg(int)', 'EXECUTE'); -- false
 SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testproc(int)', 'EXECUTE'); -- still true, not a function
 
 REVOKE ALL ON ALL PROCEDURES IN SCHEMA testns FROM PUBLIC;
@@ -1109,7 +1087,7 @@ SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testproc(int)',
 GRANT ALL ON ALL ROUTINES IN SCHEMA testns TO PUBLIC;
 
 SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testfunc(int)', 'EXECUTE'); -- true
--- SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testagg(int)', 'EXECUTE'); -- true
+SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testagg(int)', 'EXECUTE'); -- true
 SELECT has_function_privilege('regress_priv_user1', 'testns.priv_testproc(int)', 'EXECUTE'); -- true
 
 \set VERBOSITY terse \\ -- suppress cascade details
@@ -1174,7 +1152,7 @@ drop table dep_priv_test;
 
 drop sequence x_seq;
 
--- DROP AGGREGATE priv_testagg1(int);
+DROP AGGREGATE priv_testagg1(int);
 DROP FUNCTION priv_testfunc2(int);
 DROP FUNCTION priv_testfunc4(boolean);
 DROP PROCEDURE priv_testproc1(int);
