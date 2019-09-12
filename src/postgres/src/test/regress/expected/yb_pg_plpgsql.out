@@ -4242,10 +4242,6 @@ create function sql_to_date(integer) returns date as $$
 select $1::text::date
 $$ language sql immutable strict;
 create cast (integer as date) with function sql_to_date(integer) as assignment;
-ERROR:  CREATE CAST not supported yet
-LINE 1: create cast (integer as date) with function sql_to_date(inte...
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 create function cast_invoker(integer) returns date as $$
 begin
   return $1;
@@ -4296,6 +4292,7 @@ ERROR:  current transaction is aborted, commands ignored until end of transactio
 commit;
 drop function cast_invoker(integer);
 drop function sql_to_date(integer) cascade;
+NOTICE:  drop cascades to cast from integer to date
 -- Test handling of cast cache inside DO blocks
 -- (to check the original crash case, this must be a cast not previously
 -- used in this session)
