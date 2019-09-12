@@ -11,7 +11,6 @@ import org.yb.client.ListTabletServersResponse;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ApiResponse;
@@ -78,36 +77,29 @@ public class TabletServerController extends AuthenticatedController {
     }
 
     // Validate universe UUID and retrieve master leader address
-    Universe universe = Universe.get(universeUUID);
+    final Universe universe = Universe.get(universeUUID);
     if (universe == null) {
       final String errMsg = "Invalid Universe UUID: " + universeUUID;
       LOG.error(errMsg);
       return ApiResponse.error(BAD_REQUEST, errMsg);
     }
-    final String hostPorts = universe.getMasterAddresses();
-    final String certificate = universe.getCertificate();
-    YBClient client = null;
-    String masterLeaderIPAddr = null;
-    JsonNode response = null;
-    HostAndPort leaderMasterHostAndPort = null;
+    final String masterLeaderIPAddr = universe.getMasterLeaderHostText();
+    if (masterLeaderIPAddr.isEmpty()) {
+      final String errMsg =
+              "Could not find the master leader address in universe " + universeUUID;
+      LOG.error(errMsg);
+      return ApiResponse.error(INTERNAL_SERVER_ERROR, errMsg);
+    }
+
+    JsonNode response;
     // Query master leader tablet servers endpoint
     try {
-      client = ybService.getClient(hostPorts, certificate);
-      leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
-      masterLeaderIPAddr = leaderMasterHostAndPort.getHostText();
-      if (masterLeaderIPAddr.isEmpty()) {
-        String errMsg =
-                "Could not retrieve the master leader server's address in universe " + universeUUID;
-        LOG.error(errMsg);
-        return ApiResponse.error(INTERNAL_SERVER_ERROR, errMsg);
-      }
-      String masterLeaderUrl = masterLeaderUrlPrefix + masterLeaderIPAddr + masterLeaderUrlSuffix;
+      final String masterLeaderUrl =
+              masterLeaderUrlPrefix + masterLeaderIPAddr + masterLeaderUrlSuffix;
       response = apiHelper.getRequest(masterLeaderUrl);
     } catch (Exception e) {
       LOG.error("Failed to get list of tablet servers in universe " + universeUUID, e);
       return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybService.closeClient(client, hostPorts);
     }
     return ApiResponse.success(response);
   }
