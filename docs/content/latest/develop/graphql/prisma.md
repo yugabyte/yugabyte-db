@@ -13,7 +13,7 @@ showAsideToc: true
 
 Prisma enables simplified workflows and type-safe database access with the auto-generated Prisma client in JavaScript, TypeScript, and Go. This *data access layer* takes care of resolving your queries.
 
-## Before you begin 
+## Before you begin
 
 ### YugaByte DB
 
@@ -58,26 +58,26 @@ In order to quickly explore using Prisma with YugaByte DB, we will use the defau
 
 When prompted, enter or select the following values:
 
-- Set up a new Prisma server or deploy to an existing server? Use existing database
-- What kind of database do you want to deploy to? PostgreSQL
-- Does your database contain existing data? No
-- Enter database host: localhost
-- Enter database port: 5433
-- Enter database user: postgres
+- Set up a new Prisma server or deploy to an existing server? **Use existing database**
+- What kind of database do you want to deploy to? **PostgreSQL**
+- Does your database contain existing data? **No**
+- Enter database host: **localhost**
+- Enter database port: **5433**
+- Enter database user: **postgres**
 - Enter database password: [No password, just press **Enter**]
-- Enter database name (the database includes the schema) postgres
-- Use SSL? N
-- Select the programming language for the generated Prisma client: Prisma JavaScript Client
+- Enter database name (the database includes the schema) **postgres**
+- Use SSL? **N**
+- Select the programming language for the generated Prisma client: **Prisma JavaScript Client**
 
-When finished, the following three files have created in a directory named `prisma-yb`:
+When finished, the following three files have created in the project directory, named `prisma-yb`:
 
 - `prisma.yml` — Prisma service definition
 - `datamodel.prisma` — GraphQL SDL-based data model (foundation for the database)
 - `docker-compose.yml` — Docker configuration file
 
-## 2. Start the Prisma Docker container
+## 2. Start the Prisma server
 
-To start the Prisma Docker container and launch the connected YugaByte DB database, go to the `prisma-yb` directory and then run the `docker-compose` command:
+To start the Prisma server (in the Docker container) and launch the connected YugaByte DB database, go to the `prisma-yb` directory and then run the `docker-compose` command:
 
 ```bash
 cd prisma-yb
@@ -109,21 +109,23 @@ type User {
 }
 ```
 
-## 4. Deploy prisma (locally)
+## 4. Deploy the Prisma service (locally)
 
-Run the following command to deploy the 
+To deploy the Prisma service, run the following command:
 
 ```bash
 prisma deploy
 ```
 
-Prisma is now connected to the `postgres` datbase and the Prisma UI is running on `http://localhost:4466/`.
+The Prisma service is now connected to the `postgres` database and the Prisma UI is running on `http://localhost:4466/`.
 
 ## 5. Create sample data
 
+Use the Prisma UI to create the following sample data.
+
 ### Create a user Jane with three postings.
 
-```
+```json
 mutation {
   createUser(data: {
     name: "Jane Doe"
@@ -154,7 +156,7 @@ mutation {
 
 ### Create a user John with two postings.
 
-```
+```json
 mutation {
   createUser(data: {
     name: "John Doe"
@@ -213,7 +215,7 @@ Now that you have the sample data, you can run some queries to get a taste of us
 
 ![Results - get all posts](/images/develop/graphql/prisma/query-get-all-posts.png)
 
-### Get all users, ordered alphabetically.
+### Get all users – ordered alphabetically
 
 ```json
 {
@@ -229,7 +231,7 @@ Now that you have the sample data, you can run some queries to get a taste of us
 
 ![Results - get all posts, ordered alphabetically](/images/develop/graphql/prisma/query-get-all-user-alpha.png)
 
-### Get all posts, ordered by popularity.
+### Get all posts – ordered by popularity.
 
 ```json
 {
@@ -246,7 +248,9 @@ Now that you have the sample data, you can run some queries to get a taste of us
 
 ![Results - get all posts - ordered by popularity](/images/develop/graphql/prisma/query-get-posts-popular.png)
 
-Try Prisma ORM (JS)
+## Try the Prisma ORM (JavaScript)
+
+In this subsection, you can take a quick look at the Prisma ORM functionality.
 
 Initialize an NPM project.
 
@@ -255,15 +259,15 @@ npm init -y
 npm install --save prisma-client-lib
 ```
 
-## Read and write data
+### Read and write data
 
-Create a file
+1. Create a file
 
 ```bash
 touch index.js
 ```
 
-Add the following JavaScript code to `index.js`:
+2. Add the following JavaScript code to `index.js`:
 
 ```js
 const { prisma } = require('./generated/prisma-client')
@@ -292,18 +296,17 @@ async function main() {
 main().catch(e => console.error(e))
 ```
 
-{{< note title="Note" >}}
+The code above will create a new user `Alice` and a new post for that user. Finally, it will list all users, and then all posts by the new user Alice.
 
-The code above will create a new user `Alice` and a new post for that user.
-Finally, it will list all users, and then all posts by the new user Alice.
-
-Run the file:
+3. Run the file:
 
 ```bash
 node index.js
 ```
 
-{{< /note >}}
+![Prisma ORM results](/images/develop/graphql/prisma/prisma-orm-results.png)
+
+
 
 ## Clean Up
 
