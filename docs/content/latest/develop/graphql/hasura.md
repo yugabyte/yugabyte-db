@@ -180,6 +180,8 @@ Fetch a list of authors and a nested list of each author’s articles where the 
 
 ### Cleanup
 
+Now that you're done with this exploration, you can clean up the pieces for your next adventure.
+
 1. Stop the YugaByte cluster by running the `yb-ctl stop` command.
 
     ```bash

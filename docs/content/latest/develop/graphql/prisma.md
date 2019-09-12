@@ -306,9 +306,9 @@ node index.js
 
 ![Prisma ORM results](/images/develop/graphql/prisma/prisma-orm-results.png)
 
-
-
 ## Clean Up
+
+Now that you're done with this exploration, you can clean up the pieces for your next adventure.
 
 1. Stop the YugaByte cluster
 
