@@ -2,6 +2,18 @@
 
 import { connect } from 'react-redux';
 import Dashboard from './Dashboard';
+import { fetchUniverseList, fetchUniverseListResponse } from '../../actions/universe';
+
+const mapDispatchToProps = (dispatch) => {
+  return {
+    fetchUniverseList: () => {
+      dispatch(fetchUniverseList())
+        .then((response) => {
+          dispatch(fetchUniverseListResponse(response.payload));
+        });
+    },
+  };
+};
 
 const mapStateToProps = (state) => {
   return {
@@ -11,4 +23,4 @@ const mapStateToProps = (state) => {
   };
 };
 
-export default connect(mapStateToProps, {})(Dashboard);
+export default connect(mapStateToProps, mapDispatchToProps)(Dashboard);
