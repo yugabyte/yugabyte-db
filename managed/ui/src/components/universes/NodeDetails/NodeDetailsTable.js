@@ -5,6 +5,7 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { IN_DEVELOPMENT_MODE } from '../../../config';
+import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
 import moment from 'moment';
@@ -64,28 +65,30 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getStatusUptime = (cell, row) => {
+      let uptime = "_";
+      if(isDefinedNotNull(row.uptime_seconds)) {
+        // get the difference between the moments
+        const difference = parseFloat(row.uptime_seconds) * 1000;
 
-      // get the difference between the moments
-      const difference = row.uptime_seconds * 1000;
+        //express as a duration
+        const diffDuration = moment.duration(difference);
+        const diffArray = [
+          [diffDuration.seconds(), 'sec'],
+          [diffDuration.minutes(), 'min'],
+          [diffDuration.hours(), 'hour'],
+          [diffDuration.days(), 'day'],
+          [diffDuration.months(), 'month'],
+          [diffDuration.years(),  'year'],
+        ];
 
-      //express as a duration
-      const diffDuration = moment.duration(difference);
-      const diffArray = [
-        [diffDuration.seconds(), 'sec'],
-        [diffDuration.minutes(), 'min'],
-        [diffDuration.hours(), 'hour'],
-        [diffDuration.days(), 'day'],
-        [diffDuration.months(), 'month'],
-        [diffDuration.years(),  'year'],
-      ];
-
-      const idx = diffArray.findIndex((elem) => elem[0] === 0);
-      const uptime = idx < 2
-        ? "< 1 min"
-        : `${diffArray[idx - 1][0]}
-          ${pluralize(diffArray[idx - 1][1], diffArray[idx - 1][0])}
-          ${diffArray[idx - 2][0]}
-          ${pluralize(diffArray[idx - 2][1], diffArray[idx - 2][0])}`;
+        const idx = diffArray.findIndex((elem) => elem[0] === 0);
+        uptime = idx < 2
+          ? "< 1 min"
+          : `${diffArray[idx - 1][0]}
+            ${pluralize(diffArray[idx - 1][1], diffArray[idx - 1][0])}
+            ${diffArray[idx - 2][0]}
+            ${pluralize(diffArray[idx - 2][1], diffArray[idx - 2][0])}`;
+      };
       return (<Fragment>
         <div className={cell === "Live" ? 'text-green' : 'text-red'}>{cell}</div>
         {uptime}
@@ -109,12 +112,12 @@ export default class NodeDetailsTable extends Component {
 
     const getOpsSec = function(cell, row) {
       return (<Fragment>
-        {formatFloatValue(row.read_ops_per_sec)} | {formatFloatValue(row.write_ops_per_sec)}
+        {isDefinedNotNull(row.read_ops_per_sec) ? formatFloatValue(row.read_ops_per_sec) : "-"} | {isDefinedNotNull(row.write_ops_per_sec) ? formatFloatValue(row.write_ops_per_sec) : "-"}
       </Fragment>);
     };
 
     const getReadableSize = function(cell, row) {
-      return parseFloat(cell).toFixed(1) + " " + cell.substr(-2, 2);
+      return isDefinedNotNull(cell) ? parseFloat(cell).toFixed(1) + " " + cell.substr(-2, 2) : "-";
     };
 
     const panelTitle = clusterType === 'primary' ? 'Primary Cluster': 'Read Replicas';
