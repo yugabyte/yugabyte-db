@@ -13,18 +13,11 @@ showAsideToc: true
 
 Prisma enables simplified workflows and type-safe database access with the auto-generated Prisma client in JavaScript, TypeScript, and Go. This *data access layer* takes care of resolving your queries.
 
-
-
-## Before you begin
-
-1. Install and start YugaByte
-2. Install and start Prisma
-
 ## Before you begin 
 
-### Install and start YugaByte DB
+### YugaByte DB
 
-If YugaByte DB is installed, run the following command to start a YugaByte DB 1-node cluster:
+If YugaByte DB is installed, run the following `yb-ctl create` command to start a YugaByte DB 1-node cluster, setting the default transaction isolation level to `serializable`:
 
 ```bash
 ./bin/yb-ctl create --tserver_flags='ysql_pg_conf="default_transaction_isolation=serializable"'
@@ -32,48 +25,59 @@ If YugaByte DB is installed, run the following command to start a YugaByte DB 1-
 
 {{< note title="Note" >}}
 
-The need to explicitly set the isolation level is a temporary limitation, is due to a YugaByte DB issue related to the locking of foreign keys ([GitHub issue #1199](https://github.com/YugaByte/yugabyte-db/issues/1199))
-
+Setting the transaction isolation level to `serializable` is a temporary limitation due to a YugaByte DB issue involving the locking of foreign keys ([GitHub issue #1199](https://github.com/YugaByte/yugabyte-db/issues/1199))
 
 {{< /note >}}
 
-If you are new to YugaByte DB, you can be up and running with YugaByte DB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/).
+If you are new to YugaByte DB, you can be up and running with YugaByte DB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/). After installing YugaByte DB, make sure to follow the step mentioned above.
 
-1. Install and start YugaByte
-<!--
-Test of HTML commenting.
--->
+### Prisma
 
-1. Install and start Prisma
+To use Prisma, `npm` and Docker need to be installed. For details on installing these, see the following:
 
-2.  Initialize a project
-First install npm and docker.
+- [npm](https://www.npmjs.com/get-npm)
+- [Docker](https://docs.docker.com/)
 
-Then, to install prisma run:
+To install the Prisma CLI using `npm`, run the following command:
 
 ```
 npm i -g prisma
 ```
 
-Set up a default Prisma project
+For more information, see [Set up Prisma (for a new database)](https://www.prisma.io/docs/get-started/01-setting-up-prisma-new-database-JAVASCRIPT-a002/) in the Prisma documentation. 
+
+## 1. Set up and connect Prisma with the `prisma-yb` database
+
+To set up a Prisma project, named `prisma-yb`, run the following command.
 
 ```bash
 prisma init prisma-yb
 ```
-When prompted, input or select the following values:
 
-? Set up a new Prisma server or deploy to an existing server? Use existing database
-? What kind of database do you want to deploy to? PostgreSQL
-? Does your database contain existing data? No
-? Enter database host localhost
-? Enter database port 5433
-? Enter database user postgres
-? Enter database password [No password, just press enter]
-? Enter database name (the database includes the schema) postgres
-? Use SSL? N
-? Select the programming language for the generated Prisma client Prisma JavaScript Client
+In order to quickly explore using Prisma with YugaByte DB, we will use the default database and user in the PostgreSQL-compatible YugaByte DB.
 
-Start prisma docker container
+When prompted, enter or select the following values:
+
+- Set up a new Prisma server or deploy to an existing server? Use existing database
+- What kind of database do you want to deploy to? PostgreSQL
+- Does your database contain existing data? No
+- Enter database host: localhost
+- Enter database port: 5433
+- Enter database user: postgres
+- Enter database password: [No password, just press **Enter**]
+- Enter database name (the database includes the schema) postgres
+- Use SSL? N
+- Select the programming language for the generated Prisma client: Prisma JavaScript Client
+
+When finished, the following three files have created in a directory named `prisma-yb`:
+
+- `prisma.yml` — Prisma service definition
+- `datamodel.prisma` — GraphQL SDL-based data model (foundation for the database)
+- `docker-compose.yml` — Docker configuration file
+
+## 2. Start the Prisma Docker container
+
+To start the Prisma Docker container and launch the connected YugaByte DB database, go to the `prisma-yb` directory and then run the `docker-compose` command:
 
 ```bash
 cd prisma-yb
@@ -82,8 +86,7 @@ docker-compose up -d
 
 You should now have a `prismagraphql/prisma` container running. You can check that by running `docker ps`.
 
-
-Set up a sample schema
+## 3. Set up a sample schema
 
 Open `datamodel.prisma` and replace the contents with:
 
@@ -106,21 +109,21 @@ type User {
 }
 ```
 
-Deploy prisma (locally)
+## 4. Deploy prisma (locally)
+
+Run the following command to deploy the 
 
 ```bash
 prisma deploy
 ```
 
-Try Prisma GraphQL
+Prisma is now connected to the `postgres` datbase and the Prisma UI is running on `http://localhost:4466/`.
 
-Open the Prisma UI at `http://localhost:4466/`.
+## 5. Create sample data
 
-## Create Sample Data
+Create a user Jane with three POST requests.
 
-Create a user Jane with three posts
-
-```json
+```js
 mutation {
   createUser(data: {
     name: "Jane Doe"
@@ -147,7 +150,7 @@ mutation {
 }
 ```
 
-Create a user John with two posts
+Create a user John with two POST requests.
 
 ```json
 mutation {
@@ -174,8 +177,11 @@ mutation {
 
 ## Query the data
 
+Now that you have the sample data, you can run some queries to get a taste of using Prisma to query YugaByte DB.
+
 ### Get all users
 
+```json
 {
   users {
     id
@@ -184,6 +190,11 @@ mutation {
     createdAt
   }
 }
+```
+
+![Results - get all users]()
+
+
 
 ### Get all posts
 
@@ -197,6 +208,8 @@ mutation {
   }
 }
 ```
+
+![Results - get all posts]()
 
 ### Get all users, ordered alphabetically.
 
@@ -212,7 +225,9 @@ mutation {
 }
 ```
 
-Get all posts, ordered by popularity:
+![Results - get all posts, ordered alphabetically]()
+
+### Get all posts, ordered by popularity.
 
 ```json
 {
@@ -226,6 +241,8 @@ Get all posts, ordered by popularity:
   }
 }
 ```
+
+![Results - get all posts - ordered by popularity]()
 
 Try Prisma ORM (JS)
 
