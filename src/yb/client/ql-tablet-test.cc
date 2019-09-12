@@ -415,8 +415,7 @@ void VerifyLogIndicies(MiniCluster* cluster) {
     cluster->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers(&peers);
 
     for (const auto& peer : peers) {
-      int64_t index = -1;
-      ASSERT_OK(peer->GetEarliestNeededLogIndex(&index));
+      int64_t index = ASSERT_RESULT(peer->GetEarliestNeededLogIndex());
       ASSERT_EQ(peer->consensus()->GetLastCommittedOpId().index, index);
     }
   }

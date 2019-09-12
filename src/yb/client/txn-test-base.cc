@@ -93,6 +93,9 @@ void DisableTransactionTimeout() {
 
 void TransactionTestBase::SetUp() {
   FLAGS_combine_batcher_errors = true;
+  FLAGS_log_segment_size_bytes = log_segment_size_bytes();
+  FLAGS_log_min_seconds_to_retain = 5;
+  FLAGS_intents_flush_max_delay_ms = 250;
 
   server::SkewedClock::Register();
   FLAGS_time_source = server::SkewedClock::kName;
@@ -102,10 +105,6 @@ void TransactionTestBase::SetUp() {
   if (create_table_) {
     CreateTable(Transactional::kTrue);
   }
-
-  FLAGS_log_segment_size_bytes = log_segment_size_bytes();
-  FLAGS_log_min_seconds_to_retain = 5;
-  FLAGS_intents_flush_max_delay_ms = 250;
 
   HybridTime::TEST_SetPrettyToString(true);
 
