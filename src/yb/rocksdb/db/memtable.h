@@ -351,10 +351,7 @@ class MemTable {
     }
   }
 
-  UserFrontierPtr GetSmallestFrontierLocked() const {
-    std::lock_guard<SpinMutex> l(frontiers_mutex_);
-    return frontiers_ ? frontiers_->Smallest().Clone() : nullptr;
-  }
+  UserFrontierPtr GetFrontier(UpdateUserValueType type) const;
 
   const UserFrontiers* Frontiers() const { return frontiers_.get(); }
 

@@ -45,7 +45,6 @@ using yb::tablet::GetTransactionTimeout;
 using yb::tablet::TabletPeer;
 
 DECLARE_uint64(transaction_heartbeat_usec);
-DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_bool(transaction_allow_rerequest_status_in_tests);
@@ -91,6 +90,9 @@ class QLTransactionTest : public TransactionTestBase {
       [this] { return CountIntents() == 0; }, kIntentsCleanupTime, "Intents cleaned");
   }
 };
+
+typedef TransactionCustomLogSegmentSizeTest<0, QLTransactionTest>
+    QLTransactionBigLogSegmentSizeTest;
 
 TEST_F(QLTransactionTest, Simple) {
   ASSERT_NO_FATALS(WriteData());
@@ -704,18 +706,11 @@ void QLTransactionTest::TestWriteConflicts(bool do_restarts) {
   ASSERT_GT(tries, flushed);
 }
 
-class WriteConflictsTest : public QLTransactionTest {
- protected:
-  uint64_t log_segment_size_bytes() const override {
-    return 0;
-  }
-};
-
-TEST_F_EX(QLTransactionTest, WriteConflicts, WriteConflictsTest) {
+TEST_F_EX(QLTransactionTest, WriteConflicts, QLTransactionBigLogSegmentSizeTest) {
   TestWriteConflicts(false /* do_restarts */);
 }
 
-TEST_F_EX(QLTransactionTest, WriteConflictsWithRestarts, WriteConflictsTest) {
+TEST_F_EX(QLTransactionTest, WriteConflictsWithRestarts, QLTransactionBigLogSegmentSizeTest) {
   TestWriteConflicts(true /* do_restarts */);
 }
 
@@ -979,14 +974,13 @@ TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
 //
 // It is don't for multiple keys sequentially. So those keys are located on different tablets
 // and tablet servers, and we test different cases of clock skew.
-TEST_F(QLTransactionTest, CorrectStatusRequestBatching) {
+TEST_F_EX(QLTransactionTest, CorrectStatusRequestBatching, QLTransactionBigLogSegmentSizeTest) {
   const auto kClockSkew = 100ms;
   constexpr auto kMinWrites = RegularBuildVsSanitizers(25, 1);
   constexpr auto kMinReads = 10;
   constexpr size_t kConcurrentReads = RegularBuildVsSanitizers<size_t>(20, 5);
 
   FLAGS_transaction_delay_status_reply_usec_in_tests = 200000;
-  FLAGS_log_segment_size_bytes = 0;
   SetAtomicFlag(std::chrono::microseconds(kClockSkew).count() * 3, &FLAGS_max_clock_skew_usec);
 
   auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
@@ -1213,7 +1207,7 @@ TEST_F(QLTransactionTest, StatusEvolution) {
 // Such read is inconsistent.
 //
 // This test addresses this issue.
-TEST_F(QLTransactionTest, WaitRead) {
+TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
   constexpr size_t kWriteThreads = 10;
   constexpr size_t kCycles = 100;
   constexpr size_t kConcurrentReads = 4;
@@ -1329,7 +1323,7 @@ TEST_F(QLTransactionTest, InsertDeleteWithClusterRestart) {
   }
 }
 
-TEST_F(QLTransactionTest, ChangeLeader) {
+TEST_F_EX(QLTransactionTest, ChangeLeader, QLTransactionBigLogSegmentSizeTest) {
   constexpr size_t kThreads = 2;
   constexpr auto kTestTime = 5s;
 
@@ -1477,7 +1471,7 @@ TEST_F(QLTransactionTest, FlushIntents) {
 }
 
 // This test checks that read restart never happen during first read request to single table.
-TEST_F(QLTransactionTest, PickReadTimeAtServer) {
+TEST_F_EX(QLTransactionTest, PickReadTimeAtServer, QLTransactionBigLogSegmentSizeTest) {
   constexpr int kKeys = 10;
   constexpr int kThreads = 5;
 
@@ -1564,7 +1558,8 @@ TEST_F(QLTransactionTest, DelayedInit) {
   }
 }
 
-class QLTransactionTestSingleTablet : public QLTransactionTest {
+class QLTransactionTestSingleTablet :
+    public TransactionCustomLogSegmentSizeTest<4_KB, QLTransactionTest> {
  public:
   int NumTablets() override {
     return 1;
@@ -1601,6 +1596,86 @@ TEST_F_EX(QLTransactionTest, DeleteFlushedIntents, QLTransactionTestSingleTablet
       return !iter->Valid();
     }, deadline, "Intents are removed"));
   }
+}
+
+// Test performs transactional writes to get flushed intents.
+// Then performs non transactional writes and checks that log size stabilizes, meaning
+// log gc is working.
+TEST_F_EX(QLTransactionTest, GCLogsAfterTransactionalWritesStop, QLTransactionTestSingleTablet) {
+  LOG(INFO) << "Perform transactional writes, to get non empty intents db";
+  TestThreadHolder thread_holder;
+  std::atomic<bool> use_transaction(true);
+  // This thread first does transactional writes and then switches to doing non-transactional
+  // writes.
+  thread_holder.AddThreadFunctor([this, &use_transaction, &stop = thread_holder.stop_flag()] {
+    SetFlagOnExit set_flag_on_exit(&stop);
+    auto session = CreateSession();
+    int txn_idx = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      YBTransactionPtr write_txn = use_transaction.load(std::memory_order_acquire)
+          ? CreateTransaction() : nullptr;
+      session->SetTransaction(write_txn);
+      WriteRows(session, txn_idx++);
+      if (write_txn) {
+        ASSERT_OK(write_txn->CommitFuture().get());
+      }
+    }
+  });
+  // Waiting for some intent SSTables to be flushed.
+  bool has_flushed_intents_db = false;
+  while (!has_flushed_intents_db && !thread_holder.stop_flag().load(std::memory_order_acquire)) {
+    ASSERT_OK(cluster_->FlushTablets());
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    for (const auto& peer : peers) {
+      auto* tablet = peer->tablet();
+      if (!tablet) {
+        continue;
+      }
+      auto persistent_op_id = ASSERT_RESULT(tablet->MaxPersistentOpId());
+      if (persistent_op_id.intents.index > 10) {
+        has_flushed_intents_db = true;
+        break;
+      }
+    }
+    std::this_thread::sleep_for(10ms);
+  }
+
+  // We are expecting the log size to stay bounded, which means the maximum log size we've ever
+  // seen for any tablet should stabilize. That would indicate that the bug with unbounded log
+  // growth (https://github.com/YugaByte/yugabyte-db/issues/2221) is not happening.
+  LOG(INFO) << "Perform non transactional writes";
+
+  use_transaction.store(false, std::memory_order_release);
+  uint64_t max_log_size = 0;
+  auto last_log_size_increment = CoarseMonoClock::now();
+  MonoDelta kTimeout = 30s;
+  auto deadline = last_log_size_increment + kTimeout;
+  while (!thread_holder.stop_flag().load(std::memory_order_acquire)) {
+    auto now = CoarseMonoClock::now();
+    ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kRegular));
+    ASSERT_OK(cluster_->CleanTabletLogs());
+    auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+    for (const auto& peer : peers) {
+      auto* log = peer->log();
+      if (!log) {
+        continue;
+      }
+      uint64_t current_log_size = log->OnDiskSize();
+      if (current_log_size > max_log_size) {
+        LOG(INFO) << "Log size increased: " << current_log_size;
+        last_log_size_increment = now;
+        max_log_size = current_log_size;
+      }
+    }
+    if (now - last_log_size_increment > 15s) {
+      break;
+    } else {
+      ASSERT_LE(now, deadline) << "Log size did not stabilize in " << kTimeout;
+    }
+    std::this_thread::sleep_for(100ms);
+  }
+
+  thread_holder.Stop();
 }
 
 } // namespace client

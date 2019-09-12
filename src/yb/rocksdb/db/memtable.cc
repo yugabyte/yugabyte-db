@@ -895,6 +895,22 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
   return num_successive_merges;
 }
 
+UserFrontierPtr MemTable::GetFrontier(UpdateUserValueType type) const {
+  std::lock_guard<SpinMutex> l(frontiers_mutex_);
+  if (!frontiers_) {
+    return nullptr;
+  }
+
+  switch (type) {
+    case UpdateUserValueType::kSmallest:
+      return frontiers_->Smallest().Clone();
+    case UpdateUserValueType::kLargest:
+      return frontiers_->Largest().Clone();
+  }
+
+  FATAL_INVALID_ENUM_VALUE(UpdateUserValueType, type);
+}
+
 void MemTableRep::Get(const LookupKey& k, void* callback_args,
                       bool (*callback_func)(void* arg, const char* entry)) {
   auto iter = GetDynamicPrefixIterator();
