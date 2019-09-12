@@ -121,9 +121,9 @@ Prisma is now connected to the `postgres` datbase and the Prisma UI is running o
 
 ## 5. Create sample data
 
-Create a user Jane with three POST requests.
+### Create a user Jane with three postings.
 
-```js
+```
 mutation {
   createUser(data: {
     name: "Jane Doe"
@@ -150,9 +150,11 @@ mutation {
 }
 ```
 
-Create a user John with two POST requests.
+![Create user Jane with three postings](/images/develop/graphql/prisma/create-user-jane.png)
 
-```json
+### Create a user John with two postings.
+
+```
 mutation {
   createUser(data: {
     name: "John Doe"
@@ -175,6 +177,8 @@ mutation {
 }
 ```
 
+![Create user John with two postings](/images/develop/graphql/prisma/create-user-jane.png)
+
 ## Query the data
 
 Now that you have the sample data, you can run some queries to get a taste of using Prisma to query YugaByte DB.
@@ -192,9 +196,7 @@ Now that you have the sample data, you can run some queries to get a taste of us
 }
 ```
 
-![Results - get all users]()
-
-
+![Results - get all users](/images/develop/graphql/prisma/query-get-all-users.png)
 
 ### Get all posts
 
@@ -209,7 +211,7 @@ Now that you have the sample data, you can run some queries to get a taste of us
 }
 ```
 
-![Results - get all posts]()
+![Results - get all posts](/images/develop/graphql/prisma/query-get-all-posts.png)
 
 ### Get all users, ordered alphabetically.
 
@@ -225,7 +227,7 @@ Now that you have the sample data, you can run some queries to get a taste of us
 }
 ```
 
-![Results - get all posts, ordered alphabetically]()
+![Results - get all posts, ordered alphabetically](/images/develop/graphql/prisma/query-get-all-user-alpha.png)
 
 ### Get all posts, ordered by popularity.
 
@@ -242,7 +244,7 @@ Now that you have the sample data, you can run some queries to get a taste of us
 }
 ```
 
-![Results - get all posts - ordered by popularity]()
+![Results - get all posts - ordered by popularity](/images/develop/graphql/prisma/query-get-posts-popular.png)
 
 Try Prisma ORM (JS)
 
@@ -260,6 +262,7 @@ Create a file
 ```bash
 touch index.js
 ```
+
 Add the following JavaScript code to `index.js`:
 
 ```js

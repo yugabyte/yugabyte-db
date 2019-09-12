@@ -69,13 +69,13 @@ The Hasura UI should load on `localhost:8080`.
 
  Open the Hasura UI on `localhost:8080` and go to the `DATA` tab as shown here.
 
-![DATA tab in Hasura UI](/images/develop/ecosystem-integrations/hasura/data-tab.png)
+![DATA tab in Hasura UI](/images/develop/graphql/hasura/data-tab.png)
 
 ### 1. Create the `author` table
 
 Click **Create Table** and fill in the details as below to create a table `author(id, name)`.
 
-![author table form](/images/develop/ecosystem-integrations/hasura/author-table.png)
+![author table form](/images/develop/graphql/hasura/author-table.png)
 
 After filling in details, click **Add Table** at the bottom, then go back to the **DATA** tab.
 
@@ -85,11 +85,11 @@ Click **Create Table** again to create a table `article(id, title, content, rati
 
 Fill in the details as shown here.
 
-![article table form](/images/develop/ecosystem-integrations/hasura/article-table.png)
+![article table form](/images/develop/graphql/hasura/article-table.png)
 
 Under **Foreign Keys**, click **Add a foreign key** and fill in as shown here.
 
-![foreign keys form](/images/develop/ecosystem-integrations/hasura/foreign-keys.png)
+![foreign keys form](/images/develop/graphql/hasura/foreign-keys.png)
 
 After completing the entries, click **Save** for the foreign key constraint, and then click **Add Table** at the bottom. Then go back to the **DATA** tab.
 
@@ -97,7 +97,7 @@ After completing the entries, click **Save** for the foreign key constraint, and
 
 1. Go to the article table on the left-side menu, then click the **Relationships** tab.
 
-![relationships form](/images/develop/ecosystem-integrations/hasura/relationships.png)
+![relationships form](/images/develop/graphql/hasura/relationships.png)
 
 2. Click **Add**, and then click **Save**.
 
@@ -105,7 +105,7 @@ After completing the entries, click **Save** for the foreign key constraint, and
 
 Now go to the author table's **Relationship** tab.
 
-![array relationships form](/images/develop/ecosystem-integrations/hasura/relationship-array.png)
+![array relationships form](/images/develop/graphql/hasura/relationship-array.png)
 
 Click **Add**, and then click **Save**.
 
@@ -157,7 +157,7 @@ Fetch a list of articles and sort each article’s author in descending order an
 }
 ```
 
-![relationships form](/images/develop/ecosystem-integrations/hasura/query-relationship-object.png)
+![relationships form](/images/develop/graphql/hasura/query-relationship-object.png)
 
 ### Query using the array relationship
 
@@ -176,7 +176,7 @@ Fetch a list of authors and a nested list of each author’s articles where the 
  }
  ```
 
-![query array relationship](/images/develop/ecosystem-integrations/hasura/query-relationship-array.png)
+![query array relationship](/images/develop/graphql/hasura/query-relationship-array.png)
 
 ### Cleanup
 
