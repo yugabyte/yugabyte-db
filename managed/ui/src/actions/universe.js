@@ -68,6 +68,8 @@ export const CONFIGURE_UNIVERSE_RESOURCES_RESPONSE = 'CONFIGURE_UNIVERSE_RESOURC
 // Universe per-node status
 export const GET_UNIVERSE_PER_NODE_STATUS = 'GET_UNIVERSE_PER_NODE_STATUS';
 export const GET_UNIVERSE_PER_NODE_STATUS_RESPONSE = 'GET_UNIVERSE_PER_NODE_STATUS_RESPONSE';
+export const GET_UNIVERSE_PER_NODE_METRICS = 'GET_UNIVERSE_PER_NODE_METRICS';
+export const GET_UNIVERSE_PER_NODE_METRICS_RESPONSE = 'GET_UNIVERSE_PER_NODE_METRICS_RESPONSE';
 
 //Validation Tasks
 export const CHECK_IF_UNIVERSE_EXISTS = 'CHECK_IF_UNIVERSE_EXISTS';
@@ -373,6 +375,22 @@ export function getUniversePerNodeStatus(universeUUID) {
 export function getUniversePerNodeStatusResponse(response) {
   return {
     type: GET_UNIVERSE_PER_NODE_STATUS_RESPONSE,
+    payload: response
+  };
+}
+
+export function getUniversePerNodeMetrics(universeUUID) {
+  const requestUrl = `${getCustomerEndpoint()}/universes/${universeUUID}/tablet-servers`;
+  const request = axios.get(requestUrl);
+  return {
+    type: GET_UNIVERSE_PER_NODE_METRICS,
+    payload: request
+  };
+}
+
+export function getUniversePerNodeMetricsResponse(response) {
+  return {
+    type: GET_UNIVERSE_PER_NODE_METRICS_RESPONSE,
     payload: response
   };
 }

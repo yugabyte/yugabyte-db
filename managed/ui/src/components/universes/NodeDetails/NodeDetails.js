@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
-import axios from 'axios';
 import { NodeDetailsTable } from '../../universes';
 import { isNonEmptyArray, isDefinedNotNull, insertSpacesFromCamelCase, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
@@ -10,12 +9,6 @@ import { hasLiveNodes } from 'utils/UniverseUtils';
 import { YBLoading } from '../../common/indicators';
 
 export default class NodeDetails extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      tabletServers: null,
-    };
-  }
 
   componentDidMount() {
     const { universe: { currentUniverse } } = this.props;
@@ -23,6 +16,7 @@ export default class NodeDetails extends Component {
         hasLiveNodes(currentUniverse.data)) {
       const uuid = currentUniverse.data.universeUUID;
       this.props.getUniversePerNodeStatus(uuid);
+      this.props.getUniversePerNodeMetrics(uuid);
       this.props.getMasterLeader(uuid);
     }
   }
@@ -31,40 +25,11 @@ export default class NodeDetails extends Component {
     this.props.resetMasterLeader();
   }
 
-  componentDidUpdate(prevProps, prevState) {
-    const { universe: { currentUniverse, universeMasterLeader }} = this.props;
-    const universeDetails = currentUniverse.data.universeDetails;
-    const nodeDetails = universeDetails.nodeDetailsSet;
-    const self = this;
-    if (getPromiseState(currentUniverse).isSuccess() && getPromiseState(universeMasterLeader).isSuccess() && !isDefinedNotNull(this.state.tabletServers)) {
-      const httpPort = nodeDetails.find(item => item.cloudInfo.private_ip === universeMasterLeader.data.privateIP).masterHttpPort;
-      self.setState({
-        tabletServers: {}
-      });
-      const axiosInstance = axios.create({
-        baseURL: `http://${universeMasterLeader.data.privateIP}:${httpPort}/api/v1/tablet-servers`,
-        timeout: 20000,
-        headers: {
-          'Content-Type': 'text/plain',
-          'Accept': '*/*'
-        }
-      });
-      delete axiosInstance.defaults.headers.common['X-AUTH-TOKEN'];
-      axiosInstance
-        .get(`http://${universeMasterLeader.data.privateIP}:${httpPort}/api/v1/tablet-servers`)
-        .then(response => {
-          self.setState({
-            tabletServers: response.data
-          });
-        });
-    }
-  }
-
   render() {
-    const { universe: { currentUniverse, universePerNodeStatus, universeMasterLeader }} = this.props;
+    const { universe: { currentUniverse, universePerNodeStatus, universePerNodeMetrics, universeMasterLeader }} = this.props;
     const universeDetails = currentUniverse.data.universeDetails;
     const nodeDetails = universeDetails.nodeDetailsSet;
-    if (!isNonEmptyArray(nodeDetails) || !isDefinedNotNull(this.state.tabletServers) || !isNonEmptyObject(this.state.tabletServers)) {
+    if (!isNonEmptyArray(nodeDetails)) {
       return <YBLoading />;
     }
     const isReadOnlyUniverse = getPromiseState(currentUniverse).isSuccess() && currentUniverse.data.universeDetails.capability === "READ_ONLY";
@@ -72,7 +37,10 @@ export default class NodeDetails extends Component {
     const universeCreated = universeDetails.updateInProgress;
     const sortedNodeDetails = nodeDetails.sort((a, b) => nodeComparisonFunction(a, b, currentUniverse.data.universeDetails.clusters));
 
-    const nodesMetrics = this.state.tabletServers[Object.keys(this.state.tabletServers)[0]];
+    const nodesMetrics = getPromiseState(universePerNodeMetrics).isSuccess() &&
+      isNonEmptyObject(universePerNodeMetrics.data) &&
+      isNonEmptyObject(universePerNodeMetrics.data[Object.keys(universePerNodeMetrics.data)[0]]) &&
+      universePerNodeMetrics.data[Object.keys(universePerNodeMetrics.data)[0]];
     const nodeDetailRows = sortedNodeDetails.map((nodeDetail) => {
       let nodeStatus = "-";
       let nodeAlive = false;
@@ -88,7 +56,23 @@ export default class NodeDetails extends Component {
       const isMasterLeader = nodeDetail.isMaster && isDefinedNotNull(universeMasterLeader) &&
                              getPromiseState(universeMasterLeader).isSuccess() &&
                              universeMasterLeader.data.privateIP === nodeDetail.cloudInfo.private_ip;
-      const metricsData = nodesMetrics[`${nodeDetail.cloudInfo.private_ip}:${nodeDetail.tserverHttpPort}`];
+      const metricsData = nodesMetrics
+        ? nodesMetrics[`${nodeDetail.cloudInfo.private_ip}:${nodeDetail.tserverHttpPort}`]
+        : {
+          active_tablets: null,
+          num_sst_files: null,
+          ram_used: null,
+          read_ops_per_sec: null,
+          system_tablets_leaders: null,
+          system_tablets_total: null,
+          time_since_hb: null,
+          total_sst_file_size: null,
+          uncompressed_sst_file_size: null,
+          uptime_seconds: null,
+          user_tablets_leaders: null,
+          user_tablets_total: null,
+          write_ops_per_sec: null
+        };
       return {
         nodeIdx: nodeDetail.nodeIdx,
         name: nodeDetail.nodeName,
