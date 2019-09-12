@@ -11,6 +11,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
+Prisma enables simplified workflows and type-safe database access with the auto-generated Prisma client in JavaScript, TypeScript, and Go. This *data access layer* takes care of resolving your queries.
 
 
 
@@ -19,54 +20,48 @@ showAsideToc: true
 1. Install and start YugaByte
 2. Install and start Prisma
 
+## Before you begin 
 
+### Install and start YugaByte DB
 
-Initialize a project
-Set up a sample schema
-Try Prisma GraphQL
-Create Sample Data
-Create a user Jane with three posts
-Create a user John with two posts
-Query the data
-Get all users
-Get all posts
-Get all users ordered alphabetically
-Get all posts ordered by popularity
-Try Prisma ORM (JS)
-Initialize an npm project.
-Read and Write Data
-Create a file
-Add the following code to index.js
-Run the file
-Clean Up
-1. Stop the YugaByte cluster
-2. Stop The Prisma container
+If YugaByte DB is installed, run the following command to start a YugaByte DB 1-node cluster:
 
-
-
-Prerequisites
-1. Install and start YugaByte
-Follow the Instructions from https://docs.yugabyte.com/latest/quick-start/install/ 
-and then run
+```bash
 ./bin/yb-ctl create --tserver_flags='ysql_pg_conf="default_transaction_isolation=serializable"'
+```
 
-Note: Needing to explicitly set the isolation level is a temporary limitation.
+{{< note title="Note" >}}
 
+The need to explicitly set the isolation level is a temporary limitation, is due to a YugaByte DB issue related to the locking of foreign keys ([GitHub issue #1199](https://github.com/YugaByte/yugabyte-db/issues/1199))
+
+
+{{< /note >}}
+
+If you are new to YugaByte DB, you can be up and running with YugaByte DB in under five minutes by following the steps in [Quick start](https://docs.yugabyte.com/latest/quick-start/).
+
+1. Install and start YugaByte
 <!--
 Test of HTML commenting.
 -->
 
-2. Install and start Prisma
-Initialize a project
+1. Install and start Prisma
+
+2.  Initialize a project
 First install npm and docker.
 
 Then, to install prisma run:
+
+```
 npm i -g prisma
+```
 
-Set up a default prisma project
+Set up a default Prisma project
+
+```bash
 prisma init prisma-yb
-
+```
 When prompted, input or select the following values:
+
 ? Set up a new Prisma server or deploy to an existing server? Use existing database
 ? What kind of database do you want to deploy to? PostgreSQL
 ? Does your database contain existing data? No
@@ -79,14 +74,20 @@ When prompted, input or select the following values:
 ? Select the programming language for the generated Prisma client Prisma JavaScript Client
 
 Start prisma docker container
+
+```bash
 cd prisma-yb
 docker-compose up -d
+```
 
-Note: Should now have a prismagraphql/prisma container running. You can check that by running docker ps.
+You should now have a `prismagraphql/prisma` container running. You can check that by running `docker ps`.
+
 
 Set up a sample schema
-Open datamodel.prisma and replace the contents with:
 
+Open `datamodel.prisma` and replace the contents with:
+
+```
 type Post {
   id: ID! @id
   createdAt: DateTime! @createdAt
@@ -103,13 +104,23 @@ type User {
   name: String
   posts: [Post!]!
 }
+```
 
 Deploy prisma (locally)
+
+```bash
 prisma deploy
+```
+
 Try Prisma GraphQL
-Open the Prisma UI at http://localhost:4466/
-Create Sample Data
+
+Open the Prisma UI at `http://localhost:4466/`.
+
+## Create Sample Data
+
 Create a user Jane with three posts
+
+```json
 mutation {
   createUser(data: {
     name: "Jane Doe"
@@ -134,12 +145,11 @@ mutation {
     id
   }
 }
-
-
-
+```
 
 Create a user John with two posts
 
+```json
 mutation {
   createUser(data: {
     name: "John Doe"
@@ -160,10 +170,12 @@ mutation {
     id
   }
 }
+```
 
+## Query the data
 
-Query the data
-Get all users
+### Get all users
+
 {
   users {
     id
@@ -173,7 +185,9 @@ Get all users
   }
 }
 
-Get all posts
+### Get all posts
+
+```json
 {
   posts {
     id
@@ -182,12 +196,11 @@ Get all posts
     createdAt
   }
 }
+```
 
+### Get all users, ordered alphabetically.
 
-
-
-
-Get all users ordered alphabetically 
+```json
 {
   users(orderBy: name_ASC) {
     name
@@ -197,9 +210,11 @@ Get all users ordered alphabetically
     }
   }
 }
+```
 
+Get all posts, ordered by popularity:
 
-Get all posts ordered by popularity
+```json
 {
   posts(orderBy: views_DESC) {
     text
@@ -210,17 +225,27 @@ Get all posts ordered by popularity
     }
   }
 }
-
+```
 
 Try Prisma ORM (JS)
-Initialize an npm project.
+
+Initialize an NPM project.
+
+```bash
 npm init -y
 npm install --save prisma-client-lib
-Read and Write Data
-Create a file
-touch index.js
+```
 
-Add the following code to index.js
+## Read and write data
+
+Create a file
+
+```bash
+touch index.js
+```
+Add the following JavaScript code to `index.js`:
+
+```js
 const { prisma } = require('./generated/prisma-client')
 
 // A `main` function so that we can use async/await
@@ -231,6 +256,7 @@ async function main() {
   console.log(`Created new user: ${alice.name} (ID: ${alice.id})`)
 
   // Create a new post for 'Alice'
+  
   const alicesPost = await prisma.createPost({ text: 'Alice\'s First Post', views: 0, author: {connect: {id : alice.id} }})
   console.log(`Created new post: ${alicesPost.text} (ID: ${alicesPost.id})`)
 
@@ -244,25 +270,42 @@ async function main() {
 }
 
 main().catch(e => console.error(e))
+```
 
+{{< note title="Note" >}}
 
-Note: The code above will create a new user `Alice` and a new Post for that user. 
-Finally it will list all users, and then all posts by the new user Alice.
-Run the file
+The code above will create a new user `Alice` and a new post for that user.
+Finally, it will list all users, and then all posts by the new user Alice.
+
+Run the file:
+
+```bash
 node index.js
+```
 
+{{< /note >}}
 
-Clean Up
+## Clean Up
+
 1. Stop the YugaByte cluster
+
+```bash
 ./bin/yb-ctl stop
+```
 
 To completely remove all YugaByte data/cluster-state you can instead run:
+
+```bash
 ./bin/yb-ctl destroy
 2. Stop The Prisma container
 docker stop <container-id>
+```
 
 To completely remove all Prisma data/tate you can additionally run:
-docker rm <container-id>
 
-Note: you can list running containers with docker ps
+```bash
+docker rm <container-id>
+```
+
+Note: you can list running containers by running `docker ps`.
 
