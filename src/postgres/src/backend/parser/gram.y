@@ -879,6 +879,7 @@ stmt :
 			| CommentStmt
 			| ConstraintsSetStmt
 			| CopyStmt
+			| CreateCastStmt
 			| CreateDomainStmt
 			| CreateSchemaStmt
 			| CreateUserStmt
@@ -887,6 +888,7 @@ stmt :
 			| DefineStmt
 			| DeleteStmt
 			| DiscardStmt
+			| DropCastStmt
 			| DropStmt
 			| DropdbStmt
 			| ExecuteStmt
@@ -896,8 +898,11 @@ stmt :
 			| InsertStmt
 			| LockStmt
 			| PrepareStmt
+			| RemoveAggrStmt
+			| RemoveOperStmt
 			| RenameStmt
 			| RevokeStmt
+			| RuleStmt
 			| SelectStmt
 			| TransactionStmt
 			| TruncateStmt
@@ -910,7 +915,9 @@ stmt :
 			/* BETA features */
 			| AnalyzeStmt { parser_ybc_beta_feature(@1, "analyze"); }
 			| CreateFunctionStmt { parser_ybc_beta_feature(@1, "function"); }
+			| CreateOpClassStmt { parser_ybc_beta_feature(@1, "opclass"); }
 			| DoStmt { parser_ybc_beta_feature(@1, "function"); }
+			| DropOpClassStmt { parser_ybc_beta_feature(@1, "opclass"); }
 			| RemoveFuncStmt { parser_ybc_beta_feature(@1, "function"); }
 			| CreateTrigStmt { parser_ybc_beta_feature(@1, "trigger"); }
 			| CreateExtensionStmt { parser_ybc_beta_feature(@1, "extension"); }
@@ -960,13 +967,11 @@ stmt :
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateCastStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateFdwStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateForeignServerStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateForeignTableStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreateOpClassStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateOpFamilyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterOpFamilyStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -980,8 +985,6 @@ stmt :
 			| CreateUserMappingStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DeclareCursorStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropCastStmt { parser_ybc_not_support(@1, "This statement"); }
-			| DropOpClassStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropOpFamilyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropPLangStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -995,9 +998,6 @@ stmt :
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ReindexStmt { parser_ybc_not_support(@1, "This statement"); }
-			| RemoveAggrStmt { parser_ybc_not_support(@1, "This statement"); }
-			| RemoveOperStmt { parser_ybc_not_support(@1, "This statement"); }
-			| RuleStmt { parser_ybc_not_support(@1, "This statement"); }
 			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
 			| UnlistenStmt { parser_ybc_not_support(@1, "This statement"); }
 		;
@@ -6072,7 +6072,6 @@ DropAssertStmt:
 DefineStmt:
 			CREATE AGGREGATE func_name aggr_args definition
 				{
-					parser_ybc_not_support(@1, "CREATE AGGREGATE");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_AGGREGATE;
 					n->oldstyle = false;
@@ -6083,7 +6082,6 @@ DefineStmt:
 				}
 			| CREATE AGGREGATE func_name old_aggr_definition
 				{
-					parser_ybc_not_support(@1, "CREATE AGGREGATE");
 					/* old-style (pre-8.2) syntax for CREATE AGGREGATE */
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_AGGREGATE;
@@ -6095,7 +6093,6 @@ DefineStmt:
 				}
 			| CREATE OPERATOR any_operator definition
 				{
-					parser_ybc_not_support(@1, "CREATE OPERATOR");
 					DefineStmt *n = makeNode(DefineStmt);
 					n->kind = OBJECT_OPERATOR;
 					n->oldstyle = false;
@@ -6364,7 +6361,6 @@ CreateOpClassStmt:
 			CREATE OPERATOR CLASS any_name opt_default FOR TYPE_P Typename
 			USING access_method opt_opfamily AS opclass_item_list
 				{
-					parser_ybc_not_support(@1, "CREATE OPERATOR CLASS");
 					CreateOpClassStmt *n = makeNode(CreateOpClassStmt);
 					n->opclassname = $4;
 					n->isDefault = $5;
@@ -6523,7 +6519,6 @@ opclass_drop:
 DropOpClassStmt:
 			DROP OPERATOR CLASS any_name USING access_method opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP OPERATOR CLASS");
 					DropStmt *n = makeNode(DropStmt);
 					n->objects = list_make1(lcons(makeString($6), $4));
 					n->removeType = OBJECT_OPCLASS;
@@ -6534,7 +6529,6 @@ DropOpClassStmt:
 				}
 			| DROP OPERATOR CLASS IF_P EXISTS any_name USING access_method opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP OPERATOR CLASS");
 					DropStmt *n = makeNode(DropStmt);
 					n->objects = list_make1(lcons(makeString($8), $6));
 					n->removeType = OBJECT_OPCLASS;
@@ -6813,7 +6807,7 @@ drop_type_name:
 /* object types attached to a table */
 drop_type_name_on_any_name:
 			POLICY { parser_ybc_not_support(@1, "DROP POLICY"); $$ = OBJECT_POLICY; }
-			| RULE { parser_ybc_not_support(@1, "DROP RULE"); $$ = OBJECT_RULE; }
+			| RULE { $$ = OBJECT_RULE; }
 			| TRIGGER { parser_ybc_beta_feature(@1, "trigger"); $$ = OBJECT_TRIGGER; }
 		;
 
@@ -8693,7 +8687,6 @@ RemoveFuncStmt:
 RemoveAggrStmt:
 			DROP AGGREGATE aggregate_with_argtypes_list opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP AGGREGATE");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_AGGREGATE;
 					n->objects = $3;
@@ -8704,7 +8697,6 @@ RemoveAggrStmt:
 				}
 			| DROP AGGREGATE IF_P EXISTS aggregate_with_argtypes_list opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP AGGREGATE");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_AGGREGATE;
 					n->objects = $5;
@@ -8718,7 +8710,6 @@ RemoveAggrStmt:
 RemoveOperStmt:
 			DROP OPERATOR operator_with_argtypes_list opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP OPERATOR");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_OPERATOR;
 					n->objects = $3;
@@ -8729,7 +8720,6 @@ RemoveOperStmt:
 				}
 			| DROP OPERATOR IF_P EXISTS operator_with_argtypes_list opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP OPERATOR");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_OPERATOR;
 					n->objects = $5;
@@ -8822,7 +8812,6 @@ dostmt_opt_item:
 CreateCastStmt: CREATE CAST '(' Typename AS Typename ')'
 					WITH FUNCTION function_with_argtypes cast_context
 				{
-					parser_ybc_not_support(@1, "CREATE CAST");
 					CreateCastStmt *n = makeNode(CreateCastStmt);
 					n->sourcetype = $4;
 					n->targettype = $6;
@@ -8834,7 +8823,6 @@ CreateCastStmt: CREATE CAST '(' Typename AS Typename ')'
 			| CREATE CAST '(' Typename AS Typename ')'
 					WITHOUT FUNCTION cast_context
 				{
-					parser_ybc_not_support(@1, "CREATE CAST");
 					CreateCastStmt *n = makeNode(CreateCastStmt);
 					n->sourcetype = $4;
 					n->targettype = $6;
@@ -8846,7 +8834,6 @@ CreateCastStmt: CREATE CAST '(' Typename AS Typename ')'
 			| CREATE CAST '(' Typename AS Typename ')'
 					WITH INOUT cast_context
 				{
-					parser_ybc_not_support(@1, "CREATE CAST");
 					CreateCastStmt *n = makeNode(CreateCastStmt);
 					n->sourcetype = $4;
 					n->targettype = $6;
@@ -8865,7 +8852,6 @@ cast_context:  AS IMPLICIT_P					{ $$ = COERCION_IMPLICIT; }
 
 DropCastStmt: DROP CAST opt_if_exists '(' Typename AS Typename ')' opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP CAST");
 					DropStmt *n = makeNode(DropStmt);
 					n->removeType = OBJECT_CAST;
 					n->objects = list_make1(list_make2($5, $7));
@@ -10439,7 +10425,6 @@ RuleStmt:	CREATE opt_or_replace RULE name AS
 			ON event TO qualified_name where_clause
 			DO opt_instead RuleActionList
 				{
-					parser_ybc_not_support(@1, "CREATE RULE");
 					RuleStmt *n = makeNode(RuleStmt);
 					n->replace = $2;
 					n->relation = $9;

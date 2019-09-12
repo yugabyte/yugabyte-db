@@ -924,8 +924,6 @@ DO INSTEAD INSERT INTO city_view
 VALUES (NEW.city_id, NEW.city_name, NEW.population, NEW.country_name, NEW.continent)
 RETURNING *;
 
--- TODO When 'CREATE RULE' is supported in YB mode enable the tests below.
-/*
 CREATE RULE european_city_update_rule AS ON UPDATE TO european_city_view
 DO INSTEAD UPDATE city_view SET
     city_name = NEW.city_name,
@@ -962,7 +960,6 @@ UPDATE city_view v SET population = 599657
               v.city_id, v.city_name, v.population;
 
 \set QUIET true
-*/
 
 SELECT * FROM city_view order by city_id;
 
