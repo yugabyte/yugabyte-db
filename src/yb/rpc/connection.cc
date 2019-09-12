@@ -317,7 +317,7 @@ Status Connection::HandleCallResponse(CallData* call_data) {
 void Connection::CallSent(OutboundCallPtr call) {
   DCHECK(reactor_->IsCurrentThread());
 
-  awaiting_response_.emplace(call->call_id(), call);
+  awaiting_response_.emplace(call->call_id(), !call->IsFinished() ? call : nullptr);
 }
 
 std::string Connection::ToString() const {
