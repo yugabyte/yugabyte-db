@@ -2875,11 +2875,9 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
   return Status::OK();
 }
 
-Status CatalogManager::DeleteIndexInfoFromTable(const TableId& indexed_table_id,
-                                                const TableId& index_table_id,
-                                                DeleteTableResponsePB* resp) {
+Status CatalogManager::MarkIndexInfoFromTableForDeletion(
+    const TableId& indexed_table_id, const TableId& index_table_id, DeleteTableResponsePB* resp) {
   // Lookup the indexed table and verify if it exists.
-  TRACE("Looking up indexed table");
   scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
   if (indexed_table == nullptr) {
     LOG(WARNING) << "Indexed table " << indexed_table_id << " for index "
@@ -2887,14 +2885,37 @@ Status CatalogManager::DeleteIndexInfoFromTable(const TableId& indexed_table_id,
     return Status::OK();
   }
 
-  NamespaceIdentifierPB nsId;
-  nsId.set_id(indexed_table->namespace_id());
-  scoped_refptr<NamespaceInfo> nsInfo;
-  RETURN_NOT_OK(FindNamespace(nsId, &nsInfo));
-  auto *indexed_table_name = resp->mutable_indexed_table();
-  indexed_table_name->mutable_namespace_()->set_name(nsInfo->name());
-  indexed_table_name->set_table_name(indexed_table->name());
+  if (resp) {
+    NamespaceIdentifierPB nsId;
+    nsId.set_id(indexed_table->namespace_id());
+    scoped_refptr<NamespaceInfo> nsInfo;
+    RETURN_NOT_OK(FindNamespace(nsId, &nsInfo));
+    auto* indexed_table_name = resp->mutable_indexed_table();
+    indexed_table_name->mutable_namespace_()->set_name(nsInfo->name());
+    indexed_table_name->set_table_name(indexed_table->name());
+  }
+  const bool disable_index_backfill = GetAtomicFlag(&FLAGS_disable_index_backfill);
+  if (disable_index_backfill) {
+    return DeleteIndexInfoFromTable(indexed_table_id, index_table_id);
+  }
 
+  RETURN_NOT_OK(MultiStageAlterTable::UpdateIndexPermission(
+      this, indexed_table, index_table_id,
+      IndexPermissions::INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING));
+  // Actual Deletion of the index info will happen asynchronously after all the
+  // tablets move to the new IndexPermission of DELETE_ONLY_WHILE_REMOVING.
+  SendAlterTableRequest(indexed_table);
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteIndexInfoFromTable(
+    const TableId& indexed_table_id, const TableId& index_table_id) {
+  scoped_refptr<TableInfo> indexed_table = GetTableInfo(indexed_table_id);
+  if (indexed_table == nullptr) {
+    LOG(WARNING) << "Indexed table " << indexed_table_id << " for index " << index_table_id
+                 << " not found";
+    return Status::OK();
+  }
   TRACE("Locking indexed table");
   auto l = indexed_table->LockForWrite();
 
@@ -3079,7 +3100,8 @@ Status CatalogManager::DeleteTableInMemory(const TableIdentifierPB& table_identi
                                         table_lcks, resp, rpc));
     }
   } else if (update_indexed_table) {
-    s = DeleteIndexInfoFromTable(PROTO_GET_INDEXED_TABLE_ID(l->data().pb), table->id(), resp);
+    s = MarkIndexInfoFromTableForDeletion(
+        PROTO_GET_INDEXED_TABLE_ID(l->data().pb), table->id(), resp);
     if (!s.ok()) {
       s = s.CloneAndPrepend(Substitute("An error occurred while deleting index info: $0",
                                        s.ToString()));
