@@ -28,7 +28,7 @@ DECLARE_int64(transaction_rpc_timeout_ms);
 namespace yb {
 namespace client {
 
-class SerializableTxnTest : public TransactionTestBase {
+class SerializableTxnTest : public TransactionCustomLogSegmentSizeTest<0, TransactionTestBase> {
  protected:
   void SetUp() override {
     SetIsolationLevel(IsolationLevel::SERIALIZABLE_ISOLATION);

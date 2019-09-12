@@ -243,7 +243,7 @@ class TabletPeer : public consensus::ReplicaOperationFactory,
 
   // Returns the minimum known log index that is in-memory or in-flight.
   // Used for selection of log segments to delete during Log GC.
-  CHECKED_STATUS GetEarliestNeededLogIndex(int64_t* log_index) const;
+  Result<int64_t> GetEarliestNeededLogIndex() const;
 
   // Returns a map of log index -> segment size, of all the segments that currently cannot be GCed
   // because in-memory structures have anchors in them.

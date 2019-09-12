@@ -223,7 +223,7 @@ class DBImpl : public DB {
 
   FlushAbility GetFlushAbility() override;
 
-  UserFrontierPtr GetMutableMemTableSmallestFrontier() override;
+  UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have

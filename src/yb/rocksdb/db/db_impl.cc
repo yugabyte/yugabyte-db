@@ -5726,7 +5726,7 @@ UserFrontierPtr DBImpl::GetFlushedFrontier() {
   return accumulated;
 }
 
-UserFrontierPtr DBImpl::GetMutableMemTableSmallestFrontier() {
+UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
   InstrumentedMutexLock l(&mutex_);
   UserFrontierPtr accumulated;
   for (auto cfd : *versions_->GetColumnFamilySet()) {
@@ -5734,15 +5734,13 @@ UserFrontierPtr DBImpl::GetMutableMemTableSmallestFrontier() {
       const auto* mem = cfd->mem();
       if (mem) {
         if (!cfd->IsDropped() && cfd->imm()->NumNotFlushed() == 0 && !mem->IsEmpty()) {
-          auto smallest_frontier = mem->GetSmallestFrontierLocked();
-          if (smallest_frontier) {
-            UserFrontier::Update(
-                smallest_frontier.get(), UpdateUserValueType::kSmallest, &accumulated);
+          auto frontier = mem->GetFrontier(type);
+          if (frontier) {
+            UserFrontier::Update(frontier.get(), type, &accumulated);
           } else {
-            const auto error = "smallest frontier is not initialized for non-empty MemTable";
-            YB_LOG_EVERY_N_SECS(WARNING, 5) << db_options_.log_prefix << "[" << cfd->GetName()
-                                            << "] " << error;
-            LOG(DFATAL) << error;
+            YB_LOG_EVERY_N_SECS(DFATAL, 5)
+                << db_options_.log_prefix << "[" << cfd->GetName()
+                << "] " << ToString(type) << " frontier is not initialized for non-empty MemTable";
           }
         }
       } else {
