@@ -1326,7 +1326,7 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateIndexSlowTServer,
           CppCassandraDriverTestIndexNonResponsiveTServers) {
   IndexPermissions perm =
       ASSERT_RESULT(TestBackfillCreateIndexTableSimple(this));
-  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_BACKFILL_FAILED);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
 }
 
 Result<IndexPermissions>
@@ -1641,9 +1641,6 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexIntent,
   perm = WaitUntilIndexPermissionIsAtLeast(
       client_.get(), table_name, index_table_name,
       IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
-  // This should pass eventually. As of now, we expect this to fail due to the
-  // jagged edge case.
-  // ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_BACKFILL_FAILED);
   ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 }
 
@@ -1772,9 +1769,9 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateIdxTripleCollisionTest,
             << create_index_future.Wait();
   {
     IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
-        client_.get(), table_name, index_table_name,
-        IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE, false);
-    ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_BACKFILL_FAILED);
+        client_.get(), table_name, index_table_name, IndexPermissions::INDEX_PERM_INDEX_UNUSED,
+        false);
+    ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
   }
 }
 
@@ -1805,9 +1802,8 @@ TEST_F_EX(CppCassandraDriverTest, TestCreateUniqueIndexFails,
   const YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace,
                                      "test_table_index_by_v");
   IndexPermissions perm = WaitUntilIndexPermissionIsAtLeast(
-      client_.get(), table_name, index_table_name,
-      IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
-  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_BACKFILL_FAILED);
+      client_.get(), table_name, index_table_name, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_INDEX_UNUSED);
 
   LOG(INFO)
       << "Inserting more rows -- No collision checking for a failed index.";
@@ -1919,7 +1915,7 @@ void DoTestCreateUniqueIndexWithOnlineWrites(CppCassandraDriverTestIndex* test,
       test->client_.get(), table_name, index_table_name,
       IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 
-  create_index_failed = (perm == IndexPermissions::INDEX_PERM_BACKFILL_FAILED);
+  create_index_failed = (perm > IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
   LOG(INFO) << "create_index_failed  = " << create_index_failed
             << ", duplicate_insert_failed = " << duplicate_insert_failed;
 

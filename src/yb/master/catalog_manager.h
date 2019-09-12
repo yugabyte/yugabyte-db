@@ -802,9 +802,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
                                      CreateTableResponsePB* resp);
 
   // Delete index info from the indexed table.
-  CHECKED_STATUS DeleteIndexInfoFromTable(const TableId& indexed_table_id,
-                                          const TableId& index_table_id,
-                                          DeleteTableResponsePB* resp);
+  CHECKED_STATUS MarkIndexInfoFromTableForDeletion(
+      const TableId& indexed_table_id, const TableId& index_table_id, DeleteTableResponsePB* resp);
+
+  // Delete index info from the indexed table.
+  CHECKED_STATUS DeleteIndexInfoFromTable(
+      const TableId& indexed_table_id, const TableId& index_table_id);
 
   // Builds the TabletLocationsPB for a tablet based on the provided TabletInfo.
   // Populates locs_pb and returns true on success.
