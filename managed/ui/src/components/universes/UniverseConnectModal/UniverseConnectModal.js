@@ -99,8 +99,8 @@ class UniverseConnectModal extends Component {
       const endpointsContent = (
         <Fragment>
           <FlexContainer className="btn-group-cnt endpoint-buttons">
-            <FlexShrink>{this.renderEndpointUrl(ycqlServiceUrl, "YCQL")}</FlexShrink>
             {userIntent.enableYSQL && <FlexShrink>{this.renderEndpointUrl(ysqlServiceUrl, "YSQL")}</FlexShrink>}
+            <FlexShrink>{this.renderEndpointUrl(ycqlServiceUrl, "YCQL")}</FlexShrink>
             <FlexShrink>{this.renderEndpointUrl(yedisServiceUrl, "YEDIS")}</FlexShrink>
           </FlexContainer>
           <YBCodeBlock className={"endpoint-output" + (this.state.endpointPayload === "" ? " empty" : "")}>
@@ -109,15 +109,36 @@ class UniverseConnectModal extends Component {
           </YBCodeBlock>
         </Fragment>
         );
-      const connectIp = this.state.connectIp;
+      const connectIp = this.state.connectIp || '127.0.0.1';
       content = (<Fragment>
         <h4>Services</h4>
         <YBCodeBlock>
-          JDBC : jdbc:postgresql://{connectIp}:5433/postgres<br/>
-          YSQL : ./bin/ysqlsh -U postgres -h {connectIp} -p 5433<br/>
-          {userIntent.enableYSQL && `YCQL : ./bin/cqlsh ${connectIp} 9042<br/>`}
-          YEDIS : ./bin/redis-cli -h {connectIp} -p 6379<br/>
-          Web UI : http://{connectIp}:7000/
+          <table>
+            <tbody>
+              <tr>
+                <td>JDBC</td>
+                <td>:</td>
+                <td>jdbc:postgresql://{connectIp}:5433/postgres</td>
+              </tr>
+              {userIntent.enableYSQL &&
+                <tr>
+                  <td>YSQL Shell</td>
+                  <td>:    </td>
+                  <td>bin/ysqlsh</td>
+                </tr>
+              }
+              <tr>
+                <td>YCQL Shell</td>
+                <td>:    </td>
+                <td>bin/cqlsh</td>
+              </tr>
+              <tr>
+                <td>YEDIS Shell</td>
+                <td>:    </td>
+                <td>bin/redis-cli</td>
+              </tr>
+            </tbody>
+          </table>
         </YBCodeBlock>
         <h4 className="endpoints-heading">Endpoints</h4>
         {endpointsContent}

@@ -4242,10 +4242,6 @@ create function sql_to_date(integer) returns date as $$
 select $1::text::date
 $$ language sql immutable strict;
 create cast (integer as date) with function sql_to_date(integer) as assignment;
-ERROR:  CREATE CAST not supported yet
-LINE 1: create cast (integer as date) with function sql_to_date(inte...
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
 create function cast_invoker(integer) returns date as $$
 begin
   return $1;
@@ -4296,6 +4292,7 @@ ERROR:  current transaction is aborted, commands ignored until end of transactio
 commit;
 drop function cast_invoker(integer);
 drop function sql_to_date(integer) cascade;
+NOTICE:  drop cascades to cast from integer to date
 -- Test handling of cast cache inside DO blocks
 -- (to check the original crash case, this must be a cast not previously
 -- used in this session)
@@ -5328,34 +5325,22 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the
 INSERT INTO transition_table_level1 (level1_no)
   SELECT generate_series(1,200);
 ANALYZE transition_table_level1;
-ERROR:  ANALYZE not supported yet
-LINE 1: ANALYZE transition_table_level1;
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+WARNING:  analyzing non-temporary tables will be ignored
 INSERT INTO transition_table_level2 (level2_no, parent_no)
   SELECT level2_no, level2_no / 50 + 1 AS parent_no
     FROM generate_series(1,9999) level2_no;
 ANALYZE transition_table_level2;
-ERROR:  ANALYZE not supported yet
-LINE 1: ANALYZE transition_table_level2;
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+WARNING:  analyzing non-temporary tables will be ignored
 INSERT INTO transition_table_status (level, node_no, status)
   SELECT 1, level1_no, 0 FROM transition_table_level1;
 INSERT INTO transition_table_status (level, node_no, status)
   SELECT 2, level2_no, 0 FROM transition_table_level2;
 ANALYZE transition_table_status;
-ERROR:  ANALYZE not supported yet
-LINE 1: ANALYZE transition_table_status;
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+WARNING:  analyzing non-temporary tables will be ignored
 INSERT INTO transition_table_level1(level1_no)
   SELECT generate_series(201,1000);
 ANALYZE transition_table_level1;
-ERROR:  ANALYZE not supported yet
-LINE 1: ANALYZE transition_table_level1;
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+WARNING:  analyzing non-temporary tables will be ignored
 -- behave reasonably if someone tries to modify a transition table
 CREATE FUNCTION transition_table_level2_bad_usage_func()
   RETURNS TRIGGER

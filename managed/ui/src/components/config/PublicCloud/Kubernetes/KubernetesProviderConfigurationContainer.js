@@ -6,6 +6,7 @@ import { KubernetesProviderConfiguration } from '../../../config';
 import { deleteProvider, deleteProviderFailure,
   deleteProviderSuccess, fetchCloudMetadata } from 'actions/cloud';
 
+import { openDialog, closeDialog } from '../../../../actions/modal';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -18,7 +19,13 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(fetchCloudMetadata());
         }
       });
-    }
+    },
+    showDeleteConfirmationModal: () => {
+      dispatch(openDialog("confirmDeleteProviderModal"));
+    },
+    closeModal: () => {
+      dispatch(closeDialog());
+    },
   };
 };
 
@@ -26,7 +33,8 @@ const mapStateToProps = (state) => {
   return {
     universeList: state.universe.universeList,
     providers: state.cloud.providers,
-    regions: state.cloud.supportedRegionList
+    regions: state.cloud.supportedRegionList,
+    modal: state.modal
   };
 };
 

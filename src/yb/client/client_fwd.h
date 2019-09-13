@@ -106,6 +106,7 @@ typedef std::shared_ptr<AsyncRpcMetrics> AsyncRpcMetricsPtr;
 } // namespace internal
 
 typedef std::function<void(const Result<internal::RemoteTabletPtr>&)> LookupTabletCallback;
+typedef std::function<void(const Result<CDCStreamId>&)> CreateCDCStreamCallback;
 
 class AsyncClientInitialiser;
 } // namespace client

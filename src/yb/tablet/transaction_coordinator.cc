@@ -202,7 +202,7 @@ class TransactionState {
           ClearRequests(STATUS(AlreadyPresent, "Transaction committed"));
           break;
         case TransactionStatus::ABORTED:
-          ClearRequests(STATUS(Aborted, "Transaction aborted"));
+          ClearRequests(STATUS(Expired, "Transaction aborted"));
           break;
         case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
@@ -999,7 +999,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
 
   void CheckCompleted(ManagedTransactions::iterator it) {
     if (it->Completed()) {
-      auto status = STATUS_FORMAT(Aborted, "Transaction completed: $0", *it);
+      auto status = STATUS_FORMAT(Expired, "Transaction completed: $0", *it);
       VLOG_WITH_PREFIX(1) << status;
       Modify(it).ClearRequests(status);
       managed_transactions_.erase(it);

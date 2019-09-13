@@ -33,7 +33,7 @@ menu:
         <div class="title">Manual deployment</div>
       </div>
       <div class="body">
-          Manual deployment of YugaByte DB in a private datacenter using the basic admin commands.
+          Manual deployment of YugaByte DB in a private data center using the basic admin commands.
       </div>
     </a>
   </div>

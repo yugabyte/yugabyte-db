@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`ALTER DOMAIN` changes or redefines one or more attributes of a domain.
+Use the `ALTER DOMAIN` statement to change the definition of an existing domain.
 
 ## Syntax
 
@@ -43,16 +43,19 @@ showAsideToc: true
   </div>
 </div>
 
-
-Where
-
-- `SET/DROP DEFAULT` sets or removes the default value for a domain.
-- `RENAME` changes the name of the domain.
-- Other `ALTER DOMAIN` options are not yet supported.
-
 ## Semantics
 
-- An error is raised if DOMAIN `name` does not exist or DOMAIN `new_name` already exists.
+### SET DEFAULT | DROP DEFAULT
+
+Set or remove the default value for a domain.
+
+### RENAME
+
+Change the name of the domain.
+
+### *name*
+
+Specify the name of the domain. An error is raised if DOMAIN `name` does not exist or DOMAIN `new_name` already exists.
 
 ## Examples
 
@@ -74,6 +77,5 @@ postgres=# DROP DOMAIN idx_new;
 
 ## See also
 
-[`CREATE DOMAIN`](../ddl_create_domain)
-[`DROP DOMAIN`](../ddl_drop_domain)
-[Other YSQL Statements](..)
+- [`CREATE DOMAIN`](../ddl_create_domain)
+- [`DROP DOMAIN`](../ddl_drop_domain)

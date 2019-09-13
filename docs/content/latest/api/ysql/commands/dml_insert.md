@@ -1,5 +1,6 @@
 ---
 title: INSERT
+linkTitle: INSERT
 summary: Add new rows to a table
 description: INSERT
 menu:
@@ -15,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `INSERT` command adds one or more rows to the specified table.
+Use the `INSERT` statement to add one or more rows to the specified table.
 
 ## Syntax
 
@@ -43,18 +44,19 @@ The `INSERT` command adds one or more rows to the specified table.
   </div>
 </div>
 
-
-Where
-
-- `qualified_name` and `name` are identifiers.
-- `column_names` is a comma-separated list of columns names (identifiers).
-
 ## Semantics
 
-- An error is raised if the specified table does not exist.
-- An error is raised if a specified column does not exist.
-- Each of the primary key columns must have a non-null value.
-- Constraints must be satisfied.  
+Constraints must be satisfied.  
+
+### *insert*
+
+### *table_name*
+
+Specify the name of the table. If the specified table does not exist, an error is raised.
+
+### *column_names*
+
+Specify a comma-separated list of columns names. If a specified column does not exist, an error is raised. Each of the primary key columns must have a non-null value.
 
 ### `VALUES` clause
 
@@ -62,7 +64,7 @@ Where
 - Each value must be convertible to its corresponding (by position) column type.
 - Each value literal can be an expression.
 
-### `ON CONFLICT` Clause
+### `ON CONFLICT` clause
 
 - The target table must have at least one column (list) with either a unique index
 or a unique constraint. We shall refer to this as a unique key. The argument of VALUES
@@ -75,6 +77,22 @@ the unique key and to update the rows with existing values of the unique key to
 set the values of the remaining specified columns to those in the VALUES relation.
 In this way, the net effect is either to insert or to update; and for this reason
 the INSERT ON CONFLICT variant is often colloquially referred to as "upsert".
+
+### *returning_clause*
+
+### *column_values*
+
+### *conflict_target*
+
+### *conflict_action*
+
+```
+DO NOTHING | DO UPDATE SET *update_item* [ , ... ] [ WHERE *condition* ]
+```
+
+#### *update_item*
+
+#### *condition*
 
 ## Examples
 
@@ -131,7 +149,7 @@ postgres=# SELECT id, c1, c2 FROM sample ORDER BY id;
 ```
 
 ```
- id |   c1   |    c2     
+ id |   c1   |    c2å
 ----+--------+-----------
   1 | cat    | sparrow
   2 | dog    | blackbird
@@ -156,7 +174,7 @@ postgres=# SELECT id, c1, c2 FROM sample ORDER BY id;
 ```
 
 ```
- id |   c1   |    c2     
+ id |   c1   |    c2
 ----+--------+-----------
   1 | cat    | sparrow
   2 | dog    | blackbird
@@ -184,7 +202,7 @@ postgres=# SELECT id, c1, c2 FROM sample ORDER BY id;
 ```
 
 ```
- id |  c1   |    c2     
+ id |  c1   |    c2
 ----+-------+-----------
   1 | cat   | sparrow
   2 | dog   | blackbird
@@ -264,7 +282,7 @@ postgres=# SELECT id, c1, c2 FROM sample ORDER BY c1;
 ```
 
 ```
- id |  c1   |    c2     
+ id |  c1   |    c2
 ----+-------+-----------
   1 | cat   | sparrow
   2 | deer  | thrush
@@ -301,7 +319,7 @@ postgres=# SELECT id, c1, c2 FROM sample ORDER BY c1;
 ```
 
 ```
- id |  c1   |    c2     
+ id |  c1   |    c2
 ----+-------+-----------
   1 | cat   | chaffinch
   2 | deer  | robin
@@ -313,6 +331,6 @@ postgres=# SELECT id, c1, c2 FROM sample ORDER BY c1;
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[`SELECT`](../dml_select)
-[Other YSQL Statements](..)
+- [`COPY`](../cmd_copy)
+- [`CREATE TABLE`](../ddl_create_table)
+- [`SELECT`](../dml_select)

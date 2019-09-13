@@ -189,6 +189,14 @@ message FlushTabletsResponsePB {
   optional fixed64 propagated_hybrid_time = 3;
 }
 
+message CountIntentsRequestPB {
+}
+
+message CountIntentsResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional int64 num_intents = 2;
+}
+
 service TabletServerAdminService {
   // Create a new, empty tablet with the specified parameters. Only used for
   // brand-new tablets, not for "moves".
@@ -204,4 +212,6 @@ service TabletServerAdminService {
   rpc CopartitionTable(CopartitionTableRequestPB) returns (CopartitionTableResponsePB);
 
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
+
+  rpc CountIntents(CountIntentsRequestPB) returns (CountIntentsResponsePB);
 }

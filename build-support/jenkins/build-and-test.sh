@@ -570,6 +570,9 @@ random_build_id=$( date +%Y%m%dT%H%M%S )_$RANDOM$RANDOM$RANDOM
 java_build_failed=false
 if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   # This sets the proper NFS-shared directory for Maven's local repository on Jenkins.
+  # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
+  # into ~/.m2/repository.
+  export YB_TMP_GROUP_ID=org.ybtmpgroupid$random_build_id
   set_mvn_parameters
 
   heading "Building Java code..."
@@ -581,9 +584,6 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
 
   heading "Java 'clean' build is complete, will now actually build Java code"
 
-  # Use a unique version to avoid a race with other concurrent jobs on jar files that we install
-  # into ~/.m2/repository.
-  export YB_TMP_GROUP_ID=org.ybtmpgroupid$random_build_id
 
   for java_project_dir in "${yb_java_project_dirs[@]}"; do
     pushd "$java_project_dir"
@@ -657,6 +657,7 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
       --build_args="--skip-build" \
       --save_release_path_to_file "$package_path_file" \
       --commit "$current_git_commit" \
+      --yw \
       --force
   )
 

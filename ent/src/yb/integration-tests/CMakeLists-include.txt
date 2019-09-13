@@ -38,4 +38,5 @@ set(INTEGRATION_TESTS_EXTENSIONS_TESTS
   encryption-test
   cdc_service-int-test
   cdc_service-txn-test
+  twodc-test
   PARENT_SCOPE)

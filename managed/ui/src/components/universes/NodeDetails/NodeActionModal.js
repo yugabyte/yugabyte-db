@@ -23,7 +23,7 @@ export default class NodeActionModal extends Component {
     const universeUUID = currentUniverse.data.universeUUID;
     performUniverseNodeAction(universeUUID, nodeInfo.name, actionType);
     onHide();
-    browserHistory.push('/universes/' + universeUUID + "?tab=nodes");
+    browserHistory.push('/universes/' + universeUUID + "/nodes");
   };
 
   render() {

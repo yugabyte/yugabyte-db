@@ -2,7 +2,8 @@
 
 import { NodeDetails } from '../../universes';
 import { connect } from 'react-redux';
-import {  getUniversePerNodeStatus, getUniversePerNodeStatusResponse,
+import { getUniversePerNodeStatus, getUniversePerNodeStatusResponse,
+  getUniversePerNodeMetrics, getUniversePerNodeMetricsResponse,
   getMasterLeader, getMasterLeaderResponse, resetMasterLeader } from '../../../actions/universe';
 
 function mapStateToProps(state) {
@@ -34,6 +35,13 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
 
+
+    getUniversePerNodeMetrics: (uuid) => {
+      dispatch(getUniversePerNodeMetrics(uuid)).then((perNodeResponse) => {
+        console.log(perNodeResponse);
+        dispatch(getUniversePerNodeMetricsResponse(perNodeResponse.payload));
+      });
+    },
   };
 };
 

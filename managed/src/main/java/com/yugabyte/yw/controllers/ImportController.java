@@ -38,6 +38,9 @@ import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -260,7 +263,9 @@ public class ImportController extends Controller {
     //---------------------------------------------------------------------------------------------
     Universe universe = null;
     try {
-      universe = createNewUniverseForImport(customer, importForm, "yb-" + universeName,
+      universe = createNewUniverseForImport(customer, importForm,
+                                            Util.getNodePrefix(customer.getCustomerId(),
+                                                               universeName),
                                             universeName, userMasterIps);
       results.with("checks").put("create_db_entry", "OK");
       results.put("universeUUID", universe.universeUUID.toString());
@@ -667,7 +672,11 @@ public class ImportController extends Controller {
     // Find the region by the code given, or create a new provider if one does not exist.
     Region region = Region.getByCode(provider, importForm.regionCode);
     if (region == null) {
-      region = Region.create(provider, importForm.regionCode, importForm.regionName, null);
+      // TODO: Find real coordinates instead of assuming somwhere in US west.
+      double defaultLat = 37;
+      double defaultLong = -121;
+      region = Region.create(
+        provider, importForm.regionCode, importForm.regionName, null, defaultLat, defaultLong);
     }
     // Find the zone by the code given, or create a new provider if one does not exist.
     AvailabilityZone zone = AvailabilityZone.getByCode(importForm.zoneCode);
@@ -697,6 +706,7 @@ public class ImportController extends Controller {
     userIntent.providerType = importForm.providerType;
     userIntent.instanceType = importForm.instanceType;
     userIntent.replicationFactor = importForm.replicationFactor;
+    userIntent.enableYSQL = true;
     // Currently using YW version instead of YB version.
     // TODO: #1842: Create YBClient endpoint for getting ybSoftwareVersion.
     userIntent.ybSoftwareVersion = (String) configHelper.getConfig(
@@ -705,8 +715,30 @@ public class ImportController extends Controller {
     InstanceType.upsert(importForm.providerType.toString(), importForm.instanceType.toString(),
                         0 /* numCores */, 0.0 /* memSizeGB */, new InstanceTypeDetails());
 
-    // TODO: This needs to be added for things to show up right in the UI.
-    PlacementInfo placementInfo = null;
+    // Placement info for imports default to the current cluster.
+    PlacementInfo placementInfo = new PlacementInfo();
+
+    PlacementCloud placementCloud = new PlacementCloud();
+    placementCloud.uuid = provider.uuid;
+    placementCloud.code = provider.code;
+    placementCloud.regionList = new ArrayList<>();
+
+    PlacementRegion placementRegion = new PlacementRegion();
+    placementRegion.uuid = region.uuid;
+    placementRegion.name = region.name;
+    placementRegion.code = region.code;
+    placementRegion.azList = new ArrayList<>();
+    placementCloud.regionList.add(placementRegion);
+
+    PlacementAZ placementAZ = new PlacementAZ();
+    placementAZ.name = zone.name;
+    placementAZ.subnet = zone.subnet;
+    placementAZ.replicationFactor = 1;
+    placementAZ.uuid = zone.uuid;
+    placementAZ.numNodesInAZ = 1;
+    placementRegion.azList.add(placementAZ);
+
+    placementInfo.cloudList.add(placementCloud);
 
     // Add the placement info and user intent.
     Cluster cluster = taskParams.upsertPrimaryCluster(userIntent, placementInfo);

@@ -115,6 +115,9 @@ public class TableManager extends DevopsBase {
         if (backupTableParams.enableVerboseLogs) {
           commandArgs.add("--verbose");
         }
+        if (taskParams.sse) {
+          commandArgs.add("--sse");
+        }
         extraVars = customerConfig.dataAsMap();
         if (region.provider.code.equals("kubernetes")) {
           extraVars.putAll(region.provider.getConfig());

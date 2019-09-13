@@ -13,7 +13,7 @@ isTocNested: false
 showAsideToc: false
 ---
 
-`yb-tserver`, located in the bin directory of YugaByte home, is the [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary.
+`yb-tserver`, located in the `bin` directory of YugaByte home, is the [YB-TServer](../../architecture/concepts/universe/#yb-tserver) binary.
 
 ## Example
 

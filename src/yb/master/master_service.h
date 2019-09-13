@@ -240,6 +240,18 @@ class MasterServiceImpl : public MasterServiceIf,
                            IsEncryptionEnabledResponsePB* resp,
                            rpc::RpcContext rpc) override;
 
+  void SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
+                                SetupUniverseReplicationResponsePB* resp,
+                                rpc::RpcContext rpc) override;
+
+  void DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
+                                 DeleteUniverseReplicationResponsePB* resp,
+                                 rpc::RpcContext rpc) override;
+
+  void GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
+                              GetUniverseReplicationResponsePB* resp,
+                              rpc::RpcContext rpc) override;
+
  private:
 };
 

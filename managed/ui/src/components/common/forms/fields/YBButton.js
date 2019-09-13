@@ -1,19 +1,29 @@
 // Copyright (c) YugaByte, Inc.
 
-import React, { PureComponent } from 'react';
+import React, { PureComponent, Fragment } from 'react';
 import { Button } from 'react-bootstrap';
+import { YBLoadingLinearIcon } from '../../indicators';
 export default class YBButton extends PureComponent {
 
   render() {
-    const {btnClass, btnText, btnIcon, btnSize, btnType, btnStyle, disabled, ...otherProps} = this.props;
+    const {btnClass, btnText, btnIcon, btnSize, btnType, btnStyle, disabled, loading, ...otherProps} = this.props;
     return (
       <Button bsClass={btnClass} type={btnType}
-              onClick={this.props.onClick} bsSize={btnSize} 
-              bsStyle={btnStyle} disabled={disabled}
-              {...otherProps}
+        onClick={this.props.onClick} bsSize={btnSize}
+        bsStyle={btnStyle} disabled={disabled}
+        {...otherProps}
       >
-        <i className={btnIcon}></i>
-        {btnText}
+        {
+          loading
+          ?
+            <YBLoadingLinearIcon />
+          :
+            <Fragment>
+              <i className={btnIcon}></i>
+              {btnText}
+            </Fragment>
+        }
+
       </Button>
     );
   }

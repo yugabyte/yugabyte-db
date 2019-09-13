@@ -97,6 +97,11 @@ class TabletServerServiceProxy;
 }
 
 namespace client {
+namespace internal {
+class ClientMasterRpc;
+class CreateCDCStreamRpc;
+class DeleteCDCStreamRpc;
+}
 
 // This needs to be called by a client app before performing any operations that could result in
 // logging.
@@ -288,6 +293,9 @@ class YBClient {
                                 YBSchema* schema,
                                 PartitionSchema* partition_schema);
 
+  CHECKED_STATUS GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
+                                    StatusCallback callback);
+
   // Namespace related methods.
 
   // Create a new namespace with the given name.
@@ -406,8 +414,14 @@ class YBClient {
   Result<CDCStreamId> CreateCDCStream(const TableId& table_id,
                                       const std::unordered_map<std::string, std::string>& options);
 
+  void CreateCDCStream(const TableId& table_id,
+                       const std::unordered_map<std::string, std::string>& options,
+                       CreateCDCStreamCallback callback);
+
   // Delete a CDC stream.
   CHECKED_STATUS DeleteCDCStream(const CDCStreamId& stream_id);
+
+  void DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback);
 
   // Retrieve a CDC stream.
   CHECKED_STATUS GetCDCStream(const CDCStreamId &stream_id,
@@ -447,6 +461,11 @@ class YBClient {
                             std::vector<std::string>* ranges,
                             std::vector<master::TabletLocationsPB>* locations = nullptr,
                             bool update_tablets_cache = false);
+
+
+  Status GetTabletsFromTableId(
+      const std::string& table_id, const int32_t max_tablets,
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
 
   CHECKED_STATUS GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
@@ -560,6 +579,8 @@ class YBClient {
   // Id of this client instance.
   const ClientId& id() const;
 
+  const CloudInfoPB& cloud_info() const;
+
   std::pair<RetryableRequestId, RetryableRequestId> NextRequestIdAndMinRunningRequestId(
       const TabletId& tablet_id);
   void RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id);
@@ -582,6 +603,9 @@ class YBClient {
   friend class internal::RemoteTabletServer;
   friend class internal::AsyncRpc;
   friend class internal::TabletInvoker;
+  friend class internal::ClientMasterRpc;
+  friend class internal::CreateCDCStreamRpc;
+  friend class internal::DeleteCDCStreamRpc;
   friend class PlacementInfoTest;
 
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);

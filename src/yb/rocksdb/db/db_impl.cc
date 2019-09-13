@@ -137,7 +137,7 @@ DEFINE_bool(use_priority_thread_pool_for_flushes, false,
             "Env thread pool with Priority::HIGH will be used.");
 TAG_FLAG(use_priority_thread_pool_for_flushes, runtime);
 
-DEFINE_bool(use_priority_thread_pool_for_compactions, true,
+DEFINE_bool(use_priority_thread_pool_for_compactions, false,
             "When true priority thread pool will be used for compactions, otherwise "
             "Env thread pool with Priority::LOW will be used.");
 TAG_FLAG(use_priority_thread_pool_for_compactions, runtime);
@@ -2475,6 +2475,8 @@ class DBImpl::ThreadPoolTask : public yb::PriorityThreadPoolTask {
     DoRun(suspender);
   }
 
+  virtual int Priority() const = 0;
+
   virtual void AbortedUnlocked() = 0;
 
   virtual void DoRun(yb::PriorityThreadPoolSuspender* suspender) = 0;
@@ -2496,21 +2498,16 @@ constexpr int kLargeCompactionPriority = 0;
 class DBImpl::CompactionTask : public ThreadPoolTask {
  public:
   CompactionTask(DBImpl* db_impl, DBImpl::ManualCompaction* manual_compaction)
-      : ThreadPoolTask(db_impl), manual_compaction_(manual_compaction), priority_(CalcPriority()) {
+      : ThreadPoolTask(db_impl), manual_compaction_(manual_compaction) {
   }
 
   CompactionTask(DBImpl* db_impl, std::unique_ptr<Compaction> compaction)
-      : ThreadPoolTask(db_impl), manual_compaction_(nullptr), compaction_(std::move(compaction)),
-        priority_(CalcPriority()) {
+      : ThreadPoolTask(db_impl), manual_compaction_(nullptr), compaction_(std::move(compaction)) {
   }
 
   void DoRun(yb::PriorityThreadPoolSuspender* suspender) override {
     compaction().SetSuspender(suspender);
     db_impl_->BackgroundCallCompaction(manual_compaction_, std::move(compaction_));
-  }
-
-  int Priority() const override {
-    return priority_;
   }
 
   void AbortedUnlocked() override {
@@ -2524,8 +2521,8 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     }
   }
 
-  void AddToStringFields(std::string* out) const override {
-    *out += yb::Format("compact db: $0 ", db_impl_->GetName());
+  std::string ToString() const override {
+    return yb::Format("{ compact db: $0 }", db_impl_->GetName());
   }
 
  private:
@@ -2533,7 +2530,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     return compaction_ ? *compaction_ : *manual_compaction_->compaction;
   }
 
-  int CalcPriority() const {
+  int Priority() const override {
     if (db_impl_->IsLargeCompaction(compaction())) {
       return kLargeCompactionPriority;
     }
@@ -2549,12 +2546,12 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   // Only one of manual_compaction_ and compaction_ could be non null.
   DBImpl::ManualCompaction* const manual_compaction_;
   std::unique_ptr<Compaction> compaction_;
-  const int priority_;
 };
 
 class DBImpl::FlushTask : public ThreadPoolTask {
  public:
-  FlushTask(DBImpl* db_impl, ColumnFamilyData* cfd) : ThreadPoolTask(db_impl), cfd_(cfd) {}
+  FlushTask(DBImpl* db_impl, ColumnFamilyData* cfd)
+      : ThreadPoolTask(db_impl), cfd_(cfd) {}
 
   void DoRun(yb::PriorityThreadPoolSuspender* suspender) override {
     // Since flush tasks has highest priority we could don't use suspender for them.
@@ -2575,8 +2572,8 @@ class DBImpl::FlushTask : public ThreadPoolTask {
     }
   }
 
-  void AddToStringFields(std::string* out) const override {
-    *out += yb::Format("flush db: $0 ", db_impl_->GetName());
+  std::string ToString() const override {
+    return yb::Format("{ flush db: $0 }", db_impl_->GetName());
   }
 
  private:
@@ -2584,10 +2581,10 @@ class DBImpl::FlushTask : public ThreadPoolTask {
 };
 
 void DBImpl::SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task) {
-  auto submit_result = db_options_.priority_thread_pool_for_compactions_and_flushes->Submit(
-      std::move(task));
-  if (submit_result) {
-    down_cast<ThreadPoolTask*>(submit_result.get())->AbortedUnlocked();
+  auto status = db_options_.priority_thread_pool_for_compactions_and_flushes->Submit(
+      task->Priority(), &task);
+  if (!status.ok()) {
+    task->AbortedUnlocked();
   }
 }
 
@@ -5729,7 +5726,7 @@ UserFrontierPtr DBImpl::GetFlushedFrontier() {
   return accumulated;
 }
 
-UserFrontierPtr DBImpl::GetMutableMemTableSmallestFrontier() {
+UserFrontierPtr DBImpl::GetMutableMemTableFrontier(UpdateUserValueType type) {
   InstrumentedMutexLock l(&mutex_);
   UserFrontierPtr accumulated;
   for (auto cfd : *versions_->GetColumnFamilySet()) {
@@ -5737,15 +5734,13 @@ UserFrontierPtr DBImpl::GetMutableMemTableSmallestFrontier() {
       const auto* mem = cfd->mem();
       if (mem) {
         if (!cfd->IsDropped() && cfd->imm()->NumNotFlushed() == 0 && !mem->IsEmpty()) {
-          auto smallest_frontier = mem->GetSmallestFrontierLocked();
-          if (smallest_frontier) {
-            UserFrontier::Update(
-                smallest_frontier.get(), UpdateUserValueType::kSmallest, &accumulated);
+          auto frontier = mem->GetFrontier(type);
+          if (frontier) {
+            UserFrontier::Update(frontier.get(), type, &accumulated);
           } else {
-            const auto error = "smallest frontier is not initialized for non-empty MemTable";
-            YB_LOG_EVERY_N_SECS(WARNING, 5) << db_options_.log_prefix << "[" << cfd->GetName()
-                                            << "] " << error;
-            LOG(DFATAL) << error;
+            YB_LOG_EVERY_N_SECS(DFATAL, 5)
+                << db_options_.log_prefix << "[" << cfd->GetName()
+                << "] " << ToString(type) << " frontier is not initialized for non-empty MemTable";
           }
         }
       } else {

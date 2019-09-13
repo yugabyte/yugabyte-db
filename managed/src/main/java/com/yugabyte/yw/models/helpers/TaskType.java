@@ -132,6 +132,8 @@ public enum TaskType {
 
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 
+  EnableEncryptionAtRest("subtasks.EnableEncryptionAtRest"),
+
   KubernetesCommandExecutor("subtasks.KubernetesCommandExecutor"),
 
   KubernetesWaitForPod("subtasks.KubernetesWaitForPod");

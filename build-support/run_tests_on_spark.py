@@ -139,12 +139,6 @@ JENKINS_ENV_VARS = [
 # In addition, all variables with names starting with the following prefix are propagated.
 PROPAGATED_ENV_VAR_PREFIX = 'YB_'
 
-# However, these variables are not propagated.
-NON_PROPAGATED_YB_ENV_VARS = set([
-    'YB_MVN_LOCAL_REPO',
-    'YB_MVN_SETTINGS_PATH'
-    ])
-
 # This directory inside $BUILD_ROOT contains files listing all C++ tests (one file per test
 # program).
 #
@@ -820,8 +814,7 @@ def propagate_env_vars():
             num_propagated += 1
 
     for env_var_name, env_var_value in os.environ.iteritems():
-        if (env_var_name.startswith(PROPAGATED_ENV_VAR_PREFIX) and
-                env_var_name not in NON_PROPAGATED_YB_ENV_VARS):
+        if env_var_name.startswith(PROPAGATED_ENV_VAR_PREFIX):
             propagated_env_vars[env_var_name] = env_var_value
             logging.info("Propagating env var %s (value: %s) to Spark workers",
                          env_var_name, env_var_value)

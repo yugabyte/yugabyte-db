@@ -20,6 +20,7 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import traceback
 import uuid
 import yaml
 
@@ -222,7 +223,13 @@ def main():
             os.path.join(managed_dir, "yb_release"),
             "--destination", yw_dir, "--unarchived"
         ]
-        subprocess.check_call(package_yw_cmd, cwd=managed_dir)
+        logging.info("Creating YugaWare package with command: {}".format(package_yw_cmd))
+        try:
+            subprocess.check_call(package_yw_cmd, cwd=managed_dir)
+        except Exception as e:
+            logging.error("Failed to package YugaWare: {}".format(package_yw_cmd))
+            logging.error("Failed to package YugaWare: {}".format(e))
+            traceback.print_exc()
 
     if args.build_archive:
         release_file = os.path.realpath(release_util.generate_release())

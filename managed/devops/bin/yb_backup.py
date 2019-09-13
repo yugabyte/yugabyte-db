@@ -305,13 +305,19 @@ class S3BackupStorage(AbstractBackupStorage):
         return ['s3cmd', '--force', '--config=%s' % self.options.s3_cfg_file_path]
 
     def upload_file_cmd(self, src, dest):
-        return self._command_list_prefix() + ["put", src, dest]
+        cmd_list = ["put", src, dest]
+        if self.options.args.sse:
+            cmd_list.append("--server-side-encryption")
+        return self._command_list_prefix() + cmd_list
 
     def download_file_cmd(self, src, dest):
         return self._command_list_prefix() + ["get", src, dest]
 
     def upload_dir_cmd(self, src, dest):
-        return self._command_list_prefix() + ["sync", src, dest]
+        cmd_list = ["sync", src, dest]
+        if self.options.args.sse:
+            cmd_list.append("--server-side-encryption")
+        return self._command_list_prefix() + cmd_list
 
     def download_dir_cmd(self, src, dest):
         return self._command_list_prefix() + ["sync", src, dest]
@@ -483,6 +489,9 @@ class YBBackup:
         parser.add_argument(
             '--certs_dir', required=False,
             help="The directory containing the certs for secure connections.")
+        parser.add_argument(
+            '--sse', required=False, action='store_true',
+            help='Enable server side encryption on storage')
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 

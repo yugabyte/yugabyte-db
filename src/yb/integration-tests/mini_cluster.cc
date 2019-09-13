@@ -101,6 +101,14 @@ namespace {
 const std::vector<uint16_t> EMPTY_MASTER_RPC_PORTS = {};
 const int kMasterLeaderElectionWaitTimeSeconds = NonTsanVsTsan(20, 60);
 
+std::string GetClusterDataDirName(const MiniClusterOptions& options) {
+  std::string cluster_name = "minicluster-data";
+  if (options.cluster_id == "") {
+    return cluster_name;
+  }
+  return Format("$0-$1", cluster_name, options.cluster_id);
+}
+
 std::string GetFsRoot(const MiniClusterOptions& options) {
   if (!options.data_root.empty()) {
     return options.data_root;
@@ -108,7 +116,7 @@ std::string GetFsRoot(const MiniClusterOptions& options) {
   if (!FLAGS_mini_cluster_base_dir.empty()) {
     return FLAGS_mini_cluster_base_dir;
   }
-  return JoinPathSegments(GetTestDataDirectory(), "minicluster-data");
+  return JoinPathSegments(GetTestDataDirectory(), GetClusterDataDirName(options));
 }
 
 } // namespace
@@ -298,6 +306,17 @@ Status MiniCluster::AddTabletServer() {
   auto options = tserver::TabletServerOptions::CreateTabletServerOptions();
   RETURN_NOT_OK(options);
   return AddTabletServer(*options);
+}
+
+string MiniCluster::GetMasterAddresses() const {
+  string peer_addrs = "";
+  for (const auto& master : mini_masters_) {
+    if (!peer_addrs.empty()) {
+      peer_addrs += ",";
+    }
+    peer_addrs += master->bound_rpc_addr_str();
+  }
+  return peer_addrs;
 }
 
 MiniMaster* MiniCluster::leader_mini_master() {

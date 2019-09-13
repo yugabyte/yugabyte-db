@@ -235,7 +235,7 @@ Status CheckOp(YBqlOp* op) {
     return STATUS(QLError,
                   op->response().error_message(),
                   Slice(),
-                  static_cast<int64_t>(ql::QLStatusToErrorCode(op->response().status())));
+                  ql::QLError(ql::QLStatusToErrorCode(op->response().status())));
   }
 
   return Status::OK();

@@ -15,10 +15,9 @@ showAsideToc: true
 
 ## Synopsis
 
-`CREATE SCHEMA` inserts a new schema definition to the current database. Schema name must be unique.
+Use the `CREATE SCHEMA` statement to enter a new schema into the current database. 
 
 ## Syntax
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -44,21 +43,29 @@ showAsideToc: true
   </div>
 </div>
 
-Where
-
-- `schema_name` specifies the schema to be created.
-
-- `schema_element` is a SQL statement that `CREATE` a database object to be created within the schema.
-
 ## Semantics
 
 - `AUTHORIZATION` clause is not yet supported.
-- Only `CREATE TABLE`, `CREATE VIEW`, `CREATE INDEX`, `CREATE SEQUENCE`, `CREATE TRIGGER`, and `GRANT` can be used to create objects within `CREATE SCHEMA` statement. Other database objects must be created in separate commands after the schema is created.
+
+## *create_schema*
+
+### CREATE SCHEMA [ IF NOT EXISTS ] *schema_name* [ *schema_element* [ ... ] ]
+
+Create a schema in the current database.
+
+### *schema_name*
+
+Specify the name of the schema to be created. The schema name must be unique.
+
+### *schema_element*
+
+Specify the SQL statement that defines a database object to be created within the schema.
+Acceptable clauses are `CREATE TABLE`, `CREATE VIEW`, `CREATE INDEX`, `CREATE SEQUENCE`, and `GRANT`. Other database objects must be created in separate commands after the schema is created.
 
 ## See also
 
-[`CREATE TABLE`](../ddl_create_table)
-[`CREATE VIEW`](../ddl_create_view)
-[`CREATE INDEX`](../ddl_create_index)
-[`CREATE SEQUENCE`](../ddl_create_seq)
-[Other YSQL Statements](..)
+- [`CREATE TABLE`](../ddl_create_table)
+- [`CREATE VIEW`](../ddl_create_view)
+- [`CREATE INDEX`](../ddl_create_index)
+- [`CREATE SEQUENCE`](../ddl_create_seq)
+- [`GRANT`](../dcl_grant)

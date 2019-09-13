@@ -8,7 +8,7 @@ menu:
   latest:
     identifier: helm-configuration
     parent: deploy-kubernetes
-    weight: 621
+    weight: 622
 isTocNested: true
 showAsideToc: true
 ---

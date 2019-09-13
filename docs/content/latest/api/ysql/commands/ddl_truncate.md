@@ -15,10 +15,9 @@ showAsideToc: true
 
 ## Synopsis
 
-`TRUNCATE` command clears all rows in a table.
+Use the `TRUNCATE` statement to clear all rows in a table.
 
 ## Syntax
-
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
@@ -44,14 +43,18 @@ showAsideToc: true
   </div>
 </div>
 
-Where
-
-- `name` specifies the table to be truncated.
-
 ## Semantics
 
-- TRUNCATE acquires ACCESS EXCLUSIVE lock on the tables to be truncated. The ACCESS EXCLUSIVE locking option is not yet fully supported.
-- TRUNCATE is not supported for foreign tables.
+### *truncate*
+
+#### TRUNCATE [ TABLE ] { { [ ONLY ] *name* [ * ] } [ , ... ] }
+
+#### *name*
+
+Specify the name of the table to be truncated.
+
+- `TRUNCATE` acquires `ACCESS EXCLUSIVE` lock on the tables to be truncated. The `ACCESS EXCLUSIVE` locking option is not yet fully supported.
+- `TRUNCATE` is not supported for foreign tables.
 
 ## Examples
 
@@ -89,7 +92,3 @@ postgres=# SELECT * FROM sample;
 ----+----+----+----
 (0 rows)
 ```
-
-## See also
-
-[Other YSQL Statements](..)

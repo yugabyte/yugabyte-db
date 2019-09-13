@@ -15,25 +15,37 @@ isTocNested: true
 showAsideToc: true
 ---
 
-To enable client to server encryption, bring up the YB-TServer processes with the appropriate flags as shown below.
+YugaByte DB can be configured to provide client-server encryption, using Transport Layer Security (TLS), for YSQL and YCQL.
 
 {{< note title="Note" >}}
-Only the `yb-tserver` process requires additional flags to enable client to server encryption.
+
+YEDIS does not include support for client-server TLS encryption.
+
 {{< /note >}}
+
+To enable client-server TLS encryption, start the YB-TServer processes with the required flags described below. The YB-TMaster processes do not require additional configuration.
 
 Flag                                 | Process    | Description                  |
 -------------------------------------|--------------------------|------------------------------|
-`--use_client_to_server_encryption`  | YB-TServer | Optional, default value is `false`. Set to `true` to enable encryption between the various YugaByte DB clients and the database cluster. |
-`allow_insecure_connections`         | YB-TServer | Optional, defaults to `true`. Set to `false` to disallow any client with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires the `use_client_to_server_encryption` to be enabled. |
-`certs_for_client_dir`               | YB-TServer | Optional, defaults to the same directory as the server to server encryption. This directory should contain the configuration for the client to perform TLS communication with the cluster. Default value for the YB-TServers is `<data drive>/yb-data/tserver/data/certs`  |
+`--use_client_to_server_encryption`  | YB-TServer | [Optional] Set to `true` to enable encryption between the various YugaByte DB clients and the database cluster. Default value is `false`. |
+`allow_insecure_connections`         | YB-TServer | [Optional] Set to `false` to disallow any client with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires `use_client_to_server_encryption` to be enabled. |
+`certs_for_client_dir`               | YB-TServer | [Optional] Defaults to the same directory as the server to server encryption. This directory should contain the configuration for the client to perform TLS communication with the cluster. Default value for the YB-TServers is `<data drive>/yb-data/tserver/data/certs`  |
 
-You can enable access control by starting the `yb-tserver` processes minimally with the `--use_client_to_server_encryption=true` flag as described above. This will allow both encrypted client and clients without encryption to connect to the cluster. To ensure that only clients with appropriate encryption configured are able to connect, set the `--allow_insecure_connections=false` flag as well.
+To enable access control, follow these steps, start the `yb-tserver` processes with the following flag (described above):
+  
+```
+--use_client_to_server_encryption=true`
+```
 
-{{< note title="Note" >}}
-Remember to set `--allow_insecure_connections=false` to enforce TLS communication between the YugaByte DB cluster and all the clients. Dropping this flag will allow clients to connect without encryption as well.
-{{< /note >}}
+This setting allows both encrypted clients and unencrytped clients to connect to the cluster.
 
-Your command should look similar to that shown below:
+To prevent clients without the appropriate encryption from connecting, you must add the following flag:
+
+```
+--allow_insecure_connections=false`
+```
+
+Your command should look similar to this:
 
 ```
 bin/yb-tserver                                       \
@@ -44,4 +56,4 @@ bin/yb-tserver                                       \
     --use_client_to_server_encryption=true &
 ```
 
-You can read more about bringing up the YB-TServers for a deployment in the section on [manual deployment of a YugaByte DB cluster](../../../deploy/manual-deployment/start-tservers/).
+For details about starting YB-TServers in manual deployments, see [Start YB-TServers](../../../deploy/manual-deployment/start-tservers/).

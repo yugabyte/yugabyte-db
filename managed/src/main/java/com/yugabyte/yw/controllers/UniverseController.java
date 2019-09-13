@@ -11,6 +11,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.Random;
+
+import java.nio.charset.Charset;
 
 import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -231,6 +234,15 @@ public class UniverseController extends AuthenticatedController {
         taskParams.allowInsecure = false;
       }
 
+      if (taskParams.getPrimaryCluster().userIntent.enableEncryptionAtRest) {
+        // Convert from hex to byte array
+        Random rd = new Random();
+        byte[] data = new byte[32];
+        rd.nextBytes(data);
+        taskParams.encryptionKeyFilePath = CertificateHelper.createEncryptionKeyFile(customerUUID, universe.universeUUID,
+                data, "/opt/yugaware"); // appConfig.getString("yb.storage.path"));
+      }
+
       // Submit the task to create the universe.
       UUID taskUUID = commissioner.submit(taskType, taskParams);
       LOG.info("Submitted create universe for {}:{}, task uuid = {}.",
@@ -331,6 +343,12 @@ public class UniverseController extends AuthenticatedController {
       taskParams.rootCA = universe.getUniverseDetails().rootCA;
       LOG.info("Found universe {} : name={} at version={}.",
                universe.universeUUID, universe.name, universe.version);
+
+      if (taskParams.getPrimaryCluster().userIntent.enableEncryptionAtRest) {
+        taskParams.encryptionKeyFilePath = CertificateHelper.getEncryptionFile(customerUUID, universe.universeUUID,
+                appConfig.getString("yb.storage.path"));
+      }
+
       UUID taskUUID = commissioner.submit(taskType, taskParams);
       LOG.info("Submitted edit universe for {} : {}, task uuid = {}.",
                universe.universeUUID, universe.name, taskUUID);

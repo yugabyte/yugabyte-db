@@ -311,7 +311,7 @@ void Log::SegmentAllocationTask() {
 }
 
 const Status Log::kLogShutdownStatus(
-    STATUS(ServiceUnavailable, "WAL is shutting down", "", ESHUTDOWN));
+    STATUS(ServiceUnavailable, "WAL is shutting down", "", Errno(ESHUTDOWN)));
 
 Status Log::Open(const LogOptions &options,
                  const std::string& tablet_id,
@@ -786,6 +786,7 @@ Status Log::WaitUntilAllFlushed() {
 }
 
 void Log::set_wal_retention_secs(uint32_t wal_retention_secs) {
+  LOG(INFO) << "Setting wal retention time to " << wal_retention_secs << " seconds";
   wal_retention_secs_.store(wal_retention_secs, std::memory_order_release);
 }
 

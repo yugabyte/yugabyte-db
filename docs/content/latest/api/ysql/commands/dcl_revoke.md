@@ -1,6 +1,7 @@
 ---
 title: REVOKE
-description: REVOKE Command
+linkTitle: REVOKE
+description: REVOKE
 summary: REVOKE
 menu:
   latest:
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Remove access privileges.
+Use the `REVOKE` statement to remove access privileges.
 
 ## Syntax
 
@@ -42,21 +43,41 @@ Remove access privileges.
   </div>
 </div>
 
+## Semantics
+
+Not all `REVOKE` options are supported yet in YSQL, but the following `REVOKE` option is supported.
+
+```
+REVOKE ALL ON DATABASE name FROM name;
+```
+
+For the list of possible *privileges* or *privilege_target* settings, see `GRANT` in the PostgreSQL documentation.
+
+### REVOKE
+
+Remove privileges on a database object or a membership in a role.
+
+### *privileges*
+
+Specify the privileges.
+
+#### ALL
+
+Specify all of the available privileges.
+
+### *privilege_target*
+
+### *name*
+
+Specify the name of the role.
+
+### CASCADE
+
+### RESTRICT
+
 ## Examples
 
-- Create a sample role.
-
-```sql
-postgres=# CREATE USER John;
-```
-
-- Grant John all permissions on the `postgres` database.
-
-```sql
-postgres=# GRANT ALL ON DATABASE postgres TO John;
-```
-
-- Remove John's permissions from the `postgres` database.
+- Remove John's privileges from the `postgres` database.
 
 ```sql
 postgres=# REVOKE ALL ON DATABASE postgres FROM John;
@@ -64,4 +85,5 @@ postgres=# REVOKE ALL ON DATABASE postgres FROM John;
 
 ## See also
 
-[Other YSQL Statements](..)
+- [`CREATE USER`](../dcl_create_user)
+- [`REVOKE`](../dcl_revoke)

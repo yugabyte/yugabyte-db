@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`DELETE` command removes rows that meet certain conditions, and when conditions are not provided in WHERE clause, all rows are deleted. DELETE outputs the number of rows that are being deleted.
+Use the `DELETE` statement to remove rows that meet certain conditions, and when conditions are not provided in WHERE clause, all rows are deleted. `DELETE` outputs the number of rows that are being deleted.
 
 ## Syntax
 
@@ -43,32 +43,46 @@ showAsideToc: true
   </div>
 </div>
 
-Where
-
-- `with_query` specifies the subqueries that are referenced by name in the DELETE statement.
-
-- `table_name` specifies a name of the table to be deleted.
-
-- `alias` is the identifier of the target table within the DELETE statement. When an alias is specified, it must be used in place of the actual table in the statement.
-
-- `output_expression` specifies the value to be returned. When the `output_expression` is referencing a column, the existing value of this column (deleted value) is used to evaluate.
-
 ## Semantics
 
-- USING clause is not yet supported.
+- `USING` clause is not yet supported.
 
-- While the where clause allows a wide range of operators, the exact conditions used in the where clause have significant performance considerations (especially for large datasets). WHERE clause that provides values for all columns in PRIMARY KEY or INDEX KEY has the best performance.
+- While the `WHERE` clause allows a wide range of operators, the exact conditions used in the `WHERE` clause have significant performance considerations (especially for large datasets). For the best performance, use a `WHERE` clause that provides values for all columns in `PRIMARY KEY` or `INDEX KEY`.
+
+### *delete* 
+
+#### WITH [ RECURSIVE ] *with_query* [ , ... ] DELETE FROM [ ONLY ] *table_name* [ * ] [ [ AS ] *alias* ] [ WHERE *condition* | WHERE CURRENT OF *cursor_name* ] [ [*returning_clause*](#returning-clause) ]
+
+##### *with_query*
+
+Specify the subqueries that are referenced by name in the DELETE statement.
+
+##### *table_name*
+
+Specify the name of the table to be deleted.
+
+##### *alias*
+
+Specify the identifier of the target table within the DELETE statement. When an alias is specified, it must be used in place of the actual table in the statement.
+
+### *returning_clause*
+
+#### RETURNING
+
+Specify the value to be returned. When the _output_expression_ references a column, the existing value of this column (deleted value) is used to evaluate.
+
+#### *output_name*
 
 ## Examples
 
 Create a sample table, insert a few rows, then delete one of the inserted row.
 
 ```sql
-postgres=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
+CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1, k2));
 ```
 
 ```sql
-postgres=# INSERT INTO sample VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
+INSERT INTO sample VALUES (1, 2.0, 3, 'a'), (2, 3.0, 4, 'b'), (3, 4.0, 5, 'c');
 ```
 
 ```sql
@@ -85,7 +99,7 @@ postgres=# SELECT * FROM sample ORDER BY k1;
 ```
 
 ```sql
-postgres=# DELETE FROM sample WHERE k1 = 2 AND k2 = 3;
+DELETE FROM sample WHERE k1 = 2 AND k2 = 3;
 ```
 
 ```sql
@@ -103,9 +117,9 @@ DELETE 1
   3 |  4 |  5 | c
 (2 rows)
 ```
-## See Aalso
 
-[`INSERT`](../dml_insert)
-[`SELECT`](../dml_select)
-[`UPDATE`](../dml_update)
-[Other YSQL Statements](..)
+## See also
+
+- [`INSERT`](../dml_insert)
+- [`SELECT`](../dml_select)
+- [`UPDATE`](../dml_update)

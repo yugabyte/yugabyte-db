@@ -5,7 +5,8 @@ import { Row, Col } from 'react-bootstrap';
 import { YBButton } from '../../../common/forms/fields';
 import { YBFormSelect, YBFormInput, YBFormDropZone } from '../../../common/forms/fields';
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
-import { isNonEmptyObject, isDefinedNotNull } from 'utils/ObjectUtils';
+import { isNonEmptyObject } from 'utils/ObjectUtils';
+import { readUploadedFile } from 'utils/UniverseUtils';
 import { KUBERNETES_PROVIDERS } from 'config';
 import { withRouter } from 'react-router';
 import { Formik, Field } from 'formik';
@@ -18,29 +19,13 @@ import { REGION_DICT } from 'config';
 const convertStrToCode = s => s.trim().toLowerCase().replace(/\s/g, '-');
 
 class CreateKubernetesConfiguration extends Component {
-  readUploadedFileAsText = (inputFile, isRequired) => {
-    const fileReader = new FileReader();
-    return new Promise((resolve, reject) => {
-      fileReader.onloadend = () => {
-        resolve(fileReader.result);
-      };
-      // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
-      if (isDefinedNotNull(inputFile)) {
-        fileReader.readAsText(inputFile);
-      }
-      if (!isRequired && !isDefinedNotNull(inputFile)) {
-        resolve(null);
-      }
-    });
-  };
-
   createProviderConfig = (vals, setSubmitting) => {
     const { type } = this.props;
 
     const self = this;
     const pullSecretFile = vals.pullSecret;
     const providerName = vals.accountName;
-    const readerSecret = this.readUploadedFileAsText(pullSecretFile, false);
+    const readerSecret = readUploadedFile(pullSecretFile, false);
     const fileConfigArray = [readerSecret]; // Pull secret file is required
     // Record which regions and zones have configs with tuple of (region, zone)
     const configIndexRecord = [];
@@ -49,7 +34,7 @@ class CreateKubernetesConfiguration extends Component {
     );
 
     const providerKubeConfig = vals.kubeConfig ?
-      this.readUploadedFileAsText(vals.kubeConfig, false)
+      readUploadedFile(vals.kubeConfig, false)
       : {};
     // Loop thru regions and check for config files
     vals.regionList.forEach((region, rIndex) => {
@@ -57,7 +42,7 @@ class CreateKubernetesConfiguration extends Component {
         const content = zone.zoneKubeConfig;
         if (content) {
           if (!_.isEqual(content, vals.kubeConfig)){
-            const zoneConfig = self.readUploadedFileAsText(content, true);
+            const zoneConfig = readUploadedFile(content, true);
             fileConfigArray.push(zoneConfig);
             configIndexRecord.push([rIndex, zIndex]);
           } else {

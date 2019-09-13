@@ -1,6 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.google.common.base.Functions;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
@@ -9,6 +12,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+
+import java.io.IOException;
 
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
@@ -235,7 +240,7 @@ public class Util {
 
   /**
    * Checks if the universe needs a new master spawned on the current node.
-   * @param currentNode çandidate node to be used to potentially spawn a master.
+   * @param currentNode candidate node to be used to potentially spawn a master.
    * @param universe Universe to check for under replicated masters.
    * @return true if universe has fewer number of masters than RF.
    */
@@ -273,5 +278,14 @@ public class Util {
     }
     LOG.info("KeysNotPresent  = " + keysNotPresent);
     return keysNotPresent.stream().collect(Collectors.joining(","));
+  }
+
+  public static JsonNode convertStringToJson(String inputString) {
+    ObjectMapper mapper = new ObjectMapper();
+    try {
+      return mapper.readTree(inputString);
+    } catch (IOException e) {
+      throw new RuntimeException("Shell Response message is not a valid Json.");
+    }
   }
 }

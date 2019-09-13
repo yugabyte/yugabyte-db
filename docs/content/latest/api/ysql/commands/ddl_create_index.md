@@ -41,21 +41,40 @@ showAsideToc: true
   </div>
 </div>
 
-Where
-
-- `UNIQUE` enforced that duplicate values in a table are not allowed.
-- `INCLUDE` clause specifies a list of columns which will be included in the index as non-key columns.
-- `name` specifies the index to be created.
-- `table_name` specifies the name of the table to be indexed.
-- `column_name` specifies the name of a column of the table.
-- `expression` specifies one or more columns of the table and must be surrounded by parentheses.
-- `ASC` indicates ascending sort order.
-- `DESC` indicates descending sort order.
-
 ## Semantics
 
-- `CONCURRENTLY`, `USING method`, `COLLATE`, `NULL` order, and `TABLESPACE` options are not yet supported.
+`CONCURRENTLY`, `USING method`, `COLLATE`, `NULL` order, and `TABLESPACE` options are not yet supported.
 
-## See also
+### *create_index*
 
-[Other YSQL Statements](..)
+### UNIQUE
+
+Enforce that duplicate values in a table are not allowed.
+
+### INCLUDE clause
+
+Specify a list of columns which will be included in the index as non-key columns.
+
+#### *name*
+
+ Specify the name of the index to be created.
+
+#### *table_name*
+
+Specify the name of the table to be indexed.
+
+### *index_elem*
+
+#### *column_name*
+
+Specify the name of a column of the table.
+
+#### *expression*
+
+Specify one or more columns of the table and must be surrounded by parentheses.
+
+- `ASC` — Sort in ascending order.
+- `DESC` — Sort in descending order.
+
+#### *opclass*
+

@@ -4,7 +4,7 @@ import { FormattedDate } from 'react-intl';
 
 import { isValidObject } from './ObjectUtils';
 import { YBFormattedNumber } from '../components/common/descriptors';
-import { YBLoadingIcon } from '../components/common/indicators';
+import { YBLoadingCircleIcon } from '../components/common/indicators';
 
 export function timeFormatter(cell) {
   if (!isValidObject(cell)) {
@@ -32,13 +32,13 @@ export function successStringFormatter(cell, row) {
     case "Completed":
       return <span className="yb-success-color"><i className='fa fa-check'/> Completed</span>;
     case "Initializing":
-      return <span className="yb-pending-color"><YBLoadingIcon size="inline" /> Initializing</span>;
+      return <span className="yb-pending-color"><YBLoadingCircleIcon size="inline" /> Initializing</span>;
     case "InProgress":
-      return <span className="yb-pending-color"><YBLoadingIcon size="inline" /> InProcess</span>;
+      return <span className="yb-pending-color"><YBLoadingCircleIcon size="inline" /> InProcess</span>;
     case "Running":
       return (
         <span className="yb-pending-color">
-          <YBLoadingIcon size="inline" />Pending ({percentFormatter(row.percentComplete, row)})
+          <YBLoadingCircleIcon size="inline" />Pending ({percentFormatter(row.percentComplete, row)})
       </span>
       );
     case "Failure":

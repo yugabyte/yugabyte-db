@@ -12,4 +12,6 @@ public class TableManagerParams extends UniverseTaskParams {
   public String tableName;
 
   public UUID tableUUID;
+
+  public boolean sse = false;
 }

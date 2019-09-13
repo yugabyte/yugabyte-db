@@ -3,7 +3,7 @@ title: APIs
 linkTitle: APIs
 description: APIs
 image: /images/section_icons/index/api.png
-headcontent: YugaByte DB API Reference 
+headcontent: YugaByte DB API reference 
 aliases:
   - /api/
 section: REFERENCE

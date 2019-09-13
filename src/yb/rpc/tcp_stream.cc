@@ -15,6 +15,7 @@
 
 #include "yb/rpc/outbound_data.h"
 
+#include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/string_util.h"
@@ -286,7 +287,7 @@ Status TcpStream::ReadHandler() {
   for (;;) {
     auto received = Receive();
     if (PREDICT_FALSE(!received.ok())) {
-      if (received.status().error_code() == ESHUTDOWN) {
+      if (Errno(received.status()) == ESHUTDOWN) {
         VLOG_WITH_PREFIX(1) << "Shut down by remote end.";
       } else {
         YB_LOG_WITH_PREFIX_EVERY_N(INFO, 50) << " Recv failed: " << received;

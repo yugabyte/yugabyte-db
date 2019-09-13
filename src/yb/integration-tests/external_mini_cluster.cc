@@ -276,6 +276,13 @@ Status ExternalMiniCluster::DeduceBinRoot(std::string* ret) {
   return Status::OK();
 }
 
+std::string ExternalMiniCluster::GetClusterDataDirName() const {
+  if (opts_.cluster_id == "") {
+    return "minicluster-data";
+  }
+  return Format("minicluster-data-$0", opts_.cluster_id);
+}
+
 Status ExternalMiniCluster::HandleOptions() {
   daemon_bin_path_ = opts_.daemon_bin_path;
   if (daemon_bin_path_.empty()) {
@@ -285,7 +292,7 @@ Status ExternalMiniCluster::HandleOptions() {
   data_root_ = opts_.data_root;
   if (data_root_.empty()) {
     // If they don't specify a data root, use the current gtest directory.
-    data_root_ = JoinPathSegments(GetTestDataDirectory(), "minicluster-data");
+    data_root_ = JoinPathSegments(GetTestDataDirectory(), GetClusterDataDirName());
 
     // If "data_root_counter" is non-negative, and the auto-generated "data_root_" directory already
     // exists, create a subdirectory using the counter value as its name. The caller should maintain
@@ -915,6 +922,17 @@ string ExternalMiniCluster::GetMasterAddresses() const {
       peer_addrs += ",";
     }
     peer_addrs += MasterAddressForPort(opts_.master_rpc_ports[i]);
+  }
+  return peer_addrs;
+}
+
+string ExternalMiniCluster::GetTabletServerAddresses() const {
+  string peer_addrs = "";
+  for (const auto& ts : tablet_servers_) {
+    if (!peer_addrs.empty()) {
+      peer_addrs += ",";
+    }
+    peer_addrs += Format("$0:$1", ts->bind_host(), ts->rpc_port());
   }
   return peer_addrs;
 }

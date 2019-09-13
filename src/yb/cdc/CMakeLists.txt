@@ -41,6 +41,13 @@ YRPC_GENERATE(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES cdc_service.proto)
+
+PROTOBUF_GENERATE_CPP(
+  CDC_CONSUMER_YRPC_SRCS CDC_CONSUMER_YRPC_HDRS CDC_CONSUMER_YRPC_TGTS  
+  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
+  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
+  PROTO_FILES cdc_consumer.proto)
+
 set(CDC_YRPC_LIBS
   yrpc
   yb_common_proto
@@ -48,7 +55,18 @@ set(CDC_YRPC_LIBS
   master_proto
   opid_proto
   wire_protocol_proto)
+
+set(CDC_CONSUMER_YRPC_LIBS
+  yrpc
+  yb_common_proto
+  protobuf
+  wire_protocol_proto)
+
 ADD_YB_LIBRARY(cdc_service_proto
   SRCS ${CDC_YRPC_SRCS}
   DEPS ${CDC_YRPC_LIBS}
   NONLINK_DEPS ${CDC_YRPC_TGTS})
+ADD_YB_LIBRARY(cdc_consumer_proto
+  SRCS ${CDC_CONSUMER_YRPC_SRCS}
+  DEPS ${CDC_CONSUMER_YRPC_LIBS}
+  NONLINK_DEPS ${CDC_CONSUMER_YRPC_TGTS})

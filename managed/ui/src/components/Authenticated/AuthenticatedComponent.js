@@ -19,7 +19,6 @@ class AuthenticatedComponent extends Component {
     this.props.fetchHostInfo();
     this.props.fetchSoftwareVersions();
     this.props.fetchTableColumnTypes();
-    this.props.fetchUniverseList();
     this.props.getEBSListItems();
     this.props.getGCPListItems();
     this.props.getProviderListItems();
@@ -28,6 +27,7 @@ class AuthenticatedComponent extends Component {
     this.props.fetchCustomerTasks();
     this.props.fetchCustomerCertificates();
     this.props.fetchCustomerConfigs();
+    this.props.fetchInsecureLogin();
   }
 
   componentWillUnmount() {

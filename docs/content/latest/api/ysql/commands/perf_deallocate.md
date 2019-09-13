@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-`DEALLOCATE` command deallocates a previously-prepared statement.
+Use the `DEALLOCATE` statement to deallocate a previously prepared SQL statement.
 
 ## Syntax
 
@@ -43,13 +43,15 @@ showAsideToc: true
   </div>
 </div>
 
-Where
-
-- name specifies the prepared statement to deallocate.
-
 ## Semantics
 
-- `ALL` option is to deallocate all prepared statements.
+### *name*
+
+Specify the name of the prepared statement to deallocate.
+
+### ALL
+
+Deallocate all prepared statements.
 
 ## Examples
 
@@ -70,4 +72,5 @@ postgres=# DEALLOCATE ins;
 
 ## See also
 
-[Other YSQL Statements](..)
+- [`EXECUTE`](../perf_execute)
+- [`PREPARE`](../perf_prepare)

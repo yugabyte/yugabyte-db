@@ -37,6 +37,7 @@ alter_table_action ::=
 
 alter_table_constraint ::= [ 'CONSTRAINT' constraint_name ] ( 
                        'CHECK' '(' expression ')' | 
+                       'UNIQUE' '(' column_names ')' index_parameters |
                        'FOREIGN' 'KEY' '(' column_names ')' references_clause ) ;
 
 (* 'BEGIN' *)
@@ -120,7 +121,7 @@ cache ::= '<Integer Literal>' ;
 (* 'CREATE' 'TABLE' *)
 create_table ::= 'CREATE' 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] table_name
                  '(' [ table_elem { ',' table_elem } ] ')'
-                 [ 'WITH' '(' storage_param { ',' storage_param } ')' | 'WITHOUT' 'OIDS' ] ;
+                 [ 'WITH' '(' storage_parameters ')' | 'WITHOUT' 'OIDS' ] ;
 
 table_elem ::= ( column_name data_type [ column_constraint { column_constraint } ] ) | table_constraint ;
 
@@ -129,11 +130,13 @@ column_constraint ::= [ 'CONSTRAINT' constraint_name ]
                          | 'NULL'
                          | 'CHECK' '(' expression ')'
                          | 'DEFAULT' expression
-                         | 'PRIMARY' 'KEY' |
+                         | 'UNIQUE' index_parameters
+                         | 'PRIMARY' 'KEY'
                          | references_clause ) ;
 
 table_constraint ::= [ 'CONSTRAINT' constraint_name ]
                      ( 'CHECK' '(' expression ')'
+                       | 'UNIQUE' '(' column_names ')' index_parameters
                        | 'PRIMARY' 'KEY' '(' column_names ')' 
                        | 'FOREIGN' 'KEY' '(' column_names ')' references_clause ) ;
 
@@ -143,13 +146,56 @@ references_clause ::= 'REFERENCES' table_name [ ( column_name { ',' column_name 
 
 key_action ::= 'NO' 'ACTION' | 'RESTRICT' | 'CASCADE' | 'SET' 'NULL' | 'SET' 'DEFAULT' ;
 
-storage_parameter ::= name [ '=' value] ;
+storage_parameters ::= storage_parameter { ',' storage_parameter } ;
 
+storage_parameter ::= param_name [ '=' param_value] ;
+
+index_parameters ::= [ INCLUDE '(' column_names ')' ]
+                     [ WITH '(' storage_parameters ')' ] ;
 
 (* 'CREATE' 'TABLE' 'AS' *)
 create_table_as ::= 'CREATE' 'TABLE' [ 'IF' 'NOT' 'EXISTS' ] \
                            table_name [ '(' column_name { ',' column_name } ')' ] \
                            'AS' query [ 'WITH' [ 'NO' ] 'DATA' ] ;
+
+(* 'CREATE' 'TYPE' *)
+create_composite_type ::= 'CREATE' 'TYPE' type_name 'AS'
+                          '(' [ composite_type_elem { ',' composite_type_elem } ] ')' ;
+
+create_enum_type ::= 'CREATE' 'TYPE' type_name 'AS' 'ENUM'
+                     '(' [ label { ',' label } ] ')' ;
+
+create_range_type ::= 'CREATE' 'TYPE' type_name 'AS' 'RANGE'
+                      '(' 'SUBTYPE' '=' subtype { ',' range_type_option } ')' ;
+
+create_base_type ::= 'CREATE' 'TYPE' type_name
+                     '(' 'INPUT' '=' input_function ',' 'OUTPUT' '=' output_function
+                     { ',' base_type_option } ')' ;
+
+create_shell_type ::= 'CREATE' 'TYPE' type_name ;
+
+composite_type_elem ::= attribute_name data_type [ 'COLLATE' collation ] ;
+
+range_type_option ::= 'SUBTYPE_OPCLASS' '=' subtype_operator_class
+                      | 'COLLATION' '=' collation
+                      | 'CANONICAL' '=' canonical_function
+                      | 'SUBTYPE_DIFF' '=' subtype_diff_function ;
+
+base_type_option ::= 'RECEIVE' '=' receive_function
+                     | 'SEND' '=' send_function
+                     | 'TYPMOD_IN' '=' type_modifier_input_function
+                     | 'TYPMOD_OUT' '=' type_modifier_output_function
+                     | 'INTERNALLENGTH' '=' ( internallength | 'VARIABLE' )
+                     | 'PASSEDBYVALUE'
+                     | 'ALIGNMENT' '=' alignment
+                     | 'STORAGE' '=' storage
+                     | 'LIKE' '=' like_type
+                     | 'CATEGORY' '=' category
+                     | 'PREFERRED' '=' preferred
+                     | 'DEFAULT' '=' default
+                     | 'ELEMENT' '=' element
+                     | 'DELIMITER' '=' delimiter
+                     | 'COLLATABLE' '=' collatable ;
 
 (* 'CREATE' 'USER' *)
 create_user ::= 'CREATE' 'USER' name ;
@@ -176,6 +222,10 @@ drop_database ::= 'DROP' 'DATABASE' [ 'IF' 'EXISTS' ] database_name ;
 
 (* 'DROP' 'TABLE' *)
 drop_table ::= 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name ;
+
+(* 'DROP' 'TYPE' *)
+drop_type ::= 'DROP' 'TYPE' [ 'IF' 'EXISTS' ] type_name { ',' type_name }
+              [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'SEQUENCE' *)
 drop_sequence ::= 'DROP' 'SEQUENCE' [ 'IF' 'EXISTS' ] sequence_name [ 'CASCADE' | 'RESTRICT' ] ;
@@ -315,20 +365,176 @@ update_item ::= ( column_name '=' column_value
 
 column_value ::= expression | 'DEFAULT' ;
 
+(* 'COMMENT' *)
+comment_on ::= 'COMMENT' 'ON' \
+(
+  'ACCESS' 'METHOD' object_name |
+  'AGGREGATE' aggregate_name '(' aggregate_signature ')' |
+  'CAST' '(' source_type 'AS' target_type ')' |
+  'COLLATION' object_name |
+  'COLUMN' relation_name '.' column_name |
+  'CONSTRAINT' constraint_name 'ON' table_name |
+  'CONSTRAINT' constraint_name 'ON' 'DOMAIN' domain_name |
+  'CONVERSION' object_name |
+  'DATABASE' object_name |
+  'DOMAIN' object_name |
+  'EXTENSION' object_name |
+  'EVENT' 'TRIGGER' object_name |
+  'FOREIGN' 'DATA' 'WRAPPER' object_name |
+  'FOREIGN' 'TABLE' object_name |
+  'FUNCTION' function_name [ '(' [ [ argmode ] [ argname ] argtype { ',' argtype } ] ')' ] |
+  'INDEX' object_name |
+  'LARGE' 'OBJECT' large_object_oid |
+  'MATERIALIZED' 'VIEW' object_name |
+  'OPERATOR' operator_name '(' left_type ',' right_type ')' |
+  'OPERATOR' 'CLASS' object_name 'USING' index_method |
+  'OPERATOR' 'FAMILY' object_name 'USING' index_method |
+  'POLICY' policy_name 'ON' table_name |
+  [ 'PROCEDURAL' ] 'LANGUAGE' object_name |
+  'PROCEDURE' procedure_name [ '(' [ [ argmode ] [ argname ] argtype { ',' argtype } ] ')' ] |
+  'PUBLICATION' object_name |
+  'ROLE' object_name |
+  'ROUTINE' routine_name [ '(' [ [ argmode ] [ argname ] argtype { ',' argtype } ] ')' ] |
+  'RULE' rule_name 'ON' table_name |
+  'SCHEMA' object_name |
+  'SEQUENCE' object_name |
+  'SERVER' object_name |
+  'STATISTICS' object_name |
+  'SUBSCRIPTION' object_name |
+  'TABLE' object_name |
+  'TABLESPACE' object_name |
+  'TEXT' 'SEARCH' 'CONFIGURATION' object_name |
+  'TEXT' 'SEARCH' 'DICTIONARY' object_name |
+  'TEXT' 'SEARCH' 'PARSER' object_name |
+  'TEXT' 'SEARCH' 'TEMPLATE' object_name |
+  'TRANSFORM' 'FOR' type_name 'LANGUAGE' lang_name |
+  'TRIGGER' trigger_name 'ON' table_name |
+  'TYPE' object_name |
+  'VIEW' object_name
+) \ 'IS' ( '<Text Literal>' | 'NULL' ) ;
+
+aggregate_signature ::= (
+  '*' |
+  [ argmode ] [ argname ] argtype { ',' argtype } |
+  [ [ argmode ] [ argname ] argtype { ',' argtype } ] 'ORDER' 'BY' [ argmode ] [ argname ] argtype { ',' argtype }
+) ;
+
+(* 'DO' *)
+do ::= 'DO' [ 'LANGUAGE' lang_name ] code ;
+
 (* Supporting rules *)
 
-where_expression ::= boolean_expression ;
+qualified_name ::= [ [ database_name '.' ] schema_name '.' ] '<Text Literal>' ;
 
 database_name ::= '<Text Literal>' ;
 
-table_name ::= [ database_name '.' ] '<Text Literal>' ;
+schema_name ::= '<Text Literal>' ;
+
+table_name ::= qualified_name ;
 
 column_name ::= '<Text Literal>' ;
+
+object_name ::= name ;
+relation_name ::= qualified_name ;
+aggregate_name ::= qualified_name ;
+constraint_name ::= qualified_name ;
+function_name ::= qualified_name ;
+operator_name ::= qualified_name ;
+policy_name ::= qualified_name ;
+procedure_name ::= qualified_name ;
+routine_name ::= qualified_name ;
+rule_name ::= qualified_name ;
+trigger_name ::= qualified_name ;
+
+domain_name ::= qualified_name ;
+
+index_method ::= '<Text Literal>';
+
+source_type ::= '<Text Literal>' ;
+
+target_type ::= '<Text Literal>' ;
+
+argmode ::= ( 'IN' | 'OUT' | 'INOUT' | 'VARIADIC' ) ;
+
+argname ::= name ;
+
+argtype ::= '<Text Literal>' ;
+
+large_object_oid ::= '<Integer Literal>' ;
+
+left_type ::= ( qualified_name | 'NONE' ) ;
+right_type ::= ( qualified_name | 'NONE' ) ;
+
+type_name ::= name ;
+lang_name ::= name ;
 
 name ::= '<Text Literal>' ;
 
 column_names ::= column_name { ',' column_name } ;
 
+where_expression ::= boolean_expression ;
+
 expression ::= '<expression>' ;
 
 boolean ::= 'TRUE' | 'FALSE' ;
+
+(* TODO(jason): change the below when issue #1557 is closed or closing *)
+collation ::= ( '"default"' | '"C"' | '"POSIX"' | '"ucs_basic"' ) ;
+
+type_name ::= qualified_name ;
+
+attribute_name ::= '<Text Literal>' ;
+
+data_type ::= type_name ;
+
+label ::= '<Text Literal>' ;
+
+subtype ::= type_name ;
+
+operator_class_name ::= qualified_name ;
+
+subtype_operator_class ::= operator_class_name ;
+
+function_name ::= qualified_name ;
+
+canonical_function ::= function_name ;
+
+subtype_diff_function ::= function_name ;
+
+input_function ::= function_name ;
+
+output_function ::= function_name ;
+
+receive_function ::= function_name ;
+
+send_function ::= function_name ;
+
+type_modifier_input_function ::= function_name ;
+
+type_modifier_output_function ::= function_name ;
+
+internallength ::= ( '-2' | '-1' | '<non-negative integer>' ) ;
+
+alignment ::= ( 'CHAR' | 'INT2' | 'INT4' | 'DOUBLE' ) ;
+
+storage ::= ( 'PLAIN' | 'EXTERNAL' | 'EXTENDED' | 'MAIN' ) ;
+
+like_type ::= type_name ;
+
+category ::= '<character>' ;
+
+preferred ::= boolean ;
+
+default ::= '<type value>' ;
+
+element ::= type_name ;
+
+delimiter ::= '<character>' ;
+
+collatable ::= boolean ;
+
+param_name ::= '<Text Literal>' ;
+
+param_value ::= '<Text Literal>' ;
+
+code ::= '<Text Literal>' ;

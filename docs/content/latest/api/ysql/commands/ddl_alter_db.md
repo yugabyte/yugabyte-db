@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-ALTER DATABASE redefines the attributes of the specified database.
+Use the `ALTER DATABASE` statement to redefine the attributes of a database.
 
 ## Syntax
 
@@ -43,25 +43,38 @@ ALTER DATABASE redefines the attributes of the specified database.
   </div>
 </div>
 
-
-where
-
-- `name` is an identifier that specifies the database to be altered.
-
-- tablespace_name specifies the new tablespace that is associated with the database.
-
-- allowconn is either `true` or `false`.
-
-- connlimit specifies the number of concurrent connections can be made to this database. -1 means there is no limit.
-
-- istemplate is either `true` or `false`.
-
 ## Semantics
 
-- Some options in DATABASE are under development.
+{{< note title="Note" >}}
+
+Some options in DATABASE are under development.
+
+{{< /note >}}
+
+### *name*
+
+Specify the name of the database to be altered.
+
+### *tablespace_name*
+
+Specify the new tablespace that is associated with the database.
+
+### ALLOW_CONNECTIONS
+
+Specify `false` to disallow connections to this database. Default is `true`, which allows this database to be cloned by any user with `CREATEDB` privileges.
+
+### CONNECTION_LIMIT
+
+Specify how many concurrent connections can be made to this database. Default of `-1` allows unlimited concurrent connections.
+
+### IS_TEMPLATE
+
+S`true` — This database can be cloned by any user with `CREATEDB` privileges.
+Specify `false` to Only superusers or the owner of the database can clone it.
 
 ## See also
 
-[`CREATE DATABASE`](../ddl_create_database)
-[`DROP DATABASE`](../ddl_drop_database)
-[Other YSQL Statements](..)
+- [`CREATE DATABASE`](../ddl_create_database)
+- [`CREATE TABLESPACE`](../ddl_create_tablespace)
+- [`DROP DATABASE`](../ddl_drop_database)
+- [`SET`](../cmd_set)

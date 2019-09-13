@@ -25,9 +25,7 @@
 namespace yb {
 namespace client {
 
-namespace {
-
-static Status PBToClientTableType(
+Status YBTable::PBToClientTableType(
     TableType table_type_from_pb,
     YBTableType* client_table_type) {
   switch (table_type_from_pb) {
@@ -50,7 +48,23 @@ static Status PBToClientTableType(
     "Invalid table type from master response: $0", table_type_from_pb));
 }
 
-} // namespace
+TableType YBTable::ClientToPBTableType(YBTableType table_type) {
+  switch (table_type) {
+    case YBTableType::YQL_TABLE_TYPE:
+      return TableType::YQL_TABLE_TYPE;
+    case YBTableType::REDIS_TABLE_TYPE:
+      return TableType::REDIS_TABLE_TYPE;
+    case YBTableType::PGSQL_TABLE_TYPE:
+      return TableType::PGSQL_TABLE_TYPE;
+    case YBTableType::TRANSACTION_STATUS_TABLE_TYPE:
+      return TableType::TRANSACTION_STATUS_TABLE_TYPE;
+    case YBTableType::UNKNOWN_TABLE_TYPE:
+      break;
+  }
+  FATAL_INVALID_ENUM_VALUE(YBTableType, table_type);
+  // Returns a dummy value to avoid compilation warning.
+  return TableType::DEFAULT_TABLE_TYPE;
+}
 
 YBTable::YBTable(client::YBClient* client, const YBTableInfo& info)
     : client_(client),

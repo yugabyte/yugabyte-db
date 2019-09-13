@@ -30,6 +30,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
+import static play.mvc.Http.Status.FORBIDDEN;
 
 import java.io.File;
 import java.io.IOException;
@@ -62,6 +63,7 @@ import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.junit.Ignore;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Matchers;
@@ -77,17 +79,24 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 
+import org.mockito.Mock;
+import org.mockito.runners.MockitoJUnitRunner;
 import org.yb.client.YBClient;
 import play.Application;
+import play.Configuration;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Result;
 import play.test.Helpers;
 import play.test.WithApplication;
 
+@RunWith(MockitoJUnitRunner.class)
 public class UniverseControllerTest extends WithApplication {
   private static Commissioner mockCommissioner;
   private static MetricQueryHelper mockMetricQueryHelper;
+
+  @Mock
+  play.Configuration mockAppConfig;
   private Customer customer;
   private String authToken;
   private YBClientService mockService;
@@ -198,7 +207,11 @@ public class UniverseControllerTest extends WithApplication {
   public void testUniverseListWithInvalidUUID() {
     UUID invalidUUID = UUID.randomUUID();
     Result result = doRequestWithAuthToken("GET", "/api/customers/" + invalidUUID + "/universes", authToken);
-    assertBadRequest(result, "Invalid Customer UUID: " + invalidUUID);
+    assertEquals(FORBIDDEN, result.status());
+
+    String resultString = contentAsString(result);
+    assertThat(resultString, allOf(notNullValue(),
+        equalTo("Unable To Authenticate Customer")));
   }
 
   @Test
@@ -206,7 +219,11 @@ public class UniverseControllerTest extends WithApplication {
     UUID invalidUUID = UUID.randomUUID();
     String url = "/api/customers/" + invalidUUID + "/universes/" + UUID.randomUUID();
     Result result = doRequestWithAuthToken("GET", url, authToken);
-    assertBadRequest(result, "Invalid Customer UUID: " + invalidUUID);
+    assertEquals(FORBIDDEN, result.status());
+
+    String resultString = contentAsString(result);
+    assertThat(resultString, allOf(notNullValue(),
+        equalTo("Unable To Authenticate Customer")));
   }
 
   @Test
@@ -697,10 +714,10 @@ public class UniverseControllerTest extends WithApplication {
 
   private ObjectNode getValidPayload(UUID univUUID, boolean isRolling) {
     ObjectNode bodyJson = Json.newObject()
-       .put("universeUUID", univUUID.toString())
-       .put("taskType", "Software")
-       .put("rollingUpgrade", isRolling)
-	   .put("ybSoftwareVersion", "0.0.1");
+                              .put("universeUUID", univUUID.toString())
+                              .put("taskType", "Software")
+                              .put("rollingUpgrade", isRolling)
+                              .put("ybSoftwareVersion", "0.0.1");
     ObjectNode userIntentJson = Json.newObject()
        .put("universeName", "Single UserUniverse")
        .put("ybSoftwareVersion", "0.0.1");
@@ -1485,7 +1502,7 @@ public class UniverseControllerTest extends WithApplication {
     }
 
     // Set placement info with addition of nodes that is more than what has been configured
-    for (int m = 0; m < 2; m++) {
+    for (int m = 0; m < 7; m++) {
       NodeDetails nd= new NodeDetails();
       nd.state = NodeDetails.NodeState.ToBeAdded;
       nd.azUuid = az1.uuid;
@@ -1499,5 +1516,54 @@ public class UniverseControllerTest extends WithApplication {
     String url = "/api/customers/" + customer.uuid + "/universe_configure";
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, topJson);
     assertBadRequest(result, "Invalid Node/AZ combination for given instance type type.small");
+  }
+
+  @Test
+  public void testCreateUniverseEncryptionAtRest() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class),
+            Matchers.any(UniverseDefinitionTaskParams.class)))
+            .thenReturn(fakeTaskUUID);
+    when(mockAppConfig.getString("yb.storage.path")).thenReturn("/opt/yugaware");
+    Provider p = ModelFactory.awsProvider(customer);
+
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.create(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.create(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone.create(r, "az-3", "PlacementAZ 3", "subnet-3");
+    InstanceType i = InstanceType.upsert(p.code, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    ObjectNode bodyJson = (ObjectNode) Json.toJson(taskParams);
+
+    ObjectNode userIntentJson = Json.newObject()
+            .put("universeName", "encryptionAtRestUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("enableNodeToNodeEncrypt", true)
+            .put("enableClientToNodeEncrypt", true)
+            .put("enableEncryptionAtRest", true)
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.uuid.toString());
+
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    ArrayNode clustersJsonArray = Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    ArrayNode nodeDetails = Json.newArray().add(Json.newObject().put("nodeName", "testing-1"));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", nodeDetails);
+    bodyJson.put("nodePrefix", "demo-node");
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    ArgumentCaptor<UniverseTaskParams> argCaptor = ArgumentCaptor.forClass(UniverseTaskParams.class);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+
+    // Check that the encryption key file was created in file system
+    File key = new File("/opt/yugaware/certs/" + customer.uuid.toString() + "/universe." + json.get("universeUUID").asText() + ".key");
+    assertTrue(key.exists());
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), argCaptor.capture());
   }
 }

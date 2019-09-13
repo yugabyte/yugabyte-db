@@ -75,9 +75,11 @@
   cursor: pointer;
   text-align: center;
   padding-top: 11px;
+  padding-left: 15px;
+  padding-right: 15px;
   color: #444;
   background-color: #DDD;
-  boxShadow: 0 0 5px -1px rgba(0,0,0,0.2);
+  box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);
   vertical-align: middle;
   @include transition(0.125s);
 

@@ -53,6 +53,7 @@
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/message.h>
 #include <google/protobuf/message_lite.h>
+#include <google/protobuf/util/message_differencer.h>
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
@@ -675,6 +676,16 @@ Status WritePBContainerToPath(Env* env, const std::string& path,
                           "Failed to SyncDir() parent of " + path);
   }
   return Status::OK();
+}
+
+bool ArePBsEqual(const google::protobuf::Message& prev_pb,
+                 const google::protobuf::Message& new_pb,
+                 std::string* diff_str) {
+  google::protobuf::util::MessageDifferencer md;
+  if (diff_str) {
+    md.ReportDifferencesToString(diff_str);
+  }
+  return md.Compare(prev_pb, new_pb);
 }
 
 } // namespace pb_util

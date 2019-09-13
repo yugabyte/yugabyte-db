@@ -140,7 +140,7 @@ void MasterServiceImpl::TSHeartbeat(const TSHeartbeatRequestPB* req,
 
   s = server_->catalog_manager()->FillHeartbeatResponse(req, resp);
   if (!s.ok()) {
-    LOG(WARNING) << "Unable to set universe key registry: " << s.ToString();
+    LOG(WARNING) << "Unable to fill heartbeat response: " << s.ToString();
     rpc.RespondFailure(s);
   }
 
@@ -698,6 +698,24 @@ void MasterServiceImpl::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* 
                                             IsEncryptionEnabledResponsePB* resp,
                                             rpc::RpcContext rpc) {
   HandleIn(req, resp, &rpc, &enterprise::CatalogManager::IsEncryptionEnabled);
+}
+
+void MasterServiceImpl::SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
+                                                 SetupUniverseReplicationResponsePB* resp,
+                                                 rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::SetupUniverseReplication);
+}
+
+void MasterServiceImpl::DeleteUniverseReplication(const DeleteUniverseReplicationRequestPB* req,
+                                                  DeleteUniverseReplicationResponsePB* resp,
+                                                  rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::DeleteUniverseReplication);
+}
+
+void MasterServiceImpl::GetUniverseReplication(const GetUniverseReplicationRequestPB* req,
+                                               GetUniverseReplicationResponsePB* resp,
+                                               rpc::RpcContext rpc) {
+  HandleIn(req, resp, &rpc, &enterprise::CatalogManager::GetUniverseReplication);
 }
 
 } // namespace master

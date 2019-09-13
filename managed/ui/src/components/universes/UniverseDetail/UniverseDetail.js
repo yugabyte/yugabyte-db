@@ -178,7 +178,6 @@ class UniverseDetail extends Component {
 
     const defaultTab = isNotHidden(currentCustomer.data.features, "universes.details.overview") ? "overview" : "overview";
     const activeTab = tab || defaultTab;
-
     const tabElements = [
       //common tabs for every universe
       ...[
@@ -194,7 +193,8 @@ class UniverseDetail extends Component {
               width={width}
               universe={universe}
               updateAvailable={updateAvailable}
-              showSoftwareUpgradesModal={showSoftwareUpgradesModal} />
+              showSoftwareUpgradesModal={showSoftwareUpgradesModal}
+              tabRef={this.ybTabPanel} />
           </Tab.Pane>,
 
         isNotHidden(currentCustomer.data.features, "universes.details.tables") &&
@@ -244,8 +244,13 @@ class UniverseDetail extends Component {
             key="tasks-tab"
             mountOnEnter={true}
             unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, "universes.details.tasks")} >
-            <UniverseTaskList universe={universe} tasks={tasks} />
+            disabled={isDisabled(currentCustomer.data.features, "universes.details.tasks")}
+          >
+            <UniverseTaskList
+              universe={universe}
+              tasks={tasks}
+              isCommunityEdition={!!customer.INSECURE_apiToken}
+            />
           </Tab.Pane>
       ],
       //tabs relevant for non-imported universes only
@@ -264,7 +269,7 @@ class UniverseDetail extends Component {
         isNotHidden(currentCustomer.data.features, "universes.details.health") &&
           <Tab.Pane
             eventKey={"health"}
-            title="Health"
+            title="Health"x
             key="health-tab"
             mountOnEnter={true}
             unmountOnExit={true}
@@ -302,7 +307,7 @@ class UniverseDetail extends Component {
           {/* UNIVERSE EDIT */}
           <div className="universe-detail-btn-group">
 
-            <UniverseConnectModal/> 
+            <UniverseConnectModal/>
 
             <DropdownButton title="More" className={this.showUpgradeMarker() ? "btn-marked": ""} id="bg-nested-dropdown" pullRight>
               <YBMenuItem eventKey="1" onClick={showSoftwareUpgradesModal} availability={getFeatureState(currentCustomer.data.features, "universes.details.overview.upgradeSoftware")}>
@@ -311,7 +316,7 @@ class UniverseDetail extends Component {
                 </YBLabelWithIcon>
                 { this.showUpgradeMarker() ? <span className="badge badge-pill badge-red pull-right">{updateAvailable}</span> : ""}
               </YBMenuItem>
-              {!isReadOnlyUniverse && isNotHidden(currentCustomer.data.features, "universes.details.metrics") && 
+              {!isReadOnlyUniverse && isNotHidden(currentCustomer.data.features, "universes.details.metrics") &&
                 <YBMenuItem eventKey="2" to={`/universes/${uuid}/edit/primary`} availability={getFeatureState(currentCustomer.data.features, "universes.details.metrics")}>
                   <YBLabelWithIcon icon="fa fa-pencil">
                   Edit Universe
@@ -412,7 +417,7 @@ class UniverseTaskList extends Component {
   };
 
   render() {
-    const {universe: {currentUniverse}, tasks: {customerTaskList}} = this.props;
+    const {universe: {currentUniverse}, tasks: {customerTaskList}, isCommunityEdition} = this.props;
     const currentUniverseTasks = this.tasksForUniverse();
     let universeTaskUUIDs = [];
     const universeTaskHistoryArray = [];
@@ -429,7 +434,17 @@ class UniverseTaskList extends Component {
       }).filter(Boolean);
     }
     if (isNonEmptyArray(universeTaskHistoryArray)) {
-      universeTaskHistory = <TaskListTable taskList={universeTaskHistoryArray} title={"Task History"}/>;
+      const errorPlatformMessage = (
+        <div className="oss-unavailable-warning">
+          Only available on YugaByte Platform.
+        </div>
+      );
+      universeTaskHistory = (
+        <TaskListTable taskList={universeTaskHistoryArray || []}
+          overrideContent={isCommunityEdition && errorPlatformMessage}
+          title={"Task History"}
+        />
+      );
     }
     if (isNonEmptyArray(customerTaskList) && isNonEmptyArray(universeTaskUUIDs)) {
       currentTaskProgress = <TaskProgressContainer taskUUIDs={universeTaskUUIDs} type="StepBar" timeoutInterval={TASK_SHORT_TIMEOUT}/>;

@@ -4,7 +4,10 @@ import Cookies from 'js-cookie';
 import React from 'react';
 import { Route, IndexRoute, browserHistory } from 'react-router';
 
-import { validateToken, validateFromTokenResponse, fetchCustomerCount, customerTokenError, resetCustomer, insecureLogin } from './actions/customers';
+import { validateToken, validateFromTokenResponse,
+  fetchCustomerCount, customerTokenError,
+  resetCustomer, insecureLogin,
+  insecureLoginResponse } from './actions/customers';
 import App from './app/App';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -26,10 +29,12 @@ import Certificates from './pages/Certificates';
 import Releases from './pages/Releases';
 
 const clearCredentials = () => {
-  localStorage.clear();
-  Cookies.remove("apiToken");
-  Cookies.remove("authToken");
-  Cookies.remove("customerId");
+  // Don't clear all of localStorage so we can keep the introduction item
+  localStorage.removeItem('apiToken');
+  localStorage.removeItem('authToken');
+  Cookies.remove('apiToken');
+  Cookies.remove('authToken');
+  Cookies.remove('customerId');
   browserHistory.push('/');
 };
 
@@ -43,6 +48,7 @@ function validateSession(store, replacePath, callback) {
       ((!apiToken || apiToken === '') && (!authToken || authToken === ''))) {
     store.dispatch(insecureLogin()).then((response) => {
       if (response.payload.status === 200) {
+        store.dispatch(insecureLoginResponse(response));
         localStorage.setItem('apiToken', response.payload.data.apiToken);
         localStorage.setItem('customerId', response.payload.data.customerUUID);
         browserHistory.push('/');

@@ -15,6 +15,7 @@ export const PROVIDER_TYPES = [
   { code: "gcp", name: "Google", label: "Google Cloud" },
   { code: "onprem", name: "On Premises", label: "On-Premises Datacenter"},
   { code: "kubernetes", name: "Kubernetes", label: "Kubernetes"},
+  { code: "cloud-1", name: "Cloud-1", label: "Cloud-1"},
   { code: "other", name: "Other", label: "Custom Datacenter"}
 ];
 

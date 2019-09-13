@@ -41,6 +41,7 @@ namespace yb {
 namespace client {
 
 const MonoDelta kTransactionApplyTime = 6s * kTimeMultiplier;
+const MonoDelta kIntentsCleanupTime = 6s * kTimeMultiplier;
 
 // We use different sign to distinguish inserted and updated values for testing.
 int32_t GetMultiplier(const WriteOpType op_type) {
@@ -92,6 +93,9 @@ void DisableTransactionTimeout() {
 
 void TransactionTestBase::SetUp() {
   FLAGS_combine_batcher_errors = true;
+  FLAGS_log_segment_size_bytes = log_segment_size_bytes();
+  FLAGS_log_min_seconds_to_retain = 5;
+  FLAGS_intents_flush_max_delay_ms = 250;
 
   server::SkewedClock::Register();
   FLAGS_time_source = server::SkewedClock::kName;
@@ -101,10 +105,6 @@ void TransactionTestBase::SetUp() {
   if (create_table_) {
     CreateTable(Transactional::kTrue);
   }
-
-  FLAGS_log_segment_size_bytes = log_segment_size_bytes();
-  FLAGS_log_min_seconds_to_retain = 5;
-  FLAGS_intents_flush_max_delay_ms = 250;
 
   HybridTime::TEST_SetPrettyToString(true);
 
@@ -323,6 +323,14 @@ bool TransactionTestBase::CheckAllTabletsRunning() {
     }
   }
   return result;
+}
+
+IsolationLevel TransactionTestBase::GetIsolationLevel() {
+  return isolation_level_;
+}
+
+void TransactionTestBase::SetIsolationLevel(IsolationLevel isolation_level) {
+  isolation_level_ = isolation_level;
 }
 
 } // namespace client

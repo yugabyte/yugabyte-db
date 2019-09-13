@@ -45,6 +45,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
+#include "yb/util/errno.h"
 #include "yb/util/metrics.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
@@ -444,7 +445,7 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
   }
 
   if (PREDICT_FALSE(!token->MaySubmitNewTasks())) {
-    return STATUS(ServiceUnavailable, "Thread pool token was shut down.", "", ESHUTDOWN);
+    return STATUS(ServiceUnavailable, "Thread pool token was shut down.", "", Errno(ESHUTDOWN));
   }
 
   // Size limit check.
@@ -454,7 +455,7 @@ Status ThreadPool::DoSubmit(const std::shared_ptr<Runnable> task, ThreadPoolToke
     return STATUS(ServiceUnavailable,
                   Substitute("Thread pool is at capacity ($0/$1 tasks running, $2/$3 tasks queued)",
                              num_threads_, max_threads_, total_queued_tasks_, max_queue_size_),
-                  "", ESHUTDOWN);
+                  "", Errno(ESHUTDOWN));
   }
 
   // Should we create another thread?

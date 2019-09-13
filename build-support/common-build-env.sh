@@ -1897,7 +1897,8 @@ handle_build_root_from_current_dir() {
     d=${d%/*}
   done
 
-  fatal "Working directory of the compiler '$PWD' is not within a valid YugaByte build root."
+  fatal "Working directory of the compiler '$PWD' is not within a valid YugaByte build root: " \
+        "'$BUILD_ROOT_BASENAME_RE'"
 }
 
 validate_numeric_arg_range() {

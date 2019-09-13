@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-SMALLSERIAL, SERIAL, and BIGSERIAL are short notation for sequences of SMALLINTs, INTEGERs, and BIGINTs respectively.
+SMALLSERIAL, SERIAL, and BIGSERIAL are short notation for sequences of `SMALLINT`, `INTEGER`, and `BIGINT` respectively.
 
 ## Description
 

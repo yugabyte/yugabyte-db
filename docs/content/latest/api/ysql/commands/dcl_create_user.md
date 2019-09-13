@@ -1,7 +1,8 @@
 ---
 title: CREATE USER
+linkTitle: CREATE USER
 description: Users and roles
-summary: Users and roles
+summary: CREATE USER
 menu:
   latest:
     identifier: api-ysql-commands-create-users
@@ -14,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-YugaByte supports the `CREATE USER` and limited `GRANT`/`REVOKE` commands to create new roles and set/remove permissions.
+Use the `CREATE USER` statement, and limited `GRANT` or `REVOKE` statements, to create new roles and set or remove permissions.
 
 ## Syntax
 
@@ -42,36 +43,19 @@ YugaByte supports the `CREATE USER` and limited `GRANT`/`REVOKE` commands to cre
   </div>
 </div>
 
+## Semantics
 
-- Not all GRANT and REVOKE options are supported yet in YSQL, but the following GRANT and REVOKE statements are supported in YSQL.
+### *name*
 
-```
-postgres=# GRANT ALL ON DATABASE name TO name;
-postgres=# REVOKE ALL ON DATABASE name FROM name;
-```
-
-- For the list of possible `privileges` or `privilege_target`s see [this](https://www.postgresql.org/docs/9.0/static/sql-grant.html) page.
+Specify the new database role.
 
 ## Examples
 
-- Create a sample role.
+### Create a sample role
 
 ```sql
 postgres=# CREATE USER John;
+CREATE ROLE
 ```
 
-- Grant John all permissions on the `postgres` database.
-
-```sql
-postgres=# GRANT ALL ON DATABASE postgres TO John;
-```
-
-- Remove John's permissions from the `postgres` database.
-
-```sql
-postgres=# REVOKE ALL ON DATABASE postgres FROM John;
-```
-
-## See also
-
-[Other YSQL Statements](..)
+Note that `CREATE ROLE` is returned because `CREATE USER` is an alias for `CREATE ROLE`.

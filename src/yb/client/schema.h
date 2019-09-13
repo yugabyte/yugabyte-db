@@ -351,6 +351,8 @@ class YBSchema {
 
   bool Equals(const YBSchema& other) const;
 
+  Result<bool> Equals(const SchemaPB& pb_schema) const;
+
   const TableProperties& table_properties() const;
 
   YBColumnSchema Column(size_t idx) const;
@@ -393,6 +395,8 @@ class YBSchema {
   int FindColumn(const GStringPiece& name) const {
     return schema_->find_column(name);
   }
+
+  string ToString() const;
 
  private:
   friend YBSchema YBSchemaFromSchema(const Schema& schema);

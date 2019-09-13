@@ -15,7 +15,9 @@ export { default as YBSelectWithLabel, YBUnControlledSelect, YBControlledSelect,
 export { default as YBTextInputWithLabel, YBTextInput, YBInputField, YBControlledTextInput } from './YBTextInput';
 export { default as YBTextArea} from './YBTextArea';
 export { default as YBToggle } from './YBToggle';
+export { default as YBFormToggle } from './YBFormToggle';
 export { default as YBDropZone, YBDropZoneWithLabel } from './YBDropZone';
 export { default as YBFormSelect } from './YBFormSelect';
 export { default as YBFormInput } from './YBFormInput';
+export { default as YBFormDatePicker } from './YBFormDatePicker';
 export { default as YBFormDropZone } from './YBFormDropZone';

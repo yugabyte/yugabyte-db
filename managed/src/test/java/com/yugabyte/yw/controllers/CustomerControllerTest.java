@@ -45,6 +45,7 @@ import static play.inject.Bindings.bind;
 import static play.test.Helpers.*;
 import static org.junit.Assert.*;
 import static play.mvc.Http.Status.OK;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.fakeRequest;
 
 public class CustomerControllerTest extends WithApplication {
@@ -90,10 +91,11 @@ public class CustomerControllerTest extends WithApplication {
     UUID invalidUUID = UUID.randomUUID();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("GET", "/api/customers/" + invalidUUID).cookie(validCookie));
-    assertEquals(BAD_REQUEST, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(FORBIDDEN, result.status());
 
-    assertThat(json.get("error").asText(), is(containsString("Invalid Customer UUID:" + invalidUUID)));
+    String resultString = contentAsString(result);
+    assertThat(resultString, allOf(notNullValue(),
+        equalTo("Unable To Authenticate Customer")));
   }
 
   @Test
@@ -188,10 +190,11 @@ public class CustomerControllerTest extends WithApplication {
     UUID invalidUUID = UUID.randomUUID();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("PUT", "/api/customers/" + invalidUUID).cookie(validCookie));
-    assertEquals(BAD_REQUEST, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(FORBIDDEN, result.status());
 
-    assertThat(json.get("error").asText(), is(containsString("Invalid Customer UUID:" + invalidUUID)));
+    String resultString = contentAsString(result);
+    assertThat(resultString, allOf(notNullValue(),
+        equalTo("Unable To Authenticate Customer")));
   }
 
   @Test
@@ -211,9 +214,11 @@ public class CustomerControllerTest extends WithApplication {
     String authToken = customer.createAuthToken();
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
     Result result = route(fakeRequest("DELETE", "/api/customers/" + invalidUUID).cookie(validCookie));
-    assertEquals(BAD_REQUEST, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    assertThat(json.get("error").asText(), is(containsString("Invalid Customer UUID:" + invalidUUID)));
+    assertEquals(FORBIDDEN, result.status());
+
+    String resultString = contentAsString(result);
+    assertThat(resultString, allOf(notNullValue(),
+        equalTo("Unable To Authenticate Customer")));
   }
 
   @Test
@@ -483,7 +488,11 @@ public class CustomerControllerTest extends WithApplication {
   public void testCustomerHostInfoWithInvalidCustomer() {
     UUID randomUUID = UUID.randomUUID();
     Result result = getHostInfo(randomUUID);
-    assertBadRequest(result, "Invalid Customer UUID: " + randomUUID);
+    assertEquals(FORBIDDEN, result.status());
+
+    String resultString = contentAsString(result);
+    assertThat(resultString, allOf(notNullValue(),
+        equalTo("Unable To Authenticate Customer")));
   }
 
   @Test

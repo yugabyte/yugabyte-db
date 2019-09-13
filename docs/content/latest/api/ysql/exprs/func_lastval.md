@@ -14,7 +14,7 @@ showAsideToc: true
 
 ## Synopsis
 
-The `lastval()` function returns the value returned from the last call to `nextval()` (for any sequence) in the current session.
+Use the `lastval()` function to return the value returned from the last call to `nextval()`, for any sequence, in the current session.
 
 ## Semantics
 

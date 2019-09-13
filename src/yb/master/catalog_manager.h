@@ -151,6 +151,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   explicit CatalogManager(Master *master);
   virtual ~CatalogManager();
 
+  static YQLDatabase GetDatabaseTypeForTable(const TableType table_type);
+
   CHECKED_STATUS Init(bool is_first_run);
 
   void Shutdown();
@@ -301,6 +303,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Delete all user tables in YSQL database.
   CHECKED_STATUS DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& database,
+                                    DeleteNamespaceResponsePB* resp,
                                     rpc::RpcContext* rpc);
 
   // List all the current namespaces.
@@ -344,6 +347,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
   // Delete CDC streams for a table.
   virtual CHECKED_STATUS DeleteCDCStreamsForTable(const TableId& table_id);
+  virtual CHECKED_STATUS DeleteCDCStreamsForTables(const vector<TableId>& table_ids);
 
   virtual CHECKED_STATUS ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
@@ -1081,7 +1085,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
   scoped_refptr<TasksTracker> tasks_tracker_;
 
  private:
-  virtual bool CDCStreamExists(const CDCStreamId& id);
+  virtual bool CDCStreamExistsUnlocked(const CDCStreamId& id);
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

@@ -1121,8 +1121,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE ROLE test_role LOGIN");
 
-      // Set configuration variable for "test_role" in "postgres".
-      statement.execute("ALTER ROLE test_role IN DATABASE postgres SET search_path TO 'some path'");
+      // Set configuration variable for "test_role" in "yugabyte".
+      statement.execute("ALTER ROLE test_role IN DATABASE yugabyte SET search_path TO 'some path'");
 
       try (Connection connection1 = newConnectionBuilder().setUser("test_role").connect();
            Statement statement1 = connection1.createStatement()) {

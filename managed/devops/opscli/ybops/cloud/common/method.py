@@ -418,6 +418,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--cert_valid_duration', default=365)
         self.parser.add_argument('--org_name', default="exmaple.com")
         self.parser.add_argument('--certs_node_dir', default="yugabyte-tls-config")
+        self.parser.add_argument('--encryption_key_source_file')
+        self.parser.add_argument('--encryption_key_target_dir', default="yugabyte-encryption-files")
 
         self.parser.add_argument('--master_http_port', default=7000)
         self.parser.add_argument('--master_rpc_port', default=7100)
@@ -448,7 +450,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 "redis_proxy_rpc_port": args.redis_proxy_rpc_port,
                 "cert_valid_duration": args.cert_valid_duration,
                 "org_name": args.org_name,
-                "certs_node_dir": args.certs_node_dir
+                "certs_node_dir": args.certs_node_dir,
+                "encryption_key_dir": args.encryption_key_target_dir
             })
 
             if args.master_addresses_for_master is not None:
@@ -507,17 +510,24 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     args.private_key_file)
 
         logging.info("Configuring Instance: {}".format(args.search_pattern))
+        ssh_options = {
+            # TODO: replace with args.ssh_user when it's setup in the flow
+            "ssh_user": self.get_ssh_user(),
+            "private_key_file": args.private_key_file
+        }
+        ssh_options.update(get_ssh_host_port(host_info))
+
         if args.rootCA_cert and args.rootCA_key is not None:
-            ssh_options = {
-                # TODO: replace with args.ssh_user when it's setup in the flow
-                "ssh_user": self.get_ssh_user(),
-                "private_key_file": args.private_key_file
-            }
-            ssh_options.update(get_ssh_host_port(host_info))
             logging.info("Creating and copying over client TLS certificate")
             self.cloud.generate_client_cert(self.extra_vars, ssh_options)
+        if args.encryption_key_source_file is not None:
+            self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
+            logging.info("Copying over encryption-at-rest certificate from {} to {}"
+                            .format(args.encryption_key_source_file, args.encryption_key_target_dir))
+            self.cloud.create_encryption_at_rest_file(self.extra_vars, ssh_options)
+
         self.cloud.setup_ansible(args).run("configure-{}.yml".format(args.type),
-                                           self.extra_vars, host_info)
+            self.extra_vars, host_info)
 
 
 class InitYSQLMethod(AbstractInstancesMethod):

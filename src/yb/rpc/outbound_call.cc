@@ -395,9 +395,15 @@ void OutboundCall::InvokeCallbackSync() {
 
     LOG(WARNING) << "RPC callback for " << ToString() << " took " << time_spent;
   }
+
+  // Could be destroyed during callback. So reset it.
+  controller_ = nullptr;
+  response_ = nullptr;
 }
 
 void OutboundCall::SetResponse(CallResponse&& resp) {
+  DCHECK(!IsFinished());
+
   auto now = MonoTime::Now();
   TRACE_TO_WITH_TIME(trace_, now, "Response received.");
   // Track time taken to be responded.
@@ -419,6 +425,9 @@ void OutboundCall::SetResponse(CallResponse&& resp) {
     }
     if (SetState(FINISHED_SUCCESS)) {
       InvokeCallback();
+    } else {
+      LOG(DFATAL) << "Success of already finished call: "
+                  << RpcCallState_Name(state_.load(std::memory_order_acquire));
     }
   } else {
     // Error
@@ -454,6 +463,8 @@ void OutboundCall::SetSent() {
 }
 
 void OutboundCall::SetFinished() {
+  DCHECK(!IsFinished());
+
   // Track time taken to be responded.
   if (outbound_call_metrics_) {
     outbound_call_metrics_->time_to_response->Increment(
@@ -466,6 +477,8 @@ void OutboundCall::SetFinished() {
 }
 
 void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB> err_pb) {
+  DCHECK(!IsFinished());
+
   TRACE_TO(trace_, "Call Failed.");
   bool invoke_callback;
   {
@@ -485,6 +498,8 @@ void OutboundCall::SetFailed(const Status &status, std::unique_ptr<ErrorStatusPB
 }
 
 void OutboundCall::SetTimedOut() {
+  DCHECK(!IsFinished());
+
   TRACE_TO(trace_, "Call TimedOut.");
   bool invoke_callback;
   {

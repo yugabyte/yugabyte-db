@@ -512,6 +512,12 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
   return Status::OK();
 }
 
+Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
+                                    StatusCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->GetTableSchemaById(this, table_id, deadline, info, callback);
+}
+
 Status YBClient::CreateNamespace(const std::string& namespace_name,
                                  const boost::optional<YQLDatabase>& database_type,
                                  const std::string& creator_role_name,
@@ -903,6 +909,13 @@ Result<CDCStreamId> YBClient::CreateCDCStream(
   return resp.stream_id();
 }
 
+void YBClient::CreateCDCStream(const TableId& table_id,
+                               const std::unordered_map<std::string, std::string>& options,
+                               CreateCDCStreamCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  data_->CreateCDCStream(this, table_id, options, deadline, callback);
+}
+
 CHECKED_STATUS YBClient::GetCDCStream(const CDCStreamId& stream_id,
                                       TableId* table_id,
                                       std::unordered_map<std::string, std::string>* options) {
@@ -934,6 +947,11 @@ CHECKED_STATUS YBClient::DeleteCDCStream(const CDCStreamId& stream_id) {
   DeleteCDCStreamResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, DeleteCDCStream);
   return Status::OK();
+}
+
+void YBClient::DeleteCDCStream(const CDCStreamId& stream_id, StatusCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  data_->DeleteCDCStream(this, stream_id, deadline, callback);
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only) {
@@ -977,6 +995,23 @@ Result<bool> YBClient::IsLoadBalanced(uint32_t num_servers) {
     return Status::OK();
   }();
   return s.ok();
+}
+
+Status YBClient::GetTabletsFromTableId(const string& table_id,
+                                       const int32_t max_tablets,
+                                       RepeatedPtrField<TabletLocationsPB>* tablets) {
+  GetTableLocationsRequestPB req;
+  GetTableLocationsResponsePB resp;
+  req.mutable_table()->set_table_id(table_id);
+
+  if (max_tablets == 0) {
+    req.set_max_returned_locations(std::numeric_limits<int32_t>::max());
+  } else if (max_tablets > 0) {
+    req.set_max_returned_locations(max_tablets);
+  }
+  CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetTableLocations);
+  *tablets = resp.tablet_locations();
+  return Status::OK();
 }
 
 Status YBClient::GetTablets(const YBTableName& table_name,
@@ -1068,6 +1103,10 @@ const std::string& YBClient::proxy_uuid() const {
 
 const ClientId& YBClient::id() const {
   return data_->id_;
+}
+
+const CloudInfoPB& YBClient::cloud_info() const {
+  return data_->cloud_info_pb_;
 }
 
 std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId(

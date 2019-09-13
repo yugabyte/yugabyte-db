@@ -23,8 +23,7 @@ export default class YBModalForm extends Component {
           initialValues={this.props.initialValues}
           validationSchema={this.props.validationSchema}
           onSubmit={(values, actions) => {
-            this.props.onFormSubmit(values);
-            actions.setSubmitting(false);
+            this.props.onFormSubmit(values, actions);
           }}
           render={props => (
             <form name={formName} onSubmit={props.handleSubmit}>
@@ -36,12 +35,12 @@ export default class YBModalForm extends Component {
                 </div>
               </Modal.Header>
               <Modal.Body>
-                {this.props.children}
+                {this.props.render ? this.props.render(props) : this.props.children}
               </Modal.Body>
               {(footerAccessory || showCancelButton || onFormSubmit) &&
                 <Modal.Footer>
                   <div className={footerButtonClass}>
-                    <YBButton btnClass="btn btn-orange pull-right"
+                    <YBButton btnClass="btn btn-orange pull-right" loading={props.isSubmitting}
                       btnText={submitLabel} btnType="submit" disabled={props.isSubmitting} />
                     {showCancelButton && <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />}
                     {footerAccessory && <div className="pull-left modal-accessory">{footerAccessory}</div>}

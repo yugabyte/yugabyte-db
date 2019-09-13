@@ -36,6 +36,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
 public class ScheduleControllerTest extends FakeDBApplication {
@@ -73,7 +74,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testListWithValidUniverse() {
+  public void testListWithValidCustomer() {
     Result r = listSchedules(defaultCustomer.uuid);
     assertOk(r);
     JsonNode resultJson = Json.parse(contentAsString(r));
@@ -82,10 +83,12 @@ public class ScheduleControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testListWithInvalidUniverse() {
+  public void testListWithInvalidCustomer() {
     UUID invalidCustomerUUID = UUID.randomUUID();
     Result r = listSchedules(invalidCustomerUUID);
-    assertBadRequest(r, "Invalid Customer UUID: " + invalidCustomerUUID);
+    assertEquals(FORBIDDEN, r.status());
+    String resultString = contentAsString(r);
+    assertEquals(resultString, "Unable To Authenticate Customer");
   }
 
   @Test 
@@ -104,7 +107,9 @@ public class ScheduleControllerTest extends FakeDBApplication {
     JsonNode resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
     assertEquals(1, resultJson.size());
     Result r = deleteSchedule(defaultSchedule.scheduleUUID, invalidCustomerUUID);
-    assertBadRequest(r, "Invalid Customer UUID: " + invalidCustomerUUID);
+    assertEquals(FORBIDDEN, r.status());
+    String resultString = contentAsString(r);
+    assertEquals(resultString, "Unable To Authenticate Customer");
     resultJson = Json.parse(contentAsString(listSchedules(defaultCustomer.uuid)));
     assertEquals(1, resultJson.size());
   }

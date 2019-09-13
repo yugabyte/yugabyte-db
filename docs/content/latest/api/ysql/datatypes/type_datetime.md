@@ -15,7 +15,7 @@ showAsideToc: true
 
 ## Synopsis
 
-DATE, TIME, TIMESTAMP, and INTERVAL data types are supported in YSQL.
+The `DATE`, `TIME`, `TIMESTAMP`, and `INTERVAL` data types are supported in YSQL.
 
 Data type | Description | Min | Max |
 ----------|-------------|-----|-----|
@@ -28,4 +28,4 @@ INTERVAL [ fields ] [ (p) ] | 16-byte time interval | -178000000 years | 1780000
 
 ## Description
 
-- Date and time inputs can be in various format including ISO, SQL, Postgres-extension, and many others.
+Date and time inputs can be in various formats, including ISO, SQL, Postgres-extension, and many others.
