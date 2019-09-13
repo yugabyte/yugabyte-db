@@ -5,8 +5,8 @@ description: Hasura GraphQL engine
 menu:
   latest:
     identifier: hasura
-    parent: ecosystem-integrations
-    weight: 573
+    parent: graphql
+    weight: 582
 isTocNested: true
 showAsideToc: true
 ---
@@ -178,7 +178,7 @@ Fetch a list of authors and a nested list of each author’s articles where the 
 
 ![query array relationship](/images/develop/graphql/hasura/query-relationship-array.png)
 
-### Cleanup
+## Clean up
 
 Now that you're done with this exploration, you can clean up the pieces for your next adventure.
 

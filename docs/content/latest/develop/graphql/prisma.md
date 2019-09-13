@@ -5,8 +5,8 @@ description: Prisma
 menu:
   latest:
     identifier: prisma
-    parent: ecosystem-integrations
-    weight: 573
+    parent: graphql
+    weight: 583
 isTocNested: true
 showAsideToc: true
 ---
@@ -123,7 +123,7 @@ The Prisma service is now connected to the `postgres` database and the Prisma UI
 
 Use the Prisma UI to create the following sample data.
 
-### Create a user Jane with three postings.
+1. Create a user Jane with three postings
 
 ```json
 mutation {
@@ -154,7 +154,7 @@ mutation {
 
 ![Create user Jane with three postings](/images/develop/graphql/prisma/create-user-jane.png)
 
-### Create a user John with two postings.
+2. Create a user John with two postings.
 
 ```json
 mutation {
@@ -169,7 +169,7 @@ mutation {
         },
         {
            text:"John's Second Post"
-	         views: 20
+           views: 20
         }
       ]
     }
@@ -181,7 +181,7 @@ mutation {
 
 ![Create user John with two postings](/images/develop/graphql/prisma/create-user-jane.png)
 
-## Query the data
+## 6. Query the data
 
 Now that you have the sample data, you can run some queries to get a taste of using Prisma to query YugaByte DB.
 
@@ -248,7 +248,7 @@ Now that you have the sample data, you can run some queries to get a taste of us
 
 ![Results - get all posts - ordered by popularity](/images/develop/graphql/prisma/query-get-posts-popular.png)
 
-## Try the Prisma ORM (JavaScript)
+## 7. Try the Prisma ORM (JavaScript)
 
 In this subsection, you can take a quick look at the Prisma ORM functionality.
 
@@ -306,7 +306,7 @@ node index.js
 
 ![Prisma ORM results](/images/develop/graphql/prisma/prisma-orm-results.png)
 
-## Clean Up
+## Clean up
 
 Now that you're done with this exploration, you can clean up the pieces for your next adventure.
 
