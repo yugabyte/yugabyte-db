@@ -548,7 +548,9 @@ Status QLValue::Deserialize(
     return Status::OK();
   }
   if (len > FLAGS_yql_max_value_size) {
-    return STATUS(InvalidArgument, "YQL value too long");
+    return STATUS_SUBSTITUTE(NotSupported,
+        "Value size ($0) is longer than max value size supported ($1)",
+        len, FLAGS_yql_max_value_size);
   }
 
   switch (ql_type->main()) {
