@@ -179,7 +179,7 @@ mutation {
 }
 ```
 
-![Create user John with two postings](/images/develop/graphql/prisma/create-user-jane.png)
+![Create user John with two postings](/images/develop/graphql/prisma/create-user-john.png)
 
 ## 6. Query the data
 
