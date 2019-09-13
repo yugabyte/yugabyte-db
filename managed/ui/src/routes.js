@@ -68,7 +68,7 @@ function validateSession(store, replacePath, callback) {
     store.dispatch(validateToken())
       .then((response) => {
         if (response.error) {
-          const { status } = response.payload;
+          const { status } = response.payload.response;
           switch (status) {
             case 403:
               store.dispatch(resetCustomer());
