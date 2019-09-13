@@ -886,6 +886,154 @@ Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
   return STATUS(TimedOut, "ClusterAdminClient::WaitUntilMasterLeaderReady timed out.");
 }
 
+Status ClusterAdminClient::AddReadReplicaPlacementInfo(
+    const string& placement_info, int replication_factor) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+
+  // Get the cluster config from the master leader.
+  auto resp_cluster_config = VERIFY_RESULT(GetMasterClusterConfig());
+
+  auto* cluster_config = resp_cluster_config.mutable_cluster_config();
+  auto* read_replica_config = cluster_config->mutable_replication_info()->add_read_replicas();
+  string uuid_str = boost::uuids::to_string(Uuid::Generate());
+  read_replica_config->set_placement_uuid(uuid_str);
+
+  // Fill in the placement info with new stuff.
+  RETURN_NOT_OK(FillPlacementInfo(read_replica_config, placement_info));
+
+  master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
+
+  *req_new_cluster_config.mutable_cluster_config() = *cluster_config;
+
+  RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
+                          master_proxy_.get(), req_new_cluster_config,
+                          "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
+
+  LOG(INFO)<< "Created read replica placement with uuid: " << uuid_str;
+  return Status::OK();
+}
+
+CHECKED_STATUS ClusterAdminClient::ModifyReadReplicaPlacementInfo(
+    const std::string& placement_uuid, const std::string& placement_info, int replication_factor) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+
+  // Get the cluster config from the master leader.
+  auto master_resp = VERIFY_RESULT(GetMasterClusterConfig());
+  auto* cluster_config = master_resp.mutable_cluster_config();
+
+  auto* replication_info = cluster_config->mutable_replication_info();
+  int idx = VERIFY_RESULT(GetReadReplicaConfigFromPlacementUuid(replication_info, placement_uuid));
+  auto* read_replica_config = replication_info->mutable_read_replicas(idx);
+
+  auto config_placement_uuid = read_replica_config->placement_uuid();
+  read_replica_config->Clear();
+
+  read_replica_config->set_num_replicas(replication_factor);
+  read_replica_config->set_placement_uuid(config_placement_uuid);
+  RETURN_NOT_OK(FillPlacementInfo(read_replica_config, placement_info));
+
+  master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
+
+  *req_new_cluster_config.mutable_cluster_config() = *cluster_config;
+
+  RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
+                          master_proxy_.get(), req_new_cluster_config,
+                          "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
+
+  LOG(INFO)<< "Changed read replica placement.";
+  return Status::OK();
+}
+
+CHECKED_STATUS ClusterAdminClient::DeleteReadReplicaPlacementInfo(
+    const std::string& placement_uuid) {
+  RETURN_NOT_OK_PREPEND(WaitUntilMasterLeaderReady(), "Wait for master leader failed!");
+
+  auto master_resp = VERIFY_RESULT(GetMasterClusterConfig());
+  auto* cluster_config = master_resp.mutable_cluster_config();
+
+  auto* replication_info = cluster_config->mutable_replication_info();
+  int idx = VERIFY_RESULT(GetReadReplicaConfigFromPlacementUuid(replication_info, placement_uuid));
+
+  replication_info->mutable_read_replicas()->ExtractSubrange(idx, 1, nullptr);
+
+  master::ChangeMasterClusterConfigRequestPB req_new_cluster_config;
+
+  *req_new_cluster_config.mutable_cluster_config() = *cluster_config;
+
+  RETURN_NOT_OK(InvokeRpc(&MasterServiceProxy::ChangeMasterClusterConfig,
+                          master_proxy_.get(), req_new_cluster_config,
+                          "MasterServiceImpl::ChangeMasterClusterConfig call failed."));
+
+  LOG(INFO)<< "Deleted read replica placement.";
+  return Status::OK();
+}
+
+Result<int> ClusterAdminClient::GetReadReplicaConfigFromPlacementUuid(
+    master::ReplicationInfoPB* replication_info, const string& placement_uuid) {
+  if (replication_info->read_replicas_size() == 0) {
+    return STATUS(InvalidCommand, "Need at least one placement info.");
+  }
+
+  if (placement_uuid.empty()) {
+    if (replication_info->read_replicas_size() != 1) {
+      return STATUS(InvalidCommand,
+                    Format("Need to specify placement uuid when there are $0 placements",
+                           replication_info->read_replicas_size()));
+    }
+    return 0;
+  }
+
+  for (int i = 0; i < replication_info->read_replicas_size(); i++) {
+    auto* read_replica_placement = replication_info->mutable_read_replicas(i);
+    if (read_replica_placement->placement_uuid() == placement_uuid) {
+      return i;
+    }
+  }
+
+  return STATUS(InvalidCommand, Format("Could not find existing placement $0.", placement_uuid));
+}
+
+Status ClusterAdminClient::FillPlacementInfo(
+    master::PlacementInfoPB* placement_info_pb, const string& placement_str) {
+
+  std::vector<std::string> placement_info_split = strings::Split(
+      placement_str, ",", strings::SkipEmpty());
+  if (placement_info_split.size() < 1) {
+    return STATUS(InvalidCommand, "Cluster config must be a list of "
+                                  "placement infos seperated by commas. "
+                                  "Format: 'cloud1.region1.zone1:rf,cloud2.region2.zone2:rf, ..."
+        + std::to_string(placement_info_split.size()));
+  }
+
+  for (int iter = 0; iter < placement_info_split.size(); iter++) {
+    std::vector<std::string> placement_block = strings::Split(placement_info_split[iter], ":",
+                                                              strings::SkipEmpty());
+
+    if (placement_block.size() != 2) {
+      return STATUS(InvalidCommand, "Each placement info must be in format placement:rf");
+    }
+
+    int min_num_replicas = boost::lexical_cast<int>(placement_block[1]);
+
+    std::vector<std::string> block = strings::Split(placement_block[0], ".",
+                                                    strings::SkipEmpty());
+    if (block.size() != 3) {
+      return STATUS(InvalidCommand,
+          "Each placement info must have exactly 3 values seperated"
+          "by dots that denote cloud, region and zone. Block: " + placement_info_split[iter]
+          + " is invalid");
+    }
+    auto pb = placement_info_pb->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(block[0]);
+    pb->mutable_cloud_info()->set_placement_region(block[1]);
+    pb->mutable_cloud_info()->set_placement_zone(block[2]);
+
+    pb->set_min_num_replicas(min_num_replicas);
+  }
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::ModifyPlacementInfo(
     std::string placement_info, int replication_factor) {
 

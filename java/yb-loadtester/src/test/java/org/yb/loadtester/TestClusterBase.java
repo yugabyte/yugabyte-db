@@ -392,10 +392,14 @@ public class TestClusterBase extends BaseCQLTest {
   }
 
   protected void addNewTServers(int numTservers) throws Exception {
+    addNewTServers(numTservers, null);
+  }
+
+  protected void addNewTServers(int numTservers, List<String> tserverArgs) throws Exception {
     int expectedTServers = miniCluster.getTabletServers().size() + numTservers;
     // Now double the number of tservers to expand the cluster and verify load spreads.
     for (int i = 0; i < numTservers; i++) {
-      miniCluster.startTServer(null);
+      miniCluster.startTServer(tserverArgs);
     }
 
     // Wait for the CQL client to discover the new nodes.
@@ -405,7 +409,7 @@ public class TestClusterBase extends BaseCQLTest {
     miniCluster.waitForTabletServers(expectedTServers);
   }
 
-  protected void verifyStateAfterTServerAddition() throws Exception {
+  protected void verifyStateAfterTServerAddition(int numTabletServers) throws Exception {
     // Wait for some ops across the entire cluster.
     loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
 
@@ -416,7 +420,7 @@ public class TestClusterBase extends BaseCQLTest {
     verifyMetrics(0);
 
     // Verify live tservers.
-    verifyExpectedLiveTServers(2 * NUM_TABLET_SERVERS);
+    verifyExpectedLiveTServers(numTabletServers);
   }
 
   private void removeTServers(Map<HostAndPort, MiniYBDaemon> originalTServers) throws Exception {
@@ -509,13 +513,42 @@ public class TestClusterBase extends BaseCQLTest {
       Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
     }
 
-    verifyStateAfterTServerAddition();
+    verifyStateAfterTServerAddition(NUM_TABLET_SERVERS * 2);
 
     LOG.info("Cluster Expand Done!");
 
     removeTServers(originalTServers);
 
     LOG.info("Cluster Shrink Done!");
+  }
+
+  protected void performTServerExpandWithLongRBS() throws Exception {
+    // Create a copy to store original tserver list.
+    Map<HostAndPort, MiniYBDaemon> originalTServers = new HashMap<>(miniCluster.getTabletServers());
+    assertEquals(NUM_TABLET_SERVERS, originalTServers.size());
+
+    // Following var is determined based on log.
+    int num_tablets_moved_to_new_tserver = 12;
+
+    int rbs_delay_sec = 15;
+    addNewTServers(1, Arrays.asList("--simulate_long_remote_bootstrap_sec=" + rbs_delay_sec));
+
+    // Load balancer should not become idle while long RBS is half-way.
+    assertFalse(client.waitForLoadBalancerIdle(
+          (num_tablets_moved_to_new_tserver * rbs_delay_sec) / 2));
+
+    // Wait for the load balancer to become idle.
+    assertTrue(client.waitForLoadBalancerIdle(LOADBALANCE_TIMEOUT_MS));
+
+    // Wait for the load to be balanced across the cluster.
+    assertTrue(client.waitForLoadBalance(LOADBALANCE_TIMEOUT_MS, NUM_TABLET_SERVERS + 1));
+
+    // Wait for the partition metadata to refresh.
+    Thread.sleep(2 * MiniYBCluster.CQL_NODE_LIST_REFRESH_SECS * 1000);
+
+    verifyStateAfterTServerAddition(NUM_TABLET_SERVERS + 1);
+
+    LOG.info("Cluster Expand Done!");
   }
 
   protected void updateConfigReplicationFactor(int replFactor) throws Exception {

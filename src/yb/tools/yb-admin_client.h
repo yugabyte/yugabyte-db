@@ -140,6 +140,15 @@ class ClusterAdminClient {
 
   CHECKED_STATUS ModifyPlacementInfo(std::string placement_infos, int replication_factor);
 
+  CHECKED_STATUS AddReadReplicaPlacementInfo(const std::string& placement_info,
+                                             int replication_factor);
+
+  CHECKED_STATUS ModifyReadReplicaPlacementInfo(const std::string& placement_uuid,
+                                                const std::string& placement_info,
+                                                int replication_factor);
+
+  CHECKED_STATUS DeleteReadReplicaPlacementInfo(const std::string& placement_uuid);
+
   CHECKED_STATUS GetUniverseConfig();
 
   CHECKED_STATUS ChangeBlacklist(const std::vector<HostPort>& servers, bool add);
@@ -192,6 +201,13 @@ class ClusterAdminClient {
   bool initted_ = false;
 
  private:
+  CHECKED_STATUS FillPlacementInfo(
+      master::PlacementInfoPB* placement_info_pb, const std::string& placement_str);
+
+  Result<int> GetReadReplicaConfigFromPlacementUuid(
+      master::ReplicationInfoPB* replication_info, const std::string& placement_uuid);
+
+
   Result<master::GetMasterClusterConfigResponsePB> GetMasterClusterConfig();
 
   // Perform RPC call without checking Response structure for error
