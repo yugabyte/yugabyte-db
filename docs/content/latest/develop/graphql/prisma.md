@@ -11,7 +11,9 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Prisma enables simplified workflows and type-safe database access with the auto-generated Prisma client in JavaScript, TypeScript, and Go. This *data access layer* takes care of resolving your queries.
+Explore how you can use Prisma, and its GraphQL support, to interact with YugaByte DB. You will quickly build a GraphQL server and then use the Prisma client to write data to and run queries on a YugaByte DB database. Also, you'll get a taste of Prisma's ORM functionality.
+
+[Prisma](https://prisma.io) is an [open source](https://github.com/prisma/prisma) suite of database tools that simplify database workflows by easing database access, migrations, and data management. Prisma replaces traditional ORMs and can be used to build GraphQL servers, REST APIs, microservices, and more. For an overview, see [Prisma Basics: Datamodel, Prisma Client & Server](https://www.prisma.io/docs/understand-prisma/prisma-basics-datamodel-client-and-server-fgz4/).
 
 ## Before you begin
 
@@ -121,7 +123,9 @@ The Prisma service is now connected to the `postgres` database and the Prisma UI
 
 ## 5. Create sample data
 
-Use the Prisma UI to create the following sample data.
+Use the Prisma client to create the following sample data. Paste the following code examples, using Prisma's `createUser` method, into the left side of a tab, and then click the arrow to process your requests. 
+
+For details on writing data with the Prisma client, see [Writing Data (JavaScript)](https://www.prisma.io/docs/prisma-client/basic-data-access/writing-data-JAVASCRIPT-rsc6/).
 
 1. Create a user Jane with three postings
 
@@ -183,7 +187,9 @@ mutation {
 
 ## 6. Query the data
 
-Now that you have the sample data, you can run some queries to get a taste of using Prisma to query YugaByte DB.
+Now that you have created some sample data, you can run some queries to get a taste of using Prisma to query YugaByte DB. In the following examples, you will use the Prisma client to retrieve data. Paste the following code examples into the left side of a tab, and then click the arrow to process your requests. 
+
+For details on using the Prisma client to read data, see [Reading Data (JavaScript)](https://www.prisma.io/docs/prisma-client/basic-data-access/reading-data-JAVASCRIPT-rsc2/).
 
 ### Get all users
 
