@@ -1064,7 +1064,12 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
   } else {
     s = ColumnArgsToPB(tnode, req);
     if (PREDICT_FALSE(!s.ok())) {
-      return exec_context_->Error(tnode, s, ErrorCode::INVALID_ARGUMENTS);
+      // Note: INVALID_ARGUMENTS is retryable error code (due to mapping into STALE_METADATA),
+      //       INVALID_REQUEST - non-retryable.
+      ErrorCode error_code = (s.code() == Status::kNotSupported ?
+          ErrorCode::INVALID_REQUEST : ErrorCode::INVALID_ARGUMENTS);
+
+      return exec_context_->Error(tnode, s, error_code);
     }
   }
 
