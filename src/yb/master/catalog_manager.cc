@@ -1818,18 +1818,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   if (num_tablets <= 0) {
     // Use default as client could have gotten the value before any tserver had heartbeated
     // to (a new) master leader.
-    if (IsSystemNamespace(ns->name())) {
-      num_tablets = 1;
-      LOG(INFO) << "Setting default tablets to " << num_tablets << " for table in system namespace";
-    } else {
-      TSDescriptorVector ts_descs;
-      master_->ts_manager()->GetAllLiveDescriptorsInCluster(
-          &ts_descs, replication_info.live_replicas().placement_uuid(), blacklistState.tservers_);
-      num_tablets = ts_descs.size() * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
-                                                   : FLAGS_yb_num_shards_per_tserver);
-      LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
-                << ts_descs.size() << " primary servers";
-    }
+    TSDescriptorVector ts_descs;
+    master_->ts_manager()->GetAllLiveDescriptorsInCluster(
+        &ts_descs, replication_info.live_replicas().placement_uuid(), blacklistState.tservers_);
+    num_tablets = ts_descs.size() * (is_pg_table ? FLAGS_ysql_num_shards_per_tserver
+                                                 : FLAGS_yb_num_shards_per_tserver);
+    LOG(INFO) << "Setting default tablets to " << num_tablets << " with "
+              << ts_descs.size() << " primary servers";
   }
 
   // Create partitions.
