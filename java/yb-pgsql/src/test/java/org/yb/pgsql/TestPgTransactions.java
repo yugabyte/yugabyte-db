@@ -45,11 +45,6 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgTransactions extends BasePgSQLTest {
 
-  // A "skew" of 0.3 means that we expect the difference between the win percentage of the first
-  // and the second txn would be under 30% of the total number of attempts, i.e. if one transaction
-  // wins in 35% of cases and the other wins in 65% cases, we're still fine.
-  private static final double DEFAULT_SKEW_THRESHOLD = 0.3;
-
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
 
   private static boolean isYBTransactionError(PSQLException ex) {
@@ -69,12 +64,12 @@ public class TestPgTransactions extends BasePgSQLTest {
   private void checkTransactionFairness(
       int numFirstWinners,
       int numSecondWinners,
-      int totalIterations,
-      double skewThreshold) {
-    double skew = Math.abs(numFirstWinners - numSecondWinners) * 1.0 / totalIterations;
-    LOG.info("Skew between the number of wins by two connections: " + skew);
-    assertTrue("Expecting the skew to be below the threshold " + skewThreshold + ", got " + skew,
-        skew < skewThreshold);
+      int totalIterations) {
+    // similar logic to cxx-test: PgLibPqTest.SerializableReadWriteOnConflict
+    // break if we hit 25% accuracy
+    // Coin Toss Problem: 100 iterations, 25 heads.  False positive probability == 1 in 1.6M
+    assertLessThan("First Win Too Low", totalIterations / 4, numFirstWinners);
+    assertLessThan("Second Win Too Low", totalIterations / 4, numSecondWinners);
   }
 
   @Override
@@ -389,7 +384,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     }
     LOG.info("INSERT succeeded " + numSuccess1 + " times, " +
              "SELECT succeeded " + numSuccess2 + " times");
-    checkTransactionFairness(numSuccess1, numSuccess2, TOTAL_ITERATIONS, DEFAULT_SKEW_THRESHOLD);
+    checkTransactionFairness(numSuccess1, numSuccess2, TOTAL_ITERATIONS);
   }
 
   @Test
@@ -547,7 +542,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     }
     LOG.info(String.format(
         "First txn won in %d cases, second won in %d cases", numFirstWinners, numSecondWinners));
-    checkTransactionFairness(numFirstWinners, numSecondWinners, totalIterations, 0.3);
+    checkTransactionFairness(numFirstWinners, numSecondWinners, totalIterations);
   }
 
   @Test
