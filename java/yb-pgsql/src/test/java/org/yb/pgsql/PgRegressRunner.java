@@ -48,7 +48,7 @@ public class PgRegressRunner {
     return pgBinDir;
   }
 
-  private String pgRegressOutputDir;
+  private File pgRegressOutputDir;
   private Process pgRegressProc;
   private LogPrinter stdoutLogPrinter, stderrLogPrinter;
   private String pgSchedule;
