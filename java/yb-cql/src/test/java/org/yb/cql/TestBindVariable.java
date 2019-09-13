@@ -485,6 +485,141 @@ public class TestBindVariable extends BaseCQLTest {
   }
 
   @Test
+  public void testPrepareInsertBindLongJson() throws Exception {
+    LOG.info("Begin test");
+
+    // Create table
+    session.execute("CREATE TABLE test_bind (id int PRIMARY KEY, data jsonb, v int);");
+
+    // Insert data into the test table via prepared statement. Bind by name.
+    String insertStmt = "INSERT INTO test_bind (id, data, v) VALUES (?, ?, ?);";
+    PreparedStatement stmt = session.prepare(insertStmt);
+
+    {
+      session.execute(stmt.bind().setInt("id", 0)
+                                 .setString("data", "{ \"a\" : 1 }")
+                                 .setInt("v", 100));
+
+      // Select data from the test table.
+      ResultSet rs = session.execute("SELECT * FROM test_bind WHERE id = 0;");
+      Row row = rs.one();
+      assertNull(rs.one()); // Assert exactly 1 row is returned.
+      assertNotNull(row);
+      assertEquals(0, row.getInt(0));
+      assertEquals("{\"a\":1}", row.getJson("data"));
+      assertEquals(100, row.getInt(2));
+    }
+    {
+      StringBuilder builder = new StringBuilder();
+      builder.append("{\"0000000\":\"1234567890\"");
+      for (int i = 1; i < 100; ++i) {
+        builder.append(String.format(",\"%07d\":\"1234567890\"", i));
+      }
+      String jsonStr = builder.toString() + "}";
+      LOG.info("Executing INSERT for JSON data length = " + jsonStr.length());
+
+      // Insert long JSON value.
+      session.execute(stmt.bind().setInt("id", 1)
+                                 .setString("data", jsonStr)
+                                 .setInt("v", 101));
+      LOG.info("INSERT executed");
+
+      // Select data from the test table.
+      ResultSet rs = session.execute("SELECT * FROM test_bind WHERE id = 1;");
+      Row row = rs.one();
+      assertNull(rs.one()); // Assert exactly 1 row is returned.
+      assertNotNull(row);
+      assertEquals(1, row.getInt(0));
+      assertEquals(jsonStr, row.getJson("data"));
+      assertEquals(101, row.getInt(2));
+    }
+    {
+      StringBuilder builder = new StringBuilder();
+      builder.append("{\"0000000\":\"1234567890\"");
+      for (int i = 1; i < 3000000; ++i) {
+        builder.append(String.format(",\"%07d\":\"1234567890\"", i));
+      }
+      String jsonStr = builder.toString() + "}";
+      LOG.info("Executing INSERT for JSON data length = " + jsonStr.length());
+
+      // Insert huge JSON value - expecting 'value too long' exception.
+      try {
+        session.execute(stmt.bind().setInt("id", 2)
+                                   .setString("data", jsonStr)
+                                   .setInt("v", 102));
+        fail("Statement \"" + insertStmt + "\" did not fail");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("Prepared INSERT failed. Expected exception", e);
+      }
+    }
+    {
+      // Change column type.
+      session.execute("ALTER TABLE test_bind DROP v;");
+      session.execute("ALTER TABLE test_bind ADD v text;");
+
+      // Test the new text column.
+      session.execute("INSERT INTO test_bind (id, data, v) VALUES (9, '{}', 'abc');");
+      ResultSet rs = session.execute("SELECT * FROM test_bind WHERE id = 9;");
+      Row row = rs.one();
+      assertNull(rs.one()); // Assert exactly 1 row is returned.
+      assertNotNull(row);
+      assertEquals(9, row.getInt(0));
+      assertEquals("{}", row.getJson("data"));
+      assertEquals("abc", row.getString(2));
+
+      // Insert INT instead of TEXT - expecting 'Datatype Mismatch' exception.
+      try {
+        String invalidStmt = "INSERT INTO test_bind (id, data, v) VALUES (8, '{}', 123);";
+        session.execute(invalidStmt);
+        fail("Statement \"" + invalidStmt + "\" did not fail");
+      } catch (com.datastax.driver.core.exceptions.InvalidQueryException e) {
+        LOG.info("INSERT failed. Expected exception", e);
+      }
+    }
+    {
+      // Create new prepared INSERT for the new TEXT type and try to set INT into the TEXT.
+      PreparedStatement newStmt =
+        session.prepare("INSERT INTO test_bind (id, data, v) VALUES (?, ?, ?);");
+
+      // TOFIX: EXPECTING EXCEPTION HERE
+      //        https://github.com/yugabyte/yugabyte-db/issues/2446
+      session.execute(newStmt.bind().setInt("id", 3)
+                                    .setString("data", "{}")
+                                    .setInt("v", 0x41414141)); // 0x41 == 'A'
+
+      // Select data from the test table.
+      String selectStmt = "SELECT * FROM test_bind WHERE id = 3;";
+      ResultSet rs = session.execute(selectStmt);
+      Row row = rs.one();
+      assertNull(rs.one()); // Assert exactly 1 row is returned.
+      assertNotNull(row);
+      assertEquals(3, row.getInt(0));
+      assertEquals("{}", row.getJson("data"));
+      assertEquals("AAAA", row.getString(2));
+    }
+    {
+      // Try to use old prepared statement with 'int' type for column 'v'.
+      // TOFIX: EXPECTING EXCEPTION HERE
+      //        https://github.com/yugabyte/yugabyte-db/issues/2446
+      session.execute(stmt.bind().setInt("id", 4)
+                                 .setString("data", "{ \"b\" : 2 }")
+                                 .setInt("v", 0x42424242)); // 0x42 == 'B'
+
+      // Select data from the test table.
+      String selectStmt = "SELECT * FROM test_bind WHERE id = 4;";
+      ResultSet rs = session.execute(selectStmt);
+      Row row = rs.one();
+      assertNull(rs.one()); // Assert exactly 1 row is returned.
+      assertNotNull(row);
+      assertEquals(4, row.getInt(0));
+      assertEquals("{\"b\":2}", row.getJson("data"));
+      assertEquals("BBBB", row.getString(2));
+    }
+
+    LOG.info("End test");
+  }
+
+  @Test
   public void testPrepareUpdateBind() throws Exception {
     LOG.info("Begin test");
 
