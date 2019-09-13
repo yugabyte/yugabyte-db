@@ -63,6 +63,7 @@ DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_bool(TEST_allow_stop_writes);
+DECLARE_int32(yb_num_shards_per_tserver);
 
 namespace yb {
 namespace client {
@@ -337,6 +338,25 @@ class QLTabletTest : public QLDmlTestBase {
     return tablets;
   }
 
+  Status WaitForTableCreation(const YBTableName& table_name,
+                              master::IsCreateTableDoneResponsePB *resp) {
+    return LoggedWaitFor([=]() -> Result<bool> {
+      master::IsCreateTableDoneRequestPB req;
+      req.mutable_table()->set_table_name(table_name.table_name());
+      req.mutable_table()->mutable_namespace_()->set_name(table_name.namespace_name());
+      resp->Clear();
+
+      auto master_proxy = std::make_shared<master::MasterServiceProxy>(
+          &client_->proxy_cache(),
+          cluster_->leader_mini_master()->bound_rpc_addr());
+      rpc::RpcController rpc;
+      rpc.set_timeout(MonoDelta::FromSeconds(30));
+
+      Status s = master_proxy->IsCreateTableDone(req, resp, &rpc);
+      return s.ok() && !resp->has_error();
+    }, MonoDelta::FromSeconds(30), "Table Creation");
+  }
+
   void TestDeletePartialKey(int num_range_keys_in_delete);
 
   TableHandle table1_;
@@ -400,6 +420,30 @@ TEST_F(QLTabletTest, OverlappedImport) {
   FillTable(0, kTotalKeys, &table1_);
   FillTable(kTotalKeys, 2 * kTotalKeys, &table2_);
   ASSERT_NOK(Import());
+}
+
+// Test expected number of tablets for transactions table - added for #2293.
+TEST_F(QLTabletTest, TransactionsTableTablets) {
+  YBSchemaBuilder builder;
+  builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
+  builder.AddColumn(kValueColumn)->Type(INT32);
+
+  // Create transactional table.
+  TableProperties table_properties;
+  table_properties.SetTransactional(true);
+  builder.SetTableProperties(table_properties);
+
+  TableHandle table;
+  ASSERT_OK(table.Create(kTable1Name, 8, client_.get(), &builder));
+
+  // Wait for transactions table to be created.
+  YBTableName table_name(master::kSystemNamespaceName, kTransactionsTableName);
+  master::IsCreateTableDoneResponsePB resp;
+  ASSERT_OK(WaitForTableCreation(table_name, &resp));
+  ASSERT_TRUE(resp.done());
+
+  auto tablets = GetTabletInfos(table_name);
+  ASSERT_EQ(tablets.size(), cluster_->num_tablet_servers() * FLAGS_yb_num_shards_per_tserver);
 }
 
 void DoStepDowns(MiniCluster* cluster) {
