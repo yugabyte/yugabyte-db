@@ -229,7 +229,7 @@ Now that you have the sample data, you can run some queries to get a taste of us
 }
 ```
 
-![Results - get all posts, ordered alphabetically](/images/develop/graphql/prisma/query-get-all-user-alpha.png)
+![Results - get all posts, ordered alphabetically](/images/develop/graphql/prisma/query-get-all-users-alpha.png)
 
 ### Get all posts – ordered by popularity.
 
