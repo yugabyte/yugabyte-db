@@ -219,6 +219,8 @@ int compareJsonbXContainers(JsonbXContainer *a, JsonbXContainer *b)
                 case jbvXNull:
                 case jbvXNumeric:
                 case jbvXBool:
+                case jbvXInteger8:
+                case jbvXFloat8:
                     res = compareJsonbXScalarValue(&va, &vb);
                     break;
                 case jbvXArray:
@@ -1225,6 +1227,15 @@ void JsonbXHashScalarValue(const JsonbXValue *scalarVal, uint32 *hash)
         tmp = scalarVal->val.boolean ? 0x02 : 0x04;
 
         break;
+    case jbvXInteger8:
+        tmp = DatumGetUInt32(DirectFunctionCall1(
+            hashint8, Int64GetDatum(scalarVal->val.integer8)));
+        break;
+    case jbvXFloat8:
+        tmp = DatumGetUInt32(DirectFunctionCall1(
+            hashfloat8, Float8GetDatum(scalarVal->val.float8)));
+        break;
+
     default:
         elog(ERROR, "invalid jsonbx scalar type");
         tmp = 0; /* keep compiler quiet */
@@ -1273,6 +1284,16 @@ void JsonbXHashScalarValueExtended(const JsonbXValue *scalarVal, uint64 *hash,
             tmp = scalarVal->val.boolean ? 0x02 : 0x04;
 
         break;
+    case jbvXInteger8:
+        tmp = DatumGetUInt64(DirectFunctionCall2(
+            hashint8extended, Int64GetDatum(scalarVal->val.integer8),
+            UInt64GetDatum(seed)));
+        break;
+    case jbvXFloat8:
+        tmp = DatumGetUInt64(DirectFunctionCall2(
+            hashfloat8extended, Float8GetDatum(scalarVal->val.float8),
+            UInt64GetDatum(seed)));
+        break;
     default:
         elog(ERROR, "invalid jsonbx scalar type");
         break;
@@ -1301,6 +1322,10 @@ static bool equalsJsonbXScalarValue(JsonbXValue *aScalar, JsonbXValue *bScalar)
                 PointerGetDatum(bScalar->val.numeric)));
         case jbvXBool:
             return aScalar->val.boolean == bScalar->val.boolean;
+        case jbvXInteger8:
+            return aScalar->val.integer8 == bScalar->val.integer8;
+        case jbvXFloat8:
+            return aScalar->val.float8 == bScalar->val.float8;
 
         default:
             elog(ERROR, "invalid jsonbx scalar type");
@@ -1339,6 +1364,21 @@ static int compareJsonbXScalarValue(JsonbXValue *aScalar, JsonbXValue *bScalar)
                 return 1;
             else
                 return -1;
+        case jbvXInteger8:
+            if (aScalar->val.integer8 == bScalar->val.integer8)
+                return 0;
+            else if (aScalar->val.integer8 > bScalar->val.integer8)
+                return 1;
+            else
+                return -1;
+        case jbvXFloat8:
+            if (aScalar->val.float8 == bScalar->val.float8)
+                return 0;
+            else if (aScalar->val.float8 > bScalar->val.float8)
+                return 1;
+            else
+                return -1;
+
         default:
             elog(ERROR, "invalid jsonbx scalar type");
         }

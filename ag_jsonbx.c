@@ -36,6 +36,8 @@ typedef enum /* type categories for datum_to_jsonbx */
 {
     JSONBXTYPE_NULL, /* null, so we didn't bother to identify */
     JSONBXTYPE_BOOL, /* boolean (built-in types only) */
+    JSONBXTYPE_INTEGER8, /* Cypher Integer type */
+    JSONBXTYPE_FLOAT8, /* Cypher Float type */
     JSONBXTYPE_NUMERIC, /* numeric (ditto) */
     JSONBXTYPE_DATE, /* we use special formatting for datetimes */
     JSONBXTYPE_TIMESTAMP, /* we use special formatting for timestamp */
@@ -527,8 +529,16 @@ static void jsonbx_categorize_type(Oid typoid, JsonbXTypeCategory *tcategory,
     case INT2OID:
     case INT4OID:
     case INT8OID:
-    case FLOAT4OID:
+        getTypeOutputInfo(typoid, outfuncoid, &typisvarlena);
+        *tcategory = JSONBXTYPE_INTEGER8;
+        break;
+
     case FLOAT8OID:
+        getTypeOutputInfo(typoid, outfuncoid, &typisvarlena);
+        *tcategory = JSONBXTYPE_FLOAT8;
+        break;
+
+    case FLOAT4OID:
     case NUMERICOID:
         getTypeOutputInfo(typoid, outfuncoid, &typisvarlena);
         *tcategory = JSONBXTYPE_NUMERIC;
@@ -661,6 +671,38 @@ static void datum_to_jsonbx(Datum val, bool is_null, JsonbXInState *result,
             {
                 jb.type = jbvXBool;
                 jb.val.boolean = DatumGetBool(val);
+            }
+            break;
+        case JSONBXTYPE_INTEGER8:
+            outputstr = OidOutputFunctionCall(outfuncoid, val);
+            if (key_scalar)
+            {
+                jb.type = jbvXString;
+                jb.val.string.len = strlen(outputstr);
+                jb.val.string.val = outputstr;
+            }
+            else
+            {
+                Datum intd;
+
+                intd = DirectFunctionCall1(int8in, CStringGetDatum(outputstr));
+                jb.type = jbvXInteger8;
+                jb.val.integer8 = DatumGetInt64(intd);
+                pfree(outputstr);
+            }
+            break;
+        case JSONBXTYPE_FLOAT8:
+            outputstr = OidOutputFunctionCall(outfuncoid, val);
+            if (key_scalar)
+            {
+                jb.type = jbvXString;
+                jb.val.string.len = strlen(outputstr);
+                jb.val.string.val = outputstr;
+            }
+            else
+            {
+                jb.type = jbvXFloat8;
+                jb.val.float8 = DatumGetFloat8(val);
             }
             break;
         case JSONBXTYPE_NUMERIC:
