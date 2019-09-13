@@ -42,7 +42,6 @@ Press Control + Shift + P to open the actions input and type:
 
 ```
 Cassandra Workbench: Generate configuration
-
 ```
 
 This will generate .cassandraWorkbench.jsonc configuration file.
@@ -73,7 +72,7 @@ Open and configure adding cluster as you need with connections informations: Yug
 
 ## Enjoy
 
-Now you have connected to all the YugaByte DB APIs and can start exploring them by simply double-clicking on the connection name.
+Now you have connected your YugaByte DB YCQL and can start exploring them by simply double-clicking on the connection name.
 
 ![EDITOR UI](/images/develop/tools/vscodeworkbench/editor-ui.png)
 
