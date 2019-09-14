@@ -120,28 +120,25 @@ public class UpgradeUniverse extends UniverseTaskBase {
             // Retrieve master leader address of given universe
             final String leaderMasterAddress = universe.getMasterLeaderHostText();
             if (leaderMasterAddress.isEmpty()) {
-              final String errMsg = "Could not find the master leader address in universe "
-                      + universe.universeUUID;
-              LOG.error(errMsg);
-              throw new RuntimeException(errMsg);
+              // If we cannot successfully retrieve the leader master address,
+              // then default to legacy rolling upgrade behavior
+              createAllUpgradeTasks(masterNodes, ServerType.MASTER);
+            } else {
+              // Separate master leader from follower masters
+              NodeDetails masterLeaderNode = masterNodes
+                      .stream()
+                      .filter(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress))
+                      .collect(toSingleNodeDetail(universe.universeUUID));
+              masterNodes.removeIf(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress));
+
+              // Order of rolling upgrades should be:
+              // 1) Non-leader masters
+              // 2) Leader master
+              // 3) Tservers
+              createAllUpgradeTasks(masterNodes, ServerType.MASTER);
+              createSingleNodeUpgradeTasks(masterLeaderNode, ServerType.MASTER);
             }
-
-            // Separate master leader from follower masters
-            NodeDetails masterLeaderNode = masterNodes
-                    .stream()
-                    .filter(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress))
-                    .collect(toSingleNodeDetail(universe.universeUUID));
-            masterNodes.removeIf(node -> node.cloudInfo.private_ip.equals(leaderMasterAddress));
-
-
-            // Order of rolling upgrades should be:
-            // 1) Non-leader masters
-            // 2) Leader master
-            // 3) Tservers
-            createAllUpgradeTasks(masterNodes, ServerType.MASTER);
-            createSingleNodeUpgradeTasks(masterLeaderNode, ServerType.MASTER);
             createAllUpgradeTasks(tServerNodes, ServerType.TSERVER);
-
             // Enable the load balancer for rolling upgrade only.
             createLoadBalancerStateChangeTask(true /*enable*/)
                     .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
