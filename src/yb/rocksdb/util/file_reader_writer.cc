@@ -36,7 +36,7 @@
 
 #include "yb/util/priority_thread_pool.h"
 
-DEFINE_bool(allow_preempting_compactions, true,
+DEFINE_bool(allow_preempting_compactions, false,
             "Whether a compaction may be preempted in favor of another compaction with higher "
             "priority");
 
