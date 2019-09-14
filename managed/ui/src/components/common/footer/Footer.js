@@ -30,7 +30,7 @@ class Footer extends PureComponent {
           </span>
           <span className="social-media-cta">
             Star us on
-            <a href="https://github.com/yugabyte" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/YugaByte/yugabyte-db/" target="_blank" rel="noopener noreferrer">
               <img alt="YugaByte DB GitHub" className="social-media-logo" src={githubLogo} width="18"/> <b>GitHub</b>
             </a>
           </span>
