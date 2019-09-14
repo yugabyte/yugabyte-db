@@ -26,6 +26,7 @@ The following SQL statements are supported by the YugaByte Structured Query Lang
 | [`COMMENT`](ddl_comment) | Adds a comment on a database object |
 | [`COMMIT`](txn_commit) | Commits a transaction |
 | [`COPY`](cmd_copy) | Copy data between tables and files |
+| [`CREATE AGGREGATE`](ddl_create_aggregate) | Create a new aggregate |
 | [`CREATE DATABASE`](ddl_create_database) | Create a new database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |

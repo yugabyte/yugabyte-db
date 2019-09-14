@@ -69,6 +69,76 @@ copy_option ::=
     | 'FORCE_NULL' '(' column_names ')'
     | 'ENCODING' 'encoding_name' ) ;
 
+(* 'CREATE' 'AGGREGATE' *)
+
+create_aggregate = create_aggregate_normal
+                 | create_aggregate_order_by
+                 | create_aggregate_old ;
+
+create_aggregate_normal = 'CREATE' 'AGGREGATE' aggregate_name
+                          '(' ( aggregate_arg { ',' aggregate_arg } | '*' ) ')'
+                          '(' 'SFUNC' '=' sfunc ',' 'STYPE' '=' state_data_type
+                          { ',' aggregate_normal_option } ')' ;
+
+create_aggregate_order_by = 'CREATE' 'AGGREGATE' aggregate_name
+                            '(' [ aggregate_arg { ',' aggregate_arg } ]
+                            'ORDER' 'BY' aggregate_arg { ',' aggregate_arg } ')'
+                            '(' 'SFUNC' '=' sfunc ',' 'STYPE' '=' state_data_type
+                            { ',' aggregate_order_by_option } ')' ;
+
+create_aggregate_old = 'CREATE' 'AGGREGATE' aggregate_name
+                       '(' 'BASETYPE' '=' base_type ','
+                       'SFUNC' '=' sfunc ','
+                       'STYPE' '=' state_data_type
+                       { ',' aggregate_old_option } ')' ;
+
+aggregate_arg = [ argmode ] [ argname ] arg_data_type ;
+
+aggregate_normal_option = 'SSPACE' '=' state_data_size
+                        | 'FINALFUNC' '=' ffunc
+                        | 'FINALFUNC_EXTRA'
+                        | 'FINALFUNC_MODIFY' '=' { 'READ_ONLY' | 'SHAREABLE' | 'READ_WRITE' }
+                        | 'COMBINEFUNC' '=' combinefunc
+                        | 'SERIALFUNC' '=' serialfunc
+                        | 'DESERIALFUNC' '=' deserialfunc
+                        | 'INITCOND' '=' initial_condition
+                        | 'MSFUNC' '=' msfunc
+                        | 'MINVFUNC' '=' minvfunc
+                        | 'MSTYPE' '=' mstate_data_type
+                        | 'MSSPACE' '=' mstate_data_size
+                        | 'MFINALFUNC' '=' mffunc
+                        | 'MFINALFUNC_EXTRA'
+                        | 'MFINALFUNC_MODIFY' '=' { 'READ_ONLY' | 'SHAREABLE' | 'READ_WRITE' }
+                        | 'MINITCOND' '=' minitial_condition
+                        | 'SORTOP' '=' sort_operator
+                        | 'PARALLEL' '=' { 'SAFE' | 'RESTRICTED' | 'UNSAFE' } ;
+
+aggregate_order_by_option = 'SSPACE' '=' state_data_size
+                          | 'FINALFUNC' '=' ffunc
+                          | 'FINALFUNC_EXTRA'
+                          | 'FINALFUNC_MODIFY' '=' { 'READ_ONLY' | 'SHAREABLE' | 'READ_WRITE' }
+                          | 'INITCOND' '=' initial_condition
+                          | 'PARALLEL' '=' { 'SAFE' | 'RESTRICTED' | 'UNSAFE' }
+                          | 'HYPOTHETICAL' ;
+
+aggregate_old_option = 'SSPACE' '=' state_data_size
+                     | 'FINALFUNC' '=' ffunc
+                     | 'FINALFUNC_EXTRA'
+                     | 'FINALFUNC_MODIFY' '=' { 'READ_ONLY' | 'SHAREABLE' | 'READ_WRITE' }
+                     | 'COMBINEFUNC' '=' combinefunc
+                     | 'SERIALFUNC' '=' serialfunc
+                     | 'DESERIALFUNC' '=' deserialfunc
+                     | 'INITCOND' '=' initial_condition
+                     | 'MSFUNC' '=' msfunc
+                     | 'MINVFUNC' '=' minvfunc
+                     | 'MSTYPE' '=' mstate_data_type
+                     | 'MSSPACE' '=' mstate_data_size
+                     | 'MFINALFUNC' '=' mffunc
+                     | 'MFINALFUNC_EXTRA'
+                     | 'MFINALFUNC_MODIFY' '=' { 'READ_ONLY' | 'SHAREABLE' | 'READ_WRITE' }
+                     | 'MINITCOND' '=' minitial_condition
+                     | 'SORTOP' '=' sort_operator ;
+
 (* 'CREATE' 'DATABASE' *)
 
 create_database ::= 'CREATE' 'DATABASE' name [ create_database_options ] ;
@@ -366,10 +436,11 @@ update_item ::= ( column_name '=' column_value
 column_value ::= expression | 'DEFAULT' ;
 
 (* 'COMMENT' *)
-comment_on ::= 'COMMENT' 'ON' \
-(
+comment_on = 'COMMENT' 'ON' (
   'ACCESS' 'METHOD' object_name |
-  'AGGREGATE' aggregate_name '(' aggregate_signature ')' |
+  'AGGREGATE' aggregate_name '(' ( aggregate_arg { ',' aggregate_arg } | '*' ) ')' |
+  'AGGREGATE' aggregate_name '(' [ aggregate_arg { ',' aggregate_arg } ]
+                             'ORDER' 'BY' aggregate_arg { ',' aggregate_arg } ')' |
   'CAST' '(' source_type 'AS' target_type ')' |
   'COLLATION' object_name |
   'COLUMN' relation_name '.' column_name |
@@ -411,13 +482,7 @@ comment_on ::= 'COMMENT' 'ON' \
   'TRIGGER' trigger_name 'ON' table_name |
   'TYPE' object_name |
   'VIEW' object_name
-) \ 'IS' ( '<Text Literal>' | 'NULL' ) ;
-
-aggregate_signature ::= (
-  '*' |
-  [ argmode ] [ argname ] argtype { ',' argtype } |
-  [ [ argmode ] [ argname ] argtype { ',' argtype } ] 'ORDER' 'BY' [ argmode ] [ argname ] argtype { ',' argtype }
-) ;
+) 'IS' ( '<Text Literal>' | 'NULL' ) ;
 
 (* 'DO' *)
 do ::= 'DO' [ 'LANGUAGE' lang_name ] code ;
