@@ -92,7 +92,7 @@ create_aggregate_old = 'CREATE' 'AGGREGATE' aggregate_name
                        'STYPE' '=' state_data_type
                        { ',' aggregate_old_option } ')' ;
 
-aggregate_arg = [ argmode ] [ argname ] arg_data_type ;
+aggregate_arg = [ aggregate_argmode ] [ argname ] argtype ;
 
 aggregate_normal_option = 'SSPACE' '=' state_data_size
                         | 'FINALFUNC' '=' ffunc
@@ -523,7 +523,7 @@ argmode ::= ( 'IN' | 'OUT' | 'INOUT' | 'VARIADIC' ) ;
 
 argname ::= name ;
 
-argtype ::= '<Text Literal>' ;
+argtype ::= type_name ;
 
 large_object_oid ::= '<Integer Literal>' ;
 
@@ -603,3 +603,21 @@ param_name ::= '<Text Literal>' ;
 param_value ::= '<Text Literal>' ;
 
 code ::= '<Text Literal>' ;
+
+aggregate_argmode = 'IN' | 'VARIADIC' ;
+sfunc = function_name ;
+state_data_type = type_name ;
+base_type = type_name ;
+state_data_size = '<non-negative integer>' ;
+ffunc = function_name ;
+combinefunc = function_name ;
+serialfunc = function_name ;
+deserialfunc = function_name ;
+initial_condition = '<Text Literal>' ;
+msfunc = function_name ;
+minvfunc = function_name ;
+mstate_data_type = type_name ;
+mstate_data_size = '<non-negative integer>' ;
+mffunc = function_name ;
+minitial_condition = '<Text literal>' ;
+sort_operator = operator_name ;
