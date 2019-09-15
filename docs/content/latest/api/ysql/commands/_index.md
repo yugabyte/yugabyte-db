@@ -20,6 +20,9 @@ The following table lists the commands in YSQL.
 |-----------|-------------|
 | [`ABORT`](txn_abort) | Rollback a transaction |
 | [`ALTER DOMAIN`](ddl_alter_domain) | Alter a domain |
+| [`ALTER GROUP`](dcl_alter_group) | Alter a group |
+| [`ALTER ROLE`](dcl_alter_role) | Alter a role |
+| [`ALTER USER`](dcl_alter_user) | Alter a user (role) |
 | [`ALTER TABLE`](ddl_alter_table) | Change table definition |
 | [`BEGIN TRANSACTION`](txn_begin) | Start a transaction |
 | [`COMMIT`](txn_commit) | Commit a transaction |
@@ -27,6 +30,9 @@ The following table lists the commands in YSQL.
 | [`CREATE DATABASE`](ddl_create_database) | Create a new database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a new domain |
 | [`CREATE INDEX`](ddl_create_index) | Create a new index |
+| [`CREATE GROUP`](dcl_create_group) | Create a new group (role) |
+| [`CREATE ROLE`](dcl_create_role) | Create a new role (user or group) |
+| [`CREATE USER`](dcl_create_user) | Create a new user (role) |
 | [`CREATE SCHEMA`](ddl_create_schema) | Create a new schema (namespace) |
 | [`CREATE SEQUENCE`](ddl_create_sequence) | Create a new sequence generator |
 | [`CREATE TABLE`](ddl_create_table) | Create a new table |

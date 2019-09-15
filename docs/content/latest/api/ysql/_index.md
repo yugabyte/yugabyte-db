@@ -19,7 +19,7 @@ showAsideToc: true
 
 ## Introduction
 
-YSQL is a distributed SQL API that is compatible with the SQL dialect of PostgreSQL. Currently, the compatibility is with 11.2 version of PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). 
+YSQL is a distributed SQL API that is compatible with the SQL dialect of PostgreSQL. Currently, the compatibility is with 11.2 version of PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys).
 
 The main components of YSQL are data definition language (DDL), data manipulation language (DML), and data control language (DCL). A number of elements are used to construct these components including data types, database objects, names and qualifiers, expressions, and comments. Several other components are also provided for different purposes such as system control, transaction control, and performance tuning.
 
@@ -64,9 +64,14 @@ DCL commands protect and prevent the database from corruptions.
 
 | Statement | Description |
 |-----------|-------------|
+| [`ALTER GROUP`](commands/dcl_alter_group) | Alter a group |
+| [`ALTER ROLE`](commands/dcl_alter_role) | Alter a role (user or group) |
+| [`ALTER USER`](commands/dcl_alter_user) | Alter a user |
+| [`CREATE GROUP`](commands/dcl_create_group) | Create a new group (role) |
+| [`CREATE ROLE`](commands/dcl_create_role) | Create a new role (user or group) |
 | [`CREATE USER`](commands/dcl_create_user) | Create a new user (role) |
-| [`GRANT`](commands/dcl_grant) | Grant permissions (under development) |
-| [`REVOKE`](commands/dcl_revoke) | Revoke permissions (under development) |
+| [`GRANT`](commands/dcl_grant) | Grant permissions |
+| [`REVOKE`](commands/dcl_revoke) | Revoke permissions |
 
 ## Transaction control language (TCL)
 

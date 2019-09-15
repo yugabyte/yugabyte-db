@@ -1,20 +1,20 @@
 ---
-title: CREATE USER
-description: Users and roles
-summary: Users and roles
+title: CREATE GROUP
+description: Groups and roles
+summary: Groups and roles
 menu:
   latest:
-    identifier: api-ysql-commands-create-user
+    identifier: api-ysql-commands-create-group
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/dcl_create_user
+  - /latest/api/ysql/commands/dcl_create_group
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Synopsis
 
-`CREATE USER` is an alias for [`CREATE ROLE`](../dcl_create_role) and is used to create a role.
+`CREATE GROUP` is an alias for [`CREATE ROLE`](../dcl_create_role) and is used to create a group role.
 
 ## Syntax
 
@@ -35,10 +35,10 @@ showAsideToc: true
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option,role_name,password,timestamp,connlimit,uid.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_group,role_option,role_name,password,timestamp,connlimit,uid.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option,role_name,password,timestamp,connlimit,uid.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/create_group,role_option,role_name,password,timestamp,connlimit,uid.diagram.md" /%}}
   </div>
 </div>
 
@@ -47,22 +47,10 @@ See [`CREATE ROLE`](../dcl_create_role) for more details.
 
 ## Examples
 
-- Create a sample user with password.
+- Create a sample group that can manage databases and roles.
 
 ```sql
-postgres=# CREATE USER John WITH PASSWORD 'password';
-```
-
-- Grant John all permissions on the `postgres` database.
-
-```sql
-postgres=# GRANT ALL ON DATABASE postgres TO John;
-```
-
-- Remove John's permissions from the `postgres` database.
-
-```sql
-postgres=# REVOKE ALL ON DATABASE postgres FROM John;
+postgres=# CREATE GROUP SysAdmin WITH CREATEDB CREATEROLE;
 ```
 
 ## See also

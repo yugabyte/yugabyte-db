@@ -1,20 +1,20 @@
 ---
-title: CREATE USER
+title: ALTER USER
 description: Users and roles
 summary: Users and roles
 menu:
   latest:
-    identifier: api-ysql-commands-create-user
+    identifier: api-ysql-commands-alter-user
     parent: api-ysql-commands
 aliases:
-  - /latest/api/ysql/commands/dcl_create_user
+  - /latest/api/ysql/commands/dcl_alter_user
 isTocNested: true
 showAsideToc: true
 ---
 
 ## Synopsis
 
-`CREATE USER` is an alias for [`CREATE ROLE`](../dcl_create_role) and is used to create a role.
+`ALTER USER` is an alias for [`ALTER ROLE`](../dcl_alter_role) and is used to alter a role.
 
 ## Syntax
 
@@ -35,39 +35,20 @@ showAsideToc: true
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option,role_name,password,timestamp,connlimit,uid.grammar.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_user,alter_role_option,role_specification,alter_user_rename,new_role_name,alter_user_config,config_setting,config_param,config_value.grammar.md" /%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/commands/create_user,role_option,role_name,password,timestamp,connlimit,uid.diagram.md" /%}}
+    {{% includeMarkdown "../syntax_resources/commands/alter_user,alter_role_option,role_specification,alter_user_rename,new_role_name,alter_user_config,config_setting,config_param,config_value.diagram.md" /%}}
   </div>
 </div>
 
 
-See [`CREATE ROLE`](../dcl_create_role) for more details.
-
-## Examples
-
-- Create a sample user with password.
-
-```sql
-postgres=# CREATE USER John WITH PASSWORD 'password';
-```
-
-- Grant John all permissions on the `postgres` database.
-
-```sql
-postgres=# GRANT ALL ON DATABASE postgres TO John;
-```
-
-- Remove John's permissions from the `postgres` database.
-
-```sql
-postgres=# REVOKE ALL ON DATABASE postgres FROM John;
-```
+See [`ALTER ROLE`](../dcl_alter_role) for more details.
 
 ## See also
 
 [`CREATE ROLE`](../dcl_create_role)
+[`DROP ROLE`](../dcl_drop_role)
 [`GRANT`](../dcl_grant)
 [`REVOKE`](../dcl_revoke)
 [Other YSQL Statements](..)
