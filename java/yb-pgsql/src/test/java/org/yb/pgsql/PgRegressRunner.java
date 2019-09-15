@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
@@ -47,6 +48,7 @@ public class PgRegressRunner {
     return pgBinDir;
   }
 
+  private String pgRegressOutputDir;
   private Process pgRegressProc;
   private LogPrinter stdoutLogPrinter, stderrLogPrinter;
   private String pgSchedule;
@@ -66,12 +68,28 @@ public class PgRegressRunner {
 
   public PgRegressRunner(String schedule, String pgHost, int pgPort, String pgUser,
                          long maxRuntimeMillis) {
+    pgRegressOutputDir = new File(TestUtils.getBaseTmpDir(), "pgregress_output");
+    if (!pgRegressOutputDir.mkdirs()) {
+      throw new RuntimeException("Failed to create directory " + pgRegressOutputDir);
+    }
+    try {
+      for (String name : new String[]{
+          "expected", "output", "sql", "data"}) {
+        FileUtils.copyDirectory(new File(pgRegressDir, name), new File(pgRegressOutputDir, name));
+      }
+      FileUtils.copyFile(new File(pgRegressDir, schedule), new File(pgRegressOutputDir, schedule));
+    } catch (IOException ex) {
+      LOG.error("Failed to copy pgregress data from " + pgRegressDir + " to " + pgRegressOutputDir);
+      throw new RuntimeException(ex);
+    }
+
     this.pgSchedule = schedule;
     this.pgHost = pgHost;
     this.pgPort = pgPort;
     this.pgUser = pgUser;
     this.maxRuntimeMillis = maxRuntimeMillis;
-    regressionDiffsPath = new File(pgRegressDir, "regression.diffs");
+
+    regressionDiffsPath = new File(pgRegressOutputDir, "regression.diffs");
   }
 
   public void setEnvVars(Map<String, String> envVars) {
@@ -110,7 +128,8 @@ public class PgRegressRunner {
             "--user=" + pgUser,
             "--dbname=yugabyte",
             "--use-existing",
-            "--schedule=" + pgSchedule);
+            "--schedule=" + pgSchedule,
+            "--outputdir=" + pgRegressOutputDir);
     procBuilder.directory(pgRegressDir);
     procBuilder.environment().putAll(extraEnvVars);
 
@@ -167,8 +186,8 @@ public class PgRegressRunner {
     if (!sortedFailedTests.isEmpty()) {
       LOG.info("Failed tests: " + sortedFailedTests);
       for (String testName : sortedFailedTests) {
-        File expectedFile = new File(new File(pgRegressDir, "expected"), testName + ".out");
-        File resultFile = new File(new File(pgRegressDir, "results"), testName + ".out");
+        File expectedFile = new File(new File(pgRegressOutputDir, "expected"), testName + ".out");
+        File resultFile = new File(new File(pgRegressOutputDir, "results"), testName + ".out");
         if (!expectedFile.exists()) {
           LOG.warn("Expected test output file " + expectedFile + " not found.");
           continue;
